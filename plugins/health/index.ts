@@ -301,11 +301,13 @@ const routes = [
     responses: { 200: passthrough, 400: errorResponse },
     handler: async (_req, _ctx, { query }) => {
       const windowMs = USAGE_HISTORY_WINDOW_MS[query.window]
-      const since = toLocalDayKey(Date.now() - windowMs)
+      const now = Date.now()
+      const since = toLocalDayKey(now - windowMs)
       const lastScan = getLastUsageScan()
       return Response.json({
         window: query.window,
         since,
+        throughDay: toLocalDayKey(now),
         scannedAt: lastScan ? new Date(lastScan.at).toISOString() : null,
         byAgent: usageByAgentSince(since),
         byDay: usageByDaySince(since),

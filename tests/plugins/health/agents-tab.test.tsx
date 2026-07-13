@@ -28,7 +28,8 @@ function jsonResponse(body: unknown, status = 200): Response {
 function history(window: '24h' | '7d' | '30d') {
   return {
     window,
-    since: '2026-07-12',
+    since: window === '24h' ? '2026-07-12' : window === '7d' ? '2026-07-06' : '2026-06-13',
+    throughDay: '2026-07-13',
     scannedAt: '2026-07-13T12:00:00.000Z',
     byAgent: [
       {
@@ -175,44 +176,84 @@ afterEach(() => {
 })
 
 describe('AgentsTab', () => {
-  it('consolidates trend, efficiency, latest transcript traffic, and scoped spend', async () => {
+  it('puts actionable agent concerns before a plain-language activity summary', async () => {
     const { urls } = stubAgentFetch()
     render(<AgentsTab />)
 
-    expect(await screen.findByRole('heading', { level: 3, name: 'Usage & efficiency' })).toBeDefined()
-    expect(screen.getByRole('heading', { level: 3, name: 'Agent token trend' })).toBeDefined()
-    expect(screen.getByRole('heading', { level: 3, name: 'Latest session token usage' })).toBeDefined()
-    expect(screen.getByRole('heading', { level: 3, name: 'Spend & budget' })).toBeDefined()
+    const reviewHeading = await screen.findByRole('heading', { level: 3, name: 'Agents to review' })
+    const activityHeading = screen.getByRole('heading', { level: 3, name: 'Agent activity' })
+    expect(reviewHeading.compareDocumentPosition(activityHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(screen.getByRole('heading', { level: 3, name: 'Usage over time' })).toBeDefined()
+    expect(screen.getByRole('heading', { level: 3, name: 'Latest-session details' })).toBeDefined()
+    expect(screen.getByRole('heading', { level: 3, name: 'Reported cost' })).toBeDefined()
     expect(queryKeys).toContain('agents_window')
     expect(urls).toContain('/api/plugins/health/usage-history?window=24h')
     expect(urls).toContain('/api/plugins/health/agent-effort?window=24h')
+    expect(urls).not.toContain('/api/plugins/models/spend?window=24h')
 
     const comparison = screen.getByTestId('agents-comparison')
-    expect(within(comparison).getAllByText('Transcript observed').length).toBeGreaterThan(0)
-    expect(within(comparison).getAllByText('Bakin attributed').length).toBeGreaterThan(0)
-    expect(within(comparison).getAllByText('Unattributed').length).toBeGreaterThan(0)
-    expect(within(comparison).getAllByText('Completions').length).toBeGreaterThan(0)
-    expect(within(comparison).getAllByText('Outcome').length).toBeGreaterThan(0)
-    expect(within(comparison).getAllByText('Flags').length).toBeGreaterThan(0)
-    expect(within(comparison).getByText(/No completion was recorded for scout/)).toBeDefined()
+    expect(within(comparison).getAllByText('Usage').length).toBeGreaterThan(0)
+    expect(within(comparison).getAllByText('Work & results').length).toBeGreaterThan(0)
+    expect(within(comparison).getAllByText('Status').length).toBeGreaterThan(0)
+    expect(within(comparison).queryByText('Transcript observed')).toBeNull()
+    expect(within(comparison).queryByText('Bakin attributed')).toBeNull()
+    expect(within(comparison).queryByText('Unattributed')).toBeNull()
+
+    const scoutRow = within(comparison).getByRole('link', { name: 'scout' }).closest('[data-agent-comparison-row]')
+    expect(scoutRow?.textContent).toContain('300 total')
+    expect(scoutRow?.textContent).toContain('200 tracked · 100 outside')
+    expect(scoutRow?.textContent).toContain('0 of 2 runs completed')
+    expect(scoutRow?.textContent).toContain('Needs review')
+
+    const attention = screen.getByTestId('agents-attention')
+    const warningFlag = within(attention).getByText('2 tracked runs produced no recorded completions.')
+    expect(warningFlag).toBeDefined()
+    expect(warningFlag.closest('ul')?.classList.contains('text-warning')).toBe(true)
+    expect(within(attention).getByRole('link', { name: "Review scout's recent sessions" }).getAttribute('href')).toBe('/team/scout?tab=diagnostics')
     expect(comparison.querySelector('table')).toBeNull()
     expect(comparison.querySelector('[data-agent-comparison-row]')?.getAttribute('data-compact-layout')).toBe('stacked')
 
-    expect(screen.getAllByText('Latest session token usage')).toHaveLength(1)
-    expect(screen.getByText(/cumulative token traffic.*not context-window occupancy/i)).toBeDefined()
-    expect(within(screen.getByTestId('latest-session-usage')).getAllByText('1.2k').length).toBeGreaterThan(0)
+    expect(screen.getByText(/Most recent session reported by each agent.*independent of the selected period/i)).toBeDefined()
+    const latestSessions = screen.getByTestId('latest-session-usage')
+    const sessionDetails = latestSessions.querySelector('details')
+    const sessionSummary = sessionDetails?.querySelector('summary')
+    expect(sessionDetails?.open).toBe(false)
+    expect(sessionSummary?.textContent).toContain('pixel')
+    expect(sessionSummary?.textContent).toContain('gpt-5.4 · 8 messages')
+    expect(sessionSummary?.textContent).toContain('1.2k tokens')
+    expect(sessionDetails?.querySelector('[data-session-token-breakdown]')?.textContent).toContain('Cache read400')
+    fireEvent.click(sessionSummary!)
+    expect(sessionDetails?.open).toBe(true)
 
-    expect(screen.getByText(/Transcript token traffic peaked on 07-13 at 1.0k/i)).toBeDefined()
-    const exactTrend = document.querySelector('table[aria-label="Agent token trend data"]')
+    const takeaway = screen.getByText(/The last completed day, 07-12, had 300 tokens.*Today is still being counted/i)
+    const trendPlot = document.querySelector('[data-agent-token-trend-plot]')
+    expect(takeaway.compareDocumentPosition(trendPlot!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    const exactTrend = document.querySelector('table[aria-label="Usage over time data"]')
     expect(exactTrend).not.toBeNull()
     expect(exactTrend?.textContent).toContain('07-12')
     expect(exactTrend?.textContent).toContain('pixel')
 
-    expect(screen.getByText('Runtime-reported transcript cost')).toBeDefined()
-    expect(screen.getByText('selected 24h · 2 of 6 messages reported cost')).toBeDefined()
-    expect(screen.getByText('Bakin-attributed estimate')).toBeDefined()
-    expect(screen.getByText('fixed 24h scope · used by budget caps')).toBeDefined()
-    expect(screen.getByRole('link', { name: /Open Models.*Spend/i }).getAttribute('href')).toBe('/models?tab=spend')
+    const costSummary = screen.getByTestId('reported-cost-summary')
+    expect(costSummary.textContent).toContain('$0.03')
+    expect(costSummary.textContent).toContain('2 of 6 messages from 2026-07-12 through 2026-07-13 reported cost')
+    expect(costSummary.textContent).toContain('Today is still being counted')
+    expect(screen.queryByText('Bakin-attributed estimate')).toBeNull()
+    expect(screen.queryByText('fixed 24h scope · used by budget caps')).toBeNull()
+    expect(screen.getByRole('link', { name: 'View budgets in Models' }).getAttribute('href')).toBe('/models?tab=spend')
+  })
+
+  it('keeps usage over time compact on wide screens without hiding exact values', async () => {
+    stubAgentFetch()
+    render(<AgentsTab />)
+
+    const chart = await screen.findByRole('group', { name: 'Usage over time' })
+    const plot = chart.closest('[data-agent-token-trend-plot]')
+
+    expect(plot).not.toBeNull()
+    expect(plot?.className).toContain('w-full')
+    expect(plot?.className).toContain('max-w-4xl')
+    expect(chart.getAttribute('viewBox')).toBe('0 0 640 144')
+    expect(screen.getByRole('table', { name: 'Usage over time data', hidden: true })).toBeDefined()
   })
 
   it('keeps every independently loading section named in the accessibility tree', () => {
@@ -221,27 +262,46 @@ describe('AgentsTab', () => {
     render(<AgentsTab />)
 
     expect(screen.getByRole('heading', { level: 2, name: 'Agents' })).toBeDefined()
-    expect(screen.getByRole('heading', { level: 3, name: 'Agent token trend' })).toBeDefined()
-    expect(screen.getByRole('heading', { level: 3, name: 'Usage & efficiency' })).toBeDefined()
-    expect(screen.getByRole('heading', { level: 3, name: 'Latest session token usage' })).toBeDefined()
-    expect(screen.getByRole('heading', { level: 3, name: 'Spend & budget' })).toBeDefined()
-    expect(screen.getByRole('status', { name: 'Loading agent token trend' })).toBeDefined()
+    expect(screen.getByRole('heading', { level: 3, name: 'Agents to review' })).toBeDefined()
+    expect(screen.getByRole('heading', { level: 3, name: 'Usage over time' })).toBeDefined()
+    expect(screen.getByRole('heading', { level: 3, name: 'Agent activity' })).toBeDefined()
+    expect(screen.getByRole('heading', { level: 3, name: 'Latest-session details' })).toBeDefined()
+    expect(screen.getByRole('heading', { level: 3, name: 'Reported cost' })).toBeDefined()
+    expect(screen.getByRole('status', { name: 'Loading agents to review' })).toBeDefined()
+    expect(screen.getByRole('status', { name: 'Loading usage over time' })).toBeDefined()
     expect(screen.getByRole('status', { name: 'Loading agent comparison' })).toBeDefined()
-    expect(screen.getByRole('status', { name: 'Loading latest session usage' })).toBeDefined()
+    expect(screen.getByRole('status', { name: 'Loading latest-session details' })).toBeDefined()
+    expect(screen.getByRole('status', { name: 'Loading reported cost' })).toBeDefined()
   })
 
   it('uses one URL-backed window for history and agent outcomes', async () => {
     const { urls } = stubAgentFetch()
     render(<AgentsTab />)
-    await screen.findByText('Usage & efficiency')
+    await screen.findByText('Agent activity')
 
-    fireEvent.click(screen.getByRole('tab', { name: '7d' }))
+    fireEvent.click(screen.getByRole('tab', { name: '8 calendar days' }))
 
     await waitFor(() => {
       expect(urls).toContain('/api/plugins/health/usage-history?window=7d')
       expect(urls).toContain('/api/plugins/health/agent-effort?window=7d')
     })
-    expect(screen.getByText('selected 7d · 2 of 6 messages reported cost')).toBeDefined()
-    expect(screen.getByText('fixed 24h scope · used by budget caps')).toBeDefined()
+    expect(screen.getByText(/2 of 6 messages from 2026-07-06 through 2026-07-13 reported cost.*Today is still being counted/)).toBeDefined()
+    expect(screen.queryByText('fixed 24h scope · used by budget caps')).toBeNull()
+  })
+
+  it('does not present zero-message cost coverage when usage history fails', async () => {
+    const { fetchMock } = stubAgentFetch()
+    globalThis.fetch = mock((input: string | URL | Request) => {
+      if (String(input).startsWith('/api/plugins/health/usage-history')) {
+        return Promise.resolve(jsonResponse({ error: 'Unavailable' }, 503))
+      }
+      return fetchMock(input)
+    }) as unknown as typeof fetch
+
+    render(<AgentsTab />)
+
+    const costSummary = await screen.findByTestId('reported-cost-summary')
+    expect(costSummary.textContent).toContain('Cost could not be checked because usage history could not be loaded (503).')
+    expect(costSummary.textContent).not.toContain('0 of 0 messages')
   })
 })

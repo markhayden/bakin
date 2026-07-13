@@ -193,6 +193,8 @@ export interface UsageHistoryData {
   window: UsageHistoryWindow
   /** First local calendar day (YYYY-MM-DD) included — windows are day-aligned. */
   since: string
+  /** Current local calendar day (YYYY-MM-DD); its rollup is still in progress. */
+  throughDay: string
   /** ISO time of the last completed scan; null before the first sweep. */
   scannedAt: string | null
   byAgent: Array<UsageHistoryRollup & { agent: string }>

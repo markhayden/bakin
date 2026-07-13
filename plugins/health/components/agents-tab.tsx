@@ -1,17 +1,23 @@
 'use client'
 
 import { useQueryState } from '@makinbakin/sdk/hooks'
-import { EmptyState, ErrorState, SectionCard, SegmentedControl, StatTile } from '@makinbakin/sdk/components'
-import { Badge, Button, Skeleton } from '@makinbakin/sdk/ui'
-import { ArrowUpRight, Coins, MessagesSquare, RefreshCw } from 'lucide-react'
+import { EmptyState, ErrorState, SectionCard, SegmentedControl } from '@makinbakin/sdk/components'
+import { Button, Skeleton } from '@makinbakin/sdk/ui'
+import { ArrowUpRight, ChevronDown, MessagesSquare, RefreshCw } from 'lucide-react'
 import type { AgentUsage } from '@makinbakin/sdk/types'
-import type { MeteredSpendData, UsageHistoryData } from '../types'
+import type { UsageHistoryData } from '../types'
 import { formatRuntimeCost, formatTokenCount } from '../lib/format'
 import { useAgentsData, type AgentsWindow } from '../hooks/use-agents-data'
+import { AgentsAttention } from './agents-attention'
 import { AgentsComparison } from './agents-comparison'
 import { AgentsUsageChart } from './agents-usage-chart'
 
 const WINDOWS: readonly AgentsWindow[] = ['24h', '7d', '30d']
+const WINDOW_LABEL: Record<AgentsWindow, string> = {
+  '24h': 'Today + yesterday',
+  '7d': '8 calendar days',
+  '30d': '31 calendar days',
+}
 
 function agentsWindow(value: string): AgentsWindow {
   return WINDOWS.includes(value as AgentsWindow) ? value as AgentsWindow : '24h'
@@ -23,24 +29,21 @@ function LatestSessionUsage({ usage, loading, error, onRetry }: {
   error: string | null
   onRetry: () => void
 }) {
-  const total = usage?.reduce((sum, row) => sum + row.tokens.total, 0) ?? 0
-
   return (
     <SectionCard
-      title={<h3>Latest session token usage</h3>}
+      title={<h3>Latest-session details</h3>}
       icon={MessagesSquare}
-      description="Cumulative token traffic recorded in each agent's newest transcript — not context-window occupancy."
-      action={usage && usage.length > 0 ? <Badge variant="secondary">{formatTokenCount(total)} tokens</Badge> : undefined}
+      description="Most recent session reported by each agent; independent of the selected period."
       className="min-w-0"
     >
       <div className="@container/latest-sessions" data-testid="latest-session-usage">
         {loading && !usage ? (
-          <div role="status" aria-label="Loading latest session usage" className="space-y-2">
+          <div role="status" aria-label="Loading latest-session details" className="space-y-2">
             <Skeleton className="h-16 w-full" />
             <Skeleton className="h-16 w-full" />
           </div>
         ) : error && !usage ? (
-          <ErrorState title="Latest session usage unavailable" message={error} retry={onRetry} className="py-8" />
+          <ErrorState title="Latest-session details unavailable" message={error} retry={onRetry} className="py-8" />
         ) : !usage || usage.length === 0 ? (
           <EmptyState
             variant="section"
@@ -49,34 +52,41 @@ function LatestSessionUsage({ usage, loading, error, onRetry }: {
           />
         ) : (
           <div className="space-y-2">
-            <div
-              aria-hidden="true"
-              className="hidden grid-cols-[minmax(10rem,1.3fr)_repeat(5,minmax(5rem,.7fr))] gap-4 px-3 text-[11px] font-medium text-muted-foreground @[48rem]/latest-sessions:grid"
-            >
-              <span>Agent</span><span>Input</span><span>Output</span><span>Cache read</span><span>Cache write</span><span>Total</span>
-            </div>
             {[...usage].sort((a, b) => a.agent.localeCompare(b.agent)).map((row) => (
-              <article
+              <details
                 key={`${row.agent}:${row.sessionId}`}
-                className="grid grid-cols-2 gap-3 rounded-xl bg-foreground/[0.025] p-3 ring-1 ring-foreground/10 @[48rem]/latest-sessions:grid-cols-[minmax(10rem,1.3fr)_repeat(5,minmax(5rem,.7fr))] @[48rem]/latest-sessions:items-center @[48rem]/latest-sessions:gap-4"
+                className="group rounded-xl bg-foreground/[0.025] ring-1 ring-foreground/10"
               >
-                <div className="col-span-2 min-w-0 @[48rem]/latest-sessions:col-span-1">
-                  <p className="font-medium">{row.agent}</p>
-                  <p className="truncate text-[11px] text-muted-foreground" title={row.model}>{row.model} · {row.messages} messages</p>
-                </div>
-                {([
-                  ['Input', row.tokens.input],
-                  ['Output', row.tokens.output],
-                  ['Cache read', row.tokens.cacheRead],
-                  ['Cache write', row.tokens.cacheWrite],
-                  ['Total', row.tokens.total],
-                ] as const).map(([label, value]) => (
-                  <div key={label} className="flex items-baseline justify-between gap-3 @[48rem]/latest-sessions:block">
-                    <span className="text-xs text-muted-foreground @[48rem]/latest-sessions:sr-only">{label}</span>
-                    <span className="text-right text-sm font-medium tabular-nums @[48rem]/latest-sessions:text-left">{formatTokenCount(value)}</span>
-                  </div>
-                ))}
-              </article>
+                <summary className="grid cursor-pointer list-none grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-xl p-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring @[36rem]/latest-sessions:grid-cols-[minmax(10rem,1fr)_auto_auto] [&::-webkit-details-marker]:hidden">
+                  <span className="min-w-0">
+                    <span className="block font-medium text-foreground">{row.agent}</span>
+                    <span className="block truncate text-[11px] text-muted-foreground" title={row.model}>
+                      {row.model} · {row.messages} messages
+                    </span>
+                  </span>
+                  <span className="text-sm font-medium tabular-nums text-foreground">{formatTokenCount(row.tokens.total)} tokens</span>
+                  <span className="col-span-2 inline-flex items-center justify-end gap-1 text-xs text-muted-foreground @[36rem]/latest-sessions:col-span-1">
+                    Breakdown
+                    <ChevronDown className="size-3.5 transition-transform group-open:rotate-180" aria-hidden="true" />
+                  </span>
+                </summary>
+                <dl
+                  data-session-token-breakdown
+                  className="grid grid-cols-2 gap-3 border-t border-foreground/10 px-3 py-3 @[36rem]/latest-sessions:grid-cols-4"
+                >
+                  {([
+                    ['Input', row.tokens.input],
+                    ['Output', row.tokens.output],
+                    ['Cache read', row.tokens.cacheRead],
+                    ['Cache write', row.tokens.cacheWrite],
+                  ] as const).map(([label, value]) => (
+                    <div key={label}>
+                      <dt className="text-xs text-muted-foreground">{label}</dt>
+                      <dd className="text-sm font-medium tabular-nums text-foreground">{formatTokenCount(value)}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </details>
             ))}
           </div>
         )}
@@ -85,13 +95,10 @@ function LatestSessionUsage({ usage, loading, error, onRetry }: {
   )
 }
 
-function SpendSummary({ history, spend, window, loading, error, onRetry }: {
+function ReportedCostSummary({ history, loading, error }: {
   history: UsageHistoryData | null
-  spend: MeteredSpendData | null
-  window: AgentsWindow
   loading: boolean
   error: string | null
-  onRetry: () => void
 }) {
   const reportedCost = history?.byAgent.reduce(
     (sum, row) => sum + (row.costUsdMicros ?? 0),
@@ -101,51 +108,44 @@ function SpendSummary({ history, spend, window, loading, error, onRetry }: {
   const messageCount = history?.byAgent.reduce((sum, row) => sum + row.messageCount, 0) ?? 0
 
   return (
-    <SectionCard
-      title={<h3>Spend & budget</h3>}
-      icon={Coins}
-      description="Runtime-reported transcript cost and Bakin's budget-gated estimate are different scopes."
-      className="min-w-0"
+    <section
+      data-testid="reported-cost-summary"
+      aria-labelledby="reported-cost-title"
+      className="flex flex-col gap-3 rounded-xl bg-foreground/[0.025] px-4 py-3 ring-1 ring-foreground/10 sm:flex-row sm:items-center sm:justify-between"
     >
-      <div className="@container/spend-summary">
-        {loading && !history && !spend ? (
-          <div role="status" aria-label="Loading spend summary" className="grid gap-3 @[36rem]/spend-summary:grid-cols-2">
-            <Skeleton className="h-24 w-full" /><Skeleton className="h-24 w-full" />
+      <div className="min-w-0">
+        <h3 id="reported-cost-title" className="text-sm font-medium text-foreground">Reported cost</h3>
+        {loading && !history ? (
+          <div role="status" aria-label="Loading reported cost" className="mt-1 space-y-1">
+            <Skeleton className="h-5 w-20" />
+            <Skeleton className="h-3 w-64 max-w-full" />
           </div>
+        ) : error && !history ? (
+          <p role="status" className="mt-1 text-sm text-muted-foreground">
+            Cost could not be checked because {error.charAt(0).toLowerCase()}{error.slice(1)}.
+          </p>
         ) : (
-          <div className="space-y-3">
-            <div className="grid gap-3 @[36rem]/spend-summary:grid-cols-2">
-              <StatTile
-                label="Runtime-reported transcript cost"
-                value={history && costedMessages > 0 && reportedCost !== null
-                  ? formatRuntimeCost(reportedCost / 1_000_000)
-                  : 'Unavailable'}
-                sub={`selected ${window} · ${costedMessages} of ${messageCount} messages reported cost`}
-              />
-              <StatTile
-                label="Bakin-attributed estimate"
-                value={spend ? formatRuntimeCost(spend.totalUsdMicros / 1_000_000) : 'Unavailable'}
-                sub="fixed 24h scope · used by budget caps"
-              />
-            </div>
-            {error && !spend && (
-              <p role="status" className="text-xs text-muted-foreground">
-                The Bakin-attributed estimate could not be loaded: {error}. Detailed budget controls are still available in Models.
-              </p>
-            )}
-            <a
-              href="/models?tab=spend"
-              className="inline-flex items-center gap-1 rounded-sm text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              Open Models → Spend <ArrowUpRight className="size-3.5" aria-hidden="true" />
-            </a>
-            {!spend && error && (
-              <Button variant="ghost" size="sm" onClick={onRetry}>Retry spend summary</Button>
-            )}
-          </div>
+          <>
+            <p className="mt-0.5 text-lg font-semibold tabular-nums text-foreground">
+              {history && costedMessages > 0 && reportedCost !== null
+                ? formatRuntimeCost(reportedCost / 1_000_000)
+                : 'Unavailable'}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {history
+                ? `${costedMessages} of ${messageCount} messages from ${history.since} through ${history.throughDay} reported cost. Today is still being counted.`
+                : 'Waiting for the selected calendar-day range.'}
+            </p>
+          </>
         )}
       </div>
-    </SectionCard>
+      <a
+        href="/models?tab=spend"
+        className="inline-flex shrink-0 items-center gap-1 rounded-sm text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        View budgets in Models <ArrowUpRight className="size-3.5" aria-hidden="true" />
+      </a>
+    </section>
   )
 }
 
@@ -157,7 +157,6 @@ export function AgentsTab() {
     resources.history.backgroundError,
     resources.effort.backgroundError,
     resources.latestSessions.backgroundError,
-    resources.spend.backgroundError,
   ].filter((message): message is string => Boolean(message))
 
   return (
@@ -165,11 +164,11 @@ export function AgentsTab() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
           <h2 className="text-lg font-semibold">Agents</h2>
-          <p className="max-w-2xl text-sm text-muted-foreground">See what agents consumed, what Bakin attributed to work, and whether that work produced outcomes.</p>
+          <p className="max-w-2xl text-sm text-muted-foreground">Find unusual token use or tracked work with few recorded results. Totals use calendar days; today is still in progress.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <SegmentedControl
-            options={WINDOWS.map((value) => ({ value, label: value }))}
+            options={WINDOWS.map((value) => ({ value, label: WINDOW_LABEL[value] }))}
             value={window}
             onValueChange={setWindowParam}
             ariaLabel="Agents window"
@@ -187,11 +186,11 @@ export function AgentsTab() {
         </p>
       )}
 
-      <AgentsUsageChart
-        data={resources.history.data}
-        loading={resources.history.loading}
-        error={resources.history.error}
-        onRetry={() => void resources.history.refresh()}
+      <AgentsAttention
+        data={resources.effort.data}
+        loading={resources.effort.loading}
+        error={resources.effort.error}
+        onRetry={() => void resources.effort.refresh()}
       />
       <AgentsComparison
         data={resources.effort.data}
@@ -199,19 +198,22 @@ export function AgentsTab() {
         error={resources.effort.error}
         onRetry={() => void resources.effort.refresh()}
       />
+      <AgentsUsageChart
+        data={resources.history.data}
+        loading={resources.history.loading}
+        error={resources.history.error}
+        onRetry={() => void resources.history.refresh()}
+      />
       <LatestSessionUsage
         usage={resources.latestSessions.data}
         loading={resources.latestSessions.loading}
         error={resources.latestSessions.error}
         onRetry={() => void resources.latestSessions.refresh()}
       />
-      <SpendSummary
+      <ReportedCostSummary
         history={resources.history.data}
-        spend={resources.spend.data}
-        window={window}
-        loading={resources.history.loading || resources.spend.loading}
-        error={resources.spend.error}
-        onRetry={() => void resources.spend.refresh()}
+        loading={resources.history.loading}
+        error={resources.history.error}
       />
     </div>
   )

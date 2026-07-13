@@ -3,7 +3,6 @@
 import type { AgentUsage } from '@makinbakin/sdk/types'
 import type {
   AgentEffortData,
-  MeteredSpendData,
   UsageHistoryData,
   UsageHistoryWindow,
 } from '../types'
@@ -19,7 +18,6 @@ export interface AgentsDataResources {
   history: UseHealthResourceResult<UsageHistoryData>
   effort: UseHealthResourceResult<AgentEffortData>
   latestSessions: UseHealthResourceResult<AgentUsage[]>
-  spend: UseHealthResourceResult<MeteredSpendData>
   loading: boolean
   refreshing: boolean
   refresh: () => Promise<void>
@@ -60,6 +58,7 @@ function isUsageHistoryData(value: unknown): value is UsageHistoryData {
   return isRecord(value)
     && (value.window === '24h' || value.window === '7d' || value.window === '30d')
     && typeof value.since === 'string'
+    && typeof value.throughDay === 'string'
     && (value.scannedAt === null || typeof value.scannedAt === 'string')
     && Array.isArray(value.byAgent)
     && value.byAgent.every((row) => isUsageRollup(row) && typeof row.agent === 'string')
@@ -106,16 +105,6 @@ function isAgentUsage(value: unknown): value is AgentUsage {
     && (value.cost.source === 'runtime' || value.cost.source === 'unavailable')
 }
 
-function isMeteredSpendData(value: unknown): value is MeteredSpendData {
-  return isRecord(value)
-    && isNonNegativeNumber(value.totalUsdMicros)
-    && Array.isArray(value.byAgent)
-    && value.byAgent.every((row) => isRecord(row)
-      && typeof row.agent === 'string'
-      && isNonNegativeNumber(row.costUsdMicros)
-      && isNonNegativeNumber(row.runs))
-}
-
 async function requestValidated<T>(
   url: string,
   context: HealthResourceRequestContext,
@@ -139,13 +128,10 @@ const requestLatestSessions = (url: string, context: HealthResourceRequestContex
   requestValidated(url, context, 'Latest session usage', (value): value is AgentUsage[] =>
     Array.isArray(value) && value.every(isAgentUsage))
 
-const requestSpend = (url: string, context: HealthResourceRequestContext) =>
-  requestValidated(url, context, 'Spend summary', isMeteredSpendData)
-
 /**
  * All Agents-tab reads use the shared cancellable Health resource lifecycle.
- * History and outcomes take the same window; latest-session traffic and the
- * Models budget summary retain their explicitly labeled snapshot scopes.
+ * History and outcomes take the same window; latest-session traffic retains
+ * its explicitly labeled snapshot scope.
  */
 export function useAgentsData(window: AgentsWindow): AgentsDataResources {
   const history = useHealthResource<UsageHistoryData>(
@@ -160,17 +146,11 @@ export function useAgentsData(window: AgentsWindow): AgentsDataResources {
     '/api/plugins/health/usage',
     { intervalMs: AGENTS_POLL_MS, request: requestLatestSessions },
   )
-  const spend = useHealthResource<MeteredSpendData>(
-    '/api/plugins/models/spend?window=24h',
-    { intervalMs: AGENTS_POLL_MS, request: requestSpend },
-  )
-
   const refresh = async () => {
     await Promise.all([
       history.refresh(),
       effort.refresh(),
       latestSessions.refresh(),
-      spend.refresh(),
     ])
   }
 
@@ -178,9 +158,8 @@ export function useAgentsData(window: AgentsWindow): AgentsDataResources {
     history,
     effort,
     latestSessions,
-    spend,
     loading: history.loading && effort.loading && latestSessions.loading,
-    refreshing: history.refreshing || effort.refreshing || latestSessions.refreshing || spend.refreshing,
+    refreshing: history.refreshing || effort.refreshing || latestSessions.refreshing,
     refresh,
   }
 }

@@ -45,12 +45,26 @@ function buildTrend(history: UsageHistoryData): TrendData | null {
     xLabel: day.slice(5),
     values: valuesByDay.get(day)!,
   }))
-  const peak = data.reduce((best, row) => {
+  const completedDays = data.filter((row) => row.x !== history.throughDay)
+  const busiestCompletedDay = completedDays.reduce<{ row: TrendData['data'][number]; total: number } | null>((best, row) => {
     const total = Object.values(row.values).reduce((sum, value) => sum + value, 0)
-    return total > best.total ? { row, total } : best
-  }, { row: data[0]!, total: -1 })
+    return !best || total > best.total ? { row, total } : best
+  }, null)
+  const currentDay = data.find((row) => row.x === history.throughDay)
+  const currentTotal = currentDay
+    ? Object.values(currentDay.values).reduce((sum, value) => sum + value, 0)
+    : 0
   const leader = series[0]?.label
-  const takeaway = `Transcript token traffic peaked on ${peak.row.xLabel} at ${formatTokenCount(peak.total)}.${leader ? ` ${leader} contributed the most across this window.` : ''}`
+  const completedDayCopy = busiestCompletedDay
+    ? completedDays.length === 1
+      ? `The last completed day, ${busiestCompletedDay.row.xLabel}, had ${formatTokenCount(busiestCompletedDay.total)} tokens.`
+      : `Among completed days, ${busiestCompletedDay.row.xLabel} had the most token use: ${formatTokenCount(busiestCompletedDay.total)}.`
+    : ''
+  const currentDayCopy = currentDay
+    ? ` Today is still being counted: ${formatTokenCount(currentTotal)} tokens so far.`
+    : ' Today has no recorded token use yet.'
+  const leaderCopy = leader ? ` ${leader} used the most across these calendar days.` : ''
+  const takeaway = `${completedDayCopy}${currentDayCopy}${leaderCopy}`.trim()
 
   return { data, series, takeaway }
 }
@@ -61,13 +75,13 @@ export function AgentsUsageChart({ data, loading, error, onRetry }: AgentsUsageC
 
   return (
     <SectionCard
-      title={<h3>Agent token trend</h3>}
+      title={<h3>Usage over time</h3>}
       icon={TrendingUp}
-      description="Transcript-observed token traffic across every session in the selected window."
+      description="Daily token use by agent. Today is still being counted."
       className="min-w-0"
     >
       {loading && !data ? (
-        <div role="status" aria-label="Loading agent token trend" className="space-y-2">
+        <div role="status" aria-label="Loading usage over time" className="space-y-2">
           <Skeleton className="h-36 w-full" />
           <Skeleton className="h-4 w-2/3" />
         </div>
@@ -81,15 +95,17 @@ export function AgentsUsageChart({ data, loading, error, onRetry }: AgentsUsageC
         />
       ) : (
         <>
-          <LineChart
-            data={trend.data}
-            series={trend.series}
-            label="Agent token trend"
-            description="Daily transcript token traffic split by agent."
-            height={190}
-            formatValue={formatTokenCount}
-          />
           <ChartExplainer>{trend.takeaway}</ChartExplainer>
+          <div className="w-full max-w-4xl" data-agent-token-trend-plot>
+            <LineChart
+              data={trend.data}
+              series={trend.series}
+              label="Usage over time"
+              description="Daily token use split by agent."
+              height={144}
+              formatValue={formatTokenCount}
+            />
+          </div>
         </>
       )}
     </SectionCard>

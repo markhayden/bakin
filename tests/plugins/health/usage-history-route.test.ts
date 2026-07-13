@@ -153,6 +153,7 @@ describe('GET /usage-history', () => {
     const { body } = await getHistory()
     expect(body.scannedAt).toBeNull()
     expect(body.since).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    expect(body.throughDay).toBe(today)
   })
 })
 
