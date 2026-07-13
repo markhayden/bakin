@@ -81,11 +81,12 @@ async function cmdRuntimeCapabilities(): Promise<void> {
 interface RuntimeUseFlags {
   dryRun: boolean
   copyWorkspaces: boolean
+  adoptCron: boolean
 }
 
 async function cmdRuntimeUse(target: string | undefined, flags: RuntimeUseFlags): Promise<void> {
   if (!target) {
-    console.error('Usage: bakin runtime use <adapter> [--dry-run] [--no-copy-workspaces]')
+    console.error('Usage: bakin runtime use <adapter> [--dry-run] [--no-copy-workspaces] [--adopt-cron]')
     process.exit(1)
   }
   console.log(flags.dryRun
@@ -95,6 +96,7 @@ async function cmdRuntimeUse(target: string | undefined, flags: RuntimeUseFlags)
     target,
     ...(flags.dryRun ? { dryRun: true } : {}),
     ...(flags.copyWorkspaces ? {} : { copyWorkspaces: false }),
+    ...(flags.adoptCron ? { adoptCron: true } : {}),
   }) as Record<string, unknown>
 
   if (!result.ok) {
@@ -120,6 +122,15 @@ async function cmdRuntimeUse(target: string | undefined, flags: RuntimeUseFlags)
     for (const kept of roster.preserved ?? []) {
       console.log(`  ○ ${kept.agentId}: subagent model '${kept.sourceModel}' preserved (not active on ${result.to}) — restored on switch back`)
     }
+  }
+  const cron = result.cron as { adopted: string[]; skipped: string[]; failed: Array<{ jobId: string; error: string }> } | null
+  if (cron) {
+    console.log(`Cron: ${flags.dryRun ? 'would adopt' : 'adopted'} ${cron.adopted.length}, already Bakin ${cron.skipped.length}, failed ${cron.failed.length}`)
+    for (const failure of cron.failed) {
+      console.log(`  ✗ ${failure.jobId}: ${failure.error}`)
+    }
+  }
+  if (roster) {
     for (const failure of roster.failed) {
       console.log(`  ✗ ${failure.agentId}: ${failure.error}`)
     }
@@ -184,7 +195,7 @@ export async function run(args: string[]): Promise<void> {
       const rest = args.slice(2)
       // Fail CLOSED on unknown flags: `--dryrun` silently ignored would run
       // a REAL switch where the user intended a preview.
-      const KNOWN_FLAGS = ['--dry-run', '--no-copy-workspaces']
+      const KNOWN_FLAGS = ['--dry-run', '--no-copy-workspaces', '--adopt-cron']
       const unknown = rest.filter((arg) => arg.startsWith('--') && !KNOWN_FLAGS.includes(arg))
       if (unknown.length > 0) {
         console.error(`Unknown flag(s): ${unknown.join(', ')}. Supported: ${KNOWN_FLAGS.join(', ')}`)
@@ -194,6 +205,7 @@ export async function run(args: string[]): Promise<void> {
       await cmdRuntimeUse(target, {
         dryRun: rest.includes('--dry-run'),
         copyWorkspaces: !rest.includes('--no-copy-workspaces'),
+        adoptCron: rest.includes('--adopt-cron'),
       })
     } else await cmdRuntimeCapabilities()
     return

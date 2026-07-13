@@ -24,11 +24,11 @@ Plan: `PLAN.md` · Spec: `SPEC.md` · One PR per phase, one commit per task.
 - [x] Gate: CLEAN-home rig validation done (stories 1–3 real pack/binary/key ladder; story 4 dispatch at post-merge live cutover)
 
 ## P3 — feat/pi-task-parity
-- [ ] T3.1 Pending-approval attention provider (story 6)
-- [ ] T3.2 Subagent model preservation across switches (per OQ1 decision)
-- [ ] T3.3 gh readiness check + agent context guidance
-- [ ] T3.4 Switch-time cron adoption, opt-in `--adopt-cron` (story 7)
-- [ ] T3.5 Pin tests: compaction default + schedule-tools dispatch context
+- [x] T3.1 Pending-approval attention provider (story 6)
+- [x] T3.2 Subagent model preservation across switches (per OQ1 decision)
+- [x] T3.3 gh readiness check + agent context guidance
+- [x] T3.4 Switch-time cron adoption, opt-in `--adopt-cron` (story 7)
+- [x] T3.5 Pin tests: compaction default + schedule-tools dispatch context
 - [ ] Gate: live gate badge/toast + switch e2e → open PR
 
 ## P4 — feat/runtime-hub

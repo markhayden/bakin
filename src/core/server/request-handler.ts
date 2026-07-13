@@ -250,10 +250,11 @@ export function createRequestHandler(deps: RequestHandlerDeps): (req: IncomingMe
           const detail = parsed.error.issues.map((i) => `${i.path.join('.') || 'body'}: ${i.message}`).join('; ')
           throw new BadRequestError(`Invalid runtime switch request — ${detail}`)
         }
-        const { target, dryRun, copyWorkspaces } = parsed.data
+        const { target, dryRun, copyWorkspaces, adoptCron } = parsed.data
         const result = await switchRuntime(target, {
           ...(dryRun !== undefined ? { dryRun } : {}),
           ...(copyWorkspaces !== undefined ? { copyWorkspaces } : {}),
+          ...(adoptCron !== undefined ? { adoptCron } : {}),
           onProgress: (event) => broadcast({ type: 'runtime:switch', ...event }),
         })
         broadcast({ type: 'runtime:switch:result', ok: result.ok, to: result.to, restartRequired: result.restartRequired })
