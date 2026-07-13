@@ -117,6 +117,18 @@ function imageContentsFor(args: MessageArgs, record: PiAgentRecord) {
   }))
 }
 
+
+/**
+ * The per-turn SettingsManager, exactly as Bakin turns build it. Exported so
+ * the compaction-default pin test exercises the REAL construction: Bakin
+ * relies on the SDK's compaction default staying enabled (long tasks compact,
+ * not die) — if the pinned SDK flips it, the pin fails and this helper must
+ * pass an explicit compaction override.
+ */
+export function createTurnSettingsManager(workspace: string, agentDir: string): SettingsManager {
+  return SettingsManager.create(workspace, agentDir, { projectTrusted: true })
+}
+
 async function openTurnSession(args: MessageArgs, deps: PiMessagingDeps): Promise<TurnHandle> {
   const record = requireAgent(args.agentId)
   scaffoldAgentDirs(record.id)
@@ -124,7 +136,7 @@ async function openTurnSession(args: MessageArgs, deps: PiMessagingDeps): Promis
   const agentDir = getPiAgentDir()
   const { auth, registry: modelRegistry } = getModelRegistry()
 
-  const settingsManager = SettingsManager.create(workspace, agentDir, { projectTrusted: true })
+  const settingsManager = createTurnSettingsManager(workspace, agentDir)
   const adapterSettings = deps.getSettings?.()
   const extPolicy = extensionsPolicy(adapterSettings)
   const resourceLoader = new DefaultResourceLoader({
