@@ -468,6 +468,23 @@ export interface PackSyncReceipt {
  * fetch + re-project via the updater, or report-only with --check. Packs
  * have no workspace blocks or receipts file — the response IS the receipt.
  */
+/**
+ * Local-only pack repair: re-project a standalone pack from its INSTALLED
+ * source dir — no fetch, no version movement. This is the pack counterpart
+ * of the always-local re-projection agents get in syncAgent (the updater
+ * no-ops on an unchanged commit, so a fetching sync cannot repair drift).
+ * userEdited skills are skipped by the projector, reported in `skipped`.
+ */
+export async function repairPackLocally(packageKey: string): Promise<ProjectorResult> {
+  const lock = readLockfile()
+  const entry = lock.packages[packageKey]
+  if (!entry) throw new PackageNotInstalledError(packageKey)
+  if (entry.kind === 'agent') {
+    throw new Error(`"${packageKey}" is an agent package — use syncAgent/bakin agents sync`)
+  }
+  return applyLocalProjection(packageKey)
+}
+
 export async function syncPack(
   packageId: string,
   opts: { check?: boolean } = {},

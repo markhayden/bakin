@@ -18,7 +18,8 @@
 import { createLogger } from '../logger'
 import { createAppServices, maybeGetAppServices } from '../app-services'
 import { scanAgentSync, type SyncScanReport } from '../agent-packages/sync-scanner'
-import { syncAllAgents, syncPack } from '../agent-packages/sync'
+import { repairPackLocally, syncAllAgents } from '../agent-packages/sync'
+import { readLockfile } from '../../../packages/core/src/agent-packages/lockfile'
 import { refreshRoleContextBlocks } from '../team-context'
 import type { CheckResult, InstallResult, OnboardingComponent, OnboardingOptions } from './types'
 
@@ -107,15 +108,18 @@ async function install(_opts: OnboardingOptions): Promise<InstallResult> {
 
   // Standalone packs (skill/workflow/lesson) own projections too — a drifted
   // pack skill (e.g. a capability pack's global skill) is invisible to the
-  // per-agent sync above. Repair each pack that carried findings.
+  // per-agent sync above. Repair each pack that carried findings — LOCALLY
+  // (re-project from the installed source; this component never fetches),
+  // and discriminate packs by lockfile KIND, never by key shape.
+  const lock = readLockfile()
   const packIds = [...new Set(
     before.findings
       .map((f) => f.packageId)
-      .filter((id): id is string => typeof id === 'string' && id.includes('@')),
+      .filter((id): id is string => typeof id === 'string' && lock.packages[id] !== undefined && lock.packages[id].kind !== 'agent'),
   )]
   for (const packId of packIds) {
     try {
-      await syncPack(packId, {})
+      await repairPackLocally(packId)
     } catch (err) {
       log.warn('agent-sync repair failed for pack', { packId, error: err instanceof Error ? err.message : String(err) })
     }

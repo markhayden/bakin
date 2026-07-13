@@ -552,15 +552,10 @@ export async function scanAgentSync(lockfile?: Lockfile): Promise<SyncScanReport
           })
           continue
         }
-        // Adapters differ on whether SKILL.md rides the files map or only
-        // `instructions` (Pi: instructions-only). The lockfile sha covers the
-        // FULL source tree, so normalize before hashing — without this every
-        // Pi-hosted skill reads permanently drifted (false positive).
-        const fileMap = { ...((skill.files ?? {}) as RuntimeSkillFiles) }
-        if (fileMap['SKILL.md'] === undefined && typeof skill.instructions === 'string') {
-          fileMap['SKILL.md'] = skill.instructions
-        }
-        const actualSha = computeFilesMapSha(fileMap)
+        // Strict verbatim hash of the adapter-reported files map — the map
+        // MUST include SKILL.md (adapters guarantee it; Pi's exclusion was
+        // the bug, fixed adapter-side so every skill.files consumer heals).
+        const actualSha = computeFilesMapSha((skill.files ?? {}) as RuntimeSkillFiles)
         if (p.sha256 && actualSha !== p.sha256) {
           report.findings.push({
             type: 'skill-drifted',

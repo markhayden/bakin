@@ -3,13 +3,13 @@
  * plain language), and whether setup is healthy. Every non-native state
  * says what happens instead — the reader never has to decode an enum.
  */
-import { useState } from 'react'
-import { Loader2, Wrench } from 'lucide-react'
+import { useRef, useState } from 'react'
+import { Wrench } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { Skeleton } from '@/components/ui/skeleton'
-import { toast } from '@/hooks/use-toast'
+import { toast } from '@makinbakin/sdk/hooks'
 import { capabilityRows } from '../../lib/runtime-report'
 import { ModeBadge, MODE_LEGEND, StatusBadge, capabilityStateCopy } from './shared'
 import type { CapabilityReport, OnboardingComponentStatus } from './types'
@@ -100,12 +100,19 @@ const FIXABLE_COMPONENTS = new Set(['mkdir', 'settings', 'search', 'search-model
 
 function SetupSection({ onboarding, onFixed }: { onboarding: OnboardingComponentStatus[] | null | undefined; onFixed: () => void }) {
   const [confirmTarget, setConfirmTarget] = useState<OnboardingComponentStatus | null>(null)
-  const [repairing, setRepairing] = useState<string | null>(null)
+  const [repairing, setRepairing] = useState(false)
   const [repairError, setRepairError] = useState<string | null>(null)
+  // The closing dialog keeps rendering during its exit animation — hold the
+  // last target so it never flashes "Repair undefined?".
+  const lastTargetRef = useRef<OnboardingComponentStatus | null>(null)
+  if (confirmTarget) lastTargetRef.current = confirmTarget
+  const dialogTarget = confirmTarget ?? lastTargetRef.current
 
+  // The dialog owns the in-flight presentation: it stays OPEN with its busy
+  // spinner while the repair runs, shows failures inline (retry or cancel),
+  // and only closes on success or cancel.
   const runRepair = async (name: string) => {
-    setConfirmTarget(null)
-    setRepairing(name)
+    setRepairing(true)
     setRepairError(null)
     try {
       const res = await fetch('/api/runtime/onboarding/install', {
@@ -115,15 +122,16 @@ function SetupSection({ onboarding, onFixed }: { onboarding: OnboardingComponent
       })
       const body = await res.json().catch(() => null) as { ok?: boolean; result?: { message?: string; status?: string }; error?: string } | null
       if (!res.ok || body?.ok === false) {
-        setRepairError(`${name} repair failed: ${body?.result?.message ?? body?.error ?? `HTTP ${res.status}`}`)
+        setRepairError(body?.result?.message ?? body?.error ?? `HTTP ${res.status}`)
         return
       }
       toast(`Repaired ${name}${body?.result?.message ? ` — ${body.result.message}` : ''}`, 'success')
+      setConfirmTarget(null)
       onFixed()
     } catch (err) {
-      setRepairError(`${name} repair failed: ${err instanceof Error ? err.message : String(err)}`)
+      setRepairError(err instanceof Error ? err.message : String(err))
     } finally {
-      setRepairing(null)
+      setRepairing(false)
     }
   }
 
@@ -141,9 +149,6 @@ function SetupSection({ onboarding, onFixed }: { onboarding: OnboardingComponent
       )}
       {onboarding === null && (
         <p className="text-sm text-muted-foreground">Setup checks are unavailable right now — retry with Refresh.</p>
-      )}
-      {repairError && (
-        <p role="alert" className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">{repairError}</p>
       )}
       {onboarding && (
         <Card>
@@ -164,13 +169,11 @@ function SetupSection({ onboarding, onFixed }: { onboarding: OnboardingComponent
                       <Button
                         size="sm"
                         variant="outline"
-                        disabled={repairing !== null}
-                        onClick={() => setConfirmTarget(component)}
+                        disabled={repairing}
+                        onClick={() => { setRepairError(null); setConfirmTarget(component) }}
                         data-testid={`setup-fix-${component.name}`}
                       >
-                        {repairing === component.name
-                          ? (<><Loader2 className="mr-1.5 size-3 animate-spin" /> Repairing…</>)
-                          : (<><Wrench className="mr-1.5 size-3" /> Repair</>)}
+                        <Wrench className="mr-1.5 size-3" /> Repair
                       </Button>
                     )}
                     <StatusBadge status={component.status} />
@@ -185,11 +188,14 @@ function SetupSection({ onboarding, onFixed }: { onboarding: OnboardingComponent
       <ConfirmDialog
         open={confirmTarget !== null}
         onCancel={() => setConfirmTarget(null)}
-        title={`Repair ${confirmTarget?.name}?`}
-        description={confirmTarget
-          ? `${confirmTarget.message}. This runs the same repair as \`bakin install ${confirmTarget.name}\` and may take a moment.`
+        title={`Repair ${dialogTarget?.name}?`}
+        description={dialogTarget
+          ? `${dialogTarget.message}. This runs the same repair as \`bakin install ${dialogTarget.name}\` and may take a moment.`
           : ''}
         confirmLabel="Repair"
+        busyLabel="Repairing…"
+        busy={repairing}
+        error={repairError ? `Repair failed: ${repairError}` : null}
         confirmTestId="setup-repair-confirm"
         onConfirm={() => { if (confirmTarget) void runRepair(confirmTarget.name) }}
       />

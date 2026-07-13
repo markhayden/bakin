@@ -30,6 +30,8 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import '../rtl-settle'
 import { settleReact } from '../rtl-settle'
 
+import { useToastStore } from '@makinbakin/sdk/hooks'
+
 import { OverviewTab } from '../../packages/host/src/components/runtime/overview-tab'
 import { CapabilitiesTab } from '../../packages/host/src/components/runtime/capabilities-tab'
 import { SwitchTab } from '../../packages/host/src/components/runtime/switch-tab'
@@ -102,6 +104,7 @@ describe('OverviewTab', () => {
         onboarding={[{ name: 'agent-sync', status: 'warn', message: '3 findings', remediation: 'Run bakin install agent-sync' }]}
       />,
     )
+    useToastStore.setState({ toasts: [] })
     fireEvent.click(screen.getByTestId('setup-fix-agent-sync'))
     await settleReact()
     // Confirmation first — nothing posted yet.
@@ -109,6 +112,11 @@ describe('OverviewTab', () => {
     fireEvent.click(screen.getByTestId('setup-repair-confirm'))
     await waitFor(() => expect(posts).toEqual([{ component: 'agent-sync' }]))
     await waitFor(() => expect(refreshed.length).toBe(1))
+    // Success feedback reaches the REAL toast store (the one the shell
+    // Toaster reads) with the result message.
+    const toasts = useToastStore.getState().toasts
+    expect(toasts.length).toBe(1)
+    expect(String(toasts[0].message)).toContain('synced 3 agents')
   })
 
   it('a failed repair surfaces the reason', async () => {
@@ -129,8 +137,10 @@ describe('OverviewTab', () => {
     fireEvent.click(screen.getByTestId('setup-fix-plugin-assets'))
     await settleReact()
     fireEvent.click(screen.getByTestId('setup-repair-confirm'))
-    await waitFor(() => screen.getByRole('alert'))
-    expect(screen.getByRole('alert').textContent).toContain('runtime unreachable')
+    // The failure surfaces INSIDE the still-open dialog (retry or cancel),
+    // not in a detached banner.
+    await waitFor(() => expect(screen.getByText(/Repair failed: runtime unreachable/)).toBeTruthy())
+    expect(screen.getByTestId('setup-repair-confirm')).toBeTruthy()
   })
 })
 

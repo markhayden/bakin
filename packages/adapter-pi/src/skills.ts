@@ -66,7 +66,11 @@ function readSkill(name: string, agentId?: string): RuntimeSkill | null {
   if (!existsSync(skillMd)) return null
   const files: Record<string, string> = {}
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    if (!entry.isFile() || entry.name === 'SKILL.md' || SKILL_SIDECARS.has(entry.name)) continue
+    // SKILL.md rides the files map (OpenClaw parity): consumers that hash,
+    // snapshot, or carry skill.files get the COMPLETE skill — excluding it
+    // made every Pi-hosted skill read permanently drifted in the sync
+    // scanner and dropped instructions from uninstall snapshots.
+    if (!entry.isFile() || SKILL_SIDECARS.has(entry.name)) continue
     files[entry.name] = readFileSync(join(dir, entry.name), 'utf-8')
   }
   const installedBy = readInstalledBy(dir)

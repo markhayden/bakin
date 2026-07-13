@@ -385,11 +385,13 @@ describe('scanAgentSync — skills', () => {
     expect(report.findings.find((f) => f.type === 'skill-missing')?.target).toBe('runtime:agent-skill:pixel:image-gen')
   })
 
-  it('an instructions-only adapter (Pi shape: SKILL.md not in files) is NOT drift', async () => {
+  it('the hash is STRICT over the files map — adapters must include SKILL.md (contract pin)', async () => {
     await seedSyncedState()
-    // Pi's skills.get serves SKILL.md as `instructions` and excludes it from
-    // the files map; the lockfile sha covers the full tree. Same bytes must
-    // scan clean — this was a permanent false 'skill-drifted' on Pi.
+    // An incomplete files map (SKILL.md served only as `instructions`) reads
+    // as drift by design: the scanner never trusts `instructions` to equal
+    // the on-disk bytes, so a lossy adapter surfaces immediately instead of
+    // masking genuine drift. Pi shipped this shape once — fixed adapter-side
+    // (tests/adapter-pi/skills-files-map.test.ts pins the round trip).
     const { 'SKILL.md': skillMd, ...rest } = SKILL_FILES
     runtimeSkills.set('pixel:image-gen', {
       name: 'image-gen',
@@ -398,7 +400,7 @@ describe('scanAgentSync — skills', () => {
       metadata: {},
     } as RuntimeSkill)
     const report = await scanAgentSync()
-    expect(report.findings.filter((f) => f.type === 'skill-drifted')).toEqual([])
+    expect(report.findings.some((f) => f.type === 'skill-drifted')).toBe(true)
   })
 
   it('reports skill-drifted on content mismatch', async () => {
