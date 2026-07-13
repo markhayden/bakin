@@ -1245,7 +1245,8 @@ function AssetTile({
         <Trash2 className="size-3.5" />
       </button>
 
-      <div className="flex min-w-0 flex-1 flex-col gap-1.5 p-3">
+      {/* pr-9 reserves the hover-trash gutter — the floating icon must never sit on the note text. */}
+      <div className="flex min-w-0 flex-1 flex-col gap-1.5 py-3 pl-3 pr-9">
         {extra}
         {editing ? (
           <textarea
