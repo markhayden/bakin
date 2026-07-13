@@ -188,6 +188,8 @@ export const brandRoutes = [
         notes: z.string().optional(),
         /** Optional logo the operator uploaded in the wizard (already a managed assetId). */
         logoAssetId: z.string().optional(),
+        /** Up to 3 uploaded brand materials (PDF/screenshots — already managed assetIds) the agent mines for palette/style. */
+        materialAssetIds: z.array(z.string().min(1)).max(3).optional(),
       })
       .refine((b) => Boolean(b.product?.trim()) || Boolean(b.urls?.trim()), {
         message: 'either product or urls is required — the agent needs SOMETHING to author from',
@@ -202,11 +204,26 @@ export const brandRoutes = [
       try {
         const brand = createBrand({ id: b.id, name: b.name, draft: true })
         createdHere = true
-        // Wire the uploaded logo onto the draft so it shows on the dashboard
-        // immediately (the drafting agent fills the rest).
-        if (b.logoAssetId) {
+        // Wire the uploaded logo + intake materials onto the draft so they show
+        // on the dashboard immediately (the drafting agent fills the rest).
+        if (b.logoAssetId || (b.materialAssetIds?.length ?? 0) > 0) {
           const { updateBrand } = await import('./store')
-          await updateBrand(brand.id, (m) => ({ ...m, logos: [{ assetId: b.logoAssetId!, variant: 'primary' }] }))
+          await updateBrand(brand.id, (m) => ({
+            ...m,
+            ...(b.logoAssetId ? { logos: [{ assetId: b.logoAssetId!, variant: 'primary' }] } : {}),
+            ...(b.materialAssetIds?.length
+              ? {
+                  assetGroups: [
+                    ...m.assetGroups,
+                    {
+                      name: 'intake-materials',
+                      description: 'Uploaded brand material — mine for palette, type, and imagery style',
+                      assetIds: b.materialAssetIds,
+                    },
+                  ],
+                }
+              : {}),
+          }))
         }
         const intake = [
           '---',
@@ -232,8 +249,14 @@ export const brandRoutes = [
               `Fetch and READ each source URL from the intake (${b.urls}). Extract: the palette (real hex values from the site's CSS/design), voice and tone (how they actually write), terminology (product names, phrases they repeat, words they avoid), and logo candidates. Append a '## Source findings' section to _intake.md via bakin_exec_brands_write_doc recording what came from where.`,
             ]
           : []
+        const materialsStep = b.materialAssetIds?.length
+          ? [
+              `Study the uploaded brand materials in the 'intake-materials' asset group (bakin_exec_brands_get brandId="${brand.id}" lists them with captions; fetch the files through the asset tools). Mine them for palette hex values, typography feel, and imagery style — they carry the operator's real branding. Record findings in _intake.md under '## Source findings'.`,
+            ]
+          : []
         const steps = [
           `Read the intake: bakin_exec_brands_read_doc brandId="${brand.id}" kind="guidelines" name="_intake.md".`,
+          ...materialsStep,
           ...miningStep,
           `Write voice.md (personality, sentences we would/would never write, audience) and style-guide.md (color usage, imagery, formatting) via bakin_exec_brands_write_doc.`,
           `Set description, palette (real hex colors), rules (absolute do/don'ts), and terminology via bakin_exec_brands_update_manifest.`,
@@ -252,6 +275,12 @@ export const brandRoutes = [
           ].join('\n'),
           skipWorkflowReason: 'brand-builder authoring task — direct tool work, no workflow applies',
         })
+        // Stamp the drafting task onto the manifest — the detail banner shows
+        // its live status and links it, surviving reloads (never just a URL param).
+        {
+          const { updateBrand } = await import('./store')
+          await updateBrand(brand.id, (m) => ({ ...m, draftTaskId: task.id }))
+        }
         emitChanged(ctx, brand.id, 'brand.created')
         const current = getBrand(brand.id)
         return Response.json({ brand: current.status === 'ok' ? current.manifest : brand, taskId: task.id })
@@ -284,7 +313,7 @@ export const brandRoutes = [
       try {
         const { updateBrand } = await import('./store')
         const brand = await updateBrand(parsed.params.brandId, (m) => {
-          const { draft: _draft, ...rest } = m
+          const { draft: _draft, draftTaskId: _task, ...rest } = m
           return rest
         })
         try {

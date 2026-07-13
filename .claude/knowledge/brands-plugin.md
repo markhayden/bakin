@@ -58,7 +58,16 @@ mode** (`urls` required, product optional — zod refine enforces one of them).
 With urls present the drafting-task prompt gains an explicit source-mining
 step (fetch each URL, extract palette hex/voice/terminology/logo candidates,
 record findings in `_intake.md`). Response carries `taskId` (pinned by test —
-the drafting banner links it).
+the drafting banner links it), and the manifest is stamped with
+**`draftTaskId`** (cleared on publish) so the banner survives reloads.
+
+**Intake materials**: the wizard accepts up to 3 brand-material files
+(PDF/screenshots — `materialAssetIds` ≤3 on the route). They attach to the
+draft as the `intake-materials` asset group and the prompt gains a mining
+step (palette hex, typography, imagery style). **Live status**: the banner
+fetches `/api/plugins/tasks/:draftTaskId` and re-renders on every `taskboard`
+SSE tick (Queued / Agent working / Draft ready / Blocked); the whole detail
+page refreshes on `brand.changed` so tabs fill in live as the agent writes.
 
 ## Model
 

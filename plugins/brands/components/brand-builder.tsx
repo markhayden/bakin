@@ -40,15 +40,18 @@ export function BrandBuilder({
   const [a, setA] = useState<Answers>(EMPTY)
   const [logoFile, setLogoFile] = useState<File | null>(null)
   const [logoPreview, setLogoPreview] = useState<string | null>(null)
+  // Up to 3 brand materials (PDF, screenshots — anything carrying the real
+  // colors/type) the drafting agent mines for palette and style.
+  const [materials, setMaterials] = useState<File[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const set = <K extends keyof Answers>(k: K, v: Answers[K]) => setA((prev) => ({ ...prev, [k]: v }))
   const id = useMemo(() => slugify(a.name), [a.name])
-  const dirty = logoFile !== null || (Object.keys(a) as Array<keyof Answers>).some((k) => a[k] !== EMPTY[k])
+  const dirty = logoFile !== null || materials.length > 0 || (Object.keys(a) as Array<keyof Answers>).some((k) => a[k] !== EMPTY[k])
 
   const reset = useCallback(() => {
-    setStep(0); setA(EMPTY); setLogoFile(null)
+    setStep(0); setA(EMPTY); setLogoFile(null); setMaterials([])
     setLogoPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return null })
     setError(null)
   }, [])
@@ -68,16 +71,20 @@ export function BrandBuilder({
     setBusy(true)
     setError(null)
     try {
-      // 1. Upload the logo (if any) so we have a managed assetId to attach.
-      let logoAssetId: string | undefined
-      if (logoFile) {
+      // 1. Upload the logo + brand materials so we have managed assetIds to attach.
+      const uploadOne = async (file: File, description: string): Promise<string> => {
         const form = new FormData()
-        form.append('file', logoFile)
-        form.append('description', `${a.name.trim()} logo`)
+        form.append('file', file)
+        form.append('description', description)
         const up = await fetch('/api/plugins/assets/upload', { method: 'POST', body: form })
         const upBody = (await up.json().catch(() => ({}))) as { assetId?: string; error?: string }
-        if (!up.ok || !upBody.assetId) throw new Error(upBody.error ?? 'Logo upload failed')
-        logoAssetId = upBody.assetId
+        if (!up.ok || !upBody.assetId) throw new Error(upBody.error ?? `Upload failed: ${file.name}`)
+        return upBody.assetId
+      }
+      const logoAssetId = logoFile ? await uploadOne(logoFile, `${a.name.trim()} logo`) : undefined
+      const materialAssetIds: string[] = []
+      for (const file of materials.slice(0, 3)) {
+        materialAssetIds.push(await uploadOne(file, `${a.name.trim()} brand material — ${file.name}`))
       }
       // 2. Create the draft + dispatch the drafting agent.
       const res = await fetch('/api/plugins/brands/builder', {
@@ -94,6 +101,7 @@ export function BrandBuilder({
           urls: a.urls.trim() || undefined,
           notes: a.notes.trim() || undefined,
           logoAssetId,
+          materialAssetIds: materialAssetIds.length > 0 ? materialAssetIds : undefined,
         }),
       })
       const body = (await res.json().catch(() => ({}))) as { brand?: { id: string }; taskId?: string; error?: string }
@@ -105,7 +113,7 @@ export function BrandBuilder({
     } finally {
       setBusy(false)
     }
-  }, [a, id, logoFile, onCreated, close])
+  }, [a, id, logoFile, materials, onCreated, close])
 
   // Disabled primary actions explain themselves (spec §7i).
   const nextBlockedReason = !canNext ? 'Name and what-you-sell are needed first — the agent grounds everything in them.' : null
@@ -206,10 +214,13 @@ export function BrandBuilder({
             <Field num={1} label="Logo" hint="Shown on the brand dashboard and available to agents as a reference. PNG/SVG/JPG.">
               <LogoDrop preview={logoPreview} fileName={logoFile?.name ?? null} onPick={pickLogo} />
             </Field>
-            <Field num={2} label="Website URL(s)" hint="The drafting agent reads these to ground the brand in reality — palette, voice, and terminology get mined from them (optional).">
+            <Field num={2} label="Brand materials" hint="Up to 3 files with your real branding on them — a PDF, screenshots, a deck slide. The agent mines them for your palette, type, and style (optional).">
+              <MaterialsDrop files={materials} onChange={setMaterials} />
+            </Field>
+            <Field num={3} label="Website URL(s)" hint="The drafting agent reads these to ground the brand in reality — palette, voice, and terminology get mined from them (optional).">
               <Input placeholder="https://..." value={a.urls} onChange={(e) => set('urls', e.target.value)} />
             </Field>
-            <Field num={3} label="Anything else" hint="Existing docs, phrases you love or hate — anything that helps (optional).">
+            <Field num={4} label="Anything else" hint="Existing docs, phrases you love or hate — anything that helps (optional).">
               <Textarea rows={3} value={a.notes} onChange={(e) => set('notes', e.target.value)} />
             </Field>
           </div>
@@ -230,6 +241,7 @@ export function BrandBuilder({
             <ReviewRow label="Tone" value={a.tone} />
             <ReviewRow label="Competitors" value={a.competitors} />
             <ReviewRow label="URLs" value={a.urls} />
+            <ReviewRow label="Materials" value={materials.map((f) => f.name).join(', ')} />
             <Field label="Which agent drafts it?" hint="Who authors the brand from your answers.">
               <AgentSelect value={a.agent} onValueChange={(v) => set('agent', v)} placeholder="Choose an agent..." />
             </Field>
@@ -259,6 +271,49 @@ function Field({ num, label, hint, children }: { num?: number; label: string; hi
           <div className="mt-2">{children}</div>
         </div>
       </div>
+    </div>
+  )
+}
+
+/** Up to 3 brand-material files (PDF/screenshots) — chips with remove, drop or browse. */
+function MaterialsDrop({ files, onChange }: { files: File[]; onChange: (files: File[]) => void }) {
+  const [over, setOver] = useState(false)
+  const full = files.length >= 3
+
+  const add = (incoming: FileList | null) => {
+    if (!incoming) return
+    const accepted = Array.from(incoming).filter((f) => f.type.startsWith('image/') || f.type === 'application/pdf')
+    if (accepted.length === 0) return
+    onChange([...files, ...accepted].slice(0, 3))
+  }
+
+  return (
+    <div className="space-y-1.5">
+      {files.map((f, i) => (
+        <div key={`${f.name}-${i}`} className="flex items-center gap-2 rounded-lg bg-foreground/5 px-2.5 py-1.5 text-sm">
+          <span className="min-w-0 truncate">{f.name}</span>
+          <span className="shrink-0 text-[11px] text-muted-foreground">{(f.size / 1024).toFixed(0)} KB</span>
+          <button
+            className="ml-auto shrink-0 rounded-md p-0.5 text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-destructive"
+            onClick={() => onChange(files.filter((_, j) => j !== i))}
+            aria-label={`Remove ${f.name}`}
+          >
+            ✕
+          </button>
+        </div>
+      ))}
+      {!full && (
+        <label
+          className={`flex cursor-pointer items-center gap-2 rounded-lg border border-dashed p-3 text-sm text-muted-foreground transition-colors ${over ? 'border-foreground/40 bg-foreground/5' : 'hover:border-foreground/30'}`}
+          onDragOver={(e) => { e.preventDefault(); setOver(true) }}
+          onDragLeave={() => setOver(false)}
+          onDrop={(e) => { e.preventDefault(); setOver(false); add(e.dataTransfer.files) }}
+          data-materials-drop
+        >
+          <span>＋ Drop a PDF or screenshot here, or click to browse ({files.length}/3)</span>
+          <input type="file" accept="image/*,application/pdf" multiple className="hidden" onChange={(e) => { add(e.target.files); e.target.value = '' }} />
+        </label>
+      )}
     </div>
   )
 }

@@ -56,6 +56,8 @@ export const brandManifestSchema = z.object({
   ...sharedManifestFields,
   /** Draft brands (builder flow) are excluded from pickers, resolution, and injection. */
   draft: z.boolean().optional(),
+  /** The builder's drafting task — the detail banner shows its live status. Cleared on publish. */
+  draftTaskId: z.string().optional(),
   logos: z.array(z.object({ assetId: z.string().min(1), variant: z.string().min(1) })),
   assetGroups: z.array(
     z.object({

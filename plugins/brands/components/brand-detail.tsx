@@ -16,7 +16,7 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
 } from '@makinbakin/sdk/ui'
-import { useQueryState, toast } from '@makinbakin/sdk/hooks'
+import { useQueryState, usePluginEvent, toast } from '@makinbakin/sdk/hooks'
 import {
   ArrowLeft, Palette, Rocket, Pencil, Plus, Check, AlertTriangle, ExternalLink,
   FileText, BookOpen, ImageIcon, Trash2, Sparkles, Info,
@@ -77,6 +77,14 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
   }, [brandId])
 
   useEffect(() => { void refresh() }, [refresh])
+
+  // Live-fill: the drafting agent writes the manifest while the user watches —
+  // refresh on brand.changed so tabs fill in without a reload. Staged edits
+  // are untouched (b = staged ?? detail.brand); the save freshness gate owns
+  // the conflict story.
+  usePluginEvent('brand.changed', (payload) => {
+    if ((payload as { brandId?: string }).brandId === brandId) void refresh()
+  })
 
   const stage = useCallback(
     (patch: ManifestPatch) => {
@@ -261,7 +269,7 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
 
       <PaletteHero brand={b} onPublish={b.draft ? () => setPublishConfirm(true) : undefined} />
 
-      {b.draft && <DraftBanner brandId={brandId} onPublish={() => setPublishConfirm(true)} />}
+      {b.draft && <DraftBanner brand={b} brandId={brandId} onPublish={() => setPublishConfirm(true)} />}
 
       <ConfirmDialog
         open={publishConfirm}
@@ -1125,30 +1133,83 @@ function useBlockedCount(brandId: string, enabled: boolean): number {
   return count
 }
 
+/** What the drafting task is doing right now, in plain language. */
+const DRAFT_TASK_STATUS: Record<string, { label: string; tone: 'working' | 'queued' | 'done' | 'blocked' }> = {
+  backlog: { label: 'Queued on the board — an agent picks it up shortly.', tone: 'queued' },
+  todo: { label: 'Queued on the board — an agent picks it up shortly.', tone: 'queued' },
+  inProgress: { label: 'An agent is working on it right now.', tone: 'working' },
+  review: { label: 'The draft is written — review the tabs, then publish.', tone: 'done' },
+  done: { label: 'Drafting finished — review the tabs, then publish.', tone: 'done' },
+  blocked: { label: 'The drafting task hit a problem — open it to see why.', tone: 'blocked' },
+}
+
 /**
  * The wait-for-the-agent story (spec §7h): a fresh draft never looks silent.
- * Links the drafting task when the create flow handed us its id (?draftTask=).
+ * The drafting task id lives ON the manifest (draftTaskId — survives reloads;
+ * ?draftTask= is the create-flow fallback), and its LIVE board status renders
+ * here, refreshed on every taskboard SSE tick.
  */
-function DraftBanner({ brandId, onPublish }: { brandId: string; onPublish: () => void }) {
+function DraftBanner({ brand, brandId, onPublish }: { brand: BrandManifest; brandId: string; onPublish: () => void }) {
   const navigate = useNavigate()
-  const [draftTask] = useQueryState('draftTask', '')
+  const [draftTaskParam] = useQueryState('draftTask', '')
+  const taskId = brand.draftTaskId || draftTaskParam
   const blocked = useBlockedCount(brandId, true)
+  const [taskColumn, setTaskColumn] = useState<string | null>(null)
+
+  const loadTask = useCallback(async () => {
+    if (!taskId) return
+    try {
+      const res = await fetch(`/api/plugins/tasks/${encodeURIComponent(taskId)}`)
+      if (!res.ok) return
+      const body = (await res.json()) as { column?: string }
+      setTaskColumn(body.column ?? null)
+    } catch { /* the banner degrades to the static copy */ }
+  }, [taskId])
+
+  useEffect(() => {
+    void loadTask()
+  }, [loadTask])
+  // Board moves (dispatch picks it up, agent completes) re-render the status live.
+  usePluginEvent('taskboard', () => void loadTask())
+
+  const status = taskColumn ? DRAFT_TASK_STATUS[taskColumn] : null
 
   return (
     <div className="flex flex-wrap items-center gap-3 rounded-xl bg-warning/10 p-4 ring-1 ring-warning/20" data-draft-banner>
       <Sparkles className="size-4 shrink-0 text-warning" />
       <div className="min-w-0 flex-1 text-sm">
-        <p className="font-medium">This brand is a draft</p>
+        <p className="flex items-center gap-2 font-medium">
+          This brand is a draft
+          {status && (
+            <span
+              className={`flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-normal ${
+                status.tone === 'working'
+                  ? 'bg-foreground/10'
+                  : status.tone === 'done'
+                    ? 'bg-success/15 text-success'
+                    : status.tone === 'blocked'
+                      ? 'bg-destructive/15 text-destructive'
+                      : 'bg-foreground/5 text-muted-foreground'
+              }`}
+              data-draft-task-status={taskColumn}
+            >
+              {status.tone === 'working' && <span className="size-1.5 animate-pulse rounded-full bg-warning" aria-hidden />}
+              {status.tone === 'working' ? 'Agent working' : status.tone === 'done' ? 'Draft ready' : status.tone === 'blocked' ? 'Blocked' : 'Queued'}
+            </span>
+          )}
+        </p>
         <p className="text-muted-foreground">
-          {draftTask
-            ? 'An agent is drafting it from your intake — usually takes a few minutes. Review the tabs as they fill in, then publish.'
-            : 'Invisible to tasks and image tools until you publish it.'}
+          {status
+            ? status.label
+            : taskId
+              ? 'An agent is drafting it from your intake — usually takes a few minutes. Review the tabs as they fill in, then publish.'
+              : 'Invisible to tasks and image tools until you publish it.'}
           {blocked > 0 && ` ${blocked} task${blocked === 1 ? ' is' : 's are'} waiting on this brand.`}
         </p>
       </div>
       <div className="flex shrink-0 items-center gap-2">
-        {draftTask && (
-          <Button variant="outline" size="sm" onClick={() => void navigate({ to: '/tasks', search: { taskId: draftTask } as never })} data-draft-task-link>
+        {taskId && (
+          <Button variant="outline" size="sm" onClick={() => void navigate({ to: '/tasks', search: { taskId } as never })} data-draft-task-link>
             View the drafting task
           </Button>
         )}

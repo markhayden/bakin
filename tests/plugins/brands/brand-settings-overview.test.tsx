@@ -133,6 +133,34 @@ describe('drafting banner', () => {
     await settleReact()
   })
 
+  it('shows the drafting task LIVE status from the board (manifest draftTaskId)', async () => {
+    mockApi({ draft: true })
+    const base = globalThis.fetch
+    globalThis.fetch = mock(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.endsWith('/api/plugins/brands/acme') && (init?.method ?? 'GET') === 'GET') {
+        return new Response(
+          JSON.stringify({
+            brand: { ...makeBrand(true), draftTaskId: 'task-42' },
+            guidelines: [], lessons: [], fingerprint: 'sha256:x', completeness: COMPLETENESS,
+          }),
+          { status: 200 },
+        )
+      }
+      if (url.endsWith('/api/plugins/tasks/task-42')) {
+        return new Response(JSON.stringify({ task: { id: 'task-42' }, column: 'inProgress' }), { status: 200 })
+      }
+      return (base as typeof fetch)(input as RequestInfo, init)
+    }) as unknown as typeof fetch
+
+    await renderDetail()
+    await waitFor(() => expect(document.querySelector('[data-draft-task-status="inProgress"]')).not.toBeNull())
+    expect(screen.getByText('Agent working')).toBeDefined()
+    expect(screen.getByText(/working on it right now/)).toBeDefined()
+    expect(document.querySelector('[data-draft-task-link]')).not.toBeNull() // no query param needed
+    await settleReact()
+  })
+
   it('absent for published brands', async () => {
     await renderDetail()
     expect(document.querySelector('[data-draft-banner]')).toBeNull()

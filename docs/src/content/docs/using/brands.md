@@ -15,15 +15,19 @@ with it.
 **New Brand** offers three paths:
 
 - **Build my brand** — answer a short questionnaire and an agent drafts the
-  whole kit (voice, style guide, palette, rules) for you to review.
+  whole kit (voice, style guide, palette, rules) for you to review. Attach up
+  to 3 brand materials (a PDF, screenshots — anything with your real colors on
+  it) and the agent mines them for your palette and style.
 - **From a website** — give it a name, your site or style-guide links, and an
   agent. The agent reads the links and extracts palette, voice, and
   terminology automatically.
 - **Import** — bring in an existing kit from GitHub or a folder on disk
   (preview first; nothing is written until you confirm).
 
-The agentic paths land you on the new draft with a banner linking the drafting
-task — drafts are invisible to real work until you review and **publish**.
+The agentic paths dispatch a real task on the board and land you on the new
+draft: the banner shows the task's live status (queued / agent working / draft
+ready), links to it, and the tabs fill in as the agent writes. Drafts are
+invisible to real work until you review and **publish**.
 Every brand card shows a **completeness** meter (logo, palette, description,
 voice, style guide, rules, terminology, reference assets); the brand's
 Overview has the same checklist with jump links to finish the kit.

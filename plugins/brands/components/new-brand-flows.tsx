@@ -85,7 +85,7 @@ export function NewBrandChooser({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-card border-border sm:max-w-md">
+      <DialogContent className="bg-card border-border sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>New brand</DialogTitle>
           <DialogDescription>Every path creates a kit you review before agents start using it.</DialogDescription>
@@ -304,7 +304,7 @@ export function ImportBrandDialog({
             <Input
               id="import-source"
               autoFocus
-              placeholder="github:user/repo or a folder on this machine"
+              placeholder="github:user/repo"
               value={source}
               onChange={(e) => {
                 setSource(e.target.value)
@@ -314,6 +314,12 @@ export function ImportBrandDialog({
                 if (e.key === 'Enter' && source.trim() && !busy) void fetchPreview()
               }}
             />
+            <p className="text-[11px] text-muted-foreground">
+              GitHub is easiest: <span className="font-mono">github:user/repo</span>. For a local kit, paste the
+              folder's full path (e.g. <span className="font-mono">/Users/you/acme-brand</span>) — the folder must
+              contain a <span className="font-mono">brand.json</span>. Same as{' '}
+              <span className="font-mono">bakin brands import</span> in the terminal.
+            </p>
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
           {preview && (

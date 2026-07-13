@@ -376,6 +376,45 @@ describe('builder flow (#419 §9.1)', () => {
     expect(task?.description).not.toContain('Fetch and READ')
   })
 
+  it('stamps draftTaskId on the manifest; publish clears it', async () => {
+    const created = await callRoute(route('POST', '/builder'), activated.ctx, {
+      body: { id: 'stamped', name: 'Stamped', agent: 'pixel', product: 'x' },
+    })
+    expect((created.body.brand as { draftTaskId?: string }).draftTaskId).toBe(String(created.body.taskId))
+
+    const published = await callRoute(route('POST', '/:brandId/publish'), activated.ctx, {
+      searchParams: { brandId: 'stamped' },
+    })
+    expect((published.body.brand as { draftTaskId?: string }).draftTaskId).toBeUndefined()
+  })
+
+  it('intake materials attach as an asset group and the prompt tells the agent to mine them', async () => {
+    const created = await callRoute(route('POST', '/builder'), activated.ctx, {
+      body: {
+        id: 'material-brand',
+        name: 'Material Brand',
+        agent: 'pixel',
+        product: 'x',
+        materialAssetIds: ['20260101-deck-aaaa1111', '20260101-shot-bbbb2222'],
+      },
+    })
+    expect(created.status).toBe(200)
+    const groups = (created.body.brand as { assetGroups: Array<{ name: string; assetIds: string[] }> }).assetGroups
+    const intake = groups.find((g) => g.name === 'intake-materials')
+    expect(intake?.assetIds).toEqual(['20260101-deck-aaaa1111', '20260101-shot-bbbb2222'])
+
+    const task = await activated.ctx.tasks.get(String(created.body.taskId))
+    expect(task?.description).toContain('intake-materials')
+    expect(task?.description).toContain('palette hex values')
+  })
+
+  it('rejects more than 3 intake materials', async () => {
+    const bad = await callRoute(route('POST', '/builder'), activated.ctx, {
+      body: { id: 'too-many', name: 'x', agent: 'pixel', product: 'x', materialAssetIds: ['a', 'b', 'c', 'd'] },
+    })
+    expect(bad.status).toBe(400)
+  })
+
   it('builder wires an uploaded logo onto the draft (#419 wizard)', async () => {
     const created = await callRoute(route('POST', '/builder'), activated.ctx, {
       body: { id: 'logo-brand', name: 'Logo Brand', agent: 'pixel', product: 'x', logoAssetId: '20260101-logo-abcd1234' },
