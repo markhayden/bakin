@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef } from 'react'
 import type { SearchReadiness } from '@makinbakin/sdk/types'
 import { Button } from '@makinbakin/sdk/ui'
 import { StatusBadge, type StatusTone } from '@makinbakin/sdk/components'
+import { ChevronRight } from 'lucide-react'
 import { SystemSearchSection } from './system-search-section'
 import { SystemInventory } from './system-inventory'
 import { useSystemData, type UseSystemDataResult } from '../hooks/use-system-data'
@@ -24,6 +25,20 @@ const SUMMARY_STYLE: Record<SummaryStatus, { tone: StatusTone; accent: string }>
   attention: { tone: 'destructive', accent: 'bg-destructive' },
   unknown: { tone: 'neutral', accent: 'bg-muted-foreground' },
   neutral: { tone: 'accent', accent: 'bg-accent' },
+}
+
+const SUMMARY_QUESTION: Record<string, string> = {
+  search: 'Can people find what they need?',
+  plugins: 'Are installed features available?',
+  diagnostics: 'Did every health check finish cleanly?',
+  runtime: 'Is the Bakin host online?',
+}
+
+const SUMMARY_RANK: Record<SummaryStatus, number> = {
+  attention: 0,
+  unknown: 1,
+  neutral: 2,
+  healthy: 3,
 }
 
 function searchEvidenceStale(readiness: SearchReadiness, now: number = Date.now()): boolean {
@@ -65,7 +80,12 @@ function subsystemSummaries(data: UseSystemDataResult): SubsystemSummary[] {
   const plugins = data.registry.data?.plugins ?? []
   const manifests = data.pluginManifest.data?.plugins ?? []
   const pluginIds = new Set([...plugins.map((plugin) => plugin.id), ...manifests.map((plugin) => plugin.id)])
-  const pluginInventoryPending = !data.registry.data && !data.pluginManifest.data
+  const pluginInventoryPending = (data.registry.loading && !data.registry.data)
+    || (data.pluginManifest.loading && !data.pluginManifest.data)
+  const pluginInventoryError = data.registry.error
+    ?? data.pluginManifest.error
+    ?? data.registry.backgroundError
+    ?? data.pluginManifest.backgroundError
   const failedIds = new Set([
     ...plugins.filter((plugin) => plugin.status === 'failed').map((plugin) => plugin.id),
     ...manifests.filter((plugin) => plugin.status === 'failed').map((plugin) => plugin.id),
@@ -74,67 +94,99 @@ function subsystemSummaries(data: UseSystemDataResult): SubsystemSummary[] {
   const updates = manifests.filter((plugin) => plugin.upgradeAvailable).length
   const sessions = data.live.data?.activeSessions?.reduce((total, row) => total + row.sessions, 0) ?? null
   const checks = data.report.data?.checks ?? []
+  const registeredChecks = data.report.data?.summary.checks.registered ?? checks.length
+  const completedChecks = data.report.data?.summary.checks.completed
+    ?? checks.filter((check) => check.latestExecution.outcome === 'observed').length
   const unverified = checks.filter((check) => check.latestExecution.outcome === 'failed' || check.latestExecution.outcome === 'invalid').length
   const unhealthy = data.report.data?.observations.filter((observation) => observation.status !== 'healthy').length ?? 0
 
-  const pluginSummary: SubsystemSummary = pluginInventoryPending
-    ? {
-        key: 'plugins', label: 'Plugins', status: 'unknown', statusLabel: 'Checking',
-        summary: 'Waiting for the installed plugin inventory.', fact: 'Loading inventory',
-      }
-    : failedPlugins > 0
-    ? {
-        key: 'plugins', label: 'Plugins', status: 'attention', statusLabel: 'Needs attention',
-        summary: `${failedPlugins} ${failedPlugins === 1 ? 'plugin failed' : 'plugins failed'} to activate.`,
-        fact: updates > 0 ? `${updates} updates available` : 'Activation failed',
-      }
-    : data.registry.error && !data.registry.data
-      ? {
-          key: 'plugins', label: 'Plugins', status: 'unknown', statusLabel: 'Unable to verify',
-          summary: data.registry.error, fact: 'Inventory unavailable',
-        }
-      : {
-          key: 'plugins', label: 'Plugins', status: updates > 0 ? 'neutral' : 'healthy',
-          statusLabel: updates > 0 ? 'Updates available' : 'Healthy',
-          summary: updates > 0 ? `${updates} ${updates === 1 ? 'plugin has' : 'plugins have'} an available update.` : 'All discovered plugins are active.',
-          fact: `${pluginIds.size} discovered`,
-        }
+  let pluginSummary: SubsystemSummary
+  if (failedPlugins > 0) {
+    pluginSummary = {
+      key: 'plugins', label: 'Installed features', status: 'attention', statusLabel: 'Needs attention',
+      summary: `${failedPlugins} ${failedPlugins === 1 ? 'plugin failed' : 'plugins failed'} to activate.`,
+      fact: updates > 0 ? `${updates} updates available` : 'Activation failed',
+    }
+  } else if (pluginInventoryError) {
+    const hasInventory = pluginIds.size > 0
+    pluginSummary = {
+      key: 'plugins', label: 'Installed features', status: 'unknown',
+      statusLabel: hasInventory ? 'Refresh failed' : 'Unable to verify',
+      summary: hasInventory
+        ? `Showing the last loaded inventory; ${pluginInventoryError}`
+        : pluginInventoryError,
+      fact: hasInventory ? `${pluginIds.size} last loaded` : 'Inventory unavailable',
+    }
+  } else if (pluginInventoryPending) {
+    pluginSummary = {
+      key: 'plugins', label: 'Installed features', status: 'unknown', statusLabel: 'Checking',
+      summary: 'Waiting for the installed plugin inventory.', fact: 'Loading inventory',
+    }
+  } else if (!data.registry.data || !data.pluginManifest.data) {
+    pluginSummary = {
+      key: 'plugins', label: 'Installed features', status: 'unknown', statusLabel: 'Incomplete',
+      summary: 'The installed plugin inventory is incomplete.', fact: `${pluginIds.size} discovered`,
+    }
+  } else {
+    pluginSummary = {
+      key: 'plugins', label: 'Installed features', status: updates > 0 ? 'neutral' : 'healthy',
+      statusLabel: updates > 0 ? 'Updates available' : 'Healthy',
+      summary: updates > 0 ? `${updates} ${updates === 1 ? 'plugin has' : 'plugins have'} an available update.` : 'All discovered plugins are active.',
+      fact: `${pluginIds.size} discovered`,
+    }
+  }
 
+  const liveRefreshError = data.live.backgroundError
+    ?? (data.live.stale ? 'Current host status could not be confirmed.' : null)
   const runtimeSummary: SubsystemSummary = data.live.error && !data.live.data
     ? {
-        key: 'runtime', label: 'Runtime', status: 'unknown', statusLabel: 'Unable to verify',
+        key: 'runtime', label: 'Bakin host', status: 'unknown', statusLabel: 'Unable to verify',
         summary: data.live.error, fact: 'Host unavailable',
       }
+    : liveRefreshError && data.live.data
+      ? {
+          key: 'runtime', label: 'Bakin host', status: 'unknown', statusLabel: 'Refresh failed',
+          summary: `Showing the last reported host status; ${liveRefreshError}`,
+          fact: sessions === null ? 'Last session count unavailable' : `${sessions} last reported ${sessions === 1 ? 'session' : 'sessions'}`,
+        }
     : data.live.data?.server
       ? {
-          key: 'runtime', label: 'Runtime', status: 'healthy', statusLabel: 'Online',
+          key: 'runtime', label: 'Bakin host', status: 'healthy', statusLabel: 'Online',
           summary: `Host process ${data.live.data.server.pid} is serving on port ${data.live.data.server.port}.`,
           fact: sessions === null ? 'Session count unavailable' : `${sessions} connected ${sessions === 1 ? 'session' : 'sessions'}`,
         }
       : {
-          key: 'runtime', label: 'Runtime', status: 'unknown', statusLabel: 'Checking',
+          key: 'runtime', label: 'Bakin host', status: 'unknown', statusLabel: 'Checking',
           summary: 'Waiting for current host process details.', fact: 'Loading runtime',
         }
 
-  const diagnosticsSummary: SubsystemSummary = !data.report.data
-    ? {
-        key: 'diagnostics', label: 'Diagnostics', status: 'unknown', statusLabel: 'Unable to verify',
-        summary: data.report.error ?? 'Waiting for the canonical health report.', fact: 'No report',
-      }
-    : unverified > 0
-      ? {
-          key: 'diagnostics', label: 'Diagnostics', status: 'unknown', statusLabel: 'Incomplete',
-          summary: `${unverified} ${unverified === 1 ? 'check could' : 'checks could'} not be verified.`, fact: `${checks.length} registered checks`,
-        }
-      : unhealthy > 0
-        ? {
-            key: 'diagnostics', label: 'Diagnostics', status: 'attention', statusLabel: 'Findings',
-            summary: `${unhealthy} non-healthy ${unhealthy === 1 ? 'observation needs' : 'observations need'} review.`, fact: `${checks.length} completed checks`,
-          }
-        : {
-            key: 'diagnostics', label: 'Diagnostics', status: 'healthy', statusLabel: 'Verified',
-            summary: 'All completed checks returned healthy evidence.', fact: `${checks.length} completed checks`,
-          }
+  let diagnosticsSummary: SubsystemSummary
+  if (!data.report.data) {
+    diagnosticsSummary = {
+      key: 'diagnostics', label: 'Health checks', status: 'unknown', statusLabel: 'Unable to verify',
+      summary: data.report.error ?? 'Waiting for the canonical health report.', fact: 'No report',
+    }
+  } else if (unverified > 0) {
+    diagnosticsSummary = {
+      key: 'diagnostics', label: 'Health checks', status: 'unknown', statusLabel: 'Incomplete',
+      summary: `${unverified} ${unverified === 1 ? 'check could' : 'checks could'} not be verified.`, fact: `${registeredChecks} registered ${registeredChecks === 1 ? 'check' : 'checks'}`,
+    }
+  } else if (data.report.stale) {
+    diagnosticsSummary = {
+      key: 'diagnostics', label: 'Health checks', status: 'unknown', statusLabel: 'Refresh needed',
+      summary: 'Health-check evidence needs to be refreshed.', fact: `${completedChecks} last completed`,
+    }
+  } else if (unhealthy > 0) {
+    diagnosticsSummary = {
+      key: 'diagnostics', label: 'Health checks', status: 'attention', statusLabel: 'Findings',
+      summary: `${unhealthy} non-healthy ${unhealthy === 1 ? 'observation needs' : 'observations need'} review.`, fact: `${completedChecks} completed ${completedChecks === 1 ? 'check' : 'checks'}`,
+    }
+  } else {
+    diagnosticsSummary = {
+      key: 'diagnostics', label: 'Health checks', status: 'healthy', statusLabel: 'Verified',
+      summary: 'All completed checks returned healthy evidence.', fact: `${completedChecks} completed ${completedChecks === 1 ? 'check' : 'checks'}`,
+    }
+  }
 
   return [searchSummary(data), pluginSummary, runtimeSummary, diagnosticsSummary]
 }
@@ -146,7 +198,15 @@ export function SystemTab() {
 /** Presentation-only seam retained so contract-heavy System states stay easy to test. */
 export function SystemTabView({ data, section }: { data: UseSystemDataResult; section?: string | null }) {
   const searchDetailRef = useRef<HTMLDivElement>(null)
-  const summaries = useMemo(() => subsystemSummaries(data), [data])
+  const searchDisclosureRef = useRef<HTMLDetailsElement>(null)
+  const summaries = useMemo(() => subsystemSummaries(data)
+    .map((summary, index) => ({ summary, index }))
+    .sort((left, right) => SUMMARY_RANK[left.summary.status] - SUMMARY_RANK[right.summary.status] || left.index - right.index)
+    .map(({ summary }) => summary), [data])
+  const search = summaries.find((summary) => summary.key === 'search')!
+  const requestedSearch = section === 'search'
+    || (section == null && typeof window !== 'undefined'
+      && new URLSearchParams(window.location.search).get('section') === 'search')
   const searchReadinessStale = data.report.data
     ? searchEvidenceStale(data.report.data.subsystems.search)
     : false
@@ -161,6 +221,7 @@ export function SystemTabView({ data, section }: { data: UseSystemDataResult; se
     if (typeof window === 'undefined') return
     const requestedSection = section ?? new URLSearchParams(window.location.search).get('section')
     if (requestedSection === 'search') {
+      if (searchDisclosureRef.current) searchDisclosureRef.current.open = true
       searchDetailRef.current?.focus()
     }
   }, [section])
@@ -191,18 +252,31 @@ export function SystemTabView({ data, section }: { data: UseSystemDataResult; se
             <p className="text-sm text-muted-foreground">The shortest path to what is unavailable or needs attention.</p>
           </div>
         </div>
-        <div className="grid gap-3 @[34rem]/health-system:grid-cols-2 @[68rem]/health-system:grid-cols-4">
+        <div
+          role="list"
+          data-testid="system-subsystem-list"
+          className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-card"
+        >
           {summaries.map((summary) => {
             const style = SUMMARY_STYLE[summary.status]
             return (
-              <article key={summary.key} className="relative overflow-hidden rounded-xl border border-border bg-card p-4">
-                <span aria-hidden="true" className={`absolute inset-y-0 left-0 w-1 ${style.accent}`} />
-                <div className="flex items-center justify-between gap-2">
-                  <h3 className="font-medium">{summary.label}</h3>
-                  <StatusBadge variant="outline" tone={style.tone}>{summary.statusLabel}</StatusBadge>
+              <article
+                key={summary.key}
+                role="listitem"
+                className="grid gap-2 px-3 py-2.5 @[42rem]/health-system:grid-cols-[minmax(14rem,0.8fr)_minmax(18rem,1.4fr)_auto] @[42rem]/health-system:items-center"
+              >
+                <div className="flex min-w-0 items-start gap-2.5">
+                  <span aria-hidden="true" className={`mt-1.5 size-2 shrink-0 rounded-full ${style.accent}`} />
+                  <div className="min-w-0">
+                    <p className="text-xs text-muted-foreground">{summary.label}</p>
+                    <h3 className="text-sm font-medium">{SUMMARY_QUESTION[summary.key]}</h3>
+                  </div>
                 </div>
-                <p className="mt-3 min-h-10 text-sm leading-relaxed text-muted-foreground">{summary.summary}</p>
-                <p className="mt-3 border-t border-border pt-2 text-xs font-medium">{summary.fact}</p>
+                <p className="text-sm leading-snug text-muted-foreground">{summary.summary}</p>
+                <div className="flex flex-wrap items-center gap-2 @[42rem]/health-system:justify-end">
+                  <StatusBadge variant="outline" tone={style.tone}>{summary.statusLabel}</StatusBadge>
+                  <span className="text-xs font-medium text-muted-foreground">{summary.fact}</span>
+                </div>
               </article>
             )
           })}
@@ -215,24 +289,41 @@ export function SystemTabView({ data, section }: { data: UseSystemDataResult; se
         </div>
       )}
 
-      <div
-        ref={searchDetailRef}
-        tabIndex={-1}
-        aria-label="Search subsystem detail"
-        className="scroll-mt-4 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+      <details
+        ref={searchDisclosureRef}
+        data-testid="system-search-details"
+        open={requestedSearch || search.status !== 'healthy'}
+        className="group overflow-hidden rounded-xl border border-border bg-card"
       >
-        <SystemSearchSection
-          readiness={data.report.data?.subsystems.search ?? null}
-          readinessStale={searchReadinessStale}
-          status={data.searchStatus.data}
-          telemetry={data.searchTelemetry.data}
-          loading={data.searchStatus.loading || data.searchTelemetry.loading}
-          error={data.searchStatus.error ?? data.searchTelemetry.error}
-          backgroundError={data.searchStatus.backgroundError ?? data.searchTelemetry.backgroundError}
-          mutation={data.searchMutation}
-          onReindex={data.reindexSearch}
-        />
-      </div>
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 marker:hidden">
+          <span className="min-w-0">
+            <span className="block text-sm font-semibold">Search details</span>
+            <span className="block text-xs font-normal text-muted-foreground">Readiness stages, traffic, indexes, journal, and enrichment.</span>
+          </span>
+          <span className="flex shrink-0 items-center gap-2">
+            <StatusBadge variant="outline" tone={SUMMARY_STYLE[search.status].tone}>{search.statusLabel}</StatusBadge>
+            <ChevronRight aria-hidden="true" className="size-4 text-muted-foreground transition-transform group-open:rotate-90" />
+          </span>
+        </summary>
+        <div
+          ref={searchDetailRef}
+          tabIndex={-1}
+          aria-label="Search subsystem detail"
+          className="scroll-mt-4 border-t border-border p-3 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+        >
+          <SystemSearchSection
+            readiness={data.report.data?.subsystems.search ?? null}
+            readinessStale={searchReadinessStale}
+            status={data.searchStatus.data}
+            telemetry={data.searchTelemetry.data}
+            loading={data.searchStatus.loading || data.searchTelemetry.loading}
+            error={data.searchStatus.error ?? data.searchTelemetry.error}
+            backgroundError={data.searchStatus.backgroundError ?? data.searchTelemetry.backgroundError}
+            mutation={data.searchMutation}
+            onReindex={data.reindexSearch}
+          />
+        </div>
+      </details>
 
       <SystemInventory
         report={data.report.data}

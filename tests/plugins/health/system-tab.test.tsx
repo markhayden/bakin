@@ -159,17 +159,38 @@ function systemData(): UseSystemDataResult {
   }
 }
 
+function makeSearchHealthy(data: UseSystemDataResult): void {
+  const readiness = data.report.data?.subsystems.search
+  if (!readiness) throw new Error('Expected canonical Search readiness')
+  readiness.status = 'healthy'
+  readiness.summary = 'Search is ready across every stage.'
+  readiness.stages = readiness.stages.map((stage) => ({
+    ...stage,
+    status: 'healthy',
+    summary: `${stage.label} is ready.`,
+  }))
+}
+
 describe('SystemTabView', () => {
-  it('leads with subsystem summaries and keeps canonical Search health visible', () => {
+  it('leads with a compact attention-first list phrased as operator questions', () => {
     const data = systemData()
     data.report.stale = true // An unrelated failed check must not overwrite fresh Search readiness.
     const { container } = render(<SystemTabView data={data} />)
 
     expect(screen.getByRole('heading', { name: 'Subsystem status' })).toBeDefined()
+    const subsystemList = screen.getByTestId('system-subsystem-list')
+    expect(subsystemList.getAttribute('role')).toBe('list')
+    expect(subsystemList.querySelectorAll('[role="listitem"]')).toHaveLength(4)
+    expect(subsystemList.textContent).toContain('Can people find what they need?')
+    expect(subsystemList.textContent).toContain('Are installed features available?')
+    expect(subsystemList.textContent).toContain('Did every health check finish cleanly?')
+    expect(subsystemList.textContent).toContain('Is the Bakin host online?')
+
+    const content = subsystemList.textContent ?? ''
+    expect(content.indexOf('Can people find what they need?')).toBeLessThan(content.indexOf('Is the Bakin host online?'))
+    expect(content.indexOf('Are installed features available?')).toBeLessThan(content.indexOf('Is the Bakin host online?'))
     expect(screen.getAllByText('Search answers queries, but one index migration needs attention.')).toHaveLength(2)
-    const content = container.textContent ?? ''
-    expect(content.indexOf('Subsystem status')).toBeLessThan(content.indexOf('Readiness stages'))
-    expect(content.indexOf('Readiness stages')).toBeLessThan(content.indexOf('Installed plugins'))
+    expect((container.querySelector('[data-testid="system-search-details"]') as HTMLDetailsElement).open).toBe(true)
   })
 
   it('makes indexes, migrations, journal, and enrichment consumable and actionable', () => {
@@ -190,17 +211,26 @@ describe('SystemTabView', () => {
     render(<SystemTabView data={systemData()} />)
 
     const exceptions = screen.getByRole('heading', { name: 'Plugin exceptions' })
-    const inventory = screen.getByRole('heading', { name: 'Installed plugins' })
-    expect(exceptions.compareDocumentPosition(inventory) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    const installedFeatures = screen.getByText('Installed features', { selector: 'span' }).closest('details') as HTMLDetailsElement
+    const hostDetails = screen.getByText('Bakin host details', { selector: 'span' }).closest('details') as HTMLDetailsElement
+    const allChecks = screen.getByText('All health checks', { selector: 'span' }).closest('details') as HTMLDetailsElement
+    expect(exceptions.compareDocumentPosition(installedFeatures) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(installedFeatures.open).toBe(false)
+    expect(hostDetails.open).toBe(false)
+    expect(allChecks.open).toBe(true)
     expect(screen.getByText('Activation stopped before routes were registered.')).toBeDefined()
     expect(screen.getByText('Missing dependencies: calendar-api')).toBeDefined()
+
+    fireEvent.click(installedFeatures.querySelector('summary')!)
     expect(screen.getByRole('button', { name: 'Update Notes' })).toBeDefined()
+    expect(screen.getByTestId('installed-plugin-table-scroll').className).toContain('overflow-auto')
+
+    fireEvent.click(hostDetails.querySelector('summary')!)
     expect(screen.getByText('Connected sessions').closest('[data-stat-tile]')?.textContent).toContain('5')
     expect(screen.getByText('Memory').closest('[data-stat-tile]')?.textContent).toContain('256 MB1024 MB host total')
     expect(screen.getByText('Port').closest('[data-stat-tile]')?.textContent).toContain('3737')
     expect(screen.getByText('PID').closest('[data-stat-tile]')?.textContent).toContain('4321')
     expect(screen.getByText('Node').closest('[data-stat-tile]')?.textContent).toContain('v24.3.0')
-    expect(screen.getByTestId('installed-plugin-table-scroll').className).toContain('overflow-auto')
   })
 
   it('does not call an inventory healthy while both plugin sources are still loading', () => {
@@ -214,8 +244,72 @@ describe('SystemTabView', () => {
     expect(screen.getByText('Loading inventory')).toBeDefined()
   })
 
+  it('does not call a failed plugin inventory refresh loading or healthy', () => {
+    const data = systemData()
+    data.registry = {
+      ...resource<SystemRegistryData>(null),
+      error: 'Plugin registry request failed',
+      loading: false,
+    }
+    data.pluginManifest = resource<SystemPluginManifestData>(null)
+
+    render(<SystemTabView data={data} />)
+
+    const subsystemList = screen.getByTestId('system-subsystem-list')
+    expect(subsystemList.textContent).toContain('Plugin registry request failed')
+    expect(subsystemList.textContent).toContain('Unable to verify')
+    expect(subsystemList.textContent).not.toContain('Waiting for the installed plugin inventory.')
+  })
+
+  it('does not call expired health-check evidence verified', () => {
+    const data = systemData()
+    data.report.data!.checks = data.report.data!.checks.filter((check) => check.latestExecution.outcome === 'observed')
+    data.report.data!.observations = data.report.data!.observations.filter((observation) => observation.status === 'healthy')
+    data.report.stale = true
+
+    render(<SystemTabView data={data} />)
+
+    const subsystemList = screen.getByTestId('system-subsystem-list')
+    expect(subsystemList.textContent).toContain('Health-check evidence needs to be refreshed.')
+    expect(subsystemList.textContent).not.toContain('All completed checks returned healthy evidence.')
+  })
+
+  it('does not call retained host data online after its refresh fails', () => {
+    const data = systemData()
+    data.live = {
+      ...data.live,
+      backgroundError: 'Host status refresh failed',
+      stale: true,
+    }
+
+    render(<SystemTabView data={data} />)
+
+    const subsystemList = screen.getByTestId('system-subsystem-list')
+    expect(subsystemList.textContent).toContain('Host status refresh failed')
+    expect(subsystemList.textContent).toContain('Refresh failed')
+    expect(subsystemList.textContent).not.toContain('Online5 connected sessions')
+  })
+
+  it('uses the canonical completed-check count rather than registered checks', () => {
+    const data = systemData()
+    data.report.data!.checks = data.report.data!.checks.filter((check) => check.latestExecution.outcome !== 'failed')
+    data.report.data!.summary.checks.failed = 0
+    data.report.data!.summary.checks.completed = 1
+    data.report.data!.observations = data.report.data!.observations.filter((observation) => observation.status === 'healthy')
+    data.report.stale = false
+
+    render(<SystemTabView data={data} />)
+
+    const subsystemList = screen.getByTestId('system-subsystem-list')
+    expect(subsystemList.textContent).toContain('1 completed check')
+    expect(subsystemList.textContent).not.toContain('2 completed checks')
+  })
+
   it('includes healthy and not-applicable checks while opening only groups that need review', () => {
     render(<SystemTabView data={systemData()} />)
+
+    const inventory = screen.getByTestId('all-health-checks-details') as HTMLDetailsElement
+    if (!inventory.open) fireEvent.click(inventory.querySelector('summary')!)
 
     expect(screen.getAllByText('Healthy').length).toBeGreaterThan(0)
     expect(screen.getByText('Not applicable')).toBeDefined()
@@ -227,12 +321,24 @@ describe('SystemTabView', () => {
   })
 
   it('focuses Search detail for section=search deep links', async () => {
+    const data = systemData()
+    makeSearchHealthy(data)
     window.history.replaceState({}, '', '/health?tab=system&section=search')
-    render(<SystemTabView data={systemData()} section="search" />)
+    render(<SystemTabView data={data} section="search" />)
 
     const searchDetail = screen.getByLabelText('Search subsystem detail')
+    expect((screen.getByTestId('system-search-details') as HTMLDetailsElement).open).toBe(true)
     await waitFor(() => expect(document.activeElement?.getAttribute('aria-label')).toBe('Search subsystem detail'))
     expect(document.activeElement).toBe(searchDetail)
+  })
+
+  it('keeps healthy Search detail collapsed until requested', () => {
+    const data = systemData()
+    makeSearchHealthy(data)
+
+    render(<SystemTabView data={data} />)
+
+    expect((screen.getByTestId('system-search-details') as HTMLDetailsElement).open).toBe(false)
   })
 })
 

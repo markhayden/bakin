@@ -1,10 +1,10 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { HealthCheckState, HealthObservation, HealthReport } from '@makinbakin/sdk/types'
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle } from '@makinbakin/sdk/ui'
+import { Badge, Button, Card, CardContent } from '@makinbakin/sdk/ui'
 import { StatTile, StatusBadge, type StatusTone } from '@makinbakin/sdk/components'
-import { Clock3, Cpu, Hash, MemoryStick, Network, Users } from 'lucide-react'
+import { ChevronRight, Clock3, Cpu, Hash, MemoryStick, Network, Users } from 'lucide-react'
 import { formatAge } from '@makinbakin/sdk/utils'
 import type { HealthSummary } from '../types'
 import { formatUptime } from '../lib/format'
@@ -170,6 +170,13 @@ export function SystemInventory({
     }
     return [...groups.values()].sort((left, right) => left.label.localeCompare(right.label))
   }, [report])
+  const checksNeedReview = useMemo(() =>
+    (report?.checks ?? []).some((check) => presentCheck(check).concerning), [report])
+  const [healthChecksOpen, setHealthChecksOpen] = useState(false)
+
+  useEffect(() => {
+    if (checksNeedReview) setHealthChecksOpen(true)
+  }, [checksNeedReview])
 
   return (
     <div className="space-y-5">
@@ -254,27 +261,28 @@ export function SystemInventory({
         </div>
       )}
 
-      <Card>
-        <CardHeader className="border-b">
-          <CardTitle className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h2 className="text-base font-semibold">Installed plugins</h2>
-              <p className="mt-1 text-sm font-normal text-muted-foreground">Everything currently discovered by the host.</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <Badge variant="secondary">{plugins.length}</Badge>
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={pluginMutation.status === 'pending' || checkingUpdates}
-                onClick={() => void onCheckUpdates()}
-              >
-                {checkingUpdates ? 'Checking…' : 'Check for updates'}
-              </Button>
-            </div>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
+      <details data-testid="installed-features-details" className="group overflow-hidden rounded-xl border border-border bg-card">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 marker:hidden">
+          <span className="min-w-0">
+            <span className="block text-sm font-semibold">Installed features</span>
+            <span className="block text-xs text-muted-foreground">Browse plugins, versions, activation state, and updates.</span>
+          </span>
+          <span className="flex shrink-0 items-center gap-2">
+            <Badge variant="secondary">{plugins.length}</Badge>
+            <ChevronRight aria-hidden="true" className="size-4 text-muted-foreground transition-transform group-open:rotate-90" />
+          </span>
+        </summary>
+        <div className="space-y-3 border-t border-border p-4">
+          <div className="flex justify-end">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={pluginMutation.status === 'pending' || checkingUpdates}
+              onClick={() => void onCheckUpdates()}
+            >
+              {checkingUpdates ? 'Checking…' : 'Check for updates'}
+            </Button>
+          </div>
           {(error || backgroundError) && (
             <div role="alert" className="rounded-lg border border-warning/25 bg-warning/10 px-3 py-2 text-sm text-warning">
               Plugin inventory could not be refreshed: {error ?? backgroundError}
@@ -327,17 +335,21 @@ export function SystemInventory({
               </table>
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </details>
 
-      <Card>
-        <CardHeader className="border-b">
-          <CardTitle>
-            <h2 className="text-base font-semibold">Runtime</h2>
-            <p className="mt-1 text-sm font-normal text-muted-foreground">Current host process and connected client sessions.</p>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
+      <details data-testid="bakin-host-details" className="group overflow-hidden rounded-xl border border-border bg-card">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 marker:hidden">
+          <span className="min-w-0">
+            <span className="block text-sm font-semibold">Bakin host details</span>
+            <span className="block text-xs text-muted-foreground">Process, uptime, memory, port, and connected sessions.</span>
+          </span>
+          <span className="flex shrink-0 items-center gap-2">
+            <Badge variant="secondary">{sessions === null ? 'Unavailable' : `${sessions} ${sessions === 1 ? 'session' : 'sessions'}`}</Badge>
+            <ChevronRight aria-hidden="true" className="size-4 text-muted-foreground transition-transform group-open:rotate-90" />
+          </span>
+        </summary>
+        <div className="border-t border-border p-4">
           <div className="grid gap-3 @[30rem]/health-system:grid-cols-2 @[50rem]/health-system:grid-cols-3 @[70rem]/health-system:grid-cols-6">
             <StatTile icon={Users} label="Connected sessions" value={sessions === null ? '—' : sessions} sub="Summed across agents" />
             <StatTile icon={Clock3} label="Uptime" value={live?.upSince ? formatUptime(live.upSince) : '—'} sub="Current host process" />
@@ -359,20 +371,26 @@ export function SystemInventory({
               </ul>
             </details>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </details>
 
-      <Card>
-        <CardHeader className="border-b">
-          <CardTitle className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <h2 className="text-base font-semibold">Full check inventory</h2>
-              <p className="mt-1 text-sm font-normal text-muted-foreground">Every registered check, including healthy and not-applicable results.</p>
-            </div>
+      <details
+        data-testid="all-health-checks-details"
+        open={healthChecksOpen}
+        onToggle={(event) => setHealthChecksOpen(event.currentTarget.open)}
+        className="group overflow-hidden rounded-xl border border-border bg-card"
+      >
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 marker:hidden">
+          <span className="min-w-0">
+            <span className="block text-sm font-semibold">All health checks</span>
+            <span className="block text-xs text-muted-foreground">Every registered check, including healthy and not-applicable evidence.</span>
+          </span>
+          <span className="flex shrink-0 items-center gap-2">
             <Badge variant="secondary">{report?.checks.length ?? 0} checks</Badge>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
+            <ChevronRight aria-hidden="true" className="size-4 text-muted-foreground transition-transform group-open:rotate-90" />
+          </span>
+        </summary>
+        <div className="border-t border-border p-4">
           {!report ? (
             <p className="text-sm text-muted-foreground">Waiting for the canonical health report…</p>
           ) : groupedChecks.length === 0 ? (
@@ -414,8 +432,8 @@ export function SystemInventory({
               })}
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </details>
     </div>
   )
 }
