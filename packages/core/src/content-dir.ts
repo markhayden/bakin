@@ -118,6 +118,8 @@ export interface BakinPaths {
   /** Data dir for Bakin's private antfly instance (created on demand by the adapter). */
   antfly: string
   db: string
+  /** Bakin-owned bin dir for capability-pack binaries; prepended to PATH at server boot. */
+  bin: string
 }
 
 export function getBakinPaths(): BakinPaths {
@@ -144,6 +146,7 @@ export function getBakinPaths(): BakinPaths {
     logs: join(home, 'logs'),
     antfly: join(home, 'antfly'),
     db: join(home, 'bakin.db'),
+    bin: join(home, 'bin'),
   }
 }
 

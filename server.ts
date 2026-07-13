@@ -35,6 +35,7 @@ import { runStartupRecovery } from './src/core/server/startup-recovery'
 import { createRequestHandler } from './src/core/server/request-handler'
 import { getBootId } from './src/core/boot-id'
 import { acquireServerLock, formatBindFailureHelp } from './src/core/server-lock'
+import { ensureBakinBinOnPath, injectIntegrationEnv } from './src/core/secret-env'
 import { registerShutdownHandlers, triggerShutdown } from './src/core/lifecycle'
 import { generateDocs } from './src/core/api-docs'
 import type { buildOpenApiDocument } from './packages/host/src/api/docs-runtime'
@@ -79,6 +80,12 @@ const CONTENT_DIR = getContentDir()
     process.exit(1)
   }
 }
+
+// Integration env + PATH injection BEFORE services/dispatch: Pi agent shells
+// inherit this process's env, so stored integration secrets (unset-only,
+// env-first) and Bakin's bin dir must be in place before any turn can run.
+injectIntegrationEnv()
+ensureBakinBinOnPath()
 
 /**
  * Build the source list the OpenAPI runtime builder consumes from the
