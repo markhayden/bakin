@@ -84,12 +84,12 @@ describe('OverviewTab', () => {
     expect(screen.queryByTestId('setup-fix-budget')).toBeNull()
   })
 
-  it('warn rows for headless-fixable components expose a Fix button that posts the install', async () => {
+  it('warn rows expose Repair, confirm-gated, posting the install and reporting failure reasons', async () => {
     const posts: Array<Record<string, unknown>> = []
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       if (String(input).includes('/api/runtime/onboarding/install')) {
         posts.push(JSON.parse(String(init?.body)))
-        return new Response(JSON.stringify({ ok: true, result: { status: 'installed' } }), { status: 200 })
+        return new Response(JSON.stringify({ ok: true, result: { status: 'installed', message: 'synced 3 agents' } }), { status: 200 })
       }
       return new Response('{}', { status: 200 })
     }) as unknown as typeof fetch
@@ -103,8 +103,34 @@ describe('OverviewTab', () => {
       />,
     )
     fireEvent.click(screen.getByTestId('setup-fix-agent-sync'))
+    await settleReact()
+    // Confirmation first — nothing posted yet.
+    expect(posts).toEqual([])
+    fireEvent.click(screen.getByTestId('setup-repair-confirm'))
     await waitFor(() => expect(posts).toEqual([{ component: 'agent-sync' }]))
     await waitFor(() => expect(refreshed.length).toBe(1))
+  })
+
+  it('a failed repair surfaces the reason', async () => {
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      if (String(input).includes('/api/runtime/onboarding/install')) {
+        return new Response(JSON.stringify({ ok: false, result: { status: 'failed', message: 'runtime unreachable' } }), { status: 200 })
+      }
+      return new Response('{}', { status: 200 })
+    }) as unknown as typeof fetch
+
+    render(
+      <OverviewTab
+        report={report}
+        onRefreshOnboarding={() => {}}
+        onboarding={[{ name: 'plugin-assets', status: 'warn', message: '1 drifted' }]}
+      />,
+    )
+    fireEvent.click(screen.getByTestId('setup-fix-plugin-assets'))
+    await settleReact()
+    fireEvent.click(screen.getByTestId('setup-repair-confirm'))
+    await waitFor(() => screen.getByRole('alert'))
+    expect(screen.getByRole('alert').textContent).toContain('runtime unreachable')
   })
 })
 
@@ -198,13 +224,12 @@ describe('SwitchTab', () => {
   it('the real switch is gated behind a TYPED confirm dialog', async () => {
     render(<SwitchTab report={report} onSwitched={() => {}} />)
     fireEvent.click(screen.getByTestId('switch-target-openclaw'))
-    // Consequence callout is visible before any action.
-    expect(screen.getByText('Before you switch')).toBeTruthy()
     fireEvent.click(screen.getByTestId('switch-execute'))
     await settleReact()
 
-    // Dialog open, nothing posted; confirm stays disabled until the adapter
-    // name is typed — switching is deliberate, not one accidental click.
+    // Consequences live in the dialog; nothing posted; confirm stays
+    // disabled until the adapter name is typed — switching is deliberate.
+    expect(screen.getByText(/Agents start fresh sessions on openclaw/)).toBeTruthy()
     expect(posts).toEqual([])
     expect((screen.getByTestId('switch-confirm') as HTMLButtonElement).disabled).toBe(true)
     fireEvent.change(screen.getByRole('textbox'), { target: { value: 'openclaw' } })

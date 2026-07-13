@@ -7,7 +7,9 @@ import { useState } from 'react'
 import { Loader2, Wrench } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { ConfirmDialog } from '@/components/confirm-dialog'
 import { Skeleton } from '@/components/ui/skeleton'
+import { toast } from '@/hooks/use-toast'
 import { capabilityRows } from '../../lib/runtime-report'
 import { ModeBadge, MODE_LEGEND, StatusBadge, capabilityStateCopy } from './shared'
 import type { CapabilityReport, OnboardingComponentStatus } from './types'
@@ -97,28 +99,31 @@ function CapabilityGrid({ report }: { report: CapabilityReport }) {
 const FIXABLE_COMPONENTS = new Set(['mkdir', 'settings', 'search', 'search-models', 'plugin-assets', 'agent-sync'])
 
 function SetupSection({ onboarding, onFixed }: { onboarding: OnboardingComponentStatus[] | null | undefined; onFixed: () => void }) {
-  const [fixing, setFixing] = useState<string | null>(null)
-  const [fixError, setFixError] = useState<string | null>(null)
+  const [confirmTarget, setConfirmTarget] = useState<OnboardingComponentStatus | null>(null)
+  const [repairing, setRepairing] = useState<string | null>(null)
+  const [repairError, setRepairError] = useState<string | null>(null)
 
-  const runFix = async (name: string) => {
-    setFixing(name)
-    setFixError(null)
+  const runRepair = async (name: string) => {
+    setConfirmTarget(null)
+    setRepairing(name)
+    setRepairError(null)
     try {
       const res = await fetch('/api/runtime/onboarding/install', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ component: name }),
       })
-      const body = await res.json().catch(() => null) as { ok?: boolean; result?: { message?: string }; error?: string } | null
+      const body = await res.json().catch(() => null) as { ok?: boolean; result?: { message?: string; status?: string }; error?: string } | null
       if (!res.ok || body?.ok === false) {
-        setFixError(`${name}: ${body?.result?.message ?? body?.error ?? `HTTP ${res.status}`}`)
+        setRepairError(`${name} repair failed: ${body?.result?.message ?? body?.error ?? `HTTP ${res.status}`}`)
         return
       }
+      toast(`Repaired ${name}${body?.result?.message ? ` — ${body.result.message}` : ''}`, 'success')
       onFixed()
     } catch (err) {
-      setFixError(`${name}: ${err instanceof Error ? err.message : String(err)}`)
+      setRepairError(`${name} repair failed: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
-      setFixing(null)
+      setRepairing(null)
     }
   }
 
@@ -137,16 +142,16 @@ function SetupSection({ onboarding, onFixed }: { onboarding: OnboardingComponent
       {onboarding === null && (
         <p className="text-sm text-muted-foreground">Setup checks are unavailable right now — retry with Refresh.</p>
       )}
-      {fixError && (
-        <p role="alert" className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">{fixError}</p>
+      {repairError && (
+        <p role="alert" className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">{repairError}</p>
       )}
       {onboarding && (
         <Card>
           <CardContent className="divide-y divide-border p-0">
             {onboarding.map((component) => {
-              const fixable = component.status !== 'ok' && FIXABLE_COMPONENTS.has(component.name)
+              const repairable = component.status !== 'ok' && FIXABLE_COMPONENTS.has(component.name)
               return (
-                <div key={component.name} className="flex items-start justify-between gap-3 px-4 py-2.5">
+                <div key={component.name} className="flex items-center justify-between gap-3 px-4 py-2.5">
                   <div className="min-w-0">
                     <p className="text-sm font-medium">{component.name}</p>
                     <p className="truncate text-xs text-muted-foreground" title={component.message}>{component.message}</p>
@@ -155,16 +160,17 @@ function SetupSection({ onboarding, onFixed }: { onboarding: OnboardingComponent
                     )}
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
-                    {fixable && (
+                    {repairable && (
                       <Button
                         size="sm"
                         variant="outline"
-                        disabled={fixing !== null}
-                        onClick={() => void runFix(component.name)}
+                        disabled={repairing !== null}
+                        onClick={() => setConfirmTarget(component)}
                         data-testid={`setup-fix-${component.name}`}
                       >
-                        {fixing === component.name ? <Loader2 className="mr-1.5 size-3 animate-spin" /> : <Wrench className="mr-1.5 size-3" />}
-                        Fix
+                        {repairing === component.name
+                          ? (<><Loader2 className="mr-1.5 size-3 animate-spin" /> Repairing…</>)
+                          : (<><Wrench className="mr-1.5 size-3" /> Repair</>)}
                       </Button>
                     )}
                     <StatusBadge status={component.status} />
@@ -175,6 +181,18 @@ function SetupSection({ onboarding, onFixed }: { onboarding: OnboardingComponent
           </CardContent>
         </Card>
       )}
+
+      <ConfirmDialog
+        open={confirmTarget !== null}
+        onCancel={() => setConfirmTarget(null)}
+        title={`Repair ${confirmTarget?.name}?`}
+        description={confirmTarget
+          ? `${confirmTarget.message}. This runs the same repair as \`bakin install ${confirmTarget.name}\` and may take a moment.`
+          : ''}
+        confirmLabel="Repair"
+        confirmTestId="setup-repair-confirm"
+        onConfirm={() => { if (confirmTarget) void runRepair(confirmTarget.name) }}
+      />
     </section>
   )
 }
