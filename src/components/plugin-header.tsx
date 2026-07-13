@@ -85,7 +85,7 @@ export function PluginHeader({
       data-slot="plugin-header"
     >
       <div
-        className="flex min-w-0 flex-1 basis-64 flex-wrap items-center gap-x-3 gap-y-1"
+        className="flex min-w-0 flex-1 basis-64 flex-col items-start gap-1"
         data-testid="plugin-header-heading"
         data-slot="plugin-header-heading"
       >
@@ -98,15 +98,25 @@ export function PluginHeader({
             {breadcrumbs}
           </div>
         )}
-        <h1 className="min-w-0 break-words text-xl font-semibold text-foreground">{title}</h1>
-        {count !== undefined && (
-          <Badge variant="secondary" className="px-1.5 py-0 font-mono text-[11px] tabular-nums">
-            {count}
-          </Badge>
+        <div
+          className="flex min-w-0 flex-wrap items-center gap-2"
+          data-testid="plugin-header-title-row"
+          data-slot="plugin-header-title-row"
+        >
+          <h1 className="min-w-0 break-words text-xl font-semibold text-foreground">{title}</h1>
+          {count !== undefined && (
+            <Badge variant="secondary" className="px-1.5 py-0 font-mono text-[11px] tabular-nums">
+              {count}
+            </Badge>
+          )}
+        </div>
+        {subtitle && (
+          <p className="w-full min-w-0 max-w-3xl break-words text-sm leading-relaxed text-muted-foreground">
+            {subtitle}
+          </p>
         )}
-        {subtitle && <p className="min-w-0 break-words text-xs text-muted-foreground">{subtitle}</p>}
         {meta && (
-          <div className="min-w-0 break-words" data-slot="plugin-header-meta">
+          <div className="w-full min-w-0 break-words" data-slot="plugin-header-meta">
             {meta}
           </div>
         )}

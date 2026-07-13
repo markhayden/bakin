@@ -82,13 +82,37 @@ describe('PluginHeader search + warm indicator', () => {
 
     expect(root.className).toContain('flex-wrap')
     expect(heading.className).toContain('min-w-0')
-    expect(heading.className).toContain('flex-wrap')
+    expect(heading.className).toContain('flex-col')
     expect(controls.className).toContain('flex-wrap')
     expect(search.className).toContain('max-w-full')
     expect(search.className).toContain('motion-reduce:transition-none')
     expect(search.className).not.toContain('w-[32rem]')
     expect(screen.getByText('Fresh evidence from every required source').className).not.toContain('truncate')
     expect(screen.getByRole('button', { name: 'Run checks' })).toBeDefined()
+  })
+
+  it('keeps supporting copy on its own row beneath the page title', () => {
+    render(
+      <PluginHeader
+        title="Health"
+        subtitle="Act on current issues, compare agents, review activity, and inspect system evidence."
+        count={4}
+        meta={<span>Checked just now</span>}
+        actions={<button type="button">Run checks</button>}
+      />,
+    )
+
+    const heading = screen.getByTestId('plugin-header-heading')
+    const titleRow = screen.getByTestId('plugin-header-title-row')
+    const subtitle = screen.getByText(/Act on current issues/)
+
+    expect(heading.className).toContain('flex-col')
+    expect(titleRow.className).toContain('flex-wrap')
+    expect(titleRow.compareDocumentPosition(subtitle) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(subtitle.className).toContain('w-full')
+    expect(titleRow.textContent).toContain('Health')
+    expect(titleRow.textContent).toContain('4')
+    expect(titleRow.textContent).not.toContain('Act on current issues')
   })
 
   it('places additive breadcrumbs above the title without truncating them', () => {
