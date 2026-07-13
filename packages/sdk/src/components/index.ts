@@ -35,6 +35,9 @@ export { EmptyState } from '@/components/empty-state'
 /** Sticky save/discard bar for staged-draft pages (THE dirty-state pattern) + `useUnsavedGuard`. */
 export { SaveBar, useUnsavedGuard } from '@/components/save-bar'
 export type { SaveBarProps } from '@/components/save-bar'
+/** Full navigation guard for dirty surfaces: beforeunload + TanStack history block + anchor interception + exit dialog. */
+export { useUnsavedChangesGuard } from '@/components/unsaved-changes-guard'
+export type { UnsavedChangesGuardOptions } from '@/components/unsaved-changes-guard'
 /** Titled card with icon + a one-line "why this matters" description — the standard section wrapper. */
 export { SectionCard } from '@/components/section-card'
 export type { SectionCardProps } from '@/components/section-card'

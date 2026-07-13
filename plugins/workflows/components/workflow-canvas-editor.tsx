@@ -55,7 +55,7 @@ import { getNodeRendererSnapshot, subscribeNodeRenderers } from '../lib/node-ren
 import { NodeTypePalette, PALETTE_DRAG_MIME_TYPE } from './node-type-palette'
 import { NodeConfigDrawer } from './node-config-drawer'
 import { WorkflowDetailsDrawer } from './workflow-details-drawer'
-import { useUnsavedChangesGuard } from './use-unsaved-changes-guard'
+import { useUnsavedChangesGuard } from '@makinbakin/sdk/components'
 import { ManagedWorkflowCopyDialog } from './managed-workflow-copy-dialog'
 import {
   clearWorkflowDialogFieldError,
@@ -293,6 +293,8 @@ export function WorkflowCanvasEditor({
     saving,
     canSaveInPlace,
     saveDisabled: nodeDrawerDirty,
+    title: 'Unsaved workflow changes',
+    description: 'You have unsaved changes on this workflow. Save them before leaving, discard them, or stay on the canvas.',
     onCancel,
     onSaveAndExit: async () => {
       if (nodeDrawerDirty) {
