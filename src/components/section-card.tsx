@@ -35,12 +35,16 @@ export function SectionCard({
   return (
     <Card className={className} data-section-card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-sm font-medium">
+        <CardTitle className="flex items-center gap-2 text-base font-semibold">
           {Icon && <Icon className="size-4 text-muted-foreground" />}
           {title}
         </CardTitle>
         {/* Caption tier, not body copy — the description must never compete with the section's content. */}
-        {description && <CardDescription className="mb-1.5 mt-1 max-w-3xl text-xs text-muted-foreground/80">{description}</CardDescription>}
+        {description && (
+          <CardDescription className="mb-1.5 mt-1 max-w-3xl text-sm leading-relaxed text-muted-foreground">
+            {description}
+          </CardDescription>
+        )}
         {action && <CardAction>{action}</CardAction>}
       </CardHeader>
       <CardContent className={cn('space-y-3', contentClassName)}>{children}</CardContent>

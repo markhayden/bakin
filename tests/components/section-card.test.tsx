@@ -32,6 +32,23 @@ describe('SectionCard', () => {
     expect(document.querySelector('[data-section-card]')).not.toBeNull()
   })
 
+  it('gives the title and explanation enough visual weight to scan', () => {
+    render(
+      <SectionCard title="Search readiness" description="Can Bakin find existing information and save new changes?">
+        <p>Ready</p>
+      </SectionCard>,
+    )
+
+    const title = screen.getByText('Search readiness').closest('[data-slot="card-title"]')
+    const description = screen.getByText(/Can Bakin find/)
+
+    expect(title?.className).toContain('text-base')
+    expect(title?.className).toContain('font-semibold')
+    expect(description.className).toContain('text-sm')
+    expect(description.className).toContain('leading-relaxed')
+    expect(description.className).not.toContain('text-muted-foreground/80')
+  })
+
   it('renders the icon and header action when provided', () => {
     render(
       <SectionCard title="Logos" icon={StubIcon} action={<button>Add logo</button>}>
