@@ -114,7 +114,7 @@ describe('overview kit checklist', () => {
 })
 
 describe('overview rules & terminology summary', () => {
-  it('caps at 3 each with a +N-more jump link; drafts show exactly ONE publish button', async () => {
+  it('fades into a summary + CTA overlay; drafts show exactly ONE publish button', async () => {
     globalThis.fetch = mock(async (input: RequestInfo | URL) => {
       const url = String(input)
       if (url.endsWith('/api/plugins/brands/acme')) {
@@ -138,10 +138,12 @@ describe('overview rules & terminology summary', () => {
     }) as unknown as typeof fetch
 
     await renderDetail()
-    await waitFor(() => expect(document.querySelector('[data-rules-more]')).not.toBeNull())
-    expect(screen.getByText('r3')).toBeDefined()
-    expect(screen.queryByText('r4')).toBeNull() // capped
-    expect(screen.getByText(/2 more rules · 1 more term/)).toBeDefined()
+    // full list renders inside the fade container; the overlay carries the
+    // summary + a real call-to-action instead of a trailing ghost of text
+    await waitFor(() => expect(document.querySelector('[data-fade-more]')).not.toBeNull())
+    expect(screen.getByText('r4')).toBeDefined()
+    expect(screen.getByText(/5 rules · 4 terms/)).toBeDefined()
+    expect(screen.getByRole('button', { name: 'View all in Identity' })).toBeDefined()
 
     // ONE publish button: the draft banner's (hero no longer duplicates it)
     expect(screen.getAllByRole('button', { name: /Publish/ }).length).toBe(1)

@@ -40,6 +40,56 @@ const TABS = [
 const isHex = (h: string) => /^#[0-9a-fA-F]{6}$/.test(h)
 /** Frontmatter is machine metadata — previews render the body only. */
 const stripFrontmatter = (md: string) => md.replace(/^---\n[\s\S]*?\n---\n?/, '')
+
+/**
+ * Preview container that fades long content into a solid bottom overlay with a
+ * summary + call-to-action — a trailing ghost of faded text is unreadable AND
+ * undiscoverable. The overlay renders when the content actually overflows
+ * (ResizeObserver) or the caller knows there's more (`hasMore`).
+ */
+function FadeMore({
+  summary, actionLabel, onAction, hasMore = false, className, children,
+}: {
+  summary?: string
+  actionLabel: string
+  onAction: () => void
+  /** Caller-known "there is more than fits" hint — jsdom has no layout, and counts beat measurement when we have them. */
+  hasMore?: boolean
+  className?: string
+  children: React.ReactNode
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [overflowing, setOverflowing] = useState(false)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const check = () => setOverflowing(el.scrollHeight > el.clientHeight + 4)
+    check()
+    const ro = new ResizeObserver(check)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+  const showOverlay = overflowing || hasMore
+
+  return (
+    <div className="relative">
+      <div ref={ref} className={`max-h-64 overflow-hidden ${showOverlay ? 'pb-8' : ''} ${className ?? ''}`}>
+        {children}
+      </div>
+      {showOverlay && (
+        <div
+          className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-3 bg-gradient-to-t from-card via-card/95 to-transparent pt-14"
+          data-fade-more
+        >
+          <span className="min-w-0 truncate pb-1 text-xs text-muted-foreground">{summary}</span>
+          <Button variant="outline" size="sm" className="shrink-0" onClick={onAction} data-fade-more-action>
+            {actionLabel}
+          </Button>
+        </div>
+      )}
+    </div>
+  )
+}
 /** Placeholder hex for a freshly added palette row — a pristine row is dropped on save, not blocked. */
 const BLANK_HEX = '#888888'
 
@@ -609,7 +659,15 @@ function OverviewTab({
         >
           {voice === null
             ? <p className="text-sm text-muted-foreground">No voice.md yet.</p>
-            : <div className="prose-invert max-h-56 max-w-none overflow-hidden text-sm [mask-image:linear-gradient(to_bottom,black_70%,transparent)]"><MarkdownContent content={stripFrontmatter(voice)} /></div>}
+            : (
+              <FadeMore
+                summary="Preview only"
+                actionLabel="Read the full voice guide"
+                onAction={() => onEditDoc('guidelines', 'voice.md')}
+              >
+                <div className="prose-invert max-w-none text-sm"><MarkdownContent content={stripFrontmatter(voice)} /></div>
+              </FadeMore>
+            )}
         </SectionCard>
 
         <SectionCard
@@ -641,9 +699,8 @@ function OverviewTab({
 }
 
 /**
- * Overview summary of rules + terminology — a taste, not the whole list (the
- * Voice card next to it fades out the same way). Full editing lives on the
- * Identity tab, one click away.
+ * Overview preview of rules + terminology — same fade-into-overlay treatment
+ * as the Voice card beside it. Full editing lives on the Identity tab.
  */
 const SUMMARY_ROWS = 3
 function RulesTermsSummary({ brand, onGoTo }: { brand: BrandManifest; onGoTo: (tab: string) => void }) {
@@ -652,31 +709,21 @@ function RulesTermsSummary({ brand, onGoTo }: { brand: BrandManifest; onGoTo: (t
   if (rules.length === 0 && terms.length === 0) {
     return <p className="text-sm text-muted-foreground">None set yet.</p>
   }
-  const moreRules = Math.max(0, rules.length - SUMMARY_ROWS)
-  const moreTerms = Math.max(0, terms.length - SUMMARY_ROWS)
-  const more = [
-    moreRules > 0 ? `${moreRules} more rule${moreRules === 1 ? '' : 's'}` : null,
-    moreTerms > 0 ? `${moreTerms} more term${moreTerms === 1 ? '' : 's'}` : null,
-  ].filter(Boolean)
-
   return (
-    <>
-      {rules.slice(0, SUMMARY_ROWS).map((r) => (
+    <FadeMore
+      summary={`${rules.length} rule${rules.length === 1 ? '' : 's'} · ${terms.length} term${terms.length === 1 ? '' : 's'}`}
+      actionLabel="View all in Identity"
+      onAction={() => onGoTo('identity')}
+      hasMore={rules.length + terms.length > SUMMARY_ROWS * 2}
+      className="space-y-2.5"
+    >
+      {rules.map((r) => (
         <div key={r} className="flex gap-2 text-sm"><span className="text-muted-foreground">›</span><span>{r}</span></div>
       ))}
-      {terms.slice(0, SUMMARY_ROWS).map((t) => (
+      {terms.map((t) => (
         <div key={t.term} className="text-sm"><span className="font-medium">{t.term}</span> <span className="text-muted-foreground">— {t.rule}</span></div>
       ))}
-      {more.length > 0 && (
-        <button
-          className="text-sm text-muted-foreground transition-colors hover:text-foreground"
-          onClick={() => onGoTo('identity')}
-          data-rules-more
-        >
-          + {more.join(' · ')} — view all in Identity
-        </button>
-      )}
-    </>
+    </FadeMore>
   )
 }
 
