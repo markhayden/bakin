@@ -1302,7 +1302,8 @@ function AssetTile({
               : <span className="flex items-center gap-1 text-muted-foreground transition-colors hover:text-foreground"><Plus className="size-3" /> Add a note</span>}
           </button>
         )}
-        <span className="truncate font-mono text-[10px] text-muted-foreground/60">{assetId}</span>
+        {/* Machine detail — surfaces on hover only; the thumbnail + note identify the card. */}
+        <span className="truncate font-mono text-[10px] text-muted-foreground/60 opacity-0 transition-opacity group-hover:opacity-100">{assetId}</span>
       </div>
     </div>
   )

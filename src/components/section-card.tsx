@@ -39,7 +39,8 @@ export function SectionCard({
           {Icon && <Icon className="size-4 text-muted-foreground" />}
           {title}
         </CardTitle>
-        {description && <CardDescription className="mb-1.5 mt-1">{description}</CardDescription>}
+        {/* Caption tier, not body copy — the description must never compete with the section's content. */}
+        {description && <CardDescription className="mb-1.5 mt-1 max-w-3xl text-xs text-muted-foreground/80">{description}</CardDescription>}
         {action && <CardAction>{action}</CardAction>}
       </CardHeader>
       <CardContent className={cn('space-y-3', contentClassName)}>{children}</CardContent>
