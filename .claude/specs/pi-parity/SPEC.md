@@ -1,6 +1,6 @@
 # Pi Runtime Parity — Spec
 
-Status: DRAFT v3 (post-spike revision, pending approval)
+Status: SHIPPED (P1 #662, P2 #664, P3 #666, P4 #667, P5 below; battery §14)
 Date: 2026-07-12
 Owner: Mark (single-user dev box today; spec assumes net-new customer machines)
 Inputs: capability audit `48bd30af`, gap ranking `2535726f` (assets
@@ -526,3 +526,29 @@ readiness check; unresolvable reference = the standard "needs key" state.
 Agent-readable-env caveat unchanged (resolved values still enter process
 env). P1 keeps resolution centralized so this lands without schema or UI
 changes.
+
+## 14. Task-parity battery — LIVE RESULTS (2026-07-13, this box, Pi active)
+
+All spec-§9.8 items ran against the live server post P1–P4 merge:
+
+1. **Research w/ web search** — PASS. Task 2b67707a via the productized
+   web-search-brave pack: real bx searches, honest no-releases finding,
+   cited sources, asset 20260713-web-search-capability-validation-619da4ac.
+2. **Image generate + edit** — PASS. Pixel: asset
+   20260713-instagram-square-image-68dc67bc, v1 generated (openai-codex
+   native) + v2 edited (stars), currentVersion=2 verified.
+3. **Agent self-scheduling** — PASS. Main created schedule `battery-test`
+   (sch_f7b5bd47…), verified via schedule_list, deleted, verified gone.
+4. **Gated workflow + in-app attention** — PASS. battery-gate-test workflow:
+   agent step ran on Pi → gate pending → Workflows nav badge (count 1)
+   captured live in-browser → approved through the durable record (approver
+   captured) → workflow completed, badge cleared, task done.
+5. **Subagent fan-out** — PASS. Main created scout subtask d95f80e8; scout
+   dispatched independently, logged "pong", completed.
+6. **Subagent-model round-trip** — verified by the real-adapter switch +
+   dry-run e2e suites (preservation stash/restore pinned in
+   tests/core/roster-reconcile.test.ts); not re-run live to avoid a
+   disruptive runtime flip on the daily driver.
+
+Status: initiative acceptance criteria met. Spec status → SHIPPED on P5
+merge; reserved lanes (§10) and fast-follow packs move to follow-up issues.
