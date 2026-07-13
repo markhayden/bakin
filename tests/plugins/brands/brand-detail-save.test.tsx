@@ -100,6 +100,9 @@ describe('BrandDetail staged save model', () => {
     expect(putCalls[0].palette).toEqual(BRAND.palette)
     expect(putCalls[0].rules).toEqual(BRAND.rules)
     expect(putCalls[0].id).toBeUndefined() // identity stripped
+    // publication state is server-owned — a staged snapshot must never carry it
+    expect('draft' in putCalls[0]).toBe(false)
+    expect('draftTaskId' in putCalls[0]).toBe(false)
     await settleReact()
   })
 

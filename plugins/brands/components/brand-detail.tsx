@@ -217,7 +217,9 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
           }
         }
       }
-      const { id: _id, createdAt: _c, updatedAt: _u, ...body } = cleaned
+      // Identity, timestamps, AND publication state are server-owned — the
+      // staged snapshot may carry a stale draft flag from before a publish.
+      const { id: _id, createdAt: _c, updatedAt: _u, draft: _d, draftTaskId: _dt, ...body } = cleaned
       const res = await fetch(`/api/plugins/brands/${brandId}`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -226,10 +228,21 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
         const resBody = (await res.json().catch(() => ({}))) as { error?: string }
         throw new Error(resBody.error ?? `save failed: ${res.status}`)
       }
+      const saved = (await res.json().catch(() => ({}))) as { brand?: { updatedAt?: string } }
       await refresh()
-      // Clear ONLY if nothing new was staged during the round-trip.
-      setStaged((prev) => (prev === snapshot ? null : prev))
-      stagedBaseRef.current = null
+      // Clear ONLY if nothing new was staged during the round-trip — and when
+      // edits DID survive, re-arm the freshness gate against the version this
+      // save just produced (a null base would skip the gate on the next save).
+      setStaged((prev) => {
+        if (prev === snapshot) {
+          stagedBaseRef.current = null
+          return null
+        }
+        // Unparseable response keeps the OLD base — the gate then trips (safe
+        // direction) instead of silently skipping.
+        stagedBaseRef.current = saved.brand?.updatedAt ?? stagedBaseRef.current
+        return prev
+      })
       overwriteArmedRef.current = false
       return true
     } catch (err) {
@@ -485,8 +498,14 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
           brand={b}
           brandId={brandId}
           onPublish={() => setPublishConfirm(true)}
-          // Explicit list navigation — history-back would land on the brand we just deleted.
-          onDeleted={() => void navigate({ to: '/brands' })}
+          // Explicit list navigation — history-back would land on the brand we
+          // just deleted. Discard FIRST and let the guard's effect unregister
+          // before navigating, or the unsaved-changes dialog blocks the exit
+          // and offers to Save to a brand that no longer exists.
+          onDeleted={() => {
+            discard()
+            setTimeout(() => void navigate({ to: '/brands' }), 0)
+          }}
           onChanged={() => void refresh()}
         />
       )}
@@ -906,7 +925,7 @@ function DocsEditor({
                     />
                     <TooltipContent side="top" className="max-w-64">
                       Included verbatim in every branded task's context (within the size budget). Leave off to keep
-                      context small — agents can still fetch the doc on demand.
+                      context small — agents can still fetch the doc on demand. Takes effect when you save.
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
@@ -928,8 +947,8 @@ function DocsEditor({
                       }
                     />
                     <TooltipContent side="top" className="max-w-64">
-                      Off = kept on disk but never recalled into tasks. Use it to bench an outdated or wrong lesson
-                      without deleting it.
+                      Off = kept on disk but never recalled into tasks — use it to bench an outdated or wrong lesson
+                      without deleting it. Takes effect when you save.
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
@@ -1009,8 +1028,10 @@ function BrandAssetsSection({ brand, onSave }: { brand: BrandManifest; onSave: (
   const [pickTarget, setPickTarget] = useState<{ title: string; description: string; onPick: (assetId: string) => void } | null>(null)
   // One confirm for every remove on this tab. Copy stays honest: removal only
   // drops the brand's REFERENCE (staged until Save) — the file stays in the
-  // asset library.
-  const [removeTarget, setRemoveTarget] = useState<{ title: string; description: string; apply: () => void } | null>(null)
+  // asset library. `patch` computes from the manifest AT CONFIRM TIME, never a
+  // snapshot from when the dialog opened (the drafting agent may have written
+  // meanwhile; a stale-closure apply silently erased its work).
+  const [removeTarget, setRemoveTarget] = useState<{ title: string; description: string; patch: (current: BrandManifest) => ManifestPatch } | null>(null)
 
   const loadAssets = useCallback(async () => {
     try {
@@ -1036,7 +1057,7 @@ function BrandAssetsSection({ brand, onSave }: { brand: BrandManifest; onSave: (
   const openPicker = (title: string, description: string, onPick: (assetId: string) => void) =>
     setPickTarget({ title, description, onPick })
 
-  const tile = (assetId: string, onRemove: () => void, extra?: React.ReactNode) => (
+  const tile = (assetId: string, patch: (current: BrandManifest) => ManifestPatch, extra?: React.ReactNode) => (
     <AssetTile
       key={assetId}
       info={assets[assetId]}
@@ -1046,7 +1067,7 @@ function BrandAssetsSection({ brand, onSave }: { brand: BrandManifest; onSave: (
         setRemoveTarget({
           title: 'Remove this reference?',
           description: `${assets[assetId]?.description || assetId} stays in your asset library — this brand just stops referencing it. Takes effect when you save.`,
-          apply: onRemove,
+          patch,
         })
       }
       extra={extra}
@@ -1075,7 +1096,9 @@ function BrandAssetsSection({ brand, onSave }: { brand: BrandManifest; onSave: (
         confirmLabel="Remove"
         confirmTestId="asset-remove-confirm"
         onConfirm={() => {
-          removeTarget?.apply()
+          // Compute the patch from the CURRENT manifest — the brand may have
+          // refreshed (agent writes) while the dialog was open.
+          if (removeTarget) onSave(removeTarget.patch(brand))
           setRemoveTarget(null)
         }}
         onCancel={() => setRemoveTarget(null)}
@@ -1102,7 +1125,7 @@ function BrandAssetsSection({ brand, onSave }: { brand: BrandManifest; onSave: (
             {brand.logos.map((logo, i) =>
               tile(
                 logo.assetId,
-                () => onSave({ logos: brand.logos.filter((_, j) => j !== i) }),
+                (m) => ({ logos: m.logos.filter((l) => l.assetId !== logo.assetId) }),
                 <VariantSelect
                   value={logo.variant}
                   onChange={(variant) => onSave({ logos: brand.logos.map((l, j) => (j === i ? { ...l, variant } : l)) })}
@@ -1148,7 +1171,7 @@ function BrandAssetsSection({ brand, onSave }: { brand: BrandManifest; onSave: (
                     setRemoveTarget({
                       title: `Remove group ${group.name}?`,
                       description: `Its ${group.assetIds.length} reference${group.assetIds.length === 1 ? '' : 's'} come off this brand — the files stay in your asset library. Takes effect when you save.`,
-                      apply: () => onSave({ assetGroups: brand.assetGroups.filter((_, j) => j !== gi) }),
+                      patch: (m) => ({ assetGroups: m.assetGroups.filter((g) => g.name !== group.name) }),
                     })
                   }
                   aria-label={`Remove group ${group.name}`}
@@ -1162,7 +1185,7 @@ function BrandAssetsSection({ brand, onSave }: { brand: BrandManifest; onSave: (
             {group.assetIds.length > 0 && (
               <div className="grid gap-3 lg:grid-cols-2">
                 {group.assetIds.map((assetId) =>
-                  tile(assetId, () => onSave({ assetGroups: brand.assetGroups.map((g, j) => (j === gi ? { ...g, assetIds: g.assetIds.filter((id) => id !== assetId) } : g)) })),
+                  tile(assetId, (m) => ({ assetGroups: m.assetGroups.map((g) => (g.name === group.name ? { ...g, assetIds: g.assetIds.filter((id) => id !== assetId) } : g)) })),
                 )}
               </div>
             )}
@@ -1204,7 +1227,7 @@ function BrandAssetsSection({ brand, onSave }: { brand: BrandManifest; onSave: (
         {(brand.defaultImageReferences ?? []).length > 0 && (
           <div className="grid gap-3 lg:grid-cols-2">
             {(brand.defaultImageReferences ?? []).map((assetId) =>
-              tile(assetId, () => onSave({ defaultImageReferences: (brand.defaultImageReferences ?? []).filter((id) => id !== assetId) })),
+              tile(assetId, (m) => ({ defaultImageReferences: (m.defaultImageReferences ?? []).filter((id) => id !== assetId) })),
             )}
           </div>
         )}
@@ -1337,12 +1360,23 @@ function DraftBanner({ brand, brandId, onPublish }: { brand: BrandManifest; bran
   const blocked = useBlockedCount(brandId, true)
   const [taskColumn, setTaskColumn] = useState<string | null>(null)
 
+  // Stale-response guard (ui-patterns #9): rapid taskboard events can resolve
+  // out of order — only the newest request may paint.
+  const loadSeqRef = useRef(0)
   const loadTask = useCallback(async () => {
     if (!taskId) return
+    const seq = ++loadSeqRef.current
     try {
       const res = await fetch(`/api/plugins/tasks/${encodeURIComponent(taskId)}`)
-      if (!res.ok) return
+      if (seq !== loadSeqRef.current) return
+      if (!res.ok) {
+        // Task deleted (404 etc.) — clear rather than freeze the last-known
+        // status as "Agent working" forever.
+        setTaskColumn(null)
+        return
+      }
       const body = (await res.json()) as { column?: string }
+      if (seq !== loadSeqRef.current) return
       setTaskColumn(body.column ?? null)
     } catch { /* the banner degrades to the static copy */ }
   }, [taskId])

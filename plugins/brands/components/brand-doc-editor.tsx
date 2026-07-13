@@ -22,6 +22,13 @@ const KIND_LABEL: Record<string, string> = { guidelines: 'Guidelines', lessons: 
 
 export function BrandDocEditorPage() {
   const { brandId, kind, name } = useParams({ strict: false }) as { brandId: string; kind: string; name: string }
+  // key: same-route param navigation (doc A → doc B via history) reuses the
+  // mounted component — without a remount, doc A's content/dirty/created
+  // state survives under doc B's URL and Save would cross-write files.
+  return <BrandDocEditorInner key={`${brandId}/${kind}/${name}`} brandId={brandId} kind={kind} name={name} />
+}
+
+function BrandDocEditorInner({ brandId, kind, name }: { brandId: string; kind: string; name: string }) {
   // TanStack Router JSON-parses search values — `?create=1` arrives as the
   // NUMBER 1, not the string '1'. Coerce before comparing.
   const search = useSearch({ strict: false }) as { create?: string | number }

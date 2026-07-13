@@ -49,6 +49,23 @@ Cross-cutting UI lessons distilled from the chat/conversation-kit overhaul (2026
 - **TanStack search params are JSON-parsed.** `?create=1` arrives as the
   NUMBER 1, not `'1'` — String()-coerce before comparing. RTL mocks that
   return strings hide this; it only breaks in a real browser.
+- **Wholesale PUTs need server-owned fields.** A "replace the manifest" route
+  that trusts the whole body lets a stale staged snapshot flip state it
+  shouldn't own (a saved draft flag silently un-published a brand). Lifecycle
+  state (draft/publication, stamped task ids) is carried over from disk
+  server-side AND omitted from the route's body schema; clients strip it too.
+- **Confirm dialogs must compute their action from confirm-TIME state.** An
+  `apply` closure captured at open time stages data from a render that may
+  have refreshed underneath (agent writes) — store a `(current) => patch`
+  function and feed it the live entity on confirm.
+- **Per-request SSE turn routes: wire the abort chain end-to-end.** The node
+  adapter now builds Requests with a real `req.signal` (aborts when the client
+  socket closes un-ended); the route combines it with a `ReadableStream
+  cancel()` into ONE AbortController passed to `messaging.stream` — otherwise
+  Stop/tab-close leaves the agent turn running and billing. And when the
+  prompt carries full context each turn, use a PER-TURN threadId: a stable
+  session re-accumulates those prompts (quadratic token cost) and a zombie
+  aborted turn can interleave the next turn's session.
 - **Staged-draft surfaces need four guard rails** (brands review, 2026-07):
   key the component by the route param (same-route param nav reuses the
   mounted component — state bleeds across records); freshness-gate whole-

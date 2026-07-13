@@ -376,6 +376,29 @@ describe('builder flow (#419 §9.1)', () => {
     expect(task?.description).not.toContain('Fetch and READ')
   })
 
+  it('a manifest PUT can NEVER flip publication state (draft/draftTaskId are server-owned)', async () => {
+    // published brand + a stale staged body claiming draft:true → stays published
+    await createAcme()
+    const put = await callRoute(route('PUT', '/:brandId'), activated.ctx, {
+      searchParams: { brandId: 'acme' },
+      body: { name: 'Acme', palette: [], logos: [], assetGroups: [], draft: true, draftTaskId: 'ghost-task' },
+    })
+    expect(put.status).toBe(200)
+    expect((put.body.brand as { draft?: boolean }).draft).toBeUndefined()
+    expect((put.body.brand as { draftTaskId?: string }).draftTaskId).toBeUndefined()
+
+    // draft brand + a body omitting draft → stays a draft
+    const built = await callRoute(route('POST', '/builder'), activated.ctx, {
+      body: { id: 'still-draft', name: 'Still Draft', agent: 'pixel', product: 'x' },
+    })
+    const putDraft = await callRoute(route('PUT', '/:brandId'), activated.ctx, {
+      searchParams: { brandId: 'still-draft' },
+      body: { name: 'Still Draft', palette: [], logos: [], assetGroups: [] },
+    })
+    expect((putDraft.body.brand as { draft?: boolean }).draft).toBe(true)
+    expect((putDraft.body.brand as { draftTaskId?: string }).draftTaskId).toBe(String(built.body.taskId))
+  })
+
   it('unpublish flips a published brand back to draft; 400 when already a draft', async () => {
     await createAcme()
     const un = await callRoute(route('POST', '/:brandId/unpublish'), activated.ctx, {
@@ -513,6 +536,74 @@ describe('doc brainstorm (embedded editing help)', () => {
     expect(seenArgs.ephemeral).toBe(true)
     expect(seenArgs.agentId).toBe('pixel')
     expect(String(seenArgs.threadId)).toContain('brand-doc')
+  })
+
+  it('uses a fresh per-turn threadId and caps history in the prompt (no quadratic session pileup)', async () => {
+    await createAcme()
+    const seenThreads: string[] = []
+    let seenPrompt = ''
+    const runtime = activated.ctx.runtime as unknown as {
+      messaging: { stream: (args: Record<string, unknown>) => AsyncIterable<Record<string, unknown>> }
+    }
+    runtime.messaging = {
+      ...(runtime.messaging ?? {}),
+      stream: (args: Record<string, unknown>) => {
+        seenThreads.push(String(args.threadId))
+        seenPrompt = String(args.content)
+        return (async function* () {
+          yield { type: 'text', content: 'ok' }
+        })()
+      },
+    } as typeof runtime.messaging
+
+    const history = Array.from({ length: 12 }, (_, i) => ({ role: 'user' as const, content: `exchange-${i}` }))
+    const call = () =>
+      callRoute(route('POST', '/:brandId/docs/:kind/:name/brainstorm'), activated.ctx, {
+        searchParams: { brandId: 'acme', kind: 'guidelines', name: 'voice.md' },
+        body: { agent: 'pixel', message: 'hi', history },
+        rawResponse: true,
+      })
+    await (await call()).response.text()
+    await (await call()).response.text()
+
+    expect(seenThreads[0]).not.toBe(seenThreads[1]) // per-turn thread
+    expect(seenPrompt).toContain('exchange-11') // newest kept
+    expect(seenPrompt).not.toContain('exchange-0') // oldest capped away (last 8 only)
+  })
+
+  it('cancelling the brainstorm response stream aborts the runtime turn', async () => {
+    await createAcme()
+    let sawAbort = false
+    const runtime = activated.ctx.runtime as unknown as {
+      messaging: { stream: (args: Record<string, unknown>) => AsyncIterable<Record<string, unknown>> }
+    }
+    runtime.messaging = {
+      ...(runtime.messaging ?? {}),
+      stream: (args: Record<string, unknown>) => {
+        const signal = args.signal as AbortSignal
+        return (async function* () {
+          yield { type: 'text', content: 'first' }
+          // hold the turn open until the signal fires or 2s passes
+          await new Promise<void>((resolve) => {
+            if (signal.aborted) return resolve()
+            const t = setTimeout(resolve, 2000)
+            signal.addEventListener('abort', () => { clearTimeout(t); sawAbort = true; resolve() }, { once: true })
+          })
+          if (!signal.aborted) yield { type: 'text', content: 'second' }
+        })()
+      },
+    } as typeof runtime.messaging
+
+    const res = await callRoute(route('POST', '/:brandId/docs/:kind/:name/brainstorm'), activated.ctx, {
+      searchParams: { brandId: 'acme', kind: 'guidelines', name: 'voice.md' },
+      body: { agent: 'pixel', message: 'hi' },
+      rawResponse: true,
+    })
+    const reader = res.response.body!.getReader()
+    await reader.read() // first chunk arrives
+    await reader.cancel() // consumer walks away
+    await new Promise((r) => setTimeout(r, 50))
+    expect(sawAbort).toBe(true)
   })
 
   it('streams an error frame when the runtime turn fails (never a hung stream)', async () => {

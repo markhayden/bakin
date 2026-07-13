@@ -58,10 +58,22 @@ export async function dispatchWebHandler(
       }
     }
 
+    // Client disconnects must reach handlers: long-lived routes (SSE turn
+    // streams) pass `req.signal` into runtime work, and without this wiring
+    // an aborted brainstorm kept the agent turn running (and billing) to
+    // completion server-side. (`on` guarded — test doubles stub a minimal res.)
+    const abort = new AbortController()
+    if (typeof res.on === 'function') {
+      res.on('close', () => {
+        if (!res.writableEnded) abort.abort()
+      })
+    }
+
     const webReq = new Request(url, {
       method: req.method,
       headers,
       body,
+      signal: abort.signal,
     })
 
     const webRes = await handler(webReq, url)

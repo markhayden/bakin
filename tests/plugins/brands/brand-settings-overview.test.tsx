@@ -204,6 +204,32 @@ describe('drafting banner', () => {
     expect(document.querySelector('[data-draft-banner]')).toBeNull()
     await settleReact()
   })
+
+  it('a deleted drafting task clears the status chip instead of freezing it', async () => {
+    mockApi({ draft: true })
+    const base = globalThis.fetch
+    globalThis.fetch = mock(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.endsWith('/api/plugins/brands/acme') && (init?.method ?? 'GET') === 'GET') {
+        return new Response(
+          JSON.stringify({
+            brand: { ...makeBrand(true), draftTaskId: 'task-dead' },
+            guidelines: [], lessons: [], fingerprint: 'sha256:x', completeness: COMPLETENESS,
+          }),
+          { status: 200 },
+        )
+      }
+      if (url.endsWith('/api/plugins/tasks/task-dead')) {
+        return new Response(JSON.stringify({ error: 'Task not found' }), { status: 404 })
+      }
+      return (base as typeof fetch)(input as RequestInfo, init)
+    }) as unknown as typeof fetch
+
+    await renderDetail()
+    await waitFor(() => expect(document.querySelector('[data-draft-banner]')).not.toBeNull())
+    expect(document.querySelector('[data-draft-task-status]')).toBeNull() // no frozen "Agent working"
+    await settleReact()
+  })
 })
 
 describe('publish flow', () => {

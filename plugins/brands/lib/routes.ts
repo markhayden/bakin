@@ -57,7 +57,9 @@ const createBrandBody = z.object({
 })
 
 /** Manifest PUT body: the manifest minus identity/timestamps (server-owned). */
-const manifestPutBody = brandManifestSchema.omit({ id: true, createdAt: true, updatedAt: true })
+// Identity, timestamps, AND publication state are server-owned: draft flips
+// only through publish/unpublish, so a manifest save can never revert them.
+const manifestPutBody = brandManifestSchema.omit({ id: true, createdAt: true, updatedAt: true, draft: true, draftTaskId: true })
 
 function storeError(err: unknown): Response {
   if (err instanceof BrandStoreError) {
@@ -276,10 +278,18 @@ export const brandRoutes = [
           skipWorkflowReason: 'brand-builder authoring task — direct tool work, no workflow applies',
         })
         // Stamp the drafting task onto the manifest — the detail banner shows
-        // its live status and links it, surviving reloads (never just a URL param).
-        {
+        // its live status and links it, surviving reloads (never just a URL
+        // param). NON-FATAL: a failure here must not trip the rollback below,
+        // which would delete the brand while the just-created task lives on,
+        // dispatching an agent at a nonexistent brand. The banner degrades to
+        // the ?draftTask= fallback.
+        try {
           const { updateBrand } = await import('./store')
           await updateBrand(brand.id, (m) => ({ ...m, draftTaskId: task.id }))
+        } catch (stampErr) {
+          log.warn('draftTaskId stamp failed; banner falls back to the URL param', {
+            brandId: brand.id, taskId: task.id, error: String(stampErr),
+          })
         }
         emitChanged(ctx, brand.id, 'brand.created')
         const current = getBrand(brand.id)
@@ -658,6 +668,10 @@ export const brandRoutes = [
           id: current.manifest.id,
           createdAt: current.manifest.createdAt,
           updatedAt: current.manifest.updatedAt,
+          // Publication state carried over from disk — a client saving a stale
+          // staged draft used to silently re-draft a just-published brand.
+          ...(current.manifest.draft !== undefined ? { draft: current.manifest.draft } : {}),
+          ...(current.manifest.draftTaskId !== undefined ? { draftTaskId: current.manifest.draftTaskId } : {}),
         })
         emitChanged(ctx, brand.id, 'brand.updated')
         return Response.json({ brand })
@@ -710,25 +724,46 @@ export const brandRoutes = [
       const docName = parsed.params.name
       const doc = b.docContent ?? readDoc(read.manifest.id, kind, docName) ?? ''
 
+      // Cost caps: the prompt carries the doc + history EVERY turn, so bound
+      // both (last 8 exchanges, 4KB each; doc at 48KB with an honest marker) —
+      // and the thread is PER-TURN below, so the runtime session never
+      // re-accumulates these prompts on top (that combination was quadratic).
+      const cappedDoc = doc.length > 48_000 ? `${doc.slice(0, 48_000)}\n\n[... doc truncated for the brainstorm prompt ...]` : doc
+      const cappedHistory = b.history.slice(-8).map((m) => ({
+        role: m.role,
+        content: m.content.length > 4_000 ? `${m.content.slice(0, 4_000)} [...]` : m.content,
+      }))
+
       const prompt = [
         `You are brainstorming edits to the brand ${kind === 'guidelines' ? 'guideline' : 'lesson'} doc "${docName}" for the brand "${read.manifest.name}" (${read.manifest.id}).`,
         'Give concrete, concise editing feedback or drafted text the operator can paste in. Reply in chat only — do NOT write files or use brand write tools.',
         '',
         '## Current draft',
         '```markdown',
-        doc,
+        cappedDoc,
         '```',
-        ...(b.history.length > 0
-          ? ['', '## Conversation so far', ...b.history.map((m) => `${m.role === 'user' ? 'Operator' : 'You'}: ${m.content}`)]
+        ...(cappedHistory.length > 0
+          ? ['', '## Conversation so far', ...cappedHistory.map((m) => `${m.role === 'user' ? 'Operator' : 'You'}: ${m.content}`)]
           : []),
         '',
         `Operator: ${b.message}`,
       ].join('\n')
 
       const { conversationThreadId } = await import('../../../src/components/conversation/thread-id')
-      const threadId = conversationThreadId('brand-doc', `${read.manifest.id}/${kind}/${docName}`, b.agent)
+      const { randomUUID } = await import('crypto')
+      // Per-TURN thread: the prompt already carries the full (capped) context,
+      // so session reuse would double-pay it; and a zombie turn from an abort
+      // can never interleave with the next turn's session.
+      const threadId = conversationThreadId('brand-doc', `${read.manifest.id}/${kind}/${docName}/${randomUUID()}`, b.agent)
       const encoder = new TextEncoder()
       const frame = (event: string, data: unknown) => encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+
+      // One abort authority: the client's disconnect (req.signal, wired by the
+      // node adapter) OR the stream consumer cancelling — either must stop the
+      // runtime turn, not just the response.
+      const turnAbort = new AbortController()
+      if (req.signal?.aborted) turnAbort.abort()
+      req.signal?.addEventListener('abort', () => turnAbort.abort(), { once: true })
 
       const stream = new ReadableStream<Uint8Array>({
         async start(controller) {
@@ -739,15 +774,17 @@ export const brandRoutes = [
               content: prompt,
               threadId,
               ephemeral: true,
-              signal: req.signal,
+              signal: turnAbort.signal,
             })
             for await (const chunk of turn) {
+              if (turnAbort.signal.aborted) break
               if (chunk.type === 'text' && typeof chunk.content === 'string') final += chunk.content
               controller.enqueue(frame('chunk', chunk))
             }
-            controller.enqueue(frame('done', { content: final }))
+            if (!turnAbort.signal.aborted) controller.enqueue(frame('done', { content: final }))
           } catch (err) {
-            if (!(err instanceof Error && err.name === 'AbortError')) {
+            const aborted = turnAbort.signal.aborted || (err instanceof Error && err.name === 'AbortError')
+            if (!aborted) {
               log.error('brand-doc brainstorm turn failed', err instanceof Error ? err : new Error(String(err)), {
                 brandId: read.manifest.id, doc: docName, agent: b.agent,
               })
@@ -758,6 +795,9 @@ export const brandRoutes = [
           } finally {
             try { controller.close() } catch { /* already closed */ }
           }
+        },
+        cancel() {
+          turnAbort.abort()
         },
       })
       return new Response(stream, {

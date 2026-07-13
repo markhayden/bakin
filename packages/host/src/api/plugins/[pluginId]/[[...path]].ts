@@ -138,6 +138,9 @@ async function handle(req: Request, url: URL): Promise<Response> {
         method: req.method,
         headers: req.headers,
         body: req.body,
+        // Client-disconnect aborts must survive the rewrap — SSE turn routes
+        // pass req.signal into runtime work.
+        signal: req.signal,
         // @ts-expect-error duplex is needed for streaming request bodies
         duplex: 'half',
       })
