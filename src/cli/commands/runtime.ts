@@ -108,7 +108,7 @@ async function cmdRuntimeUse(target: string | undefined, flags: RuntimeUseFlags)
   }
 
   const would = flags.dryRun ? 'Would carry' : 'Carried'
-  const roster = result.roster as { carried: unknown[]; existing: string[]; unmappedModels: Array<{ agentId: string; sourceModel: string; field?: string }>; failed: Array<{ agentId: string; error: string }> } | null
+  const roster = result.roster as { carried: unknown[]; existing: string[]; unmappedModels: Array<{ agentId: string; sourceModel: string; field?: string }>; preserved?: Array<{ agentId: string; sourceModel: string }>; failed: Array<{ agentId: string; error: string }> } | null
   console.log(flags.dryRun ? `Would switch ${result.from} → ${result.to}` : `Switched ${result.from} → ${result.to}`)
   if (result.backupPath) console.log(`Settings backup: ${result.backupPath}`)
   if (roster) {
@@ -116,6 +116,9 @@ async function cmdRuntimeUse(target: string | undefined, flags: RuntimeUseFlags)
     for (const unmapped of roster.unmappedModels) {
       const what = unmapped.field === 'subagentModel' ? 'subagent model' : 'model'
       console.log(`  ⚠ ${unmapped.agentId}: ${what} '${unmapped.sourceModel}' has no equivalent on ${result.to} — falls back to the routing default`)
+    }
+    for (const kept of roster.preserved ?? []) {
+      console.log(`  ○ ${kept.agentId}: subagent model '${kept.sourceModel}' preserved (not active on ${result.to}) — restored on switch back`)
     }
     for (const failure of roster.failed) {
       console.log(`  ✗ ${failure.agentId}: ${failure.error}`)
