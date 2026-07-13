@@ -25,6 +25,7 @@ import {
   type HealthCheckDef,
 } from '../../src/core/health-check-registry'
 import { checkContentDir } from './lib/system-checks/content-dir'
+import { checkCapabilities } from './lib/system-checks/capabilities'
 import { checkService } from './lib/system-checks/service'
 import { checkRuntime } from './lib/system-checks/runtime'
 import { checkSessionStore } from './lib/system-checks/session-store'
@@ -648,6 +649,11 @@ const healthPlugin: BakinPlugin = definePlugin({
       id: 'content-dir',
       name: 'Content directory location',
       run: () => Promise.resolve(checkContentDir()),
+    })
+    ctx.registerHealthCheck({
+      id: 'capabilities',
+      name: 'Capability-pack readiness',
+      run: () => checkCapabilities(),
     })
     ctx.registerHealthCheck({
       id: 'service',
