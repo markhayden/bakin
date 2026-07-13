@@ -4,6 +4,7 @@
  * and packs. Discovery only — lifecycle management stays in Team/Health.
  */
 import { z } from 'zod'
+import { getSettings } from '../../src/core/settings'
 import type { BakinPlugin } from '@bakin/core/plugin-types'
 import { definePlugin, defineRoute } from '@bakin/core/routing'
 import { createLogger } from '../../src/core/logger'
@@ -39,6 +40,7 @@ const catalogEntryResponse = z.object({
 })
 
 const catalogResponse = z.object({
+  activeAdapter: z.string(),
   ok: z.literal(true),
   updatedAt: z.string(),
   remoteUpdatedAt: z.string().nullable(),
@@ -124,6 +126,7 @@ async function buildCatalogResponse(check: boolean): Promise<ExploreCatalogRespo
     updatedAt: catalog.updatedAt,
     remoteUpdatedAt: catalog.remoteUpdatedAt,
     entries,
+    activeAdapter: getSettings().runtime.adapter,
     ...(probes ? { probeErrors: probes.probeErrors } : {}),
   }
 }

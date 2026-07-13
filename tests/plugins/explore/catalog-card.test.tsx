@@ -131,4 +131,28 @@ describe('CatalogCard', () => {
     expect(screen.getByTestId('avatar-pixel')).toBeTruthy()
     expect(screen.queryByTestId('icon-agent-pixel')).toBeNull()
   })
+
+  it('badges and gates install for runtime-incompatible entries', () => {
+    const onInstall = mock()
+    render(<CatalogCard
+      entry={entry({ kind: 'skill-pack', id: 'oc-only', runtimes: ['openclaw'], installed: false, builtin: false })}
+      onSelect={mock()}
+      onInstall={onInstall}
+      activeAdapter="pi"
+    />)
+    expect(screen.getByTestId('card-incompatible-oc-only').textContent).toContain('Not for pi')
+    expect(screen.queryByTestId('card-install-skill-pack-oc-only')).toBeNull()
+  })
+
+  it('universal runtimes entries stay installable with no compat badge', () => {
+    const onInstall = mock()
+    render(<CatalogCard
+      entry={entry({ kind: 'skill-pack', id: 'cap', runtimes: ['*'], installed: false, builtin: false })}
+      onSelect={mock()}
+      onInstall={onInstall}
+      activeAdapter="pi"
+    />)
+    expect(screen.queryByTestId('card-incompatible-cap')).toBeNull()
+    expect(screen.getByTestId('card-install-skill-pack-cap')).toBeTruthy()
+  })
 })
