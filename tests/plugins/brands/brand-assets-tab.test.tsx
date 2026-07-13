@@ -103,6 +103,19 @@ describe('assets tab', () => {
     await settleReact()
   })
 
+  it('removing a reference confirms first, then STAGES (honest keep-in-library copy)', async () => {
+    await renderAssets()
+    fireEvent.click(screen.getByLabelText('Remove'))
+    await screen.findByText('Remove this reference?')
+    expect(screen.getByText(/stays in your asset library/)).toBeDefined()
+    expect(document.querySelector('[data-savebar]')).toBeNull() // not yet
+
+    fireEvent.click(screen.getByTestId('asset-remove-confirm'))
+    await waitFor(() => expect(document.querySelector('[data-savebar]')).not.toBeNull())
+    expect(putCount).toBe(0) // staged, not written
+    await settleReact()
+  })
+
   it('no raw asset-id select exists anywhere on the tab', async () => {
     await renderAssets()
     const selects = Array.from(document.querySelectorAll('select'))

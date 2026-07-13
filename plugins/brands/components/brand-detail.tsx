@@ -1021,6 +1021,10 @@ function BrandAssetsSection({ brand, onSave }: { brand: BrandManifest; onSave: (
   const [groupDraft, setGroupDraft] = useState<{ name: string; description: string } | null>(null)
   // ONE AssetPicker instance; whichever section opens it provides the target.
   const [pickTarget, setPickTarget] = useState<{ title: string; description: string; onPick: (assetId: string) => void } | null>(null)
+  // One confirm for every remove on this tab. Copy stays honest: removal only
+  // drops the brand's REFERENCE (staged until Save) — the file stays in the
+  // asset library.
+  const [removeTarget, setRemoveTarget] = useState<{ title: string; description: string; apply: () => void } | null>(null)
 
   const loadAssets = useCallback(async () => {
     try {
@@ -1047,7 +1051,20 @@ function BrandAssetsSection({ brand, onSave }: { brand: BrandManifest; onSave: (
     setPickTarget({ title, description, onPick })
 
   const tile = (assetId: string, onRemove: () => void, extra?: React.ReactNode) => (
-    <AssetTile key={assetId} info={assets[assetId]} assetId={assetId} onDescription={(d) => void saveDescription(assetId, d)} onRemove={onRemove} extra={extra} />
+    <AssetTile
+      key={assetId}
+      info={assets[assetId]}
+      assetId={assetId}
+      onDescription={(d) => void saveDescription(assetId, d)}
+      onRemove={() =>
+        setRemoveTarget({
+          title: 'Remove this reference?',
+          description: `${assets[assetId]?.description || assetId} stays in your asset library — this brand just stops referencing it. Takes effect when you save.`,
+          apply: onRemove,
+        })
+      }
+      extra={extra}
+    />
   )
 
   return (
@@ -1063,6 +1080,19 @@ function BrandAssetsSection({ brand, onSave }: { brand: BrandManifest; onSave: (
         }}
         title={pickTarget?.title ?? 'Choose an asset'}
         description={pickTarget?.description}
+      />
+
+      <ConfirmDialog
+        open={removeTarget !== null}
+        title={removeTarget?.title ?? ''}
+        description={removeTarget?.description}
+        confirmLabel="Remove"
+        confirmTestId="asset-remove-confirm"
+        onConfirm={() => {
+          removeTarget?.apply()
+          setRemoveTarget(null)
+        }}
+        onCancel={() => setRemoveTarget(null)}
       />
 
       <SectionCard
@@ -1128,7 +1158,13 @@ function BrandAssetsSection({ brand, onSave }: { brand: BrandManifest; onSave: (
                   variant="ghost"
                   size="xs"
                   className="text-muted-foreground hover:text-destructive"
-                  onClick={() => onSave({ assetGroups: brand.assetGroups.filter((_, j) => j !== gi) })}
+                  onClick={() =>
+                    setRemoveTarget({
+                      title: `Remove group ${group.name}?`,
+                      description: `Its ${group.assetIds.length} reference${group.assetIds.length === 1 ? '' : 's'} come off this brand — the files stay in your asset library. Takes effect when you save.`,
+                      apply: () => onSave({ assetGroups: brand.assetGroups.filter((_, j) => j !== gi) }),
+                    })
+                  }
                   aria-label={`Remove group ${group.name}`}
                   title="Remove group"
                 >
