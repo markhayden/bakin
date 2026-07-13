@@ -53,6 +53,7 @@ import { extractBlock, removeBlock } from '../../../packages/core/src/agent-pack
 import { unmarkUserEdited } from '../../../packages/core/src/agent-packages/markers'
 import { PackageNotInstalledError } from './errors'
 import { projectPackage, type ProjectorResult } from './projector'
+import { installManifestBins } from './bin-installer'
 import { updatePackageById } from './updater'
 import { checkPackageUpdateAsync } from './checker'
 import {
@@ -205,19 +206,24 @@ async function applyLocalProjection(packageId: string): Promise<ProjectorResult>
   }
   const manifest: Manifest = parseManifest(JSON.parse(readFileSync(manifestPath, 'utf-8')))
 
+  const installedBy = {
+    package: stripVersionFromKey(packageId),
+    version: entry.version,
+    ref: entry.ref,
+    commitSha: entry.commitSha,
+    installedAt: new Date().toISOString(),
+  }
   const result = await projectPackage({
     manifest,
     stagingDir: sourceDir,
     agentId: entry.agentId,
     enabledLessons: entry.kind === 'agent' ? entry.lessonsEnabled : undefined,
-    installedBy: {
-      package: stripVersionFromKey(packageId),
-      version: entry.version,
-      ref: entry.ref,
-      commitSha: entry.commitSha,
-      installedAt: new Date().toISOString(),
-    },
+    installedBy,
   })
+  // Bins are part of the projected surface — re-adding them here keeps the
+  // lockfile honest AND makes local repair restore a deleted binary
+  // (idempotent: an on-disk bin matching the pin is skipped, no download).
+  await installManifestBins(manifest, installedBy, result)
 
   // Preserve lockfile records for targets the projector skipped (.userEdited)
   // — they're still package projections, just locally locked.
