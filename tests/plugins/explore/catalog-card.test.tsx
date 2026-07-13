@@ -33,6 +33,7 @@ const entry = (over: Partial<ExploreCatalogEntry> = {}): ExploreCatalogEntry => 
   description: 'Image artist agent.',
   category: 'Creative',
   tags: [],
+  runtimes: ['*'],
   useCases: ['Generate on-brand social images'],
   source: 'github:markhayden/bakin-bits-official#agents/pixel',
   ref: null,

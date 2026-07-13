@@ -38,6 +38,7 @@ const agentEntry: ExploreCatalogEntry = {
   category: 'Creative',
   tags: [],
   useCases: [],
+  runtimes: ['*'],
   source: 'github:markhayden/bakin-bits-official#agents/pixel',
   ref: null,
   trust: 'official',

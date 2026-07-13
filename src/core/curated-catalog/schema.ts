@@ -44,6 +44,23 @@ export const CatalogEntrySchema = z
     dependencies: z.array(z.string()).default([]),
     /** Pre-selected during onboarding recommendation flows. */
     defaultSelected: z.boolean().default(false),
+    /**
+     * Capability slug for capability packs (skill-packs that teach agents a
+     * named capability, e.g. `web-search`). Drives the Explore Capabilities
+     * shelf facet and per-capability readiness.
+     */
+    capability: z
+      .string()
+      .regex(/^[a-z0-9][a-z0-9-]{0,39}$/)
+      .optional(),
+    /**
+     * Runtime compatibility tags: `['*']` or adapter slugs (`pi`,
+     * `openclaw`). Explore filters/badges against the ACTIVE runtime.
+     */
+    runtimes: z
+      .array(z.string().regex(/^(\*|[a-z0-9][a-z0-9-]{0,31})$/))
+      .min(1)
+      .default(['*']),
     iconUrl: z.string().optional(),
     /**
      * Gallery image URLs (screenshots, promo art) rendered in the Explore

@@ -100,6 +100,50 @@ describe('manifest schema — happy path', () => {
     expect(m.contributions.skills).toHaveLength(2)
   })
 
+  it('parses a capability pack (skill-pack + capability/runtimes/requires/secretSlot)', () => {
+    const m = parseManifest(loadFixture('capability-pack'))
+    if (m.kind !== 'skill-pack') throw new Error('discriminator narrowing failed')
+    expect(m.capability).toBe('web-search')
+    expect(m.runtimes).toEqual(['*'])
+    expect(m.requires?.bins?.[0]?.name).toBe('bx')
+    expect(m.requires?.bins?.[0]?.install['darwin-arm64']?.sha256).toHaveLength(64)
+    expect(m.requires?.bins?.[0]?.verifyArgs).toEqual(['--version'])
+    expect(m.secrets?.[0]?.secretSlot).toBe('brave.apiKey')
+    expect(m.secrets?.[0]?.help).toContain('https://')
+  })
+
+  it('defaults runtimes to ["*"] when omitted on a capability pack', () => {
+    const raw = loadFixture('capability-pack') as Record<string, unknown>
+    delete raw.runtimes
+    const m = parseManifest(raw)
+    if (m.kind !== 'skill-pack') throw new Error('discriminator narrowing failed')
+    expect(m.runtimes).toEqual(['*'])
+  })
+
+  it('rejects capability-pack extension malformations', () => {
+    const base = () => JSON.parse(JSON.stringify(loadFixture('capability-pack'))) as Record<string, any>
+
+    const badSlug = base()
+    badSlug.capability = 'Web Search!'
+    expect(safeParseManifest(badSlug).success).toBe(false)
+
+    const badSha = base()
+    badSha.requires.bins[0].install['darwin-arm64'].sha256 = 'not-a-sha'
+    expect(safeParseManifest(badSha).success).toBe(false)
+
+    const badPlatform = base()
+    badPlatform.requires.bins[0].install['amiga-68k'] = badPlatform.requires.bins[0].install['darwin-arm64']
+    expect(safeParseManifest(badPlatform).success).toBe(false)
+
+    const badSlot = base()
+    badSlot.secrets[0].secretSlot = 'no-dot-separator'
+    expect(safeParseManifest(badSlot).success).toBe(false)
+
+    const badUrl = base()
+    badUrl.requires.bins[0].install['darwin-arm64'].url = 'ftp://nope'
+    expect(safeParseManifest(badUrl).success).toBe(false)
+  })
+
   it('parses a workflow-pack manifest', () => {
     const m = parseManifest(loadFixture('workflow-pack'))
     expect(m.kind).toBe('workflow-pack')

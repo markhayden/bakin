@@ -31,6 +31,7 @@ const entry = (id: string, over: Partial<CatalogEntry> = {}): CatalogEntry => ({
   category: 'Test',
   tags: [],
   useCases: [],
+  runtimes: ['*'],
   source: `github:markhayden/bakin-bits-official#agents/${id}`,
   ref: null,
   trust: 'official',

@@ -45,7 +45,67 @@ export const SecretDeclarationSchema = z.object({
   name: SecretNameSchema,
   description: z.string().min(1),
   required: z.boolean().default(true),
+  /**
+   * Secret-store slot (`<provider>.<secretName>`) the env var is filled from
+   * at boot when unset. Drives the guided key prompt at install and the
+   * Integrations & Keys remediation link. Absent → the env var is
+   * user-managed only.
+   */
+  secretSlot: z
+    .string()
+    .regex(/^[a-z0-9][a-z0-9._-]{0,63}\.[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/, {
+      message: 'secretSlot must be "<provider>.<secretName>"',
+    })
+    .optional(),
+  /** Where the user gets this credential (shown in install/consent/readiness UIs). */
+  help: z.string().url().optional(),
 })
+
+// ─── Capability-pack extensions (skill-pack only) ────────────────────────────
+
+/** Capability slug: names what the pack teaches agents (`web-search`, …). */
+const CapabilitySlugSchema = z
+  .string()
+  .regex(/^[a-z0-9][a-z0-9-]{0,39}$/, {
+    message: 'capability must be a lowercase slug',
+  })
+
+/** Platform keys follow process.platform-process.arch (antfly pin convention). */
+export const BIN_PLATFORM_KEYS = ['darwin-arm64', 'darwin-x64', 'linux-x64', 'linux-arm64'] as const
+export type BinPlatformKey = (typeof BIN_PLATFORM_KEYS)[number]
+
+const BinDownloadSchema = z.object({
+  url: z.string().url().refine((u) => u.startsWith('https://'), { message: 'bin download url must be https' }),
+  sha256: z.string().regex(/^[a-f0-9]{64}$/i, { message: 'sha256 must be 64 hex chars' }),
+})
+
+const BinRequirementSchema = z.object({
+  /** Binary name as invoked from PATH (installed into the Bakin bin dir). */
+  name: z.string().regex(/^[a-z0-9][a-z0-9._-]{0,63}$/i, { message: 'bin name must be a safe slug' }),
+  version: z.string().min(1),
+  /** Pinned per-platform downloads. Missing key ⇒ unsupported platform (honest readiness failure). */
+  install: z
+    .partialRecord(z.enum(BIN_PLATFORM_KEYS), BinDownloadSchema)
+    .refine((m) => Object.keys(m).length > 0, { message: 'at least one platform download required' }),
+  /** Args for the verify-then-commit run (e.g. ["--version"]). Absent → no verify run. */
+  verifyArgs: z.array(z.string()).optional(),
+})
+
+const RequiresSchema = z
+  .object({
+    bins: z.array(BinRequirementSchema).optional(),
+  })
+  .optional()
+
+/**
+ * Runtime compatibility tags: `['*']` (default — skills are a cross-runtime
+ * convention) or adapter names (`pi`, `openclaw`). Catalog/Explore filter and
+ * badge against the ACTIVE runtime; install refuses incompatible packs.
+ */
+const RuntimesSchema = z
+  .array(z.string().regex(/^(\*|[a-z0-9][a-z0-9-]{0,31})$/, { message: 'runtime tag must be "*" or an adapter slug' }))
+  .min(1)
+  .default(['*'])
 
 /**
  * Dependency source. Allowed forms:
@@ -207,6 +267,10 @@ export const SkillPackManifestSchema = z.object({
   kind: z.literal('skill-pack'),
   contributions: SkillPackContributionsSchema,
   dependencies: DependenciesSchema,
+  /** Capability-pack extensions: a skill-pack that names a capability and declares what it needs. */
+  capability: CapabilitySlugSchema.optional(),
+  runtimes: RuntimesSchema,
+  requires: RequiresSchema,
 })
 
 export const WorkflowPackManifestSchema = z.object({
@@ -240,6 +304,8 @@ export type Manifest = z.infer<typeof ManifestSchema>
 export type Dependency = z.infer<typeof DependencySchema>
 export type SecretDeclaration = z.infer<typeof SecretDeclarationSchema>
 export type PackageKind = Manifest['kind']
+export type BinRequirement = z.infer<typeof BinRequirementSchema>
+export type BinDownload = z.infer<typeof BinDownloadSchema>
 
 // ─── Parse entry points ──────────────────────────────────────────────────────
 
