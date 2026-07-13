@@ -94,6 +94,7 @@ export function CapabilitiesTab() {
                   ) : (
                     <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400">Needs attention</Badge>
                   )}
+                  <span className="ml-auto text-[11px] text-muted-foreground/60">{cap.packageId}@{cap.version}</span>
                 </div>
                 {cap.description && (
                   <p className="mt-1.5 max-w-3xl text-sm leading-relaxed text-muted-foreground">{cap.description}</p>
@@ -113,7 +114,6 @@ export function CapabilitiesTab() {
                       {cap.secrets.filter((s) => s.status === 'missing').map((s) => <Leg key={`k-${s.name}`} ok={false} label={`${s.name} not set`} />)}
                     </>
                   )}
-                  <span className="ml-auto text-[11px] text-muted-foreground/60">{cap.packageId}@{cap.version}</span>
                 </div>
 
                 {!cap.ready && (
