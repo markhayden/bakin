@@ -327,8 +327,9 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
 
   return (
     <div className="flex flex-col gap-6 p-4 sm:p-6">
-      <Button variant="ghost" size="sm" className="w-fit -ml-2 text-muted-foreground" onClick={onBack}>
-        <ArrowLeft className="size-3.5" /> Branding
+      {/* Icon-only history back — same pattern as the asset viewer. */}
+      <Button variant="ghost" size="sm" className="w-fit -ml-2 text-muted-foreground" onClick={onBack} aria-label="Back">
+        <ArrowLeft className="size-4" />
       </Button>
 
       {/* Publish lives in the draft banner (and Settings) — ONE prominent button, not three. */}
@@ -477,13 +478,24 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
             const current = b.cardDocs ?? (detail.guidelines.some((g) => g.name === 'voice.md') ? ['voice.md'] : [])
             stage({ cardDocs: on ? [...current, name] : current.filter((n) => n !== name) })
           }}
+          onToggleLesson={(name, active) => {
+            const current = b.disabledLessons ?? []
+            stage({ disabledLessons: active ? current.filter((n) => n !== name) : [...current, name] })
+          }}
         />
       )}
 
       {tab === 'assets' && <BrandAssetsSection brand={b} onSave={stage} />}
 
       {tab === 'settings' && (
-        <BrandSettingsTab brand={b} brandId={brandId} onPublish={() => setPublishConfirm(true)} onDeleted={onBack} />
+        <BrandSettingsTab
+          brand={b}
+          brandId={brandId}
+          onPublish={() => setPublishConfirm(true)}
+          // Explicit list navigation — history-back would land on the brand we just deleted.
+          onDeleted={() => void navigate({ to: '/brands' })}
+          onChanged={() => void refresh()}
+        />
       )}
 
       {/* ONE save path for the whole manifest — appears whenever anything is staged. */}
@@ -779,6 +791,7 @@ function activityLabel(a: ActivityRow): string {
     case 'brand.imported': return 'Imported from source'
     case 'brand.exported': return 'Exported'
     case 'brand.draft_published': return 'Published'
+    case 'brand.unpublished': return 'Unpublished — back to draft'
     case 'brand.created': return 'Created'
     default: return a.event.replace('brand.', '')
   }
@@ -811,7 +824,7 @@ const DOC_COPY: Record<DocKind, { title: string; description: string; noun: stri
 }
 
 function DocsEditor({
-  kind, docs, brand, brandId, guidelines, onEditDoc, onDeleted, onToggleCardDoc,
+  kind, docs, brand, brandId, guidelines, onEditDoc, onDeleted, onToggleCardDoc, onToggleLesson,
 }: {
   kind: DocKind
   docs: DocInfo[]
@@ -821,6 +834,7 @@ function DocsEditor({
   onEditDoc: (kind: DocKind, name: string, create?: boolean) => void
   onDeleted: () => void
   onToggleCardDoc: (name: string, on: boolean) => void
+  onToggleLesson: (name: string, active: boolean) => void
 }) {
   const [newOpen, setNewOpen] = useState(false)
   const [newDocName, setNewDocName] = useState('')
@@ -873,7 +887,14 @@ function DocsEditor({
         )}
         {docs.map((d) => (
           // Each row is a distinct tile — flat hover-only rows blended into one block.
-          <div key={d.name} className="flex items-center gap-3 rounded-lg bg-foreground/[0.04] px-3 py-2.5 ring-1 ring-foreground/5 transition-colors hover:bg-foreground/[0.07]" data-doc-row={d.name}>
+          // Benched lessons read as benched.
+          <div
+            key={d.name}
+            className={`flex items-center gap-3 rounded-lg bg-foreground/[0.04] px-3 py-2.5 ring-1 ring-foreground/5 transition-colors hover:bg-foreground/[0.07] ${
+              kind === 'lessons' && (brand.disabledLessons ?? []).includes(d.name) ? 'opacity-60' : ''
+            }`}
+            data-doc-row={d.name}
+          >
             {/* The filename is the identity — it never yields space to the description. */}
             <button className="flex max-w-72 shrink-0 items-center gap-1.5 text-left" onClick={() => onEditDoc(kind, d.name)}>
               <FileText className="size-3.5 shrink-0 text-muted-foreground" />
@@ -900,6 +921,29 @@ function DocsEditor({
                     <TooltipContent side="top" className="max-w-64">
                       Included verbatim in every branded task's context (within the size budget). Leave off to keep
                       context small — agents can still fetch the doc on demand.
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
+              {kind === 'lessons' && (
+                <TooltipProvider delay={200}>
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                          <Switch
+                            checked={!(brand.disabledLessons ?? []).includes(d.name)}
+                            onCheckedChange={(active: boolean) => onToggleLesson(d.name, active)}
+                            aria-label={`Lesson ${d.name} active`}
+                          />
+                          Active
+                          <Info className="size-3" />
+                        </label>
+                      }
+                    />
+                    <TooltipContent side="top" className="max-w-64">
+                      Off = kept on disk but never recalled into tasks. Use it to bench an outdated or wrong lesson
+                      without deleting it.
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
@@ -1037,15 +1081,19 @@ function BrandAssetsSection({ brand, onSave }: { brand: BrandManifest; onSave: (
         {brand.logos.length === 0 && (
           <SectionEmpty>No logo yet — cards show a monogram until you add one.</SectionEmpty>
         )}
-        {brand.logos.map((logo, i) =>
-          tile(
-            logo.assetId,
-            () => onSave({ logos: brand.logos.filter((_, j) => j !== i) }),
-            <VariantSelect
-              value={logo.variant}
-              onChange={(variant) => onSave({ logos: brand.logos.map((l, j) => (j === i ? { ...l, variant } : l)) })}
-            />,
-          ),
+        {brand.logos.length > 0 && (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+            {brand.logos.map((logo, i) =>
+              tile(
+                logo.assetId,
+                () => onSave({ logos: brand.logos.filter((_, j) => j !== i) }),
+                <VariantSelect
+                  value={logo.variant}
+                  onChange={(variant) => onSave({ logos: brand.logos.map((l, j) => (j === i ? { ...l, variant } : l)) })}
+                />,
+              ),
+            )}
+          </div>
         )}
       </SectionCard>
 
@@ -1082,8 +1130,12 @@ function BrandAssetsSection({ brand, onSave }: { brand: BrandManifest; onSave: (
               </div>
             </div>
             {group.assetIds.length === 0 && <p className="text-xs text-muted-foreground">Empty group — add screenshots or imagery.</p>}
-            {group.assetIds.map((assetId) =>
-              tile(assetId, () => onSave({ assetGroups: brand.assetGroups.map((g, j) => (j === gi ? { ...g, assetIds: g.assetIds.filter((id) => id !== assetId) } : g)) })),
+            {group.assetIds.length > 0 && (
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+                {group.assetIds.map((assetId) =>
+                  tile(assetId, () => onSave({ assetGroups: brand.assetGroups.map((g, j) => (j === gi ? { ...g, assetIds: g.assetIds.filter((id) => id !== assetId) } : g)) })),
+                )}
+              </div>
             )}
           </div>
         ))}
@@ -1120,8 +1172,12 @@ function BrandAssetsSection({ brand, onSave }: { brand: BrandManifest; onSave: (
         {(brand.defaultImageReferences ?? []).length === 0 && (
           <SectionEmpty>None yet — without references, branded image generations rely on the palette and text alone.</SectionEmpty>
         )}
-        {(brand.defaultImageReferences ?? []).map((assetId) =>
-          tile(assetId, () => onSave({ defaultImageReferences: (brand.defaultImageReferences ?? []).filter((id) => id !== assetId) })),
+        {(brand.defaultImageReferences ?? []).length > 0 && (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+            {(brand.defaultImageReferences ?? []).map((assetId) =>
+              tile(assetId, () => onSave({ defaultImageReferences: (brand.defaultImageReferences ?? []).filter((id) => id !== assetId) })),
+            )}
+          </div>
         )}
       </SectionCard>
     </div>
@@ -1148,7 +1204,11 @@ function VariantSelect({ value, onChange }: { value: string; onChange: (v: strin
   )
 }
 
-/** A referenced asset: thumbnail (click → opens the asset viewer), editable meta note, remove. */
+/**
+ * A referenced asset as an image CARD (thumbnail-first grid, not a horizontal
+ * row — these are pictures, and rows hid the one thing that identifies them).
+ * Thumbnail opens the viewer; note edits in place; remove floats on hover.
+ */
 function AssetTile({
   assetId, info, onDescription, onRemove, extra,
 }: {
@@ -1162,41 +1222,41 @@ function AssetTile({
   const commit = () => { setEditing(false); if (draft !== (info?.description ?? '')) onDescription(draft) }
 
   return (
-    <div className="flex items-start gap-3 rounded-lg bg-surface p-2.5 transition-colors hover:bg-surface-bright/40">
-      <button className="size-14 shrink-0 overflow-hidden rounded-lg bg-background/50 ring-1 ring-foreground/10 transition-shadow hover:ring-foreground/25" title="Open in the asset viewer" onClick={open}>
+    <div className="group relative flex flex-col overflow-hidden rounded-xl bg-surface ring-1 ring-foreground/10 transition-shadow hover:ring-foreground/25" data-asset-card={assetId}>
+      <button className="block aspect-square w-full overflow-hidden bg-background/50" title="Open in the asset viewer" onClick={open}>
         {isImage && info?.hasThumb
           ? <img src={`/api/assets/${assetId}/thumb`} alt="" className="size-full object-cover" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
-          : <span className="flex size-full items-center justify-center text-lg text-muted-foreground">{TYPE_ICON[info?.type ?? 'other'] ?? '⊟'}</span>}
+          : <span className="flex size-full items-center justify-center text-3xl text-muted-foreground">{TYPE_ICON[info?.type ?? 'other'] ?? '⊟'}</span>}
+      </button>
+      <button
+        className="absolute right-1.5 top-1.5 rounded-md bg-background/70 p-1 text-muted-foreground opacity-0 backdrop-blur transition-opacity hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100"
+        onClick={onRemove}
+        aria-label="Remove"
+      >
+        <Trash2 className="size-3.5" />
       </button>
 
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          {/* Human title first; the machine id is demoted to small mono. */}
-          <button className="flex min-w-0 items-center gap-1.5 text-left transition-colors hover:text-foreground" onClick={open}>
-            <span className="truncate text-sm font-medium">{info?.description || 'Untitled asset'}</span>
-            <span className="hidden shrink-0 font-mono text-[10px] text-muted-foreground/70 sm:inline">{assetId}</span>
-            <ExternalLink className="size-3 shrink-0 text-muted-foreground opacity-60" />
-          </button>
-          {extra}
-          <button className="ml-auto shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-destructive" onClick={onRemove} aria-label="Remove"><Trash2 className="size-3.5" /></button>
-        </div>
+      <div className="flex min-w-0 flex-col gap-1.5 p-2.5">
+        {extra}
         {editing ? (
-          <input
+          <textarea
             autoFocus
-            className={`${inputCls} mt-1.5`}
-            placeholder="What is this, and how should agents use it? e.g. Billing UI screenshot — documentation only, never marketing"
+            rows={2}
+            className={`${inputCls} text-xs`}
+            placeholder="What is this, and how should agents use it?"
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onBlur={commit}
-            onKeyDown={(e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') { setDraft(info?.description ?? ''); setEditing(false) } }}
+            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) commit(); if (e.key === 'Escape') { setDraft(info?.description ?? ''); setEditing(false) } }}
           />
         ) : (
-          <button className="mt-1.5 flex max-w-full items-center gap-1 truncate text-left text-xs text-muted-foreground transition-colors hover:text-foreground" onClick={() => { setDraft(info?.description ?? ''); setEditing(true) }}>
+          <button className="text-left text-xs" onClick={() => { setDraft(info?.description ?? ''); setEditing(true) }}>
             {info?.description
-              ? <><Pencil className="size-3" /> Edit note</>
-              : <><Plus className="size-3" /> Add a note (what it is, how agents should use it)</>}
+              ? <span className="line-clamp-2 text-foreground/90">{info.description} <Pencil className="inline size-3 text-muted-foreground" /></span>
+              : <span className="flex items-center gap-1 text-muted-foreground transition-colors hover:text-foreground"><Plus className="size-3" /> Add a note</span>}
           </button>
         )}
+        <span className="truncate font-mono text-[10px] text-muted-foreground/60">{assetId}</span>
       </div>
     </div>
   )
@@ -1304,10 +1364,28 @@ function DraftBanner({ brand, brandId, onPublish }: { brand: BrandManifest; bran
 }
 
 function BrandSettingsTab({
-  brand, brandId, onPublish, onDeleted,
+  brand, brandId, onPublish, onDeleted, onChanged,
 }: {
-  brand: BrandManifest; brandId: string; onPublish: () => void; onDeleted: () => void
+  brand: BrandManifest; brandId: string; onPublish: () => void; onDeleted: () => void; onChanged: () => void
 }) {
+  const [unpublishConfirm, setUnpublishConfirm] = useState(false)
+  const [unpublishBusy, setUnpublishBusy] = useState(false)
+  const [unpublishError, setUnpublishError] = useState<string | null>(null)
+  const unpublish = useCallback(async () => {
+    setUnpublishBusy(true)
+    setUnpublishError(null)
+    try {
+      const res = await fetch(`/api/plugins/brands/${brandId}/unpublish`, { method: 'POST' })
+      if (!res.ok) throw new Error(`unpublish failed: ${res.status}`)
+      toast(`${brand.name} is a draft again — linked tasks pause until you republish`, 'info')
+      setUnpublishConfirm(false)
+      onChanged()
+    } catch (err) {
+      setUnpublishError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setUnpublishBusy(false)
+    }
+  }, [brandId, brand.name, onChanged])
   const [cardInfo, setCardInfo] = useState<{ cardBytes: number; maxBytes: number; omitted: number } | null>(null)
   const [dangling, setDangling] = useState<Array<{ assetId: string; where: string }>>([])
   const [linked, setLinked] = useState<number | null>(null)
@@ -1381,10 +1459,32 @@ function BrandSettingsTab({
             </Button>
           </>
         ) : (
-          <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
-            <Check className="size-4 text-success" /> Live since {new Date(brand.updatedAt).toLocaleDateString()}
-            {linked !== null && ` — linked to ${linked} open task${linked === 1 ? '' : 's'}.`}
-          </p>
+          <>
+            <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+              <Check className="size-4 text-success" /> Live since {new Date(brand.updatedAt).toLocaleDateString()}
+              {linked !== null && ` — linked to ${linked} open task${linked === 1 ? '' : 's'}.`}
+            </p>
+            <Button variant="outline" size="sm" className="w-fit" onClick={() => setUnpublishConfirm(true)} data-unpublish>
+              Unpublish
+            </Button>
+            <ConfirmDialog
+              open={unpublishConfirm}
+              title={`Unpublish ${brand.name}?`}
+              description={
+                linked !== null && linked > 0
+                  ? `It goes back to draft — agents stop using it, and the ${linked} open task${linked === 1 ? '' : 's'} linked to it will pause until you publish again.`
+                  : 'It goes back to draft — agents stop using it, and any linked tasks will pause until you publish again.'
+              }
+              confirmLabel="Unpublish"
+              busyLabel="Unpublishing..."
+              busy={unpublishBusy}
+              error={unpublishError}
+              onConfirm={() => void unpublish()}
+              onCancel={() => {
+                if (!unpublishBusy) setUnpublishConfirm(false)
+              }}
+            />
+          </>
         )}
       </SectionCard>
 

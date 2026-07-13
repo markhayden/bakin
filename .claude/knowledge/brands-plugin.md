@@ -60,6 +60,16 @@ selection anywhere.
   is a labeled select; ref changes stage into the SaveBar draft (asset-note
   edits PATCH the assets plugin immediately — different domain).
 
+- **Lifecycle**: publish AND **unpublish** (`POST /:brandId/unpublish` — back
+  to draft, audited `brand.unpublished`, linked tasks defer honestly; Settings
+  Status card, behind a consequences confirm). **Per-lesson off switch**:
+  manifest `disabledLessons[]` — benched lessons stay on disk but are filtered
+  out of retrieval at the CALL SITE (`filterDisabledLessons`, applied after
+  the (brandId, query) cache so toggles bite immediately); Lessons rows get an
+  Active switch (staged into the SaveBar draft) and render dimmed when off.
+  **Asset refs render as thumbnail CARDS** (grid, image-first) — never
+  horizontal rows.
+
 ## Builder modes
 
 `POST /builder` accepts questionnaire mode (product required) OR **website

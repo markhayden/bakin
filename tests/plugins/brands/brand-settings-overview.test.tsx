@@ -227,6 +227,17 @@ describe('settings + danger zone', () => {
     await waitFor(() => expect(document.querySelector('[data-danger-zone]')).not.toBeNull())
   }
 
+  it('published brands can unpublish behind a confirm that names the consequences', async () => {
+    await openSettings()
+    fireEvent.click(document.querySelector('[data-unpublish]')!)
+    await screen.findByText('Unpublish Acme?')
+    expect(screen.getByText(/will pause until you publish again/)).toBeDefined()
+    expect(calls.some((c) => c.url.endsWith('/unpublish'))).toBe(false) // not yet
+    fireEvent.click(screen.getByRole('button', { name: /^Unpublish$/ }))
+    await waitFor(() => expect(calls.some((c) => c.url.endsWith('/unpublish') && c.method === 'POST')).toBe(true))
+    await settleReact()
+  })
+
   it('danger zone sits at the bottom and names the open-task consequences', async () => {
     await openSettings()
     const settingsCards = Array.from(document.querySelectorAll('[data-section-card], [data-danger-zone]'))
@@ -235,9 +246,8 @@ describe('settings + danger zone', () => {
     await settleReact()
   })
 
-  it('delete requires typing the brand id, then DELETEs and navigates back', async () => {
-    const onBack = mock()
-    render(<BrandDetail brandId="acme" onBack={onBack} />)
+  it('delete requires typing the brand id, then DELETEs and navigates to the list (never history-back to a dead brand)', async () => {
+    render(<BrandDetail brandId="acme" onBack={() => {}} />)
     await waitFor(() => expect(screen.getAllByText('Acme').length).toBeGreaterThan(0))
     fireEvent.click(screen.getByRole('tab', { name: 'Settings' }))
     await waitFor(() => expect(document.querySelector('[data-danger-zone-trigger]')).not.toBeNull())
@@ -248,7 +258,7 @@ describe('settings + danger zone', () => {
     fireEvent.change(screen.getByPlaceholderText('acme'), { target: { value: 'acme' } })
     fireEvent.click(screen.getByTestId('danger-zone-confirm'))
     await waitFor(() => expect(calls.some((c) => c.method === 'DELETE')).toBe(true))
-    await waitFor(() => expect(onBack).toHaveBeenCalled())
+    await waitFor(() => expect(navigateMock).toHaveBeenCalledWith(expect.objectContaining({ to: '/brands' })))
     await settleReact()
   })
 })

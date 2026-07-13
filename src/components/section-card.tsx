@@ -39,7 +39,7 @@ export function SectionCard({
           {Icon && <Icon className="size-4 text-muted-foreground" />}
           {title}
         </CardTitle>
-        {description && <CardDescription>{description}</CardDescription>}
+        {description && <CardDescription className="mb-1.5 mt-1">{description}</CardDescription>}
         {action && <CardAction>{action}</CardAction>}
       </CardHeader>
       <CardContent className={cn('space-y-3', contentClassName)}>{children}</CardContent>

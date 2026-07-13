@@ -376,6 +376,26 @@ describe('builder flow (#419 §9.1)', () => {
     expect(task?.description).not.toContain('Fetch and READ')
   })
 
+  it('unpublish flips a published brand back to draft; 400 when already a draft', async () => {
+    await createAcme()
+    const un = await callRoute(route('POST', '/:brandId/unpublish'), activated.ctx, {
+      searchParams: { brandId: 'acme' },
+    })
+    expect(un.status).toBe(200)
+    expect((un.body.brand as { draft?: boolean }).draft).toBe(true)
+
+    const again = await callRoute(route('POST', '/:brandId/unpublish'), activated.ctx, {
+      searchParams: { brandId: 'acme' },
+    })
+    expect(again.status).toBe(400)
+
+    // publish brings it back
+    const pub = await callRoute(route('POST', '/:brandId/publish'), activated.ctx, {
+      searchParams: { brandId: 'acme' },
+    })
+    expect((pub.body.brand as { draft?: boolean }).draft).toBeUndefined()
+  })
+
   it('stamps draftTaskId on the manifest; publish clears it', async () => {
     const created = await callRoute(route('POST', '/builder'), activated.ctx, {
       body: { id: 'stamped', name: 'Stamped', agent: 'pixel', product: 'x' },

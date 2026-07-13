@@ -328,6 +328,34 @@ export const brandRoutes = [
   }),
 
   defineRoute({
+    path: '/:brandId/unpublish',
+    method: 'POST',
+    summary: 'Unpublish a brand back to draft',
+    description:
+      'Flips draft back ON — the brand disappears from pickers, resolution, and injection, and tasks linked to it defer honestly (the budget-defer pattern) until it is published again. Audited.',
+    params: brandIdParams,
+    body: { contentType: 'none' as const },
+    responses: { 200: passthrough, 400: errorResponse, 404: errorResponse },
+    handler: async (_req, ctx, parsed) => {
+      const read = getBrand(parsed.params.brandId)
+      if (read.status === 'missing') return Response.json({ error: 'brand not found' }, { status: 404 })
+      if (read.status === 'invalid') return Response.json({ error: read.error }, { status: 422 })
+      if (read.manifest.draft) return Response.json({ error: 'brand is already a draft' }, { status: 400 })
+      try {
+        const { updateBrand } = await import('./store')
+        const brand = await updateBrand(parsed.params.brandId, (m) => ({ ...m, draft: true }))
+        try {
+          ctx.activity.audit('brand.unpublished', 'system', { brandId: brand.id })
+        } catch { /* activity surface unavailable (tests) */ }
+        ctx.events.emit('brand.changed', { brandId: brand.id })
+        return Response.json({ brand })
+      } catch (err) {
+        return storeError(err)
+      }
+    },
+  }),
+
+  defineRoute({
     path: '/import/preview',
     method: 'POST',
     summary: 'Validate + summarize a portable brand source — writes NOTHING',
@@ -536,6 +564,7 @@ export const brandRoutes = [
           'brand.created', 'brand.updated', 'brand.imported', 'brand.exported',
           'brand.injected', 'brand.lesson_added', 'brand.dispatch_blocked',
           'brand.asset_missing', 'brand.lessons_unavailable', 'brand.draft_published',
+          'brand.unpublished',
         ],
         sinceMs: 30 * 24 * 60 * 60 * 1000,
         // Scope to THIS brand inside the bounded scan — the tail read stops at 25

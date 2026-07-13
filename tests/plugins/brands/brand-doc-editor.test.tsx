@@ -66,7 +66,7 @@ const DETAIL = {
     { name: 'voice.md', description: 'How Acme talks', bytes: 1200 },
     { name: 'style-guide.md', bytes: 900 },
   ],
-  lessons: [],
+  lessons: [{ name: 'launch-learnings.md', description: 'What the launch taught us', bytes: 400 }],
   fingerprint: 'sha256:x',
 }
 
@@ -150,6 +150,19 @@ describe('doc lists', () => {
         search: { create: '1' },
       }),
     )
+    await settleReact()
+  })
+
+  it('lessons get an Active switch that STAGES disabledLessons (SaveBar up, no PUT)', async () => {
+    render(<BrandDetail brandId="acme" onBack={() => {}} />)
+    await waitFor(() => expect(screen.getAllByText('Acme').length).toBeGreaterThan(0))
+    fireEvent.click(screen.getByRole('tab', { name: 'Lessons' }))
+    await waitFor(() => expect(document.querySelector('[data-doc-row="launch-learnings.md"]')).not.toBeNull())
+
+    const row = document.querySelector('[data-doc-row="launch-learnings.md"]')!
+    fireEvent.click(row.querySelector('[role="switch"]')!)
+    await waitFor(() => expect(document.querySelector('[data-savebar]')).not.toBeNull())
+    expect(fetchCalls.filter((c) => c.method === 'PUT').length).toBe(0)
     await settleReact()
   })
 

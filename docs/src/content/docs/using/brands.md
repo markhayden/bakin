@@ -27,7 +27,10 @@ with it.
 The agentic paths dispatch a real task on the board and land you on the new
 draft: the banner shows the task's live status (queued / agent working / draft
 ready), links to it, and the tabs fill in as the agent writes. Drafts are
-invisible to real work until you review and **publish**.
+invisible to real work until you review and **publish** — and a published
+brand can be **unpublished** back to draft from Settings (linked tasks pause
+until you republish). Individual lessons can be switched off (kept on disk,
+never recalled into tasks) without deleting them.
 Every brand card shows a **completeness** meter (logo, palette, description,
 voice, style guide, rules, terminology, reference assets); the brand's
 Overview has the same checklist with jump links to finish the kit.

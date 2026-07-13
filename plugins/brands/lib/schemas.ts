@@ -50,6 +50,8 @@ const sharedManifestFields = {
   terminology: z.array(terminologyEntrySchema).optional(),
   /** Guideline filenames inlined into the dispatch card (default: voice.md if present). */
   cardDocs: z.array(z.string().min(1)).optional(),
+  /** Lesson filenames kept on disk but excluded from retrieval/injection (the per-lesson off switch). */
+  disabledLessons: z.array(z.string().min(1)).optional(),
 }
 
 export const brandManifestSchema = z.object({
