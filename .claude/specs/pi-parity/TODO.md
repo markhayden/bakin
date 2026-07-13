@@ -32,10 +32,10 @@ Plan: `PLAN.md` · Spec: `SPEC.md` · One PR per phase, one commit per task.
 - [ ] Gate: live gate badge/toast + switch e2e → open PR
 
 ## P4 — feat/runtime-hub
-- [ ] T4.1 Hub shell + Overview tab (legend, credential tiles)
-- [ ] T4.2 Capabilities tab (readiness chips + remediation links)
-- [ ] T4.3 Switch tab (dry-run preview, ConfirmDialog, grouped result cards)
-- [ ] Gate: RTL all tabs + visual review screenshots → open PR
+- [x] T4.1 Hub shell + Overview tab (legend, credential tiles)
+- [x] T4.2 Capabilities tab (readiness chips + remediation links)
+- [x] T4.3 Switch tab (dry-run preview, ConfirmDialog, grouped result cards)
+- [x] Gate: RTL all tabs green + rig visual review (all three tabs screenshotted) → PR
 
 ## P5 — chore/pi-parity-docs
 - [ ] T5.1 Knowledge/extending/CLAUDE.md/README docs
