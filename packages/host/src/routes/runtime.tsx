@@ -4,8 +4,8 @@
  * Three tabs on the SDK kit, each answering one question in plain language:
  *   Overview     — who runs your agents and what it can do (honest modes)
  *   Capabilities — are installed capability packs actually working
- *   Switch       — guided runtime switch: preview (dry run) first, confirm,
- *                  live progress, grouped result cards
+ *   Runtimes     — the runtime roster + guided switch: preview (dry run)
+ *                  first, confirm, live progress, grouped result cards
  * Sections fetch and fault independently (health-page pattern); tab state is
  * URL-backed for deep links.
  */
@@ -20,14 +20,14 @@ import { ErrorBanner } from '@/components/error-banner'
 import { useQueryState } from '@/hooks/use-query-state'
 import { OverviewTab } from '../components/runtime/overview-tab'
 import { CapabilitiesTab } from '../components/runtime/capabilities-tab'
-import { SwitchTab } from '../components/runtime/switch-tab'
+import { RuntimesTab } from '../components/runtime/runtimes-tab'
 import type { CapabilityReport, OnboardingComponentStatus } from '../components/runtime/types'
 import { Route as RootRoute } from './__root'
 
 const TABS = [
   { id: 'overview', label: 'Overview' },
   { id: 'capabilities', label: 'Capabilities' },
-  { id: 'switch', label: 'Switch' },
+  { id: 'runtimes', label: 'Runtimes' },
 ]
 
 function RuntimePage() {
@@ -97,7 +97,7 @@ function RuntimePage() {
 
         {report && tab === 'overview' && <OverviewTab report={report} onboarding={onboarding} onRefreshOnboarding={() => void loadOnboarding()} />}
         {tab === 'capabilities' && <CapabilitiesTab />}
-        {report && tab === 'switch' && <SwitchTab report={report} onSwitched={refresh} />}
+        {report && tab === 'runtimes' && <RuntimesTab report={report} onSwitched={refresh} />}
       </div>
     </div>
   )

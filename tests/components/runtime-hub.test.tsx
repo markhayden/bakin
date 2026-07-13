@@ -34,7 +34,7 @@ import { useToastStore } from '@makinbakin/sdk/hooks'
 
 import { OverviewTab } from '../../packages/host/src/components/runtime/overview-tab'
 import { CapabilitiesTab } from '../../packages/host/src/components/runtime/capabilities-tab'
-import { SwitchTab } from '../../packages/host/src/components/runtime/switch-tab'
+import { RuntimesTab } from '../../packages/host/src/components/runtime/runtimes-tab'
 import type { CapabilityReport } from '../../packages/host/src/components/runtime/types'
 
 const report: CapabilityReport = {
@@ -176,7 +176,7 @@ describe('CapabilitiesTab', () => {
   })
 })
 
-describe('SwitchTab', () => {
+describe('RuntimesTab', () => {
   let posts: Array<Record<string, unknown>> = []
 
   beforeEach(() => {
@@ -209,7 +209,7 @@ describe('SwitchTab', () => {
   })
 
   it('preview posts a dry run with the chosen options and renders grouped result cards', async () => {
-    render(<SwitchTab report={report} onSwitched={() => {}} />)
+    render(<RuntimesTab report={report} onSwitched={() => {}} />)
     fireEvent.click(screen.getByTestId('switch-target-openclaw'))
     fireEvent.click(screen.getByTestId('switch-adopt-cron'))
     fireEvent.click(screen.getByTestId('switch-preview'))
@@ -225,14 +225,14 @@ describe('SwitchTab', () => {
   })
 
   it('the active runtime is marked and not selectable', () => {
-    render(<SwitchTab report={report} onSwitched={() => {}} />)
+    render(<RuntimesTab report={report} onSwitched={() => {}} />)
     expect(screen.getByText('Active')).toBeTruthy()
     expect((screen.getByTestId('switch-target-pi') as HTMLButtonElement).disabled).toBe(true)
     expect((screen.getByTestId('switch-target-openclaw') as HTMLButtonElement).disabled).toBe(false)
   })
 
   it('the real switch is gated behind a TYPED confirm dialog', async () => {
-    render(<SwitchTab report={report} onSwitched={() => {}} />)
+    render(<RuntimesTab report={report} onSwitched={() => {}} />)
     fireEvent.click(screen.getByTestId('switch-target-openclaw'))
     fireEvent.click(screen.getByTestId('switch-execute'))
     await settleReact()

@@ -1,13 +1,16 @@
 /**
- * Runtime hub — Switch: the guided flow. Preview first (a dry run is the
- * DEFAULT action — zero writes), then a confirm dialog for the real switch,
- * live progress steps over the runtime:switch SSE stream, and a result told
- * as grouped cards (carried / attention / stays behind) instead of prose.
+ * Runtime hub — Runtimes: the runtime roster (capability-card anatomy:
+ * icon tile + title row + badge + description) with the guided switch flow.
+ * Preview first (a dry run is the DEFAULT action — zero writes), then a
+ * confirm dialog for the real switch, live progress steps over the
+ * runtime:switch SSE stream, and a result told as grouped cards
+ * (carried / attention / stays behind) instead of prose.
  */
 import { useCallback, useRef, useState } from 'react'
-import { ArrowRight, Loader2 } from 'lucide-react'
+import { Cpu, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { reduceSwitchProgress, SWITCH_PHASE_LABELS, type SwitchStepRow } from '../../lib/runtime-report'
 import type { CapabilityReport, SwitchResultPayload } from './types'
@@ -132,15 +135,19 @@ function ResultCards({ result }: { result: SwitchResultPayload }) {
 
 /**
  * Honest one-liners per known adapter — what you get and what you give up.
- * Unknown adapters fall back to a neutral line; blurbs are UI copy only,
- * never capability logic (that's the Overview grid's job).
+ * Unknown adapters fall back to a neutral line; blurbs and labels are UI
+ * copy only, never capability logic (that's the Overview grid's job).
  */
 const RUNTIME_BLURBS: Record<string, string> = {
-  openclaw: 'Gateway-based runtime. Native channel delivery (Discord), native cron, per-agent MCP tool access.',
-  pi: 'In-process coding-agent runtime. Fast, no gateway; approvals and alerts surface in the app; scheduling is Bakin-owned.',
+  openclaw: 'Runs agents through its own gateway — native Discord delivery, native cron, per-agent MCP tool access.',
+  pi: 'Runs agents in-process — fast and simple, no gateway. Approvals and alerts surface in the app; Bakin owns scheduling.',
+}
+const RUNTIME_LABELS: Record<string, string> = {
+  openclaw: 'OpenClaw',
+  pi: 'Pi',
 }
 
-export function SwitchTab({ report, onSwitched }: { report: CapabilityReport; onSwitched: () => void }) {
+export function RuntimesTab({ report, onSwitched }: { report: CapabilityReport; onSwitched: () => void }) {
   const [target, setTarget] = useState<string | null>(null)
   const [adoptCron, setAdoptCron] = useState(false)
   const [copyWorkspaces, setCopyWorkspaces] = useState(true)
@@ -217,16 +224,14 @@ export function SwitchTab({ report, onSwitched }: { report: CapabilityReport; on
 
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-sm font-semibold">Available runtimes</h2>
-        <p className="text-xs text-muted-foreground">
-          The runtime is the engine that runs your agents. Switching is a real migration, not a toggle —
-          agents start fresh sessions on the target and runtime-owned state stays behind. Preview first.
-        </p>
-      </div>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <p className="text-sm text-muted-foreground">
+        The runtime is the engine that runs your agents. Switching is a real migration, not a toggle —
+        agents start fresh sessions on the target and runtime-owned state stays behind. Preview first.
+      </p>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {roster.map((name) => {
           const isActive = name === report.adapter
+          const isSelected = target === name
           return (
             <button
               key={name}
@@ -234,25 +239,36 @@ export function SwitchTab({ report, onSwitched }: { report: CapabilityReport; on
               disabled={isActive}
               data-testid={`switch-target-${name}`}
               onClick={() => { setTarget(name); setResult(null); setSteps([]) }}
-              className={`rounded-xl border p-4 text-left transition-colors ${
+              className={`rounded-xl border bg-card p-5 text-left text-card-foreground shadow transition-colors ${
                 isActive
-                  ? 'cursor-default border-emerald-500/30 bg-emerald-500/5'
-                  : target === name
-                    ? 'border-primary bg-primary/5'
+                  ? 'cursor-default'
+                  : isSelected
+                    ? 'border-primary ring-1 ring-primary'
                     : 'border-border hover:bg-muted/40'
               }`}
             >
-              <p className="flex items-center gap-2 text-sm font-medium">
-                {name}
-                {isActive ? (
-                  <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] text-emerald-600 dark:text-emerald-400">Active</span>
-                ) : (
-                  <span className="flex items-center gap-1 text-[11px] text-muted-foreground">{report.adapter} <ArrowRight className="size-3" /> {name}</span>
-                )}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {RUNTIME_BLURBS[name] ?? 'Runtime adapter.'}
-              </p>
+              <div className="flex items-start gap-4">
+                <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted/60">
+                  <Cpu className="size-5 text-muted-foreground" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-base font-semibold">{RUNTIME_LABELS[name] ?? name}</p>
+                    {isActive && (
+                      <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">Active</Badge>
+                    )}
+                    {isSelected && !isActive && (
+                      <Badge variant="outline" className="border-primary/40 bg-primary/10 text-primary">Selected</Badge>
+                    )}
+                    <span className="ml-auto text-[11px] text-muted-foreground/60">
+                      {isActive ? `${report.runtime.name}@${report.runtime.version}` : name}
+                    </span>
+                  </div>
+                  <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+                    {RUNTIME_BLURBS[name] ?? 'Runtime adapter.'}
+                  </p>
+                </div>
+              </div>
             </button>
           )
         })}
