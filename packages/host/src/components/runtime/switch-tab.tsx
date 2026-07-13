@@ -130,6 +130,16 @@ function ResultCards({ result }: { result: SwitchResultPayload }) {
   )
 }
 
+/**
+ * Honest one-liners per known adapter — what you get and what you give up.
+ * Unknown adapters fall back to a neutral line; blurbs are UI copy only,
+ * never capability logic (that's the Overview grid's job).
+ */
+const RUNTIME_BLURBS: Record<string, string> = {
+  openclaw: 'Gateway-based runtime. Native channel delivery (Discord), native cron, per-agent MCP tool access.',
+  pi: 'In-process coding-agent runtime. Fast, no gateway; approvals and alerts surface in the app; scheduling is Bakin-owned.',
+}
+
 export function SwitchTab({ report, onSwitched }: { report: CapabilityReport; onSwitched: () => void }) {
   const [target, setTarget] = useState<string | null>(null)
   const [adoptCron, setAdoptCron] = useState(false)
@@ -141,6 +151,7 @@ export function SwitchTab({ report, onSwitched }: { report: CapabilityReport; on
   const esRef = useRef<EventSource | null>(null)
 
   const others = report.adapters.filter((name) => name !== report.adapter)
+  const roster = [report.adapter, ...others]
 
   const run = useCallback(async (dryRun: boolean) => {
     if (!target) return
@@ -206,30 +217,59 @@ export function SwitchTab({ report, onSwitched }: { report: CapabilityReport; on
 
   return (
     <div className="space-y-4">
+      <div>
+        <h2 className="text-sm font-semibold">Available runtimes</h2>
+        <p className="text-xs text-muted-foreground">
+          The runtime is the engine that runs your agents. Switching is a real migration, not a toggle —
+          agents start fresh sessions on the target and runtime-owned state stays behind. Preview first.
+        </p>
+      </div>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {others.map((name) => (
-          <button
-            key={name}
-            type="button"
-            data-testid={`switch-target-${name}`}
-            onClick={() => { setTarget(name); setResult(null); setSteps([]) }}
-            className={`rounded-xl border p-4 text-left transition-colors ${
-              target === name ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/40'
-            }`}
-          >
-            <p className="flex items-center gap-2 text-sm font-medium">
-              {report.adapter} <ArrowRight className="size-3.5 text-muted-foreground" /> {name}
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Agents, models, and workspace content carry over; Bakin data (tasks, assets, chats) is never touched.
-            </p>
-          </button>
-        ))}
+        {roster.map((name) => {
+          const isActive = name === report.adapter
+          return (
+            <button
+              key={name}
+              type="button"
+              disabled={isActive}
+              data-testid={`switch-target-${name}`}
+              onClick={() => { setTarget(name); setResult(null); setSteps([]) }}
+              className={`rounded-xl border p-4 text-left transition-colors ${
+                isActive
+                  ? 'cursor-default border-emerald-500/30 bg-emerald-500/5'
+                  : target === name
+                    ? 'border-primary bg-primary/5'
+                    : 'border-border hover:bg-muted/40'
+              }`}
+            >
+              <p className="flex items-center gap-2 text-sm font-medium">
+                {name}
+                {isActive ? (
+                  <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] text-emerald-600 dark:text-emerald-400">Active</span>
+                ) : (
+                  <span className="flex items-center gap-1 text-[11px] text-muted-foreground">{report.adapter} <ArrowRight className="size-3" /> {name}</span>
+                )}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {RUNTIME_BLURBS[name] ?? 'Runtime adapter.'}
+              </p>
+            </button>
+          )
+        })}
       </div>
 
       {target && (
-        <Card>
+        <Card className="border-amber-500/30">
           <CardContent className="flex flex-col gap-3 p-4">
+            <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs">
+              <p className="font-medium">Before you switch</p>
+              <ul className="mt-1 list-inside list-disc space-y-0.5 text-muted-foreground">
+                <li>Agents start fresh sessions on {target} — in-flight context does not carry.</li>
+                <li>Runtime-owned channels and cron jobs stay behind (cron can be adopted below).</li>
+                <li>{target} needs its own provider credentials — carried agents can't run turns without them.</li>
+                <li>Bakin data (tasks, assets, chats, schedules) is never touched, and settings are backed up first.</li>
+              </ul>
+            </div>
             <label className="flex items-start gap-2.5 text-sm">
               <input type="checkbox" className="mt-1 rounded" checked={copyWorkspaces} onChange={(e) => setCopyWorkspaces(e.target.checked)} />
               <span className="flex flex-col">
@@ -266,8 +306,9 @@ export function SwitchTab({ report, onSwitched }: { report: CapabilityReport; on
         open={confirming}
         onCancel={() => setConfirming(false)}
         title={`Switch to ${target}?`}
-        description="The switch backs up settings first and restores them if anything fails. A server restart finishes the change."
+        description={`This migrates your agent roster to ${target}. Agents start fresh sessions, runtime-owned state stays behind, and a server restart finishes the change. Settings are backed up and restored automatically if anything fails.`}
         confirmLabel={`Switch to ${target}`}
+        confirmValue={target ?? ''}
         confirmTestId="switch-confirm"
         onConfirm={() => {
           setConfirming(false)
