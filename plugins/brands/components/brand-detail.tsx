@@ -1124,8 +1124,15 @@ function BrandAssetsSection({ brand, onSave }: { brand: BrandManifest; onSave: (
                 >
                   <Plus className="size-3" /> Add
                 </Button>
-                <Button variant="ghost" size="xs" className="text-muted-foreground hover:text-destructive" onClick={() => onSave({ assetGroups: brand.assetGroups.filter((_, j) => j !== gi) })}>
-                  Remove group
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  className="text-muted-foreground hover:text-destructive"
+                  onClick={() => onSave({ assetGroups: brand.assetGroups.filter((_, j) => j !== gi) })}
+                  aria-label={`Remove group ${group.name}`}
+                  title="Remove group"
+                >
+                  <Trash2 className="size-3.5" />
                 </Button>
               </div>
             </div>
@@ -1225,7 +1232,7 @@ function AssetTile({
     // Horizontal card: compact image LEFT, the description gets the width it
     // deserves on the right. Two across, stretch to fit.
     <div className="group relative flex overflow-hidden rounded-xl bg-surface ring-1 ring-foreground/10 transition-shadow hover:ring-foreground/25" data-asset-card={assetId}>
-      <button className="block size-28 shrink-0 self-stretch overflow-hidden bg-background/50" title="Open in the asset viewer" onClick={open}>
+      <button className="block min-h-36 w-36 shrink-0 self-stretch overflow-hidden bg-background/50" title="Open in the asset viewer" onClick={open}>
         {isImage && info?.hasThumb
           ? <img src={`/api/assets/${assetId}/thumb`} alt="" className="size-full object-cover" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
           : <span className="flex size-full items-center justify-center text-3xl text-muted-foreground">{TYPE_ICON[info?.type ?? 'other'] ?? '⊟'}</span>}
