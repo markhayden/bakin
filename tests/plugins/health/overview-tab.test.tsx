@@ -118,11 +118,11 @@ describe('OverviewTabView', () => {
     for (const label of ['Engine', 'Queries', 'Indexes', 'Journal']) {
       expect(screen.getByText(label)).toBeDefined()
     }
-    expect(screen.getByText('Running dispatches').closest('[data-stat-tile]')?.textContent).toContain('2')
-    expect(screen.getByText('Connected runtime sessions').closest('[data-stat-tile]')?.textContent).toContain('4')
-    expect(screen.getByText('Recent failed events').closest('[data-stat-tile]')?.textContent).toContain('3')
+    expect(screen.getByText(/2 running.*4 sessions.*3 failed events in the last hour/i)).toBeDefined()
+    expect(screen.getByRole('link', { name: 'View activity' }).getAttribute('href')).toBe('/health?tab=activity')
+    expect(screen.getByRole('heading', { name: /Needs action/ }).closest('[data-section-card]')).toBeNull()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Review repair' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Restart Search' }))
     expect(onRepair).toHaveBeenCalledWith(repair)
     const repairRow = container.querySelector('[data-incident-id="repair"]') as HTMLElement
     expect(within(repairRow).getByText('Technical evidence')).toBeDefined()
@@ -135,10 +135,29 @@ describe('OverviewTabView', () => {
 
     render(<OverviewTabView model={model} />)
 
-    expect(screen.getByText('All required checks are freshly verified.')).toBeDefined()
+    expect(screen.getByText('Everything looks healthy.')).toBeDefined()
     expect(screen.getByRole('heading', { name: 'Search readiness' })).toBeDefined()
     expect(screen.getByText('Journal')).toBeDefined()
     expect(screen.queryByRole('heading', { name: /Needs action/ })).toBeNull()
+    expect(screen.queryByRole('heading', { name: 'All clear' })).toBeNull()
+  })
+
+  it('explains decisions in plain language and keeps healthy Search mechanics secondary', () => {
+    const model = buildHealthOverviewViewModel({ report: report(), now: NOW })
+
+    render(<OverviewTabView model={model} />)
+
+    expect(screen.getByText(/Checked using evidence from/i)).toBeDefined()
+    expect(screen.getByText(/Can Bakin find existing information and save new changes/i)).toBeDefined()
+    expect(screen.getByText(/These numbers do not change the health verdict above/i)).toBeDefined()
+
+    const searchDetails = screen.getByText('How Search was checked').closest('details')
+    expect(searchDetails).not.toBeNull()
+    expect(searchDetails?.open).toBe(false)
+    expect(within(searchDetails!).getByText('Can Bakin reach the Search service?')).toBeDefined()
+    expect(within(searchDetails!).getByText('Can Bakin find existing information?')).toBeDefined()
+    expect(within(searchDetails!).getByText('Is searchable information up to date?')).toBeDefined()
+    expect(within(searchDetails!).getByText('Can Bakin save new changes for Search?')).toBeDefined()
   })
 
   it('preserves focus on a stable incident action across a report refresh', () => {
@@ -161,9 +180,19 @@ describe('OverviewTabView', () => {
     const retry = mock()
     const model = buildHealthOverviewViewModel({ report: null, now: NOW })
 
-    render(<OverviewTabView model={model} error="Health endpoint unavailable" onRetry={retry} />)
+    render(
+      <OverviewTabView
+        model={model}
+        error="Health endpoint unavailable"
+        backgroundError="Request failed (404)"
+        onRetry={retry}
+      />,
+    )
 
     expect(screen.getByRole('alert').textContent).toContain('Health endpoint unavailable')
+    expect(screen.getByRole('alert').textContent).toContain('Bakin can still show live activity')
+    expect(screen.getByRole('alert').textContent).toContain('restart the Bakin host')
+    expect(screen.queryByText(/Verified evidence remains visible/)).toBeNull()
     expect(screen.getByRole('heading', { name: 'Search readiness' })).toBeDefined()
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
     expect(retry).toHaveBeenCalledTimes(1)

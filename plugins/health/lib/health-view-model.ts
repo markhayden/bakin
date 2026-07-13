@@ -140,15 +140,15 @@ function statusPresentation(status: HealthReportStatus | null): {
 } {
   switch (status) {
     case 'healthy':
-      return { label: 'Healthy', summary: 'Everything required is freshly verified.', tone: 'success' }
+      return { label: 'Healthy', summary: 'Everything looks healthy.', tone: 'success' }
     case 'needs_attention':
-      return { label: 'Needs attention', summary: 'One or more issues need an operator action.', tone: 'destructive' }
+      return { label: 'Needs attention', summary: 'Some problems need your attention.', tone: 'destructive' }
     case 'degraded':
-      return { label: 'Watching', summary: 'Bakin is operating, with conditions worth watching.', tone: 'warning' }
+      return { label: 'Watching', summary: 'Bakin is working, but some items need watching.', tone: 'warning' }
     case 'unknown_stale':
-      return { label: 'Unable to verify', summary: 'Some required health evidence is missing, failed, or stale.', tone: 'neutral' }
+      return { label: 'Unable to verify', summary: 'Bakin could not confirm its health.', tone: 'neutral' }
     default:
-      return { label: 'Checking health', summary: 'Waiting for the canonical health report.', tone: 'neutral' }
+      return { label: 'Checking health', summary: 'Checking whether Bakin is working.', tone: 'neutral' }
   }
 }
 

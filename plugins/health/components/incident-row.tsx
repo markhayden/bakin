@@ -26,7 +26,7 @@ function EvidenceTime({ value, stale }: { value: string; stale: boolean }) {
   const relative = formatRelativeTime(value)
   return (
     <time dateTime={value} title={formatAbsoluteTime(value)}>
-      {stale ? 'Stale evidence' : 'Oldest evidence'} · {relative || formatAbsoluteTime(value)}
+      {stale ? 'Last checked (stale)' : 'Checked'} · {relative || formatAbsoluteTime(value)}
     </time>
   )
 }
@@ -71,7 +71,7 @@ export function IncidentRow({ item, onRepair, onRerun }: IncidentRowProps) {
       primaryAction = (
         <Button size="sm" variant="outline" onClick={() => onRepair?.(incident)}>
           <Wrench aria-hidden="true" />
-          Review repair
+          {resolution.label}
         </Button>
       )
       break
@@ -118,7 +118,10 @@ export function IncidentRow({ item, onRepair, onRerun }: IncidentRowProps) {
             </span>
           </div>
           <h3 className="font-semibold text-foreground">{incident.title}</h3>
-          <p className="text-sm text-muted-foreground">{incident.impact}</p>
+          <div>
+            <p className="text-xs font-medium text-foreground">What this affects</p>
+            <p className="mt-1 text-sm text-muted-foreground">{incident.impact}</p>
+          </div>
           {incident.resources.length > 0 && (
             <ul className="flex flex-wrap gap-1.5" aria-label="Affected resources">
               {incident.resources.map((resource) => (

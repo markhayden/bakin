@@ -142,7 +142,7 @@ export function HealthPage() {
     >
       <PluginHeader
         title="Health"
-        subtitle="Act on current issues, compare agents, review activity, and inspect system evidence."
+        subtitle="See what needs attention, fix it, and confirm Bakin is working."
         meta={announcement ? (
           <span
             className={runningChecks
