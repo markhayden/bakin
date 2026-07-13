@@ -168,7 +168,7 @@ full style-guide pass.
 1. **Token migration** — ~517 hardcoded palette classes across ~70 plugin
    files. Worst: tasks/task-workflow-panels (39), tasks/task-card (37),
    workflows/step-detail-drawer (32) + nodes/* family, team/team-grid (25,
-   incl. hex), health-sections, schedule/calendar-weekly,
+   incl. hex), schedule/calendar-weekly,
    assets/VersionedAssetGrid. Workflow node-kind colors deserve a shared
    semantic token map, not inline literals. Also: AgentAvatar status-dot
    colors, models/brand-icon `#475569`, workflow-canvas `#525252` edges.
@@ -195,3 +195,33 @@ full style-guide pass.
 8. Deliberate one-offs (do NOT unify): FadeMore (single consumer),
    monogram/avatar fallbacks (distinct entities), workflow-canvas node drop
    (canvas, not file intake), form/wizard Dialogs.
+
+## 13. Health-derived operator patterns (2026-07)
+
+The action-first Health pass established patterns to reuse in other diagnostic
+and administrative surfaces during the full style-guide sweep:
+
+- **Lead with the decision.** Overall state and actionable exceptions precede
+  inventories. Healthy inventory belongs in collapsed/detail surfaces; unknown
+  state is explicit and never styled as success.
+- **Separate evidence from live facts.** Slow diagnostic evidence carries
+  checked/observed/stale times and last-known labeling. Fast counts say "right
+  now" and never silently override the evidence-based state.
+- **Stable identity, expandable detail.** The calm row leads with title,
+  impact, affected resources, freshness, and one contextual action. Machine
+  evidence lives in a disclosure and focus keys to stable incident IDs, not
+  message text.
+- **Mutation means plan, consent, verify.** Diagnostics do not mutate. Repair
+  dialogs show concrete changes and safety, preselect safe items only, confirm
+  every non-safe item, reject stale plans, and distinguish applied from
+  verified. Only explicit user actions announce in the polite live region.
+- **Charts are summaries, not locked boxes.** Focus and hover expose the same
+  mark label; an always-present table/disclosure exposes every exact value.
+  Empty charts stay honest and reduced motion removes animation.
+- **Container responsiveness is the contract.** Named containers drive card,
+  control, and table layout. Headers wrap; essential state never truncates;
+  dense raw tables scroll inside their own card. Verify at 1024/720/480/320,
+  including the surrounding shell.
+- **Only mounted views poll.** URL-backed tabs mount only the selected panel.
+  Resource hooks cancel superseded requests, retain last good data after a
+  background failure, and distinguish initial error, refreshing, and stale.

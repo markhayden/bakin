@@ -1,6 +1,6 @@
 # Spec: Trustworthy, Action-First Health Experience
 
-**Status:** Approved
+**Status:** Completed 2026-07-13
 **Approved:** 2026-07-12
 **Date:** 2026-07-12  
 **Primary surface:** `/health`  
@@ -87,10 +87,10 @@ default. Only the active tab mounts its data consumers.
 In priority order:
 
 1. Overall discrete status and evidence freshness.
-2. **Needs action** incidents.
-3. **Unable to verify** checks or stale/missing sources.
-4. **Watching** degraded or potentially self-resolving incidents.
-5. Search readiness, always visible even when healthy.
+2. Search readiness, always visible even when healthy.
+3. **Needs action** incidents.
+4. **Unable to verify** checks or stale/missing sources.
+5. **Watching** degraded or potentially self-resolving incidents.
 6. Right now: running dispatches, connected runtime sessions, and recent failures.
 7. A calm, explicit healthy state when everything required is freshly verified.
 
@@ -996,34 +996,34 @@ after implementation and update only if that changes.
 
 ## 19. Success criteria
 
-- [ ] Overview answers “what needs me?” without scanning technical inventory.
-- [ ] Search readiness is always visible and cannot report Healthy from connectivity alone.
-- [ ] Related rows group into stable incidents; counts match incidents, not raw evidence/chips.
-- [ ] Every active incident has one clear contextual next action.
-- [ ] Missing/stale/failed evidence never renders as Healthy or an empty success state.
-- [ ] Freshness shows actual check times; stale Overview evidence triggers a single-flight fresh
+- [x] Overview answers “what needs me?” without scanning technical inventory.
+- [x] Search readiness is always visible and cannot report Healthy from connectivity alone.
+- [x] Related rows group into stable incidents; counts match incidents, not raw evidence/chips.
+- [x] Every active incident has one clear contextual next action.
+- [x] Missing/stale/failed evidence never renders as Healthy or an empty success state.
+- [x] Freshness shows actual check times; stale Overview evidence triggers a single-flight fresh
       report.
-- [ ] Repairs remain explicit, destructive choices remain individually confirmed, and affected
+- [x] Repairs remain explicit, destructive choices remain individually confirmed, and affected
       checks verify the result.
-- [ ] Every one of the 39 current first-party registration sites is migrated or intentionally
+- [x] Every one of the 39 current first-party registration sites is migrated or intentionally
       consolidated with its diagnostic signal covered; legacy health fields/types and the
       duplicate adapter service are gone.
-- [ ] CLI, exec tools, notifications, delegation, Team diagnostics, nav badge, Health UI, and
+- [x] CLI, exec tools, notifications, delegation, Team diagnostics, nav badge, Health UI, and
       routes consume the same canonical report.
-- [ ] Duplicate latest-session cards are consolidated and accurately labeled.
-- [ ] Agent usage/efficiency and cost scopes are understandable and non-contradictory.
-- [ ] Activity is failure-first; successful routine noise is hidden by default while routine
+- [x] Duplicate latest-session cards are consolidated and accurately labeled.
+- [x] Agent usage/efficiency and cost scopes are understandable and non-contradictory.
+- [x] Activity is failure-first; successful routine noise is hidden by default while routine
       failures remain visible.
-- [ ] Search and plugin technical inventory remains available under System, exceptions first.
-- [ ] Only the active tab polls; event invalidation and slower source-specific fallbacks replace
+- [x] Search and plugin technical inventory remains available under System, exceptions first.
+- [x] Only the active tab polls; event invalidation and slower source-specific fallbacks replace
       the page-wide 10-second polling fan-out.
-- [ ] Health components remain usable at constrained container widths without compressed tables
+- [x] Health components remain usable at constrained container widths without compressed tables
       or fixed-width overflow.
-- [ ] Visualizations communicate real trends/proportions/status and include accessible text
+- [x] Visualizations communicate real trends/proportions/status and include accessible text
       equivalents.
-- [ ] Existing relevant tests pass; new contract, Search, repair, route, UI, and browser coverage
+- [x] Existing relevant tests pass; new contract, Search, repair, route, UI, and browser coverage
       passes; typecheck, lint, cycle check, builds, and docs checks pass.
-- [ ] Health user docs, plugin-author docs, knowledge files, generated SDK references, manifest,
+- [x] Health user docs, plugin-author docs, knowledge files, generated SDK references, manifest,
       and screenshots match the shipped behavior.
 
 ## 20. Out of scope

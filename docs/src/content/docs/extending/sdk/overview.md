@@ -50,12 +50,17 @@ At build time, plugin bundles should mark `@makinbakin/sdk`, `@makinbakin/sdk/*`
 | `PluginContextLite` | Route-handler context for declarative routes. |
 | `PluginManifest` | Parsed `bakin-plugin.json` shape. |
 | `NavItem` | Client navigation item shape. |
-| `HealthCheckResult` | Doctor check result row: `{ check, status, message, autoFixable }`. |
-| `PluginHealthCheckInput` | Input shape for `ctx.registerHealthCheck()`. |
+| `HealthCheckRegistrationInput` | Owner-local check definition accepted by `ctx.registerHealthCheck()`. |
+| `HealthCheckRunInput` | Discriminated producer result: non-empty observations or an explicit not-applicable reason. |
+| `HealthObservationInput` | Stable, structured healthy/warning/error/unknown evidence returned by a check. |
+| `HealthReport` | Core-stamped immutable report consumed by HTTP, CLI, and UI surfaces. |
+| `HealthRepairActionDefinition` | Separately registered plan/apply contract for explicit operator repairs. |
 
 </div>
 
 All public types are importable from `@makinbakin/sdk` or `@makinbakin/sdk/types`. Routing-specific types are also available from `@makinbakin/sdk/routing`.
+
+Health producer constructors are available from `@makinbakin/sdk/utils`: `healthHealthy`, `healthWarning`, `healthError`, `healthUnknown`, `healthObserved`, and `healthNotApplicable`. They preserve the status/disposition invariants at the call site; core still validates all runtime input before publishing it.
 
 ## UI Guidance
 

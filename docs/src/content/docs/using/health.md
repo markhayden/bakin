@@ -1,81 +1,113 @@
 ---
 title: Health
-description: "Cost, context, call volume, and diagnostics for every agent. Everything you can't see from the runtime alone."
+description: "Find what needs attention, verify Search, repair known issues, and inspect agent and system activity."
 ---
 
-What's each agent costing you? Which tool got hammered today? Whose context window is about to wrap? Whose dispatches are silently failing? Your runtime keeps the receipts but it doesn't read them back to you. This dashboard does.
-
-Live token counts, session costs, MCP and REST volumes, error rates, plugin status, search-engine state, the full diagnostic sweep. Without Bakin you'd be grepping JSONL transcripts to answer any of it.
+Health is the operator view for one question: **what needs my attention right now?** It combines diagnostic evidence with live runtime facts, then keeps detailed usage and subsystem inventory one click away.
 
 <figure class="screenshot-frame">
-  <img src="/docs/media/screenshots/using-health--dashboard.webp" alt="The health dashboard: cost and context cards, usage tabs, doctor results, system status, all in one feed." loading="lazy">
+  <img src="/docs/media/screenshots/using-health--dashboard.webp" alt="Health Overview showing overall status, Search readiness stages, actionable incidents, and current runtime facts." loading="lazy">
 </figure>
 
-## Cost and Context
+## Start with Overview
 
-Two cards anchor the top of the dashboard side by side. They cover the questions that pile up fastest when you've got a roster running: what each agent is costing you, and whose context is about to overflow. Glance at them on the way past, look closer when something looks off.
+Overview is ordered for triage:
+
+1. **Overall health** states whether required evidence is healthy, needs attention, degraded, or cannot currently be verified.
+2. **Search readiness** is always visible near the top. Engine, Queries, Indexes, and Journal are evaluated separately so a green process check cannot hide a broken query or indexing path.
+3. **Needs action** contains known problems with a concrete operator action.
+4. **Unable to verify** contains missing, failed, invalid, or stale evidence. Unknown is not treated as healthy.
+5. **Watching** contains fresh degraded conditions that may resolve without intervention.
+6. **Right now** shows live dispatch, connected-session, and recent-failure counts. These faster facts are kept separate from diagnostic evidence.
+
+If everything is healthy, Health says so explicitly instead of replacing the page with an empty list.
+
+### Status and freshness
 
 <div class="table-light-full table-label-wrap">
 
-| Card | What it answers |
-| --- | --- |
-| **Context Usage** | Total tokens in each agent's latest session, bar-charted. Spot who's pushing the model's window before they hit it. |
-| **Runtime Cost Estimate** | Input, output, cache-read, cache-write, and total per agent for each agent's latest session. Bakin reports cost values only when the runtime includes them in session usage events; it does not maintain its own model pricing table. These values are directional, not invoice-grade. When the runtime omits cost, Health shows the cost as unavailable instead of treating it as `$0.00`. |
+| State | Meaning | What to do |
+| --- | --- | --- |
+| **Healthy** | Required evidence is current and no active incident needs attention. | Nothing. Check the evidence time if you need to know when it was verified. |
+| **Needs attention** | A known issue has a concrete operator action. | Open the incident, review its impact, then use the offered repair, navigation, instructions, or re-check action. |
+| **Watching** | A current degraded condition is worth monitoring but does not yet require intervention. | Review its evidence; intervene only if the condition persists or escalates. |
+| **Unable to verify** | Required evidence is missing, invalid, failed, or stale. | Run checks. Do not assume the last known state is still true. |
 
 </div>
 
-:::tip[Watch the cache-read column]
-Cache-read tokens cost a fraction of fresh input tokens. That column tells you whether your agents are getting good cache hits or burning through fresh context every turn.
-:::
+Health keeps the latest valid snapshot when a later check cannot run, but labels it **Last known**. The evidence disclosure shows when the observation was checked, when it was observed, and whether it came from the current or retained snapshot.
 
-## Call Volume
+Use **Run checks** to request a fresh full sweep. Background refreshes preserve the last usable evidence and never turn a refresh failure into a false healthy state.
 
-Three tabs sit below the cost cards, all feeding from the same in-memory recorder. Same activity, sliced three ways. When something looks off in the system, this is usually the first place you'll see it.
+## Search readiness
+
+Search has four user-visible stages:
+
+<div class="table-light-full table-label-wrap">
+
+| Stage | What it verifies |
+| --- | --- |
+| **Engine** | The configured Search engine is enabled, installed, and reachable. |
+| **Queries** | A real end-to-end query path answers correctly. |
+| **Indexes** | Registered indexes and any blue/green migrations are usable. |
+| **Journal** | Pending writes are draining and quarantined writes are visible. |
+
+</div>
+
+Overview answers whether Search is ready. Open **System** for index document counts, migrations, journal backlog, enrichment coverage, and explicit reindex actions. A non-healthy stage points back to canonical diagnostic evidence, so the overview and technical detail cannot silently disagree.
+
+## Repair an issue
+
+Repairs are explicit and targeted to the incident you selected:
+
+1. Choose **Review repair** on an incident.
+2. Review the server-generated plan and the changes each item would make.
+3. Safe items may be preselected. Manual or destructive items stay off until you select and confirm each one.
+4. Apply the selected items. Health reruns the affected checks and reports **applied** separately from **verified**.
+
+Plans are short-lived and tied to the evidence they were created from. If the affected evidence changes before apply, Health rejects the stale plan without mutating anything and offers to re-plan.
+
+Some incidents provide navigation, resolution steps, or a re-check instead of deterministic repair. Technical evidence is collapsed by default and remains available when you need it.
+
+## Agents
+
+Agents consolidates usage and outcomes around one 24-hour, 7-day, or 30-day window:
+
+- The trend chart includes an exact data table, so values do not depend on hover or color.
+- The comparison view distinguishes **observed transcript activity**, **Bakin-attributed work**, and **unattributed activity**. Those scopes are related, not interchangeable.
+- Latest-session token traffic is cumulative traffic in each agent's newest transcript, not current context-window occupancy.
+- Runtime-reported transcript cost is shown separately from Bakin's fixed 24-hour budget estimate. Missing cost remains unavailable; it is never displayed as `$0`.
+
+Use the Models → Spend link for budget controls and the complete attributed-spend view.
+
+## Activity
+
+Activity is failure-first. Choose a 5-minute, 1-hour, or 24-hour window and optionally narrow it to tools, HTTP requests, or agents.
 
 <figure class="screenshot-frame">
-  <img src="/docs/media/screenshots/using-health--usage-panel.webp" alt="The usage panel: tool, endpoint, and agent tabs, windowed to 5m, 1h, or 24h." loading="lazy">
+  <img src="/docs/media/screenshots/using-health--usage-panel.webp" alt="Health Activity showing failure totals, an accessible failure trend, filters, and recent event details." loading="lazy">
 </figure>
 
-<div class="table-light-full table-label-wrap">
+Successful routine polling and maintenance are hidden by default so Health does not become its own loudest event source. Enable **Include routine success** when debugging background work. Routine failures are always shown, even when routine success is hidden.
 
-| Tab | What it counts |
-| --- | --- |
-| **Tool Usage** | Every MCP exec tool call, by name (e.g. `bakin_exec_tasks_create`). Count + error rate per window. |
-| **Endpoint Usage** | Every REST endpoint hit, by path. Count + error rate. |
-| **Agent Usage** | Calls + errors per agent. Quick read on who's busy and who's stuck. |
+The trend includes an exact bucket table. Event rows lead with a human label and impact; raw names, IDs, timing, metadata, and payload remain in the detail disclosure.
 
-</div>
+## System
 
-:::tip[Window the view]
-5 minutes, 1 hour, or 24 hours. Useful for catching: "is the orchestrator looping?", "is this tool error-spiking?", "who's the noisy agent right now?"
-:::
+System leads with short subsystem summaries, followed by the detail needed to resolve a problem:
 
-## Doctor
+- **Search** — readiness stages, indexes, migrations, journal, enrichment, and validated reindex results.
+- **Plugins** — activation failures and available updates before the complete installed inventory.
+- **Runtime** — summed connected sessions, uptime, memory, port, process ID, and Node version.
+- **Full check inventory** — every registered check, including healthy and not-applicable states, grouped by subsystem. Groups needing review open first.
 
-A green-light scan of every moving part in the stack. Agent roster, runtime adapter, search adapter, taskboard, assets, channel approvals, restart-recovery candidates, the works. Red means broken, yellow means drifting. The scan itself is report-only; repairable rows feed the explicit `bakin doctor --fix` and `bakin doctor --delegate` repair workflows.
+Wide technical tables scroll inside their cards instead of forcing the whole page wider. At phone widths, close the global Activity panel when you need the full dashboard width; the Health content itself stacks without hiding status or actions.
 
-Run it before you start the day or any time something feels off. Results cache so the dashboard reads fast; the refresh button (or `bakin doctor` from the CLI) forces a fresh sweep.
+## Plugin health checks
 
-## System Status
+Plugins and adapters register owner-aware checks using the canonical Health contract. A check returns structured observations with stable keys, affected resources, and optional incidents. Repair actions are registered separately; diagnostic checks never mutate state.
 
-Live state of the Bakin process and what it's connected to:
-
-<div class="table-light-full table-label-wrap">
-
-| Section | What's there |
-| --- | --- |
-| **Server stats** | Port, PID, memory in use, uptime, node version. |
-| **MCP sessions** | Agents currently connected, open session count per agent, when they connected. |
-| **Plugin registry** | Every plugin loaded, with route count and source (built-in vs user-installed). |
-| **Search engine** | Antfly status and row counts per `bakin_*` table. |
-
-</div>
-
-Quick sanity check for "did everything actually start up?"
-
-## Pluggable health checks
-
-Any plugin can register a health check that surfaces here alongside the built-ins. It picks up the same color coding (red / yellow / green), and plugins can attach explicit repair handlers for operator-approved fixes. If a plugin owns external state worth watching (an API key, a queue, a cache, a daemon), wire a check.
+Plugin authors should see [Server contracts](/docs/extending/plugins/server-contracts/#health-checks) for registration, freshness, ownership, validation, and repair examples.
 
 ## Settings
 
@@ -84,20 +116,18 @@ Any plugin can register a health check that surfaces here alongside the built-in
 
 | Setting | Type | Default | What it does |
 | --- | --- | --- | --- |
-| Refresh interval (seconds) | `number` | `30` | How often to poll for updated metrics |
-| Detailed metrics | `boolean` | `true` | Show per-plugin and per-tool breakdowns |
 | Usage history scan interval (minutes) | `number` | `5` | How often session transcripts are swept into the durable usage history |
 
 </div>
 <!-- /docs:settings -->
 
-## <svg class="heading-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="5 7 11 12 5 17"/><line x1="13" y1="17" x2="19" y2="17"/></svg>From the CLI
+## From the CLI
 
 <!-- docs:cli-commands health -->
 | Command | Purpose |
 | --- | --- |
 | `bakin status` | Show dispatch and server status. |
-| `bakin doctor [--full] [--notify-agent] [--fix\|--delegate] [--yes]` | Run health checks, apply explicit safe fixes, or create a delegated repair task. |
+| `bakin doctor [--full] [--notify-agent] [--fix\|--delegate] [--yes]` | Run canonical health checks, apply selected repairs, or create a delegated repair task. |
 <!-- /docs:cli-commands -->
 
 Full surface in the [CLI reference](/docs/reference/generated/cli/).
@@ -106,13 +136,13 @@ HTTP API surface for this plugin: see the [API reference](/docs/reference/genera
 
 <div class="for-agents">
 
-## <svg class="heading-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="8" width="16" height="12" rx="2"/><circle cx="9" cy="14" r="1.2" fill="currentColor"/><circle cx="15" cy="14" r="1.2" fill="currentColor"/><path d="M12 4v4"/><circle cx="12" cy="4" r="1" fill="currentColor"/></svg>For agents
+## For agents
 
-Agents can self-check via MCP exec tools.
+Agents can self-check through MCP exec tools.
 
 <!-- docs:exec-tools health -->
-- `bakin_exec_health_doctor`: Run system diagnostics (agent roster, skill sync, runtime, taskboard, assets, etc.). Returns detailed check results. Use fresh=true to force a full re-check instead of returning cached results.
-- `bakin_exec_health_status`: Get a quick system health summary — uptime, memory, active MCP sessions, and doctor error/warning counts. Useful for checking system state before starting work.
+- `bakin_exec_health_doctor`: Return the canonical Health report. Use fresh=true to join or start a full diagnostic sweep first.
+- `bakin_exec_health_status`: Get a quick canonical system health summary with uptime, memory, connected session count, activity failures, and incident counts.
 <!-- /docs:exec-tools -->
 
 Full schemas in the [Exec tools reference](/docs/reference/generated/exec-tools/).
@@ -121,6 +151,6 @@ Full schemas in the [Exec tools reference](/docs/reference/generated/exec-tools/
 
 ## Related
 
-- [Models](/docs/using/models/): pick cheaper models for the agents that show up loudest in Cost
-- [Essentials → System Status](/docs/using/essentials/#system-status): the always-on dot in the header is backed by these checks
-- [Daily Operation](/docs/start/operation/): start, stop, restart, update, the lifecycle commands that affect health
+- [Models](/docs/using/models/): inspect budget-attributed spend and choose models
+- [Essentials → System Status](/docs/using/essentials/#system-status): understand the always-visible header status
+- [Daily Operation](/docs/start/operation/): start, stop, restart, and update the services Health observes

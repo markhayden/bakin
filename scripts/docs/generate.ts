@@ -291,7 +291,7 @@ const bundles = {
   },
   'sdk-reference.md': {
     title: 'Bakin SDK Reference',
-    body: `The SDK reference is generated from JSDoc comments on SDK barrel files (\`packages/sdk/src/*/index.ts\`). Current SDK subpath count: ${readSdkExports().length}. Core plugin contract types (BakinPlugin, PluginContext, etc.) include field-level documentation; remaining types are grouped by domain with one-line summaries.`,
+    body: `The SDK reference is generated from JSDoc comments on SDK barrel exports plus the canonical Health type leaf resolved from the public types barrel. Current SDK subpath count: ${readSdkExports().length}. Core plugin contract types (BakinPlugin, PluginContext, etc.) include field-level documentation; remaining types are grouped by domain with one-line summaries.`,
   },
 }
 

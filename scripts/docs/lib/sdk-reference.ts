@@ -7,7 +7,7 @@
  * coverage warnings. readSdkExports is also consumed by the coverage report.
  */
 import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import * as ts from 'typescript'
 import { relativeSource } from '../source-scan'
 import { escapeMd, generatedPageNote } from './doc-utils'
@@ -19,6 +19,8 @@ export interface SdkSymbol {
   kind: 'function' | 'type' | 'interface' | 'const' | 'enum' | 'class' | 'variable'
   jsdoc: string
   members?: SdkMember[]
+  /** Optional generated-reference group for a symbol resolved from a star-exported leaf. */
+  docGroup?: string
 }
 
 export interface SdkMember {
@@ -42,7 +44,6 @@ const CORE_TYPES = new Set([
   'PluginToolContext',
   'NavItem',
   'APIRoute',
-  'HealthCheckResult',
   'PluginSettingsSchema',
   'BakinConfig',
   'PluginContributions',
@@ -188,8 +189,6 @@ const TYPE_DOMAIN_GROUPS: Record<string, string> = {
   HealthRepairChange: 'Health',
   HealthRepairPlanItem: 'Health',
   HealthRepairApplyResult: 'Health',
-  HealthRepairHandler: 'Health',
-  PluginHealthCheckInput: 'Health',
   // Settings
   StringSettingsField: 'Settings',
   NumberSettingsField: 'Settings',
@@ -259,6 +258,18 @@ export function readSdkExports(): SdkSubpath[] {
       continue
     }
     const symbols = extractSdkSymbols(sourceFile)
+    // `@makinbakin/sdk/types` intentionally uses `export *`. Resolve only the
+    // canonical Health leaf here so the changed public contract is visible
+    // without turning this generator into a general module resolver.
+    if (importPath === '@makinbakin/sdk/types') {
+      const healthSource = program.getSourceFile(join(dirname(sourcePath), 'health.ts'))
+      if (healthSource) {
+        const known = new Set(symbols.map(symbol => symbol.name))
+        for (const symbol of extractSdkSymbols(healthSource, 'Health')) {
+          if (!known.has(symbol.name)) symbols.push(symbol)
+        }
+      }
+    }
     result.push({ importPath, source: relativeSource(sourcePath), symbols })
   }
   return result
@@ -280,7 +291,7 @@ function jsdocTextOf(node: ts.Node): string {
   return ''
 }
 
-function extractSdkSymbols(sourceFile: ts.SourceFile): SdkSymbol[] {
+function extractSdkSymbols(sourceFile: ts.SourceFile, docGroup?: string): SdkSymbol[] {
   const symbols: SdkSymbol[] = []
 
   ts.forEachChild(sourceFile, (node) => {
@@ -379,7 +390,7 @@ function extractSdkSymbols(sourceFile: ts.SourceFile): SdkSymbol[] {
     }
   })
 
-  return symbols
+  return docGroup ? symbols.map(symbol => ({ ...symbol, docGroup })) : symbols
 }
 
 function hasExportModifier(node: ts.Node): boolean {
@@ -599,7 +610,6 @@ function renderTypes(lines: string[], sp: SdkSubpath | undefined): void {
     'NavItem',
     'APIRoute',
     'PluginSettingsSchema',
-    'HealthCheckResult',
     'BakinConfig',
   ]
   for (const name of coreOrder) {
@@ -622,7 +632,7 @@ function renderTypes(lines: string[], sp: SdkSubpath | undefined): void {
   const groups = new Map<string, SdkSymbol[]>()
   for (const sym of sp.symbols) {
     if (CORE_TYPES.has(sym.name)) continue
-    const group = TYPE_DOMAIN_GROUPS[sym.name] || 'Other'
+    const group = sym.docGroup || TYPE_DOMAIN_GROUPS[sym.name] || 'Other'
     if (!groups.has(group)) groups.set(group, [])
     groups.get(group)!.push(sym)
   }
@@ -686,7 +696,7 @@ function validateSdkCoverage(subpaths: SdkSubpath[]): void {
           }
         }
       }
-      if (sp.importPath === '@makinbakin/sdk/types' && !CORE_TYPES.has(sym.name) && !TYPE_DOMAIN_GROUPS[sym.name]) {
+      if (sp.importPath === '@makinbakin/sdk/types' && !CORE_TYPES.has(sym.name) && !sym.docGroup && !TYPE_DOMAIN_GROUPS[sym.name]) {
         missingTypeGroup.push(sym.name)
       }
     }

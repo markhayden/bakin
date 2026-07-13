@@ -48,10 +48,10 @@ description: Generated catalog of official plugins supported by Bakin.
       <td>none</td>
     </tr>
     <tr>
-      <td>Health<br/><span>System health dashboard — MCP stats, diagnostics, and uptime</span></td>
+      <td>Health<br/><span>Action-first system health, Search readiness, diagnostics, and repair</span></td>
       <td><code>health</code></td>
       <td>Core</td>
-      <td><code>1.3.0</code></td>
+      <td><code>1.4.0</code></td>
       <td>none</td>
     </tr>
     <tr>
@@ -72,7 +72,7 @@ description: Generated catalog of official plugins supported by Bakin.
       <td>Messaging<br/><span>Content messaging with scheduling, brainstorming, and multi-agent content pipeline</span></td>
       <td><code>messaging</code></td>
       <td>Official</td>
-      <td><code>0.6.0</code></td>
+      <td><code>0.7.0</code></td>
       <td><code>team</code> <code>workflows</code></td>
     </tr>
     <tr>
@@ -86,7 +86,7 @@ description: Generated catalog of official plugins supported by Bakin.
       <td>Projects<br/><span>Project management with specs, checklists, task linking, and agent access via MCP tools</span></td>
       <td><code>projects</code></td>
       <td>Official</td>
-      <td><code>0.6.0</code></td>
+      <td><code>0.7.0</code></td>
       <td><code>tasks</code> <code>assets</code> <code>team</code></td>
     </tr>
     <tr>
@@ -121,5 +121,5 @@ description: Generated catalog of official plugins supported by Bakin.
 </table>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Jul 12, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Jul 13, 2026 · Bakin 0.0.0-dev</span>
 </aside>

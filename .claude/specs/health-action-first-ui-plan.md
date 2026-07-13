@@ -1,6 +1,6 @@
 # Health Action-First UI — Implementation Plan
 
-**Status:** APPROVED 2026-07-12 (owner pre-approved completion)
+**Status:** COMPLETED 2026-07-13
 **Spec:** .claude/specs/health-action-first-ui.md
 **Branch:** feat/health-action-first-ui
 **Primary surface:** /health
@@ -1058,6 +1058,22 @@ bun run docs:check
 - No generated build stamps or browser artifacts are staged.
 - Final report records tests, browser widths, request counts, review findings,
   and any remaining out-of-scope shell issue.
+
+**Final verification — 2026-07-13**
+
+- Full repository suite: 6,987 passed, 9 skipped, 0 failed across 720 files;
+  isolated Kanban drag-and-drop suite: 11 passed, 0 failed.
+- Focused Health suite: 221 passed, 0 failed. Browser verifier: 182 passed,
+  0 failed, with two documented global-shell constraints at phone width.
+- Typecheck, lint (0 errors), cycle guard (0 new), plugin build, host build,
+  docs check, and diff whitespace checks passed.
+- Documentation validated 45 pages and 322 routes; generated references and
+  both Health screenshots match the shipped four-tab workspace.
+- Independent contract, concurrency, producer-census, UI, documentation, and
+  security/performance reviews completed. Findings were repaired and their
+  focused gates rerun before the final full-suite pass.
+- The user-owned `packages/host/src/api/_embedded-assets-static.ts` change was
+  preserved unstaged and unmodified by this project.
 
 ## 4. Rollback strategy
 

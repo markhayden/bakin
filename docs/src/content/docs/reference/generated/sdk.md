@@ -128,6 +128,10 @@ import { useSearch, useDebug } from '@makinbakin/sdk/hooks'
 | `usePluginEvent` | Subscribe to a server-pushed plugin event over the shell's single connection. |
 | `emitPluginEvent` | Subscribe to a server-pushed plugin event over the shell's single connection. |
 | `PluginEventPayload` | Subscribe to a server-pushed plugin event over the shell's single connection. |
+| `useFileDrop` | Headless drag-drop file intake (drag-over state + handlers + accept filter) — style your own zone. |
+| `UseFileDropOptions` | — |
+| `UseFileDropResult` | — |
+| `useHistoryBack` | History-aware back for detail surfaces reachable from many places — real back() with a fallback route for cold deep-links. |
 | `useHorizontalResize` | Resize a side-by-side split pane by dragging the divider between columns. |
 | `useAvailableModels` | The available-models catalog (cached, read-only); empty until loaded. |
 
@@ -162,8 +166,18 @@ import { PluginHeader, FacetFilter, AgentAvatar } from '@makinbakin/sdk/componen
 | `SaveBar` | Sticky save/discard bar for staged-draft pages (THE dirty-state pattern) + `useUnsavedGuard`. |
 | `useUnsavedGuard` | Sticky save/discard bar for staged-draft pages (THE dirty-state pattern) + `useUnsavedGuard`. |
 | `SaveBarProps` | — |
+| `useUnsavedChangesGuard` | Full navigation guard for dirty surfaces: beforeunload + TanStack history block + anchor interception + exit dialog. |
+| `UnsavedChangesGuardOptions` | — |
 | `SectionCard` | Titled card with icon + a one-line "why this matters" description — the standard section wrapper. |
 | `SectionCardProps` | — |
+| `SegmentedControl` | THE segmented control / mode toggle (Edit\|Preview, Board\|Log, time windows) — tablist semantics, neutral active segment. |
+| `SegmentedControlProps` | — |
+| `SegmentedControlOption` | — |
+| `StatTile` | THE metric tile — icon + uppercase micro-label + tabular big number, optional sub/meter. |
+| `StatTileProps` | — |
+| `StatusBadge` | THE status chip — one tone scale (neutral/success/warning/destructive/accent) for every state badge. |
+| `StatusBadgeProps` | — |
+| `StatusTone` | — |
 | `SearchUnavailable` | — |
 | `ScoreOverlay` | — |
 | `computeMatchedFields` | — |
@@ -180,6 +194,7 @@ import { PluginHeader, FacetFilter, AgentAvatar } from '@makinbakin/sdk/componen
 | `ModelSelect` | Model picker dropdown listing available models from the catalog. |
 | `PageLayout` | Standard plugin page wrapper with header, content area, and toaster. |
 | `PluginHeader` | Plugin page header with title, count badge, search, and action buttons. |
+| `PluginHeaderProps` | — |
 | `PluginSettingsRenderer` | Render a settings form from a PluginSettingsSchema definition. |
 | `PluginSettingsSchema` | — |
 | `SortableHead` | Sortable table column header with ascending/descending indicator. |
@@ -233,7 +248,15 @@ import { PluginHeader, FacetFilter, AgentAvatar } from '@makinbakin/sdk/componen
 | `formatRelativeTime` | — |
 | `formatAbsoluteTime` | — |
 | `ChannelIcon` | Icon component for a notification channel (Discord, Slack, email, etc.). |
-| `StackedColumnChart` | Stacked column chart with legend toggle + per-column hover breakdown. |
+| `ChartDataTable` | Exact table/disclosure shared by visual chart summaries. |
+| `ChartDataTableProps` | — |
+| `ChartDatum` | — |
+| `ChartSeries` | — |
+| `LineChart` | Multi-series SVG line chart with keyboard-equivalent marks. |
+| `LineChartProps` | — |
+| `BarChart` | Grouped or stacked SVG bar chart with keyboard-equivalent marks. |
+| `BarChartProps` | — |
+| `StackedColumnChart` | Stacked column chart with legend toggle + per-column pointer/keyboard breakdown. |
 | `StackedColumnChartProps` | — |
 | `StackedColumnDatum` | — |
 | `Sparkline` | Tiny inline SVG trend line for embedding beside a stat. |
@@ -274,16 +297,84 @@ import type { BakinPlugin, PluginContext, ExecToolDefinition } from '@makinbakin
 
 ### Core types (full field docs)
 
+### Health
+
+| Type | Description |
+| --- | --- |
+| `JsonValue` | Canonical Health contracts shared by plugin authors, adapters, core, HTTP |
+| `JsonObject` | — |
+| `HealthNonEmptyArray` | A tuple used wherever an empty list would make the contract ambiguous. |
+| `HealthObservationStatus` | — |
+| `HealthDisposition` | — |
+| `HealthReportStatus` | — |
+| `HealthOwnerKind` | — |
+| `HealthOwner` | Core-stamped owner of a registration or canonical finding. |
+| `HealthGroup` | Stable subsystem grouping supplied by a registration. |
+| `HealthResourceKind` | — |
+| `HealthResource` | Stable reference to a resource affected by an incident. |
+| `HealthRepairResolution` | — |
+| `HealthNavigateResolution` | — |
+| `HealthInstructionsResolution` | — |
+| `HealthRerunResolution` | — |
+| `HealthResolution` | — |
+| `HealthIncidentBaseInput` | — |
+| `AdvisoryIncidentInput` | — |
+| `WatchIncidentInput` | — |
+| `ActionIncidentInput` | — |
+| `HealthIncidentInput` | — |
+| `HealthObservationBaseInput` | — |
+| `HealthyObservationInput` | — |
+| `WarningObservationInput` | — |
+| `ErrorObservationInput` | — |
+| `UnknownObservationInput` | — |
+| `HealthObservationInput` | Status-discriminated producer observation; illegal combinations do not typecheck. |
+| `ObservedHealthCheckRunInput` | — |
+| `NotApplicableHealthCheckRunInput` | — |
+| `HealthCheckRunInput` | — |
+| `HealthCheckRegistrationInput` | Plugin- or adapter-authored check definition; core supplies owner metadata. |
+| `HealthRepairSafety` | — |
+| `HealthRepairChange` | — |
+| `HealthRepairTarget` | — |
+| `HealthRepairPrecondition` | — |
+| `HealthRepairPlanItem` | — |
+| `HealthRepairPlan` | — |
+| `HealthRepairApplyRequest` | — |
+| `HealthRepairApplyResult` | — |
+| `HealthRepairActionDefinition` | Owner-local repair action registered separately from diagnostic checks. |
+| `CanonicalHealthyObservation` | — |
+| `CanonicalWarningObservation` | — |
+| `CanonicalErrorObservation` | — |
+| `CanonicalUnknownObservation` | — |
+| `HealthObservation` | Validated, core-stamped observation retained in immutable check snapshots. |
+| `HealthCheckExecutionError` | — |
+| `HealthCheckExecution` | — |
+| `HealthIncident` | — |
+| `HealthCheckSnapshot` | — |
+| `HealthCheckState` | Cached state for one currently registered check. |
+| `SearchReadinessStatus` | — |
+| `SearchStageStatus` | — |
+| `SearchReadinessStageKey` | — |
+| `SearchReadinessStage` | — |
+| `SearchReadiness` | — |
+| `HealthReportCheckSummary` | — |
+| `HealthReportIncidentSummary` | — |
+| `HealthReportSummary` | — |
+| `HealthFullSweep` | — |
+| `HealthReportSubsystems` | — |
+| `HealthReport` | — |
+
 ## `@makinbakin/sdk/utils`
 
 Source: `packages/sdk/src/utils/index.ts`.
 
 | Utility | Description |
 | --- | --- |
-| `healthOk` | Build an `ok` health-check result. |
-| `healthWarn` | Build a `warn` health-check result (optionally auto-fixable). |
-| `healthError` | Build an `error` health-check result (optionally auto-fixable). |
-| `healthFixed` | Build a `fixed` health-check result (the auto-repair just ran). |
+| `healthHealthy` | Build a healthy observation. Healthy observations cannot carry incidents. |
+| `healthWarning` | Build a warning observation with an explicit advisory/watch/action disposition. |
+| `healthError` | Build an error observation. Its incident must require operator action. |
+| `healthUnknown` | Build an Unknown verification observation with a watch disposition. |
+| `healthObserved` | Build a successful observed run. Empty diagnostic output is unrepresentable. |
+| `healthNotApplicable` | Build an explicit successful not-applicable run. |
 | `cn` | Tailwind class merger (clsx + tailwind-merge). |
 | `BadgeTone` | Semantic tone for an outline status badge. |
 | `toneBadgeClass` | Classes for an outline status badge of the given tone — the |
@@ -364,5 +455,5 @@ Source: `packages/sdk/src/routing/index.ts`.
 | `DefinePluginInput` | — |
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Jul 12, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Jul 13, 2026 · Bakin 0.0.0-dev</span>
 </aside>
