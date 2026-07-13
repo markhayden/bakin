@@ -18,7 +18,7 @@
 import { createLogger } from '../logger'
 import { createAppServices, maybeGetAppServices } from '../app-services'
 import { scanAgentSync, type SyncScanReport } from '../agent-packages/sync-scanner'
-import { syncAllAgents } from '../agent-packages/sync'
+import { syncAllAgents, syncPack } from '../agent-packages/sync'
 import { refreshRoleContextBlocks } from '../team-context'
 import type { CheckResult, InstallResult, OnboardingComponent, OnboardingOptions } from './types'
 
@@ -103,6 +103,22 @@ async function install(_opts: OnboardingOptions): Promise<InstallResult> {
   const failed = results.filter((r) => r.error)
   for (const f of failed) {
     log.warn('agent-sync repair failed for agent', { agentId: f.agentId, error: f.error })
+  }
+
+  // Standalone packs (skill/workflow/lesson) own projections too — a drifted
+  // pack skill (e.g. a capability pack's global skill) is invisible to the
+  // per-agent sync above. Repair each pack that carried findings.
+  const packIds = [...new Set(
+    before.findings
+      .map((f) => f.packageId)
+      .filter((id): id is string => typeof id === 'string' && id.includes('@')),
+  )]
+  for (const packId of packIds) {
+    try {
+      await syncPack(packId, {})
+    } catch (err) {
+      log.warn('agent-sync repair failed for pack', { packId, error: err instanceof Error ? err.message : String(err) })
+    }
   }
 
   const after = await scanAgentSync()

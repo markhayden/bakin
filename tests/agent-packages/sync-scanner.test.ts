@@ -385,6 +385,22 @@ describe('scanAgentSync — skills', () => {
     expect(report.findings.find((f) => f.type === 'skill-missing')?.target).toBe('runtime:agent-skill:pixel:image-gen')
   })
 
+  it('an instructions-only adapter (Pi shape: SKILL.md not in files) is NOT drift', async () => {
+    await seedSyncedState()
+    // Pi's skills.get serves SKILL.md as `instructions` and excludes it from
+    // the files map; the lockfile sha covers the full tree. Same bytes must
+    // scan clean — this was a permanent false 'skill-drifted' on Pi.
+    const { 'SKILL.md': skillMd, ...rest } = SKILL_FILES
+    runtimeSkills.set('pixel:image-gen', {
+      name: 'image-gen',
+      instructions: skillMd,
+      files: rest,
+      metadata: {},
+    } as RuntimeSkill)
+    const report = await scanAgentSync()
+    expect(report.findings.filter((f) => f.type === 'skill-drifted')).toEqual([])
+  })
+
   it('reports skill-drifted on content mismatch', async () => {
     await seedSyncedState()
     runtimeSkills.set('pixel:image-gen', {
