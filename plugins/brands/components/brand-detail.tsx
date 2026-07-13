@@ -78,7 +78,7 @@ function FadeMore({
       </div>
       {showOverlay && (
         <div
-          className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-3 bg-gradient-to-t from-card via-card/95 to-transparent pt-14"
+          className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-3 bg-gradient-to-t from-card from-45% to-transparent px-1 pb-1 pt-20"
           data-fade-more
         >
           <span className="min-w-0 truncate pb-1 text-xs text-muted-foreground">{summary}</span>
