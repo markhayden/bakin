@@ -210,7 +210,9 @@ describe('RuntimesTab', () => {
 
   it('preview posts a dry run with the chosen options and renders grouped result cards', async () => {
     render(<RuntimesTab report={report} onSwitched={() => {}} />)
+    // Clicking a runtime card opens the dialog — options + preview live THERE.
     fireEvent.click(screen.getByTestId('switch-target-openclaw'))
+    await settleReact()
     fireEvent.click(screen.getByTestId('switch-adopt-cron'))
     fireEvent.click(screen.getByTestId('switch-preview'))
 
@@ -222,6 +224,11 @@ describe('RuntimesTab', () => {
     expect(screen.getByText(/subagent model 'openai\/gpt-5.5-mini' preserved/)).toBeTruthy()
     expect(screen.getByText(/no model providers configured/)).toBeTruthy()
     expect(screen.getByText('Stays behind')).toBeTruthy()
+    // A dry-run result funnels back into the confirm dialog — the only
+    // path to a real switch.
+    fireEvent.click(screen.getByTestId('switch-execute'))
+    await settleReact()
+    expect(screen.getByTestId('switch-confirm')).toBeTruthy()
   })
 
   it('the active runtime is marked and not selectable', () => {
@@ -234,7 +241,6 @@ describe('RuntimesTab', () => {
   it('the real switch is gated behind a TYPED confirm dialog', async () => {
     render(<RuntimesTab report={report} onSwitched={() => {}} />)
     fireEvent.click(screen.getByTestId('switch-target-openclaw'))
-    fireEvent.click(screen.getByTestId('switch-execute'))
     await settleReact()
 
     // Consequences live in the dialog; nothing posted; confirm stays

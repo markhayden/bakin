@@ -45,6 +45,13 @@ export interface ConfirmDialogProps {
   confirmValue?: string
   /** Label above the typed-confirmation input (default: `Type "<confirmValue>" to confirm`). */
   confirmPrompt?: ReactNode
+  /**
+   * Optional body content between the description and the typed-confirmation
+   * input — for the options an action needs decided at confirm time
+   * (checkboxes, a preview trigger). Keeps action configuration IN the
+   * dialog instead of inline on the page.
+   */
+  children?: ReactNode
   onConfirm: () => void
   onCancel: () => void
 }
@@ -69,6 +76,7 @@ export function ConfirmDialog({
   className,
   confirmValue,
   confirmPrompt,
+  children,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
@@ -91,6 +99,7 @@ export function ConfirmDialog({
           <DialogTitle>{title}</DialogTitle>
           {description && <DialogDescription>{description}</DialogDescription>}
         </DialogHeader>
+        {children}
         {confirmValue !== undefined && (
           <div className="space-y-1.5" data-confirm-typed>
             <Label htmlFor="confirm-typed-input" className="text-xs text-muted-foreground">
