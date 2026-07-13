@@ -92,6 +92,7 @@ export const SWITCH_PHASE_LABELS: Record<string, string> = {
   initialize: 'Initialize target runtime',
   provision: 'Provision tool access',
   'reconcile-roster': 'Carry roster over',
+  'adopt-cron': 'Adopt cron jobs',
   'carry-workspaces': 'Carry workspace content',
   'sync-agents': 'Re-project agents',
   'validate-capabilities': 'Validate capabilities',

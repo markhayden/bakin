@@ -195,6 +195,7 @@
       }
     ],
     "slots": [
+      "nav-badge-providers",
       "page:/workflows",
       "page:/workflows/[id]",
       "page:/workflows/new",

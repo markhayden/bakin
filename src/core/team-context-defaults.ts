@@ -142,6 +142,14 @@ bakin_exec_schedule_create name="daily-recipe" schedule="every day at 11am" agen
 - **Recurring work** (daily posts, weekly reports, periodic checks) → \`bakin_exec_schedule_create\`
 - **One-time deliverables** → \`bakin_exec_tasks_create\`
 
+## Bakin Code & GitHub Rules
+
+For coding tasks against a git repository:
+
+1. **Isolate in a worktree.** Start with \`bakin_exec_git_prepare_worktree taskId=<id>\` and work there; check state with \`bakin_exec_git_status\` and release with \`bakin_exec_git_release_worktree\` when done. Never commit from a shared checkout — branches flip under you.
+2. **GitHub operations use the \`gh\` CLI** (issues, PRs, releases, CI status) when it is installed and authenticated — the doctor's github readiness check tells you.
+3. **Ask before irreversible pushes.** Pushing to or merging into a repo's default branch, force-pushing, or publishing a release needs explicit instruction in the task brief; otherwise stop and ask via \`bakin_exec_log\` + \`bakin_exec_tasks_block\`. Opening a PR from a feature branch is fine without asking.
+
 ## Bakin Asset Rules
 
 All created content (images, video, audio, text, plans, data) MUST go to the assets directory. Use the Bakin skill for full conventions, but here's the minimum:

@@ -30,6 +30,7 @@ import {
   readMergedRuntimeJobs,
   jobToSearchDoc,
 } from './lib/job-service'
+import { adoptCronJobs, type AdoptCronJobsInput } from './lib/cron-adoption'
 import { registerScheduleExecTools } from './lib/exec-tools'
 import { scheduleRoutes } from './lib/routes/jobs'
 import { createLogger } from '../../src/core/logger'
@@ -69,6 +70,12 @@ const schedulePlugin: BakinPlugin = definePlugin({
       hookKind: 'rpc',
       label: 'Ensure Bakin schedule',
       summary: 'Create or update a Bakin-managed runtime cron job and return the provider job id.',
+    })
+
+    ctx.hooks.register('schedule.adoptCronJobs', (data: unknown) => adoptCronJobs(ctx, data as AdoptCronJobsInput), {
+      hookKind: 'rpc',
+      label: 'Adopt runtime cron jobs',
+      summary: 'Adopt snapshotted runtime cron jobs into Bakin schedules during a runtime switch (opt-in, idempotent per job id).',
     })
 
     // ─── Search Content Type Registration ─────────────────────────────

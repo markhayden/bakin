@@ -28,10 +28,17 @@ export interface RosterCarryReport {
   existing: string[]
   /**
    * Source models with no target equivalent (agent carried without them):
-   * no catalog match, or — for `subagentModel` — a runtime without
-   * per-agent subagent models (`routingSupport()`). Never guessed.
+   * no catalog match. Never guessed.
    */
   unmappedModels: Array<{ agentId: string; sourceModel: string; field: 'model' | 'subagentModel' }>
+  /**
+   * Subagent models the target runtime cannot HONOR
+   * (`routingSupport().perAgentSubagentModel === false`) — stashed in the
+   * carried agent's metadata (`carriedSubagentModel`) so a later switch back
+   * to an honoring runtime restores them instead of dropping the assignment
+   * (pi-parity OQ1: preservation without a dishonest capability flag).
+   */
+  preserved: Array<{ agentId: string; sourceModel: string }>
   /** Agents that could not be created on the target, and post-create carry steps that failed. */
   failed: Array<{ agentId: string; error: string }>
 }
@@ -63,12 +70,29 @@ function supportsPerAgentSubagentModel(target: AgentRuntimeAdapter): boolean {
 /** Adapter-private keys never carried across runtimes. */
 const PRIVATE_METADATA_KEYS = new Set(['workspacePath', 'workspace', 'subagentAllowAgents'])
 
+/**
+ * Reconciler-owned metadata stash for a subagent model the hosting runtime
+ * cannot honor. Written when carrying ONTO an unsupporting runtime; consumed
+ * (and not re-carried) when the agent later lands on an honoring one.
+ */
+export const CARRIED_SUBAGENT_MODEL_KEY = 'carriedSubagentModel'
+
 function carriedMetadata(agent: RuntimeAgent): Record<string, unknown> | undefined {
   if (!agent.metadata) return undefined
   const entries = Object.entries(agent.metadata).filter(
-    ([key, value]) => !PRIVATE_METADATA_KEYS.has(key) && value !== undefined && value !== null && value !== '',
+    ([key, value]) =>
+      !PRIVATE_METADATA_KEYS.has(key)
+      && key !== CARRIED_SUBAGENT_MODEL_KEY // reconciler-owned; re-stashed explicitly when still needed
+      && value !== undefined && value !== null && value !== '',
   )
   return entries.length > 0 ? Object.fromEntries(entries) : undefined
+}
+
+/** The effective source subagent model: the live field, else a prior stash. */
+function sourceSubagentModel(agent: RuntimeAgent): string | undefined {
+  if (agent.subagentModel) return agent.subagentModel
+  const stashed = agent.metadata?.[CARRIED_SUBAGENT_MODEL_KEY]
+  return typeof stashed === 'string' && stashed.length > 0 ? stashed : undefined
 }
 
 export interface ReconcileRosterOptions {
@@ -81,7 +105,7 @@ export async function reconcileRoster(
   target: AgentRuntimeAdapter,
   opts: ReconcileRosterOptions = {},
 ): Promise<RosterCarryReport> {
-  const report: RosterCarryReport = { carried: [], existing: [], unmappedModels: [], failed: [] }
+  const report: RosterCarryReport = { carried: [], existing: [], unmappedModels: [], preserved: [], failed: [] }
 
   const targetIds = new Set((await target.agents.list()).map((agent) => agent.id))
   let targetCatalog: string[] = []
@@ -114,24 +138,37 @@ export async function reconcileRoster(
     }
 
     // Subagent model: same mapping rule, applied post-create via update()
-    // (CreateRuntimeAgentInput doesn't accept it) — and only on runtimes that
-    // support per-agent subagent models. Anything else is a report line.
+    // (CreateRuntimeAgentInput doesn't accept it) — but only runtimes with
+    // per-agent subagent-model support HONOR it. On an unsupporting target
+    // the value is PRESERVED in metadata (never dropped): the round trip
+    // OpenClaw→Pi→OpenClaw restores the assignment. A prior stash counts as
+    // the source value on the way back.
     let subagentModel: string | undefined
-    if (agent.subagentModel) {
-      const supported = supportsPerAgentSubagentModel(target)
-      const mapped = supported ? mapModelToCatalog(agent.subagentModel, targetCatalog) : null
-      if (mapped) subagentModel = mapped
-      else report.unmappedModels.push({ agentId: agent.id, sourceModel: agent.subagentModel, field: 'subagentModel' })
+    let stashSubagentModel: string | undefined
+    const sourceSubagent = sourceSubagentModel(agent)
+    if (sourceSubagent) {
+      if (supportsPerAgentSubagentModel(target)) {
+        const mapped = mapModelToCatalog(sourceSubagent, targetCatalog)
+        if (mapped) subagentModel = mapped
+        else report.unmappedModels.push({ agentId: agent.id, sourceModel: sourceSubagent, field: 'subagentModel' })
+      } else {
+        stashSubagentModel = sourceSubagent
+        report.preserved.push({ agentId: agent.id, sourceModel: sourceSubagent })
+      }
     }
 
     if (!opts.dryRun) {
       try {
+        const metadata = {
+          ...(carriedMetadata(agent) ?? {}),
+          ...(stashSubagentModel ? { [CARRIED_SUBAGENT_MODEL_KEY]: stashSubagentModel } : {}),
+        }
         await target.agents.create({
           id: agent.id,
           name: agent.name || agent.id,
           ...(agent.role ? { role: agent.role } : {}),
           ...(model ? { model } : {}),
-          ...(carriedMetadata(agent) ? { metadata: carriedMetadata(agent) } : {}),
+          ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
         })
       } catch (err) {
         report.failed.push({ agentId: agent.id, error: err instanceof Error ? err.message : String(err) })
@@ -165,6 +202,7 @@ export async function reconcileRoster(
     carried: report.carried.length,
     existing: report.existing.length,
     unmapped: report.unmappedModels.length,
+    preserved: report.preserved.length,
     failed: report.failed.length,
   })
   return report

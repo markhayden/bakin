@@ -6,12 +6,19 @@
  * deep enumeration). The user learns what stays behind from the report, not
  * by discovering it broken.
  */
-import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
+import type { AgentRuntimeAdapter, CronJob } from '@bakin/core/adapters/runtime'
 
 export interface CantCarryLine {
   concern: 'channels' | 'cron' | 'sessions' | 'provider-config'
   detail: string
   count?: number
+}
+
+/** A source cron job captured pre-teardown for switch-time adoption. */
+export interface SnapshottedCronJob {
+  job: CronJob
+  /** Provider-raw snapshot (cron.getRaw) — preserved on the adopted Bakin job. */
+  raw: unknown
 }
 
 export interface SourceCapabilitySnapshot {
@@ -21,6 +28,18 @@ export interface SourceCapabilitySnapshot {
   hasCron: boolean
   /** Best-effort; undefined when the surface exists but the count fetch failed. */
   cronJobCount?: number
+  /**
+   * Full job snapshots — captured ONLY when the caller asked to adopt cron
+   * (the source runtime is torn down before adoption runs, so this is the
+   * one window to read them). Per-job read failures drop that job with a
+   * warn; adoption reports what it received.
+   */
+  cronJobs?: SnapshottedCronJob[]
+}
+
+export interface SnapshotSourceCapabilitiesOptions {
+  /** Capture full cron job payloads (list + per-job getRaw) for adoption. */
+  captureCronJobs?: boolean
 }
 
 /**
@@ -28,7 +47,10 @@ export interface SourceCapabilitySnapshot {
  * Count fetch failures degrade to "present, count unknown" — reported
  * without a number, never guessed, never thrown.
  */
-export async function snapshotSourceCapabilities(source: AgentRuntimeAdapter): Promise<SourceCapabilitySnapshot> {
+export async function snapshotSourceCapabilities(
+  source: AgentRuntimeAdapter,
+  opts: SnapshotSourceCapabilitiesOptions = {},
+): Promise<SourceCapabilitySnapshot> {
   const snapshot: SourceCapabilitySnapshot = {
     hasChannels: source.channels !== undefined,
     hasCron: source.cron !== undefined,
@@ -42,7 +64,22 @@ export async function snapshotSourceCapabilities(source: AgentRuntimeAdapter): P
   }
   if (source.cron) {
     try {
-      snapshot.cronJobCount = (await source.cron.list()).length
+      const jobs = await source.cron.list()
+      snapshot.cronJobCount = jobs.length
+      if (opts.captureCronJobs && jobs.length > 0) {
+        const captured: SnapshottedCronJob[] = []
+        for (const job of jobs) {
+          try {
+            const raw = source.cron.getRaw
+              ? await source.cron.getRaw(job.id, 'runtime switch: preserve native cron for Bakin adoption')
+              : null
+            captured.push({ job, raw })
+          } catch {
+            // Unreadable job — adoption reports it missing from the snapshot.
+          }
+        }
+        snapshot.cronJobs = captured
+      }
     } catch {
       // Present but unreadable — the line still emits, without a count.
     }

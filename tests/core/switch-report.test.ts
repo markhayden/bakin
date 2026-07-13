@@ -93,3 +93,47 @@ describe('snapshotSourceCapabilities', () => {
     })
   })
 })
+
+describe('snapshotSourceCapabilities — cron job capture (adoption)', () => {
+  const jobs = [
+    { id: 'j1', name: 'One', schedule: '0 9 * * *', command: 'do one', enabled: true },
+    { id: 'j2', name: 'Two', schedule: '0 8 * * 1', command: 'do two', enabled: false },
+  ]
+
+  it('captures full jobs + raw snapshots only when asked', async () => {
+    const rawReads: string[] = []
+    const source = {
+      channels: undefined,
+      cron: {
+        list: async () => jobs,
+        getRaw: async (id: string) => { rawReads.push(id); return { blob: id } },
+      },
+    } as never
+
+    const plain = await snapshotSourceCapabilities(source)
+    expect(plain.cronJobs).toBeUndefined()
+    expect(rawReads).toEqual([])
+
+    const captured = await snapshotSourceCapabilities(source, { captureCronJobs: true })
+    expect(captured.cronJobCount).toBe(2)
+    expect(captured.cronJobs).toEqual([
+      { job: jobs[0], raw: { blob: 'j1' } },
+      { job: jobs[1], raw: { blob: 'j2' } },
+    ])
+  })
+
+  it('an unreadable job drops from the capture without killing the snapshot', async () => {
+    const source = {
+      channels: undefined,
+      cron: {
+        list: async () => jobs,
+        getRaw: async (id: string) => {
+          if (id === 'j1') throw new Error('boom')
+          return { blob: id }
+        },
+      },
+    } as never
+    const captured = await snapshotSourceCapabilities(source, { captureCronJobs: true })
+    expect(captured.cronJobs).toEqual([{ job: jobs[1], raw: { blob: 'j2' } }])
+  })
+})
