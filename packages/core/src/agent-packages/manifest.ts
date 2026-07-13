@@ -75,7 +75,14 @@ export const BIN_PLATFORM_KEYS = ['darwin-arm64', 'darwin-x64', 'linux-x64', 'li
 export type BinPlatformKey = (typeof BIN_PLATFORM_KEYS)[number]
 
 const BinDownloadSchema = z.object({
-  url: z.string().url().refine((u) => u.startsWith('https://'), { message: 'bin download url must be https' }),
+  // https only — except loopback (test fixtures / local dev registries).
+  url: z
+    .string()
+    .url()
+    .refine(
+      (u) => u.startsWith('https://') || /^http:\/\/(127\.0\.0\.1|localhost)[:/]/.test(u),
+      { message: 'bin download url must be https' },
+    ),
   sha256: z.string().regex(/^[a-f0-9]{64}$/i, { message: 'sha256 must be 64 hex chars' }),
 })
 

@@ -67,6 +67,26 @@ export interface RemoveResult {
 }
 
 /**
+ * Drop `bin` projections whose target another installed package (any key
+ * except `selfKey`) still projects — shared binaries survive until their
+ * LAST referencing package is removed. All other projections pass through.
+ */
+function withoutSharedBins(
+  lock: ReturnType<typeof readLockfile>,
+  selfKey: string,
+  projections: NonNullable<ReturnType<typeof readLockfile>['packages'][string]['projections']>,
+): typeof projections {
+  const otherBinTargets = new Set<string>()
+  for (const [key, pkg] of Object.entries(lock.packages)) {
+    if (key === selfKey) continue
+    for (const p of pkg.projections ?? []) {
+      if (p.kind === 'bin') otherBinTargets.add(p.target)
+    }
+  }
+  return projections.filter((p) => p.kind !== 'bin' || !otherBinTargets.has(p.target))
+}
+
+/**
  * Remove a package + its orphaned dependencies.
  */
 export async function removePackageById(options: RemoveOptions): Promise<RemoveResult> {
@@ -88,7 +108,7 @@ export async function removePackageById(options: RemoveOptions): Promise<RemoveR
 
     // 1. Unproject parent
     if (entry.projections && entry.projections.length > 0) {
-      await unprojectPackage(entry.projections, { keepBlocks: options.keepBlocks })
+      await unprojectPackage(withoutSharedBins(lock, options.packageId, entry.projections), { keepBlocks: options.keepBlocks })
     }
 
     // 2. Remove the install dir under ~/.bakin/packages/<kind>s/<id>@<ver>/
@@ -124,7 +144,7 @@ export async function removePackageById(options: RemoveOptions): Promise<RemoveR
           // Orphaned — unproject + remove install dir + recurse into its
           // own deps before dropping the lockfile entry.
           if (depEntry.projections && depEntry.projections.length > 0) {
-            await unprojectPackage(depEntry.projections, { keepBlocks: options.keepBlocks })
+            await unprojectPackage(withoutSharedBins(l, depKey, depEntry.projections), { keepBlocks: options.keepBlocks })
           }
           const depInstallDir = getPackageSourceDir(
             getContentDir(),

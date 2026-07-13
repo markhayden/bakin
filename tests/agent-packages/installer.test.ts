@@ -43,12 +43,12 @@ import type { AgentRuntimeAdapter, RuntimeSkill, WorkspaceFile } from '@bakin/co
 // canonical readers.
 mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
-  getBakinPaths: () => ({}),
+  getBakinPaths: () => ({ bin: pathJoin(testDir, 'bin'), db: pathJoin(testDir, 'bakin.db') }),
   isUsingBakinHome: () => true,
 }))
 mock.module('@bakin/core/content-dir', () => ({
   getContentDir: () => testDir,
-  getBakinPaths: () => ({}),
+  getBakinPaths: () => ({ bin: pathJoin(testDir, 'bin'), db: pathJoin(testDir, 'bakin.db') }),
   isUsingBakinHome: () => true,
 }))
 mock.module('@bakin/adapter-openclaw/home', () => ({
@@ -699,5 +699,99 @@ describe('installPackage — install lock release on failure', () => {
     }).toThrow()
 
     expect(isInstallLockHeld()).toBe(false)
+  })
+})
+
+// ─── Capability packs: pinned binary installs (T2.2) ────────────────────────
+
+describe('installPackage — capability-pack bins', () => {
+  const { createHash } = require('crypto') as typeof import('crypto')
+  const sha256 = (s: string) => createHash('sha256').update(s).digest('hex')
+  const CAP_SCRIPT = '#!/bin/sh\nif [ "$1" = "--version" ]; then echo "capbin 1.0.0"; exit 0; fi\nexit 1\n'
+
+  const nativeFetch = (Bun as unknown as { fetch: typeof fetch }).fetch
+  let NativeResponse: typeof Response
+  let binServer: { port: number; stop: (force?: boolean) => void }
+
+  const platformKey = `${process.platform === 'darwin' ? 'darwin' : 'linux'}-${process.arch === 'arm64' ? 'arm64' : 'x64'}`
+
+  function seedCapabilityPack(id: string, opts: { sha?: string } = {}): string {
+    const dir = join(testDir, `${id}-cap-pack`)
+    mkdirSync(join(dir, 'skills', id), { recursive: true })
+    writeFileSync(
+      join(dir, 'bakin-package.json'),
+      JSON.stringify({
+        id,
+        kind: 'skill-pack',
+        name: id,
+        version: '1.0.0',
+        capability: 'web-search',
+        contributions: { skills: [`skills/${id}`] },
+        requires: {
+          bins: [{
+            name: 'capbin',
+            version: '1.0.0',
+            install: { [platformKey]: { url: `https://127.0.0.1:${binServer.port}/capbin`.replace('https', 'http'), sha256: opts.sha ?? sha256(CAP_SCRIPT) } },
+            verifyArgs: ['--version'],
+          }],
+        },
+        secrets: [{ name: 'CAP_API_KEY', description: 'test key', secretSlot: 'cap.apiKey' }],
+      }),
+    )
+    writeFileSync(join(dir, 'skills', id, 'SKILL.md'), `# ${id}`)
+    return dir
+  }
+
+  beforeEach(async () => {
+    if (!NativeResponse) {
+      NativeResponse = (await nativeFetch('data:text/plain,x')).constructor as typeof Response
+      binServer = (Bun as unknown as { serve: (o: unknown) => { port: number; stop: (f?: boolean) => void } }).serve({
+        port: 0,
+        fetch: () => new NativeResponse(CAP_SCRIPT),
+      })
+    }
+  })
+
+  it('installs the declared bin with a lockfile bin projection; uninstall removes it', async () => {
+    const { removePackageById } = await import('../../src/core/agent-packages/uninstaller')
+    await installPackage({ source: seedCapabilityPack('web-a') })
+
+    const binPath = join(testDir, 'bin', 'capbin')
+    expect(existsSync(binPath)).toBe(true)
+    expect(statSync(binPath).mode & 0o777).toBe(0o755)
+
+    const lock = readJson(join(testDir, 'packages', 'lock.json')) as { packages: Record<string, { projections: Array<{ kind: string; target: string }> }> }
+    const entry = lock.packages['web-a@1.0.0']
+    expect(entry).toBeTruthy()
+    expect(entry.projections.some(p => p.kind === 'bin' && p.target === binPath)).toBe(true)
+
+    await removePackageById({ packageId: 'web-a@1.0.0' })
+    expect(existsSync(binPath)).toBe(false)
+  })
+
+  it('rolls back the whole install on a checksum mismatch', async () => {
+    await expect(installPackage({ source: seedCapabilityPack('web-bad', { sha: 'c'.repeat(64) }) }))
+      .rejects.toThrow(/checksum/i)
+
+    expect(existsSync(join(testDir, 'bin', 'capbin'))).toBe(false)
+    const lock = readJson(join(testDir, 'packages', 'lock.json')) as { packages: Record<string, unknown> } | null
+    expect(lock?.packages?.['web-bad@1.0.0']).toBeUndefined()
+    // The projected skill was rolled back too
+    expect(existsSync(runtimeSkillDir('web-bad'))).toBe(false)
+  })
+
+  it('a bin shared by two packs survives the first uninstall and dies with the last', async () => {
+    const { removePackageById } = await import('../../src/core/agent-packages/uninstaller')
+    await installPackage({ source: seedCapabilityPack('web-a') })
+    await installPackage({ source: seedCapabilityPack('web-b') })
+
+    const binPath = join(testDir, 'bin', 'capbin')
+    expect(existsSync(binPath)).toBe(true)
+
+    await removePackageById({ packageId: 'web-a@1.0.0' })
+    expect(existsSync(binPath)).toBe(true)
+
+    await removePackageById({ packageId: 'web-b@1.0.0' })
+    expect(existsSync(binPath)).toBe(false)
   })
 })
