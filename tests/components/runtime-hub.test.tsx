@@ -151,6 +151,7 @@ describe('CapabilitiesTab', () => {
         {
           capability: 'web-search', packageId: 'web-search-brave', version: '1.0.0', name: 'Web Search (Brave)',
           description: 'Give your agents real web search — research, docs lookup, fresh information.',
+          useCases: ['Research tasks that need current information', 'Documentation lookups'],
           skills: [{ name: 'bx-search', status: 'ok' }],
           bins: [{ name: 'bx', status: 'ok' }],
           secrets: [{ name: 'BRAVE_SEARCH_API_KEY', required: true, secretSlot: 'brave.apiKey', status: 'missing' }],

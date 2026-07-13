@@ -77,7 +77,8 @@ export function CapabilitiesTab() {
   }
 
   return (
-    <div className="space-y-3" data-testid="capabilities-readiness">
+    <div className="space-y-4" data-testid="capabilities-readiness">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
       {capabilities.map((cap) => (
         <Card key={cap.capability}>
           <CardContent className="p-5">
@@ -89,7 +90,7 @@ export function CapabilitiesTab() {
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="text-base font-semibold">{cap.name}</p>
                   {cap.ready ? (
-                    <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">Ready</Badge>
+                    <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">Installed</Badge>
                   ) : (
                     <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400">Needs attention</Badge>
                   )}
@@ -97,34 +98,45 @@ export function CapabilitiesTab() {
                 {cap.description && (
                   <p className="mt-1.5 max-w-3xl text-sm leading-relaxed text-muted-foreground">{cap.description}</p>
                 )}
-              </div>
-            </div>
 
-            <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-border/60 pt-3.5">
-              {cap.skills.map((s) => <Leg key={`s-${s.name}`} ok={s.status === 'ok'} label={`skill ${s.name}`} />)}
-              {cap.bins.map((b) => <Leg key={`b-${b.name}`} ok={b.status === 'ok'} label={`binary ${b.name}`} />)}
-              {cap.secrets.map((s) => <Leg key={`k-${s.name}`} ok={s.status !== 'missing'} label={s.status === 'missing' ? `${s.name} not set` : `${s.name} · ${s.status}`} />)}
-              <span className="ml-auto text-[11px] text-muted-foreground/60">{cap.packageId}@{cap.version}</span>
-            </div>
+                <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-border/60 pt-3.5">
+                  {cap.ready ? (
+                    <span className="text-xs text-muted-foreground">
+                      {(cap.useCases?.length ?? 0) > 0
+                        ? <>Great for: {cap.useCases!.slice(0, 2).join(' · ').toLowerCase()}</>
+                        : 'Agents use this automatically when a task calls for it.'}
+                    </span>
+                  ) : (
+                    <>
+                      {cap.skills.filter((s) => s.status !== 'ok').map((s) => <Leg key={`s-${s.name}`} ok={false} label={`skill ${s.name} missing`} />)}
+                      {cap.bins.filter((b) => b.status !== 'ok').map((b) => <Leg key={`b-${b.name}`} ok={false} label={`binary ${b.name} missing`} />)}
+                      {cap.secrets.filter((s) => s.status === 'missing').map((s) => <Leg key={`k-${s.name}`} ok={false} label={`${s.name} not set`} />)}
+                    </>
+                  )}
+                  <span className="ml-auto text-[11px] text-muted-foreground/60">{cap.packageId}@{cap.version}</span>
+                </div>
 
-            {!cap.ready && (
-              <div className="mt-3 space-y-2">
-                <ul className="space-y-1 text-xs text-muted-foreground">
-                  {cap.missing.map((line) => <li key={line}>→ {line}</li>)}
-                </ul>
-                {cap.secrets.some((s) => s.status === 'missing') && (
-                  <Link
-                    to="/settings"
-                    className="inline-flex h-8 items-center rounded-md border border-border px-3 text-sm font-medium hover:bg-muted/40"
-                  >
-                    Add the key in Settings
-                  </Link>
+                {!cap.ready && (
+                  <div className="mt-3 space-y-2">
+                    <ul className="space-y-1 text-xs text-muted-foreground">
+                      {cap.missing.map((line) => <li key={line}>→ {line}</li>)}
+                    </ul>
+                    {cap.secrets.some((s) => s.status === 'missing') && (
+                      <Link
+                        to="/settings"
+                        className="inline-flex h-8 items-center rounded-md border border-border px-3 text-sm font-medium hover:bg-muted/40"
+                      >
+                        Add the key in Settings
+                      </Link>
+                    )}
+                  </div>
                 )}
               </div>
-            )}
+            </div>
           </CardContent>
         </Card>
       ))}
+      </div>
       <p className="text-xs text-muted-foreground">
         Add more from <Link className="underline" to="/explore" search={{ tab: 'capabilities' }}>Explore → Capabilities</Link>.
       </p>

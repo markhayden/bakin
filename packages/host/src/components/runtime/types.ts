@@ -31,6 +31,7 @@ export interface CapabilityReadiness {
   version: string
   name: string
   description?: string
+  useCases?: string[]
   skills: Array<{ name: string; status: 'ok' | 'missing' }>
   bins: Array<{ name: string; status: 'ok' | 'missing' | 'unsupported-platform' }>
   secrets: Array<{ name: string; required: boolean; secretSlot?: string; help?: string; status: 'env' | 'store' | 'missing' }>

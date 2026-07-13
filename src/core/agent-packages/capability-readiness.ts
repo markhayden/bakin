@@ -18,6 +18,7 @@ import { readLockfile } from '../../../packages/core/src/agent-packages/lockfile
 import { safeParseManifest, type SkillPackManifest } from '../../../packages/core/src/agent-packages/manifest'
 import { getPackageSourceDir } from '../../../packages/core/src/agent-packages/package-paths'
 import { getStoredSecret } from '@bakin/core/media'
+import { staticCuratedCatalog } from '@/core/curated-catalog/load'
 import { getContentDir, getBakinPaths } from '@/core/content-dir'
 import { createAppServices, maybeGetAppServices } from '@/core/app-services'
 import { createLogger } from '@/core/logger'
@@ -50,6 +51,8 @@ export interface CapabilityReadiness {
   name: string
   /** What this capability adds/unlocks — the pack manifest's description. */
   description: string
+  /** What it's good for — the curated catalog entry's use cases (may be empty). */
+  useCases: string[]
   skills: CapabilitySkillStatus[]
   bins: CapabilityBinStatus[]
   secrets: CapabilitySecretStatus[]
@@ -83,6 +86,13 @@ export async function listCapabilities(): Promise<CapabilityReadiness[]> {
   const binDir = getBakinPaths().bin
   const platform = binPlatformKey()
   const out: CapabilityReadiness[] = []
+  // "Great for" lines come from the curated catalog (storefront copy) —
+  // static parse only; a degraded catalog just means empty useCases.
+  const catalogUseCases = new Map(
+    staticCuratedCatalog().entries
+      .filter((e) => e.kind === 'skill-pack' && e.capability)
+      .map((e) => [e.id, e.useCases]),
+  )
 
   for (const [key, entry] of Object.entries(lock.packages)) {
     if (entry.kind !== 'skill-pack') continue
@@ -135,6 +145,7 @@ export async function listCapabilities(): Promise<CapabilityReadiness[]> {
       version: entry.version,
       name: manifest.name,
       description: manifest.description ?? '',
+      useCases: catalogUseCases.get(id) ?? [],
       skills,
       bins,
       secrets,
