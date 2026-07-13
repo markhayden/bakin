@@ -25,6 +25,7 @@ mock.module('@tanstack/react-router', () => ({
   useNavigate: () => navigateMock,
   useParams: () => routeParams,
   useSearch: () => routeSearch,
+  useRouter: () => ({ history: { block: () => () => {} }, parseLocation: (l: unknown) => l }),
   Link: ({ children }: { children?: React.ReactNode }) => <a>{children}</a>,
 }))
 mock.module('@/hooks/use-query-state', () => ({
@@ -83,6 +84,13 @@ beforeEach(() => {
     }
     if (url.endsWith('/docs/guidelines/ghost.md') && method === 'GET') {
       return new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
+    }
+    if (url.endsWith('/docs/guidelines/imagery.md') && method === 'GET') {
+      // fresh name — create mode's fetch-first probe sees a 404
+      return new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
+    }
+    if (url.endsWith('/docs/guidelines/existing.md') && method === 'GET') {
+      return new Response(JSON.stringify({ content: '# Existing\n\nAlready authored.' }), { status: 200 })
     }
     if (url.includes('/docs/') && method === 'DELETE') {
       return new Response('{}', { status: 200 })
@@ -175,7 +183,9 @@ describe('BrandDocEditorPage', () => {
 
   it('create mode starts with the teaching template and the SaveBar up', async () => {
     routeParams = { brandId: 'acme', kind: 'guidelines', name: 'imagery.md' }
-    routeSearch = { create: '1' }
+    // TanStack Router JSON-parses search values: ?create=1 arrives as NUMBER 1.
+    // This pin broke live before the String() coercion — keep it a number.
+    routeSearch = { create: 1 as unknown as string }
     render(<BrandDocEditorPage />)
     await waitFor(() => expect(screen.getByLabelText('doc content')).toBeDefined())
     expect((screen.getByLabelText('doc content') as HTMLTextAreaElement).value).toContain('description:')
@@ -187,6 +197,30 @@ describe('BrandDocEditorPage', () => {
     routeParams = { brandId: 'acme', kind: 'guidelines', name: 'ghost.md' }
     render(<BrandDocEditorPage />)
     await waitFor(() => expect(screen.getByText(/This doc doesn't exist/)).toBeDefined())
+    await settleReact()
+  })
+
+  it('create mode with a COLLIDING name loads the existing doc — never a blank template over real content', async () => {
+    routeParams = { brandId: 'acme', kind: 'guidelines', name: 'existing.md' }
+    routeSearch = { create: 1 as unknown as string }
+    render(<BrandDocEditorPage />)
+    await waitFor(() => expect(screen.getByLabelText('doc content')).toBeDefined())
+    expect((screen.getByLabelText('doc content') as HTMLTextAreaElement).value).toContain('Already authored')
+    expect(document.querySelector('[data-savebar]')).toBeNull() // it exists; nothing unsaved
+    await settleReact()
+  })
+
+  it('a load FAILURE renders a retryable error, not "doesn\'t exist"', async () => {
+    routeParams = { brandId: 'acme', kind: 'guidelines', name: 'voice.md' }
+    globalThis.fetch = mock(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.endsWith('/docs/guidelines/voice.md')) return new Response('boom', { status: 500 })
+      if (url.endsWith('/api/plugins/brands/acme')) return new Response(JSON.stringify(DETAIL), { status: 200 })
+      return new Response('{}', { status: 200 })
+    }) as unknown as typeof fetch
+    render(<BrandDocEditorPage />)
+    await waitFor(() => expect(screen.getByText(/Couldn't load this doc/)).toBeDefined())
+    expect(screen.queryByText(/This doc doesn't exist/)).toBeNull()
     await settleReact()
   })
 })

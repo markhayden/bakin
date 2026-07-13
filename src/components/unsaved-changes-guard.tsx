@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, type ReactNode } from 'react'
-import { useRouter as useTanStackRouter } from '@tanstack/react-router'
+import { useRouter as useTanStackRouter, type HistoryLocation } from '@tanstack/react-router'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -76,7 +76,9 @@ export function useUnsavedChangesGuard({
     if (!hasUnsavedChanges) return
     return tanStackRouter.history.block({
       enableBeforeUnload: false,
-      blockerFn: async ({ currentLocation, nextLocation }) => {
+      // Explicit types: the published-SDK declaration emit runs with
+      // noImplicitAny and cannot infer these the way the app tsconfig does.
+      blockerFn: async ({ currentLocation, nextLocation }: { currentLocation: HistoryLocation; nextLocation: HistoryLocation }) => {
         const current = tanStackRouter.parseLocation(currentLocation)
         const next = tanStackRouter.parseLocation(nextLocation)
         if (current.pathname === next.pathname) return false

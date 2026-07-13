@@ -7,33 +7,36 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams, useSearch } from '@tanstack/react-router'
 import { ArrowLeft, FileText } from 'lucide-react'
-import { MarkdownEditor, SaveBar, ErrorState, useUnsavedGuard } from '@makinbakin/sdk/components'
+import { MarkdownEditor, SaveBar, ErrorState, useUnsavedChangesGuard } from '@makinbakin/sdk/components'
 import { Button } from '@makinbakin/sdk/ui'
 import { toast } from '@makinbakin/sdk/hooks'
 
 type LoadState =
   | { status: 'loading' }
   | { status: 'not-found' }
+  | { status: 'error' }
   | { status: 'ready'; serverContent: string }
 
 const KIND_LABEL: Record<string, string> = { guidelines: 'Guidelines', lessons: 'Lessons' }
 
 export function BrandDocEditorPage() {
   const { brandId, kind, name } = useParams({ strict: false }) as { brandId: string; kind: string; name: string }
-  const search = useSearch({ strict: false }) as { create?: string }
-  const isCreate = search.create === '1'
+  // TanStack Router JSON-parses search values — `?create=1` arrives as the
+  // NUMBER 1, not the string '1'. Coerce before comparing.
+  const search = useSearch({ strict: false }) as { create?: string | number }
+  const isCreate = String(search.create ?? '') === '1'
   const navigate = useNavigate()
 
   const [state, setState] = useState<LoadState>({ status: 'loading' })
   const [content, setContent] = useState('')
   const [brandName, setBrandName] = useState(brandId)
+  const [mode, setMode] = useState<'edit' | 'preview'>('edit')
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   // Once the first save lands, the doc exists — further saves are plain updates.
   const [created, setCreated] = useState(false)
 
   const dirty = state.status === 'ready' && content !== state.serverContent
-  useUnsavedGuard(dirty)
 
   const docUrl = `/api/plugins/brands/${encodeURIComponent(brandId)}/docs/${encodeURIComponent(kind)}/${encodeURIComponent(name)}`
 
@@ -46,38 +49,48 @@ export function BrandDocEditorPage() {
     })()
   }, [brandId])
 
-  useEffect(() => {
-    if (isCreate) {
-      // Teach the shape: the frontmatter description becomes the doc-list row's
-      // subtitle, and the body is what agents read.
-      const template = `---\ndescription: One line on what this doc covers\n---\n\n# ${name.replace(/\.md$/, '').replace(/-/g, ' ')}\n\n`
-      setState({ status: 'ready', serverContent: '' })
-      setContent(template)
-      return
-    }
-    void (async () => {
-      try {
-        const res = await fetch(docUrl)
-        if (res.status === 404) {
+  // ALWAYS fetch first — even in create mode. `?create=1` sticks to the URL
+  // (reloads, history, name collisions), and seeding a blank template over an
+  // existing doc would let Save destroy real content. The param only decides
+  // what a 404 means: fresh template (create) vs honest not-found (edit).
+  const load = useCallback(async () => {
+    setState({ status: 'loading' })
+    try {
+      const res = await fetch(docUrl)
+      if (res.status === 404) {
+        if (isCreate) {
+          // Teach the shape: the frontmatter description becomes the doc-list
+          // row's subtitle, and the body is what agents read.
+          const template = `---\ndescription: One line on what this doc covers\n---\n\n# ${name.replace(/\.md$/, '').replace(/-/g, ' ')}\n\n`
+          setState({ status: 'ready', serverContent: '' })
+          setContent(template)
+        } else {
           setState({ status: 'not-found' })
-          return
         }
-        if (!res.ok) throw new Error(`load failed: ${res.status}`)
-        const body = (await res.json()) as { content?: string }
-        setState({ status: 'ready', serverContent: body.content ?? '' })
-        setContent(body.content ?? '')
-      } catch {
-        setState({ status: 'not-found' })
+        return
       }
-    })()
-  }, [docUrl, isCreate])
+      if (!res.ok) throw new Error(`load failed: ${res.status}`)
+      const body = (await res.json()) as { content?: string }
+      setState({ status: 'ready', serverContent: body.content ?? '' })
+      setContent(body.content ?? '')
+      setCreated(true) // it exists — further saves are plain updates
+    } catch {
+      // Transient failure is NOT "deleted" — offer a real retry, never bait a
+      // user into recreating (and overwriting) an intact doc.
+      setState({ status: 'error' })
+    }
+  }, [docUrl, isCreate, name])
+
+  useEffect(() => {
+    void load()
+  }, [load])
 
   const backToDocs = useCallback(
     () => void navigate({ to: '/brands/$brandId', params: { brandId }, search: { tab: kind } as never }),
     [navigate, brandId, kind],
   )
 
-  const save = useCallback(async () => {
+  const save = useCallback(async (): Promise<boolean> => {
     setSaving(true)
     setSaveError(null)
     try {
@@ -93,12 +106,45 @@ export function BrandDocEditorPage() {
       setState({ status: 'ready', serverContent: content })
       setCreated(true)
       toast(`Saved ${name}`, 'success')
+      return true
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : String(err))
+      return false
     } finally {
       setSaving(false)
     }
   }, [docUrl, content, name])
+
+  // In-app navigation guard — a dirty doc must never be silently dropped by a
+  // route change (breadcrumb, sidebar, ⌘K).
+  const unsavedGuard = useUnsavedChangesGuard({
+    hasUnsavedChanges: dirty || (isCreate && !created),
+    saving,
+    title: 'Unsaved doc changes',
+    description: `${name} has unsaved changes. Save before leaving, discard them, or stay here.`,
+    saveLabel: 'Save doc',
+    onCancel: backToDocs,
+    onSaveAndExit: save,
+    onDiscardAndExit: () => {
+      if (state.status === 'ready') setContent(state.serverContent)
+      setCreated(true) // an abandoned new doc is not unsaved work
+    },
+  })
+
+  if (state.status === 'error') {
+    return (
+      <div className="p-6">
+        <ErrorState
+          title="Couldn't load this doc"
+          message="The server didn't respond — the doc is probably fine. Retry, or go back to the brand."
+          retry={() => void load()}
+        />
+        <Button variant="ghost" size="sm" className="mt-3" onClick={backToDocs}>
+          <ArrowLeft className="size-3.5" /> Back to the brand
+        </Button>
+      </div>
+    )
+  }
 
   if (state.status === 'not-found') {
     return (
@@ -130,12 +176,30 @@ export function BrandDocEditorPage() {
       {state.status === 'loading' ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
       ) : (
-        <MarkdownEditor
-          content={content}
-          editing
-          onChange={setContent}
-          minHeight="60vh"
-        />
+        <>
+          <div className="flex w-fit items-center gap-0.5 rounded-lg bg-foreground/5 p-0.5" role="tablist" aria-label="Editor mode">
+            {(['edit', 'preview'] as const).map((m) => (
+              <button
+                key={m}
+                role="tab"
+                aria-selected={mode === m}
+                className={`rounded-md px-3 py-1 text-xs font-medium capitalize transition-colors ${
+                  mode === m ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                }`}
+                onClick={() => setMode(m)}
+                data-editor-mode={m}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
+          <MarkdownEditor
+            content={content}
+            editing={mode === 'edit'}
+            onChange={setContent}
+            minHeight="60vh"
+          />
+        </>
       )}
 
       <SaveBar
@@ -145,10 +209,13 @@ export function BrandDocEditorPage() {
         saveLabel="Save doc"
         onSave={() => void save()}
         onDiscard={() => {
-          if (isCreate && !created) backToDocs()
+          // A brand-new unsaved doc has nothing to reset to — discarding means
+          // leaving, which routes through the guard's one exit dialog.
+          if (isCreate && !created) unsavedGuard.requestExit()
           else if (state.status === 'ready') setContent(state.serverContent)
         }}
       />
+      {unsavedGuard.dialog}
     </div>
   )
 }

@@ -46,6 +46,19 @@ Cross-cutting UI lessons distilled from the chat/conversation-kit overhaul (2026
   drafting banner; `?draftTask=` handoff).
 - **Tooltips are Base UI**: `TooltipTrigger render={<el/>}`, NOT Radix
   `asChild` — and wrap in `TooltipProvider delay={200}`.
+- **TanStack search params are JSON-parsed.** `?create=1` arrives as the
+  NUMBER 1, not `'1'` — String()-coerce before comparing. RTL mocks that
+  return strings hide this; it only breaks in a real browser.
+- **Staged-draft surfaces need four guard rails** (brands review, 2026-07):
+  key the component by the route param (same-route param nav reuses the
+  mounted component — state bleeds across records); freshness-gate whole-
+  record PUTs when something else may write concurrently; clear the draft by
+  snapshot-compare so mid-flight edits survive; and wire
+  `useUnsavedChangesGuard` (SDK) — beforeunload alone does not cover in-app
+  navigation.
+- **`useUnsavedChangesGuard` is in the SDK** (promoted from workflows):
+  beforeunload + TanStack history block + anchor interception + exit dialog.
+  Never hand-roll a navigation guard.
 
 - **One engine per domain; components are thin.** `foldConversation` is THE folding engine — every surface composes the kit, none hand-rolls. Killing the three duplicate folders + the parallel `IntegratedBrainstorm` renderer was the whole win. Look for the existing engine before writing rendering logic.
 - **Design tokens only — no hardcoded palettes.** `IntegratedBrainstorm`'s hardcoded zinc/purple was the anti-pattern. Kit files are token-only (a test greps for `zinc-`/hex leaks).

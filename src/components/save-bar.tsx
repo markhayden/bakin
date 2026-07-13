@@ -118,6 +118,8 @@ export function useUnsavedGuard(dirty: boolean) {
     if (!dirty) return
     const handler = (e: BeforeUnloadEvent) => {
       e.preventDefault()
+      // Some engines key on returnValue rather than preventDefault.
+      e.returnValue = ''
     }
     window.addEventListener('beforeunload', handler)
     return () => window.removeEventListener('beforeunload', handler)

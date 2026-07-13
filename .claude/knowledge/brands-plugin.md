@@ -26,7 +26,18 @@ selection anywhere.
   (identity/assets/cardDocs toggle); the SDK `SaveBar` commits a single
   full-manifest PUT. Docs save in their own editor route. Blur-to-save is
   dead. Pristine added rows are dropped on save; invalid rows hold it with a
-  teaching error.
+  teaching error. Guard rails (2026-07 review): the detail component is
+  KEYED by brandId (same-route param navigation must not carry brand A's
+  draft to brand B), a pre-PUT freshness gate blocks the snapshot save when
+  the server manifest changed underneath (the drafting agent writes while
+  the user reviews — save again = deliberate overwrite), mid-flight edits
+  survive the post-save clear (snapshot-compare, never a blind
+  setStaged(null)), and BOTH dirty surfaces wire the SDK
+  `useUnsavedChangesGuard` (in-app route changes prompt; beforeunload alone
+  is not a guard). The doc editor fetches FIRST even in `?create=1` mode —
+  a colliding/reloaded create URL loads the existing doc instead of seeding
+  a blank template over real content; non-404 load failures render a
+  retryable error, never "doesn't exist".
 - **Completeness** (`lib/completeness.ts`): pure checklist (8 keys, pinned by
   `tests/plugins/brands/completeness.test.ts`; labels mirrored in
   `brand-card.tsx` `COMPLETENESS_LABELS`) — summary on `GET /` per brand,

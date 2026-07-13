@@ -137,7 +137,14 @@ export function AssetPicker({ open, onOpenChange, onPick, title = 'Choose an ass
             e.preventDefault()
             setDragOver(false)
             const f = e.dataTransfer.files?.[0]
-            if (f) void upload(f)
+            if (!f) return
+            // Match the browse input's accept="image/*" — a dropped file
+            // shouldn't sneak past the same restriction.
+            if (!f.type.startsWith('image/')) {
+              setUploadError('Only images can be uploaded here.')
+              return
+            }
+            void upload(f)
           }}
         >
           <Button variant="secondary" size="sm" disabled={uploading} onClick={() => fileRef.current?.click()} data-asset-picker-upload>

@@ -9,5 +9,8 @@ import { BrandDetail } from './brand-detail'
 export function BrandDetailPage() {
   const { brandId } = useParams({ strict: false }) as { brandId: string }
   const navigate = useNavigate()
-  return <BrandDetail brandId={brandId} onBack={() => void navigate({ to: '/brands' })} />
+  // key: same-route param navigation (search hit A → search hit B) reuses the
+  // mounted component — without a remount, brand A's staged draft/detail state
+  // would survive under brand B's URL and Save would cross-write manifests.
+  return <BrandDetail key={brandId} brandId={brandId} onBack={() => void navigate({ to: '/brands' })} />
 }

@@ -23,6 +23,7 @@ const navigateMock = mock()
 mock.module('@tanstack/react-router', () => ({
   useNavigate: () => navigateMock,
   useParams: () => ({ brandId: 'acme' }),
+  useRouter: () => ({ history: { block: () => () => {} }, parseLocation: (l: unknown) => l }),
   Link: ({ children }: { children?: React.ReactNode }) => <a>{children}</a>,
 }))
 

@@ -20,6 +20,7 @@ mock.module('../../../packages/core/src/content-dir', () => ({ getContentDir: ()
 mock.module('@tanstack/react-router', () => ({
   useNavigate: () => mock(),
   useParams: () => ({ brandId: 'acme' }),
+  useRouter: () => ({ history: { block: () => () => {} }, parseLocation: (l: unknown) => l }),
   Link: ({ children }: { children?: React.ReactNode }) => <a>{children}</a>,
 }))
 mock.module('@/hooks/use-query-state', () => ({

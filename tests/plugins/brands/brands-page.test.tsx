@@ -21,7 +21,17 @@ const navigateMock = mock()
 mock.module('@tanstack/react-router', () => ({
   useNavigate: () => navigateMock,
   useParams: () => ({}),
+  useRouter: () => ({ history: { block: () => () => {} }, parseLocation: (l: unknown) => l }),
   Link: ({ children }: { children?: React.ReactNode }) => <a>{children}</a>,
+}))
+
+// URL-backed search filter — plain state stand-in for the URL param.
+mock.module('@/hooks/use-query-state', () => ({
+  useQueryState: (_key: string, defaultValue: string) => {
+    const React = require('react') as typeof import('react')
+    return React.useState(defaultValue)
+  },
+  useQueryArrayState: () => [[], () => {}],
 }))
 
 // The wizard drawer has its own coverage concerns — stub it to a marker.
@@ -157,5 +167,21 @@ describe('BrandsPage', () => {
     globalThis.fetch = mock(() => new Promise(() => {})) as unknown as typeof fetch
     render(<BrandsPage />)
     expect(document.querySelector('[data-brands-loading]')).not.toBeNull()
+  })
+
+  it('legacy /brands?brand=<id> deep links redirect to the path route', async () => {
+    // happy-dom: history.replaceState doesn't sync window.location — use setURL
+    const happy = (window as unknown as { happyDOM?: { setURL: (u: string) => void } }).happyDOM
+    if (happy) happy.setURL('http://localhost/brands?brand=acme')
+    else window.history.replaceState(null, '', '/brands?brand=acme')
+    render(<BrandsPage />)
+    await waitFor(() =>
+      expect(navigateMock).toHaveBeenCalledWith(
+        expect.objectContaining({ to: '/brands/$brandId', params: { brandId: 'acme' }, replace: true }),
+      ),
+    )
+    if (happy) happy.setURL('http://localhost/')
+    else window.history.replaceState(null, '', '/')
+    await settleReact()
   })
 })

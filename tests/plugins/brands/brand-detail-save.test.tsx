@@ -20,6 +20,7 @@ mock.module('../../../packages/core/src/content-dir', () => ({ getContentDir: ()
 mock.module('@tanstack/react-router', () => ({
   useNavigate: () => mock(),
   useParams: () => ({ brandId: 'acme' }),
+  useRouter: () => ({ history: { block: () => () => {} }, parseLocation: (l: unknown) => l }),
   Link: ({ children }: { children?: React.ReactNode }) => <a>{children}</a>,
 }))
 mock.module('@/hooks/use-query-state', () => ({
@@ -142,6 +143,64 @@ describe('BrandDetail staged save model', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Identity' }))
     await waitFor(() => expect((screen.getByLabelText('Brand name') as HTMLInputElement).value).toBe('Acme Inc'))
     expect(document.querySelector('[data-savebar]')).not.toBeNull()
+    await settleReact()
+  })
+
+  it('freshness gate: a brand changed underneath blocks the first save (no PUT), saving again overwrites', async () => {
+    // GET returns a NEWER updatedAt than the one the draft was staged from.
+    let getCount = 0
+    globalThis.fetch = mock(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (init?.method === 'PUT' && url.endsWith('/api/plugins/brands/acme')) {
+        putCalls.push(JSON.parse(String(init.body)) as Record<string, unknown>)
+        return new Response(JSON.stringify({ brand: BRAND }), { status: 200 })
+      }
+      if (url.endsWith('/api/plugins/brands/acme')) {
+        getCount++
+        // first GET seeds the page; later GETs (the freshness probe) report a newer version
+        const brand = getCount === 1 ? BRAND : { ...BRAND, updatedAt: '2026-07-12T09:00:00.000Z' }
+        return new Response(JSON.stringify({ ...DETAIL, brand }), { status: 200 })
+      }
+      return new Response('{}', { status: 200 })
+    }) as unknown as typeof fetch
+
+    await renderIdentity()
+    fireEvent.change(screen.getByLabelText('Brand name'), { target: { value: 'Acme Inc' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save brand' }))
+    await waitFor(() => expect(screen.getByText(/changed while you were editing/)).toBeDefined())
+    expect(putCalls.length).toBe(0) // held — never a silent overwrite
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save brand' }))
+    await waitFor(() => expect(putCalls.length).toBe(1)) // deliberate overwrite
+    await settleReact()
+  })
+
+  it('edits staged while a save is in flight survive the post-save clear', async () => {
+    let resolvePut: (r: Response) => void = () => {}
+    globalThis.fetch = mock(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (init?.method === 'PUT' && url.endsWith('/api/plugins/brands/acme')) {
+        putCalls.push(JSON.parse(String(init.body)) as Record<string, unknown>)
+        return new Promise<Response>((r) => {
+          resolvePut = r
+        })
+      }
+      if (url.endsWith('/api/plugins/brands/acme')) {
+        return new Response(JSON.stringify(DETAIL), { status: 200 })
+      }
+      return new Response('{}', { status: 200 })
+    }) as unknown as typeof fetch
+
+    await renderIdentity()
+    fireEvent.change(screen.getByLabelText('Brand name'), { target: { value: 'Acme Inc' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save brand' }))
+    await waitFor(() => expect(putCalls.length).toBe(1))
+    // keep typing while the PUT is in flight
+    fireEvent.change(screen.getByLabelText('Brand description'), { target: { value: 'Typed mid-save.' } })
+    resolvePut(new Response(JSON.stringify({ brand: BRAND }), { status: 200 }))
+    // the mid-flight edit is still staged: bar stays up, text stays put
+    await waitFor(() => expect(document.querySelector('[data-savebar]')?.getAttribute('data-savebar-state')).toBe('dirty'))
+    expect((screen.getByLabelText('Brand description') as HTMLTextAreaElement).value).toBe('Typed mid-save.')
     await settleReact()
   })
 })

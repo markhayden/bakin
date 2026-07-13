@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { Paintbrush, Plus } from 'lucide-react'
 import { PluginHeader, EmptyState } from '@makinbakin/sdk/components'
+import { useQueryState } from '@makinbakin/sdk/hooks'
 import { Button, Skeleton } from '@makinbakin/sdk/ui'
 import { pluginFetch } from '@makinbakin/sdk/utils'
 import { BrandBuilder } from './brand-builder'
@@ -26,9 +27,18 @@ export function BrandsPage() {
   )
   const [data, setData] = useState<ListResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [query, setQuery] = useState('')
+  // URL-backed filter state (CLAUDE.md) — the search survives reloads and deep-links.
+  const [query, setQuery] = useQueryState('q', '')
   const [chooserOpen, setChooserOpen] = useState(false)
   const [activeFlow, setActiveFlow] = useState<CreatePath | null>(null)
+
+  // Courtesy redirect for pre-path-routing history: /brands?brand=<id> used to
+  // BE the detail page — send those straight to the route instead of silently
+  // showing the list.
+  useEffect(() => {
+    const legacy = new URLSearchParams(window.location.search).get('brand')
+    if (legacy) void navigate({ to: '/brands/$brandId', params: { brandId: legacy }, replace: true })
+  }, [navigate])
 
   const refresh = useCallback(async () => {
     try {
@@ -66,15 +76,15 @@ export function BrandsPage() {
   const startFlow = useCallback((path: CreatePath) => setActiveFlow(path), [])
   const flowDone = useCallback(
     (brandId: string, taskId?: string) => {
-      void refresh()
-      // Land on the new brand; the drafting banner links the dispatched task.
+      // Straight to the new brand (the drafting banner links the dispatched
+      // task); the list refetches on its own next mount — no refresh here.
       void navigate({
         to: '/brands/$brandId',
         params: { brandId },
         search: (taskId ? { draftTask: taskId } : {}) as never,
       })
     },
-    [refresh, navigate],
+    [navigate],
   )
 
   const empty = data !== null && data.brands.length === 0

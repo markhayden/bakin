@@ -8,9 +8,9 @@
  * URL-backed (?tab=): Overview is a read-only dashboard, the rest are live
  * editors that round-trip through the manifest PUT / doc routes.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { MarkdownContent, UnderlineTabs, SaveBar, SectionCard, ConfirmDialog, AssetPicker, DangerZone, ErrorState, useUnsavedGuard } from '@makinbakin/sdk/components'
+import { MarkdownContent, UnderlineTabs, SaveBar, SectionCard, ConfirmDialog, AssetPicker, DangerZone, ErrorState, useUnsavedChangesGuard } from '@makinbakin/sdk/components'
 import {
   Button, Badge, Input, Textarea, Switch, Label, Skeleton, Progress,
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
@@ -21,10 +21,10 @@ import {
   ArrowLeft, Palette, Rocket, Pencil, Plus, Check, AlertTriangle, ExternalLink,
   FileText, BookOpen, ImageIcon, Trash2, Sparkles, Info,
 } from 'lucide-react'
-import type { BrandManifest, PaletteEntry, Completeness } from '../types'
+import type { BrandManifest, PaletteEntry, BrandDocInfo, BrandDetailResponse } from '../types'
 
-interface DocInfo { name: string; description?: string; bytes: number }
-interface DetailResponse { brand: BrandManifest; guidelines: DocInfo[]; lessons: DocInfo[]; fingerprint: string | null; completeness?: Completeness }
+type DocInfo = BrandDocInfo
+type DetailResponse = BrandDetailResponse
 type ManifestPatch = Partial<Omit<BrandManifest, 'id' | 'createdAt' | 'updatedAt'>>
 type DocKind = 'guidelines' | 'lessons'
 
@@ -53,8 +53,12 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
   // edits mutate `staged`; the SaveBar commits the whole manifest in one PUT.
   const [staged, setStaged] = useState<BrandManifest | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
+  // The server updatedAt the draft was staged FROM — the freshness check that
+  // stops a snapshot PUT from silently erasing concurrent writes (the drafting
+  // agent authors via update_manifest while the user reviews).
+  const stagedBaseRef = useRef<string | null>(null)
+  const overwriteArmedRef = useRef(false)
   const dirty = staged !== null
-  useUnsavedGuard(dirty)
 
   const [notFound, setNotFound] = useState(false)
   const refresh = useCallback(async () => {
@@ -78,7 +82,13 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
     (patch: ManifestPatch) => {
       setStaged((prev) => {
         const base = prev ?? detail?.brand
-        return base ? { ...base, ...patch } : prev
+        if (!base) return prev
+        if (prev === null) {
+          // First edit of this draft — remember what server version it's based on.
+          stagedBaseRef.current = detail?.brand.updatedAt ?? null
+          overwriteArmedRef.current = false
+        }
+        return { ...base, ...patch }
       })
     },
     [detail],
@@ -87,6 +97,8 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
   const discard = useCallback(() => {
     setStaged(null)
     setSaveError(null)
+    stagedBaseRef.current = null
+    overwriteArmedRef.current = false
   }, [])
 
   /** Drop rows the user added but never filled in; they're scaffolding, not intent. */
@@ -99,25 +111,47 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
     terminology: (m.terminology ?? []).filter((t) => t.term.trim() !== '' || t.rule.trim() !== ''),
   })
 
-  const save = useCallback(async () => {
-    if (!staged) return
-    const cleaned = cleanStaged(staged)
+  /** Returns true when the save landed — the navigation guard's save-and-exit needs the answer. */
+  const save = useCallback(async (): Promise<boolean> => {
+    if (!staged) return true
+    // Snapshot NOW: edits staged while the PUT is in flight must survive the
+    // post-save clear, not vanish with it.
+    const snapshot = staged
+    const cleaned = cleanStaged(snapshot)
     // Honest validation BEFORE the PUT — invalid rows hold the save.
     if (!cleaned.name.trim()) {
       setSaveError('The brand needs a name.')
-      return
+      return false
     }
     if (cleaned.palette.some((c) => !isHex(c.hex) || !c.name.trim())) {
       setSaveError('Fix the highlighted colors first — every color needs a name and a hex value like #FF5A00.')
-      return
+      return false
     }
     if ((cleaned.terminology ?? []).some((t) => !t.term.trim() || !t.rule.trim())) {
       setSaveError('Every terminology entry needs both the term and its rule.')
-      return
+      return false
     }
     setSaving(true)
     setSaveError(null)
     try {
+      // Freshness gate: this PUT replaces the WHOLE manifest, so a brand that
+      // changed underneath (the drafting agent writing while the user reviews)
+      // must not be silently erased. First mismatch blocks with an explanation;
+      // saving again overwrites deliberately.
+      if (!overwriteArmedRef.current && stagedBaseRef.current) {
+        const freshRes = await fetch(`/api/plugins/brands/${brandId}`)
+        if (freshRes.ok) {
+          const fresh = (await freshRes.json()) as DetailResponse
+          if (fresh.brand.updatedAt !== stagedBaseRef.current) {
+            overwriteArmedRef.current = true
+            setDetail(fresh)
+            setSaveError(
+              'This brand changed while you were editing — likely the drafting agent. Save again to overwrite the newer version, or Discard to see it.',
+            )
+            return false
+          }
+        }
+      }
       const { id: _id, createdAt: _c, updatedAt: _u, ...body } = cleaned
       const res = await fetch(`/api/plugins/brands/${brandId}`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
@@ -128,11 +162,28 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
         throw new Error(resBody.error ?? `save failed: ${res.status}`)
       }
       await refresh()
-      setStaged(null)
+      // Clear ONLY if nothing new was staged during the round-trip.
+      setStaged((prev) => (prev === snapshot ? null : prev))
+      stagedBaseRef.current = null
+      overwriteArmedRef.current = false
+      return true
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : String(err))
+      return false
     } finally { setSaving(false) }
   }, [staged, brandId, refresh])
+
+  // In-app navigation guard: staged edits must never be silently dropped by a
+  // route change (tab switches don't navigate — the draft spans them freely).
+  const unsavedGuard = useUnsavedChangesGuard({
+    hasUnsavedChanges: dirty,
+    saving,
+    title: 'Unsaved brand changes',
+    description: 'You have unsaved changes to this brand. Save them before leaving, discard them, or stay here.',
+    saveLabel: 'Save brand',
+    onSaveAndExit: save,
+    onDiscardAndExit: discard,
+  })
 
   /** Every doc opens in the dedicated editor route — never an inline swap (spec §7e). */
   const editDoc = useCallback(
@@ -371,6 +422,7 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
         onSave={() => void save()}
         onDiscard={discard}
       />
+      {unsavedGuard.dialog}
     </div>
   )
 }
@@ -726,11 +778,12 @@ function DocsEditor({
         )}
         {docs.map((d) => (
           <div key={d.name} className="flex items-center gap-3 rounded-lg px-1.5 py-1.5 transition-colors hover:bg-foreground/5" data-doc-row={d.name}>
-            <button className="flex min-w-0 items-center gap-1.5 text-left" onClick={() => onEditDoc(kind, d.name)}>
+            {/* The filename is the identity — it never yields space to the description. */}
+            <button className="flex max-w-72 shrink-0 items-center gap-1.5 text-left" onClick={() => onEditDoc(kind, d.name)}>
               <FileText className="size-3.5 shrink-0 text-muted-foreground" />
               <span className="truncate font-mono text-sm">{d.name}</span>
             </button>
-            {d.description && <span className="min-w-0 truncate text-xs text-muted-foreground">{d.description}</span>}
+            {d.description && <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{d.description}</span>}
             <div className="ml-auto flex shrink-0 items-center gap-3">
               {kind === 'guidelines' && (
                 <TooltipProvider delay={200}>
