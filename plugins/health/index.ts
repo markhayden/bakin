@@ -26,6 +26,7 @@ import {
 } from '../../src/core/health-check-registry'
 import { checkContentDir } from './lib/system-checks/content-dir'
 import { checkCapabilities } from './lib/system-checks/capabilities'
+import { checkGithubReadiness } from './lib/system-checks/github-readiness'
 import { checkService } from './lib/system-checks/service'
 import { checkRuntime } from './lib/system-checks/runtime'
 import { checkSessionStore } from './lib/system-checks/session-store'
@@ -654,6 +655,11 @@ const healthPlugin: BakinPlugin = definePlugin({
       id: 'capabilities',
       name: 'Capability-pack readiness',
       run: () => checkCapabilities(),
+    })
+    ctx.registerHealthCheck({
+      id: 'github-readiness',
+      name: 'GitHub CLI readiness',
+      run: () => checkGithubReadiness(),
     })
     ctx.registerHealthCheck({
       id: 'service',
