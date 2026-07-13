@@ -450,6 +450,83 @@ describe('builder flow (#419 §9.1)', () => {
   })
 })
 
+describe('doc brainstorm (embedded editing help)', () => {
+  it('streams a turn as SSE frames with the live doc content in the prompt', async () => {
+    await createAcme()
+    let seenArgs: Record<string, unknown> = {}
+    const runtime = activated.ctx.runtime as unknown as {
+      messaging: { stream: (args: Record<string, unknown>) => AsyncIterable<Record<string, unknown>> }
+    }
+    runtime.messaging = {
+      ...(runtime.messaging ?? {}),
+      stream: (args: Record<string, unknown>) => {
+        seenArgs = args
+        return (async function* () {
+          yield { type: 'text', content: 'Tighten ' }
+          yield { type: 'text', content: 'the intro.' }
+        })()
+      },
+    } as typeof runtime.messaging
+
+    const res = await callRoute(route('POST', '/:brandId/docs/:kind/:name/brainstorm'), activated.ctx, {
+      searchParams: { brandId: 'acme', kind: 'guidelines', name: 'voice.md' },
+      body: {
+        agent: 'pixel',
+        message: 'What is missing?',
+        history: [{ role: 'user', content: 'earlier question' }],
+        docContent: '# Voice\n\nUNSAVED DRAFT CONTENT',
+      },
+      rawResponse: true,
+    })
+    expect(res.status).toBe(200)
+    expect(res.response.headers.get('Content-Type')).toBe('text/event-stream')
+    const text = await res.response.text()
+    expect(text).toContain('event: chunk')
+    expect(text).toContain('Tighten ')
+    expect(text).toContain('event: done')
+    expect(text).toContain('"content":"Tighten the intro."')
+
+    // the prompt carries the EDITOR's live content + history, and the turn is ephemeral
+    expect(String(seenArgs.content)).toContain('UNSAVED DRAFT CONTENT')
+    expect(String(seenArgs.content)).toContain('earlier question')
+    expect(String(seenArgs.content)).toContain('do NOT write files')
+    expect(seenArgs.ephemeral).toBe(true)
+    expect(seenArgs.agentId).toBe('pixel')
+    expect(String(seenArgs.threadId)).toContain('brand-doc')
+  })
+
+  it('streams an error frame when the runtime turn fails (never a hung stream)', async () => {
+    await createAcme()
+    const runtime = activated.ctx.runtime as unknown as {
+      messaging: { stream: (args: Record<string, unknown>) => AsyncIterable<Record<string, unknown>> }
+    }
+    runtime.messaging = {
+      ...(runtime.messaging ?? {}),
+      // eslint-disable-next-line require-yield
+      stream: () => (async function* (): AsyncGenerator<Record<string, unknown>> {
+        throw new Error('runtime down')
+      })(),
+    } as typeof runtime.messaging
+
+    const res = await callRoute(route('POST', '/:brandId/docs/:kind/:name/brainstorm'), activated.ctx, {
+      searchParams: { brandId: 'acme', kind: 'guidelines', name: 'voice.md' },
+      body: { agent: 'pixel', message: 'hi' },
+      rawResponse: true,
+    })
+    const text = await res.response.text()
+    expect(text).toContain('event: error')
+    expect(text).toContain('runtime down')
+  })
+
+  it('404s for a ghost brand', async () => {
+    const res = await callRoute(route('POST', '/:brandId/docs/:kind/:name/brainstorm'), activated.ctx, {
+      searchParams: { brandId: 'ghost', kind: 'guidelines', name: 'voice.md' },
+      body: { agent: 'pixel', message: 'hi' },
+    })
+    expect(res.status).toBe(404)
+  })
+})
+
 describe('activity feed (#419 Overview)', () => {
   it('returns brand-scoped brand.* audit events, newest first', async () => {
     const { writeFileSync } = await import('fs')

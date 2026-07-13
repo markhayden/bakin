@@ -59,6 +59,20 @@ Cross-cutting UI lessons distilled from the chat/conversation-kit overhaul (2026
 - **`useUnsavedChangesGuard` is in the SDK** (promoted from workflows):
   beforeunload + TanStack history block + anchor interception + exit dialog.
   Never hand-roll a navigation guard.
+- **`useHistoryBack(fallback)` is THE back-button pattern** for detail surfaces
+  reachable from more than one place: real `history.back()` when the app has
+  history, the canonical parent route on a cold deep-link. Hard-coded
+  `navigate({to: parent})` strands cross-surface arrivals (asset viewer bit
+  this).
+- **`StatusBadge` is THE status chip** — one tone scale
+  (neutral/success/warning/destructive/accent). Ad-hoc Badge classNames
+  drifted into three different Draft chips in one plugin.
+- **Embedded agent brainstorm = conversation kit, per-request SSE.** A plugin
+  route streams `messaging.stream()` as `event: chunk/done/error` frames
+  (`readConversationSseStream` contract) + client `ConversationPanel` +
+  `useConversationStream` with session-only messages. Reference:
+  brands doc-editor brainstorm. `ephemeral: true`, agent told to reply in
+  chat and never write files.
 
 - **One engine per domain; components are thin.** `foldConversation` is THE folding engine — every surface composes the kit, none hand-rolls. Killing the three duplicate folders + the parallel `IntegratedBrainstorm` renderer was the whole win. Look for the existing engine before writing rendering logic.
 - **Design tokens only — no hardcoded palettes.** `IntegratedBrainstorm`'s hardcoded zinc/purple was the anti-pattern. Kit files are token-only (a test greps for `zinc-`/hex leaks).

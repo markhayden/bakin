@@ -41,6 +41,9 @@ export type { UnsavedChangesGuardOptions } from '@/components/unsaved-changes-gu
 /** Titled card with icon + a one-line "why this matters" description — the standard section wrapper. */
 export { SectionCard } from '@/components/section-card'
 export type { SectionCardProps } from '@/components/section-card'
+/** THE status chip — one tone scale (neutral/success/warning/destructive/accent) for every state badge. */
+export { StatusBadge } from '@/components/status-badge'
+export type { StatusBadgeProps, StatusTone } from '@/components/status-badge'
 
 export { SearchUnavailable } from '@/components/search-unavailable'
 export { ScoreOverlay, computeMatchedFields } from '@/components/score-overlay'

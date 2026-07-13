@@ -656,6 +656,88 @@ export const brandRoutes = [
   }),
 
   defineRoute({
+    path: '/:brandId/docs/:kind/:name/brainstorm',
+    method: 'POST',
+    summary: 'Stream one brainstorm turn about a brand doc',
+    description:
+      'Embedded editing help (conversation kit): the operator asks an agent for feedback while editing a guideline/lesson doc. Streams the turn as per-request SSE frames (event: chunk/done/error — the readConversationSseStream contract). Ephemeral, session-only; the agent replies in chat and never writes files.',
+    params: docParams,
+    body: z.object({
+      agent: z.string().min(1),
+      message: z.string().min(1).max(20_000),
+      /** Session-only transcript so far (the client owns it; nothing persists). */
+      history: z.array(z.object({ role: z.enum(['user', 'agent']), content: z.string().max(50_000) })).max(30).default([]),
+      /** The editor's CURRENT (possibly unsaved) content — fresher than disk. */
+      docContent: z.string().max(200_000).optional(),
+    }),
+    responses: { 200: { contentType: 'text/event-stream' as const }, 404: errorResponse, 422: errorResponse },
+    handler: async (req, ctx, parsed) => {
+      const kind = parseKind(parsed.params.kind)
+      if (!kind) return Response.json({ error: 'kind must be guidelines or lessons' }, { status: 404 })
+      const read = getBrand(parsed.params.brandId)
+      if (read.status === 'missing') return Response.json({ error: 'brand not found' }, { status: 404 })
+      if (read.status === 'invalid') return Response.json({ error: read.error }, { status: 422 })
+      const b = parsed.body
+      const docName = parsed.params.name
+      const doc = b.docContent ?? readDoc(read.manifest.id, kind, docName) ?? ''
+
+      const prompt = [
+        `You are brainstorming edits to the brand ${kind === 'guidelines' ? 'guideline' : 'lesson'} doc "${docName}" for the brand "${read.manifest.name}" (${read.manifest.id}).`,
+        'Give concrete, concise editing feedback or drafted text the operator can paste in. Reply in chat only — do NOT write files or use brand write tools.',
+        '',
+        '## Current draft',
+        '```markdown',
+        doc,
+        '```',
+        ...(b.history.length > 0
+          ? ['', '## Conversation so far', ...b.history.map((m) => `${m.role === 'user' ? 'Operator' : 'You'}: ${m.content}`)]
+          : []),
+        '',
+        `Operator: ${b.message}`,
+      ].join('\n')
+
+      const { conversationThreadId } = await import('../../../src/components/conversation/thread-id')
+      const threadId = conversationThreadId('brand-doc', `${read.manifest.id}/${kind}/${docName}`, b.agent)
+      const encoder = new TextEncoder()
+      const frame = (event: string, data: unknown) => encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+
+      const stream = new ReadableStream<Uint8Array>({
+        async start(controller) {
+          let final = ''
+          try {
+            const turn = ctx.runtime.messaging.stream({
+              agentId: b.agent,
+              content: prompt,
+              threadId,
+              ephemeral: true,
+              signal: req.signal,
+            })
+            for await (const chunk of turn) {
+              if (chunk.type === 'text' && typeof chunk.content === 'string') final += chunk.content
+              controller.enqueue(frame('chunk', chunk))
+            }
+            controller.enqueue(frame('done', { content: final }))
+          } catch (err) {
+            if (!(err instanceof Error && err.name === 'AbortError')) {
+              log.error('brand-doc brainstorm turn failed', err instanceof Error ? err : new Error(String(err)), {
+                brandId: read.manifest.id, doc: docName, agent: b.agent,
+              })
+              try {
+                controller.enqueue(frame('error', { message: err instanceof Error ? err.message : String(err) }))
+              } catch { /* client already gone */ }
+            }
+          } finally {
+            try { controller.close() } catch { /* already closed */ }
+          }
+        },
+      })
+      return new Response(stream, {
+        headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' },
+      })
+    },
+  }),
+
+  defineRoute({
     path: '/:brandId/docs/:kind/:name',
     method: 'GET',
     summary: 'Read a guideline or lesson doc',

@@ -42,6 +42,10 @@ mock.module('@/components/markdown-editor', () => ({
     <textarea aria-label="doc content" value={content} onChange={(e) => onChange(e.target.value)} />
   ),
 }))
+// The brainstorm panel pulls the conversation kit + agent store — its own concern.
+mock.module('../../../plugins/brands/components/brand-doc-brainstorm', () => ({
+  DocBrainstormPanel: () => <div data-testid="brainstorm-panel" />,
+}))
 
 import { BrandDetail } from '../../../plugins/brands/components/brand-detail'
 import { BrandDocEditorPage } from '../../../plugins/brands/components/brand-doc-editor'
@@ -178,6 +182,15 @@ describe('BrandDocEditorPage', () => {
         ),
       ).toBe(true),
     )
+    await settleReact()
+  })
+
+  it('brainstorm toggle opens the side panel', async () => {
+    render(<BrandDocEditorPage />)
+    await waitFor(() => expect(screen.getByLabelText('doc content')).toBeDefined())
+    expect(screen.queryByTestId('brainstorm-panel')).toBeNull()
+    fireEvent.click(document.querySelector('[data-brainstorm-toggle]')!)
+    await waitFor(() => expect(screen.getByTestId('brainstorm-panel')).toBeDefined())
     await settleReact()
   })
 

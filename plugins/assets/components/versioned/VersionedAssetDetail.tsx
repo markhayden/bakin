@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams, useNavigate, Link } from '@tanstack/react-router'
-import { usePluginEvent } from '@makinbakin/sdk/hooks'
+import { usePluginEvent, useHistoryBack } from '@makinbakin/sdk/hooks'
 import { ConfirmDialog } from '@makinbakin/sdk/components'
 import { Badge, Button } from '@makinbakin/sdk/ui'
 import { ArrowLeft, Download, Pencil, Trash2, Upload, Loader2, X } from 'lucide-react'
@@ -17,6 +17,9 @@ import type { VersionedAssetManifest } from './types'
 export function VersionedAssetDetail() {
   const { assetId } = useParams({ strict: false }) as { assetId: string }
   const navigate = useNavigate()
+  // Reached from many places (brand assets tab, search, tasks) — back means
+  // "where I came from", not the assets home.
+  const goBack = useHistoryBack('/assets')
   const [manifest, setManifest] = useState<VersionedAssetManifest | null>(null)
   const [loading, setLoading] = useState(true)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -144,7 +147,7 @@ export function VersionedAssetDetail() {
         onChange={(e) => addVersion(e.target.files)}
       />
       <div className="sticky top-0 z-20 -mx-4 -mt-4 mb-4 flex items-center gap-2 border-b border-border bg-background px-4 py-3">
-        <Button size="sm" variant="ghost" onClick={() => navigate({ to: '/assets' })}><ArrowLeft className="size-4 mr-1" /> Assets</Button>
+        <Button size="sm" variant="ghost" onClick={goBack}><ArrowLeft className="size-4 mr-1" /> Back</Button>
         <h1 className="truncate text-base font-semibold" title={manifest.assetId}>{manifest.description || manifest.assetId}</h1>
         <Badge variant="secondary" className="ml-auto" data-testid="version-count">{manifest.versions.length} version{manifest.versions.length === 1 ? '' : 's'}</Badge>
         <Button size="sm" variant="outline" onClick={() => setEditOpen(true)} data-testid="edit-asset">

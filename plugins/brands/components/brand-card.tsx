@@ -3,7 +3,8 @@
  * the palette as its base edge, then name/status/completeness/meta. The
  * brand's OWN colors are the only strong color — chrome stays neutral.
  */
-import { Badge, Progress, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@makinbakin/sdk/ui'
+import { StatusBadge } from '@makinbakin/sdk/components'
+import { Progress, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@makinbakin/sdk/ui'
 import type { BrandManifest } from '../types'
 
 export type ListedBrand = BrandManifest & {
@@ -85,9 +86,9 @@ export function BrandCoverCard({ brand, onOpen }: { brand: ListedBrand; onOpen: 
       <div className="space-y-2 p-4">
         <div className="flex items-center gap-2">
           <h3 className="min-w-0 truncate font-medium">{brand.name}</h3>
-          <Badge variant={brand.draft ? 'outline' : 'secondary'} className="ml-auto shrink-0">
+          <StatusBadge tone={brand.draft ? 'warning' : 'success'} className="ml-auto shrink-0">
             {brand.draft ? 'Draft' : 'Published'}
-          </Badge>
+          </StatusBadge>
         </div>
         {brand.description ? (
           <p className="line-clamp-2 text-sm text-muted-foreground">{brand.description}</p>

@@ -47,6 +47,15 @@ selection anywhere.
   from `GET /blocked-tasks`. Publish sits behind a light confirm + toast.
 - **Settings**: Status → Imported from → What agents see (footprint +
   integrity) → SDK `DangerZone` (typed brand-id confirm) at the bottom.
+- **Doc editor**: full-width; breadcrumb + Edit|Preview toggle + Brainstorm
+  button in ONE header row. **Brainstorm** = embedded conversation-kit panel
+  (`brand-doc-brainstorm.tsx`) over `POST .../docs/:kind/:name/brainstorm` —
+  per-request SSE (`messaging.stream`, ephemeral, live editor content in the
+  prompt, session-only transcript). Publish button exists ONLY in the draft
+  banner + Settings (never the hero). Status chips are the SDK `StatusBadge`
+  (Draft=warning, Published=success). Doc rows are distinct tiles; section
+  empty states use the centered `SectionEmpty`. Asset tiles' viewer link
+  returns via the SDK `useHistoryBack` pattern.
 - **Assets tab**: every add goes through the SDK `AssetPicker`; logo variant
   is a labeled select; ref changes stage into the SaveBar draft (asset-note
   edits PATCH the assets plugin immediately — different domain).

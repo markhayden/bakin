@@ -10,7 +10,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { MarkdownContent, UnderlineTabs, SaveBar, SectionCard, ConfirmDialog, AssetPicker, DangerZone, ErrorState, useUnsavedChangesGuard } from '@makinbakin/sdk/components'
+import { MarkdownContent, UnderlineTabs, SaveBar, SectionCard, ConfirmDialog, AssetPicker, DangerZone, ErrorState, StatusBadge, useUnsavedChangesGuard } from '@makinbakin/sdk/components'
 import {
   Button, Badge, Input, Textarea, Switch, Label, Skeleton, Progress,
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
@@ -40,6 +40,18 @@ const TABS = [
 const isHex = (h: string) => /^#[0-9a-fA-F]{6}$/.test(h)
 /** Frontmatter is machine metadata — previews render the body only. */
 const stripFrontmatter = (md: string) => md.replace(/^---\n[\s\S]*?\n---\n?/, '')
+
+/**
+ * Centered, breathing empty state for a section body — inline muted sentences
+ * blended into the section copy and read as content, not absence.
+ */
+function SectionEmpty({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex min-h-24 items-center justify-center rounded-lg bg-foreground/[0.03] px-8 py-8 text-center text-sm text-muted-foreground" data-section-empty>
+      <p className="max-w-md">{children}</p>
+    </div>
+  )
+}
 
 /**
  * Preview container that fades long content into a solid bottom overlay with a
@@ -378,7 +390,7 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
             }
           >
             {b.palette.length === 0 && (
-              <p className="text-sm text-muted-foreground">No colors yet — without a palette, image tools have no brand colors to follow.</p>
+              <SectionEmpty>No colors yet — without a palette, image tools have no brand colors to follow.</SectionEmpty>
             )}
             {b.palette.map((c, i) => {
               const hexInvalid = c.hex.trim() !== '' && c.hex !== BLANK_HEX && !isHex(c.hex)
@@ -421,7 +433,7 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
               </Button>
             }
           >
-            {(b.rules ?? []).length === 0 && <p className="text-sm text-muted-foreground">No rules yet — e.g. "Never use exclamation marks in headlines."</p>}
+            {(b.rules ?? []).length === 0 && <SectionEmpty>No rules yet — e.g. "Never use exclamation marks in headlines."</SectionEmpty>}
             {(b.rules ?? []).map((r, i) => (
               <div key={i} className="flex items-center gap-2">
                 <Input className="flex-1" placeholder='e.g. "Never use emojis"' value={r} onChange={(e) => stage({ rules: (b.rules ?? []).map((row, j) => (j === i ? e.target.value : row)) })} />
@@ -440,7 +452,7 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
               </Button>
             }
           >
-            {(b.terminology ?? []).length === 0 && <p className="text-sm text-muted-foreground">Nothing yet — e.g. "workspace", never "dashboard".</p>}
+            {(b.terminology ?? []).length === 0 && <SectionEmpty>Nothing yet — e.g. "workspace", never "dashboard".</SectionEmpty>}
             {(b.terminology ?? []).map((t, i) => (
               <div key={i} className="flex items-center gap-2">
                 <Input className="w-56" placeholder="workspace" aria-label="Term" value={t.term} onChange={(e) => stage({ terminology: (b.terminology ?? []).map((row, j) => (j === i ? { ...row, term: e.target.value } : row)) })} />
@@ -537,9 +549,9 @@ function PaletteHero({ brand }: { brand: BrandManifest }) {
               <h1 className="text-2xl font-semibold tracking-tight">{brand.name}</h1>
               <span className="font-mono text-xs text-muted-foreground">{brand.id}</span>
               {brand.draft
-                ? <Badge className="bg-accent/15 text-accent">Draft</Badge>
-                : <Badge className="bg-success/15 text-success"><Check className="size-3" /> Published</Badge>}
-              {brand.source && <Badge variant="secondary" className="gap-1 text-muted-foreground"><ExternalLink className="size-3" /> imported</Badge>}
+                ? <StatusBadge tone="warning">Draft</StatusBadge>
+                : <StatusBadge tone="success" icon={Check}>Published</StatusBadge>}
+              {brand.source && <StatusBadge tone="neutral" icon={ExternalLink}>imported</StatusBadge>}
             </div>
             {brand.description && <p className="mt-1.5 max-w-2xl text-sm text-muted-foreground">{brand.description}</p>}
           </div>
@@ -658,7 +670,7 @@ function OverviewTab({
           }
         >
           {voice === null
-            ? <p className="text-sm text-muted-foreground">No voice.md yet.</p>
+            ? <SectionEmpty>No voice.md yet — the biggest lever on how on-brand output reads.</SectionEmpty>
             : (
               <FadeMore
                 summary="Preview only"
@@ -686,7 +698,7 @@ function OverviewTab({
         description="Edits, imports, publishes, and dispatch injections for this brand."
       >
         {activity.length === 0
-          ? <p className="text-sm text-muted-foreground">Nothing yet — activity shows up as the brand gets used.</p>
+          ? <SectionEmpty>Nothing yet — activity shows up as the brand gets used.</SectionEmpty>
           : activity.slice(0, 8).map((a, i) => (
             <div key={`${a.ts}-${i}`} className="flex items-baseline justify-between gap-2 text-sm">
               <span>{activityLabel(a)}</span>
@@ -707,7 +719,7 @@ function RulesTermsSummary({ brand, onGoTo }: { brand: BrandManifest; onGoTo: (t
   const rules = brand.rules ?? []
   const terms = brand.terminology ?? []
   if (rules.length === 0 && terms.length === 0) {
-    return <p className="text-sm text-muted-foreground">None set yet.</p>
+    return <SectionEmpty>None set yet — rules and terms ride every branded task inline.</SectionEmpty>
   }
   return (
     <FadeMore
@@ -855,14 +867,13 @@ function DocsEditor({
         </Button>
       }
     >
-      <div className="space-y-1">
+      <div className="space-y-2">
         {docs.length === 0 && (
-          <p className="text-sm text-muted-foreground">
-            No {copy.title.toLowerCase()} yet — create one and the editor opens on a fresh page.
-          </p>
+          <SectionEmpty>No {copy.title.toLowerCase()} yet — create one and the editor opens on a fresh page.</SectionEmpty>
         )}
         {docs.map((d) => (
-          <div key={d.name} className="flex items-center gap-3 rounded-lg px-1.5 py-1.5 transition-colors hover:bg-foreground/5" data-doc-row={d.name}>
+          // Each row is a distinct tile — flat hover-only rows blended into one block.
+          <div key={d.name} className="flex items-center gap-3 rounded-lg bg-foreground/[0.04] px-3 py-2.5 ring-1 ring-foreground/5 transition-colors hover:bg-foreground/[0.07]" data-doc-row={d.name}>
             {/* The filename is the identity — it never yields space to the description. */}
             <button className="flex max-w-72 shrink-0 items-center gap-1.5 text-left" onClick={() => onEditDoc(kind, d.name)}>
               <FileText className="size-3.5 shrink-0 text-muted-foreground" />
@@ -1024,7 +1035,7 @@ function BrandAssetsSection({ brand, onSave }: { brand: BrandManifest; onSave: (
         }
       >
         {brand.logos.length === 0 && (
-          <p className="text-sm text-muted-foreground">No logo yet — cards show a monogram until you add one.</p>
+          <SectionEmpty>No logo yet — cards show a monogram until you add one.</SectionEmpty>
         )}
         {brand.logos.map((logo, i) =>
           tile(
@@ -1051,7 +1062,7 @@ function BrandAssetsSection({ brand, onSave }: { brand: BrandManifest; onSave: (
         }
       >
         {brand.assetGroups.length === 0 && !groupDraft && (
-          <p className="text-sm text-muted-foreground">No groups yet — e.g. "product-ui" for real screenshots agents should reference instead of inventing UI.</p>
+          <SectionEmpty>No groups yet — e.g. "product-ui" for real screenshots agents should reference instead of inventing UI.</SectionEmpty>
         )}
         {brand.assetGroups.map((group, gi) => (
           <div key={group.name} className="space-y-2 rounded-lg bg-surface p-3">
@@ -1107,7 +1118,7 @@ function BrandAssetsSection({ brand, onSave }: { brand: BrandManifest; onSave: (
         }
       >
         {(brand.defaultImageReferences ?? []).length === 0 && (
-          <p className="text-sm text-muted-foreground">None yet — without references, branded image generations rely on the palette and text alone.</p>
+          <SectionEmpty>None yet — without references, branded image generations rely on the palette and text alone.</SectionEmpty>
         )}
         {(brand.defaultImageReferences ?? []).map((assetId) =>
           tile(assetId, () => onSave({ defaultImageReferences: (brand.defaultImageReferences ?? []).filter((id) => id !== assetId) })),
@@ -1258,20 +1269,14 @@ function DraftBanner({ brand, brandId, onPublish }: { brand: BrandManifest; bran
         <p className="flex items-center gap-2 font-medium">
           This brand is a draft
           {status && (
-            <span
-              className={`flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-normal ${
-                status.tone === 'working'
-                  ? 'bg-foreground/10'
-                  : status.tone === 'done'
-                    ? 'bg-success/15 text-success'
-                    : status.tone === 'blocked'
-                      ? 'bg-destructive/15 text-destructive'
-                      : 'bg-foreground/5 text-muted-foreground'
-              }`}
-              data-draft-task-status={taskColumn}
-            >
-              {status.tone === 'working' && <span className="size-1.5 animate-pulse rounded-full bg-warning" aria-hidden />}
-              {status.tone === 'working' ? 'Agent working' : status.tone === 'done' ? 'Draft ready' : status.tone === 'blocked' ? 'Blocked' : 'Queued'}
+            <span data-draft-task-status={taskColumn}>
+              <StatusBadge
+                tone={status.tone === 'working' ? 'warning' : status.tone === 'done' ? 'success' : status.tone === 'blocked' ? 'destructive' : 'neutral'}
+                className="font-normal"
+              >
+                {status.tone === 'working' && <span className="size-1.5 animate-pulse rounded-full bg-warning" aria-hidden />}
+                {status.tone === 'working' ? 'Agent working' : status.tone === 'done' ? 'Draft ready' : status.tone === 'blocked' ? 'Blocked' : 'Queued'}
+              </StatusBadge>
             </span>
           )}
         </p>

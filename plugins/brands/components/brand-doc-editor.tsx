@@ -6,10 +6,11 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams, useSearch } from '@tanstack/react-router'
-import { ArrowLeft, FileText } from 'lucide-react'
+import { ArrowLeft, FileText, Sparkles } from 'lucide-react'
 import { MarkdownEditor, SaveBar, ErrorState, useUnsavedChangesGuard } from '@makinbakin/sdk/components'
 import { Button } from '@makinbakin/sdk/ui'
 import { toast } from '@makinbakin/sdk/hooks'
+import { DocBrainstormPanel } from './brand-doc-brainstorm'
 
 type LoadState =
   | { status: 'loading' }
@@ -31,6 +32,7 @@ export function BrandDocEditorPage() {
   const [content, setContent] = useState('')
   const [brandName, setBrandName] = useState(brandId)
   const [mode, setMode] = useState<'edit' | 'preview'>('edit')
+  const [brainstormOpen, setBrainstormOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   // Once the first save lands, the doc exists — further saves are plain updates.
@@ -159,25 +161,23 @@ export function BrandDocEditorPage() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-4xl flex-col gap-4 p-4 sm:p-6" data-brand-doc-editor>
-      <nav className="flex items-center gap-1 text-sm text-muted-foreground">
-        <Button variant="ghost" size="sm" className="-ml-2" onClick={backToDocs}>
-          <ArrowLeft className="size-3.5" /> {brandName}
-        </Button>
-        <span>/</span>
-        <span>{KIND_LABEL[kind] ?? kind}</span>
-        <span>/</span>
-        <span className="flex items-center gap-1.5 font-mono text-foreground">
-          <FileText className="size-3.5" /> {name}
-          {isCreate && !created && <span className="rounded bg-foreground/10 px-1.5 py-0.5 text-[10px]">new</span>}
-        </span>
-      </nav>
-
-      {state.status === 'loading' ? (
-        <p className="text-sm text-muted-foreground">Loading…</p>
-      ) : (
-        <>
-          <div className="flex w-fit items-center gap-0.5 rounded-lg bg-foreground/5 p-0.5" role="tablist" aria-label="Editor mode">
+    <div className="flex w-full flex-col gap-4 p-4 sm:p-6" data-brand-doc-editor>
+      {/* One header row: breadcrumb left, mode toggle + brainstorm right. */}
+      <div className="flex flex-wrap items-center gap-2">
+        <nav className="flex min-w-0 items-center gap-1 text-sm text-muted-foreground">
+          <Button variant="ghost" size="sm" className="-ml-2" onClick={backToDocs}>
+            <ArrowLeft className="size-3.5" /> {brandName}
+          </Button>
+          <span>/</span>
+          <span>{KIND_LABEL[kind] ?? kind}</span>
+          <span>/</span>
+          <span className="flex min-w-0 items-center gap-1.5 font-mono text-foreground">
+            <FileText className="size-3.5 shrink-0" /> <span className="truncate">{name}</span>
+            {isCreate && !created && <span className="rounded bg-foreground/10 px-1.5 py-0.5 text-[10px]">new</span>}
+          </span>
+        </nav>
+        <div className="ml-auto flex shrink-0 items-center gap-2">
+          <div className="flex items-center gap-0.5 rounded-lg bg-foreground/5 p-0.5" role="tablist" aria-label="Editor mode">
             {(['edit', 'preview'] as const).map((m) => (
               <button
                 key={m}
@@ -193,13 +193,35 @@ export function BrandDocEditorPage() {
               </button>
             ))}
           </div>
-          <MarkdownEditor
-            content={content}
-            editing={mode === 'edit'}
-            onChange={setContent}
-            minHeight="60vh"
-          />
-        </>
+          <Button
+            variant={brainstormOpen ? 'secondary' : 'outline'}
+            size="sm"
+            onClick={() => setBrainstormOpen((v) => !v)}
+            data-brainstorm-toggle
+          >
+            <Sparkles className="size-3.5" /> Brainstorm
+          </Button>
+        </div>
+      </div>
+
+      {state.status === 'loading' ? (
+        <p className="text-sm text-muted-foreground">Loading…</p>
+      ) : (
+        <div className="flex min-h-0 items-stretch gap-4">
+          <div className="min-w-0 flex-1">
+            <MarkdownEditor
+              content={content}
+              editing={mode === 'edit'}
+              onChange={setContent}
+              minHeight="70vh"
+            />
+          </div>
+          {brainstormOpen && (
+            <aside className="flex h-[75vh] w-[26rem] shrink-0 flex-col overflow-hidden rounded-xl bg-card ring-1 ring-foreground/10" data-brainstorm-panel>
+              <DocBrainstormPanel brandId={brandId} kind={kind} name={name} getDocContent={() => content} />
+            </aside>
+          )}
+        </div>
       )}
 
       <SaveBar
