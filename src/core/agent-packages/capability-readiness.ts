@@ -19,7 +19,7 @@ import { safeParseManifest, type SkillPackManifest } from '../../../packages/cor
 import { getPackageSourceDir } from '../../../packages/core/src/agent-packages/package-paths'
 import { getStoredSecret } from '@bakin/core/media'
 import { getContentDir, getBakinPaths } from '@/core/content-dir'
-import { getAppServices } from '@/core/app-services'
+import { createAppServices, maybeGetAppServices } from '@/core/app-services'
 import { createLogger } from '@/core/logger'
 import { binPlatformKey } from './bin-installer'
 
@@ -75,7 +75,9 @@ function readInstalledManifest(kind: string, id: string, version: string): Skill
 /** Readiness for every installed capability pack (lockfile-driven). */
 export async function listCapabilities(): Promise<CapabilityReadiness[]> {
   const lock = readLockfile()
-  const runtime = getAppServices().runtime
+  // Standalone CLI checks (`bakin check capabilities`) run without a booted
+  // server — create services on demand, same pattern as the credential checks.
+  const runtime = (maybeGetAppServices() ?? (await createAppServices())).runtime
   const binDir = getBakinPaths().bin
   const platform = binPlatformKey()
   const out: CapabilityReadiness[] = []

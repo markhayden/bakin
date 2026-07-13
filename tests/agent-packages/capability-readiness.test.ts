@@ -31,15 +31,20 @@ mock.module('@/core/logger', () => ({
 }))
 
 const projectedSkills = new Set<string>()
-mock.module('@/core/app-services', () => ({
-  getAppServices: () => ({
+mock.module('@/core/app-services', () => {
+  const services = {
     runtime: {
       skills: {
         get: async (name: string) => (projectedSkills.has(name) ? { name, instructions: '#' } : null),
       },
     },
-  }),
-}))
+  }
+  return {
+    getAppServices: () => services,
+    maybeGetAppServices: () => services,
+    createAppServices: async () => services,
+  }
+})
 
 import { listCapabilities } from '../../src/core/agent-packages/capability-readiness'
 import { binPlatformKey } from '../../src/core/agent-packages/bin-installer'
