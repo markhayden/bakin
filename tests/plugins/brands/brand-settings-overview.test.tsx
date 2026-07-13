@@ -113,6 +113,42 @@ describe('overview kit checklist', () => {
   })
 })
 
+describe('overview rules & terminology summary', () => {
+  it('caps at 3 each with a +N-more jump link; drafts show exactly ONE publish button', async () => {
+    globalThis.fetch = mock(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.endsWith('/api/plugins/brands/acme')) {
+        return new Response(
+          JSON.stringify({
+            brand: {
+              ...makeBrand(true),
+              rules: ['r1', 'r2', 'r3', 'r4', 'r5'],
+              terminology: [
+                { term: 't1', rule: 'x' }, { term: 't2', rule: 'x' },
+                { term: 't3', rule: 'x' }, { term: 't4', rule: 'x' },
+              ],
+            },
+            guidelines: [], lessons: [], fingerprint: 'sha256:x', completeness: COMPLETENESS,
+          }),
+          { status: 200 },
+        )
+      }
+      if (url.endsWith('/blocked-tasks')) return new Response(JSON.stringify({ perTask: {} }), { status: 200 })
+      return new Response('{}', { status: 200 })
+    }) as unknown as typeof fetch
+
+    await renderDetail()
+    await waitFor(() => expect(document.querySelector('[data-rules-more]')).not.toBeNull())
+    expect(screen.getByText('r3')).toBeDefined()
+    expect(screen.queryByText('r4')).toBeNull() // capped
+    expect(screen.getByText(/2 more rules · 1 more term/)).toBeDefined()
+
+    // ONE publish button: the draft banner's (hero no longer duplicates it)
+    expect(screen.getAllByRole('button', { name: /Publish/ }).length).toBe(1)
+    await settleReact()
+  })
+})
+
 describe('drafting banner', () => {
   it('renders for drafts with the blocked-task count', async () => {
     mockApi({ draft: true, blocked: { 't1': 'acme', 't2': 'acme', 't3': 'other' } })

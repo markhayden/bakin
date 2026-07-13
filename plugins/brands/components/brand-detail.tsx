@@ -38,6 +38,8 @@ const TABS = [
 ] as const
 
 const isHex = (h: string) => /^#[0-9a-fA-F]{6}$/.test(h)
+/** Frontmatter is machine metadata — previews render the body only. */
+const stripFrontmatter = (md: string) => md.replace(/^---\n[\s\S]*?\n---\n?/, '')
 /** Placeholder hex for a freshly added palette row — a pristine row is dropped on save, not blocked. */
 const BLANK_HEX = '#888888'
 
@@ -267,7 +269,8 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
         <ArrowLeft className="size-3.5" /> Branding
       </Button>
 
-      <PaletteHero brand={b} onPublish={b.draft ? () => setPublishConfirm(true) : undefined} />
+      {/* Publish lives in the draft banner (and Settings) — ONE prominent button, not three. */}
+      <PaletteHero brand={b} />
 
       {b.draft && <DraftBanner brand={b} brandId={brandId} onPublish={() => setPublishConfirm(true)} />}
 
@@ -449,7 +452,7 @@ function RemoveBtn({ onClick }: { onClick: () => void }) {
 
 // ─── Hero: the brand paints its own header ────────────────────────────────────
 
-function PaletteHero({ brand, onPublish }: { brand: BrandManifest; onPublish?: () => void }) {
+function PaletteHero({ brand }: { brand: BrandManifest }) {
   const colors = brand.palette.filter((c) => isHex(c.hex))
   const primary = colors[0]?.hex
   const logo = brand.logos.find((l) => l.variant === 'primary') ?? brand.logos[0]
@@ -491,11 +494,6 @@ function PaletteHero({ brand, onPublish }: { brand: BrandManifest; onPublish?: (
             {brand.description && <p className="mt-1.5 max-w-2xl text-sm text-muted-foreground">{brand.description}</p>}
           </div>
         </div>
-        {onPublish && (
-          <Button variant="default" size="sm" className="shrink-0" onClick={onPublish}>
-            <Rocket className="size-3.5" /> Publish brand
-          </Button>
-        )}
       </div>
     </div>
   )
@@ -611,7 +609,7 @@ function OverviewTab({
         >
           {voice === null
             ? <p className="text-sm text-muted-foreground">No voice.md yet.</p>
-            : <div className="prose-invert max-h-56 max-w-none overflow-hidden text-sm [mask-image:linear-gradient(to_bottom,black_70%,transparent)]"><MarkdownContent content={voice} /></div>}
+            : <div className="prose-invert max-h-56 max-w-none overflow-hidden text-sm [mask-image:linear-gradient(to_bottom,black_70%,transparent)]"><MarkdownContent content={stripFrontmatter(voice)} /></div>}
         </SectionCard>
 
         <SectionCard
@@ -620,15 +618,7 @@ function OverviewTab({
           description="Non-negotiables that ride every branded task inline."
           action={<Button variant="ghost" size="xs" className="text-muted-foreground" onClick={() => onGoTo('identity')}><Pencil className="size-3" /> Edit</Button>}
         >
-          {(brand.rules?.length ?? 0) === 0 && (brand.terminology?.length ?? 0) === 0 && (
-            <p className="text-sm text-muted-foreground">None set yet.</p>
-          )}
-          {brand.rules?.map((r) => (
-            <div key={r} className="flex gap-2 text-sm"><span className="text-muted-foreground">›</span><span>{r}</span></div>
-          ))}
-          {brand.terminology?.map((t) => (
-            <div key={t.term} className="text-sm"><span className="font-medium">{t.term}</span> <span className="text-muted-foreground">— {t.rule}</span></div>
-          ))}
+          <RulesTermsSummary brand={brand} onGoTo={onGoTo} />
         </SectionCard>
       </div>
 
@@ -647,6 +637,46 @@ function OverviewTab({
           ))}
       </SectionCard>
     </div>
+  )
+}
+
+/**
+ * Overview summary of rules + terminology — a taste, not the whole list (the
+ * Voice card next to it fades out the same way). Full editing lives on the
+ * Identity tab, one click away.
+ */
+const SUMMARY_ROWS = 3
+function RulesTermsSummary({ brand, onGoTo }: { brand: BrandManifest; onGoTo: (tab: string) => void }) {
+  const rules = brand.rules ?? []
+  const terms = brand.terminology ?? []
+  if (rules.length === 0 && terms.length === 0) {
+    return <p className="text-sm text-muted-foreground">None set yet.</p>
+  }
+  const moreRules = Math.max(0, rules.length - SUMMARY_ROWS)
+  const moreTerms = Math.max(0, terms.length - SUMMARY_ROWS)
+  const more = [
+    moreRules > 0 ? `${moreRules} more rule${moreRules === 1 ? '' : 's'}` : null,
+    moreTerms > 0 ? `${moreTerms} more term${moreTerms === 1 ? '' : 's'}` : null,
+  ].filter(Boolean)
+
+  return (
+    <>
+      {rules.slice(0, SUMMARY_ROWS).map((r) => (
+        <div key={r} className="flex gap-2 text-sm"><span className="text-muted-foreground">›</span><span>{r}</span></div>
+      ))}
+      {terms.slice(0, SUMMARY_ROWS).map((t) => (
+        <div key={t.term} className="text-sm"><span className="font-medium">{t.term}</span> <span className="text-muted-foreground">— {t.rule}</span></div>
+      ))}
+      {more.length > 0 && (
+        <button
+          className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+          onClick={() => onGoTo('identity')}
+          data-rules-more
+        >
+          + {more.join(' · ')} — view all in Identity
+        </button>
+      )}
+    </>
   )
 }
 
