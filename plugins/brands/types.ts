@@ -12,6 +12,7 @@ export type {
   BrandSource,
 } from './lib/schemas'
 export type { BrandDocInfo, BrandDocKind, BrandReadResult } from './lib/store'
+export type { Completeness, CompletenessItem, CompletenessSummary } from './lib/completeness'
 
 /** Summary shape returned by the brands.list hook and used by pickers. */
 export interface BrandSummary {
@@ -26,4 +27,5 @@ export interface BrandDetailResponse {
   guidelines: import('./lib/store').BrandDocInfo[]
   lessons: import('./lib/store').BrandDocInfo[]
   fingerprint: string | null
+  completeness: import('./lib/completeness').Completeness
 }

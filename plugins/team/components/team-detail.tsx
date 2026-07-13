@@ -14,7 +14,7 @@
  *     the per-agent route) → combined receipt summary
  */
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useRouter } from '@makinbakin/sdk/hooks'
+import { useRouter, useHistoryBack } from '@makinbakin/sdk/hooks'
 import {
   Badge,
   Button,
@@ -54,6 +54,7 @@ const GLOBAL_TEAM: TeamInfo = { id: 'global', label: 'Global' }
 
 export function TeamDetail({ teamId }: { teamId: string }) {
   const router = useRouter()
+  const goBack = useHistoryBack('/team')
   const isGlobal = teamId === 'global'
 
   const [team, setTeam] = useState<TeamInfo | null>(isGlobal ? GLOBAL_TEAM : null)
@@ -180,7 +181,7 @@ export function TeamDetail({ teamId }: { teamId: string }) {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="sm" className="gap-1" onClick={() => router.push('/team')}>
+          <Button variant="ghost" size="sm" className="gap-1" onClick={goBack}>
             <ArrowLeft className="size-4" /> Team
           </Button>
           {isGlobal

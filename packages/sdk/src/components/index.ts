@@ -17,15 +17,39 @@ export { AgentSelect, TEAM_VALUE_PREFIX, isTeamValue, teamIdFromValue } from '@/
 export { AgentDot } from '@/components/agent-status'
 /** Compound agent status (dot + label + last-seen timestamp). */
 export { AgentStatus } from '@/components/agent-status'
+/** Modal asset chooser (thumbnail grid + search + upload-new) over the assets plugin — never a raw id select. */
+export { AssetPicker } from '@/components/asset-picker'
+export type { AssetPickerProps, AssetPickerAsset } from '@/components/asset-picker'
 /** Right-side slide-out drawer with backdrop and focus trap. */
 export { BakinDrawer } from '@/components/bakin-drawer'
 /** Color picker swatch grid for tag/agent color assignment. */
 export { ColorPicker } from '@/components/color-picker'
-/** Controlled confirmation dialog for destructive actions (busy/error aware). */
+/** Controlled confirmation dialog for destructive actions (busy/error aware; optional typed confirmation via `confirmValue`). */
 export { ConfirmDialog } from '@/components/confirm-dialog'
 export type { ConfirmDialogProps } from '@/components/confirm-dialog'
+/** Red-bordered destructive settings section with typed-confirmation delete — bottom of every settings surface. */
+export { DangerZone } from '@/components/danger-zone'
+export type { DangerZoneProps } from '@/components/danger-zone'
 /** Centered empty-state component with icon, title, and CTA. */
 export { EmptyState } from '@/components/empty-state'
+/** Sticky save/discard bar for staged-draft pages (THE dirty-state pattern) + `useUnsavedGuard`. */
+export { SaveBar, useUnsavedGuard } from '@/components/save-bar'
+export type { SaveBarProps } from '@/components/save-bar'
+/** Full navigation guard for dirty surfaces: beforeunload + TanStack history block + anchor interception + exit dialog. */
+export { useUnsavedChangesGuard } from '@/components/unsaved-changes-guard'
+export type { UnsavedChangesGuardOptions } from '@/components/unsaved-changes-guard'
+/** Titled card with icon + a one-line "why this matters" description — the standard section wrapper. */
+export { SectionCard } from '@/components/section-card'
+export type { SectionCardProps } from '@/components/section-card'
+/** THE segmented control / mode toggle (Edit|Preview, Board|Log, time windows) — tablist semantics, neutral active segment. */
+export { SegmentedControl } from '@/components/segmented-control'
+export type { SegmentedControlProps, SegmentedControlOption } from '@/components/segmented-control'
+/** THE metric tile — icon + uppercase micro-label + tabular big number, optional sub/meter. */
+export { StatTile } from '@/components/stat-tile'
+export type { StatTileProps } from '@/components/stat-tile'
+/** THE status chip — one tone scale (neutral/success/warning/destructive/accent) for every state badge. */
+export { StatusBadge } from '@/components/status-badge'
+export type { StatusBadgeProps, StatusTone } from '@/components/status-badge'
 
 export { SearchUnavailable } from '@/components/search-unavailable'
 export { ScoreOverlay, computeMatchedFields } from '@/components/score-overlay'

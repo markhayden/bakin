@@ -37,7 +37,7 @@ mock.module('../../../src/core/search-registry', () => ({
   crossTableSearch: mock().mockResolvedValue({ results: [], meta: { source: 'unavailable' } }),
 }))
 
-import { retrieveBrandLessons, __resetBrandLessonCache } from '../../../plugins/brands/lib/lesson-retrieval'
+import { retrieveBrandLessons, filterDisabledLessons, __resetBrandLessonCache } from '../../../plugins/brands/lib/lesson-retrieval'
 import { createBrand, writeDoc } from '../../../plugins/brands/lib/store'
 
 beforeEach(() => {
@@ -108,5 +108,26 @@ describe('retrieveBrandLessons', () => {
     const throwing = mock().mockRejectedValue(new Error('boom')) as never
     __resetBrandLessonCache()
     expect(await retrieveBrandLessons('acme', 'anything', throwing)).toEqual({ status: 'unavailable' })
+  })
+})
+
+describe('filterDisabledLessons', () => {
+  const lessons = [
+    { name: 'a.md', body: 'A' },
+    { name: 'b.md', body: 'B' },
+    { name: 'c.md', body: 'C' },
+  ]
+
+  it('drops exactly the benched names', () => {
+    expect(filterDisabledLessons(lessons, ['b.md']).map((l) => l.name)).toEqual(['a.md', 'c.md'])
+  })
+
+  it('no benched list = untouched (same array back)', () => {
+    expect(filterDisabledLessons(lessons, undefined)).toBe(lessons)
+    expect(filterDisabledLessons(lessons, [])).toBe(lessons)
+  })
+
+  it('benching everything yields an empty set, never a throw', () => {
+    expect(filterDisabledLessons(lessons, ['a.md', 'b.md', 'c.md'])).toEqual([])
   })
 })

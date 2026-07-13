@@ -32,6 +32,20 @@ export function __resetBrandLessonCache(): void {
   cache.clear()
 }
 
+/**
+ * Drop lessons the operator benched (manifest `disabledLessons`). Applied at
+ * the CALL SITE, after the (brandId, query)-keyed cache — a toggle takes
+ * effect on the next dispatch, never up to a cache-TTL later.
+ */
+export function filterDisabledLessons(
+  lessons: RetrievedBrandLesson[],
+  disabledLessons: string[] | undefined,
+): RetrievedBrandLesson[] {
+  if (!disabledLessons?.length) return lessons
+  const disabled = new Set(disabledLessons)
+  return lessons.filter((l) => !disabled.has(l.name))
+}
+
 type SearchFn = typeof crossTableSearch
 
 export async function retrieveBrandLessons(

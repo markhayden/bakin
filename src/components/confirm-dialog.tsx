@@ -1,6 +1,6 @@
 'use client'
 
-import type { ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Loader2 } from 'lucide-react'
 import {
   Dialog,
@@ -11,6 +11,8 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
 
 export interface ConfirmDialogProps {
@@ -35,6 +37,14 @@ export interface ConfirmDialogProps {
   confirmTestId?: string
   /** DialogContent className override (default width is `sm:max-w-sm`). */
   className?: string
+  /**
+   * Typed confirmation: when set, an input is rendered and the confirm button
+   * stays disabled until the user types this exact value. For the truly
+   * destructive actions where one click is too easy.
+   */
+  confirmValue?: string
+  /** Label above the typed-confirmation input (default: `Type "<confirmValue>" to confirm`). */
+  confirmPrompt?: ReactNode
   onConfirm: () => void
   onCancel: () => void
 }
@@ -57,9 +67,18 @@ export function ConfirmDialog({
   error,
   confirmTestId,
   className,
+  confirmValue,
+  confirmPrompt,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
+  const [typed, setTyped] = useState('')
+  // A reopened dialog must never remember the previous confirmation text.
+  useEffect(() => {
+    if (!open) setTyped('')
+  }, [open])
+  const confirmBlocked = confirmValue !== undefined && typed !== confirmValue
+
   return (
     <Dialog
       open={open}
@@ -72,12 +91,34 @@ export function ConfirmDialog({
           <DialogTitle>{title}</DialogTitle>
           {description && <DialogDescription>{description}</DialogDescription>}
         </DialogHeader>
+        {confirmValue !== undefined && (
+          <div className="space-y-1.5" data-confirm-typed>
+            <Label htmlFor="confirm-typed-input" className="text-xs text-muted-foreground">
+              {confirmPrompt ?? (
+                <>
+                  Type <span className="font-mono text-foreground">{confirmValue}</span> to confirm
+                </>
+              )}
+            </Label>
+            <Input
+              id="confirm-typed-input"
+              autoFocus
+              value={typed}
+              placeholder={confirmValue}
+              disabled={busy}
+              onChange={(e) => setTyped(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !confirmBlocked && !busy) onConfirm()
+              }}
+            />
+          </div>
+        )}
         {error && <p className="text-sm text-destructive">{error}</p>}
         <DialogFooter>
           <Button variant={cancelVariant} onClick={onCancel} disabled={busy}>
             {cancelLabel}
           </Button>
-          <Button variant="destructive" onClick={onConfirm} disabled={busy} data-testid={confirmTestId}>
+          <Button variant="destructive" onClick={onConfirm} disabled={busy || confirmBlocked} data-testid={confirmTestId}>
             {busy ? (
               <>
                 <Loader2 className="size-3.5 animate-spin mr-1.5" />

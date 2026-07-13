@@ -11,7 +11,7 @@ import { createLogger } from '../../../src/core/logger'
 import { getBrand, listBrands, listDocs } from './store'
 import { computeBrandFingerprint } from './fingerprint'
 import { buildBrandCard, type BrandCardInput } from './card'
-import { retrieveBrandLessons } from './lesson-retrieval'
+import { retrieveBrandLessons, filterDisabledLessons } from './lesson-retrieval'
 
 const log = createLogger('brands')
 
@@ -70,7 +70,8 @@ export function registerBrandsHooks(ctx: PluginContext): void {
       if (lessons === undefined && !lessonsUnavailable && data.taskQuery) {
         const retrieved = await retrieveBrandLessons(data.brandId, data.taskQuery)
         if (retrieved.status === 'ok') {
-          lessons = retrieved.lessons
+          const read = getBrand(data.brandId)
+          lessons = filterDisabledLessons(retrieved.lessons, read.status === 'ok' ? read.manifest.disabledLessons : undefined)
         } else {
           lessonsUnavailable = true
           const last = lessonsUnavailableAudited.get(data.brandId) ?? 0

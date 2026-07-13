@@ -3,7 +3,7 @@
 import { Card, CardHeader, CardTitle, CardContent } from '@makinbakin/sdk/ui'
 import { Badge } from '@makinbakin/sdk/ui'
 import { useQueryState } from '@makinbakin/sdk/hooks'
-import { StackedColumnChart } from '@makinbakin/sdk/components'
+import { StackedColumnChart, SegmentedControl } from '@makinbakin/sdk/components'
 import type { UsageHistoryData, UsageHistoryWindow } from '../types'
 import { formatTokenCount, formatRuntimeCost } from '../lib/format'
 import { usePolledJson, HEALTH_POLL_MS } from './use-health-data'
@@ -55,21 +55,12 @@ export function UsageHistorySection({ refreshNonce }: { refreshNonce: number }) 
                 {formatTokenCount(data.byAgent.reduce((sum, a) => sum + a.tokens.total, 0))} tokens
               </Badge>
             )}
-            <span className="flex items-center gap-1 rounded-md border border-border p-0.5">
-              {WINDOWS.map((w) => (
-                <button
-                  key={w}
-                  onClick={() => setWindow(w)}
-                  className={`px-2 py-0.5 text-[11px] font-mono rounded transition-colors ${
-                    win === w
-                      ? 'bg-foreground/10 text-foreground'
-                      : 'text-muted-foreground hover:text-foreground'
-                  }`}
-                >
-                  {w}
-                </button>
-              ))}
-            </span>
+            <SegmentedControl
+              options={WINDOWS.map((w) => ({ value: w, label: w }))}
+              value={win}
+              onValueChange={setWindow}
+              ariaLabel="History window"
+            />
           </span>
         </CardTitle>
       </CardHeader>

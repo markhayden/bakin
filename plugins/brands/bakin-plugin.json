@@ -61,13 +61,15 @@
     "nav": [
       {
         "id": "brands",
-        "label": "Brands",
-        "icon": "Palette",
+        "label": "Branding",
+        "icon": "Paintbrush",
         "href": "/brands"
       }
     ],
     "slots": [
       "page:/brands",
+      "page:/brands/:brandId",
+      "page:/brands/:brandId/docs",
       "task-brand"
     ]
   }

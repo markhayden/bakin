@@ -10,17 +10,21 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { MarkdownEditor, MarkdownContent, UnderlineTabs } from '@makinbakin/sdk/components'
-import { Button, Badge } from '@makinbakin/sdk/ui'
-import { useQueryState } from '@makinbakin/sdk/hooks'
+import { MarkdownContent, UnderlineTabs, SaveBar, SectionCard, ConfirmDialog, AssetPicker, DangerZone, EmptyState, ErrorState, StatTile, StatusBadge, useUnsavedChangesGuard } from '@makinbakin/sdk/components'
+import {
+  Button, Badge, Input, Textarea, Switch, Label, Skeleton, Progress,
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+  Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
+} from '@makinbakin/sdk/ui'
+import { useQueryState, usePluginEvent, toast } from '@makinbakin/sdk/hooks'
 import {
   ArrowLeft, Palette, Rocket, Pencil, Plus, Check, AlertTriangle, ExternalLink,
-  Upload, FileText, BookOpen, ImageIcon, Trash2, Sparkles,
+  FileText, BookOpen, ImageIcon, Trash2, Sparkles, Info,
 } from 'lucide-react'
-import type { BrandManifest, PaletteEntry } from '../types'
+import type { BrandManifest, PaletteEntry, BrandDocInfo, BrandDetailResponse } from '../types'
 
-interface DocInfo { name: string; description?: string; bytes: number }
-interface DetailResponse { brand: BrandManifest; guidelines: DocInfo[]; lessons: DocInfo[]; fingerprint: string | null }
+type DocInfo = BrandDocInfo
+type DetailResponse = BrandDetailResponse
 type ManifestPatch = Partial<Omit<BrandManifest, 'id' | 'createdAt' | 'updatedAt'>>
 type DocKind = 'guidelines' | 'lessons'
 
@@ -34,18 +38,93 @@ const TABS = [
 ] as const
 
 const isHex = (h: string) => /^#[0-9a-fA-F]{6}$/.test(h)
+/** Frontmatter is machine metadata — previews render the body only. */
+const stripFrontmatter = (md: string) => md.replace(/^---\n[\s\S]*?\n---\n?/, '')
+
+/** Thin alias over the SDK's section-variant empty state (promoted from here). */
+function SectionEmpty({ children }: { children: React.ReactNode }) {
+  return <EmptyState variant="section" title={children} />
+}
+
+/**
+ * Preview container that fades long content into a solid bottom overlay with a
+ * summary + call-to-action — a trailing ghost of faded text is unreadable AND
+ * undiscoverable. The overlay renders when the content actually overflows
+ * (ResizeObserver) or the caller knows there's more (`hasMore`).
+ */
+function FadeMore({
+  summary, actionLabel, onAction, hasMore = false, className, children,
+}: {
+  summary?: string
+  actionLabel: string
+  onAction: () => void
+  /** Caller-known "there is more than fits" hint — jsdom has no layout, and counts beat measurement when we have them. */
+  hasMore?: boolean
+  className?: string
+  children: React.ReactNode
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [overflowing, setOverflowing] = useState(false)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const check = () => setOverflowing(el.scrollHeight > el.clientHeight + 4)
+    check()
+    const ro = new ResizeObserver(check)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+  const showOverlay = overflowing || hasMore
+
+  return (
+    <div className="relative">
+      <div ref={ref} className={`max-h-64 overflow-hidden ${showOverlay ? 'pb-8' : ''} ${className ?? ''}`}>
+        {children}
+      </div>
+      {showOverlay && (
+        <div
+          className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-3 bg-gradient-to-t from-card from-45% to-transparent px-1 pb-1 pt-20"
+          data-fade-more
+        >
+          <span className="min-w-0 truncate pb-1 text-xs text-muted-foreground">{summary}</span>
+          <Button variant="outline" size="sm" className="shrink-0" onClick={onAction} data-fade-more-action>
+            {actionLabel}
+          </Button>
+        </div>
+      )}
+    </div>
+  )
+}
+/** Placeholder hex for a freshly added palette row — a pristine row is dropped on save, not blocked. */
+const BLANK_HEX = '#888888'
 
 export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () => void }) {
   const [detail, setDetail] = useState<DetailResponse | null>(null)
+  const navigate = useNavigate()
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
-  const [editingDoc, setEditingDoc] = useState<{ kind: DocKind; name: string; content: string } | null>(null)
   const [tabParam, setTab] = useQueryState('tab', 'overview')
   const tab = TABS.some((t) => t.id === tabParam) ? tabParam : 'overview'
 
+  // ONE staged draft spans every manifest-backed field across tabs (spec §7a):
+  // edits mutate `staged`; the SaveBar commits the whole manifest in one PUT.
+  const [staged, setStaged] = useState<BrandManifest | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  // The server updatedAt the draft was staged FROM — the freshness check that
+  // stops a snapshot PUT from silently erasing concurrent writes (the drafting
+  // agent authors via update_manifest while the user reviews).
+  const stagedBaseRef = useRef<string | null>(null)
+  const overwriteArmedRef = useRef(false)
+  const dirty = staged !== null
+
+  const [notFound, setNotFound] = useState(false)
   const refresh = useCallback(async () => {
     try {
       const res = await fetch(`/api/plugins/brands/${brandId}`)
+      if (res.status === 404) {
+        setNotFound(true)
+        return
+      }
       if (!res.ok) throw new Error(`load failed: ${res.status}`)
       setDetail((await res.json()) as DetailResponse)
       setError(null)
@@ -56,146 +135,339 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
 
   useEffect(() => { void refresh() }, [refresh])
 
-  const putManifest = useCallback(
-    async (patch: ManifestPatch) => {
-      if (!detail) return
-      setSaving(true)
-      try {
-        const { id: _id, createdAt: _c, updatedAt: _u, ...current } = detail.brand
-        const res = await fetch(`/api/plugins/brands/${brandId}`, {
-          method: 'PUT', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...current, ...patch }),
-        })
-        if (!res.ok) {
-          const body = (await res.json().catch(() => ({}))) as { error?: string }
-          throw new Error(body.error ?? `save failed: ${res.status}`)
+  // Live-fill: the drafting agent writes the manifest while the user watches —
+  // refresh on brand.changed so tabs fill in without a reload. Staged edits
+  // are untouched (b = staged ?? detail.brand); the save freshness gate owns
+  // the conflict story.
+  usePluginEvent('brand.changed', (payload) => {
+    if ((payload as { brandId?: string }).brandId === brandId) void refresh()
+  })
+
+  const stage = useCallback(
+    (patch: ManifestPatch) => {
+      setStaged((prev) => {
+        const base = prev ?? detail?.brand
+        if (!base) return prev
+        if (prev === null) {
+          // First edit of this draft — remember what server version it's based on.
+          stagedBaseRef.current = detail?.brand.updatedAt ?? null
+          overwriteArmedRef.current = false
         }
-        await refresh()
-      } catch (err) {
-        setError(err instanceof Error ? err.message : String(err))
-      } finally { setSaving(false) }
+        return { ...base, ...patch }
+      })
     },
-    [brandId, detail, refresh],
+    [detail],
   )
 
-  const openDoc = useCallback(async (kind: DocKind, name: string) => {
-    const res = await fetch(`/api/plugins/brands/${brandId}/docs/${kind}/${encodeURIComponent(name)}`)
-    const body = (await res.json().catch(() => ({}))) as { content?: string }
-    setEditingDoc({ kind, name, content: body.content ?? '' })
-  }, [brandId])
+  const discard = useCallback(() => {
+    setStaged(null)
+    setSaveError(null)
+    stagedBaseRef.current = null
+    overwriteArmedRef.current = false
+  }, [])
 
-  const saveDoc = useCallback(async () => {
-    if (!editingDoc) return
+  /** Drop rows the user added but never filled in; they're scaffolding, not intent. */
+  const cleanStaged = (m: BrandManifest): BrandManifest => ({
+    ...m,
+    name: m.name.trim() || m.name,
+    description: m.description?.trim() || undefined,
+    palette: m.palette.filter((c) => c.name.trim() !== '' || (c.hex !== BLANK_HEX && c.hex.trim() !== '')),
+    rules: (m.rules ?? []).filter((r) => r.trim() !== ''),
+    terminology: (m.terminology ?? []).filter((t) => t.term.trim() !== '' || t.rule.trim() !== ''),
+  })
+
+  /** Returns true when the save landed — the navigation guard's save-and-exit needs the answer. */
+  const save = useCallback(async (): Promise<boolean> => {
+    if (!staged) return true
+    // Snapshot NOW: edits staged while the PUT is in flight must survive the
+    // post-save clear, not vanish with it.
+    const snapshot = staged
+    const cleaned = cleanStaged(snapshot)
+    // Honest validation BEFORE the PUT — invalid rows hold the save.
+    if (!cleaned.name.trim()) {
+      setSaveError('The brand needs a name.')
+      return false
+    }
+    if (cleaned.palette.some((c) => !isHex(c.hex) || !c.name.trim())) {
+      setSaveError('Fix the highlighted colors first — every color needs a name and a hex value like #FF5A00.')
+      return false
+    }
+    if ((cleaned.terminology ?? []).some((t) => !t.term.trim() || !t.rule.trim())) {
+      setSaveError('Every terminology entry needs both the term and its rule.')
+      return false
+    }
     setSaving(true)
+    setSaveError(null)
     try {
-      const res = await fetch(
-        `/api/plugins/brands/${brandId}/docs/${editingDoc.kind}/${encodeURIComponent(editingDoc.name)}`,
-        { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: editingDoc.content }) },
-      )
-      if (!res.ok) throw new Error(`doc save failed: ${res.status}`)
-      setEditingDoc(null)
+      // Freshness gate: this PUT replaces the WHOLE manifest, so a brand that
+      // changed underneath (the drafting agent writing while the user reviews)
+      // must not be silently erased. First mismatch blocks with an explanation;
+      // saving again overwrites deliberately.
+      if (!overwriteArmedRef.current && stagedBaseRef.current) {
+        const freshRes = await fetch(`/api/plugins/brands/${brandId}`)
+        if (freshRes.ok) {
+          const fresh = (await freshRes.json()) as DetailResponse
+          if (fresh.brand.updatedAt !== stagedBaseRef.current) {
+            overwriteArmedRef.current = true
+            setDetail(fresh)
+            setSaveError(
+              'This brand changed while you were editing — likely the drafting agent. Save again to overwrite the newer version, or Discard to see it.',
+            )
+            return false
+          }
+        }
+      }
+      // Identity, timestamps, AND publication state are server-owned — the
+      // staged snapshot may carry a stale draft flag from before a publish.
+      const { id: _id, createdAt: _c, updatedAt: _u, draft: _d, draftTaskId: _dt, ...body } = cleaned
+      const res = await fetch(`/api/plugins/brands/${brandId}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) {
+        const resBody = (await res.json().catch(() => ({}))) as { error?: string }
+        throw new Error(resBody.error ?? `save failed: ${res.status}`)
+      }
+      const saved = (await res.json().catch(() => ({}))) as { brand?: { updatedAt?: string } }
+      await refresh()
+      // Clear ONLY if nothing new was staged during the round-trip — and when
+      // edits DID survive, re-arm the freshness gate against the version this
+      // save just produced (a null base would skip the gate on the next save).
+      setStaged((prev) => {
+        if (prev === snapshot) {
+          stagedBaseRef.current = null
+          return null
+        }
+        // Unparseable response keeps the OLD base — the gate then trips (safe
+        // direction) instead of silently skipping.
+        stagedBaseRef.current = saved.brand?.updatedAt ?? stagedBaseRef.current
+        return prev
+      })
+      overwriteArmedRef.current = false
+      return true
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : String(err))
+      return false
+    } finally { setSaving(false) }
+  }, [staged, brandId, refresh])
+
+  // In-app navigation guard: staged edits must never be silently dropped by a
+  // route change (tab switches don't navigate — the draft spans them freely).
+  const unsavedGuard = useUnsavedChangesGuard({
+    hasUnsavedChanges: dirty,
+    saving,
+    title: 'Unsaved brand changes',
+    description: 'You have unsaved changes to this brand. Save them before leaving, discard them, or stay here.',
+    saveLabel: 'Save brand',
+    onSaveAndExit: save,
+    onDiscardAndExit: discard,
+  })
+
+  /** Every doc opens in the dedicated editor route — never an inline swap (spec §7e). */
+  const editDoc = useCallback(
+    (kind: DocKind, name: string, create = false) =>
+      void navigate({
+        to: '/brands/$brandId/docs/$kind/$name',
+        params: { brandId, kind, name },
+        search: (create ? { create: '1' } : {}) as never,
+      }),
+    [navigate, brandId],
+  )
+
+  // Publishing gets a light confirm — it flips the switch agents act on.
+  const [publishConfirm, setPublishConfirm] = useState(false)
+  const [publishBusy, setPublishBusy] = useState(false)
+  const [publishError, setPublishError] = useState<string | null>(null)
+  const publish = useCallback(async () => {
+    setPublishBusy(true)
+    setPublishError(null)
+    try {
+      const res = await fetch(`/api/plugins/brands/${brandId}/publish`, { method: 'POST' })
+      if (!res.ok) throw new Error(`publish failed: ${res.status}`)
+      toast(`${detail?.brand.name ?? brandId} published — agents can use it now`, 'success')
+      setPublishConfirm(false)
       await refresh()
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    } finally { setSaving(false) }
-  }, [brandId, editingDoc, refresh])
+      setPublishError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setPublishBusy(false)
+    }
+  }, [brandId, detail, refresh])
 
-  const publish = useCallback(async () => {
-    const res = await fetch(`/api/plugins/brands/${brandId}/publish`, { method: 'POST' })
-    if (res.ok) await refresh()
-    else setError(`publish failed: ${res.status}`)
-  }, [brandId, refresh])
-
+  if (notFound) {
+    return (
+      <div className="p-6">
+        <ErrorState
+          title="This brand doesn't exist"
+          message="It may have been deleted, or the link is stale."
+          retry={onBack}
+        />
+      </div>
+    )
+  }
   if (error && !detail) {
     return (
       <div className="p-6">
-        <Button variant="ghost" size="sm" onClick={onBack}><ArrowLeft className="size-3.5" /> Brands</Button>
+        <Button variant="ghost" size="sm" onClick={onBack}><ArrowLeft className="size-3.5" /> Branding</Button>
         <p className="mt-3 text-sm text-destructive">{error}</p>
       </div>
     )
   }
-  if (!detail) return <div className="p-6 text-sm text-muted-foreground">Loading…</div>
+  if (!detail) {
+    // Hero + tabs skeleton — never a blank pane while loading.
+    return (
+      <div className="flex flex-col gap-6 p-4 sm:p-6" data-brand-detail-loading>
+        <Skeleton className="h-8 w-24" />
+        <Skeleton className="h-40 rounded-2xl" />
+        <Skeleton className="h-8 w-96" />
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Skeleton className="h-40 rounded-xl" />
+          <Skeleton className="h-40 rounded-xl" />
+        </div>
+      </div>
+    )
+  }
 
-  const b = detail.brand
+  // Staged edits paint the page live (hero included) — what you see is what Save commits.
+  const b = staged ?? detail.brand
 
   return (
     <div className="flex flex-col gap-6 p-4 sm:p-6">
-      <Button variant="ghost" size="sm" className="w-fit -ml-2 text-muted-foreground" onClick={onBack}>
-        <ArrowLeft className="size-3.5" /> Brands
+      {/* Icon-only history back — same pattern as the asset viewer. */}
+      <Button variant="ghost" size="sm" className="w-fit -ml-2 text-muted-foreground" onClick={onBack} aria-label="Back">
+        <ArrowLeft className="size-4" />
       </Button>
 
-      <PaletteHero brand={b} saving={saving} onPublish={b.draft ? publish : undefined} />
+      {/* Publish lives in the draft banner (and Settings) — ONE prominent button, not three. */}
+      <PaletteHero brand={b} />
+
+      {b.draft && <DraftBanner brand={b} brandId={brandId} onPublish={() => setPublishConfirm(true)} />}
+
+      <ConfirmDialog
+        open={publishConfirm}
+        title={`Publish ${b.name}?`}
+        description="Agents start using this brand on linked tasks immediately — and any tasks waiting on it unblock."
+        confirmLabel="Publish"
+        busyLabel="Publishing..."
+        busy={publishBusy}
+        error={publishError}
+        onConfirm={() => void publish()}
+        onCancel={() => {
+          if (!publishBusy) setPublishConfirm(false)
+        }}
+      />
 
       {error && <p className="text-sm text-destructive">{error}</p>}
 
       <UnderlineTabs tabs={TABS} value={tab} onValueChange={(id) => setTab(id as typeof tab)} />
 
-      {tab === 'overview' && <OverviewTab brand={b} detail={detail} brandId={brandId} onGoTo={setTab} />}
+      {tab === 'overview' && <OverviewTab brand={b} detail={detail} brandId={brandId} onGoTo={setTab} onEditDoc={editDoc} />}
 
       {tab === 'identity' && (
-        <div className="grid gap-4 lg:grid-cols-2 [&>*:nth-child(-n+2)]:lg:col-span-2">
-          <Section label="Name & description" icon={Sparkles}>
-            <input
-              className={inputCls}
-              defaultValue={b.name}
-              onBlur={(e) => { if (e.target.value.trim() && e.target.value !== b.name) void putManifest({ name: e.target.value.trim() }) }}
+        <div className="grid gap-4 lg:grid-cols-2">
+          <SectionCard
+            className="lg:col-span-2"
+            title="Name & description"
+            icon={Sparkles}
+            description="The first thing agents read about this brand — the description rides every branded task and image prompt."
+          >
+            <Input
+              value={b.name}
+              aria-label="Brand name"
+              onChange={(e) => stage({ name: e.target.value })}
             />
-            <input
-              className={inputCls}
-              placeholder="One-line description (rides the dispatch card + image prompts)"
-              defaultValue={b.description ?? ''}
-              onBlur={(e) => { if (e.target.value !== (b.description ?? '')) void putManifest({ description: e.target.value || undefined }) }}
+            <Textarea
+              rows={3}
+              placeholder="One or two sentences on what this brand is and how it should come across."
+              aria-label="Brand description"
+              value={b.description ?? ''}
+              onChange={(e) => stage({ description: e.target.value || undefined })}
             />
-          </Section>
+          </SectionCard>
 
-          <ListEditor
-            label="Palette" icon={Palette}
-            hint="Image tools consume these directly."
-            items={b.palette}
-            render={(c, update, remove) => (
-              <div className="flex items-center gap-2">
-                <input type="color" value={isHex(c.hex) ? c.hex : '#000000'} onChange={(e) => update({ ...c, hex: e.target.value })} className="h-8 w-10 shrink-0 cursor-pointer rounded-md bg-transparent" />
-                <input className={`${inputCls} w-32`} placeholder="name" value={c.name} onChange={(e) => update({ ...c, name: e.target.value })} />
-                <input className={`${inputCls} w-28 font-mono`} value={c.hex} onChange={(e) => update({ ...c, hex: e.target.value })} />
-                <input className={`${inputCls} flex-1`} placeholder="usage (e.g. primary text)" value={c.usage ?? ''} onChange={(e) => update({ ...c, usage: e.target.value || undefined })} />
-                <RemoveBtn onClick={remove} />
-              </div>
+          <SectionCard
+            className="lg:col-span-2"
+            title="Palette"
+            icon={Palette}
+            description="Agents pull these exact values into everything they generate — images, docs, UI. First color is the primary."
+            action={
+              <Button variant="outline" size="sm" onClick={() => stage({ palette: [...b.palette, { name: '', hex: BLANK_HEX }] })} data-add-color>
+                <Plus className="size-3.5" /> Add color
+              </Button>
+            }
+          >
+            {b.palette.length === 0 && (
+              <SectionEmpty>No colors yet — without a palette, image tools have no brand colors to follow.</SectionEmpty>
             )}
-            blank={(): PaletteEntry => ({ name: '', hex: '#888888' })}
-            valid={(c) => c.name.trim().length > 0 && isHex(c.hex)}
-            onSave={(palette) => void putManifest({ palette })}
-          />
+            {b.palette.map((c, i) => {
+              const hexInvalid = c.hex.trim() !== '' && c.hex !== BLANK_HEX && !isHex(c.hex)
+              const update = (next: PaletteEntry) => stage({ palette: b.palette.map((row, j) => (j === i ? next : row)) })
+              return (
+                <div key={i} data-palette-row={i}>
+                  <div className="flex items-center gap-2">
+                    {/* Swatch and hex field are two views of ONE value — either edits both. */}
+                    <input
+                      type="color"
+                      aria-label={`${c.name || 'color'} swatch`}
+                      value={isHex(c.hex) ? c.hex : '#000000'}
+                      onChange={(e) => update({ ...c, hex: e.target.value })}
+                      className="h-8 w-10 shrink-0 cursor-pointer rounded-md bg-transparent"
+                    />
+                    <Input className="w-32" placeholder="Primary" aria-label="Color name" value={c.name} onChange={(e) => update({ ...c, name: e.target.value })} />
+                    <Input
+                      className={`w-28 font-mono ${hexInvalid ? 'ring-1 ring-destructive' : ''}`}
+                      aria-label="Hex value"
+                      aria-invalid={hexInvalid || undefined}
+                      value={c.hex}
+                      onChange={(e) => update({ ...c, hex: e.target.value })}
+                    />
+                    <Input className="flex-1" placeholder="buttons, links, calls-to-action" aria-label="Where it's used" value={c.usage ?? ''} onChange={(e) => update({ ...c, usage: e.target.value || undefined })} />
+                    <RemoveBtn onClick={() => stage({ palette: b.palette.filter((_, j) => j !== i) })} />
+                  </div>
+                  {hexInvalid && <p className="mt-1 pl-12 text-xs text-destructive">Hex colors look like #FF5A00</p>}
+                </div>
+              )
+            })}
+          </SectionCard>
 
-          <ListEditor
-            label="Rules" icon={AlertTriangle}
-            hint="Absolute — ride every dispatch inline."
-            items={(b.rules ?? []).map((text) => ({ text }))}
-            render={(r, update, remove) => (
-              <div className="flex items-center gap-2">
-                <input className={`${inputCls} flex-1`} placeholder='e.g. "Never use emojis"' value={r.text} onChange={(e) => update({ text: e.target.value })} />
-                <RemoveBtn onClick={remove} />
+          <SectionCard
+            title="Rules"
+            icon={AlertTriangle}
+            description="Hard do's and don'ts — injected into every branded task, never optional."
+            action={
+              <Button variant="outline" size="sm" onClick={() => stage({ rules: [...(b.rules ?? []), ''] })} data-add-rule>
+                <Plus className="size-3.5" /> Add rule
+              </Button>
+            }
+          >
+            {(b.rules ?? []).length === 0 && <SectionEmpty>No rules yet — e.g. "Never use exclamation marks in headlines."</SectionEmpty>}
+            {(b.rules ?? []).map((r, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <Input className="flex-1" placeholder='e.g. "Never use emojis"' value={r} onChange={(e) => stage({ rules: (b.rules ?? []).map((row, j) => (j === i ? e.target.value : row)) })} />
+                <RemoveBtn onClick={() => stage({ rules: (b.rules ?? []).filter((_, j) => j !== i) })} />
               </div>
-            )}
-            blank={() => ({ text: '' })}
-            valid={(r) => r.text.trim().length > 0}
-            onSave={(rules) => void putManifest({ rules: rules.map((r) => r.text.trim()) })}
-          />
+            ))}
+          </SectionCard>
 
-          <ListEditor
-            label="Terminology" icon={BookOpen}
-            hint='Do/don&apos;t pairs, always inline.'
-            items={b.terminology ?? []}
-            render={(t, update, remove) => (
-              <div className="flex items-center gap-2">
-                <input className={`${inputCls} w-56`} placeholder="term" value={t.term} onChange={(e) => update({ ...t, term: e.target.value })} />
-                <input className={`${inputCls} flex-1`} placeholder="rule" value={t.rule} onChange={(e) => update({ ...t, rule: e.target.value })} />
-                <RemoveBtn onClick={remove} />
+          <SectionCard
+            title="Terminology"
+            icon={BookOpen}
+            description="Say-this-not-that words agents must get right — product names, banned phrases."
+            action={
+              <Button variant="outline" size="sm" onClick={() => stage({ terminology: [...(b.terminology ?? []), { term: '', rule: '' }] })} data-add-term>
+                <Plus className="size-3.5" /> Add term
+              </Button>
+            }
+          >
+            {(b.terminology ?? []).length === 0 && <SectionEmpty>Nothing yet — e.g. "workspace", never "dashboard".</SectionEmpty>}
+            {(b.terminology ?? []).map((t, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <Input className="w-56" placeholder="workspace" aria-label="Term" value={t.term} onChange={(e) => stage({ terminology: (b.terminology ?? []).map((row, j) => (j === i ? { ...row, term: e.target.value } : row)) })} />
+                <Input className="flex-1" placeholder='never "dashboard"' aria-label="Rule" value={t.rule} onChange={(e) => stage({ terminology: (b.terminology ?? []).map((row, j) => (j === i ? { ...row, rule: e.target.value } : row)) })} />
+                <RemoveBtn onClick={() => stage({ terminology: (b.terminology ?? []).filter((_, j) => j !== i) })} />
               </div>
-            )}
-            blank={() => ({ term: '', rule: '' })}
-            valid={(t) => t.term.trim().length > 0 && t.rule.trim().length > 0}
-            onSave={(terminology) => void putManifest({ terminology })}
-          />
+            ))}
+          </SectionCard>
         </div>
       )}
 
@@ -204,46 +476,50 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
           kind={tab}
           docs={tab === 'guidelines' ? detail.guidelines : detail.lessons}
           brand={b}
+          brandId={brandId}
           guidelines={detail.guidelines}
-          editingDoc={editingDoc}
-          setEditingDoc={setEditingDoc}
-          openDoc={openDoc}
-          saveDoc={saveDoc}
+          onEditDoc={editDoc}
+          onDeleted={() => void refresh()}
           onToggleCardDoc={(name, on) => {
             const current = b.cardDocs ?? (detail.guidelines.some((g) => g.name === 'voice.md') ? ['voice.md'] : [])
-            void putManifest({ cardDocs: on ? [...current, name] : current.filter((n) => n !== name) })
+            stage({ cardDocs: on ? [...current, name] : current.filter((n) => n !== name) })
+          }}
+          onToggleLesson={(name, active) => {
+            const current = b.disabledLessons ?? []
+            stage({ disabledLessons: active ? current.filter((n) => n !== name) : [...current, name] })
           }}
         />
       )}
 
-      {tab === 'assets' && <BrandAssetsSection brand={b} onSave={(patch) => void putManifest(patch)} />}
+      {tab === 'assets' && <BrandAssetsSection brand={b} onSave={stage} />}
 
       {tab === 'settings' && (
-        <div className="flex flex-col gap-4">
-          {b.draft && (
-            <Section label="Draft" icon={Rocket}>
-              <p className="text-sm text-muted-foreground">
-                Invisible to task pickers, dispatch, and image tools until published. Review the sections,
-                then publish. Delete <code className="rounded bg-surface px-1 text-xs">_intake.md</code> under
-                Guidelines if you don't want the builder intake kept.
-              </p>
-              <Button variant="default" size="sm" className="w-fit" onClick={() => void publish()}>
-                <Rocket className="size-3.5" /> Publish brand
-              </Button>
-            </Section>
-          )}
-          {b.source && (
-            <Section label="Source" icon={ExternalLink}>
-              <p className="text-sm text-muted-foreground">
-                Imported from <span className="font-mono text-foreground/80">{b.source.repo}</span>
-                {b.source.commit ? ` @ ${b.source.commit.slice(0, 8)}` : ''}. Check for upstream drift:
-                <code className="ml-1 rounded bg-surface px-1 text-xs">bakin brands check {b.id}</code>
-              </p>
-            </Section>
-          )}
-          <BrandHealthSection brandId={b.id} onDeleted={onBack} />
-        </div>
+        <BrandSettingsTab
+          brand={b}
+          brandId={brandId}
+          onPublish={() => setPublishConfirm(true)}
+          // Explicit list navigation — history-back would land on the brand we
+          // just deleted. Discard FIRST and let the guard's effect unregister
+          // before navigating, or the unsaved-changes dialog blocks the exit
+          // and offers to Save to a brand that no longer exists.
+          onDeleted={() => {
+            discard()
+            setTimeout(() => void navigate({ to: '/brands' }), 0)
+          }}
+          onChanged={() => void refresh()}
+        />
       )}
+
+      {/* ONE save path for the whole manifest — appears whenever anything is staged. */}
+      <SaveBar
+        dirty={dirty}
+        saving={saving}
+        error={saveError}
+        saveLabel="Save brand"
+        onSave={() => void save()}
+        onDiscard={discard}
+      />
+      {unsavedGuard.dialog}
     </div>
   )
 }
@@ -251,30 +527,6 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
 // ─── Shared shells ────────────────────────────────────────────────────────────
 
 const inputCls = 'w-full rounded-md bg-surface px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/70 outline-none ring-1 ring-inset ring-outline-variant/30 transition-shadow focus-visible:ring-2 focus-visible:ring-ring/60'
-
-/** Elevated surface panel — the primary grouping device (no hard borders). */
-function Section({
-  label, icon: Icon, action, children, className,
-}: {
-  label: string
-  icon?: React.ComponentType<{ className?: string }>
-  action?: React.ReactNode
-  children: React.ReactNode
-  className?: string
-}) {
-  return (
-    <section className={`rounded-xl bg-card p-4 ring-1 ring-foreground/10 ${className ?? ''}`}>
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2 text-muted-foreground">
-          {Icon && <Icon className="size-3.5" />}
-          <h3 className="text-[11px] font-medium uppercase tracking-wider">{label}</h3>
-        </div>
-        {action}
-      </div>
-      <div className="space-y-2.5">{children}</div>
-    </section>
-  )
-}
 
 function RemoveBtn({ onClick }: { onClick: () => void }) {
   return (
@@ -286,7 +538,7 @@ function RemoveBtn({ onClick }: { onClick: () => void }) {
 
 // ─── Hero: the brand paints its own header ────────────────────────────────────
 
-function PaletteHero({ brand, saving, onPublish }: { brand: BrandManifest; saving: boolean; onPublish?: () => void }) {
+function PaletteHero({ brand }: { brand: BrandManifest }) {
   const colors = brand.palette.filter((c) => isHex(c.hex))
   const primary = colors[0]?.hex
   const logo = brand.logos.find((l) => l.variant === 'primary') ?? brand.logos[0]
@@ -321,19 +573,13 @@ function PaletteHero({ brand, saving, onPublish }: { brand: BrandManifest; savin
               <h1 className="text-2xl font-semibold tracking-tight">{brand.name}</h1>
               <span className="font-mono text-xs text-muted-foreground">{brand.id}</span>
               {brand.draft
-                ? <Badge className="bg-accent/15 text-accent">Draft</Badge>
-                : <Badge className="bg-success/15 text-success"><Check className="size-3" /> Published</Badge>}
-              {brand.source && <Badge variant="secondary" className="gap-1 text-muted-foreground"><ExternalLink className="size-3" /> repo</Badge>}
-              {saving && <span className="text-[11px] text-muted-foreground">saving…</span>}
+                ? <StatusBadge tone="warning">Draft</StatusBadge>
+                : <StatusBadge tone="success" icon={Check}>Published</StatusBadge>}
+              {brand.source && <StatusBadge tone="neutral" icon={ExternalLink}>imported</StatusBadge>}
             </div>
             {brand.description && <p className="mt-1.5 max-w-2xl text-sm text-muted-foreground">{brand.description}</p>}
           </div>
         </div>
-        {onPublish && (
-          <Button variant="default" size="sm" className="shrink-0" onClick={onPublish}>
-            <Rocket className="size-3.5" /> Publish brand
-          </Button>
-        )}
       </div>
     </div>
   )
@@ -345,9 +591,10 @@ interface CardPreview { cardBytes: number; maxBytes: number; omitted: number }
 interface ActivityRow { ts: string; event: string; agent: string; data: Record<string, unknown> }
 
 function OverviewTab({
-  brand, detail, brandId, onGoTo,
+  brand, detail, brandId, onGoTo, onEditDoc,
 }: {
   brand: BrandManifest; detail: DetailResponse; brandId: string; onGoTo: (tab: string) => void
+  onEditDoc: (kind: DocKind, name: string, create?: boolean) => void
 }) {
   const [card, setCard] = useState<CardPreview | null>(null)
   const [voice, setVoice] = useState<string | null>(null)
@@ -386,15 +633,44 @@ function OverviewTab({
     ...(brand.defaultImageReferences ?? []),
   ]).size, [brand])
 
-  const checklist = [
-    { ok: detail.guidelines.some((d) => d.name === 'voice.md'), label: 'Voice doc', gap: 'agents get only palette + rules, not how the brand talks', tab: 'guidelines' },
-    { ok: brand.palette.length > 0, label: 'Palette', gap: 'image generation has no brand colors to follow', tab: 'identity' },
-    { ok: (brand.rules?.length ?? 0) > 0, label: 'Rules', gap: 'no non-negotiables ride every dispatch', tab: 'identity' },
-    { ok: brand.logos.length > 0 || brand.assetGroups.length > 0, label: 'Brand assets', gap: 'no real logos/screenshots for agents to reference', tab: 'assets' },
-  ]
+  const completeness = detail.completeness
 
   return (
     <div className="flex flex-col gap-6">
+      {/* Finish-your-kit checklist: server-computed, every miss is a jump link. */}
+      {completeness && completeness.percent < 100 && (
+        <SectionCard
+          title="Finish your kit"
+          icon={Check}
+          description="What's still missing before agents have the full picture — each item jumps to where you fix it."
+          action={
+            <span className="flex items-center gap-2">
+              <Progress value={completeness.percent} className="h-1.5 w-24" aria-label={`Kit ${completeness.percent}% complete`} />
+              <span className="text-xs tabular-nums text-muted-foreground">{completeness.percent}%</span>
+            </span>
+          }
+        >
+          <div className="grid gap-1 sm:grid-cols-2" data-kit-checklist>
+            {completeness.items.map((item) => (
+              <button
+                key={item.key}
+                className="flex items-start gap-2.5 rounded-lg px-1 py-1 text-left transition-colors hover:bg-foreground/5"
+                onClick={() => onGoTo(item.fixTab)}
+                data-kit-item={item.key}
+              >
+                {item.done
+                  ? <Check className="mt-0.5 size-4 shrink-0 text-success" />
+                  : <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" />}
+                <span className="text-sm">
+                  <span className={item.done ? '' : 'text-warning'}>{item.label}</span>
+                  {!item.done && <span className="text-muted-foreground"> — {item.hint}</span>}
+                </span>
+              </button>
+            ))}
+          </div>
+        </SectionCard>
+      )}
+
       {/* Stat tiles */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <CardFootprintTile card={card} />
@@ -404,85 +680,108 @@ function OverviewTab({
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[3fr_2fr]">
-        <Section
-          label="Voice" icon={Sparkles}
-          action={<Button variant="ghost" size="xs" className="text-muted-foreground" onClick={() => onGoTo('guidelines')}><Pencil className="size-3" /> Edit</Button>}
+        <SectionCard
+          title="Voice"
+          icon={Sparkles}
+          description="How the brand talks — the biggest lever on how on-brand output reads."
+          action={
+            <Button
+              variant="ghost" size="xs" className="text-muted-foreground"
+              onClick={() => onEditDoc('guidelines', 'voice.md', voice === null)}
+            >
+              <Pencil className="size-3" /> Edit voice
+            </Button>
+          }
         >
           {voice === null
-            ? <p className="text-sm text-muted-foreground">No voice.md yet — the biggest lever on how on-brand output reads.</p>
-            : <div className="prose-invert max-h-56 max-w-none overflow-hidden text-sm [mask-image:linear-gradient(to_bottom,black_70%,transparent)]"><MarkdownContent content={voice} /></div>}
-        </Section>
+            ? <SectionEmpty>No voice.md yet — the biggest lever on how on-brand output reads.</SectionEmpty>
+            : (
+              <FadeMore
+                summary="Preview only"
+                actionLabel="Read the full voice guide"
+                onAction={() => onEditDoc('guidelines', 'voice.md')}
+              >
+                <div className="prose-invert max-w-none text-sm"><MarkdownContent content={stripFrontmatter(voice)} /></div>
+              </FadeMore>
+            )}
+        </SectionCard>
 
-        <Section
-          label="Rules & terminology" icon={AlertTriangle}
+        <SectionCard
+          title="Rules & terminology"
+          icon={AlertTriangle}
+          description="Non-negotiables that ride every branded task inline."
           action={<Button variant="ghost" size="xs" className="text-muted-foreground" onClick={() => onGoTo('identity')}><Pencil className="size-3" /> Edit</Button>}
         >
-          {(brand.rules?.length ?? 0) === 0 && (brand.terminology?.length ?? 0) === 0 && (
-            <p className="text-sm text-muted-foreground">None set — rules and terms ride every dispatch inline.</p>
-          )}
-          {brand.rules?.map((r) => (
-            <div key={r} className="flex gap-2 text-sm"><span className="text-accent">›</span><span>{r}</span></div>
-          ))}
-          {brand.terminology?.map((t) => (
-            <div key={t.term} className="text-sm"><span className="font-medium">{t.term}</span> <span className="text-muted-foreground">— {t.rule}</span></div>
-          ))}
-        </Section>
+          <RulesTermsSummary brand={brand} onGoTo={onGoTo} />
+        </SectionCard>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Section label="Setup" icon={Check}>
-          {checklist.map((c) => (
-            <button key={c.label} className="flex w-full items-start gap-2.5 rounded-lg px-1 py-1 text-left transition-colors hover:bg-surface-bright/50" onClick={() => onGoTo(c.tab)}>
-              {c.ok ? <Check className="mt-0.5 size-4 shrink-0 text-success" /> : <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" />}
-              <span className="text-sm">
-                <span className={c.ok ? '' : 'text-warning'}>{c.label}</span>
-                {!c.ok && <span className="text-muted-foreground"> — {c.gap}</span>}
-              </span>
-            </button>
+      <SectionCard
+        title="Recent activity"
+        icon={Rocket}
+        description="Edits, imports, publishes, and dispatch injections for this brand."
+      >
+        {activity.length === 0
+          ? <SectionEmpty>Nothing yet — activity shows up as the brand gets used.</SectionEmpty>
+          : activity.slice(0, 8).map((a, i) => (
+            <div key={`${a.ts}-${i}`} className="flex items-baseline justify-between gap-2 text-sm">
+              <span>{activityLabel(a)}</span>
+              <span className="shrink-0 text-xs text-muted-foreground">{relTime(a.ts)}</span>
+            </div>
           ))}
-        </Section>
-
-        <Section label="Recent activity" icon={Rocket}>
-          {activity.length === 0
-            ? <p className="text-sm text-muted-foreground">No activity yet. Brand edits, imports, and dispatch injections show up here.</p>
-            : activity.slice(0, 8).map((a, i) => (
-              <div key={`${a.ts}-${i}`} className="flex items-baseline justify-between gap-2 text-sm">
-                <span>{activityLabel(a)}</span>
-                <span className="shrink-0 text-xs text-muted-foreground">{relTime(a.ts)}</span>
-              </div>
-            ))}
-        </Section>
-      </div>
+      </SectionCard>
     </div>
   )
 }
 
+/**
+ * Overview preview of rules + terminology — same fade-into-overlay treatment
+ * as the Voice card beside it. Full editing lives on the Identity tab.
+ */
+const SUMMARY_ROWS = 3
+function RulesTermsSummary({ brand, onGoTo }: { brand: BrandManifest; onGoTo: (tab: string) => void }) {
+  const rules = brand.rules ?? []
+  const terms = brand.terminology ?? []
+  if (rules.length === 0 && terms.length === 0) {
+    return <SectionEmpty>None set yet — rules and terms ride every branded task inline.</SectionEmpty>
+  }
+  return (
+    <FadeMore
+      summary={`${rules.length} rule${rules.length === 1 ? '' : 's'} · ${terms.length} term${terms.length === 1 ? '' : 's'}`}
+      actionLabel="View all in Identity"
+      onAction={() => onGoTo('identity')}
+      hasMore={rules.length + terms.length > SUMMARY_ROWS * 2}
+      className="space-y-2.5"
+    >
+      {rules.map((r) => (
+        <div key={r} className="flex gap-2 text-sm"><span className="text-muted-foreground">›</span><span>{r}</span></div>
+      ))}
+      {terms.map((t) => (
+        <div key={t.term} className="text-sm"><span className="font-medium">{t.term}</span> <span className="text-muted-foreground">— {t.rule}</span></div>
+      ))}
+    </FadeMore>
+  )
+}
+
+/** The dispatch-footprint metric on the SDK StatTile (promoted from here). */
 function CardFootprintTile({ card }: { card: CardPreview | null }) {
   if (!card) return <StatTile icon={Sparkles} label="Card footprint" value="—" sub="per dispatch" />
   const kb = card.cardBytes / 1024
   const maxKb = card.maxBytes / 1024
   const pct = Math.min(100, (card.cardBytes / card.maxBytes) * 100)
-  const tight = pct > 85
   return (
-    <div className="rounded-xl bg-card p-3.5 ring-1 ring-foreground/10">
-      <div className="flex items-center gap-1.5 text-muted-foreground"><Sparkles className="size-3.5" /><p className="text-[11px] uppercase tracking-wider">Card footprint</p></div>
-      <p className="mt-1 text-2xl font-semibold tabular-nums">{kb.toFixed(1)}<span className="text-sm font-normal text-muted-foreground"> / {maxKb.toFixed(0)} KB</span></p>
-      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface">
-        <div className={`h-full rounded-full transition-all ${tight ? 'bg-warning' : 'bg-success'}`} style={{ width: `${pct}%` }} />
-      </div>
-      <p className="mt-1.5 text-[11px] text-muted-foreground">{card.omitted > 0 ? `${card.omitted} omitted for size` : 'nothing omitted'}</p>
-    </div>
-  )
-}
-
-function StatTile({ icon: Icon, label, value, sub, onClick }: { icon: React.ComponentType<{ className?: string }>; label: string; value: string | number; sub?: string; onClick?: () => void }) {
-  const Cmp = onClick ? 'button' : 'div'
-  return (
-    <Cmp className={`rounded-xl bg-card p-3.5 text-left ring-1 ring-foreground/10 transition-all ${onClick ? 'hover:bg-surface-bright/40 hover:ring-foreground/20' : ''}`} onClick={onClick}>
-      <div className="flex items-center gap-1.5 text-muted-foreground"><Icon className="size-3.5" /><p className="text-[11px] uppercase tracking-wider">{label}</p></div>
-      <p className="mt-1 text-2xl font-semibold tabular-nums">{value}</p>
-      {sub && <p className="text-[11px] text-muted-foreground">{sub}</p>}
-    </Cmp>
+    <StatTile
+      icon={Sparkles}
+      label="Card footprint"
+      value={
+        <>
+          {kb.toFixed(1)}
+          <span className="text-sm font-normal text-muted-foreground"> / {maxKb.toFixed(0)} KB</span>
+        </>
+      }
+      progress={{ percent: pct, tone: pct > 85 ? 'warning' : 'success' }}
+      sub={card.omitted > 0 ? `${card.omitted} omitted for size` : 'nothing omitted'}
+    />
   )
 }
 
@@ -497,6 +796,7 @@ function activityLabel(a: ActivityRow): string {
     case 'brand.imported': return 'Imported from source'
     case 'brand.exported': return 'Exported'
     case 'brand.draft_published': return 'Published'
+    case 'brand.unpublished': return 'Unpublished — back to draft'
     case 'brand.created': return 'Created'
     default: return a.event.replace('brand.', '')
   }
@@ -515,65 +815,202 @@ function relTime(ts: string): string {
 
 // ─── Docs editor (guidelines + lessons) ───────────────────────────────────────
 
+const DOC_COPY: Record<DocKind, { title: string; description: string; noun: string }> = {
+  guidelines: {
+    title: 'Guidelines',
+    description: 'The docs that teach agents this brand — voice, style, anything they should read before producing work.',
+    noun: 'doc',
+  },
+  lessons: {
+    title: 'Lessons',
+    description: 'Learned from real tasks — the most relevant lessons are recalled automatically per task. Hard rules belong in Identity → Rules instead.',
+    noun: 'lesson',
+  },
+}
+
 function DocsEditor({
-  kind, docs, brand, guidelines, editingDoc, setEditingDoc, openDoc, saveDoc, onToggleCardDoc,
+  kind, docs, brand, brandId, guidelines, onEditDoc, onDeleted, onToggleCardDoc, onToggleLesson,
 }: {
   kind: DocKind
   docs: DocInfo[]
   brand: BrandManifest
+  brandId: string
   guidelines: DocInfo[]
-  editingDoc: { kind: DocKind; name: string; content: string } | null
-  setEditingDoc: (d: { kind: DocKind; name: string; content: string } | null) => void
-  openDoc: (kind: DocKind, name: string) => void
-  saveDoc: () => void
+  onEditDoc: (kind: DocKind, name: string, create?: boolean) => void
+  onDeleted: () => void
   onToggleCardDoc: (name: string, on: boolean) => void
+  onToggleLesson: (name: string, active: boolean) => void
 }) {
+  const [newOpen, setNewOpen] = useState(false)
   const [newDocName, setNewDocName] = useState('')
+  const [deleting, setDeleting] = useState<string | null>(null)
+  const [deleteBusy, setDeleteBusy] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
   const cardDocs = brand.cardDocs ?? (guidelines.some((g) => g.name === 'voice.md') ? ['voice.md'] : [])
-  const noun = kind === 'guidelines' ? 'doc' : 'lesson'
+  const copy = DOC_COPY[kind]
+
+  const deleteDoc = useCallback(async () => {
+    if (!deleting) return
+    setDeleteBusy(true)
+    setDeleteError(null)
+    try {
+      const res = await fetch(`/api/plugins/brands/${brandId}/docs/${kind}/${encodeURIComponent(deleting)}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error(`delete failed: ${res.status}`)
+      toast(`Deleted ${deleting}`, 'success')
+      setDeleting(null)
+      onDeleted()
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setDeleteBusy(false)
+    }
+  }, [deleting, brandId, kind, onDeleted])
+
+  const submitNewDoc = () => {
+    const raw = newDocName.trim()
+    if (!raw) return
+    const name = raw.endsWith('.md') ? raw : `${raw}.md`
+    setNewOpen(false)
+    setNewDocName('')
+    onEditDoc(kind, name, true)
+  }
 
   return (
-    <Section
-      label={kind}
+    <SectionCard
+      title={copy.title}
       icon={kind === 'guidelines' ? FileText : BookOpen}
-      action={<span className="text-[11px] text-muted-foreground">{kind === 'lessons' ? 'Always-rule? Put it in Identity → Rules.' : 'Check to ride the dispatch card.'}</span>}
+      description={copy.description}
+      action={
+        <Button variant="outline" size="sm" onClick={() => setNewOpen(true)} data-new-doc>
+          <Plus className="size-3.5" /> New {copy.noun}
+        </Button>
+      }
     >
-      <div className="space-y-1">
-        {docs.length === 0 && <p className="text-sm text-muted-foreground">No {kind} yet.</p>}
+      <div className="space-y-2">
+        {docs.length === 0 && (
+          <SectionEmpty>No {copy.title.toLowerCase()} yet — create one and the editor opens on a fresh page.</SectionEmpty>
+        )}
         {docs.map((d) => (
-          <div key={d.name} className="flex items-center gap-2 rounded-lg px-1.5 py-1 transition-colors hover:bg-surface-bright/40">
-            <button className="flex items-center gap-1.5 font-mono text-sm hover:text-accent" onClick={() => openDoc(kind, d.name)}>
-              <FileText className="size-3.5 text-muted-foreground" />{d.name}
+          // Each row is a distinct tile — flat hover-only rows blended into one block.
+          // Benched lessons read as benched.
+          <div
+            key={d.name}
+            className={`flex items-center gap-3 rounded-lg bg-foreground/[0.04] px-3 py-2.5 ring-1 ring-foreground/5 transition-colors hover:bg-foreground/[0.07] ${
+              kind === 'lessons' && (brand.disabledLessons ?? []).includes(d.name) ? 'opacity-60' : ''
+            }`}
+            data-doc-row={d.name}
+          >
+            {/* The filename is the identity — it never yields space to the description. */}
+            <button className="flex max-w-72 shrink-0 items-center gap-1.5 text-left" onClick={() => onEditDoc(kind, d.name)}>
+              <FileText className="size-3.5 shrink-0 text-muted-foreground" />
+              <span className="truncate font-mono text-sm">{d.name}</span>
             </button>
-            {d.description && <span className="truncate text-xs text-muted-foreground">— {d.description}</span>}
-            {kind === 'guidelines' && (
-              <label className="ml-auto flex shrink-0 items-center gap-1.5 text-[11px] text-muted-foreground" title="Inline this doc into the dispatch card (budget permitting)">
-                <input type="checkbox" className="accent-accent" checked={cardDocs.includes(d.name)} onChange={(e) => onToggleCardDoc(d.name, e.target.checked)} />
-                inline in card
-              </label>
-            )}
+            {d.description && <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{d.description}</span>}
+            <div className="ml-auto flex shrink-0 items-center gap-3">
+              {kind === 'guidelines' && (
+                <TooltipProvider delay={200}>
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                          <Switch
+                            checked={cardDocs.includes(d.name)}
+                            onCheckedChange={(on: boolean) => onToggleCardDoc(d.name, on)}
+                            aria-label={`Always include ${d.name} in agent context`}
+                          />
+                          Always in context
+                          <Info className="size-3" />
+                        </label>
+                      }
+                    />
+                    <TooltipContent side="top" className="max-w-64">
+                      Included verbatim in every branded task's context (within the size budget). Leave off to keep
+                      context small — agents can still fetch the doc on demand. Takes effect when you save.
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
+              {kind === 'lessons' && (
+                <TooltipProvider delay={200}>
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                          <Switch
+                            checked={!(brand.disabledLessons ?? []).includes(d.name)}
+                            onCheckedChange={(active: boolean) => onToggleLesson(d.name, active)}
+                            aria-label={`Lesson ${d.name} active`}
+                          />
+                          Active
+                          <Info className="size-3" />
+                        </label>
+                      }
+                    />
+                    <TooltipContent side="top" className="max-w-64">
+                      Off = kept on disk but never recalled into tasks — use it to bench an outdated or wrong lesson
+                      without deleting it. Takes effect when you save.
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
+              <Button variant="ghost" size="xs" className="text-muted-foreground" onClick={() => onEditDoc(kind, d.name)}>
+                <Pencil className="size-3" /> Edit
+              </Button>
+              <Button
+                variant="ghost"
+                size="xs"
+                className="text-muted-foreground hover:text-destructive"
+                onClick={() => setDeleting(d.name)}
+                aria-label={`Delete ${d.name}`}
+              >
+                <Trash2 className="size-3" />
+              </Button>
+            </div>
           </div>
         ))}
       </div>
 
-      {editingDoc?.kind === kind && (
-        <div className="mt-3 space-y-2 rounded-lg bg-surface p-3">
-          <p className="font-mono text-xs text-muted-foreground">{editingDoc.name}</p>
-          <MarkdownEditor content={editingDoc.content} editing onChange={(content: string) => setEditingDoc({ ...editingDoc, content })} minHeight="240px" />
-          <div className="flex gap-2">
-            <Button variant="default" size="sm" onClick={saveDoc}><Check className="size-3.5" /> Save</Button>
-            <Button variant="ghost" size="sm" onClick={() => setEditingDoc(null)}>Cancel</Button>
-          </div>
-        </div>
-      )}
+      <ConfirmDialog
+        open={deleting !== null}
+        title={`Delete ${deleting}?`}
+        description={`The ${copy.noun} is removed from the brand — agents stop seeing it immediately. This can't be undone.`}
+        busy={deleteBusy}
+        error={deleteError}
+        onConfirm={() => void deleteDoc()}
+        onCancel={() => {
+          if (!deleteBusy) setDeleting(null)
+        }}
+      />
 
-      <div className="mt-2 flex items-center gap-2">
-        <input className={`${inputCls} max-w-xs`} placeholder={`new-${noun}.md`} value={newDocName} onChange={(e) => setNewDocName(e.target.value)} />
-        <Button variant="outline" size="sm" disabled={!newDocName.trim().endsWith('.md')} onClick={() => { setEditingDoc({ kind, name: newDocName.trim(), content: '' }); setNewDocName('') }}>
-          <Plus className="size-3.5" /> New {noun}
-        </Button>
-      </div>
-    </Section>
+      <Dialog open={newOpen} onOpenChange={setNewOpen}>
+        <DialogContent className="bg-card border-border sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>New {copy.noun}</DialogTitle>
+            <DialogDescription>Name the file — the editor opens on a fresh page and the first save creates it.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1.5">
+            <Label htmlFor="new-doc-name">File name</Label>
+            <Input
+              id="new-doc-name"
+              autoFocus
+              placeholder={kind === 'guidelines' ? 'imagery' : 'launch-learnings'}
+              value={newDocName}
+              onChange={(e) => setNewDocName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') submitNewDoc()
+              }}
+            />
+            <p className="text-[11px] text-muted-foreground">.md is added for you{newDocName.trim() && !newDocName.trim().endsWith('.md') ? ` — creates ${newDocName.trim()}.md` : ''}</p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNewOpen(false)}>Cancel</Button>
+            <Button onClick={submitNewDoc} disabled={!newDocName.trim()} data-new-doc-create>
+              Create & edit
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </SectionCard>
   )
 }
 
@@ -582,10 +1019,19 @@ function DocsEditor({
 interface AssetInfo { assetId: string; description: string; type: string; hasThumb: boolean }
 const TYPE_ICON: Record<string, string> = { images: '🖼', pdf: '📄', video: '▷', audio: '♪', text: '¶', data: '⊞' }
 
+const LOGO_VARIANTS = ['primary', 'dark', 'light', 'mono', 'icon', 'wordmark']
+
 function BrandAssetsSection({ brand, onSave }: { brand: BrandManifest; onSave: (patch: ManifestPatch) => void }) {
   const [assets, setAssets] = useState<Record<string, AssetInfo>>({})
-  const [options, setOptions] = useState<AssetInfo[]>([])
   const [groupDraft, setGroupDraft] = useState<{ name: string; description: string } | null>(null)
+  // ONE AssetPicker instance; whichever section opens it provides the target.
+  const [pickTarget, setPickTarget] = useState<{ title: string; description: string; onPick: (assetId: string) => void } | null>(null)
+  // One confirm for every remove on this tab. Copy stays honest: removal only
+  // drops the brand's REFERENCE (staged until Save) — the file stays in the
+  // asset library. `patch` computes from the manifest AT CONFIRM TIME, never a
+  // snapshot from when the dialog opened (the drafting agent may have written
+  // meanwhile; a stale-closure apply silently erased its work).
+  const [removeTarget, setRemoveTarget] = useState<{ title: string; description: string; patch: (current: BrandManifest) => ManifestPatch } | null>(null)
 
   const loadAssets = useCallback(async () => {
     try {
@@ -593,9 +1039,8 @@ function BrandAssetsSection({ brand, onSave }: { brand: BrandManifest; onSave: (
       if (!res.ok) return
       const body = (await res.json()) as { assets?: Array<{ assetId: string; description?: string; type?: string; hasThumb?: boolean }> }
       const list = (body.assets ?? []).map((a) => ({ assetId: a.assetId, description: a.description ?? '', type: a.type ?? 'other', hasThumb: !!a.hasThumb }))
-      setOptions(list)
       setAssets(Object.fromEntries(list.map((a) => [a.assetId, a])))
-    } catch { /* picker degrades to manual entry when the assets plugin is unreachable */ }
+    } catch { /* tiles degrade to id-only when the assets plugin is unreachable */ }
   }, [])
 
   useEffect(() => { void loadAssets() }, [loadAssets])
@@ -609,124 +1054,213 @@ function BrandAssetsSection({ brand, onSave }: { brand: BrandManifest; onSave: (
     } catch { /* optimistic; a reload reconciles */ }
   }, [])
 
-  const addAsset = (onPick: (assetId: string) => void) => <AddAsset options={options} onAdd={onPick} onUploaded={loadAssets} />
-  const tile = (assetId: string, onRemove: () => void, extra?: React.ReactNode) => (
-    <AssetTile key={assetId} info={assets[assetId]} assetId={assetId} onDescription={(d) => void saveDescription(assetId, d)} onRemove={onRemove} extra={extra} />
+  const openPicker = (title: string, description: string, onPick: (assetId: string) => void) =>
+    setPickTarget({ title, description, onPick })
+
+  const tile = (assetId: string, patch: (current: BrandManifest) => ManifestPatch, extra?: React.ReactNode) => (
+    <AssetTile
+      key={assetId}
+      info={assets[assetId]}
+      assetId={assetId}
+      onDescription={(d) => void saveDescription(assetId, d)}
+      onRemove={() =>
+        setRemoveTarget({
+          title: 'Remove this reference?',
+          description: `${assets[assetId]?.description || assetId} stays in your asset library — this brand just stops referencing it. Takes effect when you save.`,
+          patch,
+        })
+      }
+      extra={extra}
+    />
   )
 
   return (
-    <Section label="Brand assets" icon={ImageIcon} action={<span className="max-w-md text-right text-[11px] text-muted-foreground">Real logos + screenshots agents reference. Add a note so agents know how to use each one.</span>}>
-      <div className="space-y-5">
-        <div className="space-y-2">
-          <SubLabel>Logos</SubLabel>
-          {brand.logos.map((logo, i) => tile(
-            logo.assetId,
-            () => onSave({ logos: brand.logos.filter((_, j) => j !== i) }),
-            <input className={`${inputCls} w-24 py-1 text-[11px]`} value={logo.variant} title="variant (e.g. dark, light, primary)" onChange={(e) => onSave({ logos: brand.logos.map((l, j) => (j === i ? { ...l, variant: e.target.value } : l)) })} />,
-          ))}
-          {addAsset((assetId) => onSave({ logos: [...brand.logos, { assetId, variant: 'primary' }] }))}
-        </div>
+    <div className="flex flex-col gap-4">
+      <AssetPicker
+        open={pickTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setPickTarget(null)
+        }}
+        onPick={(assetId) => {
+          pickTarget?.onPick(assetId)
+          void loadAssets()
+        }}
+        title={pickTarget?.title ?? 'Choose an asset'}
+        description={pickTarget?.description}
+      />
 
-        <div className="space-y-2">
-          <SubLabel>Asset groups</SubLabel>
-          {brand.assetGroups.map((group, gi) => (
-            <div key={group.name} className="space-y-2 rounded-lg bg-surface p-3">
-              <div className="flex items-center gap-2 text-sm">
-                <span className="font-medium">{group.name}</span>
-                {group.description && <span className="text-xs text-muted-foreground">— {group.description}</span>}
-                <Button variant="ghost" size="xs" className="ml-auto text-muted-foreground hover:text-destructive" onClick={() => onSave({ assetGroups: brand.assetGroups.filter((_, j) => j !== gi) })}>
-                  Remove group
+      <ConfirmDialog
+        open={removeTarget !== null}
+        title={removeTarget?.title ?? ''}
+        description={removeTarget?.description}
+        confirmLabel="Remove"
+        confirmTestId="asset-remove-confirm"
+        onConfirm={() => {
+          // Compute the patch from the CURRENT manifest — the brand may have
+          // refreshed (agent writes) while the dialog was open.
+          if (removeTarget) onSave(removeTarget.patch(brand))
+          setRemoveTarget(null)
+        }}
+        onCancel={() => setRemoveTarget(null)}
+      />
+
+      <SectionCard
+        title="Logos"
+        icon={ImageIcon}
+        description="The face of the brand — the first logo shows on cards and covers; variants (dark/light) help agents pick the right one."
+        action={
+          <Button
+            variant="outline" size="sm" data-add-logo
+            onClick={() => openPicker('Add a logo', 'Pick or upload the logo image agents should use.', (assetId) => onSave({ logos: [...brand.logos, { assetId, variant: brand.logos.length === 0 ? 'primary' : 'dark' }] }))}
+          >
+            <Plus className="size-3.5" /> Add logo
+          </Button>
+        }
+      >
+        {brand.logos.length === 0 && (
+          <SectionEmpty>No logo yet — cards show a monogram until you add one.</SectionEmpty>
+        )}
+        {brand.logos.length > 0 && (
+          <div className="grid gap-3 lg:grid-cols-2">
+            {brand.logos.map((logo, i) =>
+              tile(
+                logo.assetId,
+                (m) => ({ logos: m.logos.filter((l) => l.assetId !== logo.assetId) }),
+                <VariantSelect
+                  value={logo.variant}
+                  onChange={(variant) => onSave({ logos: brand.logos.map((l, j) => (j === i ? { ...l, variant } : l)) })}
+                />,
+              ),
+            )}
+          </div>
+        )}
+      </SectionCard>
+
+      <SectionCard
+        title="Asset groups"
+        icon={ImageIcon}
+        description="Bundles of reference material (product shots, UI screenshots) agents browse by name when they need the real thing."
+        action={
+          !groupDraft ? (
+            <Button variant="outline" size="sm" onClick={() => setGroupDraft({ name: '', description: '' })} data-add-group>
+              <Plus className="size-3.5" /> New group
+            </Button>
+          ) : undefined
+        }
+      >
+        {brand.assetGroups.length === 0 && !groupDraft && (
+          <SectionEmpty>No groups yet — e.g. "product-ui" for real screenshots agents should reference instead of inventing UI.</SectionEmpty>
+        )}
+        {brand.assetGroups.map((group, gi) => (
+          <div key={group.name} className="space-y-2 rounded-lg bg-surface p-3">
+            <div className="flex items-center gap-2 text-sm">
+              <span className="font-medium">{group.name}</span>
+              {group.description && <span className="text-xs text-muted-foreground">— {group.description}</span>}
+              <div className="ml-auto flex shrink-0 items-center gap-1">
+                <Button
+                  variant="ghost" size="xs" className="text-muted-foreground"
+                  onClick={() => openPicker(`Add to ${group.name}`, group.description || 'Pick or upload reference material for this group.', (assetId) => onSave({ assetGroups: brand.assetGroups.map((g, j) => (j === gi && !g.assetIds.includes(assetId) ? { ...g, assetIds: [...g.assetIds, assetId] } : g)) }))}
+                >
+                  <Plus className="size-3" /> Add
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  className="text-muted-foreground hover:text-destructive"
+                  onClick={() =>
+                    setRemoveTarget({
+                      title: `Remove group ${group.name}?`,
+                      description: `Its ${group.assetIds.length} reference${group.assetIds.length === 1 ? '' : 's'} come off this brand — the files stay in your asset library. Takes effect when you save.`,
+                      patch: (m) => ({ assetGroups: m.assetGroups.filter((g) => g.name !== group.name) }),
+                    })
+                  }
+                  aria-label={`Remove group ${group.name}`}
+                  title="Remove group"
+                >
+                  <Trash2 className="size-3.5" />
                 </Button>
               </div>
-              {group.assetIds.map((assetId) => tile(
-                assetId,
-                () => onSave({ assetGroups: brand.assetGroups.map((g, j) => (j === gi ? { ...g, assetIds: g.assetIds.filter((id) => id !== assetId) } : g)) }),
-              ))}
-              {addAsset((assetId) => onSave({ assetGroups: brand.assetGroups.map((g, j) => (j === gi && !g.assetIds.includes(assetId) ? { ...g, assetIds: [...g.assetIds, assetId] } : g)) }))}
             </div>
-          ))}
-          {groupDraft ? (
-            <div className="flex items-center gap-2 rounded-lg bg-surface p-2">
-              <input className={`${inputCls} w-40`} placeholder="group name" value={groupDraft.name} onChange={(e) => setGroupDraft({ ...groupDraft, name: e.target.value })} />
-              <input className={`${inputCls} flex-1`} placeholder="usage note, e.g. real product UI — use for any product visual" value={groupDraft.description} onChange={(e) => setGroupDraft({ ...groupDraft, description: e.target.value })} />
-              <Button variant="default" size="sm" disabled={!groupDraft.name.trim()} onClick={() => { onSave({ assetGroups: [...brand.assetGroups, { name: groupDraft.name.trim(), description: groupDraft.description.trim() || undefined, assetIds: [] }] }); setGroupDraft(null) }}>Add</Button>
-              <Button variant="ghost" size="sm" onClick={() => setGroupDraft(null)}>Cancel</Button>
-            </div>
+            {group.assetIds.length === 0 && <p className="text-xs text-muted-foreground">Empty group — add screenshots or imagery.</p>}
+            {group.assetIds.length > 0 && (
+              <div className="grid gap-3 lg:grid-cols-2">
+                {group.assetIds.map((assetId) =>
+                  tile(assetId, (m) => ({ assetGroups: m.assetGroups.map((g) => (g.name === group.name ? { ...g, assetIds: g.assetIds.filter((id) => id !== assetId) } : g)) })),
+                )}
+              </div>
+            )}
+          </div>
+        ))}
+        {groupDraft && (
+          <div className="flex items-center gap-2 rounded-lg bg-surface p-2">
+            <Input className="w-40" placeholder="product-ui" aria-label="Group name" value={groupDraft.name} onChange={(e) => setGroupDraft({ ...groupDraft, name: e.target.value })} />
+            <Input className="flex-1" placeholder="real product UI — use for any product visual" aria-label="Group usage note" value={groupDraft.description} onChange={(e) => setGroupDraft({ ...groupDraft, description: e.target.value })} />
+            <Button variant="default" size="sm" disabled={!groupDraft.name.trim()} onClick={() => { onSave({ assetGroups: [...brand.assetGroups, { name: groupDraft.name.trim(), description: groupDraft.description.trim() || undefined, assetIds: [] }] }); setGroupDraft(null) }}>Add group</Button>
+            <Button variant="ghost" size="sm" onClick={() => setGroupDraft(null)}>Cancel</Button>
+          </div>
+        )}
+      </SectionCard>
+
+      <SectionCard
+        title="Default image references"
+        icon={ImageIcon}
+        description="Up to 4 images automatically attached as style references to every branded image generation — image tools consume these directly."
+        action={
+          (brand.defaultImageReferences ?? []).length < 4 ? (
+            <Button
+              variant="outline" size="sm" data-add-image-ref
+              onClick={() => openPicker('Add an image reference', 'Attached automatically to branded image generations as a style reference.', (assetId) => {
+                const current = brand.defaultImageReferences ?? []
+                if (!current.includes(assetId)) onSave({ defaultImageReferences: [...current, assetId] })
+              })}
+            >
+              <Plus className="size-3.5" /> Add reference
+            </Button>
           ) : (
-            <Button variant="outline" size="sm" onClick={() => setGroupDraft({ name: '', description: '' })}><Plus className="size-3.5" /> New group</Button>
-          )}
-        </div>
-
-        <div className="space-y-2">
-          <SubLabel>Default image references <span className="normal-case text-muted-foreground/70">(≤4)</span></SubLabel>
-          {(brand.defaultImageReferences ?? []).map((assetId) => tile(
-            assetId,
-            () => onSave({ defaultImageReferences: (brand.defaultImageReferences ?? []).filter((id) => id !== assetId) }),
-          ))}
-          {(brand.defaultImageReferences ?? []).length < 4 && addAsset((assetId) => {
-            const current = brand.defaultImageReferences ?? []
-            if (!current.includes(assetId)) onSave({ defaultImageReferences: [...current, assetId] })
-          })}
-        </div>
-      </div>
-    </Section>
-  )
-}
-
-function SubLabel({ children }: { children: React.ReactNode }) {
-  return <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{children}</p>
-}
-
-/** Upload a new asset (button or drag-drop) OR pick an already-uploaded one. */
-function AddAsset({ options, onAdd, onUploaded }: { options: AssetInfo[]; onAdd: (assetId: string) => void; onUploaded: () => Promise<void> }) {
-  const fileRef = useRef<HTMLInputElement>(null)
-  const [busy, setBusy] = useState(false)
-  const [over, setOver] = useState(false)
-  const [pickOpen, setPickOpen] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  const upload = useCallback(async (file: File) => {
-    setBusy(true); setError(null)
-    try {
-      const form = new FormData()
-      form.append('file', file)
-      const res = await fetch('/api/plugins/assets/upload', { method: 'POST', body: form })
-      const body = (await res.json().catch(() => ({}))) as { assetId?: string; error?: string }
-      if (!res.ok || !body.assetId) throw new Error(body.error ?? 'Upload failed')
-      await onUploaded()
-      onAdd(body.assetId)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    } finally { setBusy(false) }
-  }, [onAdd, onUploaded])
-
-  return (
-    <div className="max-w-md space-y-1">
-      <div
-        className={`flex items-center gap-2 rounded-lg p-1.5 transition-colors ${over ? 'bg-accent/10 ring-2 ring-accent/40' : 'bg-surface ring-1 ring-inset ring-outline-variant/30'}`}
-        onDragOver={(e) => { e.preventDefault(); setOver(true) }}
-        onDragLeave={() => setOver(false)}
-        onDrop={(e) => { e.preventDefault(); setOver(false); const f = e.dataTransfer.files?.[0]; if (f) void upload(f) }}
+            <span className="text-[11px] text-muted-foreground">4 of 4 — remove one to swap</span>
+          )
+        }
       >
-        <Button variant="secondary" size="sm" disabled={busy} onClick={() => fileRef.current?.click()}>
-          <Upload className="size-3.5" /> {busy ? 'Uploading…' : 'Upload image'}
-        </Button>
-        <span className="text-[11px] text-muted-foreground">or drag one here</span>
-        <Button variant="ghost" size="xs" className="ml-auto text-muted-foreground" onClick={() => setPickOpen((v) => !v)}>Choose existing</Button>
-      </div>
-      <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void upload(f); e.target.value = '' }} />
-      {error && <p className="text-[11px] text-destructive">{error}</p>}
-      {pickOpen && (
-        <select className={`${inputCls} w-full`} value="" onChange={(e) => { if (e.target.value) { onAdd(e.target.value); setPickOpen(false) } }}>
-          <option value="">Choose an already-uploaded asset…</option>
-          {options.map((o) => <option key={o.assetId} value={o.assetId}>{o.description ? o.description.slice(0, 50) : o.assetId} ({o.type})</option>)}
-        </select>
-      )}
+        {(brand.defaultImageReferences ?? []).length === 0 && (
+          <SectionEmpty>None yet — without references, branded image generations rely on the palette and text alone.</SectionEmpty>
+        )}
+        {(brand.defaultImageReferences ?? []).length > 0 && (
+          <div className="grid gap-3 lg:grid-cols-2">
+            {(brand.defaultImageReferences ?? []).map((assetId) =>
+              tile(assetId, (m) => ({ defaultImageReferences: (m.defaultImageReferences ?? []).filter((id) => id !== assetId) })),
+            )}
+          </div>
+        )}
+      </SectionCard>
     </div>
   )
 }
 
-/** A referenced asset: thumbnail (click → opens the asset viewer), editable meta note, remove. */
+/** Labeled logo-variant picker — common variants plus whatever the manifest already says. */
+function VariantSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const options = LOGO_VARIANTS.includes(value) ? LOGO_VARIANTS : [value, ...LOGO_VARIANTS]
+  return (
+    <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+      variant
+      <select
+        className="rounded-md bg-surface px-1.5 py-1 text-[11px] text-foreground ring-1 ring-inset ring-outline-variant/30"
+        value={value}
+        aria-label="Logo variant"
+        onChange={(e) => onChange(e.target.value)}
+      >
+        {options.map((v) => (
+          <option key={v} value={v}>{v}</option>
+        ))}
+      </select>
+    </label>
+  )
+}
+
+/**
+ * A referenced asset as an image CARD (thumbnail-first grid, not a horizontal
+ * row — these are pictures, and rows hid the one thing that identifies them).
+ * Thumbnail opens the viewer; note edits in place; remove floats on hover.
+ */
 function AssetTile({
   assetId, info, onDescription, onRemove, extra,
 }: {
@@ -740,50 +1274,191 @@ function AssetTile({
   const commit = () => { setEditing(false); if (draft !== (info?.description ?? '')) onDescription(draft) }
 
   return (
-    <div className="flex items-start gap-3 rounded-lg bg-surface p-2.5 transition-colors hover:bg-surface-bright/40">
-      <button className="size-14 shrink-0 overflow-hidden rounded-lg bg-background/50 ring-1 ring-foreground/10 transition-shadow hover:ring-foreground/25" title="Open in the asset viewer" onClick={open}>
+    // Horizontal card: compact image LEFT, the description gets the width it
+    // deserves on the right. Two across, stretch to fit.
+    <div className="group relative flex overflow-hidden rounded-xl bg-surface ring-1 ring-foreground/10 transition-shadow hover:ring-foreground/25" data-asset-card={assetId}>
+      <button className="block min-h-36 w-36 shrink-0 self-stretch overflow-hidden bg-background/50" title="Open in the asset viewer" onClick={open}>
         {isImage && info?.hasThumb
           ? <img src={`/api/assets/${assetId}/thumb`} alt="" className="size-full object-cover" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
-          : <span className="flex size-full items-center justify-center text-lg text-muted-foreground">{TYPE_ICON[info?.type ?? 'other'] ?? '⊟'}</span>}
+          : <span className="flex size-full items-center justify-center text-3xl text-muted-foreground">{TYPE_ICON[info?.type ?? 'other'] ?? '⊟'}</span>}
+      </button>
+      <button
+        className="absolute right-1.5 top-1.5 rounded-md bg-background/70 p-1 text-muted-foreground opacity-0 backdrop-blur transition-opacity hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100"
+        onClick={onRemove}
+        aria-label="Remove"
+      >
+        <Trash2 className="size-3.5" />
       </button>
 
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <button className="flex items-center gap-1 truncate font-mono text-[11px] text-muted-foreground transition-colors hover:text-foreground" onClick={open}>
-            {assetId}<ExternalLink className="size-3 opacity-60" />
-          </button>
-          {extra}
-          <button className="ml-auto shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:bg-surface-bright hover:text-destructive" onClick={onRemove} aria-label="Remove"><Trash2 className="size-3.5" /></button>
-        </div>
+      {/* pr-9 reserves the hover-trash gutter — the floating icon must never sit on the note text. */}
+      <div className="flex min-w-0 flex-1 flex-col gap-1.5 py-3 pl-3 pr-9">
+        {extra}
         {editing ? (
-          <input
+          <textarea
             autoFocus
-            className={`${inputCls} mt-1.5`}
-            placeholder="What is this, and how should agents use it? e.g. Billing UI screenshot — documentation only, never marketing"
+            rows={2}
+            className={`${inputCls} text-xs`}
+            placeholder="What is this, and how should agents use it?"
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onBlur={commit}
-            onKeyDown={(e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') { setDraft(info?.description ?? ''); setEditing(false) } }}
+            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) commit(); if (e.key === 'Escape') { setDraft(info?.description ?? ''); setEditing(false) } }}
           />
         ) : (
-          <button className="mt-1.5 flex max-w-full items-center gap-1.5 truncate text-left text-sm" onClick={() => { setDraft(info?.description ?? ''); setEditing(true) }}>
+          <button className="text-left text-xs" onClick={() => { setDraft(info?.description ?? ''); setEditing(true) }}>
             {info?.description
-              ? <span className="truncate text-foreground/90">{info.description} <Pencil className="inline size-3 text-muted-foreground" /></span>
-              : <span className="flex items-center gap-1 text-muted-foreground hover:text-foreground"><Plus className="size-3" /> add a note (what it is, how agents should use it)</span>}
+              ? <span className="line-clamp-3 text-foreground/90">{info.description} <Pencil className="inline size-3 text-muted-foreground" /></span>
+              : <span className="flex items-center gap-1 text-muted-foreground transition-colors hover:text-foreground"><Plus className="size-3" /> Add a note</span>}
           </button>
         )}
+        {/* Machine detail — surfaces on hover only; the thumbnail + note identify the card. */}
+        <span className="truncate font-mono text-[10px] text-muted-foreground/60 opacity-0 transition-opacity group-hover:opacity-100">{assetId}</span>
       </div>
     </div>
   )
 }
 
-// ─── Settings health ──────────────────────────────────────────────────────────
+// ─── Draft banner + settings ──────────────────────────────────────────────────
 
-function BrandHealthSection({ brandId, onDeleted }: { brandId: string; onDeleted: () => void }) {
+/** Tasks in todo currently waiting on this brand (draft or missing). */
+function useBlockedCount(brandId: string, enabled: boolean): number {
+  const [count, setCount] = useState(0)
+  useEffect(() => {
+    if (!enabled) return
+    void (async () => {
+      try {
+        const res = await fetch('/api/plugins/brands/blocked-tasks')
+        if (!res.ok) return
+        const body = (await res.json()) as { perTask?: Record<string, string> }
+        setCount(Object.values(body.perTask ?? {}).filter((id) => id === brandId).length)
+      } catch { /* the count is a nudge, not a gate */ }
+    })()
+  }, [brandId, enabled])
+  return count
+}
+
+/** What the drafting task is doing right now, in plain language. */
+const DRAFT_TASK_STATUS: Record<string, { label: string; tone: 'working' | 'queued' | 'done' | 'blocked' }> = {
+  backlog: { label: 'Queued on the board — an agent picks it up shortly.', tone: 'queued' },
+  todo: { label: 'Queued on the board — an agent picks it up shortly.', tone: 'queued' },
+  inProgress: { label: 'An agent is working on it right now.', tone: 'working' },
+  review: { label: 'The draft is written — review the tabs, then publish.', tone: 'done' },
+  done: { label: 'Drafting finished — review the tabs, then publish.', tone: 'done' },
+  blocked: { label: 'The drafting task hit a problem — open it to see why.', tone: 'blocked' },
+}
+
+/**
+ * The wait-for-the-agent story (spec §7h): a fresh draft never looks silent.
+ * The drafting task id lives ON the manifest (draftTaskId — survives reloads;
+ * ?draftTask= is the create-flow fallback), and its LIVE board status renders
+ * here, refreshed on every taskboard SSE tick.
+ */
+function DraftBanner({ brand, brandId, onPublish }: { brand: BrandManifest; brandId: string; onPublish: () => void }) {
+  const navigate = useNavigate()
+  const [draftTaskParam] = useQueryState('draftTask', '')
+  const taskId = brand.draftTaskId || draftTaskParam
+  const blocked = useBlockedCount(brandId, true)
+  const [taskColumn, setTaskColumn] = useState<string | null>(null)
+
+  // Stale-response guard (ui-patterns #9): rapid taskboard events can resolve
+  // out of order — only the newest request may paint.
+  const loadSeqRef = useRef(0)
+  const loadTask = useCallback(async () => {
+    if (!taskId) return
+    const seq = ++loadSeqRef.current
+    try {
+      const res = await fetch(`/api/plugins/tasks/${encodeURIComponent(taskId)}`)
+      if (seq !== loadSeqRef.current) return
+      if (!res.ok) {
+        // Task deleted (404 etc.) — clear rather than freeze the last-known
+        // status as "Agent working" forever.
+        setTaskColumn(null)
+        return
+      }
+      const body = (await res.json()) as { column?: string }
+      if (seq !== loadSeqRef.current) return
+      setTaskColumn(body.column ?? null)
+    } catch { /* the banner degrades to the static copy */ }
+  }, [taskId])
+
+  useEffect(() => {
+    void loadTask()
+  }, [loadTask])
+  // Board moves (dispatch picks it up, agent completes) re-render the status live.
+  usePluginEvent('taskboard', () => void loadTask())
+
+  const status = taskColumn ? DRAFT_TASK_STATUS[taskColumn] : null
+
+  return (
+    <div className="flex flex-wrap items-center gap-3 rounded-xl bg-warning/10 p-4 ring-1 ring-warning/20" data-draft-banner>
+      <Sparkles className="size-4 shrink-0 text-warning" />
+      <div className="min-w-0 flex-1 text-sm">
+        <p className="flex items-center gap-2 font-medium">
+          This brand is a draft
+          {status && (
+            <span data-draft-task-status={taskColumn}>
+              <StatusBadge
+                tone={status.tone === 'working' ? 'warning' : status.tone === 'done' ? 'success' : status.tone === 'blocked' ? 'destructive' : 'neutral'}
+                className="font-normal"
+              >
+                {status.tone === 'working' && <span className="size-1.5 animate-pulse rounded-full bg-warning" aria-hidden />}
+                {status.tone === 'working' ? 'Agent working' : status.tone === 'done' ? 'Draft ready' : status.tone === 'blocked' ? 'Blocked' : 'Queued'}
+              </StatusBadge>
+            </span>
+          )}
+        </p>
+        <p className="text-muted-foreground">
+          {status
+            ? status.label
+            : taskId
+              ? 'An agent is drafting it from your intake — usually takes a few minutes. Review the tabs as they fill in, then publish.'
+              : 'Invisible to tasks and image tools until you publish it.'}
+          {blocked > 0 && ` ${blocked} task${blocked === 1 ? ' is' : 's are'} waiting on this brand.`}
+        </p>
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        {taskId && (
+          <Button variant="outline" size="sm" onClick={() => void navigate({ to: '/tasks', search: { taskId } as never })} data-draft-task-link>
+            View the drafting task
+          </Button>
+        )}
+        <Button size="sm" onClick={onPublish}>
+          <Rocket className="size-3.5" /> Publish
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+function BrandSettingsTab({
+  brand, brandId, onPublish, onDeleted, onChanged,
+}: {
+  brand: BrandManifest; brandId: string; onPublish: () => void; onDeleted: () => void; onChanged: () => void
+}) {
+  const [unpublishConfirm, setUnpublishConfirm] = useState(false)
+  const [unpublishBusy, setUnpublishBusy] = useState(false)
+  const [unpublishError, setUnpublishError] = useState<string | null>(null)
+  const unpublish = useCallback(async () => {
+    setUnpublishBusy(true)
+    setUnpublishError(null)
+    try {
+      const res = await fetch(`/api/plugins/brands/${brandId}/unpublish`, { method: 'POST' })
+      if (!res.ok) throw new Error(`unpublish failed: ${res.status}`)
+      toast(`${brand.name} is a draft again — linked tasks pause until you republish`, 'info')
+      setUnpublishConfirm(false)
+      onChanged()
+    } catch (err) {
+      setUnpublishError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setUnpublishBusy(false)
+    }
+  }, [brandId, brand.name, onChanged])
   const [cardInfo, setCardInfo] = useState<{ cardBytes: number; maxBytes: number; omitted: number } | null>(null)
   const [dangling, setDangling] = useState<Array<{ assetId: string; where: string }>>([])
-  const [deleteState, setDeleteState] = useState<{ linked: number } | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [linked, setLinked] = useState<number | null>(null)
+  const [deleteBusy, setDeleteBusy] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const blocked = useBlockedCount(brandId, Boolean(brand.draft))
 
   useEffect(() => {
     void (async () => {
@@ -801,104 +1476,132 @@ function BrandHealthSection({ brandId, onDeleted }: { brandId: string; onDeleted
           setDangling(body.findings.find((f) => f.brandId === brandId)?.dangling ?? [])
         }
       } catch { /* integrity is best-effort here; the doctor is the backstop */ }
+      // How many open tasks reference this brand — context for the danger zone.
+      try {
+        const res = await fetch('/api/plugins/tasks/')
+        if (res.ok) {
+          const board = (await res.json()) as { columns?: Record<string, Array<{ brandId?: string }>> }
+          let n = 0
+          for (const [column, tasks] of Object.entries(board.columns ?? {})) {
+            if (column === 'done' || column === 'archived') continue
+            n += tasks.filter((t) => t.brandId === brandId).length
+          }
+          setLinked(n)
+        }
+      } catch { /* count is context, not a gate */ }
     })()
   }, [brandId])
 
-  return (
-    <Section label="Dispatch footprint & health" icon={Sparkles}>
-      {cardInfo && (
-        <p className="text-sm text-muted-foreground">
-          This brand's card adds ~{(cardInfo.cardBytes / 1024).toFixed(1)} KB of the {(cardInfo.maxBytes / 1024).toFixed(0)} KB budget to every branded dispatch
-          {cardInfo.omitted > 0 ? ` — ${cardInfo.omitted} item(s) currently omitted for size (agents fetch them via tools).` : ' — nothing currently omitted.'}
-        </p>
-      )}
-      {dangling.length > 0 && (
-        <div className="rounded-lg bg-warning/10 p-3 ring-1 ring-warning/20">
-          {dangling.map((d) => <p key={d.assetId} className="flex items-center gap-1.5 text-xs text-warning"><AlertTriangle className="size-3" /> asset {d.assetId} missing ({d.where})</p>)}
-        </div>
-      )}
-      {error && <p className="text-xs text-destructive">{error}</p>}
-      {deleteState === null ? (
-        <Button
-          variant="ghost" size="sm" className="w-fit text-red-400 hover:bg-destructive/10 hover:text-red-400"
-          onClick={async () => {
-            let linked = 0
-            try {
-              const res = await fetch('/api/plugins/tasks/')
-              if (res.ok) {
-                const board = (await res.json()) as { columns?: Record<string, Array<{ brandId?: string }>> }
-                for (const [column, tasks] of Object.entries(board.columns ?? {})) {
-                  if (column === 'done' || column === 'archived') continue
-                  linked += tasks.filter((t) => t.brandId === brandId).length
-                }
-              }
-            } catch { /* guard is best-effort; the confirm below is the gate */ }
-            setDeleteState({ linked })
-          }}
-        >
-          <Trash2 className="size-3.5" /> Delete brand…
-        </Button>
-      ) : (
-        <div className="space-y-2 rounded-lg bg-destructive/5 p-3 ring-1 ring-destructive/20">
-          <p className="text-sm text-red-300">
-            {deleteState.linked > 0
-              ? `${deleteState.linked} pending task(s) link to this brand — they will NOT dispatch until it exists again.`
-              : 'No pending tasks link to this brand.'}
-            {' '}Guidelines and lessons are deleted; assets stay in the asset store.
-          </p>
-          <div className="flex gap-2">
-            <Button
-              variant="ghost" size="sm" className="text-red-400 hover:bg-destructive/10 hover:text-red-400"
-              onClick={async () => {
-                try {
-                  const res = await fetch(`/api/plugins/brands/${brandId}`, { method: 'DELETE' })
-                  if (!res.ok) throw new Error(`delete failed: ${res.status}`)
-                  onDeleted()
-                } catch (err) { setError(err instanceof Error ? err.message : String(err)) }
-              }}
-            >
-              <Trash2 className="size-3.5" /> Delete permanently
-            </Button>
-            <Button variant="ghost" size="sm" onClick={() => setDeleteState(null)}>Cancel</Button>
-          </div>
-        </div>
-      )}
-    </Section>
-  )
-}
-
-// ─── List editor (Identity) ───────────────────────────────────────────────────
-
-function ListEditor<T>({
-  label, icon, hint, items, render, blank, valid, onSave,
-}: {
-  label: string
-  icon?: React.ComponentType<{ className?: string }>
-  hint: string
-  items: readonly T[]
-  render: (item: T, update: (next: T) => void, remove: () => void) => React.ReactNode
-  blank: () => T
-  valid: (item: T) => boolean
-  onSave: (items: T[]) => void
-}) {
-  const [draft, setDraft] = useState<T[] | null>(null)
-  const rows = draft ?? [...items]
-  const dirty = draft !== null
+  const deleteBrand = useCallback(async () => {
+    setDeleteBusy(true)
+    setDeleteError(null)
+    try {
+      const res = await fetch(`/api/plugins/brands/${brandId}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error(`delete failed: ${res.status}`)
+      toast(`Deleted ${brand.name}`, 'success')
+      onDeleted()
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setDeleteBusy(false)
+    }
+  }, [brandId, brand.name, onDeleted])
 
   return (
-    <Section label={label} icon={icon} action={<span className="text-[11px] text-muted-foreground">{hint}</span>}>
-      {rows.map((item, i) => (
-        <div key={i}>{render(item, (next) => setDraft(rows.map((r, j) => (j === i ? next : r))), () => setDraft(rows.filter((_, j) => j !== i)))}</div>
-      ))}
-      <div className="flex gap-2 pt-1">
-        <Button variant="outline" size="sm" onClick={() => setDraft([...rows, blank()])}><Plus className="size-3.5" /> Add</Button>
-        {dirty && (
+    <div className="flex flex-col gap-4">
+      <SectionCard
+        title="Status"
+        icon={Rocket}
+        description={brand.draft ? 'Drafts are invisible to tasks and image tools until published.' : 'Published — agents use this brand on every linked task.'}
+      >
+        {brand.draft ? (
           <>
-            <Button variant="default" size="sm" disabled={!rows.every(valid)} onClick={() => { onSave(rows); setDraft(null) }}><Check className="size-3.5" /> Save</Button>
-            <Button variant="ghost" size="sm" onClick={() => setDraft(null)}>Discard</Button>
+            <p className="text-sm text-muted-foreground">
+              Review the tabs, then publish. Delete <code className="rounded bg-surface px-1 text-xs">_intake.md</code> under
+              Guidelines if you don't want the builder intake kept.
+              {blocked > 0 && ` ${blocked} task${blocked === 1 ? ' is' : 's are'} waiting on this brand right now.`}
+            </p>
+            <Button variant="default" size="sm" className="w-fit" onClick={onPublish}>
+              <Rocket className="size-3.5" /> Publish brand
+            </Button>
+          </>
+        ) : (
+          <>
+            <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+              <Check className="size-4 text-success" /> Live since {new Date(brand.updatedAt).toLocaleDateString()}
+              {linked !== null && ` — linked to ${linked} open task${linked === 1 ? '' : 's'}.`}
+            </p>
+            <Button variant="outline" size="sm" className="w-fit" onClick={() => setUnpublishConfirm(true)} data-unpublish>
+              Unpublish
+            </Button>
+            <ConfirmDialog
+              open={unpublishConfirm}
+              title={`Unpublish ${brand.name}?`}
+              description={
+                linked !== null && linked > 0
+                  ? `It goes back to draft — agents stop using it, and the ${linked} open task${linked === 1 ? '' : 's'} linked to it will pause until you publish again.`
+                  : 'It goes back to draft — agents stop using it, and any linked tasks will pause until you publish again.'
+              }
+              confirmLabel="Unpublish"
+              busyLabel="Unpublishing..."
+              busy={unpublishBusy}
+              error={unpublishError}
+              onConfirm={() => void unpublish()}
+              onCancel={() => {
+                if (!unpublishBusy) setUnpublishConfirm(false)
+              }}
+            />
           </>
         )}
-      </div>
-    </Section>
+      </SectionCard>
+
+      {brand.source && (
+        <SectionCard
+          title="Imported from"
+          icon={ExternalLink}
+          description="Where this brand kit came from — local edits win over the upstream copy."
+        >
+          <p className="text-sm text-muted-foreground">
+            <span className="font-mono text-foreground/80">{brand.source.repo}</span>
+            {brand.source.commit ? ` @ ${brand.source.commit.slice(0, 8)}` : ''}. Check for upstream changes:
+            <code className="ml-1 rounded bg-surface px-1 text-xs">bakin brands check {brand.id}</code>
+          </p>
+        </SectionCard>
+      )}
+
+      <SectionCard
+        title="What agents see"
+        icon={Sparkles}
+        description="Every branded task carries a compact card of this brand — rules, palette, terminology, and the always-in-context docs."
+      >
+        {cardInfo ? (
+          <p className="text-sm text-muted-foreground">
+            The card currently adds ~{(cardInfo.cardBytes / 1024).toFixed(1)} KB of its {(cardInfo.maxBytes / 1024).toFixed(0)} KB allowance to every branded task
+            {cardInfo.omitted > 0 ? ` — ${cardInfo.omitted} item${cardInfo.omitted === 1 ? ' is' : 's are'} left out for size (agents fetch them on demand).` : ' — nothing is left out.'}
+          </p>
+        ) : (
+          <p className="text-sm text-muted-foreground">Measuring the card…</p>
+        )}
+        {dangling.length > 0 && (
+          <div className="rounded-lg bg-warning/10 p-3 ring-1 ring-warning/20">
+            {dangling.map((d) => <p key={d.assetId} className="flex items-center gap-1.5 text-xs text-warning"><AlertTriangle className="size-3" /> asset {d.assetId} is missing ({d.where}) — remove or replace it under Assets</p>)}
+          </div>
+        )}
+      </SectionCard>
+
+      <DangerZone
+        description={
+          linked !== null && linked > 0
+            ? `Deletes the brand, its guidelines, and lessons. ${linked} open task${linked === 1 ? '' : 's'} link${linked === 1 ? 's' : ''} to it and will pause until you remove the link. Assets stay in the asset store.`
+            : 'Deletes the brand, its guidelines, and lessons. Tasks linked to it later will pause until it exists again. Assets stay in the asset store.'
+        }
+        confirmLabel="Delete this brand"
+        confirmValue={brandId}
+        busy={deleteBusy}
+        error={deleteError}
+        onConfirm={() => void deleteBrand()}
+      />
+    </div>
   )
 }
+

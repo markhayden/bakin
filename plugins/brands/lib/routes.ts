@@ -27,6 +27,15 @@ import { brandIdSchema, brandManifestSchema } from './schemas'
 import { computeBrandFingerprint } from './fingerprint'
 import { scaffoldBrand } from './scaffold'
 import { buildBrandCard } from './card'
+import { computeCompleteness, summarizeCompleteness } from './completeness'
+
+/** Completeness over the manifest + the two scaffold-seeded guideline docs. */
+function brandCompleteness(manifest: Parameters<typeof computeCompleteness>[0]) {
+  return computeCompleteness(manifest, {
+    voice: readDoc(manifest.id, 'guidelines', 'voice.md'),
+    styleGuide: readDoc(manifest.id, 'guidelines', 'style-guide.md'),
+  })
+}
 
 const log = createLogger('brands')
 
@@ -48,7 +57,9 @@ const createBrandBody = z.object({
 })
 
 /** Manifest PUT body: the manifest minus identity/timestamps (server-owned). */
-const manifestPutBody = brandManifestSchema.omit({ id: true, createdAt: true, updatedAt: true })
+// Identity, timestamps, AND publication state are server-owned: draft flips
+// only through publish/unpublish, so a manifest save can never revert them.
+const manifestPutBody = brandManifestSchema.omit({ id: true, createdAt: true, updatedAt: true, draft: true, draftTaskId: true })
 
 function storeError(err: unknown): Response {
   if (err instanceof BrandStoreError) {
@@ -100,6 +111,7 @@ export const brandRoutes = [
               ...b.assetGroups.flatMap((g) => g.assetIds),
             ]).size,
           },
+          completeness: summarizeCompleteness(brandCompleteness(b)),
         })),
         invalid,
         warnUnbranded,
@@ -163,19 +175,27 @@ export const brandRoutes = [
     summary: 'Build-my-brand: create a draft + dispatch the drafting task',
     description:
       'The cold-start flow (§9.1): questionnaire answers become guidelines/_intake.md on a draft brand (invisible to pickers/resolution/injection), and a NORMAL Bakin task dispatches to the chosen agent, which authors the brand via the draft-gated write tools. Publish makes it real.',
-    body: z.object({
-      id: brandIdSchema,
-      name: z.string().min(1),
-      agent: z.string().min(1),
-      product: z.string().min(1),
-      audience: z.string().optional(),
-      tone: z.string().optional(),
-      competitors: z.string().optional(),
-      urls: z.string().optional(),
-      notes: z.string().optional(),
-      /** Optional logo the operator uploaded in the wizard (already a managed assetId). */
-      logoAssetId: z.string().optional(),
-    }),
+    body: z
+      .object({
+        id: brandIdSchema,
+        name: z.string().min(1),
+        agent: z.string().min(1),
+        /** Optional in website mode — the agent extracts what-we-sell from the sources. */
+        product: z.string().min(1).optional(),
+        audience: z.string().optional(),
+        tone: z.string().optional(),
+        competitors: z.string().optional(),
+        /** Website/style-guide URLs the agent mines. Required when no product is given. */
+        urls: z.string().optional(),
+        notes: z.string().optional(),
+        /** Optional logo the operator uploaded in the wizard (already a managed assetId). */
+        logoAssetId: z.string().optional(),
+        /** Up to 3 uploaded brand materials (PDF/screenshots — already managed assetIds) the agent mines for palette/style. */
+        materialAssetIds: z.array(z.string().min(1)).max(3).optional(),
+      })
+      .refine((b) => Boolean(b.product?.trim()) || Boolean(b.urls?.trim()), {
+        message: 'either product or urls is required — the agent needs SOMETHING to author from',
+      }),
     responses: { 200: passthrough, 400: errorResponse, 409: errorResponse, 500: errorResponse },
     handler: async (_req, ctx, parsed) => {
       const b = parsed.body
@@ -186,11 +206,26 @@ export const brandRoutes = [
       try {
         const brand = createBrand({ id: b.id, name: b.name, draft: true })
         createdHere = true
-        // Wire the uploaded logo onto the draft so it shows on the dashboard
-        // immediately (the drafting agent fills the rest).
-        if (b.logoAssetId) {
+        // Wire the uploaded logo + intake materials onto the draft so they show
+        // on the dashboard immediately (the drafting agent fills the rest).
+        if (b.logoAssetId || (b.materialAssetIds?.length ?? 0) > 0) {
           const { updateBrand } = await import('./store')
-          await updateBrand(brand.id, (m) => ({ ...m, logos: [{ assetId: b.logoAssetId!, variant: 'primary' }] }))
+          await updateBrand(brand.id, (m) => ({
+            ...m,
+            ...(b.logoAssetId ? { logos: [{ assetId: b.logoAssetId!, variant: 'primary' }] } : {}),
+            ...(b.materialAssetIds?.length
+              ? {
+                  assetGroups: [
+                    ...m.assetGroups,
+                    {
+                      name: 'intake-materials',
+                      description: 'Uploaded brand material — mine for palette, type, and imagery style',
+                      assetIds: b.materialAssetIds,
+                    },
+                  ],
+                }
+              : {}),
+          }))
         }
         const intake = [
           '---',
@@ -199,15 +234,36 @@ export const brandRoutes = [
           '',
           `# Brand intake: ${b.name}`,
           '',
-          `- What we sell: ${b.product}`,
+          ...(b.product ? [`- What we sell: ${b.product}`] : []),
           ...(b.audience ? [`- Audience: ${b.audience}`] : []),
           ...(b.tone ? [`- Tone words: ${b.tone}`] : []),
           ...(b.competitors ? [`- Competitors: ${b.competitors}`] : []),
-          ...(b.urls ? [`- URLs to read: ${b.urls}`] : []),
+          ...(b.urls ? [`- Source URLs to mine: ${b.urls}`] : []),
           ...(b.notes ? ['', '## Notes', '', b.notes] : []),
           '',
         ].join('\n')
         writeDoc(brand.id, 'guidelines', '_intake.md', intake)
+
+        // Source mining is a numbered step of its own when URLs exist — the
+        // website-mode flow may carry NOTHING except a name and these links.
+        const miningStep = b.urls
+          ? [
+              `Fetch and READ each source URL from the intake (${b.urls}). Extract: the palette (real hex values from the site's CSS/design), voice and tone (how they actually write), terminology (product names, phrases they repeat, words they avoid), and logo candidates. Append a '## Source findings' section to _intake.md via bakin_exec_brands_write_doc recording what came from where.`,
+            ]
+          : []
+        const materialsStep = b.materialAssetIds?.length
+          ? [
+              `Study the uploaded brand materials in the 'intake-materials' asset group (bakin_exec_brands_get brandId="${brand.id}" lists them with captions; fetch the files through the asset tools). Mine them for palette hex values, typography feel, and imagery style — they carry the operator's real branding. Record findings in _intake.md under '## Source findings'.`,
+            ]
+          : []
+        const steps = [
+          `Read the intake: bakin_exec_brands_read_doc brandId="${brand.id}" kind="guidelines" name="_intake.md".`,
+          ...materialsStep,
+          ...miningStep,
+          `Write voice.md (personality, sentences we would/would never write, audience) and style-guide.md (color usage, imagery, formatting) via bakin_exec_brands_write_doc.`,
+          `Set description, palette (real hex colors), rules (absolute do/don'ts), and terminology via bakin_exec_brands_update_manifest.`,
+          `Do NOT touch other brands. When done, complete this task — the operator reviews the draft on the Branding page and publishes it.`,
+        ]
 
         // A NORMAL task — deliberately unbranded (a draft brand would trip
         // the dispatch brand gate); the description names the draft instead.
@@ -215,15 +271,26 @@ export const brandRoutes = [
           title: `Author brand '${brand.id}' from its intake`,
           agent: b.agent,
           description: [
-            `Author the DRAFT brand '${brand.id}' from its intake questionnaire.`,
+            `Author the DRAFT brand '${brand.id}' from its intake${b.urls ? ' and source URLs' : ' questionnaire'}.`,
             '',
-            `1. Read the intake: bakin_exec_brands_read_doc brandId="${brand.id}" kind="guidelines" name="_intake.md" (read any listed URLs too).`,
-            `2. Write voice.md (personality, sentences we would/would never write, audience) and style-guide.md (color usage, imagery, formatting) via bakin_exec_brands_write_doc.`,
-            `3. Set description, palette (real hex colors), rules (absolute do/don'ts), and terminology via bakin_exec_brands_update_manifest.`,
-            `4. Do NOT touch other brands. When done, complete this task — the operator reviews the draft on the Brands page and publishes it.`,
+            ...steps.map((s, i) => `${i + 1}. ${s}`),
           ].join('\n'),
           skipWorkflowReason: 'brand-builder authoring task — direct tool work, no workflow applies',
         })
+        // Stamp the drafting task onto the manifest — the detail banner shows
+        // its live status and links it, surviving reloads (never just a URL
+        // param). NON-FATAL: a failure here must not trip the rollback below,
+        // which would delete the brand while the just-created task lives on,
+        // dispatching an agent at a nonexistent brand. The banner degrades to
+        // the ?draftTask= fallback.
+        try {
+          const { updateBrand } = await import('./store')
+          await updateBrand(brand.id, (m) => ({ ...m, draftTaskId: task.id }))
+        } catch (stampErr) {
+          log.warn('draftTaskId stamp failed; banner falls back to the URL param', {
+            brandId: brand.id, taskId: task.id, error: String(stampErr),
+          })
+        }
         emitChanged(ctx, brand.id, 'brand.created')
         const current = getBrand(brand.id)
         return Response.json({ brand: current.status === 'ok' ? current.manifest : brand, taskId: task.id })
@@ -256,11 +323,39 @@ export const brandRoutes = [
       try {
         const { updateBrand } = await import('./store')
         const brand = await updateBrand(parsed.params.brandId, (m) => {
-          const { draft: _draft, ...rest } = m
+          const { draft: _draft, draftTaskId: _task, ...rest } = m
           return rest
         })
         try {
           ctx.activity.audit('brand.draft_published', 'system', { brandId: brand.id })
+        } catch { /* activity surface unavailable (tests) */ }
+        ctx.events.emit('brand.changed', { brandId: brand.id })
+        return Response.json({ brand })
+      } catch (err) {
+        return storeError(err)
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/:brandId/unpublish',
+    method: 'POST',
+    summary: 'Unpublish a brand back to draft',
+    description:
+      'Flips draft back ON — the brand disappears from pickers, resolution, and injection, and tasks linked to it defer honestly (the budget-defer pattern) until it is published again. Audited.',
+    params: brandIdParams,
+    body: { contentType: 'none' as const },
+    responses: { 200: passthrough, 400: errorResponse, 404: errorResponse },
+    handler: async (_req, ctx, parsed) => {
+      const read = getBrand(parsed.params.brandId)
+      if (read.status === 'missing') return Response.json({ error: 'brand not found' }, { status: 404 })
+      if (read.status === 'invalid') return Response.json({ error: read.error }, { status: 422 })
+      if (read.manifest.draft) return Response.json({ error: 'brand is already a draft' }, { status: 400 })
+      try {
+        const { updateBrand } = await import('./store')
+        const brand = await updateBrand(parsed.params.brandId, (m) => ({ ...m, draft: true }))
+        try {
+          ctx.activity.audit('brand.unpublished', 'system', { brandId: brand.id })
         } catch { /* activity surface unavailable (tests) */ }
         ctx.events.emit('brand.changed', { brandId: brand.id })
         return Response.json({ brand })
@@ -479,6 +574,7 @@ export const brandRoutes = [
           'brand.created', 'brand.updated', 'brand.imported', 'brand.exported',
           'brand.injected', 'brand.lesson_added', 'brand.dispatch_blocked',
           'brand.asset_missing', 'brand.lessons_unavailable', 'brand.draft_published',
+          'brand.unpublished',
         ],
         sinceMs: 30 * 24 * 60 * 60 * 1000,
         // Scope to THIS brand inside the bounded scan — the tail read stops at 25
@@ -549,6 +645,7 @@ export const brandRoutes = [
         guidelines: listDocs(read.manifest.id, 'guidelines'),
         lessons: listDocs(read.manifest.id, 'lessons'),
         fingerprint: computeBrandFingerprint(read.manifest.id),
+        completeness: brandCompleteness(read.manifest),
       })
     },
   }),
@@ -571,6 +668,10 @@ export const brandRoutes = [
           id: current.manifest.id,
           createdAt: current.manifest.createdAt,
           updatedAt: current.manifest.updatedAt,
+          // Publication state carried over from disk — a client saving a stale
+          // staged draft used to silently re-draft a just-published brand.
+          ...(current.manifest.draft !== undefined ? { draft: current.manifest.draft } : {}),
+          ...(current.manifest.draftTaskId !== undefined ? { draftTaskId: current.manifest.draftTaskId } : {}),
         })
         emitChanged(ctx, brand.id, 'brand.updated')
         return Response.json({ brand })
@@ -594,6 +695,114 @@ export const brandRoutes = [
       }
       emitChanged(ctx, parsed.params.brandId, 'brand.deleted')
       return Response.json({ ok: true })
+    },
+  }),
+
+  defineRoute({
+    path: '/:brandId/docs/:kind/:name/brainstorm',
+    method: 'POST',
+    summary: 'Stream one brainstorm turn about a brand doc',
+    description:
+      'Embedded editing help (conversation kit): the operator asks an agent for feedback while editing a guideline/lesson doc. Streams the turn as per-request SSE frames (event: chunk/done/error — the readConversationSseStream contract). Ephemeral, session-only; the agent replies in chat and never writes files.',
+    params: docParams,
+    body: z.object({
+      agent: z.string().min(1),
+      message: z.string().min(1).max(20_000),
+      /** Session-only transcript so far (the client owns it; nothing persists). */
+      history: z.array(z.object({ role: z.enum(['user', 'agent']), content: z.string().max(50_000) })).max(30).default([]),
+      /** The editor's CURRENT (possibly unsaved) content — fresher than disk. */
+      docContent: z.string().max(200_000).optional(),
+    }),
+    responses: { 200: { contentType: 'text/event-stream' as const }, 404: errorResponse, 422: errorResponse },
+    handler: async (req, ctx, parsed) => {
+      const kind = parseKind(parsed.params.kind)
+      if (!kind) return Response.json({ error: 'kind must be guidelines or lessons' }, { status: 404 })
+      const read = getBrand(parsed.params.brandId)
+      if (read.status === 'missing') return Response.json({ error: 'brand not found' }, { status: 404 })
+      if (read.status === 'invalid') return Response.json({ error: read.error }, { status: 422 })
+      const b = parsed.body
+      const docName = parsed.params.name
+      const doc = b.docContent ?? readDoc(read.manifest.id, kind, docName) ?? ''
+
+      // Cost caps: the prompt carries the doc + history EVERY turn, so bound
+      // both (last 8 exchanges, 4KB each; doc at 48KB with an honest marker) —
+      // and the thread is PER-TURN below, so the runtime session never
+      // re-accumulates these prompts on top (that combination was quadratic).
+      const cappedDoc = doc.length > 48_000 ? `${doc.slice(0, 48_000)}\n\n[... doc truncated for the brainstorm prompt ...]` : doc
+      const cappedHistory = b.history.slice(-8).map((m) => ({
+        role: m.role,
+        content: m.content.length > 4_000 ? `${m.content.slice(0, 4_000)} [...]` : m.content,
+      }))
+
+      const prompt = [
+        `You are brainstorming edits to the brand ${kind === 'guidelines' ? 'guideline' : 'lesson'} doc "${docName}" for the brand "${read.manifest.name}" (${read.manifest.id}).`,
+        'Give concrete, concise editing feedback or drafted text the operator can paste in. Reply in chat only — do NOT write files or use brand write tools.',
+        '',
+        '## Current draft',
+        '```markdown',
+        cappedDoc,
+        '```',
+        ...(cappedHistory.length > 0
+          ? ['', '## Conversation so far', ...cappedHistory.map((m) => `${m.role === 'user' ? 'Operator' : 'You'}: ${m.content}`)]
+          : []),
+        '',
+        `Operator: ${b.message}`,
+      ].join('\n')
+
+      const { conversationThreadId } = await import('../../../src/components/conversation/thread-id')
+      const { randomUUID } = await import('crypto')
+      // Per-TURN thread: the prompt already carries the full (capped) context,
+      // so session reuse would double-pay it; and a zombie turn from an abort
+      // can never interleave with the next turn's session.
+      const threadId = conversationThreadId('brand-doc', `${read.manifest.id}/${kind}/${docName}/${randomUUID()}`, b.agent)
+      const encoder = new TextEncoder()
+      const frame = (event: string, data: unknown) => encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+
+      // One abort authority: the client's disconnect (req.signal, wired by the
+      // node adapter) OR the stream consumer cancelling — either must stop the
+      // runtime turn, not just the response.
+      const turnAbort = new AbortController()
+      if (req.signal?.aborted) turnAbort.abort()
+      req.signal?.addEventListener('abort', () => turnAbort.abort(), { once: true })
+
+      const stream = new ReadableStream<Uint8Array>({
+        async start(controller) {
+          let final = ''
+          try {
+            const turn = ctx.runtime.messaging.stream({
+              agentId: b.agent,
+              content: prompt,
+              threadId,
+              ephemeral: true,
+              signal: turnAbort.signal,
+            })
+            for await (const chunk of turn) {
+              if (turnAbort.signal.aborted) break
+              if (chunk.type === 'text' && typeof chunk.content === 'string') final += chunk.content
+              controller.enqueue(frame('chunk', chunk))
+            }
+            if (!turnAbort.signal.aborted) controller.enqueue(frame('done', { content: final }))
+          } catch (err) {
+            const aborted = turnAbort.signal.aborted || (err instanceof Error && err.name === 'AbortError')
+            if (!aborted) {
+              log.error('brand-doc brainstorm turn failed', err instanceof Error ? err : new Error(String(err)), {
+                brandId: read.manifest.id, doc: docName, agent: b.agent,
+              })
+              try {
+                controller.enqueue(frame('error', { message: err instanceof Error ? err.message : String(err) }))
+              } catch { /* client already gone */ }
+            }
+          } finally {
+            try { controller.close() } catch { /* already closed */ }
+          }
+        },
+        cancel() {
+          turnAbort.abort()
+        },
+      })
+      return new Response(stream, {
+        headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' },
+      })
     },
   }),
 

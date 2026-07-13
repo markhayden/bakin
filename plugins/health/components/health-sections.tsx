@@ -6,7 +6,7 @@ import { Badge } from "@makinbakin/sdk/ui"
 import { Button } from "@makinbakin/sdk/ui"
 import { Input } from "@makinbakin/sdk/ui"
 import { Skeleton } from "@makinbakin/sdk/ui"
-import { UnderlineTabs } from "@makinbakin/sdk/components"
+import { UnderlineTabs, SegmentedControl } from "@makinbakin/sdk/components"
 import { formatAge } from "@makinbakin/sdk/utils"
 import { Search, Wrench } from 'lucide-react'
 import { RepairDialog } from './repair-dialog'
@@ -447,21 +447,12 @@ export function UsageSection({
           value={usageTab}
           onValueChange={setUsageTab}
           rightSlot={
-            <div className="flex items-center gap-1 rounded-md border border-border p-0.5">
-              {(['5m', '1h', '24h'] as const).map((w) => (
-                <button
-                  key={w}
-                  onClick={() => setUsageWindow(w)}
-                  className={`px-2 py-0.5 text-[11px] font-mono rounded transition-colors ${
-                    usageWindow === w
-                      ? 'bg-foreground/10 text-foreground'
-                      : 'text-muted-foreground hover:text-foreground'
-                  }`}
-                >
-                  {w}
-                </button>
-              ))}
-            </div>
+            <SegmentedControl
+              options={(['5m', '1h', '24h'] as const).map((w) => ({ value: w, label: w }))}
+              value={usageWindow as '5m' | '1h' | '24h'}
+              onValueChange={setUsageWindow}
+              ariaLabel="Usage window"
+            />
           }
         />
 

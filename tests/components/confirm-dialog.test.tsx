@@ -87,4 +87,23 @@ describe('ConfirmDialog', () => {
     render(<ConfirmDialog open title="t" confirmTestId="my-confirm" onConfirm={() => {}} onCancel={() => {}} />)
     expect(screen.getByTestId('my-confirm')).toBeDefined()
   })
+
+  it('confirmValue gates the confirm button until the exact value is typed', () => {
+    const onConfirm = mock()
+    render(
+      <ConfirmDialog open title="t" confirmValue="acme" confirmTestId="typed-confirm" onConfirm={onConfirm} onCancel={() => {}} />,
+    )
+    expect(screen.getByTestId('typed-confirm')).toHaveProperty('disabled', true)
+    fireEvent.change(screen.getByPlaceholderText('acme'), { target: { value: 'ACME' } })
+    expect(screen.getByTestId('typed-confirm')).toHaveProperty('disabled', true) // exact match only
+    fireEvent.change(screen.getByPlaceholderText('acme'), { target: { value: 'acme' } })
+    expect(screen.getByTestId('typed-confirm')).toHaveProperty('disabled', false)
+    fireEvent.click(screen.getByTestId('typed-confirm'))
+    expect(onConfirm).toHaveBeenCalled()
+  })
+
+  it('without confirmValue no typed input renders (existing consumers untouched)', () => {
+    render(<ConfirmDialog open title="t" onConfirm={() => {}} onCancel={() => {}} />)
+    expect(document.querySelector('[data-confirm-typed]')).toBeNull()
+  })
 })

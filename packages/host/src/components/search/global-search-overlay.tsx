@@ -14,7 +14,7 @@ import { useNavigate } from '@tanstack/react-router'
 import {
   Loader2, Image as ImageIcon, FileText, Music, Video, Map as MapIcon, Database,
   Package, CheckSquare, Brain, Users, GitBranch, Calendar, GraduationCap,
-  LayoutGrid, List as ListIcon,
+  LayoutGrid, List as ListIcon, Paintbrush,
   type LucideIcon,
 } from 'lucide-react'
 import { useSearch, useDebug, type SearchResult } from '@makinbakin/sdk/hooks'
@@ -56,6 +56,7 @@ const HIT_ICONS: Record<string, { Icon: LucideIcon; tint: string }> = {
   'calendar': { Icon: Calendar, tint: 'text-muted-foreground' },
   'graduation-cap': { Icon: GraduationCap, tint: 'text-muted-foreground' },
   'workflow': { Icon: GitBranch, tint: 'text-muted-foreground' },
+  'paintbrush': { Icon: Paintbrush, tint: 'text-muted-foreground' },
 }
 const FALLBACK_ICON = { Icon: Package, tint: 'text-muted-foreground' }
 

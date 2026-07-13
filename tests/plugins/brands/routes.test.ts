@@ -79,6 +79,23 @@ describe('brand CRUD routes', () => {
     expect((list.body.brands as Array<{ id: string }>).map((b) => b.id)).toEqual(['acme'])
   })
 
+  it('carries completeness on both list (summary) and detail (full checklist)', async () => {
+    await createAcme()
+    const list = await callRoute(route('GET', '/'), activated.ctx)
+    const listed = (list.body.brands as Array<{ completeness: { percent: number; missing: string[] } }>)[0]
+    expect(typeof listed.completeness.percent).toBe('number')
+    // fresh scaffold-only brand: docs are unauthored, palette empty, no logo
+    expect(listed.completeness.missing).toContain('logo')
+    expect(listed.completeness.missing).toContain('voice')
+
+    const detail = await callRoute(route('GET', '/:brandId'), activated.ctx, {
+      searchParams: { brandId: 'acme' },
+    })
+    const full = detail.body.completeness as { percent: number; items: Array<{ key: string; done: boolean; fixTab: string }> }
+    expect(full.items).toHaveLength(8)
+    expect(full.items.every((i) => typeof i.done === 'boolean' && i.fixTab.length > 0)).toBe(true)
+  })
+
   it('rejects duplicates (409) and invalid slugs (400)', async () => {
     await createAcme()
     expect((await createAcme()).status).toBe(409)
@@ -325,6 +342,122 @@ describe('builder flow (#419 §9.1)', () => {
     expect(again.status).toBe(400) // already published
   })
 
+  it('website mode: url-only payload works and the task prompt mines the sources', async () => {
+    const created = await callRoute(route('POST', '/builder'), activated.ctx, {
+      body: { id: 'from-web', name: 'From Web', agent: 'pixel', urls: 'https://acme.example https://acme.example/styleguide' },
+    })
+    expect(created.status).toBe(200)
+    expect((created.body.brand as { draft?: boolean }).draft).toBe(true)
+    expect(created.body.taskId).toBeTruthy() // drafting banner links this
+
+    const task = await activated.ctx.tasks.get(String(created.body.taskId))
+    expect(task?.description).toContain('Fetch and READ each source URL')
+    expect(task?.description).toContain('https://acme.example/styleguide')
+    expect(task?.description).toContain('Source findings')
+
+    const intake = await callRoute(route('GET', '/:brandId/docs/:kind/:name'), activated.ctx, {
+      searchParams: { brandId: 'from-web', kind: 'guidelines', name: '_intake.md' },
+    })
+    expect(String(intake.body.content)).toContain('Source URLs to mine')
+  })
+
+  it('rejects a builder payload with neither product nor urls', async () => {
+    const bad = await callRoute(route('POST', '/builder'), activated.ctx, {
+      body: { id: 'nothing', name: 'Nothing', agent: 'pixel' },
+    })
+    expect(bad.status).toBe(400)
+  })
+
+  it('questionnaire mode without urls has no mining step', async () => {
+    const created = await callRoute(route('POST', '/builder'), activated.ctx, {
+      body: { id: 'no-urls', name: 'No Urls', agent: 'pixel', product: 'Widgets' },
+    })
+    const task = await activated.ctx.tasks.get(String(created.body.taskId))
+    expect(task?.description).not.toContain('Fetch and READ')
+  })
+
+  it('a manifest PUT can NEVER flip publication state (draft/draftTaskId are server-owned)', async () => {
+    // published brand + a stale staged body claiming draft:true → stays published
+    await createAcme()
+    const put = await callRoute(route('PUT', '/:brandId'), activated.ctx, {
+      searchParams: { brandId: 'acme' },
+      body: { name: 'Acme', palette: [], logos: [], assetGroups: [], draft: true, draftTaskId: 'ghost-task' },
+    })
+    expect(put.status).toBe(200)
+    expect((put.body.brand as { draft?: boolean }).draft).toBeUndefined()
+    expect((put.body.brand as { draftTaskId?: string }).draftTaskId).toBeUndefined()
+
+    // draft brand + a body omitting draft → stays a draft
+    const built = await callRoute(route('POST', '/builder'), activated.ctx, {
+      body: { id: 'still-draft', name: 'Still Draft', agent: 'pixel', product: 'x' },
+    })
+    const putDraft = await callRoute(route('PUT', '/:brandId'), activated.ctx, {
+      searchParams: { brandId: 'still-draft' },
+      body: { name: 'Still Draft', palette: [], logos: [], assetGroups: [] },
+    })
+    expect((putDraft.body.brand as { draft?: boolean }).draft).toBe(true)
+    expect((putDraft.body.brand as { draftTaskId?: string }).draftTaskId).toBe(String(built.body.taskId))
+  })
+
+  it('unpublish flips a published brand back to draft; 400 when already a draft', async () => {
+    await createAcme()
+    const un = await callRoute(route('POST', '/:brandId/unpublish'), activated.ctx, {
+      searchParams: { brandId: 'acme' },
+    })
+    expect(un.status).toBe(200)
+    expect((un.body.brand as { draft?: boolean }).draft).toBe(true)
+
+    const again = await callRoute(route('POST', '/:brandId/unpublish'), activated.ctx, {
+      searchParams: { brandId: 'acme' },
+    })
+    expect(again.status).toBe(400)
+
+    // publish brings it back
+    const pub = await callRoute(route('POST', '/:brandId/publish'), activated.ctx, {
+      searchParams: { brandId: 'acme' },
+    })
+    expect((pub.body.brand as { draft?: boolean }).draft).toBeUndefined()
+  })
+
+  it('stamps draftTaskId on the manifest; publish clears it', async () => {
+    const created = await callRoute(route('POST', '/builder'), activated.ctx, {
+      body: { id: 'stamped', name: 'Stamped', agent: 'pixel', product: 'x' },
+    })
+    expect((created.body.brand as { draftTaskId?: string }).draftTaskId).toBe(String(created.body.taskId))
+
+    const published = await callRoute(route('POST', '/:brandId/publish'), activated.ctx, {
+      searchParams: { brandId: 'stamped' },
+    })
+    expect((published.body.brand as { draftTaskId?: string }).draftTaskId).toBeUndefined()
+  })
+
+  it('intake materials attach as an asset group and the prompt tells the agent to mine them', async () => {
+    const created = await callRoute(route('POST', '/builder'), activated.ctx, {
+      body: {
+        id: 'material-brand',
+        name: 'Material Brand',
+        agent: 'pixel',
+        product: 'x',
+        materialAssetIds: ['20260101-deck-aaaa1111', '20260101-shot-bbbb2222'],
+      },
+    })
+    expect(created.status).toBe(200)
+    const groups = (created.body.brand as { assetGroups: Array<{ name: string; assetIds: string[] }> }).assetGroups
+    const intake = groups.find((g) => g.name === 'intake-materials')
+    expect(intake?.assetIds).toEqual(['20260101-deck-aaaa1111', '20260101-shot-bbbb2222'])
+
+    const task = await activated.ctx.tasks.get(String(created.body.taskId))
+    expect(task?.description).toContain('intake-materials')
+    expect(task?.description).toContain('palette hex values')
+  })
+
+  it('rejects more than 3 intake materials', async () => {
+    const bad = await callRoute(route('POST', '/builder'), activated.ctx, {
+      body: { id: 'too-many', name: 'x', agent: 'pixel', product: 'x', materialAssetIds: ['a', 'b', 'c', 'd'] },
+    })
+    expect(bad.status).toBe(400)
+  })
+
   it('builder wires an uploaded logo onto the draft (#419 wizard)', async () => {
     const created = await callRoute(route('POST', '/builder'), activated.ctx, {
       body: { id: 'logo-brand', name: 'Logo Brand', agent: 'pixel', product: 'x', logoAssetId: '20260101-logo-abcd1234' },
@@ -357,6 +490,151 @@ describe('builder flow (#419 §9.1)', () => {
     })
     expect(retry.status).toBe(200)
     expect((retry.body.brand as { draft?: boolean }).draft).toBe(true)
+  })
+})
+
+describe('doc brainstorm (embedded editing help)', () => {
+  it('streams a turn as SSE frames with the live doc content in the prompt', async () => {
+    await createAcme()
+    let seenArgs: Record<string, unknown> = {}
+    const runtime = activated.ctx.runtime as unknown as {
+      messaging: { stream: (args: Record<string, unknown>) => AsyncIterable<Record<string, unknown>> }
+    }
+    runtime.messaging = {
+      ...(runtime.messaging ?? {}),
+      stream: (args: Record<string, unknown>) => {
+        seenArgs = args
+        return (async function* () {
+          yield { type: 'text', content: 'Tighten ' }
+          yield { type: 'text', content: 'the intro.' }
+        })()
+      },
+    } as typeof runtime.messaging
+
+    const res = await callRoute(route('POST', '/:brandId/docs/:kind/:name/brainstorm'), activated.ctx, {
+      searchParams: { brandId: 'acme', kind: 'guidelines', name: 'voice.md' },
+      body: {
+        agent: 'pixel',
+        message: 'What is missing?',
+        history: [{ role: 'user', content: 'earlier question' }],
+        docContent: '# Voice\n\nUNSAVED DRAFT CONTENT',
+      },
+      rawResponse: true,
+    })
+    expect(res.status).toBe(200)
+    expect(res.response.headers.get('Content-Type')).toBe('text/event-stream')
+    const text = await res.response.text()
+    expect(text).toContain('event: chunk')
+    expect(text).toContain('Tighten ')
+    expect(text).toContain('event: done')
+    expect(text).toContain('"content":"Tighten the intro."')
+
+    // the prompt carries the EDITOR's live content + history, and the turn is ephemeral
+    expect(String(seenArgs.content)).toContain('UNSAVED DRAFT CONTENT')
+    expect(String(seenArgs.content)).toContain('earlier question')
+    expect(String(seenArgs.content)).toContain('do NOT write files')
+    expect(seenArgs.ephemeral).toBe(true)
+    expect(seenArgs.agentId).toBe('pixel')
+    expect(String(seenArgs.threadId)).toContain('brand-doc')
+  })
+
+  it('uses a fresh per-turn threadId and caps history in the prompt (no quadratic session pileup)', async () => {
+    await createAcme()
+    const seenThreads: string[] = []
+    let seenPrompt = ''
+    const runtime = activated.ctx.runtime as unknown as {
+      messaging: { stream: (args: Record<string, unknown>) => AsyncIterable<Record<string, unknown>> }
+    }
+    runtime.messaging = {
+      ...(runtime.messaging ?? {}),
+      stream: (args: Record<string, unknown>) => {
+        seenThreads.push(String(args.threadId))
+        seenPrompt = String(args.content)
+        return (async function* () {
+          yield { type: 'text', content: 'ok' }
+        })()
+      },
+    } as typeof runtime.messaging
+
+    const history = Array.from({ length: 12 }, (_, i) => ({ role: 'user' as const, content: `exchange-${i}` }))
+    const call = () =>
+      callRoute(route('POST', '/:brandId/docs/:kind/:name/brainstorm'), activated.ctx, {
+        searchParams: { brandId: 'acme', kind: 'guidelines', name: 'voice.md' },
+        body: { agent: 'pixel', message: 'hi', history },
+        rawResponse: true,
+      })
+    await (await call()).response.text()
+    await (await call()).response.text()
+
+    expect(seenThreads[0]).not.toBe(seenThreads[1]) // per-turn thread
+    expect(seenPrompt).toContain('exchange-11') // newest kept
+    expect(seenPrompt).not.toContain('exchange-0') // oldest capped away (last 8 only)
+  })
+
+  it('cancelling the brainstorm response stream aborts the runtime turn', async () => {
+    await createAcme()
+    let sawAbort = false
+    const runtime = activated.ctx.runtime as unknown as {
+      messaging: { stream: (args: Record<string, unknown>) => AsyncIterable<Record<string, unknown>> }
+    }
+    runtime.messaging = {
+      ...(runtime.messaging ?? {}),
+      stream: (args: Record<string, unknown>) => {
+        const signal = args.signal as AbortSignal
+        return (async function* () {
+          yield { type: 'text', content: 'first' }
+          // hold the turn open until the signal fires or 2s passes
+          await new Promise<void>((resolve) => {
+            if (signal.aborted) return resolve()
+            const t = setTimeout(resolve, 2000)
+            signal.addEventListener('abort', () => { clearTimeout(t); sawAbort = true; resolve() }, { once: true })
+          })
+          if (!signal.aborted) yield { type: 'text', content: 'second' }
+        })()
+      },
+    } as typeof runtime.messaging
+
+    const res = await callRoute(route('POST', '/:brandId/docs/:kind/:name/brainstorm'), activated.ctx, {
+      searchParams: { brandId: 'acme', kind: 'guidelines', name: 'voice.md' },
+      body: { agent: 'pixel', message: 'hi' },
+      rawResponse: true,
+    })
+    const reader = res.response.body!.getReader()
+    await reader.read() // first chunk arrives
+    await reader.cancel() // consumer walks away
+    await new Promise((r) => setTimeout(r, 50))
+    expect(sawAbort).toBe(true)
+  })
+
+  it('streams an error frame when the runtime turn fails (never a hung stream)', async () => {
+    await createAcme()
+    const runtime = activated.ctx.runtime as unknown as {
+      messaging: { stream: (args: Record<string, unknown>) => AsyncIterable<Record<string, unknown>> }
+    }
+    runtime.messaging = {
+      ...(runtime.messaging ?? {}),
+      // eslint-disable-next-line require-yield
+      stream: () => (async function* (): AsyncGenerator<Record<string, unknown>> {
+        throw new Error('runtime down')
+      })(),
+    } as typeof runtime.messaging
+
+    const res = await callRoute(route('POST', '/:brandId/docs/:kind/:name/brainstorm'), activated.ctx, {
+      searchParams: { brandId: 'acme', kind: 'guidelines', name: 'voice.md' },
+      body: { agent: 'pixel', message: 'hi' },
+      rawResponse: true,
+    })
+    const text = await res.response.text()
+    expect(text).toContain('event: error')
+    expect(text).toContain('runtime down')
+  })
+
+  it('404s for a ghost brand', async () => {
+    const res = await callRoute(route('POST', '/:brandId/docs/:kind/:name/brainstorm'), activated.ctx, {
+      searchParams: { brandId: 'ghost', kind: 'guidelines', name: 'voice.md' },
+      body: { agent: 'pixel', message: 'hi' },
+    })
+    expect(res.status).toBe(404)
   })
 })
 

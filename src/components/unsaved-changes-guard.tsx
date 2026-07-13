@@ -1,8 +1,8 @@
 'use client'
 
 import { useEffect, useState, type ReactNode } from 'react'
-import { useRouter as useTanStackRouter } from '@tanstack/react-router'
-import { Button } from "@makinbakin/sdk/ui"
+import { useRouter as useTanStackRouter, type HistoryLocation } from '@tanstack/react-router'
+import { Button } from '@/components/ui/button'
 import {
   Dialog,
   DialogContent,
@@ -10,27 +10,31 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@makinbakin/sdk/ui"
+} from '@/components/ui/dialog'
 
 type RouteNavigationBlocker =
   | { status: 'idle' }
   | { status: 'blocked'; proceed: () => void; reset: () => void }
 
-interface UnsavedChangesGuardOptions {
+export interface UnsavedChangesGuardOptions {
   /** True while the surface holds unsaved edits — gates all the interception. */
   hasUnsavedChanges: boolean
   /** True while a save is in flight — disables the dialog actions. */
   saving: boolean
-  /** Whether the "Save and exit" action is offered (e.g. managed sources can't save in place). */
-  canSaveInPlace: boolean
+  /** Whether the "Save and exit" action is offered (default true; e.g. managed sources can't save in place). */
+  canSaveInPlace?: boolean
   /** Extra disable for "Save and exit" beyond `saving` (e.g. an open node drawer). */
-  saveDisabled: boolean
+  saveDisabled?: boolean
   /** Final navigation when there is nothing to confirm / after the user proceeds. */
   onCancel?: () => void
   /** Persist + clear dirty state. Resolves true to proceed with the exit, false to stay. */
   onSaveAndExit: () => Promise<boolean>
   /** Drop dirty state without saving. */
   onDiscardAndExit: () => void
+  /** Dialog copy overrides — defaults are surface-neutral. */
+  title?: ReactNode
+  description?: ReactNode
+  saveLabel?: string
 }
 
 /**
@@ -44,11 +48,14 @@ interface UnsavedChangesGuardOptions {
 export function useUnsavedChangesGuard({
   hasUnsavedChanges,
   saving,
-  canSaveInPlace,
-  saveDisabled,
+  canSaveInPlace = true,
+  saveDisabled = false,
   onCancel,
   onSaveAndExit,
   onDiscardAndExit,
+  title = 'Unsaved changes',
+  description = 'You have unsaved changes. Save them before leaving, discard them, or stay here.',
+  saveLabel = 'Save and exit',
 }: UnsavedChangesGuardOptions): { requestExit: () => void; reset: () => void; dialog: ReactNode } {
   const [routeBlocker, setRouteBlocker] = useState<RouteNavigationBlocker>({ status: 'idle' })
   const [confirmingExit, setConfirmingExit] = useState(false)
@@ -69,7 +76,9 @@ export function useUnsavedChangesGuard({
     if (!hasUnsavedChanges) return
     return tanStackRouter.history.block({
       enableBeforeUnload: false,
-      blockerFn: async ({ currentLocation, nextLocation }) => {
+      // Explicit types: the published-SDK declaration emit runs with
+      // noImplicitAny and cannot infer these the way the app tsconfig does.
+      blockerFn: async ({ currentLocation, nextLocation }: { currentLocation: HistoryLocation; nextLocation: HistoryLocation }) => {
         const current = tanStackRouter.parseLocation(currentLocation)
         const next = tanStackRouter.parseLocation(nextLocation)
         if (current.pathname === next.pathname) return false
@@ -169,10 +178,8 @@ export function useUnsavedChangesGuard({
     >
       <DialogContent className="bg-card border-border sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Unsaved workflow changes</DialogTitle>
-          <DialogDescription>
-            You have unsaved changes on this workflow. Save them before leaving, discard them, or stay on the canvas.
-          </DialogDescription>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
         <DialogFooter className="gap-2 sm:justify-between">
           <Button
@@ -195,7 +202,7 @@ export function useUnsavedChangesGuard({
                 onClick={handleSaveAndExit}
                 disabled={saving || saveDisabled}
               >
-                {saving ? 'Saving...' : 'Save and exit'}
+                {saving ? 'Saving...' : saveLabel}
               </Button>
             )}
           </div>
