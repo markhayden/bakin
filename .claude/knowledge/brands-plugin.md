@@ -3,7 +3,51 @@
 Structured brand definitions — voice, palette, rules, and reference assets —
 linkable to tasks/projects/plans and injected per-task so agent output stays
 on brand across a multi-brand instance. Spec: `.claude/specs/brands-plugin.md`
-(+ `-plan.md` with the build record).
+(+ `-plan.md` with the build record). UX pass (2026-07):
+`.claude/specs/brands-ux-cleanup.md` (+ `-plan.md`).
+
+## UI (post-UX-cleanup, 2026-07)
+
+Nav is **"Branding"** with the Paintbrush icon (icon must exist in the
+app-sidebar `ICONS` map AND the ⌘K `HIT_ICONS` map). Routing is path-based:
+`/brands` (list), `/brands/$brandId` (detail, `?tab=` for tabs), and
+`/brands/$brandId/docs/$kind/$name` (dedicated full-width doc editor;
+`?create=1` = new-doc mode, first save creates the file) — host route files +
+router.ts entries + `page:/…` slots, assets-plugin pattern. NO `?brand=` query
+selection anywhere.
+
+- **List**: PluginHeader search + ONE "New Brand" action → three-path chooser
+  (`new-brand-flows.tsx`): Build my brand (wizard drawer), From a website
+  (URL-mode builder dialog), Import (preview→confirm dialog). Empty state IS
+  the chooser. Cover-art cards (`brand-card.tsx`): tinted logo cover
+  (monogram fallback), palette base edge, completeness bar + missing-items
+  tooltip. Drafts sort first.
+- **Save model**: ONE staged manifest draft spans the detail tabs
+  (identity/assets/cardDocs toggle); the SDK `SaveBar` commits a single
+  full-manifest PUT. Docs save in their own editor route. Blur-to-save is
+  dead. Pristine added rows are dropped on save; invalid rows hold it with a
+  teaching error.
+- **Completeness** (`lib/completeness.ts`): pure checklist (8 keys, pinned by
+  `tests/plugins/brands/completeness.test.ts`; labels mirrored in
+  `brand-card.tsx` `COMPLETENESS_LABELS`) — summary on `GET /` per brand,
+  full checklist on `GET /:brandId` → the Overview "Finish your kit" card.
+- **Drafting banner**: create flows pass the builder `taskId` via
+  `?draftTask=` so a fresh draft links its drafting task; blocked-task count
+  from `GET /blocked-tasks`. Publish sits behind a light confirm + toast.
+- **Settings**: Status → Imported from → What agents see (footprint +
+  integrity) → SDK `DangerZone` (typed brand-id confirm) at the bottom.
+- **Assets tab**: every add goes through the SDK `AssetPicker`; logo variant
+  is a labeled select; ref changes stage into the SaveBar draft (asset-note
+  edits PATCH the assets plugin immediately — different domain).
+
+## Builder modes
+
+`POST /builder` accepts questionnaire mode (product required) OR **website
+mode** (`urls` required, product optional — zod refine enforces one of them).
+With urls present the drafting-task prompt gains an explicit source-mining
+step (fetch each URL, extract palette hex/voice/terminology/logo candidates,
+record findings in `_intake.md`). Response carries `taskId` (pinned by test —
+the drafting banner links it).
 
 ## Model
 

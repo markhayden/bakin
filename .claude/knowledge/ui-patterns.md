@@ -26,6 +26,27 @@ Cross-cutting UI lessons distilled from the chat/conversation-kit overhaul (2026
 
 ## Patterns to reuse
 
+- **The four settings-surface components (brands UX pass, 2026-07).**
+  `SaveBar` (staged-draft dirty state + explicit "Saved ✓" flash +
+  `useUnsavedGuard`; converges with PluginSettingsRenderer's
+  disabled-until-dirty idiom — migrating the renderer onto it is an open
+  follow-up), `SectionCard` (title + icon + one-line why-this-matters
+  description — every user-facing section should explain itself),
+  `AssetPicker` (thumbnail grid + search + upload-new; never a raw assetId
+  `<select>`), `DangerZone` (typed-confirm destructive section, bottom of
+  Settings; composes `ConfirmDialog`'s optional `confirmValue` — ONE confirm
+  engine, never a parallel confirm implementation).
+- **Nav + search-hit icons resolve through maps.** A manifest `nav[].icon`
+  must exist in app-sidebar's `ICONS`; a hit renderer `icon` must exist in the
+  ⌘K overlay's `HIT_ICONS` — otherwise the item silently renders
+  iconless/generic (bit brands for months).
+- **The wait-for-the-agent story.** Any flow that dispatches an agent and
+  returns must land the user somewhere that shows the work happening (banner
+  with the task link + live activity), never a silent created-thing (brands
+  drafting banner; `?draftTask=` handoff).
+- **Tooltips are Base UI**: `TooltipTrigger render={<el/>}`, NOT Radix
+  `asChild` — and wrap in `TooltipProvider delay={200}`.
+
 - **One engine per domain; components are thin.** `foldConversation` is THE folding engine — every surface composes the kit, none hand-rolls. Killing the three duplicate folders + the parallel `IntegratedBrainstorm` renderer was the whole win. Look for the existing engine before writing rendering logic.
 - **Design tokens only — no hardcoded palettes.** `IntegratedBrainstorm`'s hardcoded zinc/purple was the anti-pattern. Kit files are token-only (a test greps for `zinc-`/hex leaks).
 - **Human-first, depth on demand.** JSON replies render humanized (`formatStructured`) with raw JSON behind `<details>`; tool calls show a humanized activity summary → expand to rows → `BakinDrawer` for full input/output. "Right amount of detail, deeper one click away."

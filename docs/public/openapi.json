@@ -1880,8 +1880,7 @@
                 "required": [
                   "id",
                   "name",
-                  "agent",
-                  "product"
+                  "agent"
                 ],
                 "additionalProperties": false
               }

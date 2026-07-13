@@ -1,13 +1,41 @@
 ---
-title: Brands
+title: Branding
 description: Structured brand definitions — voice, palette, rules, and reference assets injected per-task so agent output stays on brand.
 ---
 
-The Brands plugin gives a multi-brand Bakin instance a machine-readable source
-of truth for each brand: how it talks, what colors it uses, which rules are
-absolute, and which real assets (logos, product screenshots) agents should
-reference. Link a brand to a task — or to a project, and let its tasks
-inherit — and every dispatch for that work carries the brand with it.
+The Branding plugin (the paintbrush in the sidebar) gives a multi-brand Bakin
+instance a machine-readable source of truth for each brand: how it talks, what
+colors it uses, which rules are absolute, and which real assets (logos, product
+screenshots) agents should reference. Link a brand to a task — or to a project,
+and let its tasks inherit — and every dispatch for that work carries the brand
+with it.
+
+## Creating a brand
+
+**New Brand** offers three paths:
+
+- **Build my brand** — answer a short questionnaire and an agent drafts the
+  whole kit (voice, style guide, palette, rules) for you to review.
+- **From a website** — give it a name, your site or style-guide links, and an
+  agent. The agent reads the links and extracts palette, voice, and
+  terminology automatically.
+- **Import** — bring in an existing kit from GitHub or a folder on disk
+  (preview first; nothing is written until you confirm).
+
+The agentic paths land you on the new draft with a banner linking the drafting
+task — drafts are invisible to real work until you review and **publish**.
+Every brand card shows a **completeness** meter (logo, palette, description,
+voice, style guide, rules, terminology, reference assets); the brand's
+Overview has the same checklist with jump links to finish the kit.
+
+## Editing
+
+Everything manifest-backed (name, description, palette, rules, terminology,
+asset references) stages into one draft — a save bar appears when anything is
+unsaved and commits it all at once. Guideline and lesson docs open in a
+dedicated full-width editor at `/brands/<id>/docs/...` with its own save.
+Deleting a brand lives at the bottom of Settings and requires typing the brand
+id.
 
 ## What a brand is
 
@@ -55,16 +83,12 @@ dangling asset references, tasks pointing at missing brands, and forgotten
 drafts. Each task's detail shows its effective brand, where it came from, and
 a record of every brand injection.
 
-## Building and sharing brands
+## Sharing brands
 
-- **Build my brand** — answer a short questionnaire and an agent drafts the
-  whole brand (voice, style guide, palette, rules) as a *draft*, invisible to
-  real work until you review and publish it.
-- **Import / export** — brands round-trip through a portable folder format
-  (`brand.json` with relative file paths + guidelines + lessons + assets), so
-  a brand kit maintained in a GitHub repo imports directly:
-  `bakin brands import github:user/repo` (preview first, provenance recorded,
-  `bakin brands check <id>` detects upstream drift).
+Brands round-trip through a portable folder format (`brand.json` with relative
+file paths + guidelines + lessons + assets), so a brand kit maintained in a
+GitHub repo imports directly: `bakin brands import github:user/repo` (preview
+first, provenance recorded, `bakin brands check <id>` detects upstream drift).
 
 ## CLI
 

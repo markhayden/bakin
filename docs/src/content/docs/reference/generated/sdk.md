@@ -149,11 +149,21 @@ import { PluginHeader, FacetFilter, AgentAvatar } from '@makinbakin/sdk/componen
 | `teamIdFromValue` | Single-agent (or team, #189) picker dropdown for form fields. |
 | `AgentDot` | Small status dot showing an agent's online/offline state. |
 | `AgentStatus` | Compound agent status (dot + label + last-seen timestamp). |
+| `AssetPicker` | Modal asset chooser (thumbnail grid + search + upload-new) over the assets plugin — never a raw id select. |
+| `AssetPickerProps` | — |
+| `AssetPickerAsset` | — |
 | `BakinDrawer` | Right-side slide-out drawer with backdrop and focus trap. |
 | `ColorPicker` | Color picker swatch grid for tag/agent color assignment. |
-| `ConfirmDialog` | Controlled confirmation dialog for destructive actions (busy/error aware). |
+| `ConfirmDialog` | Controlled confirmation dialog for destructive actions (busy/error aware; optional typed confirmation via `confirmValue`). |
 | `ConfirmDialogProps` | — |
+| `DangerZone` | Red-bordered destructive settings section with typed-confirmation delete — bottom of every settings surface. |
+| `DangerZoneProps` | — |
 | `EmptyState` | Centered empty-state component with icon, title, and CTA. |
+| `SaveBar` | Sticky save/discard bar for staged-draft pages (THE dirty-state pattern) + `useUnsavedGuard`. |
+| `useUnsavedGuard` | Sticky save/discard bar for staged-draft pages (THE dirty-state pattern) + `useUnsavedGuard`. |
+| `SaveBarProps` | — |
+| `SectionCard` | Titled card with icon + a one-line "why this matters" description — the standard section wrapper. |
+| `SectionCardProps` | — |
 | `SearchUnavailable` | — |
 | `ScoreOverlay` | — |
 | `computeMatchedFields` | — |
