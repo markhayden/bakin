@@ -100,21 +100,13 @@ export function CapabilitiesTab() {
                   <p className="mt-1.5 max-w-3xl text-sm leading-relaxed text-muted-foreground">{cap.description}</p>
                 )}
 
-                <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-border/60 pt-3.5">
-                  {cap.ready ? (
-                    <span className="text-xs text-muted-foreground">
-                      {(cap.useCases?.length ?? 0) > 0
-                        ? <>Great for: {cap.useCases!.slice(0, 2).join(' · ').toLowerCase()}</>
-                        : 'Agents use this automatically when a task calls for it.'}
-                    </span>
-                  ) : (
-                    <>
-                      {cap.skills.filter((s) => s.status !== 'ok').map((s) => <Leg key={`s-${s.name}`} ok={false} label={`skill ${s.name} missing`} />)}
-                      {cap.bins.filter((b) => b.status !== 'ok').map((b) => <Leg key={`b-${b.name}`} ok={false} label={`binary ${b.name} missing`} />)}
-                      {cap.secrets.filter((s) => s.status === 'missing').map((s) => <Leg key={`k-${s.name}`} ok={false} label={`${s.name} not set`} />)}
-                    </>
-                  )}
-                </div>
+                {!cap.ready && (
+                  <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-border/60 pt-3.5">
+                    {cap.skills.filter((s) => s.status !== 'ok').map((s) => <Leg key={`s-${s.name}`} ok={false} label={`skill ${s.name} missing`} />)}
+                    {cap.bins.filter((b) => b.status !== 'ok').map((b) => <Leg key={`b-${b.name}`} ok={false} label={`binary ${b.name} missing`} />)}
+                    {cap.secrets.filter((s) => s.status === 'missing').map((s) => <Leg key={`k-${s.name}`} ok={false} label={`${s.name} not set`} />)}
+                  </div>
+                )}
 
                 {!cap.ready && (
                   <div className="mt-3 space-y-2">
