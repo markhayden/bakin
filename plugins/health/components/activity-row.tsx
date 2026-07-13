@@ -17,9 +17,9 @@ function impact(entry: UsageEntry): string {
     if (entry.kind === 'rest') return 'The request completed successfully.'
     return 'The tool completed successfully.'
   }
-  if (entry.kind === 'agent') return 'An agent operation failed and may have interrupted active work.'
-  if (entry.kind === 'rest') return 'A user or integration request failed to complete.'
-  return 'A tool call failed and may need a retry or configuration change.'
+  if (entry.kind === 'agent') return 'Agent work did not complete. Retry it; if this keeps happening, run health checks.'
+  if (entry.kind === 'rest') return 'A request did not complete. If this keeps happening, run health checks or review the calling integration.'
+  return 'A tool call did not complete. Retry it; if this keeps happening, run health checks.'
 }
 
 function formatWhen(value: string): string {

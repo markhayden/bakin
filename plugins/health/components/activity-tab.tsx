@@ -1,8 +1,8 @@
 'use client'
 
 import { useQueryState } from '@makinbakin/sdk/hooks'
-import { Button, Card, CardContent, CardHeader, CardTitle } from '@makinbakin/sdk/ui'
-import { AlertCircle, RefreshCw } from 'lucide-react'
+import { Button } from '@makinbakin/sdk/ui'
+import { AlertCircle, CheckCircle2, ChevronRight, RefreshCw } from 'lucide-react'
 import { ActivityFailureTrend } from './activity-failure-trend'
 import { ActivityRow } from './activity-row'
 import {
@@ -32,13 +32,16 @@ export function ActivityTab() {
   const resource = useActivityData({ window, kind, includeRoutine })
   const failures = resource.data?.recent.filter((entry) => entry.status === 'error') ?? []
   const successes = resource.data?.recent.filter((entry) => entry.status === 'ok') ?? []
+  const totalActivity = resource.data?.totals.count ?? 0
+  const totalFailures = resource.data?.totals.errors ?? 0
+  const hasFailures = totalFailures > 0
 
   return (
     <div className="space-y-5" data-testid="health-activity-tab">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold">Activity</h2>
-          <p className="text-sm text-muted-foreground">Failures lead. Routine success stays hidden unless you ask for it.</p>
+          <h2 className="text-lg font-semibold">What failed recently?</h2>
+          <p className="text-sm text-muted-foreground">Start here when a tool, request, or agent did not work.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <label className="text-xs text-muted-foreground">
@@ -101,35 +104,61 @@ export function ActivityTab() {
             </p>
           )}
 
-          <div className="grid gap-4 sm:grid-cols-3">
-            <Card><CardContent className="pt-5"><p className="text-xs text-muted-foreground">Activity</p><p className="mt-1 text-2xl font-semibold tabular-nums">{resource.data?.totals.count ?? 0}</p></CardContent></Card>
-            <Card><CardContent className="pt-5"><p className="text-xs text-muted-foreground">Failures</p><p className="mt-1 text-2xl font-semibold tabular-nums text-destructive">{resource.data?.totals.errors ?? 0}</p></CardContent></Card>
-            <Card><CardContent className="pt-5"><p className="text-xs text-muted-foreground">Failure rate</p><p className="mt-1 text-2xl font-semibold tabular-nums">{((resource.data?.totals.errorRate ?? 0) * 100).toFixed(1)}%</p></CardContent></Card>
-          </div>
-
-          <Card>
-            <CardHeader><CardTitle className="text-base"><h3>Failure trend</h3></CardTitle></CardHeader>
-            <CardContent>
-              <ActivityFailureTrend buckets={resource.data?.timeBuckets ?? []} />
-            </CardContent>
-          </Card>
-
-          <section aria-labelledby="activity-failures-title" className="space-y-3">
-            <div className="flex items-center gap-2">
-              <AlertCircle className="size-4 text-destructive" aria-hidden="true" />
-              <h3 id="activity-failures-title" className="font-semibold">Failures ({failures.length})</h3>
+          <section
+            aria-labelledby="activity-decision-title"
+            className={`rounded-xl border p-4 ${hasFailures ? 'border-destructive/30 bg-destructive/5' : 'border-success/25 bg-success/5'}`}
+          >
+            <div className="flex items-start gap-3">
+              {hasFailures
+                ? <AlertCircle className="mt-0.5 size-5 shrink-0 text-destructive" aria-hidden="true" />
+                : <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-success" aria-hidden="true" />}
+              <div>
+                <h3 id="activity-decision-title" className="font-semibold">
+                  {hasFailures
+                    ? `${totalFailures.toLocaleString()} of ${totalActivity.toLocaleString()} recorded activities failed.`
+                    : 'No failures in this window.'}
+                </h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {hasFailures
+                    ? 'Review the failures below. Repeated failures may point to a health issue.'
+                    : `${totalActivity.toLocaleString()} ${totalActivity === 1 ? 'activity completed' : 'activities completed'} without a recorded failure.`}
+                </p>
+              </div>
             </div>
-            {failures.length > 0
-              ? <ul className="space-y-2">{failures.map((entry) => <ActivityRow key={`${entry.ts}:${entry.kind}:${entry.name}`} entry={entry} />)}</ul>
-              : <p className="rounded-xl border border-border/70 bg-card p-4 text-sm text-muted-foreground">No failures in this window.</p>}
           </section>
 
-          <section aria-labelledby="activity-recent-title" className="space-y-3">
-            <h3 id="activity-recent-title" className="font-semibold">Recent successful activity ({successes.length})</h3>
-            {successes.length > 0
-              ? <ul className="space-y-2">{successes.map((entry) => <ActivityRow key={`${entry.ts}:${entry.kind}:${entry.name}`} entry={entry} />)}</ul>
-              : <p className="text-sm text-muted-foreground">No successful activity matches these filters.</p>}
-          </section>
+          {failures.length > 0 && (
+            <section aria-labelledby="activity-failures-title" className="space-y-3">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="size-4 text-destructive" aria-hidden="true" />
+                <h3 id="activity-failures-title" className="font-semibold">Failures ({failures.length})</h3>
+              </div>
+              <ul className="space-y-2">{failures.map((entry) => <ActivityRow key={`${entry.ts}:${entry.kind}:${entry.name}`} entry={entry} />)}</ul>
+            </section>
+          )}
+
+          {hasFailures && (
+            <section aria-labelledby="activity-failure-trend-title" className="space-y-3">
+              <div>
+                <h3 id="activity-failure-trend-title" className="font-semibold">Failures over time</h3>
+                <p className="text-sm text-muted-foreground">See when failures happened during the selected window.</p>
+              </div>
+              <ActivityFailureTrend buckets={resource.data?.timeBuckets ?? []} />
+            </section>
+          )}
+
+          {successes.length > 0 && (
+            <details className="group rounded-xl border border-border/70 bg-card">
+              <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 font-medium marker:hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                <ChevronRight className="size-4 text-muted-foreground transition-transform group-open:rotate-90 motion-reduce:transition-none" aria-hidden="true" />
+                Successful activity ({successes.length})
+              </summary>
+              <div className="border-t border-border/70 p-4">
+                <p className="mb-3 text-sm text-muted-foreground">Open this when you want to confirm that a retry or recent action worked.</p>
+                <ul className="space-y-2">{successes.map((entry) => <ActivityRow key={`${entry.ts}:${entry.kind}:${entry.name}`} entry={entry} />)}</ul>
+              </div>
+            </details>
+          )}
         </>
       )}
     </div>

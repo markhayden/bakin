@@ -61,27 +61,64 @@ beforeEach(() => {
 afterEach(() => cleanup())
 
 describe('ActivityTab', () => {
-  it('leads with failures and keeps raw details behind disclosure', () => {
+  it('leads with a plain failure decision and puts failures before the compact trend', () => {
     render(<ActivityTab />)
 
     const tab = screen.getByTestId('health-activity-tab')
+    expect(within(tab).getByRole('heading', { level: 2, name: 'What failed recently?' })).toBeDefined()
+    expect(within(tab).getByText('2 of 3 recorded activities failed.')).toBeDefined()
+    expect(within(tab).queryByText('Failure rate')).toBeNull()
+
     const failures = within(tab).getByRole('heading', { name: 'Failures (2)' })
-    const successes = within(tab).getByRole('heading', { name: 'Recent successful activity (1)' })
-    expect(failures.compareDocumentPosition(successes) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    const trend = within(tab).getByRole('heading', { name: 'Failures over time' })
+    expect(failures.compareDocumentPosition(trend) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+
+    const successfulActivity = within(tab).getByText('Successful activity (1)').closest('details')
+    expect(successfulActivity?.open).toBe(false)
+    fireEvent.click(within(tab).getByText('Successful activity (1)'))
+    expect(successfulActivity?.open).toBe(true)
+
     expect(screen.getByText('Search Reindex')).toBeDefined()
     expect(screen.getAllByText('Technical details')).toHaveLength(3)
     expect(screen.getByText('/api/plugins/search/reindex')).toBeDefined()
-    expect(screen.getByText(/tool call failed/i)).toBeDefined()
+    expect(screen.getByText(/tool call did not complete/i)).toBeDefined()
   })
 
-  it('renders an exact accessible table under the failure trend', () => {
+  it('renders a compact failure-only trend with an exact accessible table', () => {
     render(<ActivityTab />)
 
-    expect(screen.getByRole('heading', { level: 3, name: 'Failure trend' })).toBeDefined()
-    const table = screen.getByRole('table', { name: 'Activity and failures over time data' })
-    expect(within(table).getByText('All activity')).toBeDefined()
+    const chart = screen.getByRole('group', { name: 'Failures over time' })
+    expect(chart.getAttribute('viewBox')).toBe('0 0 640 120')
+    expect(chart.closest('[data-activity-failure-trend-plot]')?.className).toContain('max-w-4xl')
+
+    const table = screen.getByRole('table', { name: 'Failures over time data' })
     expect(within(table).getByText('Failures')).toBeDefined()
+    expect(within(table).queryByText('All activity')).toBeNull()
     expect(within(table).getAllByRole('row')).toHaveLength(3)
+    expect(screen.getByRole('note').textContent).toContain('latest interval')
+  })
+
+  it('uses a calm zero-failure summary without empty chart or success sections', () => {
+    const base = activityData()
+    useActivityDataMock.mockImplementation(() => ({
+      ...base,
+      data: {
+        ...base.data!,
+        totals: { count: 690, errors: 0, errorRate: 0 },
+        recent: [],
+        timeBuckets: [
+          { start: '2026-07-12T12:00:00.000Z', count: 345, failureCount: 0, failureRate: 0 },
+          { start: '2026-07-12T12:05:00.000Z', count: 345, failureCount: 0, failureRate: 0 },
+        ],
+      },
+    }))
+
+    render(<ActivityTab />)
+
+    expect(screen.getByText('No failures in this window.')).toBeDefined()
+    expect(screen.getByText('690 activities completed without a recorded failure.')).toBeDefined()
+    expect(screen.queryByRole('heading', { name: 'Failures over time' })).toBeNull()
+    expect(screen.queryByText(/Successful activity \(/)).toBeNull()
   })
 
   it('stores window, kind, and routine choices through URL-backed query state', () => {
@@ -103,7 +140,7 @@ describe('ActivityTab', () => {
 
     render(<ActivityTab />)
 
-    expect(screen.getByRole('heading', { level: 2, name: 'Activity' })).toBeDefined()
+    expect(screen.getByRole('heading', { level: 2, name: 'What failed recently?' })).toBeDefined()
     expect(screen.getByRole('status').textContent).toContain('Loading activity…')
   })
 
@@ -116,7 +153,7 @@ describe('ActivityTab', () => {
 
     render(<ActivityTab />)
 
-    expect(screen.getByRole('heading', { level: 2, name: 'Activity' })).toBeDefined()
+    expect(screen.getByRole('heading', { level: 2, name: 'What failed recently?' })).toBeDefined()
     expect(screen.getByRole('alert').textContent).toContain('Activity feed unavailable')
     expect(screen.getByRole('button', { name: 'Try again' })).toBeDefined()
   })
