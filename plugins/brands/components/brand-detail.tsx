@@ -1082,7 +1082,7 @@ function BrandAssetsSection({ brand, onSave }: { brand: BrandManifest; onSave: (
           <SectionEmpty>No logo yet — cards show a monogram until you add one.</SectionEmpty>
         )}
         {brand.logos.length > 0 && (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+          <div className="grid gap-3 lg:grid-cols-2">
             {brand.logos.map((logo, i) =>
               tile(
                 logo.assetId,
@@ -1131,7 +1131,7 @@ function BrandAssetsSection({ brand, onSave }: { brand: BrandManifest; onSave: (
             </div>
             {group.assetIds.length === 0 && <p className="text-xs text-muted-foreground">Empty group — add screenshots or imagery.</p>}
             {group.assetIds.length > 0 && (
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+              <div className="grid gap-3 lg:grid-cols-2">
                 {group.assetIds.map((assetId) =>
                   tile(assetId, () => onSave({ assetGroups: brand.assetGroups.map((g, j) => (j === gi ? { ...g, assetIds: g.assetIds.filter((id) => id !== assetId) } : g)) })),
                 )}
@@ -1173,7 +1173,7 @@ function BrandAssetsSection({ brand, onSave }: { brand: BrandManifest; onSave: (
           <SectionEmpty>None yet — without references, branded image generations rely on the palette and text alone.</SectionEmpty>
         )}
         {(brand.defaultImageReferences ?? []).length > 0 && (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+          <div className="grid gap-3 lg:grid-cols-2">
             {(brand.defaultImageReferences ?? []).map((assetId) =>
               tile(assetId, () => onSave({ defaultImageReferences: (brand.defaultImageReferences ?? []).filter((id) => id !== assetId) })),
             )}
@@ -1222,8 +1222,10 @@ function AssetTile({
   const commit = () => { setEditing(false); if (draft !== (info?.description ?? '')) onDescription(draft) }
 
   return (
-    <div className="group relative flex flex-col overflow-hidden rounded-xl bg-surface ring-1 ring-foreground/10 transition-shadow hover:ring-foreground/25" data-asset-card={assetId}>
-      <button className="block aspect-square w-full overflow-hidden bg-background/50" title="Open in the asset viewer" onClick={open}>
+    // Horizontal card: compact image LEFT, the description gets the width it
+    // deserves on the right. Two across, stretch to fit.
+    <div className="group relative flex overflow-hidden rounded-xl bg-surface ring-1 ring-foreground/10 transition-shadow hover:ring-foreground/25" data-asset-card={assetId}>
+      <button className="block size-28 shrink-0 self-stretch overflow-hidden bg-background/50" title="Open in the asset viewer" onClick={open}>
         {isImage && info?.hasThumb
           ? <img src={`/api/assets/${assetId}/thumb`} alt="" className="size-full object-cover" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
           : <span className="flex size-full items-center justify-center text-3xl text-muted-foreground">{TYPE_ICON[info?.type ?? 'other'] ?? '⊟'}</span>}
@@ -1236,7 +1238,7 @@ function AssetTile({
         <Trash2 className="size-3.5" />
       </button>
 
-      <div className="flex min-w-0 flex-col gap-1.5 p-2.5">
+      <div className="flex min-w-0 flex-1 flex-col gap-1.5 p-3">
         {extra}
         {editing ? (
           <textarea
@@ -1252,7 +1254,7 @@ function AssetTile({
         ) : (
           <button className="text-left text-xs" onClick={() => { setDraft(info?.description ?? ''); setEditing(true) }}>
             {info?.description
-              ? <span className="line-clamp-2 text-foreground/90">{info.description} <Pencil className="inline size-3 text-muted-foreground" /></span>
+              ? <span className="line-clamp-3 text-foreground/90">{info.description} <Pencil className="inline size-3 text-muted-foreground" /></span>
               : <span className="flex items-center gap-1 text-muted-foreground transition-colors hover:text-foreground"><Plus className="size-3" /> Add a note</span>}
           </button>
         )}
