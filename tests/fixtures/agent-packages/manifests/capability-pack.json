@@ -1,0 +1,41 @@
+{
+  "id": "web-search-brave",
+  "kind": "skill-pack",
+  "name": "Web Search (Brave)",
+  "version": "1.0.0",
+  "description": "Web search and content extraction via the Brave Search CLI.",
+  "author": "Bakin Test Fixtures",
+  "capability": "web-search",
+  "runtimes": ["*"],
+  "contributions": {
+    "skills": ["skills/bx-search"]
+  },
+  "requires": {
+    "bins": [
+      {
+        "name": "bx",
+        "version": "1.4.0",
+        "install": {
+          "darwin-arm64": {
+            "url": "https://github.com/brave/brave-search-cli/releases/download/v1.4.0/bx-1.4.0-darwin-arm64",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "linux-x64": {
+            "url": "https://github.com/brave/brave-search-cli/releases/download/v1.4.0/bx-1.4.0-linux-amd64",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          }
+        },
+        "verifyArgs": ["--version"]
+      }
+    ]
+  },
+  "secrets": [
+    {
+      "name": "BRAVE_SEARCH_API_KEY",
+      "description": "Brave Search API key (free tier available)",
+      "required": true,
+      "secretSlot": "brave.apiKey",
+      "help": "https://api-dashboard.search.brave.com"
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 import { Check, Plus } from 'lucide-react'
 import { AgentAvatar } from '@makinbakin/sdk/components'
 import { Badge } from '@makinbakin/sdk/ui'
-import type { ExploreCatalogEntry } from '../types'
+import { runtimeCompatible, type ExploreCatalogEntry } from '../types'
 
 export function entryStatusBadge(entry: ExploreCatalogEntry): { label: string; tone: 'builtin' | 'installed' | 'update' } | null {
   if (entry.builtin) return { label: 'Built in', tone: 'builtin' }
@@ -43,14 +43,18 @@ export function CatalogCard({
   entry,
   onSelect,
   onInstall,
+  activeAdapter,
 }: {
   entry: ExploreCatalogEntry
   onSelect: (entry: ExploreCatalogEntry) => void
   /** Renders an Install button directly on available cards. */
   onInstall?: (entry: ExploreCatalogEntry) => void
+  /** Active runtime adapter — runtime-tagged entries badge/gate against it. */
+  activeAdapter?: string
 }) {
+  const compatible = runtimeCompatible(entry, activeAdapter)
   const status = entryStatusBadge(entry)
-  const installable = !entry.builtin && !entry.installed && onInstall !== undefined
+  const installable = !entry.builtin && !entry.installed && onInstall !== undefined && compatible
   return (
     <button
       type="button"
@@ -74,6 +78,15 @@ export function CatalogCard({
           <span className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] ${TONE_CLASSES[status.tone]}`}>
             {status.tone === 'installed' && <Check className="size-3" />}
             {status.label}
+          </span>
+        )}
+        {!compatible && (
+          <span
+            data-testid={`card-incompatible-${entry.id}`}
+            className="flex items-center gap-1 rounded-full border border-border bg-[rgba(255,255,255,0.06)] px-2 py-0.5 text-[11px] text-muted-foreground"
+            title={`Requires runtime: ${(entry.runtimes ?? []).join(', ')}`}
+          >
+            Not for {activeAdapter ?? 'this runtime'}
           </span>
         )}
         {installable && (

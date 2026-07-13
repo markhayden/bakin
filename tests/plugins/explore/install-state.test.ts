@@ -31,6 +31,7 @@ const SHA_B = 'b'.repeat(40)
 const entry = (overrides: Partial<CatalogEntry> & Pick<CatalogEntry, 'id' | 'kind'>): CatalogEntry => ({
   name: overrides.id,
   description: 'x',
+  runtimes: ['*'],
   category: 'Test',
   tags: [],
   useCases: [],

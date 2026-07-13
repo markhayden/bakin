@@ -1,0 +1,130 @@
+/**
+ * Pinned binary installer for capability packs.
+ *
+ * Installs `requires.bins[]` declarations from a skill-pack manifest into
+ * Bakin's own bin dir (`getBakinPaths().bin`, on PATH since server boot —
+ * see src/core/secret-env.ts). Modeled on the antfly dependency installer:
+ * download with timeout → sha256 verify against the manifest pin (refuse on
+ * mismatch) → chmod 0755 → verify-then-commit (run `verifyArgs` against the
+ * temp file BEFORE it reaches the target name) → atomic rename. A binary
+ * whose on-disk sha already matches the pin is skipped — idempotent installs
+ * and shared bins across packs come free.
+ *
+ * The caller records the returned target as a `bin` lockfile projection, so
+ * rollback/uninstall ride the standard projection lifecycle.
+ */
+import { execFile } from 'child_process'
+import { promisify } from 'util'
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'fs'
+import { createHash } from 'crypto'
+import { join } from 'path'
+import type { BinPlatformKey, BinRequirement } from '../../../packages/core/src/agent-packages/manifest'
+import { writeInstalledBy, type InstalledByMarker } from '../../../packages/core/src/agent-packages/markers'
+import { getBakinPaths } from '@/core/content-dir'
+import { createLogger } from '@/core/logger'
+
+const log = createLogger('bin-installer')
+const execFileAsync = promisify(execFile)
+
+const DOWNLOAD_TIMEOUT_MS = 120_000
+const VERIFY_TIMEOUT_MS = 15_000
+
+/** Map this process's platform/arch onto a manifest platform key. */
+export function binPlatformKey(): BinPlatformKey | null {
+  const os = process.platform === 'darwin' ? 'darwin' : process.platform === 'linux' ? 'linux' : null
+  const arch = process.arch === 'arm64' ? 'arm64' : process.arch === 'x64' ? 'x64' : null
+  if (!os || !arch) return null
+  return `${os}-${arch}` as BinPlatformKey
+}
+
+export interface BinInstallResult {
+  /** Absolute path of the installed binary inside the Bakin bin dir. */
+  target: string
+  /** sha256 of the installed bytes (== the manifest pin). */
+  sha256: string
+  /** True when the on-disk binary already matched the pin — nothing downloaded. */
+  skipped: boolean
+}
+
+export interface BinInstallOptions {
+  /**
+   * Fetch implementation. Tests pass Bun.fetch — the happy-dom preload's
+   * global fetch cannot drive real sockets.
+   */
+  fetchImpl?: typeof fetch
+}
+
+export async function installBinRequirement(
+  bin: BinRequirement,
+  installedBy: Omit<InstalledByMarker, 'sha256'>,
+  options: BinInstallOptions = {},
+): Promise<BinInstallResult> {
+  const platform = binPlatformKey()
+  const download = platform ? bin.install[platform] : undefined
+  if (!download) {
+    throw new Error(
+      `Binary "${bin.name}" has no download for this platform (${platform ?? `${process.platform}-${process.arch}`}) — `
+      + `declared: ${Object.keys(bin.install).join(', ')}`,
+    )
+  }
+
+  const binDir = getBakinPaths().bin
+  mkdirSync(binDir, { recursive: true })
+  const target = join(binDir, bin.name)
+  const pin = download.sha256.toLowerCase()
+
+  // Idempotent / shared-bin fast path: bytes already match the pin.
+  if (existsSync(target)) {
+    const existing = createHash('sha256').update(readFileSync(target)).digest('hex')
+    if (existing === pin) {
+      log.info(`Binary "${bin.name}" already installed at pinned sha — skipping download`)
+      writeInstalledBy(target, { ...installedBy, sha256: pin })
+      return { target, sha256: pin, skipped: true }
+    }
+  }
+
+  // Default to Bun's NATIVE fetch: the server always runs under Bun, and the
+  // test preload's happy-dom fetch cannot drive real sockets (CLAUDE.md).
+  const fetchImpl = options.fetchImpl
+    ?? (Bun as unknown as { fetch?: typeof fetch }).fetch
+    ?? fetch
+  const res = await fetchImpl(download.url, { signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS) })
+  if (!res.ok) {
+    throw new Error(`Binary "${bin.name}" download failed: ${res.status} ${res.statusText} (${download.url})`)
+  }
+  const bytes = new Uint8Array(await res.arrayBuffer())
+
+  const actual = createHash('sha256').update(bytes).digest('hex')
+  if (actual !== pin) {
+    throw new Error(
+      `Binary "${bin.name}" checksum mismatch: expected ${pin}, got ${actual} — refusing to install (${download.url})`,
+    )
+  }
+
+  const tmp = `${target}.tmp-${process.pid}`
+  try {
+    writeFileSync(tmp, bytes, { mode: 0o755 })
+    chmodSync(tmp, 0o755)
+
+    // Verify-then-commit: the binary must actually run BEFORE it lands under
+    // its real name (a broken download must never shadow a working install).
+    if (bin.verifyArgs) {
+      try {
+        await execFileAsync(tmp, bin.verifyArgs, { timeout: VERIFY_TIMEOUT_MS })
+      } catch (err) {
+        throw new Error(
+          `Binary "${bin.name}" verify run failed (${bin.verifyArgs.join(' ')}): ${err instanceof Error ? err.message : String(err)}`,
+        )
+      }
+    }
+
+    renameSync(tmp, target)
+  } catch (err) {
+    try { rmSync(tmp, { force: true }) } catch { /* best-effort tmp cleanup */ }
+    throw err
+  }
+
+  writeInstalledBy(target, { ...installedBy, sha256: pin })
+  log.info(`Installed binary "${bin.name}" ${bin.version} → ${target}`)
+  return { target, sha256: pin, skipped: false }
+}

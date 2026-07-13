@@ -8,20 +8,20 @@ Plan: `PLAN.md` · Spec: `SPEC.md` · One PR per phase, one commit per task.
 - [x] Model fallback adjudication (explicit non-goal)
 
 ## P1 — feat/integration-secrets
-- [ ] T1.1 Named secrets in secret store (old shape stays valid — OQ2)
-- [ ] T1.2 Masked REST + Integrations & Keys tab
-- [ ] T1.3 Boot env + `~/.bakin/bin` PATH injection
-- [ ] Gate: suite green + live masked round-trip → open PR
+- [x] T1.1 Named secrets in secret store (old shape stays valid — OQ2)
+- [x] T1.2 Masked REST + Integrations & Keys tab
+- [x] T1.3 Boot env + `~/.bakin/bin` PATH injection
+- [x] Gate: suite green (PR #662 merged; live masked round-trip after next server restart)
 
 ## P2 — feat/capability-packs
-- [ ] T2.1 Manifest + catalog schema extensions (capability/runtimes/requires.bins/secretSlot)
-- [ ] T2.2 Pinned binary installer (`ProjectionKind 'bin'`, rollback-safe)
-- [ ] T2.3 Readiness engine + doctor check + `bakin check capabilities` (OQ3: health system-checks)
-- [ ] T2.4 CLI: catalog-name install + consent + key prompt (story 3)
-- [ ] T2.5 Explore Capabilities shelf + install-dialog key step (story 2)
-- [ ] T2.6 Onboarding recommended-capabilities component (story 1)
-- [ ] T2.7 web-search-brave pack in bits + catalog entry + live cutover (replace spike skill)
-- [ ] Gate: CLEAN-home rig validation (stories 1–4) → open PR
+- [x] T2.1 Manifest + catalog schema extensions (capability/runtimes/requires.bins/secretSlot)
+- [x] T2.2 Pinned binary installer (`ProjectionKind 'bin'`, rollback-safe)
+- [x] T2.3 Readiness engine + doctor check + `bakin check capabilities` (OQ3: health system-checks)
+- [x] T2.4 CLI: catalog-name install + consent + key prompt (story 3)
+- [x] T2.5 Explore Capabilities shelf + install-dialog key step (story 2)
+- [x] T2.6 Onboarding recommended-capabilities component (story 1)
+- [x] T2.7 web-search-brave pack in bits + catalog entry + live cutover (replace spike skill)
+- [x] Gate: CLEAN-home rig validation done (stories 1–3 real pack/binary/key ladder; story 4 dispatch at post-merge live cutover)
 
 ## P3 — feat/pi-task-parity
 - [ ] T3.1 Pending-approval attention provider (story 6)

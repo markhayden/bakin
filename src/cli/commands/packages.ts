@@ -6,9 +6,61 @@
  */
 import { apiGet, apiPost, apiDelete } from '../http'
 import { print } from '../output'
-import { exitUsage, exitUnknownSubcommand } from '../help'
+import { exitUsage, exitUnknownSubcommand, promptYesNo } from '../help'
 import { renderInkReport } from '../../core/cli/ui/render-report'
 import { parseAgentsFlags, printPackageActionTui, type AgentsCmdFlags } from './agents'
+
+interface InstallCapabilityInfo {
+  capability: string
+  name: string
+  ready: boolean
+  missing: string[]
+  skills: Array<{ name: string; status: string }>
+  bins: Array<{ name: string; status: string }>
+  secrets: Array<{ name: string; required: boolean; secretSlot?: string; help?: string; status: string }>
+}
+
+function isBareName(source: string): boolean {
+  return !source.includes(':') && !source.startsWith('./') && !source.startsWith('../')
+    && !source.startsWith('/') && !source.startsWith('~/')
+}
+
+function legLine(ok: boolean, label: string): string {
+  return `  ${ok ? '✓' : '⚠'} ${label}`
+}
+
+/** Guided key step (story 3): offer to store each missing secretSlot-backed secret. */
+async function promptMissingSecrets(cap: InstallCapabilityInfo): Promise<boolean> {
+  let storedAny = false
+  for (const secret of cap.secrets) {
+    if (secret.status !== 'missing' || !secret.secretSlot) continue
+    const readline = await import('node:readline/promises')
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
+    try {
+      if (secret.help) console.log(`  ${secret.name}: get one at ${secret.help}`)
+      const value = (await rl.question(`  Paste ${secret.name} (Enter to skip): `)).trim()
+      if (!value) continue
+      const [provider, name] = secret.secretSlot.split('.', 2)
+      await apiPost('/api/secrets', { provider, name, value })
+      storedAny = true
+      console.log(`  ✓ stored as ${secret.secretSlot} (Settings → Integrations & Keys)`)
+    } finally {
+      rl.close()
+    }
+  }
+  return storedAny
+}
+
+function printCapabilityStatus(cap: InstallCapabilityInfo): void {
+  console.log(`\nCapability: ${cap.name} (${cap.capability})`)
+  for (const s of cap.skills) console.log(legLine(s.status === 'ok', `skill ${s.name}`))
+  for (const b of cap.bins) console.log(legLine(b.status === 'ok', `binary ${b.name}`))
+  for (const s of cap.secrets) {
+    console.log(legLine(s.status !== 'missing', `${s.name} (${s.status === 'missing' ? 'not configured' : s.status})`))
+  }
+  console.log(cap.ready ? '✓ READY — agents can use this capability now.' : '⚠ Not ready yet:')
+  if (!cap.ready) for (const line of cap.missing) console.log(`  - ${line}`)
+}
 
 async function printPackagesListTui(packages: Array<Record<string, unknown>>): Promise<void> {
   return renderInkReport(() => import('../../core/cli/ui/readonly'), (m) => m.PackagesListReport, { packages })
@@ -37,21 +89,48 @@ async function cmdPackagesList(flags: AgentsCmdFlags): Promise<void> {
   }
 }
 
-async function cmdPackagesInstall(source: string, flags: AgentsCmdFlags): Promise<void> {
+async function cmdPackagesInstall(source: string, flags: AgentsCmdFlags, yes: boolean): Promise<void> {
+  // Consent (story 3): say what installs from where before any write.
+  if (!yes && !flags.json && process.stdout.isTTY) {
+    const origin = isBareName(source) ? `"${source}" from the curated catalog (pinned source)` : source
+    console.log(`This installs ${origin}: skill content projected to the active runtime,`)
+    console.log('plus any pinned binaries into ~/.bakin/bin. Scripts run as agent shell commands.')
+    if (!(await promptYesNo('Proceed? [y/N] '))) {
+      console.log('Aborted — nothing installed.')
+      return
+    }
+  }
   const body: Record<string, unknown> = { source }
   if (flags.installAs) body.installAs = flags.installAs
   if (flags.replace) body.replace = true
-  const result = await apiPost('/api/packages/install', body)
-  if (!flags.json && process.stdout.isTTY) {
-    await printPackageActionTui({
-      action: 'installed',
-      scope: 'package',
-      target: flags.installAs ?? source,
-      result,
-    })
+  const result = await apiPost('/api/packages/install', body) as Record<string, unknown> & {
+    ok?: boolean
+    capability?: InstallCapabilityInfo
+  }
+
+  if (flags.json || !process.stdout.isTTY) {
+    print(result)
     return
   }
-  print(result)
+
+  // Capability packs get the per-leg status + guided key step instead of the
+  // generic TUI card.
+  if (result.ok && result.capability) {
+    printCapabilityStatus(result.capability)
+    if (!result.capability.ready && (await promptMissingSecrets(result.capability))) {
+      const refreshed = await apiGet('/api/packages/capabilities') as { capabilities: InstallCapabilityInfo[] }
+      const cap = refreshed.capabilities.find((c) => c.capability === result.capability!.capability)
+      if (cap) printCapabilityStatus(cap)
+    }
+    return
+  }
+
+  await printPackageActionTui({
+    action: 'installed',
+    scope: 'package',
+    target: flags.installAs ?? source,
+    result,
+  })
 }
 
 async function cmdPackagesRemove(packageId: string, flags: AgentsCmdFlags): Promise<void> {
@@ -90,8 +169,10 @@ async function cmdPackagesSync(packageId: string, flags: AgentsCmdFlags): Promis
 export async function run(args: string[]): Promise<void> {
   const sub = args[1]
   if (sub === 'install') {
-    if (!args[2]) await exitUsage('bakin packages install <path|github:user/repo[@ref][#subpath]> [--install-as <id>] [--replace]')
-    await cmdPackagesInstall(args[2], parseAgentsFlags(args.slice(3)))
+    if (!args[2]) await exitUsage('bakin packages install <name|path|github:user/repo[@ref][#subpath]> [--install-as <id>] [--replace] [--yes]')
+    const rest = args.slice(3)
+    const yes = rest.includes('--yes') || rest.includes('-y')
+    await cmdPackagesInstall(args[2], parseAgentsFlags(rest.filter(a => a !== '--yes' && a !== '-y')), yes)
   } else if (sub === 'list') {
     await cmdPackagesList(parseAgentsFlags(args.slice(2)))
   } else if (sub === 'remove') {

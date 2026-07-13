@@ -8,10 +8,11 @@ import { DetailDrawer } from './detail-drawer'
 import { InstallDialog } from './install-dialog'
 import type { ExploreCatalogEntry, ExploreCatalogResponse } from '../types'
 
-function tabOf(entry: ExploreCatalogEntry): 'agents' | 'plugins' | 'lessons' | 'packs' {
+function tabOf(entry: ExploreCatalogEntry): 'agents' | 'plugins' | 'lessons' | 'capabilities' | 'packs' {
   if (entry.kind === 'agent') return 'agents'
   if (entry.kind === 'plugin') return 'plugins'
   if (entry.kind === 'lesson-pack') return 'lessons'
+  if (entry.kind === 'skill-pack' && entry.capability) return 'capabilities'
   return 'packs'
 }
 
@@ -37,6 +38,13 @@ const TAB_INTROS: Record<string, { title: string; blurb: string }> = {
     blurb:
       'Lessons teach the agents you already have — domain knowledge, house style, sharper judgment. ' +
       'Install a lesson pack here, then enable individual lessons per agent from their Team page.',
+  },
+  capabilities: {
+    title: 'Teach your agents new tricks',
+    blurb:
+      'Capabilities give your agents real-world powers — web search, browser automation, transcription. ' +
+      'Install one and Bakin handles everything: the skill content, any pinned binaries, and a guided step ' +
+      'for the API key it needs. Works with any runtime unless badged otherwise.',
   },
   packs: {
     title: 'Reusable building blocks',
@@ -126,12 +134,13 @@ function ExplorePageInner() {
   // Lessons are a first-class section even while the catalog has none —
   // the intro/empty state teaches users what lessons are. Skill/workflow
   // packs stay hidden until content exists.
-  const hasPacks = entries.some((entry) => entry.kind === 'skill-pack' || entry.kind === 'workflow-pack')
+  const hasPacks = entries.some((entry) => tabOf(entry) === 'packs')
 
   const tabs = useMemo(() => {
     const base = [
       { id: 'agents', label: 'Agents' },
       { id: 'plugins', label: 'Plugins' },
+      { id: 'capabilities', label: 'Capabilities' },
       { id: 'lessons', label: 'Lessons' },
     ]
     return hasPacks ? [...base, { id: 'packs', label: 'Packs' }] : base
@@ -288,7 +297,8 @@ function ExplorePageInner() {
           icon={Compass}
           title={searchDraft.trim()
             ? 'No matches'
-            : tab === 'lessons' ? 'Lesson packs are coming' : 'Nothing here yet'}
+            : tab === 'lessons' ? 'Lesson packs are coming'
+              : tab === 'capabilities' ? 'Capability packs are coming' : 'Nothing here yet'}
           description={searchDraft.trim()
             ? `Nothing on this tab matches "${searchDraft.trim()}" — try another tab or clear the search.`
             : activeCategories.length > 0
@@ -305,6 +315,7 @@ function ExplorePageInner() {
             <CatalogCard
               key={`${entry.kind}:${entry.id}`}
               entry={entry}
+              activeAdapter={data?.activeAdapter}
               onSelect={(selectedEntry) => setSelectedKey(`${selectedEntry.kind}:${selectedEntry.id}`)}
               onInstall={(installTarget) => {
                 setInstallEntry(installTarget)

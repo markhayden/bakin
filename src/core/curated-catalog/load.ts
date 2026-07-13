@@ -12,6 +12,7 @@
  * degradation logs loudly. The shipped file itself is CI-gated by
  * tests/core/curated-catalog.test.ts.
  */
+import { readFileSync } from 'fs'
 import curatedCatalogJson from '../../../packages/host/src/data/curated-catalog.json'
 import { EMBEDDED_ASSETS } from '../../../packages/host/src/api/_embedded-assets'
 import { createLogger } from '../logger'
@@ -34,13 +35,33 @@ function describeIssues(error: { issues: Array<{ path: PropertyKey[]; message: s
 }
 
 /**
+ * Normalize the static JSON import. Bun caches modules by PATH, not by
+ * import attributes: when `_embedded-assets-static.ts` (evaluated first in
+ * server.ts) imports this same file `with { type: 'file' }`, our plain JSON
+ * import resolves to that cached module — a file-path STRING, not parsed
+ * JSON — and every source-run server silently degraded the static catalog
+ * to empty. Detect the string form and read/parse the file ourselves (works
+ * identically for the compiled binary's embedded $bunfs path). Pinned by
+ * tests/core/curated-catalog-import-collision.test.ts.
+ */
+function shippedCatalogRaw(): unknown {
+  if (typeof curatedCatalogJson !== 'string') return curatedCatalogJson
+  try {
+    return JSON.parse(readFileSync(curatedCatalogJson, 'utf-8')) as unknown
+  } catch (err) {
+    log().error('failed to read shipped catalog through file-typed module', err instanceof Error ? err : undefined)
+    return null
+  }
+}
+
+/**
  * Synchronous parse of the statically imported shipped catalog. Never throws:
  * module-load consumers (RECOMMENDED_AGENTS/RECOMMENDED_PLUGINS) must not
  * crash server startup or the CLI on a bad catalog edit — they degrade to an
  * empty list with a loud log, and CI pins validity of the shipped file.
  */
 export function staticCuratedCatalog(): CatalogFile {
-  const parsed = CatalogFileSchema.safeParse(curatedCatalogJson)
+  const parsed = CatalogFileSchema.safeParse(shippedCatalogRaw())
   if (!parsed.success) {
     log().error('shipped curated-catalog.json failed schema validation — catalog degraded to empty', undefined, {
       issues: describeIssues(parsed.error),
@@ -90,5 +111,5 @@ export async function loadCatalogFile(staticCatalogJson: unknown): Promise<Catal
 }
 
 export async function loadUnifiedCatalog(): Promise<CatalogFile> {
-  return loadCatalogFile(curatedCatalogJson)
+  return loadCatalogFile(shippedCatalogRaw())
 }

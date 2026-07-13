@@ -91,4 +91,42 @@ describe('shipped curated-catalog.json', () => {
       expect(entry.useCases.length).toBeGreaterThan(0)
     }
   })
+
+  it('accepts capability + runtimes facets and defaults runtimes to ["*"]', () => {
+    const entry = CatalogFileSchema.parse({
+      version: 2,
+      updatedAt: '2026-07-12',
+      entries: [{
+        id: 'web-search-brave',
+        kind: 'skill-pack',
+        name: 'Web Search (Brave)',
+        description: 'Teach agents web search',
+        category: 'capability',
+        trust: 'official',
+        source: 'github:markhayden/bakin-bits-official#packs/web-search-brave',
+        capability: 'web-search',
+        useCases: ['research'],
+      }],
+    }).entries[0]
+    expect(entry.capability).toBe('web-search')
+    expect(entry.runtimes).toEqual(['*'])
+  })
+
+  it('rejects malformed capability slugs and runtime tags', () => {
+    const base = {
+      version: 2,
+      updatedAt: '2026-07-12',
+      entries: [{
+        id: 'x', kind: 'skill-pack', name: 'X', description: 'd', category: 'c',
+        trust: 'official', source: 'github:u/r', useCases: ['u'],
+      }],
+    }
+    const badCap = structuredClone(base) as any
+    badCap.entries[0].capability = 'Not A Slug!'
+    expect(CatalogFileSchema.safeParse(badCap).success).toBe(false)
+
+    const badRuntime = structuredClone(base) as any
+    badRuntime.entries[0].runtimes = ['PI RUNTIME']
+    expect(CatalogFileSchema.safeParse(badRuntime).success).toBe(false)
+  })
 })

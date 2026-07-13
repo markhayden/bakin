@@ -18,6 +18,8 @@ export interface ExploreCatalogEntry extends CatalogEntry {
 
 export interface ExploreCatalogResponse {
   ok: true
+  /** Active runtime adapter name — cards badge/gate runtime-specific entries against it. */
+  activeAdapter: string
   /** updatedAt of the embedded catalog. */
   updatedAt: string
   /** updatedAt of the cached remote catalog, when one has been fetched. */
@@ -29,4 +31,10 @@ export interface ExploreCatalogResponse {
    * (unknown), never "up to date".
    */
   probeErrors?: number
+}
+
+/** Runtime-compat: universal ('*') or tagged with the active adapter. */
+export function runtimeCompatible(entry: Pick<ExploreCatalogEntry, 'runtimes'>, activeAdapter: string | undefined): boolean {
+  if (!entry.runtimes || entry.runtimes.includes('*')) return true
+  return activeAdapter !== undefined && entry.runtimes.includes(activeAdapter)
 }

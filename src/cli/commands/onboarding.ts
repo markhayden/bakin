@@ -122,7 +122,7 @@ export async function cmdOnboardingSettingsInit(options: { json?: boolean } = {}
 }
 
 async function cmdOnboardingCheckSingle(
-  target: 'runtime' | 'search' | 'search-models' | 'llm' | 'channels' | 'plugin-assets' | 'agent-sync' | 'recommended-plugins' | 'recommended-agents',
+  target: 'runtime' | 'search' | 'search-models' | 'llm' | 'channels' | 'plugin-assets' | 'agent-sync' | 'recommended-plugins' | 'recommended-agents' | 'capabilities',
   options: { verbose?: boolean } = {},
 ): Promise<void> {
   const componentMap: Record<string, () => Promise<{ check(): Promise<import('../../core/onboarding/types').CheckResult> }>> = {
@@ -135,6 +135,7 @@ async function cmdOnboardingCheckSingle(
     'agent-sync': async () => (await import('../../core/onboarding/agent-sync')).agentSyncComponent,
     'recommended-plugins': async () => (await import('../../core/onboarding/recommended-plugins')).recommendedPluginsComponent,
     'recommended-agents': async () => (await import('../../core/onboarding/recommended-agents')).recommendedAgentsComponent,
+    'capabilities': async () => (await import('../../core/onboarding/recommended-capabilities')).recommendedCapabilitiesComponent,
   }
   const isTTY = Boolean(process.stdout.isTTY)
   const result = await withTtyRuntimeLogsSilenced({ isTTY, verbose: options.verbose }, async () => {
@@ -178,6 +179,7 @@ async function cmdOnboardingInstallSingle(target: string, args: string[]): Promi
     'agent-sync': async () => (await import('../../core/onboarding/agent-sync')).agentSyncComponent,
     'recommended-plugins': async () => (await import('../../core/onboarding/recommended-plugins')).recommendedPluginsComponent,
     'recommended-agents': async () => (await import('../../core/onboarding/recommended-agents')).recommendedAgentsComponent,
+    'capabilities': async () => (await import('../../core/onboarding/recommended-capabilities')).recommendedCapabilitiesComponent,
   }
   const isTTY = Boolean(process.stdout.isTTY)
   const autoApprove = args.includes('--yes')
@@ -357,15 +359,15 @@ export async function run(args: string[]): Promise<void> {
   } else if (cmd === 'mkdir') {
     await cmdOnboardingMkdir({ json: args.includes('--json') })
   } else if (cmd === 'check') {
-    if (sub === 'runtime' || sub === 'search' || sub === 'search-models' || sub === 'llm' || sub === 'channels' || sub === 'plugin-assets' || sub === 'agent-sync' || sub === 'recommended-plugins' || sub === 'recommended-agents') {
+    if (sub === 'runtime' || sub === 'search' || sub === 'search-models' || sub === 'llm' || sub === 'channels' || sub === 'plugin-assets' || sub === 'agent-sync' || sub === 'recommended-plugins' || sub === 'recommended-agents' || sub === 'capabilities') {
       await cmdOnboardingCheckSingle(sub, { verbose: args.includes('--verbose') })
     } else if (sub === 'all') {
       await cmdOnboardingCheckAll({ verbose: args.includes('--verbose') })
     } else {
-      await exitUnknownSubcommand('check', sub, ['runtime', 'search', 'search-models', 'llm', 'channels', 'plugin-assets', 'agent-sync', 'recommended-plugins', 'recommended-agents', 'all'])
+      await exitUnknownSubcommand('check', sub, ['runtime', 'search', 'search-models', 'llm', 'channels', 'plugin-assets', 'agent-sync', 'recommended-plugins', 'recommended-agents', 'capabilities', 'all'])
     }
   } else if (cmd === 'install') {
-    if (sub === 'search' || sub === 'search-models' || sub === 'plugin-assets' || sub === 'agent-sync' || sub === 'recommended-plugins' || sub === 'recommended-agents') {
+    if (sub === 'search' || sub === 'search-models' || sub === 'plugin-assets' || sub === 'agent-sync' || sub === 'recommended-plugins' || sub === 'recommended-agents' || sub === 'capabilities') {
       await cmdOnboardingInstallSingle(sub, args)
     } else {
       await exitUnknownSubcommand('install', sub, ['search', 'search-models', 'plugin-assets', 'agent-sync', 'recommended-plugins', 'recommended-agents'])

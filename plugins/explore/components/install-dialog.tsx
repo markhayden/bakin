@@ -25,6 +25,30 @@ import type { ExploreCatalogEntry } from '../types'
 
 type InstallKind = 'agent' | 'plugin' | 'skill-pack' | 'workflow-pack' | 'lesson-pack'
 
+/** Missing, store-backable secrets from a capability-pack install response. */
+interface CapabilityKeyStep {
+  packName: string
+  capability: string
+  secrets: Array<{ name: string; secretSlot: string; help?: string }>
+}
+
+function keyStepFrom(responseBody: {
+  capability?: {
+    name?: string
+    capability?: string
+    secrets?: Array<{ name: string; secretSlot?: string; help?: string; status?: string }>
+  }
+}): CapabilityKeyStep | null {
+  const cap = responseBody.capability
+  if (!cap?.capability) return null
+  const missing = (cap.secrets ?? [])
+    .filter((s): s is { name: string; secretSlot: string; help?: string; status?: string } =>
+      s.status === 'missing' && typeof s.secretSlot === 'string')
+    .map(({ name, secretSlot, help }) => ({ name, secretSlot, help }))
+  if (missing.length === 0) return null
+  return { packName: cap.name ?? cap.capability, capability: cap.capability, secrets: missing }
+}
+
 const KIND_OPTIONS: Array<{ value: InstallKind; label: string }> = [
   { value: 'agent', label: 'Agent' },
   { value: 'plugin', label: 'Plugin' },
@@ -67,6 +91,8 @@ export function InstallDialog({
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [consent, setConsent] = useState<ConsentRequest | null>(null)
+  const [keyStep, setKeyStep] = useState<CapabilityKeyStep | null>(null)
+  const [keyDrafts, setKeyDrafts] = useState<Record<string, string>>({})
 
   // Curated entries carry a ref pin — honor it exactly like onboarding does
   // (agent/pack specs embed @ref into the source; plugin installs send ref).
@@ -79,6 +105,8 @@ export function InstallDialog({
       setError(null)
       setConsent(null)
       setSubmitting(false)
+      setKeyStep(null)
+      setKeyDrafts({})
     }
     onOpenChange(nextOpen)
   }
@@ -132,6 +160,7 @@ export function InstallDialog({
         version?: string
         permissions?: string[]
         consentToken?: string
+        capability?: Parameters<typeof keyStepFrom>[0]['capability']
       }
       if (responseBody.awaitingConsent && responseBody.consentToken) {
         setConsent({
@@ -145,6 +174,14 @@ export function InstallDialog({
       }
       if (!res.ok || responseBody.ok === false) {
         setError(responseBody.error ?? `HTTP ${res.status}`)
+        return
+      }
+      // Capability packs with missing store-backable keys get the guided
+      // key step (story 2) — the install itself already succeeded.
+      const needs = keyStepFrom(responseBody)
+      if (needs) {
+        onInstalled()
+        setKeyStep(needs)
         return
       }
       finishSuccess()
@@ -175,6 +212,86 @@ export function InstallDialog({
       accepted: true,
       consentToken: accepted.consentToken,
     })
+  }
+
+  const saveKeys = async () => {
+    if (!keyStep) return
+    setSubmitting(true)
+    setError(null)
+    try {
+      for (const secret of keyStep.secrets) {
+        const value = (keyDrafts[secret.name] ?? '').trim()
+        if (!value) continue
+        const [provider, name] = secret.secretSlot.split('.', 2)
+        const res = await fetch('/api/secrets', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ provider, name, value }),
+        })
+        if (!res.ok) {
+          const body = await res.json().catch(() => null) as { error?: string } | null
+          setError(body?.error ?? `Failed to store ${secret.name}`)
+          return
+        }
+      }
+      finishSuccess()
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  if (keyStep) {
+    return (
+      <Dialog open={open} onOpenChange={close}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{keyStep.packName} is installed — one more step</DialogTitle>
+            <DialogDescription>
+              This capability needs a key to work. Paste it here (stored masked in Bakin,
+              never displayed again) or skip and add it later in Settings → Integrations &amp; Keys.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-4" data-testid="capability-key-step">
+            {keyStep.secrets.map((secret) => (
+              <div key={secret.name} className="flex flex-col gap-2">
+                <Label htmlFor={`cap-key-${secret.name}`}>{secret.name}</Label>
+                <Input
+                  id={`cap-key-${secret.name}`}
+                  type="password"
+                  placeholder="Paste key…"
+                  value={keyDrafts[secret.name] ?? ''}
+                  onChange={(e) => setKeyDrafts((d) => ({ ...d, [secret.name]: e.target.value }))}
+                />
+                {secret.help && (
+                  <p className="text-xs text-muted-foreground">
+                    Get one at <a className="underline" href={secret.help} target="_blank" rel="noreferrer">{secret.help}</a>
+                  </p>
+                )}
+              </div>
+            ))}
+            {error && (
+              <div role="alert" className="rounded border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+                {error}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" disabled={submitting} onClick={() => finishSuccess()}>
+              Skip for now
+            </Button>
+            <Button
+              type="button"
+              disabled={submitting || keyStep.secrets.every((s) => !(keyDrafts[s.name] ?? '').trim())}
+              onClick={() => void saveKeys()}
+              data-testid="capability-key-save"
+            >
+              {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Save key
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    )
   }
 
   return (

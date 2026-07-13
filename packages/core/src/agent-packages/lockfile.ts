@@ -25,6 +25,10 @@ const ProjectionKindSchema = z.enum([
   'workspace-file',
   // Team persona seed (seeded-if-missing; never overwritten or reclaimed).
   'persona',
+  // Capability-pack binary installed into the Bakin bin dir. Removal is
+  // refcount-aware in the uninstaller: a bin whose target is also projected
+  // by another installed package survives that uninstall.
+  'bin',
   // Legacy (pre-layered-context). New code never writes lesson-marker
   // projections — lessons are composed into the workspace-file block. Kept in
   // the enum only so pre-migration lockfiles parse; the one-time migration
@@ -52,6 +56,7 @@ export interface ProjectionKindPolicy {
 export const PROJECTION_KIND_POLICY: Record<ProjectionKind, ProjectionKindPolicy> = {
   skill: { seedOnce: false, sidecarless: false, survivesUninstall: false },
   asset: { seedOnce: false, sidecarless: false, survivesUninstall: false },
+  bin: { seedOnce: false, sidecarless: false, survivesUninstall: false },
   'workspace-file': { seedOnce: false, sidecarless: true, survivesUninstall: true },
   persona: { seedOnce: true, sidecarless: true, survivesUninstall: true },
   'lesson-marker': { seedOnce: false, sidecarless: true, survivesUninstall: true },

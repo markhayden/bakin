@@ -503,6 +503,7 @@ describe('projectPackage — skill-pack', () => {
       name: 'Visual Skills',
       version: '0.3.1',
       contributions: { skills: ['skills/image-gen'] },
+      runtimes: ['*'],
     }
 
     const result = await projectPackage({

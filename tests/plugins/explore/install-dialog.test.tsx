@@ -38,6 +38,7 @@ const agentEntry: ExploreCatalogEntry = {
   category: 'Creative',
   tags: [],
   useCases: [],
+  runtimes: ['*'],
   source: 'github:markhayden/bakin-bits-official#agents/pixel',
   ref: null,
   trust: 'official',
@@ -265,5 +266,76 @@ describe('InstallDialog', () => {
     expect(url).toBe('/api/agent-packages/install')
     expect(body.adopt).toBe('foo-two')
     expect(body.installAs).toBe('foo-two')
+  })
+
+  it('capability-pack installs with a missing key show the guided key step, store, and finish', async () => {
+    const capEntry: ExploreCatalogEntry = {
+      ...agentEntry,
+      id: 'web-search-brave',
+      kind: 'skill-pack',
+      name: 'Web Search (Brave)',
+      capability: 'web-search',
+      source: 'github:markhayden/bakin-bits-official#packs/web-search-brave',
+    }
+    fetchMock = mock((url: string) => {
+      if (url === '/api/packages/install') {
+        return Promise.resolve(jsonResponse({
+          ok: true,
+          result: { packageId: 'web-search-brave' },
+          capability: {
+            capability: 'web-search',
+            name: 'Web Search (Brave)',
+            ready: false,
+            missing: ['BRAVE_SEARCH_API_KEY is not configured'],
+            secrets: [{ name: 'BRAVE_SEARCH_API_KEY', secretSlot: 'brave.apiKey', help: 'https://api-dashboard.search.brave.com', status: 'missing', required: true }],
+          },
+        }))
+      }
+      return Promise.resolve(jsonResponse({ ok: true }))
+    })
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+
+    const onInstalled = mock()
+    const onOpenChange = mock()
+    render(<InstallDialog open onOpenChange={onOpenChange} entry={capEntry} onInstalled={onInstalled} />)
+    fireEvent.click(screen.getByTestId('install-submit'))
+
+    await waitFor(() => screen.getByTestId('capability-key-step'))
+    expect(onInstalled).toHaveBeenCalled() // install itself already succeeded
+    expect(screen.getByText(/api-dashboard\.search\.brave\.com/)).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText('BRAVE_SEARCH_API_KEY'), { target: { value: 'bsk-1' } })
+    fireEvent.click(screen.getByTestId('capability-key-save'))
+
+    await waitFor(() => {
+      const secretsPost = fetchMock.mock.calls.find(([u]) => u === '/api/secrets')
+      expect(secretsPost).toBeTruthy()
+      expect(JSON.parse(String((secretsPost![1] as RequestInit).body))).toEqual({ provider: 'brave', name: 'apiKey', value: 'bsk-1' })
+    })
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false))
+  })
+
+  it('the key step can be skipped — dialog closes, install stands', async () => {
+    const capEntry: ExploreCatalogEntry = {
+      ...agentEntry, id: 'web-search-brave', kind: 'skill-pack', name: 'Web Search (Brave)',
+      capability: 'web-search', source: 'github:x/y#packs/web-search-brave',
+    }
+    fetchMock = mock(() => Promise.resolve(jsonResponse({
+      ok: true,
+      result: { packageId: 'web-search-brave' },
+      capability: {
+        capability: 'web-search', name: 'Web Search (Brave)', ready: false, missing: ['key'],
+        secrets: [{ name: 'BRAVE_SEARCH_API_KEY', secretSlot: 'brave.apiKey', status: 'missing', required: true }],
+      },
+    })))
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+
+    const onOpenChange = mock()
+    render(<InstallDialog open onOpenChange={onOpenChange} entry={capEntry} onInstalled={mock()} />)
+    fireEvent.click(screen.getByTestId('install-submit'))
+    await waitFor(() => screen.getByTestId('capability-key-step'))
+    fireEvent.click(screen.getByText('Skip for now'))
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false))
+    expect(fetchMock.mock.calls.filter(([u]) => u === '/api/secrets')).toHaveLength(0)
   })
 })

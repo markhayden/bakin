@@ -53,6 +53,7 @@ import { llmComponent, channelsComponent } from './credentials'
 import { budgetComponent } from './budget'
 import { recommendedPluginsComponent } from './recommended-plugins'
 import { recommendedAgentsComponent } from './recommended-agents'
+import { recommendedCapabilitiesComponent } from './recommended-capabilities'
 import { saveState, clearMarker } from './state'
 import type { CheckResult, OnboardingComponent, OnboardingOptions } from './types'
 import type { ComponentStatus } from './state'
@@ -96,6 +97,7 @@ export const COMPONENT_ORDER: readonly OnboardingComponent[] = [
   channelsComponent,
   recommendedPluginsComponent,
   recommendedAgentsComponent,
+  recommendedCapabilitiesComponent,
 ] as const
 
 /**
