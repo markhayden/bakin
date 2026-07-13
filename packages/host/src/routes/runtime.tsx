@@ -79,7 +79,7 @@ function RuntimePage() {
           </Button>
         }
       />
-      <div className="mx-auto w-full max-w-5xl flex-1 space-y-6 p-6">
+      <div className="flex-1 space-y-6 p-6">
         <UnderlineTabs tabs={TABS} value={tab} onValueChange={setTab} />
 
         {reportError && (
