@@ -25,7 +25,7 @@ interface ScriptedComponent {
   installCalls: number
 }
 
-const COMPONENT_NAMES = ['mkdir', 'settings', 'runtime', 'search', 'search-models', 'openclaw-integration', 'plugin-assets', 'agent-sync', 'llm', 'budget', 'channels', 'recommended-plugins', 'recommended-agents'] as const
+const COMPONENT_NAMES = ['mkdir', 'settings', 'runtime', 'search', 'search-models', 'openclaw-integration', 'plugin-assets', 'agent-sync', 'llm', 'budget', 'channels', 'recommended-plugins', 'recommended-agents', 'capabilities'] as const
 
 let scripts: Record<(typeof COMPONENT_NAMES)[number], ScriptedComponent>
 
@@ -80,6 +80,9 @@ mock.module('../../../src/core/onboarding/recommended-plugins', () => ({
 mock.module('../../../src/core/onboarding/recommended-agents', () => ({
   recommendedAgentsComponent: makeMock('recommended-agents'),
   RECOMMENDED_AGENTS: [],
+}))
+mock.module('../../../src/core/onboarding/recommended-capabilities', () => ({
+  recommendedCapabilitiesComponent: makeMock('capabilities'),
 }))
 
 mock.module('../../../src/core/onboarding/state', () => ({
@@ -241,7 +244,7 @@ describe('runOnboard orchestrator', () => {
   // ---------------------------------------------------------------------------
 
   describe('COMPONENT_ORDER', () => {
-    it('contains exactly the 14 expected components in the spec order', () => {
+    it('contains exactly the 15 expected components in the spec order', () => {
       expect(COMPONENT_ORDER.map((c) => c.name)).toEqual([
         'mkdir',
         'settings',
@@ -256,6 +259,7 @@ describe('runOnboard orchestrator', () => {
         'channels',
         'recommended-plugins',
         'recommended-agents',
+        'capabilities',
       ])
     })
   })
@@ -295,6 +299,7 @@ describe('runOnboard orchestrator', () => {
         channels: 'ok',
         'recommended-plugins': 'ok',
         'recommended-agents': 'ok',
+        capabilities: 'ok',
       })
     })
 
