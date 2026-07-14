@@ -98,11 +98,73 @@ const BinRequirementSchema = z.object({
   verifyArgs: z.array(z.string()).optional(),
 })
 
+/** Pack-relative path: no absolute paths, no traversal above the pack root. */
+const packRelativePath = (label: string) =>
+  z.string().min(1).refine(
+    (p) => !p.startsWith('/') && !p.split('/').includes('..'),
+    { message: `${label} must be a pack-relative path (no absolute paths or ..)` },
+  )
+
+/** Exact semver pin — install reproducibility; ranges drift under our feet. */
+const EXACT_SEMVER_RE = /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/
+
+const NpmRequirementSchema = z.object({
+  /** Payload name — becomes `<bakin-home>/npm/<packId>/<name>/` (unversioned so SKILL.md can reference it). */
+  name: z.string().regex(/^[a-z0-9][a-z0-9._-]{0,63}$/i, { message: 'npm payload name must be a safe slug' }),
+  /** Pack-relative dir whose files (scripts) are copied verbatim into the payload dir. */
+  source: packRelativePath('npm payload source'),
+  /** Exact-pinned dependencies installed into the payload dir (`bun install --ignore-scripts`). */
+  dependencies: z.record(z.string(), z.string().regex(EXACT_SEMVER_RE, { message: 'npm dependency versions must be exact pins (1.2.3), not ranges' })),
+  /** Env vars set for the dependency install run only (e.g. PUPPETEER_SKIP_DOWNLOAD). */
+  env: z.record(z.string(), z.string()).optional(),
+})
+
+const ModelRequirementSchema = z.object({
+  name: z.string().regex(/^[a-z0-9][a-z0-9._-]{0,63}$/i, { message: 'model name must be a safe slug' }),
+  /** Direct download URL — same https-or-loopback rule as bin downloads. */
+  url: BinDownloadSchema.shape.url,
+  sha256: BinDownloadSchema.shape.sha256,
+  /** Declared size — drives the install consent prompt; large models never surprise-download. */
+  bytes: z.number().int().positive(),
+  /** Destination relative to the Bakin models dir. */
+  dest: packRelativePath('model dest'),
+  /**
+   * Env vars injected at server boot so the consuming binary finds the model
+   * (secret-env pattern). The literal `{dest}` expands to the absolute path.
+   */
+  env: z.record(z.string(), z.string()).optional(),
+})
+
+const PrereqRequirementSchema = z
+  .object({
+    /** Human name shown in readiness/doctor findings. */
+    name: z.string().min(1),
+    kind: z.enum(['binary', 'app']),
+    /** binary: a PATH lookup name. app: an absolute path that must exist. */
+    probe: z.string().min(1),
+    /** Where the user gets it — readiness remediation links here. */
+    help: z.string().url(),
+  })
+  .refine((p) => (p.kind === 'app' ? p.probe.startsWith('/') : !p.probe.includes('/')), {
+    message: 'app probes must be absolute paths; binary probes must be bare PATH names',
+  })
+
 const RequiresSchema = z
   .object({
     bins: z.array(BinRequirementSchema).optional(),
+    npm: z.array(NpmRequirementSchema).optional(),
+    models: z.array(ModelRequirementSchema).optional(),
+    /** Checked, never installed — external software the pack needs present. */
+    prereqs: z.array(PrereqRequirementSchema).optional(),
   })
   .optional()
+
+/**
+ * Pack-level OS/arch gate. Omitted = every platform. A pack whose bins or
+ * models only exist for some platforms declares them here so readiness
+ * reports "not available for this platform" instead of "missing".
+ */
+const PlatformsSchema = z.array(z.enum(BIN_PLATFORM_KEYS)).min(1).optional()
 
 /**
  * Runtime compatibility tags: `['*']` (default — skills are a cross-runtime
@@ -278,6 +340,7 @@ export const SkillPackManifestSchema = z.object({
   capability: CapabilitySlugSchema.optional(),
   runtimes: RuntimesSchema,
   requires: RequiresSchema,
+  platforms: PlatformsSchema,
 })
 
 export const WorkflowPackManifestSchema = z.object({
@@ -313,6 +376,9 @@ export type SecretDeclaration = z.infer<typeof SecretDeclarationSchema>
 export type PackageKind = Manifest['kind']
 export type BinRequirement = z.infer<typeof BinRequirementSchema>
 export type BinDownload = z.infer<typeof BinDownloadSchema>
+export type NpmRequirement = z.infer<typeof NpmRequirementSchema>
+export type ModelRequirement = z.infer<typeof ModelRequirementSchema>
+export type PrereqRequirement = z.infer<typeof PrereqRequirementSchema>
 
 // ─── Parse entry points ──────────────────────────────────────────────────────
 
