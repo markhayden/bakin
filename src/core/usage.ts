@@ -43,8 +43,12 @@ export interface UsageQuery {
   kind?: UsageKind
   window: WindowKey
   agent?: string
-  /** Include verified cadence-only success. Routine failures and result gaps always remain visible. */
+  /** Include verified cadence-only success. Routine failures, result gaps, and cancellations remain visible. */
   includeRoutine?: boolean
+  /** Zero-based offset into failure groups after severity/recency ranking. */
+  failureGroupOffset?: number
+  /** Bounded number of ranked failure groups to return. */
+  failureGroupLimit?: number
 }
 
 export interface TopByNameRow {
@@ -61,8 +65,61 @@ export interface ByAgentRow {
   lastActivity: UsageEntry | null
 }
 
+export interface UsageOutcomeCounts {
+  failed: number
+  unverified: number
+  canceled: number
+  succeeded: number
+}
+
+export interface UsageKindSummary {
+  kind: UsageKind
+  total: number
+  failures: number
+}
+
+export interface UsageFailureGroup {
+  kind: UsageKind
+  /** Backwards-compatible display alias for `destination`. */
+  name: string
+  /** Logical destination; REST route template when available, otherwise the raw interaction name. */
+  destination: string
+  /** Normalized HTTP method for REST destinations; null for non-REST or legacy rows. */
+  method: string | null
+  attempts: number
+  failures: number
+  firstFailureAt: string
+  lastFailureAt: string
+  /** Known agents attached to failed attempts only. */
+  agents: string[]
+  /** Failed attempts that did not carry an agent identity. */
+  unattributedFailures: number
+  /** Intentional system/routine failures that do not require an agent identity. */
+  systemFailures: number
+  /** Median across failed attempts with a recorded duration. */
+  medianFailureDurationMs: number | null
+  /** Newest failed event in this group, independent of the global recent-event cap. */
+  latestFailure: UsageEntry
+}
+
+export interface UsageFailureGroupPage {
+  total: number
+  offset: number
+  limit: number
+  hasMore: boolean
+}
+
 export interface UsageFeed {
+  window: WindowKey
+  coverage: InteractionCoverage
   totals: { count: number; errors: number; errorRate: number }
+  /** Exact terminal outcome counts across the full filtered window, not the recent cap. */
+  outcomes: UsageOutcomeCounts
+  /** Stable mcp/rest/agent rows, including zero-count kinds. */
+  byKind: UsageKindSummary[]
+  /** Bounded page of failure signatures across the full retained filtered window. */
+  failureGroups: UsageFailureGroup[]
+  failureGroupPage: UsageFailureGroupPage
   topByName: TopByNameRow[]
   recent: UsageEntry[]
   /** Newest failures are capped independently so successful traffic cannot hide them. */
@@ -141,6 +198,9 @@ const MAX_ENTRIES = 10_000
 const IDLE_THRESHOLD_MS = 30_000
 const TOP_N = 10
 const RECENT_N = 50
+const USAGE_KINDS: UsageKind[] = ['mcp', 'rest', 'agent']
+export const DEFAULT_FAILURE_GROUP_LIMIT = 25
+export const MAX_FAILURE_GROUP_LIMIT = 100
 
 interface UsageState {
   entries: UsageEntry[]
@@ -326,7 +386,13 @@ function filterEntries(query: UsageQuery, now = Date.now()): UsageEntry[] {
     if (isNaN(ts) || ts < cutoff || ts > now) continue
     if (query.kind && e.kind !== query.kind) continue
     if (query.agent && e.agent !== query.agent) continue
-    if (!query.includeRoutine && e.activityClass === 'routine' && e.status === 'ok') continue
+    if (
+      !query.includeRoutine
+      && e.activityClass === 'routine'
+      && e.status === 'ok'
+      && !isUnverifiedInteraction(e)
+      && !isCanceledInteraction(e)
+    ) continue
     out.push(e)
   }
   return out
@@ -374,23 +440,148 @@ function median(values: number[]): number | null {
 
 export function getUsageFeed(query: UsageQuery): UsageFeed {
   const now = Date.now()
-  const entries = filterEntries({ ...query, includeRoutine: true }, now)
-    .filter(isObservableInteraction)
+  const projectedEntries = filterEntries({ ...query, includeRoutine: true }, now)
     .map(projectInteractionOutcome)
+  const observableEntries = projectedEntries.filter(isObservableInteraction)
+  const entries = observableEntries
     .filter((entry) => query.includeRoutine
       || entry.activityClass !== 'routine'
       || entry.status === 'error'
-      || isUnverifiedInteraction(entry))
+      || isUnverifiedInteraction(entry)
+      || isCanceledInteraction(entry))
   const totalCount = entries.length
   const errorCount = entries.reduce((n, e) => (e.status === 'error' ? n + 1 : n), 0)
 
+  const outcomes: UsageOutcomeCounts = { failed: 0, unverified: 0, canceled: 0, succeeded: 0 }
+  const kindCounts = new Map<UsageKind, { total: number; failures: number }>(
+    USAGE_KINDS.map((kind) => [kind, { total: 0, failures: 0 }]),
+  )
+  const attemptsByDestination = new Map<string, number>()
+  const failuresByDestination = new Map<string, {
+    kind: UsageKind
+    name: string
+    destination: string
+    method: string | null
+    failures: number
+    firstFailureAt: string
+    firstFailureMs: number
+    lastFailureAt: string
+    lastFailureMs: number
+    agents: Set<string>
+    unattributedFailures: number
+    systemFailures: number
+    durations: number[]
+    latestFailure: UsageEntry
+  }>()
+
+  // Failure recurrence must use every attempt at the failed operation. Routine
+  // success stays out of the visible feed, but it remains valid denominator
+  // evidence for a failure pattern (for example, 1 failed poll out of 60).
+  for (const entry of projectedEntries) {
+    const { key } = failureGroupSignature(entry)
+    attemptsByDestination.set(key, (attemptsByDestination.get(key) ?? 0) + 1)
+  }
+
+  for (const entry of entries) {
+    const kind = kindCounts.get(entry.kind)!
+    kind.total++
+
+    if (entry.status === 'error') {
+      outcomes.failed++
+      kind.failures++
+    } else if (isUnverifiedInteraction(entry)) {
+      outcomes.unverified++
+    } else if (isCanceledInteraction(entry)) {
+      outcomes.canceled++
+    } else {
+      outcomes.succeeded++
+    }
+
+    const signature = failureGroupSignature(entry)
+    const { destination, method, key } = signature
+    if (entry.status !== 'error') continue
+
+    const failureMs = Date.parse(entry.ts)
+    const failure = failuresByDestination.get(key) ?? {
+      kind: entry.kind,
+      name: destination,
+      destination,
+      method,
+      failures: 0,
+      firstFailureAt: entry.ts,
+      firstFailureMs: failureMs,
+      lastFailureAt: entry.ts,
+      lastFailureMs: failureMs,
+      agents: new Set<string>(),
+      unattributedFailures: 0,
+      systemFailures: 0,
+      durations: [],
+      latestFailure: entry,
+    }
+    failure.failures++
+    if (failureMs < failure.firstFailureMs) {
+      failure.firstFailureAt = entry.ts
+      failure.firstFailureMs = failureMs
+    }
+    if (failureMs >= failure.lastFailureMs) {
+      failure.lastFailureAt = entry.ts
+      failure.lastFailureMs = failureMs
+      failure.latestFailure = entry
+    }
+    if (entry.agent) failure.agents.add(entry.agent)
+    else if (entry.activityClass === 'system' || entry.activityClass === 'routine') failure.systemFailures++
+    else failure.unattributedFailures++
+    if (entry.durationMs !== null) failure.durations.push(entry.durationMs)
+    failuresByDestination.set(key, failure)
+  }
+
+  const byKind: UsageKindSummary[] = USAGE_KINDS.map((kind) => ({
+    kind,
+    ...kindCounts.get(kind)!,
+  }))
+  const rankedFailureGroups: UsageFailureGroup[] = [...failuresByDestination.entries()]
+    .map(([key, failure]) => ({
+      kind: failure.kind,
+      name: failure.name,
+      destination: failure.destination,
+      method: failure.method,
+      attempts: attemptsByDestination.get(key) ?? failure.failures,
+      failures: failure.failures,
+      firstFailureAt: failure.firstFailureAt,
+      lastFailureAt: failure.lastFailureAt,
+      agents: [...failure.agents].sort((left, right) => left.localeCompare(right)),
+      unattributedFailures: failure.unattributedFailures,
+      systemFailures: failure.systemFailures,
+      medianFailureDurationMs: median(failure.durations),
+      latestFailure: failure.latestFailure,
+    }))
+    .sort((left, right) =>
+      right.failures - left.failures
+      || Date.parse(right.lastFailureAt) - Date.parse(left.lastFailureAt)
+      || left.kind.localeCompare(right.kind)
+      || left.name.localeCompare(right.name),
+    )
+  const failureGroupOffset = normalizeFailureGroupOffset(query.failureGroupOffset)
+  const failureGroupLimit = normalizeFailureGroupLimit(query.failureGroupLimit)
+  const failureGroups = rankedFailureGroups.slice(
+    failureGroupOffset,
+    failureGroupOffset + failureGroupLimit,
+  )
+  const failureGroupPage: UsageFailureGroupPage = {
+    total: rankedFailureGroups.length,
+    offset: failureGroupOffset,
+    limit: failureGroupLimit,
+    hasMore: failureGroupOffset + failureGroups.length < rankedFailureGroups.length,
+  }
+
   const byName = new Map<string, { count: number; errors: number; durations: number[] }>()
   for (const e of entries) {
-    const bucket = byName.get(e.name) ?? { count: 0, errors: 0, durations: [] }
+    const destination = interactionDestination(e)
+    const bucket = byName.get(destination) ?? { count: 0, errors: 0, durations: [] }
     bucket.count++
     if (e.status === 'error') bucket.errors++
     if (e.durationMs !== null) bucket.durations.push(e.durationMs)
-    byName.set(e.name, bucket)
+    byName.set(destination, bucket)
   }
   const topByName: TopByNameRow[] = [...byName.entries()]
     .map(([name, b]) => ({
@@ -428,11 +619,17 @@ export function getUsageFeed(query: UsageQuery): UsageFeed {
     .slice(0, RECENT_N)
 
   return {
+    window: query.window,
+    coverage: interactionCoverage(query.window, now),
     totals: {
       count: totalCount,
       errors: errorCount,
       errorRate: totalCount > 0 ? errorCount / totalCount : 0,
     },
+    outcomes,
+    byKind,
+    failureGroups,
+    failureGroupPage,
     topByName,
     recent,
     recentFailures,
@@ -448,6 +645,47 @@ function categoryForKind(kind: UsageKind): InteractionCategory {
   if (kind === 'mcp') return 'tools'
   if (kind === 'rest') return 'api'
   return 'agents'
+}
+
+/** Prefer additive REST producer route metadata without rewriting raw event names. */
+function interactionDestination(entry: UsageEntry): string {
+  const routePattern = entry.kind === 'rest' ? entry.meta?.routePattern : undefined
+  return typeof routePattern === 'string' && routePattern.length > 0
+    ? routePattern
+    : entry.name
+}
+
+function interactionMethod(entry: UsageEntry): string | null {
+  if (entry.kind !== 'rest') return null
+  const method = entry.meta?.method
+  return typeof method === 'string' && method.trim().length > 0
+    ? method.trim().toUpperCase()
+    : null
+}
+
+function failureGroupSignature(entry: UsageEntry): {
+  destination: string
+  method: string | null
+  key: string
+} {
+  const destination = interactionDestination(entry)
+  const method = interactionMethod(entry)
+  return {
+    destination,
+    method,
+    key: JSON.stringify([entry.kind, method, destination]),
+  }
+}
+
+function normalizeFailureGroupOffset(value: number | undefined): number {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? Math.max(0, Math.floor(value))
+    : 0
+}
+
+function normalizeFailureGroupLimit(value: number | undefined): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return DEFAULT_FAILURE_GROUP_LIMIT
+  return Math.min(MAX_FAILURE_GROUP_LIMIT, Math.max(1, Math.floor(value)))
 }
 
 function interactionFailed(entry: UsageEntry): boolean {
@@ -475,7 +713,10 @@ function isObservableInteraction(entry: UsageEntry): boolean {
 }
 
 function isMeaningfulInteraction(entry: UsageEntry): boolean {
-  return entry.activityClass !== 'routine' || entry.status === 'error' || isUnverifiedInteraction(entry)
+  return entry.activityClass !== 'routine'
+    || entry.status === 'error'
+    || isUnverifiedInteraction(entry)
+    || isCanceledInteraction(entry)
 }
 
 function isUnverifiedInteraction(entry: UsageEntry): boolean {
@@ -485,7 +726,12 @@ function isUnverifiedInteraction(entry: UsageEntry): boolean {
     && entry.meta?.turnTerminalStatus === 'completed'
 }
 
-function interactionCoverage(window: WindowKey, now: number): InteractionSummary['coverage'] {
+function isCanceledInteraction(entry: UsageEntry): boolean {
+  const terminalStatus = entry.meta?.terminalStatus ?? entry.meta?.turnTerminalStatus
+  return entry.status === 'ok' && terminalStatus === 'aborted'
+}
+
+function interactionCoverage(window: WindowKey, now: number): InteractionCoverage {
   const windowMs = WINDOW_MS[window]
   const requestedStart = now - windowMs
   const rawUptimeMs = process.uptime() * 1_000
@@ -561,10 +807,11 @@ export function getInteractionSummary(query: Pick<UsageQuery, 'window'>): Intera
   >()
   for (const entry of entries) {
     const category = categoryForKind(entry.kind)
-    const key = `${category}\0${entry.name}`
+    const name = interactionDestination(entry)
+    const key = `${category}\0${name}`
     const destination = destinations.get(key) ?? {
       category,
-      name: entry.name,
+      name,
       count: 0,
       errors: 0,
       durations: [],
@@ -637,7 +884,13 @@ export function getStatsByMs(query: {
     if (isNaN(ts) || ts < cutoff || ts > now) continue
     if (query.kind && e.kind !== query.kind) continue
     if (query.agent && e.agent !== query.agent) continue
-    if (!query.includeRoutine && e.activityClass === 'routine' && e.status === 'ok') continue
+    if (
+      !query.includeRoutine
+      && e.activityClass === 'routine'
+      && e.status === 'ok'
+      && !isUnverifiedInteraction(e)
+      && !isCanceledInteraction(e)
+    ) continue
     total++
     if (e.status === 'error') errors++
   }

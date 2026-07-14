@@ -44,6 +44,37 @@ describe('createRuntimeToolUsageRecorder', () => {
     })
   })
 
+  it('preserves a direct aborted tool result and counts routine cancellation without a routine opt-in', () => {
+    const record = createRuntimeToolUsageRecorder()
+
+    record({
+      agentId: 'main',
+      activityClass: 'routine',
+      turnId: 'turn-aborted-result',
+      threadId: 'chat:chat-1',
+      phase: 'result',
+      callId: 'call-aborted-result',
+      toolName: 'web_search',
+      status: 'aborted',
+      durationMs: 12,
+    })
+
+    const feed = getUsageFeed({ kind: 'mcp', window: '1h' })
+    expect(feed.outcomes).toEqual({ failed: 0, unverified: 0, canceled: 1, succeeded: 0 })
+    expect(feed.recent).toHaveLength(1)
+    expect(feed.recent[0]).toMatchObject({
+      name: 'web_search',
+      activityClass: 'routine',
+      status: 'ok',
+      meta: {
+        source: 'runtime-native',
+        callId: 'call-aborted-result',
+        terminalStatus: 'aborted',
+      },
+    })
+    expect(feed.recent[0].meta?.resultMissing).toBeUndefined()
+  })
+
   it('reconciles Bakin exec results with their source record instead of counting them twice', () => {
     const record = createRuntimeToolUsageRecorder()
 

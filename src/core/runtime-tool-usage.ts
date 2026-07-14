@@ -62,6 +62,9 @@ export function createRuntimeToolUsageRecorder(
     const status = event.status === 'failed' ? 'error' : 'ok'
     const isBakinExec = event.toolName.startsWith('bakin_exec_')
     const observerSource = 'runtime-native-observer'
+    const terminalMeta = terminalStatus
+      ? { resultMissing: true, turnTerminalStatus: terminalStatus }
+      : { terminalStatus: event.status }
 
     if (isBakinExec && started && reconcileObservedUsage({
       kind: 'mcp',
@@ -70,9 +73,7 @@ export function createRuntimeToolUsageRecorder(
       observedStatus: status,
       observerSource,
       afterCursor: started.usageCursor,
-      ...(terminalStatus
-        ? { observationMeta: { resultMissing: true, turnTerminalStatus: terminalStatus } }
-        : {}),
+      observationMeta: terminalMeta,
     })) {
       return
     }
@@ -89,7 +90,7 @@ export function createRuntimeToolUsageRecorder(
         ...(event.callId ? { callId: event.callId } : {}),
         turnId: event.turnId,
         ...(event.threadId ? { threadId: event.threadId } : {}),
-        ...(terminalStatus ? { resultMissing: true, turnTerminalStatus: terminalStatus } : {}),
+        ...terminalMeta,
       },
     })
   }

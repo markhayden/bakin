@@ -132,7 +132,7 @@ export function OverviewPlatformPulse({
         </a>
 
         <a
-          href="/health?tab=activity"
+          href="/health?tab=activity&activity_window=1h&activity_outcome=failed"
           aria-label={`Recent failures: ${count(recentFailures, 'failed')}`}
           className="group flex min-h-20 items-center gap-3 bg-card px-4 py-3 hover:bg-foreground/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
         >

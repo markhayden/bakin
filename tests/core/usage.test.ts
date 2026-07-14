@@ -57,6 +57,47 @@ function seed(overrides: Partial<Parameters<typeof recordUsage>[0]> = {}) {
   })
 }
 
+type ActivityDashboardFeed = ReturnType<typeof getUsageFeed> & {
+  window: '5m' | '1h' | '24h'
+  coverage: {
+    startsAt: string
+    hasFullWindow: boolean
+    reason: 'full_window' | 'process_restart' | 'buffer_limit'
+  }
+  outcomes: {
+    failed: number
+    unverified: number
+    canceled: number
+    succeeded: number
+  }
+  byKind: Array<{
+    kind: 'mcp' | 'rest' | 'agent'
+    total: number
+    failures: number
+  }>
+  failureGroups: Array<{
+    kind: 'mcp' | 'rest' | 'agent'
+    name: string
+    destination: string
+    method: string | null
+    attempts: number
+    failures: number
+    firstFailureAt: string
+    lastFailureAt: string
+    agents: string[]
+    unattributedFailures: number
+    systemFailures: number
+    medianFailureDurationMs: number | null
+    latestFailure: ReturnType<typeof getUsageFeed>['recentFailures'][number]
+  }>
+  failureGroupPage: {
+    total: number
+    offset: number
+    limit: number
+    hasMore: boolean
+  }
+}
+
 describe('usage recorder', () => {
   beforeEach(() => clearUsage())
 
@@ -174,7 +215,7 @@ describe('usage recorder', () => {
       seed({ name: 'foreground', activityClass: 'user', status: 'ok' })
       seed({ name: 'background', activityClass: 'system', status: 'ok' })
       seed({ name: 'poll-ok', activityClass: 'routine', status: 'ok' })
-      seed({ name: 'poll-failed', activityClass: 'routine', status: 'error' })
+      seed({ name: 'poll-failed', activityClass: 'routine', agent: null, status: 'error' })
 
       const feed = getUsageFeed({ kind: 'mcp', window: '5m' })
       expect(feed.totals).toMatchObject({ count: 3, errors: 1 })
@@ -184,6 +225,10 @@ describe('usage recorder', () => {
         'poll-failed',
       ])
       expect(feed.recent.find((entry) => entry.name === 'poll-failed')?.activityClass).toBe('routine')
+      expect(feed.failureGroups.find((group) => group.name === 'poll-failed')).toMatchObject({
+        unattributedFailures: 0,
+        systemFailures: 1,
+      })
     })
 
     it('includes successful routine entries only when includeRoutine is explicit', () => {
@@ -193,6 +238,36 @@ describe('usage recorder', () => {
       const feed = getUsageFeed({ kind: 'mcp', window: '5m', includeRoutine: true })
       expect(feed.totals).toMatchObject({ count: 2, errors: 1 })
       expect(feed.recent.map((entry) => entry.name).sort()).toEqual(['poll-failed', 'poll-ok'])
+    })
+
+    it('keeps routine canceled work in the default feed and counts it as canceled', () => {
+      seed({ name: 'poll-ok', activityClass: 'routine', status: 'ok' })
+      seed({
+        name: 'poll-canceled',
+        activityClass: 'routine',
+        status: 'ok',
+        meta: { terminalStatus: 'aborted' },
+      })
+
+      const feed = getUsageFeed({ kind: 'mcp', window: '5m' }) as ActivityDashboardFeed
+
+      expect(feed.totals).toEqual({ count: 1, errors: 0, errorRate: 0 })
+      expect(feed.outcomes).toEqual({ failed: 0, unverified: 0, canceled: 1, succeeded: 0 })
+      expect(feed.recent).toHaveLength(1)
+      expect(feed.recent[0]).toMatchObject({
+        name: 'poll-canceled',
+        activityClass: 'routine',
+        meta: { terminalStatus: 'aborted' },
+      })
+      expect(getInteractionSummary({ window: '5m' }).totals).toEqual({
+        count: 1,
+        errors: 0,
+        unverified: 0,
+        foreground: 0,
+        background: 1,
+      })
+      expect(getUsageStats({ kind: 'mcp', window: '5m' })).toEqual({ total: 1, errors: 0 })
+      expect(getStatsByMs({ kind: 'mcp', windowMs: WINDOW_MS['5m'] })).toEqual({ total: 1, errors: 0 })
     })
 
     it('returns stable ascending failure buckets, including empty buckets', () => {
@@ -271,6 +346,331 @@ describe('usage recorder', () => {
         name: 'older-unverified',
         activityClass: 'routine',
       })
+    })
+
+    it('reports the requested window, trustworthy coverage, and exact outcomes by activity kind', () => {
+      setSystemTime(new Date('2026-07-13T12:00:00.000Z'))
+      const uptime = spyOn(process, 'uptime').mockReturnValue(2 * 60 * 60)
+      try {
+        seed({ kind: 'mcp', name: 'tool-failed', status: 'error', ts: '2026-07-13T11:10:00.000Z' })
+        seed({ kind: 'mcp', name: 'tool-unverified', status: 'ok', ts: '2026-07-13T11:11:00.000Z', meta: { resultMissing: true, turnTerminalStatus: 'completed' } })
+        seed({ kind: 'mcp', name: 'tool-canceled', status: 'ok', ts: '2026-07-13T11:12:00.000Z', meta: { resultMissing: true, turnTerminalStatus: 'aborted' } })
+        seed({ kind: 'mcp', name: 'tool-succeeded', status: 'ok', ts: '2026-07-13T11:13:00.000Z' })
+        seed({ kind: 'rest', name: '/api/failed', status: 'error', ts: '2026-07-13T11:14:00.000Z' })
+        seed({ kind: 'rest', name: '/api/succeeded', status: 'ok', ts: '2026-07-13T11:15:00.000Z' })
+        seed({ kind: 'agent', name: 'dispatch-failed', status: 'error', ts: '2026-07-13T11:16:00.000Z' })
+        seed({ kind: 'agent', name: 'dispatch-canceled', status: 'ok', ts: '2026-07-13T11:17:00.000Z', meta: { terminalStatus: 'aborted' } })
+        seed({ kind: 'agent', name: 'dispatch-succeeded', status: 'ok', ts: '2026-07-13T11:18:00.000Z' })
+
+        const feed = getUsageFeed({ window: '1h' }) as ActivityDashboardFeed
+
+        expect(feed.window).toBe('1h')
+        expect(feed.coverage).toEqual({
+          startsAt: '2026-07-13T11:00:00.000Z',
+          hasFullWindow: true,
+          reason: 'full_window',
+        })
+        expect(feed.outcomes).toEqual({
+          failed: 3,
+          unverified: 1,
+          canceled: 2,
+          succeeded: 3,
+        })
+        expect(feed.byKind).toEqual([
+          { kind: 'mcp', total: 4, failures: 1 },
+          { kind: 'rest', total: 2, failures: 1 },
+          { kind: 'agent', total: 3, failures: 1 },
+        ])
+      } finally {
+        uptime.mockRestore()
+        setSystemTime()
+      }
+    })
+
+    it('groups failures by kind and name, then sorts by failure count and recency', () => {
+      setSystemTime(new Date('2026-07-13T12:00:00.000Z'))
+      try {
+        seed({ kind: 'mcp', name: 'shared-destination', agent: 'main', status: 'error', durationMs: 20, ts: '2026-07-13T11:10:00.000Z' })
+        seed({ kind: 'mcp', name: 'shared-destination', agent: 'main', status: 'error', durationMs: 40, ts: '2026-07-13T11:20:00.000Z' })
+        seed({ kind: 'mcp', name: 'shared-destination', agent: 'pixel', status: 'ok', durationMs: 5, ts: '2026-07-13T11:30:00.000Z' })
+        seed({ kind: 'rest', name: 'shared-destination', agent: 'main', status: 'error', durationMs: 10, ts: '2026-07-13T11:35:00.000Z' })
+        seed({ kind: 'rest', name: 'shared-destination', agent: null, status: 'error', durationMs: 50, ts: '2026-07-13T11:40:00.000Z' })
+        seed({ kind: 'rest', name: 'shared-destination', agent: 'scout', status: 'error', durationMs: 30, ts: '2026-07-13T11:50:00.000Z' })
+        seed({ kind: 'rest', name: 'shared-destination', agent: 'pixel', status: 'ok', durationMs: 5, ts: '2026-07-13T11:55:00.000Z' })
+        seed({ kind: 'agent', name: 'dispatch', agent: 'patch', status: 'error', durationMs: null, ts: '2026-07-13T11:58:00.000Z' })
+
+        const feed = getUsageFeed({ window: '1h' }) as ActivityDashboardFeed
+
+        expect(feed.failureGroupPage).toEqual({ total: 3, offset: 0, limit: 25, hasMore: false })
+        expect(feed.failureGroups).toEqual([
+          {
+            kind: 'rest',
+            name: 'shared-destination',
+            destination: 'shared-destination',
+            method: null,
+            attempts: 4,
+            failures: 3,
+            firstFailureAt: '2026-07-13T11:35:00.000Z',
+            lastFailureAt: '2026-07-13T11:50:00.000Z',
+            agents: ['main', 'scout'],
+            unattributedFailures: 1,
+            systemFailures: 0,
+            medianFailureDurationMs: 30,
+            latestFailure: expect.objectContaining({
+              name: 'shared-destination',
+              agent: 'scout',
+              ts: '2026-07-13T11:50:00.000Z',
+            }),
+          },
+          {
+            kind: 'mcp',
+            name: 'shared-destination',
+            destination: 'shared-destination',
+            method: null,
+            attempts: 3,
+            failures: 2,
+            firstFailureAt: '2026-07-13T11:10:00.000Z',
+            lastFailureAt: '2026-07-13T11:20:00.000Z',
+            agents: ['main'],
+            unattributedFailures: 0,
+            systemFailures: 0,
+            medianFailureDurationMs: 30,
+            latestFailure: expect.objectContaining({
+              name: 'shared-destination',
+              agent: 'main',
+              ts: '2026-07-13T11:20:00.000Z',
+            }),
+          },
+          {
+            kind: 'agent',
+            name: 'dispatch',
+            destination: 'dispatch',
+            method: null,
+            attempts: 1,
+            failures: 1,
+            firstFailureAt: '2026-07-13T11:58:00.000Z',
+            lastFailureAt: '2026-07-13T11:58:00.000Z',
+            agents: ['patch'],
+            unattributedFailures: 0,
+            systemFailures: 0,
+            medianFailureDurationMs: null,
+            latestFailure: expect.objectContaining({
+              name: 'dispatch',
+              agent: 'patch',
+              ts: '2026-07-13T11:58:00.000Z',
+            }),
+          },
+        ])
+      } finally {
+        setSystemTime()
+      }
+    })
+
+    it('uses hidden routine successes as denominator evidence for a failed pattern', () => {
+      for (let attempt = 0; attempt < 59; attempt++) {
+        seed({
+          kind: 'mcp',
+          activityClass: 'routine',
+          name: 'search_poll',
+          status: 'ok',
+        })
+      }
+      seed({
+        kind: 'mcp',
+        activityClass: 'routine',
+        name: 'search_poll',
+        status: 'error',
+      })
+
+      const feed = getUsageFeed({ window: '5m' }) as ActivityDashboardFeed
+
+      expect(feed.totals).toEqual({ count: 1, errors: 1, errorRate: 1 })
+      expect(feed.failureGroups).toHaveLength(1)
+      expect(feed.failureGroups[0]).toMatchObject({
+        name: 'search_poll',
+        failures: 1,
+        attempts: 60,
+      })
+    })
+
+    it('uses hidden successful MCP transports as denominator evidence for a failed transport', () => {
+      for (let attempt = 0; attempt < 59; attempt++) {
+        seed({
+          kind: 'rest',
+          activityClass: 'user',
+          name: '/mcp',
+          status: 'ok',
+          meta: { method: 'POST', httpStatus: 200 },
+        })
+      }
+      seed({
+        kind: 'rest',
+        activityClass: 'user',
+        name: '/mcp',
+        status: 'error',
+        meta: { method: 'POST', httpStatus: 503 },
+      })
+
+      const feed = getUsageFeed({ kind: 'rest', window: '5m' }) as ActivityDashboardFeed
+
+      expect(feed.totals).toEqual({ count: 1, errors: 1, errorRate: 1 })
+      expect(feed.failureGroups).toHaveLength(1)
+      expect(feed.failureGroups[0]).toMatchObject({
+        destination: '/mcp',
+        method: 'POST',
+        failures: 1,
+        attempts: 60,
+      })
+    })
+
+    it('keeps exact grouped and outcome totals after the recent failure list reaches its cap', () => {
+      setSystemTime(new Date('2026-07-13T12:00:00.000Z'))
+      try {
+        for (let index = 0; index < 51; index++) {
+          seed({
+            kind: 'mcp',
+            name: 'web_search',
+            agent: index % 2 === 0 ? 'main' : 'scout',
+            status: 'error',
+            durationMs: index + 1,
+            ts: new Date(Date.parse('2026-07-13T11:10:00.000Z') + index * 1000).toISOString(),
+            meta: { sequence: index },
+          })
+        }
+        seed({
+          kind: 'mcp',
+          name: 'web_search',
+          agent: 'pixel',
+          status: 'ok',
+          durationMs: 5,
+          ts: '2026-07-13T11:20:00.000Z',
+        })
+
+        const feed = getUsageFeed({ window: '1h' }) as ActivityDashboardFeed
+
+        expect(feed.outcomes).toEqual({ failed: 51, unverified: 0, canceled: 0, succeeded: 1 })
+        expect(feed.byKind).toEqual([
+          { kind: 'mcp', total: 52, failures: 51 },
+          { kind: 'rest', total: 0, failures: 0 },
+          { kind: 'agent', total: 0, failures: 0 },
+        ])
+        expect(feed.failureGroupPage).toEqual({ total: 1, offset: 0, limit: 25, hasMore: false })
+        expect(feed.failureGroups).toEqual([{
+          kind: 'mcp',
+          name: 'web_search',
+          destination: 'web_search',
+          method: null,
+          attempts: 52,
+          failures: 51,
+          firstFailureAt: '2026-07-13T11:10:00.000Z',
+          lastFailureAt: '2026-07-13T11:10:50.000Z',
+          agents: ['main', 'scout'],
+          unattributedFailures: 0,
+          systemFailures: 0,
+          medianFailureDurationMs: 26,
+          latestFailure: expect.objectContaining({
+            name: 'web_search',
+            meta: { sequence: 50 },
+            ts: '2026-07-13T11:10:50.000Z',
+          }),
+        }])
+        expect(feed.recentFailures).toHaveLength(50)
+        expect(feed.recentFailures.map((entry) => entry.meta?.sequence)).toEqual(
+          Array.from({ length: 50 }, (_, index) => 50 - index),
+        )
+      } finally {
+        setSystemTime()
+      }
+    })
+
+    it('paginates logical failure groups by REST method and route destination with representative evidence', () => {
+      setSystemTime(new Date('2026-07-13T12:00:00.000Z'))
+      try {
+        const routePattern = '/api/plugins/tasks/:taskId'
+        for (let index = 0; index < 3; index++) {
+          seed({
+            kind: 'rest',
+            name: `/api/plugins/tasks/get-${index}`,
+            agent: 'main',
+            status: 'error',
+            durationMs: 10 + index,
+            ts: new Date(Date.parse('2026-07-13T11:10:00.000Z') + index * 1000).toISOString(),
+            meta: { routePattern, method: 'get', error: `GET failed ${index}` },
+          })
+        }
+        for (let index = 0; index < 2; index++) {
+          seed({
+            kind: 'rest',
+            name: `/api/plugins/tasks/post-${index}`,
+            agent: index === 0 ? null : 'pixel',
+            status: 'error',
+            durationMs: 20 + index,
+            ts: new Date(Date.parse('2026-07-13T11:20:00.000Z') + index * 1000).toISOString(),
+            meta: { routePattern, method: 'POST', error: `POST failed ${index}` },
+          })
+        }
+        seed({
+          kind: 'mcp',
+          name: 'web_search',
+          agent: 'scout',
+          status: 'error',
+          durationMs: 30,
+          ts: '2026-07-13T11:30:00.000Z',
+          meta: { error: 'Search unavailable' },
+        })
+
+        const feed = getUsageFeed({
+          window: '1h',
+          failureGroupOffset: 1,
+          failureGroupLimit: 1,
+        }) as ActivityDashboardFeed
+
+        expect(feed.outcomes.failed).toBe(6)
+        expect(feed.failureGroupPage).toEqual({
+          total: 3,
+          offset: 1,
+          limit: 1,
+          hasMore: true,
+        })
+        expect(feed.failureGroups).toHaveLength(1)
+        expect(feed.failureGroups[0]).toMatchObject({
+          kind: 'rest',
+          name: routePattern,
+          destination: routePattern,
+          method: 'POST',
+          attempts: 2,
+          failures: 2,
+          agents: ['pixel'],
+          unattributedFailures: 1,
+          systemFailures: 0,
+          latestFailure: {
+            name: '/api/plugins/tasks/post-1',
+            status: 'error',
+            meta: { routePattern, method: 'POST', error: 'POST failed 1' },
+          },
+        })
+
+        const finalPage = getUsageFeed({
+          window: '1h',
+          failureGroupOffset: 2,
+          failureGroupLimit: 1,
+        }) as ActivityDashboardFeed
+        expect(finalPage.failureGroupPage).toEqual({
+          total: 3,
+          offset: 2,
+          limit: 1,
+          hasMore: false,
+        })
+        expect(finalPage.failureGroups[0]).toMatchObject({
+          kind: 'mcp',
+          name: 'web_search',
+          destination: 'web_search',
+          method: null,
+          latestFailure: { name: 'web_search' },
+        })
+      } finally {
+        setSystemTime()
+      }
     })
 
     it('auto-stamps ts if not provided', () => {

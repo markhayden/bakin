@@ -13,6 +13,7 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 import type { HealthReport } from '@makinbakin/sdk/types'
 import type { ActivatedPlugin } from '../test-helpers'
+import type { UsageEntry as HealthUsageEntry } from '../../../plugins/health/types'
 
 const testDir = join(tmpdir(), `bakin-test-health-routes-${Date.now()}`)
 
@@ -434,7 +435,10 @@ describe('Health Plugin Routes', () => {
 
   describe('GET /usage-feed', () => {
     it('returns usage entries from the real recorder', async () => {
-      recordUsage({ kind: 'mcp', activityClass: 'user', name: 'bakin_exec_tasks_list', agent: 'main-operator', durationMs: 12, status: 'ok' })
+      recordUsage({
+        kind: 'mcp', activityClass: 'user', name: 'bakin_exec_tasks_list', agent: 'main-operator', durationMs: 12, status: 'ok',
+        tokensIn: 120, tokensOut: 30, tokensCacheRead: 80, tokensCacheWrite: 10, costUsdMicros: 4_200,
+      })
       recordUsage({ kind: 'mcp', activityClass: 'user', name: 'bakin_exec_tasks_list', agent: 'main-operator', durationMs: 8, status: 'ok' })
       recordUsage({ kind: 'rest', activityClass: 'user', name: '/api/plugins/tasks/list', agent: null, durationMs: 20, status: 'ok' })
 
@@ -447,7 +451,7 @@ describe('Health Plugin Routes', () => {
       expect(status).toBe(200)
       const totals = (body as { totals: { count: number } }).totals
       const topByName = (body as { topByName: Array<{ name: string; count: number }> }).topByName
-      const recent = (body as { recent: Array<{ id: string }> }).recent
+      const recent = (body as { recent: HealthUsageEntry[] }).recent
       const recentFailures = (body as { recentFailures: Array<{ id: string }> }).recentFailures
       const recentUnverified = (body as { recentUnverified: Array<{ id: string }> }).recentUnverified
       expect(totals.count).toBe(2)
@@ -455,8 +459,158 @@ describe('Health Plugin Routes', () => {
       expect(topByName[0].count).toBe(2)
       expect(recent).toHaveLength(2)
       expect(new Set(recent.map((entry) => entry.id)).size).toBe(2)
+      const metered = recent.find((entry) => entry.tokensIn === 120)
+      expect(metered).toMatchObject({
+        tokensIn: 120,
+        tokensOut: 30,
+        tokensCacheRead: 80,
+        tokensCacheWrite: 10,
+        costUsdMicros: 4_200,
+      })
       expect(recentFailures).toEqual([])
       expect(recentUnverified).toEqual([])
+    })
+
+    it('returns the complete Activity dashboard contract for the requested window', async () => {
+      const now = Date.now()
+      const mcpFailureAt = new Date(now - 4_000).toISOString()
+      const unattributedRestFailureAt = new Date(now - 2_500).toISOString()
+      const restFailureAt = new Date(now - 2_000).toISOString()
+      recordUsage({ kind: 'mcp', activityClass: 'user', name: 'shared-destination', agent: 'main', durationMs: 10, status: 'error', ts: mcpFailureAt })
+      recordUsage({ kind: 'mcp', activityClass: 'user', name: 'shared-destination', agent: 'pixel', durationMs: 5, status: 'ok', ts: new Date(now - 3_000).toISOString() })
+      recordUsage({ kind: 'rest', activityClass: 'system', name: 'shared-destination', agent: null, durationMs: 10, status: 'error', ts: unattributedRestFailureAt })
+      recordUsage({ kind: 'rest', activityClass: 'user', name: 'shared-destination', agent: 'scout', durationMs: 30, status: 'error', ts: restFailureAt })
+      recordUsage({
+        kind: 'mcp', activityClass: 'user', name: 'tool-result-gap', agent: 'main', durationMs: 20, status: 'ok', ts: new Date(now - 1_500).toISOString(),
+        meta: { resultMissing: true, turnTerminalStatus: 'completed' },
+      })
+      recordUsage({
+        kind: 'agent', activityClass: 'user', name: 'dispatch-canceled', agent: 'patch', durationMs: null, status: 'ok', ts: new Date(now - 1_000).toISOString(),
+        meta: { terminalStatus: 'aborted' },
+      })
+      recordUsage({ kind: 'agent', activityClass: 'user', name: 'dispatch-succeeded', agent: 'patch', durationMs: 50, status: 'ok', ts: new Date(now - 500).toISOString() })
+
+      const route = findRoute(activated.routes, 'GET', '/usage-feed')!
+      const { status, body } = await callRoute(route, activated.ctx, {
+        searchParams: { window: '24h' },
+      })
+      expect(status).toBe(200)
+
+      const feed = body as unknown as {
+        window: string
+        coverage: { startsAt: string; hasFullWindow: boolean; reason: string }
+        outcomes: { failed: number; unverified: number; canceled: number; succeeded: number }
+        byKind: Array<{ kind: string; total: number; failures: number }>
+        failureGroupPage: { total: number; offset: number; limit: number; hasMore: boolean }
+        failureGroups: Array<{
+          kind: string
+          name: string
+          destination: string
+          method: string | null
+          attempts: number
+          failures: number
+          firstFailureAt: string
+          lastFailureAt: string
+          agents: string[]
+          unattributedFailures: number
+          systemFailures: number
+          medianFailureDurationMs: number | null
+          latestFailure: HealthUsageEntry
+        }>
+      }
+      expect(feed.window).toBe('24h')
+      expect(Number.isFinite(Date.parse(feed.coverage.startsAt))).toBe(true)
+      expect(typeof feed.coverage.hasFullWindow).toBe('boolean')
+      expect(['full_window', 'process_restart', 'buffer_limit']).toContain(feed.coverage.reason)
+      expect(feed.outcomes).toEqual({ failed: 3, unverified: 1, canceled: 1, succeeded: 2 })
+      expect(feed.byKind).toEqual([
+        { kind: 'mcp', total: 3, failures: 1 },
+        { kind: 'rest', total: 2, failures: 2 },
+        { kind: 'agent', total: 2, failures: 0 },
+      ])
+      expect(feed.failureGroupPage).toEqual({ total: 2, offset: 0, limit: 25, hasMore: false })
+      expect(feed.failureGroups).toEqual([
+        {
+          kind: 'rest',
+          name: 'shared-destination',
+          destination: 'shared-destination',
+          method: null,
+          attempts: 2,
+          failures: 2,
+          firstFailureAt: unattributedRestFailureAt,
+          lastFailureAt: restFailureAt,
+          agents: ['scout'],
+          unattributedFailures: 0,
+          systemFailures: 1,
+          medianFailureDurationMs: 20,
+          latestFailure: expect.objectContaining({
+            name: 'shared-destination',
+            agent: 'scout',
+            ts: restFailureAt,
+          }),
+        },
+        {
+          kind: 'mcp',
+          name: 'shared-destination',
+          destination: 'shared-destination',
+          method: null,
+          attempts: 2,
+          failures: 1,
+          firstFailureAt: mcpFailureAt,
+          lastFailureAt: mcpFailureAt,
+          agents: ['main'],
+          unattributedFailures: 0,
+          systemFailures: 0,
+          medianFailureDurationMs: 10,
+          latestFailure: expect.objectContaining({
+            name: 'shared-destination',
+            agent: 'main',
+            ts: mcpFailureAt,
+          }),
+        },
+      ])
+    })
+
+    it('paginates failure groups with a safe bounded limit', async () => {
+      const now = Date.now()
+      for (let index = 0; index < 3; index++) {
+        recordUsage({
+          kind: 'rest',
+          activityClass: 'user',
+          name: `/api/plugins/tasks/task-${index}`,
+          agent: 'main',
+          durationMs: index + 1,
+          status: 'error',
+          ts: new Date(now - (3 - index) * 1000).toISOString(),
+          meta: {
+            routePattern: `/api/plugins/tasks/:taskId/action-${index}`,
+            method: index === 2 ? 'POST' : 'GET',
+            error: `failure-${index}`,
+          },
+        })
+      }
+
+      const route = findRoute(activated.routes, 'GET', '/usage-feed')!
+      const { status, body } = await callRoute(route, activated.ctx, {
+        searchParams: {
+          window: '1h',
+          failureGroupOffset: '1',
+          failureGroupLimit: '1',
+        },
+      })
+
+      expect(status).toBe(200)
+      expect(body.failureGroupPage).toEqual({ total: 3, offset: 1, limit: 1, hasMore: true })
+      expect(body.failureGroups).toEqual([
+        expect.objectContaining({
+          destination: '/api/plugins/tasks/:taskId/action-1',
+          method: 'GET',
+          latestFailure: expect.objectContaining({
+            name: '/api/plugins/tasks/task-1',
+            meta: expect.objectContaining({ error: 'failure-1' }),
+          }),
+        }),
+      ])
     })
 
     it('defaults to 1h and hides successful routine activity', async () => {
@@ -504,6 +658,19 @@ describe('Health Plugin Routes', () => {
         searchParams: { window: '99y' },
       })
       expect(status).toBe(400)
+    })
+
+    it('rejects unsafe failure-group pagination values', async () => {
+      const route = findRoute(activated.routes, 'GET', '/usage-feed')!
+      const negativeOffset = await callRoute(route, activated.ctx, {
+        searchParams: { failureGroupOffset: '-1' },
+      })
+      const oversizedLimit = await callRoute(route, activated.ctx, {
+        searchParams: { failureGroupLimit: '101' },
+      })
+
+      expect(negativeOffset.status).toBe(400)
+      expect(oversizedLimit.status).toBe(400)
     })
   })
 

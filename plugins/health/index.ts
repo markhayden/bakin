@@ -23,7 +23,17 @@ import {
 } from '../../src/core/doctor-repair-plans'
 import { delegateDoctorRepair, verifyDoctorRepairRequest } from '../../src/core/doctor-delegate'
 import { getDoctorRepairRequest, listDoctorRepairRequests } from '../../src/core/doctor-repair-store'
-import { getInteractionSummary, getUsageFeed, getErrorCount, getStatsByMs, WINDOW_MS, type UsageKind, type WindowKey } from '../../src/core/usage'
+import {
+  DEFAULT_FAILURE_GROUP_LIMIT,
+  MAX_FAILURE_GROUP_LIMIT,
+  getInteractionSummary,
+  getUsageFeed,
+  getErrorCount,
+  getStatsByMs,
+  WINDOW_MS,
+  type UsageKind,
+  type WindowKey,
+} from '../../src/core/usage'
 import {
   listHealthChecks,
   getHealthCheck,
@@ -98,12 +108,17 @@ const usageFeedQuery = z.object({
   window: z.enum(['5m', '1h', '24h']).default('1h'),
   agent: z.string().min(1).optional(),
   includeRoutine: z.enum(['true', 'false']).default('false'),
+  failureGroupOffset: z.coerce.number().int().nonnegative().default(0),
+  failureGroupLimit: z.coerce.number().int().min(1).max(MAX_FAILURE_GROUP_LIMIT)
+    .default(DEFAULT_FAILURE_GROUP_LIMIT),
 }).strict()
 
 const interactionSummaryQuery = z.object({
   window: z.enum(['5m', '1h', '24h']).default('1h'),
 }).strict()
 
+const usageKindSchema = z.enum(['mcp', 'rest', 'agent'])
+const activityClassSchema = z.enum(['user', 'system', 'routine'])
 const interactionCategorySchema = z.enum(['tools', 'api', 'agents'])
 const interactionTimeBucketSchema = z.object({
   start: z.string(),
@@ -111,9 +126,7 @@ const interactionTimeBucketSchema = z.object({
   failureCount: z.number().int().nonnegative(),
   failureRate: z.number().min(0).max(1),
 }).strict()
-const interactionSummaryResponseSchema = z.object({
-  window: z.enum(['5m', '1h', '24h']),
-  coverage: z.discriminatedUnion('reason', [
+const interactionCoverageSchema = z.discriminatedUnion('reason', [
     z.object({
       startsAt: z.iso.datetime({ offset: true }),
       hasFullWindow: z.literal(true),
@@ -129,7 +142,83 @@ const interactionSummaryResponseSchema = z.object({
       hasFullWindow: z.literal(false),
       reason: z.literal('buffer_limit'),
     }).strict(),
-  ]),
+  ])
+const usageEntrySchema = z.object({
+  id: z.string().min(1),
+  ts: z.iso.datetime({ offset: true }),
+  kind: usageKindSchema,
+  activityClass: activityClassSchema,
+  name: z.string(),
+  agent: z.string().nullable(),
+  durationMs: z.number().nonnegative().nullable(),
+  status: z.enum(['ok', 'error']),
+  tokensIn: z.number().nonnegative().optional(),
+  tokensOut: z.number().nonnegative().optional(),
+  tokensCacheRead: z.number().nonnegative().optional(),
+  tokensCacheWrite: z.number().nonnegative().optional(),
+  costUsdMicros: z.number().nonnegative().optional(),
+  meta: z.record(z.string(), z.unknown()).optional(),
+}).strict()
+const usageFeedResponseSchema = z.object({
+  window: z.enum(['5m', '1h', '24h']),
+  coverage: interactionCoverageSchema,
+  totals: z.object({
+    count: z.number().int().nonnegative(),
+    errors: z.number().int().nonnegative(),
+    errorRate: z.number().min(0).max(1),
+  }).strict(),
+  outcomes: z.object({
+    failed: z.number().int().nonnegative(),
+    unverified: z.number().int().nonnegative(),
+    canceled: z.number().int().nonnegative(),
+    succeeded: z.number().int().nonnegative(),
+  }).strict(),
+  byKind: z.array(z.object({
+    kind: usageKindSchema,
+    total: z.number().int().nonnegative(),
+    failures: z.number().int().nonnegative(),
+  }).strict()).length(3),
+  failureGroups: z.array(z.object({
+    kind: usageKindSchema,
+    name: z.string(),
+    destination: z.string(),
+    method: z.string().min(1).nullable(),
+    attempts: z.number().int().nonnegative(),
+    failures: z.number().int().nonnegative(),
+    firstFailureAt: z.iso.datetime({ offset: true }),
+    lastFailureAt: z.iso.datetime({ offset: true }),
+    agents: z.array(z.string()),
+    unattributedFailures: z.number().int().nonnegative(),
+    systemFailures: z.number().int().nonnegative(),
+    medianFailureDurationMs: z.number().nonnegative().nullable(),
+    latestFailure: usageEntrySchema,
+  }).strict()).max(MAX_FAILURE_GROUP_LIMIT),
+  failureGroupPage: z.object({
+    total: z.number().int().nonnegative(),
+    offset: z.number().int().nonnegative(),
+    limit: z.number().int().min(1).max(MAX_FAILURE_GROUP_LIMIT),
+    hasMore: z.boolean(),
+  }).strict(),
+  topByName: z.array(z.object({
+    name: z.string(),
+    count: z.number().int().nonnegative(),
+    errors: z.number().int().nonnegative(),
+    medianDurationMs: z.number().nonnegative().nullable(),
+  }).strict()).max(10),
+  byAgent: z.array(z.object({
+    agent: z.string(),
+    count: z.number().int().nonnegative(),
+    errors: z.number().int().nonnegative(),
+    lastActivity: usageEntrySchema.nullable(),
+  }).strict()),
+  recent: z.array(usageEntrySchema).max(50),
+  recentFailures: z.array(usageEntrySchema).max(50),
+  recentUnverified: z.array(usageEntrySchema).max(50),
+  timeBuckets: z.array(interactionTimeBucketSchema),
+}).strict()
+const interactionSummaryResponseSchema = z.object({
+  window: z.enum(['5m', '1h', '24h']),
+  coverage: interactionCoverageSchema,
   totals: z.object({
     count: z.number().int().nonnegative(),
     errors: z.number().int().nonnegative(),
@@ -243,14 +332,23 @@ const routes = [
     summary: 'Unified usage feed',
     description: 'Backs failure-first Health Activity with kind, time-window, agent, and routine-success filtering.',
     query: usageFeedQuery,
-    responses: { 200: passthrough, 400: errorResponse },
+    responses: { 200: usageFeedResponseSchema, 400: errorResponse },
     handler: async (_req, _ctx, { query }) => {
-      const { kind, window, agent, includeRoutine } = query
+      const {
+        kind,
+        window,
+        agent,
+        includeRoutine,
+        failureGroupOffset,
+        failureGroupLimit,
+      } = query
       return Response.json(getUsageFeed({
         ...(kind ? { kind: kind as UsageKind } : {}),
         window: window as WindowKey,
         ...(agent ? { agent } : {}),
         includeRoutine: includeRoutine === 'true',
+        failureGroupOffset,
+        failureGroupLimit,
       }))
     },
   }),

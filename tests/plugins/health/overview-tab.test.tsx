@@ -225,6 +225,8 @@ describe('OverviewTabView', () => {
     const pulse = screen.getByTestId('overview-platform-pulse')
     expect(pulse.textContent).toMatch(/Bakin.*Needs attention.*Search.*Healthy.*1 working.*4 sessions.*3 failed/i)
     expect(screen.getByRole('link', { name: /Search: Healthy/i }).getAttribute('href')).toBe('/health?tab=system&section=search')
+    expect(within(pulse).getByRole('link', { name: /Recent failures: 3 failed/i }).getAttribute('href'))
+      .toBe('/health?tab=activity&activity_window=1h&activity_outcome=failed')
     expect(screen.getByRole('heading', { name: 'Fix first' })).toBeDefined()
     const text = container.textContent ?? ''
     expect(text.indexOf('Fix first')).toBeLessThan(text.indexOf('Agent spend'))
@@ -272,6 +274,20 @@ describe('OverviewTabView', () => {
     expect(within(interactions).getByRole('group', { name: /Recorded meaningful Bakin interactions/i })).toBeDefined()
     expect(within(interactions).getByRole('link', { name: 'View recorded interaction activity' }).getAttribute('href'))
       .toBe('/health?tab=activity&activity_window=1h')
+  })
+
+  it('links the interaction failure badge to the one-hour Activity failure view', () => {
+    render(
+      <OverviewTabView
+        model={buildHealthOverviewViewModel({ report: report(), now: NOW })}
+        telemetry={dashboardTelemetry()}
+      />,
+    )
+
+    const interactions = screen.getByTestId('overview-interactions')
+    const failedBadge = within(interactions).getByText('2 failed').closest('[data-status-badge]')
+    expect(failedBadge?.closest('a')?.getAttribute('href'))
+      .toBe('/health?tab=activity&activity_window=1h&activity_outcome=failed')
   })
 
   it('labels restart and buffer-limited interaction coverage without claiming a full hour', () => {

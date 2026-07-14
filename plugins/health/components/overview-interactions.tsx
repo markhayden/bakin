@@ -145,17 +145,24 @@ export function OverviewInteractions({
               <strong className="block text-xl font-semibold tabular-nums text-foreground">
                 {data.totals.count.toLocaleString()} interactions
               </strong>
-              <StatusBadge
-                tone={data.totals.errors > 0 ? 'destructive' : data.totals.unverified > 0 ? 'warning' : 'success'}
-                variant="outline"
-                className="mt-1"
-              >
-                {data.totals.errors > 0
-                  ? `${data.totals.errors.toLocaleString()} failed${data.totals.unverified > 0 ? ` · ${unverifiedLabel(data.totals.unverified)}` : ''}`
-                  : data.totals.unverified > 0
-                    ? unverifiedLabel(data.totals.unverified)
-                    : '0 failed'}
-              </StatusBadge>
+              {data.totals.errors > 0 ? (
+                <a
+                  href="/health?tab=activity&activity_window=1h&activity_outcome=failed"
+                  className="mt-1 inline-flex rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <StatusBadge tone="destructive" variant="outline">
+                    {`${data.totals.errors.toLocaleString()} failed${data.totals.unverified > 0 ? ` · ${unverifiedLabel(data.totals.unverified)}` : ''}`}
+                  </StatusBadge>
+                </a>
+              ) : (
+                <StatusBadge
+                  tone={data.totals.unverified > 0 ? 'warning' : 'success'}
+                  variant="outline"
+                  className="mt-1"
+                >
+                  {data.totals.unverified > 0 ? unverifiedLabel(data.totals.unverified) : '0 failed'}
+                </StatusBadge>
+              )}
             </div>
             <div className="min-w-0 justify-self-end">
               <Sparkline

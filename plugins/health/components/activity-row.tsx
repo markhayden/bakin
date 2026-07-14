@@ -3,12 +3,52 @@
 import { Badge } from '@makinbakin/sdk/ui'
 import type { UsageEntry } from '../types'
 
-function humanize(value: string): string {
-  return value
+export function formatActivityName(value: string): string {
+  const formatted = value
     .replace(/^bakin_exec_/, '')
     .replace(/^\/api\/plugins\//, '')
     .replace(/[._:/-]+/g, ' ')
     .replace(/\b\w/g, (letter) => letter.toUpperCase())
+    .replace(/\bMcp\b/g, 'MCP')
+    .replace(/\bApi\b/g, 'API')
+  return /^\s*MCP\s*$/i.test(formatted) ? 'MCP Endpoint' : formatted
+}
+
+const HTTP_FAILURE_LABEL: Record<number, string> = {
+  400: 'Invalid request',
+  401: 'Authentication required',
+  403: 'Access denied',
+  404: 'Endpoint not found',
+  408: 'Request timed out',
+  409: 'Request conflicted with current state',
+  429: 'Rate limit exceeded',
+  500: 'Server error',
+  502: 'Upstream service returned an invalid response',
+  503: 'Service unavailable',
+  504: 'Upstream service timed out',
+}
+
+export function activityFailureReason(entry: UsageEntry): string {
+  const meta = entry.meta ?? {}
+  for (const key of ['error', 'errorMessage', 'message', 'reason']) {
+    const value = meta[key]
+    if (typeof value !== 'string') continue
+    const normalized = value.trim()
+    if (normalized.length > 0 && !/^(unknown|undefined|null)$/i.test(normalized)) return normalized
+  }
+  const status = typeof meta.httpStatus === 'number'
+    ? meta.httpStatus
+    : typeof meta.statusCode === 'number' ? meta.statusCode : null
+  if (status !== null) {
+    return `${HTTP_FAILURE_LABEL[status] ?? 'Request failed'} (HTTP ${status}).`
+  }
+  return 'No failure reason was reported.'
+}
+
+export function activityOwner(entry: UsageEntry): string {
+  if (entry.agent) return entry.agent
+  if (entry.activityClass === 'system' || entry.activityClass === 'routine') return 'Bakin system'
+  return 'Agent not recorded'
 }
 
 export function isCanceledActivity(entry: UsageEntry): boolean {
@@ -22,7 +62,7 @@ export function isUnverifiedActivity(entry: UsageEntry): boolean {
     && entry.meta?.turnTerminalStatus === 'completed'
 }
 
-function impact(entry: UsageEntry): string {
+export function activityImpact(entry: UsageEntry): string {
   if (isCanceledActivity(entry)) {
     if (entry.kind === 'agent') return 'Agent work was canceled before completion.'
     if (entry.kind === 'rest') return 'The request was canceled before completion.'
@@ -55,13 +95,14 @@ export function ActivityRow({ entry }: { entry: UsageEntry }) {
       <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 space-y-1">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-medium text-foreground">{humanize(entry.name)}</span>
+            <span className="font-medium text-foreground">{formatActivityName(entry.name)}</span>
             <Badge variant="outline" className={failed ? 'border-destructive/30 text-destructive' : 'text-muted-foreground'}>
               {failed ? 'Failed' : aborted ? 'Canceled' : unverified ? 'Result not observed' : 'Succeeded'}
             </Badge>
             {entry.activityClass === 'routine' && <Badge variant="secondary">Routine</Badge>}
           </div>
-          <p className="text-sm text-muted-foreground">{impact(entry)}</p>
+          {failed && <p className="text-sm text-foreground/90">{activityFailureReason(entry)}</p>}
+          <p className={failed ? 'text-xs text-muted-foreground' : 'text-sm text-muted-foreground'}>{activityImpact(entry)}</p>
         </div>
         <time dateTime={entry.ts} className="shrink-0 text-xs text-muted-foreground">{formatWhen(entry.ts)}</time>
       </div>
@@ -74,7 +115,7 @@ export function ActivityRow({ entry }: { entry: UsageEntry }) {
           <dt>Raw name</dt><dd className="break-all font-mono text-foreground">{entry.name}</dd>
           <dt>Kind</dt><dd className="text-foreground">{entry.kind}</dd>
           <dt>Class</dt><dd className="text-foreground">{entry.activityClass}</dd>
-          <dt>Agent</dt><dd className="text-foreground">{entry.agent ?? 'System / unknown'}</dd>
+          <dt>Agent</dt><dd className="text-foreground">{activityOwner(entry)}</dd>
           <dt>Duration</dt><dd className="text-foreground">{entry.durationMs === null ? 'Not recorded' : `${entry.durationMs.toLocaleString()} ms`}</dd>
           {entry.meta && <><dt>Metadata</dt><dd className="min-w-0 overflow-x-auto whitespace-pre-wrap break-all font-mono text-foreground">{JSON.stringify(entry.meta, null, 2)}</dd></>}
         </dl>

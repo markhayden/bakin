@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test'
 
 import {
+  resolveRequestActivity,
   resolveRequestActivityClass,
   type ActivityRouteMetadata,
 } from '../../src/core/rest-activity-class'
@@ -12,6 +13,14 @@ function classify(
   routes: readonly ActivityRouteMetadata[] = [],
 ) {
   return resolveRequestActivityClass(method, pathname, () => routes)
+}
+
+function resolve(
+  pathname: string,
+  method = 'GET',
+  routes: readonly ActivityRouteMetadata[] = [],
+) {
+  return resolveRequestActivity(method, pathname, () => routes)
 }
 
 describe('REST activity classification', () => {
@@ -45,6 +54,33 @@ describe('REST activity classification', () => {
 
     expect(classify('/api/plugins/team/settings', 'GET', routes)).toBe('user')
     expect(classify('/api/plugins/team/pixel', 'GET', routes)).toBe('routine')
+    expect(resolve('/api/plugins/team/settings', 'GET', routes).routePattern).toBe('/api/plugins/team/settings')
+    expect(resolve('/api/plugins/team/pixel', 'GET', routes).routePattern).toBe('/api/plugins/team/:agentId')
+  })
+
+  it('resolves declared parameter routes to stable plugin route patterns', () => {
+    const routes: ActivityRouteMetadata[] = [
+      { path: '/', method: 'GET' },
+      { path: '/summary', method: 'GET' },
+      { path: '/:taskId', method: 'GET' },
+      { path: '/:taskId/runs', method: 'GET' },
+    ]
+
+    expect(resolve('/api/plugins/tasks', 'GET', routes).routePattern).toBe('/api/plugins/tasks')
+    expect(resolve('/api/plugins/tasks/task-a', 'GET', routes).routePattern).toBe('/api/plugins/tasks/:taskId')
+    expect(resolve('/api/plugins/tasks/task-b', 'GET', routes).routePattern).toBe('/api/plugins/tasks/:taskId')
+    expect(resolve('/api/plugins/tasks/task-a/runs', 'GET', routes).routePattern).toBe('/api/plugins/tasks/:taskId/runs')
+    expect(resolve('/api/plugins/tasks/summary', 'GET', routes).routePattern).toBe('/api/plugins/tasks/summary')
+  })
+
+  it('omits route patterns for unknown paths and method mismatches', () => {
+    const routes: ActivityRouteMetadata[] = [
+      { path: '/chats/:chatId', method: 'GET' },
+    ]
+
+    expect(resolve('/api/plugins/chat/not-declared', 'GET', routes).routePattern).toBeUndefined()
+    expect(resolve('/api/plugins/chat/chats/chat-1', 'POST', routes).routePattern).toBeUndefined()
+    expect(resolve('/api/not-a-plugin/task-1', 'GET', routes).routePattern).toBeUndefined()
   })
 
   it('treats the external messaging nav summary as shell traffic', () => {

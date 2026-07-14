@@ -80,6 +80,11 @@ export interface UsageEntry {
   agent: string | null
   durationMs: number | null
   status: 'ok' | 'error'
+  tokensIn?: number
+  tokensOut?: number
+  tokensCacheRead?: number
+  tokensCacheWrite?: number
+  costUsdMicros?: number
   meta?: Record<string, unknown>
 }
 
@@ -97,8 +102,54 @@ export interface ByAgentRow {
   lastActivity: UsageEntry | null
 }
 
+export interface UsageOutcomeCounts {
+  failed: number
+  unverified: number
+  canceled: number
+  succeeded: number
+}
+
+export interface UsageKindSummary {
+  kind: UsageKind
+  total: number
+  failures: number
+}
+
+export interface UsageFailureGroup {
+  kind: UsageKind
+  name: string
+  /** Present on the bounded v2 feed; omitted only by compatibility projections. */
+  destination?: string
+  /** Present on the bounded v2 feed; null when the interaction is not an HTTP request. */
+  method?: string | null
+  attempts: number
+  failures: number
+  firstFailureAt: string
+  lastFailureAt: string
+  agents: string[]
+  unattributedFailures: number
+  systemFailures: number
+  medianFailureDurationMs: number | null
+  /** Present on the bounded v2 feed; compatibility projections may only have recent events. */
+  latestFailure?: UsageEntry
+}
+
+export interface UsageFailureGroupPage {
+  total: number
+  offset: number
+  limit: number
+  hasMore: boolean
+}
+
 export interface UsageFeedData {
+  window: '5m' | '1h' | '24h'
+  coverage: InteractionCoverage
   totals: { count: number; errors: number; errorRate: number }
+  outcomes: UsageOutcomeCounts
+  byKind: UsageKindSummary[]
+  failureGroups: UsageFailureGroup[]
+  /** Present on the bounded v2 feed; omitted only by compatibility projections. */
+  failureGroupPage?: UsageFailureGroupPage
   topByName: TopByNameRow[]
   byAgent: ByAgentRow[]
   recent: UsageEntry[]

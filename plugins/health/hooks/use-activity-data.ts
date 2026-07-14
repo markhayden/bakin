@@ -10,10 +10,18 @@ export function useActivityData(options: {
   window: ActivityWindow
   kind: ActivityKindFilter
   includeRoutine: boolean
+  failureGroupOffset?: number
+  failureGroupLimit?: number
 }) {
   const params = new URLSearchParams({ window: options.window })
   if (options.kind !== 'all') params.set('kind', options.kind)
   if (options.includeRoutine) params.set('includeRoutine', 'true')
+  if (options.failureGroupOffset !== undefined) {
+    params.set('failureGroupOffset', options.failureGroupOffset.toString())
+  }
+  if (options.failureGroupLimit !== undefined) {
+    params.set('failureGroupLimit', options.failureGroupLimit.toString())
+  }
   return useHealthResource<UsageFeedData>(`/api/plugins/health/usage-feed?${params.toString()}`, {
     intervalMs: 15_000,
   })

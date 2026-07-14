@@ -55,7 +55,12 @@ mock.module('../../src/core/logger', () => ({
 mock.module('@/core/task-store', () => ({}))
 
 import { trackResponse, normalizePath } from '../../src/core/rest-tracking'
-import { getUsageFeed, getUsageStats, clearUsage } from '../../src/core/usage'
+import {
+  clearUsage,
+  getInteractionSummary,
+  getUsageFeed,
+  getUsageStats,
+} from '../../src/core/usage'
 
 afterAll(() => rmSync(testDir, { recursive: true, force: true }))
 
@@ -173,6 +178,78 @@ describe('usage-wiring-rest', () => {
 
     const feed = getUsageFeed({ kind: 'rest', window: '5m' })
     expect(feed.recent[0].name).toBe('/api/plugins/tasks/abc-123')
+  })
+
+  it('keeps raw plugin request names while grouping matched parameter routes by template', () => {
+    for (const taskId of ['task-a', 'task-b']) {
+      const { req, res } = makeFakeReqRes({
+        statusCode: taskId === 'task-b' ? 500 : 200,
+      })
+      trackResponse(
+        req,
+        res,
+        urlFor(`/api/plugins/tasks/${taskId}`),
+        Date.now(),
+        'user',
+        '/api/plugins/tasks/:taskId',
+      )
+      res.end()
+    }
+
+    const feed = getUsageFeed({ kind: 'rest', window: '5m' })
+    expect(feed.topByName).toContainEqual({
+      name: '/api/plugins/tasks/:taskId',
+      count: 2,
+      errors: 1,
+      medianDurationMs: expect.any(Number),
+    })
+    expect(feed.failureGroups).toContainEqual({
+      kind: 'rest',
+      name: '/api/plugins/tasks/:taskId',
+      destination: '/api/plugins/tasks/:taskId',
+      method: 'GET',
+      attempts: 2,
+      failures: 1,
+      firstFailureAt: expect.any(String),
+      lastFailureAt: expect.any(String),
+      agents: [],
+      unattributedFailures: 1,
+      systemFailures: 0,
+      medianFailureDurationMs: expect.any(Number),
+      latestFailure: expect.objectContaining({
+        name: '/api/plugins/tasks/task-b',
+        meta: expect.objectContaining({
+          routePattern: '/api/plugins/tasks/:taskId',
+          method: 'GET',
+        }),
+      }),
+    })
+    expect(feed.recent.map((entry) => entry.name).sort()).toEqual([
+      '/api/plugins/tasks/task-a',
+      '/api/plugins/tasks/task-b',
+    ])
+    expect(feed.recent.every((entry) => (
+      entry.meta?.routePattern === '/api/plugins/tasks/:taskId'
+      && entry.meta?.method === 'GET'
+    ))).toBe(true)
+
+    expect(getInteractionSummary({ window: '5m' }).topDestinations).toContainEqual({
+      category: 'api',
+      name: '/api/plugins/tasks/:taskId',
+      count: 2,
+      errors: 1,
+      medianDurationMs: expect.any(Number),
+    })
+  })
+
+  it('keeps unknown plugin destinations grouped by their raw path', () => {
+    const { req, res } = makeFakeReqRes()
+    trackResponse(req, res, urlFor('/api/plugins/tasks/not-declared'), Date.now(), 'user')
+    res.end()
+
+    const feed = getUsageFeed({ kind: 'rest', window: '5m' })
+    expect(feed.topByName[0]?.name).toBe('/api/plugins/tasks/not-declared')
+    expect(feed.recent[0].meta?.routePattern).toBeUndefined()
   })
 
   it('normalizes UUID segments outside /api/plugins/* to :id', () => {

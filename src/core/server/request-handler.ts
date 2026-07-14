@@ -22,7 +22,10 @@ import * as agents from '../agents'
 import { handleMcpRequest } from '../mcp-server'
 import { trackResponse } from '../rest-tracking'
 import type { ActivityClass } from '../usage'
-import { resolveRequestActivityClass } from '../rest-activity-class'
+import {
+  resolveRequestActivity,
+  type ResolvedRequestActivity,
+} from '../rest-activity-class'
 import { pluginRegistry } from '../plugin-registry'
 import { getCachedOrBuild } from '../../../packages/host/src/api/docs-runtime'
 import type { buildOpenApiDocument } from '../../../packages/host/src/api/docs-runtime'
@@ -82,7 +85,8 @@ export function createRequestHandler(deps: RequestHandlerDeps): (req: IncomingMe
 
     // Track API requests (skip static assets and Next.js internals)
     if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/mcp')) {
-      trackResponse(req, res, url, reqStart, requestActivityClass(req, url))
+      const activity = requestActivity(req, url)
+      trackResponse(req, res, url, reqStart, activity.activityClass, activity.routePattern)
     }
 
     // MCP endpoint — agent-facing tool server
@@ -620,7 +624,12 @@ export function createRequestHandler(deps: RequestHandlerDeps): (req: IncomingMe
 
 /** Resolve explicit route metadata before the delayed response recorder runs. */
 export function requestActivityClass(req: IncomingMessage, url: URL): ActivityClass {
-  return resolveRequestActivityClass(
+  return requestActivity(req, url).activityClass
+}
+
+/** Resolve both request intent and its stable registered route pattern. */
+export function requestActivity(req: IncomingMessage, url: URL): ResolvedRequestActivity {
+  return resolveRequestActivity(
     req.method,
     url.pathname,
     (pluginId) => pluginRegistry.getPluginState(pluginId)?.routes ?? [],
