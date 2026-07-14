@@ -110,6 +110,48 @@ function activityData(): UseHealthResourceResult<UsageFeedData> {
   }
 }
 
+function activityWithFailurePatterns(count: number): UseHealthResourceResult<UsageFeedData> {
+  const base = activityData()
+  const template = base.data!.failureGroups[1]!
+  const templateFailure = template.latestFailure!
+  const failureGroups = Array.from({ length: count }, (_, index) => {
+    const position = index + 1
+    const name = `failure.pattern.${position}`
+    const timestamp = `2026-07-13T11:${String(55 - index).padStart(2, '0')}:00.000Z`
+    return {
+      ...template,
+      name,
+      destination: name,
+      firstFailureAt: timestamp,
+      lastFailureAt: timestamp,
+      latestFailure: {
+        ...templateFailure,
+        id: `failure-pattern-${position}`,
+        name,
+        ts: timestamp,
+      },
+    }
+  })
+  const recentFailures = failureGroups.map((group) => group.latestFailure)
+  return {
+    ...base,
+    data: {
+      ...base.data!,
+      totals: { count, errors: count, errorRate: count > 0 ? 1 : 0 },
+      outcomes: { failed: count, unverified: 0, canceled: 0, succeeded: 0 },
+      byKind: [
+        { kind: 'mcp', total: count, failures: count },
+        { kind: 'rest', total: 0, failures: 0 },
+        { kind: 'agent', total: 0, failures: 0 },
+      ],
+      failureGroups,
+      failureGroupPage: { total: count, offset: 0, limit: 25, hasMore: false },
+      recent: recentFailures,
+      recentFailures,
+    },
+  }
+}
+
 function activityDashboardData(): UseHealthResourceResult<UsageFeedData> {
   const toolFailureEarlier: UsageFeedData['recent'][number] = {
     id: 'usage-tool-failure-earlier',
@@ -969,6 +1011,87 @@ describe('ActivityTab', () => {
     expect(within(agents).getByText('1 failure in 2 attempts')).toBeDefined()
     expect(within(agents).getByText('patch')).toBeDefined()
     expect(within(agents).getByText('No failure reason was reported.')).toBeDefined()
+    expect(within(needsAttention).queryByRole('button', { name: /more failure patterns/i })).toBeNull()
+  })
+
+  it('previews the three highest-priority failure patterns and expands the remainder on demand', () => {
+    useActivityDataMock.mockImplementation(() => activityWithFailurePatterns(5))
+
+    render(<ActivityTab />)
+
+    const attention = screen.getByRole('region', { name: 'Needs attention' })
+    expect(within(attention).getAllByRole('group').map((group) => group.getAttribute('aria-label'))).toEqual([
+      'Tools · Failure Pattern 1',
+      'Tools · Failure Pattern 2',
+      'Tools · Failure Pattern 3',
+    ])
+    expect(within(attention).queryByRole('group', { name: 'Tools · Failure Pattern 4' })).toBeNull()
+
+    const showMore = within(attention).getByRole('button', { name: 'Show 2 more failure patterns' })
+    expect(showMore.getAttribute('aria-expanded')).toBe('false')
+    expect(showMore.getAttribute('aria-controls')).toBe('activity-failure-pattern-list')
+    expect(attention.querySelector('#activity-failure-pattern-list')).not.toBeNull()
+    fireEvent.click(showMore)
+
+    expect(within(attention).getAllByRole('group')).toHaveLength(5)
+    expect(within(attention).getByRole('group', { name: 'Tools · Failure Pattern 5' })).toBeDefined()
+    const showFewer = within(attention).getByRole('button', { name: 'Show fewer failure patterns' })
+    expect(showFewer.getAttribute('aria-expanded')).toBe('true')
+    fireEvent.click(showFewer)
+
+    expect(within(attention).queryByRole('group', { name: 'Tools · Failure Pattern 4' })).toBeNull()
+    expect(within(attention).getByRole('button', { name: 'Show 2 more failure patterns' })).toBeDefined()
+  })
+
+  it('returns to the three-pattern preview after paging or filtering an expanded list', () => {
+    useActivityDataMock.mockImplementation((options: unknown) => {
+      const resource = activityWithFailurePatterns(5)
+      const offset = (options as { failureGroupOffset?: number }).failureGroupOffset ?? 0
+      return {
+        ...resource,
+        data: {
+          ...resource.data!,
+          failureGroupPage: {
+            total: 30,
+            offset,
+            limit: 25,
+            hasMore: offset === 0,
+          },
+        },
+      }
+    })
+
+    render(<ActivityTab />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show 2 more failure patterns' }))
+    expect(screen.getByRole('region', { name: 'Needs attention' }).querySelectorAll('[role="group"]')).toHaveLength(5)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next failure patterns' }))
+    expect(screen.getByRole('region', { name: 'Needs attention' }).querySelectorAll('[role="group"]')).toHaveLength(3)
+    expect(screen.getByRole('button', { name: 'Show 2 more failure patterns' }).getAttribute('aria-expanded')).toBe('false')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show 2 more failure patterns' }))
+    fireEvent.change(screen.getByLabelText('Activity kind'), { target: { value: 'mcp' } })
+    expect(screen.getByRole('region', { name: 'Needs attention' }).querySelectorAll('[role="group"]')).toHaveLength(3)
+    expect(screen.getByRole('button', { name: 'Show 2 more failure patterns' }).getAttribute('aria-expanded')).toBe('false')
+  })
+
+  it('stays collapsed when live failure patterns shrink below the preview limit and grow again', () => {
+    let patternCount = 5
+    useActivityDataMock.mockImplementation(() => activityWithFailurePatterns(patternCount))
+    const view = render(<ActivityTab />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show 2 more failure patterns' }))
+    expect(screen.getByRole('region', { name: 'Needs attention' }).querySelectorAll('[role="group"]')).toHaveLength(5)
+
+    patternCount = 3
+    view.rerender(<ActivityTab />)
+    expect(screen.queryByRole('button', { name: /more failure patterns/i })).toBeNull()
+
+    patternCount = 5
+    view.rerender(<ActivityTab />)
+    expect(screen.getByRole('region', { name: 'Needs attention' }).querySelectorAll('[role="group"]')).toHaveLength(3)
+    expect(screen.getByRole('button', { name: 'Show 2 more failure patterns' }).getAttribute('aria-expanded')).toBe('false')
   })
 
   it('expands a failure group to every matching raw failure event', () => {

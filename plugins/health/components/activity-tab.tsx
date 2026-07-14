@@ -6,7 +6,7 @@ import { RefreshCw } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { ActivityBreakdown } from './activity-breakdown'
 import { ActivityEventStream } from './activity-event-stream'
-import { ActivityFailureGroups } from './activity-failure-groups'
+import { ActivityFailureGroups, FAILURE_PATTERN_PREVIEW_LIMIT } from './activity-failure-groups'
 import { ActivityFailureTrend } from './activity-failure-trend'
 import { ActivityMetrics } from './activity-metrics'
 import { ActivityPulse } from './activity-pulse'
@@ -155,6 +155,7 @@ export function ActivityTab() {
 
           {data && (
             <ActivityFailureGroups
+              key={`${failureFilterKey}:${failureGroupOffset}:${data.failureGroups.length > FAILURE_PATTERN_PREVIEW_LIMIT ? 'has-remainder' : 'complete'}`}
               groups={data.failureGroups}
               failures={failures}
               totalFailures={totalFailures}

@@ -17,6 +17,8 @@ const KIND_META: Record<UsageKind, {
   agent: { label: 'Agents', icon: Bot, color: 'text-chart-3' },
 }
 
+export const FAILURE_PATTERN_PREVIEW_LIMIT = 3
+
 function entryDestination(entry: UsageEntry): string {
   const routePattern = entry.kind === 'rest' ? entry.meta?.routePattern : undefined
   return typeof routePattern === 'string' && routePattern.length > 0 ? routePattern : entry.name
@@ -183,11 +185,16 @@ export function ActivityFailureGroups({
   page?: UsageFailureGroupPage
   onPageChange?: (offset: number) => void
 }) {
+  const [patternsExpanded, setPatternsExpanded] = useState(false)
   if (totalFailures === 0 && totalUnverified === 0) return null
   const patternTotal = page?.total ?? groups.length
   const patternStart = groups.length > 0 ? (page?.offset ?? 0) + 1 : 0
   const patternEnd = groups.length > 0 ? (page?.offset ?? 0) + groups.length : 0
   const showPaging = page !== undefined && (page.offset > 0 || page.hasMore)
+  const hiddenPatternCount = Math.max(0, groups.length - FAILURE_PATTERN_PREVIEW_LIMIT)
+  const visibleGroups = patternsExpanded
+    ? groups
+    : groups.slice(0, FAILURE_PATTERN_PREVIEW_LIMIT)
   const description = totalFailures > 0
     ? totalUnverified > 0
       ? 'Repeated failures are grouped. Calls missing a final result are listed separately.'
@@ -234,8 +241,8 @@ export function ActivityFailureGroups({
       </div>
 
       {totalFailures > 0 && (
-        <div className="space-y-2">
-          {groups.map((group) => (
+        <div id="activity-failure-pattern-list" className="space-y-2">
+          {visibleGroups.map((group) => (
             <FailureGroup
               key={`${group.kind}:${group.method ?? ''}:${group.destination ?? group.name}`}
               group={group}
@@ -243,6 +250,25 @@ export function ActivityFailureGroups({
             />
           ))}
         </div>
+      )}
+
+      {totalFailures > 0 && hiddenPatternCount > 0 && (
+        <Button
+          size="sm"
+          variant="outline"
+          className="w-full justify-center text-muted-foreground hover:text-foreground"
+          aria-expanded={patternsExpanded}
+          aria-controls="activity-failure-pattern-list"
+          onClick={() => setPatternsExpanded((value) => !value)}
+        >
+          {patternsExpanded
+            ? 'Show fewer failure patterns'
+            : `Show ${hiddenPatternCount.toLocaleString()} more failure ${hiddenPatternCount === 1 ? 'pattern' : 'patterns'}`}
+          <ChevronDown
+            className={patternsExpanded ? 'rotate-180 transition-transform motion-reduce:transition-none' : 'transition-transform motion-reduce:transition-none'}
+            aria-hidden="true"
+          />
+        </Button>
       )}
 
       {showPaging && (
