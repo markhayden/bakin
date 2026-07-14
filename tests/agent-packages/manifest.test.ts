@@ -513,3 +513,28 @@ describe('manifest schema — requirement legs (npm/models/prereqs/platforms)', 
     expect(() => parseManifest(skillPackWith({}, { platforms: ['windows-x64'] }))).toThrow()
   })
 })
+
+describe('manifest schema — review hardening pins', () => {
+  function skillPackWithBin(download: Record<string, unknown>): Record<string, unknown> {
+    const base = loadFixture('skill-pack') as Record<string, unknown>
+    return {
+      ...base,
+      requires: { bins: [{ name: 'tool', version: '1.0.0', install: { 'darwin-arm64': download } }] },
+    }
+  }
+
+  it('rejects archive members shaped like tar options (argument injection)', () => {
+    expect(() => parseManifest(skillPackWithBin({
+      url: 'https://x.dev/t.tar.gz', sha256: 'a'.repeat(64),
+      archive: { format: 'tar.gz', member: '--to-command=/bin/sh' },
+    }))).toThrow(/no leading -/)
+  })
+
+  it('rejects traversal-shaped dependency installAs (payload dirs are swept destructively)', () => {
+    const base = loadFixture('skill-pack') as Record<string, unknown>
+    expect(() => parseManifest({
+      ...base,
+      dependencies: { skills: [{ source: 'github:x/y', ref: 'abc', installAs: '../../..' }] },
+    })).toThrow()
+  })
+})

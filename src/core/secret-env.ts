@@ -101,7 +101,10 @@ export function injectPackModelEnv(): string[] {
     let manifest
     try {
       manifest = safeParseManifest(JSON.parse(readFileSync(manifestPath, 'utf-8')))
-    } catch {
+    } catch (err) {
+      log.warn('Model env injection skipped for pack — manifest unreadable', {
+        packageKey: key, error: err instanceof Error ? err.message : String(err),
+      })
       continue
     }
     if (!manifest.success || manifest.data.kind !== 'skill-pack') continue

@@ -320,3 +320,60 @@ describe('capability readiness — new legs', () => {
     expect(cap!.missing.join('\n')).toContain('not available on this platform')
   })
 })
+
+describe('review hardening pins', () => {
+  it('npmPayloadDir refuses traversal-shaped package ids', async () => {
+    const { npmPayloadDir } = await import('../../src/core/agent-packages/requirements-installer')
+    expect(() => npmPayloadDir('../../..', 'documents')).toThrow(/not a safe id/)
+  })
+
+  it('a failed model leg during upgrade leaves the LIVE npm payload untouched', async () => {
+    await installPackage({ source: seedPack('1.0.0', { npmDeps: { 'fake-dep': '1.2.3' } }) })
+    const scriptBefore = readFileSync(join(payloadDir(), 'run.js'), 'utf-8')
+    expect(scriptBefore).toContain('1.0.0')
+
+    // v2 changes scripts AND breaks the model pin — npm runs last, so the
+    // payload must never have been touched when the model leg aborts.
+    seedPack('2.0.0', { npmDeps: { 'fake-dep': '1.2.3' }, modelUrl: `http://127.0.0.1:${server.port}/missing.gguf`, modelSha: sha256('changed') })
+    await expect(updatePackageById({ packageId: 'toolpack@1.0.0' })).rejects.toThrow(/download failed/)
+    expect(readFileSync(join(payloadDir(), 'run.js'), 'utf-8')).toBe(scriptBefore)
+  })
+
+  it('a second pack pinning a DIFFERENT sha at the same model dest is refused, never clobbered', async () => {
+    const a = seedPack('1.0.0', { npm: false })
+    const aM = JSON.parse(readFileSync(join(a, 'bakin-package.json'), 'utf-8'))
+    aM.requires.models[0].dest = 'shared/model.gguf'
+    writeFileSync(join(a, 'bakin-package.json'), JSON.stringify(aM))
+    await installPackage({ source: a })
+    const bytesBefore = readFileSync(join(testDir, 'models', 'shared', 'model.gguf'), 'utf-8')
+
+    const b = seedPack('1.0.0', { id: 'otherpack', npm: false, modelSha: sha256('a-different-model') })
+    const bM = JSON.parse(readFileSync(join(b, 'bakin-package.json'), 'utf-8'))
+    bM.requires.models[0].dest = 'shared/model.gguf'
+    writeFileSync(join(b, 'bakin-package.json'), JSON.stringify(bM))
+    await expect(installPackage({ source: b })).rejects.toThrow(/different sha256 pin/)
+    expect(readFileSync(join(testDir, 'models', 'shared', 'model.gguf'), 'utf-8')).toBe(bytesBefore)
+  })
+
+  it('a platforms-gated pack on the wrong platform installs NO requirement legs', async () => {
+    const src = seedPack('1.0.0', {})
+    const m = JSON.parse(readFileSync(join(src, 'bakin-package.json'), 'utf-8'))
+    m.platforms = ['linux-x64'] // this box is darwin
+    writeFileSync(join(src, 'bakin-package.json'), JSON.stringify(m))
+    await installPackage({ source: src })
+    expect(existsSync(payloadDir())).toBe(false)
+    expect(existsSync(modelFile())).toBe(false)
+    expect(hits['/model.gguf'] ?? 0).toBe(0) // no pointless download
+  })
+
+  it('a payload source carrying its own package.json never defeats the offline skip', async () => {
+    const src = seedPack('1.0.0', { model: false, npmDeps: { 'fake-dep': '1.2.3' } })
+    writeFileSync(join(src, 'payload', 'scripts', 'package.json'), '{"name":"upstream-junk"}')
+    await installPackage({ source: src })
+    expect(JSON.parse(readFileSync(join(payloadDir(), 'package.json'), 'utf-8')).name).toContain('bakin-pack')
+    expect(bunRuns).toHaveLength(1)
+
+    await repairPackLocally('toolpack@1.0.0')
+    expect(bunRuns).toHaveLength(1) // still offline-skipped
+  })
+})

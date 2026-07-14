@@ -92,8 +92,8 @@ const BinDownloadSchema = z.object({
   archive: z
     .object({
       format: z.literal('tar.gz'),
-      member: z.string().min(1).refine((m) => !m.startsWith('/') && !m.split('/').includes('..'), {
-        message: 'archive member must be a relative path inside the archive',
+      member: z.string().min(1).refine((m) => !m.startsWith('/') && !m.startsWith('-') && !m.split('/').includes('..'), {
+        message: 'archive member must be a relative path inside the archive (no leading - or /)',
       }),
     })
     .optional(),
@@ -238,7 +238,7 @@ const DependencySchema = z.object({
   /** Filter to a subset of items the dependency exposes. Undefined → all. */
   items: z.array(z.string().min(1)).optional(),
   /** Optional alias if the depended-upon item collides with another at the projection target. */
-  installAs: z.string().min(1).nullable().optional(),
+  installAs: PackageIdSchema.nullable().optional(),
 })
 
 const DependenciesSchema = z

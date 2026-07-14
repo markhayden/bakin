@@ -76,15 +76,18 @@ export async function installBinRequirement(
   const pin = download.sha256.toLowerCase()
 
   // Idempotent / shared-bin fast path. Raw downloads: on-disk bytes match
-  // the pin. Archives: the pin names the TARBALL, so the extracted binary
-  // can't be re-hashed against it — trust the install marker instead.
+  // the pin. Archives: the pin names the TARBALL, so the marker must match
+  // the pin AND the on-disk bytes must match the marker's extracted hash —
+  // a corrupted binary under a surviving sidecar still self-heals.
   if (existsSync(target)) {
+    const onDisk = createHash('sha256').update(readFileSync(target)).digest('hex')
+    const marker = readInstalledBy(target)
     const matches = download.archive
-      ? readInstalledBy(target)?.sha256?.toLowerCase() === pin
-      : createHash('sha256').update(readFileSync(target)).digest('hex') === pin
+      ? marker?.sha256?.toLowerCase() === pin && marker?.extractedSha256 === onDisk
+      : onDisk === pin
     if (matches) {
       log.info(`Binary "${bin.name}" already installed at pinned sha — skipping download`)
-      writeInstalledBy(target, { ...installedBy, sha256: pin })
+      writeInstalledBy(target, { ...installedBy, sha256: pin, ...(download.archive ? { extractedSha256: onDisk } : {}) })
       return { target, sha256: pin, skipped: true }
     }
   }
@@ -114,7 +117,9 @@ export async function installBinRequirement(
     const tarPath = join(extractDir, 'archive.tar.gz')
     try {
       writeFileSync(tarPath, bytes)
-      await execFileAsync('tar', ['-xzf', tarPath, '-C', extractDir, download.archive.member], { timeout: VERIFY_TIMEOUT_MS })
+      // '--' terminates option parsing — a member name can never be read as
+      // a tar option (argument-injection hardening; schema also bans '-').
+      await execFileAsync('tar', ['-xzf', tarPath, '-C', extractDir, '--', download.archive.member], { timeout: VERIFY_TIMEOUT_MS })
       const memberPath = join(extractDir, download.archive.member)
       if (!existsSync(memberPath)) {
         throw new Error(`member "${download.archive.member}" not found in archive`)
@@ -152,7 +157,11 @@ export async function installBinRequirement(
     throw err
   }
 
-  writeInstalledBy(target, { ...installedBy, sha256: pin })
+  writeInstalledBy(target, {
+    ...installedBy,
+    sha256: pin,
+    ...(download.archive ? { extractedSha256: createHash('sha256').update(bytes).digest('hex') } : {}),
+  })
   log.info(`Installed binary "${bin.name}" ${bin.version} → ${target}`)
   return { target, sha256: pin, skipped: false }
 }

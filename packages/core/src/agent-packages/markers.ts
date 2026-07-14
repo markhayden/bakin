@@ -33,6 +33,12 @@ export const InstalledByMarkerSchema = z.object({
   // signal that the package has no git provenance to verify against.
   ref: z.string(),
   commitSha: z.string(),
+  /**
+   * Archive-sourced bins: sha256 of the EXTRACTED binary bytes. The main
+   * sha256 field pins the archive, so self-heal (detecting a corrupted
+   * on-disk binary) needs this second hash.
+   */
+  extractedSha256: z.string().optional(),
   /** sha256 of the source file (or directory Merkle root for skill dirs). */
   sha256: z.string().min(1),
   installedAt: z.string().min(1),

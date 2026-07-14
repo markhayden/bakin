@@ -8,6 +8,7 @@ import { afterAll, beforeAll, beforeEach, afterEach, describe, expect, it, mock 
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'fs'
 import { createHash } from 'crypto'
 import { join } from 'path'
+import { execSync } from 'child_process'
 import { tmpdir } from 'os'
 
 const testDir = join(tmpdir(), `bakin-test-bin-installer-${Date.now()}-${Math.random().toString(16).slice(2)}`)
@@ -132,9 +133,15 @@ describe('installBinRequirement', () => {
   })
 
   it('extracts a tar.gz archive member as the binary (archive sha pins the tarball)', async () => {
-    const scratch = '/private/tmp/claude-501/-Users-roscoe-go-src-github-com-markhayden-bakin/d14bf529-d2c5-4871-89e9-9bcbe5382a4a/scratchpad'
-    const tarBytes = readFileSync(join(scratch, 'tar-fixture.tar.gz'))
-    const tarSha = readFileSync(join(scratch, 'tar-fixture.sha'), 'utf-8').trim()
+    // Build the tarball fixture in-test (same inline-fixture convention as
+    // the script constants above — never a machine-specific path).
+    const tarSrc = join(testDir, 'tar-src', 'inner')
+    mkdirSync(tarSrc, { recursive: true })
+    writeFileSync(join(tarSrc, 'tarredbin'), '#!/bin/sh\nif [ "$1" = "--version" ]; then echo "tarred 1.0.0"; exit 0; fi\nexit 1\n', { mode: 0o755 })
+    const tarPath = join(testDir, 'fixture.tar.gz')
+    execSync(`tar -czf ${JSON.stringify(tarPath)} -C ${JSON.stringify(join(testDir, 'tar-src'))} inner/tarredbin`)
+    const tarBytes = readFileSync(tarPath)
+    const tarSha = createHash('sha256').update(tarBytes).digest('hex')
     fixtures['/tarball'] = tarBytes
 
     const bin = {
@@ -171,5 +178,30 @@ describe('installBinRequirement', () => {
     }
     await expect(installBinRequirement(bin, marker, { fetchImpl: nativeFetch }))
       .rejects.toThrow(/platform/i)
+  })
+
+
+  it('a corrupted archive-sourced binary self-heals despite a surviving sidecar', async () => {
+    const tarSrc = join(testDir, 'tar-src2', 'inner')
+    mkdirSync(tarSrc, { recursive: true })
+    writeFileSync(join(tarSrc, 'healbin'), '#!/bin/sh\nif [ "$1" = "--version" ]; then echo "heal 1.0.0"; exit 0; fi\nexit 1\n', { mode: 0o755 })
+    const tarPath = join(testDir, 'heal.tar.gz')
+    execSync(`tar -czf ${JSON.stringify(tarPath)} -C ${JSON.stringify(join(testDir, 'tar-src2'))} inner/healbin`)
+    const tarBytes = readFileSync(tarPath)
+    fixtures['/healtar'] = tarBytes
+    const bin = {
+      name: 'healbin',
+      version: '1.0.0',
+      install: { [key!]: { url: `http://127.0.0.1:${server.port}/healtar`, sha256: createHash('sha256').update(tarBytes).digest('hex'), archive: { format: 'tar.gz' as const, member: 'inner/healbin' } } },
+      verifyArgs: ['--version'],
+    }
+    const first = await installBinRequirement(bin, marker, { fetchImpl: nativeFetch })
+    expect(first.skipped).toBe(false)
+
+    // Corrupt the on-disk binary; the sidecar (with the pinned tarball sha) survives.
+    writeFileSync(first.target, '#!/bin/sh\nexit 7\n', { mode: 0o755 })
+    const healed = await installBinRequirement(bin, marker, { fetchImpl: nativeFetch })
+    expect(healed.skipped).toBe(false) // re-extracted, not trusted
+    expect(readFileSync(healed.target, 'utf-8')).toContain('heal 1.0.0')
   })
 })

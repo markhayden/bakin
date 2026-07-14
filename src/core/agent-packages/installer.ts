@@ -69,6 +69,7 @@ import { readFileSync } from 'fs'
 import { join } from 'path'
 import { validatePackageContributionIntegrity } from './package-integrity'
 import { installManifestRequirements } from './requirements-installer'
+import { withoutSharedArtifacts } from './uninstaller'
 
 const log = createLogger('agent-pkg:install')
 
@@ -593,10 +594,13 @@ export async function installPackage(options: InstallOptions): Promise<InstallRe
       }
     }
 
-    // Roll back projections (every staged write so far)
+    // Roll back projections (every staged write so far). Shared artifacts
+    // (bins/models another INSTALLED pack still projects) survive — a failed
+    // install of pack B must never delete files pack A depends on.
+    const lockAtFailure = readLockfile()
     for (const p of [...projected].reverse()) {
       try {
-        await unprojectPackage(p.result.projections)
+        await unprojectPackage(withoutSharedArtifacts(lockAtFailure, p.resolvedId, p.result.projections))
       } catch (rollbackErr) {
         log.warn('Rollback during install failure threw', {
           packageId: p.resolvedId,
