@@ -7,8 +7,9 @@
  * configured so the images plugin routes servedBy 'runtime'.
  *
  * FALLBACK: requests explicitly routed to a direct provider (openai,
- * google) with a Bakin-side key still ride the SHARED core shim —
- * generate-only, no input images.
+ * google) with a Bakin-side key ride the SHARED core shim — generation,
+ * edits, and multi-reference composition (the shim takes input images
+ * since pi-ecosystem WS3).
  *
  * The images plugin owns idempotency/billing and asset persistence.
  */
@@ -43,8 +44,11 @@ function qualityFromMetadata(metadata: Record<string, unknown> | undefined): 'dr
   return quality === 'draft' || quality === 'premium' ? quality : 'standard'
 }
 
-/** The keyed shim path for explicit direct-provider routes (generate-only). */
-async function generateViaShim(input: RuntimeImageGenerateInput): Promise<RuntimeImageGenerationResult> {
+/** The keyed shim path for explicit direct-provider routes. */
+async function generateViaShim(
+  input: RuntimeImageGenerateInput,
+  inputImages: string[] = [],
+): Promise<RuntimeImageGenerationResult> {
   const provider = input.provider as string
   if (!isDirectImageProvider(provider)) {
     throw new RuntimeError(
@@ -74,6 +78,7 @@ async function generateViaShim(input: RuntimeImageGenerateInput): Promise<Runtim
     ...(input.background !== undefined ? { background: input.background } : {}),
     ...(input.outputFormat !== undefined ? { outputFormat: input.outputFormat } : {}),
     ...(input.size !== undefined ? { size: input.size } : {}),
+    ...(inputImages.length > 0 ? { inputImages } : {}),
   })
   return {
     images: [{ filePath: result.filePath, mimeType: result.mimeType, width: result.width, height: result.height, provider, ...(model ? { model } : {}) }],
@@ -97,7 +102,7 @@ export function createImagesSurface(codexOptions: CodexImageOptions = {}): PiIma
   return {
     async providers(): Promise<RuntimeImageProvider[]> {
       const auth = await codexImageAuth()
-      return [{
+      const rows: RuntimeImageProvider[] = [{
         id: CODEX_IMAGE_PROVIDER,
         label: 'OpenAI Codex (ChatGPT login)',
         defaultModel: CODEX_IMAGE_MODEL,
@@ -111,19 +116,50 @@ export function createImagesSurface(codexOptions: CodexImageOptions = {}): PiIma
           output: { formats: ['png', 'jpeg', 'webp'] },
         },
       }]
+      // Key-based direct providers (metered lane): advertised whenever a
+      // Bakin-side key resolves, so the images plugin's routing engine can
+      // route to them. Model ids mirror the plugin catalog; the shim passes
+      // them verbatim to the provider API.
+      const DIRECT_ROWS: Array<{ id: 'openai' | 'google'; label: string; defaultModel: string; models: string[] }> = [
+        { id: 'openai', label: 'OpenAI (API key)', defaultModel: 'gpt-image-1', models: ['gpt-image-2', 'gpt-image-1.5', 'gpt-image-1', 'gpt-image-1-mini'] },
+        { id: 'google', label: 'Google Gemini (API key)', defaultModel: 'gemini-3.1-flash-image-preview', models: ['gemini-3.1-flash-image-preview', 'gemini-3-pro-image-preview'] },
+      ]
+      for (const row of DIRECT_ROWS) {
+        const keyed = resolveProviderApiKeySource(row.id) !== null
+        rows.push({
+          id: row.id,
+          label: row.label,
+          defaultModel: row.defaultModel,
+          models: row.models,
+          available: keyed,
+          configured: keyed,
+          selected: false,
+          capabilities: {
+            generate: { maxCount: 1 },
+            edit: { enabled: true, maxCount: 1 },
+            output: { formats: ['png'] },
+          },
+        })
+      }
+      return rows
     },
 
     async generate(input: RuntimeImageGenerateInput): Promise<RuntimeImageGenerationResult> {
       if (isCodexRoute(input.provider)) {
         return generateViaCodex(input, input.referenceImages ?? [], codexOptions)
       }
-      return generateViaShim(input)
+      // References on a direct provider ride the shim's input-image path
+      // (edit-style invocation, #418 semantics).
+      return generateViaShim(input, input.referenceImages ?? [])
     },
 
     async edit(input: RuntimeImageEditInput): Promise<RuntimeImageGenerationResult> {
-      // Edit is codex-only (the direct shim cannot take input images).
-      // `files` already carries base asset + references, per the contract.
-      return generateViaCodex(input, input.files, codexOptions)
+      // `files` carries base asset + references, per the contract. Codex
+      // serves unrouted edits; direct providers edit through the shim.
+      if (isCodexRoute(input.provider)) {
+        return generateViaCodex(input, input.files, codexOptions)
+      }
+      return generateViaShim(input, input.files)
     },
   }
 }

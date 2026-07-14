@@ -266,7 +266,11 @@ async function resolveReferences(
   // reference-images flag in the merge (see #381 capability-drift).
   const modelDesc = getImageProvider(route.provider)?.models.find(model => model.id === route.model)
     ?? readyProvider?.models.find(model => model.id === route.model)
-  const supportsReferences = !!modelDesc?.capabilities.includes('reference-images') && readyProvider?.servedBy === 'runtime'
+  // References ride the runtime path natively AND the direct shim (which
+  // takes input images since pi-ecosystem WS3) — only an unconfigured
+  // provider or an incapable model blocks them now.
+  const supportsReferences = !!modelDesc?.capabilities.includes('reference-images')
+    && (readyProvider?.servedBy === 'runtime' || readyProvider?.servedBy === 'shim')
   if (!supportsReferences) {
     // Brand default references (#419) are best-effort — drop them and let the
     // palette prompt conditioning stand, rather than fail the whole generation.
@@ -274,8 +278,7 @@ async function resolveReferences(
     if (!modelDesc?.capabilities.includes('reference-images')) {
       return { error: `Model does not support reference images: ${route.provider}/${route.model}` }
     }
-    const via = readyProvider?.servedBy === 'shim' ? 'served via the direct shim' : 'not natively configured'
-    return { error: `Reference images require the native runtime; ${route.provider} is ${via}` }
+    return { error: `Reference images need a configured provider; ${route.provider} is not configured` }
   }
 
   const paths: string[] = []

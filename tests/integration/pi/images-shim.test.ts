@@ -26,9 +26,13 @@ mock.module('../../../src/core/logger', () => ({
 }))
 
 // Shim fallback is core-shared and separately tested — mock the billed call.
+const shimCalls: Array<Record<string, unknown>> = []
 mock.module('../../../packages/core/src/media/direct-image-provider', () => ({
   isDirectImageProvider: (id: string) => id === 'openai' || id === 'google',
-  generateDirectImage: async () => ({ filePath: join(testDir, 'shim-out.png'), mimeType: 'image/png', width: 1024, height: 1024 }),
+  generateDirectImage: async (request: Record<string, unknown>) => {
+    shimCalls.push(request)
+    return { filePath: join(testDir, 'shim-out.png'), mimeType: 'image/png', width: 1024, height: 1024 }
+  },
 }))
 
 import type { RuntimeError } from '../../../packages/core/src/adapters/runtime'
@@ -173,6 +177,60 @@ describe('shim fallback (explicit direct-provider routes)', () => {
       throw new Error('expected reject')
     } catch (err) {
       expect((err as Error).message).toContain('codex route needs no key')
+    }
+  })
+})
+
+describe('shim edit + references (WS3: input images off the codex path)', () => {
+  test('edit() on a direct provider routes through the shim with files as inputImages', async () => {
+    process.env.OPENAI_API_KEY = 'sk-test'
+    try {
+      shimCalls.length = 0
+      const surface = createImagesSurface()
+      const base = join(testDir, 'edit-base.png')
+      const ref = join(testDir, 'edit-ref.png')
+      writeFileSync(base, 'png'); writeFileSync(ref, 'png')
+      const result = await surface.edit({ prompt: 'polka', provider: 'openai', model: 'gpt-image-1', files: [base, ref] })
+      expect(result.metadata?.servedBy).toBe('shim')
+      expect(shimCalls[0]!.inputImages).toEqual([base, ref])
+    } finally {
+      delete process.env.OPENAI_API_KEY
+    }
+  })
+
+  test('generate() with referenceImages on a direct provider threads them as inputImages', async () => {
+    process.env.GEMINI_API_KEY = 'g-test'
+    try {
+      shimCalls.length = 0
+      const surface = createImagesSurface()
+      const ref = join(testDir, 'gen-ref.png')
+      writeFileSync(ref, 'png')
+      await surface.generate({ prompt: 'bear', provider: 'google', model: 'gemini-3.1-flash-image-preview', referenceImages: [ref] })
+      expect(shimCalls[0]!.inputImages).toEqual([ref])
+      expect(shimCalls[0]!.provider).toBe('google')
+    } finally {
+      delete process.env.GEMINI_API_KEY
+    }
+  })
+
+  test('providers() advertises keyed direct providers with edit capability; unkeyed stay unconfigured', async () => {
+    process.env.OPENAI_API_KEY = 'sk-test'
+    delete process.env.GEMINI_API_KEY
+    delete process.env.GOOGLE_AI_API_KEY
+    try {
+      const surface = createImagesSurface()
+      const rows = await surface.providers()
+      const openai = rows.find((r) => r.id === 'openai')!
+      const google = rows.find((r) => r.id === 'google')!
+      expect(openai.configured).toBe(true)
+      expect(openai.capabilities?.edit?.enabled).toBe(true)
+      expect(google.configured).toBe(false)
+      // The routing engine marks keyed direct providers routable.
+      const readiness = await providerReadiness({ runtime: { images: { providers: async () => rows } } } as never)
+      const ready = readiness.find((r) => r.id === 'openai')!
+      expect(ready.routable).toBe(true)
+    } finally {
+      delete process.env.OPENAI_API_KEY
     }
   })
 })
