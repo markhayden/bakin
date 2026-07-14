@@ -12,7 +12,7 @@
  * unconditionally as a doctor companion without spamming writes.
  */
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync } from 'fs'
-import { dirname, join } from 'path'
+import { basename, dirname, join } from 'path'
 import { createLogger } from '../logger'
 import { getContentDir } from '../content-dir'
 import { appendAudit } from '../audit'
@@ -25,10 +25,13 @@ import {
   readLockfile,
   writeLockfile,
   type PackageEntry,
+  type ProjectionEntry,
 } from '../../../packages/core/src/agent-packages/lockfile'
 import { getPackageSourceDir } from '../../../packages/core/src/agent-packages/package-paths'
 import { fetchSource, sourceSpecWithRef, type FetchedSource } from './source-fetcher'
 import { projectPackage, unprojectPackage } from './projector'
+import { installManifestBins } from './bin-installer'
+import { withoutSharedBins } from './uninstaller'
 import {
   acquireInstallLock,
   releaseInstallLock,
@@ -106,22 +109,6 @@ export async function updatePackageById(options: UpdateOptions): Promise<UpdateR
       enabledLessons: entry.kind === 'agent' ? entry.lessonsEnabled ?? [] : undefined,
     })
 
-    // Roll back the old skill/asset projections so the new ones land on a
-    // clean slate. Workspace files are NOT unprojected — the projector
-    // rewrites their managed block in place (agent content outside the
-    // block is never touched). Legacy lesson-marker entries are likewise
-    // left alone (the migration removes them).
-    if (entry.projections && entry.projections.length > 0) {
-      const toUnproject = entry.projections.filter((p) => {
-        if (p.kind === 'workspace-file') return false
-        if (p.kind === 'lesson-marker') return false
-        return true
-      })
-      if (toUnproject.length > 0) {
-        await unprojectPackage(toUnproject, { keepBlocks: true })
-      }
-    }
-
     const installedAt = entry.installedAt // preserve original install timestamp
     const updatedAt = new Date().toISOString()
     const installedBy = {
@@ -132,6 +119,36 @@ export async function updatePackageById(options: UpdateOptions): Promise<UpdateR
       installedAt: updatedAt,
     }
 
+    // Install the NEW manifest's bins FIRST — before any old state is torn
+    // down. installBinRequirement is fail-fast and idempotent (unchanged pin
+    // = sha fast path, no network), so a bad download/verify aborts the
+    // whole update here with nothing unprojected and the lockfile untouched.
+    const binResult = { projections: [] as ProjectionEntry[] }
+    await installManifestBins(manifest, installedBy, binResult)
+
+    // Roll back the old skill/asset projections so the new ones land on a
+    // clean slate. Workspace files are NOT unprojected — the projector
+    // rewrites their managed block in place (agent content outside the
+    // block is never touched). Legacy lesson-marker entries are likewise
+    // left alone (the migration removes them). Bins the NEW manifest still
+    // declares were refreshed in place above; only bins the new version
+    // dropped get swept — and, like removal, a dropped bin another installed
+    // pack still projects survives (withoutSharedBins).
+    const declaredBinNames = new Set(
+      manifest.kind === 'skill-pack' ? (manifest.requires?.bins ?? []).map((b) => b.name) : [],
+    )
+    if (entry.projections && entry.projections.length > 0) {
+      const toUnproject = withoutSharedBins(lock, options.packageId, entry.projections).filter((p) => {
+        if (p.kind === 'workspace-file') return false
+        if (p.kind === 'lesson-marker') return false
+        if (p.kind === 'bin' && declaredBinNames.has(basename(p.target))) return false
+        return true
+      })
+      if (toUnproject.length > 0) {
+        await unprojectPackage(toUnproject, { keepBlocks: true })
+      }
+    }
+
     const projectionResult = await projectPackage({
       manifest,
       stagingDir: fetched.stagingDir,
@@ -139,6 +156,7 @@ export async function updatePackageById(options: UpdateOptions): Promise<UpdateR
       enabledLessons: entry.lessonsEnabled,
       installedBy,
     })
+    projectionResult.projections.push(...binResult.projections)
 
     // Move staging → install dir (rename preserves the package source for
     // future re-load on boot)

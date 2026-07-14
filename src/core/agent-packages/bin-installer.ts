@@ -18,8 +18,9 @@ import { promisify } from 'util'
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'fs'
 import { createHash } from 'crypto'
 import { join } from 'path'
-import type { BinPlatformKey, BinRequirement } from '../../../packages/core/src/agent-packages/manifest'
+import type { BinPlatformKey, BinRequirement, Manifest } from '../../../packages/core/src/agent-packages/manifest'
 import { writeInstalledBy, type InstalledByMarker } from '../../../packages/core/src/agent-packages/markers'
+import type { ProjectorResult } from './projector'
 import { getBakinPaths } from '@/core/content-dir'
 import { createLogger } from '@/core/logger'
 
@@ -127,4 +128,25 @@ export async function installBinRequirement(
   writeInstalledBy(target, { ...installedBy, sha256: pin })
   log.info(`Installed binary "${bin.name}" ${bin.version} → ${target}`)
   return { target, sha256: pin, skipped: false }
+}
+
+/**
+ * Install a skill-pack's declared binaries and record them as `bin`
+ * projections on the given projector result. Idempotent (pinned-sha
+ * fast path), so every projection pass — install, update, local
+ * re-projection/repair — MUST call this: bins are part of the pack's
+ * projected surface, and any pass that rewrites the lockfile's
+ * projections without re-adding bins silently untracks (or, after an
+ * unproject sweep, deletes) them.
+ */
+export async function installManifestBins(
+  manifest: Manifest,
+  installedBy: Omit<InstalledByMarker, 'sha256'>,
+  result: Pick<ProjectorResult, 'projections'>,
+): Promise<void> {
+  if (manifest.kind !== 'skill-pack' || !manifest.requires?.bins?.length) return
+  for (const bin of manifest.requires.bins) {
+    const installed = await installBinRequirement(bin, installedBy)
+    result.projections.push({ kind: 'bin', target: installed.target, sha256: installed.sha256 })
+  }
 }

@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "updatedAt": "2026-07-13T00:00:00Z",
+  "updatedAt": "2026-07-13T21:00:00Z",
   "entries": [
     {
       "id": "pixel",
@@ -412,7 +412,7 @@
       "kind": "skill-pack",
       "name": "Web Search (Brave)",
       "emoji": "🔎",
-      "description": "Give your agents real web search — token-efficient research, docs lookup, and fresh information via the Brave Search API. Bakin installs the CLI and walks you through the free API key.",
+      "description": "Lets your agents search the web — fresh information, documentation, and news, read straight from the page and cited back to their sources. No browser required.",
       "category": "Research",
       "tags": [
         "capability",

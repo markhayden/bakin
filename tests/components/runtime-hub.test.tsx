@@ -30,9 +30,11 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import '../rtl-settle'
 import { settleReact } from '../rtl-settle'
 
+import { useToastStore } from '@makinbakin/sdk/hooks'
+
 import { OverviewTab } from '../../packages/host/src/components/runtime/overview-tab'
 import { CapabilitiesTab } from '../../packages/host/src/components/runtime/capabilities-tab'
-import { SwitchTab } from '../../packages/host/src/components/runtime/switch-tab'
+import { RuntimesTab } from '../../packages/host/src/components/runtime/runtimes-tab'
 import type { CapabilityReport } from '../../packages/host/src/components/runtime/types'
 
 const report: CapabilityReport = {
@@ -84,12 +86,12 @@ describe('OverviewTab', () => {
     expect(screen.queryByTestId('setup-fix-budget')).toBeNull()
   })
 
-  it('warn rows for headless-fixable components expose a Fix button that posts the install', async () => {
+  it('warn rows expose Repair, confirm-gated, posting the install and reporting failure reasons', async () => {
     const posts: Array<Record<string, unknown>> = []
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       if (String(input).includes('/api/runtime/onboarding/install')) {
         posts.push(JSON.parse(String(init?.body)))
-        return new Response(JSON.stringify({ ok: true, result: { status: 'installed' } }), { status: 200 })
+        return new Response(JSON.stringify({ ok: true, result: { status: 'installed', message: 'synced 3 agents' } }), { status: 200 })
       }
       return new Response('{}', { status: 200 })
     }) as unknown as typeof fetch
@@ -102,9 +104,43 @@ describe('OverviewTab', () => {
         onboarding={[{ name: 'agent-sync', status: 'warn', message: '3 findings', remediation: 'Run bakin install agent-sync' }]}
       />,
     )
+    useToastStore.setState({ toasts: [] })
     fireEvent.click(screen.getByTestId('setup-fix-agent-sync'))
+    await settleReact()
+    // Confirmation first — nothing posted yet.
+    expect(posts).toEqual([])
+    fireEvent.click(screen.getByTestId('setup-repair-confirm'))
     await waitFor(() => expect(posts).toEqual([{ component: 'agent-sync' }]))
     await waitFor(() => expect(refreshed.length).toBe(1))
+    // Success feedback reaches the REAL toast store (the one the shell
+    // Toaster reads) with the result message.
+    const toasts = useToastStore.getState().toasts
+    expect(toasts.length).toBe(1)
+    expect(String(toasts[0].message)).toContain('synced 3 agents')
+  })
+
+  it('a failed repair surfaces the reason', async () => {
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      if (String(input).includes('/api/runtime/onboarding/install')) {
+        return new Response(JSON.stringify({ ok: false, result: { status: 'failed', message: 'runtime unreachable' } }), { status: 200 })
+      }
+      return new Response('{}', { status: 200 })
+    }) as unknown as typeof fetch
+
+    render(
+      <OverviewTab
+        report={report}
+        onRefreshOnboarding={() => {}}
+        onboarding={[{ name: 'plugin-assets', status: 'warn', message: '1 drifted' }]}
+      />,
+    )
+    fireEvent.click(screen.getByTestId('setup-fix-plugin-assets'))
+    await settleReact()
+    fireEvent.click(screen.getByTestId('setup-repair-confirm'))
+    // The failure surfaces INSIDE the still-open dialog (retry or cancel),
+    // not in a detached banner.
+    await waitFor(() => expect(screen.getByText(/Repair failed: runtime unreachable/)).toBeTruthy())
+    expect(screen.getByTestId('setup-repair-confirm')).toBeTruthy()
   })
 })
 
@@ -140,7 +176,7 @@ describe('CapabilitiesTab', () => {
   })
 })
 
-describe('SwitchTab', () => {
+describe('RuntimesTab', () => {
   let posts: Array<Record<string, unknown>> = []
 
   beforeEach(() => {
@@ -173,8 +209,10 @@ describe('SwitchTab', () => {
   })
 
   it('preview posts a dry run with the chosen options and renders grouped result cards', async () => {
-    render(<SwitchTab report={report} onSwitched={() => {}} />)
+    render(<RuntimesTab report={report} onSwitched={() => {}} />)
+    // Clicking a runtime card opens the dialog — options + preview live THERE.
     fireEvent.click(screen.getByTestId('switch-target-openclaw'))
+    await settleReact()
     fireEvent.click(screen.getByTestId('switch-adopt-cron'))
     fireEvent.click(screen.getByTestId('switch-preview'))
 
@@ -186,25 +224,28 @@ describe('SwitchTab', () => {
     expect(screen.getByText(/subagent model 'openai\/gpt-5.5-mini' preserved/)).toBeTruthy()
     expect(screen.getByText(/no model providers configured/)).toBeTruthy()
     expect(screen.getByText('Stays behind')).toBeTruthy()
+    // A dry-run result funnels back into the confirm dialog — the only
+    // path to a real switch.
+    fireEvent.click(screen.getByTestId('switch-execute'))
+    await settleReact()
+    expect(screen.getByTestId('switch-confirm')).toBeTruthy()
   })
 
   it('the active runtime is marked and not selectable', () => {
-    render(<SwitchTab report={report} onSwitched={() => {}} />)
+    render(<RuntimesTab report={report} onSwitched={() => {}} />)
     expect(screen.getByText('Active')).toBeTruthy()
     expect((screen.getByTestId('switch-target-pi') as HTMLButtonElement).disabled).toBe(true)
     expect((screen.getByTestId('switch-target-openclaw') as HTMLButtonElement).disabled).toBe(false)
   })
 
   it('the real switch is gated behind a TYPED confirm dialog', async () => {
-    render(<SwitchTab report={report} onSwitched={() => {}} />)
+    render(<RuntimesTab report={report} onSwitched={() => {}} />)
     fireEvent.click(screen.getByTestId('switch-target-openclaw'))
-    // Consequence callout is visible before any action.
-    expect(screen.getByText('Before you switch')).toBeTruthy()
-    fireEvent.click(screen.getByTestId('switch-execute'))
     await settleReact()
 
-    // Dialog open, nothing posted; confirm stays disabled until the adapter
-    // name is typed — switching is deliberate, not one accidental click.
+    // Consequences live in the dialog; nothing posted; confirm stays
+    // disabled until the adapter name is typed — switching is deliberate.
+    expect(screen.getByText(/Agents start fresh sessions on openclaw/)).toBeTruthy()
     expect(posts).toEqual([])
     expect((screen.getByTestId('switch-confirm') as HTMLButtonElement).disabled).toBe(true)
     fireEvent.change(screen.getByRole('textbox'), { target: { value: 'openclaw' } })

@@ -29,6 +29,12 @@ export interface ConfirmDialogProps {
   cancelLabel?: string
   /** Cancel button variant (default "outline"). */
   cancelVariant?: 'outline' | 'ghost'
+  /**
+   * Confirm button variant (default "destructive"). Non-destructive
+   * confirm flows (repair, switch-with-preview) pass "default" so a
+   * healing action doesn't render as a red warning.
+   */
+  confirmVariant?: 'destructive' | 'default'
   /** Disables both buttons and shows a spinner on confirm while the action is in flight. */
   busy?: boolean
   /** Inline error shown above the footer. */
@@ -45,6 +51,13 @@ export interface ConfirmDialogProps {
   confirmValue?: string
   /** Label above the typed-confirmation input (default: `Type "<confirmValue>" to confirm`). */
   confirmPrompt?: ReactNode
+  /**
+   * Optional body content between the description and the typed-confirmation
+   * input — for the options an action needs decided at confirm time
+   * (checkboxes, a preview trigger). Keeps action configuration IN the
+   * dialog instead of inline on the page.
+   */
+  children?: ReactNode
   onConfirm: () => void
   onCancel: () => void
 }
@@ -63,12 +76,14 @@ export function ConfirmDialog({
   busyLabel,
   cancelLabel = 'Cancel',
   cancelVariant = 'outline',
+  confirmVariant = 'destructive',
   busy = false,
   error,
   confirmTestId,
   className,
   confirmValue,
   confirmPrompt,
+  children,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
@@ -91,6 +106,7 @@ export function ConfirmDialog({
           <DialogTitle>{title}</DialogTitle>
           {description && <DialogDescription>{description}</DialogDescription>}
         </DialogHeader>
+        {children}
         {confirmValue !== undefined && (
           <div className="space-y-1.5" data-confirm-typed>
             <Label htmlFor="confirm-typed-input" className="text-xs text-muted-foreground">
@@ -113,12 +129,12 @@ export function ConfirmDialog({
             />
           </div>
         )}
-        {error && <p className="text-sm text-destructive">{error}</p>}
+        {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
         <DialogFooter>
           <Button variant={cancelVariant} onClick={onCancel} disabled={busy}>
             {cancelLabel}
           </Button>
-          <Button variant="destructive" onClick={onConfirm} disabled={busy || confirmBlocked} data-testid={confirmTestId}>
+          <Button variant={confirmVariant} onClick={onConfirm} disabled={busy || confirmBlocked} data-testid={confirmTestId}>
             {busy ? (
               <>
                 <Loader2 className="size-3.5 animate-spin mr-1.5" />

@@ -68,26 +68,7 @@ import { getAppServices } from '../app-services'
 import { readFileSync } from 'fs'
 import { join } from 'path'
 import { validatePackageContributionIntegrity } from './package-integrity'
-import { installBinRequirement } from './bin-installer'
-import type { InstalledByMarker } from '../../../packages/core/src/agent-packages/markers'
-
-/**
- * Install a skill-pack's declared binaries (capability packs). Recorded as
- * `bin` projections on the pack's result so rollback and uninstall ride the
- * standard projection lifecycle; the uninstaller keeps bins other installed
- * packages still project.
- */
-async function installManifestBins(
-  manifest: Manifest,
-  installedBy: Omit<InstalledByMarker, 'sha256'>,
-  result: ProjectorResult,
-): Promise<void> {
-  if (manifest.kind !== 'skill-pack' || !manifest.requires?.bins?.length) return
-  for (const bin of manifest.requires.bins) {
-    const installed = await installBinRequirement(bin, installedBy)
-    result.projections.push({ kind: 'bin', target: installed.target, sha256: installed.sha256 })
-  }
-}
+import { installManifestBins } from './bin-installer'
 
 const log = createLogger('agent-pkg:install')
 

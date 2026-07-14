@@ -4,8 +4,8 @@
  * Three tabs on the SDK kit, each answering one question in plain language:
  *   Overview     — who runs your agents and what it can do (honest modes)
  *   Capabilities — are installed capability packs actually working
- *   Switch       — guided runtime switch: preview (dry run) first, confirm,
- *                  live progress, grouped result cards
+ *   Runtimes     — the runtime roster + guided switch: preview (dry run)
+ *                  first, confirm, live progress, grouped result cards
  * Sections fetch and fault independently (health-page pattern); tab state is
  * URL-backed for deep links.
  */
@@ -20,18 +20,21 @@ import { ErrorBanner } from '@/components/error-banner'
 import { useQueryState } from '@/hooks/use-query-state'
 import { OverviewTab } from '../components/runtime/overview-tab'
 import { CapabilitiesTab } from '../components/runtime/capabilities-tab'
-import { SwitchTab } from '../components/runtime/switch-tab'
+import { RuntimesTab } from '../components/runtime/runtimes-tab'
 import type { CapabilityReport, OnboardingComponentStatus } from '../components/runtime/types'
 import { Route as RootRoute } from './__root'
 
 const TABS = [
   { id: 'overview', label: 'Overview' },
   { id: 'capabilities', label: 'Capabilities' },
-  { id: 'switch', label: 'Switch' },
+  { id: 'runtimes', label: 'Runtimes' },
 ]
 
 function RuntimePage() {
   const [tab, setTab] = useQueryState('tab', 'overview')
+  // Unknown ?tab= values (typos, the retired ?tab=switch id) must never
+  // strand the page on an empty pane — fall back to Overview.
+  const activeTab = TABS.some((t) => t.id === tab) ? tab : 'overview'
   const [report, setReport] = useState<CapabilityReport | null>(null)
   const [reportError, setReportError] = useState<string | null>(null)
   // undefined = in flight (the setup check runs every component live —
@@ -82,7 +85,7 @@ function RuntimePage() {
         }
       />
       <div className="flex-1 space-y-6">
-        <UnderlineTabs tabs={TABS} value={tab} onValueChange={setTab} />
+        <UnderlineTabs tabs={TABS} value={activeTab} onValueChange={setTab} />
 
         {reportError && (
           <ErrorBanner message={`The runtime report failed to load: ${reportError}`} onRetry={refresh} />
@@ -95,9 +98,9 @@ function RuntimePage() {
           </div>
         )}
 
-        {report && tab === 'overview' && <OverviewTab report={report} onboarding={onboarding} onRefreshOnboarding={() => void loadOnboarding()} />}
-        {tab === 'capabilities' && <CapabilitiesTab />}
-        {report && tab === 'switch' && <SwitchTab report={report} onSwitched={refresh} />}
+        {report && activeTab === 'overview' && <OverviewTab report={report} onboarding={onboarding} onRefreshOnboarding={() => void loadOnboarding()} />}
+        {activeTab === 'capabilities' && <CapabilitiesTab />}
+        {report && activeTab === 'runtimes' && <RuntimesTab report={report} onSwitched={refresh} />}
       </div>
     </div>
   )

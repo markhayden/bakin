@@ -552,6 +552,9 @@ export async function scanAgentSync(lockfile?: Lockfile): Promise<SyncScanReport
           })
           continue
         }
+        // Strict verbatim hash of the adapter-reported files map — the map
+        // MUST include SKILL.md (adapters guarantee it; Pi's exclusion was
+        // the bug, fixed adapter-side so every skill.files consumer heals).
         const actualSha = computeFilesMapSha((skill.files ?? {}) as RuntimeSkillFiles)
         if (p.sha256 && actualSha !== p.sha256) {
           report.findings.push({
