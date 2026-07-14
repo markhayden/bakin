@@ -77,19 +77,20 @@ export function ExtensionsSection() {
       </div>
       <div className="divide-y divide-border/60 rounded-xl border bg-card">
         {report.extensions.map((ext) => (
-          <div key={ext.id} className="flex items-center justify-between gap-4 p-4">
+          <div key={ext.path} className="flex items-center justify-between gap-4 p-4">
             <div className="flex min-w-0 items-center gap-3">
               <Puzzle className="size-4 shrink-0 text-muted-foreground" />
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium">{ext.label}</p>
-                <p className="truncate text-xs text-muted-foreground">{ext.source}</p>
+                {/* The path IS the trust identity — always show what would run. */}
+                <p className="truncate text-xs text-muted-foreground" title={ext.path}>{ext.source} · {ext.path}</p>
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-2">
               {ext.status === 'allowed' && (
                 <>
                   <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">Allowed</Badge>
-                  <Button size="sm" variant="outline" data-testid={`ext-revoke-${ext.id}`} onClick={() => { setError(null); setTarget({ ext, action: 'revoke' }) }}>
+                  <Button size="sm" variant="outline" data-testid={`ext-revoke-${ext.label}`} onClick={() => { setError(null); setTarget({ ext, action: 'revoke' }) }}>
                     Revoke
                   </Button>
                 </>
@@ -97,7 +98,7 @@ export function ExtensionsSection() {
               {ext.status === 'pending' && (
                 <>
                   <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400">Awaiting approval</Badge>
-                  <Button size="sm" data-testid={`ext-allow-${ext.id}`} onClick={() => { setError(null); setTarget({ ext, action: 'allow' }) }}>
+                  <Button size="sm" data-testid={`ext-allow-${ext.label}`} onClick={() => { setError(null); setTarget({ ext, action: 'allow' }) }}>
                     Allow
                   </Button>
                 </>
@@ -117,7 +118,8 @@ export function ExtensionsSection() {
         description={target?.action === 'allow'
           ? (
             <>
-              This extension will load into every agent turn as trusted code INSIDE the Bakin
+              <span className="block font-mono text-xs">{target?.ext.path}</span>
+              This file will load into every agent turn as trusted code INSIDE the Bakin
               server process, with full system permissions.
               <span className="mt-2 block">• Bakin cannot sandbox it — only allow extensions from sources you trust.</span>
               <span className="block">• Any API keys it uses are its own: that spend happens OUTSIDE Bakin's budget caps.</span>

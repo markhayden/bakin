@@ -196,14 +196,28 @@ interface ExtensionsReport {
 }
 
 /** `bakin runtime extensions [list|allow <id>|revoke <id>]` — trust lane (WS4). */
-async function cmdRuntimeExtensions(sub: string | undefined, id: string | undefined): Promise<void> {
+async function cmdRuntimeExtensions(sub: string | undefined, name: string | undefined): Promise<void> {
   if (sub === 'allow' || sub === 'revoke') {
-    if (!id) {
-      console.error(`Usage: bakin runtime extensions ${sub} <id>`)
+    if (!name) {
+      console.error(`Usage: bakin runtime extensions ${sub} <name|path>`)
       process.exit(1)
     }
-    const report = await apiPost(`/api/runtime/extensions/${sub}`, { id }) as ExtensionsReport
-    console.log(`${sub === 'allow' ? 'Allowed' : 'Revoked'} "${id}".`)
+    // Trust identity is the module PATH (names collide across sources), but a
+    // human types a name: resolve it here and refuse ambiguity rather than
+    // guessing which file to trust.
+    const current = await apiGet('/api/runtime/extensions') as ExtensionsReport
+    const matches = current.extensions.filter((e) => e.path === name || e.label === name)
+    if (matches.length === 0) {
+      console.error(`Unknown extension "${name}". Run \`bakin runtime extensions list\` to see what's installed.`)
+      process.exit(1)
+    }
+    if (matches.length > 1) {
+      console.error(`"${name}" is ambiguous — pass the full path:`)
+      for (const m of matches) console.error(`  ${m.path}`)
+      process.exit(1)
+    }
+    const report = await apiPost(`/api/runtime/extensions/${sub}`, { id: matches[0]!.path }) as ExtensionsReport
+    console.log(`${sub === 'allow' ? 'Allowed' : 'Revoked'} "${matches[0]!.label}".`)
     printExtensions(report)
     return
   }
@@ -225,11 +239,14 @@ function printExtensions(report: ExtensionsReport): void {
     return
   }
   for (const ext of report.extensions) {
-    console.log(`  ${ext.status === 'allowed' ? '✓' : ext.status === 'blocked' ? '✗' : '…'} ${ext.id.padEnd(32)} ${ext.status.padEnd(8)} ${ext.source}`)
+    const mark = ext.status === 'allowed' ? '✓' : ext.status === 'blocked' ? '✗' : '…'
+    console.log(`  ${mark} ${ext.label.padEnd(32)} ${ext.status.padEnd(8)} ${ext.source}`)
+    console.log(`    ${ext.path}`)
   }
   if (report.extensions.some((e) => e.status === 'pending')) {
-    console.log('Pending extensions do NOT load into agent turns. Approve with `bakin runtime extensions allow <id>` —')
-    console.log('an allowed extension is trusted code running in the Bakin server process, and any API keys it uses spend outside Bakin budget caps.')
+    console.log('Pending extensions are NOT loaded into agent turns — their code never runs. Approve with')
+    console.log('`bakin runtime extensions allow <name>`: an allowed extension is trusted code running inside the Bakin')
+    console.log('server process with full permissions, and any API keys it uses spend outside Bakin budget caps.')
   }
 }
 

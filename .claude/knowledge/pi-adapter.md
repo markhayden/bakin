@@ -90,8 +90,22 @@ Flip: `~/.bakin/settings.json` → `"runtime": { "adapter": "pi" }` → restart 
   extensions are discovered but INERT until approved — extensions run
   unsandboxed in the server process, so loading is a trust decision.
   Policy knob: `settings.runtime.settings.piExtensions { mode, allow }`.
-- ONE allow predicate (`extensionAllowed` in messaging.ts) for loading AND
-  discovery status — exact path/basename/segment matching, never substrings.
+- **TRUE pre-load gate.** `extensionsOverride` is a POST-load filter — the SDK
+  jiti-imports every enabled extension BEFORE it runs, so a "pending"
+  extension's module code would execute (only its tools hidden). Instead:
+  `noExtensions: true` suppresses the settings-discovered set entirely and
+  ONLY approved absolute paths come back through `additionalExtensionPaths`.
+  Unapproved code is never imported. Pinned by a sentinel-writing fixture
+  extension (tests/integration/pi/extensions.test.ts) that fails if the
+  post-load filter ever returns.
+- **Trust identity is the absolute module path** — names/basenames collide
+  across sources (a dir `foo.ts` and npm `foo`), so approving must name
+  exactly one file. No pattern matching anywhere in the lane; the CLI resolves
+  a human name to its unique path and refuses ambiguity.
+- **Discovery is the SDK package manager** (`resolve()` with `onMissing:
+  'skip'` — paths only, no imports, no installs, no network): it sees npm/git
+  packages, loose files/dirs, object-form `packages[]` entries and both
+  scopes, with the loader's own enable rules applied.
 - ONE trust engine: `src/core/runtime-extensions.ts` (list/allow/revoke,
   audited) behind `GET/POST /api/runtime/extensions[/allow|/revoke]`,
   `bakin runtime extensions {list,allow,revoke}`, the hub's Extensions

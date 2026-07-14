@@ -35,7 +35,9 @@ export function createHealthChecks(
         return [result(
           'pi.extensions',
           'warn',
-          `${pending.length} extension(s) discovered but NOT loading (awaiting approval): ${pending.map((e) => e.id).join(', ')} — approve on the Runtime page (Runtimes tab) or \`bakin runtime extensions allow <id>\``,
+          `${pending.length} extension(s) installed but NOT loading — their code never runs until approved: `
+          + `${pending.map((e) => e.label).join(', ')}. Approve on the Runtime page (Runtimes tab) or with `
+          + '`bakin runtime extensions allow <name>`.',
         )]
       },
     },

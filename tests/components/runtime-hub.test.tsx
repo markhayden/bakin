@@ -262,10 +262,12 @@ describe('RuntimesTab', () => {
 })
 
 describe('ExtensionsSection', () => {
+  const EXT_PATH = '/home/u/.pi/agent/node_modules/pi-image-gen/index.js'
   const report = (status: 'pending' | 'allowed') => ({
     supported: true,
     mode: 'allowlist',
-    extensions: [{ id: 'pi-image-gen', label: 'pi-image-gen', source: 'npm package', path: 'pi-image-gen', status }],
+    // id === path: trust names exactly one module.
+    extensions: [{ id: EXT_PATH, label: 'npm:pi-image-gen', source: 'npm package', path: EXT_PATH, status }],
   })
 
   it('renders nothing when the runtime has no extension mechanism', async () => {
@@ -289,10 +291,10 @@ describe('ExtensionsSection', () => {
 
     const { ExtensionsSection } = await import('../../packages/host/src/components/runtime/extensions-section')
     render(<ExtensionsSection />)
-    await waitFor(() => screen.getByTestId('ext-allow-pi-image-gen'))
+    await waitFor(() => screen.getByTestId('ext-allow-npm:pi-image-gen'))
     expect(screen.getByText('Awaiting approval')).toBeTruthy()
 
-    fireEvent.click(screen.getByTestId('ext-allow-pi-image-gen'))
+    fireEvent.click(screen.getByTestId('ext-allow-npm:pi-image-gen'))
     await settleReact()
     // Nothing posted before confirm; disclosure present in the dialog.
     expect(posts).toEqual([])
@@ -301,6 +303,6 @@ describe('ExtensionsSection', () => {
 
     fireEvent.click(screen.getByTestId('ext-confirm'))
     await waitFor(() => screen.getByText('Allowed'))
-    expect(posts).toEqual([{ url: expect.stringContaining('/api/runtime/extensions/allow'), body: { id: 'pi-image-gen' } }])
+    expect(posts).toEqual([{ url: expect.stringContaining('/api/runtime/extensions/allow'), body: { id: EXT_PATH } }])
   })
 })

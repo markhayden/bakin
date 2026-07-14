@@ -3,19 +3,22 @@
  * or mutates extension trust (REST, CLI, doctor, runtime hub). Discovery is
  * adapter-owned and inert (`runtime.extensions?.list()`, feature-detected);
  * the trust store is the allowlist inside Bakin's adapter-settings bag
- * (`settings.runtime.settings.piExtensions.allow` — the knob name is the
- * adapter's, its storage is Bakin's settings.json; runtime-switch.ts is the
- * precedent for core writing that bag). Approvals persist the extension's
- * exact id — the adapter's allow predicate matches ids/basenames precisely.
+ * (`settings.runtime.settings.piExtensions.allow`).
+ *
+ * TRUST IDENTITY IS THE ABSOLUTE MODULE PATH the runtime would import — not
+ * a name or basename, which collide across sources. Approving names exactly
+ * one file; the adapter hands the loader exactly those paths (a true
+ * pre-load gate: unapproved code is never imported).
  *
  * Sessions are per-turn on Pi, so trust changes take effect on the next
  * turn — no restart.
  */
 import type { RuntimeExtensionInfo } from '@bakin/core/adapters/runtime'
-import { getSettings, updateSettings } from '../../packages/core/src/settings'
+import { updateSettings } from '../../packages/core/src/settings'
 import { getAppServices } from '@/core/app-services'
 import { appendAudit } from '@/core/audit'
 import { getContentDir } from '@/core/content-dir'
+import { getSettings } from '@/core/settings'
 import { createLogger } from '@/core/logger'
 
 const log = createLogger('runtime-extensions')
@@ -37,18 +40,14 @@ function currentPolicy(): Required<ExtensionsPolicyBag> {
   return { mode: raw.mode ?? 'allowlist', allow: raw.allow ?? [] }
 }
 
+/**
+ * Write ONLY the allowlist delta. updateSettings deep-merges into the ON-DISK
+ * overrides, so passing a minimal patch preserves every other setting AND
+ * never persists merged defaults or the BAKIN_RUNTIME_ADAPTER env override
+ * into settings.json (spreading the resolved `runtime` object would).
+ */
 function writeAllowlist(allow: string[]): void {
-  const settings = getSettings()
-  const policy = currentPolicy()
-  updateSettings({
-    runtime: {
-      ...settings.runtime,
-      settings: {
-        ...settings.runtime.settings,
-        piExtensions: { mode: policy.mode, allow },
-      },
-    },
-  })
+  updateSettings({ runtime: { settings: { piExtensions: { mode: currentPolicy().mode, allow } } } })
 }
 
 export async function listRuntimeExtensions(): Promise<RuntimeExtensionsReport> {
@@ -58,9 +57,9 @@ export async function listRuntimeExtensions(): Promise<RuntimeExtensionsReport> 
 }
 
 /**
- * Approve one discovered extension: its id joins the allowlist. Refuses ids
- * discovery doesn't know — trust is granted to something REAL, never to a
- * free-text pattern.
+ * Approve one discovered extension: its module PATH joins the allowlist.
+ * Refuses ids discovery doesn't know — trust is granted to a real file the
+ * runtime would import, never to a free-text pattern.
  */
 export async function allowRuntimeExtension(id: string): Promise<RuntimeExtensionsReport> {
   const report = await listRuntimeExtensions()
@@ -69,24 +68,34 @@ export async function allowRuntimeExtension(id: string): Promise<RuntimeExtensio
   if (!target) throw new Error(`Unknown extension "${id}" — run discovery first (bakin runtime extensions list)`)
 
   const policy = currentPolicy()
-  if (!policy.allow.includes(id)) writeAllowlist([...policy.allow, id])
-  appendAudit(getContentDir(), 'runtime.extension_allowed', id, { path: target.path, source: target.source }, 'human')
-  log.info(`Extension "${id}" allowed`, { path: target.path })
+  if (policy.mode === 'all') {
+    throw new Error(
+      'Extension policy is "all": every installed extension already loads. Set piExtensions.mode to "allowlist" to gate them individually.',
+    )
+  }
+  if (!policy.allow.includes(target.path)) writeAllowlist([...policy.allow, target.path])
+  appendAudit(getContentDir(), 'runtime.extension_allowed', target.path, { label: target.label, source: target.source }, 'human')
+  log.info(`Extension allowed`, { path: target.path })
   return listRuntimeExtensions()
 }
 
-/** Revoke one extension: every allowlist entry matching its id/basename goes. */
+/** Revoke one extension: its path leaves the allowlist and it stops loading. */
 export async function revokeRuntimeExtension(id: string): Promise<RuntimeExtensionsReport> {
   const report = await listRuntimeExtensions()
   if (!report.supported) throw new Error('The active runtime has no extension mechanism')
 
   const policy = currentPolicy()
-  const next = policy.allow.filter((pattern) => pattern !== id)
+  if (policy.mode === 'all') {
+    throw new Error(
+      'Extension policy is "all": every installed extension loads regardless of the allowlist. Set piExtensions.mode to "allowlist" to gate them individually.',
+    )
+  }
+  const next = policy.allow.filter((path) => path !== id)
   if (next.length === policy.allow.length) {
     throw new Error(`Extension "${id}" is not in the allowlist`)
   }
   writeAllowlist(next)
   appendAudit(getContentDir(), 'runtime.extension_revoked', id, {}, 'human')
-  log.info(`Extension "${id}" revoked`)
+  log.info(`Extension revoked`, { path: id })
   return listRuntimeExtensions()
 }

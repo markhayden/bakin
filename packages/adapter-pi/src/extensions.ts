@@ -1,56 +1,46 @@
 /**
  * Pi extension discovery — the adapter side of the trust lane (#670/#626).
  *
- * Discovery is INERT: it enumerates what the resource loader WOULD load
- * (top-level entries of `~/.pi/agent/extensions/` + the settings.json
- * `packages[]` installs) without ever importing extension code. Status comes
- * from the same policy + allow predicate the messaging loader applies, so
- * what this reports as `allowed` is exactly what loads into agent turns.
+ * Discovery asks the SDK's PACKAGE MANAGER what the loader would load
+ * (`resolve()` → resolved absolute paths + source metadata), which is the
+ * only authoritative answer: it covers npm packages, git packages, local
+ * extension files/dirs, object-form `packages[]` entries, and project scope,
+ * with the loader's own enable rules applied. It resolves paths WITHOUT
+ * importing extension modules (`onMissing: 'skip'` also means it never
+ * installs or touches the network).
+ *
+ * IDENTITY IS THE RESOLVED ABSOLUTE PATH. Not a basename, not a package name:
+ * those collide across sources, and a trust decision must name exactly one
+ * file. The allowlist stores paths, the loader is handed paths, and nothing
+ * in between pattern-matches.
  */
-import { existsSync, readdirSync, readFileSync } from 'fs'
-import { join } from 'path'
 import type { RuntimeExtensionInfo, RuntimeExtensionsAccess } from '@bakin/core/adapters/runtime'
-import { getPiPath } from './home'
-import { extensionAllowed, extensionsPolicy } from './messaging'
+import { getPiAgentDir, getPiPath } from './home'
+import { extensionsPolicy, resolveExtensionResources } from './messaging'
 
-const EXTENSION_FILE_RE = /\.(ts|js|mjs|cjs)$/
-
-function discoverDirEntries(): Array<Pick<RuntimeExtensionInfo, 'id' | 'label' | 'source' | 'path'>> {
-  const dir = getPiPath('agent', 'extensions')
-  if (!existsSync(dir)) return []
-  const out: Array<Pick<RuntimeExtensionInfo, 'id' | 'label' | 'source' | 'path'>> = []
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    if (entry.name.startsWith('.') || entry.name.endsWith('.d.ts')) continue
-    const path = join(dir, entry.name)
-    if (entry.isDirectory()) {
-      out.push({ id: entry.name, label: entry.name, source: 'extensions dir', path })
-    } else if (entry.isFile() && EXTENSION_FILE_RE.test(entry.name)) {
-      const id = entry.name.replace(EXTENSION_FILE_RE, '')
-      out.push({ id, label: id, source: 'extensions dir', path })
-    }
+/**
+ * Human label (display + CLI convenience only — NEVER used for matching):
+ * the package spec for package-installed extensions, else the file's name.
+ * The SDK's metadata.source carries internal tags like "auto" for loose
+ * files — those are not names a user would recognize.
+ */
+function labelFor(path: string, source: string | undefined): string {
+  if (source && (source.startsWith('npm:') || source.startsWith('git:'))) return source
+  const base = path.split('/').pop() ?? path
+  const stem = base.replace(/\.(ts|js)$/, '')
+  // A package's entry file is often index.* — name it by its directory.
+  if (stem === 'index') {
+    const parent = path.split('/').slice(-2, -1)[0]
+    if (parent) return parent
   }
-  return out
+  return stem
 }
 
-function discoverPackageEntries(): Array<Pick<RuntimeExtensionInfo, 'id' | 'label' | 'source' | 'path'>> {
-  const settingsPath = getPiPath('agent', 'settings.json')
-  if (!existsSync(settingsPath)) return []
-  let packages: unknown
-  try {
-    packages = (JSON.parse(readFileSync(settingsPath, 'utf-8')) as { packages?: unknown }).packages
-  } catch {
-    return [] // unreadable settings.json is the runtime's problem, not discovery's
-  }
-  if (!Array.isArray(packages)) return []
-  return packages
-    .filter((p): p is string => typeof p === 'string')
-    .map((spec) => {
-      // e.g. "npm:@scope/pkg" or "git:github.com/user/repo" — the bare name
-      // is both the id and the allowlist pattern (the loader's resolved path
-      // contains it under node_modules).
-      const name = spec.replace(/^(npm|git):/, '')
-      return { id: name, label: name, source: spec.startsWith('git:') ? `git package` : 'npm package', path: name }
-    })
+function sourceLabel(source: string | undefined, scope: string | undefined): string {
+  const projectSuffix = scope === 'project' ? ' (project)' : ''
+  if (source?.startsWith('npm:')) return `npm package${projectSuffix}`
+  if (source?.startsWith('git:')) return `git package${projectSuffix}`
+  return scope === 'project' ? 'project extension' : 'extensions dir'
 }
 
 /**
@@ -64,12 +54,18 @@ export function createExtensionsSurface(
   return {
     async list(): Promise<RuntimeExtensionInfo[]> {
       const policy = extensionsPolicy(getSettings())
-      const entries = [...discoverDirEntries(), ...discoverPackageEntries()]
-      return entries.map((entry) => ({
-        ...entry,
+      // Discovery runs against the agent dir (user scope). Per-agent project
+      // scope is resolved per turn from the agent's workspace; those paths
+      // are surfaced too when the resolver reports them.
+      const resources = await resolveExtensionResources(getPiPath(), getPiAgentDir())
+      return resources.map((resource) => ({
+        id: resource.path, // identity == the file the runtime would import
+        label: labelFor(resource.path, resource.source),
+        source: sourceLabel(resource.source, resource.scope),
+        path: resource.path,
         status: policy.mode === 'none'
           ? 'blocked'
-          : policy.mode === 'all' || extensionAllowed(entry.path, policy.allow)
+          : policy.mode === 'all' || policy.allow.includes(resource.path)
             ? 'allowed'
             : 'pending',
       }))

@@ -1,6 +1,11 @@
 /**
- * Extension trust lane (pi-ecosystem WS4): inert discovery, policy status
- * honesty, and the ONE trust engine's allow/revoke semantics.
+ * Extension trust lane (pi-ecosystem WS4): discovery honesty and the ONE
+ * trust engine's allow/revoke semantics.
+ *
+ * Trust identity is the resolved module PATH — names/basenames collide
+ * across sources, and approving must name exactly one file. The pre-load
+ * gate itself (unapproved code is NEVER imported) is pinned live against the
+ * real SDK loader in tests/integration/pi/extensions.test.ts.
  */
 import { tmpdir } from 'os'
 import { join as pathJoin } from 'path'
@@ -32,13 +37,23 @@ mock.module('@/core/logger', () => ({
   createLogger: () => ({ info: () => {}, warn: () => {}, error: () => {}, debug: () => {} }),
 }))
 
-// The trust engine reads/writes Bakin settings — fake BOTH module paths
-// (packages/core + the src facade) with a complete-enough surface.
-let runtimeSettings: Record<string, unknown> = {}
+// Bakin settings: in-memory, delta-merged the way updateSettings behaves on
+// disk (so a write that clobbered runtime.adapter would show up here).
+let settingsFile: Record<string, unknown> = { runtime: { adapter: 'pi', settings: {} } }
 const settingsFake = () => ({
-  getSettings: () => ({ runtime: { adapter: 'pi', settings: runtimeSettings } }),
-  updateSettings: (partial: { runtime?: { settings?: Record<string, unknown> } }) => {
-    runtimeSettings = partial.runtime?.settings ?? runtimeSettings
+  getSettings: () => settingsFile as { runtime: { adapter: string; settings: Record<string, unknown> } },
+  updateSettings: (partial: Record<string, unknown>) => {
+    const merge = (base: Record<string, unknown>, patch: Record<string, unknown>): Record<string, unknown> => {
+      const out = { ...base }
+      for (const [k, v] of Object.entries(patch)) {
+        const cur = out[k]
+        out[k] = cur && typeof cur === 'object' && !Array.isArray(cur) && v && typeof v === 'object' && !Array.isArray(v)
+          ? merge(cur as Record<string, unknown>, v as Record<string, unknown>)
+          : v
+      }
+      return out
+    }
+    settingsFile = merge(settingsFile, partial)
   },
   resetSettingsCache: () => {},
 })
@@ -50,93 +65,113 @@ import { createExtensionsSurface } from '../../packages/adapter-pi/src/extension
 import { resetPiHome } from '../../packages/adapter-pi/src/home'
 
 const extDir = () => join(testDir, 'pi', 'agent', 'extensions')
+const policy = () => (settingsFile.runtime as { settings: Record<string, unknown> }).settings.piExtensions as
+  | { mode?: string; allow?: string[] }
+  | undefined
+const setPolicy = (p: { mode?: string; allow?: string[] } | undefined) => {
+  ;(settingsFile.runtime as { settings: Record<string, unknown> }).settings = p ? { piExtensions: p } : {}
+}
+const runtimeSettings = () => (settingsFile.runtime as { settings: Record<string, unknown> }).settings
 
 beforeEach(() => {
   rmSync(testDir, { recursive: true, force: true })
   mkdirSync(extDir(), { recursive: true })
+  mkdirSync(join(testDir, 'pi', 'agent', 'workspace'), { recursive: true })
   resetPiHome()
-  runtimeSettings = {}
+  settingsFile = { runtime: { adapter: 'pi', settings: {} } }
 })
 
 afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })
 })
 
-function seedExtensions(): void {
-  writeFileSync(join(extDir(), 'weather-tool.ts'), 'export default () => {}')
-  mkdirSync(join(extDir(), 'mcp-bridge'), { recursive: true })
-  writeFileSync(join(extDir(), 'mcp-bridge', 'index.ts'), 'export default () => {}')
-  writeFileSync(join(extDir(), 'notes.d.ts'), '// types only — never an extension')
-  mkdirSync(join(testDir, 'pi', 'agent'), { recursive: true })
-  writeFileSync(join(testDir, 'pi', 'agent', 'settings.json'), JSON.stringify({ packages: ['npm:@ssweens/pi-image-gen'] }))
+function seedExtension(name: string): string {
+  const path = join(extDir(), `${name}.ts`)
+  writeFileSync(path, 'export default () => {}')
+  return path
 }
 
-describe('adapter discovery (inert)', () => {
-  it('enumerates dir entries + npm packages with allowlist-default pending status', async () => {
-    seedExtensions()
-    const surface = createExtensionsSurface(() => runtimeSettings)
-    const list = await surface.list()
-    expect(list.map((e) => e.id).sort()).toEqual(['@ssweens/pi-image-gen', 'mcp-bridge', 'weather-tool'])
-    expect(new Set(list.map((e) => e.status))).toEqual(new Set(['pending'])) // default allowlist-empty
+const surface = () => createExtensionsSurface(() => runtimeSettings())
+
+describe('discovery', () => {
+  it('identifies extensions by their absolute module path, pending under the allowlist default', async () => {
+    const weather = seedExtension('weather-tool')
+    const list = await surface().list()
+    const row = list.find((e) => e.path === weather)!
+    expect(row).toBeTruthy()
+    expect(row.id).toBe(weather) // identity IS the path — never a basename
+    expect(row.status).toBe('pending') // default allowlist-empty
   })
 
-  it('statuses reflect the policy exactly as the loader applies it', async () => {
-    seedExtensions()
-    const surface = createExtensionsSurface(() => runtimeSettings)
+  it('two extensions sharing a basename stay independently trustable', async () => {
+    const a = seedExtension('utils')
+    mkdirSync(join(extDir(), 'nested'), { recursive: true })
+    const b = join(extDir(), 'nested', 'utils.ts')
+    writeFileSync(b, 'export default () => {}')
 
-    runtimeSettings = { piExtensions: { mode: 'allowlist', allow: ['weather-tool'] } }
-    let list = await surface.list()
-    expect(list.find((e) => e.id === 'weather-tool')!.status).toBe('allowed')
-    expect(list.find((e) => e.id === 'mcp-bridge')!.status).toBe('pending')
-
-    runtimeSettings = { piExtensions: { mode: 'none' } }
-    list = await surface.list()
-    expect(new Set(list.map((e) => e.status))).toEqual(new Set(['blocked']))
-
-    runtimeSettings = { piExtensions: { mode: 'all' } }
-    list = await surface.list()
-    expect(new Set(list.map((e) => e.status))).toEqual(new Set(['allowed']))
+    setPolicy({ mode: 'allowlist', allow: [a] })
+    const list = await surface().list()
+    expect(list.find((e) => e.path === a)!.status).toBe('allowed')
+    const nested = list.find((e) => e.path === b)
+    // Discovery may or may not surface a nested file depending on loader
+    // rules — what MUST hold is that approving `a` never trusts `b`.
+    if (nested) expect(nested.status).toBe('pending')
   })
 
-  it('an exact-basename allow entry never over-matches a sibling prefix', async () => {
-    writeFileSync(join(extDir(), 'foo.ts'), '')
-    writeFileSync(join(extDir(), 'foobar.ts'), '')
-    runtimeSettings = { piExtensions: { mode: 'allowlist', allow: ['foo'] } }
-    const surface = createExtensionsSurface(() => runtimeSettings)
-    const list = await surface.list()
-    expect(list.find((e) => e.id === 'foo')!.status).toBe('allowed')
-    expect(list.find((e) => e.id === 'foobar')!.status).toBe('pending')
+  it('status follows the policy mode exactly', async () => {
+    const p = seedExtension('weather-tool')
+
+    setPolicy({ mode: 'none' })
+    expect((await surface().list()).find((e) => e.path === p)!.status).toBe('blocked')
+
+    setPolicy({ mode: 'all' })
+    expect((await surface().list()).find((e) => e.path === p)!.status).toBe('allowed')
+
+    setPolicy({ mode: 'allowlist', allow: [p] })
+    expect((await surface().list()).find((e) => e.path === p)!.status).toBe('allowed')
   })
 })
 
 describe('trust engine (ONE mutation path)', () => {
   async function engine() {
-    const surface = createExtensionsSurface(() => runtimeSettings)
-    ;(globalThis as Record<string, unknown>).__bakinAppServices = { runtime: { extensions: surface } }
+    ;(globalThis as Record<string, unknown>).__bakinAppServices = { runtime: { extensions: surface() } }
     return import('../../src/core/runtime-extensions')
   }
 
-  it('allow persists the exact id and the extension flips to allowed', async () => {
-    seedExtensions()
+  it('allow persists the PATH and never clobbers other settings', async () => {
+    const p = seedExtension('weather-tool')
     const { allowRuntimeExtension } = await engine()
-    const report = await allowRuntimeExtension('weather-tool')
-    expect((runtimeSettings.piExtensions as { allow: string[] }).allow).toEqual(['weather-tool'])
-    expect(report.extensions.find((e) => e.id === 'weather-tool')!.status).toBe('allowed')
+    const report = await allowRuntimeExtension(p)
+
+    expect(policy()!.allow).toEqual([p])
+    expect(report.extensions.find((e) => e.path === p)!.status).toBe('allowed')
+    // The write is a DELTA — the adapter (and any other setting) survives.
+    expect((settingsFile.runtime as { adapter: string }).adapter).toBe('pi')
   })
 
-  it('allow refuses ids discovery does not know — never free-text patterns', async () => {
-    seedExtensions()
+  it('allow refuses anything discovery does not know — never a free-text pattern', async () => {
+    seedExtension('weather-tool')
     const { allowRuntimeExtension } = await engine()
-    await expect(allowRuntimeExtension('totally-made-up')).rejects.toThrow(/Unknown extension/)
+    await expect(allowRuntimeExtension('weather-tool')).rejects.toThrow(/Unknown extension/) // bare name is NOT an id
+    await expect(allowRuntimeExtension('/etc/passwd')).rejects.toThrow(/Unknown extension/)
   })
 
-  it('revoke removes the entry; revoking a non-entry is a typed error', async () => {
-    seedExtensions()
+  it('revoke removes the path; revoking a non-entry is a typed error', async () => {
+    const p = seedExtension('weather-tool')
     const { allowRuntimeExtension, revokeRuntimeExtension } = await engine()
-    await allowRuntimeExtension('weather-tool')
-    const report = await revokeRuntimeExtension('weather-tool')
-    expect(report.extensions.find((e) => e.id === 'weather-tool')!.status).toBe('pending')
-    await expect(revokeRuntimeExtension('weather-tool')).rejects.toThrow(/not in the allowlist/)
+    await allowRuntimeExtension(p)
+    const report = await revokeRuntimeExtension(p)
+    expect(report.extensions.find((e) => e.path === p)!.status).toBe('pending')
+    expect(policy()!.allow).toEqual([])
+    await expect(revokeRuntimeExtension(p)).rejects.toThrow(/not in the allowlist/)
+  })
+
+  it("mode 'all' is honest: allow/revoke refuse rather than pretend the allowlist gates anything", async () => {
+    const p = seedExtension('weather-tool')
+    setPolicy({ mode: 'all' })
+    const { allowRuntimeExtension, revokeRuntimeExtension } = await engine()
+    await expect(allowRuntimeExtension(p)).rejects.toThrow(/policy is "all"/)
+    await expect(revokeRuntimeExtension(p)).rejects.toThrow(/policy is "all"/)
   })
 
   it('reports supported: false honestly when the runtime omits the surface', async () => {

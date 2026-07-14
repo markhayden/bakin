@@ -13,11 +13,11 @@ import { randomUUID } from 'crypto'
 
 import {
   createAgentSession,
+  DefaultPackageManager,
   DefaultResourceLoader,
   SettingsManager,
   type AgentSession,
   type AgentSessionEvent,
-  type LoadExtensionsResult,
 } from '@earendil-works/pi-coding-agent'
 
 import type {
@@ -58,35 +58,63 @@ export interface PiExtensionsPolicy {
 }
 
 /**
- * DEFAULT IS 'allowlist' (empty) — terminal-installed extensions are
- * discovered but INERT until approved on the runtime hub (pi-ecosystem WS4;
- * flipped from 'all', which loaded everything silently). Extensions run
- * unsandboxed in this server process — loading is a trust decision.
+ * DEFAULT IS 'allowlist' (empty) — extensions are discovered but NOT LOADED
+ * until approved (pi-ecosystem WS4; flipped from 'all', which loaded
+ * everything silently). Extensions are unsandboxed code inside the Bakin
+ * server process, so loading one is a trust decision.
  */
 export function extensionsPolicy(settings: Record<string, unknown> | undefined): Required<PiExtensionsPolicy> {
   const raw = (settings?.piExtensions ?? {}) as PiExtensionsPolicy
   return { mode: raw.mode ?? 'allowlist', allow: raw.allow ?? [] }
 }
 
+export interface PiExtensionResource {
+  /** Absolute path of the module the loader would import — the trust identity. */
+  path: string
+  /** Package source spec it came from (`npm:x`, `git:…`), absent for loose files. */
+  source?: string
+  scope?: string
+}
+
 /**
- * ONE allowlist predicate for loading AND discovery status: exact full path,
- * exact basename (with or without extension), or — for npm/git package
- * extensions whose load path lands under node_modules — an exact
- * path-segment match of the package name. NEVER substring matching: an
- * entry "foo" must not admit "foobar".
+ * Enumerate the extension modules the loader WOULD import, WITHOUT importing
+ * any of them: the SDK's package manager resolves paths only. `onMissing:
+ * 'skip'` also guarantees no install and no network. This is the ONE
+ * discovery source — it sees npm/git packages, local files and dirs,
+ * object-form `packages[]` filter entries, and both scopes, with the
+ * loader's own enable rules applied.
  */
-export function extensionAllowed(path: string, allow: string[]): boolean {
-  const base = path.split('/').pop() ?? path
-  const stem = base.replace(/\.(ts|js|mjs|cjs)$/, '')
-  const segments = path.split('/')
-  return allow.some((pattern) =>
-    pattern === path
-    || pattern === base
-    || pattern === stem
-    || (pattern.includes('/')
-      ? path.includes(`/node_modules/${pattern}/`) || path.endsWith(`/node_modules/${pattern}`)
-      : segments.includes(pattern)),
-  )
+export async function resolveExtensionResources(
+  workspace: string,
+  agentDir: string,
+): Promise<PiExtensionResource[]> {
+  const settingsManager = createTurnSettingsManager(workspace, agentDir)
+  const packageManager = new DefaultPackageManager({ cwd: workspace, agentDir, settingsManager })
+  const resolved = await packageManager.resolve(async () => 'skip')
+  return resolved.extensions
+    .filter((resource) => resource.enabled)
+    .map((resource) => ({
+      path: resource.path,
+      ...(resource.metadata?.source && resource.metadata.source !== resource.path
+        ? { source: resource.metadata.source }
+        : {}),
+      ...(resource.metadata?.scope ? { scope: String(resource.metadata.scope) } : {}),
+    }))
+}
+
+/**
+ * The approved absolute paths the loader may import, per policy. Empty in
+ * 'none'; the allowlist ∩ discovered in 'allowlist' (an allow entry for
+ * something no longer installed simply resolves to nothing).
+ */
+async function approvedExtensionPaths(
+  policy: Required<PiExtensionsPolicy>,
+  workspace: string,
+  agentDir: string,
+): Promise<string[]> {
+  if (policy.mode !== 'allowlist' || policy.allow.length === 0) return []
+  const discovered = new Set((await resolveExtensionResources(workspace, agentDir)).map((r) => r.path))
+  return policy.allow.filter((path) => discovered.has(path))
 }
 
 export interface PiMessagingDeps {
@@ -166,21 +194,24 @@ async function openTurnSession(args: MessageArgs, deps: PiMessagingDeps): Promis
   const settingsManager = createTurnSettingsManager(workspace, agentDir)
   const adapterSettings = deps.getSettings?.()
   const extPolicy = extensionsPolicy(adapterSettings)
+
+  // TRUE pre-load gate (WS4). `extensionsOverride` is a POST-load filter —
+  // the loader jiti-imports every enabled extension before it runs, so an
+  // unapproved extension's module code would execute (only its tools would
+  // be hidden). Instead: `noExtensions` suppresses the settings-discovered
+  // set entirely, and ONLY approved absolute paths are handed back through
+  // `additionalExtensionPaths` — unapproved code is never imported.
+  //   none      → nothing loads
+  //   allowlist → exactly the approved paths load
+  //   all       → the loader's normal behavior (opt-in, explicit)
+  const approvedPaths = await approvedExtensionPaths(extPolicy, workspace, agentDir)
   const resourceLoader = new DefaultResourceLoader({
     cwd: workspace,
     agentDir,
     settingsManager,
-    // Extensions load per policy (#626); themes/prompt-templates are
-    // TUI-only and stay out of the server process.
-    noExtensions: extPolicy.mode === 'none',
-    ...(extPolicy.mode === 'allowlist'
-      ? {
-          extensionsOverride: (base: LoadExtensionsResult): LoadExtensionsResult => ({
-            ...base,
-            extensions: base.extensions.filter((ext) => extensionAllowed(ext.path, extPolicy.allow)),
-          }),
-        }
-      : {}),
+    // Themes/prompt-templates are TUI-only and stay out of the server process.
+    noExtensions: extPolicy.mode !== 'all',
+    ...(extPolicy.mode === 'allowlist' ? { additionalExtensionPaths: approvedPaths } : {}),
     noThemes: true,
     noPromptTemplates: true,
     appendSystemPrompt: buildAppendSystemPrompt(record.id),
