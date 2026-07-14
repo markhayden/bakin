@@ -30,8 +30,8 @@ import {
 import { getPackageSourceDir } from '../../../packages/core/src/agent-packages/package-paths'
 import { fetchSource, sourceSpecWithRef, type FetchedSource } from './source-fetcher'
 import { projectPackage, unprojectPackage } from './projector'
-import { installManifestBins } from './bin-installer'
-import { withoutSharedBins } from './uninstaller'
+import { installManifestRequirements, modelDest, npmPayloadDir } from './requirements-installer'
+import { withoutSharedArtifacts } from './uninstaller'
 import {
   acquireInstallLock,
   releaseInstallLock,
@@ -119,29 +119,46 @@ export async function updatePackageById(options: UpdateOptions): Promise<UpdateR
       installedAt: updatedAt,
     }
 
-    // Install the NEW manifest's bins FIRST — before any old state is torn
-    // down. installBinRequirement is fail-fast and idempotent (unchanged pin
-    // = sha fast path, no network), so a bad download/verify aborts the
-    // whole update here with nothing unprojected and the lockfile untouched.
-    const binResult = { projections: [] as ProjectionEntry[] }
-    await installManifestBins(manifest, installedBy, binResult)
+    // Install the NEW manifest's requirement legs FIRST — before any old
+    // state is torn down. Every leg is fail-fast and idempotent (unchanged
+    // pins/deps = fast paths, no network), so a bad download/install aborts
+    // the whole update here with nothing unprojected and the lockfile
+    // untouched.
+    const requirementResult = { projections: [] as ProjectionEntry[] }
+    const bareId = stripVersionFromKey(options.packageId)
+    await installManifestRequirements({
+      manifest,
+      packId: bareId,
+      sourceDir: fetched.stagingDir,
+      installedBy,
+      result: requirementResult,
+    })
 
     // Roll back the old skill/asset projections so the new ones land on a
     // clean slate. Workspace files are NOT unprojected — the projector
     // rewrites their managed block in place (agent content outside the
     // block is never touched). Legacy lesson-marker entries are likewise
-    // left alone (the migration removes them). Bins the NEW manifest still
-    // declares were refreshed in place above; only bins the new version
-    // dropped get swept — and, like removal, a dropped bin another installed
-    // pack still projects survives (withoutSharedBins).
+    // left alone (the migration removes them). Requirement targets the NEW
+    // manifest still declares were refreshed in place above; only ones the
+    // new version dropped get swept — and, like removal, a dropped
+    // bin/model another installed pack still projects survives
+    // (withoutSharedArtifacts).
     const declaredBinNames = new Set(
       manifest.kind === 'skill-pack' ? (manifest.requires?.bins ?? []).map((b) => b.name) : [],
     )
+    const declaredNpmTargets = new Set(
+      manifest.kind === 'skill-pack' ? (manifest.requires?.npm ?? []).map((n) => npmPayloadDir(bareId, n.name)) : [],
+    )
+    const declaredModelTargets = new Set(
+      manifest.kind === 'skill-pack' ? (manifest.requires?.models ?? []).map((m) => modelDest(m.dest)) : [],
+    )
     if (entry.projections && entry.projections.length > 0) {
-      const toUnproject = withoutSharedBins(lock, options.packageId, entry.projections).filter((p) => {
+      const toUnproject = withoutSharedArtifacts(lock, options.packageId, entry.projections).filter((p) => {
         if (p.kind === 'workspace-file') return false
         if (p.kind === 'lesson-marker') return false
         if (p.kind === 'bin' && declaredBinNames.has(basename(p.target))) return false
+        if (p.kind === 'npm-payload' && declaredNpmTargets.has(p.target)) return false
+        if (p.kind === 'model' && declaredModelTargets.has(p.target)) return false
         return true
       })
       if (toUnproject.length > 0) {
@@ -156,7 +173,7 @@ export async function updatePackageById(options: UpdateOptions): Promise<UpdateR
       enabledLessons: entry.lessonsEnabled,
       installedBy,
     })
-    projectionResult.projections.push(...binResult.projections)
+    projectionResult.projections.push(...requirementResult.projections)
 
     // Move staging → install dir (rename preserves the package source for
     // future re-load on boot)
