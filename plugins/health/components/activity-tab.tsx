@@ -4,7 +4,7 @@ import { useQueryState } from '@makinbakin/sdk/hooks'
 import { Button } from '@makinbakin/sdk/ui'
 import { AlertCircle, CheckCircle2, ChevronRight, RefreshCw } from 'lucide-react'
 import { ActivityFailureTrend } from './activity-failure-trend'
-import { ActivityRow } from './activity-row'
+import { ActivityRow, isCanceledActivity, isUnverifiedActivity } from './activity-row'
 import {
   useActivityData,
   type ActivityKindFilter,
@@ -30,11 +30,18 @@ export function ActivityTab() {
   const kind = activityKind(kindParam)
   const includeRoutine = routineParam === 'true'
   const resource = useActivityData({ window, kind, includeRoutine })
-  const failures = resource.data?.recent.filter((entry) => entry.status === 'error') ?? []
-  const successes = resource.data?.recent.filter((entry) => entry.status === 'ok') ?? []
+  const failures = resource.data?.recentFailures ?? []
+  const aborted = resource.data?.recent.filter(isCanceledActivity) ?? []
+  const unverified = resource.data?.recentUnverified ?? []
+  const successes = resource.data?.recent.filter((entry) => (
+    entry.status === 'ok' && !isCanceledActivity(entry) && !isUnverifiedActivity(entry)
+  )) ?? []
   const totalActivity = resource.data?.totals.count ?? 0
   const totalFailures = resource.data?.totals.errors ?? 0
   const hasFailures = totalFailures > 0
+  const failureHeading = totalFailures > failures.length
+    ? `Failures (showing ${failures.length.toLocaleString()} of ${totalFailures.toLocaleString()})`
+    : `Failures (${failures.length.toLocaleString()})`
 
   return (
     <div className="space-y-5" data-testid="health-activity-tab">
@@ -121,7 +128,7 @@ export function ActivityTab() {
                 <p className="mt-1 text-sm text-muted-foreground">
                   {hasFailures
                     ? 'Review the failures below. Repeated failures may point to a health issue.'
-                    : `${totalActivity.toLocaleString()} ${totalActivity === 1 ? 'activity completed' : 'activities completed'} without a recorded failure.`}
+                    : `${totalActivity.toLocaleString()} ${totalActivity === 1 ? 'activity was' : 'activities were'} recorded without a failure.`}
                 </p>
               </div>
             </div>
@@ -131,9 +138,11 @@ export function ActivityTab() {
             <section aria-labelledby="activity-failures-title" className="space-y-3">
               <div className="flex items-center gap-2">
                 <AlertCircle className="size-4 text-destructive" aria-hidden="true" />
-                <h3 id="activity-failures-title" className="font-semibold">Failures ({failures.length})</h3>
+                <h3 id="activity-failures-title" className="font-semibold">{failureHeading}</h3>
               </div>
-              <ul className="space-y-2">{failures.map((entry) => <ActivityRow key={`${entry.ts}:${entry.kind}:${entry.name}`} entry={entry} />)}</ul>
+              <ul className="space-y-2">{failures.map((entry, index) => (
+                <ActivityRow key={entry.id || `${entry.ts}:${entry.kind}:${entry.name}:${index}`} entry={entry} />
+              ))}</ul>
             </section>
           )}
 
@@ -147,6 +156,36 @@ export function ActivityTab() {
             </section>
           )}
 
+          {aborted.length > 0 && (
+            <details className="group rounded-xl border border-border/70 bg-card">
+              <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 font-medium marker:hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                <ChevronRight className="size-4 text-muted-foreground transition-transform group-open:rotate-90 motion-reduce:transition-none" aria-hidden="true" />
+                Canceled activity ({aborted.length})
+              </summary>
+              <div className="border-t border-border/70 p-4">
+                <p className="mb-3 text-sm text-muted-foreground">Canceled work is recorded for context, but it does not count as a failure.</p>
+                <ul className="space-y-2">{aborted.map((entry, index) => (
+                  <ActivityRow key={entry.id || `${entry.ts}:${entry.kind}:${entry.name}:${index}`} entry={entry} />
+                ))}</ul>
+              </div>
+            </details>
+          )}
+
+          {unverified.length > 0 && (
+            <details className="group rounded-xl border border-border/70 bg-card">
+              <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 font-medium marker:hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                <ChevronRight className="size-4 text-muted-foreground transition-transform group-open:rotate-90 motion-reduce:transition-none" aria-hidden="true" />
+                Result not observed ({unverified.length})
+              </summary>
+              <div className="border-t border-border/70 p-4">
+                <p className="mb-3 text-sm text-muted-foreground">The owning turn ended without a final tool-result event. This is recorded as incomplete telemetry, not as success or failure.</p>
+                <ul className="space-y-2">{unverified.map((entry, index) => (
+                  <ActivityRow key={entry.id || `${entry.ts}:${entry.kind}:${entry.name}:${index}`} entry={entry} />
+                ))}</ul>
+              </div>
+            </details>
+          )}
+
           {successes.length > 0 && (
             <details className="group rounded-xl border border-border/70 bg-card">
               <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 font-medium marker:hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
@@ -155,7 +194,9 @@ export function ActivityTab() {
               </summary>
               <div className="border-t border-border/70 p-4">
                 <p className="mb-3 text-sm text-muted-foreground">Open this when you want to confirm that a retry or recent action worked.</p>
-                <ul className="space-y-2">{successes.map((entry) => <ActivityRow key={`${entry.ts}:${entry.kind}:${entry.name}`} entry={entry} />)}</ul>
+                <ul className="space-y-2">{successes.map((entry, index) => (
+                  <ActivityRow key={entry.id || `${entry.ts}:${entry.kind}:${entry.name}:${index}`} entry={entry} />
+                ))}</ul>
               </div>
             </details>
           )}

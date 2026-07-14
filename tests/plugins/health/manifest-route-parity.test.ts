@@ -21,8 +21,8 @@ describe('Health manifest parity', () => {
     const actual = (healthPlugin.routes ?? []).map((route) => `${route.method} ${route.path}`).sort()
     const declared = manifest.contributes.apiRoutes.map((route) => `${route.method} ${route.path}`).sort()
 
-    expect(actual).toHaveLength(18)
-    expect(new Set(declared).size).toBe(18)
+    expect(actual).toHaveLength(19)
+    expect(new Set(declared).size).toBe(19)
     expect(declared).toEqual(actual)
   })
 

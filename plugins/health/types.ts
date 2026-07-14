@@ -72,6 +72,7 @@ export interface ErrorsByKind {
 export type UsageKind = 'mcp' | 'rest' | 'agent'
 
 export interface UsageEntry {
+  id: string
   ts: string
   kind: UsageKind
   activityClass: ActivityClass
@@ -101,6 +102,45 @@ export interface UsageFeedData {
   topByName: TopByNameRow[]
   byAgent: ByAgentRow[]
   recent: UsageEntry[]
+  recentFailures: UsageEntry[]
+  recentUnverified: UsageEntry[]
+  timeBuckets: Array<{
+    start: string
+    count: number
+    failureCount: number
+    failureRate: number
+  }>
+}
+
+export type InteractionCategory = 'tools' | 'api' | 'agents'
+export type InteractionCoverageReason = 'full_window' | 'process_restart' | 'buffer_limit'
+export type InteractionCoverage =
+  | { startsAt: string; hasFullWindow: true; reason: 'full_window' }
+  | { startsAt: string; hasFullWindow: false; reason: 'process_restart' }
+  | { startsAt: string; hasFullWindow: false; reason: 'buffer_limit' }
+
+export interface InteractionSummaryData {
+  window: '5m' | '1h' | '24h'
+  coverage: InteractionCoverage
+  totals: {
+    count: number
+    errors: number
+    unverified: number
+    foreground: number
+    background: number
+  }
+  categories: Array<{
+    key: InteractionCategory
+    count: number
+    errors: number
+  }>
+  topDestinations: Array<{
+    category: InteractionCategory
+    name: string
+    count: number
+    errors: number
+    medianDurationMs: number | null
+  }>
   timeBuckets: Array<{
     start: string
     count: number
@@ -249,4 +289,33 @@ export interface AgentEffortData {
   /** ISO time of the last usage scan; observed columns are only as fresh as this. */
   scannedAt: string | null
   agents: AgentEffortRow[]
+}
+
+// ─── Startup-context summary (GET /api/context-report) ──────────────────────
+
+export interface ContextSummaryObserved {
+  inputTokens: number | null
+  cacheReadTokens: number | null
+  cacheWriteTokens: number | null
+  occurredAt: number
+}
+
+export interface ContextSummaryAgent {
+  agentId: string
+  staticTaskBytes: number
+  staticWorkflowBytes: number
+  estimatedMaxTaskBytes: number
+  workspaceAvailable: boolean
+  workspaceTotalBytes: number
+  lastObserved: ContextSummaryObserved | null
+}
+
+export interface ContextSummaryData {
+  ok: true
+  tokenEstimateNote: string
+  agents: ContextSummaryAgent[]
+}
+
+export interface ContextSettingsData {
+  dispatch?: { contextBudgetBytes?: number }
 }

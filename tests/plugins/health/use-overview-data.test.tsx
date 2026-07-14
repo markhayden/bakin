@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { renderHook, waitFor } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import type { HealthReport, SearchReadiness } from '@makinbakin/sdk/types'
 import '../../rtl-settle'
 
@@ -67,6 +67,7 @@ describe('useOverviewData', () => {
     const first = report('report-1', readiness('healthy'))
     const second = report('report-2', readiness('degraded'))
     let doctorReads = 0
+    let invalidInteractions = false
     const fetchMock = mock(async (input: RequestInfo | URL) => {
       const url = String(input)
       if (url === '/api/plugins/health/doctor') {
@@ -90,6 +91,42 @@ describe('useOverviewData', () => {
       if (url === '/api/plugins/health/search-readiness') {
         return jsonResponse({ reportId: second.id, readiness: second.subsystems.search })
       }
+      if (url === '/api/plugins/health/usage-history?window=24h') {
+        return jsonResponse({
+          window: '24h', since: '2026-07-12', throughDay: '2026-07-13', scannedAt: OBSERVED_AT,
+          byAgent: [], byDay: [], byAgentDay: [],
+        })
+      }
+      if (url === '/api/plugins/health/agent-effort?window=24h') {
+        return jsonResponse({ window: '24h', scannedAt: OBSERVED_AT, agents: [] })
+      }
+      if (url === '/api/plugins/health/usage') return jsonResponse([])
+      if (url === '/api/plugins/health/interaction-summary?window=1h') {
+        const payload = {
+          window: '1h',
+          coverage: { startsAt: '2026-07-13T11:00:00.000Z', hasFullWindow: true, reason: 'full_window' },
+          totals: { count: 18, errors: 1, unverified: 2, foreground: 8, background: 10 },
+          categories: [
+            { key: 'tools', count: 8, errors: 0 },
+            { key: 'api', count: 7, errors: 1 },
+            { key: 'agents', count: 3, errors: 0 },
+          ],
+          topDestinations: [],
+          timeBuckets: [
+            { start: OBSERVED_AT, count: 18, failureCount: 1, failureRate: 1 / 18 },
+          ],
+        }
+        if (invalidInteractions) {
+          return jsonResponse({ ...payload, coverage: undefined })
+        }
+        return jsonResponse(payload)
+      }
+      if (url === '/api/context-report') {
+        return jsonResponse({ ok: true, tokenEstimateNote: 'approximate', agents: [] })
+      }
+      if (url === '/api/settings') {
+        return jsonResponse({ dispatch: { contextBudgetBytes: 65_536 } })
+      }
       throw new Error(`Unexpected URL: ${url}`)
     })
     globalThis.fetch = fetchMock as unknown as typeof fetch
@@ -104,11 +141,31 @@ describe('useOverviewData', () => {
       connectedSessions: 3,
       recentFailures: 2,
     })
+    expect(result.current.agents.history.data?.window).toBe('24h')
+    expect(result.current.interactions.data?.coverage).toEqual({
+      startsAt: '2026-07-13T11:00:00.000Z',
+      hasFullWindow: true,
+      reason: 'full_window',
+    })
+    expect(result.current.interactions.data?.totals).toEqual({ count: 18, errors: 1, unverified: 2, foreground: 8, background: 10 })
+    expect(result.current.contextReport.data?.ok).toBe(true)
+    expect(result.current.settings.data?.dispatch?.contextBudgetBytes).toBe(65_536)
     expect(fetchMock.mock.calls.map((call) => String(call[0]))).toEqual(expect.arrayContaining([
       '/api/plugins/health/doctor',
       '/api/plugins/health/summary',
       '/api/plugins/health/live-now',
       '/api/plugins/health/search-readiness',
+      '/api/plugins/health/usage-history?window=24h',
+      '/api/plugins/health/usage',
+      '/api/plugins/health/interaction-summary?window=1h',
+      '/api/context-report',
+      '/api/settings',
     ]))
+
+    invalidInteractions = true
+    await act(async () => { await result.current.interactions.refresh('background') })
+    await waitFor(() => expect(result.current.interactions.backgroundError).toContain('invalid response'))
+    expect(result.current.interactions.data?.totals.count).toBe(18)
+    expect(result.current.backgroundError).toContain('Interaction activity returned an invalid response')
   })
 })

@@ -59,6 +59,7 @@ export interface HealthOverviewViewModel {
   search: OverviewSearch
   rightNow: {
     runningDispatches: number | null
+    runningAgents: string[]
     connectedSessions: number | null
     recentFailures: number | null
     observedAt: string | null
@@ -347,6 +348,7 @@ export function buildHealthOverviewViewModel({
     search,
     rightNow: {
       runningDispatches: liveNow?.runs.length ?? null,
+      runningAgents: [...new Set(liveNow?.runs.map((run) => run.agent) ?? [])].sort(),
       connectedSessions: connectedSessions(summary),
       recentFailures: summary?.errors1h?.total ?? null,
       observedAt: liveNow?.generatedAt ?? null,

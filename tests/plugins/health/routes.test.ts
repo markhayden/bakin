@@ -269,8 +269,8 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 
 describe('Health Plugin Routes', () => {
-  it('registers 18 routes', () => {
-    expect(activated.routes.length).toBe(18)
+  it('registers 19 routes', () => {
+    expect(activated.routes.length).toBe(19)
   })
 
   it('registers 2 exec tools', () => {
@@ -324,13 +324,17 @@ describe('Health Plugin Routes', () => {
       recordUsage({ kind: 'mcp', activityClass: 'user', name: 't1', agent: 'a', durationMs: 5, status: 'error' })
       recordUsage({ kind: 'mcp', activityClass: 'user', name: 't2', agent: 'a', durationMs: 5, status: 'error' })
       recordUsage({ kind: 'rest', activityClass: 'user', name: '/api/x', agent: null, durationMs: 5, status: 'error' })
+      recordUsage({
+        kind: 'rest', activityClass: 'routine', name: '/api/plugins/health/missing', agent: null, durationMs: 5, status: 'ok',
+        meta: { httpStatus: 404 },
+      })
       recordUsage({ kind: 'agent', activityClass: 'user', name: 'dispatch', agent: 'a', durationMs: null, status: 'ok' })
 
       const route = findRoute(activated.routes, 'GET', '/summary')!
       const { body } = await callRoute(route, activated.ctx)
       expect(body.errors1h).toEqual({
-        total: 3,
-        byKind: { mcp: 2, rest: 1, agent: 0 },
+        total: 4,
+        byKind: { mcp: 2, rest: 2, agent: 0 },
       })
     })
   })
@@ -348,7 +352,7 @@ describe('Health Plugin Routes', () => {
   })
 
   describe('windowed telemetry query validation', () => {
-    it.each(['/usage-history', '/agent-effort'])(
+    it.each(['/usage-history', '/agent-effort', '/interaction-summary'])(
       'rejects unknown query keys on GET %s',
       async (path) => {
         const route = findRoute(activated.routes, 'GET', path)!
@@ -443,9 +447,16 @@ describe('Health Plugin Routes', () => {
       expect(status).toBe(200)
       const totals = (body as { totals: { count: number } }).totals
       const topByName = (body as { topByName: Array<{ name: string; count: number }> }).topByName
+      const recent = (body as { recent: Array<{ id: string }> }).recent
+      const recentFailures = (body as { recentFailures: Array<{ id: string }> }).recentFailures
+      const recentUnverified = (body as { recentUnverified: Array<{ id: string }> }).recentUnverified
       expect(totals.count).toBe(2)
       expect(topByName[0].name).toBe('bakin_exec_tasks_list')
       expect(topByName[0].count).toBe(2)
+      expect(recent).toHaveLength(2)
+      expect(new Set(recent.map((entry) => entry.id)).size).toBe(2)
+      expect(recentFailures).toEqual([])
+      expect(recentUnverified).toEqual([])
     })
 
     it('defaults to 1h and hides successful routine activity', async () => {
@@ -493,6 +504,51 @@ describe('Health Plugin Routes', () => {
         searchParams: { window: '99y' },
       })
       expect(status).toBe(400)
+    })
+  })
+
+  describe('GET /interaction-summary', () => {
+    it('returns a meaningful-interaction dashboard summary from the real recorder', async () => {
+      recordUsage({
+        kind: 'mcp', activityClass: 'user', name: 'bakin_exec_images_generate', agent: 'main-operator', durationMs: 40, status: 'ok',
+        meta: { resultMissing: true, turnTerminalStatus: 'completed' },
+      })
+      recordUsage({ kind: 'rest', activityClass: 'system', name: '/api/search/query', agent: null, durationMs: 20, status: 'error' })
+      recordUsage({ kind: 'agent', activityClass: 'routine', name: 'heartbeat', agent: 'main-operator', durationMs: null, status: 'ok' })
+
+      const route = findRoute(activated.routes, 'GET', '/interaction-summary')
+      expect(route).toBeDefined()
+
+      const { status, body } = await callRoute(route!, activated.ctx, {
+        searchParams: { window: '1h' },
+      })
+      expect(status).toBe(200)
+
+      const summary = body as unknown as {
+        window: string
+        coverage: { startsAt: string; hasFullWindow: boolean; reason: string }
+        totals: { count: number; errors: number; unverified: number; foreground: number; background: number }
+        categories: Array<{ key: string; count: number; errors: number }>
+        topDestinations: Array<{ category: string; name: string; count: number; errors: number; medianDurationMs: number | null }>
+        timeBuckets: Array<{ start: string; count: number; failureCount: number }>
+      }
+      expect(summary.window).toBe('1h')
+      expect(Number.isFinite(Date.parse(summary.coverage.startsAt))).toBe(true)
+      expect(typeof summary.coverage.hasFullWindow).toBe('boolean')
+      expect(['full_window', 'process_restart', 'buffer_limit']).toContain(summary.coverage.reason)
+      expect(summary.totals).toEqual({ count: 2, errors: 1, unverified: 1, foreground: 1, background: 1 })
+      expect(summary.categories).toEqual([
+        { key: 'tools', count: 1, errors: 0 },
+        { key: 'api', count: 1, errors: 1 },
+        { key: 'agents', count: 0, errors: 0 },
+      ])
+      expect(summary.topDestinations).toEqual(expect.arrayContaining([
+        { category: 'tools', name: 'bakin_exec_images_generate', count: 1, errors: 0, medianDurationMs: 40 },
+        { category: 'api', name: '/api/search/query', count: 1, errors: 1, medianDurationMs: 20 },
+      ]))
+      expect(summary.topDestinations.some((destination) => destination.name === 'heartbeat')).toBe(false)
+      expect(summary.timeBuckets.reduce((total, bucket) => total + bucket.count, 0)).toBe(2)
+      expect(summary.timeBuckets.reduce((total, bucket) => total + bucket.failureCount, 0)).toBe(1)
     })
   })
 

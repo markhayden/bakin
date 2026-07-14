@@ -35,6 +35,11 @@
       },
       {
         "method": "GET",
+        "path": "/interaction-summary",
+        "summary": "Get compact all-interaction dashboard telemetry"
+      },
+      {
+        "method": "GET",
         "path": "/search-status",
         "summary": "Read detailed Search adapter and index status"
       },

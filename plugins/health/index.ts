@@ -23,7 +23,7 @@ import {
 } from '../../src/core/doctor-repair-plans'
 import { delegateDoctorRepair, verifyDoctorRepairRequest } from '../../src/core/doctor-delegate'
 import { getDoctorRepairRequest, listDoctorRepairRequests } from '../../src/core/doctor-repair-store'
-import { getUsageFeed, getErrorCount, getStatsByMs, WINDOW_MS, type UsageKind, type WindowKey } from '../../src/core/usage'
+import { getInteractionSummary, getUsageFeed, getErrorCount, getStatsByMs, WINDOW_MS, type UsageKind, type WindowKey } from '../../src/core/usage'
 import {
   listHealthChecks,
   getHealthCheck,
@@ -98,6 +98,58 @@ const usageFeedQuery = z.object({
   window: z.enum(['5m', '1h', '24h']).default('1h'),
   agent: z.string().min(1).optional(),
   includeRoutine: z.enum(['true', 'false']).default('false'),
+}).strict()
+
+const interactionSummaryQuery = z.object({
+  window: z.enum(['5m', '1h', '24h']).default('1h'),
+}).strict()
+
+const interactionCategorySchema = z.enum(['tools', 'api', 'agents'])
+const interactionTimeBucketSchema = z.object({
+  start: z.string(),
+  count: z.number().int().nonnegative(),
+  failureCount: z.number().int().nonnegative(),
+  failureRate: z.number().min(0).max(1),
+}).strict()
+const interactionSummaryResponseSchema = z.object({
+  window: z.enum(['5m', '1h', '24h']),
+  coverage: z.discriminatedUnion('reason', [
+    z.object({
+      startsAt: z.iso.datetime({ offset: true }),
+      hasFullWindow: z.literal(true),
+      reason: z.literal('full_window'),
+    }).strict(),
+    z.object({
+      startsAt: z.iso.datetime({ offset: true }),
+      hasFullWindow: z.literal(false),
+      reason: z.literal('process_restart'),
+    }).strict(),
+    z.object({
+      startsAt: z.iso.datetime({ offset: true }),
+      hasFullWindow: z.literal(false),
+      reason: z.literal('buffer_limit'),
+    }).strict(),
+  ]),
+  totals: z.object({
+    count: z.number().int().nonnegative(),
+    errors: z.number().int().nonnegative(),
+    unverified: z.number().int().nonnegative(),
+    foreground: z.number().int().nonnegative(),
+    background: z.number().int().nonnegative(),
+  }).strict(),
+  categories: z.array(z.object({
+    key: interactionCategorySchema,
+    count: z.number().int().nonnegative(),
+    errors: z.number().int().nonnegative(),
+  }).strict()).length(3),
+  topDestinations: z.array(z.object({
+    category: interactionCategorySchema,
+    name: z.string(),
+    count: z.number().int().nonnegative(),
+    errors: z.number().int().nonnegative(),
+    medianDurationMs: z.number().nonnegative().nullable(),
+  }).strict()).max(10),
+  timeBuckets: z.array(interactionTimeBucketSchema),
 }).strict()
 
 const usageHistoryQuery = z.object({
@@ -200,6 +252,19 @@ const routes = [
         ...(agent ? { agent } : {}),
         includeRoutine: includeRoutine === 'true',
       }))
+    },
+  }),
+
+  defineRoute({
+    path: '/interaction-summary',
+    method: 'GET',
+    activityClass: 'routine',
+    summary: 'Overview meaningful-interaction summary',
+    description: 'Aggregates user and autonomous system activity into foreground/background volume, failures, result gaps, and destinations.',
+    query: interactionSummaryQuery,
+    responses: { 200: interactionSummaryResponseSchema, 400: errorResponse },
+    handler: async (_req, _ctx, { query }) => {
+      return Response.json(getInteractionSummary({ window: query.window as WindowKey }))
     },
   }),
 

@@ -11,7 +11,26 @@ function humanize(value: string): string {
     .replace(/\b\w/g, (letter) => letter.toUpperCase())
 }
 
+export function isCanceledActivity(entry: UsageEntry): boolean {
+  const terminalStatus = entry.meta?.terminalStatus ?? entry.meta?.turnTerminalStatus
+  return entry.status === 'ok' && terminalStatus === 'aborted'
+}
+
+export function isUnverifiedActivity(entry: UsageEntry): boolean {
+  return entry.status === 'ok'
+    && entry.meta?.resultMissing === true
+    && entry.meta?.turnTerminalStatus === 'completed'
+}
+
 function impact(entry: UsageEntry): string {
+  if (isCanceledActivity(entry)) {
+    if (entry.kind === 'agent') return 'Agent work was canceled before completion.'
+    if (entry.kind === 'rest') return 'The request was canceled before completion.'
+    return 'The tool call was canceled before completion.'
+  }
+  if (isUnverifiedActivity(entry)) {
+    return 'The owning turn ended, but Bakin did not receive this tool call’s final result event.'
+  }
   if (entry.status === 'ok') {
     if (entry.kind === 'agent') return 'Agent work completed successfully.'
     if (entry.kind === 'rest') return 'The request completed successfully.'
@@ -29,14 +48,16 @@ function formatWhen(value: string): string {
 
 export function ActivityRow({ entry }: { entry: UsageEntry }) {
   const failed = entry.status === 'error'
+  const aborted = isCanceledActivity(entry)
+  const unverified = isUnverifiedActivity(entry)
   return (
-    <li className="rounded-xl border border-border/80 bg-card p-4" data-status={entry.status}>
+    <li className="rounded-xl border border-border/80 bg-card p-4" data-status={aborted ? 'aborted' : unverified ? 'unverified' : entry.status}>
       <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 space-y-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-medium text-foreground">{humanize(entry.name)}</span>
             <Badge variant="outline" className={failed ? 'border-destructive/30 text-destructive' : 'text-muted-foreground'}>
-              {failed ? 'Failed' : 'Succeeded'}
+              {failed ? 'Failed' : aborted ? 'Canceled' : unverified ? 'Result not observed' : 'Succeeded'}
             </Badge>
             {entry.activityClass === 'routine' && <Badge variant="secondary">Routine</Badge>}
           </div>
