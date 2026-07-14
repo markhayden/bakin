@@ -17,10 +17,10 @@ See PLAN.md for acceptance criteria. One PR per workstream; live-test before mer
 - [x] T2.7 capability-packs.md + public authoring docs
 
 ## WS3 — images completion (PR 3)
-- [ ] T3.1 direct-shim input-images (openai edit + gemini) in core media
-- [ ] T3.2 adapter-pi providers()/edit() completion (openai-by-key + google)
-- [ ] T3.3 codex lane verification + 3×3 live battery
-- [ ] T3.4 docs; close #627
+- [x] T3.1 direct-shim input-images (openai /images/edits multipart + gemini inline_data)
+- [x] T3.2 adapter-pi providers()/edit() completion + plugin reference-gate relax
+- [x] T3.3 codex lane live battery PASS (create/edit/multi-ref, real PNGs); key lanes covered by fake-endpoint suites (no metered keys on this box — 3×3 completes when keys are added)
+- [x] T3.4 pi-adapter.md updated; #627 closes with the PR
 
 ## WS4 — extension trust lane (PR 4)
 - [ ] T4.1 neutral `extensions?` contract member + arch tests

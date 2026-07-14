@@ -578,8 +578,10 @@ describe('images tools', () => {
       expect(getAsset(refs![0].assetId)?.tags).toContain('reference')
     })
 
-    it('rejects references served via the shim, before billing', async () => {
-      const generate = mock(async () => { throw new Error('should not bill') })
+    it('accepts references on the shim path — the direct shim takes input images (WS3)', async () => {
+      const outFile = join(testDir, 'shimref-out.png')
+      writeFileSync(outFile, 'png')
+      const generate = mock(async () => ({ images: [{ filePath: outFile, mimeType: 'image/png', width: 1024, height: 1024 }] }))
       const { ctx } = makeContext(
         { runtime: { images: { providers: mock(async () => []), generate } } } as never,
         { absPath: join(testDir, 'x.png'), mimeType: 'image/png', version: 1 },
@@ -589,9 +591,12 @@ describe('images tools', () => {
         surface: 'instagram-feed-portrait', referenceImages: ['20260601-horse-aaaabbbb'],
       }, 'pixel')
 
-      expect(result.ok).toBe(false)
-      expect(result.error).toMatch(/native runtime/i)
-      expect(generate).not.toHaveBeenCalled()
+      expect(result.ok).toBe(true)
+      // The reference id must have resolved to the asset's ACTUAL version
+      // file — the shim path gets real absolute paths, same as native.
+      expect(generate).toHaveBeenCalledWith(expect.objectContaining({
+        referenceImages: [join(testDir, 'x.png')],
+      }))
     })
 
     it('rejects references when the model lacks the reference-images capability', async () => {
@@ -960,8 +965,7 @@ describe('images tools', () => {
       }, 'pixel')
 
       expect(result.ok).toBe(false)
-      expect(result.error).toMatch(/native runtime/i)
-      expect(result.error).toMatch(/not natively configured/i)
+      expect(result.error).toMatch(/not configured/i)
       expect(generate).not.toHaveBeenCalled()
     })
 

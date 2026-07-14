@@ -42,6 +42,20 @@ const MIME_TO_EXTENSION: Record<string, string> = {
  * provider-output format) rather than silently mistyping — fixing the prior
  * `image/gif → .jpg` bug that #380 was filed for.
  */
+/**
+ * Mime type from an image file path's extension — pure string logic.
+ * Null for anything that isn't a supported input type: callers must reject
+ * (never guess a mime and send mislabeled bytes to a billed provider call).
+ */
+export function mimeTypeForImagePath(path: string): string | null {
+  const ext = path.slice(path.lastIndexOf('.') + 1).toLowerCase()
+  if (ext === 'png') return 'image/png'
+  if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg'
+  if (ext === 'webp') return 'image/webp'
+  if (ext === 'gif') return 'image/gif'
+  return null
+}
+
 export function extensionForImageMime(mimeType: string): string {
   const normalized = mimeType.split(';')[0]?.trim().toLowerCase() ?? ''
   return MIME_TO_EXTENSION[normalized] ?? 'png'
