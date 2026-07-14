@@ -3,8 +3,11 @@
 import { formatAbsoluteTime, formatRelativeTime, StatusBadge } from '@makinbakin/sdk/components'
 import { Button } from '@makinbakin/sdk/ui'
 import { AlertCircle, Bot, Braces, ChevronDown, Wrench } from 'lucide-react'
-import { useState } from 'react'
-import type { UsageEntry, UsageFailureGroup, UsageFailureGroupPage, UsageKind } from '../types'
+import { useEffect, useState } from 'react'
+import type { UsageEntry, UsageFailureGroup, UsageFailureGroupPage, UsageFeedData, UsageKind } from '../types'
+import type { ActivityFailureSelection } from './activity-breakdown'
+import { ActivityFailureTrend } from './activity-failure-trend'
+import { focusActivityElement } from './activity-navigation'
 import { ActivityRow, activityFailureReason, formatActivityName } from './activity-row'
 
 const KIND_META: Record<UsageKind, {
@@ -18,6 +21,10 @@ const KIND_META: Record<UsageKind, {
 }
 
 export const FAILURE_PATTERN_PREVIEW_LIMIT = 3
+
+export interface ActivityFailureRequest extends ActivityFailureSelection {
+  requestId: number
+}
 
 function entryDestination(entry: UsageEntry): string {
   const routePattern = entry.kind === 'rest' ? entry.meta?.routePattern : undefined
@@ -57,6 +64,26 @@ function failureCountLabel(group: UsageFailureGroup): string {
   return `${failures} in ${attempts}`
 }
 
+function failureGroupDisplayName(group: UsageFailureGroup): string {
+  const destination = group.destination ?? group.name
+  return `${group.method ? `${group.method} ` : ''}${formatActivityName(destination)}`
+}
+
+function failureGroupKey(group: UsageFailureGroup): string {
+  return JSON.stringify([group.kind, group.method ?? null, group.destination ?? group.name])
+}
+
+function failureGroupElementId(group: UsageFailureGroup): string {
+  return `activity-failure-pattern-${encodeURIComponent(failureGroupKey(group))}`
+}
+
+function matchesFailureRequest(group: UsageFailureGroup, request: ActivityFailureRequest): boolean {
+  if (request.kind === undefined || request.method === undefined) return false
+  return group.kind === request.kind
+    && (group.destination ?? group.name) === request.destination
+    && (group.method ?? null) === request.method
+}
+
 function eventButtonLabel(visible: number, total: number): string {
   if (visible === total) return `View ${visible.toLocaleString()} failure ${visible === 1 ? 'event' : 'events'}`
   return `View ${visible.toLocaleString()} of ${total.toLocaleString()} recent failure events`
@@ -86,15 +113,17 @@ function failureAgents(group: UsageFailureGroup): string {
 function FailureGroup({
   group,
   failures,
+  selected = false,
 }: {
   group: UsageFailureGroup
   failures: UsageEntry[]
+  selected?: boolean
 }) {
   const [expanded, setExpanded] = useState(false)
   const meta = KIND_META[group.kind]
   const Icon = meta.icon
   const destination = group.destination ?? group.name
-  const displayName = `${group.method ? `${group.method} ` : ''}${formatActivityName(destination)}`
+  const displayName = failureGroupDisplayName(group)
   const label = `${meta.label} · ${displayName}`
   const events = matchingFailures(group, failures)
   const latest = group.latestFailure ?? events[0]
@@ -104,7 +133,14 @@ function FailureGroup({
   const disclosureId = `activity-failure-events-${group.kind}-${group.method ?? 'none'}-${encodeURIComponent(destination)}`
 
   return (
-    <div role="group" aria-label={label} className="overflow-hidden rounded-xl border border-border/80 bg-card">
+    <div
+      id={failureGroupElementId(group)}
+      role="group"
+      aria-label={label}
+      className={`overflow-hidden rounded-xl border bg-card outline-none transition-shadow ${selected ? 'border-destructive/40 ring-2 ring-destructive/30' : 'border-border/80'} focus-visible:ring-2 focus-visible:ring-ring`}
+      data-selected={selected ? 'true' : undefined}
+      tabIndex={-1}
+    >
       <div className="grid min-w-0 gap-3 p-4 @[38rem]/health:grid-cols-[minmax(0,1fr)_auto] @[38rem]/health:items-center">
         <div className="min-w-0">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -168,42 +204,155 @@ function FailureGroup({
   )
 }
 
+function FailurePatternHighlights({ groups }: { groups: UsageFailureGroup[] }) {
+  const highlights = groups.slice(0, FAILURE_PATTERN_PREVIEW_LIMIT)
+
+  return (
+    <div className="min-w-0">
+      <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Top failure patterns</h4>
+      {highlights.length > 0 ? (
+        <ol className="mt-2 divide-y divide-border/70" aria-label="Top failure patterns">
+          {highlights.map((group) => {
+            const meta = KIND_META[group.kind]
+            const Icon = meta.icon
+            const destination = group.destination ?? group.name
+            const latest = group.latestFailure
+            const reason = latest ? activityFailureReason(latest) : 'No failure reason was reported.'
+            return (
+              <li
+                key={`${group.kind}:${group.method ?? ''}:${destination}`}
+                className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-2 first:pt-0 last:pb-0"
+              >
+                <span className="flex min-w-0 items-center gap-2">
+                  <Icon className={`size-3.5 shrink-0 ${meta.color}`} aria-hidden="true" />
+                  <span className="min-w-0">
+                    <strong className="block truncate text-sm font-medium text-foreground" title={destination}>
+                      {failureGroupDisplayName(group)}
+                    </strong>
+                    <span className="block truncate text-xs text-muted-foreground" title={`${meta.label} · ${reason}`}>
+                      <span>{meta.label} · </span>
+                      <span>{reason}</span>
+                    </span>
+                  </span>
+                </span>
+                <strong className="whitespace-nowrap text-right text-xs font-medium tabular-nums text-foreground">
+                  {failureCountLabel(group)}
+                </strong>
+              </li>
+            )
+          })}
+        </ol>
+      ) : (
+        <p className="mt-2 text-sm text-muted-foreground">Refreshing failure patterns…</p>
+      )}
+    </div>
+  )
+}
+
+function ResultsToVerify({
+  unverified,
+  totalUnverified,
+}: {
+  unverified: UsageEntry[]
+  totalUnverified: number
+}) {
+  if (totalUnverified === 0) return null
+
+  return (
+    <div className="space-y-2">
+      <div className="flex min-w-0 flex-wrap items-end justify-between gap-2">
+        <div>
+          <h4 className="font-semibold text-foreground">Results to verify</h4>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Confirm whether these calls completed before retrying them.
+          </p>
+        </div>
+        {unverified.length < totalUnverified && (
+          <span className="text-xs tabular-nums text-muted-foreground">
+            Showing {unverified.length.toLocaleString()} of {totalUnverified.toLocaleString()}
+          </span>
+        )}
+      </div>
+      {unverified.length > 0 ? (
+        <ul className="space-y-2" aria-label="Results to verify">
+          {unverified.map((entry, index) => (
+            <ActivityRow key={entry.id || `${entry.ts}:${entry.kind}:${entry.name}:${index}`} entry={entry} />
+          ))}
+        </ul>
+      ) : (
+        <p className="rounded-xl border border-warning/30 bg-warning/5 p-4 text-sm text-muted-foreground">
+          No recent raw evidence is available for these result gaps.
+        </p>
+      )}
+    </div>
+  )
+}
+
 export function ActivityFailureGroups({
   groups,
   failures,
   totalFailures,
   unverified,
   totalUnverified,
+  buckets,
   page,
   onPageChange,
+  failureRequest,
 }: {
   groups: UsageFailureGroup[]
   failures: UsageEntry[]
   totalFailures: number
   unverified: UsageEntry[]
   totalUnverified: number
+  buckets: UsageFeedData['timeBuckets']
   page?: UsageFailureGroupPage
   onPageChange?: (offset: number) => void
+  failureRequest?: ActivityFailureRequest | null
 }) {
-  const [patternsExpanded, setPatternsExpanded] = useState(false)
-  if (totalFailures === 0 && totalUnverified === 0) return null
+  const [detailsExpanded, setDetailsExpanded] = useState(false)
   const patternTotal = page?.total ?? groups.length
+  const hasPatterns = groups.length > 0
   const patternStart = groups.length > 0 ? (page?.offset ?? 0) + 1 : 0
   const patternEnd = groups.length > 0 ? (page?.offset ?? 0) + groups.length : 0
   const showPaging = page !== undefined && (page.offset > 0 || page.hasMore)
-  const hiddenPatternCount = Math.max(0, groups.length - FAILURE_PATTERN_PREVIEW_LIMIT)
-  const visibleGroups = patternsExpanded
-    ? groups
-    : groups.slice(0, FAILURE_PATTERN_PREVIEW_LIMIT)
+  const reviewLabel = page && patternTotal > groups.length
+    ? `Review failure patterns ${patternStart.toLocaleString()}–${patternEnd.toLocaleString()} of ${patternTotal.toLocaleString()}`
+    : `Review all ${patternTotal.toLocaleString()} failure ${patternTotal === 1 ? 'pattern' : 'patterns'}`
   const description = totalFailures > 0
     ? totalUnverified > 0
       ? 'Repeated failures are grouped. Calls missing a final result are listed separately.'
       : 'Repeated failures are grouped so the biggest patterns stand out first.'
     : 'These calls ended without a final result event, so Bakin cannot confirm their outcome.'
+  const matchingGroup = failureRequest
+    ? groups.find((group) => matchesFailureRequest(group, failureRequest))
+    : undefined
+  const matchingGroupElementId = matchingGroup ? failureGroupElementId(matchingGroup) : null
+  const requestId = failureRequest?.requestId
+
+  useEffect(() => {
+    if (requestId === undefined) return
+    setDetailsExpanded(true)
+  }, [requestId])
+
+  useEffect(() => {
+    if (requestId === undefined || !detailsExpanded) return
+    const target = matchingGroupElementId
+      ? document.getElementById(matchingGroupElementId)
+      : document.getElementById('activity-needs-attention')
+    if (!target) return
+    focusActivityElement(target, { block: matchingGroupElementId ? 'center' : 'start' })
+  }, [detailsExpanded, matchingGroupElementId, requestId])
+
+  if (totalFailures === 0 && totalUnverified === 0) return null
 
   return (
-    <section id="activity-needs-attention" aria-labelledby="activity-needs-attention-title" className="scroll-mt-4 space-y-3" tabIndex={-1}>
-      <div className="flex min-w-0 flex-wrap items-end justify-between gap-2">
+    <section
+      id="activity-needs-attention"
+      aria-labelledby="activity-needs-attention-title"
+      className="scroll-mt-4 overflow-hidden rounded-xl border border-border/80 bg-card outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      tabIndex={-1}
+    >
+      <div className="flex min-w-0 flex-wrap items-end justify-between gap-2 px-4 py-3">
         <div>
           <div className="flex items-center gap-2">
             <AlertCircle className={`size-4 ${totalFailures > 0 ? 'text-destructive' : 'text-warning'}`} aria-hidden="true" />
@@ -241,85 +390,88 @@ export function ActivityFailureGroups({
       </div>
 
       {totalFailures > 0 && (
-        <div id="activity-failure-pattern-list" className="space-y-2">
-          {visibleGroups.map((group) => (
-            <FailureGroup
-              key={`${group.kind}:${group.method ?? ''}:${group.destination ?? group.name}`}
-              group={group}
-              failures={failures}
-            />
-          ))}
-        </div>
-      )}
-
-      {totalFailures > 0 && hiddenPatternCount > 0 && (
-        <Button
-          size="sm"
-          variant="outline"
-          className="w-full justify-center text-muted-foreground hover:text-foreground"
-          aria-expanded={patternsExpanded}
-          aria-controls="activity-failure-pattern-list"
-          onClick={() => setPatternsExpanded((value) => !value)}
-        >
-          {patternsExpanded
-            ? 'Show fewer failure patterns'
-            : `Show ${hiddenPatternCount.toLocaleString()} more failure ${hiddenPatternCount === 1 ? 'pattern' : 'patterns'}`}
-          <ChevronDown
-            className={patternsExpanded ? 'rotate-180 transition-transform motion-reduce:transition-none' : 'transition-transform motion-reduce:transition-none'}
-            aria-hidden="true"
-          />
-        </Button>
-      )}
-
-      {showPaging && (
-        <nav aria-label="Failure pattern pages" className="flex items-center justify-end gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            aria-label="Previous failure patterns"
-            disabled={page.offset === 0 || !onPageChange}
-            onClick={() => onPageChange?.(Math.max(0, page.offset - page.limit))}
-          >
-            Previous patterns
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            aria-label="Next failure patterns"
-            disabled={!page.hasMore || !onPageChange}
-            onClick={() => onPageChange?.(page.offset + page.limit)}
-          >
-            Next patterns
-          </Button>
-        </nav>
-      )}
-
-      {totalUnverified > 0 && (
-        <div className="space-y-2 pt-1">
-          <div className="flex min-w-0 flex-wrap items-end justify-between gap-2">
-            <div>
-              <h4 className="font-semibold text-foreground">Results to verify</h4>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Confirm whether these calls completed before retrying them.
-              </p>
+        <>
+          <div className="grid min-w-0 items-start gap-5 border-t border-border/70 px-4 py-4 @[54rem]/health:grid-cols-[minmax(0,1.35fr)_minmax(18rem,.65fr)]">
+            <div className="min-w-0">
+              <h4 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Failures over time</h4>
+              <ActivityFailureTrend buckets={buckets} />
             </div>
-            {unverified.length < totalUnverified && (
-              <span className="text-xs tabular-nums text-muted-foreground">
-                Showing {unverified.length.toLocaleString()} of {totalUnverified.toLocaleString()}
-              </span>
-            )}
+            <FailurePatternHighlights groups={groups} />
           </div>
-          {unverified.length > 0 ? (
-            <ul className="space-y-2" aria-label="Results to verify">
-              {unverified.map((entry, index) => (
-                <ActivityRow key={entry.id || `${entry.ts}:${entry.kind}:${entry.name}:${index}`} entry={entry} />
-              ))}
-            </ul>
-          ) : (
-            <p className="rounded-xl border border-warning/30 bg-warning/5 p-4 text-sm text-muted-foreground">
-              No recent raw evidence is available for these result gaps.
-            </p>
+
+          {hasPatterns && (
+            <div className="border-t border-border/70 p-2">
+              <Button
+                size="sm"
+                variant="ghost"
+                className="w-full justify-center text-muted-foreground hover:text-foreground"
+                aria-expanded={detailsExpanded}
+                aria-controls="activity-failure-pattern-details"
+                onClick={() => {
+                  if (detailsExpanded && page && page.offset > 0) onPageChange?.(0)
+                  setDetailsExpanded((value) => !value)
+                }}
+              >
+                {detailsExpanded ? 'Hide failure details' : reviewLabel}
+                <ChevronDown
+                  className={detailsExpanded ? 'rotate-180 transition-transform motion-reduce:transition-none' : 'transition-transform motion-reduce:transition-none'}
+                  aria-hidden="true"
+                />
+              </Button>
+            </div>
           )}
+
+          {hasPatterns && detailsExpanded && (
+            <div id="activity-failure-pattern-details" className="space-y-3 border-t border-border/70 p-3">
+              <div className="space-y-2">
+                {groups.map((group) => (
+                  <FailureGroup
+                    key={failureGroupKey(group)}
+                    group={group}
+                    failures={failures}
+                    selected={matchingGroup === group}
+                  />
+                ))}
+              </div>
+
+              {showPaging && (
+                <nav aria-label="Failure pattern pages" className="flex flex-wrap items-center justify-end gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    aria-label="Previous failure patterns"
+                    disabled={page.offset === 0 || !onPageChange}
+                    onClick={() => onPageChange?.(Math.max(0, page.offset - page.limit))}
+                  >
+                    Previous patterns
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    aria-label="Next failure patterns"
+                    disabled={!page.hasMore || !onPageChange}
+                    onClick={() => onPageChange?.(page.offset + page.limit)}
+                  >
+                    Next patterns
+                  </Button>
+                </nav>
+              )}
+
+              <ResultsToVerify unverified={unverified} totalUnverified={totalUnverified} />
+            </div>
+          )}
+
+          {!hasPatterns && totalUnverified > 0 && (
+            <div className="border-t border-border/70 p-4">
+              <ResultsToVerify unverified={unverified} totalUnverified={totalUnverified} />
+            </div>
+          )}
+        </>
+      )}
+
+      {totalFailures === 0 && totalUnverified > 0 && (
+        <div className="border-t border-border/70 p-4">
+          <ResultsToVerify unverified={unverified} totalUnverified={totalUnverified} />
         </div>
       )}
     </section>

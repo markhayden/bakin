@@ -4,10 +4,13 @@ import { useQueryState } from '@makinbakin/sdk/hooks'
 import { Button } from '@makinbakin/sdk/ui'
 import { RefreshCw } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import { ActivityBreakdown } from './activity-breakdown'
+import { ActivityBreakdown, type ActivityFailureSelection } from './activity-breakdown'
 import { ActivityEventStream } from './activity-event-stream'
-import { ActivityFailureGroups, FAILURE_PATTERN_PREVIEW_LIMIT } from './activity-failure-groups'
-import { ActivityFailureTrend } from './activity-failure-trend'
+import {
+  ActivityFailureGroups,
+  FAILURE_PATTERN_PREVIEW_LIMIT,
+  type ActivityFailureRequest,
+} from './activity-failure-groups'
 import { ActivityMetrics } from './activity-metrics'
 import { ActivityPulse } from './activity-pulse'
 import { ActivityVolumeChart } from './activity-volume-chart'
@@ -39,14 +42,37 @@ export function ActivityTab() {
   const kind = activityKind(kindParam)
   const failureFilterKey = `${window}:${kind}`
   const [failurePage, setFailurePage] = useState({ key: failureFilterKey, offset: 0 })
+  const [failureRequest, setFailureRequest] = useState<(ActivityFailureRequest & { filterKey: string }) | null>(null)
+  const [failureTarget, setFailureTarget] = useState<({
+    filterKey: string
+    kind: Exclude<ActivityFailureSelection['kind'], undefined>
+    method: string | null
+    destination: string
+  }) | null>(null)
+  const failureRequestId = useRef(0)
+  const attentionHashWasInitial = useRef(
+    typeof document !== 'undefined' && document.location.hash === '#activity-needs-attention',
+  )
   const handledAttentionHash = useRef(false)
   const failureGroupOffset = failurePage.key === failureFilterKey ? failurePage.offset : 0
-  const setFailureGroupOffset = (offset: number) => setFailurePage({ key: failureFilterKey, offset })
+  const activeFailureTarget = failureTarget?.filterKey === failureFilterKey ? failureTarget : null
+  const setFailureGroupOffset = (offset: number) => {
+    setFailureTarget(null)
+    setFailureRequest(null)
+    setFailurePage({ key: failureFilterKey, offset })
+  }
   const resource = useActivityData({
     window,
     kind,
     includeRoutine: true,
-    ...(failureGroupOffset > 0 ? {
+    ...(activeFailureTarget ? {
+      exactFailureTargetingSupported: true,
+      failureGroupTarget: {
+        kind: activeFailureTarget.kind,
+        method: activeFailureTarget.method,
+        destination: activeFailureTarget.destination,
+      },
+    } : failureGroupOffset > 0 ? {
       failureGroupOffset,
       failureGroupLimit: FAILURE_GROUP_PAGE_SIZE,
     } : {}),
@@ -61,6 +87,46 @@ export function ActivityTab() {
   const pageLimit = data?.failureGroupPage?.limit
   const pageTotal = data?.failureGroupPage?.total
 
+  const reviewFailures = (selection: ActivityFailureSelection) => {
+    const exactTarget = data?.capabilities?.exactFailureTargeting === true
+      && selection.kind !== undefined
+      && selection.method !== undefined
+      ? {
+          filterKey: failureFilterKey,
+          kind: selection.kind,
+          method: selection.method,
+          destination: selection.destination,
+        }
+      : null
+    failureRequestId.current += 1
+    setFailurePage({ key: failureFilterKey, offset: 0 })
+    setFailureTarget(exactTarget)
+    setFailureRequest({
+      ...selection,
+      filterKey: failureFilterKey,
+      requestId: failureRequestId.current,
+    })
+  }
+
+  const changeWindow = (nextValue: string) => {
+    setFailureTarget(null)
+    setFailureRequest(null)
+    setFailurePage({ key: `${activityWindow(nextValue)}:${kind}`, offset: 0 })
+    setWindow(nextValue)
+  }
+
+  const changeKind = (nextValue: string) => {
+    setFailureTarget(null)
+    setFailureRequest(null)
+    setFailurePage({ key: `${window}:${activityKind(nextValue)}`, offset: 0 })
+    setKind(nextValue)
+  }
+
+  useEffect(() => {
+    setFailureTarget((current) => current?.filterKey === failureFilterKey ? current : null)
+    setFailureRequest((current) => current?.filterKey === failureFilterKey ? current : null)
+  }, [failureFilterKey])
+
   useEffect(() => {
     if (pageOffset === undefined || pageLimit === undefined || pageTotal === undefined) return
     if (pageOffset === 0 || pageOffset < pageTotal || pageOffset !== failureGroupOffset) return
@@ -69,7 +135,7 @@ export function ActivityTab() {
   }, [failureFilterKey, failureGroupOffset, pageLimit, pageOffset, pageTotal])
 
   useEffect(() => {
-    if (!data || handledAttentionHash.current) return
+    if (!attentionHashWasInitial.current || !data || handledAttentionHash.current) return
     if (document.location.hash !== '#activity-needs-attention') return
     const attention = document.getElementById('activity-needs-attention')
     if (!attention) return
@@ -90,7 +156,7 @@ export function ActivityTab() {
               <select
                 className="h-8 rounded-md border border-input bg-background px-2 text-foreground"
                 value={window}
-                onChange={(event) => setWindow(event.target.value)}
+                onChange={(event) => changeWindow(event.target.value)}
               >
                 <option value="5m">Last 5 minutes</option>
                 <option value="1h">Last hour</option>
@@ -102,7 +168,7 @@ export function ActivityTab() {
               <select
                 className="h-8 rounded-md border border-input bg-background px-2 text-foreground"
                 value={kind}
-                onChange={(event) => setKind(event.target.value)}
+                onChange={(event) => changeKind(event.target.value)}
               >
                 <option value="all">All types</option>
                 <option value="mcp">Tools</option>
@@ -155,32 +221,22 @@ export function ActivityTab() {
 
           {data && (
             <ActivityFailureGroups
-              key={`${failureFilterKey}:${failureGroupOffset}:${data.failureGroups.length > FAILURE_PATTERN_PREVIEW_LIMIT ? 'has-remainder' : 'complete'}`}
+              key={`${failureFilterKey}:${(data.failureGroupPage?.total ?? data.failureGroups.length) > FAILURE_PATTERN_PREVIEW_LIMIT ? 'has-remainder' : 'complete'}`}
               groups={data.failureGroups}
               failures={failures}
               totalFailures={totalFailures}
               unverified={unverified}
               totalUnverified={totalUnverified}
+              buckets={data.timeBuckets}
               page={data.failureGroupPage}
               onPageChange={setFailureGroupOffset}
+              failureRequest={failureRequest?.filterKey === failureFilterKey ? failureRequest : null}
             />
-          )}
-
-          {data && totalFailures > 0 && (
-            <section aria-labelledby="activity-failure-trend-title" className="rounded-xl border border-border/80 bg-card p-4">
-              <div>
-                <h3 id="activity-failure-trend-title" className="font-semibold">Failures over time</h3>
-                <p className="text-sm text-muted-foreground">See when failures happened during the selected window.</p>
-              </div>
-              <div className="mt-3">
-                <ActivityFailureTrend buckets={data.timeBuckets} />
-              </div>
-            </section>
           )}
 
           {data && <ActivityVolumeChart buckets={data.timeBuckets} coverage={data.coverage} />}
 
-          {data && <ActivityBreakdown data={data} />}
+          {data && <ActivityBreakdown data={data} onReviewFailures={reviewFailures} />}
 
           {data && <ActivityEventStream data={data} />}
         </>

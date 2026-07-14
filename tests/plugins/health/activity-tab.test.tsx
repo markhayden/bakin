@@ -25,6 +25,7 @@ function activityData(): UseHealthResourceResult<UsageFeedData> {
   return {
     data: {
       window: '1h',
+      capabilities: { exactFailureTargeting: true },
       coverage: {
         startsAt: '2026-07-12T11:10:00.000Z',
         hasFullWindow: true,
@@ -210,9 +211,10 @@ function activityDashboardData(): UseHealthResourceResult<UsageFeedData> {
     data: {
       totals: { count: 9, errors: 4, errorRate: 4 / 9 },
       topByName: [
-        { name: 'search.query', count: 5, errors: 3, medianDurationMs: 22 },
-        { name: 'dispatch', count: 2, errors: 1, medianDurationMs: 48 },
-        { name: 'web.search', count: 1, errors: 0, medianDurationMs: 25 },
+        { kind: 'mcp', name: 'search.query', method: null, count: 3, errors: 2, medianDurationMs: 20 },
+        { kind: 'agent', name: 'dispatch', method: null, count: 2, errors: 1, medianDurationMs: 48 },
+        { kind: 'rest', name: 'search.query', method: null, count: 2, errors: 1, medianDurationMs: 21 },
+        { kind: 'mcp', name: 'web.search', method: null, count: 1, errors: 0, medianDurationMs: 25 },
       ],
       byAgent: [
         { agent: 'main', count: 4, errors: 2, lastActivity: null },
@@ -304,6 +306,9 @@ describe('ActivityTab', () => {
     expect(within(tab).queryByText('Failure rate')).toBeNull()
 
     expect(within(needsAttention).queryByText('Technical details')).toBeNull()
+    expect(within(needsAttention).queryByRole('group', { name: 'API · Search Reindex' })).toBeNull()
+    expect(within(needsAttention).queryByRole('button', { name: /failure event for API · Search Reindex/i })).toBeNull()
+    fireEvent.click(within(needsAttention).getByRole('button', { name: 'Review all 2 failure patterns' }))
     const api = within(needsAttention).getByRole('group', { name: 'API · Search Reindex' })
     expect(within(api).getByText('Bakin system')).toBeDefined()
     expect(within(api).queryByText(/unattributed/i)).toBeNull()
@@ -374,6 +379,7 @@ describe('ActivityTab', () => {
 
     render(<ActivityTab />)
 
+    fireEvent.click(screen.getByRole('button', { name: 'Review all 1 failure pattern' }))
     const failure = screen.getByRole('group', { name: 'Tools · Older Failure' })
     fireEvent.click(within(failure).getByRole('button', { name: 'View 1 failure event for Tools · Older Failure' }))
     expect(within(failure).getByRole('list', { name: 'Failure events for Tools · Older Failure' })).toBeDefined()
@@ -427,18 +433,36 @@ describe('ActivityTab', () => {
   it('renders a compact failure-only trend with an exact accessible table', () => {
     render(<ActivityTab />)
 
-    const chart = screen.getByRole('group', { name: 'Failures over time' })
+    const attention = screen.getByRole('region', { name: 'Needs attention' })
+    const chart = within(attention).getByRole('group', { name: 'Failures over time' })
     expect(chart.getAttribute('viewBox')).toBe('0 0 640 120')
     expect(chart.closest('[data-activity-failure-trend-plot]')?.className).toContain('max-w-4xl')
 
-    const table = screen.getByRole('table', { name: 'Failures over time data' })
+    const table = within(attention).getByRole('table', { name: 'Failures over time data' })
     expect(within(table).getByText('Failures')).toBeDefined()
     expect(within(table).queryByText('All activity')).toBeNull()
     expect(within(table).getAllByRole('row')).toHaveLength(3)
-    const trend = chart.closest('section')
-    expect(trend).not.toBeNull()
-    if (!trend) return
-    expect(within(trend).getByRole('note').textContent).toContain('latest interval')
+    expect(attention.contains(chart)).toBe(true)
+    expect(within(attention).getByRole('note').textContent).toContain('latest interval')
+  })
+
+  it('does not offer an empty failure-pattern disclosure while grouped evidence refreshes', () => {
+    const base = activityData()
+    useActivityDataMock.mockImplementation(() => ({
+      ...base,
+      data: {
+        ...base.data!,
+        failureGroups: [],
+        failureGroupPage: { total: 0, offset: 0, limit: 25, hasMore: false },
+      },
+    }))
+
+    render(<ActivityTab />)
+
+    const attention = screen.getByRole('region', { name: 'Needs attention' })
+    expect(within(attention).getByText('Refreshing failure patterns…')).toBeDefined()
+    expect(within(attention).queryByRole('button', { name: /Review .*failure pattern/i })).toBeNull()
+    expect(within(attention).getByRole('group', { name: 'Failures over time' })).toBeDefined()
   })
 
   it('uses a calm zero-failure summary without empty chart or success sections', () => {
@@ -475,8 +499,9 @@ describe('ActivityTab', () => {
       name: 'Activity outcomes: 0 failed, 0 unverified, 0 canceled, 690 succeeded',
     })).toBeDefined()
     expect(within(pulse).getByText('No failures')).toBeDefined()
+    expect(within(pulse).queryByRole('link', { name: 'No failures' })).toBeNull()
     expect(screen.queryByRole('region', { name: 'Needs attention' })).toBeNull()
-    expect(screen.queryByRole('heading', { name: 'Failures over time' })).toBeNull()
+    expect(screen.queryByRole('group', { name: 'Failures over time' })).toBeNull()
     expect(screen.queryByText(/Successful activity \(/)).toBeNull()
     expect(screen.getByRole('region', { name: 'Activity over time' })).toBeDefined()
     expect(screen.getByRole('region', { name: 'Call breakdown' })).toBeDefined()
@@ -519,6 +544,7 @@ describe('ActivityTab', () => {
     const pulse = screen.getByRole('region', { name: 'Activity pulse' })
     expect(within(pulse).getByText('Verify result')).toBeDefined()
     expect(within(pulse).queryByText('No failures')).toBeNull()
+    expect(within(pulse).getByRole('link', { name: 'Verify result' }).getAttribute('href')).toBe('#activity-needs-attention')
     const attention = screen.getByRole('region', { name: 'Needs attention' })
     expect(within(attention).getByRole('heading', { name: 'Results to verify' })).toBeDefined()
     expect(within(attention).getByText('Web Search')).toBeDefined()
@@ -528,7 +554,9 @@ describe('ActivityTab', () => {
     const successTile = within(metrics).getByText('Success rate').closest('[data-stat-tile]')
     expect(successTile?.querySelector('.bg-warning')).not.toBeNull()
     expect(successTile?.querySelector('.bg-success')).toBeNull()
-    expect(screen.queryByRole('heading', { name: 'Failures over time' })).toBeNull()
+    expect(within(attention).queryByRole('group', { name: 'Failures over time' })).toBeNull()
+    expect(within(attention).queryByRole('list', { name: 'Top failure patterns' })).toBeNull()
+    expect(within(attention).queryByRole('button', { name: /Review all .*failure pattern/i })).toBeNull()
   })
 
   it('shows aborted agent and tool work as canceled context instead of success or failure', () => {
@@ -640,8 +668,8 @@ describe('ActivityTab', () => {
     expect(screen.queryByRole('group', { name: 'Activity view' })).toBeNull()
     expect(screen.queryByRole('checkbox', { name: 'Include routine success' })).toBeNull()
     expect(screen.getByRole('region', { name: 'Activity over time' })).toBeDefined()
-    expect(screen.getByRole('region', { name: 'Needs attention' })).toBeDefined()
-    expect(screen.getByRole('heading', { name: 'Failures over time' })).toBeDefined()
+    const attention = screen.getByRole('region', { name: 'Needs attention' })
+    expect(within(attention).getByRole('group', { name: 'Failures over time' })).toBeDefined()
     expect(screen.getByRole('region', { name: 'Call breakdown' })).toBeDefined()
     expect(screen.getByRole('region', { name: 'Recent events' })).toBeDefined()
   })
@@ -690,13 +718,68 @@ describe('ActivityTab', () => {
     }
   })
 
+  it('uses the pulse status as a jump link that scrolls and focuses Needs attention', () => {
+    useActivityDataMock.mockImplementation(() => activityDashboardData())
+    const scrollIntoView = mock(() => undefined)
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView
+    HTMLElement.prototype.scrollIntoView = scrollIntoView
+
+    try {
+      render(<ActivityTab />)
+
+      const pulse = screen.getByRole('region', { name: 'Activity pulse' })
+      const jump = within(pulse).getByRole('link', { name: 'Needs attention' })
+      const attention = screen.getByRole('region', { name: 'Needs attention' })
+      expect(jump.getAttribute('href')).toBe('#activity-needs-attention')
+      expect(jump.compareDocumentPosition(attention) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+
+      fireEvent.click(jump)
+
+      expect(window.location.hash).toBe('#activity-needs-attention')
+      expect(scrollIntoView).toHaveBeenCalledTimes(1)
+      expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' })
+      expect(document.activeElement).toBe(attention)
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView
+    }
+  })
+
+  it('respects reduced motion when navigating to Needs attention', () => {
+    useActivityDataMock.mockImplementation(() => activityDashboardData())
+    const scrollIntoView = mock(() => undefined)
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView
+    const originalMatchMedia = window.matchMedia
+    HTMLElement.prototype.scrollIntoView = scrollIntoView
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      value: () => ({ matches: true }),
+    })
+
+    try {
+      render(<ActivityTab />)
+      fireEvent.click(within(screen.getByRole('region', { name: 'Activity pulse' })).getByRole('link', {
+        name: 'Needs attention',
+      }))
+
+      expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'auto', block: 'start' })
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView
+      Object.defineProperty(window, 'matchMedia', { configurable: true, value: originalMatchMedia })
+    }
+  })
+
   it('keeps the activity chart and exact values visible together', () => {
     useActivityDataMock.mockImplementation(() => activityDashboardData())
 
     render(<ActivityTab />)
 
     const volume = screen.getByRole('region', { name: 'Activity over time' })
-    expect(within(volume).getByRole('table', { name: 'Activity over time data' })).toBeDefined()
+    const table = within(volume).getByRole('table', { name: 'Activity over time data' })
+    expect(Array.from(table.querySelectorAll('time')).map((time) => time.getAttribute('datetime'))).toEqual([
+      '2026-07-13T11:45:00.000Z',
+      '2026-07-13T11:30:00.000Z',
+    ])
+    expect(within(volume).queryByText('Exact values')).toBeNull()
     expect(volume.getAttribute('data-chart-layout')).toBe('split')
   })
 
@@ -707,8 +790,8 @@ describe('ActivityTab', () => {
     expect(screen.getByRole('option', { name: 'All types' }).getAttribute('value')).toBe('all')
     expect(screen.getByRole('option', { name: 'Last hour' }).getAttribute('value')).toBe('1h')
     expect(screen.getByRole('group', { name: 'Activity metrics' })).toBeDefined()
-    expect(screen.getByRole('region', { name: 'Needs attention' })).toBeDefined()
-    expect(screen.getByRole('heading', { name: 'Failures over time' })).toBeDefined()
+    const attention = screen.getByRole('region', { name: 'Needs attention' })
+    expect(within(attention).getByRole('group', { name: 'Failures over time' })).toBeDefined()
     expect(screen.getByRole('region', { name: 'Activity over time' })).toBeDefined()
     expect(screen.getByRole('region', { name: 'Recent events' })).toBeDefined()
     expect(screen.queryByRole('checkbox', { name: 'Include routine success' })).toBeNull()
@@ -741,8 +824,18 @@ describe('ActivityTab', () => {
 
     const breakdown = screen.getByRole('region', { name: 'Call breakdown' })
     const destinations = within(breakdown).getByRole('list', { name: 'Top destinations' })
-    expect(within(destinations).getAllByRole('listitem')).toHaveLength(3)
-    expect(within(destinations).getByText(/3 failed/)).toBeDefined()
+    expect(within(destinations).getAllByRole('listitem')).toHaveLength(4)
+    const mcpDestination = within(destinations).getByRole('listitem', { name: 'MCP · Search Query' })
+    const apiDestination = within(destinations).getByRole('listitem', { name: 'API · Search Query' })
+    const agentDestination = within(destinations).getByRole('listitem', { name: 'Agent · Dispatch' })
+    expect(mcpDestination.getAttribute('data-source-kind')).toBe('mcp')
+    expect(apiDestination.getAttribute('data-source-kind')).toBe('rest')
+    expect(agentDestination.getAttribute('data-source-kind')).toBe('agent')
+    expect(mcpDestination.querySelector<HTMLElement>('[data-source-bar]')?.style.backgroundColor).toBe('var(--chart-1)')
+    expect(apiDestination.querySelector<HTMLElement>('[data-source-bar]')?.style.backgroundColor).toBe('var(--chart-2)')
+    expect(agentDestination.querySelector<HTMLElement>('[data-source-bar]')?.style.backgroundColor).toBe('var(--chart-3)')
+    expect(within(mcpDestination).getByRole('button', { name: 'Review 2 failed MCP Search Query calls' })).toBeDefined()
+    expect(within(apiDestination).getByRole('button', { name: 'Review 1 failed API Search Query call' })).toBeDefined()
     const agents = within(breakdown).getByRole('list', { name: 'Busiest agents' })
     expect(within(agents).getAllByRole('listitem')).toHaveLength(3)
     expect(within(agents).getByText('main')).toBeDefined()
@@ -751,14 +844,249 @@ describe('ActivityTab', () => {
     expect(screen.getByRole('region', { name: 'Needs attention' })).toBeDefined()
   })
 
+  it('opens, highlights, and smoothly focuses the exact failure pattern from a destination count', () => {
+    useActivityDataMock.mockImplementation(() => activityDashboardData())
+    const scrollIntoView = mock(() => undefined)
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView
+    HTMLElement.prototype.scrollIntoView = scrollIntoView
+
+    try {
+      render(<ActivityTab />)
+
+      const destinations = screen.getByRole('list', { name: 'Top destinations' })
+      const mcpDestination = within(destinations).getByRole('listitem', { name: 'MCP · Search Query' })
+      fireEvent.click(within(mcpDestination).getByRole('button', {
+        name: 'Review 2 failed MCP Search Query calls',
+      }))
+
+      const attention = screen.getByRole('region', { name: 'Needs attention' })
+      expect(within(attention).getByRole('button', { name: 'Hide failure details' }).getAttribute('aria-expanded')).toBe('true')
+      const toolGroup = within(attention).getByRole('group', { name: 'Tools · Search Query' })
+      const apiGroup = within(attention).getByRole('group', { name: 'API · Search Query' })
+      expect(toolGroup.getAttribute('data-selected')).toBe('true')
+      expect(apiGroup.getAttribute('data-selected')).toBeNull()
+      expect(document.activeElement).toBe(toolGroup)
+      expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'center' })
+      expect(window.location.hash).toBe('#activity-needs-attention')
+      expect(within(toolGroup).getByRole('button', {
+        name: 'View 2 failure events for Tools · Search Query',
+      }).getAttribute('aria-expanded')).toBe('false')
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView
+    }
+  })
+
+  it('targets the exact REST method when two failed methods share one route', () => {
+    const base = activityData()
+    const getFailure: UsageFeedData['recent'][number] = {
+      id: 'usage-search-route-get',
+      ts: '2026-07-13T11:50:00.000Z',
+      kind: 'rest',
+      activityClass: 'user',
+      name: 'search.route',
+      agent: 'main',
+      durationMs: 20,
+      status: 'error',
+      meta: { method: 'GET', routePattern: 'search.route', httpStatus: 500 },
+    }
+    const postFailure: UsageFeedData['recent'][number] = {
+      ...getFailure,
+      id: 'usage-search-route-post',
+      ts: '2026-07-13T11:51:00.000Z',
+      meta: { method: 'POST', routePattern: 'search.route', httpStatus: 500 },
+    }
+    const groups: UsageFeedData['failureGroups'] = [
+      {
+        kind: 'rest', name: 'search.route', destination: 'search.route', method: 'GET',
+        attempts: 1, failures: 1, firstFailureAt: getFailure.ts, lastFailureAt: getFailure.ts,
+        agents: ['main'], unattributedFailures: 0, systemFailures: 0, medianFailureDurationMs: 20,
+        latestFailure: getFailure,
+      },
+      {
+        kind: 'rest', name: 'search.route', destination: 'search.route', method: 'POST',
+        attempts: 1, failures: 1, firstFailureAt: postFailure.ts, lastFailureAt: postFailure.ts,
+        agents: ['main'], unattributedFailures: 0, systemFailures: 0, medianFailureDurationMs: 20,
+        latestFailure: postFailure,
+      },
+    ]
+    useActivityDataMock.mockImplementation(() => ({
+      ...base,
+      data: {
+        ...base.data!,
+        capabilities: { exactFailureTargeting: true },
+        totals: { count: 2, errors: 2, errorRate: 1 },
+        outcomes: { failed: 2, unverified: 0, canceled: 0, succeeded: 0 },
+        byKind: [
+          { kind: 'mcp', total: 0, failures: 0 },
+          { kind: 'rest', total: 2, failures: 2 },
+          { kind: 'agent', total: 0, failures: 0 },
+        ],
+        topByName: [
+          { kind: 'rest', method: 'GET', name: 'search.route', count: 1, errors: 1, medianDurationMs: 20 },
+          { kind: 'rest', method: 'POST', name: 'search.route', count: 1, errors: 1, medianDurationMs: 20 },
+        ],
+        failureGroups: groups,
+        failureGroupPage: { total: 2, offset: 0, limit: 25, hasMore: false },
+        recent: [postFailure, getFailure],
+        recentFailures: [postFailure, getFailure],
+        recentUnverified: [],
+      },
+    }))
+    const scrollIntoView = mock(() => undefined)
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView
+    HTMLElement.prototype.scrollIntoView = scrollIntoView
+
+    try {
+      render(<ActivityTab />)
+
+      fireEvent.click(screen.getByRole('button', {
+        name: 'Review 1 failed API GET Search Route call',
+      }))
+
+      expect(useActivityDataMock).toHaveBeenLastCalledWith(expect.objectContaining({
+        exactFailureTargetingSupported: true,
+        failureGroupTarget: { kind: 'rest', method: 'GET', destination: 'search.route' },
+      }))
+      const getGroup = screen.getByRole('group', { name: 'API · GET Search Route' })
+      const postGroup = screen.getByRole('group', { name: 'API · POST Search Route' })
+      expect(getGroup.getAttribute('data-selected')).toBe('true')
+      expect(postGroup.getAttribute('data-selected')).toBeNull()
+      expect(document.activeElement).toBe(getGroup)
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView
+    }
+  })
+
+  it('does not reopen an old failure selection after switching filters away and back', () => {
+    useActivityDataMock.mockImplementation(() => activityDashboardData())
+    const scrollIntoView = mock(() => undefined)
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView
+    HTMLElement.prototype.scrollIntoView = scrollIntoView
+
+    try {
+      render(<ActivityTab />)
+
+      fireEvent.click(screen.getByRole('button', {
+        name: 'Review 2 failed MCP Search Query calls',
+      }))
+      expect(screen.getByRole('button', { name: 'Hide failure details' })).toBeDefined()
+      expect(scrollIntoView).toHaveBeenCalledTimes(1)
+
+      fireEvent.change(screen.getByLabelText('Activity kind'), { target: { value: 'mcp' } })
+      fireEvent.change(screen.getByLabelText('Activity kind'), { target: { value: 'all' } })
+
+      expect(screen.queryByRole('button', { name: 'Hide failure details' })).toBeNull()
+      expect(screen.getByRole('button', { name: 'Review all 3 failure patterns' })).toBeDefined()
+      expect(scrollIntoView).toHaveBeenCalledTimes(1)
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView
+    }
+  })
+
+  it('asks the server for the exact failure page before focusing a destination outside the first 25 patterns', () => {
+    const resource = activityWithFailurePatterns(30)
+    const allGroups = resource.data!.failureGroups
+    useActivityDataMock.mockImplementation((options: unknown) => {
+      const request = options as { failureGroupTarget?: { destination: string } }
+      const offset = request.failureGroupTarget?.destination === 'failure.pattern.28' ? 25 : 0
+      return {
+        ...resource,
+        data: {
+          ...resource.data!,
+          topByName: [{
+            kind: 'mcp',
+            name: 'failure.pattern.28',
+            method: null,
+            count: 1,
+            errors: 1,
+            medianDurationMs: 20,
+          }],
+          failureGroups: allGroups.slice(offset, offset + 25),
+          failureGroupPage: {
+            total: 30,
+            offset,
+            limit: 25,
+            hasMore: offset + 25 < 30,
+          },
+        },
+      }
+    })
+    const scrollIntoView = mock(() => undefined)
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView
+    HTMLElement.prototype.scrollIntoView = scrollIntoView
+
+    try {
+      render(<ActivityTab />)
+
+      fireEvent.click(screen.getByRole('button', {
+        name: 'Review 1 failed MCP Failure Pattern 28 call',
+      }))
+
+      expect(useActivityDataMock).toHaveBeenLastCalledWith(expect.objectContaining({
+        window: '1h',
+        kind: 'all',
+        includeRoutine: true,
+        exactFailureTargetingSupported: true,
+        failureGroupTarget: {
+          kind: 'mcp',
+          method: null,
+          destination: 'failure.pattern.28',
+        },
+      }))
+      const group = screen.getByRole('group', { name: 'Tools · Failure Pattern 28' })
+      expect(group.getAttribute('data-selected')).toBe('true')
+      expect(document.activeElement).toBe(group)
+      expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'center' })
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView
+    }
+  })
+
+  it('keeps legacy source-less destinations neutral and links them to general failure details', () => {
+    const resource = activityData()
+    useActivityDataMock.mockImplementation(() => ({
+      ...resource,
+      data: {
+        ...resource.data!,
+        topByName: [{
+          name: '/api/plugins/search/reindex',
+          count: 1,
+          errors: 1,
+          medianDurationMs: 340,
+        }],
+      },
+    }))
+    const scrollIntoView = mock(() => undefined)
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView
+    HTMLElement.prototype.scrollIntoView = scrollIntoView
+
+    try {
+      render(<ActivityTab />)
+
+      const destination = screen.getByRole('listitem', { name: 'Search Reindex' })
+      expect(destination.getAttribute('data-source-kind')).toBe('unknown')
+      expect(destination.querySelector<HTMLElement>('[data-source-bar]')?.style.backgroundColor).toBe('var(--muted-foreground)')
+      fireEvent.click(within(destination).getByRole('button', {
+        name: 'Review 1 failed Search Reindex call',
+      }))
+
+      const attention = screen.getByRole('region', { name: 'Needs attention' })
+      expect(within(attention).getByRole('button', { name: 'Hide failure details' }).getAttribute('aria-expanded')).toBe('true')
+      expect(document.activeElement).toBe(attention)
+      expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' })
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView
+    }
+  })
+
   it('keeps one compact chronological feed beside the incident details', () => {
     useActivityDataMock.mockImplementation(() => activityDashboardData())
 
     render(<ActivityTab />)
 
     expect(screen.queryByRole('button', { name: 'All events' })).toBeNull()
-    expect(screen.getByRole('region', { name: 'Needs attention' })).toBeDefined()
-    expect(screen.getByRole('heading', { name: 'Failures over time' })).toBeDefined()
+    const attention = screen.getByRole('region', { name: 'Needs attention' })
+    expect(within(attention).getByRole('group', { name: 'Failures over time' })).toBeDefined()
 
     const recent = screen.getByRole('region', { name: 'Recent events' })
     const eventList = within(recent).getByRole('list', { name: 'Recent events' })
@@ -956,6 +1284,7 @@ describe('ActivityTab', () => {
 
     render(<ActivityTab />)
 
+    fireEvent.click(screen.getByRole('button', { name: 'Review all 2 failure patterns' }))
     const getGroup = screen.getByRole('group', { name: 'API · GET MCP Endpoint' })
     expect(within(getGroup).getByText('Endpoint not found (HTTP 404).')).toBeDefined()
     expect(within(getGroup).getByRole('button', { name: 'View 1 failure event for API · GET MCP Endpoint' })).toBeDefined()
@@ -985,7 +1314,9 @@ describe('ActivityTab', () => {
     })
     expect(mix.textContent).toMatch(/Tools.*4.*API.*2.*Agents.*3/i)
 
-    const needsAttention = screen.getByRole('heading', { name: 'Needs attention' })
+    const jump = within(pulse).getByRole('link', { name: 'Needs attention' })
+    const needsAttention = screen.getByRole('region', { name: 'Needs attention' })
+    expect(jump.getAttribute('href')).toBe('#activity-needs-attention')
     expect(pulse.compareDocumentPosition(needsAttention) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'All events' })).toBeNull()
   })
@@ -996,6 +1327,13 @@ describe('ActivityTab', () => {
     render(<ActivityTab />)
 
     const needsAttention = screen.getByRole('region', { name: 'Needs attention' })
+    const highlights = within(needsAttention).getByRole('list', { name: 'Top failure patterns' })
+    expect(within(highlights).getAllByRole('listitem')).toHaveLength(3)
+    expect(within(highlights).getByText('2 failures in 3 attempts')).toBeDefined()
+    expect(within(highlights).getByText('Latest provider timeout')).toBeDefined()
+    expect(within(needsAttention).queryByRole('group', { name: 'Tools · Search Query' })).toBeNull()
+
+    fireEvent.click(within(needsAttention).getByRole('button', { name: 'Review all 3 failure patterns' }))
     const tools = within(needsAttention).getByRole('group', { name: 'Tools · Search Query' })
     expect(within(tools).getByText('2 failures in 3 attempts')).toBeDefined()
     expect(within(tools).getByText('main, pixel')).toBeDefined()
@@ -1014,36 +1352,51 @@ describe('ActivityTab', () => {
     expect(within(needsAttention).queryByRole('button', { name: /more failure patterns/i })).toBeNull()
   })
 
-  it('previews the three highest-priority failure patterns and expands the remainder on demand', () => {
+  it('combines the failure trend and three highest-priority compact highlights in one attention region', () => {
     useActivityDataMock.mockImplementation(() => activityWithFailurePatterns(5))
 
     render(<ActivityTab />)
 
     const attention = screen.getByRole('region', { name: 'Needs attention' })
-    expect(within(attention).getAllByRole('group').map((group) => group.getAttribute('aria-label'))).toEqual([
-      'Tools · Failure Pattern 1',
-      'Tools · Failure Pattern 2',
-      'Tools · Failure Pattern 3',
-    ])
-    expect(within(attention).queryByRole('group', { name: 'Tools · Failure Pattern 4' })).toBeNull()
+    expect(screen.getAllByRole('region', { name: 'Needs attention' })).toHaveLength(1)
+    expect(within(attention).getByRole('group', { name: 'Failures over time' })).toBeDefined()
 
-    const showMore = within(attention).getByRole('button', { name: 'Show 2 more failure patterns' })
-    expect(showMore.getAttribute('aria-expanded')).toBe('false')
-    expect(showMore.getAttribute('aria-controls')).toBe('activity-failure-pattern-list')
-    expect(attention.querySelector('#activity-failure-pattern-list')).not.toBeNull()
-    fireEvent.click(showMore)
+    const highlights = within(attention).getByRole('list', { name: 'Top failure patterns' })
+    expect(within(highlights).getAllByRole('listitem')).toHaveLength(3)
+    expect(within(highlights).getByText('Failure Pattern 1')).toBeDefined()
+    expect(within(highlights).getByText('Failure Pattern 2')).toBeDefined()
+    expect(within(highlights).getByText('Failure Pattern 3')).toBeDefined()
+    expect(within(highlights).queryByText('Failure Pattern 4')).toBeNull()
 
-    expect(within(attention).getAllByRole('group')).toHaveLength(5)
-    expect(within(attention).getByRole('group', { name: 'Tools · Failure Pattern 5' })).toBeDefined()
-    const showFewer = within(attention).getByRole('button', { name: 'Show fewer failure patterns' })
-    expect(showFewer.getAttribute('aria-expanded')).toBe('true')
-    fireEvent.click(showFewer)
-
-    expect(within(attention).queryByRole('group', { name: 'Tools · Failure Pattern 4' })).toBeNull()
-    expect(within(attention).getByRole('button', { name: 'Show 2 more failure patterns' })).toBeDefined()
+    expect(within(attention).queryByRole('group', { name: 'Tools · Failure Pattern 1' })).toBeNull()
+    expect(within(attention).queryByRole('button', { name: /failure event.*Failure Pattern 1/i })).toBeNull()
+    const review = within(attention).getByRole('button', { name: 'Review all 5 failure patterns' })
+    expect(review.getAttribute('aria-expanded')).toBe('false')
+    expect(review.getAttribute('aria-controls')).toBe('activity-failure-pattern-details')
   })
 
-  it('returns to the three-pattern preview after paging or filtering an expanded list', () => {
+  it('reveals every full failure card and its per-event disclosure only on request', () => {
+    useActivityDataMock.mockImplementation(() => activityWithFailurePatterns(5))
+
+    render(<ActivityTab />)
+
+    const attention = screen.getByRole('region', { name: 'Needs attention' })
+    const review = within(attention).getByRole('button', { name: 'Review all 5 failure patterns' })
+    fireEvent.click(review)
+
+    expect(review.getAttribute('aria-expanded')).toBe('true')
+    expect(attention.querySelector('#activity-failure-pattern-details')).not.toBeNull()
+    const detail = within(attention).getByRole('group', { name: 'Tools · Failure Pattern 1' })
+    expect(within(detail).getByRole('button', { name: 'View 1 failure event for Tools · Failure Pattern 1' })).toBeDefined()
+    expect(within(attention).getByRole('group', { name: 'Tools · Failure Pattern 5' })).toBeDefined()
+
+    fireEvent.click(review)
+    expect(review.getAttribute('aria-expanded')).toBe('false')
+    expect(within(attention).queryByRole('group', { name: 'Tools · Failure Pattern 1' })).toBeNull()
+    expect(within(attention).getByRole('list', { name: 'Top failure patterns' })).toBeDefined()
+  })
+
+  it('keeps details open while paging, then resets the page when collapsed or filtered', () => {
     useActivityDataMock.mockImplementation((options: unknown) => {
       const resource = activityWithFailurePatterns(5)
       const offset = (options as { failureGroupOffset?: number }).failureGroupOffset ?? 0
@@ -1063,35 +1416,50 @@ describe('ActivityTab', () => {
 
     render(<ActivityTab />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Show 2 more failure patterns' }))
-    expect(screen.getByRole('region', { name: 'Needs attention' }).querySelectorAll('[role="group"]')).toHaveLength(5)
+    const review = screen.getByRole('button', { name: 'Review failure patterns 1–5 of 30' })
+    fireEvent.click(review)
+    expect(screen.getByRole('group', { name: 'Tools · Failure Pattern 5' })).toBeDefined()
 
     fireEvent.click(screen.getByRole('button', { name: 'Next failure patterns' }))
-    expect(screen.getByRole('region', { name: 'Needs attention' }).querySelectorAll('[role="group"]')).toHaveLength(3)
-    expect(screen.getByRole('button', { name: 'Show 2 more failure patterns' }).getAttribute('aria-expanded')).toBe('false')
+    expect(useActivityDataMock).toHaveBeenLastCalledWith({
+      window: '1h',
+      kind: 'all',
+      includeRoutine: true,
+      failureGroupOffset: 25,
+      failureGroupLimit: 25,
+    })
+    expect(review.getAttribute('aria-expanded')).toBe('true')
+    expect(screen.getByRole('group', { name: 'Tools · Failure Pattern 5' })).toBeDefined()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Show 2 more failure patterns' }))
+    fireEvent.click(review)
+    expect(useActivityDataMock).toHaveBeenLastCalledWith({ window: '1h', kind: 'all', includeRoutine: true })
+    expect(screen.queryByRole('group', { name: 'Tools · Failure Pattern 1' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Review failure patterns 1–5 of 30' }).getAttribute('aria-expanded')).toBe('false')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Review failure patterns 1–5 of 30' }))
     fireEvent.change(screen.getByLabelText('Activity kind'), { target: { value: 'mcp' } })
-    expect(screen.getByRole('region', { name: 'Needs attention' }).querySelectorAll('[role="group"]')).toHaveLength(3)
-    expect(screen.getByRole('button', { name: 'Show 2 more failure patterns' }).getAttribute('aria-expanded')).toBe('false')
+    expect(screen.queryByRole('group', { name: 'Tools · Failure Pattern 1' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Review failure patterns 1–5 of 30' }).getAttribute('aria-expanded')).toBe('false')
   })
 
-  it('stays collapsed when live failure patterns shrink below the preview limit and grow again', () => {
+  it('stays in the compact summary when live failure patterns cross the highlight limit', () => {
     let patternCount = 5
     useActivityDataMock.mockImplementation(() => activityWithFailurePatterns(patternCount))
     const view = render(<ActivityTab />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Show 2 more failure patterns' }))
-    expect(screen.getByRole('region', { name: 'Needs attention' }).querySelectorAll('[role="group"]')).toHaveLength(5)
+    fireEvent.click(screen.getByRole('button', { name: 'Review all 5 failure patterns' }))
+    expect(screen.getByRole('group', { name: 'Tools · Failure Pattern 5' })).toBeDefined()
 
     patternCount = 3
     view.rerender(<ActivityTab />)
-    expect(screen.queryByRole('button', { name: /more failure patterns/i })).toBeNull()
+    expect(screen.queryByRole('group', { name: 'Tools · Failure Pattern 1' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Review all 3 failure patterns' }).getAttribute('aria-expanded')).toBe('false')
+    expect(within(screen.getByRole('list', { name: 'Top failure patterns' })).getAllByRole('listitem')).toHaveLength(3)
 
     patternCount = 5
     view.rerender(<ActivityTab />)
-    expect(screen.getByRole('region', { name: 'Needs attention' }).querySelectorAll('[role="group"]')).toHaveLength(3)
-    expect(screen.getByRole('button', { name: 'Show 2 more failure patterns' }).getAttribute('aria-expanded')).toBe('false')
+    expect(screen.queryByRole('group', { name: 'Tools · Failure Pattern 1' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Review all 5 failure patterns' }).getAttribute('aria-expanded')).toBe('false')
   })
 
   it('expands a failure group to every matching raw failure event', () => {
@@ -1099,6 +1467,7 @@ describe('ActivityTab', () => {
 
     render(<ActivityTab />)
 
+    fireEvent.click(screen.getByRole('button', { name: 'Review all 3 failure patterns' }))
     const tools = screen.getByRole('group', { name: 'Tools · Search Query' })
     const expand = within(tools).getByRole('button', { name: 'View 2 failure events for Tools · Search Query' })
     expect(expand.getAttribute('aria-expanded')).toBe('false')
@@ -1165,6 +1534,7 @@ describe('ActivityTab', () => {
 
     render(<ActivityTab />)
 
+    fireEvent.click(screen.getByRole('button', { name: 'Review all 1 failure pattern' }))
     const group = screen.getByRole('group', { name: 'API · POST Tasks TaskId' })
     expect(within(group).getByText('Task update timed out')).toBeDefined()
     expect(within(group).getByText('main · Agent not recorded (2)')).toBeDefined()
@@ -1188,6 +1558,7 @@ describe('ActivityTab', () => {
     render(<ActivityTab />)
 
     expect(screen.getByText('Patterns 1–2 of 40')).toBeDefined()
+    fireEvent.click(screen.getByRole('button', { name: 'Review failure patterns 1–2 of 40' }))
     fireEvent.click(screen.getByRole('button', { name: 'Next failure patterns' }))
     expect(useActivityDataMock).toHaveBeenLastCalledWith({
       window: '1h',
@@ -1215,12 +1586,15 @@ describe('ActivityTab', () => {
     })
 
     render(<ActivityTab />)
+    fireEvent.click(screen.getByRole('button', { name: 'Review failure patterns 1–2 of 40' }))
     fireEvent.click(screen.getByRole('button', { name: 'Next failure patterns' }))
 
     expect(useActivityDataMock.mock.calls.some(([options]) => (
       (options as { failureGroupOffset?: number }).failureGroupOffset === 25
     ))).toBe(true)
     expect(useActivityDataMock).toHaveBeenLastCalledWith({ window: '1h', kind: 'all', includeRoutine: true })
+    expect(screen.queryByRole('group', { name: 'API · Search Reindex' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Review failure patterns 1–2 of 40' }))
     expect(screen.getByRole('group', { name: 'API · Search Reindex' })).toBeDefined()
   })
 

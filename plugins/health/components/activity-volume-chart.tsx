@@ -66,7 +66,7 @@ export function ActivityVolumeChart({
           <BarChart
             stacked
             label="Activity over time"
-            description="Recorded calls per interval. Other outcomes include succeeded, canceled, and unverified results; failures stack on top. Exact values are shown beside the chart."
+            description="Recorded calls per interval. Other outcomes include succeeded, canceled, and unverified results; failures stack on top. Values are listed beside the chart."
             data={visibleBuckets.map((bucket) => ({
               x: bucket.start,
               xLabel: bucketLabel(bucket.start),
@@ -86,9 +86,6 @@ export function ActivityVolumeChart({
           />
         </div>
         <div className="min-w-0 overflow-hidden rounded-lg border border-border/70 bg-background/35">
-          <div className="border-b border-border/70 px-3 py-2">
-            <h4 className="text-xs font-medium text-foreground">Exact values</h4>
-          </div>
           <div className="max-h-64 overflow-auto">
             <table className="w-full text-xs tabular-nums">
               <caption className="sr-only">Activity over time data</caption>
@@ -100,10 +97,10 @@ export function ActivityVolumeChart({
                 </tr>
               </thead>
               <tbody>
-                {visibleBuckets.map((bucket) => (
+                {[...visibleBuckets].reverse().map((bucket) => (
                   <tr key={bucket.start} className="border-b border-border/50 last:border-b-0">
                     <th scope="row" className="whitespace-nowrap px-3 py-1.5 text-left font-medium text-foreground">
-                      {bucketLabel(bucket.start)}
+                      <time dateTime={bucket.start}>{bucketLabel(bucket.start)}</time>
                     </th>
                     <td className="px-3 py-1.5 text-right text-foreground">
                       {Math.max(0, bucket.count - bucket.failureCount).toLocaleString()}

@@ -3,6 +3,7 @@
 import { StatusBadge, formatAbsoluteTime } from '@makinbakin/sdk/components'
 import { AlertCircle, Bot, Braces, CheckCircle2, Wrench } from 'lucide-react'
 import type { InteractionCoverage, UsageFeedData, UsageKind } from '../types'
+import { focusActivityElement } from './activity-navigation'
 
 const KIND_META: Record<UsageKind, {
   label: string
@@ -98,9 +99,29 @@ export function ActivityPulse({
                 {data.outcomes.failed.toLocaleString()} of {data.totals.count.toLocaleString()} recorded activities failed.
               </span>
             </div>
-            <StatusBadge tone={hasFailures ? 'destructive' : hasUnverified ? 'warning' : 'success'} variant="outline">
-              {hasFailures ? 'Needs attention' : hasUnverified ? `Verify ${data.outcomes.unverified === 1 ? 'result' : 'results'}` : 'No failures'}
-            </StatusBadge>
+            {needsAttention ? (
+              <a
+                href="#activity-needs-attention"
+                className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                onClick={(event) => {
+                  if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+                  const attention = document.getElementById('activity-needs-attention')
+                  if (!attention) return
+                  event.preventDefault()
+                  focusActivityElement(attention)
+                }}
+              >
+                <StatusBadge
+                  tone={hasFailures ? 'destructive' : 'warning'}
+                  variant="outline"
+                  className="cursor-pointer"
+                >
+                  {hasFailures ? 'Needs attention' : `Verify ${data.outcomes.unverified === 1 ? 'result' : 'results'}`}
+                </StatusBadge>
+              </a>
+            ) : (
+              <StatusBadge tone="success" variant="outline">No failures</StatusBadge>
+            )}
           </div>
 
           {!compatibilityLimited && (
