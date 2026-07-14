@@ -138,3 +138,85 @@ describe('direct-image-provider', () => {
     })
   })
 })
+
+describe('generateDirectImage — input images (edit / multi-reference)', () => {
+  const { mkdirSync, writeFileSync, rmSync } = require('node:fs') as typeof import('node:fs')
+  const imgDir = join(testDir, 'inputs')
+  const png = (name: string) => {
+    mkdirSync(imgDir, { recursive: true })
+    const p = join(imgDir, name)
+    writeFileSync(p, Buffer.from('fake-png-bytes'))
+    return p
+  }
+  afterEach(() => {
+    rmSync(imgDir, { recursive: true, force: true })
+    mock.restore() // this describe sits outside the main one's restore scope
+  })
+
+  const base = {
+    model: 'gpt-image-1',
+    prompt: 'the bear, but doing the polka',
+    width: 1024,
+    height: 1024,
+    quality: 'standard' as const,
+    apiKey: 'key',
+  }
+
+  it('routes OpenAI input images to /v1/images/edits as multipart with image[] parts', async () => {
+    const fetchSpy = spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: [{ b64_json: Buffer.from('edited').toString('base64') }] }),
+    } as unknown as Response)
+
+    const result = await generateDirectImage({
+      ...base,
+      provider: 'openai',
+      inputImages: [png('bear.png'), png('polka-ref.jpg')],
+    })
+
+    const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit]
+    expect(String(url)).toContain('/v1/images/edits')
+    const form = init.body as FormData
+    expect(form).toBeInstanceOf(FormData)
+    const images = form.getAll('image[]') as Blob[]
+    expect(images).toHaveLength(2)
+    expect(images[0]!.type).toBe('image/png')
+    expect(images[1]!.type).toBe('image/jpeg')
+    expect(form.get('prompt')).toBe(base.prompt)
+    // Multipart boundary is fetch's job — no manual Content-Type.
+    expect((init.headers as Record<string, string>)['Content-Type']).toBeUndefined()
+    expect(result.filePath).toMatch(/\.png$/)
+  })
+
+  it('adds Gemini input images as inline_data parts before the prompt text', async () => {
+    const fetchSpy = spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ candidates: [{ content: { parts: [{ inlineData: { mimeType: 'image/png', data: Buffer.from('out').toString('base64') } }] } }] }),
+    } as unknown as Response)
+
+    await generateDirectImage({
+      ...base,
+      provider: 'google',
+      model: 'gemini-image',
+      inputImages: [png('bear.png')],
+    })
+
+    const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string)
+    const parts = body.contents[0].parts
+    expect(parts).toHaveLength(2)
+    expect(parts[0].inline_data.mime_type).toBe('image/png')
+    expect(parts[1].text).toContain('polka')
+  })
+
+  it('rejects missing input files and >16 inputs BEFORE any billed call', async () => {
+    const fetchSpy = spyOn(globalThis, 'fetch')
+    await expect(generateDirectImage({
+      ...base, provider: 'openai', inputImages: [join(imgDir, 'nope.png')],
+    })).rejects.toThrow(/input image not found/)
+    const seventeen = Array.from({ length: 17 }, (_, i) => png(`r${i}.png`))
+    await expect(generateDirectImage({
+      ...base, provider: 'openai', inputImages: seventeen,
+    })).rejects.toThrow(/max 16/)
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+})
