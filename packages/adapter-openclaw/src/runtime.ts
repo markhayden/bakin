@@ -1227,10 +1227,20 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     },
     generate: async (input: RuntimeImageGenerateInput): Promise<RuntimeImageGenerationResult> => {
       // Native `infer image generate` has no file input, so a generate carrying
-      // reference images is served by the edit-style invocation (#418). The shim
-      // can't do references — the plugin rejects that combination upstream.
+      // reference images is served by the edit-style invocation (#418). When the
+      // native side can't serve the route, the shared shim takes the references
+      // as input images (WS3) — a keyed direct provider no longer dead-ends.
       if (input.referenceImages?.length) {
         const editInput: RuntimeImageEditInput = { ...input, files: input.referenceImages }
+        if (await this.canServeImageNatively(input)) {
+          return tagRuntimeServed(await this.runImageInference('edit', editInput))
+        }
+        const refProvider = input.provider
+        if (refProvider && isDirectImageProvider(refProvider)) {
+          const shimmed = await this.generateImageViaShim(input, input.referenceImages)
+          if (shimmed) return shimmed
+        }
+        // Last resort: the runtime may serve a model it didn't enumerate.
         return tagRuntimeServed(await this.runImageInference('edit', editInput))
       }
       if (await this.canServeImageNatively(input)) {
@@ -1249,6 +1259,15 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       return tagRuntimeServed(await this.runImageInference('generate', input))
     },
     edit: async (input: RuntimeImageEditInput): Promise<RuntimeImageGenerationResult> => {
+      // Native-first; a keyed direct provider the native side can't serve
+      // edits through the shared shim (input images, WS3).
+      if (!(await this.canServeImageNatively(input))) {
+        const provider = input.provider
+        if (provider && isDirectImageProvider(provider)) {
+          const shimmed = await this.generateImageViaShim(input, input.files)
+          if (shimmed) return shimmed
+        }
+      }
       return tagRuntimeServed(await this.runImageInference('edit', input))
     },
   }
@@ -1297,7 +1316,10 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     return models.includes(input.model)
   }
 
-  private async generateImageViaShim(input: RuntimeImageGenerateInput): Promise<RuntimeImageGenerationResult | null> {
+  private async generateImageViaShim(
+    input: RuntimeImageGenerateInput,
+    inputImages: string[] = [],
+  ): Promise<RuntimeImageGenerationResult | null> {
     const provider = input.provider
     if (!provider || !isDirectImageProvider(provider)) return null
     const resolved = resolveProviderApiKeySource(provider)
@@ -1320,6 +1342,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       ...(input.background !== undefined ? { background: input.background } : {}),
       ...(input.outputFormat !== undefined ? { outputFormat: input.outputFormat } : {}),
       ...(input.size !== undefined ? { size: input.size } : {}),
+      ...(inputImages.length > 0 ? { inputImages } : {}),
     })
     return {
       images: [{

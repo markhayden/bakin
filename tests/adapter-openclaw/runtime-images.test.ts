@@ -152,9 +152,10 @@ echo "{}"
     })
 
     const calls = readFileSync(callsFile, 'utf-8')
-    const argv = calls.split('\n')
-    // Generate has no --file; references force the edit-style invocation.
-    expect(argv.slice(0, 3)).toEqual(['infer', 'image', 'edit'])
+    // A providers discovery call may precede it (native-vs-shim routing,
+    // WS3); the reference-carrying generate still lands on the edit-style
+    // invocation with one --file per reference.
+    expect(calls).toContain('infer\nimage\nedit')
     expect(calls).toContain(`--file\n${refA}`)
     expect(calls).toContain(`--file\n${refB}`)
     expect(existsSync(result.images[0]!.filePath)).toBe(true)

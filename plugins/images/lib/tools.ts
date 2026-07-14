@@ -245,7 +245,7 @@ function brandPromptSuffix(brand: NonNullable<BrandHookResult['manifest']>): str
  * current version; raw paths are auto-imported (source-path dedup) so every
  * reference becomes a tracked, navigable asset. Gates BEFORE billing on the
  * count cap, the model's `reference-images` capability, and the serving path
- * (references require the native runtime — the direct shim can't take inputs).
+ * (references ride the native runtime or the direct shim (input images, WS3)).
  */
 async function resolveReferences(
   ctx: PluginContext,

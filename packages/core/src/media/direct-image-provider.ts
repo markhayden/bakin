@@ -78,9 +78,13 @@ function assertShimCanHonor(request: DirectImageRequest): void {
   if (request.inputImages && request.inputImages.length > MAX_INPUT_IMAGES) {
     throw new Error(`direct-image shim cannot honor ${request.inputImages.length} input images (max ${MAX_INPUT_IMAGES})`)
   }
-  // Missing files fail HERE, precisely, before any billed call.
+  // Missing or unsupported-type files fail HERE, precisely, before any
+  // billed call — never a mislabeled upload the provider 400s after charging.
   for (const path of request.inputImages ?? []) {
     if (!existsSync(path)) throw new Error(`direct-image shim input image not found: ${path}`)
+    if (!mimeTypeForImagePath(path)) {
+      throw new Error(`direct-image shim cannot honor input image type: ${path} (supported: png, jpg, webp, gif)`)
+    }
   }
 }
 
@@ -161,30 +165,9 @@ function extractOpenAIImage(data: unknown): { base64?: string; url?: string; mim
   return {}
 }
 
-/**
- * OpenAI edit path: /v1/images/edits is multipart-only — image[] file parts
- * (base first, then references; gpt-image-1 accepts up to 16) + the same
- * prompt/size/quality fields the generation endpoint takes.
- */
-async function editOpenAI(request: DirectImageRequest): Promise<DirectImageResult> {
-  const form = new FormData()
-  form.append('model', request.model)
-  form.append('prompt', request.prompt)
-  form.append('size', openAISize(request.width, request.height))
-  form.append('quality', qualityForOpenAI(request.quality))
-  for (const path of request.inputImages ?? []) {
-    const mime = mimeTypeForImagePath(path)
-    form.append('image[]', new Blob([new Uint8Array(readFileSync(path))], { type: mime }), basename(path))
-  }
-
-  const response = await fetch('https://api.openai.com/v1/images/edits', {
-    method: 'POST',
-    // No Content-Type header — fetch sets the multipart boundary itself.
-    headers: { Authorization: `Bearer ${request.apiKey}` },
-    body: form,
-  })
-  if (!response.ok) throw new Error(`OpenAI image edit API error (${response.status}): ${await response.text()}`)
-
+/** Shared OpenAI response tail — generation and edits return the same shapes. */
+async function openAIResultFromResponse(response: Response, request: DirectImageRequest, label: string): Promise<DirectImageResult> {
+  if (!response.ok) throw new Error(`OpenAI ${label} API error (${response.status}): ${await response.text()}`)
   const image = extractOpenAIImage(await response.json())
   if (image.base64) {
     const mimeType = image.mimeType || 'image/png'
@@ -200,7 +183,33 @@ async function editOpenAI(request: DirectImageRequest): Promise<DirectImageResul
     const downloaded = await fetchImageUrl('openai', image.url)
     return { ...downloaded, width: request.width, height: request.height, ...(image.text ? { providerText: image.text } : {}) }
   }
-  throw new Error('No image data in OpenAI edit response')
+  throw new Error(`No image data in OpenAI ${label} response`)
+}
+
+/**
+ * OpenAI edit path: /v1/images/edits is multipart-only — image[] file parts
+ * (base first, then references; gpt-image-1 accepts up to 16) + the same
+ * prompt/size/quality fields the generation endpoint takes.
+ */
+async function editOpenAI(request: DirectImageRequest): Promise<DirectImageResult> {
+  const form = new FormData()
+  form.append('model', request.model)
+  form.append('prompt', request.prompt)
+  form.append('size', openAISize(request.width, request.height))
+  form.append('quality', qualityForOpenAI(request.quality))
+  for (const path of request.inputImages ?? []) {
+    // Non-null by assertShimCanHonor's pre-flight type check.
+    const mime = mimeTypeForImagePath(path)!
+    form.append('image[]', new Blob([new Uint8Array(readFileSync(path))], { type: mime }), basename(path))
+  }
+
+  const response = await fetch('https://api.openai.com/v1/images/edits', {
+    method: 'POST',
+    // No Content-Type header — fetch sets the multipart boundary itself.
+    headers: { Authorization: `Bearer ${request.apiKey}` },
+    body: form,
+  })
+  return openAIResultFromResponse(response, request, 'image edit')
 }
 
 async function generateOpenAI(request: DirectImageRequest): Promise<DirectImageResult> {
@@ -217,24 +226,7 @@ async function generateOpenAI(request: DirectImageRequest): Promise<DirectImageR
       quality: qualityForOpenAI(request.quality),
     }),
   })
-  if (!response.ok) throw new Error(`OpenAI image API error (${response.status}): ${await response.text()}`)
-
-  const image = extractOpenAIImage(await response.json())
-  if (image.base64) {
-    const mimeType = image.mimeType || 'image/png'
-    return {
-      filePath: writeTempImage('openai', mimeType, Buffer.from(image.base64, 'base64')),
-      mimeType,
-      width: request.width,
-      height: request.height,
-      ...(image.text ? { providerText: image.text } : {}),
-    }
-  }
-  if (image.url) {
-    const downloaded = await fetchImageUrl('openai', image.url)
-    return { ...downloaded, width: request.width, height: request.height, ...(image.text ? { providerText: image.text } : {}) }
-  }
-  throw new Error('No image data in OpenAI response')
+  return openAIResultFromResponse(response, request, 'image')
 }
 
 async function generateGemini(request: DirectImageRequest): Promise<DirectImageResult> {
@@ -249,7 +241,8 @@ async function generateGemini(request: DirectImageRequest): Promise<DirectImageR
   // (direct-vision-provider precedent) — base image first, then references,
   // then the instruction text.
   const requestParts: Array<Record<string, unknown>> = (request.inputImages ?? []).map((path) => ({
-    inline_data: { mime_type: mimeTypeForImagePath(path), data: readFileSync(path).toString('base64') },
+    // Non-null by assertShimCanHonor's pre-flight type check.
+    inline_data: { mime_type: mimeTypeForImagePath(path)!, data: readFileSync(path).toString('base64') },
   }))
   requestParts.push({ text: request.prompt + aspectHint })
 

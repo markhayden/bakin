@@ -592,8 +592,10 @@ describe('images tools', () => {
       }, 'pixel')
 
       expect(result.ok).toBe(true)
+      // The reference id must have resolved to the asset's ACTUAL version
+      // file — the shim path gets real absolute paths, same as native.
       expect(generate).toHaveBeenCalledWith(expect.objectContaining({
-        referenceImages: [expect.stringContaining('')],
+        referenceImages: [join(testDir, 'x.png')],
       }))
     })
 

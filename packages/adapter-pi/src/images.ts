@@ -98,11 +98,36 @@ function isCodexRoute(provider: string | undefined): boolean {
   return !provider || provider === CODEX_IMAGE_PROVIDER || provider === CODEX_IMAGE_MODEL
 }
 
+/**
+ * Explicit direct-provider routes prefer the keyed shim; a KEYLESS explicit
+ * openai route falls back to the zero-key codex lane (same provider family,
+ * gpt-image-2) — the pre-WS3 behavior an asset's stored route may depend on.
+ * Keyless google stays a typed error: silently switching Google → OpenAI
+ * would misattribute the output.
+ */
+async function shimWithCodexFallback(
+  input: RuntimeImageGenerateInput,
+  inputImages: string[],
+  codexOptions: CodexImageOptions,
+): Promise<RuntimeImageGenerationResult> {
+  const provider = input.provider as string
+  if (provider === 'openai' && !resolveProviderApiKeySource('openai') && (await codexImageAuth()) !== null) {
+    return generateViaCodex(input, inputImages, codexOptions)
+  }
+  return generateViaShim(input, inputImages)
+}
+
 export function createImagesSurface(codexOptions: CodexImageOptions = {}): PiImagesSurface {
   return {
     async providers(): Promise<RuntimeImageProvider[]> {
       const auth = await codexImageAuth()
-      const rows: RuntimeImageProvider[] = [{
+      // ONLY the codex row is advertised. Keyed direct providers (openai/
+      // google) are deliberately NOT runtime rows: the images plugin detects
+      // Bakin-side keys itself and routes them servedBy 'shim' — an adapter
+      // row would flip readiness to servedBy 'runtime' (hiding the metered-
+      // lane provenance), override the catalog's default model, and clobber
+      // curated model metadata (#381 capability-drift class).
+      return [{
         id: CODEX_IMAGE_PROVIDER,
         label: 'OpenAI Codex (ChatGPT login)',
         defaultModel: CODEX_IMAGE_MODEL,
@@ -116,32 +141,6 @@ export function createImagesSurface(codexOptions: CodexImageOptions = {}): PiIma
           output: { formats: ['png', 'jpeg', 'webp'] },
         },
       }]
-      // Key-based direct providers (metered lane): advertised whenever a
-      // Bakin-side key resolves, so the images plugin's routing engine can
-      // route to them. Model ids mirror the plugin catalog; the shim passes
-      // them verbatim to the provider API.
-      const DIRECT_ROWS: Array<{ id: 'openai' | 'google'; label: string; defaultModel: string; models: string[] }> = [
-        { id: 'openai', label: 'OpenAI (API key)', defaultModel: 'gpt-image-1', models: ['gpt-image-2', 'gpt-image-1.5', 'gpt-image-1', 'gpt-image-1-mini'] },
-        { id: 'google', label: 'Google Gemini (API key)', defaultModel: 'gemini-3.1-flash-image-preview', models: ['gemini-3.1-flash-image-preview', 'gemini-3-pro-image-preview'] },
-      ]
-      for (const row of DIRECT_ROWS) {
-        const keyed = resolveProviderApiKeySource(row.id) !== null
-        rows.push({
-          id: row.id,
-          label: row.label,
-          defaultModel: row.defaultModel,
-          models: row.models,
-          available: keyed,
-          configured: keyed,
-          selected: false,
-          capabilities: {
-            generate: { maxCount: 1 },
-            edit: { enabled: true, maxCount: 1 },
-            output: { formats: ['png'] },
-          },
-        })
-      }
-      return rows
     },
 
     async generate(input: RuntimeImageGenerateInput): Promise<RuntimeImageGenerationResult> {
@@ -150,7 +149,7 @@ export function createImagesSurface(codexOptions: CodexImageOptions = {}): PiIma
       }
       // References on a direct provider ride the shim's input-image path
       // (edit-style invocation, #418 semantics).
-      return generateViaShim(input, input.referenceImages ?? [])
+      return shimWithCodexFallback(input, input.referenceImages ?? [], codexOptions)
     },
 
     async edit(input: RuntimeImageEditInput): Promise<RuntimeImageGenerationResult> {
@@ -159,7 +158,7 @@ export function createImagesSurface(codexOptions: CodexImageOptions = {}): PiIma
       if (isCodexRoute(input.provider)) {
         return generateViaCodex(input, input.files, codexOptions)
       }
-      return generateViaShim(input, input.files)
+      return shimWithCodexFallback(input, input.files, codexOptions)
     },
   }
 }

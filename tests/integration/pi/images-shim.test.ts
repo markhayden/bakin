@@ -169,14 +169,24 @@ describe('shim fallback (explicit direct-provider routes)', () => {
     expect(result.metadata).toMatchObject({ servedBy: 'shim', credentialSource: 'bakin-env' })
   })
 
-  test('provider openai without a key points at the keyless codex route', async () => {
+  test('a keyless explicit openai route FALLS BACK to the zero-key codex lane (review fix)', async () => {
     delete process.env.OPENAI_API_KEY
     const surface = createImagesSurface({ fetchImpl: fakeFetch })
+    // Pre-WS3, edits on explicit openai routes were codex-served; that must
+    // survive — same provider family, no key demand.
+    const result = await surface.generate({ prompt: 'x', provider: 'openai' })
+    expect(result.provider).toBe('openai-codex')
+  })
+
+  test('a keyless google route stays a typed error — never silently switched to OpenAI', async () => {
+    delete process.env.GEMINI_API_KEY
+    delete process.env.GOOGLE_AI_API_KEY
+    const surface = createImagesSurface({ fetchImpl: fakeFetch })
     try {
-      await surface.generate({ prompt: 'x', provider: 'openai' })
+      await surface.generate({ prompt: 'x', provider: 'google' })
       throw new Error('expected reject')
     } catch (err) {
-      expect((err as Error).message).toContain('codex route needs no key')
+      expect((err as Error).message).toContain('no Bakin-side key')
     }
   })
 })
@@ -213,22 +223,19 @@ describe('shim edit + references (WS3: input images off the codex path)', () => 
     }
   })
 
-  test('providers() advertises keyed direct providers with edit capability; unkeyed stay unconfigured', async () => {
+  test('providers() stays codex-only; keyed direct providers route as shim via plugin readiness', async () => {
     process.env.OPENAI_API_KEY = 'sk-test'
-    delete process.env.GEMINI_API_KEY
-    delete process.env.GOOGLE_AI_API_KEY
     try {
       const surface = createImagesSurface()
       const rows = await surface.providers()
-      const openai = rows.find((r) => r.id === 'openai')!
-      const google = rows.find((r) => r.id === 'google')!
-      expect(openai.configured).toBe(true)
-      expect(openai.capabilities?.edit?.enabled).toBe(true)
-      expect(google.configured).toBe(false)
-      // The routing engine marks keyed direct providers routable.
+      // NO runtime rows for openai/google — an adapter row would flip
+      // readiness to servedBy 'runtime' and clobber catalog model metadata.
+      expect(rows.map((r) => r.id)).toEqual(['openai-codex'])
+      // The plugin detects the Bakin key itself: routable, honestly shim-served.
       const readiness = await providerReadiness({ runtime: { images: { providers: async () => rows } } } as never)
       const ready = readiness.find((r) => r.id === 'openai')!
       expect(ready.routable).toBe(true)
+      expect(ready.servedBy).toBe('shim')
     } finally {
       delete process.env.OPENAI_API_KEY
     }
