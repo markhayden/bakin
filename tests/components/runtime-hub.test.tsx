@@ -267,7 +267,15 @@ describe('ExtensionsSection', () => {
     supported: true,
     mode: 'allowlist',
     // id === path: trust names exactly one module.
-    extensions: [{ id: EXT_PATH, label: 'npm:pi-image-gen', source: 'npm package', path: EXT_PATH, status }],
+    extensions: [{ id: EXT_PATH, label: 'npm:pi-image-gen', source: 'npm package', path: EXT_PATH, sha256: 'a'.repeat(64), status }],
+  })
+
+  it('shows an error state (not a hidden section) when discovery fails', async () => {
+    globalThis.fetch = (async () => new Response('boom', { status: 500 })) as unknown as typeof fetch
+    const { ExtensionsSection } = await import('../../packages/host/src/components/runtime/extensions-section')
+    render(<ExtensionsSection />)
+    await waitFor(() => screen.getByTestId('runtime-extensions-error'))
+    expect(screen.getByText(/Couldn't load extensions/i)).toBeTruthy()
   })
 
   it('renders nothing when the runtime has no extension mechanism', async () => {

@@ -192,7 +192,7 @@ async function cmdRuntimeUse(target: string | undefined, flags: RuntimeUseFlags)
 interface ExtensionsReport {
   supported: boolean
   mode: string
-  extensions: Array<{ id: string; label: string; source: string; path: string; status: string }>
+  extensions: Array<{ id: string; label: string; source: string; path: string; sha256: string; status: string }>
 }
 
 /** `bakin runtime extensions [list|allow <id>|revoke <id>]` — trust lane (WS4). */

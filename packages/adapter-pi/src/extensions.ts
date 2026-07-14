@@ -15,8 +15,8 @@
  * in between pattern-matches.
  */
 import type { RuntimeExtensionInfo, RuntimeExtensionsAccess } from '@bakin/core/adapters/runtime'
-import { getPiAgentDir, getPiPath } from './home'
-import { extensionsPolicy, resolveExtensionResources } from './messaging'
+import { getPiAgentDir } from './home'
+import { extensionApproved, extensionsPolicy, resolveExtensionResources } from './messaging'
 
 /**
  * Human label (display + CLI convenience only — NEVER used for matching):
@@ -57,15 +57,22 @@ export function createExtensionsSurface(
       // Discovery runs against the agent dir (user scope). Per-agent project
       // scope is resolved per turn from the agent's workspace; those paths
       // are surfaced too when the resolver reports them.
-      const resources = await resolveExtensionResources(getPiPath(), getPiAgentDir())
+      // User-scope discovery (agentDir as cwd) — byte-identical to the turn
+      // gate's basis (approvedExtensionPaths in messaging.ts), so list status
+      // and what actually loads can never disagree.
+      const resources = await resolveExtensionResources(getPiAgentDir(), getPiAgentDir())
       return resources.map((resource) => ({
-        id: resource.path, // identity == the file the runtime would import
+        id: resource.path, // identity == the real file the runtime would import
         label: labelFor(resource.path, resource.source),
         source: sourceLabel(resource.source, resource.scope),
         path: resource.path,
+        sha256: resource.sha256,
         status: policy.mode === 'none'
           ? 'blocked'
-          : policy.mode === 'all' || policy.allow.includes(resource.path)
+          // approved requires BOTH path and current content hash to match —
+          // a swapped/repointed file reverts to pending (re-approve), never
+          // loads under the old approval.
+          : policy.mode === 'all' || extensionApproved(resource, policy.allow)
             ? 'allowed'
             : 'pending',
       }))

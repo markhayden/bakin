@@ -266,12 +266,19 @@ export function createRequestHandler(deps: RequestHandlerDeps): (req: IncomingMe
       return
     }
     if ((url.pathname === '/api/runtime/extensions/allow' || url.pathname === '/api/runtime/extensions/revoke') && req.method === 'POST') {
-      const { allowRuntimeExtension, revokeRuntimeExtension } = require('../runtime-extensions') as typeof import('../runtime-extensions')
-      const action = url.pathname.endsWith('/allow') ? allowRuntimeExtension : revokeRuntimeExtension
+      const mod = require('../runtime-extensions') as typeof import('../runtime-extensions')
+      const action = url.pathname.endsWith('/allow') ? mod.allowRuntimeExtension : mod.revokeRuntimeExtension
       handleJsonPost(req, res, async (body) => {
         const id = (body as { id?: unknown }).id
         if (typeof id !== 'string' || id.length === 0) throw new BadRequestError('id is required')
-        return action(id)
+        try {
+          return await action(id)
+        } catch (err) {
+          // Trust-input errors (unknown id, wrong mode, not-in-allowlist) are
+          // caller-recoverable — 400, not a 500.
+          if (err instanceof mod.ExtensionTrustError) throw new BadRequestError(err.message)
+          throw err
+        }
       })
       return
     }

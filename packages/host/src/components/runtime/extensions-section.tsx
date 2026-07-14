@@ -16,6 +16,7 @@ interface ExtensionRow {
   label: string
   source: string
   path: string
+  sha256: string
   status: 'allowed' | 'pending' | 'blocked'
 }
 
@@ -27,6 +28,7 @@ interface ExtensionsReport {
 
 export function ExtensionsSection() {
   const [report, setReport] = useState<ExtensionsReport | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [target, setTarget] = useState<{ ext: ExtensionRow; action: 'allow' | 'revoke' } | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -36,13 +38,27 @@ export function ExtensionsSection() {
       const res = await fetch('/api/runtime/extensions')
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       setReport(await res.json() as ExtensionsReport)
-    } catch {
-      setReport(null) // silent: the section simply doesn't render
+      setLoadError(null)
+    } catch (err) {
+      // Don't silently hide the section on a transient error — pending
+      // extensions would become un-approvable with no signal.
+      setLoadError(err instanceof Error ? err.message : String(err))
     }
   }, [])
 
   useEffect(() => { void load() }, [load])
 
+  // A genuine fetch failure is distinct from "runtime has no extensions".
+  if (loadError) {
+    return (
+      <section className="space-y-2" data-testid="runtime-extensions-error">
+        <h2 className="text-sm font-semibold">Extensions</h2>
+        <p className="text-xs text-destructive">Couldn't load extensions: {loadError}.{' '}
+          <button type="button" className="underline" onClick={() => void load()}>Retry</button>
+        </p>
+      </section>
+    )
+  }
   if (!report?.supported || report.extensions.length === 0) return null
 
   const run = async () => {

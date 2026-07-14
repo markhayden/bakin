@@ -22,6 +22,7 @@ import { readRegistry } from './registry'
 import { createHealthChecks } from './health-checks'
 import { createImagesSurface } from './images'
 import { createExtensionsSurface } from './extensions'
+import { enforcePiOffline } from './messaging'
 import { codexImageAuth } from './codex-images'
 import { resolveProviderApiKeySource } from '@bakin/core/media'
 import { createSessionsSurface } from './sessions'
@@ -52,6 +53,13 @@ export class PiRuntimeAdapter implements AgentRuntimeAdapter {
    */
   async initialize(opts: AdapterInitOpts): Promise<void> {
     this.initOpts = opts
+    // A Bakin agent turn (and its provisioning) must NEVER install a Pi
+    // package — the SDK resolver would run npm/git install side effects
+    // (postinstall = arbitrary code) for any configured-but-missing package,
+    // bypassing the extension allowlist entirely. Force the resolver offline
+    // for the whole adapter lifecycle; installing packages is a deliberate
+    // terminal act, never a side effect of serving a turn.
+    enforcePiOffline()
   }
 
   async shutdown(): Promise<void> {}

@@ -98,10 +98,19 @@ Flip: `~/.bakin/settings.json` → `"runtime": { "adapter": "pi" }` → restart 
   Unapproved code is never imported. Pinned by a sentinel-writing fixture
   extension (tests/integration/pi/extensions.test.ts) that fails if the
   post-load filter ever returns.
-- **Trust identity is the absolute module path** — names/basenames collide
-  across sources (a dir `foo.ts` and npm `foo`), so approving must name
-  exactly one file. No pattern matching anywhere in the lane; the CLI resolves
-  a human name to its unique path and refuses ambiguity.
+- **Trust identity is (real module path, content hash)** — names/basenames
+  collide across sources, symlinks can be repointed, and files can be
+  overwritten after approval, so approving pins the resolved path AND the
+  exact bytes. A swapped/repointed file reverts to pending (re-approve). No
+  pattern matching anywhere; the CLI resolves a human name to its unique path.
+- **No turn ever installs or probes Pi packages.** The SDK's loader resolves
+  `packages[]` on every reload — installing missing ones (postinstall =
+  arbitrary code) and running the settings-configured `npmCommand` to locate
+  the npm root, neither offline-gated. A Bakin turn hardens its
+  SettingsManager (strips `packages[]`, pins `npmCommand` to the real binary)
+  and forces `PI_OFFLINE`, so an agent that writes `packages`/`npmCommand`
+  into its own workspace settings can't self-trigger code execution.
+  Installing Pi packages stays a terminal act (`pi install`).
 - **Discovery is the SDK package manager** (`resolve()` with `onMissing:
   'skip'` — paths only, no imports, no installs, no network): it sees npm/git
   packages, loose files/dirs, object-form `packages[]` entries and both

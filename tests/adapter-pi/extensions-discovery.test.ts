@@ -17,7 +17,8 @@ process.env.OPENCLAW_HOME = pathJoin(testDir, 'openclaw')
 process.env.PI_HOME = pathJoin(testDir, 'pi')
 
 import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
-import { mkdirSync, rmSync, writeFileSync } from 'fs'
+import { mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'fs'
+import { createHash } from 'crypto'
 import { join } from 'path'
 
 mock.module('@/core/content-dir', () => ({
@@ -66,9 +67,9 @@ import { resetPiHome } from '../../packages/adapter-pi/src/home'
 
 const extDir = () => join(testDir, 'pi', 'agent', 'extensions')
 const policy = () => (settingsFile.runtime as { settings: Record<string, unknown> }).settings.piExtensions as
-  | { mode?: string; allow?: string[] }
+  | { mode?: string; allow?: Array<{ path: string; sha256: string }> }
   | undefined
-const setPolicy = (p: { mode?: string; allow?: string[] } | undefined) => {
+const setPolicy = (p: { mode?: string; allow?: Array<{ path: string; sha256: string }> } | undefined) => {
   ;(settingsFile.runtime as { settings: Record<string, unknown> }).settings = p ? { piExtensions: p } : {}
 }
 const runtimeSettings = () => (settingsFile.runtime as { settings: Record<string, unknown> }).settings
@@ -85,11 +86,13 @@ afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })
 })
 
-function seedExtension(name: string): string {
+function seedExtension(name: string, body = 'export default () => {}'): string {
   const path = join(extDir(), `${name}.ts`)
-  writeFileSync(path, 'export default () => {}')
-  return path
+  writeFileSync(path, body)
+  return realpathSync(path) // discovery reports real paths (symlinks resolved)
 }
+const hashOf = (p: string) => createHash('sha256').update(readFileSync(p)).digest('hex')
+const entry = (p: string) => ({ path: p, sha256: hashOf(p) })
 
 const surface = () => createExtensionsSurface(() => runtimeSettings())
 
@@ -106,16 +109,25 @@ describe('discovery', () => {
   it('two extensions sharing a basename stay independently trustable', async () => {
     const a = seedExtension('utils')
     mkdirSync(join(extDir(), 'nested'), { recursive: true })
-    const b = join(extDir(), 'nested', 'utils.ts')
-    writeFileSync(b, 'export default () => {}')
+    writeFileSync(join(extDir(), 'nested', 'utils.ts'), 'export default () => {}')
+    const b = realpathSync(join(extDir(), 'nested', 'utils.ts'))
 
-    setPolicy({ mode: 'allowlist', allow: [a] })
+    setPolicy({ mode: 'allowlist', allow: [entry(a)] })
     const list = await surface().list()
     expect(list.find((e) => e.path === a)!.status).toBe('allowed')
     const nested = list.find((e) => e.path === b)
     // Discovery may or may not surface a nested file depending on loader
     // rules — what MUST hold is that approving `a` never trusts `b`.
     if (nested) expect(nested.status).toBe('pending')
+  })
+
+  it('a content change after approval reverts the file to pending (not silently trusted)', async () => {
+    const p = seedExtension('mutable', 'export default () => { /* v1 */ }')
+    setPolicy({ mode: 'allowlist', allow: [entry(p)] })
+    expect((await surface().list()).find((e) => e.path === p)!.status).toBe('allowed')
+    // Swap the bytes — the stored hash no longer matches.
+    writeFileSync(p, 'export default () => { /* EVIL v2 */ }')
+    expect((await surface().list()).find((e) => e.path === p)!.status).toBe('pending')
   })
 
   it('status follows the policy mode exactly', async () => {
@@ -127,7 +139,7 @@ describe('discovery', () => {
     setPolicy({ mode: 'all' })
     expect((await surface().list()).find((e) => e.path === p)!.status).toBe('allowed')
 
-    setPolicy({ mode: 'allowlist', allow: [p] })
+    setPolicy({ mode: 'allowlist', allow: [entry(p)] })
     expect((await surface().list()).find((e) => e.path === p)!.status).toBe('allowed')
   })
 })
@@ -143,7 +155,7 @@ describe('trust engine (ONE mutation path)', () => {
     const { allowRuntimeExtension } = await engine()
     const report = await allowRuntimeExtension(p)
 
-    expect(policy()!.allow).toEqual([p])
+    expect(policy()!.allow).toEqual([entry(p)])
     expect(report.extensions.find((e) => e.path === p)!.status).toBe('allowed')
     // The write is a DELTA — the adapter (and any other setting) survives.
     expect((settingsFile.runtime as { adapter: string }).adapter).toBe('pi')

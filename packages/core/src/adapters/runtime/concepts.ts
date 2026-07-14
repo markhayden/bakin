@@ -730,16 +730,19 @@ export interface RuntimeImagesAccess {
  * executes extension code.
  */
 export interface RuntimeExtensionInfo {
-  /** Stable identifier used for allow/revoke (basename or package name). */
+  /** Stable identifier used for allow/revoke — the real absolute module path. */
   id: string
   label: string
   /** Where it came from, human-readable (e.g. "npm:some-pkg", "extensions dir"). */
   source: string
-  /** Absolute load path — what allowlist patterns match against. */
+  /** Real absolute load path (symlinks resolved) — half the trust identity. */
   path: string
+  /** Current content hash of the file — the other half of the trust identity. */
+  sha256: string
   /**
-   * pending  — discovered but NOT loaded into turns (awaiting approval)
-   * allowed  — loads into agent turns
+   * pending  — discovered but NOT loaded into turns (unapproved, or its
+   *            content changed since approval)
+   * allowed  — approved path+hash; loads into agent turns
    * blocked  — policy mode 'none': nothing loads
    */
   status: 'allowed' | 'pending' | 'blocked'
