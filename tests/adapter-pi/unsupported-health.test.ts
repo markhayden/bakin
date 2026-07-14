@@ -80,7 +80,7 @@ describe('honest-empty surfaces', () => {
 describe('health checks', () => {
   test('all green on a healthy fixture home', async () => {
     const checks = adapter.getHealthChecks()
-    expect(checks.length).toBe(2)
+    expect(checks.length).toBe(3) // pi.home, pi.auth, pi.extensions (WS4)
     const results = (await Promise.all(checks.map((c) => c.run()))).flat()
     expect(results.every((r) => r.status === 'ok')).toBe(true)
   })

@@ -83,6 +83,9 @@ export async function createAppServices(): Promise<AppServices> {
   await runtime.initialize({
     ...adapterInit,
     settings: settings.runtime.settings,
+    // Live view: extension trust changes (and other per-turn knobs) apply on
+    // the next turn without a server restart.
+    getLiveSettings: () => getSettings().runtime.settings,
     execTools,
     bakinMcpBaseUrl: resolveBakinMcpBaseUrl(),
   })

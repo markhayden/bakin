@@ -163,8 +163,17 @@ export class PiRuntimeAdapter implements AgentRuntimeAdapter {
     return capabilitiesForModel(main?.model)
   }
 
+  /**
+   * Adapter-private settings, LIVE when the host provides the getter
+   * (getLiveSettings — settings edits apply next turn, no restart), else the
+   * boot snapshot / factory options (tests, thin callers).
+   */
+  private settingsNow(): Record<string, unknown> | undefined {
+    return this.initOpts?.getLiveSettings?.() ?? this.initOpts?.settings ?? this.options.settings
+  }
+
   getHealthChecks(): ReturnType<AgentRuntimeAdapter['getHealthChecks']> {
-    return createHealthChecks(() => this.initOpts?.settings ?? this.options.settings)
+    return createHealthChecks(() => this.settingsNow())
   }
 
   agents: AgentRuntimeAdapter['agents'] = createAgentsSurface()
@@ -172,7 +181,8 @@ export class PiRuntimeAdapter implements AgentRuntimeAdapter {
   messaging: AgentRuntimeAdapter['messaging'] = createMessagingSurface({
     getExecTools: () => this.initOpts?.execTools,
     getLogger: () => this.initOpts?.logger,
-    getSettings: () => this.initOpts?.settings ?? this.options.settings,
+    // Live: extension policy + retry knobs apply on the NEXT TURN.
+    getSettings: () => this.settingsNow(),
   })
 
 
@@ -197,7 +207,7 @@ export class PiRuntimeAdapter implements AgentRuntimeAdapter {
    * loader would load, statused by the SAME policy the loader applies.
    */
   get extensions(): AgentRuntimeAdapter['extensions'] {
-    return createExtensionsSurface(() => this.initOpts?.settings ?? this.options.settings)
+    return createExtensionsSurface(() => this.settingsNow())
   }
 
   // channels/cron are OMITTED (P2.1): Pi has no delivery layer and no
