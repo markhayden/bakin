@@ -19,6 +19,8 @@ export interface BarChartProps {
   stacked?: boolean
   formatValue?: (value: number) => string
   emptyLabel?: string
+  /** Hide the built-in collapsible table when the consumer renders equivalent data beside the chart. */
+  showDataTable?: boolean
 }
 
 interface ActiveBar {
@@ -56,6 +58,7 @@ export function BarChart({
   stacked = false,
   formatValue = (value) => value.toLocaleString(),
   emptyLabel = 'No data in this window.',
+  showDataTable = true,
 }: BarChartProps) {
   const tooltipId = useId()
   const [active, setActive] = useState<ActiveBar | null>(null)
@@ -201,7 +204,9 @@ export function BarChart({
         </ul>
       )}
 
-      <ChartDataTable data={data} series={series} caption={`${label} data`} formatValue={formatValue} />
+      {showDataTable && (
+        <ChartDataTable data={data} series={series} caption={`${label} data`} formatValue={formatValue} />
+      )}
     </div>
   )
 }

@@ -28,11 +28,9 @@ function formatPercent(value: number): string {
 export function ActivityMetrics({
   data,
   compatibilityLimited = false,
-  onViewFailures,
 }: {
   data: UsageFeedData
   compatibilityLimited?: boolean
-  onViewFailures?: () => void
 }) {
   const rate = successPercent(data)
   const failed = data.outcomes.failed
@@ -85,7 +83,6 @@ export function ActivityMetrics({
         sub={attention > 0
           ? `${failed.toLocaleString()} failed · ${unverified.toLocaleString()} ${unverified === 1 ? 'result' : 'results'} not observed`
           : 'Nothing needs attention'}
-        {...(attention > 0 && onViewFailures ? { onClick: onViewFailures } : {})}
       />
       <StatTile
         icon={Bot}

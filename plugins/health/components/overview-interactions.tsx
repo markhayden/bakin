@@ -147,7 +147,7 @@ export function OverviewInteractions({
               </strong>
               {data.totals.errors > 0 ? (
                 <a
-                  href="/health?tab=activity&activity_window=1h&activity_outcome=failed"
+                  href="/health?tab=activity&activity_window=1h#activity-needs-attention"
                   className="mt-1 inline-flex rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <StatusBadge tone="destructive" variant="outline">

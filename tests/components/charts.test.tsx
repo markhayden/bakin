@@ -169,6 +169,13 @@ describe('BarChart', () => {
     fireEvent.focus(mark)
     expect(screen.getByRole('tooltip').textContent).toBe(hovered)
   })
+
+  it('lets a consumer replace the built-in exact table without duplicating it', () => {
+    render(<BarChart data={timeSeries} series={series} label="Run outcomes" showDataTable={false} />)
+
+    expect(screen.getByRole('group', { name: 'Run outcomes' })).toBeDefined()
+    expect(screen.queryByRole('table', { name: 'Run outcomes data', hidden: true })).toBeNull()
+  })
 })
 
 describe('Sparkline', () => {

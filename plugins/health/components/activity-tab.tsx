@@ -3,7 +3,7 @@
 import { useQueryState } from '@makinbakin/sdk/hooks'
 import { Button } from '@makinbakin/sdk/ui'
 import { RefreshCw } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ActivityBreakdown } from './activity-breakdown'
 import { ActivityEventStream } from './activity-event-stream'
 import { ActivityFailureGroups } from './activity-failure-groups'
@@ -20,9 +20,6 @@ import {
 
 const WINDOWS = new Set<ActivityWindow>(['5m', '1h', '24h'])
 const KINDS = new Set<ActivityKindFilter>(['all', 'mcp', 'rest', 'agent'])
-const OUTCOMES = new Set<ActivityOutcome>(['all', 'failed'])
-
-type ActivityOutcome = 'all' | 'failed'
 
 const FAILURE_GROUP_PAGE_SIZE = 25
 
@@ -34,27 +31,20 @@ function activityKind(value: string): ActivityKindFilter {
   return KINDS.has(value as ActivityKindFilter) ? value as ActivityKindFilter : 'all'
 }
 
-function activityOutcome(value: string): ActivityOutcome {
-  return OUTCOMES.has(value as ActivityOutcome) ? value as ActivityOutcome : 'failed'
-}
-
 export function ActivityTab() {
   const [windowParam, setWindow] = useQueryState('activity_window', '1h')
   const [kindParam, setKind] = useQueryState('activity_kind', 'all')
-  const [routineParam, setRoutine] = useQueryState('include_routine', 'false')
-  const [outcomeParam, setOutcome] = useQueryState('activity_outcome', 'failed')
   const window = activityWindow(windowParam)
   const kind = activityKind(kindParam)
-  const outcome = activityOutcome(outcomeParam)
-  const includeRoutine = outcome === 'all' && routineParam === 'true'
-  const failureFilterKey = `${window}:${kind}:${includeRoutine}`
+  const failureFilterKey = `${window}:${kind}`
   const [failurePage, setFailurePage] = useState({ key: failureFilterKey, offset: 0 })
+  const handledAttentionHash = useRef(false)
   const failureGroupOffset = failurePage.key === failureFilterKey ? failurePage.offset : 0
   const setFailureGroupOffset = (offset: number) => setFailurePage({ key: failureFilterKey, offset })
   const resource = useActivityData({
     window,
     kind,
-    includeRoutine,
+    includeRoutine: true,
     ...(failureGroupOffset > 0 ? {
       failureGroupOffset,
       failureGroupLimit: FAILURE_GROUP_PAGE_SIZE,
@@ -77,6 +67,16 @@ export function ActivityTab() {
     setFailurePage({ key: failureFilterKey, offset: lastPageOffset })
   }, [failureFilterKey, failureGroupOffset, pageLimit, pageOffset, pageTotal])
 
+  useEffect(() => {
+    if (!data || handledAttentionHash.current) return
+    if (document.location.hash !== '#activity-needs-attention') return
+    const attention = document.getElementById('activity-needs-attention')
+    if (!attention) return
+    handledAttentionHash.current = true
+    attention.scrollIntoView({ block: 'start' })
+    attention.focus({ preventScroll: true })
+  }, [data])
+
   return (
     <div className="space-y-5" data-testid="health-activity-tab">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -85,28 +85,6 @@ export function ActivityTab() {
           <p className="text-sm text-muted-foreground">See every tool call, API request, and agent run—then inspect anything that needs attention.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <div
-            role="group"
-            aria-label="Activity view"
-            className="flex w-fit items-center gap-0.5 rounded-lg bg-foreground/5 p-0.5"
-          >
-            {([
-              ['failed', 'Needs attention'],
-              ['all', 'All events'],
-            ] as const).map(([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                aria-pressed={outcome === value}
-                className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${outcome === value
-                  ? 'bg-card text-foreground shadow-sm'
-                  : 'text-muted-foreground hover:text-foreground'}`}
-                onClick={() => setOutcome(value)}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
           <label className="text-xs text-muted-foreground">
             <span className="sr-only">Activity window</span>
             <select
@@ -132,16 +110,6 @@ export function ActivityTab() {
               <option value="agent">Agents</option>
             </select>
           </label>
-          {outcome === 'all' && (
-            <label className="inline-flex h-8 items-center gap-2 rounded-md border border-input px-2 text-xs text-foreground">
-              <input
-                type="checkbox"
-                checked={includeRoutine}
-                onChange={(event) => setRoutine(event.target.checked ? 'true' : 'false')}
-              />
-              Include routine success
-            </label>
-          )}
           <Button size="sm" variant="outline" onClick={() => void resource.refresh()} disabled={resource.refreshing}>
             <RefreshCw className={resource.refreshing ? 'animate-spin motion-reduce:animate-none' : ''} aria-hidden="true" />
             Refresh
@@ -173,17 +141,10 @@ export function ActivityTab() {
             <ActivityMetrics
               data={data}
               compatibilityLimited={normalized.compatibilityLimited}
-              onViewFailures={() => setOutcome('failed')}
             />
           )}
 
-          {data && outcome === 'all' && (
-            <ActivityVolumeChart buckets={data.timeBuckets} coverage={data.coverage} />
-          )}
-
           {data && <ActivityPulse data={data} compatibilityLimited={normalized.compatibilityLimited} />}
-
-          {data && outcome === 'all' && <ActivityBreakdown data={data} />}
 
           {data && totalFailures === 0 && totalUnverified === 0 && (
             <p className="sr-only">
@@ -191,7 +152,7 @@ export function ActivityTab() {
             </p>
           )}
 
-          {data && outcome === 'failed' && (
+          {data && (
             <ActivityFailureGroups
               groups={data.failureGroups}
               failures={failures}
@@ -203,7 +164,7 @@ export function ActivityTab() {
             />
           )}
 
-          {data && outcome === 'failed' && totalFailures > 0 && (
+          {data && totalFailures > 0 && (
             <section aria-labelledby="activity-failure-trend-title" className="rounded-xl border border-border/80 bg-card p-4">
               <div>
                 <h3 id="activity-failure-trend-title" className="font-semibold">Failures over time</h3>
@@ -215,7 +176,11 @@ export function ActivityTab() {
             </section>
           )}
 
-          {data && outcome === 'all' && <ActivityEventStream data={data} />}
+          {data && <ActivityVolumeChart buckets={data.timeBuckets} coverage={data.coverage} />}
+
+          {data && <ActivityBreakdown data={data} />}
+
+          {data && <ActivityEventStream data={data} />}
         </>
       )}
     </div>

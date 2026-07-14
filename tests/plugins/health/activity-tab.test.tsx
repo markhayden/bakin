@@ -246,11 +246,13 @@ beforeEach(() => {
   useActivityDataMock.mockImplementation((_options: unknown) => activityData())
 })
 
-afterEach(() => cleanup())
+afterEach(() => {
+  cleanup()
+  window.history.replaceState(null, '', '/')
+})
 
 describe('ActivityTab', () => {
   it('leads with the visual pulse and keeps raw failure evidence behind disclosure', () => {
-    queryInitialValues.set('activity_outcome', 'failed')
     render(<ActivityTab />)
 
     const tab = screen.getByTestId('health-activity-tab')
@@ -268,7 +270,7 @@ describe('ActivityTab', () => {
     expect(expand.getAttribute('aria-expanded')).toBe('true')
     expect(within(api).getByText('Technical details')).toBeDefined()
     expect(within(api).getByText('/api/plugins/search/reindex')).toBeDefined()
-    expect(within(tab).queryByRole('region', { name: 'Recent events' })).toBeNull()
+    expect(within(tab).getByRole('region', { name: 'Recent events' })).toBeDefined()
   })
 
   it('keeps older failures and result gaps inspectable after more than 50 newer successes', () => {
@@ -304,7 +306,6 @@ describe('ActivityTab', () => {
       status: 'ok',
       meta: { resultMissing: true, turnTerminalStatus: 'completed' },
     }
-    queryInitialValues.set('activity_outcome', 'failed')
     useActivityDataMock.mockImplementation(() => ({
       ...base,
       data: {
@@ -335,14 +336,7 @@ describe('ActivityTab', () => {
     fireEvent.click(within(failure).getByRole('button', { name: 'View 1 failure event for Tools · Older Failure' }))
     expect(within(failure).getByRole('list', { name: 'Failure events for Tools · Older Failure' })).toBeDefined()
 
-    const allEvents = screen.queryByRole('button', { name: 'All events' })
-    expect(allEvents !== null).toBe(true)
-    if (!allEvents) return
-    fireEvent.click(allEvents)
-
-    const recent = screen.queryByRole('region', { name: 'Recent events' })
-    expect(recent !== null).toBe(true)
-    if (!recent) return
+    const recent = screen.getByRole('region', { name: 'Recent events' })
     const rows = within(recent).getAllByRole('listitem')
     expect(rows).toHaveLength(52)
     expect(rows.at(-2)?.textContent).toContain('Older Failure')
@@ -352,7 +346,6 @@ describe('ActivityTab', () => {
   })
 
   it('states when the failure list is capped below the total', () => {
-    queryInitialValues.set('activity_outcome', 'failed')
     const base = activityData()
     useActivityDataMock.mockImplementation(() => ({
       ...base,
@@ -390,7 +383,6 @@ describe('ActivityTab', () => {
   })
 
   it('renders a compact failure-only trend with an exact accessible table', () => {
-    queryInitialValues.set('activity_outcome', 'failed')
     render(<ActivityTab />)
 
     const chart = screen.getByRole('group', { name: 'Failures over time' })
@@ -401,7 +393,10 @@ describe('ActivityTab', () => {
     expect(within(table).getByText('Failures')).toBeDefined()
     expect(within(table).queryByText('All activity')).toBeNull()
     expect(within(table).getAllByRole('row')).toHaveLength(3)
-    expect(screen.getByRole('note').textContent).toContain('latest interval')
+    const trend = chart.closest('section')
+    expect(trend).not.toBeNull()
+    if (!trend) return
+    expect(within(trend).getByRole('note').textContent).toContain('latest interval')
   })
 
   it('uses a calm zero-failure summary without empty chart or success sections', () => {
@@ -441,10 +436,12 @@ describe('ActivityTab', () => {
     expect(screen.queryByRole('region', { name: 'Needs attention' })).toBeNull()
     expect(screen.queryByRole('heading', { name: 'Failures over time' })).toBeNull()
     expect(screen.queryByText(/Successful activity \(/)).toBeNull()
+    expect(screen.getByRole('region', { name: 'Activity over time' })).toBeDefined()
+    expect(screen.getByRole('region', { name: 'Call breakdown' })).toBeDefined()
+    expect(screen.getByRole('region', { name: 'Recent events' })).toBeDefined()
   })
 
   it('keeps an unobserved result in the Needs attention view without calling it healthy', () => {
-    queryInitialValues.set('activity_outcome', 'failed')
     const base = activityData()
     const unverifiedEntry: UsageFeedData['recent'][number] = {
       id: 'usage-tool-needs-verification',
@@ -485,7 +482,7 @@ describe('ActivityTab', () => {
     expect(within(attention).getByText('Web Search')).toBeDefined()
     expect(within(attention).getByText('Result not observed')).toBeDefined()
     const metrics = screen.getByRole('group', { name: 'Activity metrics' })
-    expect(within(metrics).getByRole('button', { name: /Needs attention 1/ })).toBeDefined()
+    expect(within(metrics).getByText('Needs attention')).toBeDefined()
     const successTile = within(metrics).getByText('Success rate').closest('[data-stat-tile]')
     expect(successTile?.querySelector('.bg-warning')).not.toBeNull()
     expect(successTile?.querySelector('.bg-success')).toBeNull()
@@ -493,7 +490,6 @@ describe('ActivityTab', () => {
   })
 
   it('shows aborted agent and tool work as canceled context instead of success or failure', () => {
-    queryInitialValues.set('activity_outcome', 'all')
     const base = activityData()
     useActivityDataMock.mockImplementation(() => ({
       ...base,
@@ -537,7 +533,6 @@ describe('ActivityTab', () => {
   })
 
   it('keeps a completed turn with no tool result out of both success and failure', () => {
-    queryInitialValues.set('activity_outcome', 'all')
     const base = activityData()
     const unverifiedEntry: UsageFeedData['recent'][number] = {
       id: 'usage-tool-unverified',
@@ -578,44 +573,106 @@ describe('ActivityTab', () => {
     expect(within(recent).getAllByText('Failed')).toHaveLength(2)
   })
 
-  it('stores window, kind, and routine choices through URL-backed query state', () => {
+  it('stores window and kind choices while routine successes stay included', () => {
     render(<ActivityTab />)
 
-    expect(screen.queryByRole('checkbox', { name: 'Include routine success' })).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: 'All events' }))
     fireEvent.change(screen.getByLabelText('Activity window'), { target: { value: '24h' } })
     fireEvent.change(screen.getByLabelText('Activity kind'), { target: { value: 'rest' } })
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Include routine success' }))
 
     expect(useActivityDataMock).toHaveBeenLastCalledWith({ window: '24h', kind: 'rest', includeRoutine: true })
-
-    fireEvent.click(screen.getByRole('button', { name: 'Needs attention' }))
+    expect(queryWrites).toContainEqual({ key: 'activity_window', value: '24h' })
+    expect(queryWrites).toContainEqual({ key: 'activity_kind', value: 'rest' })
     expect(screen.queryByRole('checkbox', { name: 'Include routine success' })).toBeNull()
-    expect(useActivityDataMock).toHaveBeenLastCalledWith({ window: '24h', kind: 'rest', includeRoutine: false })
   })
 
-  it('defaults URL-less visits to Needs attention with unambiguous mode and kind labels', () => {
+  it('renders one complete activity view and always requests routine successes', () => {
+    useActivityDataMock.mockImplementation(() => activityDashboardData())
+
     render(<ActivityTab />)
 
-    const outcome = screen.getByRole('group', { name: 'Activity view' })
-    const needsAttention = within(outcome).queryByRole('button', { name: 'Needs attention' })
-    const allEvents = within(outcome).queryByRole('button', { name: 'All events' })
-    expect(needsAttention !== null).toBe(true)
-    expect(allEvents !== null).toBe(true)
-    if (!needsAttention || !allEvents) return
-    expect(needsAttention.getAttribute('aria-pressed')).toBe('true')
-    expect(allEvents.getAttribute('aria-pressed')).toBe('false')
+    expect(useActivityDataMock).toHaveBeenLastCalledWith({
+      window: '1h',
+      kind: 'all',
+      includeRoutine: true,
+    })
+    expect(screen.queryByRole('group', { name: 'Activity view' })).toBeNull()
+    expect(screen.queryByRole('checkbox', { name: 'Include routine success' })).toBeNull()
+    expect(screen.getByRole('region', { name: 'Activity over time' })).toBeDefined()
+    expect(screen.getByRole('region', { name: 'Needs attention' })).toBeDefined()
+    expect(screen.getByRole('heading', { name: 'Failures over time' })).toBeDefined()
+    expect(screen.getByRole('region', { name: 'Call breakdown' })).toBeDefined()
+    expect(screen.getByRole('region', { name: 'Recent events' })).toBeDefined()
+  })
+
+  it('does not let a legacy failed-only URL hide the complete activity view', () => {
+    queryInitialValues.set('activity_outcome', 'failed')
+    queryInitialValues.set('include_routine', 'false')
+    useActivityDataMock.mockImplementation(() => activityDashboardData())
+
+    render(<ActivityTab />)
+
+    expect(screen.queryByRole('group', { name: 'Activity view' })).toBeNull()
+    expect(useActivityDataMock).toHaveBeenLastCalledWith({ window: '1h', kind: 'all', includeRoutine: true })
+    expect(screen.getByRole('region', { name: 'Needs attention' })).toBeDefined()
+    expect(screen.getByRole('region', { name: 'Recent events' })).toBeDefined()
+  })
+
+  it('scrolls and focuses the attention section after a failure deep-link finishes loading', () => {
+    const loaded = activityDashboardData()
+    let resource: UseHealthResourceResult<UsageFeedData> = {
+      ...loaded,
+      data: null,
+      loading: true,
+    }
+    const scrollIntoView = mock(() => undefined)
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView
+    HTMLElement.prototype.scrollIntoView = scrollIntoView
+    window.location.hash = '#activity-needs-attention'
+    useActivityDataMock.mockImplementation(() => resource)
+
+    try {
+      const view = render(<ActivityTab />)
+      expect(scrollIntoView).not.toHaveBeenCalled()
+
+      resource = loaded
+      view.rerender(<ActivityTab />)
+
+      const attention = screen.getByRole('region', { name: 'Needs attention' })
+      expect(scrollIntoView).toHaveBeenCalledTimes(1)
+      expect(document.activeElement).toBe(attention)
+
+      view.rerender(<ActivityTab />)
+      expect(scrollIntoView).toHaveBeenCalledTimes(1)
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView
+    }
+  })
+
+  it('keeps the activity chart and exact values visible together', () => {
+    useActivityDataMock.mockImplementation(() => activityDashboardData())
+
+    render(<ActivityTab />)
+
+    const volume = screen.getByRole('region', { name: 'Activity over time' })
+    expect(within(volume).getByRole('table', { name: 'Activity over time data' })).toBeDefined()
+    expect(volume.getAttribute('data-chart-layout')).toBe('split')
+  })
+
+  it('keeps time and type filters explicit without introducing a lossy view mode', () => {
+    render(<ActivityTab />)
+
+    expect(screen.queryByRole('group', { name: 'Activity view' })).toBeNull()
     expect(screen.getByRole('option', { name: 'All types' }).getAttribute('value')).toBe('all')
+    expect(screen.getByRole('option', { name: 'Last hour' }).getAttribute('value')).toBe('1h')
     expect(screen.getByRole('group', { name: 'Activity metrics' })).toBeDefined()
     expect(screen.getByRole('region', { name: 'Needs attention' })).toBeDefined()
     expect(screen.getByRole('heading', { name: 'Failures over time' })).toBeDefined()
-    expect(screen.queryByRole('heading', { name: 'Activity over time' })).toBeNull()
-    expect(screen.queryByRole('region', { name: 'Recent events' })).toBeNull()
+    expect(screen.getByRole('region', { name: 'Activity over time' })).toBeDefined()
+    expect(screen.getByRole('region', { name: 'Recent events' })).toBeDefined()
     expect(screen.queryByRole('checkbox', { name: 'Include routine success' })).toBeNull()
   })
 
   it('lands on a metrics dashboard with volume and breakdown charts', () => {
-    queryInitialValues.set('activity_outcome', 'all')
     useActivityDataMock.mockImplementation(() => activityDashboardData())
 
     render(<ActivityTab />)
@@ -648,25 +705,18 @@ describe('ActivityTab', () => {
     expect(within(agents).getAllByRole('listitem')).toHaveLength(3)
     expect(within(agents).getByText('main')).toBeDefined()
 
-    const attentionTile = within(metrics).getByRole('button', { name: /Needs attention/ })
-    fireEvent.click(attentionTile)
+    expect(within(metrics).queryByRole('button', { name: /Needs attention/ })).toBeNull()
     expect(screen.getByRole('region', { name: 'Needs attention' })).toBeDefined()
   })
 
-  it('switches All events to one compact chronological feed instead of the incident wall', () => {
+  it('keeps one compact chronological feed beside the incident details', () => {
     useActivityDataMock.mockImplementation(() => activityDashboardData())
 
     render(<ActivityTab />)
 
-    const allEvents = screen.queryByRole('button', { name: 'All events' })
-    expect(allEvents !== null).toBe(true)
-    if (!allEvents) return
-    fireEvent.click(allEvents)
-
-    expect(allEvents.getAttribute('aria-pressed')).toBe('true')
-    expect(queryWrites).toContainEqual({ key: 'activity_outcome', value: 'all' })
-    expect(screen.queryByRole('region', { name: 'Needs attention' })).toBeNull()
-    expect(screen.queryByRole('heading', { name: 'Failures over time' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'All events' })).toBeNull()
+    expect(screen.getByRole('region', { name: 'Needs attention' })).toBeDefined()
+    expect(screen.getByRole('heading', { name: 'Failures over time' })).toBeDefined()
 
     const recent = screen.getByRole('region', { name: 'Recent events' })
     const eventList = within(recent).getByRole('list', { name: 'Recent events' })
@@ -689,11 +739,10 @@ describe('ActivityTab', () => {
       '2026-07-13T11:45:00.000Z',
       '2026-07-13T11:40:00.000Z',
     ])
-    expect(screen.getByRole('checkbox', { name: 'Include routine success' })).toBeDefined()
+    expect(screen.queryByRole('checkbox', { name: 'Include routine success' })).toBeNull()
   })
 
   it('distinguishes intentional Bakin work from genuinely missing agent attribution', () => {
-    queryInitialValues.set('activity_outcome', 'all')
     const base = activityData()
     const systemEntry: UsageFeedData['recent'][number] = {
       id: 'usage-system-work', ts: '2026-07-13T12:00:00.000Z', kind: 'rest', activityClass: 'system',
@@ -745,7 +794,6 @@ describe('ActivityTab', () => {
   })
 
   it('keeps Activity usable during a rolling client/server contract refresh', () => {
-    queryInitialValues.set('activity_outcome', 'failed')
     const base = activityData()
     const {
       window: _window,
@@ -799,7 +847,6 @@ describe('ActivityTab', () => {
   })
 
   it('falls back safely when a rolling payload has only part of the outcome contract', () => {
-    queryInitialValues.set('activity_outcome', 'failed')
     const base = activityData()
     useActivityDataMock.mockImplementation(() => ({
       ...base,
@@ -834,7 +881,6 @@ describe('ActivityTab', () => {
   })
 
   it('keeps legacy REST failures separated by method with inspectable evidence', () => {
-    queryInitialValues.set('activity_outcome', 'failed')
     const base = activityData()
     const getFailure: UsageFeedData['recent'][number] = {
       id: 'legacy-get-failure',
@@ -877,7 +923,6 @@ describe('ActivityTab', () => {
   })
 
   it('puts an exact, coverage-aware visual pulse before detailed failures', () => {
-    queryInitialValues.set('activity_outcome', 'failed')
     useActivityDataMock.mockImplementation(() => activityDashboardData())
 
     render(<ActivityTab />)
@@ -900,11 +945,10 @@ describe('ActivityTab', () => {
 
     const needsAttention = screen.getByRole('heading', { name: 'Needs attention' })
     expect(pulse.compareDocumentPosition(needsAttention) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect(screen.queryByRole('button', { name: 'All events' }) !== null).toBe(true)
+    expect(screen.queryByRole('button', { name: 'All events' })).toBeNull()
   })
 
   it('groups Needs attention by kind and destination with recurrence, recency, agents, and latest reason', () => {
-    queryInitialValues.set('activity_outcome', 'failed')
     useActivityDataMock.mockImplementation(() => activityDashboardData())
 
     render(<ActivityTab />)
@@ -928,7 +972,6 @@ describe('ActivityTab', () => {
   })
 
   it('expands a failure group to every matching raw failure event', () => {
-    queryInitialValues.set('activity_outcome', 'failed')
     useActivityDataMock.mockImplementation(() => activityDashboardData())
 
     render(<ActivityTab />)
@@ -949,7 +992,6 @@ describe('ActivityTab', () => {
   })
 
   it('keeps every grouped incident inspectable when its raw event fell outside the recent cap', () => {
-    queryInitialValues.set('activity_outcome', 'failed')
     const base = activityData()
     const latestFailure: UsageFeedData['recent'][number] = {
       id: 'usage-route-failure-latest',
@@ -1011,7 +1053,6 @@ describe('ActivityTab', () => {
   })
 
   it('makes additional failure destinations discoverable with bounded paging', () => {
-    queryInitialValues.set('activity_outcome', 'failed')
     const base = activityData()
     useActivityDataMock.mockImplementation(() => ({
       ...base,
@@ -1028,14 +1069,13 @@ describe('ActivityTab', () => {
     expect(useActivityDataMock).toHaveBeenLastCalledWith({
       window: '1h',
       kind: 'all',
-      includeRoutine: false,
+      includeRoutine: true,
       failureGroupOffset: 25,
       failureGroupLimit: 25,
     })
   })
 
   it('returns to the last valid failure-pattern page when live groups shrink', () => {
-    queryInitialValues.set('activity_outcome', 'failed')
     const base = activityData()
     useActivityDataMock.mockImplementation((options: unknown) => {
       const offset = (options as { failureGroupOffset?: number }).failureGroupOffset ?? 0
@@ -1057,7 +1097,7 @@ describe('ActivityTab', () => {
     expect(useActivityDataMock.mock.calls.some(([options]) => (
       (options as { failureGroupOffset?: number }).failureGroupOffset === 25
     ))).toBe(true)
-    expect(useActivityDataMock).toHaveBeenLastCalledWith({ window: '1h', kind: 'all', includeRoutine: false })
+    expect(useActivityDataMock).toHaveBeenLastCalledWith({ window: '1h', kind: 'all', includeRoutine: true })
     expect(screen.getByRole('group', { name: 'API · Search Reindex' })).toBeDefined()
   })
 
@@ -1070,7 +1110,9 @@ describe('ActivityTab', () => {
 
     render(<ActivityTab />)
 
-    expect(screen.getByRole('group', { name: 'Activity view' })).toBeDefined()
+    expect(screen.getByRole('heading', { name: 'What is Bakin doing?' })).toBeDefined()
+    expect(screen.getByLabelText('Activity window')).toBeDefined()
+    expect(screen.getByLabelText('Activity kind')).toBeDefined()
     expect(screen.getByRole('status').textContent).toContain('Loading activity…')
   })
 
@@ -1083,7 +1125,9 @@ describe('ActivityTab', () => {
 
     render(<ActivityTab />)
 
-    expect(screen.getByRole('group', { name: 'Activity view' })).toBeDefined()
+    expect(screen.getByRole('heading', { name: 'What is Bakin doing?' })).toBeDefined()
+    expect(screen.getByLabelText('Activity window')).toBeDefined()
+    expect(screen.getByLabelText('Activity kind')).toBeDefined()
     expect(screen.getByRole('alert').textContent).toContain('Activity feed unavailable')
     expect(screen.getByRole('button', { name: 'Try again' })).toBeDefined()
   })

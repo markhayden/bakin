@@ -195,7 +195,7 @@ export function ActivityFailureGroups({
     : 'These calls ended without a final result event, so Bakin cannot confirm their outcome.'
 
   return (
-    <section aria-labelledby="activity-needs-attention-title" className="space-y-3">
+    <section id="activity-needs-attention" aria-labelledby="activity-needs-attention-title" className="scroll-mt-4 space-y-3" tabIndex={-1}>
       <div className="flex min-w-0 flex-wrap items-end justify-between gap-2">
         <div>
           <div className="flex items-center gap-2">

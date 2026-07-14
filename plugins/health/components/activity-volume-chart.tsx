@@ -48,6 +48,7 @@ export function ActivityVolumeChart({
       aria-labelledby="activity-volume-title"
       className="rounded-xl border border-border/80 bg-card p-4"
       data-testid="activity-volume-chart"
+      data-chart-layout="split"
     >
       <div>
         <h3 id="activity-volume-title" className="font-semibold">Activity over time</h3>
@@ -60,27 +61,62 @@ export function ActivityVolumeChart({
           </p>
         )}
       </div>
-      <div className="mt-3 max-w-4xl">
-        <BarChart
-          stacked
-          label="Activity over time"
-          description="Recorded calls per interval. Other outcomes include succeeded, canceled, and unverified results; failures stack on top. Exact values are available below the chart."
-          data={visibleBuckets.map((bucket) => ({
-            x: bucket.start,
-            xLabel: bucketLabel(bucket.start),
-            values: {
-              other: Math.max(0, bucket.count - bucket.failureCount),
-              failed: bucket.failureCount,
-            },
-          }))}
-          series={[
-            { key: 'other', label: 'Other outcomes', color: 'var(--chart-2)' },
-            { key: 'failed', label: 'Failed', color: 'var(--destructive)' },
-          ]}
-          height={120}
-          formatValue={(value) => Math.round(value).toLocaleString()}
-          emptyLabel="No activity was recorded in this window."
-        />
+      <div className="mt-3 grid items-start gap-4 @[52rem]/health:grid-cols-[minmax(0,1.6fr)_minmax(18rem,0.8fr)]">
+        <div className="min-w-0">
+          <BarChart
+            stacked
+            label="Activity over time"
+            description="Recorded calls per interval. Other outcomes include succeeded, canceled, and unverified results; failures stack on top. Exact values are shown beside the chart."
+            data={visibleBuckets.map((bucket) => ({
+              x: bucket.start,
+              xLabel: bucketLabel(bucket.start),
+              values: {
+                other: Math.max(0, bucket.count - bucket.failureCount),
+                failed: bucket.failureCount,
+              },
+            }))}
+            series={[
+              { key: 'other', label: 'Other outcomes', color: 'var(--chart-2)' },
+              { key: 'failed', label: 'Failed', color: 'var(--destructive)' },
+            ]}
+            height={120}
+            formatValue={(value) => Math.round(value).toLocaleString()}
+            emptyLabel="No activity was recorded in this window."
+            showDataTable={false}
+          />
+        </div>
+        <div className="min-w-0 overflow-hidden rounded-lg border border-border/70 bg-background/35">
+          <div className="border-b border-border/70 px-3 py-2">
+            <h4 className="text-xs font-medium text-foreground">Exact values</h4>
+          </div>
+          <div className="max-h-64 overflow-auto">
+            <table className="w-full text-xs tabular-nums">
+              <caption className="sr-only">Activity over time data</caption>
+              <thead className="sticky top-0 bg-card text-muted-foreground">
+                <tr className="border-b border-border/70">
+                  <th scope="col" className="px-3 py-2 text-left font-medium">Interval</th>
+                  <th scope="col" className="px-3 py-2 text-right font-medium">Other outcomes</th>
+                  <th scope="col" className="px-3 py-2 text-right font-medium">Failed</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleBuckets.map((bucket) => (
+                  <tr key={bucket.start} className="border-b border-border/50 last:border-b-0">
+                    <th scope="row" className="whitespace-nowrap px-3 py-1.5 text-left font-medium text-foreground">
+                      {bucketLabel(bucket.start)}
+                    </th>
+                    <td className="px-3 py-1.5 text-right text-foreground">
+                      {Math.max(0, bucket.count - bucket.failureCount).toLocaleString()}
+                    </td>
+                    <td className="px-3 py-1.5 text-right text-foreground">
+                      {bucket.failureCount.toLocaleString()}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
       {visibleBuckets.length > 0 && (
         <ChartExplainer>
