@@ -301,8 +301,10 @@ describe('ActivityTab', () => {
 
     const tab = screen.getByTestId('health-activity-tab')
     const pulse = within(tab).getByRole('region', { name: 'Activity pulse' })
-    const needsAttention = within(tab).getByRole('region', { name: 'Needs attention' })
+    const needsAttention = within(tab).getByRole('region', { name: 'Hiccups' })
     expect(pulse.compareDocumentPosition(needsAttention) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(within(tab).queryByText('Needs attention')).toBeNull()
+    expect(within(tab).queryByRole('region', { name: 'Needs attention' })).toBeNull()
     expect(within(tab).queryByText('Failure rate')).toBeNull()
 
     expect(within(needsAttention).queryByText('Technical details')).toBeNull()
@@ -433,7 +435,7 @@ describe('ActivityTab', () => {
   it('renders a compact failure-only trend with an exact accessible table', () => {
     render(<ActivityTab />)
 
-    const attention = screen.getByRole('region', { name: 'Needs attention' })
+    const attention = screen.getByRole('region', { name: 'Hiccups' })
     const chart = within(attention).getByRole('group', { name: 'Failures over time' })
     expect(chart.getAttribute('viewBox')).toBe('0 0 640 120')
     expect(chart.closest('[data-activity-failure-trend-plot]')?.className).toContain('max-w-4xl')
@@ -459,7 +461,7 @@ describe('ActivityTab', () => {
 
     render(<ActivityTab />)
 
-    const attention = screen.getByRole('region', { name: 'Needs attention' })
+    const attention = screen.getByRole('region', { name: 'Hiccups' })
     expect(within(attention).getByText('Refreshing failure patterns…')).toBeDefined()
     expect(within(attention).queryByRole('button', { name: /Review .*failure pattern/i })).toBeNull()
     expect(within(attention).getByRole('group', { name: 'Failures over time' })).toBeDefined()
@@ -500,7 +502,7 @@ describe('ActivityTab', () => {
     })).toBeDefined()
     expect(within(pulse).getByText('No failures')).toBeDefined()
     expect(within(pulse).queryByRole('link', { name: 'No failures' })).toBeNull()
-    expect(screen.queryByRole('region', { name: 'Needs attention' })).toBeNull()
+    expect(screen.queryByRole('region', { name: 'Hiccups' })).toBeNull()
     expect(screen.queryByRole('group', { name: 'Failures over time' })).toBeNull()
     expect(screen.queryByText(/Successful activity \(/)).toBeNull()
     expect(screen.getByRole('region', { name: 'Activity over time' })).toBeDefined()
@@ -508,7 +510,7 @@ describe('ActivityTab', () => {
     expect(screen.getByRole('region', { name: 'Recent events' })).toBeDefined()
   })
 
-  it('keeps an unobserved result in the Needs attention view without calling it healthy', () => {
+  it('keeps an unobserved result in the Hiccups view without calling it healthy', () => {
     const base = activityData()
     const unverifiedEntry: UsageFeedData['recent'][number] = {
       id: 'usage-tool-needs-verification',
@@ -545,12 +547,12 @@ describe('ActivityTab', () => {
     expect(within(pulse).getByText('Verify result')).toBeDefined()
     expect(within(pulse).queryByText('No failures')).toBeNull()
     expect(within(pulse).getByRole('link', { name: 'Verify result' }).getAttribute('href')).toBe('#activity-needs-attention')
-    const attention = screen.getByRole('region', { name: 'Needs attention' })
+    const attention = screen.getByRole('region', { name: 'Hiccups' })
     expect(within(attention).getByRole('heading', { name: 'Results to verify' })).toBeDefined()
     expect(within(attention).getByText('Web Search')).toBeDefined()
     expect(within(attention).getByText('Result not observed')).toBeDefined()
     const metrics = screen.getByRole('group', { name: 'Activity metrics' })
-    expect(within(metrics).getByText('Needs attention')).toBeDefined()
+    expect(within(metrics).getByText('Hiccups')).toBeDefined()
     const successTile = within(metrics).getByText('Success rate').closest('[data-stat-tile]')
     expect(successTile?.querySelector('.bg-warning')).not.toBeNull()
     expect(successTile?.querySelector('.bg-success')).toBeNull()
@@ -668,7 +670,7 @@ describe('ActivityTab', () => {
     expect(screen.queryByRole('group', { name: 'Activity view' })).toBeNull()
     expect(screen.queryByRole('checkbox', { name: 'Include routine success' })).toBeNull()
     expect(screen.getByRole('region', { name: 'Activity over time' })).toBeDefined()
-    const attention = screen.getByRole('region', { name: 'Needs attention' })
+    const attention = screen.getByRole('region', { name: 'Hiccups' })
     expect(within(attention).getByRole('group', { name: 'Failures over time' })).toBeDefined()
     expect(screen.getByRole('region', { name: 'Call breakdown' })).toBeDefined()
     expect(screen.getByRole('region', { name: 'Recent events' })).toBeDefined()
@@ -683,7 +685,7 @@ describe('ActivityTab', () => {
 
     expect(screen.queryByRole('group', { name: 'Activity view' })).toBeNull()
     expect(useActivityDataMock).toHaveBeenLastCalledWith({ window: '1h', kind: 'all', includeRoutine: true })
-    expect(screen.getByRole('region', { name: 'Needs attention' })).toBeDefined()
+    expect(screen.getByRole('region', { name: 'Hiccups' })).toBeDefined()
     expect(screen.getByRole('region', { name: 'Recent events' })).toBeDefined()
   })
 
@@ -707,7 +709,7 @@ describe('ActivityTab', () => {
       resource = loaded
       view.rerender(<ActivityTab />)
 
-      const attention = screen.getByRole('region', { name: 'Needs attention' })
+      const attention = screen.getByRole('region', { name: 'Hiccups' })
       expect(scrollIntoView).toHaveBeenCalledTimes(1)
       expect(document.activeElement).toBe(attention)
 
@@ -718,7 +720,7 @@ describe('ActivityTab', () => {
     }
   })
 
-  it('uses the pulse status as a jump link that scrolls and focuses Needs attention', () => {
+  it('uses the pulse status as a jump link that scrolls and focuses Hiccups', () => {
     useActivityDataMock.mockImplementation(() => activityDashboardData())
     const scrollIntoView = mock(() => undefined)
     const originalScrollIntoView = HTMLElement.prototype.scrollIntoView
@@ -728,8 +730,8 @@ describe('ActivityTab', () => {
       render(<ActivityTab />)
 
       const pulse = screen.getByRole('region', { name: 'Activity pulse' })
-      const jump = within(pulse).getByRole('link', { name: 'Needs attention' })
-      const attention = screen.getByRole('region', { name: 'Needs attention' })
+      const jump = within(pulse).getByRole('link', { name: 'Hiccups' })
+      const attention = screen.getByRole('region', { name: 'Hiccups' })
       expect(jump.getAttribute('href')).toBe('#activity-needs-attention')
       expect(jump.compareDocumentPosition(attention) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
 
@@ -744,7 +746,7 @@ describe('ActivityTab', () => {
     }
   })
 
-  it('respects reduced motion when navigating to Needs attention', () => {
+  it('respects reduced motion when navigating to Hiccups', () => {
     useActivityDataMock.mockImplementation(() => activityDashboardData())
     const scrollIntoView = mock(() => undefined)
     const originalScrollIntoView = HTMLElement.prototype.scrollIntoView
@@ -758,7 +760,7 @@ describe('ActivityTab', () => {
     try {
       render(<ActivityTab />)
       fireEvent.click(within(screen.getByRole('region', { name: 'Activity pulse' })).getByRole('link', {
-        name: 'Needs attention',
+        name: 'Hiccups',
       }))
 
       expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'auto', block: 'start' })
@@ -790,7 +792,7 @@ describe('ActivityTab', () => {
     expect(screen.getByRole('option', { name: 'All types' }).getAttribute('value')).toBe('all')
     expect(screen.getByRole('option', { name: 'Last hour' }).getAttribute('value')).toBe('1h')
     expect(screen.getByRole('group', { name: 'Activity metrics' })).toBeDefined()
-    const attention = screen.getByRole('region', { name: 'Needs attention' })
+    const attention = screen.getByRole('region', { name: 'Hiccups' })
     expect(within(attention).getByRole('group', { name: 'Failures over time' })).toBeDefined()
     expect(screen.getByRole('region', { name: 'Activity over time' })).toBeDefined()
     expect(screen.getByRole('region', { name: 'Recent events' })).toBeDefined()
@@ -807,7 +809,7 @@ describe('ActivityTab', () => {
     expect(within(metrics).getByText('9')).toBeDefined()
     expect(within(metrics).getByText('Success rate')).toBeDefined()
     expect(within(metrics).getByText('33.3%')).toBeDefined()
-    expect(within(metrics).getByText('Needs attention')).toBeDefined()
+    expect(within(metrics).getByText('Hiccups')).toBeDefined()
     expect(within(metrics).getByText('5')).toBeDefined()
     expect(within(metrics).getByText('Agents observed')).toBeDefined()
     expect(within(metrics).getByText('Busiest: main (4)')).toBeDefined()
@@ -840,8 +842,45 @@ describe('ActivityTab', () => {
     expect(within(agents).getAllByRole('listitem')).toHaveLength(3)
     expect(within(agents).getByText('main')).toBeDefined()
 
-    expect(within(metrics).queryByRole('button', { name: /Needs attention/ })).toBeNull()
-    expect(screen.getByRole('region', { name: 'Needs attention' })).toBeDefined()
+    expect(within(metrics).queryByRole('button', { name: /Hiccups/ })).toBeNull()
+    expect(screen.getByRole('region', { name: 'Hiccups' })).toBeDefined()
+  })
+
+  it('shows all ten bounded destinations during a rolling contract refresh', () => {
+    const resource = activityDashboardData()
+    const routineApiRows: UsageFeedData['topByName'] = Array.from({ length: 8 }, (_, index) => ({
+      kind: 'rest',
+      method: 'GET',
+      name: `/api/plugins/health/poll-${index}`,
+      count: 20 - index,
+      errors: 0,
+      medianDurationMs: 2,
+    }))
+    useActivityDataMock.mockImplementation(() => ({
+      ...resource,
+      data: {
+        ...resource.data!,
+        capabilities: { exactFailureTargeting: true },
+        topByName: [
+          ...routineApiRows,
+          {
+            kind: 'mcp', method: null, name: 'bakin_exec_images_generate',
+            count: 1, errors: 0, medianDurationMs: 25_749,
+          },
+          {
+            kind: 'mcp', method: null, name: 'bash',
+            count: 1, errors: 0, medianDurationMs: 13,
+          },
+        ],
+      },
+    }))
+
+    render(<ActivityTab />)
+
+    const destinations = screen.getByRole('list', { name: 'Top destinations' })
+    expect(within(destinations).getAllByRole('listitem')).toHaveLength(10)
+    expect(within(destinations).getByRole('listitem', { name: 'MCP · Images Generate' })).toBeDefined()
+    expect(within(destinations).getByRole('listitem', { name: 'MCP · Bash' })).toBeDefined()
   })
 
   it('opens, highlights, and smoothly focuses the exact failure pattern from a destination count', () => {
@@ -859,7 +898,7 @@ describe('ActivityTab', () => {
         name: 'Review 2 failed MCP Search Query calls',
       }))
 
-      const attention = screen.getByRole('region', { name: 'Needs attention' })
+      const attention = screen.getByRole('region', { name: 'Hiccups' })
       expect(within(attention).getByRole('button', { name: 'Hide failure details' }).getAttribute('aria-expanded')).toBe('true')
       const toolGroup = within(attention).getByRole('group', { name: 'Tools · Search Query' })
       const apiGroup = within(attention).getByRole('group', { name: 'API · Search Query' })
@@ -1070,7 +1109,7 @@ describe('ActivityTab', () => {
         name: 'Review 1 failed Search Reindex call',
       }))
 
-      const attention = screen.getByRole('region', { name: 'Needs attention' })
+      const attention = screen.getByRole('region', { name: 'Hiccups' })
       expect(within(attention).getByRole('button', { name: 'Hide failure details' }).getAttribute('aria-expanded')).toBe('true')
       expect(document.activeElement).toBe(attention)
       expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' })
@@ -1085,7 +1124,7 @@ describe('ActivityTab', () => {
     render(<ActivityTab />)
 
     expect(screen.queryByRole('button', { name: 'All events' })).toBeNull()
-    const attention = screen.getByRole('region', { name: 'Needs attention' })
+    const attention = screen.getByRole('region', { name: 'Hiccups' })
     expect(within(attention).getByRole('group', { name: 'Failures over time' })).toBeDefined()
 
     const recent = screen.getByRole('region', { name: 'Recent events' })
@@ -1190,7 +1229,7 @@ describe('ActivityTab', () => {
       name: 'Reported interaction outcomes: 2 failed, 1 other reported',
     })).toBeDefined()
     expect(within(pulse).getByText(/Recent breakdown covers 3 events/i)).toBeDefined()
-    expect(screen.getByRole('region', { name: 'Needs attention' })).toBeDefined()
+    expect(screen.getByRole('region', { name: 'Hiccups' })).toBeDefined()
   })
 
   it('marks a mixed-version failure group as partial until v2 evidence is complete', () => {
@@ -1213,7 +1252,7 @@ describe('ActivityTab', () => {
     render(<ActivityTab />)
 
     expect(screen.getAllByText(/Partial data.*restart Bakin/i)).toHaveLength(2)
-    expect(screen.getByRole('region', { name: 'Needs attention' })).toBeDefined()
+    expect(screen.getByRole('region', { name: 'Hiccups' })).toBeDefined()
   })
 
   it('falls back safely when a rolling payload has only part of the outcome contract', () => {
@@ -1230,7 +1269,7 @@ describe('ActivityTab', () => {
 
     const pulse = screen.getByRole('region', { name: 'Activity pulse' })
     expect(within(pulse).getByText(/partial data.*restart Bakin/i)).toBeDefined()
-    expect(screen.getByRole('region', { name: 'Needs attention' })).toBeDefined()
+    expect(screen.getByRole('region', { name: 'Hiccups' })).toBeDefined()
   })
 
   it('falls back safely when a rolling payload is structurally complete but inconsistent', () => {
@@ -1247,7 +1286,7 @@ describe('ActivityTab', () => {
     render(<ActivityTab />)
 
     expect(screen.getAllByText(/Partial data.*restart Bakin/i)).toHaveLength(2)
-    expect(screen.getByRole('region', { name: 'Needs attention' })).toBeDefined()
+    expect(screen.getByRole('region', { name: 'Hiccups' })).toBeDefined()
   })
 
   it('keeps legacy REST failures separated by method with inspectable evidence', () => {
@@ -1314,19 +1353,19 @@ describe('ActivityTab', () => {
     })
     expect(mix.textContent).toMatch(/Tools.*4.*API.*2.*Agents.*3/i)
 
-    const jump = within(pulse).getByRole('link', { name: 'Needs attention' })
-    const needsAttention = screen.getByRole('region', { name: 'Needs attention' })
+    const jump = within(pulse).getByRole('link', { name: 'Hiccups' })
+    const needsAttention = screen.getByRole('region', { name: 'Hiccups' })
     expect(jump.getAttribute('href')).toBe('#activity-needs-attention')
     expect(pulse.compareDocumentPosition(needsAttention) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'All events' })).toBeNull()
   })
 
-  it('groups Needs attention by kind and destination with recurrence, recency, agents, and latest reason', () => {
+  it('groups Hiccups by kind and destination with recurrence, recency, agents, and latest reason', () => {
     useActivityDataMock.mockImplementation(() => activityDashboardData())
 
     render(<ActivityTab />)
 
-    const needsAttention = screen.getByRole('region', { name: 'Needs attention' })
+    const needsAttention = screen.getByRole('region', { name: 'Hiccups' })
     const highlights = within(needsAttention).getByRole('list', { name: 'Top failure patterns' })
     expect(within(highlights).getAllByRole('listitem')).toHaveLength(3)
     expect(within(highlights).getByText('2 failures in 3 attempts')).toBeDefined()
@@ -1357,8 +1396,8 @@ describe('ActivityTab', () => {
 
     render(<ActivityTab />)
 
-    const attention = screen.getByRole('region', { name: 'Needs attention' })
-    expect(screen.getAllByRole('region', { name: 'Needs attention' })).toHaveLength(1)
+    const attention = screen.getByRole('region', { name: 'Hiccups' })
+    expect(screen.getAllByRole('region', { name: 'Hiccups' })).toHaveLength(1)
     expect(within(attention).getByRole('group', { name: 'Failures over time' })).toBeDefined()
 
     const highlights = within(attention).getByRole('list', { name: 'Top failure patterns' })
@@ -1380,7 +1419,7 @@ describe('ActivityTab', () => {
 
     render(<ActivityTab />)
 
-    const attention = screen.getByRole('region', { name: 'Needs attention' })
+    const attention = screen.getByRole('region', { name: 'Hiccups' })
     const review = within(attention).getByRole('button', { name: 'Review all 5 failure patterns' })
     fireEvent.click(review)
 

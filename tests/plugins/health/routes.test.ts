@@ -449,7 +449,10 @@ describe('Health Plugin Routes', () => {
         searchParams: { kind: 'mcp', window: '1h' },
       })
       expect(status).toBe(200)
-      expect(body.capabilities).toEqual({ exactFailureTargeting: true })
+      expect(body.capabilities).toEqual({
+        exactFailureTargeting: true,
+        sourceBalancedActivity: true,
+      })
       const totals = (body as { totals: { count: number } }).totals
       const topByName = (body as {
         topByName: Array<{

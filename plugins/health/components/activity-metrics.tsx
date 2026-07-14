@@ -74,7 +74,7 @@ export function ActivityMetrics({
       />
       <StatTile
         icon={AlertCircle}
-        label="Needs attention"
+        label="Hiccups"
         value={
           <span className={failed > 0 ? 'text-destructive' : unverified > 0 ? 'text-warning' : undefined}>
             {attention.toLocaleString()}
@@ -82,7 +82,7 @@ export function ActivityMetrics({
         }
         sub={attention > 0
           ? `${failed.toLocaleString()} failed · ${unverified.toLocaleString()} ${unverified === 1 ? 'result' : 'results'} not observed`
-          : 'Nothing needs attention'}
+          : 'No hiccups in this window'}
       />
       <StatTile
         icon={Bot}

@@ -122,6 +122,8 @@ export interface UsageFailureGroupPage {
 export interface UsageFeed {
   capabilities: {
     exactFailureTargeting: true
+    /** Bounded mixed-source projections reserve room for each active source. */
+    sourceBalancedActivity: true
   }
   window: WindowKey
   coverage: InteractionCoverage
@@ -451,6 +453,49 @@ function median(values: number[]): number | null {
     : sorted[mid]
 }
 
+/**
+ * Take an even cross-source sample from rows that are already ranked within
+ * each source. This prevents high-frequency REST polling from consuming every
+ * bounded Activity slot while keeping exact totals untouched.
+ */
+function takeSourceBalanced<T extends { kind: UsageKind }>(rows: T[], limit: number): T[] {
+  const rowsByKind = new Map<UsageKind, T[]>(
+    USAGE_KINDS.map((kind) => [kind, rows.filter((row) => row.kind === kind)]),
+  )
+  const selected: T[] = []
+
+  for (let rank = 0; selected.length < limit; rank++) {
+    let foundAtRank = false
+    for (const kind of USAGE_KINDS) {
+      const row = rowsByKind.get(kind)?.[rank]
+      if (!row) continue
+      foundAtRank = true
+      selected.push(row)
+      if (selected.length === limit) break
+    }
+    if (!foundAtRank) break
+  }
+
+  return selected
+}
+
+function newestUsageFirst(left: UsageEntry, right: UsageEntry): number {
+  return left.ts < right.ts ? 1 : left.ts > right.ts ? -1 : 0
+}
+
+function selectRecentActivity(entries: UsageEntry[], kind: UsageKind | undefined): UsageEntry[] {
+  const newest = [...entries].sort(newestUsageFirst)
+  if (kind) return newest.slice(0, RECENT_N)
+
+  const meaningful = takeSourceBalanced(newest.filter(isMeaningfulInteraction), RECENT_N)
+  const routine = takeSourceBalanced(
+    newest.filter((entry) => !isMeaningfulInteraction(entry)),
+    RECENT_N - meaningful.length,
+  )
+
+  return [...meaningful, ...routine].sort(newestUsageFirst)
+}
+
 export function getUsageFeed(query: UsageQuery): UsageFeed {
   const now = Date.now()
   const projectedEntries = filterEntries({ ...query, includeRoutine: true }, now)
@@ -602,6 +647,7 @@ export function getUsageFeed(query: UsageQuery): UsageFeed {
     name: string
     count: number
     errors: number
+    meaningfulCount: number
     durations: number[]
   }>()
   for (const e of entries) {
@@ -612,14 +658,33 @@ export function getUsageFeed(query: UsageQuery): UsageFeed {
       name: destination,
       count: 0,
       errors: 0,
+      meaningfulCount: 0,
       durations: [],
     }
     bucket.count++
     if (e.status === 'error') bucket.errors++
+    if (isMeaningfulInteraction(e)) bucket.meaningfulCount++
     if (e.durationMs !== null) bucket.durations.push(e.durationMs)
     byName.set(key, bucket)
   }
-  const topByName: TopByNameRow[] = [...byName.values()]
+  const byNameBuckets = [...byName.values()]
+  const rankedByName = [...byNameBuckets]
+    .sort((left, right) =>
+      Number(right.meaningfulCount > 0) - Number(left.meaningfulCount > 0)
+      || right.meaningfulCount - left.meaningfulCount
+      || right.count - left.count
+      || left.name.localeCompare(right.name),
+    )
+  const selectedByName = query.kind
+    ? byNameBuckets
+        .sort((left, right) =>
+          right.count - left.count
+          || right.errors - left.errors
+          || left.name.localeCompare(right.name),
+        )
+        .slice(0, TOP_N)
+    : takeSourceBalanced(rankedByName, TOP_N)
+  const topByName: TopByNameRow[] = selectedByName
     .map((bucket) => ({
       kind: bucket.kind,
       method: bucket.method,
@@ -628,8 +693,11 @@ export function getUsageFeed(query: UsageQuery): UsageFeed {
       errors: bucket.errors,
       medianDurationMs: median(bucket.durations),
     }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, TOP_N)
+    .sort((left, right) =>
+      right.count - left.count
+      || right.errors - left.errors
+      || left.name.localeCompare(right.name),
+    )
 
   const byAgentMap = new Map<string, { count: number; errors: number; lastActivity: UsageEntry | null }>()
   for (const e of entries) {
@@ -644,20 +712,18 @@ export function getUsageFeed(query: UsageQuery): UsageFeed {
     .map(([agent, b]) => ({ agent, count: b.count, errors: b.errors, lastActivity: b.lastActivity }))
     .sort((a, b) => b.count - a.count)
 
-  const recent = [...entries]
-    .sort((a, b) => (a.ts < b.ts ? 1 : a.ts > b.ts ? -1 : 0))
-    .slice(0, RECENT_N)
+  const recent = selectRecentActivity(entries, query.kind)
   const recentFailures = entries
     .filter((entry) => entry.status === 'error')
-    .sort((a, b) => (a.ts < b.ts ? 1 : a.ts > b.ts ? -1 : 0))
+    .sort(newestUsageFirst)
     .slice(0, RECENT_N)
   const recentUnverified = entries
     .filter(isUnverifiedInteraction)
-    .sort((a, b) => (a.ts < b.ts ? 1 : a.ts > b.ts ? -1 : 0))
+    .sort(newestUsageFirst)
     .slice(0, RECENT_N)
 
   return {
-    capabilities: { exactFailureTargeting: true },
+    capabilities: { exactFailureTargeting: true, sourceBalancedActivity: true },
     window: query.window,
     coverage: interactionCoverage(query.window, now),
     totals: {

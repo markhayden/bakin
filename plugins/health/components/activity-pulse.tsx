@@ -116,7 +116,7 @@ export function ActivityPulse({
                   variant="outline"
                   className="cursor-pointer"
                 >
-                  {hasFailures ? 'Needs attention' : `Verify ${data.outcomes.unverified === 1 ? 'result' : 'results'}`}
+                  {hasFailures ? 'Hiccups' : `Verify ${data.outcomes.unverified === 1 ? 'result' : 'results'}`}
                 </StatusBadge>
               </a>
             ) : (

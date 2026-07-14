@@ -149,6 +149,7 @@ export interface UsageFeedData {
   /** Additive server features; omitted by older strict servers. */
   capabilities?: {
     exactFailureTargeting?: boolean
+    sourceBalancedActivity?: boolean
   }
   window: '5m' | '1h' | '24h'
   coverage: InteractionCoverage

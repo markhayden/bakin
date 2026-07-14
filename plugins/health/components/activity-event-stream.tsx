@@ -115,7 +115,11 @@ export function ActivityEventStream({ data }: { data: UsageFeedData }) {
       <div className="flex min-w-0 flex-wrap items-end justify-between gap-2">
         <div>
           <h3 id="activity-recent-events-title" className="font-semibold">Recent events</h3>
-          <p className="mt-1 text-sm text-muted-foreground">Newest first. Open a row for the reason and technical evidence.</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {data.capabilities?.sourceBalancedActivity === true
+              ? 'Newest visible calls from each source. Open one for details.'
+              : 'Newest first. Open a row for the reason and technical evidence.'}
+          </p>
         </div>
         <span className="text-xs tabular-nums text-muted-foreground">
           {entries.length.toLocaleString()} available · {data.totals.count.toLocaleString()} reported

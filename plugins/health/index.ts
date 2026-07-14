@@ -179,6 +179,7 @@ const usageEntrySchema = z.object({
 const usageFeedResponseSchema = z.object({
   capabilities: z.object({
     exactFailureTargeting: z.literal(true),
+    sourceBalancedActivity: z.literal(true),
   }).strict(),
   window: z.enum(['5m', '1h', '24h']),
   coverage: interactionCoverageSchema,

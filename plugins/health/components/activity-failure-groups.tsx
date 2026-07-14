@@ -356,7 +356,7 @@ export function ActivityFailureGroups({
         <div>
           <div className="flex items-center gap-2">
             <AlertCircle className={`size-4 ${totalFailures > 0 ? 'text-destructive' : 'text-warning'}`} aria-hidden="true" />
-            <h3 id="activity-needs-attention-title" className="font-semibold">Needs attention</h3>
+            <h3 id="activity-needs-attention-title" className="font-semibold">Hiccups</h3>
           </div>
           <p className="mt-1 text-sm text-muted-foreground">{description}</p>
         </div>

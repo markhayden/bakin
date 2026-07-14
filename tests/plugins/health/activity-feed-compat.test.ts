@@ -67,7 +67,7 @@ describe('normalizeActivityFeed top destinations', () => {
 
   it('keeps capability metadata forward-compatible while rejecting a malformed known value', () => {
     const currentFeed = dashboardFeed([destination])
-    currentFeed.capabilities = { exactFailureTargeting: true }
+    currentFeed.capabilities = { exactFailureTargeting: true, sourceBalancedActivity: true }
     const current = normalizeActivityFeed(currentFeed, '1h')
 
     const forwardFeed = dashboardFeed([destination])
@@ -82,11 +82,22 @@ describe('normalizeActivityFeed top destinations', () => {
     }).capabilities = { exactFailureTargeting: 'yes' }
     const invalid = normalizeActivityFeed(invalidFeed, '1h')
 
+    const invalidBalancedFeed = dashboardFeed([destination])
+    ;(invalidBalancedFeed as unknown as {
+      capabilities: { sourceBalancedActivity: string }
+    }).capabilities = { sourceBalancedActivity: 'yes' }
+    const invalidBalanced = normalizeActivityFeed(invalidBalancedFeed, '1h')
+
     expect(current.compatibilityLimited).toBe(false)
-    expect(current.data?.capabilities).toEqual({ exactFailureTargeting: true })
+    expect(current.data?.capabilities).toEqual({
+      exactFailureTargeting: true,
+      sourceBalancedActivity: true,
+    })
     expect(forward.compatibilityLimited).toBe(false)
     expect(forward.data?.capabilities?.exactFailureTargeting).toBe(false)
     expect(invalid.compatibilityLimited).toBe(true)
     expect(invalid.data?.capabilities).toBeUndefined()
+    expect(invalidBalanced.compatibilityLimited).toBe(true)
+    expect(invalidBalanced.data?.capabilities).toBeUndefined()
   })
 })

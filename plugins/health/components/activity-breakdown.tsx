@@ -4,7 +4,8 @@ import { Bot, Braces, ChevronRight, Wrench } from 'lucide-react'
 import type { UsageFeedData, UsageKind } from '../types'
 import { formatActivityName } from './activity-row'
 
-const ROW_LIMIT = 8
+const DESTINATION_ROW_LIMIT = 10
+const AGENT_ROW_LIMIT = 8
 
 const SOURCE_META: Record<UsageKind, {
   label: string
@@ -141,7 +142,7 @@ export function ActivityBreakdown({
   onReviewFailures?: (selection: ActivityFailureSelection) => void
 }) {
   const destinations: BreakdownRow[] = data.topByName
-    .slice(0, ROW_LIMIT)
+    .slice(0, DESTINATION_ROW_LIMIT)
     .map((row) => ({
       key: `${row.kind ?? 'unknown'}:${row.method ?? ''}:${row.name}`,
       label: `${row.method ? `${row.method} ` : ''}${formatActivityName(row.name)}`,
@@ -159,7 +160,7 @@ export function ActivityBreakdown({
   const agents: BreakdownRow[] = [...data.byAgent]
     .filter((row) => row.agent !== 'unknown')
     .sort((left, right) => right.count - left.count)
-    .slice(0, ROW_LIMIT)
+    .slice(0, AGENT_ROW_LIMIT)
     .map((row) => ({
       key: row.agent,
       label: row.agent,
@@ -179,7 +180,9 @@ export function ActivityBreakdown({
       <div className="grid gap-px @[58rem]/health:grid-cols-2">
         <BreakdownPanel
           title="Top destinations"
-          sub="The tools, routes, and runs called most in this window."
+          sub={data.capabilities?.sourceBalancedActivity === true
+            ? 'Top calls from each source, balanced so quieter work stays visible.'
+            : 'The tools, routes, and runs called most in this window.'}
           rows={destinations}
           barColor="var(--chart-5)"
           emptyLabel="No destinations were recorded in this window."

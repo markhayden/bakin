@@ -99,6 +99,8 @@ function hasValidCapabilities(value: unknown): boolean {
   return isRecord(value)
     && (value.exactFailureTargeting === undefined
       || typeof value.exactFailureTargeting === 'boolean')
+    && (value.sourceBalancedActivity === undefined
+      || typeof value.sourceBalancedActivity === 'boolean')
 }
 
 function isByAgentRow(value: unknown): boolean {

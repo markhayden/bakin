@@ -57,6 +57,35 @@ function seed(overrides: Partial<Parameters<typeof recordUsage>[0]> = {}) {
   })
 }
 
+function seedMeaningfulToolsBehindRoutineApiPolling() {
+  seed({
+    kind: 'mcp',
+    activityClass: 'user',
+    name: 'bakin_exec_images_generate',
+    ts: '2026-07-14T15:55:00.000Z',
+  })
+  seed({
+    kind: 'mcp',
+    activityClass: 'user',
+    name: 'bash',
+    ts: '2026-07-14T15:56:00.000Z',
+  })
+
+  let pollSequence = 0
+  for (let route = 0; route < 12; route++) {
+    for (let attempt = 0; attempt < 5; attempt++) {
+      seed({
+        kind: 'rest',
+        activityClass: 'routine',
+        name: `health-poll-${route}`,
+        ts: new Date(Date.parse('2026-07-14T15:57:00.000Z') + pollSequence * 1_000).toISOString(),
+        meta: { method: 'GET', routePattern: `/api/health/poll-${route}` },
+      })
+      pollSequence++
+    }
+  }
+}
+
 type ActivityDashboardFeed = ReturnType<typeof getUsageFeed> & {
   window: '5m' | '1h' | '24h'
   coverage: {
@@ -238,6 +267,94 @@ describe('usage recorder', () => {
       const feed = getUsageFeed({ kind: 'mcp', window: '5m', includeRoutine: true })
       expect(feed.totals).toMatchObject({ count: 2, errors: 1 })
       expect(feed.recent.map((entry) => entry.name).sort()).toEqual(['poll-failed', 'poll-ok'])
+    })
+
+    it('keeps meaningful tools in source-balanced top destinations under routine API traffic', () => {
+      setSystemTime(new Date('2026-07-14T16:00:00.000Z'))
+      try {
+        seedMeaningfulToolsBehindRoutineApiPolling()
+
+        const feed = getUsageFeed({ window: '1h', includeRoutine: true })
+        const topTools = feed.topByName
+          .filter((row) => row.kind === 'mcp')
+          .map((row) => row.name)
+
+        expect(topTools).toHaveLength(2)
+        expect(topTools).toEqual(expect.arrayContaining(['bakin_exec_images_generate', 'bash']))
+        expect(feed.topByName.map((row) => row.count)).toEqual(
+          [...feed.topByName.map((row) => row.count)].sort((left, right) => right - left),
+        )
+      } finally {
+        setSystemTime()
+      }
+    })
+
+    it('keeps meaningful tools in source-balanced recent events under newer routine API traffic', () => {
+      setSystemTime(new Date('2026-07-14T16:00:00.000Z'))
+      try {
+        seedMeaningfulToolsBehindRoutineApiPolling()
+
+        const feed = getUsageFeed({ window: '1h', includeRoutine: true })
+        const recentTools = feed.recent
+          .filter((entry) => entry.kind === 'mcp')
+          .map((entry) => entry.name)
+
+        expect(recentTools).toEqual(['bash', 'bakin_exec_images_generate'])
+        expect(feed.recent).toHaveLength(50)
+        expect(feed.recent.map((entry) => entry.ts)).toEqual(
+          [...feed.recent.map((entry) => entry.ts)].sort().reverse(),
+        )
+      } finally {
+        setSystemTime()
+      }
+    })
+
+    it('keeps every routine API call in exact cross-kind totals while projections are bounded', () => {
+      setSystemTime(new Date('2026-07-14T16:00:00.000Z'))
+      try {
+        seedMeaningfulToolsBehindRoutineApiPolling()
+
+        // Activity opts into routine success, so source-balanced selection is
+        // only a presentation concern and must not change exact accounting.
+        const feed = getUsageFeed({ window: '1h', includeRoutine: true })
+
+        expect(feed.totals).toEqual({ count: 62, errors: 0, errorRate: 0 })
+        expect(feed.outcomes).toEqual({ failed: 0, unverified: 0, canceled: 0, succeeded: 62 })
+        expect(feed.byKind).toEqual([
+          { kind: 'mcp', total: 2, failures: 0 },
+          { kind: 'rest', total: 60, failures: 0 },
+          { kind: 'agent', total: 0, failures: 0 },
+        ])
+      } finally {
+        setSystemTime()
+      }
+    })
+
+    it('keeps a selected single-source view ranked by total call count', () => {
+      for (let attempt = 0; attempt < 20; attempt++) {
+        seed({
+          kind: 'rest',
+          activityClass: 'routine',
+          name: 'health-poll',
+          meta: { method: 'GET', routePattern: '/api/health/poll' },
+        })
+      }
+      for (let route = 0; route < 10; route++) {
+        seed({
+          kind: 'rest',
+          activityClass: 'user',
+          name: `user-route-${route}`,
+          meta: { method: 'POST', routePattern: `/api/user/${route}` },
+        })
+      }
+
+      const feed = getUsageFeed({ kind: 'rest', window: '1h', includeRoutine: true })
+
+      expect(feed.topByName[0]).toMatchObject({
+        name: '/api/health/poll',
+        count: 20,
+      })
+      expect(feed.topByName).toHaveLength(10)
     })
 
     it('keeps routine canceled work in the default feed and counts it as canceled', () => {
