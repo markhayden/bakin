@@ -2,11 +2,16 @@ export type {
   AdapterAuditEvent,
   AdapterInitOpts,
   AdapterLogger,
+  AdapterToolActivityEvent,
+  AdapterTurnActivityEvent,
   RuntimeExecToolDescriptor,
   RuntimeExecToolInvokeResult,
   RuntimeExecToolProvider,
   Unsubscribe,
 } from '../shared'
+
+export { beginAdapterTurnActivity } from './turn-activity'
+export type { AdapterTurnActivityReporter, BeginAdapterTurnActivityOptions } from './turn-activity'
 
 export type { ChannelCapability } from './capabilities'
 export { hasChannelCapability } from './capabilities'

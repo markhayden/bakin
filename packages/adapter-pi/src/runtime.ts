@@ -163,6 +163,8 @@ export class PiRuntimeAdapter implements AgentRuntimeAdapter {
   messaging: AgentRuntimeAdapter['messaging'] = createMessagingSurface({
     getExecTools: () => this.initOpts?.execTools,
     getLogger: () => this.initOpts?.logger,
+    getToolActivity: () => this.initOpts?.onToolActivity,
+    getTurnActivity: () => this.initOpts?.onTurnActivity,
     getSettings: () => this.initOpts?.settings ?? this.options.settings,
   })
 

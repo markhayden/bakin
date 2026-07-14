@@ -289,6 +289,8 @@ export interface OpenClawTurnStreamDeps {
   run: (hooks: { onAccepted: (ack: OpenClawGatewayAcceptedAck) => void }) => Promise<{ content: string }>
   /** Map a rejected RPC to a terminal outcome (kind:'aborted' → clean done). */
   classifyFailure: (err: unknown) => OpenClawTurnFinish
+  /** Internal terminal-outcome tap; callback failures are contained. */
+  onFinish?: (outcome: OpenClawTurnFinish) => void
 }
 
 /** Unbounded push queue bridging subscription callbacks to an async iterator. */
@@ -329,13 +331,25 @@ class ChunkQueue {
 export async function* streamOpenClawTurnChunks(deps: OpenClawTurnStreamDeps): AsyncIterable<ChatChunk> {
   const machine = new OpenClawTurnChunkMachine(deps.idempotencyKey)
   const queue = new ChunkQueue()
+  const notifyFinish = (outcome: OpenClawTurnFinish, chunks: ChatChunk[]): void => {
+    if (!chunks.some((chunk) => chunk.type === 'done' || chunk.type === 'error')) return
+    try {
+      deps.onFinish?.(outcome)
+    } catch {
+      // Internal observability must never affect the stream.
+    }
+  }
   const push = (chunks: ChatChunk[]) => {
     queue.push(chunks)
     if (machine.finished) queue.close()
   }
 
   const unsubscribes = [
-    subscribeChatEvents(deps.events, (payload) => push(machine.onChatEvent(payload))),
+    subscribeChatEvents(deps.events, (payload) => {
+      const chunks = machine.onChatEvent(payload)
+      if (payload.state === 'aborted') notifyFinish({ kind: 'aborted' }, chunks)
+      push(chunks)
+    }),
     subscribeAgentEvents(deps.events, (payload) => push(machine.onAgentEvent(payload))),
   ]
 
@@ -346,8 +360,18 @@ export async function* streamOpenClawTurnChunks(deps: OpenClawTurnStreamDeps): A
     },
   })
   rpc.then(
-    (result) => push(machine.finish({ kind: 'ok', content: result.content })),
-    (err) => push(machine.finish(deps.classifyFailure(err))),
+    (result) => {
+      const outcome = { kind: 'ok', content: result.content } as const
+      const chunks = machine.finish(outcome)
+      notifyFinish(outcome, chunks)
+      push(chunks)
+    },
+    (err) => {
+      const outcome = deps.classifyFailure(err)
+      const chunks = machine.finish(outcome)
+      notifyFinish(outcome, chunks)
+      push(chunks)
+    },
   )
 
   try {

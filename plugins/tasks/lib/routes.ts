@@ -77,6 +77,7 @@ export const tasksRoutes = [
   defineRoute({
     path: '/summary',
     method: 'GET',
+    activityClass: 'routine',
     summary: 'Counts of tasks needing attention (nav-badge source)',
     description: 'Returns blocked/review counts only — cheap source for the Tasks nav badge.',
     responses: { 200: taskSummaryResponse, 500: errorResponse },

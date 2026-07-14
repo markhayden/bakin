@@ -9,10 +9,22 @@ export interface ActivityRouteMetadata {
 type PluginRouteLookup = (pluginId: string) => readonly ActivityRouteMetadata[]
 
 const HOST_ROUTINE_GET_PATHS = new Set([
+  '/api/activity',
+  '/api/agent-packages',
   '/api/agents/health',
+  '/api/context-report',
   '/api/dispatch',
   '/api/plugins/manifest',
+  '/api/settings',
+  '/api/state',
   '/api/update/status',
+  '/api/version',
+])
+
+// The messaging plugin is installed outside this repository, so its shell
+// badge endpoint cannot declare route metadata alongside the core plugins.
+const EXTERNAL_PLUGIN_ROUTINE_GET_PATHS = new Set([
+  '/api/plugins/messaging/plans/summary',
 ])
 
 const NON_STATUS_AGENT_SEGMENTS = new Set([
@@ -34,6 +46,11 @@ export function resolveRequestActivityClass(
   pluginRoutes: PluginRouteLookup = () => [],
 ): ActivityClass {
   const method = (rawMethod ?? 'GET').toUpperCase()
+  if (method === 'GET' && (
+    /^\/api\/plugins\/[^/]+\/assets\//.test(pathname)
+    || /^\/api\/plugin-settings\/[^/]+$/.test(pathname)
+  )) return 'routine'
+
   const pluginMatch = pathname.match(/^\/api\/plugins\/([^/]+)(\/.*)?$/)
   if (pluginMatch) {
     const [, pluginId, rawSubpath] = pluginMatch
@@ -46,6 +63,7 @@ export function resolveRequestActivityClass(
   }
 
   if (method === 'GET') {
+    if (EXTERNAL_PLUGIN_ROUTINE_GET_PATHS.has(pathname)) return 'routine'
     if (HOST_ROUTINE_GET_PATHS.has(pathname)) return 'routine'
 
     const agentStatus = pathname.match(/^\/api\/agents\/([^/]+)(?:\/status)?$/)

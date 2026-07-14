@@ -85,6 +85,7 @@ export function populateAgentRoutes(arr: any[], deps: TeamRouteDeps): void {
   arr.push(defineRoute({
     path: '/',
     method: 'GET',
+    activityClass: 'routine',
     description: 'List all agents with runtime status',
     summary: 'List all agents with runtime status',
     responses: { 200: passthroughTeam, 201: passthroughTeam, 400: errorResponseTeam, 403: errorResponseTeam, 404: errorResponseTeam, 409: errorResponseTeam, 500: errorResponseTeam },
@@ -731,6 +732,7 @@ export function populateAgentRoutes(arr: any[], deps: TeamRouteDeps): void {
   arr.push(defineRoute({
     path: '/:agentId/avatar',
     method: 'GET',
+    activityClass: 'routine',
     description: 'Serve agent avatar image',
     summary: 'Serve agent avatar image',
     params: z.object({ agentId: z.string() }),

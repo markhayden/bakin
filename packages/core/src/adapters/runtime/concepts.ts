@@ -1,4 +1,5 @@
 import type { AdapterInitOpts, RuntimeExecToolProvider, Unsubscribe } from '../shared'
+import type { ActivityClass } from '@makinbakin/sdk/types'
 import type { ChannelCapability } from './capabilities'
 
 export type RuntimeMetadata = Record<string, unknown>
@@ -94,6 +95,8 @@ export interface MessageAttachment {
 export interface MessageArgs extends RuntimeMessageToolPolicy {
   agentId: string
   content: string
+  /** Producer-assigned usage class; omitted interactive turns default to user. */
+  activityClass?: ActivityClass
   /**
    * Image attachments for the turn (runtime support is declared by
    * `capabilities().imageInput`; adapters reject unsupported media loudly

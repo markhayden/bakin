@@ -57,6 +57,7 @@ export const chatRoutes = [
   defineRoute({
     path: '/chats',
     method: 'GET',
+    activityClass: 'routine',
     summary: 'List chats',
     description: 'All chats, newest first. Filter with ?agent=<agentId>.',
     query: z.object({ agent: z.string().optional() }),

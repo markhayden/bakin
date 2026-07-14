@@ -45,12 +45,25 @@ beforeEach(() => {
 describe('meterAgentTurn', () => {
   it('records a non-dispatch row with a synthetic runId and null taskId', async () => {
     priceTurnImpl = () => ({ model: 'anthropic/claude-sonnet-4-6', costUsdMicros: 4200 })
-    await meterAgentTurn({ agent: 'main', activityClass: 'system', result: { id: 'm', usage: { input: 100, output: 50, total: 150 } }, name: 'watchdog-alert' })
+    await meterAgentTurn({
+      agent: 'main',
+      activityClass: 'system',
+      result: { id: 'm', usage: { input: 100, output: 50, total: 150 }, metadata: { adapterTurnId: 'turn-m' } },
+      name: 'watchdog-alert',
+    })
     expect(costRows).toHaveLength(1)
     expect(costRows[0].taskId).toBeNull()
     expect(String(costRows[0].runId)).toStartWith('turn:')
     expect(costRows[0].costUsdMicros).toBe(4200)
-    expect(usageRows[0]).toMatchObject({ kind: 'agent', activityClass: 'system', name: 'watchdog-alert', tokensIn: 100, tokensOut: 50, costUsdMicros: 4200 })
+    expect(usageRows[0]).toMatchObject({
+      kind: 'agent',
+      activityClass: 'system',
+      name: 'watchdog-alert',
+      tokensIn: 100,
+      tokensOut: 50,
+      costUsdMicros: 4200,
+      meta: { resultId: 'm', turnId: 'turn-m' },
+    })
   })
 
   it('uses the dispatch runId + taskId when provided', async () => {

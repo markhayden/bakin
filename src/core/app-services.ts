@@ -1,4 +1,5 @@
 import type { AppServices } from '@bakin/core/app-services'
+import type { AdapterTurnActivityEvent } from '@bakin/core/adapters/shared'
 import {
   migrateAntflyPasswordToSecretStore,
   resolveAntflyPassword,
@@ -9,6 +10,8 @@ import { createLogger } from './logger'
 import { createRuntimeExecToolProvider } from './exec-tools/provider'
 import { createRuntimeAdapter, createRuntimeAdapterHealthChecks } from './runtime-adapter-factory'
 import { createSearchAdapter } from './search-adapter-factory'
+import { createRuntimeToolUsageRecorder } from './runtime-tool-usage'
+import { createRuntimeTurnUsageRecorder } from './runtime-turn-usage'
 import { getSettings, resetSettingsCache } from './settings'
 import { registerAdapterHealthCheck, unregisterOwnerHealth } from './health-check-registry'
 // Accessors live in a leaf module (breaks the composition-root import cycle);
@@ -79,11 +82,22 @@ export async function createAppServices(): Promise<AppServices> {
   // mutate the runtime config — and deriving the URL from each process's env
   // would let a PORT-less shell rewrite working :4000 entries back to :3737.
   const execTools = createRuntimeExecToolProvider()
+  const onToolActivity = createRuntimeToolUsageRecorder()
+  const recordTurnActivity = createRuntimeTurnUsageRecorder()
+  const onTurnActivity = (event: AdapterTurnActivityEvent): void => {
+    try {
+      onToolActivity.reconcileTurn(event)
+    } finally {
+      recordTurnActivity(event)
+    }
+  }
 
   await runtime.initialize({
     ...adapterInit,
     settings: settings.runtime.settings,
     execTools,
+    onToolActivity,
+    onTurnActivity,
     bakinMcpBaseUrl: resolveBakinMcpBaseUrl(),
   })
   await search.initialize({ ...adapterInit, settings: withAntflyAuthSecret(settings.search.settings) })

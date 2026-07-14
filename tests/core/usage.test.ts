@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, mock, setSystemTime } from 'bun:test'
+import { describe, it, expect, beforeEach, mock, setSystemTime, spyOn } from 'bun:test'
 import { tmpdir } from 'os'
 import { join } from 'path'
 
@@ -34,6 +34,7 @@ mock.module('../../packages/core/src/content-dir', () => ({
 import {
   recordUsage,
   getUsageFeed,
+  getInteractionSummary,
   getUsageStats,
   getStatsByMs,
   getErrorCount,
@@ -66,6 +67,9 @@ describe('usage recorder', () => {
       expect(feed.totals.count).toBe(1)
       expect(feed.topByName[0]).toMatchObject({ name: 'tool_a', count: 1, errors: 0 })
       expect(feed.recent).toHaveLength(1)
+      expect(feed.recent[0].id).toMatch(/^usage-/)
+      expect(feed.recentFailures).toEqual([])
+      expect(feed.recentUnverified).toEqual([])
     })
 
     it('preserves cache token fields on agent-turn entries', () => {
@@ -84,6 +88,76 @@ describe('usage recorder', () => {
       const noCacheEntry = feed2.recent.find((e) => e.tokensIn === 10)
       expect(noCacheEntry).toBeDefined()
       expect('tokensCacheRead' in noCacheEntry!).toBe(false)
+    })
+
+    it('merges a metered agent turn into its runtime observation without double-counting', () => {
+      recordUsage({
+        kind: 'agent',
+        activityClass: 'system',
+        name: 'send',
+        agent: 'main',
+        durationMs: 240,
+        status: 'ok',
+        meta: { source: 'runtime-turn', turnId: 'turn-1', resultId: 'result-1', threadId: 'chat:1' },
+      })
+      const originalId = getUsageFeed({ kind: 'agent', window: '5m' }).recent[0].id
+      recordUsage({
+        kind: 'agent',
+        activityClass: 'system',
+        name: 'watchdog-alert',
+        agent: 'main',
+        durationMs: null,
+        status: 'ok',
+        tokensIn: 100,
+        tokensOut: 20,
+        costUsdMicros: 4_200,
+        meta: { turnId: 'turn-1', resultId: 'result-1', model: 'provider/model' },
+      })
+
+      const feed = getUsageFeed({ kind: 'agent', window: '5m' })
+      expect(feed.totals).toEqual({ count: 1, errors: 0, errorRate: 0 })
+      expect(feed.recent[0]).toMatchObject({
+        id: originalId,
+        name: 'watchdog-alert',
+        durationMs: 240,
+        tokensIn: 100,
+        tokensOut: 20,
+        costUsdMicros: 4_200,
+        meta: {
+          source: 'runtime-turn',
+          turnId: 'turn-1',
+          resultId: 'result-1',
+          threadId: 'chat:1',
+          model: 'provider/model',
+        },
+      })
+    })
+
+    it('keeps concurrent same-millisecond agent results distinct by adapter turn id', () => {
+      for (const turnId of ['turn-a', 'turn-b']) {
+        recordUsage({
+          kind: 'agent',
+          activityClass: 'user',
+          name: 'send',
+          agent: 'main',
+          durationMs: 10,
+          status: 'ok',
+          meta: { source: 'runtime-turn', turnId, resultId: 'msg-1000' },
+        })
+      }
+      recordUsage({
+        kind: 'agent', activityClass: 'user', name: 'turn-a', agent: 'main', durationMs: null, status: 'ok',
+        tokensIn: 10, meta: { turnId: 'turn-a', resultId: 'msg-1000' },
+      })
+      recordUsage({
+        kind: 'agent', activityClass: 'user', name: 'turn-b', agent: 'main', durationMs: null, status: 'ok',
+        tokensIn: 20, meta: { turnId: 'turn-b', resultId: 'msg-1000' },
+      })
+
+      const feed = getUsageFeed({ kind: 'agent', window: '5m' })
+      expect(feed.totals.count).toBe(2)
+      expect(feed.recent.map((entry) => entry.tokensIn).sort((left, right) => (left ?? 0) - (right ?? 0))).toEqual([10, 20])
+      expect(new Set(feed.recent.map((entry) => entry.meta?.turnId))).toEqual(new Set(['turn-a', 'turn-b']))
     })
 
     it('tracks errors and errorRate', () => {
@@ -163,11 +237,317 @@ describe('usage recorder', () => {
       }
     })
 
+    it('keeps older failures and result gaps inspectable after the recent cap fills with successes', () => {
+      const now = Date.now()
+      seed({
+        name: 'older-failure',
+        status: 'error',
+        ts: new Date(now - 10_000).toISOString(),
+      })
+      seed({
+        name: 'older-unverified',
+        activityClass: 'routine',
+        status: 'ok',
+        ts: new Date(now - 11_000).toISOString(),
+        meta: { resultMissing: true, turnTerminalStatus: 'completed' },
+      })
+      for (let index = 0; index < 60; index++) {
+        seed({
+          name: `newer-success-${index}`,
+          status: 'ok',
+          ts: new Date(now - 9_000 + index).toISOString(),
+        })
+      }
+
+      const feed = getUsageFeed({ window: '5m' })
+
+      expect(feed.recent).toHaveLength(50)
+      expect(feed.recent.some((entry) => entry.name === 'older-failure')).toBe(false)
+      expect(feed.recent.some((entry) => entry.name === 'older-unverified')).toBe(false)
+      expect(feed.recentFailures).toHaveLength(1)
+      expect(feed.recentFailures[0]).toMatchObject({ name: 'older-failure', status: 'error' })
+      expect(feed.recentUnverified).toHaveLength(1)
+      expect(feed.recentUnverified[0]).toMatchObject({
+        name: 'older-unverified',
+        activityClass: 'routine',
+      })
+    })
+
     it('auto-stamps ts if not provided', () => {
       seed()
       const feed = getUsageFeed({ kind: 'mcp', window: '5m' })
       expect(() => new Date(feed.recent[0].ts)).not.toThrow()
       expect(new Date(feed.recent[0].ts).getTime()).toBeGreaterThan(0)
+    })
+  })
+
+  describe('getInteractionSummary', () => {
+    it('summarizes meaningful Bakin interactions without successful routine traffic', () => {
+      setSystemTime(new Date('2026-07-13T12:00:00.000Z'))
+      const uptime = spyOn(process, 'uptime').mockReturnValue(2 * 60 * 60)
+      try {
+        seed({ kind: 'mcp', activityClass: 'user', name: 'bakin_exec_images_generate', status: 'ok' })
+        seed({ kind: 'mcp', activityClass: 'routine', name: 'health_poll', status: 'ok' })
+        seed({ kind: 'rest', activityClass: 'system', name: '/api/search/drain', agent: null, status: 'ok' })
+        seed({ kind: 'rest', activityClass: 'user', name: '/api/plugins/tasks/list', agent: null, status: 'error' })
+        seed({ kind: 'agent', activityClass: 'user', name: 'dispatch', status: 'ok', durationMs: null })
+        seed({ kind: 'agent', activityClass: 'routine', name: 'heartbeat', status: 'ok', durationMs: null })
+
+        const summary = getInteractionSummary({ window: '1h' })
+
+        expect(summary.window).toBe('1h')
+        expect(summary.coverage).toEqual({
+          startsAt: '2026-07-13T11:00:00.000Z',
+          hasFullWindow: true,
+          reason: 'full_window',
+        })
+        expect(summary.totals).toEqual({
+          count: 4,
+          errors: 1,
+          unverified: 0,
+          foreground: 3,
+          background: 1,
+        })
+        expect(summary.categories).toEqual([
+          { key: 'tools', count: 1, errors: 0 },
+          { key: 'api', count: 2, errors: 1 },
+          { key: 'agents', count: 1, errors: 0 },
+        ])
+        expect(summary.timeBuckets.reduce((total, bucket) => total + bucket.count, 0)).toBe(4)
+        expect(summary.timeBuckets.reduce((total, bucket) => total + bucket.failureCount, 0)).toBe(1)
+        expect(summary.timeBuckets.map((bucket) => bucket.start)).toEqual(
+          [...summary.timeBuckets.map((bucket) => bucket.start)].sort(),
+        )
+      } finally {
+        uptime.mockRestore()
+        setSystemTime()
+      }
+    })
+
+    it('reports partial coverage from process start when uptime is shorter than the window', () => {
+      setSystemTime(new Date('2026-07-13T12:00:00.000Z'))
+      const uptime = spyOn(process, 'uptime').mockReturnValue(15 * 60)
+      try {
+        const summary = getInteractionSummary({ window: '1h' })
+
+        expect(summary.coverage).toEqual({
+          startsAt: '2026-07-13T11:45:00.000Z',
+          hasFullWindow: false,
+          reason: 'process_restart',
+        })
+      } finally {
+        uptime.mockRestore()
+        setSystemTime()
+      }
+    })
+
+    it('counts one logical interaction for an MCP tool and hides its HTTP transport from the activity feed', () => {
+      seed({
+        kind: 'mcp',
+        activityClass: 'user',
+        name: 'bakin_exec_tasks_list',
+        status: 'ok',
+      })
+      seed({
+        kind: 'rest',
+        activityClass: 'user',
+        name: '/mcp',
+        status: 'ok',
+        meta: { method: 'POST', httpStatus: 200 },
+      })
+
+      const summary = getInteractionSummary({ window: '1h' })
+
+      expect(summary.totals).toEqual({ count: 1, errors: 0, unverified: 0, foreground: 1, background: 0 })
+      expect(summary.categories).toEqual([
+        { key: 'tools', count: 1, errors: 0 },
+        { key: 'api', count: 0, errors: 0 },
+        { key: 'agents', count: 0, errors: 0 },
+      ])
+      expect(summary.topDestinations.map((destination) => destination.name)).toEqual(['bakin_exec_tasks_list'])
+
+      const feed = getUsageFeed({ window: '1h', includeRoutine: true })
+      expect(feed.totals).toEqual({ count: 1, errors: 0, errorRate: 0 })
+      expect(feed.recent.map((entry) => entry.name)).toEqual(['bakin_exec_tasks_list'])
+
+      // The transport remains in the raw recorder for REST watchdogs.
+      expect(getUsageStats({ kind: 'rest', window: '1h', includeRoutine: true })).toEqual({ total: 1, errors: 0 })
+      expect(getStatsByMs({ kind: 'rest', windowMs: WINDOW_MS['1h'], includeRoutine: true })).toEqual({ total: 1, errors: 0 })
+    })
+
+    it('excludes a successful routine MCP tool and its HTTP transport from the summary', () => {
+      seed({
+        kind: 'mcp',
+        activityClass: 'routine',
+        name: 'bakin_exec_heartbeat',
+        status: 'ok',
+      })
+      seed({
+        kind: 'rest',
+        activityClass: 'user',
+        name: '/mcp',
+        status: 'ok',
+        meta: { method: 'POST', httpStatus: 200 },
+      })
+
+      const summary = getInteractionSummary({ window: '1h' })
+
+      expect(summary.totals).toEqual({ count: 0, errors: 0, unverified: 0, foreground: 0, background: 0 })
+      expect(summary.categories).toContainEqual({ key: 'tools', count: 0, errors: 0 })
+      expect(summary.categories).toContainEqual({ key: 'api', count: 0, errors: 0 })
+      expect(getUsageFeed({ window: '1h' }).totals.count).toBe(0)
+
+      const completeFeed = getUsageFeed({ window: '1h', includeRoutine: true })
+      expect(completeFeed.totals.count).toBe(1)
+      expect(completeFeed.recent[0]).toMatchObject({
+        kind: 'mcp',
+        name: 'bakin_exec_heartbeat',
+        activityClass: 'routine',
+      })
+
+      // The foreground transport stays available to raw REST health checks.
+      expect(getStatsByMs({ kind: 'rest', windowMs: WINDOW_MS['1h'], includeRoutine: true })).toEqual({ total: 1, errors: 0 })
+    })
+
+    it('keeps a failed MCP transport visible when no logical tool interaction was recorded', () => {
+      seed({
+        kind: 'rest',
+        activityClass: 'user',
+        name: '/mcp',
+        status: 'error',
+        meta: { method: 'POST', httpStatus: 503 },
+      })
+
+      const summary = getInteractionSummary({ window: '1h' })
+
+      expect(summary.totals).toEqual({ count: 1, errors: 1, unverified: 0, foreground: 1, background: 0 })
+      expect(summary.categories).toContainEqual({ key: 'api', count: 1, errors: 1 })
+      expect(summary.topDestinations).toContainEqual({
+        category: 'api',
+        name: '/mcp',
+        count: 1,
+        errors: 1,
+        medianDurationMs: 10,
+      })
+
+      const feed = getUsageFeed({ window: '1h' })
+      expect(feed.totals).toEqual({ count: 1, errors: 1, errorRate: 1 })
+      expect(feed.recent[0]).toMatchObject({ kind: 'rest', name: '/mcp', status: 'error' })
+    })
+
+    it('excludes successful routine rows while keeping system work and routine failures', () => {
+      for (let call = 0; call < 9; call++) {
+        seed({ kind: 'mcp', activityClass: 'routine', name: 'health_poll', status: 'ok', durationMs: 5 })
+      }
+      seed({ kind: 'mcp', activityClass: 'routine', name: 'health_poll', status: 'error', durationMs: 90 })
+      seed({ kind: 'rest', activityClass: 'system', name: '/api/plugin-assets', status: 'ok', durationMs: 4 })
+      seed({ kind: 'mcp', activityClass: 'user', name: 'bakin_exec_tasks_list', status: 'ok', durationMs: 10 })
+      seed({ kind: 'mcp', activityClass: 'user', name: 'bakin_exec_tasks_list', status: 'ok', durationMs: 30 })
+
+      const summary = getInteractionSummary({ window: '1h' })
+
+      expect(summary.totals).toEqual({ count: 4, errors: 1, unverified: 0, foreground: 2, background: 2 })
+      expect(summary.categories).toContainEqual({ key: 'tools', count: 3, errors: 1 })
+      expect(summary.categories).toContainEqual({ key: 'api', count: 1, errors: 0 })
+      expect(summary.topDestinations).toContainEqual({
+        category: 'tools',
+        name: 'health_poll',
+        count: 1,
+        errors: 1,
+        medianDurationMs: 90,
+      })
+      expect(summary.topDestinations).toContainEqual({
+        category: 'tools',
+        name: 'bakin_exec_tasks_list',
+        count: 2,
+        errors: 0,
+        medianDurationMs: 20,
+      })
+      expect(summary.topDestinations).toContainEqual({
+        category: 'api',
+        name: '/api/plugin-assets',
+        count: 1,
+        errors: 0,
+        medianDurationMs: 4,
+      })
+    })
+
+    it('keeps a failed destination in the capped ranking even when successful traffic is busier', () => {
+      for (let destination = 0; destination < 10; destination++) {
+        seed({ kind: 'rest', activityClass: 'user', name: `busy-${destination}`, status: 'ok' })
+        seed({ kind: 'rest', activityClass: 'user', name: `busy-${destination}`, status: 'ok' })
+      }
+      seed({ kind: 'mcp', activityClass: 'user', name: 'web_search', status: 'error' })
+
+      const summary = getInteractionSummary({ window: '1h' })
+
+      expect(summary.topDestinations).toHaveLength(10)
+      expect(summary.topDestinations).toContainEqual({
+        category: 'tools',
+        name: 'web_search',
+        count: 1,
+        errors: 1,
+        medianDurationMs: 10,
+      })
+    })
+
+    it('treats REST 4xx responses as failed interactions without changing recorder watchdog semantics', () => {
+      seed({
+        kind: 'rest',
+        name: '/api/plugins/health/missing',
+        agent: null,
+        status: 'ok',
+        meta: { httpStatus: 404, method: 'GET' },
+      })
+
+      const summary = getInteractionSummary({ window: '1h' })
+
+      expect(summary.totals.errors).toBe(1)
+      expect(summary.categories).toContainEqual({ key: 'api', count: 1, errors: 1 })
+      expect(summary.topDestinations).toContainEqual({
+        category: 'api',
+        name: '/api/plugins/health/missing',
+        count: 1,
+        errors: 1,
+        medianDurationMs: 10,
+      })
+      expect(summary.timeBuckets.reduce((total, bucket) => total + bucket.failureCount, 0)).toBe(1)
+      const activityFeed = getUsageFeed({ kind: 'rest', window: '1h' })
+      expect(activityFeed.totals).toEqual({ count: 1, errors: 1, errorRate: 1 })
+      expect(activityFeed.recent[0]?.status).toBe('error')
+      expect(getUsageStats({ kind: 'rest', window: '1h' })).toEqual({ total: 1, errors: 0 })
+    })
+
+    it('counts completed tools whose result was not observed as unverified, not failed', () => {
+      seed({
+        kind: 'mcp',
+        activityClass: 'user',
+        status: 'ok',
+        meta: { resultMissing: true, turnTerminalStatus: 'completed' },
+      })
+      seed({
+        kind: 'mcp',
+        activityClass: 'user',
+        status: 'ok',
+        meta: { resultMissing: true, turnTerminalStatus: 'aborted' },
+      })
+      seed({
+        kind: 'mcp',
+        activityClass: 'routine',
+        status: 'ok',
+        meta: { resultMissing: true, turnTerminalStatus: 'completed' },
+      })
+
+      const summary = getInteractionSummary({ window: '1h' })
+
+      expect(summary.totals).toEqual({
+        count: 3,
+        errors: 0,
+        unverified: 2,
+        foreground: 2,
+        background: 1,
+      })
+      expect(summary.categories).toContainEqual({ key: 'tools', count: 3, errors: 0 })
     })
   })
 
@@ -296,9 +676,22 @@ describe('usage recorder', () => {
   })
 
   describe('ring buffer eviction', () => {
-    it('evicts oldest when over MAX_ENTRIES', () => {
-      for (let i = 0; i < 10_100; i++) seed({ name: `t${i}` })
-      expect(getEntryCount()).toBe(10_000)
+    it('evicts oldest and reports partial coverage when rows inside the window were lost', () => {
+      setSystemTime(new Date('2026-07-13T12:00:00.000Z'))
+      const uptime = spyOn(process, 'uptime').mockReturnValue(2 * 60 * 60)
+      try {
+        for (let i = 0; i < 10_100; i++) seed({ name: `t${i}` })
+
+        expect(getEntryCount()).toBe(10_000)
+        expect(getInteractionSummary({ window: '1h' }).coverage).toEqual({
+          startsAt: '2026-07-13T12:00:00.000Z',
+          hasFullWindow: false,
+          reason: 'buffer_limit',
+        })
+      } finally {
+        uptime.mockRestore()
+        setSystemTime()
+      }
     })
   })
 
@@ -340,6 +733,32 @@ describe('usage recorder', () => {
       recordUsage({ kind: 'mcp', activityClass: 'user', name: 'x', agent: 'a', durationMs: 1, status: 'error', ts: old })
       const ec = getErrorCount(WINDOW_MS['5m'])
       expect(ec.total).toBe(0)
+    })
+
+    it('uses the same projected REST outcome shown by the interaction feed', () => {
+      recordUsage({
+        kind: 'rest',
+        activityClass: 'routine',
+        name: '/api/plugins/health/missing',
+        agent: null,
+        durationMs: 5,
+        status: 'ok',
+        meta: { httpStatus: 404 },
+      })
+      recordUsage({
+        kind: 'rest',
+        activityClass: 'routine',
+        name: '/api/plugins/health/summary',
+        agent: null,
+        durationMs: 5,
+        status: 'ok',
+        meta: { httpStatus: 200 },
+      })
+
+      expect(getErrorCount(WINDOW_MS['5m'])).toEqual({
+        total: 1,
+        byKind: { mcp: 0, rest: 1, agent: 0 },
+      })
     })
   })
 

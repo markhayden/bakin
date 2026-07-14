@@ -81,6 +81,8 @@ export type {
   AdapterAuditEvent,
   AdapterInitOpts,
   AdapterLogger,
+  AdapterToolActivityEvent,
+  AdapterTurnActivityEvent,
   AdapterVersionInfo,
   Unsubscribe,
 } from './adapters/shared'

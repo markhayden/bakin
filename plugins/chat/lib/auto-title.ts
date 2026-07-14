@@ -59,6 +59,7 @@ export async function maybeAutoTitle(ctx: TitleContext, chatId: string): Promise
 
     const result = await ctx.runtime.messaging.send({
       agentId: chat.agentId,
+      activityClass: 'system',
       ephemeral: true,
       threadId: `chat:${chatId}:title`,
       content: [

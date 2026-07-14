@@ -86,6 +86,7 @@ async function relayToMainAgent(n: BudgetIncidentNotification, message: string, 
     const mainAgentId = await getRuntimeMainAgentId(runtime)
     const result = await runtime.messaging.send({
       agentId: mainAgentId,
+      activityClass: 'system',
       content: `${message}\n\nReview and resolve: Models → Spend (or \`bakin budget incidents\`). Relay this to the operator if they are not watching the dashboard.`,
     })
     await meterAgentTurn({ agent: mainAgentId, activityClass: 'system', result, name: 'budget-alert' })

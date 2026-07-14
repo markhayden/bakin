@@ -594,6 +594,7 @@ export async function reportComplete(
     const orchestratorId = await getRuntimeMainAgentId(runtime)
     const result = await runtime.messaging.send({
       agentId: orchestratorId,
+      activityClass: 'system',
       content: `TASK COMPLETE: ${title} — ${summary}`,
     })
     await meterAgentTurn({ agent: orchestratorId, activityClass: 'system', result, name: 'orchestrator-notify' })

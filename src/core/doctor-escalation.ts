@@ -33,7 +33,7 @@ export async function notifyActionRequiredIncidents(report: HealthReport): Promi
   try {
     const runtime = getAppServices().runtime
     const agentId = await getRuntimeMainAgentId(runtime)
-    const result = await runtime.messaging.send({ agentId, content: message })
+    const result = await runtime.messaging.send({ agentId, content: message, activityClass: 'system' })
     await meterAgentTurn({ agent: agentId, activityClass: 'system', result, name: 'doctor-notify' })
     log.info('Notified main agent of Health incidents', { incidentIds: incidents.map((incident) => incident.id) })
   } catch (error) {

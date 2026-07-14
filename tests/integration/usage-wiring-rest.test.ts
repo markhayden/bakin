@@ -55,7 +55,7 @@ mock.module('../../src/core/logger', () => ({
 mock.module('@/core/task-store', () => ({}))
 
 import { trackResponse, normalizePath } from '../../src/core/rest-tracking'
-import { getUsageFeed, clearUsage } from '../../src/core/usage'
+import { getUsageFeed, getUsageStats, clearUsage } from '../../src/core/usage'
 
 afterAll(() => rmSync(testDir, { recursive: true, force: true }))
 
@@ -154,15 +154,16 @@ describe('usage-wiring-rest', () => {
     expect(feed.recent[0].meta).toMatchObject({ httpStatus: 500 })
   })
 
-  it('4xx are CLIENT errors — recorded ok (with httpStatus) so they never feed the 5xx alert', () => {
+  it('shows 4xx as failed activity without feeding the raw 5xx watchdog rate', () => {
     const { req, res } = makeFakeReqRes({ statusCode: 404 })
     trackResponse(req, res, urlFor('/api/agents/avatar'), Date.now(), 'user')
     res.end()
 
     const feed = getUsageFeed({ kind: 'rest', window: '5m' })
-    expect(feed.recent[0].status).toBe('ok')
-    expect(feed.totals.errors).toBe(0)
+    expect(feed.recent[0].status).toBe('error')
+    expect(feed.totals.errors).toBe(1)
     expect(feed.recent[0].meta).toMatchObject({ httpStatus: 404 })
+    expect(getUsageStats({ kind: 'rest', window: '5m' })).toEqual({ total: 1, errors: 0 })
   })
 
   it('keeps /api/plugins/* paths verbatim (non-UUID plugin ids preserved)', () => {

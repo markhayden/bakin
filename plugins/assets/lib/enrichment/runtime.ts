@@ -148,6 +148,7 @@ export function createRuntimeEngine(runtime: AgentRuntimeAdapter, agentId: strin
 
       const send = (content: string) => runtime.messaging.send({
         agentId,
+        activityClass: 'system',
         content,
         threadId,
         ephemeral: true,

@@ -131,6 +131,12 @@ export async function meterAgentTurn(opts: {
       costUsdMicros: priced?.costUsdMicros ?? null,
       name: opts.name ?? 'turn',
       tokens: { input: usage?.input, output: usage?.output, total: usage?.total, cacheRead: usage?.cacheRead, cacheWrite: usage?.cacheWrite },
+      meta: {
+        resultId: opts.result.id,
+        ...(typeof opts.result.metadata?.adapterTurnId === 'string'
+          ? { turnId: opts.result.metadata.adapterTurnId }
+          : {}),
+      },
     })
   } catch (err) {
     log.error('Failed to meter agent turn', err, { agent: opts.agent, runId: opts.runId })

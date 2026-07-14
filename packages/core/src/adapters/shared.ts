@@ -1,3 +1,6 @@
+import type { ActivityClass } from '@makinbakin/sdk/types'
+import type { MessageUsage } from './runtime/concepts'
+
 export type Unsubscribe = () => void
 
 export interface AdapterLogger {
@@ -34,6 +37,67 @@ export interface RuntimeExecToolInvokeResult {
 }
 
 /**
+ * One normalized runtime-native tool lifecycle event observed by an adapter.
+ * The host uses result events for cross-runtime observability; call events are
+ * included so it can derive duration when the runtime does not report one.
+ */
+interface AdapterToolActivityBase {
+  agentId: string
+  /** Producer-assigned classification from the originating runtime turn. */
+  activityClass: ActivityClass
+  /** Owning adapter turn; required so terminal reconciliation cannot silently opt out. */
+  turnId: string
+  threadId?: string
+  callId?: string
+  toolName: string
+}
+
+/**
+ * One normalized tool lifecycle event. Runtime-private status aliases must be
+ * resolved by the adapter before crossing this boundary.
+ */
+export type AdapterToolActivityEvent =
+  | AdapterToolActivityBase & {
+      phase: 'call'
+      status: 'running'
+    }
+  | AdapterToolActivityBase & {
+      phase: 'result'
+      status: 'completed' | 'failed' | 'aborted'
+      durationMs?: number
+    }
+
+interface AdapterTurnActivityBase {
+  agentId: string
+  /** Producer-assigned classification from the originating runtime turn. */
+  activityClass: ActivityClass
+  threadId?: string
+  /** Messaging surface that owns the turn. */
+  operation: 'send' | 'stream'
+  /** Adapter-generated identity shared by this turn's start and result. */
+  turnId: string
+}
+
+/**
+ * One normalized messaging turn lifecycle event observed at the adapter
+ * boundary. Every executed send/stream emits exactly one start and one result.
+ * Result identity and usage are present when the messaging surface reports
+ * them (currently send); adapters never fabricate usage.
+ */
+export type AdapterTurnActivityEvent =
+  | AdapterTurnActivityBase & {
+      phase: 'start'
+      status: 'running'
+    }
+  | AdapterTurnActivityBase & {
+      phase: 'result'
+      status: 'completed' | 'failed' | 'aborted'
+      durationMs: number
+      resultId?: string
+      usage?: MessageUsage
+    }
+
+/**
  * Bakin's exec-tool registry offered to runtimes that deliver tools
  * in-process (Pi registers these as native session tools). Out-of-band
  * runtimes (OpenClaw reaches the same registry over its native MCP client)
@@ -52,6 +116,17 @@ export interface AdapterInitOpts {
   logger?: AdapterLogger
   audit?: (event: AdapterAuditEvent) => void
   execTools?: RuntimeExecToolProvider
+  /**
+   * Best-effort host observability tap for tool activity across every runtime
+   * messaging surface. Adapters contain callback failures so telemetry can
+   * never fail an agent turn.
+   */
+  onToolActivity?: (event: AdapterToolActivityEvent) => void
+  /**
+   * Best-effort host observability tap for every messaging send/stream turn.
+   * Adapters contain callback failures so telemetry can never fail a turn.
+   */
+  onTurnActivity?: (event: AdapterTurnActivityEvent) => void
   /**
    * Base URL of Bakin's MCP server (e.g. `http://localhost:3737`) — the seam
    * a runtime whose agents reach Bakin over MCP (OpenClaw) needs to write its

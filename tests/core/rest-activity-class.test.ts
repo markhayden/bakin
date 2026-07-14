@@ -15,13 +15,21 @@ function classify(
 }
 
 describe('REST activity classification', () => {
-  it('marks only actual host status endpoints as routine', () => {
+  it('marks host monitoring and shell snapshot reads as routine', () => {
     expect(classify('/api/agents/health')).toBe('routine')
     expect(classify('/api/update/status')).toBe('routine')
     expect(classify('/api/dispatch')).toBe('routine')
     expect(classify('/api/plugins/manifest')).toBe('routine')
     expect(classify('/api/agents/pixel')).toBe('routine')
     expect(classify('/api/agents/pixel/status')).toBe('routine')
+    expect(classify('/api/activity')).toBe('routine')
+    expect(classify('/api/context-report')).toBe('routine')
+    expect(classify('/api/settings')).toBe('routine')
+    expect(classify('/api/state')).toBe('routine')
+    expect(classify('/api/version')).toBe('routine')
+    expect(classify('/api/agent-packages')).toBe('routine')
+    expect(classify('/api/plugins/health/assets/client.js')).toBe('routine')
+    expect(classify('/api/plugin-settings/chat')).toBe('routine')
 
     expect(classify('/api/agents/avatar')).toBe('user')
     expect(classify('/api/agents/settings')).toBe('user')
@@ -37,6 +45,11 @@ describe('REST activity classification', () => {
 
     expect(classify('/api/plugins/team/settings', 'GET', routes)).toBe('user')
     expect(classify('/api/plugins/team/pixel', 'GET', routes)).toBe('routine')
+  })
+
+  it('treats the external messaging nav summary as shell traffic', () => {
+    expect(classify('/api/plugins/messaging/plans/summary')).toBe('routine')
+    expect(classify('/api/plugins/messaging/plans/summary', 'POST')).toBe('user')
   })
 
   it('does not borrow parameter metadata when the winning exact route omits it', () => {
@@ -63,7 +76,13 @@ describe('REST activity classification', () => {
       '/api/agents/:id',
       '/api/agents/:id/status',
       '/api/dispatch',
+      '/api/activity',
+      '/api/settings',
+      '/api/state',
+      '/api/version',
+      '/api/agent-packages',
       '/api/plugins/manifest',
+      '/api/plugins/:pluginId/assets/:path',
       '/api/update/status',
     ]) {
       const route = coreRoutes.find((candidate) => (
