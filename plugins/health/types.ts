@@ -89,6 +89,10 @@ export interface UsageEntry {
 }
 
 export interface TopByNameRow {
+  /** Added by the exact-signature feed; omitted by older servers. */
+  kind?: UsageKind
+  /** Normalized HTTP method for REST destinations; omitted by older servers. */
+  method?: string | null
   name: string
   count: number
   errors: number
@@ -142,6 +146,10 @@ export interface UsageFailureGroupPage {
 }
 
 export interface UsageFeedData {
+  /** Additive server features; omitted by older strict servers. */
+  capabilities?: {
+    exactFailureTargeting?: boolean
+  }
   window: '5m' | '1h' | '24h'
   coverage: InteractionCoverage
   totals: { count: number; errors: number; errorRate: number }

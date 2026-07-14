@@ -449,14 +449,27 @@ describe('Health Plugin Routes', () => {
         searchParams: { kind: 'mcp', window: '1h' },
       })
       expect(status).toBe(200)
+      expect(body.capabilities).toEqual({ exactFailureTargeting: true })
       const totals = (body as { totals: { count: number } }).totals
-      const topByName = (body as { topByName: Array<{ name: string; count: number }> }).topByName
+      const topByName = (body as {
+        topByName: Array<{
+          kind?: string
+          method?: string | null
+          name: string
+          count: number
+        }>
+      }).topByName
       const recent = (body as { recent: HealthUsageEntry[] }).recent
       const recentFailures = (body as { recentFailures: Array<{ id: string }> }).recentFailures
       const recentUnverified = (body as { recentUnverified: Array<{ id: string }> }).recentUnverified
       expect(totals.count).toBe(2)
       expect(topByName[0].name).toBe('bakin_exec_tasks_list')
       expect(topByName[0].count).toBe(2)
+      expect(topByName[0]).toMatchObject({
+        kind: 'mcp',
+        method: null,
+      })
+      expect(topByName[0]).not.toHaveProperty('failureGroupRank')
       expect(recent).toHaveLength(2)
       expect(new Set(recent.map((entry) => entry.id)).size).toBe(2)
       const metered = recent.find((entry) => entry.tokensIn === 120)
@@ -611,6 +624,70 @@ describe('Health Plugin Routes', () => {
           }),
         }),
       ])
+    })
+
+    it('resolves an exact failure target to its current ranked page', async () => {
+      const destination = '/api/plugins/search/query'
+      recordUsage({
+        kind: 'rest', activityClass: 'user', name: destination, agent: 'main', durationMs: 4, status: 'error',
+        meta: { method: 'POST', routePattern: destination },
+      })
+      for (let index = 0; index < 2; index++) {
+        recordUsage({
+          kind: 'mcp', activityClass: 'user', name: `leader-${index}`, agent: 'main', durationMs: 2, status: 'error',
+        })
+      }
+
+      const route = findRoute(activated.routes, 'GET', '/usage-feed')!
+      const { status, body } = await callRoute(route, activated.ctx, {
+        searchParams: {
+          window: '1h',
+          failureGroupLimit: '1',
+          failureGroupTargetKind: 'rest',
+          failureGroupTargetMethod: 'post',
+          failureGroupTargetDestination: destination,
+        },
+      })
+
+      expect(status).toBe(200)
+      expect(body.failureGroupPage).toEqual({ total: 3, offset: 2, limit: 1, hasMore: false })
+      expect(body.failureGroups).toEqual([
+        expect.objectContaining({ kind: 'rest', method: 'POST', destination }),
+      ])
+    })
+
+    it('accepts an empty target method as the exact null method', async () => {
+      recordUsage({
+        kind: 'mcp', activityClass: 'user', name: 'web.search', agent: 'main', durationMs: 4, status: 'error',
+      })
+
+      const route = findRoute(activated.routes, 'GET', '/usage-feed')!
+      const { status, body } = await callRoute(route, activated.ctx, {
+        searchParams: {
+          failureGroupTargetKind: 'mcp',
+          failureGroupTargetMethod: '',
+          failureGroupTargetDestination: 'web.search',
+        },
+      })
+
+      expect(status).toBe(200)
+      expect((body.failureGroups as Array<Record<string, unknown>>)[0]).toMatchObject({
+        kind: 'mcp', method: null, destination: 'web.search',
+      })
+    })
+
+    it('rejects partial exact failure targets', async () => {
+      const route = findRoute(activated.routes, 'GET', '/usage-feed')!
+      const partialTargets: Array<Record<string, string>> = [
+        { failureGroupTargetKind: 'rest' },
+        { failureGroupTargetKind: 'rest', failureGroupTargetMethod: 'GET' },
+        { failureGroupTargetDestination: '/api/plugins/search/query' },
+      ]
+
+      for (const searchParams of partialTargets) {
+        const result = await callRoute(route, activated.ctx, { searchParams })
+        expect(result.status).toBe(400)
+      }
     })
 
     it('defaults to 1h and hides successful routine activity', async () => {

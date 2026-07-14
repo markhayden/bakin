@@ -111,7 +111,24 @@ const usageFeedQuery = z.object({
   failureGroupOffset: z.coerce.number().int().nonnegative().default(0),
   failureGroupLimit: z.coerce.number().int().min(1).max(MAX_FAILURE_GROUP_LIMIT)
     .default(DEFAULT_FAILURE_GROUP_LIMIT),
-}).strict()
+  failureGroupTargetKind: z.enum(['mcp', 'rest', 'agent']).optional(),
+  failureGroupTargetMethod: z.string().max(32).optional(),
+  failureGroupTargetDestination: z.string().min(1).max(2_048).optional(),
+}).strict().superRefine((query, ctx) => {
+  const targetFields = [
+    query.failureGroupTargetKind,
+    query.failureGroupTargetMethod,
+    query.failureGroupTargetDestination,
+  ]
+  const providedCount = targetFields.filter((field) => field !== undefined).length
+  if (providedCount !== 0 && providedCount !== targetFields.length) {
+    ctx.addIssue({
+      code: 'custom',
+      message: 'failure group target fields must be provided together',
+      path: ['failureGroupTargetKind'],
+    })
+  }
+})
 
 const interactionSummaryQuery = z.object({
   window: z.enum(['5m', '1h', '24h']).default('1h'),
@@ -160,6 +177,9 @@ const usageEntrySchema = z.object({
   meta: z.record(z.string(), z.unknown()).optional(),
 }).strict()
 const usageFeedResponseSchema = z.object({
+  capabilities: z.object({
+    exactFailureTargeting: z.literal(true),
+  }).strict(),
   window: z.enum(['5m', '1h', '24h']),
   coverage: interactionCoverageSchema,
   totals: z.object({
@@ -200,6 +220,8 @@ const usageFeedResponseSchema = z.object({
     hasMore: z.boolean(),
   }).strict(),
   topByName: z.array(z.object({
+    kind: usageKindSchema,
+    method: z.string().min(1).nullable(),
     name: z.string(),
     count: z.number().int().nonnegative(),
     errors: z.number().int().nonnegative(),
@@ -341,6 +363,9 @@ const routes = [
         includeRoutine,
         failureGroupOffset,
         failureGroupLimit,
+        failureGroupTargetKind,
+        failureGroupTargetMethod,
+        failureGroupTargetDestination,
       } = query
       return Response.json(getUsageFeed({
         ...(kind ? { kind: kind as UsageKind } : {}),
@@ -349,6 +374,19 @@ const routes = [
         includeRoutine: includeRoutine === 'true',
         failureGroupOffset,
         failureGroupLimit,
+        ...(failureGroupTargetKind !== undefined
+          && failureGroupTargetMethod !== undefined
+          && failureGroupTargetDestination !== undefined
+          ? {
+              failureGroupTarget: {
+                kind: failureGroupTargetKind as UsageKind,
+                method: failureGroupTargetMethod.trim().length > 0
+                  ? failureGroupTargetMethod.trim().toUpperCase()
+                  : null,
+                destination: failureGroupTargetDestination,
+              },
+            }
+          : {}),
       }))
     },
   }),

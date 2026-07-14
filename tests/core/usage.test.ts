@@ -673,6 +673,81 @@ describe('usage recorder', () => {
       }
     })
 
+    it('resolves the current page for an exact failure target after its rank moves', () => {
+      setSystemTime(new Date('2026-07-13T12:00:00.000Z'))
+      try {
+        const target = {
+          kind: 'rest' as const,
+          method: 'GET',
+          destination: '/api/plugins/search/query',
+        }
+        seed({
+          kind: target.kind,
+          name: target.destination,
+          status: 'error',
+          ts: '2026-07-13T11:10:00.000Z',
+          meta: { method: target.method, routePattern: target.destination },
+        })
+        seed({
+          kind: 'mcp',
+          name: 'initial-leader',
+          status: 'error',
+          ts: '2026-07-13T11:20:00.000Z',
+        })
+
+        expect(getUsageFeed({
+          window: '1h',
+          failureGroupLimit: 1,
+          failureGroupTarget: target,
+        }).failureGroupPage.offset).toBe(1)
+
+        for (let index = 0; index < 2; index++) {
+          seed({
+            kind: 'agent',
+            name: `new-leader-${index}`,
+            status: 'error',
+            ts: new Date(Date.parse('2026-07-13T11:30:00.000Z') + index * 1000).toISOString(),
+          })
+        }
+
+        const moved = getUsageFeed({
+          window: '1h',
+          failureGroupOffset: 0,
+          failureGroupLimit: 1,
+          failureGroupTarget: target,
+        })
+        expect(moved.failureGroupPage.offset).toBe(3)
+        expect(moved.failureGroups).toEqual([
+          expect.objectContaining(target),
+        ])
+      } finally {
+        setSystemTime()
+      }
+    })
+
+    it('matches failure targets by kind, method, and destination', () => {
+      const destination = '/api/plugins/search/query'
+      for (const method of ['GET', 'POST']) {
+        seed({
+          kind: 'rest',
+          name: destination,
+          status: 'error',
+          meta: { method, routePattern: destination },
+        })
+      }
+      seed({ kind: 'mcp', name: destination, status: 'error' })
+
+      const feed = getUsageFeed({
+        window: '5m',
+        failureGroupLimit: 1,
+        failureGroupTarget: { kind: 'rest', method: 'POST', destination },
+      })
+
+      expect(feed.failureGroups).toEqual([
+        expect.objectContaining({ kind: 'rest', method: 'POST', destination }),
+      ])
+    })
+
     it('auto-stamps ts if not provided', () => {
       seed()
       const feed = getUsageFeed({ kind: 'mcp', window: '5m' })
@@ -1015,6 +1090,54 @@ describe('usage recorder', () => {
   })
 
   describe('topByName', () => {
+    it('keeps exact destination signatures separate', () => {
+      const now = Date.now()
+      seed({ kind: 'mcp', name: 'shared.destination', durationMs: 10 })
+      seed({
+        kind: 'mcp', name: 'shared.destination', durationMs: 20, status: 'error',
+        ts: new Date(now - 30_000).toISOString(),
+      })
+      seed({
+        kind: 'mcp', name: 'shared.destination', durationMs: 30, status: 'error',
+        ts: new Date(now - 20_000).toISOString(),
+      })
+      seed({
+        kind: 'rest', name: 'shared.destination', durationMs: 40,
+        meta: { method: 'GET' },
+      })
+      seed({
+        kind: 'rest', name: 'shared.destination', durationMs: 60, status: 'error',
+        ts: new Date(now - 15_000).toISOString(), meta: { method: 'GET' },
+      })
+      seed({
+        kind: 'rest', name: 'shared.destination', durationMs: 80,
+        meta: { method: 'POST' },
+      })
+      seed({
+        kind: 'rest', name: 'shared.destination', durationMs: 100, status: 'error',
+        ts: new Date(now - 10_000).toISOString(), meta: { method: 'POST' },
+      })
+
+      const rows = getUsageFeed({ window: '5m' }).topByName
+        .filter((row) => row.name === 'shared.destination')
+
+      expect(rows).toHaveLength(3)
+      expect(rows).toEqual(expect.arrayContaining([
+        {
+          kind: 'mcp', method: null, name: 'shared.destination', count: 3, errors: 2,
+          medianDurationMs: 20,
+        },
+        {
+          kind: 'rest', method: 'POST', name: 'shared.destination', count: 2, errors: 1,
+          medianDurationMs: 90,
+        },
+        {
+          kind: 'rest', method: 'GET', name: 'shared.destination', count: 2, errors: 1,
+          medianDurationMs: 50,
+        },
+      ]))
+    })
+
     it('sorts by count desc and caps at 10', () => {
       for (let i = 0; i < 12; i++) {
         for (let j = 0; j <= i; j++) seed({ name: `tool_${i}` })

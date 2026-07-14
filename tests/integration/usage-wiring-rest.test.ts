@@ -198,6 +198,8 @@ describe('usage-wiring-rest', () => {
 
     const feed = getUsageFeed({ kind: 'rest', window: '5m' })
     expect(feed.topByName).toContainEqual({
+      kind: 'rest',
+      method: 'GET',
       name: '/api/plugins/tasks/:taskId',
       count: 2,
       errors: 1,

@@ -49,9 +49,19 @@ export interface UsageQuery {
   failureGroupOffset?: number
   /** Bounded number of ranked failure groups to return. */
   failureGroupLimit?: number
+  /** Resolve the page containing this exact failure signature against the current ranking. */
+  failureGroupTarget?: UsageFailureGroupTarget
+}
+
+export interface UsageFailureGroupTarget {
+  kind: UsageKind
+  method: string | null
+  destination: string
 }
 
 export interface TopByNameRow {
+  kind: UsageKind
+  method: string | null
   name: string
   count: number
   errors: number
@@ -110,6 +120,9 @@ export interface UsageFailureGroupPage {
 }
 
 export interface UsageFeed {
+  capabilities: {
+    exactFailureTargeting: true
+  }
   window: WindowKey
   coverage: InteractionCoverage
   totals: { count: number; errors: number; errorRate: number }
@@ -561,8 +574,18 @@ export function getUsageFeed(query: UsageQuery): UsageFeed {
       || left.kind.localeCompare(right.kind)
       || left.name.localeCompare(right.name),
     )
-  const failureGroupOffset = normalizeFailureGroupOffset(query.failureGroupOffset)
   const failureGroupLimit = normalizeFailureGroupLimit(query.failureGroupLimit)
+  const requestedFailureGroupOffset = normalizeFailureGroupOffset(query.failureGroupOffset)
+  const targetRank = query.failureGroupTarget
+    ? rankedFailureGroups.findIndex((group) =>
+        group.kind === query.failureGroupTarget?.kind
+        && group.method === query.failureGroupTarget.method
+        && group.destination === query.failureGroupTarget.destination,
+      )
+    : -1
+  const failureGroupOffset = targetRank >= 0
+    ? Math.floor(targetRank / failureGroupLimit) * failureGroupLimit
+    : requestedFailureGroupOffset
   const failureGroups = rankedFailureGroups.slice(
     failureGroupOffset,
     failureGroupOffset + failureGroupLimit,
@@ -573,22 +596,37 @@ export function getUsageFeed(query: UsageQuery): UsageFeed {
     limit: failureGroupLimit,
     hasMore: failureGroupOffset + failureGroups.length < rankedFailureGroups.length,
   }
-
-  const byName = new Map<string, { count: number; errors: number; durations: number[] }>()
+  const byName = new Map<string, {
+    kind: UsageKind
+    method: string | null
+    name: string
+    count: number
+    errors: number
+    durations: number[]
+  }>()
   for (const e of entries) {
-    const destination = interactionDestination(e)
-    const bucket = byName.get(destination) ?? { count: 0, errors: 0, durations: [] }
+    const { destination, method, key } = failureGroupSignature(e)
+    const bucket = byName.get(key) ?? {
+      kind: e.kind,
+      method,
+      name: destination,
+      count: 0,
+      errors: 0,
+      durations: [],
+    }
     bucket.count++
     if (e.status === 'error') bucket.errors++
     if (e.durationMs !== null) bucket.durations.push(e.durationMs)
-    byName.set(destination, bucket)
+    byName.set(key, bucket)
   }
-  const topByName: TopByNameRow[] = [...byName.entries()]
-    .map(([name, b]) => ({
-      name,
-      count: b.count,
-      errors: b.errors,
-      medianDurationMs: median(b.durations),
+  const topByName: TopByNameRow[] = [...byName.values()]
+    .map((bucket) => ({
+      kind: bucket.kind,
+      method: bucket.method,
+      name: bucket.name,
+      count: bucket.count,
+      errors: bucket.errors,
+      medianDurationMs: median(bucket.durations),
     }))
     .sort((a, b) => b.count - a.count)
     .slice(0, TOP_N)
@@ -619,6 +657,7 @@ export function getUsageFeed(query: UsageQuery): UsageFeed {
     .slice(0, RECENT_N)
 
   return {
+    capabilities: { exactFailureTargeting: true },
     window: query.window,
     coverage: interactionCoverage(query.window, now),
     totals: {

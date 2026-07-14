@@ -81,13 +81,24 @@ function isTimeBucket(value: unknown): value is UsageFeedData['timeBuckets'][num
     && isRate(value.failureRate)
 }
 
-function isTopByNameRow(value: unknown): boolean {
+function isTopByNameRow(value: unknown): value is UsageFeedData['topByName'][number] {
   if (!isRecord(value)) return false
-  return typeof value.name === 'string'
+  return (value.kind === undefined || USAGE_KINDS.has(value.kind as UsageKind))
+    && (value.method === undefined
+      || value.method === null
+      || (typeof value.method === 'string' && value.method.length > 0))
+    && typeof value.name === 'string'
     && isNonnegativeInteger(value.count)
     && isNonnegativeInteger(value.errors)
     && value.errors <= value.count
     && (value.medianDurationMs === null || isNonnegativeNumber(value.medianDurationMs))
+}
+
+function hasValidCapabilities(value: unknown): boolean {
+  if (value === undefined) return true
+  return isRecord(value)
+    && (value.exactFailureTargeting === undefined
+      || typeof value.exactFailureTargeting === 'boolean')
 }
 
 function isByAgentRow(value: unknown): boolean {
@@ -137,6 +148,7 @@ function isDashboardContract(data: Partial<UsageFeedData>): data is UsageFeedDat
   const totals = data.totals as unknown
   const outcomes = data.outcomes as unknown
   return (data.window === '5m' || data.window === '1h' || data.window === '24h')
+    && hasValidCapabilities(data.capabilities)
     && isRecord(coverage)
     && typeof coverage.startsAt === 'string'
     && Number.isFinite(Date.parse(coverage.startsAt))
@@ -342,7 +354,7 @@ export function normalizeActivityFeed(
       outcomes: { failed, unverified, canceled, succeeded },
       byKind: legacyKindRows(entries),
       failureGroups: legacyFailureGroups(entries, recentFailures),
-      topByName: Array.isArray(legacy.topByName) ? legacy.topByName : [],
+      topByName: Array.isArray(legacy.topByName) ? legacy.topByName.filter(isTopByNameRow) : [],
       byAgent: Array.isArray(legacy.byAgent) ? legacy.byAgent : [],
       recent,
       recentFailures,
