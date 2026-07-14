@@ -84,6 +84,19 @@ const BinDownloadSchema = z.object({
       { message: 'bin download url must be https' },
     ),
   sha256: z.string().regex(/^[a-f0-9]{64}$/i, { message: 'sha256 must be 64 hex chars' }),
+  /**
+   * Set when the download is an archive rather than the raw binary
+   * (GitHub releases commonly ship tarballs). The sha256 pins the ARCHIVE;
+   * `member` is the file extracted as the binary.
+   */
+  archive: z
+    .object({
+      format: z.literal('tar.gz'),
+      member: z.string().min(1).refine((m) => !m.startsWith('/') && !m.split('/').includes('..'), {
+        message: 'archive member must be a relative path inside the archive',
+      }),
+    })
+    .optional(),
 })
 
 const BinRequirementSchema = z.object({
@@ -144,6 +157,8 @@ const PrereqRequirementSchema = z
     probe: z.string().min(1),
     /** Where the user gets it — readiness remediation links here. */
     help: z.string().url(),
+    /** Optional prereqs surface as a leg but never block readiness (default false). */
+    optional: z.boolean().default(false),
   })
   .refine((p) => (p.kind === 'app' ? p.probe.startsWith('/') : !p.probe.includes('/')), {
     message: 'app probes must be absolute paths; binary probes must be bare PATH names',

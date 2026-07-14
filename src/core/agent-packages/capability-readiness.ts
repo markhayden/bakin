@@ -60,6 +60,7 @@ export interface CapabilityPrereqStatus {
   name: string
   kind: 'binary' | 'app'
   help: string
+  optional: boolean
   status: 'ok' | 'missing'
 }
 
@@ -163,9 +164,10 @@ export async function listCapabilities(): Promise<CapabilityReadiness[]> {
       const present = req.kind === 'binary'
         ? Boolean(bunWhich(req.probe))
         : existsSync(req.probe)
-      prereqs.push({ name: req.name, kind: req.kind, help: req.help, status: present ? 'ok' : 'missing' })
-      // Prereqs are user-installed, never Bakin-installed — remediation is the help link.
-      if (!present) missing.push(`${req.name} is not installed — get it: ${req.help}`)
+      prereqs.push({ name: req.name, kind: req.kind, help: req.help, optional: req.optional, status: present ? 'ok' : 'missing' })
+      // Prereqs are user-installed, never Bakin-installed — remediation is the
+      // help link. Optional prereqs surface as a leg but never block ready.
+      if (!present && !req.optional) missing.push(`${req.name} is not installed — get it: ${req.help}`)
     }
 
     const platformSupported = !manifest.platforms || (platform !== null && manifest.platforms.includes(platform))

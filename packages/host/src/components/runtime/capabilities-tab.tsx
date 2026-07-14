@@ -107,7 +107,7 @@ export function CapabilitiesTab() {
                     {cap.bins.filter((b) => b.status !== 'ok').map((b) => <Leg key={`b-${b.name}`} ok={false} label={b.status === 'unsupported-platform' ? `binary ${b.name} not available for this platform` : `binary ${b.name} missing`} />)}
                     {(cap.npm ?? []).filter((n) => n.status !== 'ok').map((n) => <Leg key={`n-${n.name}`} ok={false} label={`dependencies ${n.name} missing`} />)}
                     {(cap.models ?? []).filter((m) => m.status !== 'ok').map((m) => <Leg key={`m-${m.name}`} ok={false} label={`model ${m.name} missing (${Math.round(m.bytes / 1e6)} MB)`} />)}
-                    {(cap.prereqs ?? []).filter((p) => p.status !== 'ok').map((p) => <Leg key={`p-${p.name}`} ok={false} label={`${p.name} not installed`} />)}
+                    {(cap.prereqs ?? []).filter((p) => p.status !== 'ok' && !p.optional).map((p) => <Leg key={`p-${p.name}`} ok={false} label={`${p.name} not installed`} />)}
                     {cap.secrets.filter((s) => s.status === 'missing').map((s) => <Leg key={`k-${s.name}`} ok={false} label={`${s.name} not set`} />)}
                   </div>
                 )}

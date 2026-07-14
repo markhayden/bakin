@@ -15,11 +15,12 @@
  */
 import { execFile } from 'child_process'
 import { promisify } from 'util'
-import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'fs'
 import { createHash } from 'crypto'
 import { join } from 'path'
+import { tmpdir } from 'os'
 import type { BinPlatformKey, BinRequirement, Manifest } from '../../../packages/core/src/agent-packages/manifest'
-import { writeInstalledBy, type InstalledByMarker } from '../../../packages/core/src/agent-packages/markers'
+import { readInstalledBy, writeInstalledBy, type InstalledByMarker } from '../../../packages/core/src/agent-packages/markers'
 import type { ProjectorResult } from './projector'
 import { getBakinPaths } from '@/core/content-dir'
 import { createLogger } from '@/core/logger'
@@ -74,10 +75,14 @@ export async function installBinRequirement(
   const target = join(binDir, bin.name)
   const pin = download.sha256.toLowerCase()
 
-  // Idempotent / shared-bin fast path: bytes already match the pin.
+  // Idempotent / shared-bin fast path. Raw downloads: on-disk bytes match
+  // the pin. Archives: the pin names the TARBALL, so the extracted binary
+  // can't be re-hashed against it — trust the install marker instead.
   if (existsSync(target)) {
-    const existing = createHash('sha256').update(readFileSync(target)).digest('hex')
-    if (existing === pin) {
+    const matches = download.archive
+      ? readInstalledBy(target)?.sha256?.toLowerCase() === pin
+      : createHash('sha256').update(readFileSync(target)).digest('hex') === pin
+    if (matches) {
       log.info(`Binary "${bin.name}" already installed at pinned sha — skipping download`)
       writeInstalledBy(target, { ...installedBy, sha256: pin })
       return { target, sha256: pin, skipped: true }
@@ -93,13 +98,35 @@ export async function installBinRequirement(
   if (!res.ok) {
     throw new Error(`Binary "${bin.name}" download failed: ${res.status} ${res.statusText} (${download.url})`)
   }
-  const bytes = new Uint8Array(await res.arrayBuffer())
+  let bytes = new Uint8Array(await res.arrayBuffer())
 
   const actual = createHash('sha256').update(bytes).digest('hex')
   if (actual !== pin) {
     throw new Error(
       `Binary "${bin.name}" checksum mismatch: expected ${pin}, got ${actual} — refusing to install (${download.url})`,
     )
+  }
+
+  // Archive download: the verified bytes are a tarball — extract the member
+  // and continue the pipeline with ITS bytes.
+  if (download.archive) {
+    const extractDir = mkdtempSync(join(tmpdir(), `bakin-bin-${bin.name}-`))
+    const tarPath = join(extractDir, 'archive.tar.gz')
+    try {
+      writeFileSync(tarPath, bytes)
+      await execFileAsync('tar', ['-xzf', tarPath, '-C', extractDir, download.archive.member], { timeout: VERIFY_TIMEOUT_MS })
+      const memberPath = join(extractDir, download.archive.member)
+      if (!existsSync(memberPath)) {
+        throw new Error(`member "${download.archive.member}" not found in archive`)
+      }
+      bytes = new Uint8Array(readFileSync(memberPath))
+    } catch (err) {
+      throw new Error(
+        `Binary "${bin.name}" archive extraction failed: ${err instanceof Error ? err.message : String(err)}`,
+      )
+    } finally {
+      rmSync(extractDir, { recursive: true, force: true })
+    }
   }
 
   const tmp = `${target}.tmp-${process.pid}`

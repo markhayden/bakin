@@ -51,6 +51,7 @@ const bunServe = (Bun as unknown as {
 
 let server: { port: number; stop: (force?: boolean) => void }
 let hits: Record<string, number> = {}
+const fixtures: Record<string, Buffer> = {}
 
 beforeAll(() => {
   server = bunServe({
@@ -58,6 +59,7 @@ beforeAll(() => {
     fetch(req: Request) {
       const path = new URL(req.url).pathname
       hits[path] = (hits[path] ?? 0) + 1
+      if (fixtures[path]) return new NativeResponse(new Uint8Array(fixtures[path]!))
       if (path === '/good') return new NativeResponse(GOOD_SCRIPT)
       if (path === '/bad-verify') return new NativeResponse(BAD_VERIFY_SCRIPT)
       if (path === '/missing') return new NativeResponse('nope', { status: 404 })
@@ -127,6 +129,27 @@ describe('installBinRequirement', () => {
   it('fails honestly on a 404 download', async () => {
     await expect(installBinRequirement(req('/missing', sha256('x')), marker, { fetchImpl: nativeFetch }))
       .rejects.toThrow(/404|download/i)
+  })
+
+  it('extracts a tar.gz archive member as the binary (archive sha pins the tarball)', async () => {
+    const scratch = '/private/tmp/claude-501/-Users-roscoe-go-src-github-com-markhayden-bakin/d14bf529-d2c5-4871-89e9-9bcbe5382a4a/scratchpad'
+    const tarBytes = readFileSync(join(scratch, 'tar-fixture.tar.gz'))
+    const tarSha = readFileSync(join(scratch, 'tar-fixture.sha'), 'utf-8').trim()
+    fixtures['/tarball'] = tarBytes
+
+    const bin = {
+      name: 'tarredbin',
+      version: '1.0.0',
+      install: { [key!]: { url: `http://127.0.0.1:${server.port}/tarball`, sha256: tarSha, archive: { format: 'tar.gz' as const, member: 'inner/tarredbin' } } },
+      verifyArgs: ['--version'],
+    }
+    const result = await installBinRequirement(bin, marker, { fetchImpl: nativeFetch })
+    expect(result.skipped).toBe(false)
+    expect(readFileSync(result.target, 'utf-8')).toContain('tarred 1.0.0')
+
+    // Fast path: marker sha (== tarball pin) short-circuits a re-install.
+    const again = await installBinRequirement(bin, marker, { fetchImpl: nativeFetch })
+    expect(again.skipped).toBe(true)
   })
 
   it('skips (no re-download) when the installed file already matches the pin', async () => {

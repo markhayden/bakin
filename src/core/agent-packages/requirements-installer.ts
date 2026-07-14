@@ -86,7 +86,9 @@ export async function installNpmRequirement(
 
   const pkgJsonPath = join(target, 'package.json')
   const generated = JSON.stringify(
-    { name: `bakin-pack-${packId}-${req.name}`, private: true, dependencies: req.dependencies },
+    // type:module — payload scripts in this ecosystem are ESM (upstream
+    // pi-skills convention); without it node re-parses on every run.
+    { name: `bakin-pack-${packId}-${req.name}`, private: true, type: 'module', dependencies: req.dependencies },
     null,
     2,
   )
