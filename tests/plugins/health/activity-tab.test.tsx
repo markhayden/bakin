@@ -1101,7 +1101,7 @@ describe('ActivityTab', () => {
     expect(screen.getByRole('group', { name: 'API · Search Reindex' })).toBeDefined()
   })
 
-  it('keeps the Activity identity visible while its feed is loading', () => {
+  it('keeps a quiet Activity introduction and filters available while its feed is loading', () => {
     useActivityDataMock.mockImplementation(() => ({
       ...activityData(),
       data: null,
@@ -1110,13 +1110,19 @@ describe('ActivityTab', () => {
 
     render(<ActivityTab />)
 
-    expect(screen.getByRole('heading', { name: 'What is Bakin doing?' })).toBeDefined()
+    const identity = screen.getByRole('heading', { level: 2, name: 'Activity' })
+    expect(identity.className).toContain('sr-only')
+    expect(screen.queryByText('What is Bakin doing?')).toBeNull()
+    const intro = screen.getByText(/Review every tool call, API request, and agent run across Bakin/i)
+    expect(intro.className).toContain('text-xs')
+    expect(intro.className).toContain('leading-relaxed')
+    expect(intro.className).toContain('text-muted-foreground/80')
     expect(screen.getByLabelText('Activity window')).toBeDefined()
     expect(screen.getByLabelText('Activity kind')).toBeDefined()
     expect(screen.getByRole('status').textContent).toContain('Loading activity…')
   })
 
-  it('keeps the Activity identity and recovery action visible when its feed fails', () => {
+  it('keeps the quiet Activity introduction and recovery action available when its feed fails', () => {
     useActivityDataMock.mockImplementation(() => ({
       ...activityData(),
       data: null,
@@ -1125,7 +1131,10 @@ describe('ActivityTab', () => {
 
     render(<ActivityTab />)
 
-    expect(screen.getByRole('heading', { name: 'What is Bakin doing?' })).toBeDefined()
+    const identity = screen.getByRole('heading', { level: 2, name: 'Activity' })
+    expect(identity.className).toContain('sr-only')
+    expect(screen.queryByText('What is Bakin doing?')).toBeNull()
+    expect(screen.getByText(/Review every tool call, API request, and agent run across Bakin/i)).toBeDefined()
     expect(screen.getByLabelText('Activity window')).toBeDefined()
     expect(screen.getByLabelText('Activity kind')).toBeDefined()
     expect(screen.getByRole('alert').textContent).toContain('Activity feed unavailable')

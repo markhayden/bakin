@@ -4,6 +4,7 @@ import type { HealthIncident } from '@makinbakin/sdk/types'
 import { useOverviewData, type UseOverviewDataResult } from '../hooks/use-overview-data'
 import type { HealthOverviewViewModel } from '../lib/health-view-model'
 import { OverviewAlerts } from './overview-alerts'
+import { HealthTabIntro } from './health-tab-intro'
 import { OverviewOperations } from './overview-operations'
 import { OverviewPlatformPulse } from './overview-platform-pulse'
 import {
@@ -36,6 +37,11 @@ export function OverviewTabView({
 }: OverviewTabViewProps) {
   return (
     <div className="min-w-0 space-y-4" data-testid="health-overview-tab">
+      <HealthTabIntro
+        title="Overview"
+        description="See what needs attention, fix it, and confirm Bakin is working."
+      />
+
       <OverviewPlatformPulse
         model={model}
         loading={loading}

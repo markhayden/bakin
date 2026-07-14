@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { HealthIncident, HealthRepairTarget } from '@makinbakin/sdk/types'
-import { PluginHeader } from '@makinbakin/sdk/components'
+import { PluginHeader, UnderlineTabs } from '@makinbakin/sdk/components'
 import { useQueryState } from '@makinbakin/sdk/hooks'
-import { Button, Tabs, TabsContent, TabsList, TabsTrigger } from '@makinbakin/sdk/ui'
+import { Button } from '@makinbakin/sdk/ui'
 import { RefreshCw } from 'lucide-react'
 import { useOverviewData } from '../hooks/use-overview-data'
 import { ActivityTab } from './activity-tab'
@@ -14,17 +14,17 @@ import { RepairDialog } from './repair-dialog'
 import { SystemTab } from './system-tab'
 
 const HEALTH_TABS = [
-  { value: 'overview', label: 'Overview' },
-  { value: 'agents', label: 'Agents' },
-  { value: 'activity', label: 'Activity' },
-  { value: 'system', label: 'System' },
+  { id: 'overview', label: 'Overview' },
+  { id: 'agents', label: 'Agents' },
+  { id: 'activity', label: 'Activity' },
+  { id: 'system', label: 'System' },
 ] as const
 
-type HealthTab = typeof HEALTH_TABS[number]['value']
+type HealthTab = typeof HEALTH_TABS[number]['id']
 type RunChecks = () => Promise<unknown>
 
 function isHealthTab(value: string): value is HealthTab {
-  return HEALTH_TABS.some((tab) => tab.value === value)
+  return HEALTH_TABS.some((tab) => tab.id === value)
 }
 
 interface OverviewPanelProps {
@@ -142,7 +142,6 @@ export function HealthPage() {
     >
       <PluginHeader
         title="Health"
-        subtitle="See what needs attention, fix it, and confirm Bakin is working."
         meta={announcement ? (
           <span
             className={runningChecks
@@ -177,45 +176,35 @@ export function HealthPage() {
         {announcement}
       </p>
 
-      <Tabs
-        value={activeTab}
-        onValueChange={(value) => {
-          if (isHealthTab(String(value))) setTabParam(String(value))
-        }}
-      >
-        <div className="min-w-0 overflow-x-auto overflow-y-hidden border-b border-border/70">
-          <TabsList
-            variant="line"
-            activateOnFocus
-            aria-label="Health sections"
-            className="min-w-max justify-start px-1"
-          >
-            {HEALTH_TABS.map((tab) => (
-              <TabsTrigger key={tab.value} value={tab.value} className="min-w-24 px-3 py-2">
-                {tab.label}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </div>
+      <div className="min-w-0">
+        <UnderlineTabs
+          tabs={HEALTH_TABS}
+          value={activeTab}
+          onValueChange={(value) => {
+            if (isHealthTab(value)) setTabParam(value)
+          }}
+          ariaLabel="Health sections"
+          idPrefix="health"
+          className="min-w-0 overflow-x-auto overflow-y-hidden"
+        />
 
-        <TabsContent value="overview" className="min-w-0 pt-1">
+        <div
+          id={`health-panel-${activeTab}`}
+          role="tabpanel"
+          aria-labelledby={`health-tab-${activeTab}`}
+          className="min-w-0 pt-4"
+        >
           {activeTab === 'overview' && (
             <OverviewPanel
               onRunChecksReady={registerOverviewRunChecks}
               onRunChecks={runChecks}
             />
           )}
-        </TabsContent>
-        <TabsContent value="agents" className="min-w-0 pt-1">
           {activeTab === 'agents' && <AgentsTab />}
-        </TabsContent>
-        <TabsContent value="activity" className="min-w-0 pt-1">
           {activeTab === 'activity' && <ActivityTab />}
-        </TabsContent>
-        <TabsContent value="system" className="min-w-0 pt-1">
           {activeTab === 'system' && <SystemTab />}
-        </TabsContent>
-      </Tabs>
+        </div>
+      </div>
     </div>
   )
 }

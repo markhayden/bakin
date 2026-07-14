@@ -7,6 +7,7 @@ import { StatusBadge, type StatusTone } from '@makinbakin/sdk/components'
 import { ChevronRight } from 'lucide-react'
 import { SystemSearchSection } from './system-search-section'
 import { SystemInventory } from './system-inventory'
+import { HealthTabIntro } from './health-tab-intro'
 import { useSystemData, type UseSystemDataResult } from '../hooks/use-system-data'
 
 type SummaryStatus = 'healthy' | 'attention' | 'unknown' | 'neutral'
@@ -228,22 +229,20 @@ export function SystemTabView({ data, section }: { data: UseSystemDataResult; se
 
   return (
     <div className="@container/health-system space-y-6" data-testid="health-system-tab">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-xl font-semibold tracking-tight">System</h2>
-          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            Are Search, the runtime, installed plugins, and registered checks working?
-          </p>
-        </div>
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={refreshing}
-          onClick={() => void data.refreshSystemDetails()}
-        >
-          {refreshing ? 'Refreshing…' : 'Refresh system details'}
-        </Button>
-      </header>
+      <HealthTabIntro
+        title="System"
+        description="Confirm Search, the runtime, installed plugins, and registered health checks are available and current. Start with anything that needs attention."
+        actions={(
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={refreshing}
+            onClick={() => void data.refreshSystemDetails()}
+          >
+            {refreshing ? 'Refreshing…' : 'Refresh system details'}
+          </Button>
+        )}
+      />
 
       <section aria-labelledby="system-subsystems-title">
         <div className="mb-2 flex items-end justify-between gap-3">

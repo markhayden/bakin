@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { useEffect, useState, type ReactNode } from 'react'
 import '../../rtl-settle'
 import type { HealthIncident, HealthRepairTarget } from '@makinbakin/sdk/types'
@@ -135,6 +135,8 @@ describe('HealthPage tab shell', () => {
     expect(page.className).toContain('@container/health')
     expect(page.classList.contains('health-page')).toBe(true)
     expect(screen.getByRole('heading', { name: 'Health' })).toBeDefined()
+    expect(within(screen.getByTestId('plugin-header')).queryByText('See what needs attention, fix it, and confirm Bakin is working.')).toBeNull()
+    expect(screen.getByRole('tablist', { name: 'Health sections' }).closest('[data-slot="underline-tabs"]')).not.toBeNull()
     expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
       'Overview',
       'Agents',

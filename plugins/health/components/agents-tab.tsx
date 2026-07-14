@@ -11,6 +11,7 @@ import { useAgentsData, type AgentsWindow } from '../hooks/use-agents-data'
 import { AgentsAttention } from './agents-attention'
 import { AgentsComparison } from './agents-comparison'
 import { AgentsUsageChart } from './agents-usage-chart'
+import { HealthTabIntro } from './health-tab-intro'
 
 const WINDOWS: readonly AgentsWindow[] = ['24h', '7d', '30d']
 const WINDOW_LABEL: Record<AgentsWindow, string> = {
@@ -161,24 +162,24 @@ export function AgentsTab() {
 
   return (
     <div className="min-w-0 space-y-5" data-testid="health-agents-tab">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="text-lg font-semibold">Agents</h2>
-          <p className="max-w-2xl text-sm text-muted-foreground">Find unusual token use or tracked work with few recorded results. Totals use calendar days; today is still in progress.</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <SegmentedControl
-            options={WINDOWS.map((value) => ({ value, label: WINDOW_LABEL[value] }))}
-            value={window}
-            onValueChange={setWindowParam}
-            ariaLabel="Agents window"
-          />
-          <Button variant="outline" size="sm" onClick={() => void resources.refresh()} disabled={resources.refreshing}>
-            <RefreshCw className={resources.refreshing ? 'animate-spin motion-reduce:animate-none' : ''} aria-hidden="true" />
-            Refresh
-          </Button>
-        </div>
-      </div>
+      <HealthTabIntro
+        title="Agents"
+        description="Compare token use, cost, tracked work, and recorded outcomes across agents. Spot unusual spend or missing results; today’s totals are still in progress."
+        actions={(
+          <>
+            <SegmentedControl
+              options={WINDOWS.map((value) => ({ value, label: WINDOW_LABEL[value] }))}
+              value={window}
+              onValueChange={setWindowParam}
+              ariaLabel="Agents window"
+            />
+            <Button variant="outline" size="sm" onClick={() => void resources.refresh()} disabled={resources.refreshing}>
+              <RefreshCw className={resources.refreshing ? 'animate-spin motion-reduce:animate-none' : ''} aria-hidden="true" />
+              Refresh
+            </Button>
+          </>
+        )}
+      />
 
       {backgroundErrors.length > 0 && (
         <p role="status" className="text-xs text-warning-foreground">

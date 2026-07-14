@@ -222,6 +222,13 @@ describe('OverviewTabView', () => {
       <OverviewTabView model={model} telemetry={dashboardTelemetry()} onRepair={onRepair} />,
     )
 
+    const identity = screen.getByRole('heading', { level: 2, name: 'Overview' })
+    expect(identity.className).toContain('sr-only')
+    const intro = screen.getByText('See what needs attention, fix it, and confirm Bakin is working.')
+    expect(intro.className).toContain('text-xs')
+    expect(intro.className).toContain('leading-relaxed')
+    expect(intro.className).toContain('text-muted-foreground/80')
+
     const pulse = screen.getByTestId('overview-platform-pulse')
     expect(pulse.textContent).toMatch(/Bakin.*Needs attention.*Search.*Healthy.*1 working.*4 sessions.*3 failed/i)
     expect(screen.getByRole('link', { name: /Search: Healthy/i }).getAttribute('href')).toBe('/health?tab=system&section=search')

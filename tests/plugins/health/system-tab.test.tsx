@@ -177,6 +177,12 @@ describe('SystemTabView', () => {
     data.report.stale = true // An unrelated failed check must not overwrite fresh Search readiness.
     const { container } = render(<SystemTabView data={data} />)
 
+    const identity = screen.getByRole('heading', { level: 2, name: 'System' })
+    expect(identity.className).toContain('sr-only')
+    const intro = screen.getByText(/Confirm Search, the runtime, installed plugins, and registered health checks are available and current/i)
+    expect(intro.className).toContain('text-xs')
+    expect(intro.className).toContain('leading-relaxed')
+    expect(intro.className).toContain('text-muted-foreground/80')
     expect(screen.getByRole('heading', { name: 'Subsystem status' })).toBeDefined()
     const subsystemList = screen.getByTestId('system-subsystem-list')
     expect(subsystemList.getAttribute('role')).toBe('list')

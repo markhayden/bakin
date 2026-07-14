@@ -11,6 +11,7 @@ import { ActivityFailureTrend } from './activity-failure-trend'
 import { ActivityMetrics } from './activity-metrics'
 import { ActivityPulse } from './activity-pulse'
 import { ActivityVolumeChart } from './activity-volume-chart'
+import { HealthTabIntro } from './health-tab-intro'
 import { normalizeActivityFeed } from '../lib/activity-feed-compat'
 import {
   useActivityData,
@@ -79,43 +80,43 @@ export function ActivityTab() {
 
   return (
     <div className="space-y-5" data-testid="health-activity-tab">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-semibold">What is Bakin doing?</h2>
-          <p className="text-sm text-muted-foreground">See every tool call, API request, and agent run—then inspect anything that needs attention.</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <label className="text-xs text-muted-foreground">
-            <span className="sr-only">Activity window</span>
-            <select
-              className="h-8 rounded-md border border-input bg-background px-2 text-foreground"
-              value={window}
-              onChange={(event) => setWindow(event.target.value)}
-            >
-              <option value="5m">Last 5 minutes</option>
-              <option value="1h">Last hour</option>
-              <option value="24h">Last 24 hours</option>
-            </select>
-          </label>
-          <label className="text-xs text-muted-foreground">
-            <span className="sr-only">Activity kind</span>
-            <select
-              className="h-8 rounded-md border border-input bg-background px-2 text-foreground"
-              value={kind}
-              onChange={(event) => setKind(event.target.value)}
-            >
-              <option value="all">All types</option>
-              <option value="mcp">Tools</option>
-              <option value="rest">API</option>
-              <option value="agent">Agents</option>
-            </select>
-          </label>
-          <Button size="sm" variant="outline" onClick={() => void resource.refresh()} disabled={resource.refreshing}>
-            <RefreshCw className={resource.refreshing ? 'animate-spin motion-reduce:animate-none' : ''} aria-hidden="true" />
-            Refresh
-          </Button>
-        </div>
-      </div>
+      <HealthTabIntro
+        title="Activity"
+        description="Review every tool call, API request, and agent run across Bakin. Routine successes stay visible, with failures called out for inspection."
+        actions={(
+          <>
+            <label className="text-xs text-muted-foreground">
+              <span className="sr-only">Activity window</span>
+              <select
+                className="h-8 rounded-md border border-input bg-background px-2 text-foreground"
+                value={window}
+                onChange={(event) => setWindow(event.target.value)}
+              >
+                <option value="5m">Last 5 minutes</option>
+                <option value="1h">Last hour</option>
+                <option value="24h">Last 24 hours</option>
+              </select>
+            </label>
+            <label className="text-xs text-muted-foreground">
+              <span className="sr-only">Activity kind</span>
+              <select
+                className="h-8 rounded-md border border-input bg-background px-2 text-foreground"
+                value={kind}
+                onChange={(event) => setKind(event.target.value)}
+              >
+                <option value="all">All types</option>
+                <option value="mcp">Tools</option>
+                <option value="rest">API</option>
+                <option value="agent">Agents</option>
+              </select>
+            </label>
+            <Button size="sm" variant="outline" onClick={() => void resource.refresh()} disabled={resource.refreshing}>
+              <RefreshCw className={resource.refreshing ? 'animate-spin motion-reduce:animate-none' : ''} aria-hidden="true" />
+              Refresh
+            </Button>
+          </>
+        )}
+      />
 
       {resource.loading && !data ? (
         <div role="status" aria-label="Loading activity" className="py-16 text-center text-sm text-muted-foreground">

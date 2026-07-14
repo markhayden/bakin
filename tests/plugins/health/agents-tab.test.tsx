@@ -261,7 +261,12 @@ describe('AgentsTab', () => {
 
     render(<AgentsTab />)
 
-    expect(screen.getByRole('heading', { level: 2, name: 'Agents' })).toBeDefined()
+    const identity = screen.getByRole('heading', { level: 2, name: 'Agents' })
+    expect(identity.className).toContain('sr-only')
+    const intro = screen.getByText(/Compare token use, cost, tracked work, and recorded outcomes across agents/i)
+    expect(intro.className).toContain('text-xs')
+    expect(intro.className).toContain('leading-relaxed')
+    expect(intro.className).toContain('text-muted-foreground/80')
     expect(screen.getByRole('heading', { level: 3, name: 'Agents to review' })).toBeDefined()
     expect(screen.getByRole('heading', { level: 3, name: 'Usage over time' })).toBeDefined()
     expect(screen.getByRole('heading', { level: 3, name: 'Agent activity' })).toBeDefined()
