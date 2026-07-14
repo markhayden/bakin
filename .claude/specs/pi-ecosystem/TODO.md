@@ -7,7 +7,7 @@ See PLAN.md for acceptance criteria. One PR per workstream; live-test before mer
 - [x] T1.2 published (projects-v0.7.0 + messaging-v0.7.1; also repaired the publish pipeline: SDK assembled from Bakin clone via BAKIN_SDK_DIR — bits a382b48; ambient SDK types caught up to declarative routes — bits 0b9602c)
 - [x] T1.3 fresh-home resolver verification: both artifacts resolve + packaged manifests pass readPluginManifestJson (live 0.6.0 local installs left untouched)
 
-## WS2 — pack legs + packs (PR 2)
+## WS2 — pack legs + packs (PR 2) — MERGED #674 + #675; #671 closed
 - [x] T2.1 manifest schema: requires.npm/models/prereqs + platforms (+ tar.gz bin archives, optional prereqs)
 - [x] T2.2 requirements-installer (npm payloads + models), ONE entry point at all lifecycle sites + boot model-env injection
 - [x] T2.3 readiness legs + hub rendering + CLI consent preview
