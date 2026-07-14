@@ -39,8 +39,35 @@ A capability pack is `kind: "skill-pack"` plus:
   adapter slugs when genuinely runtime-specific. Explore badges/gates
   install against the active adapter.
 - `requires.bins[]` — `{ name, version, install: { <platform>: { url,
-  sha256 } }, verifyArgs? }`; platforms `darwin-arm64|darwin-x64|linux-x64|
-  linux-arm64`; https-only (loopback http allowed for test fixtures).
+  sha256, archive?: { format: 'tar.gz', member } } }, verifyArgs? }`;
+  platforms `darwin-arm64|darwin-x64|linux-x64|linux-arm64`; https-only
+  (loopback http allowed for test fixtures). With `archive`, the sha256
+  pins the TARBALL and `member` is extracted as the binary.
+- `requires.npm[]` (pi-ecosystem WS2) — `{ name, source, dependencies
+  (EXACT pins only), env? }`. Scripts from the pack-relative `source` dir +
+  a generated `type:module` package.json + node_modules install into
+  `~/.bakin/npm/<packId>/<name>/` (unversioned so SKILL.md paths survive
+  upgrades) via the SYSTEM bun with `--ignore-scripts` (whiskit env
+  allowlist; `env` overlays, e.g. PUPPETEER_SKIP_DOWNLOAD). HARD RULE:
+  node_modules can NEVER live in a projected skill — Pi's skill writer
+  rejects nested paths and both drift hashes walk every file. Zero-dep
+  payloads (vendored scripts) never invoke bun. Unchanged deps +
+  node_modules present = install skipped, so offline repair converges.
+- `requires.models[]` — `{ name, url, sha256, bytes, dest, env? }` into
+  `~/.bakin/models/<dest>`; streams to disk (never buffered), sha256+size
+  verified, atomic rename; size+marker fast path avoids re-hashing ~GB
+  files. `bytes` drives the CLI consent preview. `env` is injected at boot
+  (`injectPackModelEnv`, secret-env pattern, unset-only) with `{dest}`
+  expanding to the absolute installed path — how a consuming binary finds
+  its model (transcribe: PARAKEET_CPP_MODEL_PATH).
+- `requires.prereqs[]` — `{ name, kind: 'binary'|'app', probe, help,
+  optional? }` — CHECKED, never installed (binary = PATH lookup, app =
+  absolute path existsSync). Missing required prereqs block readiness with
+  the help link as remediation; `optional: true` surfaces without blocking
+  (transcribe's ffmpeg).
+- `platforms?` (pack level) — OS/arch gate; a gated pack on the wrong
+  platform reports "not available on this platform", never per-leg noise
+  (transcribe is darwin-arm64 only).
 - `secrets[]` (base field, now enforced) — `{ name: ENV_VAR, description,
   required, secretSlot: '<provider>.<name>', help: url }`. `secretSlot`
   drives the guided key step and boot env injection.
@@ -50,6 +77,14 @@ A capability pack is `kind: "skill-pack"` plus:
 Standard agent-packages install (lockfile, `.installedBy` sidecars,
 rollback, receipts) with two additions:
 
+- **`requirements-installer.ts`** — `installManifestRequirements` is THE
+  one entry point every projection pass calls (install parent+deps, update
+  fail-fast BEFORE teardown, local re-projection best-effort with previous
+  rows kept offline) for ALL legs: bins + npm payloads + models. Any pass
+  that rewrites lockfile projections without this call silently untracks
+  legs (PR #673 lesson). Dropped-leg sweeps on upgrade are refcount-aware
+  for shareable targets (`withoutSharedArtifacts`: bins + models; npm
+  payload dirs are per-pack, never shared).
 - **`bin-installer.ts`** — antfly-installer pattern: download with timeout →
   sha256 verify against the pin (refuse on mismatch) → chmod 0755 →
   verify-then-commit (`verifyArgs` run against the temp file) → atomic
@@ -76,8 +111,10 @@ rollback, receipts) with two additions:
 `src/core/agent-packages/capability-readiness.ts` (`listCapabilities()`):
 content leg (lockfile skill projections resolved against live
 `runtime.skills`), bins leg (Bakin bin dir; honest `unsupported-platform`),
-secrets leg (env → store per `secretSlot`). Non-ready legs carry
-remediation strings. Surfaces (all thin clients): `GET
+npm leg (payload dir + node_modules when deps exist), models leg (dest
+present at declared size), prereqs leg (PATH/app probes; optional ones
+never block), platform gate (`platformSupported`), secrets leg (env →
+store per `secretSlot`). Non-ready legs carry remediation strings. Surfaces (all thin clients): `GET
 /api/packages/capabilities`, the health plugin's `capability.<slug>` doctor
 findings, `bakin check capabilities` (the `capabilities` onboarding
 component — check = readiness + missing recommendations; install =

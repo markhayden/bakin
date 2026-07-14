@@ -89,12 +89,41 @@ async function cmdPackagesList(flags: AgentsCmdFlags): Promise<void> {
   }
 }
 
+/**
+ * Best-effort pre-consent download preview. Local-path sources read the
+ * manifest directly; remote sources fall back to the generic consent text
+ * (their requirements print in the post-install capability status).
+ */
+async function previewInstallRequirements(source: string): Promise<string[]> {
+  const { existsSync, readFileSync } = await import('fs')
+  const { join } = await import('path')
+  const manifestPath = join(source, 'bakin-package.json')
+  if (!existsSync(manifestPath)) return []
+  const { safeParseManifest } = await import('../../../packages/core/src/agent-packages/manifest')
+  const parsed = safeParseManifest(JSON.parse(readFileSync(manifestPath, 'utf-8')))
+  if (!parsed.success || parsed.data.kind !== 'skill-pack') return []
+  const lines: string[] = []
+  for (const model of parsed.data.requires?.models ?? []) {
+    lines.push(`Downloads model "${model.name}" (${Math.round(model.bytes / 1e6)} MB) into ~/.bakin/models.`)
+  }
+  for (const prereq of parsed.data.requires?.prereqs ?? []) {
+    lines.push(`Needs ${prereq.name} installed${prereq.optional ? ' (optional)' : ''} — checked, never auto-installed.`)
+  }
+  return lines
+}
+
 async function cmdPackagesInstall(source: string, flags: AgentsCmdFlags, yes: boolean): Promise<void> {
-  // Consent (story 3): say what installs from where before any write.
+  // Consent (story 3): say what installs from where before any write —
+  // including declared downloads, so a 900 MB model is never a surprise.
   if (!yes && !flags.json && process.stdout.isTTY) {
     const origin = isBareName(source) ? `"${source}" from the curated catalog (pinned source)` : source
     console.log(`This installs ${origin}: skill content projected to the active runtime,`)
-    console.log('plus any pinned binaries into ~/.bakin/bin. Scripts run as agent shell commands.')
+    console.log('plus any pinned binaries into ~/.bakin/bin and declared npm dependencies')
+    console.log('into ~/.bakin/npm. Scripts run as agent shell commands.')
+    try {
+      const preview = await previewInstallRequirements(source)
+      for (const line of preview) console.log(line)
+    } catch { /* preview is best-effort — consent text above still covers the install */ }
     if (!(await promptYesNo('Proceed? [y/N] '))) {
       console.log('Aborted — nothing installed.')
       return
