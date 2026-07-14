@@ -2,7 +2,7 @@
 
 import { useQueryState } from '@makinbakin/sdk/hooks'
 import { Button } from '@makinbakin/sdk/ui'
-import { RefreshCw } from 'lucide-react'
+import { ChevronDown, RefreshCw } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { ActivityBreakdown, type ActivityFailureSelection } from './activity-breakdown'
 import { ActivityEventStream } from './activity-event-stream'
@@ -26,6 +26,7 @@ const WINDOWS = new Set<ActivityWindow>(['5m', '1h', '24h'])
 const KINDS = new Set<ActivityKindFilter>(['all', 'mcp', 'rest', 'agent'])
 
 const FAILURE_GROUP_PAGE_SIZE = 25
+const FILTER_SELECT_CLASS = 'h-8 appearance-none rounded-md border border-input bg-background pl-2 pr-7 text-foreground'
 
 function activityWindow(value: string): ActivityWindow {
   return WINDOWS.has(value as ActivityWindow) ? value as ActivityWindow : '1h'
@@ -151,10 +152,10 @@ export function ActivityTab() {
         description="Review every tool call, API request, and agent run across Bakin. Routine successes stay visible, with failures called out for inspection."
         actions={(
           <>
-            <label className="text-xs text-muted-foreground">
+            <label className="relative inline-flex text-xs text-muted-foreground">
               <span className="sr-only">Activity window</span>
               <select
-                className="h-8 rounded-md border border-input bg-background px-2 text-foreground"
+                className={FILTER_SELECT_CLASS}
                 value={window}
                 onChange={(event) => changeWindow(event.target.value)}
               >
@@ -162,11 +163,16 @@ export function ActivityTab() {
                 <option value="1h">Last hour</option>
                 <option value="24h">Last 24 hours</option>
               </select>
+              <ChevronDown
+                data-activity-filter-chevron
+                className="pointer-events-none absolute right-2 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+                aria-hidden="true"
+              />
             </label>
-            <label className="text-xs text-muted-foreground">
+            <label className="relative inline-flex text-xs text-muted-foreground">
               <span className="sr-only">Activity kind</span>
               <select
-                className="h-8 rounded-md border border-input bg-background px-2 text-foreground"
+                className={FILTER_SELECT_CLASS}
                 value={kind}
                 onChange={(event) => changeKind(event.target.value)}
               >
@@ -175,6 +181,11 @@ export function ActivityTab() {
                 <option value="rest">API</option>
                 <option value="agent">Agents</option>
               </select>
+              <ChevronDown
+                data-activity-filter-chevron
+                className="pointer-events-none absolute right-2 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+                aria-hidden="true"
+              />
             </label>
             <Button size="sm" variant="outline" onClick={() => void resource.refresh()} disabled={resource.refreshing}>
               <RefreshCw className={resource.refreshing ? 'animate-spin motion-reduce:animate-none' : ''} aria-hidden="true" />

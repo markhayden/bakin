@@ -799,6 +799,20 @@ describe('ActivityTab', () => {
     expect(screen.queryByRole('checkbox', { name: 'Include routine success' })).toBeNull()
   })
 
+  it('reserves trailing space around both activity filter chevrons', () => {
+    render(<ActivityTab />)
+
+    for (const label of ['Activity window', 'Activity kind']) {
+      const select = screen.getByLabelText(label)
+      const chevron = select.parentElement?.querySelector('[data-activity-filter-chevron]')
+
+      expect(select.className).toContain('appearance-none')
+      expect(select.className).toContain('pr-7')
+      expect(chevron).not.toBeNull()
+      expect(chevron?.classList.contains('right-2')).toBe(true)
+    }
+  })
+
   it('lands on a metrics dashboard with volume and breakdown charts', () => {
     useActivityDataMock.mockImplementation(() => activityDashboardData())
 
