@@ -281,3 +281,42 @@ describe('model env boot injection', () => {
     }
   })
 })
+
+describe('capability readiness — new legs', () => {
+  it('reports missing npm/model legs with sync remediation, and platform gating honestly', async () => {
+    const src = seedPack('1.0.0', { npmDeps: { 'fake-dep': '1.2.3' } })
+    const manifest = JSON.parse(readFileSync(join(src, 'bakin-package.json'), 'utf-8'))
+    manifest.requires.prereqs = [
+      { name: 'definitely-not-a-real-binary-xyz', kind: 'binary', probe: 'definitely-not-a-real-binary-xyz', help: 'https://example.dev' },
+    ]
+    writeFileSync(join(src, 'bakin-package.json'), JSON.stringify(manifest))
+    await installPackage({ source: src })
+
+    rmSync(join(testDir, 'npm', 'toolpack'), { recursive: true, force: true })
+    rmSync(modelFile(), { force: true })
+
+    const { listCapabilities } = await import('../../src/core/agent-packages/capability-readiness')
+    const [cap] = await listCapabilities()
+    expect(cap!.ready).toBe(false)
+    expect(cap!.npm[0]!.status).toBe('missing')
+    expect(cap!.models[0]!.status).toBe('missing')
+    expect(cap!.prereqs[0]!.status).toBe('missing')
+    expect(cap!.platformSupported).toBe(true)
+    expect(cap!.missing.join('\n')).toContain('bakin packages sync toolpack@1.0.0')
+    expect(cap!.missing.join('\n')).toContain('https://example.dev')
+  })
+
+  it('a platforms-gated pack on the wrong platform reports platform, not per-leg noise', async () => {
+    const src = seedPack('1.0.0', { npm: false, model: false })
+    const manifest = JSON.parse(readFileSync(join(src, 'bakin-package.json'), 'utf-8'))
+    manifest.platforms = process.platform === 'darwin' ? ['linux-x64'] : ['darwin-arm64']
+    writeFileSync(join(src, 'bakin-package.json'), JSON.stringify(manifest))
+    await installPackage({ source: src })
+
+    const { listCapabilities } = await import('../../src/core/agent-packages/capability-readiness')
+    const [cap] = await listCapabilities()
+    expect(cap!.platformSupported).toBe(false)
+    expect(cap!.ready).toBe(false)
+    expect(cap!.missing.join('\n')).toContain('not available on this platform')
+  })
+})

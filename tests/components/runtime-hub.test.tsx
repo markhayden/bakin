@@ -153,6 +153,10 @@ describe('CapabilitiesTab', () => {
           description: 'Give your agents real web search — research, docs lookup, fresh information.',
           skills: [{ name: 'bx-search', status: 'ok' }],
           bins: [{ name: 'bx', status: 'ok' }],
+          npm: [{ name: 'scripts', status: 'missing' }],
+          models: [{ name: 'parakeet', bytes: 897_000_000, status: 'missing' }],
+          prereqs: [{ name: 'Google Chrome', kind: 'app', help: 'https://www.google.com/chrome/', status: 'missing' }],
+          platformSupported: true,
           secrets: [{ name: 'BRAVE_SEARCH_API_KEY', required: true, secretSlot: 'brave.apiKey', status: 'missing' }],
           ready: false,
           missing: ['BRAVE_SEARCH_API_KEY is not configured — add it in Settings → Integrations & Keys'],
@@ -165,6 +169,9 @@ describe('CapabilitiesTab', () => {
     expect(screen.getByText(/Give your agents real web search/)).toBeTruthy()
     expect(screen.getByText('Needs attention')).toBeTruthy()
     expect(screen.getByText(/BRAVE_SEARCH_API_KEY not set/)).toBeTruthy()
+    expect(screen.getByText(/dependencies scripts missing/)).toBeTruthy()
+    expect(screen.getByText(/model parakeet missing \(897 MB\)/)).toBeTruthy()
+    expect(screen.getByText(/Google Chrome not installed/)).toBeTruthy()
     expect(screen.getByText('Add the key in Settings')).toBeTruthy()
   })
 
