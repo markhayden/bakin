@@ -16,7 +16,7 @@ See PLAN.md for acceptance criteria. One PR per workstream; live-test before mer
 - [x] T2.6 browser-tools (pruned dep set, Chrome prereq; authored + validated)
 - [x] T2.7 capability-packs.md + public authoring docs
 
-## WS3 — images completion (PR 3)
+## WS3 — images completion (PR 3) — MERGED #676; #627 closed
 - [x] T3.1 direct-shim input-images (openai /images/edits multipart + gemini inline_data)
 - [x] T3.2 adapter-pi providers()/edit() completion + plugin reference-gate relax
 - [x] T3.3 codex lane live battery PASS (create/edit/multi-ref, real PNGs); key lanes covered by fake-endpoint suites (no metered keys on this box — 3×3 completes when keys are added)
