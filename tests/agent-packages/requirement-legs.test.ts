@@ -378,3 +378,14 @@ describe('review hardening pins', () => {
     expect(bunRuns).toHaveLength(1) // still offline-skipped
   })
 })
+
+describe('sync scanner vs requirement legs', () => {
+  it('npm payloads and models never report asset drift (readiness owns those legs)', async () => {
+    await installPackage({ source: seedPack('1.0.0', { npmDeps: { 'fake-dep': '1.2.3' } }) })
+    const { scanAgentSync } = await import('../../src/core/agent-packages/sync-scanner')
+    const report = await scanAgentSync()
+    const legFindings = report.findings.filter((f) =>
+      String(f.target ?? '').includes('/npm/') || String(f.target ?? '').includes('/models/'))
+    expect(legFindings).toEqual([])
+  })
+})

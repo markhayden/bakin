@@ -495,6 +495,14 @@ export async function scanAgentSync(lockfile?: Lockfile): Promise<SyncScanReport
   for (const [packageId, entry] of Object.entries(lock.packages)) {
     for (const p of entry.projections ?? []) {
       if (p.kind === 'workspace-file' || p.kind === 'lesson-marker') continue
+      // npm payloads + models are OWNED by the capability-readiness engine
+      // (presence + remediation; doctor inherits) — content-hashing them
+      // here is a permanent false positive: a payload contains node_modules
+      // + a generated package.json the pack source never had, and re-hashing
+      // ~GB models every scan is real cost. Bins stay: tamper detection
+      // belongs here (repair self-heals), with archive bins compared against
+      // the marker's extractedSha256 below.
+      if (p.kind === 'npm-payload' || p.kind === 'model') continue
 
       // Seed-once kinds (personas today) are user-owned after projection: no
       // .installedBy sidecar, edits are expected, uninstall leaves them
@@ -612,7 +620,11 @@ export async function scanAgentSync(lockfile?: Lockfile): Promise<SyncScanReport
         continue
       }
       const actualSha = statSync(p.target).isDirectory() ? computeDirSha(p.target) : computeFileSha(p.target)
-      if ((p.sha256 && actualSha !== p.sha256) || marker.sha256 !== actualSha) {
+      // Archive-sourced bins: the projection/marker sha pins the TARBALL —
+      // the on-disk binary compares against the marker's extracted hash.
+      const expectedSha = p.kind === 'bin' && marker.extractedSha256 ? marker.extractedSha256 : marker.sha256
+      const rowShaMismatch = p.kind === 'bin' && marker.extractedSha256 ? false : Boolean(p.sha256 && actualSha !== p.sha256)
+      if (rowShaMismatch || expectedSha !== actualSha) {
         report.findings.push({
           type: 'asset-drifted',
           severity: 'warn',
