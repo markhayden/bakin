@@ -260,5 +260,9 @@ allowlist — see the contract doc, born of the P5.3 conflation below).
   runtime.tsx` + `components/runtime/`): Overview (plain-language capability
   grid + legend + credential/tool-access tiles + live setup checks),
   Capabilities (capability-pack readiness, remediation links; installs stay
-  in Explore), Switch (dry-run preview DEFAULT, ConfirmDialog-gated execute,
-  live SSE steps, grouped result cards).
+  in Explore), Runtimes (roster cards on the capability-card anatomy;
+  clicking a runtime opens the ConfirmDialog which owns the WHOLE switch
+  flow — options, consequences, preview trigger, typed confirm — per the
+  no-inline-actions rule; dry-run preview results render on the page,
+  live SSE steps, grouped result cards). Unknown ?tab= values fall back
+  to Overview.

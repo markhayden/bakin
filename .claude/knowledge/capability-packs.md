@@ -58,7 +58,13 @@ rollback, receipts) with two additions:
   projections: install-failure rollback and uninstall ride the standard
   lifecycle; the uninstaller keeps a bin any other installed package still
   projects (refcount-aware). Idempotent: an on-disk bin matching the pin
-  skips the download — shared bins across packs come free.
+  skips the download — shared bins across packs come free. Bins survive
+  EVERY projection pass (PR #673): version upgrades install the new
+  manifest's bins FIRST (fail-fast — a bad download aborts before any
+  teardown), dropped bins honor the shared-bin rule, and local repair
+  (`repairPackLocally` / `bakin packages sync`, which always re-projects
+  locally) restores deleted binaries best-effort — offline, skills still
+  repair and previous bin rows stay lockfile-tracked.
 - **Guided key step** — `POST /api/packages/install` resolves bare names
   from the curated catalog (`sourceWithRef` pin) and returns the pack's
   readiness; the CLI (`bakin packages install <name>`, consent + `--yes`)
