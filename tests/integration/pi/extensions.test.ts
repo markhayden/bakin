@@ -90,12 +90,19 @@ afterAll(() => {
 })
 
 describe('pi extension policy', () => {
-  test("default ('all'): extension tool is live and callable; broken extension is contained", async () => {
+  test("DEFAULT ('allowlist', empty): discovered extensions stay INERT until approved (WS4 flip)", async () => {
+    const fake = seedProvider([{ steps: [{ text: 'no ext by default' }] }])
+    const adapter = await adapterWithPolicy(undefined)
+    await adapter.messaging.send({ agentId: 'main', content: 'plain' })
+    expect(requestToolNames(fake.requests[0])).not.toContain('ext_fixture_echo')
+  })
+
+  test("'all': extension tool is live and callable; broken extension is contained", async () => {
     const fake = seedProvider([
       { steps: [{ toolCall: { name: 'ext_fixture_echo', args: { word: 'hello' } } }] },
       { steps: [{ text: 'ext round trip done' }] },
     ])
-    const adapter = await adapterWithPolicy(undefined)
+    const adapter = await adapterWithPolicy({ mode: 'all' })
     const result = await adapter.messaging.send({ agentId: 'main', content: 'use the ext tool' })
     expect(result.content).toBe('ext round trip done')
     expect(requestToolNames(fake.requests[0])).toContain('ext_fixture_echo')

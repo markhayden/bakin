@@ -260,3 +260,47 @@ describe('RuntimesTab', () => {
     await waitFor(() => expect(posts).toEqual([{ target: 'openclaw' }]))
   })
 })
+
+describe('ExtensionsSection', () => {
+  const report = (status: 'pending' | 'allowed') => ({
+    supported: true,
+    mode: 'allowlist',
+    extensions: [{ id: 'pi-image-gen', label: 'pi-image-gen', source: 'npm package', path: 'pi-image-gen', status }],
+  })
+
+  it('renders nothing when the runtime has no extension mechanism', async () => {
+    globalThis.fetch = (async () => new Response(JSON.stringify({ supported: false, mode: 'allowlist', extensions: [] }), { status: 200 })) as unknown as typeof fetch
+    const { ExtensionsSection } = await import('../../packages/host/src/components/runtime/extensions-section')
+    render(<ExtensionsSection />)
+    await settleReact()
+    expect(screen.queryByTestId('runtime-extensions')).toBeNull()
+  })
+
+  it('approve is ConfirmDialog-gated with the trust + spend disclosure, and flips to Allowed', async () => {
+    const posts: Array<{ url: string; body: unknown }> = []
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (init?.method === 'POST') {
+        posts.push({ url, body: JSON.parse(String(init.body)) })
+        return new Response(JSON.stringify(report('allowed')), { status: 200 })
+      }
+      return new Response(JSON.stringify(report('pending')), { status: 200 })
+    }) as unknown as typeof fetch
+
+    const { ExtensionsSection } = await import('../../packages/host/src/components/runtime/extensions-section')
+    render(<ExtensionsSection />)
+    await waitFor(() => screen.getByTestId('ext-allow-pi-image-gen'))
+    expect(screen.getByText('Awaiting approval')).toBeTruthy()
+
+    fireEvent.click(screen.getByTestId('ext-allow-pi-image-gen'))
+    await settleReact()
+    // Nothing posted before confirm; disclosure present in the dialog.
+    expect(posts).toEqual([])
+    expect(screen.getByText(/full system permissions/i)).toBeTruthy()
+    expect(screen.getByText(/OUTSIDE Bakin's budget caps/i)).toBeTruthy()
+
+    fireEvent.click(screen.getByTestId('ext-confirm'))
+    await waitFor(() => screen.getByText('Allowed'))
+    expect(posts).toEqual([{ url: expect.stringContaining('/api/runtime/extensions/allow'), body: { id: 'pi-image-gen' } }])
+  })
+})

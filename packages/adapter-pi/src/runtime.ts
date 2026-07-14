@@ -21,6 +21,7 @@ import { capabilitiesForModel, createModelsSurface, resetModelRegistry } from '.
 import { readRegistry } from './registry'
 import { createHealthChecks } from './health-checks'
 import { createImagesSurface } from './images'
+import { createExtensionsSurface } from './extensions'
 import { codexImageAuth } from './codex-images'
 import { resolveProviderApiKeySource } from '@bakin/core/media'
 import { createSessionsSurface } from './sessions'
@@ -163,7 +164,7 @@ export class PiRuntimeAdapter implements AgentRuntimeAdapter {
   }
 
   getHealthChecks(): ReturnType<AgentRuntimeAdapter['getHealthChecks']> {
-    return createHealthChecks()
+    return createHealthChecks(() => this.initOpts?.settings ?? this.options.settings)
   }
 
   agents: AgentRuntimeAdapter['agents'] = createAgentsSurface()
@@ -189,6 +190,14 @@ export class PiRuntimeAdapter implements AgentRuntimeAdapter {
       this._images = createImagesSurface({ carrierModel: imagesSettings?.carrierModel })
     }
     return this._images
+  }
+
+  /**
+   * Extension trust surface (WS4): inert discovery of what the resource
+   * loader would load, statused by the SAME policy the loader applies.
+   */
+  get extensions(): AgentRuntimeAdapter['extensions'] {
+    return createExtensionsSurface(() => this.initOpts?.settings ?? this.options.settings)
   }
 
   // channels/cron are OMITTED (P2.1): Pi has no delivery layer and no

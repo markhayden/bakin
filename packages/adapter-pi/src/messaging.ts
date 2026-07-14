@@ -57,9 +57,36 @@ export interface PiExtensionsPolicy {
   allow?: string[]
 }
 
-function extensionsPolicy(settings: Record<string, unknown> | undefined): Required<PiExtensionsPolicy> {
+/**
+ * DEFAULT IS 'allowlist' (empty) — terminal-installed extensions are
+ * discovered but INERT until approved on the runtime hub (pi-ecosystem WS4;
+ * flipped from 'all', which loaded everything silently). Extensions run
+ * unsandboxed in this server process — loading is a trust decision.
+ */
+export function extensionsPolicy(settings: Record<string, unknown> | undefined): Required<PiExtensionsPolicy> {
   const raw = (settings?.piExtensions ?? {}) as PiExtensionsPolicy
-  return { mode: raw.mode ?? 'all', allow: raw.allow ?? [] }
+  return { mode: raw.mode ?? 'allowlist', allow: raw.allow ?? [] }
+}
+
+/**
+ * ONE allowlist predicate for loading AND discovery status: exact full path,
+ * exact basename (with or without extension), or — for npm/git package
+ * extensions whose load path lands under node_modules — an exact
+ * path-segment match of the package name. NEVER substring matching: an
+ * entry "foo" must not admit "foobar".
+ */
+export function extensionAllowed(path: string, allow: string[]): boolean {
+  const base = path.split('/').pop() ?? path
+  const stem = base.replace(/\.(ts|js|mjs|cjs)$/, '')
+  const segments = path.split('/')
+  return allow.some((pattern) =>
+    pattern === path
+    || pattern === base
+    || pattern === stem
+    || (pattern.includes('/')
+      ? path.includes(`/node_modules/${pattern}/`) || path.endsWith(`/node_modules/${pattern}`)
+      : segments.includes(pattern)),
+  )
 }
 
 export interface PiMessagingDeps {
@@ -150,9 +177,7 @@ async function openTurnSession(args: MessageArgs, deps: PiMessagingDeps): Promis
       ? {
           extensionsOverride: (base: LoadExtensionsResult): LoadExtensionsResult => ({
             ...base,
-            extensions: base.extensions.filter((ext) =>
-              extPolicy.allow.some((pattern) => ext.path.includes(pattern)),
-            ),
+            extensions: base.extensions.filter((ext) => extensionAllowed(ext.path, extPolicy.allow)),
           }),
         }
       : {}),

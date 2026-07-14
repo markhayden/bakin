@@ -189,6 +189,50 @@ async function cmdRuntimeUse(target: string | undefined, flags: RuntimeUseFlags)
   }
 }
 
+interface ExtensionsReport {
+  supported: boolean
+  mode: string
+  extensions: Array<{ id: string; label: string; source: string; path: string; status: string }>
+}
+
+/** `bakin runtime extensions [list|allow <id>|revoke <id>]` — trust lane (WS4). */
+async function cmdRuntimeExtensions(sub: string | undefined, id: string | undefined): Promise<void> {
+  if (sub === 'allow' || sub === 'revoke') {
+    if (!id) {
+      console.error(`Usage: bakin runtime extensions ${sub} <id>`)
+      process.exit(1)
+    }
+    const report = await apiPost(`/api/runtime/extensions/${sub}`, { id }) as ExtensionsReport
+    console.log(`${sub === 'allow' ? 'Allowed' : 'Revoked'} "${id}".`)
+    printExtensions(report)
+    return
+  }
+  if (sub !== undefined && sub !== 'list') {
+    console.error(`Unknown subcommand: runtime extensions ${sub}. Supported: list, allow <id>, revoke <id>`)
+    process.exit(1)
+  }
+  printExtensions(await apiGet('/api/runtime/extensions') as ExtensionsReport)
+}
+
+function printExtensions(report: ExtensionsReport): void {
+  if (!report.supported) {
+    console.log('The active runtime has no extension mechanism.')
+    return
+  }
+  console.log(`Extension policy: ${report.mode}`)
+  if (report.extensions.length === 0) {
+    console.log('No extensions discovered. Install with `pi install npm:<pkg>` (they stay inert until allowed here).')
+    return
+  }
+  for (const ext of report.extensions) {
+    console.log(`  ${ext.status === 'allowed' ? '✓' : ext.status === 'blocked' ? '✗' : '…'} ${ext.id.padEnd(32)} ${ext.status.padEnd(8)} ${ext.source}`)
+  }
+  if (report.extensions.some((e) => e.status === 'pending')) {
+    console.log('Pending extensions do NOT load into agent turns. Approve with `bakin runtime extensions allow <id>` —')
+    console.log('an allowed extension is trusted code running in the Bakin server process, and any API keys it uses spend outside Bakin budget caps.')
+  }
+}
+
 export async function run(args: string[]): Promise<void> {
   if (args[0] === 'runtime') {
     if (args[1] === 'use') {
@@ -207,6 +251,8 @@ export async function run(args: string[]): Promise<void> {
         copyWorkspaces: !rest.includes('--no-copy-workspaces'),
         adoptCron: rest.includes('--adopt-cron'),
       })
+    } else if (args[1] === 'extensions') {
+      await cmdRuntimeExtensions(args[2], args[3])
     } else await cmdRuntimeCapabilities()
     return
   }

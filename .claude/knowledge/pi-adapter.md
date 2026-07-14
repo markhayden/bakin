@@ -24,6 +24,7 @@ Pi is a minimal single-session coding harness — it has no agent roster, channe
 | `config.ts` | `<pi-home>/agent/settings.json` + onboarding raw-key synthesis (authProfiles presence-only, `channels` → `{}`) |
 | `skills.ts` | Pi-native skill dirs: global `agent/skills/` + per-agent `<workspace>/.pi/skills/` |
 | `images.ts` | route: codex-native primary; explicit keyed routes (openai/google) ride the shared shim with full generate/edit/multi-ref support (WS3) |
+| `extensions.ts` | INERT extension discovery (dir entries + settings.json packages) statused by the SAME policy the loader applies; the trust surface behind `runtime.extensions` (WS4) |
 | `codex-images.ts` | the codex image wire: OAuth token via Pi's ModelRegistry (refresh SDK-owned), account-id from the JWT claim, SSE `image_generation_call` → temp file; carrier model gpt-5.5 (settings-overridable via images.carrierModel) |
 | `health-checks.ts` | Doctor: pi home/registry, agents-root writable, auth providers, models available |
 
@@ -82,3 +83,22 @@ Flip: `~/.bakin/settings.json` → `"runtime": { "adapter": "pi" }` → restart 
 ## Dev loop (rig)
 
 `bun run instance up --runtime pi && bun run instance dev --runtime pi` — Pi in-process on the host against a throwaway `PI_HOME` under `dev/pi-home` (state isolation; agent tools execute on this Mac inside dev-scoped workspaces), real HMR, no docker. `--mode sandbox --runtime pi` runs Bakin+Pi fully in-container (execution sandboxing). The rig drives the TUI `/login` at `up` and seeds `routing.defaultModel` from auth.json + the SDK's `defaultModelPerProvider`. A ChatGPT `/login` alone unlocks codex image gen/edit in the rig. Deep reference: `.claude/knowledge/dev-rig.md`.
+
+## Extension trust lane (pi-ecosystem WS4)
+
+- **Default flipped `all` → `allowlist` (empty)**: terminal-installed
+  extensions are discovered but INERT until approved — extensions run
+  unsandboxed in the server process, so loading is a trust decision.
+  Policy knob: `settings.runtime.settings.piExtensions { mode, allow }`.
+- ONE allow predicate (`extensionAllowed` in messaging.ts) for loading AND
+  discovery status — exact path/basename/segment matching, never substrings.
+- ONE trust engine: `src/core/runtime-extensions.ts` (list/allow/revoke,
+  audited) behind `GET/POST /api/runtime/extensions[/allow|/revoke]`,
+  `bakin runtime extensions {list,allow,revoke}`, the hub's Extensions
+  section (Runtimes tab, ConfirmDialog with the trusted-code + spends-
+  outside-budget-caps disclosure), and the `pi.extensions` doctor check
+  (pending → warn pointing at the hub). Allow refuses ids discovery doesn't
+  know. Sessions are per-turn: trust changes apply next turn, no restart.
+- Contract: `extensions?: RuntimeExtensionsAccess` (optional, feature-
+  detected; `.extensions!.` is arch-banned). Discovery NEVER executes
+  extension code.

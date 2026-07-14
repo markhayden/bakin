@@ -255,6 +255,27 @@ export function createRequestHandler(deps: RequestHandlerDeps): (req: IncomingMe
       return
     }
 
+    // Extension trust lane (WS4): inert discovery + allow/revoke through
+    // the ONE engine. Feature-detected — a runtime without extensions
+    // reports supported: false.
+    if (url.pathname === '/api/runtime/extensions' && req.method === 'GET') {
+      const { listRuntimeExtensions } = require('../runtime-extensions') as typeof import('../runtime-extensions')
+      listRuntimeExtensions()
+        .then((report) => jsonResponse(res, 200, report))
+        .catch((err) => jsonResponse(res, 500, { ok: false, error: err instanceof Error ? err.message : String(err) }))
+      return
+    }
+    if ((url.pathname === '/api/runtime/extensions/allow' || url.pathname === '/api/runtime/extensions/revoke') && req.method === 'POST') {
+      const { allowRuntimeExtension, revokeRuntimeExtension } = require('../runtime-extensions') as typeof import('../runtime-extensions')
+      const action = url.pathname.endsWith('/allow') ? allowRuntimeExtension : revokeRuntimeExtension
+      handleJsonPost(req, res, async (body) => {
+        const id = (body as { id?: unknown }).id
+        if (typeof id !== 'string' || id.length === 0) throw new BadRequestError('id is required')
+        return action(id)
+      })
+      return
+    }
+
     // Runtime switch (P3.2): runs the full orchestrated lifecycle; progress
     // streams over the activity SSE channel as runtime:switch events. A
     // completed switch requires a server restart to rebind plugin contexts —
