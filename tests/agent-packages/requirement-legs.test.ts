@@ -358,7 +358,8 @@ describe('review hardening pins', () => {
   it('a platforms-gated pack on the wrong platform installs NO requirement legs', async () => {
     const src = seedPack('1.0.0', {})
     const m = JSON.parse(readFileSync(join(src, 'bakin-package.json'), 'utf-8'))
-    m.platforms = ['linux-x64'] // this box is darwin
+    // Whatever platform runs this test, declare the OTHER one.
+    m.platforms = [process.platform === 'darwin' ? 'linux-arm64' : 'darwin-arm64']
     writeFileSync(join(src, 'bakin-package.json'), JSON.stringify(m))
     await installPackage({ source: src })
     expect(existsSync(payloadDir())).toBe(false)
