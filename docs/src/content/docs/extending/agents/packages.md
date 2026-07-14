@@ -204,3 +204,31 @@ Dependency sources may be `github:user/repo`, `github:user/repo#agents/package-i
 ## Lesson Retrieval
 
 Enabled agent-package lessons are selected at dispatch time from the `agent-lessons` search index and injected into task prompts when relevant. Agents can also call `bakin_exec_lesson_search` for follow-up lookup; the tool only searches the calling agent's enabled lessons.
+
+## Capability Packs
+
+A skill-pack becomes a **capability pack** by naming a `capability` slug and declaring what its skills need. Bakin owns the whole install path — pinned downloads, dependency installs, key entry — so users never assemble anything by hand.
+
+```json
+{
+  "kind": "skill-pack",
+  "capability": "transcribe",
+  "runtimes": ["*"],
+  "platforms": ["darwin-arm64"],
+  "requires": {
+    "bins":    [{ "name": "tool", "version": "1.0.0", "install": { "darwin-arm64": { "url": "https://…/tool.tar.gz", "sha256": "…", "archive": { "format": "tar.gz", "member": "tool" } } }, "verifyArgs": ["--help"] }],
+    "npm":     [{ "name": "scripts", "source": "payload/scripts", "dependencies": { "some-lib": "1.2.3" } }],
+    "models":  [{ "name": "model", "url": "https://…/model.gguf", "sha256": "…", "bytes": 940663680, "dest": "vendor/model.gguf", "env": { "TOOL_MODEL_PATH": "{dest}" } }],
+    "prereqs": [{ "name": "ffmpeg", "kind": "binary", "probe": "ffmpeg", "help": "https://ffmpeg.org/download.html", "optional": true }]
+  },
+  "secrets": [{ "name": "SOME_API_KEY", "description": "…", "secretSlot": "provider.apiKey", "help": "https://…" }]
+}
+```
+
+- **bins** install into `~/.bakin/bin` (on PATH for agent shells). The sha256 pins the download; with `archive`, it pins the tarball and `member` is extracted.
+- **npm** payloads install scripts + exact-pinned dependencies into `~/.bakin/npm/<packId>/<name>/` — reference that path in your SKILL.md. Dependencies must be exact versions, never ranges. Scripts are ESM.
+- **models** are sha256-pinned downloads into `~/.bakin/models/`; declare honest `bytes` (shown at install consent). `env` vars are injected at server boot with `{dest}` expanded to the installed path.
+- **prereqs** are checked, never installed — missing required ones block readiness with your `help` link; `optional: true` ones never block.
+- **platforms** gates the whole pack per OS/arch; elsewhere it reports "not available on this platform" honestly.
+
+Readiness for every leg surfaces on the runtime hub's Capabilities tab, `bakin check capabilities`, and the doctor. Repair (`bakin packages sync <id>`) re-projects skills and restores missing bins/payloads/models.

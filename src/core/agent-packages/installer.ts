@@ -68,7 +68,8 @@ import { getAppServices } from '../app-services'
 import { readFileSync } from 'fs'
 import { join } from 'path'
 import { validatePackageContributionIntegrity } from './package-integrity'
-import { installManifestBins } from './bin-installer'
+import { installManifestRequirements } from './requirements-installer'
+import { withoutSharedArtifacts } from './uninstaller'
 
 const log = createLogger('agent-pkg:install')
 
@@ -387,13 +388,19 @@ export async function installPackage(options: InstallOptions): Promise<InstallRe
         },
       })
       projected.push({ resolvedId: dep.resolvedId, result })
-      await installManifestBins(dep.manifest, {
-        package: dep.resolvedId,
-        version: dep.manifest.version,
-        ref: dep.spec.ref,
-        commitSha: dep.fetched.commitSha,
-        installedAt: new Date().toISOString(),
-      }, result)
+      await installManifestRequirements({
+        manifest: dep.manifest,
+        packId: dep.resolvedId,
+        sourceDir: dep.fetched.stagingDir,
+        installedBy: {
+          package: dep.resolvedId,
+          version: dep.manifest.version,
+          ref: dep.spec.ref,
+          commitSha: dep.fetched.commitSha,
+          installedAt: new Date().toISOString(),
+        },
+        result,
+      })
     }
 
     // ─── 7. Project the parent package ─────────────────────────────────────
@@ -412,13 +419,19 @@ export async function installPackage(options: InstallOptions): Promise<InstallRe
       },
     })
     projected.push({ resolvedId: resolvedTopId, result: parentResult })
-    await installManifestBins(manifest, {
-      package: resolvedTopId,
-      version: manifest.version,
-      ref: topFetched.ref,
-      commitSha: topFetched.commitSha,
-      installedAt: new Date().toISOString(),
-    }, parentResult)
+    await installManifestRequirements({
+      manifest,
+      packId: resolvedTopId,
+      sourceDir: topFetched.stagingDir,
+      installedBy: {
+        package: resolvedTopId,
+        version: manifest.version,
+        ref: topFetched.ref,
+        commitSha: topFetched.commitSha,
+        installedAt: new Date().toISOString(),
+      },
+      result: parentResult,
+    })
 
     // ─── 8. Create runtime agent for kind:"agent" + fresh ────────────────
     if (manifest.kind === 'agent' && mode === 'fresh') {
@@ -581,10 +594,13 @@ export async function installPackage(options: InstallOptions): Promise<InstallRe
       }
     }
 
-    // Roll back projections (every staged write so far)
+    // Roll back projections (every staged write so far). Shared artifacts
+    // (bins/models another INSTALLED pack still projects) survive — a failed
+    // install of pack B must never delete files pack A depends on.
+    const lockAtFailure = readLockfile()
     for (const p of [...projected].reverse()) {
       try {
-        await unprojectPackage(p.result.projections)
+        await unprojectPackage(withoutSharedArtifacts(lockAtFailure, p.resolvedId, p.result.projections))
       } catch (rollbackErr) {
         log.warn('Rollback during install failure threw', {
           packageId: p.resolvedId,

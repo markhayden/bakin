@@ -24,7 +24,7 @@ const InstallBodySchema = z.object({
   source: z.string().min(1),
   type: z.enum(['local', 'github']).optional(),
   replace: z.boolean().optional(),
-  installAs: z.string().min(1).optional(),
+  installAs: z.string().regex(/^[a-z0-9][a-z0-9-_]{0,39}$/i, { message: 'installAs must be a package id (no slashes)' }).optional(),
 })
 
 function isBareName(source: string): boolean {

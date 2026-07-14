@@ -23,7 +23,7 @@ const InstallBodySchema = z.object({
   type: z.enum(['local', 'github']).optional(),
   adopt: z.string().min(1).optional(),
   replace: z.boolean().optional(),
-  installAs: z.string().min(1).optional(),
+  installAs: z.string().regex(/^[a-z0-9][a-z0-9-_]{0,39}$/i, { message: 'installAs must be a package id (no slashes)' }).optional(),
 })
 
 export async function post(req: Request, _url: URL): Promise<Response> {

@@ -53,7 +53,7 @@ import { extractBlock, removeBlock } from '../../../packages/core/src/agent-pack
 import { unmarkUserEdited } from '../../../packages/core/src/agent-packages/markers'
 import { PackageNotInstalledError } from './errors'
 import { projectPackage, type ProjectorResult } from './projector'
-import { installManifestBins } from './bin-installer'
+import { installManifestRequirements } from './requirements-installer'
 import { updatePackageById } from './updater'
 import { checkPackageUpdateAsync } from './checker'
 import {
@@ -223,21 +223,29 @@ async function applyLocalProjection(packageId: string): Promise<ProjectorResult>
     enabledLessons: entry.kind === 'agent' ? entry.lessonsEnabled : undefined,
     installedBy,
   })
-  // Bins are part of the projected surface — re-adding them here keeps the
-  // lockfile honest AND makes local repair restore a deleted binary
-  // (idempotent: an on-disk bin matching the pin is skipped, no download).
-  // Restoring MISSING bytes needs the network, so this leg is best-effort:
-  // offline, skills still repair and the previous bin rows stay tracked —
-  // readiness keeps reporting the missing bin with its remediation.
+  // Requirement legs (bins/npm payloads/models) are part of the projected
+  // surface — re-adding them here keeps the lockfile honest AND makes local
+  // repair restore deleted artifacts (idempotent: on-disk state matching the
+  // pins is skipped, no network). Restoring MISSING bytes needs the network,
+  // so the pass is best-effort: offline, skills still repair and previous
+  // requirement rows stay tracked — readiness keeps reporting the missing
+  // leg with its remediation.
+  const REQUIREMENT_KINDS = new Set(['bin', 'npm-payload', 'model'])
   try {
-    await installManifestBins(manifest, installedBy, result)
+    await installManifestRequirements({
+      manifest,
+      packId: stripVersionFromKey(packageId),
+      sourceDir,
+      installedBy,
+      result,
+    })
   } catch (err) {
-    log.warn('Bin restore failed during local re-projection — previous bin rows kept', {
+    log.warn('Requirement restore failed during local re-projection — previous rows kept', {
       packageId, error: err instanceof Error ? err.message : String(err),
     })
-    const restored = new Set(result.projections.filter((p) => p.kind === 'bin').map((p) => p.target))
+    const restored = new Set(result.projections.filter((p) => REQUIREMENT_KINDS.has(p.kind)).map((p) => p.target))
     result.projections.push(
-      ...(entry.projections ?? []).filter((p) => p.kind === 'bin' && !restored.has(p.target)),
+      ...(entry.projections ?? []).filter((p) => REQUIREMENT_KINDS.has(p.kind) && !restored.has(p.target)),
     )
   }
 

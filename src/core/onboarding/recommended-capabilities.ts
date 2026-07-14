@@ -60,16 +60,22 @@ async function check(): Promise<CheckResult> {
   try {
     const readiness = await listCapabilities()
     const notReady = readiness.filter((c) => !c.ready)
-    const missing = await candidates()
+    // Only RECOMMENDED (defaultSelected) packs count against setup status —
+    // the catalog also carries à-la-carte packs (big model downloads, packs
+    // with prerequisites) that are storefront inventory, not a problem.
+    const uninstalled = await candidates()
+    const missing = uninstalled.filter((c) => c.defaultSelected)
+    const optional = uninstalled.length - missing.length
+    const optionalNote = optional > 0 ? ` (${optional} more available in Explore → Capabilities)` : ''
 
     if (notReady.length === 0 && missing.length === 0) {
       return {
         name: 'capabilities',
         status: 'ok',
-        message: readiness.length === 0
+        message: (readiness.length === 0
           ? 'No capability packs installed (browse Explore → Capabilities)'
-          : `${readiness.length} capability pack${readiness.length === 1 ? ' is' : 's are'} ready`,
-        details: { ready: readiness.map((c) => c.capability), recommended: [] },
+          : `${readiness.length} capability pack${readiness.length === 1 ? ' is' : 's are'} ready`) + optionalNote,
+        details: { ready: readiness.map((c) => c.capability), recommended: [], optionalAvailable: optional },
       }
     }
 
@@ -79,7 +85,7 @@ async function check(): Promise<CheckResult> {
     return {
       name: 'capabilities',
       status: 'missing',
-      message: parts.join('; '),
+      message: parts.join('; ') + optionalNote,
       remediation: notReady.length > 0
         ? notReady.flatMap((c) => c.missing).join('; ')
         : 'Install with `bakin packages install <name>` or from Explore → Capabilities.',
@@ -113,12 +119,15 @@ async function install(opts: OnboardingOptions): Promise<InstallResult> {
 
   const selected = opts.autoApprove ? missing.filter((c) => c.defaultSelected) : []
   if (selected.length === 0) {
+    // à-la-carte (non-defaultSelected) packs are never auto-installed and
+    // never make this component report unfinished work.
+    const recommendedRemain = missing.some((c) => c.defaultSelected)
     return {
       name: 'capabilities',
-      status: missing.length === 0 ? 'noop' : 'skipped',
-      message: missing.length === 0
-        ? 'Recommended capability packs are already installed'
-        : 'No capability packs selected',
+      status: recommendedRemain ? 'skipped' : 'noop',
+      message: recommendedRemain
+        ? 'No capability packs selected'
+        : 'Recommended capability packs are already installed',
       durationMs: Date.now() - start,
     }
   }

@@ -8,13 +8,13 @@ See PLAN.md for acceptance criteria. One PR per workstream; live-test before mer
 - [x] T1.3 fresh-home resolver verification: both artifacts resolve + packaged manifests pass readPluginManifestJson (live 0.6.0 local installs left untouched)
 
 ## WS2 — pack legs + packs (PR 2)
-- [ ] T2.1 manifest schema: requires.npm/models/prereqs + platforms
-- [ ] T2.2 npm-installer + model-installer, wired at all four lifecycle sites
-- [ ] T2.3 readiness legs + hub rendering
-- [ ] T2.4 pack: youtube-transcript (bits + catalogs)
-- [ ] T2.5 pack: transcribe (bits + catalogs)
-- [ ] T2.6 pack: browser-tools (bits + catalogs)
-- [ ] T2.7 knowledge + authoring docs
+- [x] T2.1 manifest schema: requires.npm/models/prereqs + platforms (+ tar.gz bin archives, optional prereqs)
+- [x] T2.2 requirements-installer (npm payloads + models), ONE entry point at all lifecycle sites + boot model-env injection
+- [x] T2.3 readiness legs + hub rendering + CLI consent preview
+- [x] T2.4 youtube-transcript 1.0.1 (v2 lib — 1.0.4 silently broken vs current YouTube; verified live end-to-end)
+- [x] T2.5 transcribe (tarball bin + 940MB pinned model + PARAKEET_CPP_MODEL_PATH env; darwin-arm64; authored + validated, live install awaits Mark's consent to the download)
+- [x] T2.6 browser-tools (pruned dep set, Chrome prereq; authored + validated)
+- [x] T2.7 capability-packs.md + public authoring docs
 
 ## WS3 — images completion (PR 3)
 - [ ] T3.1 direct-shim input-images (openai edit + gemini) in core media

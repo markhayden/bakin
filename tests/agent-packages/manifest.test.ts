@@ -425,3 +425,116 @@ describe('ManifestSchema (direct safeParse for parity)', () => {
     expect(direct).toEqual(wrapped)
   })
 })
+
+describe('manifest schema — requirement legs (npm/models/prereqs/platforms)', () => {
+  function skillPackWith(requires: Record<string, unknown>, extra: Record<string, unknown> = {}): Record<string, unknown> {
+    const base = loadFixture('skill-pack') as Record<string, unknown>
+    return { ...base, requires: { ...(base.requires as Record<string, unknown> ?? {}), ...requires }, ...extra }
+  }
+
+  it('parses an npm payload leg with exact-pinned dependencies', () => {
+    const m = parseManifest(skillPackWith({
+      npm: [{
+        name: 'browser-scripts',
+        source: 'payload/browser',
+        dependencies: { 'puppeteer-core': '24.9.0', '@mozilla/readability': '0.5.0' },
+        env: { PUPPETEER_SKIP_DOWNLOAD: '1' },
+      }],
+    }))
+    if (m.kind !== 'skill-pack') throw new Error('kind')
+    expect(m.requires?.npm?.[0].name).toBe('browser-scripts')
+    expect(m.requires?.npm?.[0].dependencies['puppeteer-core']).toBe('24.9.0')
+  })
+
+  it('rejects npm dependency version RANGES — exact pins only', () => {
+    for (const bad of ['^24.9.0', '~1.2.3', '>=1.0.0', '*', '1.x', 'latest']) {
+      expect(() => parseManifest(skillPackWith({
+        npm: [{ name: 'p', source: 'payload/p', dependencies: { dep: bad } }],
+      }))).toThrow(/exact/i)
+    }
+  })
+
+  it('rejects npm payload source paths that escape the pack', () => {
+    for (const bad of ['../outside', '/abs/path', 'a/../../b']) {
+      expect(() => parseManifest(skillPackWith({
+        npm: [{ name: 'p', source: bad, dependencies: { dep: '1.0.0' } }],
+      }))).toThrow()
+    }
+  })
+
+  it('parses a models leg with sha256 pin and relative dest', () => {
+    const m = parseManifest(skillPackWith({
+      models: [{
+        name: 'parakeet-tdt',
+        url: 'https://huggingface.co/x/y/resolve/main/model.gguf',
+        sha256: 'b00ed12e06aaf4023d74a3dcd919fa3e69afe8fea7b992913f8783eafa490ce0',
+        bytes: 940_000_000,
+        dest: 'parakeet/tdt-0.6b-v3-q8_0.gguf',
+        env: { PARAKEET_CPP_MODEL_PATH: '{dest}' },
+      }],
+    }))
+    if (m.kind !== 'skill-pack') throw new Error('kind')
+    expect(m.requires?.models?.[0].bytes).toBe(940_000_000)
+  })
+
+  it('rejects model dest paths that are absolute or traverse', () => {
+    for (const bad of ['/abs/model.gguf', '../escape.gguf', 'a/../../b.gguf']) {
+      expect(() => parseManifest(skillPackWith({
+        models: [{ name: 'm', url: 'https://x.dev/m.gguf', sha256: 'a'.repeat(64), bytes: 10, dest: bad }],
+      }))).toThrow()
+    }
+  })
+
+  it('parses prereq legs — PATH binary and macOS app', () => {
+    const m = parseManifest(skillPackWith({
+      prereqs: [
+        { name: 'ffmpeg', kind: 'binary', probe: 'ffmpeg', help: 'https://ffmpeg.org' },
+        { name: 'Google Chrome', kind: 'app', probe: '/Applications/Google Chrome.app', help: 'https://www.google.com/chrome/' },
+      ],
+    }))
+    if (m.kind !== 'skill-pack') throw new Error('kind')
+    expect(m.requires?.prereqs?.map((p) => p.kind)).toEqual(['binary', 'app'])
+  })
+
+  it('rejects an app prereq with a non-absolute probe and a binary prereq with a path probe', () => {
+    expect(() => parseManifest(skillPackWith({
+      prereqs: [{ name: 'Chrome', kind: 'app', probe: 'Google Chrome.app', help: 'https://x.dev' }],
+    }))).toThrow()
+    expect(() => parseManifest(skillPackWith({
+      prereqs: [{ name: 'ffmpeg', kind: 'binary', probe: '/usr/local/bin/ffmpeg', help: 'https://x.dev' }],
+    }))).toThrow()
+  })
+
+  it('parses pack-level platforms and rejects unknown keys / empty list', () => {
+    const m = parseManifest(skillPackWith({}, { platforms: ['darwin-arm64'] }))
+    if (m.kind !== 'skill-pack') throw new Error('kind')
+    expect(m.platforms).toEqual(['darwin-arm64'])
+    expect(() => parseManifest(skillPackWith({}, { platforms: [] }))).toThrow()
+    expect(() => parseManifest(skillPackWith({}, { platforms: ['windows-x64'] }))).toThrow()
+  })
+})
+
+describe('manifest schema — review hardening pins', () => {
+  function skillPackWithBin(download: Record<string, unknown>): Record<string, unknown> {
+    const base = loadFixture('skill-pack') as Record<string, unknown>
+    return {
+      ...base,
+      requires: { bins: [{ name: 'tool', version: '1.0.0', install: { 'darwin-arm64': download } }] },
+    }
+  }
+
+  it('rejects archive members shaped like tar options (argument injection)', () => {
+    expect(() => parseManifest(skillPackWithBin({
+      url: 'https://x.dev/t.tar.gz', sha256: 'a'.repeat(64),
+      archive: { format: 'tar.gz', member: '--to-command=/bin/sh' },
+    }))).toThrow(/no leading -/)
+  })
+
+  it('rejects traversal-shaped dependency installAs (payload dirs are swept destructively)', () => {
+    const base = loadFixture('skill-pack') as Record<string, unknown>
+    expect(() => parseManifest({
+      ...base,
+      dependencies: { skills: [{ source: 'github:x/y', ref: 'abc', installAs: '../../..' }] },
+    })).toThrow()
+  })
+})
