@@ -100,6 +100,22 @@ describe('StackedColumnChart', () => {
     expect(table.textContent).toContain('scout')
     expect(table.textContent).toContain('50')
   })
+
+  it('accepts a semantic label and marks an in-progress bucket without relying on color', () => {
+    render(
+      <StackedColumnChart
+        data={data}
+        label="Usage over time"
+        dataLabel="Usage over time data"
+        partialKeys={['2026-07-02']}
+      />,
+    )
+
+    expect(screen.getByRole('group', { name: 'Usage over time' })).toBeDefined()
+    expect(screen.getByRole('img', { name: /Jul 2 \(in progress\)/ })).toBeDefined()
+    expect(screen.getByRole('table', { name: 'Usage over time data', hidden: true })).toBeDefined()
+    expect(screen.getByText('View Usage over time data')).toBeDefined()
+  })
 })
 
 const series = [

@@ -21,6 +21,12 @@ export interface StackedColumnDatum {
 
 export interface StackedColumnChartProps {
   data: StackedColumnDatum[]
+  /** Accessible name for the plot. */
+  label?: string
+  /** Accessible name for the exact-values disclosure. */
+  dataLabel?: string
+  /** Bucket keys that are still accumulating data. */
+  partialKeys?: readonly string[]
   /** Plot height in px (columns area, excluding legend). */
   height?: number
   formatValue?: (n: number) => string
@@ -71,6 +77,9 @@ function bucketValue(datum: StackedColumnDatum, series: SeriesDef, keptKeys: Set
 
 export function StackedColumnChart({
   data,
+  label = 'Stacked column chart',
+  dataLabel,
+  partialKeys = [],
   height = 160,
   formatValue = (n) => n.toLocaleString(),
   emptyLabel = 'No data in this window.',
@@ -80,6 +89,7 @@ export function StackedColumnChart({
   const [hovered, setHovered] = useState<number | null>(null)
 
   const series = useMemo(() => deriveSeries(data), [data])
+  const partialKeySet = useMemo(() => new Set(partialKeys), [partialKeys])
   const exactSeries = useMemo<ChartSeries[]>(() => (
     [...new Set(data.flatMap((datum) => Object.keys(datum.values)))]
       .sort()
@@ -119,14 +129,15 @@ export function StackedColumnChart({
   return (
     <div>
       <div className="relative">
-        <div className="flex items-end gap-1" style={{ height }} role="group" aria-label="Stacked column chart">
+        <div className="flex items-end gap-1" style={{ height }} role="group" aria-label={label}>
           {data.map((datum, i) => {
             const total = columnTotals[i]!
+            const isPartial = partialKeySet.has(datum.x)
             const detail = visible
               .map((item) => ({ item, value: bucketValue(datum, item, keptKeys) }))
               .filter(({ value }) => value > 0)
             const accessibleLabel = [
-              `${datum.xLabel ?? datum.x}:`,
+              `${datum.xLabel ?? datum.x}${isPartial ? ' (in progress)' : ''}:`,
               ...detail.map(({ item, value }) => `${item.label} ${formatValue(value)},`),
               `total ${formatValue(total)}`,
             ].join(' ')
@@ -137,6 +148,7 @@ export function StackedColumnChart({
                 style={{ height }}
                 role="img"
                 tabIndex={0}
+                data-partial={isPartial || undefined}
                 aria-label={accessibleLabel}
                 aria-describedby={hovered === i ? tooltipId : undefined}
                 onMouseEnter={() => setHovered(i)}
@@ -157,6 +169,13 @@ export function StackedColumnChart({
                     />
                   )
                 })}
+                {isPartial && total > 0 && (
+                  <span
+                    aria-hidden="true"
+                    className="pointer-events-none absolute inset-x-0 bottom-0 rounded-sm border border-dashed border-foreground/70"
+                    style={{ height: Math.max(4, (total / max) * (height - 8)) }}
+                  />
+                )}
               </div>
             )
           })}
@@ -208,7 +227,7 @@ export function StackedColumnChart({
       <ChartDataTable
         data={data}
         series={exactSeries}
-        caption="Stacked column chart data"
+        caption={dataLabel ?? `${label} data`}
         formatValue={formatValue}
       />
     </div>
