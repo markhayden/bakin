@@ -58,6 +58,10 @@ export interface BakinJobMeta {
   createdAt: string
   updatedAt: string
   lastTaskId?: string
+  /** One-shot ('at') jobs only: the occurrence instant that consumed the job.
+   *  Set with enabled=false when the single fire lands — the "completed"
+   *  display state. Never set for cron jobs. */
+  completedAt?: string
   // Run-level dedup lives in the execution ledger (cron_fires) — the legacy
   // processedRunIds/lastProcessedRunAt fields are seeded there once on boot.
   originalRuntimeCron?: {
@@ -140,6 +144,8 @@ export interface MergedJob {
   maxFailures: number
   consecutiveFailures: number
   lastTaskId?: string
+  /** One-shot ('at') consumption instant — see BakinJobMeta.completedAt. */
+  completedAt?: string
 
   tz?: string
   createdAt?: string
@@ -148,6 +154,9 @@ export interface MergedJob {
   humanSchedule: string
   nextRun?: string // ISO date
   lastRun?: RunEntry
+  /** One-shot that has fired: disabled with completedAt set. Drives the
+   *  "completed" badge instead of the generic disabled state. */
+  completed: boolean
 }
 
 // ---------------------------------------------------------------------------

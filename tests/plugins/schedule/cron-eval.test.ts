@@ -93,3 +93,59 @@ describe('schedule/cron-eval', () => {
     })
   })
 })
+
+// ─── Schedule-aware dispatch (kind 'cron' | 'at') ───────────────────────────
+
+import { scheduleNextRun, schedulePrevRun, scheduleOccurrencesBetween, isValidScheduleDef } from '@bakin/schedule/lib/cron-eval'
+
+describe('schedule/cron-eval schedule-aware wrappers', () => {
+  const AT = '2026-06-07T15:00:00.000Z'
+  const atDef = { kind: 'at' as const, expr: AT }
+  const cronDef = { kind: 'cron' as const, expr: '0 9 * * *' }
+
+  describe("kind 'at'", () => {
+    it('occurrencesBetween yields the single instant inside (from, to]', () => {
+      const from = new Date('2026-06-07T14:59:00Z')
+      const to = new Date('2026-06-07T15:00:30Z')
+      expect(scheduleOccurrencesBetween(atDef, DENVER, from, to).map(d => d.toISOString())).toEqual([AT])
+    })
+    it('occurrencesBetween is empty outside the window and never repeats', () => {
+      expect(scheduleOccurrencesBetween(atDef, DENVER, new Date('2026-06-07T15:00:01Z'), new Date('2026-06-07T16:00:00Z'))).toEqual([])
+      expect(scheduleOccurrencesBetween(atDef, DENVER, new Date('2026-06-06T00:00:00Z'), new Date('2026-06-07T14:00:00Z'))).toEqual([])
+    })
+    it('boundary: strictly after from, inclusive of to', () => {
+      expect(scheduleOccurrencesBetween(atDef, DENVER, new Date(AT), new Date('2026-06-07T16:00:00Z'))).toEqual([])
+      expect(scheduleOccurrencesBetween(atDef, DENVER, new Date('2026-06-07T14:00:00Z'), new Date(AT)).map(d => d.toISOString())).toEqual([AT])
+    })
+    it('nextRun is the instant when still future, null once passed', () => {
+      expect(scheduleNextRun(atDef, DENVER, new Date('2026-06-07T14:00:00Z'))?.toISOString()).toBe(AT)
+      expect(scheduleNextRun(atDef, DENVER, new Date(AT))).toBeNull()
+    })
+    it('prevRun is the instant once passed, null while future', () => {
+      expect(schedulePrevRun(atDef, DENVER, new Date('2026-06-08T00:00:00Z'))?.toISOString()).toBe(AT)
+      expect(schedulePrevRun(atDef, DENVER, new Date('2026-06-07T14:00:00Z'))).toBeNull()
+    })
+    it('invalid instants are invalid and yield nothing', () => {
+      const bad = { kind: 'at' as const, expr: 'tomorrow-ish' }
+      expect(isValidScheduleDef(bad)).toBe(false)
+      expect(scheduleOccurrencesBetween(bad, DENVER, new Date(0), new Date())).toEqual([])
+      expect(scheduleNextRun(bad, DENVER, new Date(0))).toBeNull()
+      expect(schedulePrevRun(bad, DENVER, new Date())).toBeNull()
+    })
+    it('valid instants validate', () => {
+      expect(isValidScheduleDef(atDef)).toBe(true)
+    })
+  })
+
+  describe("kind 'cron' delegates to the expression engine", () => {
+    it('occurrences + next/prev match the raw-expr functions', () => {
+      const from = new Date('2026-06-07T00:00:00Z')
+      const to = new Date('2026-06-08T00:00:00Z')
+      expect(scheduleOccurrencesBetween(cronDef, DENVER, from, to).map(d => d.toISOString()))
+        .toEqual(occurrencesBetween(cronDef.expr, DENVER, from, to).map(d => d.toISOString()))
+      expect(scheduleNextRun(cronDef, DENVER, from)?.toISOString()).toBe(nextRun(cronDef.expr, DENVER, from)?.toISOString())
+      expect(isValidScheduleDef(cronDef)).toBe(true)
+      expect(isValidScheduleDef({ kind: 'cron', expr: 'garbage' })).toBe(false)
+    })
+  })
+})
