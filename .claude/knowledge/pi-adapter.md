@@ -103,6 +103,20 @@ Flip: `~/.bakin/settings.json` → `"runtime": { "adapter": "pi" }` → restart 
   overwritten after approval, so approving pins the resolved path AND the
   exact bytes. A swapped/repointed file reverts to pending (re-approve). No
   pattern matching anywhere; the CLI resolves a human name to its unique path.
+- **Known residuals (accepted, single-user box; #670 follow-up if it goes multi-tenant):**
+  (a) *Import-time TOCTOU* — the hash is re-checked fresh each turn (a
+  persistently-swapped file is excluded next turn), but the SDK re-reads the
+  approved path at import with no integrity hook, so a swap in the narrow
+  window between our re-hash and the loader's read would import unverified
+  bytes; exploiting it needs an agent-planted background writer (already a
+  deeper compromise). (b) *Content-blind SDK extension cache* — re-approving
+  EDITED extension content keeps running the old bytes for the rest of the
+  process for the same agent (cache keyed by path+cwd, not content;
+  clearExtensionCache isn't exported); a restart or another agent's turn
+  flushes it. Never runs UNAPPROVED code — revoked paths aren't passed to the
+  loader at all. (c) *mode 'all' is user-scope* — loads every user-scope
+  discovered extension (not per-agent workspace/project scope), keeping
+  list()==turn; 'all' is an explicit trust-everything escape hatch.
 - **No turn ever installs or probes Pi packages.** The SDK's loader resolves
   `packages[]` on every reload — installing missing ones (postinstall =
   arbitrary code) and running the settings-configured `npmCommand` to locate

@@ -75,10 +75,20 @@ export interface PiExtensionsTrust {
  */
 export function extensionsPolicy(settings: Record<string, unknown> | undefined): PiExtensionsTrust {
   const raw = (settings?.piExtensions ?? {}) as PiExtensionsPolicy
-  const allow = (raw.allow ?? []).map((e) =>
-    typeof e === 'string' ? { path: e, sha256: '' } : { path: e.path, sha256: e.sha256 ?? '' },
-  )
-  return { mode: raw.mode ?? 'allowlist', allow }
+  const mode = raw.mode === 'none' || raw.mode === 'all' ? raw.mode : 'allowlist'
+  // Untrusted shape (settings.json is agent/user-writable): a non-array, a
+  // null element, or a missing path must degrade to "no valid entries", never
+  // throw and kill the turn. An entry needs a NON-EMPTY sha256 to ever match
+  // (see extensionApproved) — a bare-string / hashless entry is inert.
+  const rawAllow = Array.isArray(raw.allow) ? raw.allow : []
+  const allow: PiExtensionAllowEntry[] = []
+  for (const e of rawAllow) {
+    if (typeof e === 'string') { allow.push({ path: e, sha256: '' }); continue }
+    if (e && typeof e === 'object' && typeof e.path === 'string') {
+      allow.push({ path: e.path, sha256: typeof e.sha256 === 'string' ? e.sha256 : '' })
+    }
+  }
+  return { mode, allow }
 }
 
 export interface PiExtensionResource {
@@ -162,7 +172,12 @@ export interface PiExtensionAllowEntry {
  * byte-for-byte what loads. Changed/swapped files fall back to pending.
  */
 export function extensionApproved(resource: PiExtensionResource, allow: PiExtensionAllowEntry[]): boolean {
-  return allow.some((entry) => entry.path === resource.path && entry.sha256 === resource.sha256)
+  // A missing/empty hash on EITHER side is never a match — an unreadable file
+  // (sha256OfFile → '') must not satisfy a hashless (legacy/hand-edited) allow
+  // entry. Approval is only ever granted through allowRuntimeExtension, which
+  // always records a real hash; '' means "not really approved" → fail closed.
+  if (!resource.sha256) return false
+  return allow.some((entry) => entry.sha256 !== '' && entry.path === resource.path && entry.sha256 === resource.sha256)
 }
 
 /**
@@ -177,6 +192,12 @@ export async function loadPathsForPolicy(policy: PiExtensionsTrust, agentDir: st
   if (policy.mode === 'none') return []
   const discovered = await resolveExtensionResources(agentDir, agentDir)
   if (policy.mode === 'all') return discovered.map((r) => r.path)
+  // Re-hashed fresh THIS turn (inside resolveExtensionResources) — a file
+  // persistently swapped since approval no longer matches and is excluded.
+  // A same-turn race between this hash and the loader's own read is a narrow
+  // residual (no agent code runs in that window unless it planted a prior
+  // background writer — a deeper compromise); the SDK offers no import-time
+  // integrity hook to close it fully.
   return discovered.filter((r) => extensionApproved(r, policy.allow)).map((r) => r.path)
 }
 
@@ -309,6 +330,10 @@ async function openTurnSession(args: MessageArgs, deps: PiMessagingDeps): Promis
     agentDir,
     settingsManager,
     // Themes/prompt-templates are TUI-only and stay out of the server process.
+    // NOTE: this allowlist gates EXTENSIONS (in-process CODE). Skills are
+    // content (instructions), governed by Bakin's own agent-package/skills
+    // projection — not this gate — so noSkills is intentionally NOT set; the
+    // package hardening above only strips code-bearing `packages[]`.
     noExtensions: true,
     additionalExtensionPaths: loadPaths,
     noThemes: true,

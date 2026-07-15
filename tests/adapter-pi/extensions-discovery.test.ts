@@ -194,3 +194,23 @@ describe('trust engine (ONE mutation path)', () => {
     await expect(allowRuntimeExtension('x')).rejects.toThrow(/no extension mechanism/)
   })
 })
+
+describe('policy normalization robustness (untrusted settings shape)', () => {
+  it('an empty/absent hash never matches — fail closed', async () => {
+    const { extensionApproved } = await import('../../packages/adapter-pi/src/messaging')
+    // hashless allow entry (legacy/hand-edit) vs an unreadable file (sha256 '')
+    expect(extensionApproved({ path: '/x', sha256: '' }, [{ path: '/x', sha256: '' }])).toBe(false)
+    // real file vs hashless entry: no match
+    expect(extensionApproved({ path: '/x', sha256: 'abc' }, [{ path: '/x', sha256: '' }])).toBe(false)
+    // matching real hashes: match
+    expect(extensionApproved({ path: '/x', sha256: 'abc' }, [{ path: '/x', sha256: 'abc' }])).toBe(true)
+  })
+
+  it('a malformed allow (non-array / null / missing path) never throws', async () => {
+    const { extensionsPolicy } = await import('../../packages/adapter-pi/src/messaging')
+    expect(extensionsPolicy({ piExtensions: { allow: 'not-an-array' } }).allow).toEqual([])
+    expect(extensionsPolicy({ piExtensions: { allow: [null, 42, { nope: 1 }] } }).allow).toEqual([])
+    expect(extensionsPolicy({ piExtensions: { mode: 'bogus' } }).mode).toBe('allowlist')
+    expect(extensionsPolicy({ piExtensions: { allow: [{ path: '/a', sha256: 'h' }] } }).allow).toEqual([{ path: '/a', sha256: 'h' }])
+  })
+})
