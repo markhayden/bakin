@@ -36,11 +36,25 @@ const WEDGE_MIN_OCCURRENCES = 3
 /** Never read more than this much log per probe (a flooding engine). */
 const MAX_TAIL_BYTES = 512 * 1024
 
-/** Known engine wedge signatures (each line = one loop iteration). */
-const WEDGE_PATTERNS: ReadonlyArray<{ signal: string; pattern: RegExp }> = [
+/**
+ * Known engine wedge signatures (each line = one loop iteration). A pattern
+ * may override the occurrence floor: signatures that also appear in benign
+ * bursts (a client dropping mid-restart emits a handful of SendFailed
+ * lines) need a floor only a sustained loop can reach within one ~30-min
+ * doctor window.
+ */
+const WEDGE_PATTERNS: ReadonlyArray<{ signal: string; pattern: RegExp; minOccurrences?: number }> = [
   // The startup catch-up loop re-opening/closing a table group forever
   // ("provisioned startup catch-up debt persists", one line per ~2s spin).
   { signal: 'startup-catchup-spin', pattern: /catch-up debt persists/g },
+  // The 2026-07-14 lock-contention wedge: the engine spammed
+  // "Connection error: error.SendFailed" for a day with NO catch-up-debt
+  // lines, so the watchdog saw only high CPU and never escalated. A few
+  // lines are a normal disconnect; a storm is a wedged I/O loop.
+  { signal: 'connection-send-failed-storm', pattern: /error\.SendFailed/g, minOccurrences: 50 },
+  // Same incident: route handlers repeatedly failing with TableReadChurn
+  // while the engine still answered health probes.
+  { signal: 'table-read-churn', pattern: /error\.TableReadChurn/g, minOccurrences: 10 },
 ]
 
 interface ProbeState {
@@ -102,9 +116,9 @@ export function scanLogDelta(
     return { signals: [], nextOffset: prevOffset }
   }
   const delta = buffer.toString('utf-8')
-  const signals = WEDGE_PATTERNS.filter(({ pattern }) => {
+  const signals = WEDGE_PATTERNS.filter(({ pattern, minOccurrences }) => {
     const count = delta.match(pattern)?.length ?? 0
-    return count >= WEDGE_MIN_OCCURRENCES
+    return count >= (minOccurrences ?? WEDGE_MIN_OCCURRENCES)
   }).map(({ signal }) => signal)
   return { signals, nextOffset: size }
 }

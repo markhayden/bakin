@@ -25,6 +25,7 @@ mock.module('../../packages/core/src/logger', loggerMock)
 // Mutable fixtures
 let escalationMode: 'off' | 'notify' | 'task' = 'task'
 let cooldownMs = 6 * 60 * 60 * 1000
+let staleAfterMs = 12 * 60 * 60 * 1000
 let repairRequests: Array<{
   id: string
   createdAt: string
@@ -34,7 +35,7 @@ let repairRequests: Array<{
 let openTaskColumns: Record<string, string> = {}
 
 mock.module('../../src/core/settings', () => ({
-  getSettings: () => ({ doctor: { escalation: escalationMode, escalationCooldownMs: cooldownMs } }),
+  getSettings: () => ({ doctor: { escalation: escalationMode, escalationCooldownMs: cooldownMs, escalationStaleAfterMs: staleAfterMs } }),
 }))
 mock.module('../../src/core/doctor-repair-store', () => ({
   listDoctorRepairRequests: () => repairRequests,
@@ -66,6 +67,7 @@ afterAll(() => {
 beforeEach(() => {
   escalationMode = 'task'
   cooldownMs = 6 * 60 * 60 * 1000
+  staleAfterMs = 12 * 60 * 60 * 1000
   repairRequests = []
   openTaskColumns = {}
   delegateDoctorRepair.mockClear()
@@ -94,14 +96,46 @@ describe('escalateCronErrors', () => {
     expect(delegateDoctorRepair).not.toHaveBeenCalled()
   })
 
-  it('skips while an OPEN repair task already covers every current error check', async () => {
+  it('skips while a FRESH open repair task already covers every current error check', async () => {
     repairRequests = [{
       id: 'repair-1',
-      createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(), // cooldown long past
+      createdAt: new Date(Date.now() - 7 * 60 * 60 * 1000).toISOString(), // cooldown past, not yet stale
       taskId: 'task-1',
       unresolved: [{ check: 'search-canary', status: 'error', message: 'dark' }],
     }]
     openTaskColumns = { 'task-1': 'doing' }
+    await escalateCronErrors([errorRow('search-canary')], testDir, testDir)
+    expect(delegateDoctorRepair).not.toHaveBeenCalled()
+  })
+
+  it('re-escalates when the covering task is STALE — open past escalationStaleAfterMs with the error still burning', async () => {
+    repairRequests = [{
+      id: 'repair-1',
+      createdAt: new Date(Date.now() - 34 * 60 * 60 * 1000).toISOString(), // the 2026-07-14 incident shape
+      taskId: 'task-1',
+      unresolved: [{ check: 'search-canary', status: 'error', message: 'dark' }],
+    }]
+    openTaskColumns = { 'task-1': 'doing' }
+    await escalateCronErrors([errorRow('search-canary')], testDir, testDir)
+    expect(delegateDoctorRepair).toHaveBeenCalledTimes(1)
+  })
+
+  it('a fresher covering request still suppresses even when an older stale one exists', async () => {
+    repairRequests = [
+      {
+        id: 'repair-old',
+        createdAt: new Date(Date.now() - 34 * 60 * 60 * 1000).toISOString(),
+        taskId: 'task-old',
+        unresolved: [{ check: 'search-canary', status: 'error', message: 'dark' }],
+      },
+      {
+        id: 'repair-new',
+        createdAt: new Date(Date.now() - 60_000).toISOString(), // the re-escalation from last cycle
+        taskId: 'task-new',
+        unresolved: [{ check: 'search-canary', status: 'error', message: 'dark' }],
+      },
+    ]
+    openTaskColumns = { 'task-old': 'doing', 'task-new': 'todo' }
     await escalateCronErrors([errorRow('search-canary')], testDir, testDir)
     expect(delegateDoctorRepair).not.toHaveBeenCalled()
   })
