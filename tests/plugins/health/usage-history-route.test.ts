@@ -68,7 +68,10 @@ import { activatePlugin, callRoute, findRoute, type ActivatedPlugin } from '../t
 import { replaceSessionUsage, toLocalDayKey } from '@bakin/core/usage-history/store'
 import { closeAllDbs } from '@bakin/core/storage/db'
 import {
+  MAX_SCAN_MINUTES,
+  MIN_SCAN_MINUTES,
   getUsageHistoryScanStaleAfterMs,
+  normalizeUsageHistoryScanMinutes,
   startUsageHistoryTimer,
   stopUsageHistoryTimer,
 } from '../../../plugins/health/lib/usage-history-timer'
@@ -244,7 +247,7 @@ describe('GET /usage-history', () => {
 })
 
 describe('usage-history timer', () => {
-  it('start is idempotent and stop clears the handle', () => {
+  it('keeps the same timer for the same interval and reschedules a changed interval', () => {
     const g = globalThis as { __bakinUsageHistoryTimer?: unknown }
     // activate() already armed it.
     expect(g.__bakinUsageHistoryTimer).toBeTruthy()
@@ -252,11 +255,34 @@ describe('usage-history timer', () => {
     startUsageHistoryTimer(createMockRuntimeAdapter(), 5)
     expect(g.__bakinUsageHistoryTimer).toBe(first)
 
+    startUsageHistoryTimer(createMockRuntimeAdapter(), 12)
+    expect(g.__bakinUsageHistoryTimer).not.toBe(first)
+    expect(getUsageHistoryScanStaleAfterMs()).toBe(24 * 60_000)
+
     stopUsageHistoryTimer()
     expect(g.__bakinUsageHistoryTimer).toBeNull()
 
     startUsageHistoryTimer(createMockRuntimeAdapter(), 5)
     expect(g.__bakinUsageHistoryTimer).toBeTruthy()
     stopUsageHistoryTimer()
+  })
+
+  it('normalizes non-finite, fractional, and out-of-range intervals', () => {
+    expect(normalizeUsageHistoryScanMinutes(Number.NaN)).toBe(5)
+    expect(normalizeUsageHistoryScanMinutes(Number.POSITIVE_INFINITY)).toBe(5)
+    expect(normalizeUsageHistoryScanMinutes(2.6)).toBe(3)
+    expect(normalizeUsageHistoryScanMinutes(-10)).toBe(MIN_SCAN_MINUTES)
+    expect(normalizeUsageHistoryScanMinutes(MAX_SCAN_MINUTES + 10)).toBe(MAX_SCAN_MINUTES)
+  })
+
+  it('applies saved interval changes without a plugin restart', async () => {
+    const g = globalThis as { __bakinUsageHistoryTimer?: unknown }
+    startUsageHistoryTimer(activated.ctx.runtime, 5)
+    const before = g.__bakinUsageHistoryTimer
+
+    await healthPlugin.onSettingsChange?.({ usageHistoryScanMinutes: 9 })
+
+    expect(g.__bakinUsageHistoryTimer).not.toBe(before)
+    expect(getUsageHistoryScanStaleAfterMs()).toBe(18 * 60_000)
   })
 })

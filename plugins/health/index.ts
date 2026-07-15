@@ -107,6 +107,7 @@ import {
 
 const log = createLogger('health')
 const SEARCH_ENRICHMENT_STATS_TIMEOUT_MS = 250
+let usageHistoryRuntime: PluginContext['runtime'] | null = null
 
 class SearchEnrichmentStatsTimeoutError extends Error {
   constructor() {
@@ -714,7 +715,7 @@ const healthPlugin: BakinPlugin = definePlugin({
 
   settingsSchema: {
     fields: [
-      { key: 'usageHistoryScanMinutes', type: 'number', label: 'Usage history scan interval (minutes)', description: 'How often session transcripts are swept into the durable usage history', default: 5 },
+      { key: 'usageHistoryScanMinutes', type: 'number', label: 'Usage history scan interval (minutes)', description: 'How often session transcripts are swept into durable usage history (1–1,440 minutes)', default: 5 },
     ],
   },
 
@@ -729,6 +730,7 @@ const healthPlugin: BakinPlugin = definePlugin({
     // First sweep runs one full interval after activation — boot does
     // zero scan work. onShutdown stops it (hot-reload safe).
     const settings = ctx.getSettings<{ usageHistoryScanMinutes?: number }>()
+    usageHistoryRuntime = ctx.runtime
     startUsageHistoryTimer(ctx.runtime, settings.usageHistoryScanMinutes ?? DEFAULT_SCAN_MINUTES)
 
     // ─── Health-check registry hooks ─────────────────────────────────
@@ -979,8 +981,19 @@ const healthPlugin: BakinPlugin = definePlugin({
     ctx.registerHealthRepairAction(syncSkillRepair(process.cwd(), ctx.runtime))
   },
 
+  onSettingsChange(settings) {
+    if (!usageHistoryRuntime) return
+    startUsageHistoryTimer(
+      usageHistoryRuntime,
+      typeof settings.usageHistoryScanMinutes === 'number'
+        ? settings.usageHistoryScanMinutes
+        : DEFAULT_SCAN_MINUTES,
+    )
+  },
+
   onShutdown() {
     stopUsageHistoryTimer()
+    usageHistoryRuntime = null
   },
 
   onReady() {

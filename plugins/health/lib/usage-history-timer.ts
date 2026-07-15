@@ -22,8 +22,14 @@ const g = globalThis as typeof globalThis & {
 }
 
 export const DEFAULT_SCAN_MINUTES = 5
-const MIN_SCAN_MINUTES = 1
+export const MIN_SCAN_MINUTES = 1
+export const MAX_SCAN_MINUTES = 24 * 60
 const SCAN_STALE_INTERVALS = 2
+
+export function normalizeUsageHistoryScanMinutes(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return DEFAULT_SCAN_MINUTES
+  return Math.min(MAX_SCAN_MINUTES, Math.max(MIN_SCAN_MINUTES, Math.round(value)))
+}
 
 /** Run one sweep and always publish its newest evidence state. */
 export function runUsageHistoryScan(
@@ -61,10 +67,11 @@ export function runUsageHistoryScan(
   return run
 }
 
-/** Start the scan interval. Idempotent — a live timer is left untouched. */
+/** Start or reschedule the scan interval. An unchanged live timer is preserved. */
 export function startUsageHistoryTimer(runtime: AgentRuntimeAdapter, minutes: number): void {
-  if (g.__bakinUsageHistoryTimer) return
-  const intervalMs = Math.max(MIN_SCAN_MINUTES, minutes) * 60_000
+  const intervalMs = normalizeUsageHistoryScanMinutes(minutes) * 60_000
+  if (g.__bakinUsageHistoryTimer && g.__bakinUsageHistoryScanIntervalMs === intervalMs) return
+  if (g.__bakinUsageHistoryTimer) clearInterval(g.__bakinUsageHistoryTimer)
   const run = () => { void runUsageHistoryScan(runtime) }
   g.__bakinUsageHistoryTimer = setInterval(run, intervalMs)
   g.__bakinUsageHistoryScanIntervalMs = intervalMs
