@@ -473,6 +473,31 @@ describe('getAgentUsageSnapshot', () => {
     })
   })
 
+  it('withholds a session when the compatibility scan cannot read every candidate', async () => {
+    writeSession('alpha', 'readable.jsonl', [
+      { type: 'session', id: 'readable-session', timestamp: '2026-07-15T10:00:00Z' },
+      { type: 'message', timestamp: '2026-07-15T10:01:00Z', message: { role: 'assistant', model: 'm1', usage: { input: 10, output: 2 } } },
+    ], { updatedAt: '2026-07-15T10:01:00Z' })
+    writeSession('alpha', 'unreadable.jsonl', [
+      { type: 'session', id: 'unreadable-session', timestamp: '2026-07-15T11:00:00Z' },
+    ])
+    const runtime = makeRuntime()
+    const read = runtime.memory.getEntry.bind(runtime.memory)
+    runtime.memory.getEntry = async (tierId, id, opts) => {
+      if (id === 'unreadable.jsonl') throw new Error('cannot read candidate')
+      return await read(tierId, id, opts)
+    }
+
+    const snapshot = await getAgentUsageSnapshot(runtime)
+
+    expect(snapshot.source).toEqual({
+      status: 'partial',
+      reason: 'session_read_failures',
+      failedAgents: ['alpha'],
+    })
+    expect(snapshot.sessions).toEqual([])
+  })
+
   it('selects from listing metadata and reads only the newest full transcript', async () => {
     writeSession('alpha', 'old.jsonl', [
       { type: 'session', id: 'old-session', timestamp: '2026-07-15T12:00:00Z' },

@@ -280,6 +280,7 @@ mock.module('../../../src/core/task-store', () => taskStoreMock)
 // ---------------------------------------------------------------------------
 
 import { activatePlugin, findRoute, findTool, callRoute, callTool } from '../test-helpers'
+import { agentUsageSnapshotResponseSchema } from '../../../plugins/health/lib/agent-route-schemas'
 const healthPlugin = (await import('../../../plugins/health')).default as typeof import('../../../plugins/health').default
 import { recordUsage, clearUsage } from '../../../src/core/usage'
 
@@ -410,6 +411,7 @@ describe('Health Plugin Routes', () => {
       const { status, body } = await callRoute(route, activated.ctx)
 
       expect(status).toBe(200)
+      expect(agentUsageSnapshotResponseSchema.safeParse(body).success).toBe(true)
       expect(body.source).toEqual({ status: 'complete', reason: 'complete', failedAgents: [] })
       expect(body.sessions).toEqual([expect.objectContaining({
         agent: 'patch',

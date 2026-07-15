@@ -93,6 +93,27 @@ describe('Agents route schemas', () => {
     }).success).toBe(false)
   })
 
+  it('never accepts a failed agent as a trusted current session', () => {
+    const session = {
+      agent: 'main',
+      sessionId: 'session-1',
+      sessionStarted: '2026-07-14T17:00:00.000Z',
+      lastMessageAt: '2026-07-14T17:05:00.000Z',
+      model: 'gpt-test',
+      messages: 1,
+      tokens,
+      cost: { input: null, output: null, cacheRead: null, cacheWrite: null, total: null, source: 'unavailable' },
+    }
+
+    const result = agentUsageSnapshotResponseSchema.safeParse({
+      generatedAt: '2026-07-14T18:00:00.000Z',
+      source: { status: 'partial', reason: 'session_read_failures', failedAgents: ['main'] },
+      sessions: [session],
+    })
+
+    expect(result.success).toBe(false)
+  })
+
   it('requires evidence on current server responses while retaining legacy browser payloads', () => {
     const { coverage: _historyCoverage, ...legacyHistory } = history()
     const {

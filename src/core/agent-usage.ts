@@ -355,7 +355,7 @@ async function getLatestSessionEntry(
     if (!latest || ts > latest.ts) latest = { entry: full, ts }
   }
 
-  return { entry: latest?.entry ?? null, failed }
+  return { entry: failed ? null : latest?.entry ?? null, failed }
 }
 
 async function mapWithConcurrency<T, R>(
