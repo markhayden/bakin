@@ -746,7 +746,7 @@ describe('AgentsTab', () => {
     render(<AgentsTab />)
     await screen.findByText('Agent pulse')
 
-    fireEvent.click(screen.getByRole('tab', { name: '8 calendar days' }))
+    fireEvent.click(screen.getByRole('tab', { name: '7d' }))
 
     await waitFor(() => {
       expect(urls).toContain('/api/plugins/health/usage-history?window=7d')

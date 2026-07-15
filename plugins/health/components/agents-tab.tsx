@@ -10,9 +10,9 @@ import { HealthTabIntro } from './health-tab-intro'
 
 const WINDOWS: readonly AgentsWindow[] = ['24h', '7d', '30d']
 const WINDOW_LABEL: Record<AgentsWindow, string> = {
-  '24h': 'Today + yesterday',
-  '7d': '8 calendar days',
-  '30d': '31 calendar days',
+  '24h': '24h',
+  '7d': '7d',
+  '30d': '30d',
 }
 
 function agentsWindow(value: string): AgentsWindow {

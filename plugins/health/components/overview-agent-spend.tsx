@@ -13,6 +13,7 @@ import { ArrowUpRight, Coins } from 'lucide-react'
 import type { HealthOverviewViewModel } from '../lib/health-view-model'
 import { formatRuntimeCost, formatTokenCount } from '../lib/format'
 import { scopeUsageHistoryToCompleteEvidence } from '../lib/usage-coverage'
+import { usageWindowScopeLabel } from '../lib/usage-window'
 import type { UsageHistoryData } from '../types'
 import type { OverviewTelemetry } from './overview-telemetry'
 
@@ -113,7 +114,12 @@ export function OverviewAgentSpend({
                   : 'Scan unavailable'}
             </span>
           )}
-          <span className="rounded-full bg-foreground/[0.06] px-2.5 py-1">Today + yesterday</span>
+          <span
+            className="rounded-full bg-foreground/[0.06] px-2.5 py-1"
+            title={history ? `${history.since} through ${history.throughDay}` : undefined}
+          >
+            {history ? usageWindowScopeLabel(history.since, history.throughDay) : '24h'}
+          </span>
         </div>
       </div>
 
