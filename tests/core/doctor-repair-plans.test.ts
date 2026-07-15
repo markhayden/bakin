@@ -5,6 +5,8 @@ import {
   createStoredRepairPlan,
   DoctorRepairConfirmationError,
   DoctorRepairStalePlanError,
+  getStoredRepairPlan,
+  MAX_STORED_REPAIR_PLANS,
   PLAN_TTL_MS,
   validateRepairApplication,
 } from '../../src/core/doctor-repair-plans'
@@ -110,5 +112,23 @@ describe('server-held repair plan validation', () => {
     for (const ids of [[], ['invented'], [item().id, item().id]]) {
       expect(() => validateRepairApplication({ planId: plan.planId, itemIds: ids, confirmedItemIds: [], report: report(), now })).toThrow(DoctorRepairStalePlanError)
     }
+  })
+
+  it('prunes abandoned expired plans when a later plan is created or read', () => {
+    const abandoned = createStoredRepairPlan({ basedOnReportId: 'health-report-1', target: { type: 'all_actionable', reportId: 'health-report-1' }, items: [item()] }, now)
+    const later = new Date(now.getTime() + PLAN_TTL_MS)
+
+    createStoredRepairPlan({ basedOnReportId: 'health-report-2', target: { type: 'all_actionable', reportId: 'health-report-2' }, items: [item()] }, later)
+
+    expect(getStoredRepairPlan(abandoned.planId, later)).toBeUndefined()
+  })
+
+  it('bounds abandoned plans and evicts the oldest plan first', () => {
+    const created = Array.from({ length: MAX_STORED_REPAIR_PLANS + 1 }, (_, index) => (
+      createStoredRepairPlan({ basedOnReportId: `health-report-${index}`, target: { type: 'all_actionable', reportId: `health-report-${index}` }, items: [item()] }, now)
+    ))
+
+    expect(getStoredRepairPlan(created[0]!.planId, now)).toBeUndefined()
+    expect(getStoredRepairPlan(created.at(-1)!.planId, now)).toBeDefined()
   })
 })

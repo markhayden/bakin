@@ -5,7 +5,19 @@ import type {
 } from '../../packages/core/src/plugin-types'
 
 const PLAN_TTL_MS = 10 * 60_000
+const MAX_STORED_REPAIR_PLANS = 100
 const plans = new Map<string, HealthRepairPlan>()
+
+function pruneStoredRepairPlans(nowMs: number): void {
+  for (const [planId, plan] of plans) {
+    if (Date.parse(plan.expiresAt) <= nowMs) plans.delete(planId)
+  }
+  while (plans.size > MAX_STORED_REPAIR_PLANS) {
+    const oldestPlanId = plans.keys().next().value
+    if (typeof oldestPlanId !== 'string') break
+    plans.delete(oldestPlanId)
+  }
+}
 
 export class DoctorRepairStalePlanError extends Error {
   readonly code = 'STALE_PLAN'
@@ -29,6 +41,7 @@ export function createStoredRepairPlan(
   input: Omit<HealthRepairPlan, 'planId' | 'createdAt' | 'expiresAt'>,
   now = new Date(),
 ): HealthRepairPlan {
+  pruneStoredRepairPlans(now.getTime())
   const plan: HealthRepairPlan = {
     ...structuredClone(input),
     planId: `repair-plan-${crypto.randomUUID()}`,
@@ -36,10 +49,12 @@ export function createStoredRepairPlan(
     expiresAt: new Date(now.getTime() + PLAN_TTL_MS).toISOString(),
   }
   plans.set(plan.planId, plan)
+  pruneStoredRepairPlans(now.getTime())
   return structuredClone(plan)
 }
 
-export function getStoredRepairPlan(planId: string): HealthRepairPlan | undefined {
+export function getStoredRepairPlan(planId: string, now = new Date()): HealthRepairPlan | undefined {
+  pruneStoredRepairPlans(now.getTime())
   const plan = plans.get(planId)
   return plan ? structuredClone(plan) : undefined
 }
@@ -81,6 +96,7 @@ export function validateRepairApplication(input: {
   report: HealthReport
   now?: Date
 }): ValidatedRepairApplication {
+  pruneStoredRepairPlans((input.now ?? new Date()).getTime())
   const plan = plans.get(input.planId)
   if (!plan || Date.parse(plan.expiresAt) <= (input.now ?? new Date()).getTime()) {
     if (plan) plans.delete(input.planId)
@@ -124,4 +140,4 @@ export function clearStoredRepairPlans(): void {
   plans.clear()
 }
 
-export { PLAN_TTL_MS }
+export { MAX_STORED_REPAIR_PLANS, PLAN_TTL_MS }
