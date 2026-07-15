@@ -309,6 +309,31 @@ describe('SystemTabView', () => {
     expect(document.activeElement?.getAttribute('aria-label')).toBe('Search subsystem detail')
   })
 
+  it('reveals System evidence without querying test-only selectors', () => {
+    render(<SystemTabView data={systemData()} />)
+
+    const hostButton = screen.getByRole('button', { name: 'Open Bakin host detail: Host online' })
+    const checkButton = screen.getByRole('button', { name: 'View evidence for Search verification probe' })
+    const hostDetails = screen.getByTestId('bakin-host-details') as HTMLDetailsElement
+    const checkDetails = screen.getByTestId('all-health-checks-details') as HTMLDetailsElement
+    const originalQuerySelector = document.querySelector
+    document.querySelector = ((selector: string) => {
+      if (selector.includes('data-testid')) throw new Error('Production navigation queried a test-only selector')
+      return originalQuerySelector.call(document, selector)
+    }) as typeof document.querySelector
+
+    try {
+      fireEvent.click(hostButton)
+      fireEvent.click(checkButton)
+    } finally {
+      document.querySelector = originalQuerySelector
+    }
+
+    expect(hostDetails.open).toBe(true)
+    expect(checkDetails.open).toBe(true)
+    expect(document.activeElement?.getAttribute('data-check-id')).toBe('search.probe')
+  })
+
   it('blocks duplicate mutations while a previous server outcome is unknown', () => {
     const data = systemData()
     data.searchMutation = {
@@ -396,6 +421,27 @@ describe('SystemTabView', () => {
 
     await waitFor(() => expect(document.activeElement?.getAttribute('data-plugin-id')).toBe('notes'))
     expect((screen.getByRole('searchbox', { name: 'Find a plugin' }) as HTMLInputElement).value).toBe('')
+  })
+
+  it('accepts URL-backed installed-feature search state', () => {
+    const setPluginSearch = mock()
+    render(
+      <SystemTabView
+        data={systemData()}
+        pluginSearch="assets"
+        onPluginSearchChange={setPluginSearch}
+      />,
+    )
+
+    const inventory = screen.getByTestId('installed-features-details') as HTMLDetailsElement
+    fireEvent.click(inventory.querySelector('summary')!)
+    const pluginSearch = screen.getByRole('searchbox', { name: 'Find a plugin' }) as HTMLInputElement
+    expect(pluginSearch.value).toBe('assets')
+    expect(inventory.querySelector('[data-plugin-id="assets"]')).not.toBeNull()
+    expect(inventory.querySelector('[data-plugin-id="notes"]')).toBeNull()
+
+    fireEvent.change(pluginSearch, { target: { value: 'notes' } })
+    expect(setPluginSearch).toHaveBeenCalledWith('notes')
   })
 
   it('does not call an inventory healthy while both plugin sources are still loading', () => {

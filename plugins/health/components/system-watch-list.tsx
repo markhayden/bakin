@@ -7,30 +7,8 @@ import { Button } from '@makinbakin/sdk/ui'
 import { CheckCircle2, ChevronDown, Puzzle, ShieldCheck } from 'lucide-react'
 import type { SystemPluginManifestData, SystemRegistryData } from '../hooks/use-system-data'
 import { buildSystemFindings, type SystemFinding } from '../lib/system-view-model'
-import { focusSystemElement } from './system-navigation'
 
 const DEFAULT_VISIBLE_FINDINGS = 3
-
-function revealFinding(finding: SystemFinding, onRevealPlugin: () => void): void {
-  const disclosureTestId = finding.kind === 'plugin'
-    ? 'installed-features-details'
-    : 'all-health-checks-details'
-  const disclosure = document.querySelector<HTMLDetailsElement>(`[data-testid="${disclosureTestId}"]`)
-  if (disclosure) disclosure.open = true
-
-  const attribute = finding.kind === 'plugin' ? 'data-plugin-id' : 'data-check-id'
-  const focusTarget = (): boolean => {
-    const target = [...document.querySelectorAll<HTMLElement>(`[${attribute}]`)]
-      .find((element) => element.getAttribute(attribute) === finding.targetId)
-    if (!target) return false
-    focusSystemElement(target, { block: 'center' })
-    return true
-  }
-  if (focusTarget() || finding.kind !== 'plugin') return
-
-  onRevealPlugin()
-  window.requestAnimationFrame(() => { focusTarget() })
-}
 
 export function SystemWatchList({
   report,
@@ -39,7 +17,7 @@ export function SystemWatchList({
   evidenceState,
   reportCurrent,
   pluginInventoryCurrent,
-  onRevealPlugin,
+  onRevealFinding,
 }: {
   report: HealthReport | null
   registry: SystemRegistryData | null
@@ -47,7 +25,7 @@ export function SystemWatchList({
   evidenceState: 'current' | 'checking' | 'incomplete'
   reportCurrent: boolean
   pluginInventoryCurrent: boolean
-  onRevealPlugin: () => void
+  onRevealFinding: (finding: SystemFinding) => void
 }) {
   const [expanded, setExpanded] = useState(false)
   const findings = useMemo(
@@ -130,7 +108,7 @@ export function SystemWatchList({
                     size="xs"
                     variant="outline"
                     className="justify-self-start @[34rem]/health-system:justify-self-end"
-                    onClick={() => revealFinding(finding, onRevealPlugin)}
+                    onClick={() => onRevealFinding(finding)}
                     aria-label={`View evidence for ${finding.title}`}
                   >
                     View evidence

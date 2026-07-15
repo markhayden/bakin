@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
+import { forwardRef, useImperativeHandle, useMemo, useRef } from 'react'
 import type { HealthCheckState, HealthReport } from '@makinbakin/sdk/types'
 import { Badge, Button, Input } from '@makinbakin/sdk/ui'
 import { StatTile, StatusBadge } from '@makinbakin/sdk/components'
@@ -17,6 +17,7 @@ import {
   mergeSystemPlugins,
   presentSystemCheck,
 } from '../lib/system-view-model'
+import { focusSystemElement } from './system-navigation'
 
 export interface SystemInventoryProps {
   report: HealthReport | null
@@ -35,6 +36,14 @@ export interface SystemInventoryProps {
   onUpgrade: (pluginId: string, approvePermissions?: boolean) => void | Promise<void>
 }
 
+export interface SystemInventoryHandle {
+  revealHost: () => void
+  revealPlugins: () => void
+  revealPlugin: (pluginId: string) => boolean
+  revealChecks: () => void
+  revealCheck: (checkId: string) => boolean
+}
+
 function mutationClass(status: SystemMutationState['status']): string {
   if (status === 'error') return 'border-destructive/25 bg-destructive/10 text-destructive'
   if (status === 'success') return 'border-success/25 bg-success/10 text-success'
@@ -42,7 +51,16 @@ function mutationClass(status: SystemMutationState['status']): string {
   return 'border-border bg-muted/40 text-muted-foreground'
 }
 
-export function SystemInventory({
+function revealDisclosure(
+  disclosure: HTMLDetailsElement | null,
+  summary: HTMLElement | null,
+): void {
+  if (!disclosure) return
+  disclosure.open = true
+  if (summary) focusSystemElement(summary)
+}
+
+export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventoryProps>(function SystemInventory({
   report,
   live,
   registry,
@@ -57,7 +75,16 @@ export function SystemInventory({
   onPluginSearchChange,
   onCheckUpdates,
   onUpgrade,
-}: SystemInventoryProps) {
+}, ref) {
+  const pluginsDisclosureRef = useRef<HTMLDetailsElement>(null)
+  const pluginsSummaryRef = useRef<HTMLElement>(null)
+  const hostDisclosureRef = useRef<HTMLDetailsElement>(null)
+  const hostSummaryRef = useRef<HTMLElement>(null)
+  const checksDisclosureRef = useRef<HTMLDetailsElement>(null)
+  const checksSummaryRef = useRef<HTMLElement>(null)
+  const pluginRowRefs = useRef(new Map<string, HTMLTableRowElement>())
+  const checkRowRefs = useRef(new Map<string, HTMLElement>())
+  const checkGroupRefs = useRef(new Map<string, HTMLDetailsElement>())
   const plugins = useMemo(() => mergeSystemPlugins(registry, manifest), [manifest, registry])
   const filteredPlugins = useMemo(() => {
     const query = pluginSearch.trim().toLowerCase()
@@ -79,6 +106,42 @@ export function SystemInventory({
   }, [report])
   const checksToReview = useMemo(() => (report?.checks ?? [])
     .filter((check) => presentSystemCheck(check).concerning).length, [report])
+  const checkGroupById = useMemo(() => {
+    const groupByCheckId = new Map<string, string>()
+    for (const group of groupedChecks) {
+      for (const check of group.checks) groupByCheckId.set(check.checkId, group.key)
+    }
+    return groupByCheckId
+  }, [groupedChecks])
+
+  useImperativeHandle(ref, () => ({
+    revealHost: () => revealDisclosure(hostDisclosureRef.current, hostSummaryRef.current),
+    revealPlugins: () => revealDisclosure(pluginsDisclosureRef.current, pluginsSummaryRef.current),
+    revealPlugin: (pluginId) => {
+      const target = pluginRowRefs.current.get(pluginId)
+      if (!target) {
+        revealDisclosure(pluginsDisclosureRef.current, pluginsSummaryRef.current)
+        return false
+      }
+      if (pluginsDisclosureRef.current) pluginsDisclosureRef.current.open = true
+      focusSystemElement(target, { block: 'center' })
+      return true
+    },
+    revealChecks: () => revealDisclosure(checksDisclosureRef.current, checksSummaryRef.current),
+    revealCheck: (checkId) => {
+      if (checksDisclosureRef.current) checksDisclosureRef.current.open = true
+      const groupId = checkGroupById.get(checkId)
+      const group = groupId ? checkGroupRefs.current.get(groupId) : null
+      if (group) group.open = true
+      const target = checkRowRefs.current.get(checkId)
+      if (!target) {
+        if (checksSummaryRef.current) focusSystemElement(checksSummaryRef.current)
+        return false
+      }
+      focusSystemElement(target, { block: 'center' })
+      return true
+    },
+  }), [checkGroupById])
 
   return (
     <div className="space-y-5">
@@ -109,8 +172,8 @@ export function SystemInventory({
         </div>
       )}
 
-      <details data-testid="installed-features-details" className="group overflow-hidden rounded-xl border border-border bg-card">
-        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 marker:hidden">
+      <details ref={pluginsDisclosureRef} data-testid="installed-features-details" className="group overflow-hidden rounded-xl border border-border bg-card">
+        <summary ref={pluginsSummaryRef} className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 marker:hidden">
           <span className="min-w-0">
             <span className="block text-sm font-semibold">Installed features</span>
             <span className="block text-xs text-muted-foreground">Browse plugins, versions, activation state, and updates.</span>
@@ -166,6 +229,10 @@ export function SystemInventory({
                   {filteredPlugins.map((plugin) => (
                     <tr
                       key={plugin.id}
+                      ref={(element) => {
+                        if (element) pluginRowRefs.current.set(plugin.id, element)
+                        else pluginRowRefs.current.delete(plugin.id)
+                      }}
                       data-plugin-id={plugin.id}
                       tabIndex={-1}
                       className="outline-none focus-visible:bg-accent/[0.06] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
@@ -221,8 +288,8 @@ export function SystemInventory({
         </div>
       </details>
 
-      <details data-testid="bakin-host-details" className="group overflow-hidden rounded-xl border border-border bg-card">
-        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 marker:hidden">
+      <details ref={hostDisclosureRef} data-testid="bakin-host-details" className="group overflow-hidden rounded-xl border border-border bg-card">
+        <summary ref={hostSummaryRef} className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 marker:hidden">
           <span className="min-w-0">
             <span className="block text-sm font-semibold">Bakin host details</span>
             <span className="block text-xs text-muted-foreground">Process, uptime, memory, port, and connected sessions.</span>
@@ -258,10 +325,11 @@ export function SystemInventory({
       </details>
 
       <details
+        ref={checksDisclosureRef}
         data-testid="all-health-checks-details"
         className="group overflow-hidden rounded-xl border border-border bg-card"
       >
-        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 marker:hidden">
+        <summary ref={checksSummaryRef} className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 marker:hidden">
           <span className="min-w-0">
             <span className="block text-sm font-semibold">All health checks</span>
             <span className="block text-xs text-muted-foreground">Every registered check, including healthy and not-applicable evidence.</span>
@@ -288,7 +356,15 @@ export function SystemInventory({
                   ? 'destructive'
                   : presentations.some((row) => row.presentation.tone === 'warning') ? 'warning' : 'neutral'
                 return (
-                  <details key={group.key} className="rounded-lg border border-border" open={concerning > 0}>
+                  <details
+                    key={group.key}
+                    ref={(element) => {
+                      if (element) checkGroupRefs.current.set(group.key, element)
+                      else checkGroupRefs.current.delete(group.key)
+                    }}
+                    className="rounded-lg border border-border"
+                    open={concerning > 0}
+                  >
                     <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 marker:hidden">
                       <span className="font-medium">{group.label}</span>
                       <span className="flex items-center gap-2">
@@ -300,6 +376,10 @@ export function SystemInventory({
                       {presentations.map(({ check, presentation }) => (
                         <div
                           key={check.checkId}
+                          ref={(element) => {
+                            if (element) checkRowRefs.current.set(check.checkId, element)
+                            else checkRowRefs.current.delete(check.checkId)
+                          }}
                           data-check-id={check.checkId}
                           tabIndex={-1}
                           className="grid gap-2 px-3 py-3 outline-none focus-visible:bg-accent/[0.06] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring @[40rem]/health-system:grid-cols-[minmax(0,1fr)_auto]"
@@ -328,4 +408,4 @@ export function SystemInventory({
       </details>
     </div>
   )
-}
+})
