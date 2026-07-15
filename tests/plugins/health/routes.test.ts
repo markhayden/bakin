@@ -73,7 +73,19 @@ const cachedReport: HealthReport = {
   overallStatus: 'needs_attention',
   lastFullSweep: { id: 'sweep-1', startedAt: generatedAt, completedAt: generatedAt },
   checks: [],
-  observations: [],
+  observations: [{
+    id: 'tasks.taskboard:columns', key: 'columns', status: 'error',
+    summary: 'Task board columns are missing.', checkId: 'tasks.taskboard', checkName: 'Task board',
+    owner: { kind: 'plugin', id: 'tasks', label: 'Tasks' }, group: { key: 'tasks', label: 'Tasks' },
+    checkedAt: generatedAt, observedAt: generatedAt, staleAt: '2026-04-01T10:02:00.000Z', snapshot: 'current',
+    incidentId: 'tasks:taskboard:missing-columns',
+    incident: {
+      key: 'taskboard.missing-columns', disposition: 'action_required', title: 'Task board columns are missing',
+      impact: 'Tasks cannot move through the full workflow.',
+      resources: [{ kind: 'plugin', id: 'tasks', label: 'Tasks' }],
+      resolution: { key: 'repair-board', type: 'repair', label: 'Repair board', actionId: 'tasks.repair-store' },
+    },
+  }],
   incidents: [{
     id: 'tasks:taskboard:missing-columns', status: 'error', disposition: 'action_required',
     title: 'Task board columns are missing', impact: 'Tasks cannot move through the full workflow.',
@@ -88,7 +100,7 @@ const cachedReport: HealthReport = {
     },
   },
   summary: {
-    checks: { registered: 37, completed: 37, failed: 0, invalid: 0, notApplicable: 0 },
+    checks: { registered: 0, completed: 0, failed: 0, invalid: 0, notApplicable: 0 },
     incidents: { actionRequired: 1, watching: 0, advisory: 0, unknown: 0 },
   },
 }

@@ -10,12 +10,57 @@ import {
 
 const isoDateTime = z.iso.datetime({ offset: true })
 const nonEmptyString = z.string().min(1)
+const searchReadinessStageKeys = ['engine', 'queries', 'indexes', 'journal'] as const
 // Producer evidence is validated by the stricter bounded/redacting JSON
 // schema in health-contract.ts before it reaches the report cache. At this
 // response-only boundary, JSON serialization is the remaining wire guarantee.
 // `z.json()` emits document-root refs that cannot be safely embedded inside an
 // OpenAPI operation, so describe object values without recursive local refs.
 const healthEvidenceResponseSchema = z.record(z.string(), z.unknown())
+
+function indexUniqueRows<T>(
+  rows: readonly T[],
+  idOf: (row: T) => string,
+  path: string,
+  label: string,
+  context: z.core.$RefinementCtx,
+): Map<string, { index: number; row: T }> {
+  const byId = new Map<string, { index: number; row: T }>()
+  rows.forEach((row, index) => {
+    const id = idOf(row)
+    const first = byId.get(id)
+    if (first !== undefined) {
+      context.addIssue({
+        code: 'custom',
+        path: [path, index, label],
+        message: `Duplicate ${label}; first declared at ${path}.${first.index}.${label}`,
+        input: id,
+      })
+      return
+    }
+    byId.set(id, { index, row })
+  })
+  return byId
+}
+
+function reconcileSummary<T extends Record<string, number>>(
+  actual: T,
+  expected: T,
+  path: string,
+  source: string,
+  context: z.core.$RefinementCtx,
+): void {
+  for (const key of Object.keys(expected) as Array<keyof T>) {
+    if (actual[key] !== expected[key]) {
+      context.addIssue({
+        code: 'custom',
+        path: ['summary', path, String(key)],
+        message: `${String(key)} must reconcile with the report's ${source}`,
+        input: actual[key],
+      })
+    }
+  }
+}
 
 export const healthOwnerSchema = z.object({
   kind: z.enum(['plugin', 'adapter', 'core']),
@@ -119,7 +164,7 @@ export const canonicalHealthIncidentSchema = z.object({
 }).strict()
 
 export const searchReadinessStageSchema = z.object({
-  key: z.enum(['engine', 'queries', 'indexes', 'journal']),
+  key: z.enum(searchReadinessStageKeys),
   label: nonEmptyString,
   status: z.enum(['healthy', 'degraded', 'unhealthy', 'unknown', 'not_applicable']),
   summary: nonEmptyString,
@@ -135,7 +180,20 @@ export const searchReadinessSchema = z.object({
   staleAt: isoDateTime.nullable(),
   stages: z.array(searchReadinessStageSchema).length(4),
   incidentIds: z.array(nonEmptyString),
-}).strict()
+}).strict().superRefine((readiness, context) => {
+  const stageKeys = new Set(readiness.stages.map((stage) => stage.key))
+  if (
+    stageKeys.size !== searchReadinessStageKeys.length
+    || searchReadinessStageKeys.some((key) => !stageKeys.has(key))
+  ) {
+    context.addIssue({
+      code: 'custom',
+      path: ['stages'],
+      message: 'Search readiness must contain engine, queries, indexes, and journal exactly once',
+      input: readiness.stages,
+    })
+  }
+})
 
 export const healthReportSchema = z.object({
   id: nonEmptyString,
@@ -166,7 +224,92 @@ export const healthReportSchema = z.object({
       unknown: z.number().int().nonnegative(),
     }).strict(),
   }).strict(),
-}).strict()
+}).strict().superRefine((report, context) => {
+  indexUniqueRows(report.checks, (check) => check.checkId, 'checks', 'checkId', context)
+  const observationsById = indexUniqueRows(report.observations, (observation) => observation.id, 'observations', 'id', context)
+  const incidentsById = indexUniqueRows(report.incidents, (incident) => incident.id, 'incidents', 'id', context)
+
+  report.observations.forEach((observation, index) => {
+    if (observation.status === 'healthy') return
+    const incident = incidentsById.get(observation.incidentId)?.row
+    if (incident === undefined) {
+      context.addIssue({
+        code: 'custom',
+        path: ['observations', index, 'incidentId'],
+        message: 'Observation incidentId must reference an incident in this report',
+        input: observation.incidentId,
+      })
+      return
+    }
+    if (!incident.observationIds.includes(observation.id)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['observations', index, 'incidentId'],
+        message: 'The referenced incident must include this observation id',
+        input: observation.incidentId,
+      })
+    }
+  })
+
+  report.incidents.forEach((incident, incidentIndex) => {
+    const referencedIds = new Set<string>()
+    if (incident.observationIds.length === 0) {
+      context.addIssue({
+        code: 'custom',
+        path: ['incidents', incidentIndex, 'observationIds'],
+        message: 'An incident must reference at least one observation in this report',
+        input: incident.observationIds,
+      })
+    }
+    incident.observationIds.forEach((observationId, observationIndex) => {
+      if (referencedIds.has(observationId)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['incidents', incidentIndex, 'observationIds', observationIndex],
+          message: 'Incident observation ids must be unique',
+          input: observationId,
+        })
+        return
+      }
+      referencedIds.add(observationId)
+      const observation = observationsById.get(observationId)?.row
+      if (observation === undefined) {
+        context.addIssue({
+          code: 'custom',
+          path: ['incidents', incidentIndex, 'observationIds', observationIndex],
+          message: 'Incident observationId must reference an observation in this report',
+          input: observationId,
+        })
+      } else if (observation.status === 'healthy' || observation.incidentId !== incident.id) {
+        context.addIssue({
+          code: 'custom',
+          path: ['incidents', incidentIndex, 'observationIds', observationIndex],
+          message: 'Referenced observation must point back to this incident',
+          input: observationId,
+        })
+      }
+    })
+  })
+
+  const expectedCheckSummary = {
+    registered: report.checks.length,
+    completed: report.checks.filter((check) =>
+      check.latestExecution.outcome === 'observed' || check.latestExecution.outcome === 'not_applicable',
+    ).length,
+    failed: report.checks.filter((check) => check.latestExecution.outcome === 'failed').length,
+    invalid: report.checks.filter((check) => check.latestExecution.outcome === 'invalid').length,
+    notApplicable: report.checks.filter((check) => check.latestExecution.outcome === 'not_applicable').length,
+  }
+  reconcileSummary(report.summary.checks, expectedCheckSummary, 'checks', 'check executions', context)
+
+  const expectedIncidentSummary = {
+    actionRequired: report.incidents.filter((incident) => incident.disposition === 'action_required').length,
+    watching: report.incidents.filter((incident) => incident.disposition === 'watch').length,
+    advisory: report.incidents.filter((incident) => incident.disposition === 'advisory').length,
+    unknown: report.incidents.filter((incident) => incident.status === 'unknown').length,
+  }
+  reconcileSummary(report.summary.incidents, expectedIncidentSummary, 'incidents', 'incidents', context)
+})
 
 export const healthCheckMetadataSchema = z.object({
   id: nonEmptyString,
