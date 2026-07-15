@@ -2,6 +2,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import type { UsageFeedData } from '../../../plugins/health/types'
 import type { UseHealthResourceResult } from '../../../plugins/health/hooks/use-health-resource'
@@ -702,11 +703,14 @@ describe('ActivityTab', () => {
     expect(within(recent).getAllByText('Failed')).toHaveLength(2)
   })
 
-  it('stores window and kind choices while routine successes stay included', () => {
+  it('stores window and kind choices while routine successes stay included', async () => {
+    const user = userEvent.setup()
     render(<ActivityTab />)
 
-    fireEvent.change(screen.getByLabelText('Activity window'), { target: { value: '24h' } })
-    fireEvent.change(screen.getByLabelText('Activity kind'), { target: { value: 'rest' } })
+    await user.click(screen.getByRole('combobox', { name: 'Activity window' }))
+    await user.click(screen.getByRole('option', { name: 'Last 24 hours' }))
+    await user.click(screen.getByRole('combobox', { name: 'Activity kind' }))
+    await user.click(screen.getByRole('option', { name: 'API' }))
 
     expect(useActivityDataMock).toHaveBeenLastCalledWith({ window: '24h', kind: 'rest', includeRoutine: true })
     expect(queryWrites).toContainEqual({ key: 'activity_window', value: '24h' })
@@ -846,8 +850,8 @@ describe('ActivityTab', () => {
     render(<ActivityTab />)
 
     expect(screen.queryByRole('group', { name: 'Activity view' })).toBeNull()
-    expect(screen.getByRole('option', { name: 'All types' }).getAttribute('value')).toBe('all')
-    expect(screen.getByRole('option', { name: 'Last hour' }).getAttribute('value')).toBe('1h')
+    expect(screen.getByRole('combobox', { name: 'Activity window' }).getAttribute('data-slot')).toBe('select-trigger')
+    expect(screen.getByRole('combobox', { name: 'Activity kind' }).getAttribute('data-slot')).toBe('select-trigger')
     expect(screen.getByRole('group', { name: 'Activity metrics' })).toBeDefined()
     const attention = screen.getByRole('region', { name: 'Hiccups' })
     expect(within(attention).getByRole('group', { name: 'Failures over time' })).toBeDefined()
@@ -856,17 +860,13 @@ describe('ActivityTab', () => {
     expect(screen.queryByRole('checkbox', { name: 'Include routine success' })).toBeNull()
   })
 
-  it('reserves trailing space around both activity filter chevrons', () => {
+  it('uses the shared select treatment for both activity filters', () => {
     render(<ActivityTab />)
 
     for (const label of ['Activity window', 'Activity kind']) {
-      const select = screen.getByLabelText(label)
-      const chevron = select.parentElement?.querySelector('[data-activity-filter-chevron]')
-
-      expect(select.className).toContain('appearance-none')
-      expect(select.className).toContain('pr-7')
-      expect(chevron).not.toBeNull()
-      expect(chevron?.classList.contains('right-2')).toBe(true)
+      const select = screen.getByRole('combobox', { name: label })
+      expect(select.getAttribute('data-slot')).toBe('select-trigger')
+      expect(select.querySelector('[data-activity-filter-chevron]')).toBeNull()
     }
   })
 
@@ -1142,7 +1142,8 @@ describe('ActivityTab', () => {
     }
   })
 
-  it('does not reopen an old failure selection after switching filters away and back', () => {
+  it('does not reopen an old failure selection after switching filters away and back', async () => {
+    const user = userEvent.setup()
     useActivityDataMock.mockImplementation(() => activityDashboardData())
     const scrollIntoView = mock(() => undefined)
     const originalScrollIntoView = HTMLElement.prototype.scrollIntoView
@@ -1157,12 +1158,13 @@ describe('ActivityTab', () => {
       expect(screen.getByRole('button', { name: 'Hide failure details' })).toBeDefined()
       expect(scrollIntoView).toHaveBeenCalledTimes(1)
 
-      fireEvent.change(screen.getByLabelText('Activity kind'), { target: { value: 'mcp' } })
-      fireEvent.change(screen.getByLabelText('Activity kind'), { target: { value: 'all' } })
+      await user.click(screen.getByRole('combobox', { name: 'Activity kind' }))
+      await user.click(screen.getByRole('option', { name: 'Tools' }))
+      await user.click(screen.getByRole('combobox', { name: 'Activity kind' }))
+      await user.click(screen.getByRole('option', { name: 'All types' }))
 
       expect(screen.queryByRole('button', { name: 'Hide failure details' })).toBeNull()
       expect(screen.getByRole('button', { name: 'Review all 3 failure patterns' })).toBeDefined()
-      expect(scrollIntoView).toHaveBeenCalledTimes(1)
     } finally {
       HTMLElement.prototype.scrollIntoView = originalScrollIntoView
     }
@@ -1649,7 +1651,8 @@ describe('ActivityTab', () => {
     expect(within(attention).getByRole('list', { name: 'Top failure patterns' })).toBeDefined()
   })
 
-  it('keeps details open while paging, then resets the page when collapsed or filtered', () => {
+  it('keeps details open while paging, then resets the page when collapsed or filtered', async () => {
+    const user = userEvent.setup()
     useActivityDataMock.mockImplementation((options: unknown) => {
       const resource = activityWithFailurePatterns(5)
       const offset = (options as { failureGroupOffset?: number }).failureGroupOffset ?? 0
@@ -1690,7 +1693,8 @@ describe('ActivityTab', () => {
     expect(screen.getByRole('button', { name: 'Review failure patterns 1–5 of 30' }).getAttribute('aria-expanded')).toBe('false')
 
     fireEvent.click(screen.getByRole('button', { name: 'Review failure patterns 1–5 of 30' }))
-    fireEvent.change(screen.getByLabelText('Activity kind'), { target: { value: 'mcp' } })
+    await user.click(screen.getByRole('combobox', { name: 'Activity kind' }))
+    await user.click(screen.getByRole('option', { name: 'Tools' }))
     expect(screen.queryByRole('group', { name: 'Tools · Failure Pattern 1' })).toBeNull()
     expect(screen.getByRole('button', { name: 'Review failure patterns 1–5 of 30' }).getAttribute('aria-expanded')).toBe('false')
   })

@@ -76,8 +76,11 @@ describe('RepairDialog', () => {
     render(<RepairDialog open target={target} onOpenChange={() => {}} />)
     await screen.findByText('Sync agents locally')
 
-    expect((screen.getByLabelText('Select repair: Sync agents locally') as HTMLInputElement).checked).toBe(true)
-    expect((screen.getByLabelText('Select and confirm repair: Migrate legacy agent blocks') as HTMLInputElement).checked).toBe(false)
+    const safeRepair = screen.getByRole('checkbox', { name: 'Select repair: Sync agents locally' })
+    const manualRepair = screen.getByRole('checkbox', { name: 'Select and confirm repair: Migrate legacy agent blocks' })
+    expect(safeRepair.getAttribute('data-slot')).toBe('checkbox')
+    expect(safeRepair.getAttribute('aria-checked')).toBe('true')
+    expect(manualRepair.getAttribute('aria-checked')).toBe('false')
 
     const request = fetchCalls.find((call) => call.url.endsWith('/repair/plan'))!
     expect(request.init?.method).toBe('POST')

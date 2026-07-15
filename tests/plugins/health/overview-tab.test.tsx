@@ -245,8 +245,11 @@ describe('OverviewTabView', () => {
     expect(screen.queryByText('Engine')).toBeNull()
     expect(screen.queryByText('Technical evidence')).toBeNull()
 
-    const notices = screen.getByText('1 notice').closest('details')
-    expect(notices?.open).toBe(false)
+    const notices = screen.getByRole('button', { name: '1 notice' })
+    expect(notices.getAttribute('data-slot')).toBe('popover-trigger')
+    expect(notices.getAttribute('aria-expanded')).toBe('false')
+    fireEvent.click(notices)
+    expect(screen.getByText('Journal backlog is growing')).toBeDefined()
 
     fireEvent.click(screen.getByRole('button', { name: 'Restart Search' }))
     expect(onRepair).toHaveBeenCalledWith(repair)

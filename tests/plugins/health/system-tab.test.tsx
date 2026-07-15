@@ -387,7 +387,9 @@ describe('SystemTabView', () => {
 
     const inventory = screen.getByTestId('installed-features-details') as HTMLDetailsElement
     fireEvent.click(inventory.querySelector('summary')!)
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Find a plugin' }), { target: { value: 'assets' } })
+    const pluginSearch = screen.getByRole('searchbox', { name: 'Find a plugin' })
+    expect(pluginSearch.getAttribute('data-slot')).toBe('input')
+    fireEvent.change(pluginSearch, { target: { value: 'assets' } })
     expect(inventory.querySelector('[data-plugin-id="notes"]')).toBeNull()
 
     fireEvent.click(screen.getByRole('button', { name: 'View evidence for Notes' }))

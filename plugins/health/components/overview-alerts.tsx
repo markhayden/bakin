@@ -2,6 +2,7 @@
 
 import type { HealthIncident } from '@makinbakin/sdk/types'
 import { PluginLink, StatusBadge } from '@makinbakin/sdk/components'
+import { Popover, PopoverContent, PopoverTrigger } from '@makinbakin/sdk/ui'
 import { CheckCircle2, ChevronDown, ChevronRight } from 'lucide-react'
 import type { HealthOverviewViewModel, OverviewIncident } from '../lib/health-view-model'
 import { IncidentRow } from './incident-row'
@@ -62,12 +63,12 @@ function AlertGrid({
 function Notices({ incidents }: { incidents: OverviewIncident[] }) {
   if (incidents.length === 0) return null
   return (
-    <details className="group relative">
-      <summary className="flex cursor-pointer list-none items-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+    <Popover>
+      <PopoverTrigger className="group flex items-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         {incidents.length} {incidents.length === 1 ? 'notice' : 'notices'}
-        <ChevronDown className="size-3.5 transition-transform group-open:rotate-180 motion-reduce:transition-none" aria-hidden="true" />
-      </summary>
-      <div className="absolute right-0 top-full z-20 mt-2 w-[min(24rem,calc(100vw-2rem))] rounded-xl border border-border bg-popover p-2 shadow-lg">
+        <ChevronDown className="size-3.5 transition-transform group-data-[popup-open]:rotate-180 motion-reduce:transition-none" aria-hidden="true" />
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-[min(24rem,calc(100vw-2rem))] p-2">
         <ul className="max-h-72 space-y-1 overflow-auto">
           {incidents.map((item) => (
             <li key={item.incident.id} className="flex items-start gap-2 rounded-lg px-2 py-2 text-sm">
@@ -84,8 +85,8 @@ function Notices({ incidents }: { incidents: OverviewIncident[] }) {
         >
           Review system details <ChevronRight className="size-3.5" aria-hidden="true" />
         </PluginLink>
-      </div>
-    </details>
+      </PopoverContent>
+    </Popover>
   )
 }
 

@@ -5,6 +5,7 @@ import type { HealthRepairTarget } from '@makinbakin/sdk/types'
 import {
   Badge,
   Button,
+  Checkbox,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -131,12 +132,11 @@ export function RepairDialog({
             {repair.plan.items.map((item) => {
               const nonSafe = item.safety !== 'safe'
               return (
-                <label key={item.id} className="flex cursor-pointer items-start gap-3 rounded-xl border border-border/80 p-4 focus-within:ring-2 focus-within:ring-ring">
-                  <input
-                    type="checkbox"
+                <div key={item.id} className="flex items-start gap-3 rounded-xl border border-border/80 p-4 focus-within:ring-2 focus-within:ring-ring">
+                  <Checkbox
                     className="mt-1"
                     checked={selected.has(item.id)}
-                    onChange={() => toggle(item.id)}
+                    onCheckedChange={() => toggle(item.id)}
                     aria-label={`${nonSafe ? 'Select and confirm' : 'Select'} repair: ${item.title}`}
                   />
                   <span className="min-w-0 space-y-2 text-sm">
@@ -157,7 +157,7 @@ export function RepairDialog({
                       </span>
                     )}
                   </span>
-                </label>
+                </div>
               )
             })}
           </div>

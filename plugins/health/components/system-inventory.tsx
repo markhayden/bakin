@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react'
 import type { HealthCheckState, HealthReport } from '@makinbakin/sdk/types'
-import { Badge, Button } from '@makinbakin/sdk/ui'
+import { Badge, Button, Input } from '@makinbakin/sdk/ui'
 import { StatTile, StatusBadge } from '@makinbakin/sdk/components'
 import { ChevronRight, Clock3, Cpu, Hash, MemoryStick, Network, Users } from 'lucide-react'
 import { formatAge } from '@makinbakin/sdk/utils'
@@ -117,7 +117,7 @@ export function SystemInventory({
           </span>
           <span className="flex shrink-0 items-center gap-2">
             <Badge variant="secondary">{plugins.length}</Badge>
-            <ChevronRight aria-hidden="true" className="size-4 text-muted-foreground transition-transform group-open:rotate-90" />
+            <ChevronRight aria-hidden="true" className="size-4 text-muted-foreground transition-transform group-open:rotate-90 motion-reduce:transition-none" />
           </span>
         </summary>
         <div className="space-y-3 border-t border-border p-4">
@@ -138,12 +138,12 @@ export function SystemInventory({
           )}
           <label className="block max-w-sm text-xs font-medium text-muted-foreground">
             Find a plugin
-            <input
+            <Input
               type="search"
               value={pluginSearch}
               onChange={(event) => onPluginSearchChange(event.target.value)}
               placeholder="Name, id, or description"
-              className="mt-1 h-8 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
+              className="mt-1"
             />
           </label>
           {loading && plugins.length === 0 ? (
@@ -229,7 +229,7 @@ export function SystemInventory({
           </span>
           <span className="flex shrink-0 items-center gap-2">
             <Badge variant="secondary">{sessions === null ? 'Unavailable' : `${sessions} ${sessions === 1 ? 'session' : 'sessions'}`}</Badge>
-            <ChevronRight aria-hidden="true" className="size-4 text-muted-foreground transition-transform group-open:rotate-90" />
+            <ChevronRight aria-hidden="true" className="size-4 text-muted-foreground transition-transform group-open:rotate-90 motion-reduce:transition-none" />
           </span>
         </summary>
         <div className="border-t border-border p-4">
@@ -271,7 +271,7 @@ export function SystemInventory({
               <StatusBadge tone="warning" variant="outline">{checksToReview} to review</StatusBadge>
             )}
             <Badge variant="secondary">{report ? `${report.checks.length} checks` : 'Unavailable'}</Badge>
-            <ChevronRight aria-hidden="true" className="size-4 text-muted-foreground transition-transform group-open:rotate-90" />
+            <ChevronRight aria-hidden="true" className="size-4 text-muted-foreground transition-transform group-open:rotate-90 motion-reduce:transition-none" />
           </span>
         </summary>
         <div className="border-t border-border p-4">
