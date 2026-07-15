@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it, mock } from 'bun:test'
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react'
 import type { HealthRepairTarget } from '@makinbakin/sdk/types'
 import '../../rtl-settle'
 import { RepairDialog } from '../../../plugins/health/components/repair-dialog'
+import { useRepairPlan } from '../../../plugins/health/hooks/use-repair-plan'
 
 const target: HealthRepairTarget = {
   type: 'incidents',
@@ -34,6 +35,39 @@ const plan = {
   ],
 }
 
+const healthyReport = {
+  id: 'health-report-2',
+  revision: 2,
+  generatedAt: '2026-07-12T12:01:00.000Z',
+  overallStatus: 'healthy',
+  lastFullSweep: null,
+  checks: [],
+  observations: [],
+  incidents: [],
+  subsystems: {
+    search: {
+      status: 'unknown',
+      summary: 'Search has not been checked yet.',
+      observedAt: null,
+      staleAt: null,
+      stages: ['engine', 'queries', 'indexes', 'journal'].map((key) => ({
+        key,
+        label: key[0]!.toUpperCase() + key.slice(1),
+        status: 'unknown',
+        summary: 'Not checked.',
+        observedAt: null,
+        staleAt: null,
+        observationIds: [],
+      })),
+      incidentIds: [],
+    },
+  },
+  summary: {
+    checks: { registered: 0, completed: 0, failed: 0, invalid: 0, notApplicable: 0 },
+    incidents: { actionRequired: 0, watching: 0, advisory: 0, unknown: 0 },
+  },
+}
+
 const applied = {
   planId: plan.planId,
   basedOnReportId: plan.basedOnReportId,
@@ -44,7 +78,7 @@ const applied = {
   affectedCheckIds: ['team.agent-sync'],
   verifiedReportId: 'health-report-2',
   verifiedIncidentIds: [],
-  report: {},
+  report: healthyReport,
 }
 
 let fetchCalls: Array<{ url: string; init?: RequestInit }> = []
@@ -160,5 +194,42 @@ describe('RepairDialog', () => {
 
     await act(async () => { pending.resolve(new Response(JSON.stringify(applied), { status: 200 })) })
     expect(onApplied).not.toHaveBeenCalled()
+  })
+
+  it('bounds a stalled repair plan request and aborts its transport', async () => {
+    let signal: AbortSignal | undefined
+    globalThis.fetch = mock(async (_url: RequestInfo | URL, init?: RequestInit) => {
+      signal = init?.signal ?? undefined
+      return await new Promise<Response>(() => {})
+    }) as unknown as typeof fetch
+    const { result } = renderHook(() => useRepairPlan(target, { planMs: 1 }))
+
+    await act(async () => {
+      expect(await result.current.planRepair()).toBeNull()
+    })
+
+    expect(result.current.planning).toBe(false)
+    expect(result.current.error).toContain('timed out')
+    expect(signal?.aborted).toBe(true)
+  })
+
+  it('marks a stalled repair apply as an unknown outcome', async () => {
+    let applySignal: AbortSignal | undefined
+    globalThis.fetch = mock(async (url: RequestInfo | URL, init?: RequestInit) => {
+      if (String(url).endsWith('/repair/plan')) return new Response(JSON.stringify(plan), { status: 200 })
+      applySignal = init?.signal ?? undefined
+      return await new Promise<Response>(() => {})
+    }) as unknown as typeof fetch
+    const { result } = renderHook(() => useRepairPlan(target, { applyMs: 1 }))
+
+    await act(async () => { await result.current.planRepair() })
+    await act(async () => {
+      expect(await result.current.applyRepair([plan.items[0].id], [])).toBeNull()
+    })
+
+    expect(result.current.applying).toBe(false)
+    expect(result.current.outcomeUnknown).toBe(true)
+    expect(result.current.error).toContain('may still have completed')
+    expect(applySignal?.aborted).toBe(true)
   })
 })

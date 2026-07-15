@@ -22,6 +22,12 @@ const SAFETY_STYLES = {
   destructive: 'border-destructive/30 bg-destructive/10 text-destructive',
 } as const
 
+function repairErrorTitle(stale: boolean, outcomeUnknown: boolean): string {
+  if (stale) return 'The evidence changed before apply.'
+  if (outcomeUnknown) return 'The repair outcome needs confirmation.'
+  return 'The repair request failed.'
+}
+
 export function RepairDialog({
   open,
   onOpenChange,
@@ -116,7 +122,7 @@ export function RepairDialog({
 
         {repair.error && (
           <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm">
-            <p className="font-medium text-destructive">{repair.stale ? 'The evidence changed before apply.' : 'The repair request failed.'}</p>
+            <p className="font-medium text-destructive">{repairErrorTitle(repair.stale, repair.outcomeUnknown)}</p>
             <p className="mt-1 text-muted-foreground">{repair.error}</p>
             {repair.stale && <Button className="mt-3" size="sm" variant="outline" onClick={() => void replan()}>Re-plan from fresh evidence</Button>}
           </div>
