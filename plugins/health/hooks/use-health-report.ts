@@ -9,32 +9,17 @@ import {
   type UseHealthResourceResult,
 } from './use-health-resource'
 import { healthReportNeedsFreshSweep } from '../lib/health-view-model'
+import { healthReportSchema } from '../lib/route-schemas'
 
 const HEALTH_REPORT_URL = '/api/plugins/health/doctor'
 export const HEALTH_REPORT_REFRESH_MS = 60_000
 export const HEALTH_REPORT_READ_TIMEOUT_MS = 15_000
 export const HEALTH_REPORT_SWEEP_TIMEOUT_MS = 60_000
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
 function parseHealthReportResponse(value: unknown): HealthReport {
-  if (!isRecord(value)) throw new Error('Health report response was invalid')
-  const report = value
-  if (typeof report.id !== 'string'
-    || typeof report.revision !== 'number'
-    || typeof report.generatedAt !== 'string'
-    || typeof report.overallStatus !== 'string'
-    || !Array.isArray(report.checks)
-    || !Array.isArray(report.observations)
-    || !Array.isArray(report.incidents)
-    || !isRecord(report.subsystems)
-    || !isRecord(report.subsystems.search)
-    || !isRecord(report.summary)) {
-    throw new Error('Health report response was invalid')
-  }
-  return report as unknown as HealthReport
+  const parsed = healthReportSchema.safeParse(value)
+  if (!parsed.success) throw new Error('Health report response was invalid')
+  return parsed.data as unknown as HealthReport
 }
 
 async function requestHealthReport(

@@ -157,4 +157,14 @@ describe('useHealthReport', () => {
     expect(result.current.error).toBeNull()
     expect(result.current.stale).toBe(true)
   })
+
+  it('rejects a report that only passes a shallow shape check', async () => {
+    const invalid = report({ revision: -1 })
+    globalThis.fetch = mock(async () => jsonResponse(invalid)) as unknown as typeof fetch
+
+    const { result } = renderHook(() => useHealthReport())
+
+    await waitFor(() => expect(result.current.error).toBe('Health report response was invalid'))
+    expect(result.current.data).toBeNull()
+  })
 })
