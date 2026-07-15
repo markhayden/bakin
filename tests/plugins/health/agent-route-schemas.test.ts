@@ -155,13 +155,20 @@ describe('Agents route schemas', () => {
   })
 
   it('requires scannedAt to agree with current coverage', () => {
-    expect(usageHistoryResponseSchema.safeParse({ ...history(), scannedAt: null }).success).toBe(false)
-    expect(agentEffortResponseSchema.safeParse({
+    const impossibleHistory = { ...history(), scannedAt: null }
+    const partialEffort = {
       ...effort(),
       scannedAt: null,
       coverage: { status: 'partial', reason: 'agent_scan_failed', agents: [{ agent: 'main', status: 'partial' }] },
       agents: effort().agents.map((agent) => ({ ...agent, totalObservedTokens: null, unattributedTokens: null })),
-    }).success).toBe(true)
+    }
+    const impossibleEffort = { ...partialEffort, agents: effort().agents }
+    expect(usageHistoryResponseSchema.safeParse(impossibleHistory).success).toBe(false)
+    expect(isUsageHistoryResponse(impossibleHistory, '24h')).toBe(false)
+    expect(agentEffortResponseSchema.safeParse(partialEffort).success).toBe(true)
+    expect(isAgentEffortResponse(partialEffort, '24h')).toBe(true)
+    expect(agentEffortResponseSchema.safeParse(impossibleEffort).success).toBe(false)
+    expect(isAgentEffortResponse(impossibleEffort, '24h')).toBe(false)
   })
 
   it('requires the response window to match the requested window', () => {

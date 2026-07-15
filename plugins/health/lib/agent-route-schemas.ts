@@ -118,15 +118,17 @@ const usageHistoryResponseFields = {
   byAgentDay: z.array(usageByAgentDaySchema),
 }
 
-const usageHistoryClientResponseSchema = z.object({
-  ...usageHistoryResponseFields,
-  coverage: usageEvidenceCoverageSchema.optional(),
-}).strict()
+const usageHistoryLegacyResponseSchema = z.object(usageHistoryResponseFields).strict()
 
 export const usageHistoryResponseSchema = z.object({
   ...usageHistoryResponseFields,
   coverage: usageEvidenceCoverageSchema,
 }).strict().superRefine(checkScannedAtCoverage)
+
+const usageHistoryClientResponseSchema = z.union([
+  usageHistoryResponseSchema,
+  usageHistoryLegacyResponseSchema,
+])
 
 const agentEffortFlagSchema = z.object({
   kind: z.enum(['effort-no-outcome', 'spike', 'unattributed']),
@@ -172,13 +174,7 @@ const agentEffortResponseFields = {
   agents: z.array(agentEffortRowSchema),
 }
 
-const agentEffortClientResponseSchema = z.object({
-  ...agentEffortResponseFields,
-  since: dayKeySchema.optional(),
-  throughDay: dayKeySchema.optional(),
-  scopeLabel: z.string().min(1).optional(),
-  coverage: usageEvidenceCoverageSchema.optional(),
-}).strict()
+const agentEffortLegacyResponseSchema = z.object(agentEffortResponseFields).strict()
 
 export const agentEffortResponseSchema = z.object({
   ...agentEffortResponseFields,
@@ -210,6 +206,11 @@ export const agentEffortResponseSchema = z.object({
     }
   }
 })
+
+const agentEffortClientResponseSchema = z.union([
+  agentEffortResponseSchema,
+  agentEffortLegacyResponseSchema,
+])
 
 const nullableRuntimeCost = z.number().nonnegative().nullable()
 const agentUsageBaseSchema = z.object({
