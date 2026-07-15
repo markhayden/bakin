@@ -182,7 +182,15 @@ mock.module('../../../src/core/doctor-repair-store', () => ({
 
 mock.module('../../../src/core/agent-usage', () => ({
   getAllAgentUsage: () => [
-    { agent: 'patch', sessionId: 's1', model: 'claude-4', messages: 10, tokens: { total: 1000 }, cost: { total: 0.05, source: 'runtime' } },
+    {
+      agent: 'patch',
+      sessionId: 's1',
+      sessionStarted: '2026-04-01T00:00:00.000Z',
+      model: 'claude-4',
+      messages: 10,
+      tokens: { input: 600, output: 200, cacheRead: 200, cacheWrite: 0, total: 1_000 },
+      cost: { input: null, output: null, cacheRead: null, cacheWrite: null, total: 0.05, source: 'runtime' },
+    },
   ],
   // Consumed by the usage-history scanner, which rides the plugin's import
   // graph via the scan timer (#359).

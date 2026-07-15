@@ -62,6 +62,12 @@ import { checkPluginAssets } from './lib/system-checks/plugin-assets'
 import { checkPluginArtifacts } from './lib/system-checks/plugin-artifacts'
 import { checkPluginRegistry } from './lib/system-checks/plugin-registry'
 import {
+  agentEffortResponseSchema,
+  agentUsageResponseSchema,
+  agentWindowQuerySchema,
+  usageHistoryResponseSchema,
+} from './lib/agent-route-schemas'
+import {
   healthChecksResponseSchema,
   healthErrorResponseSchema,
   healthLiveSummarySchema,
@@ -283,14 +289,6 @@ const interactionSummaryResponseSchema = z.object({
   timeBuckets: z.array(interactionTimeBucketSchema),
 }).strict()
 
-const usageHistoryQuery = z.object({
-  window: z.enum(['24h', '7d', '30d']).default('24h'),
-}).strict()
-
-const agentEffortQuery = z.object({
-  window: z.enum(['24h', '7d', '30d']).default('24h'),
-}).strict()
-
 const AGENT_EFFORT_WINDOW_HOURS: Record<'24h' | '7d' | '30d', number> = {
   '24h': 24,
   '7d': 7 * 24,
@@ -506,7 +504,7 @@ const routes = [
     activityClass: 'routine',
     summary: 'Latest-session agent token traffic',
     description: 'Returns cumulative token traffic from each agent\'s newest runtime transcript; this is not context-window occupancy.',
-    responses: { 200: z.array(passthrough) },
+    responses: { 200: agentUsageResponseSchema },
     handler: async (_req, ctx) => {
       return Response.json(await getAllAgentUsage(ctx.runtime))
     },
@@ -518,8 +516,8 @@ const routes = [
     activityClass: 'routine',
     summary: 'Historical agent token usage',
     description: 'Durable per-agent and per-day token rollups from the usage-history store. Windows are day-aligned: a window includes every local calendar day it touches. Cost is runtime-reported only.',
-    query: usageHistoryQuery,
-    responses: { 200: passthrough, 400: errorResponse },
+    query: agentWindowQuerySchema,
+    responses: { 200: usageHistoryResponseSchema, 400: errorResponse },
     handler: async (_req, _ctx, { query }) => {
       const windowMs = USAGE_HISTORY_WINDOW_MS[query.window]
       const now = Date.now()
@@ -571,8 +569,8 @@ const routes = [
     activityClass: 'routine',
     summary: 'Per-agent effort vs outcome',
     description: 'Token burn per agent joined with task completions and transcript-observed totals (Bakin-attributed vs total observed vs unattributed), plus warn-only burn flags. Same engine as the usage.agent-burn doctor check.',
-    query: agentEffortQuery,
-    responses: { 200: passthrough, 400: errorResponse },
+    query: agentWindowQuerySchema,
+    responses: { 200: agentEffortResponseSchema, 400: errorResponse },
     handler: async (_req, _ctx, { query }) => {
       const lastScan = getLastUsageScan()
       const agents = buildAgentBurnReports(Date.now(), { windowHours: AGENT_EFFORT_WINDOW_HOURS[query.window] })
