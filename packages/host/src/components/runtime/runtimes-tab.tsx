@@ -14,6 +14,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { reduceSwitchProgress, SWITCH_PHASE_LABELS, type SwitchStepRow } from '../../lib/runtime-report'
+import { ExtensionsSection } from './extensions-section'
 import type { CapabilityReport, SwitchResultPayload } from './types'
 
 function StepDot({ status }: { status: SwitchStepRow['status'] }) {
@@ -278,6 +279,8 @@ export function RuntimesTab({ report, onSwitched }: { report: CapabilityReport; 
           )
         })}
       </div>
+
+      <ExtensionsSection />
 
       {running !== null && steps.length === 0 && (
         <p className="flex items-center gap-2 text-sm text-muted-foreground">

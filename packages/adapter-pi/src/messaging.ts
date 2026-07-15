@@ -8,16 +8,17 @@
  * Sessions are disposed after the turn settles; the JSONL file carries
  * conversation state. All failures leave through errors.ts.
  */
-import { readFileSync } from 'fs'
+import { readFileSync, realpathSync } from 'fs'
+import { createHash } from 'crypto'
 import { randomUUID } from 'crypto'
 
 import {
   createAgentSession,
+  DefaultPackageManager,
   DefaultResourceLoader,
   SettingsManager,
   type AgentSession,
   type AgentSessionEvent,
-  type LoadExtensionsResult,
 } from '@earendil-works/pi-coding-agent'
 
 import type {
@@ -47,19 +48,157 @@ const THINKING_LEVELS = new Set(['off', 'minimal', 'low', 'medium', 'high', 'xhi
 /**
  * Pi extension loading policy (settings.runtime.settings.piExtensions).
  * Extensions are arbitrary code executing inside the Bakin server process
- * and many are TUI-coupled — 'all' honors whatever `pi install` set up
- * (the default: users who installed packages for terminal pi expect them
- * here too, #626); 'allowlist' loads only name/path matches; 'none'
- * restores the v1 lockout. extension_error events are contained per-turn.
+ * Trust modes: 'none' loads nothing; 'allowlist' (the DEFAULT) loads only
+ * files whose real path AND content hash were explicitly approved; 'all'
+ * loads every discovered extension (explicit trust-everything). Extensions
+ * run unsandboxed in the Bakin server process — loading one is a trust
+ * decision. extension_error events are contained per-turn.
  */
 export interface PiExtensionsPolicy {
   mode?: 'none' | 'allowlist' | 'all'
-  allow?: string[]
+  /** Approved entries — {path, sha256}. Plain path strings from an older shape are tolerated on read. */
+  allow?: Array<PiExtensionAllowEntry | string>
 }
 
-function extensionsPolicy(settings: Record<string, unknown> | undefined): Required<PiExtensionsPolicy> {
+/** Resolved policy: mode defaulted, allow normalized to entry objects. */
+export interface PiExtensionsTrust {
+  mode: 'none' | 'allowlist' | 'all'
+  allow: PiExtensionAllowEntry[]
+}
+
+/**
+ * DEFAULT IS 'allowlist' (empty) — extensions are discovered but NOT LOADED
+ * until approved (pi-ecosystem WS4; flipped from 'all', which loaded
+ * everything silently). A bare-string allow entry (older shape / hand edit)
+ * is read as a path with an empty hash, so it never matches a real file —
+ * fail-closed, the user re-approves.
+ */
+export function extensionsPolicy(settings: Record<string, unknown> | undefined): PiExtensionsTrust {
   const raw = (settings?.piExtensions ?? {}) as PiExtensionsPolicy
-  return { mode: raw.mode ?? 'all', allow: raw.allow ?? [] }
+  const mode = raw.mode === 'none' || raw.mode === 'all' ? raw.mode : 'allowlist'
+  // Untrusted shape (settings.json is agent/user-writable): a non-array, a
+  // null element, or a missing path must degrade to "no valid entries", never
+  // throw and kill the turn. An entry needs a NON-EMPTY sha256 to ever match
+  // (see extensionApproved) — a bare-string / hashless entry is inert.
+  const rawAllow = Array.isArray(raw.allow) ? raw.allow : []
+  const allow: PiExtensionAllowEntry[] = []
+  for (const e of rawAllow) {
+    if (typeof e === 'string') { allow.push({ path: e, sha256: '' }); continue }
+    if (e && typeof e === 'object' && typeof e.path === 'string') {
+      allow.push({ path: e.path, sha256: typeof e.sha256 === 'string' ? e.sha256 : '' })
+    }
+  }
+  return { mode, allow }
+}
+
+export interface PiExtensionResource {
+  /** Real absolute path of the module the loader would import (symlinks resolved). */
+  path: string
+  /** Current content hash — half of the trust identity. */
+  sha256: string
+  /** Package source spec it came from (`npm:x`, `git:…`), absent for loose files. */
+  source?: string
+  scope?: string
+}
+
+/**
+ * Force the Pi package resolver OFFLINE for this process. A Bakin agent turn
+ * must NEVER install a Pi package — the SDK's DefaultResourceLoader.reload()
+ * calls packageManager.resolve() with no onMissing, which would `npm install`
+ * any configured-but-missing package (postinstall scripts = arbitrary code)
+ * and bypass the extension allowlist entirely, in every mode. PI_OFFLINE
+ * (isOfflineModeEnabled) makes every install branch a no-op. Installing Pi
+ * packages is a deliberate terminal act (`pi install`) / a Bakin-owned path,
+ * never a side effect of serving a turn. Set once, never unset — idempotent,
+ * race-free.
+ */
+export function enforcePiOffline(): void {
+  if (process.env.PI_OFFLINE !== '1') process.env.PI_OFFLINE = '1'
+}
+
+/**
+ * Enumerate the extension modules the loader WOULD import, WITHOUT importing
+ * any of them: the SDK's package manager resolves paths only. `onMissing:
+ * 'skip'` (and PI_OFFLINE) guarantee no install and no network. This is the
+ * ONE discovery source — it sees npm/git packages, local files and dirs,
+ * object-form `packages[]` filter entries, and both scopes, with the loader's
+ * own enable rules applied.
+ */
+export async function resolveExtensionResources(
+  workspace: string,
+  agentDir: string,
+): Promise<PiExtensionResource[]> {
+  enforcePiOffline()
+  const settingsManager = hardenSettingsManager(createTurnSettingsManager(workspace, agentDir), { stripPackages: false })
+  const packageManager = new DefaultPackageManager({ cwd: workspace, agentDir, settingsManager })
+  const resolved = await packageManager.resolve(async () => 'skip')
+  const out: PiExtensionResource[] = []
+  for (const resource of resolved.extensions) {
+    if (!resource.enabled) continue
+    // Identity is the REAL file path (symlinks resolved) + its content hash:
+    // a repointed symlink or a swapped file is a DIFFERENT extension, not the
+    // one that was approved.
+    const path = realpathIfPossible(resource.path)
+    out.push({
+      path,
+      sha256: sha256OfFile(path),
+      ...(resource.metadata?.source && resource.metadata.source !== resource.path
+        ? { source: resource.metadata.source }
+        : {}),
+      ...(resource.metadata?.scope ? { scope: String(resource.metadata.scope) } : {}),
+    })
+  }
+  return out
+}
+
+function realpathIfPossible(p: string): string {
+  try { return realpathSync(p) } catch { return p }
+}
+
+function sha256OfFile(p: string): string {
+  try { return createHash('sha256').update(readFileSync(p)).digest('hex') } catch { return '' }
+}
+
+/** An allow entry: the approved file's real path AND the content hash approved. */
+export interface PiExtensionAllowEntry {
+  path: string
+  sha256: string
+}
+
+/**
+ * A discovered resource matches an allow entry iff BOTH its real path and its
+ * current content hash equal an approved (path, sha256). This ONE predicate
+ * backs discovery status AND the load gate, so what shows "allowed" is
+ * byte-for-byte what loads. Changed/swapped files fall back to pending.
+ */
+export function extensionApproved(resource: PiExtensionResource, allow: PiExtensionAllowEntry[]): boolean {
+  // A missing/empty hash on EITHER side is never a match — an unreadable file
+  // (sha256OfFile → '') must not satisfy a hashless (legacy/hand-edited) allow
+  // entry. Approval is only ever granted through allowRuntimeExtension, which
+  // always records a real hash; '' means "not really approved" → fail closed.
+  if (!resource.sha256) return false
+  return allow.some((entry) => entry.sha256 !== '' && entry.path === resource.path && entry.sha256 === resource.sha256)
+}
+
+/**
+ * The absolute paths the loader may import, per policy, from the SAME
+ * user-scope discovery every surface sees — so list()/doctor and the turn
+ * can never disagree, in ANY mode:
+ *   none      → nothing
+ *   all       → every discovered extension (explicit trust-everything)
+ *   allowlist → exactly the approved (path+hash) matches
+ */
+export async function loadPathsForPolicy(policy: PiExtensionsTrust, agentDir: string): Promise<string[]> {
+  if (policy.mode === 'none') return []
+  const discovered = await resolveExtensionResources(agentDir, agentDir)
+  if (policy.mode === 'all') return discovered.map((r) => r.path)
+  // Re-hashed fresh THIS turn (inside resolveExtensionResources) — a file
+  // persistently swapped since approval no longer matches and is excluded.
+  // A same-turn race between this hash and the loader's own read is a narrow
+  // residual (no agent code runs in that window unless it planted a prior
+  // background writer — a deeper compromise); the SDK offers no import-time
+  // integrity hook to close it fully.
+  return discovered.filter((r) => extensionApproved(r, policy.allow)).map((r) => r.path)
 }
 
 export interface PiMessagingDeps {
@@ -129,6 +268,39 @@ export function createTurnSettingsManager(workspace: string, agentDir: string): 
   return SettingsManager.create(workspace, agentDir, { projectTrusted: true })
 }
 
+/**
+ * Neutralize the two settings-driven package side effects that let an agent
+ * (or a tampered ~/.pi config) run arbitrary code during a Bakin turn:
+ *
+ *  - `npmCommand` — the SDK runs the settings-configured package-manager
+ *    command not just to install but to LOCATE the global npm root
+ *    (`getNpmInstallPath` → `npm root -g`), which is NOT offline-gated. A
+ *    settings-supplied `npmCommand: [evil]` would execute every turn. We pin
+ *    it to undefined so the SDK always uses the real npm/bun binary.
+ *  - `packages[]` (turn only) — resolving a configured package triggers
+ *    install (postinstall = arbitrary code) and the npm-root probe. Bakin
+ *    hands approved extensions to the loader as absolute paths via
+ *    `additionalExtensionPaths`; it never needs settings packages, so the
+ *    turn loader sees none. (Discovery keeps packages so already-installed
+ *    npm extensions are still enumerable — it resolves read-only with the
+ *    real npm and onMissing:'skip'.)
+ */
+function hardenSettingsManager(sm: SettingsManager, opts: { stripPackages: boolean }): SettingsManager {
+  const anySm = sm as unknown as {
+    getNpmCommand: () => string[] | undefined
+    getGlobalSettings: () => Record<string, unknown>
+    getProjectSettings: () => Record<string, unknown>
+  }
+  anySm.getNpmCommand = () => undefined
+  if (opts.stripPackages) {
+    const global = anySm.getGlobalSettings.bind(anySm)
+    const project = anySm.getProjectSettings.bind(anySm)
+    anySm.getGlobalSettings = () => ({ ...global(), packages: [] })
+    anySm.getProjectSettings = () => ({ ...project(), packages: [] })
+  }
+  return sm
+}
+
 async function openTurnSession(args: MessageArgs, deps: PiMessagingDeps): Promise<TurnHandle> {
   const record = requireAgent(args.agentId)
   scaffoldAgentDirs(record.id)
@@ -136,26 +308,34 @@ async function openTurnSession(args: MessageArgs, deps: PiMessagingDeps): Promis
   const agentDir = getPiAgentDir()
   const { auth, registry: modelRegistry } = getModelRegistry()
 
-  const settingsManager = createTurnSettingsManager(workspace, agentDir)
+  const settingsManager = hardenSettingsManager(createTurnSettingsManager(workspace, agentDir), { stripPackages: true })
   const adapterSettings = deps.getSettings?.()
   const extPolicy = extensionsPolicy(adapterSettings)
+
+  // TRUE pre-load gate (WS4). `extensionsOverride` is a POST-load filter —
+  // the loader jiti-imports every enabled extension before it runs, so an
+  // unapproved extension's module code would execute (only its tools would
+  // be hidden). Instead: `noExtensions` ALWAYS suppresses the loader's own
+  // settings-discovered set, and EXACTLY the paths policy authorizes are
+  // handed back through `additionalExtensionPaths`. Every mode goes through
+  // the SAME user-scope discovery basis, so list()/doctor and the turn can
+  // never disagree, and a workspace-project extension can't sneak in.
+  //   none      → nothing loads
+  //   allowlist → files whose real path + content hash were approved
+  //   all       → every discovered extension (explicit trust-everything)
+  enforcePiOffline() // belt-and-suspenders; the loader also never sees packages[]
+  const loadPaths = await loadPathsForPolicy(extPolicy, agentDir)
   const resourceLoader = new DefaultResourceLoader({
     cwd: workspace,
     agentDir,
     settingsManager,
-    // Extensions load per policy (#626); themes/prompt-templates are
-    // TUI-only and stay out of the server process.
-    noExtensions: extPolicy.mode === 'none',
-    ...(extPolicy.mode === 'allowlist'
-      ? {
-          extensionsOverride: (base: LoadExtensionsResult): LoadExtensionsResult => ({
-            ...base,
-            extensions: base.extensions.filter((ext) =>
-              extPolicy.allow.some((pattern) => ext.path.includes(pattern)),
-            ),
-          }),
-        }
-      : {}),
+    // Themes/prompt-templates are TUI-only and stay out of the server process.
+    // NOTE: this allowlist gates EXTENSIONS (in-process CODE). Skills are
+    // content (instructions), governed by Bakin's own agent-package/skills
+    // projection — not this gate — so noSkills is intentionally NOT set; the
+    // package hardening above only strips code-bearing `packages[]`.
+    noExtensions: true,
+    additionalExtensionPaths: loadPaths,
     noThemes: true,
     noPromptTemplates: true,
     appendSystemPrompt: buildAppendSystemPrompt(record.id),

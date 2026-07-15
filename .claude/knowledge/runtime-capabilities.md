@@ -256,6 +256,11 @@ allowlist — see the contract doc, born of the P5.3 conflation below).
   `originalRuntimeCron` snapshot, idempotent per job id, dry-run previews.
   `RuntimeSwitchResult.cron = { adopted, skipped, failed }`; the can't-carry
   cron line folds the outcome in.
+- **Extension trust lane (WS4)** — `extensions?: RuntimeExtensionsAccess`
+  optional contract member (inert `list()`; Pi implements, mock/OpenClaw
+  omit). Trust mutations live in ONE engine (`src/core/runtime-extensions.ts`)
+  surfaced via REST + CLI + the hub's Extensions section + the adapter's
+  `pi.extensions` doctor check. Pi's load default is allowlist-empty.
 - **The /runtime page is the runtime hub** (`packages/host/src/routes/
   runtime.tsx` + `components/runtime/`): Overview (plain-language capability
   grid + legend + credential/tool-access tiles + live setup checks),

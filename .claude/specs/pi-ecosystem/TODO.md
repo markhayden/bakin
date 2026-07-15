@@ -23,8 +23,8 @@ See PLAN.md for acceptance criteria. One PR per workstream; live-test before mer
 - [x] T3.4 pi-adapter.md updated; #627 closes with the PR
 
 ## WS4 — extension trust lane (PR 4)
-- [ ] T4.1 neutral `extensions?` contract member + arch tests
-- [ ] T4.2 adapter discovery + default flip all→allowlist + containment fixtures
-- [ ] T4.3 REST + CLI (list/allow/revoke)
-- [ ] T4.4 hub UI (approve via ConfirmDialog + disclosure) + `pi.extensions` doctor check
-- [ ] T4.5 docs; close #670 + #626
+- [x] T4.1 extensions? contract member + .extensions!. arch ban
+- [x] T4.2 inert discovery + default flip all→allowlist + exact-match predicate + live-settings getter (no-restart trust changes)
+- [x] T4.3 REST + `bakin runtime extensions {list,allow,revoke}` (live round-trip verified)
+- [x] T4.4 hub Extensions section (ConfirmDialog + disclosure) + pi.extensions doctor warn
+- [x] T4.5 docs updated; #670/#626 close with the PR

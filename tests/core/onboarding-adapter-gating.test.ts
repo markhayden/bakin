@@ -51,7 +51,9 @@ describe('onboarding adapter gating', () => {
     // Generic components still genuinely ran (mkdir reports on real temp home).
     const mkdir = results.find((r) => r.name === 'mkdir')
     expect(mkdir?.message ?? '').not.toContain('not applicable')
-  })
+    // Real components under full-suite CPU contention overrun the default
+    // 15s occasionally (#650 class) — generous wall clock, same assertions.
+  }, 45_000)
 
   test("checkAll on adapter 'openclaw' does NOT skip them", async () => {
     adapterName = 'openclaw'

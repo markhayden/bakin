@@ -49,6 +49,13 @@ export interface RuntimeExecToolProvider {
 export interface AdapterInitOpts {
   contentDir: string
   settings?: Record<string, unknown>
+  /**
+   * LIVE view of the adapter-private settings bag. `settings` is a boot-time
+   * snapshot; surfaces whose behavior must track settings edits WITHOUT a
+   * restart (extension trust policy, per-turn knobs) read through this.
+   * Optional: tests and thin callers may omit it (snapshot semantics).
+   */
+  getLiveSettings?: () => Record<string, unknown> | undefined
   logger?: AdapterLogger
   audit?: (event: AdapterAuditEvent) => void
   execTools?: RuntimeExecToolProvider

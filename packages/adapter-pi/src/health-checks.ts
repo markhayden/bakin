@@ -10,13 +10,37 @@ import { listAuthProviders } from './config'
 import { getPiAgentsRoot, getPiHome } from './home'
 import { getModelRegistry } from './models'
 import { readRegistry } from './registry'
+import { createExtensionsSurface } from './extensions'
 
 function result(check: string, status: AdapterHealthCheckResult['status'], message: string): AdapterHealthCheckResult {
   return { check, status, message, autoFixable: false }
 }
 
-export function createHealthChecks(): AdapterHealthCheckDefinition[] {
+export function createHealthChecks(
+  getSettings?: () => Record<string, unknown> | undefined,
+): AdapterHealthCheckDefinition[] {
   return [
+    {
+      id: 'pi.extensions',
+      name: 'Pi extension trust',
+      run: async () => {
+        const surface = createExtensionsSurface(() => getSettings?.())
+        const list = await surface.list()
+        const pending = list.filter((e) => e.status === 'pending')
+        if (pending.length === 0) {
+          return [result('pi.extensions', 'ok', list.length === 0
+            ? 'No extensions installed'
+            : `${list.length} extension(s), none awaiting approval`)]
+        }
+        return [result(
+          'pi.extensions',
+          'warn',
+          `${pending.length} extension(s) installed but NOT loading — their code never runs until approved: `
+          + `${pending.map((e) => e.label).join(', ')}. Approve on the Runtime page (Runtimes tab) or with `
+          + '`bakin runtime extensions allow <name>`.',
+        )]
+      },
+    },
     {
       id: 'pi.home',
       name: 'Pi home + agent registry',

@@ -723,6 +723,42 @@ export interface RuntimeImagesAccess {
   edit(input: RuntimeImageEditInput): Promise<RuntimeImageGenerationResult>
 }
 
+/**
+ * A runtime extension: third-party code the RUNTIME loads in-process during
+ * agent turns (Pi extensions today). Provider-neutral shape — ids/labels/
+ * paths only, never provider config. Discovery is INERT: listing never
+ * executes extension code.
+ */
+export interface RuntimeExtensionInfo {
+  /** Stable identifier used for allow/revoke — the real absolute module path. */
+  id: string
+  label: string
+  /** Where it came from, human-readable (e.g. "npm:some-pkg", "extensions dir"). */
+  source: string
+  /** Real absolute load path (symlinks resolved) — half the trust identity. */
+  path: string
+  /** Current content hash of the file — the other half of the trust identity. */
+  sha256: string
+  /**
+   * pending  — discovered but NOT loaded into turns (unapproved, or its
+   *            content changed since approval)
+   * allowed  — approved path+hash; loads into agent turns
+   * blocked  — policy mode 'none': nothing loads
+   */
+  status: 'allowed' | 'pending' | 'blocked'
+}
+
+/**
+ * OPTIONAL: trust management for runtime-loaded extensions. Runtimes without
+ * an extension mechanism OMIT the member; callers feature-detect
+ * (`runtime.extensions?.`). Listing is read-only and inert. The trust store
+ * itself (allowlist) is Bakin-owned settings — see
+ * `src/core/runtime-extensions.ts` for the ONE mutation engine.
+ */
+export interface RuntimeExtensionsAccess {
+  list(): Promise<RuntimeExtensionInfo[]>
+}
+
 export interface CronJob {
   id: string
   name: string
@@ -985,6 +1021,8 @@ export interface AgentRuntimeAdapter {
   verifyToolAccess(): Promise<ToolAccessProvisioningStatus>
 
   images?: RuntimeImagesAccess
+
+  extensions?: RuntimeExtensionsAccess
 
   /**
    * Access to the runtime's private media store (e.g. channel attachments).
