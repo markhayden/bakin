@@ -17,7 +17,11 @@ export interface ScheduleSidecar {
  * scheduler reads `expr`/`tz` directly and never consults the runtime cron store.
  */
 export interface ScheduleDef {
-  kind: 'cron' | 'every' | 'at'
+  /** 'cron' = recurring expression; 'at' = one-shot ISO instant (fires once,
+   *  then the job auto-disables with a completed display state). The native
+   *  snapshot types below still carry 'every' — that's read-only rendering
+   *  of runtime-owned crons, never a Bakin schedule. */
+  kind: 'cron' | 'at'
   expr: string
 }
 
