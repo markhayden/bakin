@@ -16,7 +16,7 @@ import type { PluginContext } from '@bakin/core/plugin-types'
 import { getRuntimeMainAgentId, type CronJob } from '@bakin/core/adapters/runtime'
 import type { BakinJobMeta } from '../types'
 import { getJob, upsertJob } from './sidecar'
-import { getSystemTimezone } from './schedule-util'
+import { getSystemTimezone, nativeCronTz } from './schedule-util'
 import { indexJob } from './job-service'
 
 export interface AdoptCronJobsInput {
@@ -78,7 +78,9 @@ export async function adoptCronJobs(
         allowOverlap: existing?.allowOverlap ?? false,
         maxFailures: existing?.maxFailures ?? 3,
         consecutiveFailures: existing?.consecutiveFailures ?? 0,
-        tz: existing?.tz ?? tz,
+        // Native tz wins over the system tz — the job must keep firing at
+        // the local time its author chose, wherever this box thinks it is.
+        tz: existing?.tz ?? nativeCronTz(job) ?? tz,
         originalRuntimeCron: {
           provider: input.provider,
           capturedAt: now,

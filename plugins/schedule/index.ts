@@ -7,7 +7,7 @@ import { definePlugin } from '@bakin/core/routing'
 import { readMergedJobs } from './lib/jobs-reader'
 import { readSidecar, resumeDuePauses } from './lib/sidecar'
 import { runStartupCatchUp } from './lib/scheduler'
-import { checkScheduleCutover, scheduleCutoverRepair } from './lib/health-checks'
+import { checkScheduleCutover, scheduleCutoverRepair, checkScheduleSync, scheduleSyncRepair } from './lib/health-checks'
 import { setPluginCtx, getPluginCtx } from './lib/plugin-context'
 import {
   MISSED_WINDOW_REASON,
@@ -34,6 +34,7 @@ import { adoptCronJobs, type AdoptCronJobsInput } from './lib/cron-adoption'
 import { registerScheduleExecTools } from './lib/exec-tools'
 import { scheduleRoutes } from './lib/routes/jobs'
 import { createLogger } from '../../src/core/logger'
+import { getContentDir } from '../../src/core/content-dir'
 import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 
 const log = createLogger('schedule')
@@ -142,6 +143,25 @@ const schedulePlugin: BakinPlugin = definePlugin({
         ctx.runtime.name,
       ),
       repair: scheduleCutoverRepair(runScheduleCutover),
+    })
+
+    // Orphan native crons: runtime cron jobs invisible to Bakin's sidecar
+    // (e.g. created by an agent directly in the runtime). Detection is
+    // read-only and the repair only records requireTriage sidecar entries —
+    // it NEVER writes runtime cron state, so it cannot reintroduce the
+    // pre-#473 double-fire the legacy sync check was removed for.
+    const syncCron = ctx.runtime.cron
+    ctx.registerHealthCheck({
+      id: 'schedule-sync',
+      name: 'Runtime cron jobs tracked in Bakin sidecar',
+      run: async () => checkScheduleSync(
+        getContentDir(),
+        syncCron,
+        syncCron ? await getRuntimeMainAgentId(ctx.runtime) : 'main',
+      ),
+      ...(syncCron
+        ? { repair: scheduleSyncRepair(getContentDir(), syncCron, () => getRuntimeMainAgentId(ctx.runtime)) }
+        : {}),
     })
 
     // Fire (or block) anything missed while the server was down, then start the

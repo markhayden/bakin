@@ -23,6 +23,7 @@ export {
   attachCronTask,
   markCronFireSkipped,
   listCronFires,
+  pruneCronFires,
   findHealableCronClaims,
   recordCompletion,
   hasCompletion,

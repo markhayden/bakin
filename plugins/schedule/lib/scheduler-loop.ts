@@ -12,7 +12,7 @@ import { runSchedulerTick, DEFAULT_TICK_WINDOW_MS, type SchedulerDeps } from './
 import { getPluginCtx } from './plugin-context'
 import { runClaimedFire, healPendingCronClaims, MISSED_WINDOW_REASON } from './fire-engine'
 import { readSidecar, resumeDuePauses } from './sidecar'
-import { getCronFire, claimCronFire } from '../../../src/core/execution-ledger'
+import { getCronFire, claimCronFire, pruneCronFires } from '../../../src/core/execution-ledger'
 import { migrateBakinSchedulesOffOpenClawCron } from './cutover'
 import { getSystemTimezone } from './schedule-util'
 import { createLogger } from '../../../src/core/logger'
@@ -48,6 +48,39 @@ export function catchUpWindowMs(): number {
 }
 
 let schedulerTimer: ReturnType<typeof setTimeout> | null = null
+
+// ─── cron_fires retention (bounded history, dedup-safe) ─────────────────────
+
+const RETENTION_SWEEP_INTERVAL_MS = 24 * 60 * 60 * 1000
+const RETENTION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000
+const RETENTION_KEEP_PER_JOB = 20
+// Rows newer than this NEVER prune, so a re-claim inside the dedup horizon
+// still collides with its original row even if maxAge is misconfigured tiny.
+const RETENTION_MIN_AGE_FLOOR_MS = 7 * 24 * 60 * 60 * 1000
+
+let lastRetentionSweepMs = 0
+
+/** Prune settled cron_fires at most once per 24h. In-memory cadence cell —
+ *  a restart re-sweeps on the first cycle, which is idempotent and cheap.
+ *  Sweeps that deleted rows are audited; 0-row sweeps stay off the feed. */
+export function maybeRunRetentionSweep(now = Date.now()): void {
+  if (now - lastRetentionSweepMs < RETENTION_SWEEP_INTERVAL_MS) return
+  lastRetentionSweepMs = now
+  const { pruned } = pruneCronFires({
+    maxAgeMs: RETENTION_MAX_AGE_MS,
+    keepPerJob: RETENTION_KEEP_PER_JOB,
+    minAgeMs: Math.max(catchUpWindowMs(), RETENTION_MIN_AGE_FLOOR_MS),
+    now,
+  })
+  if (pruned > 0) {
+    log.info('cron_fires retention sweep pruned rows', { pruned })
+    getPluginCtx()?.activity.audit('retention_swept', 'system', {
+      pruned,
+      maxAgeDays: RETENTION_MAX_AGE_MS / (24 * 60 * 60 * 1000),
+      keepPerJob: RETENTION_KEEP_PER_JOB,
+    })
+  }
+}
 
 export function schedulerDeps(): SchedulerDeps {
   return {
@@ -97,6 +130,7 @@ export function startScheduler(): void {
       .then(() => { resumeDuePauses() })
       .then(() => runSchedulerTick(schedulerDeps()))
       .then(() => healPendingCronClaims())
+      .then(() => { maybeRunRetentionSweep() })
       .catch(err => log.warn('Scheduler cycle failed', err))
       .finally(() => {
         schedulerTimer = setTimeout(cycle, tickIntervalMs())

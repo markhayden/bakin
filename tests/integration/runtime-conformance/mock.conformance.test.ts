@@ -4,7 +4,7 @@
  * every real adapter must satisfy — plugin tests that pass against the mock
  * must not be passing against fantasy semantics.
  */
-import { afterAll, beforeEach, mock } from 'bun:test'
+import { afterAll, beforeEach, describe, it, mock } from 'bun:test'
 import { rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -32,8 +32,8 @@ const loggerMock = () => ({
 mock.module('../../../src/core/logger', loggerMock)
 mock.module('../../../packages/core/src/logger', loggerMock)
 
-import { createMockRuntimeAdapter } from '../../../packages/core/src/adapters/runtime/testing'
-import { runRuntimeConformanceSuite, type RuntimeConformanceTarget } from './conformance'
+import { createMockRuntimeAdapter, mockCron } from '../../../packages/core/src/adapters/runtime/testing'
+import { runRuntimeConformanceSuite, runtimeConformanceChecks, type RuntimeConformanceTarget } from './conformance'
 
 let target: RuntimeConformanceTarget
 let threadSeq = 0
@@ -99,4 +99,13 @@ afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })
 })
 
-runRuntimeConformanceSuite('dev mock', () => target)
+runRuntimeConformanceSuite('dev mock', () => target, { cron: 'absent' })
+
+// The minimal mock omits cron; the opt-in surface must still honor the CRUD
+// contract so schedule tests exercising it inherit pinned behavior.
+describe('mock cron opt-in (mockCron)', () => {
+  it('round-trips the cron CRUD contract', async () => {
+    const cronTarget = { ...target, runtime: createMockRuntimeAdapter({ cron: mockCron() }) }
+    await runtimeConformanceChecks.cronCrudRoundTrip(cronTarget)
+  })
+})

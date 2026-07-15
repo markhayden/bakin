@@ -10,7 +10,7 @@ import { defineRoute, searchRoute } from '@bakin/core/routing'
 import type { BakinJobMeta } from '../../types'
 import { getJob, upsertJob } from '../sidecar'
 import { parseSchedule } from '../cron-parser'
-import { getSystemTimezone, json } from '../schedule-util'
+import { getSystemTimezone, json, nativeCronTz } from '../schedule-util'
 import { readRuns } from '../runs-reader'
 import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 import { fireManualRun } from '../fire-engine'
@@ -214,7 +214,7 @@ export const scheduleRoutes = [
       if (!parsed) return json({ error: 'Could not parse schedule' }, 400)
 
       const now = new Date().toISOString()
-      const tz = body.tz || existing?.tz || getSystemTimezone()
+      const tz = body.tz || existing?.tz || nativeCronTz(runtimeJob) || getSystemTimezone()
       const displayName = body.name || existing?.displayName || runtimeJob.name
       const owner = (body.owner ?? undefined) || existing?.owner || await getRuntimeMainAgentId(ctx.runtime)
       const taskPrompt = (body.taskPrompt ?? undefined) || existing?.taskPrompt || runtimeJob.command

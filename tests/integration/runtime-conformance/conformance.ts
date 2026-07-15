@@ -105,6 +105,13 @@ export interface RuntimeConformanceSuiteOptions {
    * declared 'unavailable'.
    */
   sessionsPin?: boolean
+  /**
+   * Cron optional-member declaration (T30). 'present' pins the member to
+   * exist and drives the CRUD round-trip; 'absent' pins true omission
+   * (undefined member, not a throwing stub). Omit to skip the declaration
+   * pin (the round-trip still runs whenever the member exists).
+   */
+  cron?: 'present' | 'absent'
 }
 
 function fail(message: string): never {
@@ -124,6 +131,65 @@ function assertTypedRuntimeError(err: unknown, expectedKind?: string): void {
 }
 
 export const runtimeConformanceChecks = {
+  /**
+   * Optional-member honesty (T30): cron support is signalled by MEMBER
+   * PRESENCE — never a capability mode, never a throwing stub. A runner
+   * declares which side its adapter is on; absence must be `undefined`.
+   */
+  async cronMemberMatchesDeclaration(target: RuntimeConformanceTarget, options?: RuntimeConformanceSuiteOptions): Promise<void> {
+    if (options?.cron === undefined) return
+    const member = target.runtime.cron
+    if (options.cron === 'absent' && member !== undefined) {
+      fail('cron declared absent but the adapter exposes a cron member — absence must be member omission')
+    }
+    if (options.cron === 'present' && member === undefined) {
+      fail('cron declared present but the adapter omits the member')
+    }
+  },
+
+  /**
+   * Native-cron CRUD contract (T30), for adapters that expose the optional
+   * member: creates persist (listable, gettable), updates apply, a missing
+   * id reads as null (never a throw) and mutates as a typed 'not_found',
+   * and removal is observable. Runs against whatever store the adapter
+   * really uses (OpenClaw: the CLI + file store via the crab shim).
+   */
+  async cronCrudRoundTrip(target: RuntimeConformanceTarget): Promise<void> {
+    const cron = target.runtime.cron
+    if (!cron) return
+    const name = `conformance-cron-${Math.random().toString(36).slice(2, 10)}`
+
+    const created = await cron.create({ name, schedule: '0 9 * * *', command: 'conformance noop', enabled: true })
+    if (!created.id) fail('cron.create returned a job without an id')
+    if (created.schedule !== '0 9 * * *') fail(`cron.create did not persist the schedule (got '${created.schedule}')`)
+
+    const listed = await cron.list()
+    if (!listed.some((job) => job.id === created.id)) fail('created cron job is missing from cron.list()')
+
+    const fetched = await cron.get(created.id)
+    if (!fetched || fetched.id !== created.id) fail('cron.get of a created job did not return it')
+
+    const updated = await cron.update(created.id, { schedule: '30 10 * * *' })
+    if (updated.schedule !== '30 10 * * *') fail(`cron.update did not apply the schedule patch (got '${updated.schedule}')`)
+    const refetched = await cron.get(created.id)
+    if (refetched?.schedule !== '30 10 * * *') fail('cron.update result not visible on a subsequent get')
+
+    const ghost = `conformance-cron-ghost-${Math.random().toString(36).slice(2, 10)}`
+    const missing = await cron.get(ghost)
+    if (missing !== null) fail(`cron.get of a missing job must return null (got ${JSON.stringify(missing)})`)
+    try {
+      await cron.update(ghost, { schedule: '0 0 * * *' })
+      fail("cron.update of a missing job resolved — must reject typed 'not_found'")
+    } catch (err) {
+      if (err instanceof Error && err.message.startsWith('conformance violation')) throw err
+      assertTypedRuntimeError(err, 'not_found')
+    }
+
+    await cron.remove(created.id)
+    if ((await cron.get(created.id)) !== null) fail('cron.get still returns a removed job')
+    if ((await cron.list()).some((job) => job.id === created.id)) fail('cron.list still contains a removed job')
+  },
+
   /**
    * CRUD error contract (R28): reads return null for absence; mutations on a
    * missing agent reject with a typed RuntimeError kind 'not_found'. Ghost id
@@ -547,6 +613,14 @@ export function runRuntimeConformanceSuite(
 
     it("unknown-agent CRUD: get returns null, mutations reject typed 'not_found'", async () => {
       await runtimeConformanceChecks.unknownAgentCrudIsTypedNotFound(getTarget())
+    })
+
+    it('cron member matches its declaration (presence is the contract)', async () => {
+      await runtimeConformanceChecks.cronMemberMatchesDeclaration(getTarget(), options)
+    })
+
+    it('cron CRUD round-trips against the real store (when the member exists)', async () => {
+      await runtimeConformanceChecks.cronCrudRoundTrip(getTarget())
     })
 
     it('initialize() is write-free (provisioning owns home writes)', async () => {

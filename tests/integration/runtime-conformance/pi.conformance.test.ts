@@ -169,4 +169,4 @@ const target: RuntimeConformanceTarget = {
   },
 }
 
-runRuntimeConformanceSuite('pi (fake provider)', () => target)
+runRuntimeConformanceSuite('pi (fake provider)', () => target, { cron: 'absent' })

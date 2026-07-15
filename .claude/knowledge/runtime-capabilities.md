@@ -28,6 +28,10 @@ Rules of the model:
   are omitted by runtimes without them (Pi omits both). Consumers
   feature-detect (`runtime.channels?.…`); an arch rule bans `.channels!.` /
   `.cron!.` in production code (`tests/architecture/adapter-boundary.test.ts`).
+  Since PR1 of #191 the conformance suite pins the cron side: each runner
+  declares `cron: 'present' | 'absent'` and a CRUD round-trip runs against
+  any adapter exposing the member (openclaw via the crab CLI shim — the real
+  CLI/file-store path). Absence must be member omission, never a stub.
 
 ## Tool access — one renderer, adapter-owned provisioning
 
