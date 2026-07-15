@@ -351,27 +351,15 @@ describe('AgentsTab', () => {
     const usageCost = usageCostHeading.closest<HTMLElement>('[data-section-card]')
     expect(usageCost).not.toBeNull()
 
-    const tokensButton = within(usageCost!).queryByRole('button', { name: 'Tokens' })
-    const costButton = within(usageCost!).queryByRole('button', { name: 'Reported cost' })
-    const tokensRadio = within(usageCost!).queryByRole('radio', { name: 'Tokens' }) as HTMLInputElement | null
-    const costRadio = within(usageCost!).queryByRole('radio', { name: 'Reported cost' }) as HTMLInputElement | null
+    const control = within(usageCost!).getByRole('tablist', { name: 'Usage metric' })
+    const tokensTab = within(control).getByRole('tab', { name: 'Tokens' })
+    const costTab = within(control).getByRole('tab', { name: 'Reported cost' })
 
-    expect(tokensButton ?? tokensRadio).not.toBeNull()
-    expect(costButton ?? costRadio).not.toBeNull()
-    expect(within(usageCost!).queryByRole('tab', { name: 'Tokens' })).toBeNull()
-    expect(within(usageCost!).queryByRole('tab', { name: 'Reported cost' })).toBeNull()
-
-    if (tokensButton && costButton) {
-      expect(tokensButton.getAttribute('aria-pressed')).toBe('true')
-      expect(costButton.getAttribute('aria-pressed')).toBe('false')
-      fireEvent.click(costButton)
-      await waitFor(() => expect(costButton.getAttribute('aria-pressed')).toBe('true'))
-    } else {
-      expect(tokensRadio?.checked).toBe(true)
-      expect(costRadio?.checked).toBe(false)
-      fireEvent.click(costRadio!)
-      await waitFor(() => expect(costRadio?.checked).toBe(true))
-    }
+    expect(control.hasAttribute('data-segmented-control')).toBe(true)
+    expect(tokensTab.getAttribute('aria-selected')).toBe('true')
+    expect(costTab.getAttribute('aria-selected')).toBe('false')
+    fireEvent.click(costTab)
+    await waitFor(() => expect(costTab.getAttribute('aria-selected')).toBe('true'))
 
     expect(within(usageCost!).getByRole('group', { name: /reported cost.*over time/i })).toBeDefined()
     expect(within(usageCost!).getByText(/View reported cost.*data/i)).toBeDefined()
@@ -742,7 +730,7 @@ describe('AgentsTab', () => {
 
     const usageCostHeading = await screen.findByRole('heading', { level: 3, name: 'Usage & cost' })
     const usageCost = usageCostHeading.closest<HTMLElement>('[data-section-card]')!
-    fireEvent.click(within(usageCost).getByRole('button', { name: 'Reported cost' }))
+    fireEvent.click(within(usageCost).getByRole('tab', { name: 'Reported cost' }))
 
     expect(within(usageCost).getByText('$0.00', { selector: '[data-reported-cost-zero] strong' })).toBeDefined()
     expect(usageCost.textContent).toContain('All 6 cost-reporting messages returned $0.00')
@@ -775,7 +763,7 @@ describe('AgentsTab', () => {
 
     const usageCostHeading = await screen.findByRole('heading', { level: 3, name: 'Usage & cost' })
     const usageCost = usageCostHeading.closest<HTMLElement>('[data-section-card]')!
-    fireEvent.click(within(usageCost).getByRole('button', { name: 'Reported cost' }))
+    fireEvent.click(within(usageCost).getByRole('tab', { name: 'Reported cost' }))
 
     expect(usageCost.textContent).toContain('Reported cost $0.00+')
     expect(usageCost.textContent).toMatch(/coverage is partial/i)
@@ -816,7 +804,7 @@ describe('AgentsTab', () => {
 
     const usageCostHeading = await screen.findByRole('heading', { level: 3, name: 'Usage & cost' })
     const usageCost = usageCostHeading.closest<HTMLElement>('[data-section-card]')!
-    fireEvent.click(within(usageCost).getByRole('button', { name: 'Reported cost' }))
+    fireEvent.click(within(usageCost).getByRole('tab', { name: 'Reported cost' }))
     const exact = within(usageCost).getByRole('table', { name: 'Reported cost over time data', hidden: true })
 
     expect(usageCost.textContent).toContain('6 of 6 messages')
@@ -851,7 +839,7 @@ describe('AgentsTab', () => {
 
     const usageCostHeading = await screen.findByRole('heading', { level: 3, name: 'Usage & cost' })
     const usageCost = usageCostHeading.closest<HTMLElement>('[data-section-card]')!
-    fireEvent.click(within(usageCost).getByRole('button', { name: 'Reported cost' }))
+    fireEvent.click(within(usageCost).getByRole('tab', { name: 'Reported cost' }))
 
     expect(within(usageCost).getByRole('img', { name: /07-13 \(in progress\): Unreported/i })).toBeDefined()
     expect(usageCost.textContent).toContain('Today has no reported cost evidence yet')
@@ -881,7 +869,7 @@ describe('AgentsTab', () => {
 
     const usageCostHeading = await screen.findByRole('heading', { level: 3, name: 'Usage & cost' })
     const usageCost = usageCostHeading.closest<HTMLElement>('[data-section-card]')!
-    fireEvent.click(within(usageCost).getByRole('button', { name: 'Reported cost' }))
+    fireEvent.click(within(usageCost).getByRole('tab', { name: 'Reported cost' }))
 
     expect(usageCost.textContent).toContain('Reported cost Unavailable')
     expect(usageCost.textContent).toContain('0 of 6 messages')

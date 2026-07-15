@@ -1,8 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { ChartExplainer, EmptyState, ErrorState, PluginLink, SectionCard, StackedColumnChart } from '@makinbakin/sdk/components'
-import { Button, Skeleton } from '@makinbakin/sdk/ui'
+import { ChartExplainer, EmptyState, ErrorState, PluginLink, SectionCard, SegmentedControl, StackedColumnChart } from '@makinbakin/sdk/components'
+import { Skeleton } from '@makinbakin/sdk/ui'
 import { ArrowUpRight, TrendingUp } from 'lucide-react'
 import type { UsageHistoryData } from '../types'
 import { formatRuntimeCost, formatTokenCount } from '../lib/format'
@@ -27,6 +27,11 @@ interface TrendData {
 }
 
 type UsageMetric = 'tokens' | 'cost'
+
+const USAGE_METRICS = [
+  { value: 'tokens', label: 'Tokens' },
+  { value: 'cost', label: 'Reported cost' },
+] as const
 
 function buildTrend(history: UsageHistoryData, metric: UsageMetric): TrendData | null {
   const days = [...new Set([
@@ -153,20 +158,12 @@ export function AgentsUsageChart({ data, loading, error, onRetry }: AgentsUsageC
       icon={TrendingUp}
       description="See where tokens and runtime-reported cost accumulated across agents."
       action={(
-        <div className="flex items-center rounded-lg bg-foreground/5 p-0.5" role="group" aria-label="Usage metric">
-          {(['tokens', 'cost'] as const).map((value) => (
-            <Button
-              key={value}
-              type="button"
-              size="xs"
-              variant={metric === value ? 'secondary' : 'ghost'}
-              aria-pressed={metric === value}
-              onClick={() => setMetric(value)}
-            >
-              {value === 'tokens' ? 'Tokens' : 'Reported cost'}
-            </Button>
-          ))}
-        </div>
+        <SegmentedControl
+          options={USAGE_METRICS}
+          value={metric}
+          onValueChange={setMetric}
+          ariaLabel="Usage metric"
+        />
       )}
       className="min-w-0"
     >
