@@ -124,7 +124,7 @@ mock.module('../../../src/core/task-store', () => ({
 
 // The spend engine's observed side — empty for route tests.
 mock.module('../../../packages/core/src/usage-history/store', () => ({
-  usageByAgentModelDaySince: () => [],
+  readUsageByAgentModelDaySince: () => [],
   toLocalDayKey: (tsMs: number) => {
     const d = new Date(tsMs)
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`

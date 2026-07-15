@@ -93,7 +93,7 @@ mock.module('../../src/core/execution-ledger', () => ({
 type UsageCell = { agent: string; day: string; model: string; tokens: { input: number; output: number; cacheRead: number; cacheWrite: number; total: number }; costUsdMicros: number | null; costedMessages: number; messageCount: number }
 const usageCells: UsageCell[] = []
 mock.module('../../packages/core/src/usage-history/store', () => ({
-  usageByAgentModelDaySince: (sinceDay: string) => usageCells.filter((c) => c.day >= sinceDay),
+  readUsageByAgentModelDaySince: (sinceDay: string) => usageCells.filter((c) => c.day >= sinceDay),
   toLocalDayKey: (tsMs: number) => {
     const d = new Date(tsMs)
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -226,6 +226,7 @@ describe('budgetGate', () => {
     // gate re-assembles for today and sees the over-cap spend.
     const emptyFacets = () => Promise.resolve({
       computedAt: 0,
+      observedUsageEvidence: { status: 'available' as const },
       daily: { startMs: 0, global: { meteredUsdMicros: 0, meteredTokens: 0, subscriptionTokens: 0, unpricedMeteredTokens: 0, unattributed: { meteredUsdMicros: 0, meteredTokens: 0, subscriptionTokens: 0 } }, byAgent: {}, byProvider: {}, byModel: {} },
       monthly: { startMs: 0, global: { meteredUsdMicros: 0, meteredTokens: 0, subscriptionTokens: 0, unpricedMeteredTokens: 0, unattributed: { meteredUsdMicros: 0, meteredTokens: 0, subscriptionTokens: 0 } }, byAgent: {}, byProvider: {}, byModel: {} },
     })

@@ -37,6 +37,7 @@ import {
   usageByDaySince,
   usageByAgentDaySince,
   usageByAgentModelDaySince,
+  readUsageByAgentModelDaySince,
   readUsageHistorySince,
   UsageHistoryStoreReadError,
   type SessionDayUsage,
@@ -356,6 +357,7 @@ describe('strict usage-history reads', () => {
     mkdirSync(storePath)
 
     expect(() => readUsageHistorySince(DAY1)).toThrow(UsageHistoryStoreReadError)
+    expect(() => readUsageByAgentModelDaySince(DAY1)).toThrow(UsageHistoryStoreReadError)
 
     rmSync(storePath, { recursive: true, force: true })
   })

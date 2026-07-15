@@ -381,6 +381,29 @@ export interface AgentModelDayUsageRollup {
   messageCount: number
 }
 
+function queryUsageByAgentModelDaySince(sinceDay: string): AgentModelDayUsageRollup[] {
+  return db()
+    .prepare<RollupRow & { agent: string; model: string }, [string]>(
+      `SELECT agent, model, day AS key, ${ROLLUP_SUMS}
+         FROM session_usage_days WHERE day >= ? GROUP BY agent, day, model ORDER BY day ASC, agent ASC, model ASC`,
+    )
+    .all(sinceDay)
+    .map((r) => ({ agent: r.agent, day: r.key, model: r.model, ...toRollup(r) }))
+}
+
+/**
+ * Strict spend-engine boundary for observed usage. Storage failure is
+ * explicit so callers cannot mistake an unreadable store for zero usage.
+ */
+export function readUsageByAgentModelDaySince(sinceDay: string): AgentModelDayUsageRollup[] {
+  try {
+    return queryUsageByAgentModelDaySince(sinceDay)
+  } catch (err) {
+    log.error('readUsageByAgentModelDaySince failed', err, { sinceDay })
+    throw new UsageHistoryStoreReadError('Usage history store could not be read.', err)
+  }
+}
+
 /**
  * Per-(agent, day, model) cells for calendar days >= sinceDay — the spend
  * engine's observed-usage input (cost-control v2): the model dimension lets
@@ -389,13 +412,7 @@ export interface AgentModelDayUsageRollup {
  */
 export function usageByAgentModelDaySince(sinceDay: string): AgentModelDayUsageRollup[] {
   try {
-    return db()
-      .prepare<RollupRow & { agent: string; model: string }, [string]>(
-        `SELECT agent, model, day AS key, ${ROLLUP_SUMS}
-           FROM session_usage_days WHERE day >= ? GROUP BY agent, day, model ORDER BY day ASC, agent ASC, model ASC`,
-      )
-      .all(sinceDay)
-      .map((r) => ({ agent: r.agent, day: r.key, model: r.model, ...toRollup(r) }))
+    return queryUsageByAgentModelDaySince(sinceDay)
   } catch (err) {
     log.error('usageByAgentModelDaySince failed', err, { sinceDay })
     return []

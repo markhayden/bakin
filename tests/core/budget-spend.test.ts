@@ -32,6 +32,7 @@ type UsageCell = {
 }
 const costRows: CostRow[] = []
 const usageCells: UsageCell[] = []
+let usageReadFails = false
 
 mock.module('../../src/core/execution-ledger', () => ({
   listRunCostsSince: (sinceMs: number) => costRows.filter((r) => r.occurredAt >= sinceMs),
@@ -45,7 +46,10 @@ function localDayKey(tsMs: number): string {
   return `${d.getFullYear()}-${m}-${day}`
 }
 mock.module('../../packages/core/src/usage-history/store', () => ({
-  usageByAgentModelDaySince: (sinceDay: string) => usageCells.filter((c) => c.day >= sinceDay),
+  readUsageByAgentModelDaySince: (sinceDay: string) => {
+    if (usageReadFails) throw new Error('usage store unavailable')
+    return usageCells.filter((c) => c.day >= sinceDay)
+  },
   toLocalDayKey: localDayKey,
 }))
 
@@ -81,6 +85,7 @@ function usage(agent: string, tsMs: number, model: string, total: number, costUs
 beforeEach(() => {
   costRows.length = 0
   usageCells.length = 0
+  usageReadFails = false
 })
 
 describe('assembleBudgetSpend', () => {
@@ -91,6 +96,7 @@ describe('assembleBudgetSpend', () => {
       { runId: 'r3', agent: 'rolo', model: 'google/gemini-3-flash', provider: 'google', lane: 'metered', totalTokens: 400, costUsdMicros: 1_000_000, occurredAt: EARLIER_THIS_MONTH },
     )
     const s = await assembleBudgetSpend(NOW)
+    expect(s.observedUsageEvidence).toEqual({ status: 'available' })
 
     // Daily window: only today's rows.
     expect(s.daily.startMs).toBe(dayStartMs(NOW))
@@ -152,6 +158,17 @@ describe('assembleBudgetSpend', () => {
     const s = await assembleBudgetSpend(NOW)
     expect(s.daily.global.unattributed.meteredUsdMicros).toBe(10_000)
     expect(s.monthly.global.unattributed.meteredUsdMicros).toBe(110_000)
+  })
+
+  it('marks observed usage unavailable without discarding attributed spend', async () => {
+    costRows.push({ runId: 'r7', agent: 'pixel', model: 'google/gemini-3-flash', provider: 'google', lane: 'metered', totalTokens: 1000, costUsdMicros: 2_000_000, occurredAt: TODAY })
+    usageReadFails = true
+
+    const s = await assembleBudgetSpend(NOW)
+
+    expect(s.observedUsageEvidence).toEqual({ status: 'unavailable', reason: 'usage_store_unavailable' })
+    expect(s.daily.global.meteredUsdMicros).toBe(2_000_000)
+    expect(s.daily.global.unattributed.meteredUsdMicros).toBe(0)
   })
 })
 

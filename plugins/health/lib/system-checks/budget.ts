@@ -19,6 +19,7 @@ import { getSettings } from '../../../../src/core/settings'
 import { getHookRegistry } from '../../../../packages/core/src/hooks/hook-registry-singleton'
 import { healthError, healthHealthy, healthObserved, healthUnknown, healthWarning } from '@makinbakin/sdk/utils'
 import type { HealthCheckRunInput, HealthObservationInput, JsonObject } from '@makinbakin/sdk'
+import { getLastUsageScan, getUsageHistoryScanStaleAfterMs } from '../usage-history-timer'
 
 const WINDOW_MS = 24 * 60 * 60 * 1000
 
@@ -38,6 +39,36 @@ function matchingTurn(rule: BudgetRule): TurnBillingContext {
 
 function ruleLabel(rule: BudgetRule): string {
   return rule.scopeId ? `${rule.scope} '${rule.scopeId}'` : 'global'
+}
+
+type ObservedSpendEvidence =
+  | { status: 'complete'; reason: 'complete'; scanAgeMs: number; staleAfterMs: number }
+  | { status: 'partial'; reason: string; scanAgeMs: number; staleAfterMs: number }
+  | { status: 'unavailable'; reason: string; scanAgeMs: number | null; staleAfterMs: number }
+
+function observedSpendEvidence(
+  facets: Awaited<ReturnType<typeof assembleBudgetSpend>>,
+  now: number,
+): ObservedSpendEvidence {
+  const staleAfterMs = getUsageHistoryScanStaleAfterMs()
+  if (facets.observedUsageEvidence.status === 'unavailable') {
+    return { status: 'unavailable', reason: facets.observedUsageEvidence.reason, scanAgeMs: null, staleAfterMs }
+  }
+  const scan = getLastUsageScan()
+  if (!scan) return { status: 'unavailable', reason: 'scan_not_run', scanAgeMs: null, staleAfterMs }
+  const scanAgeMs = Math.max(0, now - scan.at)
+  if (scanAgeMs > staleAfterMs) {
+    return { status: 'unavailable', reason: 'scan_stale', scanAgeMs, staleAfterMs }
+  }
+  if (scan.report.coverage.status !== 'complete') {
+    return {
+      status: scan.report.coverage.status,
+      reason: scan.report.coverage.reason,
+      scanAgeMs,
+      staleAfterMs,
+    }
+  }
+  return { status: 'complete', reason: 'complete', scanAgeMs, staleAfterMs }
 }
 
 export async function checkBudget(): Promise<HealthCheckRunInput> {
@@ -207,6 +238,7 @@ export async function checkBudget(): Promise<HealthCheckRunInput> {
     }))
     return healthObserved(observations as [HealthObservationInput, ...HealthObservationInput[]])
   }
+  const spendEvidence = observedSpendEvidence(facets, now)
 
   let deferred = 0
   try {
@@ -255,6 +287,7 @@ export async function checkBudget(): Promise<HealthCheckRunInput> {
     })),
     ...(agents.length ? { agents } : {}),
     deferred,
+    observedUsageEvidence: spendEvidence,
   }
 
   const worst = breaches.find((b) => b.action === 'defer') ?? breaches[0]
@@ -307,6 +340,21 @@ export async function checkBudget(): Promise<HealthCheckRunInput> {
           label: 'Review spending',
           href: '/models?tab=spend',
         },
+      },
+    }))
+  } else if (spendEvidence.status !== 'complete') {
+    observations.push(healthUnknown({
+      key: 'spend',
+      summary: 'Spend could not be fully verified.',
+      detail: 'Known Bakin-managed spend is below its configured limits, but recent transcript-observed usage is incomplete.',
+      evidence: data,
+      incident: {
+        key: 'spend-evidence-incomplete',
+        title: 'Observed spend evidence is incomplete',
+        impact: 'Health cannot confirm that agent spend outside Bakin-managed runs remains within budget.',
+        disposition: 'watch',
+        resources: [{ kind: 'system', id: 'usage-history', label: 'Usage history' }],
+        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
       },
     }))
   } else {

@@ -28,7 +28,7 @@ function window(over: Partial<WindowSpend> = {}): WindowSpend {
   return { startMs: 0, global: scope(), byAgent: {}, byProvider: {}, byModel: {}, ...over }
 }
 function facets(daily: Partial<WindowSpend> = {}, monthly: Partial<WindowSpend> = {}): BudgetSpendFacets {
-  return { computedAt: 0, daily: window(daily), monthly: window(monthly) }
+  return { computedAt: 0, observedUsageEvidence: { status: 'available' }, daily: window(daily), monthly: window(monthly) }
 }
 const TURN = { agent: 'pixel' } // lane defaults to metered
 

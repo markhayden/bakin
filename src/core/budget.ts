@@ -58,6 +58,10 @@ export interface WindowSpend {
 
 export interface BudgetSpendFacets {
   computedAt: number
+  /** Whether the observed-usage store contributed to these facets. */
+  observedUsageEvidence:
+    | { status: 'available' }
+    | { status: 'unavailable'; reason: 'usage_store_unavailable' }
   daily: WindowSpend
   monthly: WindowSpend
 }

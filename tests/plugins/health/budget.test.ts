@@ -33,18 +33,35 @@ mock.module('../../../src/core/plugin-registry', hookRegistryMock)
 
 import { checkBudget } from '@bakin/health/lib/system-checks/budget'
 import { recordRunCost } from '../../../src/core/execution-ledger'
-import { closeDb } from '../../../packages/core/src/storage/db'
+import { closeAllDbs, closeDb } from '../../../packages/core/src/storage/db'
 import type { HealthCheckRunInput } from '@makinbakin/sdk'
 import { parseHealthCheckRunInput } from '../../../src/core/health-contract'
+
+const usageScanGlobal = globalThis as typeof globalThis & {
+  __bakinUsageHistoryLastScan?: unknown
+  __bakinUsageHistoryScanIntervalMs?: number
+}
 
 beforeEach(() => {
   mkdirSync(testDir, { recursive: true })
   dbPath = join(testDir, 'bakin.db')
   budgetPolicy = {}
+  usageScanGlobal.__bakinUsageHistoryScanIntervalMs = 5 * 60_000
+  usageScanGlobal.__bakinUsageHistoryLastScan = {
+    at: Date.now(),
+    report: {
+      scanned: 0,
+      skipped: 0,
+      failed: 0,
+      coverage: { status: 'complete', reason: 'complete', agents: [] },
+    },
+  }
 })
 
 afterEach(() => {
-  closeDb()
+  closeAllDbs()
+  usageScanGlobal.__bakinUsageHistoryLastScan = null
+  usageScanGlobal.__bakinUsageHistoryScanIntervalMs = undefined
   rmSync(testDir, { recursive: true, force: true })
 })
 
@@ -71,6 +88,73 @@ describe('budget health check', () => {
     seedSpend(5_000_000) // $5 of $100
     const [r] = observed(await checkBudget())
     expect(r.status).toBe('healthy')
+  })
+
+  it('is unknown when observed usage storage is unavailable', async () => {
+    budgetPolicy = { rules: [{ scope: 'global', lane: 'metered', dailyCap: 100 }] }
+    seedSpend(5_000_000)
+    closeAllDbs()
+    mkdirSync(join(testDir, 'usage.db'))
+
+    const rows = observed(await checkBudget())
+
+    expect(rows.some((row) => row.key === 'spend' && row.status === 'unknown')).toBe(true)
+    expect(rows.some((row) => row.key === 'spend' && row.status === 'healthy')).toBe(false)
+  })
+
+  it('is unknown when the most recent transcript scan is stale', async () => {
+    budgetPolicy = { rules: [{ scope: 'global', lane: 'metered', dailyCap: 100 }] }
+    seedSpend(5_000_000)
+    usageScanGlobal.__bakinUsageHistoryLastScan = {
+      at: Date.now() - 11 * 60_000,
+      report: {
+        scanned: 0,
+        skipped: 0,
+        failed: 0,
+        coverage: { status: 'complete', reason: 'complete', agents: [] },
+      },
+    }
+
+    const rows = observed(await checkBudget())
+
+    expect(rows.some((row) => row.key === 'spend' && row.status === 'unknown')).toBe(true)
+  })
+
+  it('is unknown when the most recent transcript scan has partial coverage', async () => {
+    budgetPolicy = { rules: [{ scope: 'global', lane: 'metered', dailyCap: 100 }] }
+    seedSpend(5_000_000)
+    usageScanGlobal.__bakinUsageHistoryLastScan = {
+      at: Date.now(),
+      report: {
+        scanned: 1,
+        skipped: 0,
+        failed: 1,
+        coverage: { status: 'partial', reason: 'agent_scan_failed', agents: [{ agent: 'pixel', status: 'partial' }] },
+      },
+    }
+
+    const rows = observed(await checkBudget())
+
+    expect(rows.some((row) => row.key === 'spend' && row.status === 'unknown')).toBe(true)
+    expect(rows.some((row) => row.key === 'spend' && row.status === 'healthy')).toBe(false)
+  })
+
+  it('keeps a known cap breach critical when observed evidence is incomplete', async () => {
+    budgetPolicy = { rules: [{ scope: 'global', lane: 'metered', dailyCap: 10 }] }
+    seedSpend(10_000_000)
+    usageScanGlobal.__bakinUsageHistoryLastScan = {
+      at: Date.now(),
+      report: {
+        scanned: 0,
+        skipped: 0,
+        failed: 1,
+        coverage: { status: 'partial', reason: 'agent_scan_failed', agents: [{ agent: 'pixel', status: 'partial' }] },
+      },
+    }
+
+    const rows = observed(await checkBudget())
+
+    expect(rows.some((row) => row.key === 'spend' && row.status === 'error')).toBe(true)
   })
 
   it('warns as spend approaches the cap (>= warnPct)', async () => {
