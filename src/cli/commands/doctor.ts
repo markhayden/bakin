@@ -352,10 +352,9 @@ async function runOfflineDoctor(): Promise<HealthReport> {
 }
 
 async function runFullDoctor(options: { notifyAgent?: boolean } = {}): Promise<HealthReport> {
-  const query = options.notifyAgent
-    ? '/api/plugins/health/doctor?fresh=true&notifyAgent=true'
-    : '/api/plugins/health/doctor?fresh=true'
-  return await apiGet(query) as HealthReport
+  return await apiPost('/api/plugins/health/doctor/run', {
+    notifyAgent: options.notifyAgent === true,
+  }) as HealthReport
 }
 
 function doctorExitCode(report: Pick<HealthReport, 'overallStatus'>): DoctorExitCode {

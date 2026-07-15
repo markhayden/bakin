@@ -238,7 +238,12 @@ describe('HealthPage tab shell', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Run checks' }))
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
-    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/plugins/health/doctor?fresh=true')
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/plugins/health/doctor/run')
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    })
     expect(fetchMock.mock.calls[0]?.[1]?.signal).toBeInstanceOf(AbortSignal)
     const failure = 'Health checks could not be completed. Existing evidence remains visible.'
     expect(screen.getByTestId('health-action-status').textContent).toBe(failure)

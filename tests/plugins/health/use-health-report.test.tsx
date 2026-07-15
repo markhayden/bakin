@@ -115,7 +115,12 @@ describe('useHealthReport', () => {
 
     expect(first).toBe(second)
     expect(fetchMock).toHaveBeenCalledTimes(2)
-    expect(fetchMock.mock.calls[1]?.[0]).toBe('/api/plugins/health/doctor?fresh=true')
+    expect(fetchMock.mock.calls[1]?.[0]).toBe('/api/plugins/health/doctor/run')
+    expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    })
     expect(result.current.refreshing).toBe(true)
 
     await act(async () => { fresh.resolve(jsonResponse(report({ id: 'report-2', revision: 2 }))) })
@@ -132,7 +137,7 @@ describe('useHealthReport', () => {
 
     const { result } = renderHook(() => useHealthReport())
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
-    expect(fetchMock.mock.calls[1]?.[0]).toBe('/api/plugins/health/doctor?fresh=true')
+    expect(fetchMock.mock.calls[1]?.[0]).toBe('/api/plugins/health/doctor/run')
 
     act(() => { void result.current.runChecks() })
     expect(fetchMock).toHaveBeenCalledTimes(2)

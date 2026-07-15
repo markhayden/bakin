@@ -94,10 +94,11 @@ const cachedReport: HealthReport = {
 }
 
 const freshReport: HealthReport = { ...cachedReport, id: 'health-report-2', revision: 5 }
+const runDiagnosticsMock = mock(async () => freshReport)
 
 mock.module('../../../src/core/doctor', () => ({
   getLastReport: mock(() => cachedReport),
-  runDiagnostics: mock(async () => freshReport),
+  runDiagnostics: runDiagnosticsMock,
   runTargetedDiagnostics: mock(async () => freshReport),
 }))
 
@@ -271,6 +272,7 @@ afterAll(() => {
 
 beforeEach(() => {
   clearUsage()
+  runDiagnosticsMock.mockClear()
 })
 
 // ---------------------------------------------------------------------------
@@ -278,8 +280,8 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 
 describe('Health Plugin Routes', () => {
-  it('registers 19 routes', () => {
-    expect(activated.routes.length).toBe(19)
+  it('registers 20 routes', () => {
+    expect(activated.routes.length).toBe(20)
   })
 
   it('registers 2 exec tools', () => {
@@ -919,16 +921,25 @@ describe('Health Plugin Routes', () => {
       expect(body.results).toBeUndefined()
     })
 
-    it('runs fresh diagnostics when ?fresh=true', async () => {
-      const { runDiagnostics } = await import('../../../src/core/doctor')
+    it('rejects state-changing query parameters without running diagnostics', async () => {
       const route = findRoute(activated.routes, 'GET', '/doctor')!
 
-      const { status, body } = await callRoute(route, activated.ctx, {
+      const { status } = await callRoute(route, activated.ctx, {
         searchParams: { fresh: 'true' },
+      })
+      expect(status).toBe(400)
+      expect(runDiagnosticsMock).not.toHaveBeenCalled()
+    })
+
+    it('runs fresh diagnostics only through the explicit JSON POST route', async () => {
+      const route = findRoute(activated.routes, 'POST', '/doctor/run')!
+
+      const { status, body } = await callRoute(route, activated.ctx, {
+        body: { notifyAgent: true },
       })
       expect(status).toBe(200)
       expect(body.id).toBe(freshReport.id)
-      expect(runDiagnostics).toHaveBeenCalled()
+      expect(runDiagnosticsMock).toHaveBeenCalledWith(testDir, process.cwd(), { notifyAgent: true })
     })
   })
 

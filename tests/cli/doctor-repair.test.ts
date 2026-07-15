@@ -134,7 +134,8 @@ describe('canonical CLI doctor repair', () => {
     await expect(main()).rejects.toThrow('exit:1')
 
     expect(fetchMock).toHaveBeenCalledTimes(2)
-    expect(fetchMock.mock.calls[0][0]).toContain('/api/plugins/health/doctor?fresh=true')
+    expect(fetchMock.mock.calls[0][0]).toContain('/api/plugins/health/doctor/run')
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({ method: 'POST' })
     expect(fetchMock.mock.calls[1][0]).toContain('/api/plugins/health/doctor/repair/plan')
     expect(fetchMock.mock.calls[1][1]).toMatchObject({ method: 'POST' })
     expect(fetchMock.mock.calls[1][1]?.body).toBe(JSON.stringify({

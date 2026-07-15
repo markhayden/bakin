@@ -187,9 +187,10 @@ const USAGE_HISTORY_WINDOW_MS: Record<'24h' | '7d' | '30d', number> = {
   '30d': 30 * 24 * 60 * 60 * 1000,
 }
 
-const doctorQuery = z.object({
-  fresh: z.union([z.literal('true'), z.literal('false')]).optional(),
-  notifyAgent: z.union([z.literal('true'), z.literal('false')]).optional(),
+const doctorReadQuery = z.object({}).strict()
+
+const doctorRunBody = z.object({
+  notifyAgent: z.boolean().default(false),
 }).strict()
 
 const acceptedBody = z.object({
@@ -506,18 +507,33 @@ const routes = [
     path: '/doctor',
     method: 'GET',
     activityClass: 'routine',
-    summary: 'Run system diagnostics',
-    description: 'Returns the canonical cached Health report by default; pass ?fresh=true to join or start a full sweep.',
-    query: doctorQuery,
+    summary: 'Read the canonical Health report',
+    description: 'Returns the canonical cached Health report without executing checks or other work.',
+    query: doctorReadQuery,
     responses: { 200: healthReportSchema, 500: healthErrorResponseSchema },
-    handler: async (_req, _ctx, { query }) => {
+    handler: async () => {
       try {
-        const report = query.fresh === 'true'
-          ? await runDiagnostics(getContentDir(), process.cwd(), { notifyAgent: query.notifyAgent === 'true' })
-          : getLastReport()
+        return Response.json(getLastReport())
+      } catch (err) {
+        log.error('Health report request failed', err)
+        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/doctor/run',
+    method: 'POST',
+    summary: 'Run fresh Health diagnostics',
+    description: 'Explicitly starts or joins a fresh diagnostic sweep and optionally notifies the configured agent.',
+    body: doctorRunBody,
+    responses: { 200: healthReportSchema, 500: healthErrorResponseSchema },
+    handler: async (_req, _ctx, { body }) => {
+      try {
+        const report = await runDiagnostics(getContentDir(), process.cwd(), { notifyAgent: body.notifyAgent })
         return Response.json(report)
       } catch (err) {
-        log.error('Health diagnostics request failed', err)
+        log.error('Health diagnostics run failed', err)
         return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
       }
     },

@@ -81,7 +81,12 @@
       {
         "method": "GET",
         "path": "/doctor",
-        "summary": "Read or refresh the canonical Health report"
+        "summary": "Read the canonical Health report"
+      },
+      {
+        "method": "POST",
+        "path": "/doctor/run",
+        "summary": "Run fresh Health diagnostics"
       },
       {
         "method": "POST",

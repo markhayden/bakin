@@ -128,7 +128,10 @@ export function HealthPage() {
           const controller = new AbortController()
           await withDeadline(
             (async () => {
-              const response = await fetch('/api/plugins/health/doctor?fresh=true', {
+              const response = await fetch('/api/plugins/health/doctor/run', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: '{}',
                 signal: controller.signal,
               })
               if (!response.ok) throw new Error(`Health checks failed (${response.status})`)

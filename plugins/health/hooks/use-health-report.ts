@@ -27,8 +27,14 @@ async function requestHealthReport(
   context: HealthResourceRequestContext,
 ): Promise<HealthReport> {
   const fresh = context.reason === 'explicit' || context.reason === 'stale'
-  const requestUrl = fresh ? `${url}${url.includes('?') ? '&' : '?'}fresh=true` : url
-  const response = await fetch(requestUrl, { signal: context.signal })
+  const response = await fetch(fresh ? `${url}/run` : url, fresh
+    ? {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+        signal: context.signal,
+      }
+    : { signal: context.signal })
   if (!response.ok) throw new Error(`Request failed (${response.status})`)
   return parseHealthReportResponse(await response.json())
 }
