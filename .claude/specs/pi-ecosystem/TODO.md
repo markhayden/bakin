@@ -22,7 +22,7 @@ See PLAN.md for acceptance criteria. One PR per workstream; live-test before mer
 - [x] T3.3 codex lane live battery PASS (create/edit/multi-ref, real PNGs); key lanes covered by fake-endpoint suites (no metered keys on this box — 3×3 completes when keys are added)
 - [x] T3.4 pi-adapter.md updated; #627 closes with the PR
 
-## WS4 — extension trust lane (PR 4)
+## WS4 — extension trust lane (PR 4) — MERGED #677; #670 + #626 closed. INITIATIVE COMPLETE.
 - [x] T4.1 extensions? contract member + .extensions!. arch ban
 - [x] T4.2 inert discovery + default flip all→allowlist + exact-match predicate + live-settings getter (no-restart trust changes)
 - [x] T4.3 REST + `bakin runtime extensions {list,allow,revoke}` (live round-trip verified)
