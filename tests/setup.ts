@@ -48,9 +48,6 @@ GlobalRegistrator.register()
 // act(). Tests that end with work deliberately in flight (fetch-call
 // assertions racing the response re-render) call settleReact() themselves —
 // see that module for the full fact chain.
-// One file remains beyond all of this: tests/components/kanban-dnd.test.tsx
-// is QUARANTINED to a serial gating step (issue #650) — its dnd profile still
-// races the React scheduler on 2-vCPU CI runners despite every mechanism above.
 // ---------------------------------------------------------------------------
 
 // NOTE: we don't register a global main-agent stub here — bun:test has no

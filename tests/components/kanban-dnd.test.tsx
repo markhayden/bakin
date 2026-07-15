@@ -1,13 +1,12 @@
 /**
- * ⚠ QUARANTINED — runs as a dedicated SERIAL step, excluded from the parallel
- * suite (package.json test script + both CI workflows). These tests race on
- * CI's 2-vCPU runners despite per-file isolation (#638), the rtl-settle
- * scheduler-drain + act-unmount hook (#640), and the removal of inner-hook
- * cleanup preemption (#643) — a happy-dom/React-scheduler interaction this
- * file's dnd profile uniquely provokes. Tracking: issue #650 (mechanism
- * history + exit criteria there). The serial step still GATES CI — do not
- * confuse quarantine with skip, and do not re-add this file to the parallel
- * run without closing #650.
+ * Ran in the parallel suite. Historically raced on CI's 2-vCPU runners
+ * despite per-file isolation (#638), the rtl-settle scheduler-drain +
+ * act-unmount hook (#640), and the removal of inner-hook cleanup preemption
+ * (#643): the post-persist refetch's time-sliced re-render could still be
+ * pending when rtl-settle unmounted. Fixed (#650) by draining to
+ * FETCH-QUIESCENCE in this describe's afterEach (settleBoard) — which runs
+ * BEFORE the imported rtl-settle afterEach — so no refetch render is in
+ * flight at teardown.
  */
 // @vitest-environment jsdom
 
@@ -252,9 +251,11 @@ function makeDragEvent(options: {
 
 describe('KanbanBoard drag and drop', () => {
   let fetchCalls: Array<{ url: string; body: any; method: string }>
+  let fetchCount = 0
 
   beforeEach(() => {
     fetchCalls = []
+    fetchCount = 0
     capturedProviderProps = {}
     mockMove.mockClear()
     mockUseSortable.mockClear()
@@ -263,7 +264,23 @@ describe('KanbanBoard drag and drop', () => {
     }
   })
 
-  afterEach(() => {
+  async function settleBoard(): Promise<void> {
+    let stableRounds = 0
+    let lastCount = -1
+    for (let i = 0; i < 60 && stableRounds < 4; i++) {
+      await new Promise((r) => setTimeout(r, 0)) // macrotask: fetch json() + scheduler continuation
+      await settleReact(1)                       // let the resulting render slice commit
+      if (fetchCount === lastCount) stableRounds++
+      else { stableRounds = 0; lastCount = fetchCount }
+    }
+  }
+
+  // Runs BEFORE the imported rtl-settle afterEach (describe-scoped hooks fire
+  // first) — so the post-persist refetch cascade is fully drained before the
+  // root is unmounted. This is the #650 fix: the flake was that refetch
+  // render landing after the fixed-round settle, racing teardown on slow CI.
+  afterEach(async () => {
+    await settleBoard()
     mock.restore()
   })
 
@@ -271,6 +288,7 @@ describe('KanbanBoard drag and drop', () => {
     const boardResponse = makeBoardResponse(columns)
 
     vi.stubGlobal('fetch', mock(async (url: string, init?: RequestInit) => {
+      fetchCount++ // every call, incl. the post-persist GET refetch
       if (init?.method && init.method !== 'GET') {
         fetchCalls.push({
           url,
