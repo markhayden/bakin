@@ -3,12 +3,12 @@
 > Detail: `tasks/schedule-hardening-and-events/plan.md` · Spec: `SPEC.md`
 
 ## PR1 — fix(schedule): harden scheduling foundation
-- [ ] T1 Register schedule-sync health check (S)
-- [ ] T2 cron_fires retention sweep — ledger verb + daily call + dedup-safety pin (M)
-- [ ] T3 Cron conformance coverage + teeth (M)
-- [ ] T4 Switch-survival integration test, both directions, ±--adopt-cron (M)
-- [ ] T5 Knowledge docs: audit stances (XS)
-- [ ] CHECKPOINT: suite green → live 3737 → Mark approves → merge
+- [x] T1 Register schedule-sync health check (S)
+- [x] T2 cron_fires retention sweep — ledger verb + daily call + dedup-safety pin (M)
+- [x] T3 Cron conformance coverage + teeth (M)
+- [x] T4 Switch-survival integration test, both directions, ±--adopt-cron (M) — found+fixed adopted-cron tz loss
+- [x] T5 Knowledge docs: audit stances (XS)
+- [ ] CHECKPOINT: suite green ✔ → live 3737 → Mark approves → merge
 
 ## PR2 — feat(schedule): first-class one-shot 'at' schedules
 - [ ] T6 Delete dead 'every' kind (XS)

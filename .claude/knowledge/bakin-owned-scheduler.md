@@ -39,6 +39,12 @@ Skips are **visible**: every `skipFire()` in `runClaimedFire` (overlap / paused 
 
 `schedule-cutover` doctor check (`lib/health-checks.ts`): flags any Bakin schedule still backed by an OpenClaw cron job (incomplete cutover → rogue-fire risk). Its repair runs the same idempotent `migrateBakinSchedulesOffOpenClawCron`. It's a plugin-registered health check, so it's surfaced by `bakin doctor --full` and completed by `bakin doctor --fix` (NOT `bakin check`, which only routes the fixed onboarding checks). The cutover also runs automatically on every `activate()`, so this is the explicit verify/repair path for when OpenClaw was unreachable at boot.
 
+`schedule-sync` doctor check (same file, registered since PR1 of the #191 hardening): flags native runtime cron jobs that aren't tracked in the schedule sidecar (e.g. created by an agent directly in the runtime). Detection is read-only; the repair records `requireTriage: true` sidecar entries only — it NEVER writes runtime cron state, which is what got the legacy sync check removed (double-fire risk). Cron-less runtimes (Pi) get an unconditional OK with no repair surface. The registration guard test in `tests/plugins/schedule/health-checks.test.ts` pins this invariant.
+
+## Retention (cron_fires is bounded)
+
+`pruneCronFires` (ledger verb, `packages/core/src/execution/ledger.ts`) bounds fire history: settled rows (`created`/`skipped`/`seeded`) older than **30 days** are pruned, always keeping the **newest 20 per job**; `pending` rows are untouchable (live claims the healer may consume) and nothing newer than `max(catchUpWindowMinutes, 7 days)` is ever deleted, so re-claims inside the dedup horizon still collide with their original row (test-pinned: `tests/core/ledger-retention.test.ts`). The scheduler loop sweeps at most once per 24h (`maybeRunRetentionSweep` in `scheduler-loop.ts`, in-memory cadence cell — restarts re-sweep, idempotent); sweeps that pruned rows emit a `schedule.retention_swept` audit event — history deletion is never silent.
+
 ## Prompt danger-zone guard
 
 `lib/prompt-guard.ts` (`checkSchedulePrompt`): flags a schedule prompt that tells the agent to keep a single large message and not split near the channel transport limit (~2000 chars) — the shape that caused "Invalid Form Body" + split/repair loops. Surfaced live in the job form and returned as `warnings` from create/update routes + exec tools.
@@ -70,3 +76,28 @@ hook (`plugins/schedule/lib/cron-adoption.ts`) turns each into a Bakin job —
 `source: 'adopted'`, `originalRuntimeCron` snapshot preserved, idempotent
 per job id, dry-run previewable. Mirrors the per-job REST adopt handler
 minus live cron calls (the source runtime is already gone).
+
+**Adopted jobs keep their native timezone.** Adapters hoist the provider
+schedule tz into `CronJob.metadata.tz`; both adoption paths prefer it
+(`nativeCronTz` in `schedule-util.ts`) over `getSystemTimezone()` — before
+this fix an evening job adopted on a UTC-configured box silently shifted
+hours.
+
+## Hardening pins (PR1 of #191, 2026-07-15)
+
+- **Switch survival:** `tests/integration/schedule-switch-survival.test.ts`
+  runs real `switchRuntime` both directions over temp homes and proves
+  schedules keep firing exactly once per occurrence (sidecar + ledger are
+  runtime-independent), and that `--adopt-cron` yields a firing Bakin job.
+- **Cron conformance:** the runtime-conformance suite pins the optional
+  `cron` member — presence-by-declaration (`cron: 'present' | 'absent'`
+  suite option; openclaw present, pi + minimal mock absent) and a CRUD
+  round-trip run against the REAL OpenClaw adapter over the crab CLI shim.
+  `mockCron()` is stateful (Map-backed) and honors the same contract.
+  Teeth fixtures prove every new branch bites.
+- **Deliberate stances (audited, unchanged):** no retry on the OpenClaw
+  cron CLI surface (non-idempotent ops; degrade path is honest), cron stays
+  out of `CapabilitySet` (member presence IS the contract), `--adopt-cron`
+  stays opt-in. Note: current OpenClaw builds route `cron list` through the
+  gateway (credentials required) — CRUD is NOT guaranteed gateway-free;
+  `readMergedJobs` degrading to store-owned schedules covers that failure.
