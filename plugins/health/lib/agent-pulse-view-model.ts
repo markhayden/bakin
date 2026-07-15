@@ -20,6 +20,7 @@ export interface AgentPulseRow {
   history: HistoryRow | null
   latestSession: AgentUsage | null
   liveRun: LiveRunEntry | null
+  liveRunCount: number
   context: ContextSummaryAgent | null
   startupContextPercent: number | null
   historyCostUsdMicros: number | null
@@ -54,7 +55,12 @@ export function buildAgentPulseRows({
   const efforts = byAgent(effort?.agents ?? [], (row) => row.agent)
   const histories = byAgent(history?.byAgent ?? [], (row) => row.agent)
   const sessions = byAgent(latestSessions, (row) => row.agent)
-  const liveRuns = byAgent(liveNow?.runs ?? [], (row) => row.agent)
+  const liveRuns = new Map<string, LiveRunEntry[]>()
+  for (const run of liveNow?.runs ?? []) {
+    const runs = liveRuns.get(run.agent) ?? []
+    runs.push(run)
+    liveRuns.set(run.agent, runs)
+  }
   const contexts = byAgent(context?.agents ?? [], (row) => row.agentId)
   const agents = new Set([
     ...efforts.keys(),
@@ -73,10 +79,12 @@ export function buildAgentPulseRows({
     const effortRow = efforts.get(agent) ?? null
     const historyRow = histories.get(agent) ?? null
     const contextRow = contexts.get(agent) ?? null
-    const reviewState: AgentReviewState = !effortRow || effortRow.totalObservedTokens === null
-      ? 'unknown'
-      : effortRow.flags.length > 0
-        ? 'review'
+    const agentLiveRuns = liveRuns.get(agent) ?? []
+    const liveRun = [...agentLiveRuns].sort((left, right) => right.runningForMs - left.runningForMs)[0] ?? null
+    const reviewState: AgentReviewState = effortRow && effortRow.flags.length > 0
+      ? 'review'
+      : !effortRow || effortRow.totalObservedTokens === null
+        ? 'unknown'
         : 'clear'
     const startupContextPercent = contextRow && contextBudgetBytes && contextBudgetBytes > 0
       ? Math.round((contextRow.estimatedMaxTaskBytes / contextBudgetBytes) * 100)
@@ -88,7 +96,8 @@ export function buildAgentPulseRows({
       effort: effortRow,
       history: historyRow,
       latestSession: sessions.get(agent) ?? null,
-      liveRun: liveRuns.get(agent) ?? null,
+      liveRun,
+      liveRunCount: agentLiveRuns.length,
       context: contextRow,
       startupContextPercent,
       historyCostUsdMicros: historyRow?.costUsdMicros ?? null,

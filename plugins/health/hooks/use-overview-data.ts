@@ -10,6 +10,11 @@ import type {
   LiveNowData,
 } from '../types'
 import { buildHealthOverviewViewModel } from '../lib/health-view-model'
+import {
+  isContextSettingsData,
+  isContextSummaryData,
+  isLiveNowData,
+} from '../lib/agent-operational-route-guards'
 import { useAgentsData, type AgentsDataResources } from './use-agents-data'
 import { useHealthReport, type UseHealthReportResult } from './use-health-report'
 import {
@@ -64,33 +69,6 @@ function isNullableNonNegativeNumber(value: unknown): value is number | null {
 
 function isIsoTimestamp(value: unknown): value is string {
   return typeof value === 'string' && Number.isFinite(Date.parse(value))
-}
-
-function isContextSummaryData(value: unknown): value is ContextSummaryData {
-  return isRecord(value)
-    && value.ok === true
-    && typeof value.tokenEstimateNote === 'string'
-    && Array.isArray(value.agents)
-    && value.agents.every((agent) => isRecord(agent)
-      && typeof agent.agentId === 'string'
-      && isNonNegativeNumber(agent.staticTaskBytes)
-      && isNonNegativeNumber(agent.staticWorkflowBytes)
-      && isNonNegativeNumber(agent.estimatedMaxTaskBytes)
-      && typeof agent.workspaceAvailable === 'boolean'
-      && isNonNegativeNumber(agent.workspaceTotalBytes)
-      && (agent.lastObserved === null || (isRecord(agent.lastObserved)
-        && isNullableNonNegativeNumber(agent.lastObserved.inputTokens)
-        && isNullableNonNegativeNumber(agent.lastObserved.cacheReadTokens)
-        && isNullableNonNegativeNumber(agent.lastObserved.cacheWriteTokens)
-        && isNonNegativeNumber(agent.lastObserved.occurredAt))))
-}
-
-function isContextSettingsData(value: unknown): value is ContextSettingsData {
-  if (!isRecord(value)) return false
-  if (value.dispatch === undefined) return true
-  return isRecord(value.dispatch)
-    && (value.dispatch.contextBudgetBytes === undefined
-      || isNonNegativeNumber(value.dispatch.contextBudgetBytes))
 }
 
 function isInteractionCategory(value: unknown): value is InteractionSummaryData['categories'][number]['key'] {
@@ -176,6 +154,7 @@ export function useOverviewData(): UseOverviewDataResult {
   })
   const liveNow = useHealthResource<LiveNowData>('/api/plugins/health/live-now', {
     intervalMs: LIVE_FACTS_REFRESH_MS,
+    request: (url, context) => requestValidated(url, context, 'Live agent activity', isLiveNowData),
   })
   const searchReadiness = useHealthResource<SearchReadinessProjection>(
     '/api/plugins/health/search-readiness',

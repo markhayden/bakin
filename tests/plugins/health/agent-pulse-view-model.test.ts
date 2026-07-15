@@ -146,6 +146,73 @@ describe('buildAgentPulseRows', () => {
     expect(row?.evidenceAligned).toBe(false)
   })
 
+  it('keeps an explicit review flag visible even when transcript coverage is unavailable', () => {
+    const effort: AgentEffortData = {
+      window: '24h',
+      scannedAt: null,
+      agents: [{
+        agent: 'flagged-without-coverage',
+        windowTokens: 0,
+        windowCostUsdMicros: null,
+        runs: 1,
+        completions: 0,
+        tokensPerCompletion: null,
+        totalObservedTokens: null,
+        unattributedTokens: null,
+        flags: [{ kind: 'effort-no-outcome', message: 'No completion was recorded.' }],
+      }],
+    }
+
+    const [row] = buildAgentPulseRows({
+      effort,
+      history: null,
+      latestSessions: [],
+      liveNow: null,
+      context: null,
+      contextBudgetBytes: null,
+    })
+
+    expect(row?.reviewState).toBe('review')
+  })
+
+  it('chooses the longest-running task and retains the number of concurrent runs', () => {
+    const liveNow: LiveNowData = {
+      generatedAt: '2026-07-14T18:01:00.000Z',
+      runs: [
+        {
+          agent: 'main',
+          taskId: 'short',
+          taskTitle: 'Short task',
+          runId: 'run-short',
+          startedAt: 2,
+          runningForMs: 10,
+          heartbeatAgeMs: 1,
+        },
+        {
+          agent: 'main',
+          taskId: 'long',
+          taskTitle: 'Long task',
+          runId: 'run-long',
+          startedAt: 1,
+          runningForMs: 20,
+          heartbeatAgeMs: 1,
+        },
+      ],
+    }
+
+    const [row] = buildAgentPulseRows({
+      effort: null,
+      history: null,
+      latestSessions: [],
+      liveNow,
+      context: null,
+      contextBudgetBytes: null,
+    })
+
+    expect(row?.liveRun?.taskTitle).toBe('Long task')
+    expect(row?.liveRunCount).toBe(2)
+  })
+
   it('marks independently loaded usage and effort snapshots as mixed evidence', () => {
     const effort: AgentEffortData = {
       window: '24h',

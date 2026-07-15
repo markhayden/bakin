@@ -1,15 +1,10 @@
 'use client'
 
 import { useQueryState } from '@makinbakin/sdk/hooks'
-import { EmptyState, ErrorState, SectionCard, SegmentedControl } from '@makinbakin/sdk/components'
-import { Button, Skeleton } from '@makinbakin/sdk/ui'
-import { ArrowUpRight, ChevronDown, MessagesSquare, RefreshCw } from 'lucide-react'
-import type { AgentUsage } from '@makinbakin/sdk/types'
-import type { UsageHistoryData } from '../types'
-import { formatRuntimeCost, formatTokenCount } from '../lib/format'
+import { SegmentedControl } from '@makinbakin/sdk/components'
 import { useAgentsData, type AgentsWindow } from '../hooks/use-agents-data'
-import { AgentsAttention } from './agents-attention'
-import { AgentsComparison } from './agents-comparison'
+import { useAgentOperationalData } from '../hooks/use-agent-operational-data'
+import { AgentPulse } from './agent-pulse'
 import { AgentsUsageChart } from './agents-usage-chart'
 import { HealthTabIntro } from './health-tab-intro'
 
@@ -24,140 +19,18 @@ function agentsWindow(value: string): AgentsWindow {
   return WINDOWS.includes(value as AgentsWindow) ? value as AgentsWindow : '24h'
 }
 
-function LatestSessionUsage({ usage, loading, error, onRetry }: {
-  usage: AgentUsage[] | null
-  loading: boolean
-  error: string | null
-  onRetry: () => void
-}) {
-  return (
-    <SectionCard
-      title={<h3>Latest-session details</h3>}
-      icon={MessagesSquare}
-      description="Most recent session reported by each agent; independent of the selected period."
-      className="min-w-0"
-    >
-      <div className="@container/latest-sessions" data-testid="latest-session-usage">
-        {loading && !usage ? (
-          <div role="status" aria-label="Loading latest-session details" className="space-y-2">
-            <Skeleton className="h-16 w-full" />
-            <Skeleton className="h-16 w-full" />
-          </div>
-        ) : error && !usage ? (
-          <ErrorState title="Latest-session details unavailable" message={error} retry={onRetry} className="py-8" />
-        ) : !usage || usage.length === 0 ? (
-          <EmptyState
-            variant="section"
-            title="No latest transcript token traffic is available."
-            description="This snapshot appears after the runtime reports at least one agent session."
-          />
-        ) : (
-          <div className="space-y-2">
-            {[...usage].sort((a, b) => a.agent.localeCompare(b.agent)).map((row) => (
-              <details
-                key={`${row.agent}:${row.sessionId}`}
-                className="group rounded-xl bg-foreground/[0.025] ring-1 ring-foreground/10"
-              >
-                <summary className="grid cursor-pointer list-none grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-xl p-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring @[36rem]/latest-sessions:grid-cols-[minmax(10rem,1fr)_auto_auto] [&::-webkit-details-marker]:hidden">
-                  <span className="min-w-0">
-                    <span className="block font-medium text-foreground">{row.agent}</span>
-                    <span className="block truncate text-[11px] text-muted-foreground" title={row.model}>
-                      {row.model} · {row.messages} messages
-                    </span>
-                  </span>
-                  <span className="text-sm font-medium tabular-nums text-foreground">{formatTokenCount(row.tokens.total)} tokens</span>
-                  <span className="col-span-2 inline-flex items-center justify-end gap-1 text-xs text-muted-foreground @[36rem]/latest-sessions:col-span-1">
-                    Breakdown
-                    <ChevronDown className="size-3.5 transition-transform group-open:rotate-180" aria-hidden="true" />
-                  </span>
-                </summary>
-                <dl
-                  data-session-token-breakdown
-                  className="grid grid-cols-2 gap-3 border-t border-foreground/10 px-3 py-3 @[36rem]/latest-sessions:grid-cols-4"
-                >
-                  {([
-                    ['Input', row.tokens.input],
-                    ['Output', row.tokens.output],
-                    ['Cache read', row.tokens.cacheRead],
-                    ['Cache write', row.tokens.cacheWrite],
-                  ] as const).map(([label, value]) => (
-                    <div key={label}>
-                      <dt className="text-xs text-muted-foreground">{label}</dt>
-                      <dd className="text-sm font-medium tabular-nums text-foreground">{formatTokenCount(value)}</dd>
-                    </div>
-                  ))}
-                </dl>
-              </details>
-            ))}
-          </div>
-        )}
-      </div>
-    </SectionCard>
-  )
-}
-
-function ReportedCostSummary({ history, loading, error }: {
-  history: UsageHistoryData | null
-  loading: boolean
-  error: string | null
-}) {
-  const reportedCost = history?.byAgent.reduce(
-    (sum, row) => sum + (row.costUsdMicros ?? 0),
-    0,
-  ) ?? null
-  const costedMessages = history?.byAgent.reduce((sum, row) => sum + row.costedMessages, 0) ?? 0
-  const messageCount = history?.byAgent.reduce((sum, row) => sum + row.messageCount, 0) ?? 0
-
-  return (
-    <section
-      data-testid="reported-cost-summary"
-      aria-labelledby="reported-cost-title"
-      className="flex flex-col gap-3 rounded-xl bg-foreground/[0.025] px-4 py-3 ring-1 ring-foreground/10 sm:flex-row sm:items-center sm:justify-between"
-    >
-      <div className="min-w-0">
-        <h3 id="reported-cost-title" className="text-sm font-medium text-foreground">Reported cost</h3>
-        {loading && !history ? (
-          <div role="status" aria-label="Loading reported cost" className="mt-1 space-y-1">
-            <Skeleton className="h-5 w-20" />
-            <Skeleton className="h-3 w-64 max-w-full" />
-          </div>
-        ) : error && !history ? (
-          <p role="status" className="mt-1 text-sm text-muted-foreground">
-            Cost could not be checked because {error.charAt(0).toLowerCase()}{error.slice(1)}.
-          </p>
-        ) : (
-          <>
-            <p className="mt-0.5 text-lg font-semibold tabular-nums text-foreground">
-              {history && costedMessages > 0 && reportedCost !== null
-                ? formatRuntimeCost(reportedCost / 1_000_000)
-                : 'Unavailable'}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              {history
-                ? `${costedMessages} of ${messageCount} messages from ${history.since} through ${history.throughDay} reported cost. Today is still being counted.`
-                : 'Waiting for the selected calendar-day range.'}
-            </p>
-          </>
-        )}
-      </div>
-      <a
-        href="/models?tab=spend"
-        className="inline-flex shrink-0 items-center gap-1 rounded-sm text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      >
-        View budgets in Models <ArrowUpRight className="size-3.5" aria-hidden="true" />
-      </a>
-    </section>
-  )
-}
-
 export function AgentsTab() {
   const [windowParam, setWindowParam] = useQueryState('agents_window', '24h')
   const window = agentsWindow(windowParam)
   const resources = useAgentsData(window)
+  const operations = useAgentOperationalData()
   const backgroundErrors = [
     resources.history.backgroundError,
     resources.effort.backgroundError,
     resources.latestSessions.backgroundError,
+    operations.liveNow.backgroundError,
+    operations.contextReport.backgroundError,
+    operations.settings.backgroundError,
   ].filter((message): message is string => Boolean(message))
 
   return (
@@ -173,10 +46,6 @@ export function AgentsTab() {
               onValueChange={setWindowParam}
               ariaLabel="Agents window"
             />
-            <Button variant="outline" size="sm" onClick={() => void resources.refresh()} disabled={resources.refreshing}>
-              <RefreshCw className={resources.refreshing ? 'animate-spin motion-reduce:animate-none' : ''} aria-hidden="true" />
-              Refresh
-            </Button>
           </>
         )}
       />
@@ -187,34 +56,45 @@ export function AgentsTab() {
         </p>
       )}
 
-      <AgentsAttention
-        data={resources.effort.data}
-        loading={resources.effort.loading}
-        error={resources.effort.error}
-        onRetry={() => void resources.effort.refresh()}
-      />
-      <AgentsComparison
-        data={resources.effort.data}
-        loading={resources.effort.loading}
-        error={resources.effort.error}
-        onRetry={() => void resources.effort.refresh()}
+      <AgentPulse
+        effort={resources.effort.data}
+        history={resources.history.data}
+        latestSessions={resources.latestSessions.data}
+        liveNow={operations.liveNow.data}
+        context={operations.contextReport.data}
+        contextBudgetBytes={operations.settings.data?.dispatch?.contextBudgetBytes ?? null}
+        pending={{
+          effort: resources.effort.loading,
+          history: resources.history.loading,
+          latestSessions: resources.latestSessions.loading,
+          liveNow: operations.liveNow.loading,
+          context: operations.contextReport.loading,
+          settings: operations.settings.loading,
+        }}
+        unavailable={{
+          effort: resources.effort.error !== null,
+          history: resources.history.error !== null,
+          latestSessions: resources.latestSessions.error !== null,
+          liveNow: operations.liveNow.error !== null,
+          context: operations.contextReport.error !== null,
+          settings: operations.settings.error !== null,
+        }}
+        errors={[
+          resources.effort.error,
+          resources.history.error,
+          resources.latestSessions.error,
+          operations.liveNow.error,
+          operations.contextReport.error,
+          operations.settings.error,
+        ].filter((message): message is string => Boolean(message))}
+        liveNowStale={operations.liveNow.stale === true}
+        onRetry={() => { void Promise.all([resources.refresh(), operations.refresh()]) }}
       />
       <AgentsUsageChart
         data={resources.history.data}
         loading={resources.history.loading}
         error={resources.history.error}
         onRetry={() => void resources.history.refresh()}
-      />
-      <LatestSessionUsage
-        usage={resources.latestSessions.data}
-        loading={resources.latestSessions.loading}
-        error={resources.latestSessions.error}
-        onRetry={() => void resources.latestSessions.refresh()}
-      />
-      <ReportedCostSummary
-        history={resources.history.data}
-        loading={resources.history.loading}
-        error={resources.history.error}
       />
     </div>
   )
