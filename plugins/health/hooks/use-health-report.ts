@@ -12,6 +12,8 @@ import { healthReportNeedsFreshSweep } from '../lib/health-view-model'
 
 const HEALTH_REPORT_URL = '/api/plugins/health/doctor'
 export const HEALTH_REPORT_REFRESH_MS = 60_000
+export const HEALTH_REPORT_READ_TIMEOUT_MS = 15_000
+export const HEALTH_REPORT_SWEEP_TIMEOUT_MS = 60_000
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -61,6 +63,9 @@ export interface UseHealthReportResult extends UseHealthResourceResult<HealthRep
 export function useHealthReport(): UseHealthReportResult {
   const resource = useHealthResource<HealthReport>(HEALTH_REPORT_URL, {
     intervalMs: HEALTH_REPORT_REFRESH_MS,
+    timeoutMs: (reason) => reason === 'explicit' || reason === 'stale'
+      ? HEALTH_REPORT_SWEEP_TIMEOUT_MS
+      : HEALTH_REPORT_READ_TIMEOUT_MS,
     request: requestHealthReport,
   })
   const { data, refresh } = resource

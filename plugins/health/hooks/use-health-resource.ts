@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-export type HealthResourceRefreshReason = 'initial' | 'background' | 'explicit' | 'stale'
+export type HealthResourceRefreshReason = 'initial' | 'background' | 'explicit' | 'stale' | 'reconcile'
 
 export interface HealthResourceRequestContext {
   signal: AbortSignal
@@ -12,6 +12,8 @@ export interface HealthResourceRequestContext {
 export interface UseHealthResourceOptions<T> {
   /** Background refresh cadence. Omit or use zero to disable polling. */
   intervalMs?: number
+  /** Abort and surface a retryable error when a request exceeds this deadline. */
+  timeoutMs?: number | ((reason: HealthResourceRefreshReason) => number | undefined)
   /** Override the standard JSON GET while retaining cancellation/coalescing. */
   request?: (url: string, context: HealthResourceRequestContext) => Promise<T>
   /** Optional source-specific freshness predicate for retained data. */
@@ -67,8 +69,39 @@ async function requestJson<T>(url: string, signal: AbortSignal): Promise<T> {
   return await response.json() as T
 }
 
+function requestWithTimeout<T>(
+  request: Promise<T>,
+  timeoutMs: number | undefined,
+  onTimeout: () => void,
+): Promise<T> {
+  if (timeoutMs === undefined || timeoutMs <= 0) return request
+  return new Promise<T>((resolve, reject) => {
+    let settled = false
+    const timer = setTimeout(() => {
+      if (settled) return
+      settled = true
+      onTimeout()
+      reject(new Error(`Request timed out after ${timeoutMs}ms`))
+    }, timeoutMs)
+    void request.then(
+      (value) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        resolve(value)
+      },
+      (error: unknown) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        reject(error)
+      },
+    )
+  })
+}
+
 function requiresFreshSweep(reason: HealthResourceRefreshReason): boolean {
-  return reason === 'explicit' || reason === 'stale'
+  return reason === 'explicit' || reason === 'stale' || reason === 'reconcile'
 }
 
 /**
@@ -109,11 +142,13 @@ export function useHealthResource<T>(
     if (requestUrl === null) return Promise.resolve(null)
 
     const fresh = requiresFreshSweep(reason)
+    const forceNew = reason === 'reconcile'
     const active = activeRef.current
     if (active) {
       // Any background read can use a fresher in-flight result. Repeated fresh
-      // requests also join. Only a fresh request supersedes a cached read.
-      if (!fresh || active.fresh) return active.promise
+      // requests also join. Reconciliation is the exception: its result must
+      // have started after the mutation whose outcome it is confirming.
+      if (!forceNew && (!fresh || active.fresh)) return active.promise
       active.controller.abort()
     }
 
@@ -128,11 +163,18 @@ export function useHealthResource<T>(
     }))
 
     const promise = (async (): Promise<T | null> => {
+      let timedOut = false
       try {
         const request = optionsRef.current.request
-        const next = request
-          ? await request(requestUrl, { signal: controller.signal, reason })
-          : await requestJson<T>(requestUrl, controller.signal)
+        const pending = request
+          ? request(requestUrl, { signal: controller.signal, reason })
+          : requestJson<T>(requestUrl, controller.signal)
+        const timeoutOption = optionsRef.current.timeoutMs
+        const timeoutMs = typeof timeoutOption === 'function' ? timeoutOption(reason) : timeoutOption
+        const next = await requestWithTimeout(pending, timeoutMs, () => {
+          timedOut = true
+          controller.abort()
+        })
 
         if (!mountedRef.current || controller.signal.aborted || generation !== generationRef.current) {
           return null
@@ -141,7 +183,8 @@ export function useHealthResource<T>(
         setState({ data: next, error: null, backgroundError: null, requesting: false })
         return next
       } catch (error) {
-        if (controller.signal.aborted || isAbortError(error) || generation !== generationRef.current) {
+        if (generation !== generationRef.current) return null
+        if (!timedOut && (controller.signal.aborted || isAbortError(error))) {
           return null
         }
         if (!mountedRef.current) return null

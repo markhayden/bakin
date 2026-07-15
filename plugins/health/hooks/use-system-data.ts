@@ -16,6 +16,8 @@ import {
 } from './use-health-resource'
 
 export const SYSTEM_REFRESH_MS = 60_000
+export const SYSTEM_REQUEST_TIMEOUT_MS = 15_000
+export const SYSTEM_MUTATION_OPERATION_TIMEOUT_MS = 5 * 60_000
 
 export interface SystemRegistryPlugin {
   id: string
@@ -45,7 +47,7 @@ export interface SystemPluginManifestData {
   plugins: SystemPluginManifestEntry[]
 }
 
-export type SystemMutationStatus = 'idle' | 'pending' | 'success' | 'error' | 'confirmation'
+export type SystemMutationStatus = 'idle' | 'pending' | 'success' | 'error' | 'confirmation' | 'outcome-unknown'
 
 export interface SystemMutationState {
   status: SystemMutationStatus
@@ -62,6 +64,21 @@ export interface PluginUpgradeResult {
   message: string
   awaitingConsent: boolean
   permissions: string[]
+  noop: boolean
+}
+
+export interface SystemMutationTimeouts {
+  /** Maximum wait for the server operation to return response headers. */
+  operationMs?: number
+  /** Maximum wait to consume the response body after the operation returns. */
+  responseBodyMs?: number
+}
+
+export class SystemMutationOutcomeUnknownError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'SystemMutationOutcomeUnknownError'
+  }
 }
 
 const IDLE_MUTATION: SystemMutationState = { status: 'idle', message: null, target: null }
@@ -79,6 +96,86 @@ function responseError(response: Response, body: unknown, fallback: string): Err
     ? body.error
     : `${fallback} (${response.status})`
   return new Error(message)
+}
+
+function withSystemDeadline<T>(
+  pending: Promise<T>,
+  timeoutMs: number,
+  timeoutError: () => Error,
+  onTimeout: () => void = () => {},
+): Promise<T> {
+  if (timeoutMs <= 0) return pending
+  return new Promise<T>((resolve, reject) => {
+    let settled = false
+    const timer = setTimeout(() => {
+      if (settled) return
+      settled = true
+      onTimeout()
+      reject(timeoutError())
+    }, timeoutMs)
+    void pending.then(
+      (value) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        resolve(value)
+      },
+      (error: unknown) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        reject(error)
+      },
+    )
+  })
+}
+
+async function responseJsonWithTimeout(response: Response, timeoutMs: number): Promise<unknown> {
+  return await withSystemDeadline(
+    responseJson(response),
+    timeoutMs,
+    () => new Error(`System response body timed out after ${timeoutMs}ms`),
+  )
+}
+
+async function mutationResponseJson(
+  response: Response,
+  timeoutMs: number,
+  outcomeUnknownMessage: string,
+): Promise<unknown> {
+  try {
+    return await responseJsonWithTimeout(response, timeoutMs)
+  } catch (error) {
+    if (response.ok) throw new SystemMutationOutcomeUnknownError(outcomeUnknownMessage)
+    throw error
+  }
+}
+
+async function fetchSystemJson(
+  url: string,
+  init: RequestInit = {},
+  timeoutMs: number = SYSTEM_REQUEST_TIMEOUT_MS,
+): Promise<{ response: Response; body: unknown }> {
+  const controller = new AbortController()
+  return await withSystemDeadline((async () => {
+    const response = await fetch(url, { ...init, signal: controller.signal })
+    return { response, body: await responseJson(response) }
+  })(), timeoutMs, () => new Error(`System request timed out after ${timeoutMs}ms`), () => controller.abort())
+}
+
+async function fetchSystemMutation(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+  timeoutMessage: string,
+): Promise<Response> {
+  const controller = new AbortController()
+  return await withSystemDeadline(
+    fetch(url, { ...init, signal: controller.signal }),
+    timeoutMs,
+    () => new SystemMutationOutcomeUnknownError(timeoutMessage),
+    () => controller.abort(),
+  )
 }
 
 async function requestJson<T>(url: string, context: HealthResourceRequestContext): Promise<T> {
@@ -109,12 +206,26 @@ async function requestPluginManifest(
 export async function performSearchReindex(
   table: string | undefined,
   refreshReadiness: () => Promise<void>,
+  timeouts: SystemMutationTimeouts = {},
 ): Promise<SearchReindexResult> {
+  const operationMs = timeouts.operationMs ?? SYSTEM_MUTATION_OPERATION_TIMEOUT_MS
+  const responseBodyMs = timeouts.responseBodyMs ?? SYSTEM_REQUEST_TIMEOUT_MS
   const url = `/api/reindex${table ? `?table=${encodeURIComponent(table)}` : ''}`
-  const response = await fetch(url, { method: 'POST' })
-  const body = await responseJson(response)
+  const response = await fetchSystemMutation(
+    url,
+    { method: 'POST' },
+    operationMs,
+    'Search reindex is taking longer than expected. The server may still be rebuilding indexes; refresh live data to confirm the result.',
+  )
+  const confirmationUnknown = 'Search reindex returned success headers, but Bakin could not read its confirmation. The server may have completed the rebuild; refresh live data to confirm the result.'
+  const body = await mutationResponseJson(response, responseBodyMs, confirmationUnknown)
   if (!response.ok || (isRecord(body) && body.ok === false)) {
     throw responseError(response, body, 'Search reindex failed')
+  }
+  if (!isRecord(body) || body.ok !== true) {
+    throw new SystemMutationOutcomeUnknownError(
+      'Search reindex returned success headers, but Bakin could not confirm the result. Refresh live data before trying again.',
+    )
   }
   try {
     await refreshReadiness()
@@ -132,26 +243,47 @@ export async function performSearchReindex(
 export async function performPluginUpgrade(
   pluginId: string,
   approvePermissions = false,
+  timeouts: SystemMutationTimeouts = {},
 ): Promise<PluginUpgradeResult> {
-  const response = await fetch('/api/plugins/upgrade', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ pluginId, ...(approvePermissions ? { yes: true } : {}) }),
-  })
-  const body = await responseJson(response)
+  const operationMs = timeouts.operationMs ?? SYSTEM_MUTATION_OPERATION_TIMEOUT_MS
+  const responseBodyMs = timeouts.responseBodyMs ?? SYSTEM_REQUEST_TIMEOUT_MS
+  const response = await fetchSystemMutation(
+    '/api/plugins/upgrade',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pluginId, ...(approvePermissions ? { yes: true } : {}) }),
+    },
+    operationMs,
+    'The plugin update is taking longer than expected. The server may still be updating it; refresh live data to confirm the result.',
+  )
+  const confirmationUnknown = 'The plugin update returned success headers, but Bakin could not read its confirmation. The server may have completed the update; refresh live data to confirm the result.'
+  const body = await mutationResponseJson(response, responseBodyMs, confirmationUnknown)
   if (!response.ok || (isRecord(body) && body.ok === false)) {
     throw responseError(response, body, 'Plugin update failed')
   }
-  const awaitingConsent = isRecord(body) && body.awaitingConsent === true
-  const permissions = isRecord(body) && Array.isArray(body.newPermissions)
-    ? body.newPermissions.map(String)
-    : []
+  if (!isRecord(body)
+    || body.ok !== true
+    || typeof body.noop !== 'boolean'
+    || typeof body.awaitingConsent !== 'boolean'
+    || !Array.isArray(body.newPermissions)
+    || !body.newPermissions.every((permission) => typeof permission === 'string')) {
+    throw new SystemMutationOutcomeUnknownError(
+      'The plugin update returned success headers, but Bakin could not confirm the result. Refresh live data before trying again.',
+    )
+  }
+  const awaitingConsent = body.awaitingConsent
+  const permissions = body.newPermissions
+  const noop = body.noop
   return {
     awaitingConsent,
     permissions,
-    message: awaitingConsent
-      ? 'This update requests new permissions.'
-      : `${pluginId} was updated and reactivated.`,
+    noop,
+    message: noop
+      ? `${pluginId} is already current.`
+      : awaitingConsent
+        ? 'This update requests new permissions.'
+        : `${pluginId} was updated and reactivated.`,
   }
 }
 
@@ -175,22 +307,27 @@ export function useSystemData(): UseSystemDataResult {
   const report = useHealthReport()
   const live = useHealthResource<HealthSummary>('/api/plugins/health/summary', {
     intervalMs: SYSTEM_REFRESH_MS,
+    timeoutMs: SYSTEM_REQUEST_TIMEOUT_MS,
     request: requestJson,
   })
   const searchStatus = useHealthResource<SearchHealthData>('/api/plugins/health/search-status', {
     intervalMs: SYSTEM_REFRESH_MS,
+    timeoutMs: SYSTEM_REQUEST_TIMEOUT_MS,
     request: requestJson,
   })
   const searchTelemetry = useHealthResource<SearchTelemetryData>('/api/plugins/health/search-telemetry', {
     intervalMs: SYSTEM_REFRESH_MS,
+    timeoutMs: SYSTEM_REQUEST_TIMEOUT_MS,
     request: requestJson,
   })
   const registry = useHealthResource<SystemRegistryData>('/api/plugins/health/registry', {
     intervalMs: SYSTEM_REFRESH_MS,
+    timeoutMs: SYSTEM_REQUEST_TIMEOUT_MS,
     request: requestJson,
   })
   const pluginManifest = useHealthResource<SystemPluginManifestData>('/api/plugins/manifest', {
     intervalMs: SYSTEM_REFRESH_MS,
+    timeoutMs: SYSTEM_REQUEST_TIMEOUT_MS,
     request: requestPluginManifest,
   })
   const [searchMutation, setSearchMutation] = useState<SystemMutationState>(IDLE_MUTATION)
@@ -203,8 +340,7 @@ export function useSystemData(): UseSystemDataResult {
   const pluginManifestRefresh = pluginManifest.refresh
 
   const refreshCanonicalSearchReadiness = useCallback(async () => {
-    const readinessResponse = await fetch('/api/plugins/health/search-readiness')
-    const readinessBody = await responseJson(readinessResponse)
+    const { response: readinessResponse, body: readinessBody } = await fetchSystemJson('/api/plugins/health/search-readiness')
     if (!readinessResponse.ok) {
       throw responseError(readinessResponse, readinessBody, 'Search readiness refresh failed')
     }
@@ -226,7 +362,7 @@ export function useSystemData(): UseSystemDataResult {
       setSearchMutation({ status: 'success', message: result.message, target })
     } catch (error) {
       setSearchMutation({
-        status: 'error',
+        status: error instanceof SystemMutationOutcomeUnknownError ? 'outcome-unknown' : 'error',
         message: error instanceof Error ? error.message : String(error),
         target,
       })
@@ -256,7 +392,7 @@ export function useSystemData(): UseSystemDataResult {
       setPluginMutation({ status: 'success', message: result.message, target: pluginId })
     } catch (error) {
       setPluginMutation({
-        status: 'error',
+        status: error instanceof SystemMutationOutcomeUnknownError ? 'outcome-unknown' : 'error',
         message: error instanceof Error ? error.message : String(error),
         target: pluginId,
       })
@@ -264,14 +400,22 @@ export function useSystemData(): UseSystemDataResult {
   }, [pluginManifestRefresh, registryRefresh, reportRefresh])
 
   const refreshSystemDetails = useCallback(async () => {
-    await Promise.all([
-      liveRefresh('explicit'),
-      searchStatusRefresh('explicit'),
-      searchTelemetryRefresh('explicit'),
-      registryRefresh('explicit'),
-      pluginManifestRefresh('background'),
+    const results = await Promise.all([
+      liveRefresh('reconcile'),
+      searchStatusRefresh('reconcile'),
+      searchTelemetryRefresh('reconcile'),
+      registryRefresh('reconcile'),
+      pluginManifestRefresh('reconcile'),
       reportRefresh('background'),
     ])
+    const searchReconciled = results[1] !== null && results[2] !== null
+    const pluginsReconciled = results[3] !== null && results[4] !== null
+    if (searchReconciled) {
+      setSearchMutation((state) => state.status === 'outcome-unknown' ? IDLE_MUTATION : state)
+    }
+    if (pluginsReconciled) {
+      setPluginMutation((state) => state.status === 'outcome-unknown' ? IDLE_MUTATION : state)
+    }
   }, [liveRefresh, pluginManifestRefresh, registryRefresh, reportRefresh, searchStatusRefresh, searchTelemetryRefresh])
 
   return {
