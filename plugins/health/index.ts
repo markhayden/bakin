@@ -25,6 +25,7 @@ import { delegateDoctorRepair, verifyDoctorRepairRequest } from '../../src/core/
 import { getDoctorRepairRequest, listDoctorRepairRequests } from '../../src/core/doctor-repair-store'
 import {
   DEFAULT_FAILURE_GROUP_LIMIT,
+  MAX_USAGE_AGENT_ROWS,
   MAX_FAILURE_GROUP_LIMIT,
   getInteractionSummary,
   getUsageFeed,
@@ -228,17 +229,35 @@ const usageFeedResponseSchema = z.object({
     errors: z.number().int().nonnegative(),
     medianDurationMs: z.number().nonnegative().nullable(),
   }).strict()).max(10),
+  agentCount: z.number().int().nonnegative(),
   byAgent: z.array(z.object({
     agent: z.string(),
+    attributed: z.boolean(),
     count: z.number().int().nonnegative(),
     errors: z.number().int().nonnegative(),
     lastActivity: usageEntrySchema.nullable(),
-  }).strict()),
+  }).strict()).max(MAX_USAGE_AGENT_ROWS),
   recent: z.array(usageEntrySchema).max(50),
   recentFailures: z.array(usageEntrySchema).max(50),
   recentUnverified: z.array(usageEntrySchema).max(50),
   timeBuckets: z.array(interactionTimeBucketSchema),
-}).strict()
+}).strict().superRefine((data, ctx) => {
+  const attributedRows = data.byAgent.filter((row) => row.attributed)
+  const unattributedRows = data.byAgent.filter((row) => !row.attributed)
+  const distinctAttributedAgents = new Set(attributedRows.map((row) => row.agent))
+  if (data.agentCount > data.totals.count) {
+    ctx.addIssue({ code: 'custom', path: ['agentCount'], message: 'agentCount cannot exceed total interactions' })
+  }
+  if (data.agentCount < distinctAttributedAgents.size) {
+    ctx.addIssue({ code: 'custom', path: ['agentCount'], message: 'agentCount cannot be smaller than projected agents' })
+  }
+  if (attributedRows.length > 10 || distinctAttributedAgents.size !== attributedRows.length) {
+    ctx.addIssue({ code: 'custom', path: ['byAgent'], message: 'attributed agent rows must be unique and bounded' })
+  }
+  if (unattributedRows.length > 1 || unattributedRows.some((row) => row.agent !== 'unknown')) {
+    ctx.addIssue({ code: 'custom', path: ['byAgent'], message: 'the unattributed projection must use one unknown row at most' })
+  }
+})
 const interactionSummaryResponseSchema = z.object({
   window: z.enum(['5m', '1h', '24h']),
   coverage: interactionCoverageSchema,

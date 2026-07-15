@@ -2,6 +2,7 @@
 
 import { StatTile } from '@makinbakin/sdk/components'
 import { Activity, AlertCircle, Bot, CheckCircle2 } from 'lucide-react'
+import { isAttributedAgentRow } from '../lib/activity-feed-compat'
 import type { UsageFeedData } from '../types'
 
 const WINDOW_LABEL: Record<UsageFeedData['window'], string> = {
@@ -36,7 +37,7 @@ export function ActivityMetrics({
   const failed = data.outcomes.failed
   const unverified = data.outcomes.unverified
   const agents = data.byAgent
-    .filter((row) => row.agent !== 'unknown')
+    .filter(isAttributedAgentRow)
     .sort((left, right) => right.count - left.count)
   const busiest = agents[0]
   const attention = failed + unverified
@@ -87,7 +88,7 @@ export function ActivityMetrics({
       <StatTile
         icon={Bot}
         label="Agents observed"
-        value={agents.length.toLocaleString()}
+        value={(data.agentCount ?? agents.length).toLocaleString()}
         sub={busiest
           ? `Busiest: ${busiest.agent} (${busiest.count.toLocaleString()})`
           : 'No agent activity recorded'}

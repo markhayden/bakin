@@ -4,7 +4,7 @@ import { formatAbsoluteTime, formatRelativeTime, StatusBadge } from '@makinbakin
 import { Button } from '@makinbakin/sdk/ui'
 import { AlertCircle, Bot, Braces, ChevronDown, Wrench } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import type { UsageEntry, UsageFailureGroup, UsageFailureGroupPage, UsageFeedData, UsageKind } from '../types'
+import type { InteractionCoverage, UsageEntry, UsageFailureGroup, UsageFailureGroupPage, UsageFeedData, UsageKind } from '../types'
 import type { ActivityFailureSelection } from './activity-breakdown'
 import { ActivityFailureTrend } from './activity-failure-trend'
 import { focusActivityElement } from './activity-navigation'
@@ -24,6 +24,11 @@ export const FAILURE_PATTERN_PREVIEW_LIMIT = 3
 
 export interface ActivityFailureRequest extends ActivityFailureSelection {
   requestId: number
+}
+
+export interface ActivityFailurePageChangeOptions {
+  expanded: boolean
+  focusTarget: 'first-pattern' | 'disclosure'
 }
 
 function entryDestination(entry: UsageEntry): string {
@@ -204,14 +209,22 @@ function FailureGroup({
   )
 }
 
-function FailurePatternHighlights({ groups }: { groups: UsageFailureGroup[] }) {
+function FailurePatternHighlights({
+  groups,
+  page,
+}: {
+  groups: UsageFailureGroup[]
+  page?: UsageFailureGroupPage
+}) {
   const highlights = groups.slice(0, FAILURE_PATTERN_PREVIEW_LIMIT)
+  const pageLocal = (page?.offset ?? 0) > 0
+  const label = pageLocal ? 'Failure patterns on this page' : 'Top failure patterns'
 
   return (
     <div className="min-w-0">
-      <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Top failure patterns</h4>
+      <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</h4>
       {highlights.length > 0 ? (
-        <ol className="mt-2 divide-y divide-border/70" aria-label="Top failure patterns">
+        <ol className="mt-2 divide-y divide-border/70" aria-label={label}>
           {highlights.map((group) => {
             const meta = KIND_META[group.kind]
             const Icon = meta.icon
@@ -295,8 +308,12 @@ export function ActivityFailureGroups({
   unverified,
   totalUnverified,
   buckets,
+  coverage,
   page,
   onPageChange,
+  initiallyExpanded = false,
+  pageFocusRequestId,
+  onDetailsExpandedChange,
   failureRequest,
 }: {
   groups: UsageFailureGroup[]
@@ -305,11 +322,15 @@ export function ActivityFailureGroups({
   unverified: UsageEntry[]
   totalUnverified: number
   buckets: UsageFeedData['timeBuckets']
+  coverage: InteractionCoverage
   page?: UsageFailureGroupPage
-  onPageChange?: (offset: number) => void
+  onPageChange?: (offset: number, options?: ActivityFailurePageChangeOptions) => void
+  initiallyExpanded?: boolean
+  pageFocusRequestId?: number
+  onDetailsExpandedChange?: (expanded: boolean) => void
   failureRequest?: ActivityFailureRequest | null
 }) {
-  const [detailsExpanded, setDetailsExpanded] = useState(false)
+  const [detailsExpanded, setDetailsExpanded] = useState(initiallyExpanded)
   const patternTotal = page?.total ?? groups.length
   const hasPatterns = groups.length > 0
   const patternStart = groups.length > 0 ? (page?.offset ?? 0) + 1 : 0
@@ -342,6 +363,15 @@ export function ActivityFailureGroups({
     if (!target) return
     focusActivityElement(target, { block: matchingGroupElementId ? 'center' : 'start' })
   }, [detailsExpanded, matchingGroupElementId, requestId])
+
+  useEffect(() => {
+    if (pageFocusRequestId === undefined || !detailsExpanded) return
+    const firstGroup = groups[0]
+    if (!firstGroup) return
+    const target = document.getElementById(failureGroupElementId(firstGroup))
+    if (!target) return
+    focusActivityElement(target, { block: 'center' })
+  }, [detailsExpanded, groups, pageFocusRequestId])
 
   if (totalFailures === 0 && totalUnverified === 0) return null
 
@@ -394,22 +424,29 @@ export function ActivityFailureGroups({
           <div className="grid min-w-0 items-start gap-5 border-t border-border/70 px-4 py-4 @[54rem]/health:grid-cols-[minmax(0,1.35fr)_minmax(18rem,.65fr)]">
             <div className="min-w-0">
               <h4 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Failures over time</h4>
-              <ActivityFailureTrend buckets={buckets} />
+              <ActivityFailureTrend buckets={buckets} coverage={coverage} />
             </div>
-            <FailurePatternHighlights groups={groups} />
+            <FailurePatternHighlights groups={groups} page={page} />
           </div>
 
           {hasPatterns && (
             <div className="border-t border-border/70 p-2">
               <Button
+                id="activity-failure-pattern-disclosure"
                 size="sm"
                 variant="ghost"
                 className="w-full justify-center text-muted-foreground hover:text-foreground"
                 aria-expanded={detailsExpanded}
                 aria-controls="activity-failure-pattern-details"
                 onClick={() => {
-                  if (detailsExpanded && page && page.offset > 0) onPageChange?.(0)
-                  setDetailsExpanded((value) => !value)
+                  if (detailsExpanded && page && page.offset > 0) {
+                    setDetailsExpanded(false)
+                    onPageChange?.(0, { expanded: false, focusTarget: 'disclosure' })
+                    return
+                  }
+                  const nextExpanded = !detailsExpanded
+                  setDetailsExpanded(nextExpanded)
+                  onDetailsExpandedChange?.(nextExpanded)
                 }}
               >
                 {detailsExpanded ? 'Hide failure details' : reviewLabel}

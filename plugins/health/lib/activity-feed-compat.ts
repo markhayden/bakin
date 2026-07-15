@@ -106,10 +106,49 @@ function hasValidCapabilities(value: unknown): boolean {
 function isByAgentRow(value: unknown): boolean {
   if (!isRecord(value)) return false
   return typeof value.agent === 'string'
+    && (value.attributed === undefined || typeof value.attributed === 'boolean')
+    && (value.attributed !== false || value.agent === 'unknown')
     && isNonnegativeInteger(value.count)
     && isNonnegativeInteger(value.errors)
     && value.errors <= value.count
     && (value.lastActivity === null || isUsageEntry(value.lastActivity))
+}
+
+export function isAttributedAgentRow(row: UsageFeedData['byAgent'][number]): boolean {
+  return row.attributed ?? row.agent !== 'unknown'
+}
+
+function validAgentRows(value: unknown): UsageFeedData['byAgent'] {
+  return Array.isArray(value) ? value.filter(isByAgentRow) as UsageFeedData['byAgent'] : []
+}
+
+function boundedAgentRows(rows: UsageFeedData['byAgent']): UsageFeedData['byAgent'] {
+  const attributed: UsageFeedData['byAgent'] = []
+  const seen = new Set<string>()
+  let unattributed: UsageFeedData['byAgent'][number] | undefined
+  for (const row of rows) {
+    if (!isAttributedAgentRow(row)) {
+      unattributed ??= row
+      continue
+    }
+    if (seen.has(row.agent) || attributed.length >= 10) continue
+    seen.add(row.agent)
+    attributed.push(row)
+  }
+  return [...attributed, ...(unattributed ? [unattributed] : [])]
+}
+
+function attributedAgentCount(rows: UsageFeedData['byAgent']): number {
+  return new Set(rows.filter(isAttributedAgentRow).map((row) => row.agent)).size
+}
+
+function hasValidAgentProjection(rows: UsageFeedData['byAgent']): boolean {
+  const attributed = rows.filter(isAttributedAgentRow)
+  const unattributed = rows.filter((row) => !isAttributedAgentRow(row))
+  return rows.length <= 11
+    && attributed.length <= 10
+    && unattributed.length <= 1
+    && new Set(attributed.map((row) => row.agent)).size === attributed.length
 }
 
 function hasConsistentDashboardTotals(data: Partial<UsageFeedData>): boolean {
@@ -184,6 +223,12 @@ function isDashboardContract(data: Partial<UsageFeedData>): data is UsageFeedDat
     && data.topByName.every(isTopByNameRow)
     && Array.isArray(data.byAgent)
     && data.byAgent.every(isByAgentRow)
+    && hasValidAgentProjection(data.byAgent)
+    && (data.agentCount === undefined
+      || (isNonnegativeInteger(data.agentCount)
+        && data.agentCount <= totals.count
+        && data.agentCount >= attributedAgentCount(data.byAgent)
+        && data.byAgent.every((row) => row.attributed !== undefined)))
     && Array.isArray(data.recent)
     && data.recent.every(isUsageEntry)
     && Array.isArray(data.recentFailures)
@@ -330,6 +375,9 @@ export function normalizeActivityFeed(
   const recent = validEntries(legacy.recent)
   const recentFailures = validEntries(legacy.recentFailures)
   const recentUnverified = validEntries(legacy.recentUnverified)
+  const validByAgent = validAgentRows(legacy.byAgent)
+  const byAgent = boundedAgentRows(validByAgent)
+  const projectedAgentCount = attributedAgentCount(validByAgent)
   const entries = uniqueEntries(legacy)
   const reportedTotal = isNonnegativeNumber(legacy.totals?.count) ? legacy.totals.count : entries.length
   const reportedFailed = isNonnegativeNumber(legacy.totals?.errors) ? legacy.totals.errors : recentFailures.length
@@ -357,7 +405,10 @@ export function normalizeActivityFeed(
       byKind: legacyKindRows(entries),
       failureGroups: legacyFailureGroups(entries, recentFailures),
       topByName: Array.isArray(legacy.topByName) ? legacy.topByName.filter(isTopByNameRow) : [],
-      byAgent: Array.isArray(legacy.byAgent) ? legacy.byAgent : [],
+      agentCount: isNonnegativeInteger(legacy.agentCount) && legacy.agentCount <= total
+        ? Math.max(legacy.agentCount, projectedAgentCount)
+        : projectedAgentCount,
+      byAgent,
       recent,
       recentFailures,
       recentUnverified,

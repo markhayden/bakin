@@ -70,6 +70,8 @@ export interface TopByNameRow {
 
 export interface ByAgentRow {
   agent: string
+  /** False only for the synthetic bucket that represents missing attribution. */
+  attributed: boolean
   count: number
   errors: number
   lastActivity: UsageEntry | null
@@ -141,6 +143,9 @@ export interface UsageFeed {
   recentFailures: UsageEntry[]
   /** Newest result-observation gaps are independently capped for the same reason. */
   recentUnverified: UsageEntry[]
+  /** Exact number of distinct attributed agents across the filtered window. */
+  agentCount: number
+  /** Ten busiest attributed agents plus the optional unattributed bucket. */
   byAgent: ByAgentRow[]
   timeBuckets: UsageTimeBucket[]
 }
@@ -213,6 +218,7 @@ const MAX_ENTRIES = 10_000
 const IDLE_THRESHOLD_MS = 30_000
 const TOP_N = 10
 const RECENT_N = 50
+export const MAX_USAGE_AGENT_ROWS = TOP_N + 1
 const USAGE_KINDS: UsageKind[] = ['mcp', 'rest', 'agent']
 export const DEFAULT_FAILURE_GROUP_LIMIT = 25
 export const MAX_FAILURE_GROUP_LIMIT = 100
@@ -699,18 +705,36 @@ export function getUsageFeed(query: UsageQuery): UsageFeed {
       || left.name.localeCompare(right.name),
     )
 
-  const byAgentMap = new Map<string, { count: number; errors: number; lastActivity: UsageEntry | null }>()
+  const byAgentMap = new Map<string | null, { count: number; errors: number; lastActivity: UsageEntry | null }>()
   for (const e of entries) {
-    const key = e.agent ?? 'unknown'
+    const key = e.agent
     const bucket = byAgentMap.get(key) ?? { count: 0, errors: 0, lastActivity: null }
     bucket.count++
     if (e.status === 'error') bucket.errors++
     if (!bucket.lastActivity || e.ts > bucket.lastActivity.ts) bucket.lastActivity = e
     byAgentMap.set(key, bucket)
   }
-  const byAgent: ByAgentRow[] = [...byAgentMap.entries()]
-    .map(([agent, b]) => ({ agent, count: b.count, errors: b.errors, lastActivity: b.lastActivity }))
-    .sort((a, b) => b.count - a.count)
+  const allByAgent: ByAgentRow[] = [...byAgentMap.entries()]
+    .map(([agent, b]) => ({
+      agent: agent ?? 'unknown',
+      attributed: agent !== null,
+      count: b.count,
+      errors: b.errors,
+      lastActivity: b.lastActivity,
+    }))
+  const attributedAgents = allByAgent
+    .filter((row) => row.attributed)
+    .sort((left, right) =>
+      right.count - left.count
+      || right.errors - left.errors
+      || left.agent.localeCompare(right.agent),
+    )
+  const agentCount = attributedAgents.length
+  const unattributedAgent = allByAgent.find((row) => !row.attributed)
+  const byAgent: ByAgentRow[] = [
+    ...attributedAgents.slice(0, TOP_N),
+    ...(unattributedAgent ? [unattributedAgent] : []),
+  ]
 
   const recent = selectRecentActivity(entries, query.kind)
   const recentFailures = entries
@@ -739,6 +763,7 @@ export function getUsageFeed(query: UsageQuery): UsageFeed {
     recent,
     recentFailures,
     recentUnverified,
+    agentCount,
     byAgent,
     timeBuckets: buildTimeBuckets(entries, query.window, now),
   }

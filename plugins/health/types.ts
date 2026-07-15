@@ -101,6 +101,8 @@ export interface TopByNameRow {
 
 export interface ByAgentRow {
   agent: string
+  /** Added with exact agent counts; absent on older servers. */
+  attributed?: boolean
   count: number
   errors: number
   lastActivity: UsageEntry | null
@@ -160,6 +162,9 @@ export interface UsageFeedData {
   /** Present on the bounded v2 feed; omitted only by compatibility projections. */
   failureGroupPage?: UsageFailureGroupPage
   topByName: TopByNameRow[]
+  /** Exact distinct attributed-agent count; older servers may omit it. */
+  agentCount?: number
+  /** Bounded busiest-agent projection, with an optional unattributed row. */
   byAgent: ByAgentRow[]
   recent: UsageEntry[]
   recentFailures: UsageEntry[]

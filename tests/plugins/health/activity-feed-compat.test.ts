@@ -101,3 +101,50 @@ describe('normalizeActivityFeed top destinations', () => {
     expect(invalidBalanced.data?.capabilities).toBeUndefined()
   })
 })
+
+describe('normalizeActivityFeed compatibility fallback', () => {
+  it('drops malformed agent rows while preserving valid rows', () => {
+    const feed = dashboardFeed([])
+    const validAgent = { agent: 'main', count: 1, errors: 0, lastActivity: null }
+    feed.byAgent = [validAgent, null] as unknown as UsageFeedData['byAgent']
+
+    const normalized = normalizeActivityFeed(feed, '1h')
+
+    expect(normalized.compatibilityLimited).toBe(true)
+    expect(normalized.data?.byAgent).toEqual([validAgent])
+  })
+
+  it('does not trust an exact agent count that exceeds total interactions', () => {
+    const feed = dashboardFeed([])
+    feed.agentCount = 999
+    feed.byAgent = [{ agent: 'main', count: 1, errors: 0, lastActivity: null }]
+
+    const normalized = normalizeActivityFeed(feed, '1h')
+
+    expect(normalized.compatibilityLimited).toBe(true)
+    expect(normalized.data?.agentCount).toBe(1)
+  })
+
+  it('bounds an oversized legacy agent projection at the compatibility boundary', () => {
+    const feed = dashboardFeed([])
+    feed.totals = { count: 20, errors: 0, errorRate: 0 }
+    feed.outcomes = { failed: 0, unverified: 0, canceled: 0, succeeded: 20 }
+    feed.byKind = [
+      { kind: 'mcp', total: 20, failures: 0 },
+      { kind: 'rest', total: 0, failures: 0 },
+      { kind: 'agent', total: 0, failures: 0 },
+    ]
+    feed.byAgent = Array.from({ length: 20 }, (_, index) => ({
+      agent: `agent-${index}`,
+      count: 1,
+      errors: 0,
+      lastActivity: null,
+    }))
+
+    const normalized = normalizeActivityFeed(feed, '1h')
+
+    expect(normalized.compatibilityLimited).toBe(true)
+    expect(normalized.data?.agentCount).toBe(20)
+    expect(normalized.data?.byAgent).toHaveLength(10)
+  })
+})

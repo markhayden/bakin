@@ -9,9 +9,11 @@ import { ActivityEventStream } from './activity-event-stream'
 import {
   ActivityFailureGroups,
   FAILURE_PATTERN_PREVIEW_LIMIT,
+  type ActivityFailurePageChangeOptions,
   type ActivityFailureRequest,
 } from './activity-failure-groups'
 import { ActivityMetrics } from './activity-metrics'
+import { focusActivityElement } from './activity-navigation'
 import { ActivityPulse } from './activity-pulse'
 import { ActivityVolumeChart } from './activity-volume-chart'
 import { HealthTabIntro } from './health-tab-intro'
@@ -51,16 +53,36 @@ export function ActivityTab() {
     destination: string
   }) | null>(null)
   const failureRequestId = useRef(0)
+  const failurePageFocusId = useRef(0)
+  const [failurePageRestore, setFailurePageRestore] = useState<{
+    filterKey: string
+    offset: number
+    requestId: number
+    expanded: boolean
+    focusTarget: ActivityFailurePageChangeOptions['focusTarget']
+  } | null>(null)
+  const pendingDisclosureFocus = useRef<{ sawLoading: boolean } | null>(null)
   const attentionHashWasInitial = useRef(
     typeof document !== 'undefined' && document.location.hash === '#activity-needs-attention',
   )
   const handledAttentionHash = useRef(false)
   const failureGroupOffset = failurePage.key === failureFilterKey ? failurePage.offset : 0
   const activeFailureTarget = failureTarget?.filterKey === failureFilterKey ? failureTarget : null
-  const setFailureGroupOffset = (offset: number) => {
+  const setFailureGroupOffset = (
+    offset: number,
+    options: ActivityFailurePageChangeOptions = { expanded: true, focusTarget: 'first-pattern' },
+  ) => {
     setFailureTarget(null)
     setFailureRequest(null)
     setFailurePage({ key: failureFilterKey, offset })
+    failurePageFocusId.current += 1
+    setFailurePageRestore({
+      filterKey: failureFilterKey,
+      offset,
+      requestId: failurePageFocusId.current,
+      expanded: options.expanded,
+      focusTarget: options.focusTarget,
+    })
   }
   const resource = useActivityData({
     window,
@@ -87,8 +109,11 @@ export function ActivityTab() {
   const pageOffset = data?.failureGroupPage?.offset
   const pageLimit = data?.failureGroupPage?.limit
   const pageTotal = data?.failureGroupPage?.total
+  const failurePageRestoreReady = failurePageRestore?.filterKey === failureFilterKey
+    && pageOffset === failurePageRestore.offset
 
   const reviewFailures = (selection: ActivityFailureSelection) => {
+    pendingDisclosureFocus.current = null
     const exactTarget = data?.capabilities?.exactFailureTargeting === true
       && selection.kind !== undefined
       && selection.method !== undefined
@@ -100,6 +125,7 @@ export function ActivityTab() {
         }
       : null
     failureRequestId.current += 1
+    setFailurePageRestore(null)
     setFailurePage({ key: failureFilterKey, offset: 0 })
     setFailureTarget(exactTarget)
     setFailureRequest({
@@ -110,15 +136,19 @@ export function ActivityTab() {
   }
 
   const changeWindow = (nextValue: string) => {
+    pendingDisclosureFocus.current = null
     setFailureTarget(null)
     setFailureRequest(null)
+    setFailurePageRestore(null)
     setFailurePage({ key: `${activityWindow(nextValue)}:${kind}`, offset: 0 })
     setWindow(nextValue)
   }
 
   const changeKind = (nextValue: string) => {
+    pendingDisclosureFocus.current = null
     setFailureTarget(null)
     setFailureRequest(null)
+    setFailurePageRestore(null)
     setFailurePage({ key: `${window}:${activityKind(nextValue)}`, offset: 0 })
     setKind(nextValue)
   }
@@ -136,6 +166,30 @@ export function ActivityTab() {
   }, [failureFilterKey, failureGroupOffset, pageLimit, pageOffset, pageTotal])
 
   useEffect(() => {
+    const pending = pendingDisclosureFocus.current
+    if (!pending) return
+    if (resource.loading || !data) {
+      pending.sawLoading = true
+      return
+    }
+    if (!pending.sawLoading) return
+    const disclosure = document.getElementById('activity-failure-pattern-disclosure')
+    if (!disclosure) return
+    focusActivityElement(disclosure, { block: 'center' })
+    pendingDisclosureFocus.current = null
+  }, [data, resource.loading])
+
+  useEffect(() => {
+    if (!failurePageRestoreReady) return
+    if (failurePageRestore?.focusTarget === 'disclosure') {
+      const disclosure = document.getElementById('activity-failure-pattern-disclosure')
+      if (!disclosure) return
+      focusActivityElement(disclosure, { block: 'center' })
+    }
+    setFailurePageRestore((current) => current?.requestId === failurePageRestore?.requestId ? null : current)
+  }, [failurePageRestore?.focusTarget, failurePageRestore?.requestId, failurePageRestoreReady])
+
+  useEffect(() => {
     if (!attentionHashWasInitial.current || !data || handledAttentionHash.current) return
     if (document.location.hash !== '#activity-needs-attention') return
     const attention = document.getElementById('activity-needs-attention')
@@ -149,7 +203,7 @@ export function ActivityTab() {
     <div className="space-y-5" data-testid="health-activity-tab">
       <HealthTabIntro
         title="Activity"
-        description="Review every tool call, API request, and agent run across Bakin. Routine successes stay visible, with failures called out for inspection."
+        description="Review recorded tool calls, API requests, and agent runs across Bakin. Routine successes stay visible, with failures called out for inspection."
         actions={(
           <>
             <label className="relative inline-flex text-xs text-muted-foreground">
@@ -239,8 +293,21 @@ export function ActivityTab() {
               unverified={unverified}
               totalUnverified={totalUnverified}
               buckets={data.timeBuckets}
+              coverage={data.coverage}
               page={data.failureGroupPage}
               onPageChange={setFailureGroupOffset}
+              initiallyExpanded={failurePageRestoreReady && failurePageRestore?.expanded === true}
+              pageFocusRequestId={failurePageRestoreReady && failurePageRestore?.focusTarget === 'first-pattern'
+                ? failurePageRestore.requestId
+                : undefined}
+              onDetailsExpandedChange={(expanded) => {
+                if (expanded) return
+                if (activeFailureTarget) {
+                  pendingDisclosureFocus.current = { sawLoading: false }
+                } else setFailurePageRestore(null)
+                setFailureTarget(null)
+                setFailureRequest(null)
+              }}
               failureRequest={failureRequest?.filterKey === failureFilterKey ? failureRequest : null}
             />
           )}

@@ -587,6 +587,73 @@ describe('Health Plugin Routes', () => {
       ])
     })
 
+    it('exposes the exact agent count with a bounded by-agent projection', async () => {
+      for (let index = 0; index < 12; index++) {
+        recordUsage({
+          kind: 'mcp', activityClass: 'user', name: 'agent-work', agent: `agent-${index}`, durationMs: 1, status: 'ok',
+        })
+      }
+      recordUsage({
+        kind: 'rest', activityClass: 'user', name: '/api/unattributed-work', agent: null, durationMs: 1, status: 'ok',
+      })
+
+      const route = findRoute(activated.routes, 'GET', '/usage-feed')!
+      const { status, body } = await callRoute(route, activated.ctx, {
+        searchParams: { window: '1h' },
+      })
+      const feed = body as unknown as {
+        agentCount?: number
+        byAgent: Array<{ agent: string; attributed: boolean }>
+      }
+
+      expect(status).toBe(200)
+      expect({
+        agentCount: feed.agentCount,
+        attributedRows: feed.byAgent.filter((row) => row.attributed).length,
+        unknownRows: feed.byAgent.filter((row) => !row.attributed).length,
+        totalRows: feed.byAgent.length,
+      }).toEqual({
+        agentCount: 12,
+        attributedRows: 10,
+        unknownRows: 1,
+        totalRows: 11,
+      })
+    })
+
+    it('keeps a literal unknown agent separate from the unattributed projection', async () => {
+      recordUsage({
+        kind: 'mcp', activityClass: 'user', name: 'main-work', agent: 'main', durationMs: 1, status: 'ok',
+      })
+      recordUsage({
+        kind: 'mcp', activityClass: 'user', name: 'named-unknown-work', agent: 'unknown', durationMs: 1, status: 'ok',
+      })
+      recordUsage({
+        kind: 'rest', activityClass: 'user', name: '/api/unattributed-work', agent: null, durationMs: 1, status: 'ok',
+      })
+
+      const route = findRoute(activated.routes, 'GET', '/usage-feed')!
+      const { status, body } = await callRoute(route, activated.ctx, {
+        searchParams: { window: '1h' },
+      })
+      const feed = body as unknown as {
+        agentCount: number
+        byAgent: Array<{
+          agent: string
+          attributed: boolean
+          count: number
+          errors: number
+          lastActivity: unknown
+        }>
+      }
+
+      expect(status).toBe(200)
+      expect(feed.agentCount).toBe(2)
+      expect(feed.byAgent.filter((row) => row.agent === 'unknown')).toEqual([
+        { agent: 'unknown', attributed: true, count: 1, errors: 0, lastActivity: expect.anything() },
+        { agent: 'unknown', attributed: false, count: 1, errors: 0, lastActivity: expect.anything() },
+      ])
+    })
+
     it('paginates failure groups with a safe bounded limit', async () => {
       const now = Date.now()
       for (let index = 0; index < 3; index++) {

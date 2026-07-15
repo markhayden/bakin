@@ -1,6 +1,7 @@
 'use client'
 
 import { Bot, Braces, ChevronRight, Wrench } from 'lucide-react'
+import { isAttributedAgentRow } from '../lib/activity-feed-compat'
 import type { UsageFeedData, UsageKind } from '../types'
 import { formatActivityName } from './activity-row'
 
@@ -13,9 +14,9 @@ const SOURCE_META: Record<UsageKind, {
   iconColor: string
   barColor: string
 }> = {
-  mcp: { label: 'MCP', icon: Wrench, iconColor: 'text-chart-1', barColor: 'var(--chart-1)' },
+  mcp: { label: 'Tools', icon: Wrench, iconColor: 'text-chart-1', barColor: 'var(--chart-1)' },
   rest: { label: 'API', icon: Braces, iconColor: 'text-chart-2', barColor: 'var(--chart-2)' },
-  agent: { label: 'Agent', icon: Bot, iconColor: 'text-chart-3', barColor: 'var(--chart-3)' },
+  agent: { label: 'Agent runs', icon: Bot, iconColor: 'text-chart-3', barColor: 'var(--chart-3)' },
 }
 
 export type ActivityFailureSelection = {
@@ -158,7 +159,7 @@ export function ActivityBreakdown({
     }))
 
   const agents: BreakdownRow[] = [...data.byAgent]
-    .filter((row) => row.agent !== 'unknown')
+    .filter(isAttributedAgentRow)
     .sort((left, right) => right.count - left.count)
     .slice(0, AGENT_ROW_LIMIT)
     .map((row) => ({

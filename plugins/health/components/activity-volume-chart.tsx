@@ -2,6 +2,7 @@
 
 import { BarChart, ChartExplainer } from '@makinbakin/sdk/components'
 import type { InteractionCoverage, UsageFeedData } from '../types'
+import { coveredActivityBuckets } from './activity-time-buckets'
 
 function bucketLabel(value: string): string {
   const date = new Date(value)
@@ -22,20 +23,7 @@ export function ActivityVolumeChart({
   buckets: UsageFeedData['timeBuckets']
   coverage: InteractionCoverage
 }) {
-  const coverageStart = Date.parse(coverage.startsAt)
-  const visibleBuckets = coverage.hasFullWindow || !Number.isFinite(coverageStart)
-    ? buckets
-    : buckets.filter((bucket, index) => {
-      const start = Date.parse(bucket.start)
-      const nextStart = Date.parse(buckets[index + 1]?.start ?? '')
-      const previousStart = Date.parse(buckets[index - 1]?.start ?? '')
-      const end = Number.isFinite(nextStart)
-        ? nextStart
-        : Number.isFinite(start) && Number.isFinite(previousStart)
-          ? start + (start - previousStart)
-          : start
-      return Number.isFinite(end) && end > coverageStart
-    })
+  const visibleBuckets = coveredActivityBuckets(buckets, coverage)
   const total = visibleBuckets.reduce((sum, bucket) => sum + bucket.count, 0)
   const failed = visibleBuckets.reduce((sum, bucket) => sum + bucket.failureCount, 0)
   const busiest = visibleBuckets.reduce(

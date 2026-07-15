@@ -127,6 +127,10 @@ type ActivityDashboardFeed = ReturnType<typeof getUsageFeed> & {
   }
 }
 
+type UsageFeedWithAgentCount = ReturnType<typeof getUsageFeed> & {
+  agentCount: number
+}
+
 describe('usage recorder', () => {
   beforeEach(() => clearUsage())
 
@@ -1299,6 +1303,69 @@ describe('usage recorder', () => {
       recordUsage({ kind: 'rest', activityClass: 'user', name: 'r', agent: null, durationMs: 1, status: 'ok' })
       const feed = getUsageFeed({ kind: 'rest', window: '5m' })
       expect(feed.byAgent[0].agent).toBe('unknown')
+    })
+
+    it('reports the exact distinct attributed agent count without counting the unknown bucket', () => {
+      seed({ agent: 'main' })
+      seed({ agent: 'main' })
+      seed({ agent: 'pixel' })
+      seed({ agent: null })
+
+      const feed = getUsageFeed({ kind: 'mcp', window: '5m' }) as UsageFeedWithAgentCount
+
+      expect(feed.agentCount).toBe(2)
+    })
+
+    it('keeps an agent literally named "unknown" distinct from unattributed traffic', () => {
+      seed({ agent: 'main' })
+      seed({ agent: 'unknown' })
+      seed({ agent: null })
+
+      const feed = getUsageFeed({ kind: 'mcp', window: '5m' })
+      const unknownRows = feed.byAgent.filter((row) => row.agent === 'unknown')
+
+      expect(feed.agentCount).toBe(2)
+      expect(unknownRows).toHaveLength(2)
+      expect(unknownRows.map((row) => ({
+        attributed: (row as typeof row & { attributed?: boolean }).attributed,
+        count: row.count,
+      }))).toEqual([
+        { attributed: true, count: 1 },
+        { attributed: false, count: 1 },
+      ])
+    })
+
+    it('returns the ten busiest attributed rows plus the unknown bucket at most', () => {
+      for (let agentNumber = 1; agentNumber <= 12; agentNumber++) {
+        for (let call = 0; call < agentNumber; call++) {
+          seed({ agent: `agent-${agentNumber}` })
+        }
+      }
+      for (let call = 0; call < 20; call++) seed({ agent: null })
+
+      const feed = getUsageFeed({ kind: 'mcp', window: '5m' })
+      const attributed = feed.byAgent.filter((row) => row.agent !== 'unknown')
+
+      expect(attributed.map(({ agent, count }) => ({ agent, count }))).toEqual(
+        Array.from({ length: 10 }, (_, index) => ({
+          agent: `agent-${12 - index}`,
+          count: 12 - index,
+        })),
+      )
+      expect(feed.byAgent.find((row) => row.agent === 'unknown')).toMatchObject({ count: 20 })
+      expect(feed.byAgent).toHaveLength(11)
+    })
+
+    it('keeps the byAgent projection bounded for 10,000 distinct attributed agents', () => {
+      for (let index = 0; index < 10_000; index++) {
+        seed({ agent: `agent-${index}` })
+      }
+
+      const feed = getUsageFeed({ kind: 'mcp', window: '5m' })
+
+      expect(feed.totals.count).toBe(10_000)
+      expect(feed.agentCount).toBe(10_000)
+      expect(feed.byAgent).toHaveLength(10)
     })
   })
 
