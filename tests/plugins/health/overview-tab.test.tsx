@@ -515,7 +515,43 @@ describe('OverviewTabView', () => {
 
     render(<OverviewTabView model={buildHealthOverviewViewModel({ report: report(), now: NOW })} telemetry={telemetry} />)
 
-    expect(within(screen.getByTestId('overview-interactions')).getByText('search reindex')).toBeDefined()
+    const interactions = within(screen.getByTestId('overview-interactions'))
+    const failedRow = interactions.getByText('search reindex').closest<HTMLElement>('[data-testid="interaction-destination-row"]')!
+    const successful = within(failedRow).getByTestId('interaction-destination-success')
+    const failed = within(failedRow).getByTestId('interaction-destination-failed')
+
+    expect(successful.className).toContain('bg-chart-1')
+    expect(successful.getAttribute('style')).toContain('flex-grow: 1')
+    expect(failed.className).toContain('bg-destructive')
+    expect(failed.getAttribute('style')).toContain('flex-grow: 1')
+  })
+
+  it('keeps incident explanations compact while allowing the full impact to be read', () => {
+    const impact = 'Search cannot answer queries while the index is unavailable, so agents may miss relevant workspace context and produce incomplete answers until indexing recovers.'
+    const issue = incident({
+      id: 'long-impact',
+      status: 'error',
+      disposition: 'action_required',
+      title: 'Search index is unavailable',
+      impact,
+    })
+
+    render(
+      <OverviewTabView
+        model={buildHealthOverviewViewModel({ report: report([issue], 'needs_attention'), now: NOW })}
+      />,
+    )
+
+    const explanation = screen.getByText(impact)
+    const disclosure = screen.getByRole('button', { name: 'Show full explanation for Search index is unavailable' })
+    expect(explanation.className).toContain('line-clamp-2')
+    expect(disclosure.getAttribute('aria-expanded')).toBe('false')
+
+    fireEvent.click(disclosure)
+
+    expect(explanation.className).not.toContain('line-clamp-2')
+    expect(disclosure.getAttribute('aria-expanded')).toBe('true')
+    expect(disclosure.textContent).toContain('Less')
   })
 
   it('keeps telemetry rows shrink-safe while reserving aligned metric cells', () => {

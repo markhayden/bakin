@@ -36,7 +36,9 @@ const TONE_CLASS: Record<OverviewTone, string> = {
 
 export function IncidentRow({ item, onRepair, onRerun }: IncidentRowProps) {
   const instructionsId = useId()
+  const impactId = useId()
   const [showInstructions, setShowInstructions] = useState(false)
+  const [showImpact, setShowImpact] = useState(false)
   const { incident } = item
   const resolution = incident.resolution
   const status = incidentStatus(incident)
@@ -98,7 +100,24 @@ export function IncidentRow({ item, onRepair, onRerun }: IncidentRowProps) {
             {item.freshness === 'stale' && <StatusBadge tone="neutral" variant="outline">Last known</StatusBadge>}
           </div>
           <h3 className="mt-2 font-semibold leading-snug text-foreground">{incident.title}</h3>
-          <p className="mt-1 line-clamp-2 text-sm leading-snug text-muted-foreground">{incident.impact}</p>
+          <p
+            id={impactId}
+            className={`mt-1 text-sm leading-snug text-muted-foreground ${showImpact ? '' : 'line-clamp-2'}`}
+          >
+            {incident.impact}
+          </p>
+          <Button
+            type="button"
+            size="xs"
+            variant="ghost"
+            className="mt-1 h-auto px-0 py-0 text-xs text-muted-foreground hover:bg-transparent"
+            aria-expanded={showImpact}
+            aria-controls={impactId}
+            aria-label={`${showImpact ? 'Collapse' : 'Show full'} explanation for ${incident.title}`}
+            onClick={() => setShowImpact((shown) => !shown)}
+          >
+            {showImpact ? 'Less' : 'More'}
+          </Button>
         </div>
       </div>
 

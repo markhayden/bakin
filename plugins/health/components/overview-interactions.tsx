@@ -229,9 +229,24 @@ export function OverviewInteractions({
                     aria-hidden="true"
                   >
                     <span
-                      className={`block h-full rounded-full ${destination.errors > 0 ? 'bg-destructive' : CATEGORY_META[destination.category].colorClass}`}
+                      className="flex h-full overflow-hidden rounded-full"
                       style={{ width: `${Math.max(3, (destination.count / maximum) * 100)}%` }}
-                    />
+                    >
+                      {destination.count > destination.errors && (
+                        <span
+                          data-testid="interaction-destination-success"
+                          className={CATEGORY_META[destination.category].colorClass}
+                          style={{ flexGrow: destination.count - destination.errors, flexBasis: 0 }}
+                        />
+                      )}
+                      {destination.errors > 0 && (
+                        <span
+                          data-testid="interaction-destination-failed"
+                          className="bg-destructive"
+                          style={{ flexGrow: destination.errors, flexBasis: 0 }}
+                        />
+                      )}
+                    </span>
                   </span>
                   <span
                     data-testid="interaction-destination-metric"
