@@ -43,7 +43,7 @@ import {
   verifyBakinMcpEntries,
   type BakinMcpConfig,
 } from './tool-access-provisioning'
-import { listConfiguredChannels, listLlmCredentials, listLlmCredentialsViaCli } from './credential-status'
+import { listConfiguredChannels, listLlmCredentials, listLlmCredentialsViaCli, type LlmCredential } from './credential-status'
 import { applyRoutingPolicy, readRoutingPolicy, setAgentModels } from './model-routing'
 import { RuntimeError, RuntimeTurnError } from '@bakin/core/adapters/runtime'
 import { tryGetMainAgentId } from './main-agent'
@@ -1056,16 +1056,25 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
    * credentials". Never secrets.
    */
   credentialStatus = async (opts?: { agentId?: string }): Promise<RuntimeCredentialStatus> => {
-    let llmCredentials = listLlmCredentials(opts?.agentId)
-    if (llmCredentials.length === 0) {
-      try {
-        llmCredentials = await listLlmCredentialsViaCli((args) => this.exec(args), opts?.agentId)
-      } catch (err) {
-        this.logger.warn('OpenClaw auth-profile CLI probe failed; reporting no LLM providers', {
-          error: String(err),
-        })
+    // MERGE the JSON store with the CLI probe rather than only-CLI-when-empty:
+    // the two sources can each hold providers the other misses (a plugin
+    // provider like codex may surface only through `models auth list`, while a
+    // partially-populated auth-profiles.json would otherwise suppress the CLI
+    // read and hide it — the #615 false "no provider" warning). Union, dedup
+    // by provider (JSON wins the kind on collision — it's the richer record).
+    const jsonCreds = listLlmCredentials(opts?.agentId)
+    let cliCreds: LlmCredential[] = []
+    try {
+      cliCreds = await listLlmCredentialsViaCli((args) => this.exec(args), opts?.agentId)
+    } catch (err) {
+      // Only a hard failure with NOTHING from JSON is worth surfacing.
+      if (jsonCreds.length === 0) {
+        this.logger.warn('OpenClaw auth-profile CLI probe failed; reporting no LLM providers', { error: String(err) })
       }
     }
+    const byProvider = new Map<string, LlmCredential>()
+    for (const c of [...cliCreds, ...jsonCreds]) byProvider.set(c.provider, c)
+    const llmCredentials = [...byProvider.values()]
     return {
       llmProviders: llmCredentials.map((entry) => entry.provider),
       llmCredentials,

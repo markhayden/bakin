@@ -208,3 +208,28 @@ describe('listLlmCredentials (kinds from auth-profiles.json)', () => {
     ])
   })
 })
+
+describe('credentialStatus — JSON + CLI merge (#615: a plugin provider the JSON store misses)', () => {
+  it('unions both sources: a codex provider present only via the CLI is reported even when JSON has others', async () => {
+    // JSON store knows anthropic; the CLI (plugin-provider aware) also knows
+    // openai-codex. Pre-fix, a non-empty JSON suppressed the CLI → codex hidden.
+    writeFileSync(authProfilesPath(), JSON.stringify([{ provider: 'anthropic', apiKey: 'k' }]))
+    const { createOpenClawRuntimeAdapter } = await import('../../packages/adapter-openclaw/src/index')
+    const adapter = createOpenClawRuntimeAdapter({ settings: {} })
+    ;(adapter as unknown as { exec: (a: string[]) => Promise<string> }).exec = async () =>
+      JSON.stringify({ profiles: [{ provider: 'openai-codex', type: 'oauth' }] })
+
+    const status = await adapter.credentialStatus()
+    expect(status.llmProviders.sort()).toEqual(['anthropic', 'openai-codex'])
+  })
+
+  it('a CLI failure with a populated JSON store still reports the JSON providers (no false empty)', async () => {
+    writeFileSync(authProfilesPath(), JSON.stringify([{ provider: 'anthropic', apiKey: 'k' }]))
+    const { createOpenClawRuntimeAdapter } = await import('../../packages/adapter-openclaw/src/index')
+    const adapter = createOpenClawRuntimeAdapter({ settings: {} })
+    ;(adapter as unknown as { exec: (a: string[]) => Promise<string> }).exec = async () => { throw new Error('cli down') }
+
+    const status = await adapter.credentialStatus()
+    expect(status.llmProviders).toEqual(['anthropic'])
+  })
+})
