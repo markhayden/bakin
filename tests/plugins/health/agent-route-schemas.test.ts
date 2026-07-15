@@ -17,6 +17,11 @@ function history(window: '24h' | '7d' | '30d' = '24h') {
     since: '2026-07-13',
     throughDay: '2026-07-14',
     scannedAt: '2026-07-14T18:00:00.000Z',
+    coverage: {
+      status: 'complete' as const,
+      reason: 'complete' as const,
+      agents: [{ agent: 'main', status: 'complete' as const }],
+    },
     byAgent: [{ agent: 'main', tokens, costUsdMicros: 500, costedMessages: 1, messageCount: 1 }],
     byDay: [{ day: '2026-07-14', tokens, costUsdMicros: 500, costedMessages: 1, messageCount: 1 }],
     byAgentDay: [{ agent: 'main', day: '2026-07-14', tokens, costUsdMicros: 500, costedMessages: 1, messageCount: 1 }],
@@ -26,7 +31,15 @@ function history(window: '24h' | '7d' | '30d' = '24h') {
 function effort(window: '24h' | '7d' | '30d' = '24h') {
   return {
     window,
+    since: '2026-07-13',
+    throughDay: '2026-07-14',
+    scopeLabel: 'Local days 2026-07-13–2026-07-14',
     scannedAt: '2026-07-14T18:00:00.000Z',
+    coverage: {
+      status: 'complete' as const,
+      reason: 'complete' as const,
+      agents: [{ agent: 'main', status: 'complete' as const }],
+    },
     agents: [{
       agent: 'main',
       windowTokens: 15,
@@ -80,9 +93,18 @@ describe('Agents route schemas', () => {
     }).success).toBe(false)
   })
 
-  it('accepts additive per-agent evidence coverage while retaining legacy payloads', () => {
+  it('requires evidence on current server responses while retaining legacy browser payloads', () => {
+    const { coverage: _historyCoverage, ...legacyHistory } = history()
+    const {
+      coverage: _effortCoverage,
+      since: _since,
+      throughDay: _throughDay,
+      scopeLabel: _scopeLabel,
+      ...legacyEffort
+    } = effort()
     const covered = {
       ...history(),
+      scannedAt: null,
       coverage: {
         status: 'partial',
         reason: 'agent_scan_failed',
@@ -93,7 +115,10 @@ describe('Agents route schemas', () => {
       },
     }
     expect(usageHistoryResponseSchema.safeParse(covered).success).toBe(true)
-    expect(usageHistoryResponseSchema.safeParse(history()).success).toBe(true)
+    expect(usageHistoryResponseSchema.safeParse(legacyHistory).success).toBe(false)
+    expect(agentEffortResponseSchema.safeParse(legacyEffort).success).toBe(false)
+    expect(isUsageHistoryResponse(legacyHistory, '24h')).toBe(true)
+    expect(isAgentEffortResponse(legacyEffort, '24h')).toBe(true)
   })
 
   it('rejects coverage that claims complete while an agent is partial', () => {
@@ -121,6 +146,22 @@ describe('Agents route schemas', () => {
     const impossible = history()
     impossible.byAgent[0]!.costedMessages = 2
     expect(usageHistoryResponseSchema.safeParse(impossible).success).toBe(false)
+
+    const incompleteEffort = {
+      ...effort(),
+      agents: effort().agents.map((agent) => ({ ...agent, totalObservedTokens: null })),
+    }
+    expect(agentEffortResponseSchema.safeParse(incompleteEffort).success).toBe(false)
+  })
+
+  it('requires scannedAt to agree with current coverage', () => {
+    expect(usageHistoryResponseSchema.safeParse({ ...history(), scannedAt: null }).success).toBe(false)
+    expect(agentEffortResponseSchema.safeParse({
+      ...effort(),
+      scannedAt: null,
+      coverage: { status: 'partial', reason: 'agent_scan_failed', agents: [{ agent: 'main', status: 'partial' }] },
+      agents: effort().agents.map((agent) => ({ ...agent, totalObservedTokens: null, unattributedTokens: null })),
+    }).success).toBe(true)
   })
 
   it('requires the response window to match the requested window', () => {

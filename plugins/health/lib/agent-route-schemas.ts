@@ -91,16 +91,42 @@ export const usageEvidenceCoverageSchema = z.object({
   }
 })
 
-export const usageHistoryResponseSchema = z.object({
+function checkScannedAtCoverage(
+  response: { scannedAt: string | null; coverage: z.infer<typeof usageEvidenceCoverageSchema> },
+  context: z.core.$RefinementCtx,
+) {
+  const matches = response.coverage.status === 'complete'
+    ? response.scannedAt !== null
+    : response.scannedAt === null
+  if (!matches) {
+    context.addIssue({
+      code: 'custom',
+      path: ['scannedAt'],
+      message: 'scannedAt must be present only when coverage is complete',
+      input: response.scannedAt,
+    })
+  }
+}
+
+const usageHistoryResponseFields = {
   window: agentWindowSchema,
   since: dayKeySchema,
   throughDay: dayKeySchema,
   scannedAt: timestampSchema.nullable(),
-  coverage: usageEvidenceCoverageSchema.optional(),
   byAgent: z.array(usageByAgentSchema),
   byDay: z.array(usageByDaySchema),
   byAgentDay: z.array(usageByAgentDaySchema),
+}
+
+const usageHistoryClientResponseSchema = z.object({
+  ...usageHistoryResponseFields,
+  coverage: usageEvidenceCoverageSchema.optional(),
 }).strict()
+
+export const usageHistoryResponseSchema = z.object({
+  ...usageHistoryResponseFields,
+  coverage: usageEvidenceCoverageSchema,
+}).strict().superRefine(checkScannedAtCoverage)
 
 const agentEffortFlagSchema = z.object({
   kind: z.enum(['effort-no-outcome', 'spike', 'unattributed']),
@@ -118,6 +144,14 @@ const agentEffortRowSchema = z.object({
   unattributedTokens: nullableNonNegativeInteger,
   flags: z.array(agentEffortFlagSchema),
 }).strict().superRefine((row, context) => {
+  if (row.totalObservedTokens === null && row.unattributedTokens !== null) {
+    context.addIssue({
+      code: 'custom',
+      path: ['unattributedTokens'],
+      message: 'unattributedTokens requires observed token evidence',
+      input: row.unattributedTokens,
+    })
+  }
   if (
     row.totalObservedTokens !== null
     && row.unattributedTokens !== null
@@ -132,16 +166,50 @@ const agentEffortRowSchema = z.object({
   }
 })
 
-export const agentEffortResponseSchema = z.object({
+const agentEffortResponseFields = {
   window: agentWindowSchema,
-  /** Additive exact scope for day-aligned windows; absent on older servers. */
+  scannedAt: timestampSchema.nullable(),
+  agents: z.array(agentEffortRowSchema),
+}
+
+const agentEffortClientResponseSchema = z.object({
+  ...agentEffortResponseFields,
   since: dayKeySchema.optional(),
   throughDay: dayKeySchema.optional(),
   scopeLabel: z.string().min(1).optional(),
-  scannedAt: timestampSchema.nullable(),
   coverage: usageEvidenceCoverageSchema.optional(),
-  agents: z.array(agentEffortRowSchema),
 }).strict()
+
+export const agentEffortResponseSchema = z.object({
+  ...agentEffortResponseFields,
+  since: dayKeySchema,
+  throughDay: dayKeySchema,
+  scopeLabel: z.string().min(1),
+  coverage: usageEvidenceCoverageSchema,
+}).strict().superRefine((response, context) => {
+  checkScannedAtCoverage(response, context)
+
+  const coverageByAgent = new Map(response.coverage.agents.map((agent) => [agent.agent, agent.status]))
+  for (const [index, agent] of response.agents.entries()) {
+    const hasCompleteCoverage = coverageByAgent.get(agent.agent) === 'complete'
+    if (hasCompleteCoverage && agent.totalObservedTokens === null) {
+      context.addIssue({
+        code: 'custom',
+        path: ['agents', index, 'totalObservedTokens'],
+        message: 'complete per-agent coverage requires observed token evidence',
+        input: agent.totalObservedTokens,
+      })
+    }
+    if (!hasCompleteCoverage && (agent.totalObservedTokens !== null || agent.unattributedTokens !== null)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['agents', index, 'totalObservedTokens'],
+        message: 'incomplete per-agent coverage cannot publish observed or unattributed token totals',
+        input: agent.totalObservedTokens,
+      })
+    }
+  }
+})
 
 const nullableRuntimeCost = z.number().nonnegative().nullable()
 const agentUsageBaseSchema = z.object({
@@ -220,7 +288,7 @@ export function isUsageHistoryResponse(
   value: unknown,
   requestedWindow: UsageHistoryWindow,
 ): value is UsageHistoryData {
-  const result = usageHistoryResponseSchema.safeParse(value)
+  const result = usageHistoryClientResponseSchema.safeParse(value)
   return result.success && result.data.window === requestedWindow
 }
 
@@ -228,7 +296,7 @@ export function isAgentEffortResponse(
   value: unknown,
   requestedWindow: UsageHistoryWindow,
 ): value is AgentEffortData {
-  const result = agentEffortResponseSchema.safeParse(value)
+  const result = agentEffortClientResponseSchema.safeParse(value)
   return result.success && result.data.window === requestedWindow
 }
 
