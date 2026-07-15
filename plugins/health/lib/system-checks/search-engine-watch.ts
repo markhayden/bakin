@@ -297,6 +297,7 @@ async function checkSearchEngineBurnWithState(): Promise<HealthCheckRunInput> {
   const { getAppServices } = await import('../../../../src/core/app-services')
   const search = getAppServices().search
   if (!search.engineStatus) {
+    await saveStreaks({ wedgeStreak: 0, busyStreak: 0 })
     return healthNotApplicable('The active Search adapter does not expose engine process telemetry.')
   }
   let status: Awaited<ReturnType<NonNullable<typeof search.engineStatus>>>
@@ -307,6 +308,7 @@ async function checkSearchEngineBurnWithState(): Promise<HealthCheckRunInput> {
     return healthObserved([engineBurnUnknown(err)])
   }
   if (status === null) {
+    await saveStreaks({ wedgeStreak: 0, busyStreak: 0 })
     return healthNotApplicable('The current Search supervision mode cannot measure engine process telemetry.')
   }
   if (!status.running) {

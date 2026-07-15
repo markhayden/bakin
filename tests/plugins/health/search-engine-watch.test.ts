@@ -227,6 +227,28 @@ describe('checkSearchEngineBurn', () => {
     expect(await checkSearchEngineBurn()).toMatchObject({ outcome: 'not_applicable' })
   })
 
+  it('an adapter capability gap resets the wedge streak', async () => {
+    engineStatus = async () => status({ wedgeSignals: ['startup-catchup-spin'] })
+    await checkSearchEngineBurn()
+    engineStatus = undefined
+    await checkSearchEngineBurn()
+    engineStatus = async () => status({ wedgeSignals: ['startup-catchup-spin'] })
+
+    const [result] = observed(await checkSearchEngineBurn())
+    expect(result.status).toBe('warning')
+  })
+
+  it('an unmeasurable supervision gap resets the wedge streak', async () => {
+    engineStatus = async () => status({ wedgeSignals: ['startup-catchup-spin'] })
+    await checkSearchEngineBurn()
+    engineStatus = async () => null
+    await checkSearchEngineBurn()
+    engineStatus = async () => status({ wedgeSignals: ['startup-catchup-spin'] })
+
+    const [result] = observed(await checkSearchEngineBurn())
+    expect(result.status).toBe('warning')
+  })
+
   it('one wedge sample warns; two consecutive samples escalate to a repairable error', async () => {
     engineStatus = async () => status({ wedgeSignals: ['startup-catchup-spin'], cpuUtilization: 1.8 })
     const [first] = observed(await checkSearchEngineBurn())
