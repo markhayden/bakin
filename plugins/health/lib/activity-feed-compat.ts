@@ -242,6 +242,24 @@ function fallbackCoverageStart(data: Partial<UsageFeedData>): string {
   return candidates.sort()[0] ?? new Date().toISOString()
 }
 
+function isRecognizableLegacyFeed(value: unknown): value is Partial<UsageFeedData> {
+  if (!isRecord(value) || Array.isArray(value)) return false
+  const arrayFields = [
+    value.recent,
+    value.recentFailures,
+    value.recentUnverified,
+    value.byAgent,
+    value.byKind,
+    value.failureGroups,
+    value.topByName,
+    value.timeBuckets,
+  ]
+  const totals = value.totals
+  return arrayFields.some(Array.isArray)
+    || (isRecord(totals)
+      && (isNonnegativeNumber(totals.count) || isNonnegativeNumber(totals.errors)))
+}
+
 /**
  * Keeps Health usable while a dev server or rolling deployment still serves
  * the pre-dashboard feed. The fallback is explicitly marked partial; it never
@@ -262,7 +280,13 @@ export function normalizeActivityFeed(
   // Everything below this boundary exists only for a rolling deployment whose
   // server predates the canonical response. It deliberately projects partial
   // evidence instead of weakening the current route contract.
-  const legacy = value as Partial<UsageFeedData>
+  if (!isRecognizableLegacyFeed(value)) {
+    return { data: null, compatibilityLimited: false }
+  }
+  const legacy = value
+  if (legacy.window !== undefined && legacy.window !== requestedWindow) {
+    return { data: null, compatibilityLimited: false }
+  }
 
   const recent = validEntries(legacy.recent)
   const recentFailures = validEntries(legacy.recentFailures)

@@ -133,6 +133,25 @@ describe('normalizeActivityFeed top destinations', () => {
 })
 
 describe('normalizeActivityFeed compatibility fallback', () => {
+  it.each([
+    'garbage',
+    { unexpected: true },
+  ])('rejects unrecognizable legacy evidence instead of fabricating an empty dashboard', (feed) => {
+    expect(normalizeActivityFeed(feed, '1h')).toEqual({
+      data: null,
+      compatibilityLimited: false,
+    })
+  })
+
+  it('does not relabel a legacy response from a different window', () => {
+    const feed = dashboardFeed([{ name: 'legacy.route', count: 1, errors: 0, medianDurationMs: 1 }])
+
+    expect(normalizeActivityFeed(feed, '24h')).toEqual({
+      data: null,
+      compatibilityLimited: false,
+    })
+  })
+
   it('drops malformed agent rows while preserving valid rows', () => {
     const feed = dashboardFeed([])
     const validAgent = { agent: 'main', count: 1, errors: 0, lastActivity: null }
