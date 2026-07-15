@@ -82,6 +82,18 @@ describe('adoptCronJobs', () => {
     expect(auditCalls.filter((c) => c.event === 'job.adopted')).toHaveLength(2)
   })
 
+  it("preserves the native job's timezone over the system timezone", async () => {
+    // Adapters hoist the provider schedule tz into metadata.tz; losing it
+    // shifts an adopted evening job by hours on a UTC-configured box.
+    const tzJobs = [{
+      job: { id: 'evening-post', name: 'Evening post', schedule: '30 21 * * *', command: 'Post it', enabled: true, metadata: { tz: 'America/Denver' } },
+      raw: { blob: 'z' },
+    }]
+    const result = await adoptCronJobs(ctx, { provider: 'openclaw', jobs: tzJobs })
+    expect(result.adopted).toEqual(['evening-post'])
+    expect(getJob('evening-post')?.tz).toBe('America/Denver')
+  })
+
   it('is idempotent: already-Bakin jobs are skipped, never overwritten', async () => {
     upsertJob({
       jobId: 'daily-report',
