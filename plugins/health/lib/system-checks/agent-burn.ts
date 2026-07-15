@@ -13,6 +13,7 @@ import { LedgerUnavailableError } from '../../../../src/core/execution-ledger'
 import { getLastUsageScan, getUsageHistoryScanStaleAfterMs } from '../usage-history-timer'
 import { healthError, healthHealthy, healthObserved, healthUnknown, healthWarning } from '@makinbakin/sdk/utils'
 import type { HealthCheckRunInput, HealthObservationInput } from '@makinbakin/sdk'
+import { stableKeyPart } from './key'
 
 export async function checkAgentBurnWith(
   deps: {
@@ -141,8 +142,4 @@ export async function checkAgentBurnWith(
 
 export async function checkAgentBurn(): Promise<HealthCheckRunInput> {
   return checkAgentBurnWith()
-}
-
-function stableKeyPart(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9._:-]/g, '-').slice(0, 100) || 'unknown'
 }

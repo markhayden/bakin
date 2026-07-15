@@ -9,6 +9,7 @@ import { findRestartRecoveryCandidates } from '../../../../src/core/restart-reco
 import { healthHealthy, healthObserved, healthUnknown, healthWarning } from '@makinbakin/sdk/utils'
 import type { HealthCheckRunInput } from '@makinbakin/sdk'
 import { getContentDir } from '../../../../src/core/content-dir'
+import { stableKeyPart } from './key'
 
 export async function checkRestartRecovery(): Promise<HealthCheckRunInput> {
   try {
@@ -80,8 +81,4 @@ export async function checkRestartRecovery(): Promise<HealthCheckRunInput> {
       },
     })])
   }
-}
-
-function stableKeyPart(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9._:-]/g, '-').slice(0, 100) || 'unknown'
 }

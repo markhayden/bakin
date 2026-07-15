@@ -11,6 +11,7 @@ import { getContentDir } from '../../../../src/core/content-dir'
 import { verifyInstalledArtifact } from '../../../../src/core/whiskit/verify'
 import { healthHealthy, healthObserved, healthUnknown, healthWarning } from '@makinbakin/sdk/utils'
 import type { HealthCheckRunInput, HealthObservationInput } from '@makinbakin/sdk'
+import { stableKeyPart } from './key'
 
 export async function checkPluginArtifacts(): Promise<HealthCheckRunInput> {
   const pluginsDir = join(getContentDir(), 'plugins')
@@ -92,8 +93,4 @@ function pluginArtifactWarning(name: string, status: 'needs-update' | 'invalid',
       },
     },
   })
-}
-
-function stableKeyPart(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9._:-]/g, '-').slice(0, 100) || 'unknown'
 }

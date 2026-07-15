@@ -9,6 +9,7 @@
 import { listCapabilities } from '../../../../src/core/agent-packages/capability-readiness'
 import { healthHealthy, healthObserved, healthWarning } from '@makinbakin/sdk/utils'
 import type { HealthCheckRunInput, HealthObservationInput } from '@makinbakin/sdk'
+import { stableKeyPart } from './key'
 
 export async function checkCapabilities(): Promise<HealthCheckRunInput> {
   const capabilities = await listCapabilities()
@@ -60,8 +61,4 @@ export async function checkCapabilities(): Promise<HealthCheckRunInput> {
   })
 
   return healthObserved(observations as [HealthObservationInput, ...HealthObservationInput[]])
-}
-
-function stableKeyPart(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9._:-]/g, '-').slice(0, 100) || 'unknown'
 }

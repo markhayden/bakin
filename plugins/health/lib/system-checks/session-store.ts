@@ -12,6 +12,7 @@
 import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
 import { healthError, healthHealthy, healthNotApplicable, healthObserved, healthUnknown, healthWarning } from '@makinbakin/sdk/utils'
 import type { HealthCheckRunInput, HealthObservationInput } from '@makinbakin/sdk'
+import { stableKeyPart } from './key'
 
 // First-guess thresholds, sized against observed reality on 2026-06-11
 // (main at 321MB / 1,812 files / 74 entries — a 24x orphan ratio).
@@ -143,8 +144,4 @@ export async function checkSessionStore(
     })])
   }
   return healthObserved(observations as [HealthObservationInput, ...HealthObservationInput[]])
-}
-
-function stableKeyPart(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9._:-]/g, '-').slice(0, 100) || 'unknown'
 }

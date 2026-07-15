@@ -14,6 +14,7 @@
  */
 import { healthError, healthHealthy, healthNotApplicable, healthObserved, healthUnknown } from '@makinbakin/sdk/utils'
 import type { HealthCheckRunInput, HealthObservationInput, HealthRepairActionDefinition } from '@makinbakin/sdk'
+import { stableKeyPart } from './key'
 import { repairTargetSelection } from './repair-support'
 
 /** Zero progress across this window while "building" = spinning. */
@@ -234,8 +235,4 @@ function spinUnknown(error: unknown) {
       resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
     },
   })
-}
-
-function stableKeyPart(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9._:-]/g, '-').slice(0, 100) || 'unknown'
 }

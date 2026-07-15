@@ -15,6 +15,7 @@
  */
 import { healthError, healthHealthy, healthNotApplicable, healthObserved, healthUnknown, healthWarning } from '@makinbakin/sdk/utils'
 import type { HealthCheckRunInput, HealthObservationInput, HealthRepairActionDefinition } from '@makinbakin/sdk'
+import { stableKeyPart } from './key'
 import { repairTargetSelection } from './repair-support'
 
 const SWEEP_INTERVAL_MS = 60 * 60 * 1000
@@ -329,8 +330,4 @@ export function searchConsistencyRepair(): HealthRepairActionDefinition {
       }
     },
   }
-}
-
-function stableKeyPart(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9._:-]/g, '-').slice(0, 100) || 'unknown'
 }

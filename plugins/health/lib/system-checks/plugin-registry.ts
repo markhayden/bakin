@@ -1,6 +1,7 @@
 import { healthError, healthHealthy, healthObserved, healthUnknown } from '@makinbakin/sdk/utils'
 import type { HealthCheckRunInput, HealthObservationInput } from '@makinbakin/sdk'
 import { getRegistrySnapshot } from '../host-providers'
+import { stableKeyPart } from './key'
 
 export async function checkPluginRegistry(): Promise<HealthCheckRunInput> {
   let plugins: Array<Record<string, unknown>>
@@ -63,8 +64,4 @@ export async function checkPluginRegistry(): Promise<HealthCheckRunInput> {
     })
   })
   return healthObserved(observations as [HealthObservationInput, ...HealthObservationInput[]])
-}
-
-function stableKeyPart(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9._:-]/g, '-').slice(0, 100) || 'unknown'
 }

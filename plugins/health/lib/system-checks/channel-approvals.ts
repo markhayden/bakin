@@ -9,6 +9,7 @@ import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
 import { hasChannelCapability } from '@bakin/core/adapters/runtime'
 import { healthHealthy, healthNotApplicable, healthObserved, healthUnknown, healthWarning } from '@makinbakin/sdk/utils'
 import type { HealthCheckRunInput } from '@makinbakin/sdk'
+import { stableKeyPart } from './key'
 
 export async function checkChannelApprovals(
   runtime: Pick<AgentRuntimeAdapter, 'channels'>
@@ -68,8 +69,4 @@ export async function checkChannelApprovals(
       },
     })])
   }
-}
-
-function stableKeyPart(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9._:-]/g, '-').slice(0, 100) || 'unknown'
 }

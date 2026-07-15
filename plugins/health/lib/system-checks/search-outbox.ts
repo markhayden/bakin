@@ -9,6 +9,7 @@
  */
 import { healthError, healthHealthy, healthWarning } from '@makinbakin/sdk/utils'
 import type { HealthObservationInput, HealthRepairActionDefinition } from '@makinbakin/sdk'
+import { stableKeyPart } from './key'
 import { repairTargetSelection } from './repair-support'
 
 /** Pending rows older than this suggest the engine has been down a while. */
@@ -128,8 +129,4 @@ export function searchOutboxRepair(): HealthRepairActionDefinition {
       }
     },
   }
-}
-
-function stableKeyPart(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9._:-]/g, '-').slice(0, 100) || 'unknown'
 }

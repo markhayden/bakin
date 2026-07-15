@@ -16,6 +16,7 @@ import { getSettings } from '../../../../src/core/settings'
 import { getContentDir } from '../../../../src/core/content-dir'
 import { estimateMaxTaskDispatchBytes } from '../../../../src/core/context-report'
 import { getRuntimeMainAgentId } from '../../../../packages/core/src/adapters/runtime'
+import { stableKeyPart } from './key'
 import type { AgentRuntimeAdapter } from '../../../../packages/core/src/adapters/runtime'
 import { healthHealthy, healthNotApplicable, healthObserved, healthUnknown, healthWarning } from '@makinbakin/sdk/utils'
 import type { HealthCheckRunInput, HealthObservationInput } from '@makinbakin/sdk'
@@ -116,8 +117,4 @@ export async function checkStartupContextSize(runtime: AgentRuntimeAdapter): Pro
     })])
   }
   return healthObserved(observations as [HealthObservationInput, ...HealthObservationInput[]])
-}
-
-function stableKeyPart(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9._:-]/g, '-').slice(0, 100) || 'unknown'
 }
