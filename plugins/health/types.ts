@@ -6,7 +6,6 @@
  * don't have). Both the page component and plugins/health/index.ts can now type
  * their route payloads against one set of contracts.
  */
-import type { HealthReport } from '@makinbakin/sdk'
 import type {
   InteractionCoverage as CanonicalInteractionCoverage,
   UsageEntry as CanonicalUsageEntry,
@@ -21,67 +20,7 @@ import type {
   SearchStatusResponse,
   SearchTelemetryResponse,
 } from './lib/system-route-schemas'
-
-export interface McpSessionInfo {
-  agent: string
-  sessions: number
-  connectedAt: string
-}
-
-export interface DoctorData {
-  report: HealthReport
-}
-
-export interface ServerData {
-  port: number
-  pid: number
-  nodeVersion: string
-  memoryMB: number
-  totalMemoryMB: number
-}
-
-export interface PluginInfo {
-  id: string
-  name: string
-  version: string
-  latestVersion?: string | null
-  description: string
-  source: 'built-in' | 'user'
-  routes: number
-  installed?: {
-    version?: string
-    commitSha?: string
-    remoteHeadSha?: string
-    lastChecked?: string
-    newPermissions?: string[]
-  } | null
-  upgradeAvailable?: boolean
-  staleHintDays?: number | null
-}
-
-export interface RegistryData {
-  plugins: PluginInfo[]
-}
-
-export interface PluginManifestEntry {
-  id: string
-  name: string
-  version: string
-  latestVersion?: string | null
-  source: 'core' | 'github' | 'local'
-  installed: PluginInfo['installed']
-  upgradeAvailable: boolean
-  staleHintDays: number | null
-}
-
-export interface PluginManifestData {
-  plugins: PluginManifestEntry[]
-}
-
-export interface ErrorsByKind {
-  total: number
-  byKind: { mcp: number; rest: number; agent: number }
-}
+import type { HealthLiveSummaryClient } from './lib/route-schemas'
 
 export type UsageKind = CanonicalUsageKind
 export type UsageEntry = CanonicalUsageEntry
@@ -133,12 +72,7 @@ export type InteractionCoverageReason = CanonicalInteractionCoverage['reason']
 export type InteractionCoverage = CanonicalInteractionCoverage
 export type InteractionSummaryData = InteractionSummaryResponse
 
-export interface HealthSummary {
-  errors1h: ErrorsByKind | null
-  activeSessions: McpSessionInfo[] | null
-  upSince: string | null
-  server: ServerData | null
-}
+export type HealthSummary = HealthLiveSummaryClient
 
 // --- Search health (blue/green index status) -------------------------------
 // Promoted from the inline shape the health page previously declared in-place,

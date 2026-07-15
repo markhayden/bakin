@@ -68,6 +68,8 @@ describe('useOverviewData', () => {
     const second = report('report-2', readiness('degraded'))
     let doctorReads = 0
     let invalidInteractions = false
+    let invalidSummary = false
+    let invalidReadiness = false
     const fetchMock = mock(async (input: RequestInfo | URL) => {
       const url = String(input)
       if (url === '/api/plugins/health/doctor') {
@@ -76,7 +78,7 @@ describe('useOverviewData', () => {
       }
       if (url === '/api/plugins/health/summary') {
         return jsonResponse({
-          errors1h: { total: 2, byKind: { mcp: 1, rest: 1, agent: 0 } },
+          errors1h: { total: invalidSummary ? -1 : 2, byKind: { mcp: 1, rest: 1, agent: 0 } },
           activeSessions: [{ agent: 'main', sessions: 3, connectedAt: OBSERVED_AT }],
           upSince: OBSERVED_AT,
           server: null,
@@ -89,7 +91,7 @@ describe('useOverviewData', () => {
         })
       }
       if (url === '/api/plugins/health/search-readiness') {
-        return jsonResponse({ reportId: second.id, readiness: second.subsystems.search })
+        return jsonResponse({ reportId: invalidReadiness ? 42 : second.id, readiness: second.subsystems.search })
       }
       if (url === '/api/plugins/health/usage-history?window=24h') {
         return jsonResponse({
@@ -170,5 +172,15 @@ describe('useOverviewData', () => {
     await waitFor(() => expect(result.current.interactions.backgroundError).toContain('invalid response'))
     expect(result.current.interactions.data?.totals.count).toBe(18)
     expect(result.current.backgroundError).toContain('Interaction activity returned an invalid response')
+
+    invalidSummary = true
+    await act(async () => { await result.current.summary.refresh('background') })
+    await waitFor(() => expect(result.current.summary.backgroundError).toContain('invalid response'))
+    expect(result.current.summary.data?.errors1h?.total).toBe(2)
+
+    invalidReadiness = true
+    await act(async () => { await result.current.searchReadiness.refresh('background') })
+    await waitFor(() => expect(result.current.searchReadiness.backgroundError).toContain('invalid response'))
+    expect(result.current.searchReadiness.data?.reportId).toBe(second.id)
   })
 })

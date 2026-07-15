@@ -18,6 +18,7 @@ import {
   type HealthResourceRequestContext,
   type UseHealthResourceResult,
 } from './use-health-resource'
+import { requestJsonWithGuard } from '../lib/client-request'
 
 export type AgentsWindow = UsageHistoryWindow
 
@@ -34,29 +35,16 @@ export type OverviewAgentsDataResources = Omit<AgentsDataResources, 'effort'>
 
 export const AGENTS_POLL_MS = 60_000
 
-async function requestValidated<T>(
-  url: string,
-  context: HealthResourceRequestContext,
-  label: string,
-  validate: (value: unknown) => value is T,
-): Promise<T> {
-  const response = await fetch(url, { signal: context.signal })
-  if (!response.ok) throw new Error(`${label} could not be loaded (${response.status})`)
-  const payload: unknown = await response.json()
-  if (!validate(payload)) throw new Error(`${label} returned an invalid response`)
-  return payload
-}
-
 const requestHistory = (window: AgentsWindow) => (url: string, context: HealthResourceRequestContext) =>
-  requestValidated(url, context, 'Usage history', (value): value is UsageHistoryData =>
+  requestJsonWithGuard(url, context, 'Usage history', (value): value is UsageHistoryData =>
     isUsageHistoryResponse(value, window))
 
 const requestEffort = (window: AgentsWindow) => (url: string, context: HealthResourceRequestContext) =>
-  requestValidated(url, context, 'Agent outcomes', (value): value is AgentEffortData =>
+  requestJsonWithGuard(url, context, 'Agent outcomes', (value): value is AgentEffortData =>
     isAgentEffortResponse(value, window))
 
 const requestLatestSessions = (url: string, context: HealthResourceRequestContext) =>
-  requestValidated(url, context, 'Latest session usage', isAgentUsageResponse)
+  requestJsonWithGuard(url, context, 'Latest session usage', isAgentUsageResponse)
 
 /**
  * All Agents-tab reads use the shared cancellable Health resource lifecycle.

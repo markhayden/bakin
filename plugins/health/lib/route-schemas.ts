@@ -206,6 +206,16 @@ export const healthLiveSummarySchema = z.object({
   }).strict(),
 }).strict()
 
+/** Rolling-restart client contract; null means that live source was unavailable. */
+export const healthLiveSummaryClientSchema = z.object({
+  errors1h: healthLiveSummarySchema.shape.errors1h.nullable(),
+  activeSessions: healthLiveSummarySchema.shape.activeSessions.nullable(),
+  upSince: healthLiveSummarySchema.shape.upSince.nullable(),
+  server: healthLiveSummarySchema.shape.server.nullable(),
+}).passthrough()
+
+export type HealthLiveSummaryClient = z.output<typeof healthLiveSummaryClientSchema>
+
 const incidentTargetSchema = z.object({
   type: z.literal('incidents'),
   reportId: nonEmptyString,

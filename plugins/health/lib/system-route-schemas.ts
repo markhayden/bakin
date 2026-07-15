@@ -161,7 +161,36 @@ export const systemRegistryResponseSchema = z.object({
   plugins: z.array(systemRegistryPluginSchema),
 }).passthrough()
 
+const installedPluginSchema = z.object({
+  version: z.string().optional(),
+  commitSha: z.string().optional(),
+  remoteHeadSha: z.string().optional(),
+  lastChecked: z.string().optional(),
+  newPermissions: z.array(nonEmptyString).optional(),
+}).passthrough()
+
+const systemPluginManifestEntrySchema = z.object({
+  id: nonEmptyString,
+  name: nonEmptyString,
+  version: nonEmptyString,
+  latestVersion: nonEmptyString.nullable().optional(),
+  source: z.enum(['core', 'github', 'local']),
+  installed: installedPluginSchema.nullable(),
+  upgradeAvailable: z.boolean(),
+  staleHintDays: nonNegativeInteger.nullable(),
+  status: z.enum(['active', 'failed']).optional(),
+  errorCode: nonEmptyString.optional(),
+  errorMessage: z.string().optional(),
+  missingDependencies: z.array(nonEmptyString).optional(),
+}).passthrough()
+
+export const systemPluginManifestClientSchema = z.object({
+  plugins: z.array(systemPluginManifestEntrySchema),
+}).passthrough()
+
 export type SearchStatusResponse = z.output<typeof searchStatusResponseSchema>
 export type SearchTelemetryResponse = z.output<typeof searchTelemetryClientResponseSchema>
 export type SystemRegistryPlugin = z.output<typeof systemRegistryPluginSchema>
 export type SystemRegistryData = z.output<typeof systemRegistryResponseSchema>
+export type SystemPluginManifestEntry = z.output<typeof systemPluginManifestEntrySchema>
+export type SystemPluginManifestData = z.output<typeof systemPluginManifestClientSchema>

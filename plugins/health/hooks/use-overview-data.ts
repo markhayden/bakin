@@ -23,9 +23,13 @@ import {
 import { useHealthReport, type UseHealthReportResult } from './use-health-report'
 import {
   useHealthResource,
-  type HealthResourceRequestContext,
   type UseHealthResourceResult,
 } from './use-health-resource'
+import { requestJsonWithGuard, requestJsonWithSchema } from '../lib/client-request'
+import {
+  healthLiveSummaryClientSchema,
+  searchReadinessResponseSchema,
+} from '../lib/route-schemas'
 
 const LIVE_FACTS_REFRESH_MS = 15_000
 const SEARCH_READINESS_REFRESH_MS = 30_000
@@ -59,19 +63,6 @@ function firstError(errors: Array<string | null>): string | null {
   return errors.find((error): error is string => error !== null) ?? null
 }
 
-async function requestValidated<T>(
-  url: string,
-  context: HealthResourceRequestContext,
-  label: string,
-  validate: (value: unknown) => value is T,
-): Promise<T> {
-  const response = await fetch(url, { signal: context.signal })
-  if (!response.ok) throw new Error(`${label} could not be loaded (${response.status})`)
-  const payload: unknown = await response.json()
-  if (!validate(payload)) throw new Error(`${label} returned an invalid response`)
-  return payload
-}
-
 /**
  * Fetch only the live facts needed by Overview. The report remains the source
  * of truth; a newer Search projection triggers a cached report read before it
@@ -81,19 +72,27 @@ export function useOverviewData(): UseOverviewDataResult {
   const report = useHealthReport()
   const summary = useHealthResource<HealthSummary>('/api/plugins/health/summary', {
     intervalMs: LIVE_FACTS_REFRESH_MS,
+    request: (url, context) => requestJsonWithSchema(
+      url, context, 'Live system facts', healthLiveSummaryClientSchema,
+    ),
   })
   const liveNow = useHealthResource<LiveNowData>('/api/plugins/health/live-now', {
     intervalMs: LIVE_FACTS_REFRESH_MS,
-    request: (url, context) => requestValidated(url, context, 'Live agent activity', isLiveNowData),
+    request: (url, context) => requestJsonWithGuard(url, context, 'Live agent activity', isLiveNowData),
   })
   const searchReadiness = useHealthResource<SearchReadinessProjection>(
     '/api/plugins/health/search-readiness',
-    { intervalMs: SEARCH_READINESS_REFRESH_MS },
+    {
+      intervalMs: SEARCH_READINESS_REFRESH_MS,
+      request: (url, context) => requestJsonWithSchema(
+        url, context, 'Search readiness', searchReadinessResponseSchema,
+      ),
+    },
   )
   const agents = useOverviewAgentsData('24h')
   const interactions = useHealthResource<InteractionSummaryData>('/api/plugins/health/interaction-summary?window=1h', {
     intervalMs: INTERACTIONS_REFRESH_MS,
-    request: (url, context) => requestValidated(
+    request: (url, context) => requestJsonWithGuard(
       url,
       context,
       'Interaction activity',
@@ -102,11 +101,11 @@ export function useOverviewData(): UseOverviewDataResult {
   })
   const contextReport = useHealthResource<ContextSummaryData>('/api/context-report', {
     intervalMs: OPERATIONS_REFRESH_MS,
-    request: (url, context) => requestValidated(url, context, 'Context report', isContextSummaryData),
+    request: (url, context) => requestJsonWithGuard(url, context, 'Context report', isContextSummaryData),
   })
   const settings = useHealthResource<ContextSettingsData>('/api/settings', {
     intervalMs: OPERATIONS_REFRESH_MS,
-    request: (url, context) => requestValidated(url, context, 'Context settings', isContextSettingsData),
+    request: (url, context) => requestJsonWithGuard(url, context, 'Context settings', isContextSettingsData),
   })
   const reportRefresh = report.refresh
   const summaryRefresh = summary.refresh

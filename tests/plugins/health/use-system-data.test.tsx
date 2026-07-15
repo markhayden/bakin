@@ -132,7 +132,7 @@ describe('useSystemData response validation', () => {
       if (url === '/api/plugins/health/doctor') return jsonResponse(healthReport())
       if (url === '/api/plugins/health/summary') {
         return jsonResponse({
-          errors1h: { total: 0, byKind: { mcp: 0, rest: 0, agent: 0 } },
+          errors1h: { total: -1, byKind: { mcp: 0, rest: 0, agent: 0 } },
           activeSessions: [],
           upSince: OBSERVED_AT,
           server: null,
@@ -168,7 +168,7 @@ describe('useSystemData response validation', () => {
           source: 'user', status: 'failed', routes: 0, missingDependencies: [42],
         }] })
       }
-      if (url.startsWith('/api/plugins/manifest')) return jsonResponse({ plugins: [] })
+      if (url.startsWith('/api/plugins/manifest')) return jsonResponse({ plugins: [{ id: 42 }] })
       throw new Error(`Unexpected URL: ${url}`)
     }) as unknown as typeof fetch
 
@@ -178,9 +178,13 @@ describe('useSystemData response validation', () => {
       expect(result.current.searchStatus.error).toBe('Search status returned an invalid response')
       expect(result.current.searchTelemetry.error).toBe('Search telemetry returned an invalid response')
       expect(result.current.registry.error).toBe('Plugin registry returned an invalid response')
+      expect(result.current.live.error).toBe('Live system facts returned an invalid response')
+      expect(result.current.pluginManifest.error).toBe('Plugin manifest returned an invalid response')
     })
     expect(result.current.searchStatus.data).toBeNull()
     expect(result.current.searchTelemetry.data).toBeNull()
     expect(result.current.registry.data).toBeNull()
+    expect(result.current.live.data).toBeNull()
+    expect(result.current.pluginManifest.data).toBeNull()
   })
 })

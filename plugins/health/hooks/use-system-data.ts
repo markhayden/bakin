@@ -2,12 +2,7 @@
 
 import { useCallback, useState } from 'react'
 import type { ZodType } from 'zod'
-import type {
-  HealthSummary,
-  PluginManifestEntry,
-  SearchHealthData,
-  SearchTelemetryData,
-} from '../types'
+import type { HealthSummary, SearchHealthData, SearchTelemetryData } from '../types'
 import { useHealthReport, type UseHealthReportResult } from './use-health-report'
 import {
   useHealthResource,
@@ -16,30 +11,30 @@ import {
 } from './use-health-resource'
 import { withDeadline } from '../lib/request-deadline'
 import {
+  healthLiveSummaryClientSchema,
   searchReadinessResponseSchema,
+} from '../lib/route-schemas'
+import {
   searchStatusResponseSchema,
   searchTelemetryClientResponseSchema,
+  systemPluginManifestClientSchema,
   systemRegistryResponseSchema,
+  type SystemPluginManifestData,
+  type SystemPluginManifestEntry,
   type SystemRegistryData,
   type SystemRegistryPlugin,
 } from '../lib/system-route-schemas'
 
-export type { SystemRegistryData, SystemRegistryPlugin }
+export type {
+  SystemPluginManifestData,
+  SystemPluginManifestEntry,
+  SystemRegistryData,
+  SystemRegistryPlugin,
+}
 
 export const SYSTEM_REFRESH_MS = 60_000
 export const SYSTEM_REQUEST_TIMEOUT_MS = 15_000
 export const SYSTEM_MUTATION_OPERATION_TIMEOUT_MS = 5 * 60_000
-
-export interface SystemPluginManifestEntry extends PluginManifestEntry {
-  status?: 'active' | 'failed'
-  errorCode?: string
-  errorMessage?: string
-  missingDependencies?: string[]
-}
-
-export interface SystemPluginManifestData {
-  plugins: SystemPluginManifestEntry[]
-}
 
 export type SystemMutationStatus = 'idle' | 'pending' | 'success' | 'error' | 'confirmation' | 'outcome-unknown'
 
@@ -145,11 +140,11 @@ async function fetchSystemMutation(
   )
 }
 
-async function requestJson<T>(url: string, context: HealthResourceRequestContext): Promise<T> {
+async function requestJson(url: string, context: HealthResourceRequestContext): Promise<unknown> {
   const response = await fetch(url, { signal: context.signal })
   const body = await responseJson(response)
   if (!response.ok) throw responseError(response, body, 'Request failed')
-  return body as T
+  return body
 }
 
 async function requestValidated<T>(
@@ -158,7 +153,7 @@ async function requestValidated<T>(
   label: string,
   schema: ZodType<T>,
 ): Promise<T> {
-  const body = await requestJson<unknown>(url, context)
+  const body = await requestJson(url, context)
   const parsed = schema.safeParse(body)
   if (!parsed.success) throw new Error(`${label} returned an invalid response`)
   return parsed.data
@@ -179,11 +174,12 @@ async function requestPluginManifest(
 ): Promise<SystemPluginManifestData> {
   const shouldCheck = context.reason === 'explicit'
   const requestUrl = shouldCheck ? `${url}${url.includes('?') ? '&' : '?'}check=1` : url
-  const body = await requestJson<unknown>(requestUrl, context)
-  if (!isRecord(body) || !Array.isArray(body.plugins)) {
-    throw new Error('Plugin manifest response was invalid')
-  }
-  return body as unknown as SystemPluginManifestData
+  return await requestValidated(
+    requestUrl,
+    context,
+    'Plugin manifest',
+    systemPluginManifestClientSchema,
+  )
 }
 
 /**
@@ -296,7 +292,9 @@ export function useSystemData(): UseSystemDataResult {
   const live = useHealthResource<HealthSummary>('/api/plugins/health/summary', {
     intervalMs: SYSTEM_REFRESH_MS,
     timeoutMs: SYSTEM_REQUEST_TIMEOUT_MS,
-    request: requestJson,
+    request: (url, context) => requestValidated(
+      url, context, 'Live system facts', healthLiveSummaryClientSchema,
+    ),
   })
   const searchStatus = useHealthResource<SearchHealthData>('/api/plugins/health/search-status', {
     intervalMs: SYSTEM_REFRESH_MS,
