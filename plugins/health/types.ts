@@ -13,6 +13,10 @@ import type {
   UsageFeedResponse,
   UsageKind as CanonicalUsageKind,
 } from './lib/usage-feed-route-schema'
+import type {
+  InteractionCategory as CanonicalInteractionCategory,
+  InteractionSummaryResponse,
+} from './lib/interaction-summary-route-schema'
 
 export interface McpSessionInfo {
   agent: string
@@ -120,39 +124,10 @@ export type UsageFeedData = Omit<
   byAgent: ByAgentRow[]
 }
 
-export type InteractionCategory = 'tools' | 'api' | 'agents'
+export type InteractionCategory = CanonicalInteractionCategory
 export type InteractionCoverageReason = CanonicalInteractionCoverage['reason']
 export type InteractionCoverage = CanonicalInteractionCoverage
-
-export interface InteractionSummaryData {
-  window: '5m' | '1h' | '24h'
-  coverage: InteractionCoverage
-  totals: {
-    count: number
-    errors: number
-    unverified: number
-    foreground: number
-    background: number
-  }
-  categories: Array<{
-    key: InteractionCategory
-    count: number
-    errors: number
-  }>
-  topDestinations: Array<{
-    category: InteractionCategory
-    name: string
-    count: number
-    errors: number
-    medianDurationMs: number | null
-  }>
-  timeBuckets: Array<{
-    start: string
-    count: number
-    failureCount: number
-    failureRate: number
-  }>
-}
+export type InteractionSummaryData = InteractionSummaryResponse
 
 export interface HealthSummary {
   errors1h: ErrorsByKind | null

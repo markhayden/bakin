@@ -94,10 +94,9 @@ import {
   getRegistrySnapshot,
 } from './lib/host-providers'
 import {
-  interactionCoverageSchema,
-  interactionTimeBucketSchema,
   usageFeedResponseSchema,
 } from './lib/usage-feed-route-schema'
+import { interactionSummaryResponseSchema } from './lib/interaction-summary-route-schema'
 
 const log = createLogger('health')
 
@@ -169,32 +168,6 @@ const usageFeedQuery = z.object({
 
 const interactionSummaryQuery = z.object({
   window: z.enum(['5m', '1h', '24h']).default('1h'),
-}).strict()
-
-const interactionCategorySchema = z.enum(['tools', 'api', 'agents'])
-const interactionSummaryResponseSchema = z.object({
-  window: z.enum(['5m', '1h', '24h']),
-  coverage: interactionCoverageSchema,
-  totals: z.object({
-    count: z.number().int().nonnegative(),
-    errors: z.number().int().nonnegative(),
-    unverified: z.number().int().nonnegative(),
-    foreground: z.number().int().nonnegative(),
-    background: z.number().int().nonnegative(),
-  }).strict(),
-  categories: z.array(z.object({
-    key: interactionCategorySchema,
-    count: z.number().int().nonnegative(),
-    errors: z.number().int().nonnegative(),
-  }).strict()).length(3),
-  topDestinations: z.array(z.object({
-    category: interactionCategorySchema,
-    name: z.string(),
-    count: z.number().int().nonnegative(),
-    errors: z.number().int().nonnegative(),
-    medianDurationMs: z.number().nonnegative().nullable(),
-  }).strict()).max(10),
-  timeBuckets: z.array(interactionTimeBucketSchema),
 }).strict()
 
 const AGENT_EFFORT_WINDOW_HOURS: Record<'24h' | '7d' | '30d', number> = {

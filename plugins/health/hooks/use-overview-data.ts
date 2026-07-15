@@ -15,6 +15,7 @@ import {
   isContextSummaryData,
   isLiveNowData,
 } from '../lib/agent-operational-route-guards'
+import { isInteractionSummaryResponse } from '../lib/interaction-summary-route-schema'
 import {
   useOverviewAgentsData,
   type OverviewAgentsDataResources,
@@ -58,80 +59,6 @@ function firstError(errors: Array<string | null>): string | null {
   return errors.find((error): error is string => error !== null) ?? null
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-function isNonNegativeNumber(value: unknown): value is number {
-  return typeof value === 'number' && Number.isFinite(value) && value >= 0
-}
-
-function isNullableNonNegativeNumber(value: unknown): value is number | null {
-  return value === null || isNonNegativeNumber(value)
-}
-
-function isIsoTimestamp(value: unknown): value is string {
-  return typeof value === 'string' && Number.isFinite(Date.parse(value))
-}
-
-function isInteractionCategory(value: unknown): value is InteractionSummaryData['categories'][number]['key'] {
-  return value === 'tools' || value === 'api' || value === 'agents'
-}
-
-function isInteractionSummaryData(value: unknown): value is InteractionSummaryData {
-  const validShape = isRecord(value)
-    && (value.window === '5m' || value.window === '1h' || value.window === '24h')
-    && isRecord(value.coverage)
-    && isIsoTimestamp(value.coverage.startsAt)
-    && ((value.coverage.reason === 'full_window' && value.coverage.hasFullWindow === true)
-      || ((value.coverage.reason === 'process_restart' || value.coverage.reason === 'buffer_limit')
-        && value.coverage.hasFullWindow === false))
-    && isRecord(value.totals)
-    && isNonNegativeNumber(value.totals.count)
-    && isNonNegativeNumber(value.totals.errors)
-    && isNonNegativeNumber(value.totals.unverified)
-    && isNonNegativeNumber(value.totals.foreground)
-    && isNonNegativeNumber(value.totals.background)
-    && Array.isArray(value.categories)
-    && value.categories.every((row) => isRecord(row)
-      && isInteractionCategory(row.key)
-      && isNonNegativeNumber(row.count)
-      && isNonNegativeNumber(row.errors))
-    && Array.isArray(value.topDestinations)
-    && value.topDestinations.every((row) => isRecord(row)
-      && isInteractionCategory(row.category)
-      && typeof row.name === 'string'
-      && isNonNegativeNumber(row.count)
-      && isNonNegativeNumber(row.errors)
-      && isNullableNonNegativeNumber(row.medianDurationMs))
-    && Array.isArray(value.timeBuckets)
-    && value.timeBuckets.every((bucket) => isRecord(bucket)
-      && typeof bucket.start === 'string'
-      && isNonNegativeNumber(bucket.count)
-      && isNonNegativeNumber(bucket.failureCount)
-      && isNonNegativeNumber(bucket.failureRate))
-  if (!validShape) return false
-
-  const summary = value as unknown as InteractionSummaryData
-  const categoryKeys = new Set(summary.categories.map((category) => category.key))
-  const categoryCount = summary.categories.reduce((total, category) => total + category.count, 0)
-  const categoryErrors = summary.categories.reduce((total, category) => total + category.errors, 0)
-  const bucketCount = summary.timeBuckets.reduce((total, bucket) => total + bucket.count, 0)
-  const bucketErrors = summary.timeBuckets.reduce((total, bucket) => total + bucket.failureCount, 0)
-
-  return summary.categories.length === 3
-    && categoryKeys.size === 3
-    && summary.categories.every((category) => category.errors <= category.count)
-    && summary.topDestinations.every((destination) => destination.errors <= destination.count)
-    && summary.timeBuckets.every((bucket) => bucket.failureCount <= bucket.count)
-    && summary.totals.errors + summary.totals.unverified <= summary.totals.count
-    && summary.totals.foreground + summary.totals.background === summary.totals.count
-    && categoryCount === summary.totals.count
-    && categoryErrors === summary.totals.errors
-    && bucketCount === summary.totals.count
-    && bucketErrors === summary.totals.errors
-}
-
 async function requestValidated<T>(
   url: string,
   context: HealthResourceRequestContext,
@@ -166,7 +93,12 @@ export function useOverviewData(): UseOverviewDataResult {
   const agents = useOverviewAgentsData('24h')
   const interactions = useHealthResource<InteractionSummaryData>('/api/plugins/health/interaction-summary?window=1h', {
     intervalMs: INTERACTIONS_REFRESH_MS,
-    request: (url, context) => requestValidated(url, context, 'Interaction activity', isInteractionSummaryData),
+    request: (url, context) => requestValidated(
+      url,
+      context,
+      'Interaction activity',
+      (value): value is InteractionSummaryData => isInteractionSummaryResponse(value, '1h'),
+    ),
   })
   const contextReport = useHealthResource<ContextSummaryData>('/api/context-report', {
     intervalMs: OPERATIONS_REFRESH_MS,
