@@ -11,11 +11,11 @@
 - [ ] CHECKPOINT: suite green ✔ → live 3737 → Mark approves → merge
 
 ## PR2 — feat(schedule): first-class one-shot 'at' schedules
-- [ ] T6 Delete dead 'every' kind (XS)
-- [ ] T7 Engine: kind-aware eval, 'at' fires once, auto-disable + completed state (M)
-- [ ] T8 Server creation paths: NL parse, routes, exec tools, past-instant rejection (M)
-- [ ] T9 UI: one-time mode in schedule-input/job-form, completed display (M)
-- [ ] T10 Docs + schedule manifest bump (XS)
+- [x] T6 Delete dead 'every' kind (XS)
+- [x] T7 Engine: kind-aware eval, 'at' fires once, auto-disable + completed state (M)
+- [x] T8 Server creation paths: NL parse, routes, exec tools, past-instant rejection (M) — ParseResult now { kind, expr }
+- [x] T9 UI: one-time mode in schedule-input, completed display (M)
+- [x] T10 Docs (knowledge + stale README rewrite) + manifest 1.1.0 (XS)
 - [ ] CHECKPOINT: live one-shot end-to-end → Mark approves → merge
 
 ## PR3 — refactor(schedule): server-computed occurrences feed the calendars

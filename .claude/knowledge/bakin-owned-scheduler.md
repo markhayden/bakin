@@ -21,6 +21,38 @@ The fix: **Bakin owns scheduling for Bakin schedules.** OpenClaw cron is no long
 2. **Startup catch-up** (`runStartupCatchUp`): for each job take the SINGLE most-recent missed occurrence (coalescing a long outage to one task — no stale bursts). Within `catchUpWindowMinutes` → fire into **todo** (dispatches normally); older → create in **blocked** with reason `missed schedule window` (the exported `MISSED_WINDOW_REASON` constant) for the user to triage. The occurrence runId keeps this exactly-once and deduped against the steady tick. **The task is labeled by its occurrence date, not creation time** — a run missed on day *D* and caught up on *D+1* reads as *D*, so staleness is visible instead of masquerading as "today" (`runClaimedFire` derives the title/`{date}` from the threaded `firedAtMs`). The occurrence is an absolute instant, so the date is rendered in the **job's timezone** (`meta.tz`), not UTC — an evening run that crosses UTC midnight still reads as its local day.
 3. **Start the tick** (`startScheduler`): `setInterval` → `runSchedulerTick` then `healPendingCronClaims` (recovers a claim stranded by a crash between claim and task creation). `stopScheduler` on shutdown.
 
+## One-shot ('at') schedules (PR2 of #191, 2026-07-15)
+
+`ScheduleDef.kind` is `'cron' | 'at'` (the dead `'every'` kind was deleted —
+nothing ever produced it). An `'at'` expr is a **normalized ISO-8601
+instant**, tz-independent; the kind-aware eval layer in `cron-eval.ts`
+(`scheduleNextRun`/`schedulePrevRun`/`scheduleOccurrencesBetween`/
+`isValidScheduleDef`) treats it as exactly one occurrence, so one-shots
+inherit ALL the cron machinery: ledger exactly-once via the occurrence
+runId, catch-up into `todo` within the window, blocked triage beyond it.
+
+- **Completion:** when the single occurrence lands a task (including a
+  blocked catch-up — the occurrence is consumed either way), `runClaimedFire`
+  sets `enabled: false` + `completedAt`; `MergedJob.completed` drives the
+  "Completed" badge and `nextRun` is null forever. Run history preserved.
+  Editing a completed one-shot's schedule **re-arms** it (completedAt
+  cleared; the consumed occurrence stays in history). Edge: a paused
+  one-shot's occurrence is claim-consumed as a skip — visible in run
+  history; the job never auto-completes (it never ran).
+- **Parsing:** `ParseResult` is `{ kind, expr, human, … }` (the legacy
+  `cron` field is GONE — external `schedule.ensureBakinJob` hook callers get
+  `kind`/`expr` back). `parseSchedule(input, { now?, tz? })` anchors
+  wall-clock phrases to the JOB's tz with DST-safe zoned-instant math.
+  Deterministic one-shot vocabulary: `tomorrow/today at <time>`,
+  `in N minutes/hours/days`, `<weekday> at <time>` (next occurrence),
+  `<month> <day> [at <time>]` (rolls a year when passed; 9am default), and
+  ISO-8601 passthrough. There is NO LLM fallback (the old comment was
+  aspirational) — unmatched input errors honestly.
+- **Creation:** every path — REST create/update/adopt, `ensureBakinJob`,
+  exec tools (agents self-schedule reminders on any runtime), UI (Recurring/
+  One-time toggle + datetime-local picker) — persists `{ kind, expr }` and
+  **rejects past instants** with a clear error.
+
 ## Native OpenClaw crons (read-only)
 
 The crons the runtime/agents create for themselves are surfaced **read-only**. `lib/jobs-reader.ts` unions two sources: runtime crons (`cron.list()`) and store-owned Bakin schedules (synthesized from the stored schedule when they have no runtime cron). Mutating a non-Bakin job (PUT / pause / skip / delete, route + exec tool) is rejected with 403 / `ok:false` and guidance to **adopt** it first. `adopt` copies the expr into a Bakin schedule and removes the native cron; `restore-native` puts it back. The reader never auto-deletes a Bakin record (a read must not mutate the store) — only genuinely-orphaned non-Bakin sidecar entries are swept.
