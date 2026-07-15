@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { withDeadline } from '../lib/request-deadline'
 
 export type HealthResourceRefreshReason = 'initial' | 'background' | 'explicit' | 'stale' | 'reconcile'
 
@@ -70,37 +71,6 @@ async function requestJson<T>(url: string, signal: AbortSignal): Promise<T> {
   const response = await fetch(url, { signal })
   if (!response.ok) throw new Error(`Request failed (${response.status})`)
   return await response.json() as T
-}
-
-export function requestWithTimeout<T>(
-  request: Promise<T>,
-  timeoutMs: number | undefined,
-  onTimeout: () => void,
-): Promise<T> {
-  if (timeoutMs === undefined || timeoutMs <= 0) return request
-  return new Promise<T>((resolve, reject) => {
-    let settled = false
-    const timer = setTimeout(() => {
-      if (settled) return
-      settled = true
-      onTimeout()
-      reject(new Error(`Request timed out after ${timeoutMs}ms`))
-    }, timeoutMs)
-    void request.then(
-      (value) => {
-        if (settled) return
-        settled = true
-        clearTimeout(timer)
-        resolve(value)
-      },
-      (error: unknown) => {
-        if (settled) return
-        settled = true
-        clearTimeout(timer)
-        reject(error)
-      },
-    )
-  })
 }
 
 function requiresFreshSweep(reason: HealthResourceRefreshReason): boolean {
@@ -177,9 +147,11 @@ export function useHealthResource<T>(
           ? timeoutOption(reason)
           : timeoutOption
         const timeoutMs = configuredTimeout ?? DEFAULT_HEALTH_RESOURCE_TIMEOUT_MS
-        const next = await requestWithTimeout(pending, timeoutMs, () => {
-          timedOut = true
-          controller.abort()
+        const next = await withDeadline(pending, timeoutMs, {
+          onTimeout: () => {
+            timedOut = true
+            controller.abort()
+          },
         })
 
         if (!mountedRef.current || controller.signal.aborted || generation !== generationRef.current) {

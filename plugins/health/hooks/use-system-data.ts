@@ -14,6 +14,7 @@ import {
   type HealthResourceRequestContext,
   type UseHealthResourceResult,
 } from './use-health-resource'
+import { withDeadline } from '../lib/request-deadline'
 
 export const SYSTEM_REFRESH_MS = 60_000
 export const SYSTEM_REQUEST_TIMEOUT_MS = 15_000
@@ -98,43 +99,11 @@ function responseError(response: Response, body: unknown, fallback: string): Err
   return new Error(message)
 }
 
-function withSystemDeadline<T>(
-  pending: Promise<T>,
-  timeoutMs: number,
-  timeoutError: () => Error,
-  onTimeout: () => void = () => {},
-): Promise<T> {
-  if (timeoutMs <= 0) return pending
-  return new Promise<T>((resolve, reject) => {
-    let settled = false
-    const timer = setTimeout(() => {
-      if (settled) return
-      settled = true
-      onTimeout()
-      reject(timeoutError())
-    }, timeoutMs)
-    void pending.then(
-      (value) => {
-        if (settled) return
-        settled = true
-        clearTimeout(timer)
-        resolve(value)
-      },
-      (error: unknown) => {
-        if (settled) return
-        settled = true
-        clearTimeout(timer)
-        reject(error)
-      },
-    )
-  })
-}
-
 async function responseJsonWithTimeout(response: Response, timeoutMs: number): Promise<unknown> {
-  return await withSystemDeadline(
+  return await withDeadline(
     responseJson(response),
     timeoutMs,
-    () => new Error(`System response body timed out after ${timeoutMs}ms`),
+    { timeoutError: () => new Error(`System response body timed out after ${timeoutMs}ms`) },
   )
 }
 
@@ -157,10 +126,13 @@ async function fetchSystemJson(
   timeoutMs: number = SYSTEM_REQUEST_TIMEOUT_MS,
 ): Promise<{ response: Response; body: unknown }> {
   const controller = new AbortController()
-  return await withSystemDeadline((async () => {
+  return await withDeadline((async () => {
     const response = await fetch(url, { ...init, signal: controller.signal })
     return { response, body: await responseJson(response) }
-  })(), timeoutMs, () => new Error(`System request timed out after ${timeoutMs}ms`), () => controller.abort())
+  })(), timeoutMs, {
+    timeoutError: () => new Error(`System request timed out after ${timeoutMs}ms`),
+    onTimeout: () => controller.abort(),
+  })
 }
 
 async function fetchSystemMutation(
@@ -170,11 +142,13 @@ async function fetchSystemMutation(
   timeoutMessage: string,
 ): Promise<Response> {
   const controller = new AbortController()
-  return await withSystemDeadline(
+  return await withDeadline(
     fetch(url, { ...init, signal: controller.signal }),
     timeoutMs,
-    () => new SystemMutationOutcomeUnknownError(timeoutMessage),
-    () => controller.abort(),
+    {
+      timeoutError: () => new SystemMutationOutcomeUnknownError(timeoutMessage),
+      onTimeout: () => controller.abort(),
+    },
   )
 }
 

@@ -7,7 +7,7 @@ import { usePathname, useQueryState } from '@makinbakin/sdk/hooks'
 import { Button } from '@makinbakin/sdk/ui'
 import { RefreshCw } from 'lucide-react'
 import { useOverviewData } from '../hooks/use-overview-data'
-import { requestWithTimeout } from '../hooks/use-health-resource'
+import { withDeadline } from '../lib/request-deadline'
 import { ActivityTab } from './activity-tab'
 import { AgentsTab } from './agents-tab'
 import { OverviewTab } from './overview-tab'
@@ -126,7 +126,7 @@ export function HealthPage() {
           if (!report) throw new Error('Health checks did not return a report')
         } else {
           const controller = new AbortController()
-          await requestWithTimeout(
+          await withDeadline(
             (async () => {
               const response = await fetch('/api/plugins/health/doctor?fresh=true', {
                 signal: controller.signal,
@@ -135,7 +135,7 @@ export function HealthPage() {
               await response.json()
             })(),
             HEALTH_CHECKS_TIMEOUT_MS,
-            () => controller.abort(),
+            { onTimeout: () => controller.abort() },
           )
         }
         setAnnouncement('Health checks completed.')
