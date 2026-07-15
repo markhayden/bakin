@@ -108,6 +108,7 @@ describe('StackedColumnChart', () => {
         label="Usage over time"
         dataLabel="Usage over time data"
         partialKeys={['2026-07-02']}
+        missingValue="Unreported"
       />,
     )
 
@@ -115,6 +116,37 @@ describe('StackedColumnChart', () => {
     expect(screen.getByRole('img', { name: /Jul 2 \(in progress\)/ })).toBeDefined()
     expect(screen.getByRole('table', { name: 'Usage over time data', hidden: true })).toBeDefined()
     expect(screen.getByText('View Usage over time data')).toBeDefined()
+    expect(screen.getByRole('table', { name: 'Usage over time data', hidden: true }).textContent).toContain('Unreported')
+  })
+
+  it('announces and visibly marks a bucket with no reported values', () => {
+    render(
+      <StackedColumnChart
+        data={[
+          {
+            x: '2026-07-01',
+            xLabel: 'Jul 1',
+            values: { pixel: 100 },
+            missingLabels: { scout: 'No activity' },
+          },
+          { x: '2026-07-02', xLabel: 'Jul 2', values: {} },
+        ]}
+        seriesKeys={['pixel', 'scout']}
+        label="Reported cost over time"
+        dataLabel="Reported cost over time data"
+        missingValue="Unreported"
+        missingBucketLabel="Unreported"
+      />,
+    )
+
+    const missingBucket = screen.getByRole('img', { name: 'Jul 2: Unreported' })
+    expect(missingBucket.getAttribute('data-missing')).toBe('true')
+    fireEvent.focus(missingBucket)
+    expect(screen.getByRole('tooltip').textContent).toContain('Unreported')
+    expect(screen.getByRole('table', { name: 'Reported cost over time data', hidden: true }).textContent)
+      .toContain('Unreported')
+    expect(screen.getByRole('table', { name: 'Reported cost over time data', hidden: true }).textContent)
+      .toContain('No activity')
   })
 })
 

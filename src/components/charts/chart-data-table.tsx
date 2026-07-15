@@ -7,6 +7,8 @@ export interface ChartDatum {
   xLabel?: string
   /** Values keyed by `ChartSeries.key`. */
   values: Record<string, number>
+  /** Per-series labels for intentionally absent cells. */
+  missingLabels?: Record<string, string>
 }
 
 export interface ChartSeries {
@@ -21,6 +23,8 @@ export interface ChartDataTableProps {
   series: ChartSeries[]
   caption: string
   formatValue?: (value: number) => ReactNode
+  /** Rendered when a series has no value for a bucket; defaults to formatted zero. */
+  missingValue?: ReactNode
   /** Visually hide the exact table when the chart is intentionally compact. */
   visuallyHidden?: boolean
 }
@@ -43,6 +47,7 @@ export function ChartDataTable({
   series,
   caption,
   formatValue = (value) => value.toLocaleString(),
+  missingValue,
   visuallyHidden = false,
 }: ChartDataTableProps) {
   const table = (
@@ -66,7 +71,10 @@ export function ChartDataTable({
             </th>
             {series.map((item) => (
               <td key={item.key} className="px-2 py-1.5 text-right tabular-nums text-foreground">
-                {formatValue(Number.isFinite(datum.values[item.key]) ? datum.values[item.key]! : 0)}
+                {Number.isFinite(datum.values[item.key])
+                  ? formatValue(datum.values[item.key]!)
+                  : datum.missingLabels?.[item.key]
+                    ?? (missingValue === undefined ? formatValue(0) : missingValue)}
               </td>
             ))}
           </tr>
