@@ -193,25 +193,29 @@ describe('checkScheduleSync - runtime failures', () => {
 })
 
 describe('plugin registration', () => {
-  it('no longer registers the legacy schedule-sync / cron-wake health checks', async () => {
-    // Bakin owns scheduling now: a sync check whose repair re-created OpenClaw
-    // crons would reintroduce the double-fire, and the legacy main-session-wake
-    // repair is obsolete. Both registrations were removed (orphan-cron check
-    // arrives separately). This guards against either creeping back in.
+  interface RegisteredDef {
+    id: string
+    run: () => Promise<Array<{ status: string; message: string }>>
+    repair?: unknown
+  }
+
+  async function activateWithCtx(opts: { cron: boolean }): Promise<RegisteredDef[]> {
     const schedulePlugin = (await import('../../../plugins/schedule')).default
-    const registeredIds: string[] = []
+    const registered: RegisteredDef[] = []
     const noop = mock()
     const noopAsync = mock(async () => {})
     const ctx: Record<string, unknown> = {
       pluginId: 'schedule',
       runtime: {
         agents: { list: mock(async () => [{ id: 'main', name: 'Main', role: 'Orchestrator' }]) },
-        cron: { list: mock(async () => []), get: mock(async () => null), remove: noopAsync },
+        ...(opts.cron
+          ? { cron: { list: mock(async () => []), get: mock(async () => null), remove: noopAsync } }
+          : {}),
       },
       registerRoute: noop, registerExecTool: noop, registerNav: noop,
       registerSlot: noop, registerSkill: noop, registerWorkflow: noop,
       registerNodeType: noop, registerNotificationChannel: noop,
-      registerHealthCheck: (def: { id: string }) => { registeredIds.push(def.id); return `schedule.${def.id}` },
+      registerHealthCheck: (def: RegisteredDef) => { registered.push(def); return `schedule.${def.id}` },
       watchFiles: noop,
       getSettings: () => ({}),
       updateSettings: noop,
@@ -225,13 +229,40 @@ describe('plugin registration', () => {
       storage: {},
       events: { on: noop, emit: noop, off: noop },
     }
-    await schedulePlugin.activate(ctx as unknown as Parameters<typeof schedulePlugin.activate>[0])
-    schedulePlugin.onShutdown?.() // stop the scheduler interval started by activate
+    const plugin = schedulePlugin as { activate: (c: unknown) => Promise<void>; onShutdown?: () => void }
+    await plugin.activate(ctx)
+    plugin.onShutdown?.() // stop the scheduler interval started by activate
+    return registered
+  }
 
-    expect(registeredIds).not.toContain('schedule-sync')
-    expect(registeredIds).not.toContain('schedule-legacy-cron-wake')
-    // The cutover/migration check replaces them.
-    expect(registeredIds).toContain('schedule-cutover')
+  it('registers the schedule-sync orphan-cron check alongside schedule-cutover', async () => {
+    // schedule-sync detects native runtime crons invisible to Bakin's sidecar
+    // (e.g. created by an agent directly in the runtime). Its repair only
+    // writes requireTriage sidecar entries — it must NEVER write runtime cron
+    // state, which is what made the pre-#473 legacy sync check double-fire.
+    // The obsolete main-session-wake repair stays gone.
+    const registered = await activateWithCtx({ cron: true })
+    const ids = registered.map(d => d.id)
+
+    expect(ids).toContain('schedule-sync')
+    expect(ids).toContain('schedule-cutover')
+    expect(ids).not.toContain('schedule-legacy-cron-wake')
+
+    const sync = registered.find(d => d.id === 'schedule-sync')!
+    expect(sync.repair).toBeDefined()
+    const rows = await sync.run()
+    expect(rows.every(r => r.status === 'ok')).toBe(true)
+  })
+
+  it('registers schedule-sync as a no-op OK on cron-less runtimes (pi)', async () => {
+    const registered = await activateWithCtx({ cron: false })
+    const sync = registered.find(d => d.id === 'schedule-sync')
+    expect(sync).toBeDefined()
+    expect(sync!.repair).toBeUndefined()
+    const rows = await sync!.run()
+    expect(rows).toHaveLength(1)
+    expect(rows[0].status).toBe('ok')
+    expect(rows[0].message).toMatch(/no native cron/i)
   })
 })
 
