@@ -84,7 +84,13 @@ describe('useSystemData mutation reconciliation', () => {
       }
       if (url === '/api/plugins/health/search-status') return jsonResponse({ enabled: true, tables: [] })
       if (url === '/api/plugins/health/search-telemetry') {
-        return jsonResponse({ windows: { '1h': {}, '24h': {} }, outbox: { pending: 0, quarantined: 0 }, enrichment: null })
+        const emptyMetric = { count: 0, errors: 0, medianMs: null }
+        const emptyWindow = { query: emptyMetric, drain: emptyMetric, enrich: emptyMetric }
+        return jsonResponse({
+          windows: { '1h': emptyWindow, '24h': emptyWindow },
+          outbox: { pending: 0, quarantined: 0 },
+          enrichment: null,
+        })
       }
       if (url === '/api/plugins/health/registry') {
         return jsonResponse({ plugins: [{
@@ -116,5 +122,65 @@ describe('useSystemData mutation reconciliation', () => {
     failReconciliation = false
     await act(async () => { await result.current.refreshSystemDetails() })
     expect(result.current.pluginMutation.status).toBe('idle')
+  })
+})
+
+describe('useSystemData response validation', () => {
+  it('fails malformed nested Search and registry payloads honestly', async () => {
+    globalThis.fetch = mock(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url === '/api/plugins/health/doctor') return jsonResponse(healthReport())
+      if (url === '/api/plugins/health/summary') {
+        return jsonResponse({
+          errors1h: { total: 0, byKind: { mcp: 0, rest: 0, agent: 0 } },
+          activeSessions: [],
+          upSince: OBSERVED_AT,
+          server: null,
+        })
+      }
+      if (url === '/api/plugins/health/search-status') {
+        return jsonResponse({
+          enabled: true,
+          tables: [{
+            logical: 'bakin_assets', physical: 'bakin_assets_v1', schemaVersion: 1,
+            state: 'active', phase: null, pluginId: 'assets', docCount: 1,
+            lastIndexedAt: null, lastRebuildAt: null, journalPending: 0, healthy: true,
+            legs: [{ name: 'text', totalIndexed: -1, rebuilding: false }],
+          }],
+        })
+      }
+      if (url === '/api/plugins/health/search-telemetry') {
+        const malformedMetric = { count: 1, errors: 2, medianMs: 1 }
+        const malformedWindow = {
+          query: malformedMetric,
+          drain: { count: 0, errors: 0, medianMs: null },
+          enrich: { count: 0, errors: 0, medianMs: null },
+        }
+        return jsonResponse({
+          windows: { '1h': malformedWindow, '24h': malformedWindow },
+          outbox: { pending: 0, quarantined: 0 },
+          enrichment: null,
+        })
+      }
+      if (url === '/api/plugins/health/registry') {
+        return jsonResponse({ plugins: [{
+          id: 'broken', name: 'Broken', version: '1.0.0', description: 'Broken plugin.',
+          source: 'user', status: 'failed', routes: 0, missingDependencies: [42],
+        }] })
+      }
+      if (url.startsWith('/api/plugins/manifest')) return jsonResponse({ plugins: [] })
+      throw new Error(`Unexpected URL: ${url}`)
+    }) as unknown as typeof fetch
+
+    const { result } = renderHook(() => useSystemData())
+
+    await waitFor(() => {
+      expect(result.current.searchStatus.error).toBe('Search status returned an invalid response')
+      expect(result.current.searchTelemetry.error).toBe('Search telemetry returned an invalid response')
+      expect(result.current.registry.error).toBe('Plugin registry returned an invalid response')
+    })
+    expect(result.current.searchStatus.data).toBeNull()
+    expect(result.current.searchTelemetry.data).toBeNull()
+    expect(result.current.registry.data).toBeNull()
   })
 })

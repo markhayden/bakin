@@ -17,6 +17,10 @@ import type {
   InteractionCategory as CanonicalInteractionCategory,
   InteractionSummaryResponse,
 } from './lib/interaction-summary-route-schema'
+import type {
+  SearchStatusResponse,
+  SearchTelemetryResponse,
+} from './lib/system-route-schemas'
 
 export interface McpSessionInfo {
   agent: string
@@ -143,40 +147,17 @@ export interface HealthSummary {
 // Canonical shapes live in the SDK (services.ts) — re-exported here so the
 // page component and /search-status route keep one import site. The old
 // local duplicate drifted the moment the SDK gained freshness fields.
-import type { SearchHealthTable as SdkSearchHealthTable } from '@makinbakin/sdk'
 export type { SearchHealthIndex as SearchHealthLeg, SearchHealthTable } from '@makinbakin/sdk'
 
-export interface SearchHealthData {
-  enabled: boolean
-  outbox?: { pending: number; quarantined: number; oldestPendingAt: number | null }
-  tables: SdkSearchHealthTable[]
-}
-
-export interface SearchTelemetryWindow {
-  query: { count: number; errors: number; medianMs: number | null }
-  drain: { count: number; errors: number }
-  enrich: { count: number; errors: number }
-}
-
-export interface SearchEnrichmentCoverage {
-  total: number
-  enriched: number
-  missing: number
-  stale: number
-  failed: number
-  skipped: number
-}
-
-export interface SearchTelemetryData {
-  windows: Record<'1h' | '24h', SearchTelemetryWindow>
-  outbox: { pending: number; quarantined: number }
-  enrichment: {
-    depth?: number
-    running?: number
-    failedRecent?: number
-    coverage?: SearchEnrichmentCoverage
-  } | null
-}
+export type SearchHealthData = SearchStatusResponse
+export type SearchTelemetryWindow = SearchTelemetryResponse['windows']['1h']
+export type SearchEnrichmentCoverage = NonNullable<
+  NonNullable<SearchTelemetryResponse['enrichment']>['coverage']
+>
+export type SearchTelemetryData = Pick<
+  SearchTelemetryResponse,
+  'windows' | 'outbox' | 'enrichment'
+>
 
 export interface MeteredSpendData {
   totalUsdMicros: number

@@ -1,10 +1,10 @@
 'use client'
 
 import { useCallback, useState } from 'react'
+import type { ZodType } from 'zod'
 import type {
   HealthSummary,
   PluginManifestEntry,
-  RegistryData,
   SearchHealthData,
   SearchTelemetryData,
 } from '../types'
@@ -15,27 +15,20 @@ import {
   type UseHealthResourceResult,
 } from './use-health-resource'
 import { withDeadline } from '../lib/request-deadline'
+import {
+  searchReadinessResponseSchema,
+  searchStatusResponseSchema,
+  searchTelemetryClientResponseSchema,
+  systemRegistryResponseSchema,
+  type SystemRegistryData,
+  type SystemRegistryPlugin,
+} from '../lib/system-route-schemas'
+
+export type { SystemRegistryData, SystemRegistryPlugin }
 
 export const SYSTEM_REFRESH_MS = 60_000
 export const SYSTEM_REQUEST_TIMEOUT_MS = 15_000
 export const SYSTEM_MUTATION_OPERATION_TIMEOUT_MS = 5 * 60_000
-
-export interface SystemRegistryPlugin {
-  id: string
-  name: string
-  version: string
-  description: string
-  source: 'built-in' | 'user'
-  status: 'active' | 'failed'
-  routes: number
-  errorCode?: string
-  errorMessage?: string
-  missingDependencies?: string[]
-}
-
-export interface SystemRegistryData extends Omit<RegistryData, 'plugins'> {
-  plugins: SystemRegistryPlugin[]
-}
 
 export interface SystemPluginManifestEntry extends PluginManifestEntry {
   status?: 'active' | 'failed'
@@ -158,6 +151,27 @@ async function requestJson<T>(url: string, context: HealthResourceRequestContext
   if (!response.ok) throw responseError(response, body, 'Request failed')
   return body as T
 }
+
+async function requestValidated<T>(
+  url: string,
+  context: HealthResourceRequestContext,
+  label: string,
+  schema: ZodType<T>,
+): Promise<T> {
+  const body = await requestJson<unknown>(url, context)
+  const parsed = schema.safeParse(body)
+  if (!parsed.success) throw new Error(`${label} returned an invalid response`)
+  return parsed.data
+}
+
+const requestSearchStatus = (url: string, context: HealthResourceRequestContext) =>
+  requestValidated(url, context, 'Search status', searchStatusResponseSchema)
+
+const requestSearchTelemetry = (url: string, context: HealthResourceRequestContext) =>
+  requestValidated(url, context, 'Search telemetry', searchTelemetryClientResponseSchema)
+
+const requestRegistry = (url: string, context: HealthResourceRequestContext) =>
+  requestValidated(url, context, 'Plugin registry', systemRegistryResponseSchema)
 
 async function requestPluginManifest(
   url: string,
@@ -287,17 +301,17 @@ export function useSystemData(): UseSystemDataResult {
   const searchStatus = useHealthResource<SearchHealthData>('/api/plugins/health/search-status', {
     intervalMs: SYSTEM_REFRESH_MS,
     timeoutMs: SYSTEM_REQUEST_TIMEOUT_MS,
-    request: requestJson,
+    request: requestSearchStatus,
   })
   const searchTelemetry = useHealthResource<SearchTelemetryData>('/api/plugins/health/search-telemetry', {
     intervalMs: SYSTEM_REFRESH_MS,
     timeoutMs: SYSTEM_REQUEST_TIMEOUT_MS,
-    request: requestJson,
+    request: requestSearchTelemetry,
   })
   const registry = useHealthResource<SystemRegistryData>('/api/plugins/health/registry', {
     intervalMs: SYSTEM_REFRESH_MS,
     timeoutMs: SYSTEM_REQUEST_TIMEOUT_MS,
-    request: requestJson,
+    request: requestRegistry,
   })
   const pluginManifest = useHealthResource<SystemPluginManifestData>('/api/plugins/manifest', {
     intervalMs: SYSTEM_REFRESH_MS,
@@ -318,7 +332,7 @@ export function useSystemData(): UseSystemDataResult {
     if (!readinessResponse.ok) {
       throw responseError(readinessResponse, readinessBody, 'Search readiness refresh failed')
     }
-    if (!isRecord(readinessBody) || !isRecord(readinessBody.readiness)) {
+    if (!searchReadinessResponseSchema.safeParse(readinessBody).success) {
       throw new Error('Search readiness response was invalid')
     }
     await Promise.all([

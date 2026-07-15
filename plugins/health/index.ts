@@ -97,6 +97,11 @@ import {
   usageFeedResponseSchema,
 } from './lib/usage-feed-route-schema'
 import { interactionSummaryResponseSchema } from './lib/interaction-summary-route-schema'
+import {
+  searchStatusResponseSchema,
+  searchTelemetryResponseSchema,
+  systemRegistryResponseSchema,
+} from './lib/system-route-schemas'
 
 const log = createLogger('health')
 
@@ -195,15 +200,6 @@ const acceptedBody = z.object({
 const repairRequestParams = z.object({
   requestId: z.string().min(1),
 }).strict()
-
-const searchStatusResponse = z.object({
-  enabled: z.boolean(),
-  tables: z.array(passthrough),
-}).passthrough()
-
-const registryResponse = z.object({
-  plugins: z.array(passthrough),
-})
 
 // ─── Routes (declarative) ────────────────────────────────────────────────
 
@@ -314,7 +310,7 @@ const routes = [
     activityClass: 'routine',
     summary: 'Search adapter health',
     description: 'Returns search adapter readiness and per-table index stats.',
-    responses: { 200: searchStatusResponse },
+    responses: { 200: searchStatusResponseSchema },
     handler: async (_req, ctx) => {
       const health = ctx.search.health ? await ctx.search.health() : { enabled: false, tables: [] }
       return Response.json(health)
@@ -345,7 +341,7 @@ const routes = [
     activityClass: 'routine',
     summary: 'Search activity telemetry',
     description: 'Query/drain/enrichment activity, journal depth, and canonical Search evidence from the current Health report.',
-    responses: { 200: passthrough },
+    responses: { 200: searchTelemetryResponseSchema },
     handler: async () => {
       const { getUsageFeed } = await import('../../src/core/usage')
       const { outboxStats } = await import('../../src/core/search-outbox')
@@ -495,7 +491,7 @@ const routes = [
     activityClass: 'routine',
     summary: 'List registered plugins',
     description: 'Returns the plugin registry snapshot — installed plugin metadata and route counts.',
-    responses: { 200: registryResponse, 503: errorResponse },
+    responses: { 200: systemRegistryResponseSchema, 503: errorResponse },
     handler: async () => {
       try {
         return Response.json({ plugins: getRegistrySnapshot() })
