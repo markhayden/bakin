@@ -40,16 +40,24 @@ function summaryResponse(body: unknown) {
   return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } })
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((resolvePromise) => { resolve = resolvePromise })
+  return { promise, resolve }
+}
+
 describe('useHealthSummary', () => {
   it('counts unique non-advisory incidents and uses the urgent tone', async () => {
     fetchMock.mockResolvedValue(summaryResponse({ incidents: [
+      { id: 'action', disposition: 'action_required' },
       { id: 'action', disposition: 'action_required' },
       { id: 'watch', disposition: 'watch' },
       { id: 'advisory', disposition: 'advisory' },
     ] }))
     render(<Probe />)
     await waitFor(() => expect(screen.getByTestId('count').textContent).toBe('2:error'))
-    expect(fetchMock).toHaveBeenCalledWith('/api/plugins/health/doctor')
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/plugins/health/doctor')
+    expect(fetchMock.mock.calls[0]?.[1]?.signal).toBeInstanceOf(AbortSignal)
   })
 
   it('uses attention when only watch incidents remain', async () => {
@@ -89,5 +97,28 @@ describe('useHealthSummary', () => {
     // Value is retained (no throw, no reset to null).
     await waitFor(() => expect(fetchMock).toHaveBeenCalled())
     expect(screen.getByTestId('count').textContent).toBe('1:error')
+  })
+
+  it('supersedes an older request when a newer report event arrives', async () => {
+    const first = deferred<Response>()
+    fetchMock
+      .mockReturnValueOnce(first.promise)
+      .mockResolvedValueOnce(summaryResponse({ incidents: [
+        { id: 'action', disposition: 'action_required' },
+        { id: 'watch', disposition: 'watch' },
+      ] }))
+    render(<Probe />)
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    const firstSignal = fetchMock.mock.calls[0]?.[1]?.signal as AbortSignal
+
+    act(() => { emitPluginEvent({ event: 'health.report.changed' }) })
+    await waitFor(() => expect(screen.getByTestId('count').textContent).toBe('2:error'))
+    expect(firstSignal.aborted).toBe(true)
+
+    await act(async () => {
+      first.resolve(summaryResponse({ incidents: [{ id: 'old', disposition: 'watch' }] }))
+      await first.promise
+    })
+    expect(screen.getByTestId('count').textContent).toBe('2:error')
   })
 })
