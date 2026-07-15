@@ -10,10 +10,7 @@ import {
   type UseHealthResourceResult,
 } from './use-health-resource'
 import { withDeadline } from '../lib/request-deadline'
-import {
-  healthLiveSummaryClientSchema,
-  searchReadinessResponseSchema,
-} from '../lib/route-schemas'
+import { healthLiveSummaryClientSchema } from '../lib/route-schemas'
 import {
   searchStatusResponseSchema,
   searchTelemetryClientResponseSchema,
@@ -106,21 +103,6 @@ async function mutationResponseJson(
     if (response.ok) throw new SystemMutationOutcomeUnknownError(outcomeUnknownMessage)
     throw error
   }
-}
-
-async function fetchSystemJson(
-  url: string,
-  init: RequestInit = {},
-  timeoutMs: number = SYSTEM_REQUEST_TIMEOUT_MS,
-): Promise<{ response: Response; body: unknown }> {
-  const controller = new AbortController()
-  return await withDeadline((async () => {
-    const response = await fetch(url, { ...init, signal: controller.signal })
-    return { response, body: await responseJson(response) }
-  })(), timeoutMs, {
-    timeoutError: () => new Error(`System request timed out after ${timeoutMs}ms`),
-    onTimeout: () => controller.abort(),
-  })
 }
 
 async function fetchSystemMutation(
@@ -326,17 +308,11 @@ export function useSystemData(): UseSystemDataResult {
   const pluginManifestRefresh = pluginManifest.refresh
 
   const refreshCanonicalSearchReadiness = useCallback(async () => {
-    const { response: readinessResponse, body: readinessBody } = await fetchSystemJson('/api/plugins/health/search-readiness')
-    if (!readinessResponse.ok) {
-      throw responseError(readinessResponse, readinessBody, 'Search readiness refresh failed')
-    }
-    if (!searchReadinessResponseSchema.safeParse(readinessBody).success) {
-      throw new Error('Search readiness response was invalid')
-    }
+    const refreshedReport = await reportRefresh('explicit')
+    if (!refreshedReport) throw new Error('Search readiness refresh failed')
     await Promise.all([
       searchStatusRefresh('explicit'),
       searchTelemetryRefresh('explicit'),
-      reportRefresh('background'),
     ])
   }, [reportRefresh, searchStatusRefresh, searchTelemetryRefresh])
 

@@ -46,7 +46,7 @@
       {
         "method": "GET",
         "path": "/search-readiness",
-        "summary": "Refresh canonical Search readiness"
+        "summary": "Read canonical Search readiness"
       },
       {
         "method": "GET",

@@ -13,7 +13,7 @@ import {
 } from '@bakin/core/usage-history/store'
 import { listLiveRuns } from '../../src/core/execution-ledger'
 import { buildAgentBurnReports, getAgentBurnWindowScope } from '../../src/core/agent-burn'
-import { getLastReport, runDiagnostics, runTargetedDiagnostics } from '../../src/core/doctor'
+import { getLastReport, runDiagnostics } from '../../src/core/doctor'
 import { createLogger } from '../../src/core/logger'
 import { getAllAgentUsage } from '../../src/core/agent-usage'
 import {
@@ -322,15 +322,15 @@ const routes = [
     path: '/search-readiness',
     method: 'GET',
     activityClass: 'routine',
-    summary: 'Refresh Search readiness',
-    description: 'Refreshes the lightweight canonical Search source and returns the Search projection from the revised Health report.',
+    summary: 'Read canonical Search readiness',
+    description: 'Returns the cached canonical Search projection without executing diagnostics or maintenance.',
     responses: { 200: searchReadinessResponseSchema, 500: healthErrorResponseSchema },
     handler: async () => {
       try {
-        const report = await runTargetedDiagnostics(['health.search'])
+        const report = getLastReport()
         return Response.json({ reportId: report.id, readiness: report.subsystems.search })
       } catch (error) {
-        log.error('Search readiness refresh failed', error)
+        log.error('Search readiness read failed', error)
         return Response.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 })
       }
     },

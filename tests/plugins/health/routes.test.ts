@@ -408,15 +408,15 @@ describe('Health Plugin Routes', () => {
   })
 
   describe('GET /search-readiness', () => {
-    it('refreshes only the lightweight canonical Search check', async () => {
+    it('returns the cached canonical Search projection without executing diagnostics', async () => {
       const { runTargetedDiagnostics } = await import('../../../src/core/doctor')
       const route = findRoute(activated.routes, 'GET', '/search-readiness')!
       const { status, body } = await callRoute(route, activated.ctx)
 
       expect(status).toBe(200)
-      expect(body.reportId).toBe(freshReport.id)
+      expect(body.reportId).toBe(cachedReport.id)
       expect((body.readiness as { status: string }).status).toBe('healthy')
-      expect(runTargetedDiagnostics).toHaveBeenCalledWith(['health.search'])
+      expect(runTargetedDiagnostics).not.toHaveBeenCalled()
     })
   })
 
