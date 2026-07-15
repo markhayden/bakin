@@ -424,6 +424,22 @@ describe('OverviewTabView', () => {
     expect(remainder?.open).toBe(false)
   })
 
+  it('lets a single primary alert use the full available row', () => {
+    const issue = incident({
+      id: 'search',
+      status: 'error',
+      disposition: 'action_required',
+      title: 'Search index is missing',
+    })
+    const model = buildHealthOverviewViewModel({ report: report([issue], 'needs_attention'), now: NOW })
+
+    render(<OverviewTabView model={model} telemetry={dashboardTelemetry()} />)
+
+    const alerts = screen.getByTestId('overview-primary-alerts')
+    expect(alerts.className).not.toContain('grid-cols-2')
+    expect(alerts.className).not.toContain('grid-cols-3')
+  })
+
   it('keeps the all-agent total when the visual ranking is capped', () => {
     const telemetry = dashboardTelemetry()
     telemetry.history.data?.byAgent.push(

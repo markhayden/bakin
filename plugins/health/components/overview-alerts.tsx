@@ -46,10 +46,15 @@ function AlertGrid({
   onRepair?: (incident: HealthIncident) => void
   onRerun?: (incident: HealthIncident) => void
 }) {
+  const columnClasses = [
+    incidents.length > 1 && '@[36rem]/health:grid-cols-2',
+    incidents.length > 2 && '@[48rem]/health:grid-cols-3',
+  ].filter(Boolean).join(' ')
+
   return (
     <ul
       data-testid={testId}
-      className="grid gap-3 @[36rem]/health:grid-cols-2 @[48rem]/health:grid-cols-3"
+      className={`grid gap-3 ${columnClasses}`}
     >
       {incidents.map((item) => (
         <li key={item.incident.id} className="min-w-0">
