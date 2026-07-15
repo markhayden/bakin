@@ -669,6 +669,45 @@ export function findHealableCronClaims(olderThanMs: number, now?: number): CronF
   })
 }
 
+export interface PruneCronFiresOptions {
+  /** Rows with fired_at older than now − maxAgeMs are prune candidates. */
+  maxAgeMs: number
+  /** The newest N rows per job always survive (run-history floor). */
+  keepPerJob: number
+  /** Hard floor: nothing newer than now − minAgeMs is ever deleted, so a
+   *  re-claim inside the catch-up/dedup horizon still collides with its
+   *  original row even under a misconfigured maxAgeMs. */
+  minAgeMs: number
+  now?: number
+}
+
+/**
+ * Bound cron_fires growth. `pending` rows are untouchable — they are live
+ * claims the healer may still consume; only settled dispositions
+ * (created/skipped/seeded) past BOTH age bounds and outside the per-job
+ * keep window are deleted.
+ */
+export function pruneCronFires(opts: PruneCronFiresOptions): { pruned: number } {
+  return guard('pruneCronFires', () => {
+    const now = opts.now ?? Date.now()
+    const cutoff = now - Math.max(opts.maxAgeMs, opts.minAgeMs)
+    const result = ledger()
+      .prepare(
+        `DELETE FROM cron_fires
+         WHERE disposition != 'pending'
+           AND fired_at < ?1
+           AND rowid NOT IN (
+             SELECT keepers.rowid FROM cron_fires AS keepers
+             WHERE keepers.job_id = cron_fires.job_id
+             ORDER BY keepers.fired_at DESC
+             LIMIT ?2
+           )`,
+      )
+      .run(cutoff, opts.keepPerJob)
+    return { pruned: result.changes }
+  })
+}
+
 // ---------------------------------------------------------------------------
 // completions
 // ---------------------------------------------------------------------------
