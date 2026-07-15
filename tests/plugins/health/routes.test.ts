@@ -194,17 +194,30 @@ mock.module('../../../src/core/doctor-repair-store', () => ({
 }))
 
 mock.module('../../../src/core/agent-usage', () => ({
-  getAllAgentUsage: () => [
-    {
+  getAllAgentUsage: () => [{
+    agent: 'patch',
+    sessionId: 's1',
+    sessionStarted: '2026-04-01T00:00:00.000Z',
+    lastMessageAt: '2026-04-01T00:10:00.000Z',
+    model: 'claude-4',
+    messages: 10,
+    tokens: { input: 600, output: 200, cacheRead: 200, cacheWrite: 0, total: 1_000 },
+    cost: { input: null, output: null, cacheRead: null, cacheWrite: null, total: 0.05, source: 'runtime' },
+  }],
+  getAgentUsageSnapshot: () => ({
+    generatedAt: '2026-04-01T00:10:00.000Z',
+    source: { status: 'complete', reason: 'complete', failedAgents: [] },
+    sessions: [{
       agent: 'patch',
       sessionId: 's1',
       sessionStarted: '2026-04-01T00:00:00.000Z',
+      lastMessageAt: '2026-04-01T00:10:00.000Z',
       model: 'claude-4',
       messages: 10,
       tokens: { input: 600, output: 200, cacheRead: 200, cacheWrite: 0, total: 1_000 },
       cost: { input: null, output: null, cacheRead: null, cacheWrite: null, total: 0.05, source: 'runtime' },
-    },
-  ],
+    }],
+  }),
   // Consumed by the usage-history scanner, which rides the plugin's import
   // graph via the scan timer (#359).
   getSessionJsonlTierId: async () => null,
@@ -292,8 +305,8 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 
 describe('Health Plugin Routes', () => {
-  it('registers 20 routes', () => {
-    expect(activated.routes.length).toBe(20)
+  it('registers 21 routes', () => {
+    expect(activated.routes.length).toBe(21)
   })
 
   it('registers 2 exec tools', () => {
@@ -388,6 +401,20 @@ describe('Health Plugin Routes', () => {
       expect(Array.isArray(body)).toBe(true)
       const entries = body as unknown as Array<{ agent: string }>
       expect(entries[0].agent).toBe('patch')
+    })
+  })
+
+  describe('GET /usage-snapshot', () => {
+    it('qualifies latest-session traffic with source coverage', async () => {
+      const route = findRoute(activated.routes, 'GET', '/usage-snapshot')!
+      const { status, body } = await callRoute(route, activated.ctx)
+
+      expect(status).toBe(200)
+      expect(body.source).toEqual({ status: 'complete', reason: 'complete', failedAgents: [] })
+      expect(body.sessions).toEqual([expect.objectContaining({
+        agent: 'patch',
+        lastMessageAt: '2026-04-01T00:10:00.000Z',
+      })])
     })
   })
 

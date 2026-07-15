@@ -544,6 +544,8 @@ export interface AgentUsage {
   agent: string
   sessionId: string
   sessionStarted: string
+  /** Latest timestamp carried by an assistant usage message; absent on older servers. */
+  lastMessageAt?: string | null
   model: string
   messages: number
   tokens: {

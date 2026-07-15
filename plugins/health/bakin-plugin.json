@@ -60,6 +60,11 @@
       },
       {
         "method": "GET",
+        "path": "/usage-snapshot",
+        "summary": "Get evidence-qualified latest agent usage"
+      },
+      {
+        "method": "GET",
         "path": "/usage-history",
         "summary": "Get historical agent token usage"
       },

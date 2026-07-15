@@ -14,10 +14,10 @@ function formatBytes(value: number): string {
   return `${value} B`
 }
 
-function startedLabel(value: string): string {
+function sessionTimeLabel(value: string, verb: 'Active' | 'Started'): string {
   const relative = formatRelativeTime(value)
-  if (relative === 'now') return 'Started just now'
-  return /^\d+[mhd]$/.test(relative) ? `Started ${relative} ago` : `Started ${relative}`
+  if (relative === 'now') return `${verb} just now`
+  return /^\d+[mhd]$/.test(relative) ? `${verb} ${relative} ago` : `${verb} ${relative}`
 }
 
 export function OverviewContextTraffic({
@@ -168,17 +168,21 @@ export function OverviewContextTraffic({
               ))}
             </div>
             <div className="mt-2 space-y-1 border-t border-border/50 pt-2">
-              {latestSessions.slice(0, 2).map((session) => (
-                <div key={`${session.agent}:${session.sessionId}`} className="flex items-center justify-between gap-3 text-xs">
-                  <span className="min-w-0 text-muted-foreground">
-                    <span className="block truncate">{session.agent} · {session.model}</span>
-                    <time className="block text-[10px]" dateTime={session.sessionStarted} title={formatAbsoluteTime(session.sessionStarted)}>
-                      {startedLabel(session.sessionStarted)}
-                    </time>
-                  </span>
-                  <span className="shrink-0 font-medium tabular-nums text-foreground">{formatTokenCount(session.tokens.total)}</span>
-                </div>
-              ))}
+              {latestSessions.slice(0, 2).map((session) => {
+                const evidenceAt = session.lastMessageAt ?? session.sessionStarted
+                const verb = session.lastMessageAt ? 'Active' as const : 'Started' as const
+                return (
+                  <div key={`${session.agent}:${session.sessionId}`} className="flex items-center justify-between gap-3 text-xs">
+                    <span className="min-w-0 text-muted-foreground">
+                      <span className="block truncate">{session.agent} · {session.model}</span>
+                      <time className="block text-[10px]" dateTime={evidenceAt} title={formatAbsoluteTime(evidenceAt)}>
+                        {sessionTimeLabel(evidenceAt, verb)}
+                      </time>
+                    </span>
+                    <span className="shrink-0 font-medium tabular-nums text-foreground">{formatTokenCount(session.tokens.total)}</span>
+                  </div>
+                )
+              })}
             </div>
           </>
         )}

@@ -12,6 +12,27 @@ export type { AgentUsage }
 const log = createLogger('agent-usage')
 
 const SESSION_JSONL_SOURCE_KIND = 'session_jsonl'
+const AGENT_USAGE_READ_CONCURRENCY = 4
+
+export type AgentUsageSource = {
+  status: 'complete'
+  reason: 'complete'
+  failedAgents: []
+} | {
+  status: 'partial'
+  reason: 'session_read_failures'
+  failedAgents: string[]
+} | {
+  status: 'unavailable'
+  reason: 'transcript_source_unavailable' | 'agent_roster_unavailable'
+  failedAgents: []
+}
+
+export interface AgentUsageSnapshot {
+  generatedAt: string
+  source: AgentUsageSource
+  sessions: AgentUsage[]
+}
 
 export interface SessionUsageCost {
   input?: number
@@ -117,6 +138,7 @@ export function parseSessionUsageContent(content: string, agentName: string): Ag
 
     let model = ''
     let messageCount = 0
+    let lastMessageMs: number | null = null
     const tokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 }
     const costValues = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 }
     const costSeen = { input: false, output: false, cacheRead: false, cacheWrite: false, total: false }
@@ -124,6 +146,9 @@ export function parseSessionUsageContent(content: string, agentName: string): Ag
     for (const msg of messages) {
       messageCount++
       if (msg.model) model = msg.model
+      if (msg.tsMs !== null && (lastMessageMs === null || msg.tsMs > lastMessageMs)) {
+        lastMessageMs = msg.tsMs
+      }
 
       tokens.input += msg.tokens.input
       tokens.output += msg.tokens.output
@@ -145,6 +170,7 @@ export function parseSessionUsageContent(content: string, agentName: string): Ag
       agent: agentName,
       sessionId,
       sessionStarted,
+      lastMessageAt: lastMessageMs === null ? null : new Date(lastMessageMs).toISOString(),
       model,
       messages: messageCount,
       tokens,
@@ -198,31 +224,67 @@ function addCostField(
 }
 
 /**
- * Get usage stats for all agents' most recent sessions.
+ * Get an evidence-qualified snapshot of every agent's most recent session.
  */
-export async function getAllAgentUsage(runtime: AgentRuntimeAdapter): Promise<AgentUsage[]> {
-  const results: AgentUsage[] = []
+export async function getAgentUsageSnapshot(runtime: AgentRuntimeAdapter): Promise<AgentUsageSnapshot> {
+  const generatedAt = new Date().toISOString()
+  let tierId: string | null
+  try {
+    const tiers = await runtime.memory.listTiers()
+    tierId = tiers.find((tier) => tier.metadata?.sourceKind === SESSION_JSONL_SOURCE_KIND)?.id ?? null
+  } catch (err) {
+    log.debug('Failed to discover runtime session transcript tier for usage', {
+      error: err instanceof Error ? err.message : String(err),
+    })
+    tierId = null
+  }
+  if (!tierId) {
+    return {
+      generatedAt,
+      source: { status: 'unavailable', reason: 'transcript_source_unavailable', failedAgents: [] },
+      sessions: [],
+    }
+  }
 
-  const tierId = await getSessionJsonlTierId(runtime)
-  if (!tierId) return results
-
-  let agents
+  let agents: Awaited<ReturnType<AgentRuntimeAdapter['agents']['list']>>
   try {
     agents = await runtime.agents.list()
   } catch (err) {
-    log.debug('Failed to list runtime agents for usage', { error: err instanceof Error ? err.message : String(err) })
-    return results
+    log.debug('Failed to list runtime agents for usage', {
+      error: err instanceof Error ? err.message : String(err),
+    })
+    return {
+      generatedAt,
+      source: { status: 'unavailable', reason: 'agent_roster_unavailable', failedAgents: [] },
+      sessions: [],
+    }
   }
 
-  for (const agent of agents) {
+  const outcomes = await mapWithConcurrency(agents, AGENT_USAGE_READ_CONCURRENCY, async (agent) => {
     const latest = await getLatestSessionEntry(runtime, tierId, agent.id)
-    if (!latest) continue
+    return {
+      agent: agent.id,
+      failed: latest.failed,
+      usage: latest.entry ? parseSessionUsageContent(latest.entry.content, agent.id) : null,
+    }
+  })
+  const failedAgents = outcomes.filter((outcome) => outcome.failed).map((outcome) => outcome.agent).sort()
+  const sessions = outcomes
+    .flatMap((outcome) => outcome.usage ? [outcome.usage] : [])
+    .sort((a, b) => b.tokens.total - a.tokens.total || a.agent.localeCompare(b.agent))
 
-    const usage = parseSessionUsageContent(latest.content, agent.id)
-    if (usage) results.push(usage)
+  return {
+    generatedAt,
+    source: failedAgents.length > 0
+      ? { status: 'partial', reason: 'session_read_failures', failedAgents }
+      : { status: 'complete', reason: 'complete', failedAgents: [] },
+    sessions,
   }
+}
 
-  return results.sort((a, b) => b.tokens.total - a.tokens.total)
+/** Legacy array projection retained for existing Team and API consumers. */
+export async function getAllAgentUsage(runtime: AgentRuntimeAdapter): Promise<AgentUsage[]> {
+  return (await getAgentUsageSnapshot(runtime)).sessions
 }
 
 /** Discover the runtime's session-transcript memory tier (shared with the usage-history scanner). */
@@ -240,31 +302,77 @@ async function getLatestSessionEntry(
   runtime: AgentRuntimeAdapter,
   tierId: string,
   agentId: string,
-): Promise<RuntimeMemoryEntry | null> {
+): Promise<{ entry: RuntimeMemoryEntry | null; failed: boolean }> {
   let entries: RuntimeMemoryEntry[]
   try {
     entries = await runtime.memory.listEntries(tierId, { agentId })
   } catch (err) {
     log.debug('Failed to list runtime sessions for usage', { agentId, error: err instanceof Error ? err.message : String(err) })
-    return null
+    return { entry: null, failed: true }
   }
 
+  const candidates = entries.filter((entry) =>
+    !entry.id.includes('.deleted') && !entry.path?.includes('.deleted'))
+  if (candidates.length === 0) return { entry: null, failed: false }
+
+  const metadataRanked = candidates
+    .map((entry) => ({ entry, ts: timestampMs(entry.updatedAt) }))
+    .filter((candidate): candidate is { entry: RuntimeMemoryEntry; ts: number } => candidate.ts !== null)
+    .sort((left, right) => right.ts - left.ts || left.entry.id.localeCompare(right.entry.id))
+  if (metadataRanked.length === candidates.length) {
+    const selected = metadataRanked[0].entry
+    try {
+      const full = await runtime.memory.getEntry(tierId, selected.id, { agentId })
+      return { entry: full, failed: full === null }
+    } catch (err) {
+      log.debug('Failed to read runtime session for usage', {
+        agentId,
+        sessionId: selected.id,
+        error: err instanceof Error ? err.message : String(err),
+      })
+      return { entry: null, failed: true }
+    }
+  }
+
+  // Compatibility fallback for adapters that do not yet publish lightweight
+  // entry timestamps. Current bundled adapters avoid this exhaustive path.
   let latest: { entry: RuntimeMemoryEntry; ts: number } | null = null
-  for (const entry of entries) {
-    if (entry.id.includes('.deleted') || entry.path?.includes('.deleted')) continue
+  let failed = false
+  for (const entry of candidates) {
     let full: RuntimeMemoryEntry | null
     try {
       full = await runtime.memory.getEntry(tierId, entry.id, { agentId })
     } catch (err) {
       log.debug('Failed to read runtime session for usage', { agentId, sessionId: entry.id, error: err instanceof Error ? err.message : String(err) })
+      failed = true
       continue
     }
-    if (!full) continue
+    if (!full) {
+      failed = true
+      continue
+    }
     const ts = sessionTimestamp(full.content) ?? timestampMs(full.updatedAt) ?? timestampMs(entry.updatedAt) ?? 0
     if (!latest || ts > latest.ts) latest = { entry: full, ts }
   }
 
-  return latest?.entry ?? null
+  return { entry: latest?.entry ?? null, failed }
+}
+
+async function mapWithConcurrency<T, R>(
+  values: readonly T[],
+  concurrency: number,
+  map: (value: T) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(values.length)
+  let next = 0
+  const workers = Array.from({ length: Math.min(values.length, concurrency) }, async () => {
+    while (next < values.length) {
+      const index = next++
+      results[index] = await map(values[index])
+    }
+  })
+  await Promise.all(workers)
+  return results
 }
 
 function sessionTimestamp(content: string): number | null {

@@ -33,6 +33,7 @@ export interface AgentPulseProps {
   pending: AgentPulsePending
   unavailable: AgentPulsePending
   errors: string[]
+  latestSessionFailedAgents?: string[]
   liveNowStale?: boolean
   onRetry: () => void
 }
@@ -306,6 +307,7 @@ export function AgentPulse({
   pending,
   unavailable,
   errors,
+  latestSessionFailedAgents = [],
   liveNowStale = false,
   onRetry,
 }: AgentPulseProps) {
@@ -323,6 +325,7 @@ export function AgentPulse({
   const mixedEvidence = rows.some((row) => !row.evidenceAligned && row.effort && row.history)
   const loading = Object.values(pending).some(Boolean)
   const error = errors.length > 0 ? errors.join('; ') : null
+  const failedLatestSessions = new Set(latestSessionFailedAgents)
 
   return (
     <SectionCard
@@ -368,7 +371,9 @@ export function AgentPulse({
                 row={row}
                 expanded={expandedAgent === row.agent}
                 pending={pending}
-                unavailable={unavailable}
+                unavailable={failedLatestSessions.has(row.agent)
+                  ? { ...unavailable, latestSessions: true }
+                  : unavailable}
                 liveNowStale={liveNowStale}
                 onToggle={() => setExpandedAgent((current) => current === row.agent ? null : row.agent)}
               />

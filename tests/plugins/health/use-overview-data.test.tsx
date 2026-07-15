@@ -102,7 +102,13 @@ describe('useOverviewData', () => {
       if (url === '/api/plugins/health/agent-effort?window=24h') {
         return jsonResponse({ window: '24h', scannedAt: OBSERVED_AT, agents: [] })
       }
-      if (url === '/api/plugins/health/usage') return jsonResponse([])
+      if (url === '/api/plugins/health/usage-snapshot') {
+        return jsonResponse({
+          generatedAt: OBSERVED_AT,
+          source: { status: 'complete', reason: 'complete', failedAgents: [] },
+          sessions: [],
+        })
+      }
       if (url === '/api/plugins/health/interaction-summary?window=1h') {
         const payload = {
           window: '1h',
@@ -158,7 +164,7 @@ describe('useOverviewData', () => {
       '/api/plugins/health/live-now',
       '/api/plugins/health/search-readiness',
       '/api/plugins/health/usage-history?window=24h',
-      '/api/plugins/health/usage',
+      '/api/plugins/health/usage-snapshot',
       '/api/plugins/health/interaction-summary?window=1h',
       '/api/context-report',
       '/api/settings',

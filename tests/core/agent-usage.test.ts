@@ -21,7 +21,12 @@ const contentDirMock = () => ({
 mock.module('../../src/core/content-dir', contentDirMock)
 mock.module('../../packages/core/src/content-dir', contentDirMock)
 
-import { getAllAgentUsage, parseSessionUsageContent, parseSessionUsageMessages } from '../../src/core/agent-usage'
+import {
+  getAgentUsageSnapshot,
+  getAllAgentUsage,
+  parseSessionUsageContent,
+  parseSessionUsageMessages,
+} from '../../src/core/agent-usage'
 
 interface FixtureSession {
   agentId: string
@@ -410,6 +415,87 @@ describe('getAllAgentUsage', () => {
     const result = await getAllAgentUsage(makeRuntime())
     expect(result).toHaveLength(1)
     expect(result[0].messages).toBe(1)
+  })
+})
+
+describe('getAgentUsageSnapshot', () => {
+  it('reports an unavailable transcript source instead of an empty complete fleet', async () => {
+    const runtime = makeRuntime()
+    runtime.memory.listTiers = async () => { throw new Error('runtime offline') }
+
+    const snapshot = await getAgentUsageSnapshot(runtime)
+
+    expect(snapshot.sessions).toEqual([])
+    expect(snapshot.source).toEqual({
+      status: 'unavailable',
+      reason: 'transcript_source_unavailable',
+      failedAgents: [],
+    })
+  })
+
+  it('reports an unavailable agent roster instead of no activity', async () => {
+    const runtime = makeRuntime()
+    runtime.agents.list = async () => { throw new Error('roster offline') }
+
+    const snapshot = await getAgentUsageSnapshot(runtime)
+
+    expect(snapshot.sessions).toEqual([])
+    expect(snapshot.source).toEqual({
+      status: 'unavailable',
+      reason: 'agent_roster_unavailable',
+      failedAgents: [],
+    })
+  })
+
+  it('keeps successful agents while naming agents whose session evidence failed', async () => {
+    writeSession('alpha', 'alpha.jsonl', [
+      { type: 'session', id: 'alpha-session', timestamp: '2026-07-15T10:00:00Z' },
+      { type: 'message', timestamp: '2026-07-15T10:01:00Z', message: { role: 'assistant', model: 'm1', usage: { input: 10, output: 2 } } },
+    ], { updatedAt: '2026-07-15T10:01:00Z' })
+    writeSession('beta', 'beta.jsonl', [
+      { type: 'session', id: 'beta-session', timestamp: '2026-07-15T10:00:00Z' },
+      { type: 'message', timestamp: '2026-07-15T10:02:00Z', message: { role: 'assistant', model: 'm1', usage: { input: 20, output: 4 } } },
+    ], { updatedAt: '2026-07-15T10:02:00Z' })
+    const runtime = makeRuntime()
+    const read = runtime.memory.getEntry.bind(runtime.memory)
+    runtime.memory.getEntry = async (tierId, id, opts) => {
+      if (opts?.agentId === 'beta') throw new Error('cannot read beta')
+      return await read(tierId, id, opts)
+    }
+
+    const snapshot = await getAgentUsageSnapshot(runtime)
+
+    expect(snapshot.sessions.map((row) => row.agent)).toEqual(['alpha'])
+    expect(snapshot.source).toEqual({
+      status: 'partial',
+      reason: 'session_read_failures',
+      failedAgents: ['beta'],
+    })
+  })
+
+  it('selects from listing metadata and reads only the newest full transcript', async () => {
+    writeSession('alpha', 'old.jsonl', [
+      { type: 'session', id: 'old-session', timestamp: '2026-07-15T12:00:00Z' },
+      { type: 'message', timestamp: '2026-07-15T12:01:00Z', message: { role: 'assistant', model: 'old', usage: { input: 100, output: 0 } } },
+    ], { updatedAt: '2026-07-15T12:01:00Z' })
+    writeSession('alpha', 'active.jsonl', [
+      { type: 'session', id: 'active-session', timestamp: '2026-07-14T12:00:00Z' },
+      { type: 'message', timestamp: '2026-07-15T13:01:00Z', message: { role: 'assistant', model: 'active', usage: { input: 200, output: 0 } } },
+    ], { updatedAt: '2026-07-15T13:01:00Z' })
+    const runtime = makeRuntime()
+    const read = runtime.memory.getEntry.bind(runtime.memory)
+    const getEntry = mock(async (...args: Parameters<typeof runtime.memory.getEntry>) => await read(...args))
+    runtime.memory.getEntry = getEntry
+
+    const snapshot = await getAgentUsageSnapshot(runtime)
+
+    expect(getEntry).toHaveBeenCalledTimes(1)
+    expect(snapshot.sessions[0]).toMatchObject({
+      sessionId: 'active-session',
+      model: 'active',
+      lastMessageAt: '2026-07-15T13:01:00.000Z',
+    })
+    expect(snapshot.source.status).toBe('complete')
   })
 })
 

@@ -172,18 +172,22 @@ function stubAgentFetch() {
       const window = new URL(url, 'http://localhost').searchParams.get('window') as '24h' | '7d' | '30d'
       return Promise.resolve(jsonResponse(effort(window)))
     }
-    if (url === '/api/plugins/health/usage') {
-      return Promise.resolve(jsonResponse([
-        {
-          agent: 'pixel',
-          sessionId: 'session-pixel',
-          sessionStarted: '2026-07-13T11:00:00.000Z',
-          model: 'gpt-5.4',
-          messages: 8,
-          tokens: { input: 600, output: 200, cacheRead: 400, cacheWrite: 0, total: 1_200 },
-          cost: { input: null, output: null, cacheRead: null, cacheWrite: null, total: null, source: 'unavailable' },
-        },
-      ]))
+    if (url === '/api/plugins/health/usage-snapshot' || url === '/api/plugins/health/usage') {
+      const sessions = [{
+        agent: 'pixel',
+        sessionId: 'session-pixel',
+        sessionStarted: '2026-07-13T11:00:00.000Z',
+        lastMessageAt: '2026-07-13T11:05:00.000Z',
+        model: 'gpt-5.4',
+        messages: 8,
+        tokens: { input: 600, output: 200, cacheRead: 400, cacheWrite: 0, total: 1_200 },
+        cost: { input: null, output: null, cacheRead: null, cacheWrite: null, total: null, source: 'unavailable' },
+      }]
+      return Promise.resolve(jsonResponse(url.endsWith('usage-snapshot') ? {
+        generatedAt: '2026-07-13T12:00:00.000Z',
+        source: { status: 'complete', reason: 'complete', failedAgents: [] },
+        sessions,
+      } : sessions))
     }
     if (url === '/api/plugins/health/live-now') {
       return Promise.resolve(jsonResponse({
@@ -468,7 +472,7 @@ describe('AgentsTab', () => {
     const { fetchMock } = stubAgentFetch()
     globalThis.fetch = mock((input: string | URL | Request) => {
       const url = String(input)
-      if (url === '/api/plugins/health/live-now' || url === '/api/plugins/health/usage') {
+      if (url === '/api/plugins/health/live-now' || url === '/api/plugins/health/usage-snapshot') {
         return Promise.resolve(jsonResponse({ error: 'Unavailable' }, 503))
       }
       return fetchMock(input)
@@ -486,6 +490,80 @@ describe('AgentsTab', () => {
 
     fireEvent.click(within(main).getByRole('button', { name: /main.*details/i }))
     expect(main.textContent).toContain('Latest-session detail is unavailable')
+  })
+
+  it('treats a successful unavailable-source envelope as unavailable evidence', async () => {
+    const { fetchMock } = stubAgentFetch()
+    globalThis.fetch = mock((input: string | URL | Request) => {
+      if (String(input) === '/api/plugins/health/usage-snapshot') {
+        return Promise.resolve(jsonResponse({
+          generatedAt: '2026-07-13T12:00:00.000Z',
+          source: { status: 'unavailable', reason: 'transcript_source_unavailable', failedAgents: [] },
+          sessions: [],
+        }))
+      }
+      return fetchMock(input)
+    }) as unknown as typeof fetch
+
+    render(<AgentsTab />)
+
+    await waitFor(() => expect(agentRow(agentSurface(), 'pixel')).toBeDefined())
+    expect(agentSurface().textContent).toContain('The runtime transcript source is unavailable.')
+    const pixel = agentRow(agentSurface(), 'pixel')
+    fireEvent.click(within(pixel).getByRole('button', { name: /pixel.*details/i }))
+    expect(pixel.textContent).toContain('Latest-session detail is unavailable')
+    expect(pixel.textContent).not.toContain('No latest-session token breakdown')
+  })
+
+  it('keeps partial session data while identifying the agents whose reads failed', async () => {
+    const { fetchMock } = stubAgentFetch()
+    globalThis.fetch = mock((input: string | URL | Request) => {
+      if (String(input) === '/api/plugins/health/usage-snapshot') {
+        return Promise.resolve(jsonResponse({
+          generatedAt: '2026-07-13T12:00:00.000Z',
+          source: { status: 'partial', reason: 'session_read_failures', failedAgents: ['scout'] },
+          sessions: [{
+            agent: 'pixel', sessionId: 'session-pixel',
+            sessionStarted: '2026-07-13T11:00:00.000Z', lastMessageAt: '2026-07-13T11:05:00.000Z',
+            model: 'gpt-5.4', messages: 8,
+            tokens: { input: 600, output: 200, cacheRead: 400, cacheWrite: 0, total: 1_200 },
+            cost: { input: null, output: null, cacheRead: null, cacheWrite: null, total: null, source: 'unavailable' },
+          }],
+        }))
+      }
+      return fetchMock(input)
+    }) as unknown as typeof fetch
+
+    render(<AgentsTab />)
+
+    await waitFor(() => expect(screen.getByText(/Latest-session evidence is partial for scout/)).toBeDefined())
+    const scout = agentRow(agentSurface(), 'scout')
+    fireEvent.click(within(scout).getByRole('button', { name: /scout.*details/i }))
+    expect(scout.textContent).toContain('Latest-session detail is unavailable')
+
+    const pixel = agentRow(agentSurface(), 'pixel')
+    fireEvent.click(within(pixel).getByRole('button', { name: /pixel.*details/i }))
+    expect(pixel.textContent).toContain('600')
+    expect(pixel.textContent).not.toContain('Latest-session detail is unavailable')
+  })
+
+  it('falls back to the legacy session array during a rolling server upgrade', async () => {
+    const { fetchMock, urls } = stubAgentFetch()
+    globalThis.fetch = mock((input: string | URL | Request) => {
+      if (String(input) === '/api/plugins/health/usage-snapshot') {
+        return Promise.resolve(jsonResponse({ error: 'Not found' }, 404))
+      }
+      return fetchMock(input)
+    }) as unknown as typeof fetch
+
+    render(<AgentsTab />)
+
+    await waitFor(() => expect(agentRow(agentSurface(), 'pixel')).toBeDefined())
+    expect(urls).toContain('/api/plugins/health/usage')
+    expect(screen.getByText(/Latest-session coverage cannot be verified until Bakin is restarted/)).toBeDefined()
+    const pixel = agentRow(agentSurface(), 'pixel')
+    fireEvent.click(within(pixel).getByRole('button', { name: /pixel.*details/i }))
+    expect(pixel.textContent).toContain('600')
   })
 
   it('does not turn a stale empty live snapshot into a current zero', () => {

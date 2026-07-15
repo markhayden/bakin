@@ -15,7 +15,7 @@ import { listLiveRuns } from '../../src/core/execution-ledger'
 import { buildAgentBurnReports, getAgentBurnWindowScope } from '../../src/core/agent-burn'
 import { getLastReport, runDiagnostics } from '../../src/core/doctor'
 import { createLogger } from '../../src/core/logger'
-import { getAllAgentUsage } from '../../src/core/agent-usage'
+import { getAgentUsageSnapshot, getAllAgentUsage } from '../../src/core/agent-usage'
 import {
   startUsageHistoryTimer,
   stopUsageHistoryTimer,
@@ -72,6 +72,7 @@ import { checkPluginArtifacts } from './lib/system-checks/plugin-artifacts'
 import { checkPluginRegistry } from './lib/system-checks/plugin-registry'
 import {
   agentEffortResponseSchema,
+  agentUsageSnapshotResponseSchema,
   agentUsageResponseSchema,
   agentWindowQuerySchema,
   usageHistoryResponseSchema,
@@ -428,6 +429,18 @@ const routes = [
     responses: { 200: agentUsageResponseSchema },
     handler: async (_req, ctx) => {
       return Response.json(await getAllAgentUsage(ctx.runtime))
+    },
+  }),
+
+  defineRoute({
+    path: '/usage-snapshot',
+    method: 'GET',
+    activityClass: 'routine',
+    summary: 'Evidence-qualified latest agent usage',
+    description: 'Returns latest-session token traffic with explicit transcript-source coverage and per-agent read failures.',
+    responses: { 200: agentUsageSnapshotResponseSchema },
+    handler: async (_req, ctx) => {
+      return Response.json(await getAgentUsageSnapshot(ctx.runtime))
     },
   }),
 

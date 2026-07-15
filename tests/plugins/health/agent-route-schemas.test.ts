@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'bun:test'
 import {
   agentEffortResponseSchema,
+  agentUsageSnapshotResponseSchema,
   agentUsageResponseSchema,
   isAgentEffortResponse,
+  isAgentUsageResponse,
   isUsageHistoryResponse,
   usageHistoryResponseSchema,
 } from '../../../plugins/health/lib/agent-route-schemas'
@@ -40,10 +42,23 @@ function effort(window: '24h' | '7d' | '30d' = '24h') {
 }
 
 describe('Agents route schemas', () => {
-  it('documents and accepts the complete legacy-compatible wire shapes', () => {
+  it('documents and accepts the complete current wire shapes', () => {
     expect(usageHistoryResponseSchema.safeParse(history()).success).toBe(true)
     expect(agentEffortResponseSchema.safeParse(effort()).success).toBe(true)
     expect(agentUsageResponseSchema.safeParse([{
+      agent: 'main',
+      sessionId: 'session-1',
+      sessionStarted: '2026-07-14T17:00:00.000Z',
+      lastMessageAt: '2026-07-14T17:05:00.000Z',
+      model: 'gpt-test',
+      messages: 1,
+      tokens,
+      cost: { input: null, output: null, cacheRead: null, cacheWrite: null, total: null, source: 'unavailable' },
+    }]).success).toBe(true)
+  })
+
+  it('qualifies session snapshots while accepting a legacy session row in the browser', () => {
+    const legacySession = {
       agent: 'main',
       sessionId: 'session-1',
       sessionStarted: '2026-07-14T17:00:00.000Z',
@@ -51,7 +66,18 @@ describe('Agents route schemas', () => {
       messages: 1,
       tokens,
       cost: { input: null, output: null, cacheRead: null, cacheWrite: null, total: null, source: 'unavailable' },
-    }]).success).toBe(true)
+    }
+    expect(isAgentUsageResponse([legacySession])).toBe(true)
+    expect(agentUsageSnapshotResponseSchema.safeParse({
+      generatedAt: '2026-07-14T18:00:00.000Z',
+      source: { status: 'complete', reason: 'complete', failedAgents: [] },
+      sessions: [{ ...legacySession, lastMessageAt: '2026-07-14T17:05:00.000Z' }],
+    }).success).toBe(true)
+    expect(agentUsageSnapshotResponseSchema.safeParse({
+      generatedAt: '2026-07-14T18:00:00.000Z',
+      source: { status: 'unavailable', reason: 'transcript_source_unavailable', failedAgents: [] },
+      sessions: [{ ...legacySession, lastMessageAt: '2026-07-14T17:05:00.000Z' }],
+    }).success).toBe(false)
   })
 
   it('accepts additive per-agent evidence coverage while retaining legacy payloads', () => {

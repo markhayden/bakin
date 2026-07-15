@@ -144,7 +144,7 @@ export const agentEffortResponseSchema = z.object({
 }).strict()
 
 const nullableRuntimeCost = z.number().nonnegative().nullable()
-const agentUsageSchema = z.object({
+const agentUsageBaseSchema = z.object({
   agent: z.string().min(1),
   sessionId: z.string(),
   sessionStarted: z.union([timestampSchema, z.literal('')]),
@@ -161,7 +161,60 @@ const agentUsageSchema = z.object({
   }).strict(),
 }).strict()
 
+const agentUsageSchema = agentUsageBaseSchema.extend({
+  lastMessageAt: timestampSchema.nullable(),
+}).strict()
+
 export const agentUsageResponseSchema = z.array(agentUsageSchema)
+export const agentUsageClientResponseSchema = z.array(z.union([
+  agentUsageSchema,
+  agentUsageBaseSchema.extend({ lastMessageAt: timestampSchema.nullable().optional() }).strict(),
+]))
+
+const agentUsageSourceSchema = z.discriminatedUnion('status', [
+  z.object({
+    status: z.literal('complete'),
+    reason: z.literal('complete'),
+    failedAgents: z.tuple([]),
+  }).strict(),
+  z.object({
+    status: z.literal('partial'),
+    reason: z.literal('session_read_failures'),
+    failedAgents: z.array(z.string().min(1)).min(1),
+  }).strict(),
+  z.object({
+    status: z.literal('unavailable'),
+    reason: z.enum(['transcript_source_unavailable', 'agent_roster_unavailable']),
+    failedAgents: z.tuple([]),
+  }).strict(),
+])
+
+export const agentUsageSnapshotResponseSchema = z.object({
+  generatedAt: timestampSchema,
+  source: agentUsageSourceSchema,
+  sessions: agentUsageResponseSchema,
+}).strict().superRefine((snapshot, context) => {
+  if (snapshot.source.status === 'unavailable' && snapshot.sessions.length > 0) {
+    context.addIssue({
+      code: 'custom',
+      path: ['sessions'],
+      message: 'Unavailable usage evidence cannot include sessions',
+      input: snapshot.sessions,
+    })
+  }
+  const sessionAgents = new Set(snapshot.sessions.map((session) => session.agent))
+  const duplicateFailedAgent = snapshot.source.failedAgents.find((agent) => sessionAgents.has(agent))
+  if (duplicateFailedAgent) {
+    context.addIssue({
+      code: 'custom',
+      path: ['source', 'failedAgents'],
+      message: 'A failed agent cannot also publish a current session',
+      input: duplicateFailedAgent,
+    })
+  }
+})
+
+export type AgentUsageSnapshotData = z.output<typeof agentUsageSnapshotResponseSchema>
 
 export function isUsageHistoryResponse(
   value: unknown,
@@ -180,5 +233,9 @@ export function isAgentEffortResponse(
 }
 
 export function isAgentUsageResponse(value: unknown): value is AgentUsage[] {
-  return agentUsageResponseSchema.safeParse(value).success
+  return agentUsageClientResponseSchema.safeParse(value).success
+}
+
+export function isAgentUsageSnapshotResponse(value: unknown): value is AgentUsageSnapshotData {
+  return agentUsageSnapshotResponseSchema.safeParse(value).success
 }

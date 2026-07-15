@@ -52,7 +52,7 @@ export function AgentsTab() {
 
       {backgroundErrors.length > 0 && (
         <p role="status" className="text-xs text-warning-foreground">
-          Showing the last loaded agent data; {backgroundErrors.length === 1 ? backgroundErrors[0] : `${backgroundErrors.length} background refreshes failed`}.
+          Some agent evidence is incomplete: {backgroundErrors.length === 1 ? backgroundErrors[0] : `${backgroundErrors.length} sources could not be fully verified`}.
         </p>
       )}
 
@@ -87,6 +87,9 @@ export function AgentsTab() {
           operations.contextReport.error,
           operations.settings.error,
         ].filter((message): message is string => Boolean(message))}
+        latestSessionFailedAgents={resources.latestSessionSource?.status === 'partial'
+          ? resources.latestSessionSource.failedAgents
+          : []}
         liveNowStale={operations.liveNow.stale === true}
         onRetry={() => { void Promise.all([resources.refresh(), operations.refresh()]) }}
       />
