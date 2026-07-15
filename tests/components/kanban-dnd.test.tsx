@@ -1,12 +1,13 @@
 /**
- * Ran in the parallel suite. Historically raced on CI's 2-vCPU runners
- * despite per-file isolation (#638), the rtl-settle scheduler-drain +
- * act-unmount hook (#640), and the removal of inner-hook cleanup preemption
- * (#643): the post-persist refetch's time-sliced re-render could still be
- * pending when rtl-settle unmounted. Fixed (#650) by draining to
- * FETCH-QUIESCENCE in this describe's afterEach (settleBoard) — which runs
- * BEFORE the imported rtl-settle afterEach — so no refetch render is in
- * flight at teardown.
+ * ⚠ QUARANTINED to a serial gating step (package.json + both CI workflows).
+ * settleBoard (this describe's afterEach) drains the post-persist refetch to
+ * FETCH-QUIESCENCE before rtl-settle unmounts — the file passes reliably in
+ * isolation AND in CI's own serial step. But folding it back into the
+ * --parallel pool (#650 attempt) destabilized a NEIGHBOR under 2-vCPU
+ * contention (an intermittent file-level error elsewhere), so it stays
+ * serial. Prior rounds: cross-file pollution (#638), leaked roots (#640),
+ * inner-hook cleanup preemption (#643). Do not re-add to the parallel run
+ * without resolving the contention flake; tracking #650.
  */
 // @vitest-environment jsdom
 

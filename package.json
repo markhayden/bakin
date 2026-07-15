@@ -30,7 +30,7 @@
     "lint:home-bypasses": "bun run scripts/bin/check-home-bypasses.mjs",
     "typecheck": "tsc -p tsconfig.app.json --noEmit",
     "check:cycles": "bun scripts/check-cycles.ts",
-    "test": "bun test --parallel=4 --isolate --timeout 15000 --path-ignore-patterns \"dev/**\"",
+    "test": "bun test --parallel=4 --isolate --timeout 15000 --path-ignore-patterns \"dev/**\" --path-ignore-patterns \"tests/components/kanban-dnd.test.tsx\" && bun test tests/components/kanban-dnd.test.tsx --isolate --timeout 15000",
     "test:components": "bun test --isolate tests/components",
     "test:watch": "bun test --watch --isolate --path-ignore-patterns \"dev/**\"",
     "test:coverage": "bun test --isolate --coverage --path-ignore-patterns \"dev/**\"",
