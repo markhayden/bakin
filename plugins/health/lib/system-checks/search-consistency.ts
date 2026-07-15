@@ -14,11 +14,93 @@
  * own, nothing at boot.
  */
 import { healthError, healthHealthy, healthNotApplicable, healthObserved, healthUnknown, healthWarning } from '@makinbakin/sdk/utils'
-import type { HealthCheckRunInput, HealthObservationInput, HealthRepairActionDefinition } from '@makinbakin/sdk'
+import type {
+  HealthCheckRunInput,
+  HealthObservationInput,
+  HealthRepairActionDefinition,
+  HealthRepairApplyResult,
+  HealthRepairPlanItem,
+  HealthRepairTarget,
+} from '@makinbakin/sdk'
 import { stableKeyPart } from './key'
-import { repairTargetSelection } from './repair-support'
 
 const SWEEP_INTERVAL_MS = 60 * 60 * 1000
+const SEARCH_CONSISTENCY_CHECK_ID = 'health.search-consistency'
+const SEARCH_CONSISTENCY_ACTION_ID = 'search-consistency-rebuild'
+
+interface SearchRepairTableState {
+  logical: string
+  physical: string
+  state: string
+  phase?: string | null
+}
+
+function tableObservationId(logical: string): string {
+  return `${SEARCH_CONSISTENCY_CHECK_ID}:indexes.table:${stableKeyPart(logical)}`
+}
+
+function tableIncidentId(table: SearchRepairTableState): string | null {
+  const tableId = stableKeyPart(table.logical)
+  if (table.state === 'migrating' && table.phase === 'parked') {
+    return `health:search:migration-parked:${tableId}`
+  }
+  if (table.state === 'active') return `health:search:table-missing:${tableId}`
+  return null
+}
+
+function targetSelectsTable(target: HealthRepairTarget, table: SearchRepairTableState): boolean {
+  if (target.type === 'all_actionable') return true
+  const selected = new Set(target.ids)
+  if (target.type === 'observations') return selected.has(tableObservationId(table.logical))
+  const incidentId = tableIncidentId(table)
+  return incidentId !== null && selected.has(incidentId)
+}
+
+function planItemForTable(table: SearchRepairTableState): HealthRepairPlanItem {
+  return {
+    id: `rebuild-index:${table.logical}`,
+    actionId: SEARCH_CONSISTENCY_ACTION_ID,
+    title: `Rebuild ${table.logical} (blue/green)`,
+    reason: `${table.logical} is parked or points to a missing physical table.`,
+    safety: 'destructive',
+    incidentIds: [],
+    observationIds: [tableObservationId(table.logical)],
+    preconditions: [],
+    changes: [{
+      kind: 'other',
+      target: table.logical,
+      action: 'update',
+      description: 'Backfill a fresh physical table from source data and flip on convergence; queries keep answering from the current table throughout.',
+    }],
+  }
+}
+
+function logicalTableFromPlanItem(item: HealthRepairPlanItem): string {
+  const changes = item.changes.filter((change) => change.kind === 'other' && change.action === 'update')
+  if (changes.length !== 1 || changes[0]!.target.trim().length === 0) {
+    throw new Error(`Repair item ${item.id} does not identify exactly one Search index.`)
+  }
+  const logical = changes[0]!.target
+  if (item.observationIds.length !== 1 || item.observationIds[0] !== tableObservationId(logical)) {
+    throw new Error(`Repair item ${item.id} has inconsistent Search index scope.`)
+  }
+  return logical
+}
+
+function repairResult(
+  item: HealthRepairPlanItem,
+  status: HealthRepairApplyResult['status'],
+  message: string,
+): HealthRepairApplyResult {
+  return {
+    itemId: item.id,
+    actionId: item.actionId,
+    status,
+    message,
+    affectedCheckIds: [SEARCH_CONSISTENCY_CHECK_ID],
+    changes: item.changes,
+  }
+}
 
 // Module-level throttle: doctor runs this check every cycle; the heavy
 // sweep only actually executes hourly.
@@ -271,23 +353,31 @@ export async function checkSearchConsistency(): Promise<HealthCheckRunInput> {
 
 export function searchConsistencyRepair(): HealthRepairActionDefinition {
   return {
-    id: 'search-consistency-rebuild',
+    id: SEARCH_CONSISTENCY_ACTION_ID,
     name: 'Rebuild inconsistent Search indexes',
     async plan(target) {
-      return [{
-        id: 'rebuild-inconsistent-indexes',
-        actionId: 'search-consistency-rebuild',
-        title: 'Rebuild affected search tables (blue/green)',
-        reason: 'One or more logical indexes are parked or point to missing physical tables.',
-        safety: 'destructive',
-        ...repairTargetSelection(target),
-        changes: [{
-          kind: 'other',
-          target: 'search tables',
-          action: 'update',
-          description: 'Backfill fresh physical tables from source data and flip on convergence; queries keep answering from the current tables throughout.',
-        }],
-      }]
+      const { listTableStates } = await import('@bakin/core/search/tables')
+      const selected = listTableStates().filter((table) => targetSelectsTable(target, table))
+
+      if (target.type !== 'all_actionable') {
+        return selected
+          .filter((table) => table.state === 'active' || (table.state === 'migrating' && table.phase === 'parked'))
+          .map(planItemForTable)
+      }
+
+      const { getAppServices } = await import('../../../../src/core/app-services')
+      const search = getAppServices().search
+      const repairable: SearchRepairTableState[] = []
+      for (const table of selected) {
+        if (table.state === 'migrating' && table.phase === 'parked') {
+          repairable.push(table)
+          continue
+        }
+        if (table.state === 'active' && await search.tables.stats(table.physical) === null) {
+          repairable.push(table)
+        }
+      }
+      return repairable.map(planItemForTable)
     },
     async apply(items) {
       if (items.length === 0) return []
@@ -297,42 +387,45 @@ export function searchConsistencyRepair(): HealthRepairActionDefinition {
         const { getAppServices } = await import('../../../../src/core/app-services')
         const search = getAppServices().search
 
-        const targets: string[] = []
-        for (const table of listTableStates()) {
-          if (table.state === 'migrating' && table.phase === 'parked') {
-            targets.push(table.logical)
-            continue
-          }
-          if (table.state === 'active') {
-            const stats = await search.tables.stats(table.physical)
-            if (stats === null) targets.push(table.logical)
-          }
-        }
+        const tablesByLogical = new Map(listTableStates().map((table) => [table.logical, table]))
+        const processed = new Set<string>()
+        const outcomes: HealthRepairApplyResult[] = []
 
-        const outcomes: string[] = []
-        let failed = 0
-        for (const logical of targets) {
-          const [result] = await rebuildRegisteredTables(logical)
-          if (!result || result.error || result.result === 'parked') failed++
-          outcomes.push(`${logical}: ${result?.error ?? result?.result ?? 'no registered definition'}`)
+        for (const item of items) {
+          try {
+            const logical = logicalTableFromPlanItem(item)
+            if (processed.has(logical)) {
+              outcomes.push(repairResult(item, 'skipped', `${logical} was already handled by this repair.`))
+              continue
+            }
+            processed.add(logical)
+
+            const table = tablesByLogical.get(logical)
+            if (!table) {
+              outcomes.push(repairResult(item, 'skipped', `${logical} is no longer registered.`))
+              continue
+            }
+
+            let needsRebuild = table.state === 'migrating' && table.phase === 'parked'
+            if (table.state === 'active') {
+              needsRebuild = await search.tables.stats(table.physical) === null
+            }
+            if (!needsRebuild) {
+              outcomes.push(repairResult(item, 'skipped', `${logical} no longer needs rebuilding.`))
+              continue
+            }
+
+            const [result] = await rebuildRegisteredTables(logical)
+            const message = `${logical}: ${result?.error ?? result?.result ?? 'no registered definition'}`
+            const failed = !result || Boolean(result.error) || result.result === 'parked' || result.result === 'failed'
+            outcomes.push(repairResult(item, failed ? 'failed' : 'applied', message))
+          } catch (err) {
+            outcomes.push(repairResult(item, 'failed', err instanceof Error ? err.message : String(err)))
+          }
         }
-        return items.map((item) => ({
-          itemId: item.id,
-          actionId: item.actionId,
-          status: failed > 0 ? 'failed' as const : 'applied' as const,
-          message: targets.length === 0 ? 'Nothing needs rebuilding.' : outcomes.join('; '),
-          affectedCheckIds: ['health.search-consistency'],
-          changes: item.changes,
-        }))
+        return outcomes
       } catch (err) {
-        return items.map((item) => ({
-          itemId: item.id,
-          actionId: item.actionId,
-          status: 'failed' as const,
-          message: err instanceof Error ? err.message : String(err),
-          affectedCheckIds: ['health.search-consistency'],
-          changes: item.changes,
-        }))
+        return items.map((item) => repairResult(item, 'failed', err instanceof Error ? err.message : String(err)))
       }
     },
   }

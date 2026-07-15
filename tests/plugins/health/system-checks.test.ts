@@ -107,6 +107,13 @@ mock.module('@bakin/core/search/tables', () => ({
   resumeMigrations: async () => {},
   resetTablesForTests: () => {},
 }))
+let mockRebuiltLogicalTables: string[] = []
+mock.module('../../../src/core/search-registry', () => ({
+  rebuildRegisteredTables: async (logical: string) => {
+    mockRebuiltLogicalTables.push(logical)
+    return [{ table: logical, result: 'migrated', indexed: 1 }]
+  },
+}))
 let mockOrphanSweepError: Error | null = null
 let mockOrphanSweepCalls = 0
 mock.module('../../../src/core/search-orphan-sweep', () => ({
@@ -369,6 +376,22 @@ const repairTarget: HealthRepairTarget = {
   ids: ['health.search:journal.quarantined'],
 }
 
+function searchConsistencyTarget(logical: string): HealthRepairTarget {
+  return {
+    type: 'observations',
+    reportId: 'report-test',
+    ids: [`health.search-consistency:indexes.table:${logical}`],
+  }
+}
+
+function searchConsistencyIncidentTarget(logical: string): HealthRepairTarget {
+  return {
+    type: 'incidents',
+    reportId: 'report-test',
+    ids: [`health:search:migration-parked:${logical}`],
+  }
+}
+
 beforeEach(() => {
   rmSync(testDir, { recursive: true, force: true })
   mkdirSync(testDir, { recursive: true })
@@ -384,6 +407,7 @@ beforeEach(() => {
   mockFetchOk = true
   mockSearchAvailable = true
   mockTableStates = []
+  mockRebuiltLogicalTables = []
   mockTableStatsError = null
   mockTableStats = { table: 't', documents: 1 }
   mockOrphanSweepError = null
@@ -829,7 +853,7 @@ describe('checkSearchConsistency', () => {
     mockTableStatsError = new Error('engine timed out')
 
     const repair = searchConsistencyRepair()
-    const outcomes = await repair.apply(await repair.plan(repairTarget))
+    const outcomes = await repair.apply(await repair.plan(searchConsistencyTarget('bakin_t')))
 
     expect(outcomes).toEqual([
       expect.objectContaining({
@@ -845,9 +869,53 @@ describe('checkSearchConsistency', () => {
     mockTableStats = null
 
     const repair = searchConsistencyRepair()
-    const outcomes = await repair.apply(await repair.plan(repairTarget))
+    const outcomes = await repair.apply(await repair.plan(searchConsistencyTarget('bakin_t')))
 
     expect(outcomes[0]?.message).toContain('bakin_t:')
+  })
+
+  it('rebuilds only the exact inconsistent index selected in the repair target', async () => {
+    mockSearchEnabled = true
+    mockTableStates = [
+      { logical: 'bakin_selected', physical: 'bakin_selected_v2_ff', schemaVersion: 2, state: 'migrating', migratingTo: 'bakin_selected_v3_aa', phase: 'parked' },
+      { logical: 'bakin_unrelated', physical: 'bakin_unrelated_v2_ff', schemaVersion: 2, state: 'migrating', migratingTo: 'bakin_unrelated_v3_aa', phase: 'parked' },
+    ]
+
+    const repair = searchConsistencyRepair()
+    const plan = await repair.plan(searchConsistencyIncidentTarget('bakin_selected'))
+    const outcomes = await repair.apply(plan)
+
+    expect(plan).toHaveLength(1)
+    expect(plan[0]?.observationIds).toEqual(['health.search-consistency:indexes.table:bakin_selected'])
+    expect(plan[0]?.changes).toEqual([
+      expect.objectContaining({ target: 'bakin_selected' }),
+    ])
+    expect(mockRebuiltLogicalTables).toEqual(['bakin_selected'])
+    expect(outcomes).toEqual([
+      expect.objectContaining({ status: 'applied', message: 'bakin_selected: migrated' }),
+    ])
+  })
+
+  it('skips a selected index that recovered without rebuilding another inconsistent index', async () => {
+    mockSearchEnabled = true
+    mockTableStates = [
+      { logical: 'bakin_selected', physical: 'bakin_selected_v2_ff', schemaVersion: 2, state: 'migrating', migratingTo: 'bakin_selected_v3_aa', phase: 'parked' },
+      { logical: 'bakin_unrelated', physical: 'bakin_unrelated_v2_ff', schemaVersion: 2, state: 'migrating', migratingTo: 'bakin_unrelated_v3_aa', phase: 'parked' },
+    ]
+
+    const repair = searchConsistencyRepair()
+    const plan = await repair.plan(searchConsistencyTarget('bakin_selected'))
+    mockTableStates = [
+      { logical: 'bakin_selected', physical: 'bakin_selected_v3_aa', schemaVersion: 3, state: 'active' },
+      { logical: 'bakin_unrelated', physical: 'bakin_unrelated_v2_ff', schemaVersion: 2, state: 'migrating', migratingTo: 'bakin_unrelated_v3_aa', phase: 'parked' },
+    ]
+
+    const outcomes = await repair.apply(plan)
+
+    expect(mockRebuiltLogicalTables).toEqual([])
+    expect(outcomes).toEqual([
+      expect.objectContaining({ status: 'skipped', message: 'bakin_selected no longer needs rebuilding.' }),
+    ])
   })
 
   it('retries a failed deep sweep immediately instead of hiding it for an hour', async () => {
