@@ -95,6 +95,31 @@ describe('validating Health runner', () => {
     expect(healthy.observations[0].status).toBe('healthy')
   })
 
+  it('bounds checks that never settle with a trustworthy timeout result', async () => {
+    registerPluginHealthCheck('test-a', {
+      ...registration(async () => new Promise(() => {})),
+      timeoutMs: 5,
+    })
+    const [run] = await runDetailedPluginHealthChecks({
+      executionId: () => 'execution-timeout',
+      timeoutMs: 50,
+    })
+
+    expect(run.execution).toMatchObject({
+      id: 'execution-timeout',
+      outcome: 'failed',
+      error: {
+        code: 'HEALTH_CHECK_TIMEOUT',
+        message: 'Health check "Test probe" timed out after 5 ms.',
+      },
+    })
+    expect(run.observations[0]).toMatchObject({
+      status: 'unknown',
+      incidentId: 'core:verification:test-a.probe',
+      detail: 'Health check "Test probe" timed out after 5 ms.',
+    })
+  })
+
   it('turns malformed output into invalid without publishing its payload', async () => {
     registerPluginHealthCheck('test-a', registration(async () => ({ outcome: 'observed', observations: [] })))
     const [run] = await runDetailedPluginHealthChecks()

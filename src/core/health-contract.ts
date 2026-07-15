@@ -101,6 +101,7 @@ export const healthCheckRegistrationInputSchema = z.object({
   description: nonBlankString(500, 'Check description'),
   group: healthGroupSchema,
   maxAgeMs: z.number().int().positive().finite().optional(),
+  timeoutMs: z.number().int().positive().finite().optional(),
   run: callableSchema,
 }).strict()
 

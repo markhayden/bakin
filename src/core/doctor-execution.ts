@@ -2,7 +2,11 @@
 import { healthError, healthHealthy, healthNotApplicable, healthObserved } from '@makinbakin/sdk/utils'
 import type { HealthCheckDef, HealthReport } from '../../packages/core/src/plugin-types'
 import { appendAudit } from './audit'
-import { runHealthCheck, type DetailedHealthCheckRun } from './doctor-checks'
+import {
+  DEFAULT_HEALTH_CHECK_TIMEOUT_MS,
+  runHealthCheck,
+  type DetailedHealthCheckRun,
+} from './doctor-checks'
 import {
   applyHealthCheckRun,
   getHealthReport,
@@ -23,6 +27,7 @@ let fullSweepFlight: Promise<HealthReport> | null = null
 interface CheckFlight {
   def: HealthCheckDef
   promise: Promise<DetailedHealthCheckRun>
+  lifecycleSettled: Promise<void>
 }
 
 onHealthReportChanged((report) => {
@@ -38,6 +43,10 @@ onHealthReportChanged((report) => {
 
 function doctorIntervalMs(): number {
   return getSettings().doctor.intervalMs
+}
+
+function doctorCheckTimeoutMs(): number {
+  return getSettings().doctor.checkTimeoutMs ?? DEFAULT_HEALTH_CHECK_TIMEOUT_MS
 }
 
 function ensureOnboardingCheck(): void {
@@ -81,16 +90,27 @@ function ensureOnboardingCheck(): void {
 function executeSingleFlight(def: HealthCheckDef): Promise<DetailedHealthCheckRun> {
   const existing = checkFlights.get(def.id)
   if (existing?.def === def) return existing.promise
-  const promise = runHealthCheck(def, { defaultMaxAgeMs: doctorIntervalMs() })
+  let workSettled: Promise<void> | undefined
+  const promise = runHealthCheck(def, {
+    defaultMaxAgeMs: doctorIntervalMs(),
+    timeoutMs: doctorCheckTimeoutMs(),
+    onWorkSettled: (settled) => { workSettled = settled },
+  })
     .then((run) => {
       // A hot-reloaded/unregistered definition must not repopulate its old cache.
       if (getHealthCheck(def.id) === def) applyHealthCheckRun(run)
       return run
     })
-    .finally(() => {
-      if (checkFlights.get(def.id)?.promise === promise) checkFlights.delete(def.id)
-    })
-  checkFlights.set(def.id, { def, promise })
+  // runHealthCheck reports the underlying provider lifecycle synchronously.
+  // The fallback covers setup failures that occur before provider work starts.
+  const providerSettled = workSettled ?? promise.then(() => undefined, () => undefined)
+  const resultSettled = promise.then(() => undefined, () => undefined)
+  const lifecycleSettled = Promise.all([providerSettled, resultSettled]).then(() => undefined)
+  const flight = { def, promise, lifecycleSettled }
+  checkFlights.set(def.id, flight)
+  void lifecycleSettled.then(() => {
+    if (checkFlights.get(def.id) === flight) checkFlights.delete(def.id)
+  })
   return promise
 }
 

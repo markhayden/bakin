@@ -336,6 +336,7 @@ export type {
   ErrorObservationInput,
   HealthCheckExecution,
   HealthCheckRegistrationInput,
+  HealthCheckRunContext,
   HealthCheckRunInput,
   HealthCheckSnapshot,
   HealthCheckState,

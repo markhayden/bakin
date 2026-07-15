@@ -876,6 +876,7 @@ const healthPlugin: BakinPlugin = definePlugin({
       description: 'Verifies logical-to-physical index mappings and performs throttled orphan maintenance.',
       group: searchGroup,
       maxAgeMs: 300_000,
+      timeoutMs: 120_000,
       run: () => checkSearchConsistency(),
     })
     ctx.registerHealthCheck({

@@ -181,6 +181,11 @@ export interface NotApplicableHealthCheckRunInput {
 
 export type HealthCheckRunInput = ObservedHealthCheckRunInput | NotApplicableHealthCheckRunInput
 
+/** Cancellation context supplied by core when it executes a health check. */
+export interface HealthCheckRunContext {
+  readonly signal: AbortSignal
+}
+
 /** Plugin- or adapter-authored check definition; core supplies owner metadata. */
 export interface HealthCheckRegistrationInput {
   id: string
@@ -188,7 +193,9 @@ export interface HealthCheckRegistrationInput {
   description: string
   group: HealthGroup
   maxAgeMs?: number
-  run(): Promise<HealthCheckRunInput>
+  /** Optional override for checks whose expected runtime differs from the global doctor deadline. */
+  timeoutMs?: number
+  run(context?: HealthCheckRunContext): Promise<HealthCheckRunInput>
 }
 
 // ---------------------------------------------------------------------------

@@ -23,6 +23,7 @@ function validRegistration(): HealthCheckRegistrationInput {
     description: 'Verifies that the configured runtime can serve turns.',
     group: { key: 'runtime', label: 'Runtime' },
     maxAgeMs: 60_000,
+    timeoutMs: 15_000,
     run: async () => ({
       outcome: 'observed' as const,
       observations: [{ key: 'ping', status: 'healthy' as const, summary: 'Runtime answered the probe.' }],
@@ -76,6 +77,7 @@ describe('health registration validation', () => {
       description: 'x'.repeat(501),
       group: { key: '-runtime', label: '' },
       maxAgeMs: 0,
+      timeoutMs: 0,
       run: 'not callable',
       autoFix: true,
     }
@@ -94,6 +96,7 @@ describe('health registration validation', () => {
       'group.key',
       'group.label',
       'maxAgeMs',
+      'timeoutMs',
       'run',
     ]))
     expect(result.error.issues.some((issue) => issue.code === 'unrecognized_keys')).toBe(true)

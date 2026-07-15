@@ -211,6 +211,8 @@ export interface BakinSettings {
   }
   doctor: {
     intervalMs: number
+    /** Maximum time a single diagnostic check may run before it becomes Unknown. */
+    checkTimeoutMs?: number
     /**
      * When true, `runDiagnostics()` refuses to run its normal checks and
      * returns a single `onboarded: error` result until `~/.bakin/.onboarded`
@@ -384,6 +386,7 @@ export const DEFAULT_SETTINGS: BakinSettings = {
   },
   doctor: {
     intervalMs: 30 * 60 * 1000, // 30 minutes
+    checkTimeoutMs: 30_000,
     requireOnboard: true,
     escalation: 'task',
     escalationCooldownMs: 6 * 60 * 60 * 1000, // 6 hours

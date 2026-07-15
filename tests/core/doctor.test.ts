@@ -4,7 +4,13 @@ import { healthHealthy, healthObserved } from '@makinbakin/sdk/utils'
 const appendAudit = mock()
 let onboarded = true
 let settings = {
-  doctor: { intervalMs: 60_000, requireOnboard: false, escalation: 'off' as const, escalationCooldownMs: 60_000 },
+  doctor: {
+    intervalMs: 60_000,
+    checkTimeoutMs: 30_000,
+    requireOnboard: false,
+    escalation: 'off' as const,
+    escalationCooldownMs: 60_000,
+  },
 }
 
 mock.module('../../src/core/audit', () => ({ appendAudit }))
@@ -33,7 +39,13 @@ beforeEach(() => {
   appendAudit.mockClear()
   onboarded = true
   settings = {
-    doctor: { intervalMs: 60_000, requireOnboard: false, escalation: 'off', escalationCooldownMs: 60_000 },
+    doctor: {
+      intervalMs: 60_000,
+      checkTimeoutMs: 30_000,
+      requireOnboard: false,
+      escalation: 'off',
+      escalationCooldownMs: 60_000,
+    },
   }
 })
 
@@ -98,6 +110,74 @@ describe('canonical doctor orchestration', () => {
     resolve()
     await Promise.all([full, targeted])
     expect(run).toHaveBeenCalledTimes(1)
+  })
+
+  it('releases timed-out check and sweep flights so a later run can recover', async () => {
+    settings.doctor.checkTimeoutMs = 5
+    let recovered = false
+    let timedOutSignal: AbortSignal | undefined
+    const run = mock(async (context?: { signal: AbortSignal }) => {
+      if (!recovered) {
+        timedOutSignal = context?.signal
+        await new Promise<never>((_, reject) => {
+          context?.signal.addEventListener('abort', () => reject(context.signal.reason), { once: true })
+        })
+      }
+      return healthObserved([healthHealthy({ key: 'ready', summary: 'Recovered.' })])
+    })
+    const id = register(run)
+
+    const [firstFull, firstTargeted] = await Promise.all([
+      runDiagnostics('/tmp/content', '/tmp/project'),
+      runTargetedDiagnostics([id]),
+    ])
+
+    expect(run).toHaveBeenCalledTimes(1)
+    expect(timedOutSignal?.aborted).toBe(true)
+    expect(firstFull.lastFullSweep).not.toBeNull()
+    expect(firstFull.checks.find((check) => check.checkId === id)?.latestExecution).toMatchObject({
+      outcome: 'failed',
+      error: { code: 'HEALTH_CHECK_TIMEOUT' },
+    })
+    expect(firstTargeted.checks.find((check) => check.checkId === id)?.latestExecution.error?.code)
+      .toBe('HEALTH_CHECK_TIMEOUT')
+
+    recovered = true
+    const second = await runDiagnostics('/tmp/content', '/tmp/project')
+
+    expect(run).toHaveBeenCalledTimes(2)
+    expect(second.checks.find((check) => check.checkId === id)?.latestExecution.outcome).toBe('observed')
+    expect(second.observations.find((observation) => observation.checkId === id)?.summary).toBe('Recovered.')
+  })
+
+  it('does not overlap a retry when a timed-out check ignores cancellation', async () => {
+    settings.doctor.checkTimeoutMs = 5
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => { release = resolve })
+    const run = mock(async () => {
+      await gate
+      return healthObserved([healthHealthy({ key: 'ready', summary: 'Eventually settled.' })])
+    })
+    const id = register(run)
+
+    const first = await runTargetedDiagnostics([id])
+    const second = await runDiagnostics('/tmp/content', '/tmp/project')
+
+    expect(first.checks.find((check) => check.checkId === id)?.latestExecution.error?.code)
+      .toBe('HEALTH_CHECK_TIMEOUT')
+    expect(second.checks.find((check) => check.checkId === id)?.latestExecution.error?.code)
+      .toBe('HEALTH_CHECK_TIMEOUT')
+    expect(second.lastFullSweep).not.toBeNull()
+    expect(run).toHaveBeenCalledTimes(1)
+
+    release()
+    await gate
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    const third = await runTargetedDiagnostics([id])
+
+    expect(run).toHaveBeenCalledTimes(2)
+    expect(third.observations.find((observation) => observation.checkId === id)?.summary)
+      .toBe('Eventually settled.')
   })
 
   it('does not record a full sweep when a check is replaced under the same id', async () => {

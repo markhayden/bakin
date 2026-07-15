@@ -47,6 +47,7 @@ export function registerHealthCheck(def: HealthCheckDef): void {
     description: def.description,
     group: def.group,
     maxAgeMs: def.maxAgeMs,
+    timeoutMs: def.timeoutMs,
     run: def.run,
   })
   checks.set(def.id, { ...parsed, id: def.id, localId: def.localId, owner: { ...def.owner } })

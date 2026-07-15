@@ -21,12 +21,54 @@ export interface DetailedHealthCheckRun {
 
 export interface HealthCheckRunOptions {
   defaultMaxAgeMs?: number
+  /** Maximum time a check may run before it is reported as Unknown. */
+  timeoutMs?: number
+  /** Internal lifecycle hook used to keep retries from overlapping timed-out work. */
+  onWorkSettled?: (settled: Promise<void>) => void
   now?: () => Date
   executionId?: () => string
 }
 
 const CORE_OWNER: HealthOwner = { kind: 'core', id: 'core', label: 'Bakin' }
 const DEFAULT_MAX_AGE_MS = 30 * 60 * 1000
+export const DEFAULT_HEALTH_CHECK_TIMEOUT_MS = 30_000
+const MAX_TIMER_MS = 2_147_483_647
+
+class HealthCheckTimeoutError extends Error {
+  constructor(readonly timeoutMs: number, checkName: string) {
+    super(`Health check "${checkName}" timed out after ${timeoutMs.toLocaleString('en-US')} ms.`)
+    this.name = 'HealthCheckTimeoutError'
+  }
+}
+
+function boundedTimeoutMs(value: number | undefined): number {
+  if (value === undefined) return DEFAULT_HEALTH_CHECK_TIMEOUT_MS
+  if (!Number.isFinite(value) || value <= 0) return DEFAULT_HEALTH_CHECK_TIMEOUT_MS
+  return Math.min(MAX_TIMER_MS, Math.max(1, Math.floor(value)))
+}
+
+async function withCheckTimeout<T>(
+  work: Promise<T>,
+  checkName: string,
+  timeoutMs: number,
+  controller: AbortController,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      work,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          const error = new HealthCheckTimeoutError(timeoutMs, checkName)
+          reject(error)
+          controller.abort(error)
+        }, timeoutMs)
+      }),
+    ])
+  } finally {
+    if (timer !== undefined) clearTimeout(timer)
+  }
+}
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
@@ -125,9 +167,13 @@ export async function runHealthCheck(
   const makeExecutionId = options.executionId ?? (() => `execution-${crypto.randomUUID()}`)
   const startedAt = now().toISOString()
   const ttlMs = def.maxAgeMs ?? options.defaultMaxAgeMs ?? DEFAULT_MAX_AGE_MS
+  const timeoutMs = boundedTimeoutMs(def.timeoutMs ?? options.timeoutMs)
+  const controller = new AbortController()
+  const work = Promise.resolve().then(() => def.run({ signal: controller.signal }))
+  options.onWorkSettled?.(work.then(() => undefined, () => undefined))
 
   try {
-    const raw = await def.run()
+    const raw = await withCheckTimeout(work, def.name, timeoutMs, controller)
     const completedAt = now().toISOString()
     const parsed = safeParseHealthCheckRunInput(raw)
     if (!parsed.success) {
@@ -196,6 +242,9 @@ export async function runHealthCheck(
   } catch (error) {
     const completedAt = now().toISOString()
     const message = errorMessage(error)
+    const code = error instanceof HealthCheckTimeoutError
+      ? 'HEALTH_CHECK_TIMEOUT'
+      : 'HEALTH_CHECK_FAILED'
     return {
       def,
       freshUntil: staleAt(completedAt, ttlMs),
@@ -205,7 +254,7 @@ export async function runHealthCheck(
         startedAt,
         completedAt,
         outcome: 'failed',
-        error: { code: 'HEALTH_CHECK_FAILED', message },
+        error: { code, message },
       },
       observations: [verificationObservation(def, completedAt, ttlMs, message)],
     }
