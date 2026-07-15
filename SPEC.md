@@ -1,254 +1,228 @@
-# SPEC — Dual-runtime dev rig (`instance`): audit, Pi support, full-fidelity parity
+# Spec: Scheduled Tasks Hardening + Plugin-Contributed Scheduled Domain Events (#191)
 
-Status: DRAFT — awaiting approval
-Date: 2026-07-11
-Owner: Mark Hayden (single-user machine; no backwards compatibility, no shims)
-Process: /agent-skills:spec → /agent-skills:plan → /agent-skills:build → /agent-skills:test
+> Issue: https://github.com/markhayden/bakin/issues/191
+> Status: DRAFT — awaiting approval
+> Date: 2026-07-14
+> Owner: Mark Hayden (single-user machine; no backwards compatibility, no shims)
 
-## 1. Objective
+## Objective
 
-The dockerized dev rig (`bun run instance …`) becomes a **dual-runtime, full-fidelity**
-dev environment: one command provisions a disposable instance running either the
-**OpenClaw** runtime (gateway in Docker, as today) or the **Pi** runtime (in-process,
-throwaway `PI_HOME`), pre-configured end-to-end — and every core capability that works
-in production works in the rig: dispatch, **asset creation from agent turns**, search
-indexing, images, hot reload.
+Make scheduled recurring **and one-shot** tasks rock solid — surviving runtime switches and long uptimes on a single runtime — then extend Schedule into the single calendar surface for everything time-shaped in Bakin: cron jobs, one-shot schedules, and read-only **scheduled domain events** contributed by any plugin (in-tree or external) through a typed SDK contract.
 
-Grounding facts (verified in-code during the spec interview):
+**User:** the single operator of this Bakin install (plus external plugin authors who adopt the contract).
 
-- Pi has **no daemon** — it is an SDK loaded inside Bakin's process. "Pi in the rig"
-  means a throwaway `PI_HOME` wherever Bakin runs (host for native/isolated, container
-  for sandbox). Nothing to containerize separately. Accepted consequence: host-mode Pi
-  agents execute tools on the Mac inside dev-scoped workspaces; sandbox mode is the
-  in-container-execution option.
-- The runtime adapter is chosen ONLY by `settings.runtime.adapter`
-  (`packages/core/src/settings.ts`, default `openclaw`). No env override exists today.
-- `bakin_exec_assets_save` (`plugins/assets/lib/exec-tools.ts`) takes an absolute
-  `filePath` read host-side. In native/isolated modes agents write inside the container
-  (`/home/node/.openclaw/workspace/…`) — host-unreadable as-written, but the openclaw
-  home is bind-mounted at `dev/openclaw-home/`, so a prefix translation closes the gap.
-  (Known limitation documented in the rig knowledge doc, now `.claude/knowledge/dev-rig.md`.)
-- **Live hazard (must fix):** antfly's `detectServiceMode` defaults to `launchd` on
-  macOS; the LaunchAgent label (`io.bakin.antfly`) and port (3738) are singletons, and
-  the unit file is a byte-compared fingerprint of `getBakinPaths()`. A rig home that
-  reaches `ensureProvisioned` **rewrites the real LaunchAgent to point at the dev
-  home**. **Verified already fired on this machine (2026-07-11):** the live
-  `io.bakin.antfly` unit's `--data-dir` points at
-  `dev/bakin-instances/isolated/home/antfly` — a past isolated-mode boot hijacked the
-  machine-global service. The rig sets no search env today.
-- The pinned Pi SDK (`@earendil-works/pi-coding-agent@0.80.3`, dep of
-  `packages/adapter-pi`) ships the `pi` CLI (`bin: pi → dist/cli.js`); its own home
-  override is `PI_CODING_AGENT_DIR` (Bakin's adapter uses `PI_HOME`). There is no
-  `~/.pi` and no `pi` on PATH on this machine — fresh login is the only seeding path.
-- `ANTFLY_HOME` env override exists for the engine binary/models root; the machine-wide
-  binary under `~/.antfly/bin` can be shared read-only by rig children (data dirs stay
-  per-instance).
+**Success looks like:** you open Schedule's calendar and see, on correct timezone-aware math, every upcoming cron fire, every one-shot task you've queued for later, every task waiting on `availableAt` or due by `dueAt`, and (after bits adoption) every Messaging publish date and Projects milestone — each clearly labeled by source, deep-linked to its owner, and — where the owner supports it — reschedulable from a date-picker dialog. None of it breaks when a plugin is missing, the runtime is switched, or the box has been up for a year.
 
-## 2. Decisions (interview record, 2026-07-11)
+## Cron Stability Review (pi + openclaw) — audit findings
+
+This review was requested alongside #191. Findings drive Workstream A.
+
+### The Bakin-owned scheduler (fires all Bakin schedules) — SOLID
+- Own tick engine (`plugins/schedule/lib/scheduler.ts` + `scheduler-loop.ts`), dependency-injected, fake-clock tested.
+- Exactly-once via execution-ledger claims (`cron_fires` `(job_id, run_id)` PK); re-ticks and crashes are no-ops; `healPendingCronClaims` recovers claim-then-crash gaps.
+- Startup catch-up coalesces an outage to one occurrence; within-window fires into `todo`, older into `blocked` triage; skips are visible (`schedule.fire_skipped` + `skip_reason`).
+- Runtime cron is **never** in the fire path for Bakin schedules (post-#473). Runtime switches cannot kill Bakin schedules — they fire from the store regardless of adapter.
+
+### OpenClaw cron (native, surfaced read-only) — FUNCTIONAL, LOWEST-ASSURANCE SURFACE
+- Transport is CLI-shelling (`execFileAsync` per call), not gateway RPC. CRUD works with the gateway down; `runNow` implicitly needs it and doesn't surface gateway-down distinctly.
+- No retries anywhere (deliberate for non-idempotent ops); 30s/35s timeouts; heavy defensive loose-JSON normalization in `cron-store.ts` signals unstable CLI output shape; `listRuns` falls back to reading `~/.openclaw/cron/runs/*.jsonl` directly.
+- **Zero conformance/integration coverage** — only argv-shape unit tests with mocked exec. The conformance suite (`tests/integration/runtime-conformance/`) never touches the optional `cron` member.
+- Degrade path is good: `readMergedJobs` try/catches `cron.list()` and falls back to Bakin-owned schedules with a warning.
+
+### Pi cron — CORRECTLY ABSENT
+- The `cron` member is intentionally omitted (not stubbed); consumers feature-detect member presence. Bakin schedules ARE the scheduling answer on Pi; agents self-schedule via `bakin_exec_schedule_*`. No work needed beyond conformance pinning the absence.
+
+### Defects / gaps found (fixed in this initiative)
+1. **`schedule-sync` health check is dead code that claims to be live** — written, tested, its file header says it's registered, but `plugins/schedule/index.ts` only registers `schedule-cutover`. Orphan native crons are silently undetected. → PR1
+2. **`ScheduleDef.kind` allows `'at' | 'every'` but both are dead** — nothing produces them (every creation path hardcodes `kind: 'cron'`) and `scheduler.ts:62` feeds `expr` straight to the cron parser, so an `'at'` job could never fire. Vestigial type noise sitting on a latent bug. → PR2 (make `'at'` real, delete `'every'`)
+3. **Calendar views hand-parse raw cron strings client-side** (`calendar-weekly.tsx`, `calendar-monthly.tsx`, `calendar-today.tsx` split cron fields by hand) instead of using the server's `cron-eval` engine — wrong for TZ/DST and anything beyond simple exprs; no server endpoint returns future occurrences. → PR3
+4. **`cron_fires` ledger rows are never pruned** — unbounded growth; deleted jobs' rows linger forever. Slow on a single-user box, but real on a years-uptime machine. → PR1
+5. **No test pins "Bakin schedules survive a runtime switch"** — the initiative's core fear is only enforced by architecture, not by a test. → PR1
+6. Minor: duplicated hardcoded agent-color maps in `calendar-weekly.tsx` / `calendar-monthly.tsx`. → PR3 (consolidated during the calendar refactor)
+
+### Deliberate stances we are NOT changing (documented, not fixed)
+- No retry on the OpenClaw cron CLI surface (safe default for non-idempotent ops; degrade path already honest).
+- `--adopt-cron` on runtime switch stays opt-in.
+- Cron stays out of `CapabilitySet` (member-presence detection is the contract).
+
+## Tech Stack
+
+Existing stack, no new dependencies: Bun ≥1.2, TypeScript strict, Zod at boundaries, React 19 + TanStack Router (client), `cron-parser` (already sole-imported by `cron-eval.ts`), execution ledger (`bun:sqlite` via `packages/core/src/storage/db.ts`), HookRegistry for all cross-plugin calls.
+
+## Commands
+
+```
+Full test suite:   bun run test
+Single test file:  bun test tests/plugins/schedule/scheduler.test.ts --isolate
+Typecheck:         bun run typecheck
+Build (binary):    bun run build        # never commit generated-version.ts
+Dev loop:          bun run dev          # server code NOT watched; manual restart
+Dev with mock:     bun run dev:mock
+Live verify:       Skill: /verify (isolated server from source)
+```
+
+## Design Decisions (locked in interview 2026-07-14)
 
 | # | Decision | Choice |
 |---|----------|--------|
-| D1 | Pi scope | `--runtime openclaw\|pi` flag on **all three modes** (default `openclaw`; current behavior unchanged). native/isolated + pi: Bakin on host, throwaway `PI_HOME` under `dev/`, **no docker services started**. sandbox + pi: Bakin + Pi inside the container. |
-| D2 | Pi shape | Host Pi for hot-reload dev + sandbox option for in-container execution. No attempt to remote Pi out of process. |
-| D3 | Adapter selection | New `BAKIN_RUNTIME_ADAPTER` env override in settings resolution (same family as `BAKIN_HOME`/`OPENCLAW_HOME`/`PI_HOME`). Rig passes it per-invocation; real `~/.bakin/settings.json` is never written. Throwaway homes (isolated/sandbox) additionally get `runtime.adapter` written into their own settings.json so the home is self-consistent. |
-| D4 | Pi auth | Interactive auth during `instance up --runtime pi`; skipped when already authed; wiped by `reset`. No stored secrets, no auth.json synthesis. Mirrors the existing Codex OAuth flow. **Corrected during planning:** the pinned SDK has NO `pi login` subcommand — the rig spawns the interactive `pi` TUI (`PI_CODING_AGENT_DIR=$PI_HOME/agent`) where the user runs `/login`; success is verified by re-checking `auth.json` exists after the TUI exits. |
-| D5 | Asset-save gap | Fix via env-configured path-prefix translation honored by `bakin_exec_assets_save` (rig sets container-home → host-mount mapping). Exact knob shape decided in plan; generic (no "openclaw"/"docker" in the name), documented, inert when unset. |
-| D6 | Search | **Working search in every mode.** Isolated: rig-managed antfly child on an alternate port (e.g. 3739) sharing the machine-wide binary read-only; throwaway home's antfly URL points at it → guest mode → adapter never provisions/spawns (zero production-code risk). Sandbox: child mode in-container on 3738 (Linux, no systemd → auto). Native: real antfly as today. **In no path may a rig home render/write/restart the real launchd/systemd unit.** |
-| D7 | Verification | Full live E2E on **both** runtimes (user does `pi login` once; existing OpenClaw home reused — no fresh Codex OAuth), plus the automated suite. |
+| D1 | Scope & order | All three workstreams, A (harden) → B (one-shot) → C (#191 events) |
+| D2 | C UI surface | Full calendar grid — extend the existing Today/Week/Month views |
+| D3 | Calendar math debt | Fix now: server-side occurrences endpoint via `cron-eval`; delete client-side cron parsing |
+| D4 | One-shot primitive | Make `kind: 'at'` real in the scheduler; **delete** dead `'every'`; keep task `availableAt` as-is (different job: task exists now, dispatch later) |
+| D5 | One-shot semantics | Post-fire: auto-disable, display "completed", run history preserved, never auto-delete. Missed-fire: identical to cron (catch-up window → todo, older → blocked triage, ledger exactly-once). Creation: NL parse ("tomorrow at 9am"), job form, exec tools |
+| D6 | C contract mechanism | Hook suffix convention: providers register `{pluginId}.scheduledEvents` (hookKind `'rpc'`); Schedule discovers via `getRegisteredHooks()` suffix match, invokes each with a range, zod-validates per provider, isolates failures. `ScheduledDomainEvent` type exported from `@makinbakin/sdk`. No new core machinery |
+| D7 | v1 in-tree providers | Tasks only (`availableAt` → scheduled, `dueAt` → due). Workflows deferred (no future-dated concepts in-tree). Contract additionally proven by a test-harness provider |
+| D8 | Actions on events | Read-only + deep link + ONE optional verb: **reschedule** via conventional `{pluginId}.rescheduleEvent` hook; Schedule renders a date-picker ConfirmDialog. Tasks implements it. Generic action protocol rejected |
+| D9 | Data path | ONE endpoint `GET /api/plugins/schedule/occurrences?from=&to=`: unified chronological feed of job occurrences (server-computed) + domain events (hook fan-in). Calendars consume it exclusively. SSE-driven refetch |
+| D10 | PR structure | Four sequential PRs (below), each live-tested on 3737 before merge |
+| D11 | External adoption | **In scope**: bits work item — messaging (publish dates) + projects (milestones) in `bakin-bits-official` implement the contract after PR4 merges |
 
-## 3. Scope
+## Contract Shapes (v1)
 
-### 3.1 Rig audit (find what else is broken/missing)
+```typescript
+// @makinbakin/sdk — exported for external authors
+export interface ScheduledDomainEvent {
+  id: string                    // stable within the owning plugin
+  pluginId: string              // owner (must match the registering plugin)
+  title: string
+  startsAt?: string             // ISO; at least one of startsAt/dueAt required
+  endsAt?: string               // ISO; optional range end
+  dueAt?: string                // ISO; deadline semantics (rendered distinctly)
+  kind: string                  // owner vocabulary, e.g. 'task-due' | 'publish' | 'milestone'
+  status?: string               // owner vocabulary, display-only
+  url?: string                  // deep link into the owner's UI
+  reschedulable?: boolean       // true → owner registered {pluginId}.rescheduleEvent
+  metadata?: Record<string, unknown>  // read-only extras
+}
 
-A systematic sweep of every production capability under each (mode × runtime) cell,
-run BEFORE building — findings feed the plan as concrete tasks. Sweep list:
-
-dispatch + recovery ladder, asset save/import/enrichment, image generation (codex path
-per runtime), search indexing + rebuild + ⌘K, usage recording/usage.db, execution
-ledger, budget gates, chat plugin, memory plugin (tier indexing), doctor checks,
-agent packages install/sync, onboarding components against throwaway homes
-(especially: which components touch **machine-global** state — the search LaunchAgent
-hazard is the known instance of this class; find any others, e.g. `~/.antfly`
-downloads, plugin-assets, notifications), `instance status/env/run/shell` correctness
-per cell, reset scoping (all new state dirs must land in `dev/` reset targets).
-
-### 3.2 Pi runtime support
-
-- `--runtime openclaw|pi` in `args.ts` (validated; default `openclaw`); plan matrix in
-  `modes.ts` extended to (mode × runtime).
-- Pi paths in `paths.ts`: per-mode pi homes under `dev/` (host modes vs sandbox must
-  NOT share one pi home — host/container path strings diverge in registry/sessions);
-  all added to `resetTargets`.
-- `up --runtime pi` (native/isolated): no docker, no `op` preflight, no compose. Ensure
-  pi home dirs, run `pi login` if unauthed, write/patch throwaway settings (isolated),
-  print env.
-- `up --runtime pi --mode sandbox`: container with repo mount + bun + pi home mount;
-  main process must not depend on OpenClaw config (compose service shape decided in
-  plan); `pi login` exec'd into the container.
-- `dev/run/shell/env/status` honor the runtime: correct env set
-  (`BAKIN_RUNTIME_ADAPTER`, `PI_HOME`; no `OPENCLAW_*` for pi), correct health checks
-  (gateway health only for openclaw; pi auth presence for pi).
-- Runtime combinations coexist in one instance's state (separate dirs); switching =
-  `up --runtime <other>` then `dev --runtime <other>`. `reset` wipes both.
-
-### 3.3 Core changes (production code, all small + documented)
-
-- `BAKIN_RUNTIME_ADAPTER` override in settings resolution (D3).
-- Path-translation knob for `bakin_exec_assets_save` (D5).
-- Whatever the audit (3.1) surfaces as *production-side* gaps — each gets its own
-  decision in the plan; nothing lands unexamined.
-
-### 3.4 Search in the rig (D6)
-
-- Rig-managed antfly child for isolated mode (spawn/stop with instance lifecycle,
-  alt port, data under `dev/bakin-instances/…`, binary from `~/.antfly/bin` /
-  `ANTFLY_HOME`).
-- Sandbox: engine binary availability in-container + child mode; decided in plan
-  (macOS vs Linux binaries differ, so likely in-container install via
-  `bakin install search`).
-- Guard against the LaunchAgent clobber: rig homes must be structurally unable to
-  provision OS units (guest-mode URL and/or explicit service-mode env), plus a
-  regression test pinning it.
-- **Remediate the existing clobber on this machine:** re-provision `io.bakin.antfly`
-  back to the real `~/.bakin` paths (and verify the isolated instance gets its own
-  rig-managed child instead). Sequence this so the running isolated dev server isn't
-  yanked mid-session.
-
-### 3.5 Docs (required, per kickoff)
-
-- `.claude/knowledge/dockerized-openclaw-rig.md` → rewritten as the dual-runtime rig
-  reference (rename to `dev-rig.md`; update all inbound repo references — CLAUDE.md,
-  `repo-architecture.md`, skills that cite it).
-- `dev/docker/README.md` — user-facing walkthrough for both runtimes.
-- `CLAUDE.md` — the rig bullets under "OpenClaw Home Directory" + Pi adapter live-ops
-  notes.
-- `.claude/knowledge/pi-adapter.md` — add rig dev-loop section.
-- `.claude/knowledge/assets-versioning.md` + `search-system.md` where the D5/D6 knobs
-  touch their contracts.
-- `README.md` / `CONTRIBUTING.md` — only if they reference the rig (check during build).
-
-### 3.6 Out of scope
-
-- Remote-Pi transport / Pi daemonization (does not exist upstream).
-- Discord/channels for Pi (adapter degradation matrix is by design — the chat plugin
-  is the conversational surface).
-- Changing production runtime-switch (`bakin runtime use`) or onboarding flows beyond
-  what the audit proves broken for rig homes.
-- Multi-machine/CI generalization of the rig (single-user machine).
-
-## 4. Commands (target surface)
-
-```
-bun run instance up     [--mode native|isolated|sandbox] [--runtime openclaw|pi] [--fresh] [--source repo|installed] [--preconfigure]
-bun run instance dev    [--mode …] [--runtime …]      # host modes; onboards if needed; hot reload
-bun run instance run    [--mode …] [--runtime …] -- <bakin args>
-bun run instance shell  [--mode …] [--runtime …]
-bun run instance status | env [--mode …] [--runtime …]
-bun run instance down
-bun run instance reset  [--mode …]                    # wipes ALL runtime state for the mode
+// Hook: `{pluginId}.scheduledEvents` (hookKind 'rpc')
+//   input:  { from: string; to: string }        // ISO range
+//   output: ScheduledDomainEvent[]
+// Hook: `{pluginId}.rescheduleEvent` (hookKind 'rpc', optional)
+//   input:  { eventId: string; to: string }     // new ISO instant for the event's primary date
+//   output: { ok: true } | { ok: false; error: string }
 ```
 
-Existing invocations (`instance up`, `instance dev --mode isolated`, …) behave exactly
-as today — `--runtime` defaults to `openclaw`.
+Occurrences endpoint item (server-internal, consumed by calendars):
 
-## 5. Acceptance criteria
-
-Per cell of the support matrix (native, isolated, sandbox) × (openclaw, pi):
-
-1. `up` from clean state completes with at most the documented interactive steps
-   (Codex OAuth on fresh openclaw; `pi login` on fresh pi) and is idempotent on re-run.
-2. `dev` (host modes) boots Bakin with the selected adapter (verified via
-   `/api/runtime` or doctor), hot reload intact.
-3. A dispatched task completes a real turn; the agent writes a deliverable file and
-   `bakin_exec_assets_save` lands a **real versioned asset** (the container-path case
-   included) — verified live per D7.
-4. Search: the saved asset is indexed and findable via `/api/search` in every mode;
-   the real `io.bakin.antfly` LaunchAgent unit file is byte-identical before/after
-   any isolated/sandbox lifecycle (regression-tested + verified live).
-5. `reset` returns the instance to clean state without touching `~/.bakin`,
-   `~/.openclaw`, `~/.pi`, `~/.antfly` contents, or any launchd/systemd unit.
-6. Full suite (`bun run test`) green; new units for the args/modes/paths matrix, path
-   translation, adapter env override, rig-antfly lifecycle, LaunchAgent guard.
-7. All docs in 3.5 updated; no doc refers to the rig as OpenClaw-only.
-
-## 6. Project structure (files expected to change)
-
-```
-scripts/instance.ts                     verb handling per runtime
-scripts/instance/{args,modes,paths}.ts  (mode × runtime) matrix
-scripts/instance/lifecycle.ts           runtime-conditional up/reset; pi login step
-scripts/instance/pi-*.ts (new)          pi home prep + login argv builders
-scripts/instance/antfly-*.ts (new)      rig-managed antfly child (isolated)
-dev/docker/docker-compose.yml           sandbox-pi shape (plan decides exact form)
-packages/core/src/settings.ts (+ facade) BAKIN_RUNTIME_ADAPTER override
-plugins/assets/lib/exec-tools.ts        path translation at the save boundary
-tests/dev/** + tests/core/**            new coverage (tests/dev runs in CI only —
-                                        run `bun test tests/dev/` explicitly, per memory)
-docs per 3.5
+```typescript
+type OccurrenceItem =
+  | { source: 'schedule'; jobId: string; at: string; job: /* summary */ }   // cron + 'at' occurrences via cron-eval
+  | { source: 'event'; event: ScheduledDomainEvent }                        // validated hook fan-in
 ```
 
-## 7. Code style & conventions
+Zod-validate every provider's output at Schedule's boundary; a provider that throws, times out, or returns invalid rows is dropped from the feed with a logged warning — never breaks the endpoint (acceptance criterion of #191).
 
-Repo conventions apply unchanged (CLAUDE.md): strict TS, zod at boundaries, pure
-argv-builder modules with injected deps (the rig's existing pattern — keep it),
-kebab-case files, conventional commits with scope (`feat(instance): …`,
-`fix(assets): …`). Rig modules stay exempt from provider-boundary rules
-(`tests/architecture/adapter-boundary.test.ts` per-rule list) — extend the exemption
-list for new `scripts/instance/*` files as needed, never weaken the rule itself.
+## Work Breakdown & Commit Strategy
 
-## 8. Testing strategy
+Every commit conventional, one logical change, suite green at every commit. Branches in the MAIN checkout (3737 serves them); Mark live-tests each PR before merge.
 
-- **Unit (bulk of coverage):** args/modes/paths matrix exhaustively (every mode ×
-  runtime × flag combo); lifecycle ordering via injected deps (no Docker needed);
-  path-translation pure function; settings env override; antfly-child argv/lifecycle
-  builders; LaunchAgent guard (rig-produced settings can never yield a provisionable
-  service config).
-- **Integration:** settings override honored through the `createAppServices` boot path
-  (temp homes, BOTH content-dir resolver mocks per CLAUDE.md testing rules); assets
-  save with a translated prefix writing a real asset into a temp content dir.
-- **Live E2E (D7, user-assisted):** the acceptance-criteria matrix run for real on
-  this machine, both runtimes; evidence captured in the task/PR notes. OpenClaw side
-  additionally re-runs `scripts/instance/validate.ts` (campaign unchanged).
-- Every new test follows the CRITICAL testing rules (temp dirs, both content-dir
-  mocks, env vars before imports, `--isolate`).
+### PR1 — `fix(schedule): harden scheduling foundation` (Workstream A)
+1. `fix(schedule): register the schedule-sync health check` — wire the orphaned check into `activate()`; reconcile its file-header claim with reality.
+2. `feat(core): cron_fires retention sweep` — age+count-bounded pruning in the ledger (preserve rows inside the catch-up window and the most recent N per job so exactly-once dedup and run history keep working); sweep job-removed rows; wired into the existing watchdog/doctor cadence.
+3. `test(conformance): pin the optional cron member` — conformance checks: member honesty (present on openclaw mock via `mockCron()`, absent on pi), CRUD round-trip against the mock, adoption path; teeth entry proving the checks bite.
+4. `test(integration): Bakin schedules survive runtime switch` — both directions (openclaw→pi, pi→openclaw), with and without `--adopt-cron`; schedules keep firing post-switch.
+5. `docs(knowledge): record audit stances` — update `.claude/knowledge/bakin-owned-scheduler.md` (+ `runtime-capabilities.md` cron note).
 
-## 9. Boundaries
+**Rollback:** pure hardening; reverting restores today's behavior exactly.
 
-**Always:**
-- Keep all instance state under gitignored `dev/`; `reset` targets only there.
-- Keep secrets flowing only through the existing op:// resolution; redact in logs.
-- Keep production behavior identical when the new env knobs are unset.
-- Update `.claude/knowledge/` alongside code in the same commit arc.
+### PR2 — `feat(schedule): first-class one-shot 'at' schedules` (Workstream B)
+1. `refactor(schedule): delete dead 'every' schedule kind` — narrow `ScheduleDef.kind` to `'cron' | 'at'`.
+2. `feat(schedule): evaluate 'at' schedules in the engine` — `cron-eval` (or a thin kind-dispatch above it) understands `'at'` (ISO expr, exactly one occurrence); scheduler tick + startup catch-up + `nextRun`/`prevRun` handle it; post-fire auto-disable with preserved history; "completed" derivation in `MergedJob`.
+3. `feat(schedule): create one-shot schedules end-to-end` — NL parse one-shot phrases; `schedule-input` + `job-form` support; routes + zod; exec tools (`bakin_exec_schedule_create` accepts one-shots) so agents self-schedule on any runtime.
+4. `test(schedule): one-shot lifecycle` — fake-clock: fires once, never re-fires, catch-up within window, blocked triage beyond, completed display state.
+5. `docs(knowledge): one-shot semantics` — scheduler knowledge doc section.
 
-**Ask first:**
-- Any additional production-code change the audit surfaces beyond D3/D5/D6 guards.
-- Any new stored secret or credential-copying behavior.
-- Bumping the pinned OpenClaw image tag or Pi SDK version.
+**Rollback:** reverting removes the feature; no schema migration (sidecar JSON is additive).
 
-**Never:**
-- Write to real `~/.bakin`, `~/.openclaw`, `~/.pi`, or OS service units from rig code
-  paths (native mode's read/onboard of `~/.bakin` in `instance dev` stays the one
-  documented exception, unchanged).
-- Encode provider identifiers upstream of adapter boundaries outside the rig exemption.
-- Add parallel spend/usage/stat systems (existing single-engine rules).
+### PR3 — `refactor(schedule): server-computed occurrences feed the calendars` (Workstream C1 — behavior-preserving debt fix)
+1. `feat(schedule): occurrences endpoint` — `GET /occurrences?from=&to=` computing per-job occurrences via `occurrencesBetween` (jobs only at this stage; TZ-correct).
+2. `refactor(schedule): calendars consume the occurrences endpoint` — Today/Week/Month render fetched occurrences; DELETE all client-side cron parsing (`getJobHour`/`jobOnDow`/`expandField`/`jobFiringOnDay`); consolidate the duplicated agent-color maps into one shared module.
+3. `test(schedule): occurrence endpoint + calendar rendering` — TZ/DST cases the old client math got wrong; calendar view tests updated to fixture the endpoint.
 
-## 10. Commit strategy (checkpoints — detailed sequencing in PLAN)
+**Rollback:** revert restores client-side math; zero feature loss (this PR adds none).
 
-Work lands on a feature branch as an ordered arc of conventional commits, each
-independently green and revertable:
+### PR4 — `feat(schedule): plugin-contributed scheduled domain events` (Workstream C2 — the #191 feature)
+1. `feat(sdk): ScheduledDomainEvent contract types` — SDK-exported types + zod schema.
+2. `feat(schedule): domain-event fan-in on the occurrences endpoint` — hook discovery by suffix, per-provider validation/isolation/timeout, unified sorted feed, SSE refetch conventions.
+3. `feat(tasks): tasks.scheduledEvents provider` — availableAt/dueAt tasks as events, deep links to the board.
+4. `feat(schedule): render domain events on the calendars` — visually distinct from job occurrences (source/kind badges), event popover with deep link; graceful empty/missing-provider behavior.
+5. `feat(schedule): reschedule verb` — `reschedulable` events get a date-picker ConfirmDialog invoking `{pluginId}.rescheduleEvent`; `feat(tasks): rescheduleEvent hook` implements it for availableAt/dueAt.
+6. `test(schedule|tasks|sdk): contract, providers, isolation` — including the #191 acceptance criterion: a broken/missing provider drops its events without breaking Schedule.
+7. `docs: contract authoring guide` — `docs/src/content/docs/extending/plugins/` page for external authors; `.claude/knowledge/` doc for the contract; CLAUDE.md Key Patterns blurb; schedule + tasks plugin manifest version bumps.
 
-1. `docs(specs)` — this spec + archived predecessor (`tasks/gate-discord/SPEC.md`).
-2. `feat(core)` — `BAKIN_RUNTIME_ADAPTER` override + tests (inert alone).
-3. `feat(assets)` — path-translation knob + tests (inert alone).
-4. `feat(instance)` — args/modes/paths (mode × runtime) matrix + unit tests (lifecycle
-   still openclaw-only; flag parses + plans correctly).
-5. `feat(instance)` — pi lifecycle (home prep, login, dev/run/shell env) — Pi host
-   modes usable end-to-end.
-6. `feat(instance)` — sandbox-pi (compose + exec paths).
-7. `feat(instance)` — rig-managed antfly child + LaunchAgent guard + tests.
-8. `fix(…)` — per-audit-finding fixes, one commit each.
-9. `docs(…)` — knowledge/README/CLAUDE.md sweep (folded per-arc where a change is
-   doc-coupled).
+**Rollback:** revert leaves PR3's correct calendars intact; contract disappears cleanly (hooks unregister with plugins).
 
-Rollback points: after 2/3 (core knobs only), after 5 (Pi host dev usable), after 7
-(full matrix). Nothing merges with a red suite.
+### Work item 5 — bits adoption (`bakin-bits-official`, after PR4 merges)
+- `messaging.scheduledEvents` (publish dates, reschedulable) + `projects.scheduledEvents` (milestones, read-only) in their respective plugins; manifest version bumps per bits convention.
+- Live-verified against the real install; note: installed projects plugin was previously hot-patched — reconcile installed state with repo state first.
+
+## Project Structure (touched surfaces)
+
+```
+plugins/schedule/lib/         → scheduler, cron-eval kind dispatch, occurrences, event fan-in
+plugins/schedule/lib/routes/  → occurrences route
+plugins/schedule/components/  → calendar-{today,weekly,monthly}, event popover, reschedule dialog
+plugins/tasks/lib/            → scheduledEvents + rescheduleEvent providers
+packages/sdk/src/             → ScheduledDomainEvent types (+ zod)
+packages/core/src/execution/  → cron_fires retention
+tests/plugins/schedule/       → engine/endpoint/calendar/contract tests
+tests/integration/runtime-conformance/ → cron member conformance
+tests/integration/            → switch-survival test
+.claude/knowledge/            → bakin-owned-scheduler.md update + scheduled-events doc
+docs/src/content/docs/extending/plugins/ → external-author contract guide
+```
+
+## Code Style
+
+Match surrounding code. Example of the provider registration (the pattern external authors copy):
+
+```typescript
+// plugins/tasks/index.ts — inside activate(ctx)
+ctx.hooks.register(
+  'tasks.scheduledEvents',
+  async (data: { from: string; to: string }): Promise<ScheduledDomainEvent[]> => {
+    return listScheduledTaskEvents(parseRange(data))
+  },
+  { pluginId: 'tasks', metadata: { hookKind: 'rpc', label: 'Scheduled task events' } },
+)
+```
+
+Conventions: kebab-case files, PascalCase types, zod at every boundary, `createLogger('schedule')`, no empty catches, `const` over `let`, URL-backed view state via `useQueryState`.
+
+## Testing Strategy
+
+- **bun:test**, all files mock both content-dir resolvers + OpenClaw home per CLAUDE.md; `--isolate`; RTL files import `rtl-settle`.
+- Engine/lifecycle: fake-clock unit tests (existing harness in `tests/plugins/schedule/helpers/`).
+- Ledger retention: real-ledger temp-dir tests with `closeDb()` teardown.
+- Conformance: shared checks across mock/pi/openclaw-mock + teeth file.
+- Contract: zod validation, per-provider fault isolation (throwing provider, invalid rows, slow provider), missing-plugin graceful drop.
+- UI: calendar view tests against fixtured occurrences endpoint; reschedule dialog flow.
+- Every PR: full `bun run test` green + live verification on 3737 by Mark before merge.
+
+## Boundaries
+
+- **Always:** ledger claims before any fire; zod at hook boundaries; per-provider fault isolation; occurrence math server-side only; docs updated in the same PR as the change; bits plugin manifest version bumps in the same PR.
+- **Ask first:** any ledger schema migration beyond the retention sweep; any change to dispatch semantics of `availableAt`; any new settings keys; touching the live `~/.bakin` state.
+- **Never:** runtime cron in the Bakin-schedule fire path; Schedule mutating plugin domain data outside the typed reschedule hook; parallel occurrence-math implementations; auto-converting raw dates/files into events; backwards-compat shims (single-user machine — delete dead surface instead).
+
+## Success Criteria
+
+1. `bakin doctor --full` runs the schedule-sync check; orphan native crons are detected and repairable.
+2. Conformance suite fails if an adapter lies about cron presence/behavior; teeth prove it.
+3. Integration test proves Bakin schedules fire after a runtime switch in both directions.
+4. `cron_fires` is bounded; retention never breaks exactly-once inside the catch-up window (test-pinned).
+5. "Remind me tomorrow at 9am" as an agent exec-tool call creates a one-shot that fires exactly once, survives a restart, catches up if missed, and shows "completed" with history afterward.
+6. Calendars place a `30 21 * * *` job correctly across a DST boundary in the job's tz (test-pinned; the old client math demonstrably couldn't).
+7. A plugin registering `{pluginId}.scheduledEvents` appears on the calendar, clearly badged, deep-linked; killing that plugin removes its events and nothing else breaks.
+8. A waiting task's date can be moved from the calendar via the reschedule dialog; the task's `availableAt` actually changes.
+9. Messaging publish dates + Projects milestones visible on the calendar (bits work item).
+10. All knowledge docs + external-author docs updated; README checked (no impact expected); zero regressions in the existing schedule test suite.
+
+## Open Questions (for the plan phase, not blockers)
+
+All resolved at plan review 2026-07-14 (details in `tasks/schedule-hardening-and-events/plan.md`):
+1. Retention: max-age **30 days**, keep-last-20-per-job, never prune pending/recent rows; sweep daily.
+2. Provider timeout: 2s per provider — ship it, log elapsed time on every drop, watch real latencies during live testing and retune if tight.
+3. `'at'` NL vocabulary: enumerated in plan (tomorrow/today/weekday/in-N/date phrases + ISO + date-picker fallback).
+4. Past occurrences: yes — full-range feed annotated past/future, past fires enriched with ledger disposition.
