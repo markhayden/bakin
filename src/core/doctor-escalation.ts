@@ -107,7 +107,11 @@ export async function escalateCronErrors(
       const ageMs = Date.now() - Date.parse(request.createdAt)
       if (request.taskId) {
         const details = await getTaskDetails(request.taskId).catch(() => null)
-        if (details && details.column !== 'done') {
+        // 'done' AND 'archived' are closed — the 2026-07-14 incident's three
+        // covering tasks were all ARCHIVED, and `!== 'done'` read each one
+        // as an open cover, muting escalation indefinitely.
+        const open = details !== null && details.column !== 'done' && details.column !== 'archived'
+        if (open) {
           if (ageMs < escalationStaleAfterMs) {
             log.info('escalation skipped — an open repair task already covers the current errors', {
               taskId: request.taskId,

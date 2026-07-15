@@ -108,6 +108,18 @@ describe('escalateCronErrors', () => {
     expect(delegateDoctorRepair).not.toHaveBeenCalled()
   })
 
+  it('an ARCHIVED covering task is closed, not an open cover (the 2026-07-14 mute)', async () => {
+    repairRequests = [{
+      id: 'repair-1',
+      createdAt: new Date(Date.now() - 7 * 60 * 60 * 1000).toISOString(), // cooldown past, would suppress if open
+      taskId: 'task-1',
+      unresolved: [{ check: 'search-canary', status: 'error', message: 'dark' }],
+    }]
+    openTaskColumns = { 'task-1': 'archived' }
+    await escalateCronErrors([errorRow('search-canary')], testDir, testDir)
+    expect(delegateDoctorRepair).toHaveBeenCalledTimes(1)
+  })
+
   it('re-escalates when the covering task is STALE — open past escalationStaleAfterMs with the error still burning', async () => {
     repairRequests = [{
       id: 'repair-1',
