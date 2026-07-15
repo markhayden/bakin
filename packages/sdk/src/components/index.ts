@@ -77,6 +77,9 @@ export { MarkdownEditor } from '@/components/markdown-editor'
 export { ModelSelect } from '@/components/model-select'
 /** Standard plugin page wrapper with header, content area, and toaster. */
 export { PageLayout } from '@/components/page-layout'
+/** Client-side link for runtime-registered plugin and cross-plugin routes. */
+export { PluginLink } from './plugin-link'
+export type { PluginLinkProps } from './plugin-link'
 /** Plugin page header with title, count badge, search, and action buttons. */
 export { PluginHeader } from '@/components/plugin-header'
 export type { PluginHeaderProps } from '@/components/plugin-header'

@@ -6,7 +6,7 @@
 import { describe, it, expect, afterAll, mock } from 'bun:test'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { rmSync } from 'fs'
+import { mkdirSync, rmSync } from 'fs'
 import { randomUUID } from 'crypto'
 
 const testDir = join(tmpdir(), `bakin-test-usage-store-${Date.now()}-${randomUUID()}`)
@@ -37,6 +37,8 @@ import {
   usageByDaySince,
   usageByAgentDaySince,
   usageByAgentModelDaySince,
+  readUsageHistorySince,
+  UsageHistoryStoreReadError,
   type SessionDayUsage,
 } from '../../packages/core/src/usage-history/store'
 import { closeAllDbs } from '../../packages/core/src/storage/db'
@@ -186,6 +188,7 @@ describe('usage-history store', () => {
     const byAgent = usageByAgentSince(DAY1)
     expect(byAgent.find((a) => a.agent === 'basil')?.tokens.total).toBe(195)
   })
+
 })
 
 describe('usageByAgentDaySince (#385)', () => {
@@ -258,5 +261,18 @@ describe('usageByAgentModelDaySince (cost-control v2)', () => {
     const only2 = usageByAgentModelDaySince(DAY2)
     expect(only2.every((c) => c.day >= DAY2)).toBe(true)
     expect(only2.find((c) => c.agent === 'lane-agent' && c.day === DAY1)).toBeUndefined()
+  })
+})
+
+describe('strict usage-history reads', () => {
+  it('surfaces store failures instead of returning empty complete-looking rows', () => {
+    closeAllDbs()
+    const storePath = join(testDir, 'usage.db')
+    rmSync(storePath, { force: true })
+    mkdirSync(storePath)
+
+    expect(() => readUsageHistorySince(DAY1)).toThrow(UsageHistoryStoreReadError)
+
+    rmSync(storePath, { recursive: true, force: true })
   })
 })

@@ -112,6 +112,8 @@ describe('buildAgentPulseRows', () => {
     expect(rows.find((row) => row.agent === 'flagged')?.reviewState).toBe('review')
     expect(rows.find((row) => row.agent === 'working')?.liveRun?.taskTitle).toBe('Verify search')
     expect(rows.find((row) => row.agent === 'context-only')?.startupContextPercent).toBe(25)
+    expect(rows.find((row) => row.agent === 'session-only')?.usageCoverage).toBe('unavailable')
+    expect(rows.find((row) => row.agent === 'session-only')?.observedTokens).toBeNull()
   })
 
   it('keeps missing coverage and unreported cost unknown instead of converting them to healthy zeroes', () => {
@@ -144,6 +146,77 @@ describe('buildAgentPulseRows', () => {
     expect(row?.historyCostUsdMicros).toBeNull()
     expect(row?.startupContextPercent).toBeNull()
     expect(row?.evidenceAligned).toBe(false)
+  })
+
+  it('does not trust retained legacy rows before the first completed scan after restart', () => {
+    const history: UsageHistoryData = {
+      window: '24h',
+      since: '2026-07-13',
+      throughDay: '2026-07-14',
+      scannedAt: null,
+      byAgent: [{
+        agent: 'retained',
+        tokens: tokens(9_999),
+        costUsdMicros: 12_000,
+        costedMessages: 1,
+        messageCount: 1,
+      }],
+      byDay: [],
+      byAgentDay: [],
+    }
+
+    const [row] = buildAgentPulseRows({
+      effort: null,
+      history,
+      latestSessions: [],
+      liveNow: null,
+      context: null,
+      contextBudgetBytes: null,
+    })
+
+    expect(row?.usageCoverage).toBe('unavailable')
+    expect(row?.observedTokens).toBeNull()
+    expect(row?.historyCostUsdMicros).toBeNull()
+    expect(row?.reviewState).toBe('unknown')
+  })
+
+  it('keeps partial per-agent transcript evidence unknown and includes completely scanned idle agents', () => {
+    const history: UsageHistoryData = {
+      window: '24h',
+      since: '2026-07-13',
+      throughDay: '2026-07-14',
+      scannedAt: null,
+      coverage: {
+        status: 'partial',
+        reason: 'agent_scan_failed',
+        agents: [
+          { agent: 'partial', status: 'partial' },
+          { agent: 'idle', status: 'complete' },
+        ],
+      },
+      byAgent: [
+        { agent: 'partial', tokens: tokens(0), costUsdMicros: 0, costedMessages: 1, messageCount: 1 },
+      ],
+      byDay: [],
+      byAgentDay: [],
+    }
+
+    const rows = buildAgentPulseRows({
+      effort: null,
+      history,
+      latestSessions: [],
+      liveNow: null,
+      context: null,
+      contextBudgetBytes: null,
+    })
+
+    const partial = rows.find((row) => row.agent === 'partial')
+    expect(partial?.usageCoverage).toBe('partial')
+    expect(partial?.observedTokens).toBeNull()
+    expect(partial?.historyCostUsdMicros).toBeNull()
+    const idle = rows.find((row) => row.agent === 'idle')
+    expect(idle?.usageCoverage).toBe('complete')
+    expect(idle?.observedTokens).toBe(0)
   })
 
   it('keeps an explicit review flag visible even when transcript coverage is unavailable', () => {

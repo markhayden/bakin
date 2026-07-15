@@ -303,9 +303,10 @@ const teamPlugin: BakinPlugin = definePlugin({
     ctx.hooks.register('team.getTeamMembers', (d: Record<string, unknown>) => {
       return getTeamMembers(ctx.runtime, d.teamId as string)
     }, { label: 'List team members.', summary: 'Returns the agents assigned to one team. Use it for team dashboards, routing rules, or workflow logic that needs team membership.', hookKind: 'rpc' })
-    ctx.hooks.register('team.getAgentTeam', async (d: Record<string, unknown>) => {
-      const ds = await mergeDisplayDefaults(ctx.runtime, readDisplaySettings())
-      const teamId = ds[d.id as string]?.teamId
+    ctx.hooks.register('team.getAgentTeam', (d: Record<string, unknown>) => {
+      // Team membership is stored explicitly. Reading it does not need the
+      // runtime-merged color/default view (or another full roster scan).
+      const teamId = readDisplaySettings()[d.id as string]?.teamId
       if (!teamId) return null
       return readTeams().find((t) => t.id === teamId) ?? null
     }, { label: 'Get agent team.', summary: 'Returns the team currently assigned to an agent, or null when the agent is unassigned. Use it to add team context to task, workflow, or activity views.', hookKind: 'rpc' })

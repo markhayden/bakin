@@ -5,7 +5,7 @@
  * the attention chips derivation.
  */
 import { describe, expect, it, mock } from 'bun:test'
-import { fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react'
 import '../../rtl-settle'
 import type { ReactNode } from 'react'
 import { TEAM_ATTENTION_HEALTH_REPORT } from './health-report-fixture'
@@ -26,6 +26,13 @@ import { DiagnosticsTab, DiagnosticsChipsView, useAgentAttention } from '../../.
 
 function jsonResponse(body: unknown): Response {
   return new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } })
+}
+
+function errorResponse(status: number): Response {
+  return new Response(JSON.stringify({ error: 'request failed' }), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  })
 }
 
 const ROUTES: Record<string, unknown> = {
@@ -126,6 +133,233 @@ describe('DiagnosticsTab', () => {
       )
       expect(calls.some(([url, method]) => url === '/api/agent-packages/pixel/sync' && method === 'POST')).toBe(true)
     })
+  })
+
+  it('turns a hung drift scan into a retryable unavailable state', async () => {
+    vi.useFakeTimers()
+    try {
+      globalThis.fetch = mock((url: string) => {
+        if (url === '/api/agent-packages/pixel/scan') {
+          // Deliberately ignore AbortSignal to prove the panel timeout itself
+          // releases the UI even when a transport never settles.
+          return new Promise<Response>(() => {})
+        }
+        for (const [prefix, body] of Object.entries(ROUTES)) {
+          if (url.startsWith(prefix)) return Promise.resolve(jsonResponse(body))
+        }
+        return Promise.resolve(jsonResponse({}))
+      }) as unknown as typeof fetch
+
+      render(<DiagnosticsTab agentId="pixel" />)
+      await act(async () => { await vi.advanceTimersByTimeAsync(15_000) })
+
+      expect(screen.getByText('Drift scan unavailable.')).toBeDefined()
+      expect(screen.getByRole('button', { name: /Rescan/ }).hasAttribute('disabled')).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('aborts an obsolete drift scan and ignores it when the agent changes', async () => {
+    let pixelSignal: AbortSignal | undefined
+    globalThis.fetch = mock((url: string, init?: RequestInit) => {
+      if (url === '/api/agent-packages/pixel/scan') {
+        pixelSignal = init?.signal as AbortSignal | undefined
+        return new Promise<Response>((_resolve, reject) => {
+          pixelSignal?.addEventListener('abort', () => {
+            reject(Object.assign(new Error('aborted'), { name: 'AbortError' }))
+          })
+        })
+      }
+      if (url === '/api/agent-packages/enrich/scan') {
+        return Promise.resolve(jsonResponse({
+          ok: true,
+          packageId: 'enrich',
+          scannedAt: '2026-07-05T00:00:00Z',
+          findings: [{
+            type: 'block-stale',
+            severity: 'warn',
+            message: 'enrich drift marker',
+            agentId: 'enrich',
+            file: 'AGENTS.md',
+          }],
+        }))
+      }
+      if (url === '/api/agent-packages/enrich/receipt') {
+        return Promise.resolve(jsonResponse({ ok: true }))
+      }
+      for (const [prefix, body] of Object.entries(ROUTES)) {
+        if (url.startsWith(prefix)) return Promise.resolve(jsonResponse(body))
+      }
+      return Promise.resolve(jsonResponse({}))
+    }) as unknown as typeof fetch
+
+    const { rerender } = render(<DiagnosticsTab agentId="pixel" />)
+    await waitFor(() => expect(pixelSignal).toBeDefined())
+
+    rerender(<DiagnosticsTab agentId="enrich" />)
+
+    expect(pixelSignal?.aborted).toBe(true)
+    expect(await screen.findByText('enrich drift marker')).toBeDefined()
+    expect(screen.queryByText(/pixel\/AGENTS\.md managed block is stale/)).toBeNull()
+  })
+
+  it('replaces a failed timeline skeleton with an error and recovers on retry', async () => {
+    let timelineAttempts = 0
+    globalThis.fetch = mock((url: string) => {
+      if (url.startsWith('/api/plugins/team/pixel/timeline')) {
+        timelineAttempts += 1
+        return Promise.resolve(timelineAttempts === 1
+          ? errorResponse(503)
+          : jsonResponse(ROUTES['/api/plugins/team/pixel/timeline']))
+      }
+      for (const [prefix, body] of Object.entries(ROUTES)) {
+        if (url.startsWith(prefix)) return Promise.resolve(jsonResponse(body))
+      }
+      return Promise.resolve(jsonResponse({}))
+    }) as unknown as typeof fetch
+
+    render(<DiagnosticsTab agentId="pixel" />)
+
+    expect(await screen.findByText('Activity timeline unavailable.')).toBeDefined()
+    fireEvent.click(screen.getByRole('button', { name: 'Retry activity timeline' }))
+
+    expect(await screen.findByText('resize hero images')).toBeDefined()
+    expect(timelineAttempts).toBe(2)
+  })
+
+  it('does not present a fallback context budget as configured and can retry settings', async () => {
+    let settingsAttempts = 0
+    globalThis.fetch = mock((url: string) => {
+      if (url === '/api/settings') {
+        settingsAttempts += 1
+        return Promise.resolve(settingsAttempts === 1
+          ? errorResponse(500)
+          : jsonResponse(ROUTES['/api/settings']))
+      }
+      for (const [prefix, body] of Object.entries(ROUTES)) {
+        if (url.startsWith(prefix)) return Promise.resolve(jsonResponse(body))
+      }
+      return Promise.resolve(jsonResponse({}))
+    }) as unknown as typeof fetch
+
+    render(<DiagnosticsTab agentId="pixel" />)
+
+    expect(await screen.findByText('Configured budget unavailable.')).toBeDefined()
+    expect(screen.queryByText(/of 64\.0 KiB budget/)).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry context budget' }))
+    await waitFor(() => expect(screen.getByText(/of 64\.0 KiB budget/)).toBeDefined())
+    expect(settingsAttempts).toBe(2)
+  })
+
+  it('turns a hung context report into a retryable timeout', async () => {
+    vi.useFakeTimers()
+    try {
+      globalThis.fetch = mock((url: string) => {
+        if (url === '/api/context-report/pixel') return new Promise<Response>(() => {})
+        for (const [prefix, body] of Object.entries(ROUTES)) {
+          if (url.startsWith(prefix)) return Promise.resolve(jsonResponse(body))
+        }
+        return Promise.resolve(jsonResponse({}))
+      }) as unknown as typeof fetch
+
+      render(<DiagnosticsTab agentId="pixel" />)
+      await act(async () => { await vi.advanceTimersByTimeAsync(15_000) })
+
+      expect(screen.getByText('Context report unavailable because the request timed out.')).toBeDefined()
+      expect(screen.getByRole('button', { name: 'Retry context report' })).toBeDefined()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('turns a hung sync request into a visible retryable error', async () => {
+    const baseFetch = stubFetch()
+    globalThis.fetch = mock((url: string) => {
+      if (url === '/api/agent-packages/pixel/sync') return new Promise<Response>(() => {})
+      return baseFetch(url)
+    }) as unknown as typeof fetch
+    render(<DiagnosticsTab agentId="pixel" />)
+    const sync = await screen.findByRole('button', { name: /Sync now/ })
+
+    vi.useFakeTimers()
+    try {
+      fireEvent.click(sync)
+      await act(async () => { await vi.advanceTimersByTimeAsync(15_000) })
+
+      expect(screen.getByText('Sync timed out. Try again.')).toBeDefined()
+      expect(sync.hasAttribute('disabled')).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('ignores an obsolete sync response after the selected agent changes', async () => {
+    const baseFetch = stubFetch()
+    let resolveSync!: (response: Response) => void
+    globalThis.fetch = mock((url: string) => {
+      if (url === '/api/agent-packages/pixel/sync') {
+        return new Promise<Response>((resolve) => { resolveSync = resolve })
+      }
+      return baseFetch(url)
+    }) as unknown as typeof fetch
+
+    const view = render(<DiagnosticsTab agentId="pixel" />)
+    fireEvent.click(await screen.findByRole('button', { name: /Sync now/ }))
+    await waitFor(() => expect(resolveSync).toBeDefined())
+
+    view.rerender(<DiagnosticsTab agentId="enrich" />)
+    await act(async () => { resolveSync(errorResponse(500)) })
+
+    expect(screen.queryByText(/Sync could not be completed|Sync timed out|sync failed/)).toBeNull()
+  })
+
+  it('aborts an in-flight timeline request when the panel unmounts', async () => {
+    let timelineSignal: AbortSignal | undefined
+    globalThis.fetch = mock((url: string, init?: RequestInit) => {
+      if (url.startsWith('/api/plugins/team/pixel/timeline')) {
+        timelineSignal = init?.signal as AbortSignal | undefined
+        return new Promise<Response>(() => {})
+      }
+      for (const [prefix, body] of Object.entries(ROUTES)) {
+        if (url.startsWith(prefix)) return Promise.resolve(jsonResponse(body))
+      }
+      return Promise.resolve(jsonResponse({}))
+    }) as unknown as typeof fetch
+
+    const { unmount } = render(<DiagnosticsTab agentId="pixel" />)
+    await waitFor(() => expect(timelineSignal).toBeDefined())
+
+    unmount()
+    expect(timelineSignal?.aborted).toBe(true)
+  })
+
+  it('turns a hung timeline request into a retryable timeout instead of a permanent skeleton', async () => {
+    vi.useFakeTimers()
+    try {
+      globalThis.fetch = mock((url: string, init?: RequestInit) => {
+        if (url.startsWith('/api/plugins/team/pixel/timeline')) {
+          return new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener('abort', () => {
+              reject(Object.assign(new Error('aborted'), { name: 'AbortError' }))
+            })
+          })
+        }
+        for (const [prefix, body] of Object.entries(ROUTES)) {
+          if (url.startsWith(prefix)) return Promise.resolve(jsonResponse(body))
+        }
+        return Promise.resolve(jsonResponse({}))
+      }) as unknown as typeof fetch
+
+      render(<DiagnosticsTab agentId="pixel" />)
+      await act(async () => { await vi.advanceTimersByTimeAsync(15_000) })
+
+      expect(screen.getByText('Activity timeline unavailable.')).toBeDefined()
+      expect(screen.getByRole('button', { name: 'Retry activity timeline' })).toBeDefined()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 

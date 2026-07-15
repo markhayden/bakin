@@ -80,6 +80,8 @@ let runtimeAgents: Array<{ id: string; name?: string; role?: string }> = []
 let workspaceFiles = new Map<string, WorkspaceFile>() // `${agentId}:${path}`
 let runtimeSkills = new Map<string, RuntimeSkill>() // `${agentId ?? ''}:${name}`
 let writeCalls = 0
+let workspaceReadCalls: string[] = []
+let skillReadCalls: string[] = []
 
 type TestGlobal = typeof globalThis & { __bakinAppServices?: unknown }
 
@@ -88,16 +90,20 @@ function installRuntimeMock(): void {
     runtime: {
       agents: {
         list: async () => runtimeAgents.map((a) => ({ id: a.id, name: a.name ?? a.id, role: a.role, status: 'active' })),
-        readWorkspaceFile: async (agentId: string, path: string) =>
-          workspaceFiles.get(`${agentId}:${path}`) ?? null,
+        readWorkspaceFile: async (agentId: string, path: string) => {
+          workspaceReadCalls.push(`${agentId}:${path}`)
+          return workspaceFiles.get(`${agentId}:${path}`) ?? null
+        },
         writeWorkspaceFile: async (agentId: string, file: WorkspaceFile) => {
           writeCalls++
           workspaceFiles.set(`${agentId}:${file.path}`, file)
         },
       },
       skills: {
-        get: async (name: string, agentId?: string) =>
-          runtimeSkills.get(`${agentId ?? ''}:${name}`) ?? null,
+        get: async (name: string, agentId?: string) => {
+          skillReadCalls.push(`${agentId ?? ''}:${name}`)
+          return runtimeSkills.get(`${agentId ?? ''}:${name}`) ?? null
+        },
         write: async () => { writeCalls++ },
       },
     },
@@ -210,6 +216,8 @@ beforeEach(() => {
   workspaceFiles = new Map()
   runtimeSkills = new Map()
   writeCalls = 0
+  workspaceReadCalls = []
+  skillReadCalls = []
   installRuntimeMock()
 })
 
@@ -234,6 +242,104 @@ describe('scanAgentSync — clean state', () => {
     await seedSyncedState()
     await scanAgentSync()
     expect(writeCalls).toBe(0)
+  })
+})
+
+describe('scanAgentSync — agent scope', () => {
+  it('does not inspect unrelated agents or package projections', async () => {
+    await seedSyncedState()
+    runtimeAgents.push({ id: 'other', name: 'Other' })
+
+    const lockMod = await import('../../packages/core/src/agent-packages/lockfile')
+    const current = lockMod.readLockfile()
+    writeLockfile({
+      version: 1,
+      packages: {
+        ...current.packages,
+        other: {
+          ...pixelEntry([
+            {
+              kind: 'skill',
+              target: 'runtime:agent-skill:other:expensive-skill',
+              sha256: 'unrelated',
+            },
+          ]),
+          agentId: 'other',
+        },
+      },
+    })
+
+    const report = await scanAgentSync(undefined, { agentId: 'pixel' })
+
+    expect(report.agentsScanned).toBe(1)
+    expect(report.blocksOk).toBeGreaterThanOrEqual(2)
+    expect(report.projectionsOk).toBe(1)
+    expect(workspaceReadCalls.every((call) => call.startsWith('pixel:'))).toBe(true)
+    expect(skillReadCalls).toEqual(['pixel:image-gen'])
+    expect(report.findings.some((finding) => finding.agentId === 'other')).toBe(false)
+    expect(report.findings.some((finding) => finding.packageId === 'other')).toBe(false)
+  })
+
+  it('excludes unrelated source and migration findings', async () => {
+    await seedSyncedState()
+    runtimeAgents.push({ id: 'other', name: 'Other' })
+
+    const lockMod = await import('../../packages/core/src/agent-packages/lockfile')
+    const current = lockMod.readLockfile()
+    writeLockfile({
+      version: 1,
+      packages: {
+        ...current.packages,
+        other: {
+          ...pixelEntry([
+            {
+              kind: 'workspace-file',
+              target: 'runtime:workspace-file:other:SOUL.md',
+              sha256: 'legacy',
+              templateOnly: true,
+            },
+          ]),
+          agentId: 'other',
+        },
+      },
+    })
+
+    const report = await scanAgentSync(undefined, { agentId: 'pixel' })
+
+    expect(report.migrationNeeded).toBe(false)
+    expect(report.findings.some((finding) => finding.packageId === 'other')).toBe(false)
+  })
+
+  it('does no workspace or projection work for an unknown scoped agent', async () => {
+    await seedSyncedState()
+
+    const report = await scanAgentSync(undefined, { agentId: 'nobody' })
+
+    expect(report.agentsScanned).toBe(0)
+    expect(report.findings).toEqual([])
+    expect(workspaceReadCalls).toEqual([])
+    expect(skillReadCalls).toEqual([])
+  })
+
+  it('retains findings from an owning package whose key differs from the agent id', async () => {
+    await seedSyncedState()
+    const lockMod = await import('../../packages/core/src/agent-packages/lockfile')
+    const current = lockMod.readLockfile()
+    writeLockfile({
+      version: 1,
+      packages: {
+        'artist.bundle': {
+          ...current.packages.pixel,
+          agentId: 'pixel',
+        },
+      },
+    })
+
+    const report = await scanAgentSync(undefined, { agentId: 'pixel' })
+
+    expect(report.findings.some(
+      (finding) => finding.type === 'source-missing' && finding.packageId === 'artist.bundle',
+    )).toBe(true)
   })
 })
 

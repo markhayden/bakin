@@ -7,6 +7,10 @@ import '../../rtl-settle'
 
 const queryKeys: string[] = []
 
+mock.module('@tanstack/react-router', () => ({
+  useNavigate: () => () => undefined,
+}))
+
 mock.module('@makinbakin/sdk/hooks', () => ({
   useQueryState: (key: string, initial: string) => {
     queryKeys.push(key)
@@ -277,6 +281,66 @@ describe('AgentsTab', () => {
     expect(screen.queryByText('Bakin-attributed estimate')).toBeNull()
     expect(screen.queryByText('fixed 24h scope · used by budget caps')).toBeNull()
     expect(within(usageCost!).getByRole('link', { name: 'View budgets in Models' }).getAttribute('href')).toBe('/models?tab=spend')
+  })
+
+  it('totals only explicitly complete agents when transcript coverage is partial', async () => {
+    const { fetchMock } = stubAgentFetch()
+    globalThis.fetch = mock((input: string | URL | Request) => {
+      const url = String(input)
+      if (url.startsWith('/api/plugins/health/usage-history')) {
+        const window = new URL(url, 'http://localhost').searchParams.get('window') as '24h' | '7d' | '30d'
+        return Promise.resolve(jsonResponse({
+          ...history(window),
+          scannedAt: null,
+          coverage: {
+            status: 'partial',
+            reason: 'agent_scan_failed',
+            agents: [
+              { agent: 'pixel', status: 'complete' },
+              { agent: 'scout', status: 'partial' },
+            ],
+          },
+        }))
+      }
+      return fetchMock(input)
+    }) as unknown as typeof fetch
+
+    render(<AgentsTab />)
+
+    const card = (await screen.findByRole('heading', { level: 3, name: 'Usage & cost' }))
+      .closest<HTMLElement>('[data-section-card]')!
+    expect(card.textContent).toContain('Transcript coverage is partial')
+    expect(card.textContent).toContain('only 1 fully scanned agent')
+    expect(card.textContent).toContain('1 unverified agent is excluded')
+    expect(card.textContent).toContain('2 of 4 messages')
+    const exact = within(card).getByRole('table', { name: 'Usage over time data', hidden: true })
+    expect(exact.textContent).toContain('pixel')
+    expect(exact.textContent).not.toContain('scout')
+  })
+
+  it('does not present durable rows as current totals before a scan has run', async () => {
+    const { fetchMock } = stubAgentFetch()
+    globalThis.fetch = mock((input: string | URL | Request) => {
+      const url = String(input)
+      if (url.startsWith('/api/plugins/health/usage-history')) {
+        const window = new URL(url, 'http://localhost').searchParams.get('window') as '24h' | '7d' | '30d'
+        return Promise.resolve(jsonResponse({
+          ...history(window),
+          scannedAt: null,
+          coverage: { status: 'unavailable', reason: 'scan_not_run', agents: [] },
+        }))
+      }
+      return fetchMock(input)
+    }) as unknown as typeof fetch
+
+    render(<AgentsTab />)
+
+    const card = (await screen.findByRole('heading', { level: 3, name: 'Usage & cost' }))
+      .closest<HTMLElement>('[data-section-card]')!
+    expect(card.textContent).toContain('Retained rows are excluded')
+    expect(card.textContent).toContain('No fully verified usage total is available yet')
+    expect(within(card).queryByRole('group', { name: 'Usage over time' })).toBeNull()
+    expect(card.textContent).not.toContain('1.3k')
   })
 
   it('switches the combined Usage & cost visualization between tokens and honestly covered reported cost', async () => {

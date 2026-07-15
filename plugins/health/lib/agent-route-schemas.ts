@@ -57,11 +57,46 @@ const usageByAgentDaySchema = z.object({
   ...usageRollupFields,
 }).strict().superRefine(checkCostCoverage)
 
+export const usageEvidenceCoverageSchema = z.object({
+  status: z.enum(['complete', 'partial', 'unavailable']),
+  reason: z.enum([
+    'complete',
+    'scan_not_run',
+    'scan_status_unavailable',
+    'missing_session_tier',
+    'roster_unavailable',
+    'agent_scan_failed',
+    'scan_failed',
+    'scan_stale',
+  ]),
+  agents: z.array(z.object({
+    agent: z.string().min(1),
+    status: z.enum(['complete', 'partial']),
+  }).strict()),
+}).strict().superRefine((coverage, context) => {
+  const hasPartialAgent = coverage.agents.some((agent) => agent.status === 'partial')
+  const valid = coverage.status === 'complete'
+    ? coverage.reason === 'complete' && !hasPartialAgent
+    : coverage.status === 'partial'
+      ? coverage.reason === 'agent_scan_failed' && hasPartialAgent
+      : coverage.reason !== 'complete'
+        && coverage.reason !== 'agent_scan_failed'
+        && coverage.agents.length === 0
+  if (!valid) {
+    context.addIssue({
+      code: 'custom',
+      message: 'coverage status, reason, and per-agent states are inconsistent',
+      input: coverage,
+    })
+  }
+})
+
 export const usageHistoryResponseSchema = z.object({
   window: agentWindowSchema,
   since: dayKeySchema,
   throughDay: dayKeySchema,
   scannedAt: timestampSchema.nullable(),
+  coverage: usageEvidenceCoverageSchema.optional(),
   byAgent: z.array(usageByAgentSchema),
   byDay: z.array(usageByDaySchema),
   byAgentDay: z.array(usageByAgentDaySchema),
@@ -100,6 +135,7 @@ const agentEffortRowSchema = z.object({
 export const agentEffortResponseSchema = z.object({
   window: agentWindowSchema,
   scannedAt: timestampSchema.nullable(),
+  coverage: usageEvidenceCoverageSchema.optional(),
   agents: z.array(agentEffortRowSchema),
 }).strict()
 

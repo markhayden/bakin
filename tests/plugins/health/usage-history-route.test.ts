@@ -5,7 +5,7 @@
 import { describe, it, expect, beforeAll, afterAll, mock } from 'bun:test'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { rmSync } from 'fs'
+import { mkdirSync, rmSync } from 'fs'
 import { randomUUID } from 'crypto'
 
 const testDir = join(tmpdir(), `bakin-test-usage-route-${Date.now()}-${randomUUID()}`)
@@ -67,10 +67,17 @@ import healthPlugin from '../../../plugins/health'
 import { activatePlugin, callRoute, findRoute, type ActivatedPlugin } from '../test-helpers'
 import { replaceSessionUsage, toLocalDayKey } from '@bakin/core/usage-history/store'
 import { closeAllDbs } from '@bakin/core/storage/db'
-import { startUsageHistoryTimer, stopUsageHistoryTimer } from '../../../plugins/health/lib/usage-history-timer'
+import {
+  getUsageHistoryScanStaleAfterMs,
+  startUsageHistoryTimer,
+  stopUsageHistoryTimer,
+} from '../../../plugins/health/lib/usage-history-timer'
 import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
 
 let activated: ActivatedPlugin
+const usageScanGlobal = globalThis as typeof globalThis & {
+  __bakinUsageHistoryLastScan?: unknown
+}
 
 const DAY_MS = 24 * 60 * 60 * 1000
 const today = toLocalDayKey(Date.now())
@@ -100,6 +107,7 @@ function seed(sessionId: string, agent: string, day: string, total: number, tsMs
 }
 
 beforeAll(async () => {
+  usageScanGlobal.__bakinUsageHistoryLastScan = null
   activated = await activatePlugin(healthPlugin, testDir)
   seed('s-today', 'basil', today, 100, Date.now())
   seed('s-10d', 'basil', tenDaysAgo, 1_000, Date.now() - 10 * DAY_MS)
@@ -108,6 +116,7 @@ beforeAll(async () => {
 
 afterAll(() => {
   stopUsageHistoryTimer()
+  usageScanGlobal.__bakinUsageHistoryLastScan = null
   closeAllDbs()
   rmSync(testDir, { recursive: true, force: true })
 })
@@ -152,8 +161,85 @@ describe('GET /usage-history', () => {
   it('reports scannedAt null before any sweep has completed', async () => {
     const { body } = await getHistory()
     expect(body.scannedAt).toBeNull()
+    expect(body.coverage).toEqual({
+      status: 'unavailable',
+      reason: 'scan_not_run',
+      agents: [],
+    })
     expect(body.since).toMatch(/^\d{4}-\d{2}-\d{2}$/)
     expect(body.throughDay).toBe(today)
+  })
+
+  it('publishes partial per-agent coverage without claiming a completed legacy scan', async () => {
+    usageScanGlobal.__bakinUsageHistoryLastScan = {
+      at: Date.now(),
+      report: {
+        scanned: 1,
+        skipped: 0,
+        failed: 1,
+        coverage: {
+          status: 'partial',
+          reason: 'agent_scan_failed',
+          agents: [
+            { agent: 'basil', status: 'complete' },
+            { agent: 'clover', status: 'partial' },
+          ],
+        },
+      },
+    }
+
+    const { body } = await getHistory()
+
+    expect(body.scannedAt).toBeNull()
+    expect(body.coverage).toEqual({
+      status: 'partial',
+      reason: 'agent_scan_failed',
+      agents: [
+        { agent: 'basil', status: 'complete' },
+        { agent: 'clover', status: 'partial' },
+      ],
+    })
+    usageScanGlobal.__bakinUsageHistoryLastScan = null
+  })
+
+  it('downgrades an expired complete scan instead of presenting retained rows as current', async () => {
+    usageScanGlobal.__bakinUsageHistoryLastScan = {
+      at: Date.now() - getUsageHistoryScanStaleAfterMs() - 1,
+      report: {
+        scanned: 1,
+        skipped: 0,
+        failed: 0,
+        coverage: {
+          status: 'complete',
+          reason: 'complete',
+          agents: [{ agent: 'basil', status: 'complete' }],
+        },
+      },
+    }
+
+    const { body } = await getHistory()
+
+    expect(body.scannedAt).toBeNull()
+    expect(body.coverage).toEqual({
+      status: 'unavailable',
+      reason: 'scan_stale',
+      agents: [],
+    })
+    expect((body.byAgent as Array<{ agent: string }>).some((row) => row.agent === 'basil')).toBe(true)
+    usageScanGlobal.__bakinUsageHistoryLastScan = null
+  })
+
+  it('returns unavailable when the durable store cannot be read', async () => {
+    closeAllDbs()
+    const storePath = join(testDir, 'usage.db')
+    rmSync(storePath, { force: true })
+    mkdirSync(storePath)
+
+    const { status, body } = await getHistory()
+
+    expect(status).toBe(503)
+    expect(body.error).toBe('Usage history store could not be read.')
+    rmSync(storePath, { recursive: true, force: true })
   })
 })
 

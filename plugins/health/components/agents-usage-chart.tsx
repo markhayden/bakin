@@ -1,11 +1,12 @@
 'use client'
 
 import { useState } from 'react'
-import { ChartExplainer, EmptyState, ErrorState, SectionCard, StackedColumnChart } from '@makinbakin/sdk/components'
+import { ChartExplainer, EmptyState, ErrorState, PluginLink, SectionCard, StackedColumnChart } from '@makinbakin/sdk/components'
 import { Button, Skeleton } from '@makinbakin/sdk/ui'
 import { ArrowUpRight, TrendingUp } from 'lucide-react'
 import type { UsageHistoryData } from '../types'
 import { formatRuntimeCost, formatTokenCount } from '../lib/format'
+import { scopeUsageHistoryToCompleteEvidence } from '../lib/usage-coverage'
 
 interface AgentsUsageChartProps {
   data: UsageHistoryData | null
@@ -28,7 +29,10 @@ interface TrendData {
 type UsageMetric = 'tokens' | 'cost'
 
 function buildTrend(history: UsageHistoryData, metric: UsageMetric): TrendData | null {
-  const days = [...new Set(history.byDay.map((row) => row.day))].sort()
+  const days = [...new Set([
+    ...history.byDay.map((row) => row.day),
+    ...history.byAgentDay.map((row) => row.day),
+  ])].sort()
   if (days.length === 0) return null
 
   const allAgents = [...new Set([
@@ -119,15 +123,19 @@ function lowerFirst(value: string): string {
 /** Historical transcript-observed usage and runtime-reported cost in one surface. */
 export function AgentsUsageChart({ data, loading, error, onRetry }: AgentsUsageChartProps) {
   const [metric, setMetric] = useState<UsageMetric>('tokens')
-  const trend = data ? buildTrend(data, metric) : null
-  const costedMessages = data?.byAgent.reduce((sum, row) => sum + row.costedMessages, 0) ?? null
-  const messageCount = data?.byAgent.reduce((sum, row) => sum + row.messageCount, 0) ?? null
-  const reportedCostRows = data?.byAgent.filter((row) => Number.isFinite(row.costUsdMicros)) ?? []
-  const reportedCost = data && costedMessages !== null && costedMessages > 0 && reportedCostRows.length > 0
+  const scoped = data ? scopeUsageHistoryToCompleteEvidence(data) : null
+  const visibleData = scoped?.history ?? null
+  const evidenceIncomplete = scoped !== null && scoped.status !== 'complete'
+  const evidenceLimited = evidenceIncomplete || (scoped?.excludedAgentCount ?? 0) > 0
+  const trend = visibleData ? buildTrend(visibleData, metric) : null
+  const costedMessages = visibleData?.byAgent.reduce((sum, row) => sum + row.costedMessages, 0) ?? null
+  const messageCount = visibleData?.byAgent.reduce((sum, row) => sum + row.messageCount, 0) ?? null
+  const reportedCostRows = visibleData?.byAgent.filter((row) => Number.isFinite(row.costUsdMicros)) ?? []
+  const reportedCost = visibleData && costedMessages !== null && costedMessages > 0 && reportedCostRows.length > 0
     ? reportedCostRows.reduce((sum, row) => sum + row.costUsdMicros!, 0)
     : null
-  const coverage = data && costedMessages !== null && messageCount !== null
-    ? `${costedMessages} of ${messageCount} messages from ${data.since} through ${data.throughDay} reported cost. Today is still being counted.`
+  const costCoverage = visibleData && costedMessages !== null && messageCount !== null && messageCount > 0
+    ? `${costedMessages} of ${messageCount} messages from ${visibleData.since} through ${visibleData.throughDay} reported cost. Today is still being counted.`
     : null
   const partialCostCoverage = costedMessages !== null
     && messageCount !== null
@@ -178,21 +186,34 @@ export function AgentsUsageChart({ data, loading, error, onRetry }: AgentsUsageC
             </div>
           ) : (
             <>
-              {data && (
+              {scoped && evidenceLimited && (
+                <div role="status" className="rounded-lg border border-warning/25 bg-warning/5 px-3 py-2 text-xs text-muted-foreground">
+                  {scoped.status === 'complete' && scoped.excludedAgentCount > 0
+                    ? `The current scan verified ${scoped.includedAgentCount} agent${scoped.includedAgentCount === 1 ? '' : 's'}. ${scoped.excludedAgentCount} retained agent row${scoped.excludedAgentCount === 1 ? ' is' : 's are'} excluded because it was not part of that scan.`
+                    : scoped.includedAgentCount > 0
+                    ? `Transcript coverage is ${scoped.status}. Totals include only ${scoped.includedAgentCount} fully scanned agent${scoped.includedAgentCount === 1 ? '' : 's'}; ${scoped.excludedAgentCount} unverified agent${scoped.excludedAgentCount === 1 ? ' is' : 's are'} excluded.`
+                    : 'Current transcript coverage is unavailable. Retained rows are excluded until a new scan verifies them.'}
+                </div>
+              )}
+              {visibleData && visibleData.byAgent.length > 0 && (
                 <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1 rounded-lg bg-foreground/[0.025] px-3 py-2 ring-1 ring-foreground/10">
                   <p className="text-xs text-muted-foreground">
                     Reported cost <span className="ml-1 font-semibold tabular-nums text-foreground">{reportedCost === null ? 'Unavailable' : `${formatRuntimeCost(reportedCost / 1_000_000)}${partialCostCoverage ? '+' : ''}`}</span>
                   </p>
-                  {coverage && <p className="text-xs text-muted-foreground">{coverage}</p>}
+                  {costCoverage && <p className="text-xs text-muted-foreground">{costCoverage}</p>}
                 </div>
               )}
               {!trend ? (
                 <EmptyState
                   variant="section"
-                  title={metric === 'tokens'
-                    ? 'No transcript usage was recorded in this window.'
-                    : 'No runtime-reported cost is available in this window.'}
-                  description={data?.scannedAt
+                  title={evidenceLimited
+                    ? 'No fully verified usage total is available yet.'
+                    : metric === 'tokens'
+                      ? 'No transcript usage was recorded in this window.'
+                      : 'No runtime-reported cost is available in this window.'}
+                  description={evidenceLimited
+                    ? 'Run the transcript scan again; retained rows stay hidden from current totals until their agents are verified.'
+                    : data?.scannedAt
                     ? metric === 'cost'
                       ? 'The transcript scan found message activity, but none included runtime-reported cost.'
                       : 'The transcript scan completed, but found no matching evidence.'
@@ -225,7 +246,7 @@ export function AgentsUsageChart({ data, loading, error, onRetry }: AgentsUsageC
                         seriesKeys={trend.seriesKeys}
                         label={chartLabel}
                         dataLabel={`${chartLabel} data`}
-                        partialKeys={data ? [data.throughDay] : []}
+                        partialKeys={visibleData ? [visibleData.throughDay] : []}
                         height={144}
                         missingValue={metric === 'cost' ? 'Unreported' : undefined}
                         missingBucketLabel={metric === 'cost' ? 'Unreported' : undefined}
@@ -239,12 +260,12 @@ export function AgentsUsageChart({ data, loading, error, onRetry }: AgentsUsageC
               )}
             </>
           )}
-          <a
-            href="/models?tab=spend"
+          <PluginLink
+            to="/models?tab=spend"
             className="inline-flex items-center gap-1 rounded-sm text-xs font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             View budgets in Models <ArrowUpRight className="size-3.5" aria-hidden="true" />
-          </a>
+          </PluginLink>
         </>
       )}
     </SectionCard>

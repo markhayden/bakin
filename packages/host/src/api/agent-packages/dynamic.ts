@@ -119,14 +119,15 @@ export async function handler(req: Request, url: URL): Promise<Response> {
 /**
  * Live single-agent drift scan (#385) — always-fresh findings for the
  * Diagnostics tab. Runs the same read-only scanner as the team.agent-sync
- * doctor check, filtered to one agent (the verifyAgent pattern); ZERO writes,
- * no upstream fetch. Also matches findings by owning package so
+ * doctor check, scoped to one agent before workspace/package reads occur;
+ * ZERO writes, no upstream fetch. Also matches findings by owning package so
  * package-scoped issues (source-missing etc.) aren't hidden.
  */
 async function handleScan(agentId: string): Promise<Response> {
   try {
-    const packageId = resolvePackageIdForAgent(agentId) ?? undefined
-    const report = await scanAgentSync()
+    const lock = readLockfile()
+    const packageId = findAgentPackage(lock, agentId)?.id
+    const report = await scanAgentSync(lock, { agentId })
     const findings = report.findings.filter(
       (f) => f.agentId === agentId || (packageId !== undefined && f.packageId === packageId),
     )

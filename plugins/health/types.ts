@@ -294,6 +294,27 @@ export interface UsageHistoryRollup {
   messageCount: number
 }
 
+export type UsageEvidenceCoverageStatus = 'complete' | 'partial' | 'unavailable'
+
+export type UsageEvidenceCoverageReason =
+  | 'complete'
+  | 'scan_not_run'
+  | 'scan_status_unavailable'
+  | 'missing_session_tier'
+  | 'roster_unavailable'
+  | 'agent_scan_failed'
+  | 'scan_failed'
+  | 'scan_stale'
+
+export interface UsageEvidenceCoverage {
+  status: UsageEvidenceCoverageStatus
+  reason: UsageEvidenceCoverageReason
+  agents: Array<{
+    agent: string
+    status: Extract<UsageEvidenceCoverageStatus, 'complete' | 'partial'>
+  }>
+}
+
 export interface UsageHistoryData {
   window: UsageHistoryWindow
   /** First local calendar day (YYYY-MM-DD) included — windows are day-aligned. */
@@ -302,6 +323,11 @@ export interface UsageHistoryData {
   throughDay: string
   /** ISO time of the last completed scan; null before the first sweep. */
   scannedAt: string | null
+  /**
+   * Transcript-scan completeness. Optional so a newer UI can still consume
+   * an older Health plugin response; absence must be treated conservatively.
+   */
+  coverage?: UsageEvidenceCoverage
   byAgent: Array<UsageHistoryRollup & { agent: string }>
   byDay: Array<UsageHistoryRollup & { day: string }>
   /** (agent × day) cells — the per-agent stacked chart series (#385). */
@@ -353,6 +379,8 @@ export interface AgentEffortData {
   window: AgentEffortWindow
   /** ISO time of the last usage scan; observed columns are only as fresh as this. */
   scannedAt: string | null
+  /** Same transcript evidence snapshot used for observed/unattributed fields. */
+  coverage?: UsageEvidenceCoverage
   agents: AgentEffortRow[]
 }
 

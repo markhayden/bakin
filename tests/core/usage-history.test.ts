@@ -125,7 +125,58 @@ describe('scanUsageHistory', () => {
     const runtime = createMockRuntimeAdapter()
     runtime.memory.listTiers = async () => []
     const report = await scanUsageHistory(runtime)
-    expect(report).toEqual({ scanned: 0, skipped: 0, failed: 0 })
+    expect(report).toEqual({
+      scanned: 0,
+      skipped: 0,
+      failed: 0,
+      coverage: {
+        status: 'unavailable',
+        reason: 'missing_session_tier',
+        agents: [],
+      },
+    })
+  })
+
+  it('a roster read failure is unavailable evidence, not a complete zero', async () => {
+    const runtime = createMockRuntimeAdapter()
+    runtime.memory.listTiers = async () => [
+      { id: SESSION_TIER, label: 'Session transcripts', metadata: { sourceKind: 'session_jsonl' } },
+    ]
+    runtime.agents.list = async () => { throw new Error('roster unavailable') }
+
+    const report = await scanUsageHistory(runtime)
+
+    expect(report.coverage).toEqual({
+      status: 'unavailable',
+      reason: 'roster_unavailable',
+      agents: [],
+    })
+  })
+
+  it('tracks session-scan completeness per agent instead of blessing the whole fleet', async () => {
+    addSession('basil', 'ok', sessionLines('ok', '2026-07-01T10:00:00Z', [
+      { ts: '2026-07-01T10:01:00Z', model: 'm1', input: 5, output: 0 },
+    ]))
+    addSession('clover', 'broken', sessionLines('broken', '2026-07-01T11:00:00Z', [
+      { ts: '2026-07-01T11:01:00Z', model: 'm1', input: 9, output: 0 },
+    ]))
+    const runtime = makeRuntime()
+    const originalGetEntry = runtime.memory.getEntry
+    runtime.memory.getEntry = async (tierId, id, opts) => {
+      if (opts?.agentId === 'clover') throw new Error('session unreadable')
+      return originalGetEntry(tierId, id, opts)
+    }
+
+    const report = await scanUsageHistory(runtime)
+
+    expect(report.coverage).toEqual({
+      status: 'partial',
+      reason: 'agent_scan_failed',
+      agents: [
+        { agent: 'basil', status: 'complete' },
+        { agent: 'clover', status: 'partial' },
+      ],
+    })
   })
 
   it('aggregates multiple sessions across multiple agents', async () => {
@@ -140,7 +191,12 @@ describe('scanUsageHistory', () => {
     ]))
 
     const report = await scanUsageHistory(makeRuntime())
-    expect(report).toEqual({ scanned: 3, skipped: 0, failed: 0 })
+    expect(report).toMatchObject({
+      scanned: 3,
+      skipped: 0,
+      failed: 0,
+      coverage: { status: 'complete', reason: 'complete' },
+    })
 
     const byAgent = usageByAgentSince(EPOCH_DAY)
     const basil = byAgent.find((a) => a.agent === 'basil')
@@ -164,7 +220,12 @@ describe('scanUsageHistory', () => {
     const callsAfterFirst = getEntryCalls
     const second = await scanUsageHistory(runtime)
 
-    expect(second).toEqual({ scanned: 0, skipped: 1, failed: 0 })
+    expect(second).toMatchObject({
+      scanned: 0,
+      skipped: 1,
+      failed: 0,
+      coverage: { status: 'complete', reason: 'complete' },
+    })
     expect(getEntryCalls).toBe(callsAfterFirst)
     expect(usageByAgentSince(EPOCH_DAY).find((a) => a.agent === 'basil')?.tokens.total).toBe(150)
   })
@@ -214,7 +275,12 @@ describe('scanUsageHistory', () => {
 
     sessions = [] // source deleted
     const report = await scanUsageHistory(runtime)
-    expect(report).toEqual({ scanned: 0, skipped: 0, failed: 0 })
+    expect(report).toMatchObject({
+      scanned: 0,
+      skipped: 0,
+      failed: 0,
+      coverage: { status: 'complete', reason: 'complete', agents: [] },
+    })
     expect(usageByAgentSince(EPOCH_DAY).find((a) => a.agent === 'basil')?.tokens.total).toBe(42)
   })
 

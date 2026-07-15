@@ -2,9 +2,9 @@
 
 import { useId, useState } from 'react'
 import type { HealthIncident } from '@makinbakin/sdk/types'
-import { StatusBadge } from '@makinbakin/sdk/components'
+import { PluginLink, StatusBadge } from '@makinbakin/sdk/components'
 import { Button, buttonVariants } from '@makinbakin/sdk/ui'
-import { AlertTriangle, ChevronRight, CircleHelp, ExternalLink, Wrench } from 'lucide-react'
+import { AlertTriangle, ChevronRight, CircleHelp, Wrench } from 'lucide-react'
 import type { OverviewIncident, OverviewTone } from '../lib/health-view-model'
 
 export interface IncidentRowProps {
@@ -54,10 +54,10 @@ export function IncidentRow({ item, onRepair, onRerun }: IncidentRowProps) {
       break
     case 'navigate':
       action = (
-        <a href={resolution.href} className={buttonVariants({ size: 'sm', variant: 'outline' })}>
+        <PluginLink to={resolution.href} className={buttonVariants({ size: 'sm', variant: 'outline' })}>
           {resolution.label}
-          <ExternalLink aria-hidden="true" />
-        </a>
+          <ChevronRight aria-hidden="true" />
+        </PluginLink>
       )
       break
     case 'instructions':

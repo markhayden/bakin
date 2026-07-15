@@ -123,50 +123,72 @@ describe('AgentDetail — tab URL contract', () => {
   it('defaults to Overview when no ?tab= param is present', async () => {
     queryState.tab = ''
     render(<AgentDetail agentId="explorer" />)
-    const overviewBtn = await waitFor(() => screen.getByRole('button', { name: 'Overview' }))
-    // Active tab gets the accent underline style applied inline.
-    expect(overviewBtn.getAttribute('style') ?? '').toMatch(/border-color/i)
+    const overviewTab = await waitFor(() => screen.getByRole('tab', { name: 'Overview' }))
+    expect(overviewTab.getAttribute('aria-selected')).toBe('true')
   })
 
   it('selects the Soul tab when ?tab=soul is present', async () => {
     queryState.tab = 'soul'
     render(<AgentDetail agentId="explorer" />)
-    const soulBtn = await waitFor(() => screen.getByRole('button', { name: 'Soul' }))
-    expect(soulBtn.getAttribute('style') ?? '').toMatch(/border-color/i)
-    // Overview button must NOT be active when Soul is selected.
-    const overviewBtn = screen.getByRole('button', { name: 'Overview' })
-    expect(overviewBtn.getAttribute('style') ?? '').not.toMatch(/border-color/i)
+    const soulTab = await waitFor(() => screen.getByRole('tab', { name: 'Soul' }))
+    expect(soulTab.getAttribute('aria-selected')).toBe('true')
+    const overviewTab = screen.getByRole('tab', { name: 'Overview' })
+    expect(overviewTab.getAttribute('aria-selected')).toBe('false')
   })
 
   it('falls back to Overview when ?tab= is an unknown value', async () => {
     queryState.tab = 'bogus'
     render(<AgentDetail agentId="explorer" />)
-    const overviewBtn = await waitFor(() => screen.getByRole('button', { name: 'Overview' }))
-    expect(overviewBtn.getAttribute('style') ?? '').toMatch(/border-color/i)
+    const overviewTab = await waitFor(() => screen.getByRole('tab', { name: 'Overview' }))
+    expect(overviewTab.getAttribute('aria-selected')).toBe('true')
   })
 
   it('writes the tab back to the URL when a tab is clicked', async () => {
     queryState.tab = 'overview'
     render(<AgentDetail agentId="explorer" />)
-    const rulesBtn = await waitFor(() => screen.getByRole('button', { name: 'AGENTS.md' }))
-    fireEvent.click(rulesBtn)
+    const rulesTab = await waitFor(() => screen.getByRole('tab', { name: 'AGENTS.md' }))
+    fireEvent.click(rulesTab)
     expect(setTabSpy).toHaveBeenCalledWith('rules')
   })
 
   it('renders the new Heartbeat, Active Context, and Memory tabs in the bar', async () => {
     queryState.tab = 'overview'
     render(<AgentDetail agentId="explorer" />)
-    await waitFor(() => screen.getByRole('button', { name: 'Overview' }))
-    expect(screen.getByRole('button', { name: 'Memory' })).toBeDefined()
-    expect(screen.getByRole('button', { name: 'Heartbeat' })).toBeDefined()
-    expect(screen.getByRole('button', { name: 'Active Context' })).toBeDefined()
+    await waitFor(() => screen.getByRole('tab', { name: 'Overview' }))
+    expect(screen.getByRole('tab', { name: 'Memory' })).toBeDefined()
+    expect(screen.getByRole('tab', { name: 'Heartbeat' })).toBeDefined()
+    expect(screen.getByRole('tab', { name: 'Active Context' })).toBeDefined()
   })
 
   it('no longer renders the legacy Profile or Stats tabs', async () => {
     queryState.tab = 'overview'
     render(<AgentDetail agentId="explorer" />)
-    await waitFor(() => screen.getByRole('button', { name: 'Overview' }))
-    expect(screen.queryByRole('button', { name: 'Profile' })).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Stats' })).toBeNull()
+    await waitFor(() => screen.getByRole('tab', { name: 'Overview' }))
+    expect(screen.queryByRole('tab', { name: 'Profile' })).toBeNull()
+    expect(screen.queryByRole('tab', { name: 'Stats' })).toBeNull()
+  })
+
+  it('uses the shared scrollable tab pattern with linked panels and keyboard navigation', async () => {
+    queryState.tab = 'overview'
+    render(<AgentDetail agentId="explorer" />)
+
+    const tablist = await screen.findByRole('tablist', { name: 'Agent sections' })
+    const sharedTabs = tablist.closest('[data-slot="underline-tabs"]')
+    expect(sharedTabs).not.toBeNull()
+    expect(sharedTabs?.className).toContain('overflow-x-auto')
+
+    const overview = screen.getByRole('tab', { name: 'Overview' })
+    expect(overview.getAttribute('aria-controls')).toBe('agent-detail-panel-overview')
+    overview.focus()
+    fireEvent.keyDown(overview, { key: 'ArrowRight' })
+
+    expect(setTabSpy).toHaveBeenCalledWith('diagnostics')
+  })
+
+  it('gives icon-only back and delete controls accessible names', async () => {
+    render(<AgentDetail agentId="explorer" />)
+
+    expect(await screen.findByRole('button', { name: 'Back to agents' })).toBeDefined()
+    expect(screen.getByRole('button', { name: 'Delete Explorer' })).toBeDefined()
   })
 })

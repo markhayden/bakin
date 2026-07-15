@@ -1,7 +1,7 @@
 'use client'
 
 import type { HealthIncident } from '@makinbakin/sdk/types'
-import { StatusBadge } from '@makinbakin/sdk/components'
+import { PluginLink, StatusBadge } from '@makinbakin/sdk/components'
 import { CheckCircle2, ChevronDown, ChevronRight } from 'lucide-react'
 import type { HealthOverviewViewModel, OverviewIncident } from '../lib/health-view-model'
 import { IncidentRow } from './incident-row'
@@ -78,12 +78,12 @@ function Notices({ incidents }: { incidents: OverviewIncident[] }) {
             </li>
           ))}
         </ul>
-        <a
-          href="/health?tab=system"
+        <PluginLink
+          to="/health?tab=system"
           className="mt-1 flex items-center justify-end gap-1 rounded-md px-2 py-2 text-sm font-medium text-primary hover:bg-foreground/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           Review system details <ChevronRight className="size-3.5" aria-hidden="true" />
-        </a>
+        </PluginLink>
       </div>
     </details>
   )

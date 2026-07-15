@@ -9,6 +9,10 @@ import { buildHealthOverviewViewModel } from '../../../plugins/health/lib/health
 import { OverviewTabView } from '../../../plugins/health/components/overview-tab'
 import type { OverviewTelemetry } from '../../../plugins/health/components/overview-telemetry'
 
+mock.module('@tanstack/react-router', () => ({
+  useNavigate: () => () => undefined,
+}))
+
 const NOW = Date.parse('2026-07-13T12:00:00.000Z')
 const OBSERVED_AT = '2026-07-13T11:55:00.000Z'
 const STALE_AT = '2099-07-13T12:00:00.000Z'
@@ -449,6 +453,43 @@ describe('OverviewTabView', () => {
     const spend = screen.getByTestId('overview-agent-spend')
     expect(within(spend).getByText('$6.20+')).toBeDefined()
     expect(within(spend).getByText('Partial runtime-reported cost')).toBeDefined()
+  })
+
+  it('limits overview spend to fully scanned agents when coverage is partial', () => {
+    const telemetry = dashboardTelemetry()
+    const history = telemetry.history.data!
+    history.scannedAt = null
+    history.coverage = {
+      status: 'partial',
+      reason: 'agent_scan_failed',
+      agents: [
+        { agent: 'main', status: 'complete' },
+        { agent: 'pixel', status: 'partial' },
+      ],
+    }
+
+    render(<OverviewTabView model={buildHealthOverviewViewModel({ report: report(), now: NOW })} telemetry={telemetry} />)
+
+    const spend = screen.getByTestId('overview-agent-spend')
+    expect(within(spend).getByText('Partial coverage')).toBeDefined()
+    expect(within(spend).getByText('1.0M tokens')).toBeDefined()
+    expect(within(spend).getByText('Fully scanned agents only')).toBeDefined()
+    expect(within(spend).queryByText('pixel', { exact: true })).toBeNull()
+    expect(spend.textContent).not.toContain('1.3M tokens')
+  })
+
+  it('does not show retained usage as current spend when the new scan is unavailable', () => {
+    const telemetry = dashboardTelemetry()
+    const history = telemetry.history.data!
+    history.scannedAt = null
+    history.coverage = { status: 'unavailable', reason: 'scan_not_run', agents: [] }
+
+    render(<OverviewTabView model={buildHealthOverviewViewModel({ report: report(), now: NOW })} telemetry={telemetry} />)
+
+    const spend = screen.getByTestId('overview-agent-spend')
+    expect(within(spend).getByText('Scan unavailable')).toBeDefined()
+    expect(spend.textContent).toContain('Retained rows are not shown as current agent spend')
+    expect(spend.textContent).not.toContain('1.3M tokens')
   })
 
   it('holds the context verdict until its budget is known', () => {

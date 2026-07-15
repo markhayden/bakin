@@ -54,6 +54,34 @@ describe('Agents route schemas', () => {
     }]).success).toBe(true)
   })
 
+  it('accepts additive per-agent evidence coverage while retaining legacy payloads', () => {
+    const covered = {
+      ...history(),
+      coverage: {
+        status: 'partial',
+        reason: 'agent_scan_failed',
+        agents: [
+          { agent: 'main', status: 'complete' },
+          { agent: 'pixel', status: 'partial' },
+        ],
+      },
+    }
+    expect(usageHistoryResponseSchema.safeParse(covered).success).toBe(true)
+    expect(usageHistoryResponseSchema.safeParse(history()).success).toBe(true)
+  })
+
+  it('rejects coverage that claims complete while an agent is partial', () => {
+    const impossible = {
+      ...history(),
+      coverage: {
+        status: 'complete',
+        reason: 'complete',
+        agents: [{ agent: 'main', status: 'partial' }],
+      },
+    }
+    expect(usageHistoryResponseSchema.safeParse(impossible).success).toBe(false)
+  })
+
   it('rejects incomplete usage and impossible cost coverage', () => {
     expect(agentUsageResponseSchema.safeParse([{
       agent: 'main',

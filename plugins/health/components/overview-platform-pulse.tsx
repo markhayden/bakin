@@ -1,6 +1,6 @@
 'use client'
 
-import { formatAbsoluteTime, formatRelativeTime, StatusBadge } from '@makinbakin/sdk/components'
+import { formatAbsoluteTime, formatRelativeTime, PluginLink, StatusBadge } from '@makinbakin/sdk/components'
 import { Button, Skeleton } from '@makinbakin/sdk/ui'
 import {
   Activity,
@@ -104,8 +104,8 @@ export function OverviewPlatformPulse({
           )}
         </div>
 
-        <a
-          href="/health?tab=system&section=search"
+        <PluginLink
+          to="/health?tab=system&section=search"
           aria-label={`Search: ${model.search.statusLabel}`}
           className="group flex min-h-20 items-center gap-3 bg-card px-4 py-3 hover:bg-foreground/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
         >
@@ -115,10 +115,10 @@ export function OverviewPlatformPulse({
             <span className={`block font-semibold ${TONE[model.search.tone].text}`}>{model.search.statusLabel}</span>
           </span>
           <ChevronRight className="ml-auto size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none" aria-hidden="true" />
-        </a>
+        </PluginLink>
 
-        <a
-          href="/health?tab=agents"
+        <PluginLink
+          to="/health?tab=agents"
           aria-label={`Agents: ${count(workingAgents, 'working')}, ${count(model.rightNow.connectedSessions, 'sessions')}`}
           className="group flex min-h-20 items-center gap-3 bg-card px-4 py-3 hover:bg-foreground/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
         >
@@ -129,10 +129,10 @@ export function OverviewPlatformPulse({
             <span className="block whitespace-nowrap text-xs text-muted-foreground">{count(model.rightNow.connectedSessions, 'sessions')}</span>
           </span>
           <ChevronRight className="ml-auto size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none" aria-hidden="true" />
-        </a>
+        </PluginLink>
 
-        <a
-          href="/health?tab=activity&activity_window=1h#activity-needs-attention"
+        <PluginLink
+          to="/health?tab=activity&activity_window=1h#activity-needs-attention"
           aria-label={`Recent failures: ${count(recentFailures, 'failed')}`}
           className="group flex min-h-20 items-center gap-3 bg-card px-4 py-3 hover:bg-foreground/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
         >
@@ -142,7 +142,7 @@ export function OverviewPlatformPulse({
             <strong className={`block whitespace-nowrap text-sm ${TONE[failureTone].text}`}>{count(recentFailures, 'failed')}</strong>
           </span>
           <ChevronRight className="ml-auto size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none" aria-hidden="true" />
-        </a>
+        </PluginLink>
 
         <div className="flex min-h-20 items-center justify-center gap-2 bg-card px-4 py-3 text-xs text-muted-foreground">
           {checking ? <Clock3 className="size-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <Clock3 className="size-3.5" aria-hidden="true" />}

@@ -6,13 +6,23 @@ import { totalmem } from 'os'
 import { z } from 'zod'
 import type { BakinPlugin, HealthRepairTarget, PluginContext } from '@bakin/core/plugin-types'
 import { definePlugin, defineRoute } from '@bakin/core/routing'
-import { usageByAgentSince, usageByDaySince, usageByAgentDaySince, toLocalDayKey } from '@bakin/core/usage-history/store'
+import {
+  readUsageHistorySince,
+  toLocalDayKey,
+  UsageHistoryStoreReadError,
+} from '@bakin/core/usage-history/store'
 import { listLiveRuns } from '../../src/core/execution-ledger'
 import { buildAgentBurnReports } from '../../src/core/agent-burn'
 import { getLastReport, runDiagnostics, runTargetedDiagnostics } from '../../src/core/doctor'
 import { createLogger } from '../../src/core/logger'
 import { getAllAgentUsage } from '../../src/core/agent-usage'
-import { startUsageHistoryTimer, stopUsageHistoryTimer, getLastUsageScan, DEFAULT_SCAN_MINUTES } from './lib/usage-history-timer'
+import {
+  startUsageHistoryTimer,
+  stopUsageHistoryTimer,
+  getLastUsageScan,
+  getUsageHistoryScanStaleAfterMs,
+  DEFAULT_SCAN_MINUTES,
+} from './lib/usage-history-timer'
 import { DoctorRepairRequestNotFoundError } from '../../src/core/doctor-repair-store'
 import { getContentDir } from '../../src/core/content-dir'
 import { applyDoctorRepair, planDoctorRepair } from '../../src/core/doctor-repair'
@@ -79,6 +89,7 @@ import {
   healthReportSchema,
   searchReadinessResponseSchema,
 } from './lib/route-schemas'
+import type { UsageEvidenceCoverage } from './types'
 
 type RegistryAccessor = () => Array<Record<string, unknown>>
 type McpSessionsAccessor = () => { activeSessions: Array<{ agent: string; sessions: number; connectedAt: string }>; upSince: string }
@@ -94,6 +105,30 @@ function getMcpSessions(): { activeSessions: Array<{ agent: string; sessions: nu
 }
 
 const log = createLogger('health')
+
+function currentUsageEvidence(): {
+  coverage: UsageEvidenceCoverage
+  scannedAt: string | null
+} {
+  const lastScan = getLastUsageScan()
+  const scanStale = lastScan
+    ? Math.max(0, Date.now() - lastScan.at) > getUsageHistoryScanStaleAfterMs()
+    : false
+  const reportedCoverage = scanStale ? null : lastScan?.report.coverage
+  const coverage: UsageEvidenceCoverage = reportedCoverage ?? {
+    status: 'unavailable',
+    reason: scanStale ? 'scan_stale' : lastScan ? 'scan_status_unavailable' : 'scan_not_run',
+    agents: [],
+  }
+  return {
+    coverage,
+    // Keep the legacy field conservative: older clients understand null as
+    // incomplete evidence, but cannot interpret partial per-agent coverage.
+    scannedAt: lastScan && coverage.status === 'complete'
+      ? new Date(lastScan.at).toISOString()
+      : null,
+  }
+}
 
 const stripRun = (def: HealthCheckDef) => ({
   id: def.id,
@@ -517,21 +552,27 @@ const routes = [
     summary: 'Historical agent token usage',
     description: 'Durable per-agent and per-day token rollups from the usage-history store. Windows are day-aligned: a window includes every local calendar day it touches. Cost is runtime-reported only.',
     query: agentWindowQuerySchema,
-    responses: { 200: usageHistoryResponseSchema, 400: errorResponse },
+    responses: { 200: usageHistoryResponseSchema, 400: errorResponse, 503: errorResponse },
     handler: async (_req, _ctx, { query }) => {
       const windowMs = USAGE_HISTORY_WINDOW_MS[query.window]
       const now = Date.now()
       const since = toLocalDayKey(now - windowMs)
-      const lastScan = getLastUsageScan()
-      return Response.json({
-        window: query.window,
-        since,
-        throughDay: toLocalDayKey(now),
-        scannedAt: lastScan ? new Date(lastScan.at).toISOString() : null,
-        byAgent: usageByAgentSince(since),
-        byDay: usageByDaySince(since),
-        byAgentDay: usageByAgentDaySince(since),
-      })
+      const evidence = currentUsageEvidence()
+      try {
+        const snapshot = readUsageHistorySince(since)
+        return Response.json({
+          window: query.window,
+          since,
+          throughDay: toLocalDayKey(now),
+          ...evidence,
+          ...snapshot,
+        })
+      } catch (err) {
+        log.warn('usage history store read failed', {
+          error: err instanceof Error ? err.message : String(err),
+        })
+        return Response.json({ error: 'Usage history store could not be read.' }, { status: 503 })
+      }
     },
   }),
 
@@ -570,15 +611,24 @@ const routes = [
     summary: 'Per-agent effort vs outcome',
     description: 'Token burn per agent joined with task completions and transcript-observed totals (Bakin-attributed vs total observed vs unattributed), plus warn-only burn flags. Same engine as the usage.agent-burn doctor check.',
     query: agentWindowQuerySchema,
-    responses: { 200: agentEffortResponseSchema, 400: errorResponse },
+    responses: { 200: agentEffortResponseSchema, 400: errorResponse, 503: errorResponse },
     handler: async (_req, _ctx, { query }) => {
-      const lastScan = getLastUsageScan()
-      const agents = buildAgentBurnReports(Date.now(), { windowHours: AGENT_EFFORT_WINDOW_HOURS[query.window] })
-      return Response.json({
-        window: query.window,
-        scannedAt: lastScan ? new Date(lastScan.at).toISOString() : null,
-        agents,
-      })
+      const evidence = currentUsageEvidence()
+      try {
+        const agents = buildAgentBurnReports(Date.now(), {
+          windowHours: AGENT_EFFORT_WINDOW_HOURS[query.window],
+          coverage: evidence.coverage,
+        })
+        return Response.json({
+          window: query.window,
+          ...evidence,
+          agents,
+        })
+      } catch (err) {
+        if (!(err instanceof UsageHistoryStoreReadError)) throw err
+        log.warn('agent effort usage store read failed', { error: err.message })
+        return Response.json({ error: 'Usage history store could not be read.' }, { status: 503 })
+      }
     },
   }),
 

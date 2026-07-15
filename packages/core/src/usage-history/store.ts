@@ -112,6 +112,14 @@ export interface DayUsageRollup {
   messageCount: number
 }
 
+export class UsageHistoryStoreReadError extends Error {
+  constructor(message: string, cause?: unknown) {
+    super(message)
+    this.name = 'UsageHistoryStoreReadError'
+    this.cause = cause
+  }
+}
+
 /**
  * Local calendar day key (YYYY-MM-DD) for an epoch-ms timestamp. Machine-local
  * timezone by design (single-operator machine — "today" means the operator's
@@ -242,6 +250,50 @@ export interface AgentDayUsageRollup {
   costUsdMicros: number | null
   costedMessages: number
   messageCount: number
+}
+
+export interface UsageHistorySnapshot {
+  byAgent: AgentUsageRollup[]
+  byDay: DayUsageRollup[]
+  byAgentDay: AgentDayUsageRollup[]
+}
+
+/**
+ * Read one internally consistent usage-history snapshot. Unlike the legacy
+ * convenience readers below, this strict boundary never converts a storage
+ * failure into an empty result that a caller could mistake for zero usage.
+ */
+export function readUsageHistorySince(sinceDay: string): UsageHistorySnapshot {
+  try {
+    const handle = db()
+    return store.withTx(() => {
+      const byAgent = handle
+        .prepare<RollupRow, [string]>(
+          `SELECT agent AS key, ${ROLLUP_SUMS}
+             FROM session_usage_days WHERE day >= ? GROUP BY agent ORDER BY total DESC`,
+        )
+        .all(sinceDay)
+        .map((r) => ({ agent: r.key, ...toRollup(r) }))
+      const byDay = handle
+        .prepare<RollupRow, [string]>(
+          `SELECT day AS key, ${ROLLUP_SUMS}
+             FROM session_usage_days WHERE day >= ? GROUP BY day ORDER BY day ASC`,
+        )
+        .all(sinceDay)
+        .map((r) => ({ day: r.key, ...toRollup(r) }))
+      const byAgentDay = handle
+        .prepare<RollupRow & { agent: string }, [string]>(
+          `SELECT agent, day AS key, ${ROLLUP_SUMS}
+             FROM session_usage_days WHERE day >= ? GROUP BY agent, day ORDER BY day ASC, agent ASC`,
+        )
+        .all(sinceDay)
+        .map((r) => ({ agent: r.agent, day: r.key, ...toRollup(r) }))
+      return { byAgent, byDay, byAgentDay }
+    })
+  } catch (err) {
+    log.error('readUsageHistorySince failed', err, { sinceDay })
+    throw new UsageHistoryStoreReadError('Usage history store could not be read.', err)
+  }
 }
 
 /**

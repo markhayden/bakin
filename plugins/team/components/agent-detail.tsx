@@ -6,7 +6,7 @@ import { ArrowLeft, Camera, Trash2, BookOpen, Sparkles, Calendar } from 'lucide-
 import { Button } from "@makinbakin/sdk/ui"
 import { Skeleton } from "@makinbakin/sdk/ui"
 import { useRuntimeStatus, useAvailableModels } from "@makinbakin/sdk/hooks"
-import { useAgentStore, useAgentColor, useMainAgentId, usePackageState } from '@makinbakin/sdk/hooks'
+import { useAgentStore, useMainAgentId, usePackageState } from '@makinbakin/sdk/hooks'
 import { useQueryState } from "@makinbakin/sdk/hooks"
 import { LessonToggleList } from './lesson-toggle-list'
 import { MarkdownEditTab } from './markdown-edit-tab'
@@ -14,7 +14,7 @@ import { HeartbeatTab } from './heartbeat-tab'
 import { ActiveContextTab } from './active-context-tab'
 import { OverviewTab } from './overview-tab'
 import { DiagnosticsTab } from './diagnostics-tab'
-import { EmptyState, ConfirmDialog } from '@makinbakin/sdk/components'
+import { EmptyState, ConfirmDialog, UnderlineTabs } from '@makinbakin/sdk/components'
 import type { AgentProfile, SkillSummary, PackageStateRow } from '../types'
 
 type Tab = 'overview' | 'diagnostics' | 'identity' | 'soul' | 'memory' | 'heartbeat' | 'rules' | 'tools' | 'skills' | 'lessons' | 'active-context'
@@ -36,7 +36,6 @@ const TABS: { id: Tab; label: string }[] = [
 export function AgentDetail({ agentId }: { agentId: string }) {
   const router = useRouter()
   const goBack = useHistoryBack('/team')
-  const accentColor = useAgentColor(agentId)
   const mainAgentId = useMainAgentId()
   const reload = useAgentStore((s) => s.load)
   const packageState = usePackageState(agentId)
@@ -143,7 +142,7 @@ export function AgentDetail({ agentId }: { agentId: string }) {
     <div className="space-y-4 pb-12">
       {/* Header */}
       <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon-sm" onClick={goBack}>
+        <Button variant="ghost" size="icon-sm" onClick={goBack} aria-label="Back to agents">
           <ArrowLeft className="size-4" />
         </Button>
         <div
@@ -188,7 +187,13 @@ export function AgentDetail({ agentId }: { agentId: string }) {
           </code>
         </div>
         {agentId !== mainAgentId && (
-          <Button variant="ghost" size="icon-sm" className="text-muted-foreground hover:text-destructive shrink-0" onClick={() => setDeleteOpen(true)}>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="text-muted-foreground hover:text-destructive shrink-0"
+            onClick={() => setDeleteOpen(true)}
+            aria-label={`Delete ${profile.name}`}
+          >
             <Trash2 className="size-4" />
           </Button>
         )}
@@ -213,25 +218,22 @@ export function AgentDetail({ agentId }: { agentId: string }) {
       )}
 
       {/* Tabs */}
-      <div className="flex gap-1 border-b border-border">
-        {TABS.map((tab) => (
-          <button
-            key={tab.id}
-            className={`px-3 py-2 text-sm transition-colors ${
-              activeTab === tab.id
-                ? 'text-foreground border-b-2 font-medium'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-            style={activeTab === tab.id ? { borderColor: accentColor } : undefined}
-            onClick={() => setActiveTab(tab.id)}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
+      <UnderlineTabs
+        tabs={TABS}
+        value={activeTab}
+        onValueChange={(tabId) => setActiveTab(tabId as Tab)}
+        ariaLabel="Agent sections"
+        idPrefix="agent-detail"
+        className="min-w-0 overflow-x-auto overflow-y-hidden"
+      />
 
       {/* Tab Content */}
-      <div className="min-h-[400px]">
+      <div
+        id={`agent-detail-panel-${activeTab}`}
+        role="tabpanel"
+        aria-labelledby={`agent-detail-tab-${activeTab}`}
+        className="min-h-[400px]"
+      >
         {activeTab === 'overview' && (
           <OverviewTab
             agentId={agentId}

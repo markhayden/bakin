@@ -1,6 +1,6 @@
 'use client'
 
-import { formatAbsoluteTime, formatRelativeTime, StatusBadge } from '@makinbakin/sdk/components'
+import { formatAbsoluteTime, formatRelativeTime, PluginLink, StatusBadge } from '@makinbakin/sdk/components'
 import { Button, Skeleton } from '@makinbakin/sdk/ui'
 import { ArrowUpRight, Gauge, Layers3 } from 'lucide-react'
 import { formatTokenCount } from '../lib/format'
@@ -63,13 +63,13 @@ export function OverviewContextTraffic({
           <Layers3 className="size-4 text-muted-foreground" aria-hidden="true" />
           <h3 id="overview-context-title" className="font-semibold text-foreground">Context &amp; cache</h3>
         </div>
-        <a
-          href="/health?tab=agents"
+        <PluginLink
+          to="/health?tab=agents"
           aria-label="View agent context details"
           className="rounded-sm text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <ArrowUpRight className="size-4" aria-hidden="true" />
-        </a>
+        </PluginLink>
       </div>
 
       <div className="mt-4">

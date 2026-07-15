@@ -195,8 +195,7 @@ export function ActivityTab() {
     const attention = document.getElementById('activity-needs-attention')
     if (!attention) return
     handledAttentionHash.current = true
-    attention.scrollIntoView({ block: 'start' })
-    attention.focus({ preventScroll: true })
+    focusActivityElement(attention)
   }, [data])
 
   return (

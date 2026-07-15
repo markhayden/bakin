@@ -6,7 +6,7 @@
 import { describe, it, expect, beforeAll, afterAll, mock } from 'bun:test'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { rmSync } from 'fs'
+import { mkdirSync, rmSync } from 'fs'
 import { randomUUID } from 'crypto'
 
 const testDir = join(tmpdir(), `bakin-test-agent-diag-routes-${Date.now()}-${randomUUID()}`)
@@ -69,16 +69,21 @@ import { claimRun, settleRun, recordRunCost, recordCompletion } from '../../../s
 import { closeAllDbs } from '@bakin/core/storage/db'
 
 let activated: ActivatedPlugin
+const usageScanGlobal = globalThis as typeof globalThis & {
+  __bakinUsageHistoryLastScan?: unknown
+}
 
 const NOW = Date.now()
 const today = toLocalDayKey(NOW)
 
 beforeAll(async () => {
+  usageScanGlobal.__bakinUsageHistoryLastScan = null
   activated = await activatePlugin(healthPlugin, testDir)
 })
 
 afterAll(() => {
   stopUsageHistoryTimer()
+  usageScanGlobal.__bakinUsageHistoryLastScan = null
   closeAllDbs()
   rmSync(testDir, { recursive: true, force: true })
 })
@@ -147,10 +152,28 @@ describe('GET /agent-effort', () => {
       firstTs: NOW - 3_000_000,
       lastTs: NOW - 60_000,
     }], { mtimeMs: 1, size: 1 })
+    usageScanGlobal.__bakinUsageHistoryLastScan = {
+      at: NOW,
+      report: {
+        scanned: 1,
+        skipped: 0,
+        failed: 0,
+        coverage: {
+          status: 'complete',
+          reason: 'complete',
+          agents: [{ agent: 'pixel', status: 'complete' }],
+        },
+      },
+    }
 
     const { status, body } = await get('/agent-effort')
     expect(status).toBe(200)
     expect(body.window).toBe('24h')
+    expect(body.coverage).toEqual({
+      status: 'complete',
+      reason: 'complete',
+      agents: [{ agent: 'pixel', status: 'complete' }],
+    })
     const rows = body.agents as Array<Record<string, unknown>>
     const pixel = rows.find((r) => r.agent === 'pixel')!
     expect(pixel).toMatchObject({
@@ -178,5 +201,20 @@ describe('GET /usage-history byAgentDay', () => {
     const cells = body.byAgentDay as Array<{ agent: string; day: string; tokens: { total: number } }>
     const pixelToday = cells.find((c) => c.agent === 'pixel' && c.day === today)
     expect(pixelToday?.tokens.total).toBe(1_000_000)
+  })
+})
+
+describe('GET /agent-effort storage failure', () => {
+  it('returns unavailable instead of evaluating an empty usage store as zero', async () => {
+    closeAllDbs()
+    const storePath = join(testDir, 'usage.db')
+    rmSync(storePath, { force: true })
+    mkdirSync(storePath)
+
+    const { status, body } = await get('/agent-effort')
+
+    expect(status).toBe(503)
+    expect(body.error).toBe('Usage history store could not be read.')
+    rmSync(storePath, { recursive: true, force: true })
   })
 })

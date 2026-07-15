@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { HealthIncident, HealthRepairTarget } from '@makinbakin/sdk/types'
 import { PluginHeader, UnderlineTabs } from '@makinbakin/sdk/components'
-import { useQueryState } from '@makinbakin/sdk/hooks'
+import { usePathname, useQueryState } from '@makinbakin/sdk/hooks'
 import { Button } from '@makinbakin/sdk/ui'
 import { RefreshCw } from 'lucide-react'
 import { useOverviewData } from '../hooks/use-overview-data'
@@ -92,6 +92,7 @@ function OverviewPanel({ onRunChecksReady, onRunChecks }: OverviewPanelProps) {
 /** Four focused Health views with URL-backed navigation and on-demand checks. */
 export function HealthPage() {
   const [tabParam, setTabParam] = useQueryState('tab', 'overview')
+  const pathname = usePathname()
   const activeTab: HealthTab = isHealthTab(tabParam) ? tabParam : 'overview'
   const overviewRunChecksRef = useRef<RunChecks | null>(null)
   const checksInFlightRef = useRef<Promise<void> | null>(null)
@@ -99,8 +100,11 @@ export function HealthPage() {
   const [announcement, setAnnouncement] = useState('')
 
   useEffect(() => {
-    if (!isHealthTab(tabParam)) setTabParam('overview')
-  }, [setTabParam, tabParam])
+    // The outgoing page can observe the destination search params for one
+    // render before it unmounts. Never normalize those params onto the next
+    // route (for example /team/main?tab=diagnostics).
+    if (pathname === '/health' && !isHealthTab(tabParam)) setTabParam('overview')
+  }, [pathname, setTabParam, tabParam])
 
   const registerOverviewRunChecks = useCallback((runChecks: RunChecks | null) => {
     overviewRunChecksRef.current = runChecks

@@ -125,13 +125,13 @@ describe('AgentDetail — Lessons tab', () => {
   it('shows the Lessons tab in the tab bar', async () => {
     primeState()
     await openDetail()
-    expect(screen.getByRole('button', { name: 'Lessons' })).toBeDefined()
+    expect(screen.getByRole('tab', { name: 'Lessons' })).toBeDefined()
   })
 
   it('clicking Lessons writes tab=lessons to the URL', async () => {
     primeState()
     await openDetail()
-    fireEvent.click(screen.getByRole('button', { name: 'Lessons' }))
+    fireEvent.click(screen.getByRole('tab', { name: 'Lessons' }))
     expect(setTabSpy).toHaveBeenCalledWith('lessons')
   })
 

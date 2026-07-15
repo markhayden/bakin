@@ -7,6 +7,7 @@ import '../../rtl-settle'
 import type { HealthIncident, HealthRepairTarget } from '@makinbakin/sdk/types'
 
 let requestedTab = 'overview'
+let currentPath = '/health'
 let queryWrites: string[] = []
 let panelMounts: string[] = []
 let overviewHookCalls = 0
@@ -21,6 +22,7 @@ const repairIncident = {
 } as HealthIncident
 
 mock.module('@makinbakin/sdk/hooks', () => ({
+  usePathname: () => currentPath,
   useQueryState: (_key: string, defaultValue: string) => {
     const [value, setValue] = useState(requestedTab || defaultValue)
     const writeValue = (next: string) => {
@@ -109,6 +111,7 @@ function jsonResponse(body: unknown, status = 200): Response {
 
 beforeEach(() => {
   requestedTab = 'overview'
+  currentPath = '/health'
   queryWrites = []
   panelMounts = []
   overviewHookCalls = 0
@@ -152,6 +155,16 @@ describe('HealthPage tab shell', () => {
     expect(screen.queryByTestId('system-panel')).toBeNull()
     await waitFor(() => expect(panelMounts).toEqual(['overview']))
     expect(queryWrites).toEqual(['overview'])
+  })
+
+  it('does not rewrite the next route while Health is unmounting', async () => {
+    requestedTab = 'diagnostics'
+    currentPath = '/team/main'
+
+    render(<HealthPage />)
+
+    await act(async () => { await Promise.resolve() })
+    expect(queryWrites).toEqual([])
   })
 
   it('syncs the selected tab to the URL and mounts only the active panel', async () => {

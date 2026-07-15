@@ -2,7 +2,7 @@
 
 import { useId, useMemo, useState, type ReactNode } from 'react'
 import type { AgentUsage } from '@makinbakin/sdk/types'
-import { EmptyState, ErrorState, SectionCard, StatusBadge } from '@makinbakin/sdk/components'
+import { EmptyState, ErrorState, PluginLink, SectionCard, StatusBadge } from '@makinbakin/sdk/components'
 import { Button, Skeleton } from '@makinbakin/sdk/ui'
 import { Activity, ArrowUpRight, Bot, ChevronDown } from 'lucide-react'
 import type {
@@ -190,12 +190,12 @@ function LatestSessionDetails({ row, id, checking, unavailable }: {
       ) : (
         <p className="text-sm text-muted-foreground">No latest-session token breakdown is available.</p>
       )}
-      <a
-        href={`/team/${encodeURIComponent(row.agent)}?tab=diagnostics`}
+      <PluginLink
+        to={`/team/${encodeURIComponent(row.agent)}?tab=diagnostics`}
         className="mt-3 inline-flex items-center gap-1 rounded-sm text-xs font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         Open {row.agent} diagnostics <ArrowUpRight className="size-3.5" aria-hidden="true" />
-      </a>
+      </PluginLink>
     </div>
   )
 }

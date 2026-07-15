@@ -15,7 +15,7 @@
  * no coverage for the window, observed/unattributed are null — never a
  * fabricated zero.
  */
-import { usageByAgentDaySince, toLocalDayKey } from '@bakin/core/usage-history/store'
+import { readUsageHistorySince, toLocalDayKey } from '@bakin/core/usage-history/store'
 import { getSettings } from './settings'
 import { runTokensByAgentSince, completionsByAgentSince } from './execution-ledger'
 
@@ -58,6 +58,25 @@ export interface AgentBurnReport {
   totalObservedTokens: number | null
   unattributedTokens: number | null
   flags: BurnFlag[]
+}
+
+export interface AgentBurnCoverage {
+  agents: ReadonlyArray<{
+    agent: string
+    status: 'complete' | 'partial'
+  }>
+}
+
+export interface AgentBurnSources {
+  readUsageHistorySince: typeof readUsageHistorySince
+  runTokensByAgentSince: typeof runTokensByAgentSince
+  completionsByAgentSince: typeof completionsByAgentSince
+}
+
+const DEFAULT_AGENT_BURN_SOURCES: AgentBurnSources = {
+  readUsageHistorySince,
+  runTokensByAgentSince,
+  completionsByAgentSince,
 }
 
 /** 2100000 → "2.1M", 790000 → "790k" — chart-footer-friendly counts. */
@@ -144,28 +163,34 @@ function localDayStartMs(dayKey: string): number {
  */
 export function buildAgentBurnReports(
   now = Date.now(),
-  opts: { windowHours?: number } = {},
+  opts: {
+    windowHours?: number
+    coverage?: AgentBurnCoverage
+    config?: BurnConfig
+    sources?: AgentBurnSources
+  } = {},
 ): AgentBurnReport[] {
-  const config = { ...getSettings().burn, ...(opts.windowHours ? { windowHours: opts.windowHours } : {}) }
+  const config = { ...(opts.config ?? getSettings().burn), ...(opts.windowHours ? { windowHours: opts.windowHours } : {}) }
+  const sources = opts.sources ?? DEFAULT_AGENT_BURN_SOURCES
   const windowSinceDay = toLocalDayKey(now - config.windowHours * 3_600_000)
   const dayAlignedSinceMs = localDayStartMs(windowSinceDay)
   const today = toLocalDayKey(now)
   const baselineSinceDay = toLocalDayKey(now - config.baselineDays * 86_400_000)
   const earliestDay = baselineSinceDay < windowSinceDay ? baselineSinceDay : windowSinceDay
 
-  const cells = usageByAgentDaySince(earliestDay)
-  // Scanner coverage is judged fleet-wide: any cell in the window means the
-  // scanner has run over it; a covered window with no cells for an agent is
-  // a true zero, an uncovered window is null.
-  const windowCovered = cells.some((c) => c.day >= windowSinceDay)
+  const cells = sources.readUsageHistorySince(earliestDay).byAgentDay
+  const coverageByAgent = new Map(
+    (opts.coverage?.agents ?? []).map((entry) => [entry.agent, entry.status]),
+  )
 
-  const attributed = runTokensByAgentSince(dayAlignedSinceMs)
-  const completions = completionsByAgentSince(dayAlignedSinceMs)
+  const attributed = sources.runTokensByAgentSince(dayAlignedSinceMs)
+  const completions = sources.completionsByAgentSince(dayAlignedSinceMs)
 
   const agents = new Set<string>([
     ...attributed.map((r) => r.agent),
     ...completions.map((r) => r.agent),
     ...cells.filter((c) => c.day >= windowSinceDay).map((c) => c.agent),
+    ...coverageByAgent.keys(),
   ])
 
   const reports: AgentBurnReport[] = []
@@ -174,6 +199,7 @@ export function buildAgentBurnReports(
     const agentCells = cells.filter((c) => c.agent === agent)
     const windowCells = agentCells.filter((c) => c.day >= windowSinceDay)
     const todayCell = agentCells.find((c) => c.day === today)
+    const hasCompleteCoverage = coverageByAgent.get(agent) === 'complete'
     reports.push(
       evaluateAgentBurn(
         {
@@ -182,10 +208,10 @@ export function buildAgentBurnReports(
           attributedCostUsdMicros: att?.costUsdMicros ?? null,
           runs: att?.runs ?? 0,
           completions: completions.find((r) => r.agent === agent)?.completions ?? 0,
-          observedTokens: windowCovered
+          observedTokens: hasCompleteCoverage
             ? windowCells.reduce((sum, c) => sum + c.tokens.total, 0)
             : null,
-          todayObservedTokens: todayCell ? todayCell.tokens.total : null,
+          todayObservedTokens: hasCompleteCoverage ? todayCell?.tokens.total ?? 0 : null,
           baselineDailyTokens: agentCells
             .filter((c) => c.day >= baselineSinceDay && c.day < today)
             .map((c) => c.tokens.total),

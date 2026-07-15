@@ -1,6 +1,6 @@
 'use client'
 
-import { EmptyState, ErrorState, SectionCard, StatusBadge } from '@makinbakin/sdk/components'
+import { EmptyState, ErrorState, PluginLink, SectionCard, StatusBadge } from '@makinbakin/sdk/components'
 import { Skeleton } from '@makinbakin/sdk/ui'
 import { Scale } from 'lucide-react'
 import type { ReactNode } from 'react'
@@ -66,12 +66,12 @@ function AgentComparisonRow({ row }: { row: AgentEffortRow }) {
       className="grid min-w-0 grid-cols-1 gap-3 rounded-xl bg-foreground/[0.025] p-3 ring-1 ring-foreground/10 @[28rem]/agents-comparison:grid-cols-2 @[56rem]/agents-comparison:grid-cols-[minmax(9rem,1fr)_minmax(14rem,1.5fr)_minmax(12rem,1.25fr)_minmax(8rem,.7fr)] @[56rem]/agents-comparison:items-start @[56rem]/agents-comparison:gap-4"
     >
       <div className="min-w-0 @[28rem]/agents-comparison:col-span-2 @[56rem]/agents-comparison:col-span-1">
-        <a
-          href={`/team/${encodeURIComponent(row.agent)}?tab=diagnostics`}
+        <PluginLink
+          to={`/team/${encodeURIComponent(row.agent)}?tab=diagnostics`}
           className="font-medium text-foreground underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           {row.agent}
-        </a>
+        </PluginLink>
       </div>
       <Metric label="Usage">
         <UsageSummary row={row} />

@@ -10,13 +10,30 @@
  */
 import { buildAgentBurnReports } from '../../../../src/core/agent-burn'
 import { LedgerUnavailableError } from '../../../../src/core/execution-ledger'
+import { getLastUsageScan, getUsageHistoryScanStaleAfterMs } from '../usage-history-timer'
 import { healthError, healthHealthy, healthObserved, healthUnknown, healthWarning } from '@makinbakin/sdk/utils'
 import type { HealthCheckRunInput, HealthObservationInput } from '@makinbakin/sdk'
 
-export async function checkAgentBurn(): Promise<HealthCheckRunInput> {
+export async function checkAgentBurnWith(
+  deps: {
+    buildReports?: typeof buildAgentBurnReports
+    lastUsageScan?: typeof getLastUsageScan
+    scanStaleAfterMs?: () => number
+    now?: () => number
+  } = {},
+): Promise<HealthCheckRunInput> {
   let reports
+  const lastScan = (deps.lastUsageScan ?? getLastUsageScan)()
+  const now = (deps.now ?? Date.now)()
+  const staleAfterMs = (deps.scanStaleAfterMs ?? getUsageHistoryScanStaleAfterMs)()
+  const scanAgeMs = lastScan ? Math.max(0, now - lastScan.at) : null
+  const scanFresh = scanAgeMs !== null && scanAgeMs <= staleAfterMs
   try {
-    reports = buildAgentBurnReports()
+    reports = (deps.buildReports ?? buildAgentBurnReports)(now, {
+      // Stale transcript rows remain useful history, but cannot create a new
+      // spike/unattributed verdict or a fresh healthy observation.
+      coverage: scanFresh ? lastScan?.report.coverage : { agents: [] },
+    })
   } catch (err) {
     if (err instanceof LedgerUnavailableError) {
       return healthObserved([healthError({
@@ -55,6 +72,34 @@ export async function checkAgentBurn(): Promise<HealthCheckRunInput> {
 
   const flagged = reports.filter((r) => r.flags.length > 0)
   if (flagged.length === 0) {
+    const incompleteCoverage = !scanFresh
+      || lastScan?.report.coverage.status !== 'complete'
+      || reports.some((report) => report.totalObservedTokens === null)
+    if (incompleteCoverage) {
+      return healthObserved([healthUnknown({
+        key: 'usage',
+        summary: 'Agent token burn could not be verified.',
+        detail: 'Runtime transcript coverage is incomplete, so zero observed usage cannot be confirmed.',
+        evidence: {
+          coverage: scanFresh ? lastScan?.report.coverage.status ?? 'unavailable' : 'unavailable',
+          reason: lastScan
+            ? scanFresh
+              ? lastScan.report.coverage.reason
+              : 'scan_stale'
+            : 'scan_not_run',
+          scanAgeMs,
+          staleAfterMs,
+        },
+        incident: {
+          key: 'transcript-coverage-incomplete',
+          title: 'Agent usage coverage is incomplete',
+          impact: 'Health cannot confirm total or unattributed agent token use until runtime transcripts are fully scanned.',
+          disposition: 'watch',
+          resources: [{ kind: 'system', id: 'usage-history', label: 'Usage history' }],
+          resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
+        },
+      })])
+    }
     const scope = reports.length === 0 ? 'no agent activity in the window' : `${reports.length} agent(s) evaluated`
     return healthObserved([healthHealthy({
       key: 'usage',
@@ -92,6 +137,10 @@ export async function checkAgentBurn(): Promise<HealthCheckRunInput> {
     })
   })
   return healthObserved(observations as [HealthObservationInput, ...HealthObservationInput[]])
+}
+
+export async function checkAgentBurn(): Promise<HealthCheckRunInput> {
+  return checkAgentBurnWith()
 }
 
 function stableKeyPart(value: string): string {

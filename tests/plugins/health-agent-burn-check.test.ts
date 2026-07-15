@@ -27,16 +27,13 @@ const loggerMock = () => ({
 mock.module('../../src/core/logger', loggerMock)
 mock.module('../../packages/core/src/logger', loggerMock)
 
-let reports: unknown[] = []
-let throwLedger = false
-mock.module('../../src/core/agent-burn', () => ({
-  buildAgentBurnReports: () => {
-    if (throwLedger) throw new LedgerUnavailableError('db locked')
-    return reports
-  },
-}))
+import type { AgentBurnReport } from '../../src/core/agent-burn'
 
-import { checkAgentBurn } from '../../plugins/health/lib/system-checks/agent-burn'
+let reports: AgentBurnReport[] = []
+let throwLedger = false
+let receivedOptions: unknown
+
+import { checkAgentBurnWith } from '../../plugins/health/lib/system-checks/agent-burn'
 import { LedgerUnavailableError } from '../../packages/core/src/execution/ledger'
 import type { HealthCheckRunInput } from '@makinbakin/sdk'
 import { parseHealthCheckRunInput } from '../../src/core/health-contract'
@@ -53,6 +50,16 @@ const cleanReport = {
   flags: [],
 }
 
+function buildReports(_now?: number, options?: unknown): AgentBurnReport[] {
+  receivedOptions = options
+  if (throwLedger) throw new LedgerUnavailableError('db locked')
+  return reports
+}
+
+function checkAgentBurn() {
+  return checkAgentBurnWith({ buildReports })
+}
+
 function observed(run: HealthCheckRunInput) {
   const parsed = parseHealthCheckRunInput(run)
   expect(parsed.outcome).toBe('observed')
@@ -61,12 +68,96 @@ function observed(run: HealthCheckRunInput) {
 }
 
 describe('checkAgentBurn', () => {
+  it('passes the latest per-agent transcript coverage into the shared evaluator', async () => {
+    const g = globalThis as typeof globalThis & { __bakinUsageHistoryLastScan?: unknown }
+    g.__bakinUsageHistoryLastScan = {
+      at: Date.now(),
+      report: {
+        scanned: 0,
+        skipped: 1,
+        failed: 0,
+        coverage: {
+          status: 'complete',
+          reason: 'complete',
+          agents: [{ agent: 'scout', status: 'complete' }],
+        },
+      },
+    }
+    reports = [cleanReport]
+
+    await checkAgentBurn()
+
+    expect(receivedOptions).toMatchObject({
+      coverage: {
+        agents: [{ agent: 'scout', status: 'complete' }],
+      },
+    })
+    g.__bakinUsageHistoryLastScan = null
+  })
+
   it('reports ok when nothing is flagged', async () => {
+    const g = globalThis as typeof globalThis & { __bakinUsageHistoryLastScan?: unknown }
+    g.__bakinUsageHistoryLastScan = {
+      at: Date.now(),
+      report: {
+        scanned: 0, skipped: 1, failed: 0,
+        coverage: { status: 'complete', reason: 'complete', agents: [{ agent: 'scout', status: 'complete' }] },
+      },
+    }
     reports = [cleanReport]
     const results = observed(await checkAgentBurn())
     expect(results).toHaveLength(1)
     expect(results[0]!.status).toBe('healthy')
     expect(results[0]!.key).toBe('usage')
+    g.__bakinUsageHistoryLastScan = null
+  })
+
+  it('reports unknown when transcript coverage is unavailable instead of blessing zero usage', async () => {
+    const g = globalThis as typeof globalThis & { __bakinUsageHistoryLastScan?: unknown }
+    g.__bakinUsageHistoryLastScan = {
+      at: Date.now(),
+      report: {
+        scanned: 0, skipped: 0, failed: 0,
+        coverage: { status: 'unavailable', reason: 'missing_session_tier', agents: [] },
+      },
+    }
+    reports = [{ ...cleanReport, totalObservedTokens: null, unattributedTokens: null }]
+
+    const results = observed(await checkAgentBurn())
+
+    expect(results[0]!.status).toBe('unknown')
+    expect(results[0]!.summary).toContain('could not be verified')
+    g.__bakinUsageHistoryLastScan = null
+  })
+
+  it('does not mint a fresh healthy verdict from an expired complete scan', async () => {
+    const now = Date.parse('2026-07-14T18:00:00.000Z')
+    const staleAfterMs = 10 * 60_000
+    const lastUsageScan = () => ({
+      at: now - staleAfterMs - 1,
+      report: {
+        scanned: 1,
+        skipped: 0,
+        failed: 0,
+        coverage: {
+          status: 'complete' as const,
+          reason: 'complete' as const,
+          agents: [{ agent: 'scout', status: 'complete' as const }],
+        },
+      },
+    })
+    reports = [cleanReport]
+
+    const results = observed(await checkAgentBurnWith({
+      buildReports,
+      lastUsageScan,
+      now: () => now,
+      scanStaleAfterMs: () => staleAfterMs,
+    }))
+
+    expect(results[0]!.status).toBe('unknown')
+    expect(results[0]!.evidence).toMatchObject({ reason: 'scan_stale' })
+    expect(receivedOptions).toEqual({ coverage: { agents: [] } })
   })
 
   it('emits one warn row per flagged agent with data.agents attribution', async () => {
@@ -101,9 +192,18 @@ describe('checkAgentBurn', () => {
   })
 
   it('ok row notes an idle fleet honestly', async () => {
+    const g = globalThis as typeof globalThis & { __bakinUsageHistoryLastScan?: unknown }
+    g.__bakinUsageHistoryLastScan = {
+      at: Date.now(),
+      report: {
+        scanned: 0, skipped: 0, failed: 0,
+        coverage: { status: 'complete', reason: 'complete', agents: [] },
+      },
+    }
     reports = []
     const results = observed(await checkAgentBurn())
     expect(results[0]!.status).toBe('healthy')
     expect(results[0]!.detail).toContain('no agent activity')
+    g.__bakinUsageHistoryLastScan = null
   })
 })

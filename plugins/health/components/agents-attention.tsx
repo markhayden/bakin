@@ -1,6 +1,6 @@
 'use client'
 
-import { ErrorState, SectionCard } from '@makinbakin/sdk/components'
+import { ErrorState, PluginLink, SectionCard } from '@makinbakin/sdk/components'
 import { Skeleton } from '@makinbakin/sdk/ui'
 import { ArrowUpRight, CheckCircle2, CircleAlert } from 'lucide-react'
 import type { AgentEffortData, AgentEffortFlag, AgentEffortRow } from '../types'
@@ -69,13 +69,13 @@ export function AgentsAttention({ data, loading, error, onRetry }: AgentsAttenti
                     ))}
                   </ul>
                 </div>
-                <a
-                  href={`/team/${encodeURIComponent(row.agent)}?tab=diagnostics`}
+                <PluginLink
+                  to={`/team/${encodeURIComponent(row.agent)}?tab=diagnostics`}
                   aria-label={`Review ${row.agent}'s recent sessions`}
                   className="inline-flex shrink-0 items-center gap-1 rounded-sm text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   Review recent sessions <ArrowUpRight className="size-3.5" aria-hidden="true" />
-                </a>
+                </PluginLink>
               </article>
             ))}
           </div>

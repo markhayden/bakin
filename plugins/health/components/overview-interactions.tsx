@@ -1,6 +1,6 @@
 'use client'
 
-import { Sparkline, StatusBadge } from '@makinbakin/sdk/components'
+import { PluginLink, Sparkline, StatusBadge } from '@makinbakin/sdk/components'
 import { Button, Skeleton } from '@makinbakin/sdk/ui'
 import { ArrowUpRight, Waypoints } from 'lucide-react'
 import type {
@@ -111,13 +111,13 @@ export function OverviewInteractions({
             </span>
           )}
         </div>
-        <a
-          href="/health?tab=activity&activity_window=1h"
+        <PluginLink
+          to="/health?tab=activity&activity_window=1h"
           aria-label="View recorded interaction activity"
           className="rounded-sm text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <ArrowUpRight className="size-4" aria-hidden="true" />
-        </a>
+        </PluginLink>
       </div>
 
       {resource.loading && !data ? (
@@ -146,14 +146,14 @@ export function OverviewInteractions({
                 {data.totals.count.toLocaleString()} interactions
               </strong>
               {data.totals.errors > 0 ? (
-                <a
-                  href="/health?tab=activity&activity_window=1h#activity-needs-attention"
+                <PluginLink
+                  to="/health?tab=activity&activity_window=1h#activity-needs-attention"
                   className="mt-1 inline-flex rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <StatusBadge tone="destructive" variant="outline">
                     {`${data.totals.errors.toLocaleString()} failed${data.totals.unverified > 0 ? ` · ${unverifiedLabel(data.totals.unverified)}` : ''}`}
                   </StatusBadge>
-                </a>
+                </PluginLink>
               ) : (
                 <StatusBadge
                   tone={data.totals.unverified > 0 ? 'warning' : 'success'}
