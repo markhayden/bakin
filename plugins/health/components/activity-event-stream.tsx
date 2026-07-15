@@ -3,7 +3,7 @@
 import { formatAbsoluteTime, formatRelativeTime, StatusBadge, type StatusTone } from '@makinbakin/sdk/components'
 import { ChevronDown } from 'lucide-react'
 import { useState } from 'react'
-import type { UsageEntry, UsageFeedData, UsageKind } from '../types'
+import type { UsageEntry, UsageFeedData } from '../types'
 import {
   activityFailureReason,
   activityImpact,
@@ -12,12 +12,7 @@ import {
   isCanceledActivity,
   isUnverifiedActivity,
 } from './activity-row'
-
-const KIND_LABEL: Record<UsageKind, string> = {
-  mcp: 'Tools',
-  rest: 'API',
-  agent: 'Agents',
-}
+import { INTERACTION_SOURCE_META } from './interaction-source-meta'
 
 function eventState(entry: UsageEntry): {
   label: string
@@ -62,13 +57,14 @@ function ActivityEventRow({ entry }: { entry: UsageEntry }) {
   const label = formatActivityName(entry.name)
   const owner = entry.agent ? `Agent ${entry.agent}` : activityOwner(entry)
   const when = relativeEventTime(entry.ts)
+  const sourceLabel = INTERACTION_SOURCE_META[entry.kind].label
 
   return (
     <li className="border-b border-border/70 last:border-b-0">
       <button
         type="button"
         className="grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 px-3 py-2.5 text-left hover:bg-foreground/[0.035] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring @[34rem]/health:grid-cols-[auto_minmax(0,1fr)_auto_auto]"
-        aria-label={`View ${label} details — ${state.label}, ${KIND_LABEL[entry.kind]}, ${owner}, ${when}`}
+        aria-label={`View ${label} details — ${state.label}, ${sourceLabel}, ${owner}, ${when}`}
         aria-expanded={expanded}
         onClick={() => setExpanded((value) => !value)}
       >
@@ -76,7 +72,7 @@ function ActivityEventRow({ entry }: { entry: UsageEntry }) {
         <span className="min-w-0">
           <strong className="block truncate text-sm font-medium text-foreground" title={entry.name}>{label}</strong>
           <span className="block truncate text-xs text-muted-foreground">
-            {KIND_LABEL[entry.kind]} · <span>{entry.agent ? `Agent: ${entry.agent}` : activityOwner(entry)}</span>
+            {sourceLabel} · <span>{entry.agent ? `Agent: ${entry.agent}` : activityOwner(entry)}</span>
           </span>
           {context && <span className="mt-0.5 block text-xs text-muted-foreground">{context}</span>}
         </span>
@@ -96,7 +92,7 @@ function ActivityEventRow({ entry }: { entry: UsageEntry }) {
           {failed && <p className="mt-1 text-xs text-muted-foreground">{activityImpact(entry)}</p>}
           <dl className="mt-3 grid gap-x-4 gap-y-1 text-xs text-muted-foreground @[28rem]/health:grid-cols-[max-content_minmax(0,1fr)]">
             <dt>Raw name</dt><dd className="break-all font-mono text-foreground">{entry.name}</dd>
-            <dt>Type</dt><dd className="text-foreground">{KIND_LABEL[entry.kind]}</dd>
+            <dt>Type</dt><dd className="text-foreground">{sourceLabel}</dd>
             <dt>Agent</dt><dd className="text-foreground">{activityOwner(entry)}</dd>
             <dt>Duration</dt><dd className="text-foreground">{entry.durationMs === null ? 'Not recorded' : `${entry.durationMs.toLocaleString()} ms`}</dd>
             {entry.meta && <><dt>Metadata</dt><dd className="min-w-0 overflow-x-auto whitespace-pre-wrap break-all font-mono text-foreground">{JSON.stringify(entry.meta, null, 2)}</dd></>}

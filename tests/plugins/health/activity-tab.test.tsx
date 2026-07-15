@@ -900,7 +900,7 @@ describe('ActivityTab', () => {
     expect(within(destinations).getAllByRole('listitem')).toHaveLength(4)
     const toolDestination = within(destinations).getByRole('listitem', { name: 'Tools · Search Query' })
     const apiDestination = within(destinations).getByRole('listitem', { name: 'API · Search Query' })
-    const agentDestination = within(destinations).getByRole('listitem', { name: 'Agent runs · Dispatch' })
+    const agentDestination = within(destinations).getByRole('listitem', { name: 'Agents · Dispatch' })
     expect(toolDestination.getAttribute('data-source-kind')).toBe('mcp')
     expect(apiDestination.getAttribute('data-source-kind')).toBe('rest')
     expect(agentDestination.getAttribute('data-source-kind')).toBe('agent')
@@ -1568,6 +1568,10 @@ describe('ActivityTab', () => {
       name: 'Activity mix: Tools 4, API 2, Agents 3',
     })
     expect(mix.textContent).toMatch(/Tools.*4.*API.*2.*Agents.*3/i)
+    expect(mix.querySelector('[data-source-kind="mcp"] [data-source-bar]')?.className).toContain('bg-chart-1')
+    expect(mix.querySelector('[data-source-kind="rest"] [data-source-bar]')?.className).toContain('bg-chart-2')
+    expect(mix.querySelector('[data-source-kind="agent"] [data-source-bar]')?.className).toContain('bg-chart-3')
+    expect(mix.querySelector('[data-source-kind="mcp"] .bg-destructive')).not.toBeNull()
 
     const jump = within(pulse).getByRole('link', { name: 'Hiccups' })
     const needsAttention = screen.getByRole('region', { name: 'Hiccups' })

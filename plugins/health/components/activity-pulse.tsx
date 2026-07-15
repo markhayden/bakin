@@ -1,19 +1,10 @@
 'use client'
 
 import { StatusBadge, formatAbsoluteTime } from '@makinbakin/sdk/components'
-import { AlertCircle, Bot, Braces, CheckCircle2, Wrench } from 'lucide-react'
-import type { InteractionCoverage, UsageFeedData, UsageKind } from '../types'
+import { AlertCircle, CheckCircle2 } from 'lucide-react'
+import type { InteractionCoverage, UsageFeedData } from '../types'
 import { focusActivityElement } from './activity-navigation'
-
-const KIND_META: Record<UsageKind, {
-  label: string
-  iconColor: string
-  icon: typeof Wrench
-}> = {
-  mcp: { label: 'Tools', iconColor: 'text-chart-1', icon: Wrench },
-  rest: { label: 'API', iconColor: 'text-chart-2', icon: Braces },
-  agent: { label: 'Agents', iconColor: 'text-chart-3', icon: Bot },
-}
+import { INTERACTION_SOURCE_META } from './interaction-source-meta'
 
 const OUTCOMES = [
   { key: 'failed', label: 'failed', color: 'bg-destructive' },
@@ -41,7 +32,9 @@ function outcomeAriaLabel(data: UsageFeedData): string {
 
 function mixAriaLabel(data: UsageFeedData): string {
   const totals = new Map(data.byKind.map((row) => [row.kind, row.total]))
-  return `Activity mix: Tools ${totals.get('mcp') ?? 0}, API ${totals.get('rest') ?? 0}, Agents ${totals.get('agent') ?? 0}`
+  return `Activity mix: ${(['mcp', 'rest', 'agent'] as const)
+    .map((kind) => `${INTERACTION_SOURCE_META[kind].label} ${totals.get(kind) ?? 0}`)
+    .join(', ')}`
 }
 
 function coverageStartLabel(value: string): string {
@@ -190,7 +183,7 @@ export function ActivityPulse({
           )}
           <div className="mt-3 space-y-3" role="group" aria-label={mixAriaLabel(data)}>
             {data.byKind.map((row) => {
-              const meta = KIND_META[row.kind]
+              const meta = INTERACTION_SOURCE_META[row.kind]
               const Icon = meta.icon
               const width = row.total === 0 ? 0 : Math.max(4, (row.total / maximumKindTotal) * 100)
               const failureWidth = row.total === 0 ? 0 : (row.failures / row.total) * 100
@@ -198,16 +191,21 @@ export function ActivityPulse({
                 <div
                   key={row.kind}
                   className="grid min-w-0 grid-cols-[minmax(0,1fr)_7rem] items-center gap-2 text-xs @[24rem]/health:grid-cols-[5rem_minmax(0,1fr)_7rem]"
+                  data-source-kind={row.kind}
                 >
                   <span className="col-start-1 row-start-1 flex min-w-0 items-center gap-1.5 text-muted-foreground">
-                    <Icon className={`size-3.5 shrink-0 ${meta.iconColor}`} aria-hidden="true" />
+                    <Icon className={`size-3.5 shrink-0 ${meta.iconColorClass}`} aria-hidden="true" />
                     <span className="truncate">{meta.label}</span>
                   </span>
                   <span
                     className="col-span-2 row-start-2 h-2 overflow-hidden rounded-full bg-foreground/10 @[24rem]/health:col-span-1 @[24rem]/health:col-start-2 @[24rem]/health:row-start-1"
                     aria-hidden="true"
                   >
-                    <span className="relative block h-full overflow-hidden rounded-full bg-foreground/35" style={{ width: `${width}%` }}>
+                    <span
+                      className={`relative block h-full overflow-hidden rounded-full ${meta.backgroundClass}`}
+                      data-source-bar
+                      style={{ width: `${width}%` }}
+                    >
                       {row.failures > 0 && (
                         <span className="absolute inset-y-0 right-0 bg-destructive" style={{ width: `${failureWidth}%` }} />
                       )}

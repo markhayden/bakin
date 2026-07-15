@@ -2,23 +2,14 @@
 
 import { formatAbsoluteTime, formatRelativeTime, StatusBadge } from '@makinbakin/sdk/components'
 import { Button } from '@makinbakin/sdk/ui'
-import { AlertCircle, Bot, Braces, ChevronDown, Wrench } from 'lucide-react'
+import { AlertCircle, ChevronDown } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import type { InteractionCoverage, UsageEntry, UsageFailureGroup, UsageFailureGroupPage, UsageFeedData, UsageKind } from '../types'
+import type { InteractionCoverage, UsageEntry, UsageFailureGroup, UsageFailureGroupPage, UsageFeedData } from '../types'
 import type { ActivityFailureSelection } from './activity-breakdown'
 import { ActivityFailureTrend } from './activity-failure-trend'
 import { focusActivityElement } from './activity-navigation'
 import { ActivityRow, activityFailureReason, formatActivityName } from './activity-row'
-
-const KIND_META: Record<UsageKind, {
-  label: string
-  icon: typeof Wrench
-  color: string
-}> = {
-  mcp: { label: 'Tools', icon: Wrench, color: 'text-chart-1' },
-  rest: { label: 'API', icon: Braces, color: 'text-chart-2' },
-  agent: { label: 'Agents', icon: Bot, color: 'text-chart-3' },
-}
+import { INTERACTION_SOURCE_META } from './interaction-source-meta'
 
 export const FAILURE_PATTERN_PREVIEW_LIMIT = 3
 
@@ -125,7 +116,7 @@ function FailureGroup({
   selected?: boolean
 }) {
   const [expanded, setExpanded] = useState(false)
-  const meta = KIND_META[group.kind]
+  const meta = INTERACTION_SOURCE_META[group.kind]
   const Icon = meta.icon
   const destination = group.destination ?? group.name
   const displayName = failureGroupDisplayName(group)
@@ -149,7 +140,7 @@ function FailureGroup({
       <div className="grid min-w-0 gap-3 p-4 @[38rem]/health:grid-cols-[minmax(0,1fr)_auto] @[38rem]/health:items-center">
         <div className="min-w-0">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <Icon className={`size-4 shrink-0 ${meta.color}`} aria-hidden="true" />
+            <Icon className={`size-4 shrink-0 ${meta.iconColorClass}`} aria-hidden="true" />
             <h4 className="min-w-0 truncate font-semibold text-foreground" title={destination}>
               {displayName}
             </h4>
@@ -226,7 +217,7 @@ function FailurePatternHighlights({
       {highlights.length > 0 ? (
         <ol className="mt-2 divide-y divide-border/70" aria-label={label}>
           {highlights.map((group) => {
-            const meta = KIND_META[group.kind]
+            const meta = INTERACTION_SOURCE_META[group.kind]
             const Icon = meta.icon
             const destination = group.destination ?? group.name
             const latest = group.latestFailure
@@ -237,7 +228,7 @@ function FailurePatternHighlights({
                 className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-2 first:pt-0 last:pb-0"
               >
                 <span className="flex min-w-0 items-center gap-2">
-                  <Icon className={`size-3.5 shrink-0 ${meta.color}`} aria-hidden="true" />
+                  <Icon className={`size-3.5 shrink-0 ${meta.iconColorClass}`} aria-hidden="true" />
                   <span className="min-w-0">
                     <strong className="block truncate text-sm font-medium text-foreground" title={destination}>
                       {failureGroupDisplayName(group)}

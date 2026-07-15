@@ -17,6 +17,7 @@ import { focusActivityElement } from './activity-navigation'
 import { ActivityPulse } from './activity-pulse'
 import { ActivityVolumeChart } from './activity-volume-chart'
 import { HealthTabIntro } from './health-tab-intro'
+import { INTERACTION_SOURCE_META } from './interaction-source-meta'
 import { normalizeActivityFeed } from '../lib/activity-feed-compat'
 import {
   useActivityData,
@@ -220,9 +221,9 @@ export function ActivityTab() {
               </SelectTrigger>
               <SelectContent align="start">
                 <SelectItem value="all">All types</SelectItem>
-                <SelectItem value="mcp">Tools</SelectItem>
-                <SelectItem value="rest">API</SelectItem>
-                <SelectItem value="agent">Agents</SelectItem>
+                <SelectItem value="mcp">{INTERACTION_SOURCE_META.mcp.label}</SelectItem>
+                <SelectItem value="rest">{INTERACTION_SOURCE_META.rest.label}</SelectItem>
+                <SelectItem value="agent">{INTERACTION_SOURCE_META.agent.label}</SelectItem>
               </SelectContent>
             </Select>
             <Button size="sm" variant="outline" onClick={() => void resource.refresh()} disabled={resource.refreshing}>

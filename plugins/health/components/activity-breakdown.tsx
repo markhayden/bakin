@@ -1,23 +1,13 @@
 'use client'
 
-import { Bot, Braces, ChevronRight, Wrench } from 'lucide-react'
+import { ChevronRight } from 'lucide-react'
 import { isAttributedAgentRow } from '../lib/activity-feed-compat'
 import type { UsageFeedData, UsageKind } from '../types'
 import { formatActivityName } from './activity-row'
+import { INTERACTION_SOURCE_META } from './interaction-source-meta'
 
 const DESTINATION_ROW_LIMIT = 10
 const AGENT_ROW_LIMIT = 8
-
-const SOURCE_META: Record<UsageKind, {
-  label: string
-  icon: typeof Wrench
-  iconColor: string
-  barColor: string
-}> = {
-  mcp: { label: 'Tools', icon: Wrench, iconColor: 'text-chart-1', barColor: 'var(--chart-1)' },
-  rest: { label: 'API', icon: Braces, iconColor: 'text-chart-2', barColor: 'var(--chart-2)' },
-  agent: { label: 'Agent runs', icon: Bot, iconColor: 'text-chart-3', barColor: 'var(--chart-3)' },
-}
 
 export type ActivityFailureSelection = {
   kind?: UsageKind
@@ -65,7 +55,7 @@ function BreakdownPanel({
           {rows.map((row) => {
             const width = row.count === 0 ? 0 : Math.max(3, (row.count / maximum) * 100)
             const failureWidth = row.count === 0 ? 0 : (row.errors / row.count) * 100
-            const source = row.sourceKind ? SOURCE_META[row.sourceKind] : null
+            const source = row.sourceKind ? INTERACTION_SOURCE_META[row.sourceKind] : null
             const sourceLabel = source?.label
             const accessibleLabel = sourceLabel ? `${sourceLabel} · ${row.label}` : row.label
             const rowBarColor = sourceAware ? source?.barColor ?? 'var(--muted-foreground)' : barColor
@@ -83,7 +73,7 @@ function BreakdownPanel({
                 <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
                   {Icon && source && (
                     <>
-                      <Icon className={`size-3.5 shrink-0 ${source.iconColor}`} aria-hidden="true" />
+                      <Icon className={`size-3.5 shrink-0 ${source.iconColorClass}`} aria-hidden="true" />
                       <span className="shrink-0 font-medium text-foreground/80">{source.label}</span>
                       <span aria-hidden="true">·</span>
                     </>

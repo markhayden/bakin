@@ -7,16 +7,8 @@ import type {
   InteractionCategory,
   InteractionSummaryData,
 } from '../types'
+import { interactionCategoryMeta } from './interaction-source-meta'
 import type { OverviewTelemetry } from './overview-telemetry'
-
-const CATEGORY_META: Record<InteractionCategory, {
-  label: string
-  colorClass: string
-}> = {
-  tools: { label: 'Tools', colorClass: 'bg-chart-1' },
-  api: { label: 'API', colorClass: 'bg-chart-2' },
-  agents: { label: 'Agents', colorClass: 'bg-chart-3' },
-}
 
 function destinationName(category: InteractionCategory, value: string): string {
   if (category === 'api') return value.replace(/^\/api\//, '')
@@ -92,7 +84,7 @@ export function OverviewInteractions({
   const labels = data?.timeBuckets.map((bucket) => bucketLabel(bucket.start)) ?? []
   const coverage = data ? coverageDisplay(data) : null
   const mixLabel = data
-    ? `Interaction mix: ${data.categories.map((category) => `${CATEGORY_META[category.key].label} ${category.count}`).join(', ')}`
+    ? `Interaction mix: ${data.categories.map((category) => `${interactionCategoryMeta(category.key).label} ${category.count}`).join(', ')}`
     : 'Interaction mix'
 
   return (
@@ -182,7 +174,7 @@ export function OverviewInteractions({
               {data.categories.filter((category) => category.count > 0).map((category) => (
                 <span
                   key={category.key}
-                  className={CATEGORY_META[category.key].colorClass}
+                  className={interactionCategoryMeta(category.key).backgroundClass}
                   style={{ flexGrow: category.count, flexBasis: 0 }}
                 />
               ))}
@@ -190,8 +182,8 @@ export function OverviewInteractions({
             <div className="mt-2 grid grid-cols-3 gap-2">
               {data.categories.map((category) => (
                 <div key={category.key} className="flex min-w-0 items-center gap-1.5 text-xs">
-                  <span className={`size-2 shrink-0 rounded-full ${CATEGORY_META[category.key].colorClass}`} aria-hidden="true" />
-                  <span className="truncate text-muted-foreground">{CATEGORY_META[category.key].label}</span>
+                  <span className={`size-2 shrink-0 rounded-full ${interactionCategoryMeta(category.key).backgroundClass}`} aria-hidden="true" />
+                  <span className="truncate text-muted-foreground">{interactionCategoryMeta(category.key).label}</span>
                   <strong className="ml-auto tabular-nums text-foreground">{category.count.toLocaleString()}</strong>
                 </div>
               ))}
@@ -220,7 +212,7 @@ export function OverviewInteractions({
                   className="grid min-w-0 grid-cols-[minmax(0,1fr)_6rem] items-center gap-x-2 gap-y-1.5 text-xs @[24rem]/health:grid-cols-[minmax(0,1fr)_minmax(3rem,1fr)_6rem]"
                 >
                   <span className="col-start-1 row-start-1 flex min-w-0 items-center gap-1.5 text-muted-foreground" title={destination.name}>
-                    <span className={`size-1.5 shrink-0 rounded-full ${CATEGORY_META[destination.category].colorClass}`} aria-hidden="true" />
+                    <span className={`size-1.5 shrink-0 rounded-full ${interactionCategoryMeta(destination.category).backgroundClass}`} aria-hidden="true" />
                     <span className="truncate">{destinationName(destination.category, destination.name)}</span>
                   </span>
                   <span
@@ -235,7 +227,7 @@ export function OverviewInteractions({
                       {destination.count > destination.errors && (
                         <span
                           data-testid="interaction-destination-success"
-                          className={CATEGORY_META[destination.category].colorClass}
+                          className={interactionCategoryMeta(destination.category).backgroundClass}
                           style={{ flexGrow: destination.count - destination.errors, flexBasis: 0 }}
                         />
                       )}
