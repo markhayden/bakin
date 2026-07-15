@@ -7,6 +7,7 @@ import { usePathname, useQueryState } from '@makinbakin/sdk/hooks'
 import { Button } from '@makinbakin/sdk/ui'
 import { RefreshCw } from 'lucide-react'
 import { useOverviewData } from '../hooks/use-overview-data'
+import { requestWithTimeout } from '../hooks/use-health-resource'
 import { ActivityTab } from './activity-tab'
 import { AgentsTab } from './agents-tab'
 import { OverviewTab } from './overview-tab'
@@ -22,6 +23,8 @@ const HEALTH_TABS = [
 
 type HealthTab = typeof HEALTH_TABS[number]['id']
 type RunChecks = () => Promise<unknown>
+
+const HEALTH_CHECKS_TIMEOUT_MS = 60_000
 
 function isHealthTab(value: string): value is HealthTab {
   return HEALTH_TABS.some((tab) => tab.id === value)
@@ -122,9 +125,18 @@ export function HealthPage() {
           const report = await overviewRunChecksRef.current()
           if (!report) throw new Error('Health checks did not return a report')
         } else {
-          const response = await fetch('/api/plugins/health/doctor?fresh=true')
-          if (!response.ok) throw new Error(`Health checks failed (${response.status})`)
-          await response.json()
+          const controller = new AbortController()
+          await requestWithTimeout(
+            (async () => {
+              const response = await fetch('/api/plugins/health/doctor?fresh=true', {
+                signal: controller.signal,
+              })
+              if (!response.ok) throw new Error(`Health checks failed (${response.status})`)
+              await response.json()
+            })(),
+            HEALTH_CHECKS_TIMEOUT_MS,
+            () => controller.abort(),
+          )
         }
         setAnnouncement('Health checks completed.')
       } catch {

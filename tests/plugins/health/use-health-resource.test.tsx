@@ -29,6 +29,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  vi.useRealTimers()
   globalThis.fetch = originalFetch
 })
 
@@ -169,5 +170,36 @@ describe('useHealthResource', () => {
     await act(async () => { await result.current.refresh() })
     expect(result.current.data).toEqual({ value: 2 })
     expect(result.current.error).toBeNull()
+  })
+
+  it('uses a safe default deadline and retains verified data when a refresh never settles', async () => {
+    vi.useFakeTimers()
+    const signals: AbortSignal[] = []
+    const request = mock()
+      .mockResolvedValueOnce({ value: 1 })
+      .mockImplementationOnce((_url: string, context: { signal: AbortSignal }) => {
+        signals.push(context.signal)
+        return new Promise<never>(() => {})
+      })
+
+    const { result } = renderHook(() => useHealthResource<{ value: number }>('/api/hung', {
+      request,
+    }))
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+    expect(result.current.data).toEqual({ value: 1 })
+
+    act(() => { void result.current.refresh('background') })
+    expect(result.current.refreshing).toBe(true)
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(15_000) })
+
+    expect(signals[0]?.aborted).toBe(true)
+    expect(result.current.data).toEqual({ value: 1 })
+    expect(result.current.error).toBeNull()
+    expect(result.current.backgroundError).toBe('Request timed out after 15000ms')
+    expect(result.current.stale).toBe(true)
+    expect(result.current.loading).toBe(false)
+    expect(result.current.refreshing).toBe(false)
   })
 })

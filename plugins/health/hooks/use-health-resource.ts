@@ -4,6 +4,9 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 export type HealthResourceRefreshReason = 'initial' | 'background' | 'explicit' | 'stale' | 'reconcile'
 
+/** Default deadline for Health reads whose caller does not need a longer sweep budget. */
+export const DEFAULT_HEALTH_RESOURCE_TIMEOUT_MS = 15_000
+
 export interface HealthResourceRequestContext {
   signal: AbortSignal
   reason: HealthResourceRefreshReason
@@ -12,7 +15,7 @@ export interface HealthResourceRequestContext {
 export interface UseHealthResourceOptions<T> {
   /** Background refresh cadence. Omit or use zero to disable polling. */
   intervalMs?: number
-  /** Abort and surface a retryable error when a request exceeds this deadline. */
+  /** Override the 15-second default deadline. Use zero only for an intentionally unbounded request. */
   timeoutMs?: number | ((reason: HealthResourceRefreshReason) => number | undefined)
   /** Override the standard JSON GET while retaining cancellation/coalescing. */
   request?: (url: string, context: HealthResourceRequestContext) => Promise<T>
@@ -69,7 +72,7 @@ async function requestJson<T>(url: string, signal: AbortSignal): Promise<T> {
   return await response.json() as T
 }
 
-function requestWithTimeout<T>(
+export function requestWithTimeout<T>(
   request: Promise<T>,
   timeoutMs: number | undefined,
   onTimeout: () => void,
@@ -170,7 +173,10 @@ export function useHealthResource<T>(
           ? request(requestUrl, { signal: controller.signal, reason })
           : requestJson<T>(requestUrl, controller.signal)
         const timeoutOption = optionsRef.current.timeoutMs
-        const timeoutMs = typeof timeoutOption === 'function' ? timeoutOption(reason) : timeoutOption
+        const configuredTimeout = typeof timeoutOption === 'function'
+          ? timeoutOption(reason)
+          : timeoutOption
+        const timeoutMs = configuredTimeout ?? DEFAULT_HEALTH_RESOURCE_TIMEOUT_MS
         const next = await requestWithTimeout(pending, timeoutMs, () => {
           timedOut = true
           controller.abort()

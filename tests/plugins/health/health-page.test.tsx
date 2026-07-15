@@ -121,6 +121,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  vi.useRealTimers()
   cleanup()
   vi.unstubAllGlobals()
 })
@@ -224,7 +225,8 @@ describe('HealthPage tab shell', () => {
 
   it('keeps Overview unmounted while another tab runs checks on demand', async () => {
     requestedTab = 'agents'
-    const fetchMock = mock(() => Promise.resolve(jsonResponse({ error: 'unavailable' }, 503)))
+    const fetchMock = mock((_url: string | URL | Request, _init?: RequestInit) =>
+      Promise.resolve(jsonResponse({ error: 'unavailable' }, 503)))
     vi.stubGlobal('fetch', fetchMock)
 
     render(<HealthPage />)
@@ -235,12 +237,62 @@ describe('HealthPage tab shell', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Run checks' }))
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/plugins/health/doctor?fresh=true'))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/plugins/health/doctor?fresh=true')
+    expect(fetchMock.mock.calls[0]?.[1]?.signal).toBeInstanceOf(AbortSignal)
     const failure = 'Health checks could not be completed. Existing evidence remains visible.'
     expect(screen.getByTestId('health-action-status').textContent).toBe(failure)
     expect(screen.getByTestId('health-action-visible-status').textContent).toBe(failure)
     expect(overviewHookCalls).toBe(0)
     expect(screen.getByTestId('agents-panel')).toBeDefined()
+  })
+
+  it('times out a hung on-demand check and makes Run checks available again', async () => {
+    vi.useFakeTimers()
+    requestedTab = 'agents'
+    let requestSignal: AbortSignal | undefined
+    const fetchMock = mock((_url: string | URL | Request, init?: RequestInit) => {
+      requestSignal = init?.signal as AbortSignal | undefined
+      return new Promise<Response>(() => {})
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<HealthPage />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Run checks' }))
+    expect(screen.getByRole('button', { name: 'Running checks…' }).hasAttribute('disabled')).toBe(true)
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000) })
+
+    expect(requestSignal?.aborted).toBe(true)
+    const failure = 'Health checks could not be completed. Existing evidence remains visible.'
+    expect(screen.getByTestId('health-action-status').textContent).toBe(failure)
+    expect(screen.getByRole('button', { name: 'Run checks' }).hasAttribute('disabled')).toBe(false)
+  })
+
+  it('also times out when a check responds but its body never settles', async () => {
+    vi.useFakeTimers()
+    requestedTab = 'system'
+    let requestSignal: AbortSignal | undefined
+    const fetchMock = mock((_url: string | URL | Request, init?: RequestInit) => {
+      requestSignal = init?.signal as AbortSignal | undefined
+      const response = jsonResponse({})
+      response.json = () => new Promise<never>(() => {})
+      return Promise.resolve(response)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<HealthPage />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Run checks' }))
+    await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+    expect(screen.getByRole('button', { name: 'Running checks…' }).hasAttribute('disabled')).toBe(true)
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000) })
+
+    expect(requestSignal?.aborted).toBe(true)
+    expect(screen.getByTestId('health-action-status').textContent)
+      .toBe('Health checks could not be completed. Existing evidence remains visible.')
+    expect(screen.getByRole('button', { name: 'Run checks' }).hasAttribute('disabled')).toBe(false)
   })
 
   it('opens a report-scoped incident repair and refreshes Overview after apply', async () => {
