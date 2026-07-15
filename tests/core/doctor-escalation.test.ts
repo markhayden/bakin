@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock, setSystemTime } from 'bun:test'
 import type { HealthIncident, HealthReport } from '@makinbakin/sdk/types'
 
 let mode: 'off' | 'notify' | 'task' = 'task'
@@ -51,6 +51,10 @@ beforeEach(() => {
   clearNotifiedIssues()
 })
 
+afterEach(() => {
+  setSystemTime()
+})
+
 describe('canonical Health escalation', () => {
   it('selects only fresh action-required incident IDs', () => {
     expect(freshActionRequiredIncidents(report([
@@ -66,6 +70,45 @@ describe('canonical Health escalation', () => {
     await notifyActionRequiredIncidents(report([incident({ title: 'Copy changed' })]))
     expect(send).toHaveBeenCalledTimes(1)
     expect(send.mock.calls[0]?.[0].content).toContain('health:search:unavailable')
+  })
+
+  it('retries an incident when the previous notification could not be delivered', async () => {
+    send.mockImplementationOnce(async () => { throw new Error('runtime unavailable') })
+
+    await notifyActionRequiredIncidents(report([incident()]))
+    await notifyActionRequiredIncidents(report([incident()]))
+
+    expect(send).toHaveBeenCalledTimes(2)
+  })
+
+  it('coalesces concurrent notification attempts for the same incident', async () => {
+    let releaseSend!: () => void
+    send.mockImplementationOnce(() => new Promise<{ id: string }>((resolve) => {
+      releaseSend = () => resolve({ id: 'message-1' })
+    }))
+
+    const first = notifyActionRequiredIncidents(report([incident()]))
+    const second = notifyActionRequiredIncidents(report([incident()]))
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(send).toHaveBeenCalledTimes(1)
+
+    releaseSend()
+    await Promise.all([first, second])
+    expect(send).toHaveBeenCalledTimes(1)
+  })
+
+  it('allows the same incident to notify again after the configured cooldown', async () => {
+    setSystemTime(new Date('2026-07-15T12:00:00.000Z'))
+    await notifyActionRequiredIncidents(report([incident()]))
+
+    setSystemTime(new Date('2026-07-15T12:00:59.999Z'))
+    await notifyActionRequiredIncidents(report([incident()]))
+    expect(send).toHaveBeenCalledTimes(1)
+
+    setSystemTime(new Date('2026-07-15T12:01:00.000Z'))
+    await notifyActionRequiredIncidents(report([incident()]))
+    expect(send).toHaveBeenCalledTimes(2)
   })
 
   it('delegates exact fresh incidents in task mode', async () => {
