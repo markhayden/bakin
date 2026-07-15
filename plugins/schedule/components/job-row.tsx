@@ -33,6 +33,9 @@ function JobStatusBadge({ job }: { job: ScheduleJob }) {
   if (job.consecutiveFailures > 0) {
     return <StatusBadge tone="destructive" variant="outline">{job.consecutiveFailures} failures</StatusBadge>
   }
+  if (job.completed) {
+    return <StatusBadge tone="success" variant="outline">Completed</StatusBadge>
+  }
   if (!job.enabled) {
     return <StatusBadge tone="neutral" variant="outline">Disabled</StatusBadge>
   }

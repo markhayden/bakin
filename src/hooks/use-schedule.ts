@@ -37,6 +37,9 @@ export interface ScheduleJob {
   lastRun?: string
   createdAt?: string
   updatedAt?: string
+  /** One-shot ('at') job that has fired: disabled with its consumed instant. */
+  completed?: boolean
+  completedAt?: string
 }
 
 export interface RunEntry {

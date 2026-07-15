@@ -102,4 +102,38 @@ describe('JobDrawer', () => {
     expect(onDelete).toHaveBeenCalledWith('job-delete')
     expect(onClose).not.toHaveBeenCalled()
   })
+
+  it('shows the completed state for a fired one-shot (no Next run)', () => {
+    render(
+      <JobDrawer
+        job={makeJob({
+          id: 'job-once',
+          displayName: 'One-shot reminder',
+          humanSchedule: 'Once at 2026-06-07T15:00:00.000Z',
+          cron: undefined,
+          enabled: false,
+          completed: true,
+          completedAt: '2026-06-07T15:00:00.000Z',
+          nextRun: undefined,
+        })}
+        open
+        onClose={mock()}
+        onPause={mock(async () => true)}
+        onResume={mock(async () => true)}
+        onDelete={mock()}
+        onRunNow={mock(async () => true)}
+        onEdit={mock()}
+        onDuplicate={mock()}
+        onAdopt={mock()}
+        onRestoreNative={mock(async () => true)}
+        onSkipNext={mock(async () => true)}
+      />,
+    )
+
+    expect(screen.getByText('Completed')).toBeTruthy()
+    expect(screen.getByText(/Ran once/)).toBeTruthy()
+    expect(screen.queryByText('Active')).toBeNull()
+    expect(screen.queryByText('Disabled')).toBeNull()
+    expect(screen.queryByText(/^Next:/)).toBeNull()
+  })
 })
