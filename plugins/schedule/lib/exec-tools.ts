@@ -215,7 +215,7 @@ export function registerScheduleExecTools(ctx: PluginContext): void {
       if (!params.input) return { ok: false, error: 'input required' }
       const result = parseSchedule(params.input as string)
       if (!result) return { ok: false, error: 'Could not parse schedule. Try a simpler expression or raw cron.' }
-      return { ok: true, cron: result.cron, human: result.human, nextRuns: result.nextRuns }
+      return { ok: true, kind: result.kind, expr: result.expr, human: result.human, nextRuns: result.nextRuns }
     },
   })
 

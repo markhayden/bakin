@@ -18,7 +18,14 @@ import { getPluginCtx } from './plugin-context'
 import { getJob, upsertJob, removeJob, readSidecar, newScheduleId, withDefaults } from './sidecar'
 import { readMergedJobs } from './jobs-reader'
 import { parseSchedule, cronToHuman } from './cron-parser'
-import { nextRun as cronNextRun } from './cron-eval'
+import { scheduleNextRun } from './cron-eval'
+import type { ParseResult } from '../types'
+
+/** One-shots must name a future instant — a past 'at' would land straight in
+ *  catch-up triage; reject at creation instead. */
+function oneShotInPast(parsed: ParseResult, now = Date.now()): boolean {
+  return parsed.kind === 'at' && Date.parse(parsed.expr) <= now
+}
 import { checkSchedulePrompt, type PromptWarning } from './prompt-guard'
 import { getLastRun } from './runs-reader'
 import { getSystemTimezone } from './schedule-util'
@@ -54,7 +61,8 @@ export async function guardBakinMutation(jobId: string): Promise<BakinMutationGu
 export interface EnsureBakinJobResult {
   ok: boolean
   jobId?: string
-  cron?: string
+  kind?: 'cron' | 'at'
+  expr?: string
   human?: string
   error?: string
 }
@@ -70,10 +78,10 @@ export async function ensureBakinJob(ctx: PluginContext, input: Record<string, u
     return { ok: false, error: 'jobId, name, schedule, and command are required' }
   }
 
-  const parsed = parseSchedule(schedule)
-  if (!parsed) return { ok: false, error: 'Could not parse schedule expression' }
-
   const tz = typeof input.tz === 'string' && input.tz.trim() ? input.tz.trim() : getSystemTimezone()
+  const parsed = parseSchedule(schedule, { tz })
+  if (!parsed) return { ok: false, error: 'Could not parse schedule expression' }
+  if (oneShotInPast(parsed)) return { ok: false, error: `One-shot schedule is in the past (${parsed.expr})` }
   const enabled = typeof input.enabled === 'boolean' ? input.enabled : true
   const now = new Date().toISOString()
 
@@ -108,7 +116,7 @@ export async function ensureBakinJob(ctx: PluginContext, input: Record<string, u
     logicalJobId: logicalId,
     isBakinJob: true,
     source: 'bakin',
-    schedule: { kind: 'cron', expr: parsed.cron },
+    schedule: { kind: parsed.kind, expr: parsed.expr },
     enabled,
     displayName: name,
     description: typeof input.description === 'string' ? input.description : existing?.description,
@@ -129,7 +137,7 @@ export async function ensureBakinJob(ctx: PluginContext, input: Record<string, u
   upsertJob(meta)
   indexJob(jobId)
 
-  return { ok: true, jobId, cron: parsed.cron, human: parsed.human }
+  return { ok: true, jobId, kind: parsed.kind, expr: parsed.expr, human: parsed.human }
 }
 
 export interface CreateScheduleJobInput {
@@ -149,7 +157,7 @@ export interface CreateScheduleJobInput {
 }
 
 export type CreateScheduleJobResult =
-  | { ok: true; jobId: string; cron: string; human: string; tz: string; warnings: PromptWarning[] }
+  | { ok: true; jobId: string; kind: 'cron' | 'at'; expr: string; human: string; tz: string; warnings: PromptWarning[] }
   | { ok: false; error: string }
 
 /** Create a Bakin-owned schedule: parse, build meta, persist, index. */
@@ -157,8 +165,10 @@ export async function createScheduleJob(
   ctx: Pick<PluginContext, 'runtime'>,
   input: CreateScheduleJobInput,
 ): Promise<CreateScheduleJobResult> {
-  const parsed = parseSchedule(input.schedule)
+  const tz = input.tz || getSystemTimezone()
+  const parsed = parseSchedule(input.schedule, { tz })
   if (!parsed) return { ok: false, error: 'Could not parse schedule expression' }
+  if (oneShotInPast(parsed)) return { ok: false, error: `One-shot schedule is in the past (${parsed.expr})` }
 
   // Assignment validation lives HERE, not at each surface (round-4 review):
   // every caller — REST, exec tool, future bulk/import — inherits it.
@@ -169,7 +179,6 @@ export async function createScheduleJob(
     throw err
   }
 
-  const tz = input.tz || getSystemTimezone()
   const jobId = newScheduleId()
   const owner = input.owner ?? await getRuntimeMainAgentId(ctx.runtime)
   const now = new Date().toISOString()
@@ -177,7 +186,7 @@ export async function createScheduleJob(
     jobId,
     isBakinJob: true,
     source: 'bakin',
-    schedule: { kind: 'cron', expr: parsed.cron },
+    schedule: { kind: parsed.kind, expr: parsed.expr },
     enabled: true,
     displayName: input.name,
     agentId: input.agentId,
@@ -196,7 +205,7 @@ export async function createScheduleJob(
   }
   upsertJob(meta)
   indexJob(jobId)
-  return { ok: true, jobId, cron: parsed.cron, human: parsed.human, tz, warnings: checkSchedulePrompt(input.taskPrompt) }
+  return { ok: true, jobId, kind: parsed.kind, expr: parsed.expr, human: parsed.human, tz, warnings: checkSchedulePrompt(input.taskPrompt) }
 }
 
 export type PauseAction = 'pause' | 'resume' | 'skip'
@@ -261,9 +270,14 @@ export async function updateScheduleJob(
     throw err
   }
   if (updates.schedule && typeof updates.schedule === 'string') {
-    const parsed = parseSchedule(updates.schedule)
+    const tz = typeof updates.tz === 'string' && updates.tz ? updates.tz : meta.tz
+    const parsed = parseSchedule(updates.schedule, { tz })
     if (!parsed) return { ok: false, error: 'Could not parse schedule' }
-    meta.schedule = { kind: 'cron', expr: parsed.cron }
+    if (oneShotInPast(parsed)) return { ok: false, error: `One-shot schedule is in the past (${parsed.expr})` }
+    meta.schedule = { kind: parsed.kind, expr: parsed.expr }
+    // A new schedule re-arms a completed one-shot: its consumed occurrence
+    // stays in history, but the job is live again for the new instant.
+    meta.completedAt = undefined
   }
   if (updates.name && typeof updates.name === 'string') {
     meta.displayName = updates.name
@@ -291,7 +305,8 @@ export async function projectJobDetail(
 ): Promise<Record<string, unknown>> {
   const defaults = withDefaults(meta, await getRuntimeMainAgentId(ctx.runtime))
   const lastRun = await getLastRun(ctx.runtime.cron, jobId)
-  const isCron = meta.schedule?.kind === 'cron' && !!meta.schedule.expr
+  const sched = meta.schedule
+  const hasSchedule = !!sched?.expr
   return {
     id: meta.jobId,
     name: meta.displayName,
@@ -300,11 +315,13 @@ export async function projectJobDetail(
     // When the job runs — the list projection carries these; a client on the
     // detail endpoint alone must be able to display the schedule too.
     schedule: meta.schedule,
-    cron: isCron ? meta.schedule!.expr : undefined,
-    humanSchedule: isCron ? cronToHuman(meta.schedule!.expr) : undefined,
-    nextRun: isCron && !(meta.paused ?? false)
-      ? cronNextRun(meta.schedule!.expr, meta.tz, new Date())?.toISOString()
+    cron: hasSchedule && sched!.kind === 'cron' ? sched!.expr : undefined,
+    humanSchedule: !hasSchedule ? undefined : sched!.kind === 'cron' ? cronToHuman(sched!.expr) : `Once at ${sched!.expr}`,
+    nextRun: hasSchedule && !(meta.paused ?? false) && !meta.completedAt
+      ? scheduleNextRun(sched!, meta.tz, new Date())?.toISOString()
       : undefined,
+    completed: sched?.kind === 'at' && !!meta.completedAt,
+    completedAt: meta.completedAt,
     enabled: meta.enabled !== false,
     owner: defaults.owner,
     paused: meta.paused ?? false,

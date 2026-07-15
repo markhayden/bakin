@@ -197,14 +197,146 @@ const PATTERNS: PatternRule[] = [
 // Validate raw cron expression (5 fields)
 const CRON_REGEX = /^([\d*,\-/]+)\s+([\d*,\-/]+)\s+([\d*,\-/]+)\s+([\d*,\-/]+)\s+([\d*,\-/]+)$/
 
+// ─── One-shot ('at') phrase parsing — timezone-aware ────────────────────────
+
+/** Offset of `tz` from UTC at `date`, in ms (DST-correct via Intl). */
+function tzOffsetMs(date: Date, tz: string): number {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-US', {
+      timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+    }).formatToParts(date).map((p) => [p.type, p.value]),
+  )
+  const asUTC = Date.UTC(+parts.year, +parts.month - 1, +parts.day, +parts.hour % 24, +parts.minute, +parts.second)
+  return asUTC - date.getTime()
+}
+
+/** The absolute instant of a wall-clock (y, m, d, hh:mm) in `tz`. Two-pass
+ *  offset resolution handles DST transitions near the target. */
+function zonedInstant(year: number, month: number, day: number, hour: number, minute: number, tz: string): Date {
+  let ts = Date.UTC(year, month - 1, day, hour, minute)
+  for (let i = 0; i < 2; i++) {
+    ts = Date.UTC(year, month - 1, day, hour, minute) - tzOffsetMs(new Date(ts), tz)
+  }
+  return new Date(ts)
+}
+
+/** Calendar date of `now` as seen in `tz`. */
+function dateInTz(now: Date, tz: string): { year: number; month: number; day: number; dow: number } {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-US', {
+      timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short',
+    }).formatToParts(now).map((p) => [p.type, p.value]),
+  )
+  const dow = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(parts.weekday)
+  return { year: +parts.year, month: +parts.month, day: +parts.day, dow }
+}
+
+/** `days` after a calendar date (UTC-noon arithmetic avoids DST day slips). */
+function shiftDate(date: { year: number; month: number; day: number }, days: number): { year: number; month: number; day: number } {
+  const d = new Date(Date.UTC(date.year, date.month - 1, date.day, 12))
+  d.setUTCDate(d.getUTCDate() + days)
+  return { year: d.getUTCFullYear(), month: d.getUTCMonth() + 1, day: d.getUTCDate() }
+}
+
+const MONTHS: Record<string, number> = {
+  january: 1, jan: 1, february: 2, feb: 2, march: 3, mar: 3, april: 4, apr: 4,
+  may: 5, june: 6, jun: 6, july: 7, jul: 7, august: 8, aug: 8,
+  september: 9, sep: 9, sept: 9, october: 10, oct: 10, november: 11, nov: 11, december: 12, dec: 12,
+}
+
+const DEFAULT_ONE_SHOT_HOUR = { hour: 9, minute: 0 }
+
+function humanInstant(instant: Date, tz: string): string {
+  const pretty = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz, weekday: 'short', month: 'short', day: 'numeric',
+    hour: 'numeric', minute: '2-digit',
+  }).format(instant)
+  return `Once — ${pretty} (${tz})`
+}
+
+/** Deterministic one-shot phrases → an absolute instant in `tz`. */
+function parseOneShot(trimmed: string, now: Date, tz: string): { instant: Date; human: string } | null {
+  const lower = trimmed.toLowerCase()
+
+  // ISO-8601 passthrough ("2026-08-01T15:00:00Z", with or without offset).
+  if (/^\d{4}-\d{2}-\d{2}t/i.test(lower)) {
+    const ms = Date.parse(trimmed)
+    if (!Number.isFinite(ms)) return null
+    const instant = new Date(ms)
+    return { instant, human: humanInstant(instant, tz) }
+  }
+
+  // "in N minutes/hours/days"
+  const relative = lower.match(/^in\s+(\d+)\s+(minutes?|mins?|hours?|hrs?|days?)$/)
+  if (relative) {
+    const n = parseInt(relative[1], 10)
+    const unit = relative[2]
+    const ms = unit.startsWith('d') ? n * 86_400_000 : unit.startsWith('h') ? n * 3_600_000 : n * 60_000
+    const instant = new Date(now.getTime() + ms)
+    return { instant, human: humanInstant(instant, tz) }
+  }
+
+  // "today at <time>" / "tomorrow at <time>"
+  const dayWord = lower.match(/^(today|tomorrow)(?:\s+at)?\s+(.+)$/)
+  if (dayWord) {
+    const t = parseTime(dayWord[2])
+    if (!t) return null
+    const base = dateInTz(now, tz)
+    const date = dayWord[1] === 'tomorrow' ? shiftDate(base, 1) : base
+    const instant = zonedInstant(date.year, date.month, date.day, t.hour, t.minute, tz)
+    return { instant, human: humanInstant(instant, tz) }
+  }
+
+  // "<weekday> at <time>" — the NEXT occurrence (rolls a week if passed).
+  const weekday = lower.match(new RegExp(`^(${ALL_DAYS.join('|')})(?:\\s+at)?\\s+(.+)$`))
+  if (weekday) {
+    const t = parseTime(weekday[2])
+    if (!t) return null
+    const targetDow = parseInt(DAY_MAP[weekday[1]], 10)
+    const base = dateInTz(now, tz)
+    const ahead = (targetDow - base.dow + 7) % 7
+    let date = shiftDate(base, ahead)
+    let instant = zonedInstant(date.year, date.month, date.day, t.hour, t.minute, tz)
+    if (instant.getTime() <= now.getTime()) {
+      date = shiftDate(date, 7)
+      instant = zonedInstant(date.year, date.month, date.day, t.hour, t.minute, tz)
+    }
+    return { instant, human: humanInstant(instant, tz) }
+  }
+
+  // "(on) <month> <day>[st|nd|rd|th] [at <time>]" — this year, or next if passed.
+  const monthDay = lower.match(/^(?:on\s+)?([a-z]+)\s+(\d{1,2})(?:st|nd|rd|th)?(?:\s+at\s+(.+))?$/)
+  if (monthDay && MONTHS[monthDay[1]]) {
+    const t = monthDay[3] ? parseTime(monthDay[3]) : DEFAULT_ONE_SHOT_HOUR
+    if (!t) return null
+    const base = dateInTz(now, tz)
+    let instant = zonedInstant(base.year, MONTHS[monthDay[1]], parseInt(monthDay[2], 10), t.hour, t.minute, tz)
+    if (instant.getTime() <= now.getTime()) {
+      instant = zonedInstant(base.year + 1, MONTHS[monthDay[1]], parseInt(monthDay[2], 10), t.hour, t.minute, tz)
+    }
+    return { instant, human: humanInstant(instant, tz) }
+  }
+
+  return null
+}
+
+export interface ParseScheduleOptions {
+  /** Reference clock for relative one-shot phrases (tests use a fake now). */
+  now?: Date
+  /** IANA tz the wall-clock phrases are anchored to. Default: system tz. */
+  tz?: string
+}
+
 /** Try deterministic parse, return null if no match. */
-export function parseSchedule(input: string): ParseResult | null {
+export function parseSchedule(input: string, opts: ParseScheduleOptions = {}): ParseResult | null {
   const trimmed = input.trim()
 
   // Check if it's already a raw cron expression
   if (CRON_REGEX.test(trimmed)) {
     return {
-      cron: trimmed,
+      kind: 'cron',
+      expr: trimmed,
       human: cronToHuman(trimmed),
       confidence: 'high',
       source: 'raw',
@@ -212,14 +344,16 @@ export function parseSchedule(input: string): ParseResult | null {
     }
   }
 
-  // Try each pattern
+  // Recurring patterns take precedence — "every …" phrases must never be
+  // eaten by the one-shot weekday/month matchers.
   for (const pattern of PATTERNS) {
     const match = trimmed.match(pattern.regex)
     if (match) {
       const cron = pattern.build(match)
       if (cron) {
         return {
-          cron,
+          kind: 'cron',
+          expr: cron,
           human: pattern.human(match),
           confidence: 'high',
           source: 'deterministic',
@@ -229,7 +363,23 @@ export function parseSchedule(input: string): ParseResult | null {
     }
   }
 
-  return null // triggers LLM fallback
+  // One-shot phrases → a single absolute instant.
+  const now = opts.now ?? new Date()
+  const tz = opts.tz || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+  const oneShot = parseOneShot(trimmed, now, tz)
+  if (oneShot) {
+    const iso = oneShot.instant.toISOString()
+    return {
+      kind: 'at',
+      expr: iso,
+      human: oneShot.human,
+      confidence: 'high',
+      source: /^\d{4}-\d{2}-\d{2}t/i.test(trimmed.toLowerCase()) ? 'raw' : 'deterministic',
+      nextRuns: [iso],
+    }
+  }
+
+  return null // no deterministic match (no LLM fallback exists — callers error)
 }
 
 /** Simple cron → human-readable string for common patterns. */

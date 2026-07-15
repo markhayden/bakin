@@ -324,7 +324,7 @@ describe('schedule plugin activation', () => {
     expect(result).toEqual(expect.objectContaining({
       ok: true,
       jobId: 'plugin-nightly-sync',
-      cron: '*/5 * * * *',
+      expr: '*/5 * * * *',
     }))
     expect(mockCronCreate).not.toHaveBeenCalled()
     expect(getJob('plugin-nightly-sync')).toEqual(expect.objectContaining({
@@ -411,7 +411,7 @@ describe('schedule plugin activation', () => {
     expect(second).toEqual(expect.objectContaining({
       ok: true,
       jobId: 'plugin-nightly-sync',
-      cron: '0 2 * * *',
+      expr: '0 2 * * *',
     }))
     expect(mockCronCreate).not.toHaveBeenCalled()
     expect(mockCronUpdate).not.toHaveBeenCalled()

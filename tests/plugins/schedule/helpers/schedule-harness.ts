@@ -291,12 +291,17 @@ export function createScheduleCronHarness(): ScheduleCronHarness {
     cronParserModule: () => ({
       parseSchedule: (input: string) => {
         if (input === 'bad-expr') return null
+        // One-shot ISO passthrough
+        if (/^\d{4}-\d{2}-\d{2}T/i.test(input)) {
+          const iso = new Date(input).toISOString()
+          return { kind: 'at', expr: iso, human: `Once at ${iso}`, confidence: 'high', source: 'raw', nextRuns: [iso] }
+        }
         // Raw cron passes through
         if (/^[\d*,\-/]+\s/.test(input)) {
-          return { cron: input, human: `Cron: ${input}`, confidence: 'high', source: 'raw', nextRuns: [] }
+          return { kind: 'cron', expr: input, human: `Cron: ${input}`, confidence: 'high', source: 'raw', nextRuns: [] }
         }
         // NL → fake cron
-        return { cron: '0 9 * * *', human: `Every day at 9am`, confidence: 'high', source: 'deterministic', nextRuns: [] }
+        return { kind: 'cron', expr: '0 9 * * *', human: `Every day at 9am`, confidence: 'high', source: 'deterministic', nextRuns: [] }
       },
       cronToHuman: (cron: string) => `Human: ${cron}`,
     }),

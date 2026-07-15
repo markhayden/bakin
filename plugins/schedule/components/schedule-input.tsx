@@ -80,7 +80,7 @@ export function ScheduleInput({
           <div className="flex items-center gap-2 text-sm">
             <Clock className="size-3.5 text-muted-foreground" />
             <span className="text-foreground">{parsed.human}</span>
-            <span className="text-xs text-muted-foreground font-mono ml-auto">{parsed.cron}</span>
+            <span className="text-xs text-muted-foreground font-mono ml-auto">{parsed.expr}</span>
           </div>
           {parsed.nextRuns && parsed.nextRuns.length > 0 && (
             <div className="space-y-0.5">

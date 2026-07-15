@@ -179,7 +179,10 @@ export interface RunEntry {
 // ---------------------------------------------------------------------------
 
 export interface ParseResult {
-  cron: string
+  /** 'cron' = recurring; 'at' = one-shot (expr is a normalized ISO instant). */
+  kind: 'cron' | 'at'
+  /** Canonical schedule value: cron expression, or ISO-8601 instant. */
+  expr: string
   human: string
   confidence: 'high' | 'medium' | 'low'
   source: 'deterministic' | 'llm' | 'raw'
