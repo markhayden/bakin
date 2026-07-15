@@ -12,7 +12,7 @@ import {
   UsageHistoryStoreReadError,
 } from '@bakin/core/usage-history/store'
 import { listLiveRuns } from '../../src/core/execution-ledger'
-import { buildAgentBurnReports } from '../../src/core/agent-burn'
+import { buildAgentBurnReports, getAgentBurnWindowScope } from '../../src/core/agent-burn'
 import { getLastReport, runDiagnostics, runTargetedDiagnostics } from '../../src/core/doctor'
 import { createLogger } from '../../src/core/logger'
 import { getAllAgentUsage } from '../../src/core/agent-usage'
@@ -90,19 +90,10 @@ import {
   searchReadinessResponseSchema,
 } from './lib/route-schemas'
 import type { UsageEvidenceCoverage } from './types'
-
-type RegistryAccessor = () => Array<Record<string, unknown>>
-type McpSessionsAccessor = () => { activeSessions: Array<{ agent: string; sessions: number; connectedAt: string }>; upSince: string }
-
-function getRegistrySnapshot() {
-  const fn = (globalThis as unknown as { __bakinGetRegistrySnapshot?: RegistryAccessor }).__bakinGetRegistrySnapshot
-  return fn ? fn() : []
-}
-
-function getMcpSessions(): { activeSessions: Array<{ agent: string; sessions: number; connectedAt: string }>; upSince: string } {
-  const fn = (globalThis as unknown as { __bakinGetMcpSessions?: McpSessionsAccessor }).__bakinGetMcpSessions
-  return fn ? fn() : { activeSessions: [], upSince: new Date().toISOString() }
-}
+import {
+  getMcpSessions,
+  getRegistrySnapshot,
+} from './lib/host-providers'
 
 const log = createLogger('health')
 
@@ -380,23 +371,28 @@ const routes = [
     activityClass: 'routine',
     summary: 'Aggregated health summary',
     description: 'Live operational facts only: recent failures, MCP sessions, and host process metrics.',
-    responses: { 200: healthLiveSummarySchema },
+    responses: { 200: healthLiveSummarySchema, 503: errorResponse },
     handler: async () => {
-      const port = process.env.PORT || 3737
-      const mcp = getMcpSessions()
-      const errors1h = getErrorCount(WINDOW_MS['1h'])
-      return Response.json({
-        errors1h,
-        activeSessions: mcp.activeSessions,
-        upSince: mcp.upSince,
-        server: {
-          port: Number(port),
-          pid: process.pid,
-          nodeVersion: process.version,
-          memoryMB: Math.round(process.memoryUsage().rss / 1024 / 1024),
-          totalMemoryMB: Math.round(totalmem() / 1024 / 1024),
-        },
-      })
+      try {
+        const port = process.env.PORT || 3737
+        const mcp = getMcpSessions()
+        const errors1h = getErrorCount(WINDOW_MS['1h'])
+        return Response.json({
+          errors1h,
+          activeSessions: mcp.activeSessions,
+          upSince: mcp.upSince,
+          server: {
+            port: Number(port),
+            pid: process.pid,
+            nodeVersion: process.version,
+            memoryMB: Math.round(process.memoryUsage().rss / 1024 / 1024),
+            totalMemoryMB: Math.round(totalmem() / 1024 / 1024),
+          },
+        })
+      } catch (error) {
+        log.error('MCP session evidence provider failed', error)
+        return Response.json({ error: 'MCP session evidence is unavailable.' }, { status: 503 })
+      }
     },
   }),
 
@@ -482,6 +478,7 @@ const routes = [
         const report = await runTargetedDiagnostics(['health.search'])
         return Response.json({ reportId: report.id, readiness: report.subsystems.search })
       } catch (error) {
+        log.error('Search readiness refresh failed', error)
         return Response.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 })
       }
     },
@@ -512,10 +509,11 @@ const routes = [
       }
 
       let enrichment: unknown = null
-      try {
-        const { getHookRegistry } = await import('../../packages/core/src/hooks/hook-registry-singleton')
-        enrichment = await getHookRegistry().invoke('assets.enrichmentStats', {})
-      } catch { /* assets plugin absent or hook unregistered */ }
+      const { getHookRegistry } = await import('../../packages/core/src/hooks/hook-registry-singleton')
+      const hooks = getHookRegistry()
+      if (hooks.has('assets.enrichmentStats')) {
+        enrichment = await hooks.invoke('assets.enrichmentStats', {})
+      }
 
       const report = getLastReport()
       const searchObservations = report.observations.filter((row) => row.group.key === 'search')
@@ -568,9 +566,7 @@ const routes = [
           ...snapshot,
         })
       } catch (err) {
-        log.warn('usage history store read failed', {
-          error: err instanceof Error ? err.message : String(err),
-        })
+        log.error('Usage history store read failed', err)
         return Response.json({ error: 'Usage history store could not be read.' }, { status: 503 })
       }
     },
@@ -582,25 +578,27 @@ const routes = [
     activityClass: 'routine',
     summary: 'In-flight dispatch runs',
     description: 'Every currently-running dispatch run across all agents (execution ledger), with running-for and heartbeat age. The honest answer to "is anything running right now".',
-    responses: { 200: passthrough },
+    responses: { 200: passthrough, 500: errorResponse },
     handler: async (_req, ctx) => {
-      const now = Date.now()
-      const runs = await Promise.all(listLiveRuns().map(async (run) => {
-        let taskTitle: string | null = null
-        try {
-          taskTitle = (await ctx.tasks.get(run.taskId))?.title ?? null
-        } catch { /* task purged mid-flight — the run row still deserves display */ }
-        return {
-          agent: run.agent,
-          taskId: run.taskId,
-          taskTitle,
-          runId: run.runId,
-          startedAt: run.startedAt,
-          runningForMs: Math.max(0, now - run.startedAt),
-          heartbeatAgeMs: Math.max(0, now - run.heartbeatAt),
-        }
-      }))
-      return Response.json({ runs, generatedAt: new Date(now).toISOString() })
+      try {
+        const now = Date.now()
+        const runs = await Promise.all(listLiveRuns().map(async (run) => {
+          const taskTitle = (await ctx.tasks.get(run.taskId))?.title ?? null
+          return {
+            agent: run.agent,
+            taskId: run.taskId,
+            taskTitle,
+            runId: run.runId,
+            startedAt: run.startedAt,
+            runningForMs: Math.max(0, now - run.startedAt),
+            heartbeatAgeMs: Math.max(0, now - run.heartbeatAt),
+          }
+        }))
+        return Response.json({ runs, generatedAt: new Date(now).toISOString() })
+      } catch (error) {
+        log.error('Live run details could not be loaded', error)
+        return Response.json({ error: 'Live run details are unavailable.' }, { status: 500 })
+      }
     },
   }),
 
@@ -615,18 +613,22 @@ const routes = [
     handler: async (_req, _ctx, { query }) => {
       const evidence = currentUsageEvidence()
       try {
-        const agents = buildAgentBurnReports(Date.now(), {
-          windowHours: AGENT_EFFORT_WINDOW_HOURS[query.window],
+        const now = Date.now()
+        const windowHours = AGENT_EFFORT_WINDOW_HOURS[query.window]
+        const scope = getAgentBurnWindowScope(now, windowHours)
+        const agents = buildAgentBurnReports(now, {
+          windowHours,
           coverage: evidence.coverage,
         })
         return Response.json({
           window: query.window,
+          ...scope,
           ...evidence,
           agents,
         })
       } catch (err) {
         if (!(err instanceof UsageHistoryStoreReadError)) throw err
-        log.warn('agent effort usage store read failed', { error: err.message })
+        log.error('Agent effort usage store read failed', err)
         return Response.json({ error: 'Usage history store could not be read.' }, { status: 503 })
       }
     },
@@ -638,9 +640,14 @@ const routes = [
     activityClass: 'routine',
     summary: 'List registered plugins',
     description: 'Returns the plugin registry snapshot — installed plugin metadata and route counts.',
-    responses: { 200: registryResponse },
+    responses: { 200: registryResponse, 503: errorResponse },
     handler: async () => {
-      return Response.json({ plugins: getRegistrySnapshot() })
+      try {
+        return Response.json({ plugins: getRegistrySnapshot() })
+      } catch (error) {
+        log.error('Plugin registry evidence provider failed', error)
+        return Response.json({ error: 'Plugin registry evidence is unavailable.' }, { status: 503 })
+      }
     },
   }),
 
@@ -659,6 +666,7 @@ const routes = [
           : getLastReport()
         return Response.json(report)
       } catch (err) {
+        log.error('Health diagnostics request failed', err)
         return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
       }
     },
@@ -680,6 +688,7 @@ const routes = [
         })
         return Response.json(plan)
       } catch (err) {
+        log.error('Health repair planning failed', err)
         return Response.json({
           error: err instanceof Error ? err.message : String(err),
           ...(err instanceof HealthContractError ? { code: err.code } : {}),
@@ -712,6 +721,7 @@ const routes = [
         if (err instanceof DoctorRepairConfirmationError) {
           return Response.json({ error: err.message, code: err.code, itemIds: err.itemIds }, { status: 409 })
         }
+        log.error('Health repair apply failed', err)
         return Response.json({
           error: err instanceof Error ? err.message : String(err),
           ...(err instanceof HealthContractError ? { code: err.code } : {}),
@@ -739,6 +749,7 @@ const routes = [
           status: report.status === 'confirmation_required' ? 409 : 200,
         })
       } catch (err) {
+        log.error('Health repair delegation failed', err)
         return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
       }
     },
@@ -786,6 +797,7 @@ const routes = [
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
         const status = err instanceof DoctorRepairRequestNotFoundError ? 404 : 500
+        if (status === 500) log.error('Health repair verification failed', err)
         return Response.json({ error: message }, { status })
       }
     },
@@ -874,6 +886,7 @@ const healthPlugin: BakinPlugin = definePlugin({
             : getLastReport()
           return { ok: true, report }
         } catch (err) {
+          log.error('Health diagnostics exec tool failed', err)
           return { ok: false, error: err instanceof Error ? err.message : String(err) }
         }
       },

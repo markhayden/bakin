@@ -4,14 +4,14 @@
  * 17h while all real queries starved (see search-engine-watch.ts).
  */
 import { tmpdir } from 'os'
-import { join } from 'path'
+import { dirname, join } from 'path'
 import { randomUUID } from 'crypto'
 
 const testDir = join(tmpdir(), `bakin-test-engine-watch-${Date.now()}-${randomUUID()}`)
 process.env.BAKIN_HOME = testDir
 
 import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
-import { rmSync } from 'fs'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
 
 const contentDirMock = () => ({
   getContentDir: () => testDir,
@@ -123,6 +123,32 @@ describe('classifyCanary (pure)', () => {
 })
 
 describe('checkSearchCanary', () => {
+  it('treats an absent streak file as a fresh install', async () => {
+    rmSync(join(testDir, 'plugin-data', 'health', 'engine-watch.json'), { force: true })
+    canaryTables = [t({ budget: 'omitted' })]
+
+    const [result] = observed(await checkSearchCanary())
+
+    expect(result.status).toBe('warning')
+    expect(result.evidence?.darkStreak).toBe(1)
+  })
+
+  it('surfaces corrupt persisted streak evidence as unknown without overwriting it', async () => {
+    const path = join(testDir, 'plugin-data', 'health', 'engine-watch.json')
+    mkdirSync(dirname(path), { recursive: true })
+    writeFileSync(path, '{not-json')
+
+    const [result] = observed(await checkSearchCanary())
+
+    expect(result.status).toBe('unknown')
+    expect(result.summary).toContain('watch history could not be verified')
+    expect(result.incident?.resolution).toMatchObject({
+      type: 'instructions',
+      label: 'Restore watch history',
+    })
+    expect(readFileSync(path, 'utf-8')).toBe('{not-json')
+  })
+
   it('all tables answering → ok', async () => {
     canaryTables = [t(), t(), t()]
     const [result] = observed(await checkSearchCanary())

@@ -129,6 +129,52 @@ describe('GET /live-now', () => {
     const after = await get('/live-now')
     expect(after.body.runs).toEqual([])
   })
+
+  it('keeps an expected purged task as an honest null title', async () => {
+    expect(claimRun({
+      runId: 'task:purged:d1',
+      taskId: 'purged',
+      seq: 1,
+      agent: 'pixel',
+      bootId: 'boot-live',
+      now: NOW - 30_000,
+    })).toEqual({ claimed: true })
+
+    try {
+      const { status, body } = await get('/live-now')
+      expect(status).toBe(200)
+      expect(body.runs).toEqual([
+        expect.objectContaining({ taskId: 'purged', taskTitle: null }),
+      ])
+    } finally {
+      settleRun('task:purged:d1', 'turn-ok')
+    }
+  })
+
+  it('does not describe a task-store failure as a purged task', async () => {
+    expect(claimRun({
+      runId: 'task:store-failure:d1',
+      taskId: 'store-failure',
+      seq: 1,
+      agent: 'pixel',
+      bootId: 'boot-live',
+      now: NOW - 30_000,
+    })).toEqual({ claimed: true })
+    const originalGet = activated.ctx.tasks.get
+    activated.ctx.tasks.get = async () => {
+      throw new Error('task store unavailable')
+    }
+
+    try {
+      const { status, body } = await get('/live-now')
+      expect(status).toBe(500)
+      expect(body.error).toBe('Live run details are unavailable.')
+      expect(body.runs).toBeUndefined()
+    } finally {
+      activated.ctx.tasks.get = originalGet
+      settleRun('task:store-failure:d1', 'turn-error')
+    }
+  })
 })
 
 describe('GET /agent-effort', () => {
@@ -169,6 +215,9 @@ describe('GET /agent-effort', () => {
     const { status, body } = await get('/agent-effort')
     expect(status).toBe(200)
     expect(body.window).toBe('24h')
+    expect(body.since).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    expect(body.throughDay).toBe(today)
+    expect(body.scopeLabel).toBe(`${body.since as string} through ${today}`)
     expect(body.coverage).toEqual({
       status: 'complete',
       reason: 'complete',

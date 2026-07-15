@@ -124,4 +124,25 @@ describe('buildAgentBurnReports coverage', () => {
     expect(basil?.totalObservedTokens).toBeNull()
     expect(basil?.flags.some((flag) => flag.kind === 'spike')).toBe(false)
   })
+
+  it('uses exact local calendar dates in window-scoped flag wording', () => {
+    const flaggedSources: AgentBurnSources = {
+      ...sources,
+      runTokensByAgentSince: () => [{
+        agent: 'basil',
+        totalTokens: 600_000,
+        costUsdMicros: null,
+        runs: 3,
+      }],
+    }
+
+    const [report] = buildAgentBurnReports(NOW, {
+      config,
+      sources: flaggedSources,
+      coverage: { agents: [] },
+    })
+
+    expect(report?.flags[0]?.message).toContain('2026-07-13 through 2026-07-14')
+    expect(report?.flags[0]?.message).not.toContain('24h')
+  })
 })

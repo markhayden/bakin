@@ -377,6 +377,10 @@ export interface AgentEffortRow {
 
 export interface AgentEffortData {
   window: AgentEffortWindow
+  /** Exact local calendar-day scope; optional for compatibility with older servers. */
+  since?: string
+  throughDay?: string
+  scopeLabel?: string
   /** ISO time of the last usage scan; observed columns are only as fresh as this. */
   scannedAt: string | null
   /** Same transcript evidence snapshot used for observed/unattributed fields. */

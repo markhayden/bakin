@@ -134,6 +134,10 @@ const agentEffortRowSchema = z.object({
 
 export const agentEffortResponseSchema = z.object({
   window: agentWindowSchema,
+  /** Additive exact scope for day-aligned windows; absent on older servers. */
+  since: dayKeySchema.optional(),
+  throughDay: dayKeySchema.optional(),
+  scopeLabel: z.string().min(1).optional(),
   scannedAt: timestampSchema.nullable(),
   coverage: usageEvidenceCoverageSchema.optional(),
   agents: z.array(agentEffortRowSchema),

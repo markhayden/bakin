@@ -29,6 +29,9 @@ import { dirname, join } from 'path'
 import { healthError, healthHealthy, healthNotApplicable, healthObserved, healthUnknown, healthWarning } from '@makinbakin/sdk/utils'
 import type { HealthCheckRunInput, HealthRepairActionDefinition, HealthRepairPlanItem } from '@makinbakin/sdk'
 import { repairTargetSelection } from './repair-support'
+import { createLogger } from '../../../../src/core/logger'
+
+const log = createLogger('health-search-engine-watch')
 
 /** Sustained CPU (fraction of one core) that earns a busy warning. */
 const BUSY_UTILIZATION = 0.9
@@ -59,30 +62,80 @@ interface StreakState {
 
 const ZERO_STREAKS: StreakState = { darkStreak: 0, wedgeStreak: 0, busyStreak: 0 }
 
+class EngineWatchStateError extends Error {
+  constructor(message: string, options: { cause: unknown }) {
+    super(message, options)
+    this.name = 'EngineWatchStateError'
+  }
+}
+
 async function statePath(): Promise<string> {
   const { getContentDir } = await import('../../../../src/core/content-dir')
   return join(getContentDir(), 'plugin-data', 'health', 'engine-watch.json')
 }
 
 async function loadStreaks(): Promise<StreakState> {
+  const path = await statePath()
   try {
-    const raw = JSON.parse(readFileSync(await statePath(), 'utf-8')) as Partial<StreakState>
-    return {
-      darkStreak: typeof raw.darkStreak === 'number' ? raw.darkStreak : 0,
-      wedgeStreak: typeof raw.wedgeStreak === 'number' ? raw.wedgeStreak : 0,
-      busyStreak: typeof raw.busyStreak === 'number' ? raw.busyStreak : 0,
+    const parsed = JSON.parse(readFileSync(path, 'utf-8')) as unknown
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new TypeError('persisted state must be a JSON object')
     }
-  } catch {
-    return { ...ZERO_STREAKS } // fresh install / first run
+    const raw = parsed as Partial<StreakState>
+    return {
+      darkStreak: parseStreak(raw, 'darkStreak'),
+      wedgeStreak: parseStreak(raw, 'wedgeStreak'),
+      busyStreak: parseStreak(raw, 'busyStreak'),
+    }
+  } catch (error) {
+    if (isMissingFileError(error)) return { ...ZERO_STREAKS }
+    const wrapped = new EngineWatchStateError('Search engine watch history could not be read.', {
+      cause: error,
+    })
+    log.error('Search engine watch history read failed', wrapped, {
+      path,
+      cause: error instanceof Error ? error.message : String(error),
+    })
+    throw wrapped
   }
 }
 
 async function saveStreaks(next: Partial<StreakState>): Promise<StreakState> {
   const merged = { ...(await loadStreaks()), ...next }
-  const path = await statePath()
-  mkdirSync(dirname(path), { recursive: true })
-  writeFileSync(path, JSON.stringify(merged))
+  await writeStreaks(merged)
   return merged
+}
+
+async function writeStreaks(state: StreakState): Promise<void> {
+  const path = await statePath()
+  try {
+    mkdirSync(dirname(path), { recursive: true })
+    writeFileSync(path, JSON.stringify(state))
+  } catch (error) {
+    const wrapped = new EngineWatchStateError('Search engine watch history could not be written.', {
+      cause: error,
+    })
+    log.error('Search engine watch history write failed', wrapped, {
+      path,
+      cause: error instanceof Error ? error.message : String(error),
+    })
+    throw wrapped
+  }
+}
+
+function parseStreak(state: Partial<StreakState>, key: keyof StreakState): number {
+  const value = state[key]
+  if (value === undefined) return 0
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new TypeError(`${key} must be a non-negative safe integer`)
+  }
+  return value
+}
+
+function isMissingFileError(error: unknown): boolean {
+  return error instanceof Error
+    && 'code' in error
+    && (error as NodeJS.ErrnoException).code === 'ENOENT'
 }
 
 /**
@@ -90,7 +143,7 @@ async function saveStreaks(next: Partial<StreakState>): Promise<StreakState> {
  * (both checks observe the same engine), so ALL streaks clear together.
  */
 async function resetStreaks(): Promise<void> {
-  await saveStreaks({ ...ZERO_STREAKS })
+  await writeStreaks({ ...ZERO_STREAKS })
 }
 
 // In-memory restart debounce — both repair applies run in one process.
@@ -105,6 +158,17 @@ export async function resetEngineWatchStateForTests(): Promise<void> {
 // ── Checks ─────────────────────────────────────────────────────────────────
 
 export async function checkSearchCanary(): Promise<HealthCheckRunInput> {
+  try {
+    return await checkSearchCanaryWithState()
+  } catch (error) {
+    if (error instanceof EngineWatchStateError) {
+      return healthObserved([engineWatchStateUnknown(error)])
+    }
+    throw error
+  }
+}
+
+async function checkSearchCanaryWithState(): Promise<HealthCheckRunInput> {
   const { getSettings } = await import('../../../../src/core/settings')
   if (!getSettings().search.settings.enabled) {
     await saveStreaks({ darkStreak: 0 })
@@ -213,6 +277,17 @@ export async function checkSearchCanary(): Promise<HealthCheckRunInput> {
 }
 
 export async function checkSearchEngineBurn(): Promise<HealthCheckRunInput> {
+  try {
+    return await checkSearchEngineBurnWithState()
+  } catch (error) {
+    if (error instanceof EngineWatchStateError) {
+      return healthObserved([engineWatchStateUnknown(error)])
+    }
+    throw error
+  }
+}
+
+async function checkSearchEngineBurnWithState(): Promise<HealthCheckRunInput> {
   const { getSettings } = await import('../../../../src/core/settings')
   if (!getSettings().search.settings.enabled) {
     await saveStreaks({ wedgeStreak: 0, busyStreak: 0 })
@@ -405,6 +480,31 @@ export function searchCanaryRepair(): HealthRepairActionDefinition {
 
 export function searchEngineBurnRepair(): HealthRepairActionDefinition {
   return engineRestartRepair('search-engine-burn-restart', 'search-engine-burn', 'Restart the Search engine (zero-progress wedge)')
+}
+
+function engineWatchStateUnknown(error: EngineWatchStateError) {
+  const cause = error.cause instanceof Error ? error.cause.message : null
+  return healthUnknown({
+    key: 'state.persistence',
+    summary: 'Search engine watch history could not be verified.',
+    detail: cause ? `${error.message} ${cause}` : error.message,
+    incident: {
+      key: 'engine-watch-state-unknown',
+      title: 'Search engine watch history is unavailable',
+      impact: 'Health cannot safely decide whether Search symptoms repeated across consecutive checks.',
+      disposition: 'watch',
+      resources: [{ kind: 'file', id: 'engine-watch-state', label: 'Search engine watch history' }],
+      resolution: {
+        key: 'restore-watch-history',
+        type: 'instructions',
+        label: 'Restore watch history',
+        steps: [
+          'Check plugin-data/health/engine-watch.json for invalid JSON or unreadable file permissions.',
+          'Move an invalid file aside, then rerun Health to start a fresh observation streak.',
+        ],
+      },
+    },
+  })
 }
 
 function canaryUnknown(error: unknown) {

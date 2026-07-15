@@ -313,6 +313,23 @@ describe('Health Plugin Routes', () => {
       expect(body.mcp).toBeUndefined()
     })
 
+    it('returns unavailable instead of fabricating zero sessions when the MCP provider is absent', async () => {
+      const host = globalThis as typeof globalThis & { __bakinGetMcpSessions?: () => unknown }
+      const provider = host.__bakinGetMcpSessions
+      delete host.__bakinGetMcpSessions
+      try {
+        const route = findRoute(activated.routes, 'GET', '/summary')!
+        const { status, body } = await callRoute(route, activated.ctx)
+
+        expect(status).toBe(503)
+        expect(body.error).toBe('MCP session evidence is unavailable.')
+        expect(body.activeSessions).toBeUndefined()
+        expect(body.upSince).toBeUndefined()
+      } finally {
+        host.__bakinGetMcpSessions = provider
+      }
+    })
+
     it('includes server memory info', async () => {
       const route = findRoute(activated.routes, 'GET', '/summary')!
       const { body } = await callRoute(route, activated.ctx)
@@ -438,6 +455,22 @@ describe('Health Plugin Routes', () => {
       expect(Array.isArray(body.plugins)).toBe(true)
       expect(body.execTools).toBeUndefined()
       expect((body.plugins as unknown[]).length).toBe(2)
+    })
+
+    it('returns unavailable instead of an empty plugin list when the provider is absent', async () => {
+      const host = globalThis as typeof globalThis & { __bakinGetRegistrySnapshot?: () => unknown[] }
+      const provider = host.__bakinGetRegistrySnapshot
+      delete host.__bakinGetRegistrySnapshot
+      try {
+        const route = findRoute(activated.routes, 'GET', '/registry')!
+        const { status, body } = await callRoute(route, activated.ctx)
+
+        expect(status).toBe(503)
+        expect(body.error).toBe('Plugin registry evidence is unavailable.')
+        expect(body.plugins).toBeUndefined()
+      } finally {
+        host.__bakinGetRegistrySnapshot = provider
+      }
     })
   })
 

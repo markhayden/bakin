@@ -94,6 +94,13 @@ describe('effort-no-outcome', () => {
     )
     expect(report.tokensPerCompletion).toBe(300_000)
   })
+
+  it('does not describe a day-aligned calendar scope as an exact 24-hour window', () => {
+    const report = evaluateAgentBurn(inputs({ attributedTokens: 2_100_000, runs: 14 }), config)
+
+    expect(report.flags[0]!.message).toContain('selected day-aligned window')
+    expect(report.flags[0]!.message).not.toContain('24h')
+  })
 })
 
 describe('spike', () => {

@@ -1,16 +1,26 @@
-import { healthError, healthHealthy, healthObserved } from '@makinbakin/sdk/utils'
+import { healthError, healthHealthy, healthObserved, healthUnknown } from '@makinbakin/sdk/utils'
 import type { HealthCheckRunInput, HealthObservationInput } from '@makinbakin/sdk'
-
-type RegistryAccessor = () => Array<Record<string, unknown>>
-
-function getRegistrySnapshot(): Array<Record<string, unknown>> {
-  const accessor = (globalThis as unknown as { __bakinGetRegistrySnapshot?: RegistryAccessor })
-    .__bakinGetRegistrySnapshot
-  return accessor ? accessor() : []
-}
+import { getRegistrySnapshot } from '../host-providers'
 
 export async function checkPluginRegistry(): Promise<HealthCheckRunInput> {
-  const plugins = getRegistrySnapshot()
+  let plugins: Array<Record<string, unknown>>
+  try {
+    plugins = getRegistrySnapshot()
+  } catch (error) {
+    return healthObserved([healthUnknown({
+      key: 'availability',
+      summary: 'Plugin activation could not be verified.',
+      detail: error instanceof Error ? error.message : String(error),
+      incident: {
+        key: 'registry-unavailable',
+        title: 'Plugin registry evidence is unavailable',
+        impact: 'Health cannot confirm which plugins loaded or whether any activation failed.',
+        disposition: 'watch',
+        resources: [{ kind: 'system', id: 'plugin-registry', label: 'Plugin registry' }],
+        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
+      },
+    })])
+  }
   const failed = plugins.filter((plugin) => plugin.status === 'failed')
   if (failed.length === 0) {
     return healthObserved([healthHealthy({

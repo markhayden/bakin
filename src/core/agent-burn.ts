@@ -73,6 +73,12 @@ export interface AgentBurnSources {
   completionsByAgentSince: typeof completionsByAgentSince
 }
 
+export interface AgentBurnWindowScope {
+  since: string
+  throughDay: string
+  scopeLabel: string
+}
+
 const DEFAULT_AGENT_BURN_SOURCES: AgentBurnSources = {
   readUsageHistorySince,
   runTokensByAgentSince,
@@ -87,16 +93,19 @@ export function formatTokens(n: number): string {
 }
 
 /** Pure heuristic evaluation for one agent. */
-export function evaluateAgentBurn(inputs: AgentBurnInputs, config: BurnConfig): AgentBurnReport {
+export function evaluateAgentBurn(
+  inputs: AgentBurnInputs,
+  config: BurnConfig,
+  windowLabel = 'the selected day-aligned window',
+): AgentBurnReport {
   const flags: BurnFlag[] = []
-  const windowLabel = `${config.windowHours}h`
 
   if (inputs.attributedTokens >= config.minTokensFloor && inputs.completions === 0) {
     flags.push({
       kind: 'effort-no-outcome',
       message:
         `'${inputs.agent}' used ${formatTokens(inputs.attributedTokens)} tokens across ` +
-        `${inputs.runs} run(s) in ${windowLabel} but completed no tasks — check its timeline`,
+        `${inputs.runs} run(s) during ${windowLabel} but completed no tasks — check its timeline`,
     })
   }
 
@@ -131,7 +140,7 @@ export function evaluateAgentBurn(inputs: AgentBurnInputs, config: BurnConfig): 
       kind: 'unattributed',
       message:
         `'${inputs.agent}' used ${formatTokens(unattributedTokens)} tokens outside ` +
-        `Bakin-managed tasks in ${windowLabel} — review its recent sessions`,
+        `Bakin-managed tasks during ${windowLabel} — review its recent sessions`,
     })
   }
 
@@ -155,6 +164,16 @@ function localDayStartMs(dayKey: string): number {
   return new Date(y!, m! - 1, d!).getTime()
 }
 
+export function getAgentBurnWindowScope(now: number, windowHours: number): AgentBurnWindowScope {
+  const since = toLocalDayKey(now - windowHours * 3_600_000)
+  const throughDay = toLocalDayKey(now)
+  return {
+    since,
+    throughDay,
+    scopeLabel: `${since} through ${throughDay}`,
+  }
+}
+
 /**
  * Assemble burn inputs for every agent seen in the window (ledger ∪ usage
  * history ∪ completions) and evaluate them. Windows are day-aligned on both
@@ -172,7 +191,8 @@ export function buildAgentBurnReports(
 ): AgentBurnReport[] {
   const config = { ...(opts.config ?? getSettings().burn), ...(opts.windowHours ? { windowHours: opts.windowHours } : {}) }
   const sources = opts.sources ?? DEFAULT_AGENT_BURN_SOURCES
-  const windowSinceDay = toLocalDayKey(now - config.windowHours * 3_600_000)
+  const windowScope = getAgentBurnWindowScope(now, config.windowHours)
+  const windowSinceDay = windowScope.since
   const dayAlignedSinceMs = localDayStartMs(windowSinceDay)
   const today = toLocalDayKey(now)
   const baselineSinceDay = toLocalDayKey(now - config.baselineDays * 86_400_000)
@@ -217,6 +237,7 @@ export function buildAgentBurnReports(
             .map((c) => c.tokens.total),
         },
         config,
+        windowScope.scopeLabel,
       ),
     )
   }
