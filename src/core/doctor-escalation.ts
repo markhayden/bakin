@@ -11,9 +11,11 @@
  *               existing `bakin doctor --delegate` flow: durable request,
  *               board-visible task, dispatch kick, budget-gated like any
  *               task). Deduplicated: skipped while an open repair task
- *               already covers every current error check, and rate-limited
- *               by escalationCooldownMs so a persistent error never spawns
- *               a task per cycle.
+ *               already covers every current error check (until that task
+ *               is older than escalationStaleAfterMs — a stalled repair
+ *               task must not mute a still-burning error forever), and
+ *               rate-limited by escalationCooldownMs so a persistent error
+ *               never spawns a task per cycle.
  *  - 'notify' → messages the main agent (the --notify-agent path).
  *  - 'off'    → old behavior.
  *
@@ -77,7 +79,7 @@ export async function escalateCronErrors(
   contentDir: string,
   projectRoot: string,
 ): Promise<void> {
-  const { escalation, escalationCooldownMs } = getSettings().doctor
+  const { escalation, escalationCooldownMs, escalationStaleAfterMs } = getSettings().doctor
   if (escalation === 'off') return
   const errors = results.filter((row) => row.status === 'error')
   if (errors.length === 0) return
@@ -91,30 +93,52 @@ export async function escalateCronErrors(
       return
     }
 
-    // 'task': ONE open repair task per persisting error set.
+    // 'task': ONE open repair task per persisting error set. An open
+    // covering task suppresses re-escalation only while it is FRESH —
+    // the 2026-07-14 wedge hid behind one stalled repair task for 34h
+    // because this suppression had no expiry.
     const errorChecks = [...new Set(errors.map((row) => row.check))]
     const { listDoctorRepairRequests } = await import('./doctor-repair-store')
     const { getTaskDetails } = await import('./task-service')
+    let staleCoveringTaskId: string | null = null
     for (const request of listDoctorRepairRequests(contentDir)) {
       const covered = new Set(request.unresolved.map((row) => row.check))
       if (!errorChecks.every((check) => covered.has(check))) continue
+      const ageMs = Date.now() - Date.parse(request.createdAt)
       if (request.taskId) {
         const details = await getTaskDetails(request.taskId).catch(() => null)
-        if (details && details.column !== 'done') {
-          log.info('escalation skipped — an open repair task already covers the current errors', {
-            taskId: request.taskId,
-            checks: errorChecks,
-          })
-          return
+        // 'done' AND 'archived' are closed — the 2026-07-14 incident's three
+        // covering tasks were all ARCHIVED, and `!== 'done'` read each one
+        // as an open cover, muting escalation indefinitely.
+        const open = details !== null && details.column !== 'done' && details.column !== 'archived'
+        if (open) {
+          if (ageMs < escalationStaleAfterMs) {
+            log.info('escalation skipped — an open repair task already covers the current errors', {
+              taskId: request.taskId,
+              checks: errorChecks,
+            })
+            return
+          }
+          // Stale open cover: the errors outlived the task meant to fix
+          // them. Keep scanning — a fresher covering request still wins.
+          staleCoveringTaskId = request.taskId
+          continue
         }
       }
-      if (Date.now() - Date.parse(request.createdAt) < escalationCooldownMs) {
+      if (ageMs < escalationCooldownMs) {
         log.info('escalation skipped — same error set escalated inside the cooldown window', {
           requestId: request.id,
           checks: errorChecks,
         })
         return
       }
+    }
+    if (staleCoveringTaskId) {
+      log.warn('covering repair task is stale — re-escalating despite it being open', {
+        taskId: staleCoveringTaskId,
+        staleAfterMs: escalationStaleAfterMs,
+        checks: errorChecks,
+      })
     }
 
     const { delegateDoctorRepair } = await import('./doctor-delegate')
