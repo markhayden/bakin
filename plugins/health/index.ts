@@ -97,13 +97,23 @@ import {
   usageFeedResponseSchema,
 } from './lib/usage-feed-route-schema'
 import { interactionSummaryResponseSchema } from './lib/interaction-summary-route-schema'
+import { withDeadline } from './lib/request-deadline'
 import {
+  searchEnrichmentSchema,
   searchStatusResponseSchema,
   searchTelemetryResponseSchema,
   systemRegistryResponseSchema,
 } from './lib/system-route-schemas'
 
 const log = createLogger('health')
+const SEARCH_ENRICHMENT_STATS_TIMEOUT_MS = 250
+
+class SearchEnrichmentStatsTimeoutError extends Error {
+  constructor() {
+    super('Search enrichment telemetry timed out.')
+    this.name = 'SearchEnrichmentStatsTimeoutError'
+  }
+}
 
 function currentUsageEvidence(): {
   coverage: UsageEvidenceCoverage
@@ -361,10 +371,34 @@ const routes = [
       }
 
       let enrichment: unknown = null
+      let enrichmentEvidence:
+        | { status: 'available' }
+        | { status: 'not_configured' }
+        | { status: 'unavailable'; reason: 'provider_failed' | 'provider_timeout' | 'invalid_response' }
+        = { status: 'not_configured' }
       const { getHookRegistry } = await import('../../packages/core/src/hooks/hook-registry-singleton')
       const hooks = getHookRegistry()
       if (hooks.has('assets.enrichmentStats')) {
-        enrichment = await hooks.invoke('assets.enrichmentStats', {})
+        try {
+          const raw = await withDeadline(
+            hooks.invoke('assets.enrichmentStats', {}),
+            SEARCH_ENRICHMENT_STATS_TIMEOUT_MS,
+            { timeoutError: () => new SearchEnrichmentStatsTimeoutError() },
+          )
+          const parsed = searchEnrichmentSchema.safeParse(raw)
+          if (parsed.success) {
+            enrichment = parsed.data
+            enrichmentEvidence = { status: 'available' }
+          } else {
+            enrichmentEvidence = { status: 'unavailable', reason: 'invalid_response' }
+          }
+        } catch (error) {
+          const reason = error instanceof SearchEnrichmentStatsTimeoutError
+            ? 'provider_timeout'
+            : 'provider_failed'
+          enrichmentEvidence = { status: 'unavailable', reason }
+          log.warn('Optional Search enrichment telemetry is unavailable', { reason })
+        }
       }
 
       const report = getLastReport()
@@ -375,6 +409,7 @@ const routes = [
         windows: { '1h': byName('1h'), '24h': byName('24h') },
         outbox: outboxStats(),
         enrichment,
+        enrichmentEvidence,
         reportId: report.id,
         readiness: report.subsystems.search,
         observations: searchObservations,

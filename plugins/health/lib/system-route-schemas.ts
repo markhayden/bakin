@@ -91,7 +91,7 @@ const searchEnrichmentCoverageSchema = z.object({
   }
 })
 
-const searchEnrichmentSchema = z.object({
+export const searchEnrichmentSchema = z.object({
   depth: nonNegativeInteger.optional(),
   // Older plugin builds reported a count; current builds report whether the
   // single-flight pump is active. Both are safe for consumers that only show
@@ -120,8 +120,18 @@ const searchTelemetryBaseSchema = z.object({
   enrichment: searchEnrichmentSchema.nullable(),
 }).passthrough()
 
+const searchEnrichmentEvidenceSchema = z.discriminatedUnion('status', [
+  z.object({ status: z.literal('available') }).strict(),
+  z.object({ status: z.literal('not_configured') }).strict(),
+  z.object({
+    status: z.literal('unavailable'),
+    reason: z.enum(['provider_failed', 'provider_timeout', 'invalid_response']),
+  }).strict(),
+])
+
 /** Exact response emitted by the current Health route. */
 export const searchTelemetryResponseSchema = searchTelemetryBaseSchema.extend({
+  enrichmentEvidence: searchEnrichmentEvidenceSchema,
   reportId: nonEmptyString,
   readiness: searchReadinessSchema,
   observations: z.array(canonicalHealthObservationSchema),
@@ -135,6 +145,7 @@ const legacySearchTelemetryResponseSchema = searchTelemetryBaseSchema.extend({
   readiness: z.never().optional(),
   observations: z.never().optional(),
   incidents: z.never().optional(),
+  enrichmentEvidence: z.never().optional(),
 }).passthrough()
 
 export const searchTelemetryClientResponseSchema = z.union([

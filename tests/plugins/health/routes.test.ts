@@ -445,6 +445,49 @@ describe('Health Plugin Routes', () => {
       expect(telemetry.readiness.status).toBe('healthy')
       expect(Array.isArray(telemetry.observations)).toBe(true)
     })
+
+    it('keeps core Search telemetry available when enrichment stats throw', async () => {
+      const { getHookRegistry } = await import('../../../packages/core/src/hooks/hook-registry-singleton')
+      const unregister = getHookRegistry().register('assets.enrichmentStats', () => {
+        throw new Error('assets stats failed')
+      }, 'test-health')
+      try {
+        const route = findRoute(activated.routes, 'GET', '/search-telemetry')!
+        const { status, body } = await callRoute(route, activated.ctx)
+
+        expect(status).toBe(200)
+        expect(body.enrichment).toBeNull()
+        expect(body.enrichmentEvidence).toEqual({ status: 'unavailable', reason: 'provider_failed' })
+        expect(body.windows).toBeDefined()
+        expect(body.outbox).toBeDefined()
+      } finally {
+        unregister()
+      }
+    })
+
+    it('bounds a never-settling enrichment provider without losing core telemetry', async () => {
+      const { getHookRegistry } = await import('../../../packages/core/src/hooks/hook-registry-singleton')
+      const unregister = getHookRegistry().register(
+        'assets.enrichmentStats',
+        () => new Promise<never>(() => {}),
+        'test-health',
+      )
+      try {
+        const route = findRoute(activated.routes, 'GET', '/search-telemetry')!
+        const outcome = await Promise.race([
+          callRoute(route, activated.ctx),
+          new Promise<'test-timeout'>((resolve) => setTimeout(() => resolve('test-timeout'), 1_000)),
+        ])
+
+        expect(outcome).not.toBe('test-timeout')
+        if (outcome === 'test-timeout') return
+        expect(outcome.status).toBe(200)
+        expect(outcome.body.enrichment).toBeNull()
+        expect(outcome.body.enrichmentEvidence).toEqual({ status: 'unavailable', reason: 'provider_timeout' })
+      } finally {
+        unregister()
+      }
+    })
   })
 
   describe('GET /registry', () => {

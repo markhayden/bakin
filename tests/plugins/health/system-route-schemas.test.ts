@@ -45,6 +45,7 @@ function telemetry() {
       skipped: 0,
       coverage: { total: 10, enriched: 8, missing: 1, stale: 0, failed: 1, skipped: 0 },
     },
+    enrichmentEvidence: { status: 'available' as const },
   }
 }
 
@@ -103,11 +104,12 @@ describe('System route schemas', () => {
 
   it('requires canonical evidence on the route while accepting an older complete client payload', () => {
     const current = currentTelemetry()
-    const partialEvidence = { ...telemetry(), reportId: 'report-1' }
+    const { enrichmentEvidence: _enrichmentEvidence, ...legacyTelemetry } = telemetry()
+    const partialEvidence = { ...legacyTelemetry, reportId: 'report-1' }
 
     expect(searchTelemetryResponseSchema.safeParse(current).success).toBe(true)
-    expect(searchTelemetryResponseSchema.safeParse(telemetry()).success).toBe(false)
-    expect(searchTelemetryClientResponseSchema.safeParse(telemetry()).success).toBe(true)
+    expect(searchTelemetryResponseSchema.safeParse(legacyTelemetry).success).toBe(false)
+    expect(searchTelemetryClientResponseSchema.safeParse(legacyTelemetry).success).toBe(true)
     expect(searchTelemetryClientResponseSchema.safeParse(partialEvidence).success).toBe(false)
   })
 

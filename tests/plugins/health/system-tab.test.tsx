@@ -380,6 +380,24 @@ describe('SystemTabView', () => {
     expect(data.reindexSearch).toHaveBeenCalledWith('bakin_assets')
   })
 
+  it('distinguishes an optional enrichment provider from unavailable telemetry', () => {
+    const notConfigured = systemData()
+    notConfigured.searchTelemetry.data!.enrichment = null
+    notConfigured.searchTelemetry.data!.enrichmentEvidence = { status: 'not_configured' }
+    const first = render(<SystemTabView data={notConfigured} />)
+    expect(screen.getByText('Enrichment is not configured')).toBeDefined()
+    first.unmount()
+
+    const unavailable = systemData()
+    unavailable.searchTelemetry.data!.enrichment = null
+    unavailable.searchTelemetry.data!.enrichmentEvidence = {
+      status: 'unavailable',
+      reason: 'provider_timeout',
+    }
+    render(<SystemTabView data={unavailable} />)
+    expect(screen.getByText('Enrichment telemetry unavailable')).toBeDefined()
+  })
+
   it('keeps plugin exceptions in the watch list and the complete runtime inventory on demand', () => {
     render(<SystemTabView data={systemData()} />)
 

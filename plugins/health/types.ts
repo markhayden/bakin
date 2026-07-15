@@ -90,7 +90,7 @@ export type SearchEnrichmentCoverage = NonNullable<
 >
 export type SearchTelemetryData = Pick<
   SearchTelemetryResponse,
-  'windows' | 'outbox' | 'enrichment'
+  'windows' | 'outbox' | 'enrichment' | 'enrichmentEvidence'
 >
 
 export interface MeteredSpendData {

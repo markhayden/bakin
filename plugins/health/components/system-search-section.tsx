@@ -93,6 +93,8 @@ export function SystemSearchSection({
   const mutationLocked = mutation.status === 'pending' || mutation.status === 'outcome-unknown'
   const oneHour = telemetry?.windows['1h']
   const coverage = telemetry?.enrichment?.coverage
+  const enrichmentUnavailable = telemetry?.enrichmentEvidence?.status === 'unavailable'
+  const enrichmentNotConfigured = telemetry?.enrichmentEvidence?.status === 'not_configured'
   const [detailsOpen, setDetailsOpen] = useState(technicalDetailsOpen)
 
   useEffect(() => {
@@ -180,7 +182,15 @@ export function SystemSearchSection({
             value={coverage ? `${coverage.enriched}/${coverage.total}` : (telemetry?.enrichment?.depth ?? '—')}
             sub={coverage
               ? `${coverage.missing + coverage.stale} waiting · ${coverage.failed} failed`
-              : telemetry?.enrichment ? 'Items queued' : loading ? 'Checking enrichment…' : 'Coverage telemetry unavailable'}
+              : telemetry?.enrichment
+                ? 'Items queued'
+                : loading
+                  ? 'Checking enrichment…'
+                  : enrichmentUnavailable
+                    ? 'Enrichment telemetry unavailable'
+                    : enrichmentNotConfigured
+                      ? 'Enrichment is not configured'
+                      : 'Coverage telemetry unavailable'}
           />
         </div>
 
