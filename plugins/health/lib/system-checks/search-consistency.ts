@@ -298,7 +298,7 @@ export function searchConsistencyRepair(): HealthRepairActionDefinition {
             continue
           }
           if (table.state === 'active') {
-            const stats = await search.tables.stats(table.physical).catch(() => null)
+            const stats = await search.tables.stats(table.physical)
             if (stats === null) targets.push(table.logical)
           }
         }

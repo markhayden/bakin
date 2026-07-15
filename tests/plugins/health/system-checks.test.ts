@@ -60,6 +60,12 @@ let mockChannelAliases: Record<string, string> = {}
 let mockSearchEnabled = false
 let mockSearchUrl = 'http://127.0.0.1:8765/api/v1'
 let mockSearchInstalled = true
+let mockTableStatsError: Error | null = null
+let mockTableStats: { table: string; documents: number } | null = { table: 't', documents: 1 }
+async function readMockTableStats() {
+  if (mockTableStatsError) throw mockTableStatsError
+  return mockTableStats
+}
 const mockServiceStatus = { mode: 'launchd' as const, provisioned: true }
 mock.module('../../../src/core/search-adapter-factory', () => ({
   isSearchAdapterInstalled: () => mockSearchInstalled,
@@ -181,7 +187,7 @@ mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
 mock.module('../../../src/core/app-services', () => ({
   getAppServices: () => ({
     runtime: mockRuntime,
-    search: { available: async () => mockSearchAvailable, tables: { stats: async () => ({ table: 't', documents: 1 }) } },
+    search: { available: async () => mockSearchAvailable, tables: { stats: readMockTableStats } },
     tasks: {},
     health: {},
   }),
@@ -201,7 +207,7 @@ mock.module('../../../src/core/app-services', () => ({
 mock.module('../../../src/core/app-services-store', () => ({
   getAppServices: () => ({
     runtime: mockRuntime,
-    search: { available: async () => mockSearchAvailable, tables: { stats: async () => ({ table: 't', documents: 1 }) } },
+    search: { available: async () => mockSearchAvailable, tables: { stats: readMockTableStats } },
     tasks: {},
     health: {},
   }),
@@ -221,7 +227,7 @@ mock.module('../../../src/core/app-services-store', () => ({
 mock.module('../../../src/core/app-services.ts', () => ({
   getAppServices: () => ({
     runtime: mockRuntime,
-    search: { available: async () => mockSearchAvailable, tables: { stats: async () => ({ table: 't', documents: 1 }) } },
+    search: { available: async () => mockSearchAvailable, tables: { stats: readMockTableStats } },
     tasks: {},
     health: {},
   }),
@@ -241,7 +247,7 @@ mock.module('../../../src/core/app-services.ts', () => ({
 mock.module('@/core/app-services', () => ({
   getAppServices: () => ({
     runtime: mockRuntime,
-    search: { available: async () => mockSearchAvailable },
+    search: { available: async () => mockSearchAvailable, tables: { stats: readMockTableStats } },
     tasks: {},
     health: {},
   }),
@@ -261,7 +267,7 @@ mock.module('@/core/app-services', () => ({
 mock.module('@/core/app-services-store', () => ({
   getAppServices: () => ({
     runtime: mockRuntime,
-    search: { available: async () => mockSearchAvailable },
+    search: { available: async () => mockSearchAvailable, tables: { stats: readMockTableStats } },
     tasks: {},
     health: {},
   }),
@@ -305,7 +311,7 @@ import { checkChannelApprovals } from '../../../plugins/health/lib/system-checks
 import { checkChannelAliases } from '../../../plugins/health/lib/system-checks/channel-aliases'
 import { checkSearchAdapter } from '../../../plugins/health/lib/system-checks/search'
 import { checkSearchOutboxObservations, searchOutboxRepair } from '../../../plugins/health/lib/system-checks/search-outbox'
-import { checkSearchConsistency } from '../../../plugins/health/lib/system-checks/search-consistency'
+import { checkSearchConsistency, searchConsistencyRepair } from '../../../plugins/health/lib/system-checks/search-consistency'
 import { checkAndSyncSkill, syncSkillRepair } from '../../../plugins/health/lib/system-checks/sync-skill'
 import { checkPluginAssets } from '../../../plugins/health/lib/system-checks/plugin-assets'
 import { createMockRuntimeAdapter, mockChannels } from '@bakin/core/adapters/runtime/testing'
@@ -366,6 +372,9 @@ beforeEach(() => {
   mockSearchUrl = 'http://127.0.0.1:8765/api/v1'
   mockFetchOk = true
   mockSearchAvailable = true
+  mockTableStates = []
+  mockTableStatsError = null
+  mockTableStats = { table: 't', documents: 1 }
   mockSearchHealthError = null
   mockSearchHealth = {
     enabled: true,
@@ -798,6 +807,33 @@ describe('checkSearchConsistency', () => {
     expect(row.status).toBe('warning')
     expect(row.incident?.disposition).toBe('watch')
     mockTableStates = []
+  })
+
+  it('does not rebuild an index when its engine evidence cannot be read', async () => {
+    mockSearchEnabled = true
+    mockTableStates = [{ logical: 'bakin_t', physical: 'bakin_t_v2_ff', schemaVersion: 2, state: 'active' }]
+    mockTableStatsError = new Error('engine timed out')
+
+    const repair = searchConsistencyRepair()
+    const outcomes = await repair.apply(await repair.plan(repairTarget))
+
+    expect(outcomes).toEqual([
+      expect.objectContaining({
+        status: 'failed',
+        message: 'engine timed out',
+      }),
+    ])
+  })
+
+  it('still targets an index when the engine explicitly reports it missing', async () => {
+    mockSearchEnabled = true
+    mockTableStates = [{ logical: 'bakin_t', physical: 'bakin_t_v2_ff', schemaVersion: 2, state: 'active' }]
+    mockTableStats = null
+
+    const repair = searchConsistencyRepair()
+    const outcomes = await repair.apply(await repair.plan(repairTarget))
+
+    expect(outcomes[0]?.message).toContain('bakin_t:')
   })
 })
 
