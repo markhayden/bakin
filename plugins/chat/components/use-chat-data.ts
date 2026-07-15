@@ -148,6 +148,8 @@ const imageInputCache = new Map<string, boolean>()
 export function useAgentImageInput(agentId: string): boolean {
   const [enabled, setEnabled] = useState(imageInputCache.get(agentId) ?? false)
   useEffect(() => {
+    // Empty while the chat summary loads — the probe re-runs with the real id.
+    if (!agentId) return
     const cached = imageInputCache.get(agentId)
     if (cached !== undefined) {
       setEnabled(cached)

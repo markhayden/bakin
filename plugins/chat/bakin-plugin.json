@@ -13,7 +13,8 @@
     "events.emit",
     "runtime.read",
     "runtime.agents",
-    "runtime.messaging"
+    "runtime.messaging",
+    "search.write"
   ],
   "contributes": {
     "apiRoutes": [

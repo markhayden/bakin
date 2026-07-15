@@ -25,6 +25,7 @@
     "storage.write",
     "events.emit",
     "runtime.read",
+    "runtime.agents",
     "runtime.models"
   ],
   "contributes": {
