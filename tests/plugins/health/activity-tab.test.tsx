@@ -26,7 +26,7 @@ function activityData(): UseHealthResourceResult<UsageFeedData> {
   return {
     data: {
       window: '1h',
-      capabilities: { exactFailureTargeting: true },
+      capabilities: { exactFailureTargeting: true, sourceBalancedActivity: true },
       coverage: {
         startsAt: '2026-07-12T11:10:00.000Z',
         hasFullWindow: true,
@@ -66,6 +66,7 @@ function activityData(): UseHealthResourceResult<UsageFeedData> {
       ],
       failureGroupPage: { total: 2, offset: 0, limit: 25, hasMore: false },
       topByName: [],
+      agentCount: 0,
       byAgent: [],
       recent: [
         {
@@ -1098,7 +1099,7 @@ describe('ActivityTab', () => {
       ...base,
       data: {
         ...base.data!,
-        capabilities: { exactFailureTargeting: true },
+        capabilities: { exactFailureTargeting: true, sourceBalancedActivity: true },
         totals: { count: 2, errors: 2, errorRate: 1 },
         outcomes: { failed: 2, unverified: 0, canceled: 0, succeeded: 0 },
         byKind: [

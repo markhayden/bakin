@@ -4,6 +4,7 @@ import type {
   UsageFeedData,
   UsageKind,
 } from '../types'
+import { usageFeedResponseSchema } from './usage-feed-route-schema'
 
 type ActivityWindow = UsageFeedData['window']
 
@@ -14,7 +15,6 @@ export interface NormalizedActivityFeed {
 
 const USAGE_KINDS = new Set<UsageKind>(['mcp', 'rest', 'agent'])
 const ACTIVITY_CLASSES = new Set(['user', 'system', 'routine'])
-const COVERAGE_REASONS = new Set(['full_window', 'process_restart', 'buffer_limit'])
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
@@ -28,10 +28,6 @@ function isRate(value: unknown): value is number {
   return isNonnegativeNumber(value) && value <= 1
 }
 
-function isPositiveInteger(value: unknown): value is number {
-  return typeof value === 'number' && Number.isInteger(value) && value > 0
-}
-
 function isNonnegativeInteger(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0
 }
@@ -39,36 +35,25 @@ function isNonnegativeInteger(value: unknown): value is number {
 function isUsageEntry(value: unknown): value is UsageEntry {
   if (!isRecord(value)) return false
   return typeof value.id === 'string'
+    && value.id.length > 0
     && typeof value.ts === 'string'
+    && Number.isFinite(Date.parse(value.ts))
     && USAGE_KINDS.has(value.kind as UsageKind)
     && ACTIVITY_CLASSES.has(value.activityClass as string)
     && typeof value.name === 'string'
     && (value.agent === null || typeof value.agent === 'string')
     && (value.durationMs === null || isNonnegativeNumber(value.durationMs))
     && (value.status === 'ok' || value.status === 'error')
+    && (value.tokensIn === undefined || isNonnegativeNumber(value.tokensIn))
+    && (value.tokensOut === undefined || isNonnegativeNumber(value.tokensOut))
+    && (value.tokensCacheRead === undefined || isNonnegativeNumber(value.tokensCacheRead))
+    && (value.tokensCacheWrite === undefined || isNonnegativeNumber(value.tokensCacheWrite))
+    && (value.costUsdMicros === undefined || isNonnegativeNumber(value.costUsdMicros))
+    && (value.meta === undefined || isRecord(value.meta))
 }
 
 function validEntries(value: unknown): UsageEntry[] {
   return Array.isArray(value) ? value.filter(isUsageEntry) : []
-}
-
-function isFailureGroup(value: unknown): boolean {
-  if (!isRecord(value)) return false
-  return USAGE_KINDS.has(value.kind as UsageKind)
-    && typeof value.name === 'string'
-    && typeof value.destination === 'string'
-    && (value.method === null || typeof value.method === 'string')
-    && isNonnegativeInteger(value.attempts)
-    && isNonnegativeInteger(value.failures)
-    && value.failures <= value.attempts
-    && typeof value.firstFailureAt === 'string'
-    && typeof value.lastFailureAt === 'string'
-    && Array.isArray(value.agents)
-    && value.agents.every((agent) => typeof agent === 'string')
-    && isNonnegativeInteger(value.unattributedFailures)
-    && isNonnegativeInteger(value.systemFailures)
-    && (value.medianFailureDurationMs === null || isNonnegativeNumber(value.medianFailureDurationMs))
-    && isUsageEntry(value.latestFailure)
 }
 
 function isTimeBucket(value: unknown): value is UsageFeedData['timeBuckets'][number] {
@@ -92,15 +77,6 @@ function isTopByNameRow(value: unknown): value is UsageFeedData['topByName'][num
     && isNonnegativeInteger(value.errors)
     && value.errors <= value.count
     && (value.medianDurationMs === null || isNonnegativeNumber(value.medianDurationMs))
-}
-
-function hasValidCapabilities(value: unknown): boolean {
-  if (value === undefined) return true
-  return isRecord(value)
-    && (value.exactFailureTargeting === undefined
-      || typeof value.exactFailureTargeting === 'boolean')
-    && (value.sourceBalancedActivity === undefined
-      || typeof value.sourceBalancedActivity === 'boolean')
 }
 
 function isByAgentRow(value: unknown): boolean {
@@ -142,102 +118,9 @@ function attributedAgentCount(rows: UsageFeedData['byAgent']): number {
   return new Set(rows.filter(isAttributedAgentRow).map((row) => row.agent)).size
 }
 
-function hasValidAgentProjection(rows: UsageFeedData['byAgent']): boolean {
-  const attributed = rows.filter(isAttributedAgentRow)
-  const unattributed = rows.filter((row) => !isAttributedAgentRow(row))
-  return rows.length <= 11
-    && attributed.length <= 10
-    && unattributed.length <= 1
-    && new Set(attributed.map((row) => row.agent)).size === attributed.length
-}
-
-function hasConsistentDashboardTotals(data: Partial<UsageFeedData>): boolean {
-  if (!isRecord(data.totals) || !isRecord(data.outcomes) || !Array.isArray(data.byKind)) return false
-  const total = data.totals.count
-  const errors = data.totals.errors
-  const { failed, unverified, canceled, succeeded } = data.outcomes
-  if (
-    !isNonnegativeInteger(total)
-    || !isNonnegativeInteger(errors)
-    || !isNonnegativeInteger(failed)
-    || !isNonnegativeInteger(unverified)
-    || !isNonnegativeInteger(canceled)
-    || !isNonnegativeInteger(succeeded)
-  ) return false
-
-  const kindRows = data.byKind.filter(isRecord)
-  const kinds = new Set(kindRows.map((row) => row.kind))
-  const kindTotal = kindRows.reduce((sum, row) => sum + Number(row.total), 0)
-  const kindFailures = kindRows.reduce((sum, row) => sum + Number(row.failures), 0)
-  const expectedErrorRate = total > 0 ? errors / total : 0
-  return failed + unverified + canceled + succeeded === total
-    && errors === failed
-    && Math.abs(data.totals.errorRate - expectedErrorRate) < 1e-9
-    && kindRows.length === USAGE_KINDS.size
-    && kinds.size === USAGE_KINDS.size
-    && kindTotal === total
-    && kindFailures === errors
-}
-
 function isCanceled(entry: UsageEntry): boolean {
   const terminalStatus = entry.meta?.terminalStatus ?? entry.meta?.turnTerminalStatus
   return entry.status === 'ok' && terminalStatus === 'aborted'
-}
-
-function isDashboardContract(data: Partial<UsageFeedData>): data is UsageFeedData {
-  const coverage = data.coverage as unknown
-  const totals = data.totals as unknown
-  const outcomes = data.outcomes as unknown
-  return (data.window === '5m' || data.window === '1h' || data.window === '24h')
-    && hasValidCapabilities(data.capabilities)
-    && isRecord(coverage)
-    && typeof coverage.startsAt === 'string'
-    && Number.isFinite(Date.parse(coverage.startsAt))
-    && typeof coverage.hasFullWindow === 'boolean'
-    && COVERAGE_REASONS.has(coverage.reason as string)
-    && (coverage.reason === 'full_window') === coverage.hasFullWindow
-    && isRecord(totals)
-    && isNonnegativeInteger(totals.count)
-    && isNonnegativeInteger(totals.errors)
-    && totals.errors <= totals.count
-    && isRate(totals.errorRate)
-    && isRecord(outcomes)
-    && isNonnegativeInteger(outcomes.failed)
-    && isNonnegativeInteger(outcomes.unverified)
-    && isNonnegativeInteger(outcomes.canceled)
-    && isNonnegativeInteger(outcomes.succeeded)
-    && Array.isArray(data.byKind)
-    && data.byKind.every((row) => isRecord(row)
-      && USAGE_KINDS.has(row.kind as UsageKind)
-      && isNonnegativeInteger(row.total)
-      && isNonnegativeInteger(row.failures)
-      && row.failures <= row.total)
-    && Array.isArray(data.failureGroups)
-    && data.failureGroups.every(isFailureGroup)
-    && isRecord(data.failureGroupPage)
-    && isNonnegativeInteger(data.failureGroupPage.total)
-    && isNonnegativeInteger(data.failureGroupPage.offset)
-    && isPositiveInteger(data.failureGroupPage.limit)
-    && typeof data.failureGroupPage.hasMore === 'boolean'
-    && Array.isArray(data.topByName)
-    && data.topByName.every(isTopByNameRow)
-    && Array.isArray(data.byAgent)
-    && data.byAgent.every(isByAgentRow)
-    && hasValidAgentProjection(data.byAgent)
-    && (data.agentCount === undefined
-      || (isNonnegativeInteger(data.agentCount)
-        && data.agentCount <= totals.count
-        && data.agentCount >= attributedAgentCount(data.byAgent)
-        && data.byAgent.every((row) => row.attributed !== undefined)))
-    && Array.isArray(data.recent)
-    && data.recent.every(isUsageEntry)
-    && Array.isArray(data.recentFailures)
-    && data.recentFailures.every(isUsageEntry)
-    && Array.isArray(data.recentUnverified)
-    && data.recentUnverified.every(isUsageEntry)
-    && Array.isArray(data.timeBuckets)
-    && data.timeBuckets.every(isTimeBucket)
-    && hasConsistentDashboardTotals(data)
 }
 
 function uniqueEntries(data: Partial<UsageFeedData>): UsageEntry[] {
@@ -365,12 +248,21 @@ function fallbackCoverageStart(data: Partial<UsageFeedData>): string {
  * promotes recent capped rows into a claim of complete window coverage.
  */
 export function normalizeActivityFeed(
-  value: UsageFeedData | null,
+  value: unknown,
   requestedWindow: ActivityWindow,
 ): NormalizedActivityFeed {
   if (!value) return { data: null, compatibilityLimited: false }
+  const current = usageFeedResponseSchema.safeParse(value)
+  if (current.success) {
+    return current.data.window === requestedWindow
+      ? { data: current.data, compatibilityLimited: false }
+      : { data: null, compatibilityLimited: false }
+  }
+
+  // Everything below this boundary exists only for a rolling deployment whose
+  // server predates the canonical response. It deliberately projects partial
+  // evidence instead of weakening the current route contract.
   const legacy = value as Partial<UsageFeedData>
-  if (isDashboardContract(legacy)) return { data: legacy, compatibilityLimited: false }
 
   const recent = validEntries(legacy.recent)
   const recentFailures = validEntries(legacy.recentFailures)

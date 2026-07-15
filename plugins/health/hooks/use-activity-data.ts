@@ -1,6 +1,6 @@
 'use client'
 
-import type { UsageFeedData, UsageKind } from '../types'
+import type { UsageKind } from '../types'
 import { useHealthResource } from './use-health-resource'
 
 export type ActivityWindow = '5m' | '1h' | '24h'
@@ -36,7 +36,9 @@ export function useActivityData(options: {
     params.set('failureGroupTargetMethod', options.failureGroupTarget.method ?? '')
     params.set('failureGroupTargetDestination', options.failureGroupTarget.destination)
   }
-  return useHealthResource<UsageFeedData>(`/api/plugins/health/usage-feed?${params.toString()}`, {
+  // Keep transport data unknown until Activity's canonical parser (with its
+  // isolated rolling-version adapter) validates the browser boundary.
+  return useHealthResource<unknown>(`/api/plugins/health/usage-feed?${params.toString()}`, {
     intervalMs: 15_000,
   })
 }

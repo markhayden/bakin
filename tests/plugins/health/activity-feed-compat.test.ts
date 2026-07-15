@@ -4,6 +4,7 @@ import type { UsageFeedData } from '../../../plugins/health/types'
 
 function dashboardFeed(topByName: Array<Record<string, unknown>>): UsageFeedData {
   return {
+    capabilities: { exactFailureTargeting: true, sourceBalancedActivity: true },
     window: '1h',
     coverage: {
       startsAt: '2026-07-14T12:00:00.000Z',
@@ -20,6 +21,7 @@ function dashboardFeed(topByName: Array<Record<string, unknown>>): UsageFeedData
     failureGroups: [],
     failureGroupPage: { total: 0, offset: 0, limit: 25, hasMore: false },
     topByName: topByName as unknown as UsageFeedData['topByName'],
+    agentCount: 0,
     byAgent: [],
     recent: [],
     recentFailures: [],
@@ -44,7 +46,7 @@ describe('normalizeActivityFeed top destinations', () => {
       method: 'GET',
     }]), '1h')
 
-    expect(legacy.compatibilityLimited).toBe(false)
+    expect(legacy.compatibilityLimited).toBe(true)
     expect(current.compatibilityLimited).toBe(false)
     expect(current.data?.topByName[0]).toMatchObject({
       kind: 'rest',
@@ -65,8 +67,8 @@ describe('normalizeActivityFeed top destinations', () => {
     }
   })
 
-  it('keeps capability metadata forward-compatible while rejecting a malformed known value', () => {
-    const currentFeed = dashboardFeed([destination])
+  it('accepts the current capability contract and isolates older or malformed values', () => {
+    const currentFeed = dashboardFeed([{ ...destination, kind: 'mcp', method: null }])
     currentFeed.capabilities = { exactFailureTargeting: true, sourceBalancedActivity: true }
     const current = normalizeActivityFeed(currentFeed, '1h')
 
@@ -93,12 +95,40 @@ describe('normalizeActivityFeed top destinations', () => {
       exactFailureTargeting: true,
       sourceBalancedActivity: true,
     })
-    expect(forward.compatibilityLimited).toBe(false)
-    expect(forward.data?.capabilities?.exactFailureTargeting).toBe(false)
+    expect(forward.compatibilityLimited).toBe(true)
+    expect(forward.data?.capabilities).toBeUndefined()
     expect(invalid.compatibilityLimited).toBe(true)
     expect(invalid.data?.capabilities).toBeUndefined()
     expect(invalidBalanced.compatibilityLimited).toBe(true)
     expect(invalidBalanced.data?.capabilities).toBeUndefined()
+  })
+
+  it('uses the canonical browser schema before projecting a legacy payload', () => {
+    const feed = dashboardFeed([{ ...destination, kind: 'mcp', method: null }])
+    feed.recent = [{
+      id: 'usage-invalid-token-count',
+      ts: '2026-07-14T12:00:00.000Z',
+      kind: 'mcp',
+      activityClass: 'user',
+      name: 'web.search',
+      agent: 'main',
+      durationMs: 1,
+      status: 'ok',
+      tokensIn: -1,
+    }]
+
+    const normalized = normalizeActivityFeed(feed, '1h')
+
+    expect(normalized.compatibilityLimited).toBe(true)
+    expect(normalized.data?.recent).toEqual([])
+  })
+
+  it('does not relabel a canonical response from a different requested window', () => {
+    const feed = dashboardFeed([{ ...destination, kind: 'mcp', method: null }])
+
+    const normalized = normalizeActivityFeed(feed, '24h')
+
+    expect(normalized).toEqual({ data: null, compatibilityLimited: false })
   })
 })
 

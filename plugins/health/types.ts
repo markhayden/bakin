@@ -6,7 +6,13 @@
  * don't have). Both the page component and plugins/health/index.ts can now type
  * their route payloads against one set of contracts.
  */
-import type { ActivityClass, HealthReport } from '@makinbakin/sdk'
+import type { HealthReport } from '@makinbakin/sdk'
+import type {
+  InteractionCoverage as CanonicalInteractionCoverage,
+  UsageEntry as CanonicalUsageEntry,
+  UsageFeedResponse,
+  UsageKind as CanonicalUsageKind,
+} from './lib/usage-feed-route-schema'
 
 export interface McpSessionInfo {
   agent: string
@@ -69,95 +75,41 @@ export interface ErrorsByKind {
   byKind: { mcp: number; rest: number; agent: number }
 }
 
-export type UsageKind = 'mcp' | 'rest' | 'agent'
+export type UsageKind = CanonicalUsageKind
+export type UsageEntry = CanonicalUsageEntry
 
-export interface UsageEntry {
-  id: string
-  ts: string
-  kind: UsageKind
-  activityClass: ActivityClass
-  name: string
-  agent: string | null
-  durationMs: number | null
-  status: 'ok' | 'error'
-  tokensIn?: number
-  tokensOut?: number
-  tokensCacheRead?: number
-  tokensCacheWrite?: number
-  costUsdMicros?: number
-  meta?: Record<string, unknown>
-}
+type CanonicalTopByNameRow = UsageFeedResponse['topByName'][number]
+export type TopByNameRow = Omit<CanonicalTopByNameRow, 'kind' | 'method'>
+  & Partial<Pick<CanonicalTopByNameRow, 'kind' | 'method'>>
 
-export interface TopByNameRow {
-  /** Added by the exact-signature feed; omitted by older servers. */
-  kind?: UsageKind
-  /** Normalized HTTP method for REST destinations; omitted by older servers. */
-  method?: string | null
-  name: string
-  count: number
-  errors: number
-  medianDurationMs: number | null
-}
+type CanonicalByAgentRow = UsageFeedResponse['byAgent'][number]
+export type ByAgentRow = Omit<CanonicalByAgentRow, 'attributed'>
+  & Partial<Pick<CanonicalByAgentRow, 'attributed'>>
 
-export interface ByAgentRow {
-  agent: string
-  /** Added with exact agent counts; absent on older servers. */
-  attributed?: boolean
-  count: number
-  errors: number
-  lastActivity: UsageEntry | null
-}
+export type UsageOutcomeCounts = UsageFeedResponse['outcomes']
+export type UsageKindSummary = UsageFeedResponse['byKind'][number]
 
-export interface UsageOutcomeCounts {
-  failed: number
-  unverified: number
-  canceled: number
-  succeeded: number
-}
+type CanonicalUsageFailureGroup = UsageFeedResponse['failureGroups'][number]
+export type UsageFailureGroup = Omit<
+  CanonicalUsageFailureGroup,
+  'destination' | 'method' | 'latestFailure'
+> & Partial<Pick<CanonicalUsageFailureGroup, 'destination' | 'method' | 'latestFailure'>>
 
-export interface UsageKindSummary {
-  kind: UsageKind
-  total: number
-  failures: number
-}
+export type UsageFailureGroupPage = UsageFeedResponse['failureGroupPage']
 
-export interface UsageFailureGroup {
-  kind: UsageKind
-  name: string
-  /** Present on the bounded v2 feed; omitted only by compatibility projections. */
-  destination?: string
-  /** Present on the bounded v2 feed; null when the interaction is not an HTTP request. */
-  method?: string | null
-  attempts: number
-  failures: number
-  firstFailureAt: string
-  lastFailureAt: string
-  agents: string[]
-  unattributedFailures: number
-  systemFailures: number
-  medianFailureDurationMs: number | null
-  /** Present on the bounded v2 feed; compatibility projections may only have recent events. */
-  latestFailure?: UsageEntry
-}
-
-export interface UsageFailureGroupPage {
-  total: number
-  offset: number
-  limit: number
-  hasMore: boolean
-}
-
-export interface UsageFeedData {
+/**
+ * Activity's normalized presentation shape. Current responses are defined by
+ * `usageFeedResponseSchema`; the optional fields here exist only for the
+ * explicitly isolated rolling-version adapter.
+ */
+export type UsageFeedData = Omit<
+  UsageFeedResponse,
+  'capabilities' | 'failureGroups' | 'failureGroupPage' | 'topByName' | 'agentCount' | 'byAgent'
+> & {
   /** Additive server features; omitted by older strict servers. */
   capabilities?: {
-    exactFailureTargeting?: boolean
-    sourceBalancedActivity?: boolean
+    [Key in keyof UsageFeedResponse['capabilities']]?: boolean
   }
-  window: '5m' | '1h' | '24h'
-  coverage: InteractionCoverage
-  totals: { count: number; errors: number; errorRate: number }
-  outcomes: UsageOutcomeCounts
-  byKind: UsageKindSummary[]
   failureGroups: UsageFailureGroup[]
   /** Present on the bounded v2 feed; omitted only by compatibility projections. */
   failureGroupPage?: UsageFailureGroupPage
@@ -166,23 +118,11 @@ export interface UsageFeedData {
   agentCount?: number
   /** Bounded busiest-agent projection, with an optional unattributed row. */
   byAgent: ByAgentRow[]
-  recent: UsageEntry[]
-  recentFailures: UsageEntry[]
-  recentUnverified: UsageEntry[]
-  timeBuckets: Array<{
-    start: string
-    count: number
-    failureCount: number
-    failureRate: number
-  }>
 }
 
 export type InteractionCategory = 'tools' | 'api' | 'agents'
-export type InteractionCoverageReason = 'full_window' | 'process_restart' | 'buffer_limit'
-export type InteractionCoverage =
-  | { startsAt: string; hasFullWindow: true; reason: 'full_window' }
-  | { startsAt: string; hasFullWindow: false; reason: 'process_restart' }
-  | { startsAt: string; hasFullWindow: false; reason: 'buffer_limit' }
+export type InteractionCoverageReason = CanonicalInteractionCoverage['reason']
+export type InteractionCoverage = CanonicalInteractionCoverage
 
 export interface InteractionSummaryData {
   window: '5m' | '1h' | '24h'

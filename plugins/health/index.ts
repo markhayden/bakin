@@ -35,7 +35,6 @@ import { delegateDoctorRepair, verifyDoctorRepairRequest } from '../../src/core/
 import { getDoctorRepairRequest, listDoctorRepairRequests } from '../../src/core/doctor-repair-store'
 import {
   DEFAULT_FAILURE_GROUP_LIMIT,
-  MAX_USAGE_AGENT_ROWS,
   MAX_FAILURE_GROUP_LIMIT,
   getInteractionSummary,
   getUsageFeed,
@@ -94,6 +93,11 @@ import {
   getMcpSessions,
   getRegistrySnapshot,
 } from './lib/host-providers'
+import {
+  interactionCoverageSchema,
+  interactionTimeBucketSchema,
+  usageFeedResponseSchema,
+} from './lib/usage-feed-route-schema'
 
 const log = createLogger('health')
 
@@ -167,129 +171,7 @@ const interactionSummaryQuery = z.object({
   window: z.enum(['5m', '1h', '24h']).default('1h'),
 }).strict()
 
-const usageKindSchema = z.enum(['mcp', 'rest', 'agent'])
-const activityClassSchema = z.enum(['user', 'system', 'routine'])
 const interactionCategorySchema = z.enum(['tools', 'api', 'agents'])
-const interactionTimeBucketSchema = z.object({
-  start: z.string(),
-  count: z.number().int().nonnegative(),
-  failureCount: z.number().int().nonnegative(),
-  failureRate: z.number().min(0).max(1),
-}).strict()
-const interactionCoverageSchema = z.discriminatedUnion('reason', [
-    z.object({
-      startsAt: z.iso.datetime({ offset: true }),
-      hasFullWindow: z.literal(true),
-      reason: z.literal('full_window'),
-    }).strict(),
-    z.object({
-      startsAt: z.iso.datetime({ offset: true }),
-      hasFullWindow: z.literal(false),
-      reason: z.literal('process_restart'),
-    }).strict(),
-    z.object({
-      startsAt: z.iso.datetime({ offset: true }),
-      hasFullWindow: z.literal(false),
-      reason: z.literal('buffer_limit'),
-    }).strict(),
-  ])
-const usageEntrySchema = z.object({
-  id: z.string().min(1),
-  ts: z.iso.datetime({ offset: true }),
-  kind: usageKindSchema,
-  activityClass: activityClassSchema,
-  name: z.string(),
-  agent: z.string().nullable(),
-  durationMs: z.number().nonnegative().nullable(),
-  status: z.enum(['ok', 'error']),
-  tokensIn: z.number().nonnegative().optional(),
-  tokensOut: z.number().nonnegative().optional(),
-  tokensCacheRead: z.number().nonnegative().optional(),
-  tokensCacheWrite: z.number().nonnegative().optional(),
-  costUsdMicros: z.number().nonnegative().optional(),
-  meta: z.record(z.string(), z.unknown()).optional(),
-}).strict()
-const usageFeedResponseSchema = z.object({
-  capabilities: z.object({
-    exactFailureTargeting: z.literal(true),
-    sourceBalancedActivity: z.literal(true),
-  }).strict(),
-  window: z.enum(['5m', '1h', '24h']),
-  coverage: interactionCoverageSchema,
-  totals: z.object({
-    count: z.number().int().nonnegative(),
-    errors: z.number().int().nonnegative(),
-    errorRate: z.number().min(0).max(1),
-  }).strict(),
-  outcomes: z.object({
-    failed: z.number().int().nonnegative(),
-    unverified: z.number().int().nonnegative(),
-    canceled: z.number().int().nonnegative(),
-    succeeded: z.number().int().nonnegative(),
-  }).strict(),
-  byKind: z.array(z.object({
-    kind: usageKindSchema,
-    total: z.number().int().nonnegative(),
-    failures: z.number().int().nonnegative(),
-  }).strict()).length(3),
-  failureGroups: z.array(z.object({
-    kind: usageKindSchema,
-    name: z.string(),
-    destination: z.string(),
-    method: z.string().min(1).nullable(),
-    attempts: z.number().int().nonnegative(),
-    failures: z.number().int().nonnegative(),
-    firstFailureAt: z.iso.datetime({ offset: true }),
-    lastFailureAt: z.iso.datetime({ offset: true }),
-    agents: z.array(z.string()),
-    unattributedFailures: z.number().int().nonnegative(),
-    systemFailures: z.number().int().nonnegative(),
-    medianFailureDurationMs: z.number().nonnegative().nullable(),
-    latestFailure: usageEntrySchema,
-  }).strict()).max(MAX_FAILURE_GROUP_LIMIT),
-  failureGroupPage: z.object({
-    total: z.number().int().nonnegative(),
-    offset: z.number().int().nonnegative(),
-    limit: z.number().int().min(1).max(MAX_FAILURE_GROUP_LIMIT),
-    hasMore: z.boolean(),
-  }).strict(),
-  topByName: z.array(z.object({
-    kind: usageKindSchema,
-    method: z.string().min(1).nullable(),
-    name: z.string(),
-    count: z.number().int().nonnegative(),
-    errors: z.number().int().nonnegative(),
-    medianDurationMs: z.number().nonnegative().nullable(),
-  }).strict()).max(10),
-  agentCount: z.number().int().nonnegative(),
-  byAgent: z.array(z.object({
-    agent: z.string(),
-    attributed: z.boolean(),
-    count: z.number().int().nonnegative(),
-    errors: z.number().int().nonnegative(),
-    lastActivity: usageEntrySchema.nullable(),
-  }).strict()).max(MAX_USAGE_AGENT_ROWS),
-  recent: z.array(usageEntrySchema).max(50),
-  recentFailures: z.array(usageEntrySchema).max(50),
-  recentUnverified: z.array(usageEntrySchema).max(50),
-  timeBuckets: z.array(interactionTimeBucketSchema),
-}).strict().superRefine((data, ctx) => {
-  const attributedRows = data.byAgent.filter((row) => row.attributed)
-  const unattributedRows = data.byAgent.filter((row) => !row.attributed)
-  const distinctAttributedAgents = new Set(attributedRows.map((row) => row.agent))
-  if (data.agentCount > data.totals.count) {
-    ctx.addIssue({ code: 'custom', path: ['agentCount'], message: 'agentCount cannot exceed total interactions' })
-  }
-  if (data.agentCount < distinctAttributedAgents.size) {
-    ctx.addIssue({ code: 'custom', path: ['agentCount'], message: 'agentCount cannot be smaller than projected agents' })
-  }
-  if (attributedRows.length > 10 || distinctAttributedAgents.size !== attributedRows.length) {
-    ctx.addIssue({ code: 'custom', path: ['byAgent'], message: 'attributed agent rows must be unique and bounded' })
-  }
-  if (unattributedRows.length > 1 || unattributedRows.some((row) => row.agent !== 'unknown')) {
-    ctx.addIssue({ code: 'custom', path: ['byAgent'], message: 'the unattributed projection must use one unknown row at most' })
-  }
-})
 const interactionSummaryResponseSchema = z.object({
   window: z.enum(['5m', '1h', '24h']),
   coverage: interactionCoverageSchema,
