@@ -210,6 +210,22 @@ describe('scanUsageHistory', () => {
     expect(clover?.costUsdMicros).toBe(2_000)
   })
 
+  it('scans identical session entry ids independently for each agent', async () => {
+    addSession('alpha', 'shared-session', sessionLines('shared-session', '2026-07-01T10:00:00Z', [
+      { ts: '2026-07-01T10:01:00Z', model: 'm1', input: 10, output: 0 },
+    ]))
+    addSession('beta', 'shared-session', sessionLines('shared-session', '2026-07-01T10:00:00Z', [
+      { ts: '2026-07-01T10:01:00Z', model: 'm1', input: 20, output: 0 },
+    ]))
+
+    const report = await scanUsageHistory(makeRuntime())
+
+    expect(report).toMatchObject({ scanned: 2, skipped: 0, failed: 0 })
+    const byAgent = usageByAgentSince(EPOCH_DAY)
+    expect(byAgent.find((entry) => entry.agent === 'alpha')?.tokens.total).toBe(10)
+    expect(byAgent.find((entry) => entry.agent === 'beta')?.tokens.total).toBe(20)
+  })
+
   it('rescan with unchanged mtime+size skips getEntry and never double-counts', async () => {
     addSession('basil', 'b1', sessionLines('b1', '2026-07-01T10:00:00Z', [
       { ts: '2026-07-01T10:01:00Z', model: 'm1', input: 100, output: 50 },

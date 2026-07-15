@@ -1,5 +1,5 @@
 /**
- * Usage-history store — durable per-(session, day, model) token aggregates
+ * Usage-history store — durable per-(agent, session, day, model) token aggregates
  * derived from runtime session transcripts (#359).
  *
  * Lives in its own named store (`~/.bakin/usage.db`) — NEVER the coordination
@@ -59,6 +59,60 @@ const MIGRATIONS = [
            scanned_at INTEGER NOT NULL
          )`,
       )
+    },
+  },
+  {
+    version: 2,
+    up: (db: Db) => {
+      db.exec(
+        `CREATE TABLE session_usage_days_v2 (
+           session_id         TEXT NOT NULL,
+           day                TEXT NOT NULL,
+           model              TEXT NOT NULL DEFAULT '',
+           agent              TEXT NOT NULL,
+           input_tokens       INTEGER NOT NULL DEFAULT 0,
+           output_tokens      INTEGER NOT NULL DEFAULT 0,
+           cache_read_tokens  INTEGER NOT NULL DEFAULT 0,
+           cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+           total_tokens       INTEGER NOT NULL DEFAULT 0,
+           cost_usd_micros    INTEGER,
+           costed_messages    INTEGER NOT NULL DEFAULT 0,
+           message_count      INTEGER NOT NULL DEFAULT 0,
+           first_ts           INTEGER NOT NULL,
+           last_ts            INTEGER NOT NULL,
+           PRIMARY KEY (agent, session_id, day, model)
+         )`,
+      )
+      db.exec(
+        `INSERT INTO session_usage_days_v2
+           (session_id, day, model, agent, input_tokens, output_tokens, cache_read_tokens,
+            cache_write_tokens, total_tokens, cost_usd_micros, costed_messages, message_count,
+            first_ts, last_ts)
+         SELECT session_id, day, model, agent, input_tokens, output_tokens, cache_read_tokens,
+                cache_write_tokens, total_tokens, cost_usd_micros, costed_messages, message_count,
+                first_ts, last_ts
+           FROM session_usage_days`,
+      )
+      db.exec(
+        `CREATE TABLE session_scan_state_v2 (
+           session_id TEXT NOT NULL,
+           agent      TEXT NOT NULL,
+           mtime_ms   INTEGER NOT NULL,
+           size       INTEGER NOT NULL,
+           scanned_at INTEGER NOT NULL,
+           PRIMARY KEY (agent, session_id)
+         )`,
+      )
+      db.exec(
+        `INSERT INTO session_scan_state_v2 (session_id, agent, mtime_ms, size, scanned_at)
+         SELECT session_id, agent, mtime_ms, size, scanned_at FROM session_scan_state`,
+      )
+      db.exec('DROP TABLE session_usage_days')
+      db.exec('DROP TABLE session_scan_state')
+      db.exec('ALTER TABLE session_usage_days_v2 RENAME TO session_usage_days')
+      db.exec('ALTER TABLE session_scan_state_v2 RENAME TO session_scan_state')
+      db.exec('CREATE INDEX session_usage_days_by_day ON session_usage_days(day)')
+      db.exec('CREATE INDEX session_usage_days_by_agent ON session_usage_days(agent, day)')
     },
   },
 ]
@@ -134,8 +188,8 @@ export function toLocalDayKey(tsMs: number): string {
 }
 
 /**
- * Absolute recompute of one session's usage: delete every row for the
- * session, insert the fresh bucket set, and upsert scan state — one
+ * Absolute recompute of one agent session's usage: delete every row for the
+ * composite (agent, session), insert the fresh bucket set, and upsert scan state — one
  * transaction. Returns false (logged) on storage failure; usage history is
  * observability, not coordination, so callers proceed.
  */
@@ -148,7 +202,7 @@ export function replaceSessionUsage(
   try {
     const handle = db()
     store.withTx(() => {
-      handle.prepare('DELETE FROM session_usage_days WHERE session_id = ?').run(sessionId)
+      handle.prepare('DELETE FROM session_usage_days WHERE agent = ? AND session_id = ?').run(agent, sessionId)
       const insert = handle.prepare(
         `INSERT INTO session_usage_days
            (session_id, day, model, agent, input_tokens, output_tokens, cache_read_tokens,
@@ -166,8 +220,8 @@ export function replaceSessionUsage(
       handle.prepare(
         `INSERT INTO session_scan_state (session_id, agent, mtime_ms, size, scanned_at)
          VALUES (?, ?, ?, ?, ?)
-         ON CONFLICT(session_id) DO UPDATE SET
-           agent = excluded.agent, mtime_ms = excluded.mtime_ms,
+         ON CONFLICT(agent, session_id) DO UPDATE SET
+           mtime_ms = excluded.mtime_ms,
            size = excluded.size, scanned_at = excluded.scanned_at`,
       ).run(sessionId, agent, stat.mtimeMs, stat.size, Date.now())
     })
@@ -178,17 +232,17 @@ export function replaceSessionUsage(
   }
 }
 
-/** Last-scanned file identity for a session, or null if never scanned. */
-export function getScanState(sessionId: string): { mtimeMs: number; size: number } | null {
+/** Last-scanned file identity for one agent's session, or null if never scanned. */
+export function getScanState(sessionId: string, agent: string): { mtimeMs: number; size: number } | null {
   try {
     const row = db()
-      .prepare<{ mtime_ms: number; size: number }, [string]>(
-        'SELECT mtime_ms, size FROM session_scan_state WHERE session_id = ?',
+      .prepare<{ mtime_ms: number; size: number }, [string, string]>(
+        'SELECT mtime_ms, size FROM session_scan_state WHERE agent = ? AND session_id = ?',
       )
-      .get(sessionId)
+      .get(agent, sessionId)
     return row ? { mtimeMs: row.mtime_ms, size: row.size } : null
   } catch (err) {
-    log.error('getScanState failed', err, { sessionId })
+    log.error('getScanState failed', err, { sessionId, agent })
     return null
   }
 }
