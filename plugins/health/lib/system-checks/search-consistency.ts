@@ -24,6 +24,10 @@ const SWEEP_INTERVAL_MS = 60 * 60 * 1000
 // sweep only actually executes hourly.
 let lastSweepAt = 0
 
+export function resetSearchConsistencyStateForTests(): void {
+  lastSweepAt = 0
+}
+
 export async function checkSearchConsistency(): Promise<HealthCheckRunInput> {
   const { getSettings } = await import('../../../../src/core/settings')
   if (!getSettings().search.settings.enabled) {
@@ -148,7 +152,6 @@ export async function checkSearchConsistency(): Promise<HealthCheckRunInput> {
   // Hourly deep sweep: orphaned index rows + tombstoned physicals + stale
   // engine-side table generations the registry no longer references.
   if (Date.now() - lastSweepAt >= SWEEP_INTERVAL_MS) {
-    lastSweepAt = Date.now()
     try {
       const { runOrphanSweep, sweepOrphanRegistryRows } = await import('../../../../src/core/search-orphan-sweep')
       const { sweepTombstones, sweepOrphanEngineTables } = await import('@bakin/core/search/tables')
@@ -158,9 +161,11 @@ export async function checkSearchConsistency(): Promise<HealthCheckRunInput> {
       // Isolated: a transient tables.list() failure must not cost the
       // tombstone retry its hourly slot (review finding).
       let orphanTables: Awaited<ReturnType<typeof sweepOrphanEngineTables>> | null = null
+      let sweepVerified = true
       try {
         orphanTables = await sweepOrphanEngineTables(search)
       } catch (err) {
+        sweepVerified = false
         observations.push(healthUnknown({
           key: 'indexes.sweep.engine-tables',
           summary: 'Stale engine-table sweep could not be completed.',
@@ -236,6 +241,7 @@ export async function checkSearchConsistency(): Promise<HealthCheckRunInput> {
           },
         }))
       }
+      if (sweepVerified) lastSweepAt = Date.now()
     } catch (err) {
       observations.push(healthUnknown({
         key: 'indexes.sweep',

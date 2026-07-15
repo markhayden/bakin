@@ -107,8 +107,15 @@ mock.module('@bakin/core/search/tables', () => ({
   resumeMigrations: async () => {},
   resetTablesForTests: () => {},
 }))
+let mockOrphanSweepError: Error | null = null
+let mockOrphanSweepCalls = 0
 mock.module('../../../src/core/search-orphan-sweep', () => ({
-  runOrphanSweep: async () => [],
+  runOrphanSweep: async () => {
+    mockOrphanSweepCalls++
+    if (mockOrphanSweepError) throw mockOrphanSweepError
+    return []
+  },
+  sweepOrphanRegistryRows: async () => [],
 }))
 let mockSearchHealthError: Error | null = null
 let mockSearchHealth: SearchHealthSnapshot = {
@@ -311,7 +318,11 @@ import { checkChannelApprovals } from '../../../plugins/health/lib/system-checks
 import { checkChannelAliases } from '../../../plugins/health/lib/system-checks/channel-aliases'
 import { checkSearchAdapter } from '../../../plugins/health/lib/system-checks/search'
 import { checkSearchOutboxObservations, searchOutboxRepair } from '../../../plugins/health/lib/system-checks/search-outbox'
-import { checkSearchConsistency, searchConsistencyRepair } from '../../../plugins/health/lib/system-checks/search-consistency'
+import {
+  checkSearchConsistency,
+  resetSearchConsistencyStateForTests,
+  searchConsistencyRepair,
+} from '../../../plugins/health/lib/system-checks/search-consistency'
 import { checkAndSyncSkill, syncSkillRepair } from '../../../plugins/health/lib/system-checks/sync-skill'
 import { checkPluginAssets } from '../../../plugins/health/lib/system-checks/plugin-assets'
 import { createMockRuntimeAdapter, mockChannels } from '@bakin/core/adapters/runtime/testing'
@@ -375,6 +386,9 @@ beforeEach(() => {
   mockTableStates = []
   mockTableStatsError = null
   mockTableStats = { table: 't', documents: 1 }
+  mockOrphanSweepError = null
+  mockOrphanSweepCalls = 0
+  resetSearchConsistencyStateForTests()
   mockSearchHealthError = null
   mockSearchHealth = {
     enabled: true,
@@ -834,6 +848,22 @@ describe('checkSearchConsistency', () => {
     const outcomes = await repair.apply(await repair.plan(repairTarget))
 
     expect(outcomes[0]?.message).toContain('bakin_t:')
+  })
+
+  it('retries a failed deep sweep immediately instead of hiding it for an hour', async () => {
+    mockSearchEnabled = true
+    mockOrphanSweepError = new Error('registry read failed')
+
+    const failed = observed(await checkSearchConsistency())
+    expect(failed).toEqual(expect.arrayContaining([
+      expect.objectContaining({ key: 'indexes.sweep', status: 'unknown' }),
+    ]))
+
+    mockOrphanSweepError = null
+    const retried = observed(await checkSearchConsistency())
+
+    expect(mockOrphanSweepCalls).toBe(2)
+    expect(retried.some((row) => row.key === 'indexes.sweep')).toBe(false)
   })
 })
 
