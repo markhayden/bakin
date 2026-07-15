@@ -8,7 +8,10 @@ import '../../rtl-settle'
 import { emitPluginEvent, usePluginEvent } from '../../../src/hooks/use-plugin-event'
 mock.module('@makinbakin/sdk/hooks', () => ({ usePluginEvent }))
 
-import { useHealthReport } from '../../../plugins/health/hooks/use-health-report'
+import {
+  HEALTH_REPORT_SWEEP_TIMEOUT_MS,
+  useHealthReport,
+} from '../../../plugins/health/hooks/use-health-report'
 
 const originalFetch = globalThis.fetch
 const originalSetInterval = globalThis.setInterval
@@ -74,6 +77,10 @@ afterEach(() => {
 })
 
 describe('useHealthReport', () => {
+  it('allows the longest registered check to finish before the client deadline', () => {
+    expect(HEALTH_REPORT_SWEEP_TIMEOUT_MS).toBeGreaterThan(120_000)
+  })
+
   it('refreshes the cached report every 60 seconds and on health.report.changed', async () => {
     let intervalCallback: (() => void) | null = null
     globalThis.setInterval = mock((callback: TimerHandler, interval?: number) => {

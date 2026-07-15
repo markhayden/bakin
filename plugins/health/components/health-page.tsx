@@ -7,6 +7,11 @@ import { usePathname, useQueryState } from '@makinbakin/sdk/hooks'
 import { Button } from '@makinbakin/sdk/ui'
 import { RefreshCw } from 'lucide-react'
 import { useOverviewData } from '../hooks/use-overview-data'
+import {
+  HEALTH_REPORT_SWEEP_TIMEOUT_MS,
+  HEALTH_REPORT_URL,
+  requestHealthReport,
+} from '../lib/health-report-client'
 import { withDeadline } from '../lib/request-deadline'
 import { ActivityTab } from './activity-tab'
 import { AgentsTab } from './agents-tab'
@@ -23,8 +28,6 @@ const HEALTH_TABS = [
 
 type HealthTab = typeof HEALTH_TABS[number]['id']
 type RunChecks = () => Promise<unknown>
-
-const HEALTH_CHECKS_TIMEOUT_MS = 60_000
 
 function isHealthTab(value: string): value is HealthTab {
   return HEALTH_TABS.some((tab) => tab.id === value)
@@ -127,17 +130,8 @@ export function HealthPage() {
         } else {
           const controller = new AbortController()
           await withDeadline(
-            (async () => {
-              const response = await fetch('/api/plugins/health/doctor/run', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: '{}',
-                signal: controller.signal,
-              })
-              if (!response.ok) throw new Error(`Health checks failed (${response.status})`)
-              await response.json()
-            })(),
-            HEALTH_CHECKS_TIMEOUT_MS,
+            requestHealthReport(HEALTH_REPORT_URL, { fresh: true, signal: controller.signal }),
+            HEALTH_REPORT_SWEEP_TIMEOUT_MS,
             { onTimeout: () => controller.abort() },
           )
         }

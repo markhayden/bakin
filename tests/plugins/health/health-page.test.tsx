@@ -101,6 +101,7 @@ mock.module('../../../plugins/health/components/repair-dialog', () => ({
 }))
 
 import { HealthPage } from '../../../plugins/health/components/health-page'
+import { HEALTH_REPORT_SWEEP_TIMEOUT_MS } from '../../../plugins/health/hooks/use-health-report'
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -267,7 +268,7 @@ describe('HealthPage tab shell', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Run checks' }))
     expect(screen.getByRole('button', { name: 'Running checks…' }).hasAttribute('disabled')).toBe(true)
 
-    await act(async () => { await vi.advanceTimersByTimeAsync(60_000) })
+    await act(async () => { await vi.advanceTimersByTimeAsync(HEALTH_REPORT_SWEEP_TIMEOUT_MS) })
 
     expect(requestSignal?.aborted).toBe(true)
     const failure = 'Health checks could not be completed. Existing evidence remains visible.'
@@ -292,12 +293,23 @@ describe('HealthPage tab shell', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Run checks' }))
     await act(async () => { await vi.advanceTimersByTimeAsync(0) })
     expect(screen.getByRole('button', { name: 'Running checks…' }).hasAttribute('disabled')).toBe(true)
-    await act(async () => { await vi.advanceTimersByTimeAsync(60_000) })
+    await act(async () => { await vi.advanceTimersByTimeAsync(HEALTH_REPORT_SWEEP_TIMEOUT_MS) })
 
     expect(requestSignal?.aborted).toBe(true)
     expect(screen.getByTestId('health-action-status').textContent)
       .toBe('Health checks could not be completed. Existing evidence remains visible.')
     expect(screen.getByRole('button', { name: 'Run checks' }).hasAttribute('disabled')).toBe(false)
+  })
+
+  it('does not announce success for a malformed 200 diagnostic response', async () => {
+    requestedTab = 'agents'
+    vi.stubGlobal('fetch', mock(async () => jsonResponse({ id: 'not-a-health-report' })))
+
+    render(<HealthPage />)
+    fireEvent.click(screen.getByRole('button', { name: 'Run checks' }))
+
+    await waitFor(() => expect(screen.getByTestId('health-action-status').textContent)
+      .toBe('Health checks could not be completed. Existing evidence remains visible.'))
   })
 
   it('opens a report-scoped incident repair and refreshes Overview after apply', async () => {
