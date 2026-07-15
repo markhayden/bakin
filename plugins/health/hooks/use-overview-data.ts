@@ -15,7 +15,10 @@ import {
   isContextSummaryData,
   isLiveNowData,
 } from '../lib/agent-operational-route-guards'
-import { useAgentsData, type AgentsDataResources } from './use-agents-data'
+import {
+  useOverviewAgentsData,
+  type OverviewAgentsDataResources,
+} from './use-agents-data'
 import { useHealthReport, type UseHealthReportResult } from './use-health-report'
 import {
   useHealthResource,
@@ -38,7 +41,7 @@ export interface UseOverviewDataResult {
   summary: UseHealthResourceResult<HealthSummary>
   liveNow: UseHealthResourceResult<LiveNowData>
   searchReadiness: UseHealthResourceResult<SearchReadinessProjection>
-  agents: AgentsDataResources
+  agents: OverviewAgentsDataResources
   interactions: UseHealthResourceResult<InteractionSummaryData>
   contextReport: UseHealthResourceResult<ContextSummaryData>
   settings: UseHealthResourceResult<ContextSettingsData>
@@ -160,7 +163,7 @@ export function useOverviewData(): UseOverviewDataResult {
     '/api/plugins/health/search-readiness',
     { intervalMs: SEARCH_READINESS_REFRESH_MS },
   )
-  const agents = useAgentsData('24h')
+  const agents = useOverviewAgentsData('24h')
   const interactions = useHealthResource<InteractionSummaryData>('/api/plugins/health/interaction-summary?window=1h', {
     intervalMs: INTERACTIONS_REFRESH_MS,
     request: (url, context) => requestValidated(url, context, 'Interaction activity', isInteractionSummaryData),

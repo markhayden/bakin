@@ -161,6 +161,9 @@ describe('useOverviewData', () => {
       '/api/context-report',
       '/api/settings',
     ]))
+    expect(fetchMock.mock.calls.map((call) => String(call[0]))).not.toContain(
+      '/api/plugins/health/agent-effort?window=24h',
+    )
 
     invalidInteractions = true
     await act(async () => { await result.current.interactions.refresh('background') })

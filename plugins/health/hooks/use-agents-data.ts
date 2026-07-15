@@ -1,5 +1,7 @@
 'use client'
 
+import { useCallback } from 'react'
+
 import type { AgentUsage } from '@makinbakin/sdk/types'
 import type {
   AgentEffortData,
@@ -27,6 +29,8 @@ export interface AgentsDataResources {
   refreshing: boolean
   refresh: () => Promise<void>
 }
+
+export type OverviewAgentsDataResources = Omit<AgentsDataResources, 'effort'>
 
 export const AGENTS_POLL_MS = 60_000
 
@@ -59,33 +63,46 @@ const requestLatestSessions = (url: string, context: HealthResourceRequestContex
  * History and outcomes take the same window; latest-session traffic retains
  * its explicitly labeled snapshot scope.
  */
-export function useAgentsData(window: AgentsWindow): AgentsDataResources {
+function useAgentResources(window: AgentsWindow, includeEffort: boolean): AgentsDataResources {
   const history = useHealthResource<UsageHistoryData>(
     `/api/plugins/health/usage-history?window=${window}`,
     { intervalMs: AGENTS_POLL_MS, request: requestHistory(window) },
   )
   const effort = useHealthResource<AgentEffortData>(
-    `/api/plugins/health/agent-effort?window=${window}`,
+    includeEffort ? `/api/plugins/health/agent-effort?window=${window}` : null,
     { intervalMs: AGENTS_POLL_MS, request: requestEffort(window) },
   )
   const latestSessions = useHealthResource<AgentUsage[]>(
     '/api/plugins/health/usage',
     { intervalMs: AGENTS_POLL_MS, request: requestLatestSessions },
   )
-  const refresh = async () => {
+  const refreshHistory = history.refresh
+  const refreshEffort = effort.refresh
+  const refreshLatestSessions = latestSessions.refresh
+  const refresh = useCallback(async () => {
     await Promise.all([
-      history.refresh(),
-      effort.refresh(),
-      latestSessions.refresh(),
+      refreshHistory(),
+      ...(includeEffort ? [refreshEffort()] : []),
+      refreshLatestSessions(),
     ])
-  }
+  }, [includeEffort, refreshEffort, refreshHistory, refreshLatestSessions])
 
   return {
     history,
     effort,
     latestSessions,
-    loading: history.loading && effort.loading && latestSessions.loading,
-    refreshing: history.refreshing || effort.refreshing || latestSessions.refreshing,
+    loading: history.loading && (!includeEffort || effort.loading) && latestSessions.loading,
+    refreshing: history.refreshing || (includeEffort && effort.refreshing) || latestSessions.refreshing,
     refresh,
   }
+}
+
+export function useAgentsData(window: AgentsWindow): AgentsDataResources {
+  return useAgentResources(window, true)
+}
+
+/** Overview needs spend history and current sessions, not outcome diagnostics. */
+export function useOverviewAgentsData(window: AgentsWindow): OverviewAgentsDataResources {
+  const { effort: _effort, ...resources } = useAgentResources(window, false)
+  return resources
 }
