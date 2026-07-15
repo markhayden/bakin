@@ -16,10 +16,10 @@ import {
 beforeEach(resetHealthReportCache)
 afterEach(() => unregisterPluginHealthChecks('cache-test'))
 
-function register(run: () => Promise<any>) {
+function register(run: () => Promise<any>, localId = 'probe', name = 'Cache probe') {
   const id = registerPluginHealthCheck('cache-test', {
-    id: 'probe',
-    name: 'Cache probe',
+    id: localId,
+    name,
     description: 'Exercises canonical Health cache replacement.',
     group: { key: 'runtime', label: 'Runtime' },
     maxAgeMs: 60_000,
@@ -137,5 +137,40 @@ describe('per-check Health cache', () => {
     expect(report.revision).toBeGreaterThan(before)
     expect(report.lastFullSweep?.id).toBe('sweep-1')
     expect(getHealthReport('2026-07-13T12:00:45.000Z').revision).toBe(report.revision)
+  })
+
+  it('replaces a conflicting shared incident with verification evidence for every involved check', async () => {
+    const first = register(async () => healthObserved([
+      healthWarning({
+        key: 'first', summary: 'First producer saw the shared condition.',
+        incident: {
+          key: 'shared', title: 'First shared title', impact: 'Shared impact.', disposition: 'watch',
+          resolution: { key: 'rerun', type: 'rerun', label: 'Check again' },
+        },
+      }),
+    ]), 'probe-a', 'First cache probe')
+    const second = register(async () => healthObserved([
+      healthWarning({
+        key: 'second', summary: 'Second producer saw the shared condition.',
+        incident: {
+          key: 'shared', title: 'Conflicting shared title', impact: 'Shared impact.', disposition: 'watch',
+          resolution: { key: 'rerun', type: 'rerun', label: 'Check again' },
+        },
+      }),
+    ]), 'probe-b', 'Second cache probe')
+
+    await apply(first, '2026-07-13T12:00:00.000Z', 'execution-a')
+    await apply(second, '2026-07-13T12:00:00.000Z', 'execution-b')
+
+    const report = getHealthReport('2026-07-13T12:00:30.000Z')
+    expect(report.observations.map((observation) => observation.id)).toEqual([
+      'cache-test.probe-a:verification.conflict',
+      'cache-test.probe-b:verification.conflict',
+    ])
+    expect(report.incidents.map((incident) => incident.id)).toEqual([
+      'core:verification:conflict:cache-test.probe-a',
+      'core:verification:conflict:cache-test.probe-b',
+    ])
+    expect(report.overallStatus).toBe('unknown_stale')
   })
 })

@@ -245,13 +245,18 @@ function safeIncidentProjection(
       incidents.push(...buildHealthIncidents(rows, generatedAt))
       published.push(...rows)
     } catch (error) {
-      const def = definitions.get(rows[0].checkId)
-      if (def) {
+      const detail = error instanceof Error
+        ? error.message
+        : 'Conflicting incident declarations were rejected.'
+      const involvedCheckIds = [...new Set(rows.map((row) => row.checkId))].sort()
+      for (const checkId of involvedCheckIds) {
+        const def = definitions.get(checkId)
+        if (!def) continue
         const replacement = verificationObservation(
           def,
           generatedAt,
           'conflict',
-          error instanceof Error ? error.message : 'Conflicting incident declarations were rejected.',
+          detail,
         )
         published.push(replacement)
         incidents.push(...buildHealthIncidents([replacement], generatedAt))
