@@ -790,6 +790,7 @@ describe('ActivityTab', () => {
 
     try {
       render(<ActivityTab />)
+      window.history.replaceState({ router: 'preserve-me' }, '', window.location.href)
 
       const pulse = screen.getByRole('region', { name: 'Activity pulse' })
       const jump = within(pulse).getByRole('link', { name: 'Hiccups' })
@@ -800,6 +801,7 @@ describe('ActivityTab', () => {
       fireEvent.click(jump)
 
       expect(window.location.hash).toBe('#activity-needs-attention')
+      expect(window.history.state).toEqual({ router: 'preserve-me' })
       expect(scrollIntoView).toHaveBeenCalledTimes(1)
       expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' })
       expect(document.activeElement).toBe(attention)

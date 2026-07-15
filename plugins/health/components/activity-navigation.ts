@@ -10,7 +10,7 @@ export function focusActivityElement(
     hash?: string
   } = {},
 ) {
-  if (window.location.hash !== hash) window.history.pushState(null, '', hash)
+  if (window.location.hash !== hash) window.history.pushState(window.history.state, '', hash)
   element.scrollIntoView({
     behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
     block,
