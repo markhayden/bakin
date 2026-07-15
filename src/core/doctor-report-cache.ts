@@ -22,6 +22,7 @@ const cache = new Map<string, CachedCheck>()
 const listeners = new Set<(report: HealthReport) => void>()
 let revision = 0
 let lastFullSweep: HealthFullSweep | null = null
+let lastPublishedProjection: { key: string; report: HealthReport } | null = null
 
 function cloneObservation(observation: HealthObservation, snapshot = observation.snapshot): HealthObservation {
   return {
@@ -52,6 +53,10 @@ function stateMetadata(def: HealthCheckDef) {
 
 function bump(): void {
   revision += 1
+  // Cache or registry changes already own this revision. The first projection
+  // from the new state establishes its time-derived baseline without a second
+  // bump; later freshness-boundary changes advance independently.
+  lastPublishedProjection = null
   if (listeners.size === 0) return
   const report = getHealthReport()
   for (const listener of listeners) listener(report)
@@ -240,6 +245,7 @@ function safeIncidentProjection(
 
   const published: HealthObservation[] = [...healthy]
   const incidents: ReturnType<typeof buildHealthIncidents> = []
+  const conflictDetailsByCheckId = new Map<string, Set<string>>()
   for (const rows of groups.values()) {
     try {
       incidents.push(...buildHealthIncidents(rows, generatedAt))
@@ -250,18 +256,24 @@ function safeIncidentProjection(
         : 'Conflicting incident declarations were rejected.'
       const involvedCheckIds = [...new Set(rows.map((row) => row.checkId))].sort()
       for (const checkId of involvedCheckIds) {
-        const def = definitions.get(checkId)
-        if (!def) continue
-        const replacement = verificationObservation(
-          def,
-          generatedAt,
-          'conflict',
-          detail,
-        )
-        published.push(replacement)
-        incidents.push(...buildHealthIncidents([replacement], generatedAt))
+        if (!definitions.has(checkId)) continue
+        const details = conflictDetailsByCheckId.get(checkId) ?? new Set<string>()
+        details.add(detail)
+        conflictDetailsByCheckId.set(checkId, details)
       }
     }
+  }
+  for (const checkId of [...conflictDetailsByCheckId.keys()].sort()) {
+    const def = definitions.get(checkId)
+    if (!def) continue
+    const replacement = verificationObservation(
+      def,
+      generatedAt,
+      'conflict',
+      [...conflictDetailsByCheckId.get(checkId)!].sort().join('; ').slice(0, 4_000),
+    )
+    published.push(replacement)
+    incidents.push(...buildHealthIncidents([replacement], generatedAt))
   }
   return {
     observations: published.sort((a, b) =>
@@ -269,6 +281,43 @@ function safeIncidentProjection(
     ),
     incidents: sortHealthIncidents(incidents),
   }
+}
+
+/**
+ * Identity of the report fields that may change solely as projection time
+ * crosses an evidence freshness boundary. Synthetic projection timestamps
+ * are excluded so repeated reads in the same state can reuse one immutable
+ * report, including its original `generatedAt`.
+ */
+function semanticProjectionKey(report: Pick<
+  HealthReport,
+  'checks' | 'observations' | 'incidents' | 'overallStatus' | 'subsystems'
+>): string {
+  return JSON.stringify({
+    checks: report.checks.map((check) => [
+      check.checkId,
+      check.latestValidSnapshot?.observations.map((observation) => [observation.id, observation.snapshot]) ?? [],
+    ]),
+    observations: report.observations.map((observation) => [
+      observation.id,
+      observation.status,
+      observation.snapshot,
+      observation.status === 'healthy' ? null : observation.incidentId,
+    ]),
+    incidents: report.incidents.map((incident) => [
+      incident.id,
+      incident.status,
+      incident.disposition,
+      incident.stale,
+      incident.observationIds,
+    ]),
+    overallStatus: report.overallStatus,
+    search: {
+      status: report.subsystems.search.status,
+      incidentIds: report.subsystems.search.incidentIds,
+      stages: report.subsystems.search.stages.map((stage) => [stage.key, stage.status, stage.observationIds]),
+    },
+  })
 }
 
 export function getHealthReport(generatedAt = new Date().toISOString()): HealthReport {
@@ -284,41 +333,58 @@ export function getHealthReport(generatedAt = new Date().toISOString()): HealthR
     checks,
     incidents,
   })
-
-  return {
-    id: `health-report-${revision}`,
-    revision,
-    generatedAt,
+  const summary: HealthReport['summary'] = {
+    checks: {
+      registered: definitions.length,
+      completed: checks.filter((check) =>
+        check.latestExecution.outcome === 'observed' || check.latestExecution.outcome === 'not_applicable',
+      ).length,
+      failed: checks.filter((check) => check.latestExecution.outcome === 'failed').length,
+      invalid: checks.filter((check) => check.latestExecution.outcome === 'invalid').length,
+      notApplicable: checks.filter((check) => check.latestExecution.outcome === 'not_applicable').length,
+    },
+    incidents: {
+      actionRequired: incidents.filter((incident) => incident.disposition === 'action_required').length,
+      watching: incidents.filter((incident) => incident.disposition === 'watch').length,
+      advisory: incidents.filter((incident) => incident.disposition === 'advisory').length,
+      unknown: incidents.filter((incident) => incident.status === 'unknown').length,
+    },
+  }
+  const reportProjection = {
     overallStatus,
-    lastFullSweep: lastFullSweep ? { ...lastFullSweep } : null,
     checks,
     observations,
     incidents,
     subsystems: { search },
-    summary: {
-      checks: {
-        registered: definitions.length,
-        completed: checks.filter((check) =>
-          check.latestExecution.outcome === 'observed' || check.latestExecution.outcome === 'not_applicable',
-        ).length,
-        failed: checks.filter((check) => check.latestExecution.outcome === 'failed').length,
-        invalid: checks.filter((check) => check.latestExecution.outcome === 'invalid').length,
-        notApplicable: checks.filter((check) => check.latestExecution.outcome === 'not_applicable').length,
-      },
-      incidents: {
-        actionRequired: incidents.filter((incident) => incident.disposition === 'action_required').length,
-        watching: incidents.filter((incident) => incident.disposition === 'watch').length,
-        advisory: incidents.filter((incident) => incident.disposition === 'advisory').length,
-        unknown: incidents.filter((incident) => incident.status === 'unknown').length,
-      },
-    },
   }
+  const projectionKey = semanticProjectionKey(reportProjection)
+  if (lastPublishedProjection?.key === projectionKey) {
+    return structuredClone(lastPublishedProjection.report)
+  }
+
+  const projectionChangedWithTime = lastPublishedProjection !== null
+  if (projectionChangedWithTime) revision += 1
+
+  const report: HealthReport = {
+    id: `health-report-${revision}`,
+    revision,
+    generatedAt,
+    lastFullSweep: lastFullSweep ? { ...lastFullSweep } : null,
+    ...reportProjection,
+    summary,
+  }
+  lastPublishedProjection = { key: projectionKey, report: structuredClone(report) }
+  if (projectionChangedWithTime) {
+    for (const listener of listeners) listener(structuredClone(report))
+  }
+  return structuredClone(report)
 }
 
 export function resetHealthReportCache(): void {
   cache.clear()
   revision = 0
   lastFullSweep = null
+  lastPublishedProjection = null
 }
 
 export function getCachedHealthCheckState(checkId: string): HealthCheckState | undefined {

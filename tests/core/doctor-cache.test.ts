@@ -4,6 +4,7 @@ import { runHealthCheck } from '../../src/core/doctor-checks'
 import {
   applyHealthCheckRun,
   getHealthReport,
+  onHealthReportChanged,
   resetHealthReportCache,
   setLastFullHealthSweep,
 } from '../../src/core/doctor-report-cache'
@@ -172,5 +173,90 @@ describe('per-check Health cache', () => {
       'core:verification:conflict:cache-test.probe-b',
     ])
     expect(report.overallStatus).toBe('unknown_stale')
+  })
+
+  it('publishes one conflict replacement when a check participates in two independent conflicts', async () => {
+    const shared = register(async () => healthObserved([
+      healthWarning({
+        key: 'shared-a', summary: 'Shared producer saw the first condition.',
+        incident: {
+          key: 'shared-a', title: 'First shared title', impact: 'Shared impact.', disposition: 'watch',
+          resolution: { key: 'rerun', type: 'rerun', label: 'Check again' },
+        },
+      }),
+      healthWarning({
+        key: 'shared-b', summary: 'Shared producer saw the second condition.',
+        incident: {
+          key: 'shared-b', title: 'Second shared title', impact: 'Shared impact.', disposition: 'watch',
+          resolution: { key: 'rerun', type: 'rerun', label: 'Check again' },
+        },
+      }),
+    ]), 'shared-probe', 'Shared cache probe')
+    const firstConflict = register(async () => healthObserved([
+      healthWarning({
+        key: 'first-conflict', summary: 'First conflict producer disagreed.',
+        incident: {
+          key: 'shared-a', title: 'Conflicting first title', impact: 'Shared impact.', disposition: 'watch',
+          resolution: { key: 'rerun', type: 'rerun', label: 'Check again' },
+        },
+      }),
+    ]), 'probe-a', 'First conflict probe')
+    const secondConflict = register(async () => healthObserved([
+      healthWarning({
+        key: 'second-conflict', summary: 'Second conflict producer disagreed.',
+        incident: {
+          key: 'shared-b', title: 'Conflicting second title', impact: 'Shared impact.', disposition: 'watch',
+          resolution: { key: 'rerun', type: 'rerun', label: 'Check again' },
+        },
+      }),
+    ]), 'probe-b', 'Second conflict probe')
+
+    await apply(shared, '2026-07-13T12:00:00.000Z', 'execution-shared')
+    await apply(firstConflict, '2026-07-13T12:00:00.000Z', 'execution-a')
+    await apply(secondConflict, '2026-07-13T12:00:00.000Z', 'execution-b')
+
+    const report = getHealthReport('2026-07-13T12:00:30.000Z')
+    const observationIds = report.observations.map((observation) => observation.id)
+    const incidentIds = report.incidents.map((incident) => incident.id)
+    expect(observationIds).toHaveLength(3)
+    expect(new Set(observationIds).size).toBe(observationIds.length)
+    expect(observationIds.filter((id) => id === 'cache-test.shared-probe:verification.conflict')).toHaveLength(1)
+    const sharedReplacement = report.observations.find((observation) =>
+      observation.id === 'cache-test.shared-probe:verification.conflict')
+    expect(sharedReplacement?.detail).toContain('cache-test:runtime:shared-a')
+    expect(sharedReplacement?.detail).toContain('cache-test:runtime:shared-b')
+    expect(incidentIds).toHaveLength(3)
+    expect(new Set(incidentIds).size).toBe(incidentIds.length)
+    expect(incidentIds.filter((id) => id === 'core:verification:conflict:cache-test.shared-probe')).toHaveLength(1)
+  })
+
+  it('advances the report revision once when cached evidence crosses its freshness boundary', async () => {
+    const def = register(async () => healthObserved([healthHealthy({ key: 'ready', summary: 'Ready.' })]))
+    await apply(def, '2026-07-13T12:00:00.000Z')
+
+    const fresh = getHealthReport('2026-07-13T12:01:59.000Z')
+    const independentFreshProjection = getHealthReport('2026-07-13T12:01:59.500Z')
+    expect(independentFreshProjection.id).toBe(fresh.id)
+    expect(independentFreshProjection.generatedAt).toBe(fresh.generatedAt)
+    const changedReportIds: string[] = []
+    const unsubscribe = onHealthReportChanged((report) => changedReportIds.push(report.id))
+    const stale = getHealthReport('2026-07-13T12:02:01.000Z')
+    const independentStaleProjection = getHealthReport('2026-07-13T12:02:02.000Z')
+    unsubscribe()
+
+    expect(stale.revision).toBe(fresh.revision + 1)
+    expect(stale.id).not.toBe(fresh.id)
+    expect(stale.observations.find((row) => row.key === 'ready')?.snapshot).toBe('last_known')
+    expect(stale.incidents.some((incident) => incident.id.includes(':stale:'))).toBe(true)
+    expect(independentStaleProjection.revision).toBe(stale.revision)
+    expect(independentStaleProjection.id).toBe(stale.id)
+    expect(independentStaleProjection.generatedAt).toBe(stale.generatedAt)
+    expect(independentStaleProjection.observations.map((row) => [row.id, row.snapshot])).toEqual(
+      stale.observations.map((row) => [row.id, row.snapshot]),
+    )
+    expect(independentStaleProjection.incidents.map((incident) => [incident.id, incident.stale])).toEqual(
+      stale.incidents.map((incident) => [incident.id, incident.stale]),
+    )
+    expect(changedReportIds).toEqual([stale.id])
   })
 })
