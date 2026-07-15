@@ -57,6 +57,7 @@ mock.module('../../packages/core/src/content-dir', () => {
 import {
   PluginHost,
   PLUGIN_BOOT_TIMEOUTS,
+  DEFAULT_IMPORT_TIMEOUT_MS,
   DEFAULT_MANIFEST_TIMEOUT_MS,
   __resetPluginBootForTests,
 } from '../../packages/host/src/plugin-host/PluginHost'
@@ -105,7 +106,7 @@ function removeDevScriptTag() {
 
 const EMPTY_MANIFEST = { plugins: [] }
 
-const USED_IDS = ['x', 'y']
+const USED_IDS = ['x', 'y', 'hung']
 
 beforeEach(() => {
   // Module-scoped manifest cache + boot promise must not leak across tests
@@ -513,6 +514,51 @@ describe('PluginHost — hot-swap unregisters synchronously', () => {
         .toBe('rendered-from-x'))
     } finally {
       consoleDebug.mockRestore()
+      rmSync(moduleDir, { recursive: true, force: true })
+    }
+  })
+
+  it('bounds a hung hot-swap import instead of leaving plugin routes loading forever', async () => {
+    injectDevScriptTag()
+    const moduleDir = mkdtempSync(join(tmpdir(), 'bakin-plugin-host-hung-swap-'))
+    PLUGIN_BOOT_TIMEOUTS.importMs = 50
+    try {
+      render(
+        <PluginHost>
+          <ProbeTree />
+        </PluginHost>,
+      )
+      await waitFor(() => expect(screen.queryByText('Loading plugins')).toBeNull())
+
+      act(() => {
+        registerPlugin({ id: 'hung', slots: { 'page:/probe': SlotPage } })
+      })
+
+      const modulePath = join(moduleDir, 'client.mjs')
+      writeFileSync(modulePath, 'await new Promise(() => {})\n')
+      const handle = (window as unknown as {
+        __bakinHotSwapPlugin?: (...a: unknown[]) => Promise<void>
+      }).__bakinHotSwapPlugin
+      expect(typeof handle).toBe('function')
+
+      let swapPromise: Promise<void> | undefined
+      act(() => {
+        swapPromise = handle!('hung', pathToFileURL(modulePath).href, 'hung-version')
+      })
+      await act(async () => {
+        const outcome = await Promise.race([
+          swapPromise!.then(
+            () => 'resolved' as const,
+            () => 'rejected' as const,
+          ),
+          new Promise<'still-pending'>((resolve) => setTimeout(() => resolve('still-pending'), 200)),
+        ])
+        expect(outcome).toBe('rejected')
+      })
+
+      expect(getPluginLoadState('hung')).toBe('error')
+    } finally {
+      PLUGIN_BOOT_TIMEOUTS.importMs = DEFAULT_IMPORT_TIMEOUT_MS
       rmSync(moduleDir, { recursive: true, force: true })
     }
   })

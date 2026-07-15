@@ -457,7 +457,11 @@ async function performHotSwap(id: string, clientEntry: string, version: string, 
   if (plugin) swapPluginCss(plugin, version)
   setPluginLoadState(id, 'loading')
   try {
-    await import(/* @vite-ignore */ importUrl)
+    await withTimeout(
+      import(/* @vite-ignore */ importUrl),
+      PLUGIN_BOOT_TIMEOUTS.importMs,
+      `plugin "${id}" hot-swap import`,
+    )
   } catch (err) {
     setPluginLoadState(id, 'error', err instanceof Error ? err.message : String(err))
     throw err
