@@ -133,6 +133,49 @@ describe('parseSessionUsageContent', () => {
     expect(result?.cost.total).toBe(0)
   })
 
+  it('honors an explicit zero total instead of replacing it with component costs', () => {
+    const content = [
+      JSON.stringify({ type: 'session', id: 'sess-explicit-zero', timestamp: '2026-03-26T10:00:00Z' }),
+      JSON.stringify({
+        type: 'message',
+        message: {
+          role: 'assistant',
+          model: 'local-model',
+          usage: {
+            input: 100,
+            output: 50,
+            totalTokens: 150,
+            cost: { input: 0.25, output: 0.5, total: 0 },
+          },
+        },
+      }),
+    ].join('\n') + '\n'
+
+    expect(parseSessionUsageContent(content, 'local')?.cost.total).toBe(0)
+  })
+
+  it('derives total tokens from components when the runtime omits the additive total', () => {
+    const content = [
+      JSON.stringify({ type: 'session', id: 'sess-derived-tokens', timestamp: '2026-03-26T10:00:00Z' }),
+      JSON.stringify({
+        type: 'message',
+        message: {
+          role: 'assistant',
+          model: 'claude-opus-4-6',
+          usage: { input: 100, output: 50, cacheRead: 25, cacheWrite: 10 },
+        },
+      }),
+    ].join('\n') + '\n'
+
+    expect(parseSessionUsageContent(content, 'patch')?.tokens).toEqual({
+      input: 100,
+      output: 50,
+      cacheRead: 25,
+      cacheWrite: 10,
+      total: 185,
+    })
+  })
+
   it('derives total cost from runtime component costs when total is omitted', () => {
     const content = [
       JSON.stringify({ type: 'session', id: 'sess-component-cost', timestamp: '2026-03-26T10:00:00Z' }),

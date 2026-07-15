@@ -90,7 +90,12 @@ export function parseSessionUsageMessages(content: string): ParsedSessionUsage {
             output: u.output ?? 0,
             cacheRead: u.cacheRead ?? 0,
             cacheWrite: u.cacheWrite ?? 0,
-            total: u.totalTokens ?? 0,
+            total: u.totalTokens ?? (
+              (u.input ?? 0)
+              + (u.output ?? 0)
+              + (u.cacheRead ?? 0)
+              + (u.cacheWrite ?? 0)
+            ),
           },
           cost: u.cost ?? null,
         })
@@ -172,7 +177,7 @@ function addUsageCost(
     addCostField(values, seen, 'cacheWrite', cost.cacheWrite),
   ]
   const hasExplicitTotal = addCostField(values, seen, 'total', cost.total)
-  if (hasExplicitTotal) return
+  if (hasExplicitTotal !== null) return
 
   const knownComponents = componentValues.filter((value): value is number => value !== null)
   if (knownComponents.length === 0) return
