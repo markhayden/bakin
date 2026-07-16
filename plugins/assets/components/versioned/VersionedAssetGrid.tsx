@@ -156,10 +156,10 @@ export function VersionedAssetGrid() {
   const [typeFilter, setTypeFilter] = useQueryArrayState('type')
   const [tagFilter, setTagFilter] = useQueryArrayState('tags')
 
-  // Folder navigation updates view AND tags in ONE history entry. Two
-  // sequential useQueryState setters would clobber each other (both snapshot
-  // the pre-update params), and their replace() leaves no entry for browser
-  // back. push() makes folder → filtered-grid → back work like real folders.
+  // Folder navigation updates view AND tags in ONE pushed history entry so
+  // folder → filtered-grid → back works like real folders. (useQueryState
+  // setters batch per tick since PR3, so clobbering is no longer the reason
+  // this exists — the push-with-multiple-params semantics are.)
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()

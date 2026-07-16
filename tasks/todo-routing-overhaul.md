@@ -17,12 +17,12 @@ Tracks `tasks/plan-routing-overhaul.md`. Check items off as commits land.
 - [x] 2.3 All URL builders → path (attention.ts, toast, OS notif, ⌘K hit); zero `?chat=` grep — `feat(chat): path URLs in toast/notification/search builders`
 - [x] 2.4 RTL + attention pathname table tests — `test(chat): path-based deep-link coverage`
 - [x] 2.5 chat-plugin.md (+conversation-kit.md) docs — `docs(knowledge): chat-plugin URL surface`
-- [ ] CHECKPOINT: suite+lint+tsc green · live pass (cold-boot deep link, draft first-send, back/forward, all three entry points) · Mark approves · merge
+- [x] CHECKPOINT: merged as PR #693 (2026-07-16)
 
 ## PR3 — feat/router-polish
-- [ ] 3.1 Query values stay strings (tests first; serializer preferred, shim fallback) — `fix(sdk): query values survive as strings through the router`
-- [ ] 3.2 Multi-setter microtask batching — `fix(hooks): compose multi-setter useQueryState updates`
-- [ ] 3.3 Scroll restoration (scout container first) — `feat(host): scroll restoration`
-- [ ] 3.4 NotFound page + catch-all + notFoundComponent + shadow warning — `feat(host): NotFound page + route-shadow warning`
-- [ ] 3.5 Docs sweep: taxonomy rewrite, delete clobber rule + stale rows, CLAUDE.md bullet, authoring docs, README check — `docs: routing taxonomy sweep`
+- [x] 3.1 Query values stay strings (tests first; serializer preferred, shim fallback) — `fix(sdk): query values survive as strings through the router`
+- [x] 3.2 Multi-setter microtask batching — `fix(hooks): compose multi-setter useQueryState updates`
+- [x] 3.3 Scroll restoration (scout container first) — `feat(host): scroll restoration`
+- [x] 3.4 NotFound page + catch-all + notFoundComponent + shadow warning — `feat(host): NotFound page + route-shadow warning`
+- [x] 3.5 Docs sweep: taxonomy rewrite, delete clobber rule + stale rows, CLAUDE.md bullet, authoring docs, README check — `docs: routing taxonomy sweep`
 - [ ] CHECKPOINT: suite+lint+tsc green · live pass (multi-param, string params, scroll, 404, tabs) · all spec Success Criteria 1–9 · Mark approves · merge · spec → Shipped
