@@ -46,6 +46,7 @@ import {
 } from '@makinbakin/sdk/internal'
 import { Slot } from '@makinbakin/sdk/slots'
 import { assertReactInstance } from '../lib/react-identity'
+import { findShadowingHostPaths } from '../lib/route-shadow'
 import { checkPluginDrift } from './drift-check'
 import {
   installVersionMismatchDetector,
@@ -302,6 +303,14 @@ function applyManifestMetadata(manifest: Manifest): void {
       slotOwners.set(slot, owners)
     }
     for (const route of plugin.contributes?.routes ?? []) {
+      // A pattern colliding with a host route can never render — every
+      // explicit host route outranks the `$` splat this pattern lives under.
+      const shadowedBy = findShadowingHostPaths(route.path)
+      if (shadowedBy.length > 0) {
+        console.warn(
+          `[bakin] plugin "${plugin.id}" route "${route.path}" is shadowed by host route(s) ${shadowedBy.map((p) => `"${p}"`).join(', ')} and will never render there.`,
+        )
+      }
       routeOwners.push({ pattern: route.path, pluginId: plugin.id })
     }
   }

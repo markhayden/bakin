@@ -29,8 +29,9 @@ export function BrandDocEditorPage() {
 }
 
 function BrandDocEditorInner({ brandId, kind, name }: { brandId: string; kind: string; name: string }) {
-  // TanStack Router JSON-parses search values — `?create=1` arrives as the
-  // NUMBER 1, not the string '1'. Coerce before comparing.
+  // The host router keeps search values as plain strings (PR3 3.1), so
+  // `?create=1` arrives as '1'; String() also tolerates older number-coerced
+  // history entries from before that change.
   const search = useSearch({ strict: false }) as { create?: string | number }
   const isCreate = String(search.create ?? '') === '1'
   const navigate = useNavigate()
