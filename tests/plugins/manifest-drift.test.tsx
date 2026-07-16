@@ -85,8 +85,14 @@ describe('core plugin manifest drift (lazy-loading contract)', () => {
       )
 
       // Declarative metadata is mandatory for clientful core plugins — a
-      // client with none would silently fall back to eager loading.
-      expect(manifest.contributes?.nav?.length ?? 0).toBeGreaterThan(0)
+      // client with none would silently fall back to eager loading. Explore
+      // is the deliberate exception to nav ownership: the shell links to its
+      // declared page slot through Make Bakin Yours.
+      if (pluginId === 'explore') {
+        expect(manifest.contributes?.nav ?? []).toEqual([])
+      } else {
+        expect(manifest.contributes?.nav?.length ?? 0).toBeGreaterThan(0)
+      }
       expect(manifest.contributes?.slots?.length ?? 0).toBeGreaterThan(0)
 
       // Import runs registerPlugin as a side effect (same as the browser).

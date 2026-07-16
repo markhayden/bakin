@@ -4,7 +4,7 @@ Scaffold a new Bakin plugin with all required files following the established pa
 
 ## Steps
 
-1. Ask for: plugin id (kebab-case), display name, description, dependencies (other plugin ids), required secrets (canonical env var names)
+1. Ask for: plugin id (kebab-case), display name, description, dependencies (other plugin ids), required secrets (canonical env var names), and—if it has a page—its Lucide icon and navigation section (`plan-and-automate`, `create`, `operations`, or omitted for Mix-ins).
 
 2. Create `plugins/{id}/bakin-plugin.json`:
 ```json
@@ -14,7 +14,6 @@ Scaffold a new Bakin plugin with all required files following the established pa
   "version": "1.0.0",
   "bakin": ">=1.0.0",
   "description": "{description}",
-  "entry": { "server": "index.ts" },
   "contentFiles": [],
   "secrets": [
     {
@@ -23,11 +22,30 @@ Scaffold a new Bakin plugin with all required files following the established pa
       "required": true
     }
   ],
-  "tests": "tests/",
   "dependencies": ["{dependencies}"],
-  "permissions": ["storage.read", "storage.write", "events.emit"]
+  "permissions": ["storage.read", "storage.write", "events.emit"],
+  "contributes": {
+    "nav": [
+      {
+        "id": "{id}",
+        "label": "{name}",
+        "icon": "{icon}",
+        "href": "/{id}",
+        "order": 100,
+        "section": "{section}"
+      }
+    ],
+    "routes": [
+      { "path": "/{id}" }
+    ],
+    "clientRoutes": [
+      { "path": "/{id}", "summary": "{name} page" }
+    ]
+  }
 }
 ```
+
+Omit the `section` property entirely when the plugin should appear under Mix-ins. Never invent a section name or use placement/expansion fields.
 
 3. Create `plugins/{id}/index.ts`:
 ```typescript
@@ -48,18 +66,12 @@ const plugin: BakinPlugin = {
   name: '{name}',
   version: '1.0.0',
 
-  navItems: [
-    { id: '{id}', label: '{name}', icon: '{icon}', href: '/{id}', order: 50 },
-  ],
-
   // Settings schema — auto-renders into a plugin config screen
   settingsSchema: {
     // example: featureToggle: { type: 'boolean', default: true, label: 'Enable feature', description: '...' },
   },
 
   async activate(ctx: PluginContext) {
-    ctx.registerNav(this.navItems!)
-
     ctx.registerRoute({
       path: '/list',
       method: 'GET',
@@ -74,14 +86,26 @@ const plugin: BakinPlugin = {
 export default plugin
 ```
 
-4. Create `plugins/{id}/client.tsx`:
-```typescript
-import type { NavItem } from '@bakin/core/plugin-types'
+4. Create `plugins/{id}/client.tsx` with a runtime declaration matching the manifest exactly:
+```tsx
+import { registerPlugin, type NavItem } from '@makinbakin/sdk'
 
-export const navItems: NavItem[] = [
-  { id: '{id}', label: '{name}', icon: '{icon}', href: '/{id}', order: 50 },
+function PluginPage() {
+  return <div>{name}</div>
+}
+
+const navItems: NavItem[] = [
+  { id: '{id}', label: '{name}', icon: '{icon}', href: '/{id}', order: 100, section: '{section}' },
 ]
+
+registerPlugin({
+  id: '{id}',
+  navItems,
+  routes: { '/{id}': PluginPage },
+})
 ```
+
+As in the manifest, omit `section` from the runtime object for Mix-ins.
 
 5. Create `plugins/{id}/types.ts` with placeholder types
 

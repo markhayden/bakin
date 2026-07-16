@@ -18,6 +18,7 @@ export type {
   StorageAdapter,
   EventBus,
   NavItem,
+  NavSection,
   RegisteredAPIRoute,
   UISlotRegistration,
   ContentFile,

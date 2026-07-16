@@ -221,12 +221,16 @@ export function Header() {
         <button
           className="md:hidden mr-3 text-muted-foreground hover:text-foreground"
           onClick={() => setMobileOpen(!mobileOpen)}
+          aria-label={mobileOpen ? 'Close navigation' : 'Open navigation'}
+          aria-expanded={mobileOpen}
+          aria-controls="mobile-navigation-drawer"
         >
           {mobileOpen ? <X className="size-5" /> : <Menu className="size-5" />}
         </button>
         <button
           onClick={toggle}
           className="hidden md:flex text-muted-foreground hover:text-foreground transition-colors p-1 rounded-md hover:bg-[rgba(255,255,255,0.06)] mr-2"
+          aria-label={collapsed ? 'Expand navigation' : 'Collapse navigation'}
         >
           {collapsed ? (
             <PanelLeft className="size-4" />
@@ -261,12 +265,17 @@ export function Header() {
       {/* Mobile sidebar overlay */}
       {mobileOpen && (
         <div className="fixed inset-0 z-40 md:hidden">
-          <div
+          <button
+            type="button"
             className="absolute inset-0 bg-black/50"
             onClick={() => setMobileOpen(false)}
+            aria-label="Close navigation"
           />
-          <div className="absolute top-[var(--bakin-shell-top,3.5rem)] left-0 bottom-0 w-52 bg-background border-r border-border">
-            <AppSidebar onNavigate={() => setMobileOpen(false)} />
+          <div
+            id="mobile-navigation-drawer"
+            className="absolute bottom-0 left-0 top-[var(--bakin-shell-top,3.5rem)] w-52 overflow-hidden border-r border-border bg-background"
+          >
+            <AppSidebar forceExpanded onNavigate={() => setMobileOpen(false)} />
           </div>
         </div>
       )}

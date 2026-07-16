@@ -1,7 +1,7 @@
 /**
  * Explore plugin — client entry point.
- * Nav is declared in bakin-plugin.json `contributes.nav` (placement: bottom,
- * pinned above Settings); slots are mirrored in `contributes.slots`.
+ * Discovery navigation is owned by the shell's responsive Make Bakin Yours
+ * entry; this plugin contributes only the Explore page slot.
  */
 import { registerPlugin } from '@makinbakin/sdk'
 import { ExplorePage } from './components/explore-page'

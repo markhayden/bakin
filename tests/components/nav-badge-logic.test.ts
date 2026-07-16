@@ -35,7 +35,6 @@ const parent = (children: NavItem[]): NavItem => ({
   label: 'Group',
   icon: 'Workflow',
   href: '/group',
-  alwaysExpanded: true,
   children,
 })
 
@@ -122,6 +121,12 @@ describe('collapsedParentRollupTone', () => {
     expect(collapsedParentRollupTone(item, { count: 0 }, badges)).toBe('attention')
   })
 
+  it('lets a more severe child badge outrank the parent badge', () => {
+    const item = parent([child('a')])
+    const badges = new Map([['a', { count: 1, tone: 'error' as const }]])
+    expect(collapsedParentRollupTone(item, { count: 5, tone: 'info' }, badges)).toBe('error')
+  })
+
   it('returns null when neither parent nor children are active', () => {
     const item = parent([child('a')])
     expect(collapsedParentRollupTone(item, undefined, new Map())).toBeNull()
@@ -135,6 +140,10 @@ describe('collapsedParentAriaSuffix', () => {
 
   it('announces a children hint when the dot is child-driven', () => {
     expect(collapsedParentAriaSuffix(undefined, 'attention')).toBe(', children needing review')
+  })
+
+  it('announces the child severity when it outranks an active parent badge', () => {
+    expect(collapsedParentAriaSuffix({ count: 3, tone: 'info' }, 'error')).toBe(', children urgent')
   })
 
   it('uses the shared tone label for non-attention child rollups', () => {

@@ -181,7 +181,8 @@
         "label": "Assets",
         "icon": "FolderOpen",
         "href": "/assets",
-        "order": 20
+        "order": 20,
+        "section": "create"
       }
     ],
     "slots": [

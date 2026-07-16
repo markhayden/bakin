@@ -263,7 +263,7 @@ describe('plugin manifest declarative client contributions (lazy loading)', () =
             icon: 'MessageSquare',
             href: '/messaging',
             order: 25,
-            alwaysExpanded: true,
+            section: 'create',
             badge: { tone: 'info' },
             children: [
               { id: 'messaging-calendar', label: 'Calendar', icon: 'CalendarDays', href: '/messaging/calendar' },
@@ -286,7 +286,7 @@ describe('plugin manifest declarative client contributions (lazy loading)', () =
         icon: 'MessageSquare',
         href: '/messaging',
         order: 25,
-        alwaysExpanded: true,
+        section: 'create',
         badge: { tone: 'info' },
         children: [
           { id: 'messaging-calendar', label: 'Calendar', icon: 'CalendarDays', href: '/messaging/calendar' },
@@ -341,27 +341,50 @@ describe('plugin manifest declarative client contributions (lazy loading)', () =
     })).toThrow(/badge\.tone must be one of/)
   })
 
-  it('parses nav placement "bottom"', () => {
-    const manifest = parsePluginManifest({
-      ...baseManifest,
-      contributes: {
-        nav: [{ id: 'explore', label: 'Explore', icon: 'Compass', href: '/explore', placement: 'bottom' }],
-      },
-    })
-    expect(manifest.contributes?.nav?.[0]).toEqual({
-      id: 'explore',
-      label: 'Explore',
-      icon: 'Compass',
-      href: '/explore',
-      placement: 'bottom',
-    })
+  it('parses every allowed top-level nav section', () => {
+    for (const section of ['plan-and-automate', 'create', 'operations'] as const) {
+      const manifest = parsePluginManifest({
+        ...baseManifest,
+        contributes: { nav: [{ id: `item-${section}`, label: section, section }] },
+      })
+      expect(manifest.contributes?.nav?.[0]?.section).toBe(section)
+    }
   })
 
-  it('rejects nav placement values other than "bottom"', () => {
+  it('rejects unknown nav sections with the allowed values', () => {
     expect(() => parsePluginManifest({
       ...baseManifest,
-      contributes: { nav: [{ id: 'x', label: 'X', placement: 'top' }] },
-    })).toThrow(/placement must be "bottom"/)
+      contributes: { nav: [{ id: 'x', label: 'X', section: 'custom-heading' }] },
+    })).toThrow(/section must be one of: plan-and-automate, create, operations/)
+  })
+
+  it('rejects nav sections on children instead of silently ignoring them', () => {
+    expect(() => parsePluginManifest({
+      ...baseManifest,
+      contributes: {
+        nav: [{
+          id: 'group',
+          label: 'Group',
+          children: [{ id: 'child', label: 'Child', section: 'create' }],
+        }],
+      },
+    })).toThrow(/children\[0\]\.section is only valid on top-level nav items/)
+  })
+
+  it('rejects removed nav placement with migration guidance', () => {
+    expect(() => parsePluginManifest({
+      ...baseManifest,
+      contributes: {
+        nav: [{ id: 'x', label: 'X', placement: 'bottom' }],
+      },
+    })).toThrow(/placement was removed.*section.*host-owned/)
+  })
+
+  it('rejects removed alwaysExpanded with disclosure migration guidance', () => {
+    expect(() => parsePluginManifest({
+      ...baseManifest,
+      contributes: { nav: [{ id: 'group', label: 'Group', alwaysExpanded: true }] },
+    })).toThrow(/alwaysExpanded was removed.*disclosure/)
   })
 
   it('rejects route patterns under /api and duplicates', () => {

@@ -191,7 +191,8 @@
         "label": "Workflows",
         "icon": "Workflow",
         "href": "/workflows",
-        "order": 40
+        "order": 30,
+        "section": "plan-and-automate"
       }
     ],
     "slots": [

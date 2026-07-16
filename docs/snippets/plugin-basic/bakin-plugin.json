@@ -25,6 +25,20 @@
         "path": "/docs-basic",
         "summary": "Minimal docs plugin page"
       }
+    ],
+    "nav": [
+      {
+        "id": "docs-basic",
+        "label": "Docs Basic",
+        "icon": "Puzzle",
+        "href": "/docs-basic",
+        "order": 100
+      }
+    ],
+    "routes": [
+      {
+        "path": "/docs-basic"
+      }
     ]
   },
   "permissions": [

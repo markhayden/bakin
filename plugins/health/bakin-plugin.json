@@ -155,9 +155,10 @@
       {
         "id": "health",
         "label": "Health",
-        "icon": "Activity",
+        "icon": "HeartPulse",
         "href": "/health",
-        "order": 85
+        "order": 10,
+        "section": "operations"
       }
     ],
     "slots": [

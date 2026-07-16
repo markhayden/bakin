@@ -1105,26 +1105,42 @@ content-store counters:
   disposition instead of parsing status messages. Advisory-only findings do
   not create persistent navigation noise.
 
+### Sidebar organization
+
+The public `NavItem.section` vocabulary is closed to
+`plan-and-automate | create | operations` and is valid only on top-level
+items. Omitted sections fall into Mix-ins; plugins cannot create headings or
+enter the host-owned primary (Chat, Tasks) or utility (Make Bakin Yours,
+Runtime, Settings) regions. `buildSidebarNavModel` owns official rank,
+custom sorting (`order` → label → id), Mix-ins fallback, and empty-section
+omission. Section declarations live with each plugin—even official external
+plugins such as Projects and Messaging—rather than in host assignment maps.
+
+The sidebar has three height-owning regions: fixed primary, scrollable
+section middle (`min-height: 0`), and fixed utility. Mobile forces the full
+expanded treatment. The 52px rail hides heading text but preserves grouping
+with separators. Every group uses one disclosure model: a button and child
+region while expanded, and a pointer/keyboard/click Popover flyout while
+collapsed. There are no plugin-controlled placement or expansion overrides.
+
 ### Sidebar rendering
 
 `AppSidebar` (`packages/host/src/components/layout/app-sidebar.tsx`)
 subscribes to badge mutations on a **separate channel**
 (`subscribeNavBadges`) from the main registry, so high-frequency badge
 ticks don't force the whole nav to re-render. Badges are rendered in all
-six paths:
+five paths:
 
 1. Flat nav item, expanded — pill after label.
 2. Flat nav item, collapsed — dot overlay on icon; aria-label gets the count.
 3. Parent nav item, expanded — pill if the parent itself has a badge.
 4. Child nav item, expanded — pill after child label.
-5. Parent nav item, collapsed + `alwaysExpanded` (Popover flyout) —
-   rollup dot on parent icon if any child has a badge; per-child pills
-   inside the popover.
-6. Parent nav item, collapsed (Tooltip) — rollup dot on parent icon.
+5. Parent nav item, collapsed (Popover flyout) — rollup dot on the parent
+   icon; per-child pills inside the popover.
 
-The collapsed rollup is **presence-only** (one dot, most-attention-worthy
-tone among children) — no count math. Expanded mode shows real per-child
-counts.
+The collapsed rollup is **presence-only** (one dot, highest-severity tone
+across the parent and children) — no count math. Expanded mode shows real
+per-item counts.
 
 ### Lifecycle
 

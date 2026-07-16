@@ -6,6 +6,7 @@ import type {
   ExecToolContribution,
   HttpMethod,
   NavItem,
+  NavSection,
   PluginContributions,
   PluginManifest,
   PluginManifestSignature,
@@ -217,9 +218,17 @@ function parseClientRoute(raw: unknown, index: number): ClientRouteContribution 
 }
 
 const NAV_BADGE_TONES = new Set(['error', 'attention', 'info', 'success'])
+const NAV_SECTIONS = ['plan-and-automate', 'create', 'operations'] as const satisfies readonly NavSection[]
+const NAV_SECTION_SET = new Set<string>(NAV_SECTIONS)
 
-function parseNavItem(raw: unknown, label: string): NavItem {
+function parseNavItem(raw: unknown, label: string, topLevel: boolean): NavItem {
   if (!isRecord(raw)) throw new PluginManifestError(`${label} must be an object`)
+  if (raw.placement !== undefined) {
+    throw new PluginManifestError(`${label}.placement was removed; use section for normal destinations. Primary and utility regions are host-owned`)
+  }
+  if (raw.alwaysExpanded !== undefined) {
+    throw new PluginManifestError(`${label}.alwaysExpanded was removed; navigation groups use the standard disclosure behavior`)
+  }
   const item: NavItem = {
     id: stringField(raw, 'id', { required: true })!,
     label: stringField(raw, 'label', { required: true })!,
@@ -239,17 +248,14 @@ function parseNavItem(raw: unknown, label: string): NavItem {
     }
     item.order = raw.order
   }
-  if (raw.alwaysExpanded !== undefined) {
-    if (typeof raw.alwaysExpanded !== 'boolean') {
-      throw new PluginManifestError(`${label}.alwaysExpanded must be a boolean`)
+  if (raw.section !== undefined) {
+    if (!topLevel) {
+      throw new PluginManifestError(`${label}.section is only valid on top-level nav items`)
     }
-    item.alwaysExpanded = raw.alwaysExpanded
-  }
-  if (raw.placement !== undefined) {
-    if (raw.placement !== 'bottom') {
-      throw new PluginManifestError(`${label}.placement must be "bottom" when present`)
+    if (typeof raw.section !== 'string' || !NAV_SECTION_SET.has(raw.section)) {
+      throw new PluginManifestError(`${label}.section must be one of: ${NAV_SECTIONS.join(', ')}`)
     }
-    item.placement = raw.placement
+    item.section = raw.section as NavSection
   }
   if (raw.badge !== undefined) {
     if (!isRecord(raw.badge)) throw new PluginManifestError(`${label}.badge must be an object`)
@@ -270,7 +276,7 @@ function parseNavItem(raw: unknown, label: string): NavItem {
   }
   if (raw.children !== undefined) {
     if (!Array.isArray(raw.children)) throw new PluginManifestError(`${label}.children must be an array`)
-    item.children = raw.children.map((child, childIndex) => parseNavItem(child, `${label}.children[${childIndex}]`))
+    item.children = raw.children.map((child, childIndex) => parseNavItem(child, `${label}.children[${childIndex}]`, false))
   }
   return item
 }
@@ -381,7 +387,7 @@ function parseContributions(input: unknown): PluginContributions | undefined {
   if (input.nav !== undefined) {
     if (!Array.isArray(input.nav)) throw new PluginManifestError('contributes.nav must be an array')
     const seenNavIds = new Set<string>()
-    out.nav = input.nav.map((item, index) => parseNavItem(item, `contributes.nav[${index}]`))
+    out.nav = input.nav.map((item, index) => parseNavItem(item, `contributes.nav[${index}]`, true))
     const collectIds = (items: NavItem[]): void => {
       for (const item of items) {
         if (seenNavIds.has(item.id)) {

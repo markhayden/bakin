@@ -38,6 +38,20 @@ Source: `docs/snippets/plugin-basic/bakin-plugin.json`
         "path": "/docs-basic",
         "summary": "Minimal docs plugin page"
       }
+    ],
+    "nav": [
+      {
+        "id": "docs-basic",
+        "label": "Docs Basic",
+        "icon": "Puzzle",
+        "href": "/docs-basic",
+        "order": 100
+      }
+    ],
+    "routes": [
+      {
+        "path": "/docs-basic"
+      }
     ]
   },
   "permissions": [
@@ -113,7 +127,7 @@ The signature covers canonical JSON for `bakin-plugin.json` with the top-level `
 | `cliCommands[]` | `name`, `usage`, `summary`, `dispatch` |
 | `settings[]` | `key`, `summary` |
 | `docs` | `slug` |
-| `nav[]` | NavItem JSON: `id`, `label` (plus `icon`, `href`, `order`, `children`, ...) |
+| `nav[]` | NavItem JSON: `id`, `label` (plus `icon`, `href`, `order`, `section`, `children`, ...) |
 | `routes[]` | route `path` pattern matching a `registerPlugin({ routes })` key |
 | `slots[]` | slot names the client fills via `registerPlugin({ slots })` |
 | `eager` | boolean — load the client at boot instead of on first demand |
@@ -127,6 +141,31 @@ API route paths are plugin-relative. A route declared as `/hello` is exposed und
 ### Declarative client metadata (lazy loading)
 
 `nav`, `routes`, and `slots` describe the client bundle's contributions so the shell can render the sidebar and route the first navigation **before** the bundle loads. A plugin that declares any of them is lazy by default: its `client.js` imports on the first render of a declared slot or navigation into a declared route pattern. Declarations must exactly match what `client.tsx` registers at runtime — Bakin warns on drift after every client load.
+
+### Sidebar navigation
+
+Top-level nav items may declare one of three host-defined sections:
+
+- `plan-and-automate`
+- `create`
+- `operations`
+
+Omit `section` to place a custom destination under **Mix-ins**. Section names are closed: plugins cannot create arbitrary headings. `section` is top-level only; children stay with their parent and the manifest parser rejects a section on a child.
+
+Within a defined section, Bakin's official destinations lead in the product's fixed order. Custom destinations follow, sorted by `order` (default `100`), then label, then ID. Mix-ins uses the same custom ordering and disappears when empty. Chat and Tasks are host-owned primary destinations; Make Bakin Yours, Runtime, and Settings are host-owned utilities. Plugins cannot place items in either reserved region.
+
+```json
+{
+  "id": "campaigns",
+  "label": "Campaigns",
+  "icon": "Megaphone",
+  "href": "/campaigns",
+  "order": 100,
+  "section": "create"
+}
+```
+
+Do not use `placement` or `alwaysExpanded`; both fields have been removed. Every group uses the same disclosure and collapsed-flyout behavior automatically.
 
 Set `"eager": true` for clients that must run at boot — background components in the `nav-badge-providers` slot, conditional nav, or other module-load side effects. A client entry with none of `nav`/`routes`/`slots` is treated as eager for backward compatibility.
 

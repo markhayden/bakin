@@ -26,17 +26,12 @@ removes, syncs, or repairs anything.
   manifest `contributes.routes`; a `page:/…` slot alone renders
   "Page not found." (Every core plugin page works this way — see
   `routes/models.tsx` etc.)
-- Nav label is **"Extend Bakin"** (plugin id stays `explore`; "Explore"
-  undersold the add-on angle). Pinned to the sidebar bottom above Settings
-  via the generic
-  `NavItem.placement: 'bottom'` field (added for this plugin):
-  - `packages/sdk/src/types/registration.ts` + `packages/core/src/plugin-types.ts`
-    (two-tier NavItem contract — both carry `placement`).
-  - Parsed by `parseNavItem` in `packages/core/src/plugins/manifest.ts`
-    (values other than `'bottom'` are rejected; an unparsed field would be
-    silently dropped, so the parser MUST know it).
-  - Rendered by `partitionNavItems` (`packages/host/src/components/layout/nav-placement.ts`)
-    + the bottom section in `app-sidebar.tsx`.
+- Discovery is promoted by the shell-owned **"Make Bakin Yours"** card in
+  `packages/host/src/components/layout/sidebar-promo.tsx`, with the line
+  "Do more with Bakin—discover agent kits, plugins & more." The card links
+  to `/explore`; the Explore plugin contributes the page content, not a nav
+  item. This keeps product discovery visually distinct without giving
+  plugins access to the utility region.
 - Tab, category filter, and selected item all live in URL params
   (`?tab=`, `?category=`, `?item=<kind>:<id>`); detail view is a
   right-side `BakinDrawer`.
