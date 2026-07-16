@@ -242,6 +242,21 @@ export function useScheduleJobs(options: UseScheduleOptions = {}) {
   }
 }
 
+/** A plugin-contributed dated event rendered alongside job occurrences (#191). */
+export interface ScheduledDomainEvent {
+  id: string
+  pluginId: string
+  title: string
+  startsAt?: string
+  endsAt?: string
+  dueAt?: string
+  kind: string
+  status?: string
+  url?: string
+  reschedulable?: boolean
+  metadata?: Record<string, unknown>
+}
+
 /** One server-computed calendar placement — see plugins/schedule/lib/occurrences.ts. */
 export interface ScheduleOccurrence {
   jobId: string
@@ -261,7 +276,9 @@ export interface ScheduleOccurrence {
  */
 export function useOccurrences(fromIso: string, toIso: string) {
   const [occurrences, setOccurrences] = useState<ScheduleOccurrence[]>([])
+  const [events, setEvents] = useState<ScheduledDomainEvent[]>([])
   const [unevaluated, setUnevaluated] = useState<string[]>([])
+  const [droppedProviders, setDroppedProviders] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
 
   const fetchOccurrences = useCallback(async () => {
@@ -270,7 +287,9 @@ export function useOccurrences(fromIso: string, toIso: string) {
       if (res.ok) {
         const data = await res.json()
         setOccurrences(data.occurrences || [])
+        setEvents(data.events || [])
         setUnevaluated(data.unevaluated || [])
+        setDroppedProviders(data.droppedProviders || [])
       }
     } catch { /* transient — SSE or the next range change refetches */ } finally {
       setLoading(false)
@@ -306,7 +325,7 @@ export function useOccurrences(fromIso: string, toIso: string) {
     }
   }, [fetchOccurrences])
 
-  return { occurrences, unevaluated, loading, refresh: fetchOccurrences }
+  return { occurrences, events, unevaluated, droppedProviders, loading, refresh: fetchOccurrences }
 }
 
 export function useRunHistory(jobId: string | null, limit = 20) {

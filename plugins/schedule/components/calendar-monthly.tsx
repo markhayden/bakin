@@ -3,10 +3,11 @@
 import { useMemo, useState } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from "@makinbakin/sdk/ui"
-import { useOccurrences, type ScheduleJob, type ScheduleOccurrence } from "@makinbakin/sdk/hooks"
+import { useOccurrences, type ScheduleJob, type ScheduleOccurrence, type ScheduledDomainEvent } from "@makinbakin/sdk/hooks"
 import { AgentBadge } from './agent-badge'
 import { agentDotGlow } from './agent-colors'
 import { jobsById } from './calendar-weekly'
+import { EventChip, eventInstant } from './event-popover'
 
 function getCalendarGrid(year: number, month: number): (Date | null)[] {
   const days: Date[] = []
@@ -41,8 +42,8 @@ export function CalendarMonthly({
   const monthStart = useMemo(() => new Date(year, month, 1), [year, month])
   const monthEnd = useMemo(() => new Date(year, month + 1, 1), [year, month])
 
-  // Server-computed placements (kind-aware, tz/DST-correct).
-  const { occurrences } = useOccurrences(monthStart.toISOString(), monthEnd.toISOString())
+  // Server-computed placements (kind-aware, tz/DST-correct) + domain events.
+  const { occurrences, events, refresh } = useOccurrences(monthStart.toISOString(), monthEnd.toISOString())
   const byId = useMemo(() => jobsById(jobs), [jobs])
 
   // Day-of-month → the day's occurrences (local dates; dedupe a job that
@@ -59,6 +60,17 @@ export function CalendarMonthly({
     }
     return map
   }, [occurrences, month, year])
+
+  const eventsByDay = useMemo(() => {
+    const map = new Map<number, ScheduledDomainEvent[]>()
+    for (const event of events) {
+      const d = new Date(eventInstant(event))
+      if (d.getMonth() !== month || d.getFullYear() !== year) continue
+      const day = d.getDate()
+      map.set(day, [...(map.get(day) ?? []), event])
+    }
+    return map
+  }, [events, month, year])
 
   const today = new Date()
   const isToday = (d: Date) =>
@@ -102,7 +114,8 @@ export function CalendarMonthly({
           }
 
           const dayOccurrences = occurrencesByDay.get(date.getDate()) || []
-          const hasRuns = dayOccurrences.length > 0
+          const dayEvents = eventsByDay.get(date.getDate()) || []
+          const hasRuns = dayOccurrences.length + dayEvents.length > 0
           const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate())
           const isPast = date.getTime() < todayStart.getTime()
           const MAX_SHOW = 3
@@ -155,6 +168,9 @@ export function CalendarMonthly({
                     +{dayOccurrences.length - MAX_SHOW} more
                   </span>
                 )}
+                {dayEvents.map(event => (
+                  <EventChip key={`${event.pluginId}-${event.id}`} event={event} compact onRescheduled={refresh} />
+                ))}
               </div>
             </div>
           )

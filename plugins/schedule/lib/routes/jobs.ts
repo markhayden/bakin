@@ -13,7 +13,7 @@ import { parseSchedule } from '../cron-parser'
 import { getSystemTimezone, json, nativeCronTz } from '../schedule-util'
 import { readRuns } from '../runs-reader'
 import { computeOccurrences } from '../occurrences'
-import { collectDomainEvents } from '../domain-events'
+import { collectDomainEvents, RESCHEDULE_EVENT_SUFFIX } from '../domain-events'
 import { getCronFire } from '../../../../src/core/execution-ledger'
 import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
@@ -35,6 +35,11 @@ import { validateTeamAssignment, TaskValidationError } from '../../../../src/cor
 const jobIdParams = z.object({ jobId: z.string().min(1) })
 /** Occurrence queries cap at ~2 months — the month view needs 6 weeks. */
 const MAX_OCCURRENCE_RANGE_MS = 62 * 24 * 60 * 60 * 1000
+const rescheduleEventBody = z.object({
+  pluginId: z.string().min(1),
+  eventId: z.string().min(1),
+  to: z.string().min(1),
+})
 const okResponse = z.object({ ok: z.literal(true) }).passthrough()
 const errorResponse = z.object({ error: z.string() }).passthrough()
 const passthrough = z.object({}).passthrough()
@@ -148,6 +153,31 @@ export const scheduleRoutes = [
         { hooks: getHookRegistry() },
       )
       return json({ occurrences: items, events, unevaluated, droppedProviders })
+    },
+  }),
+
+  defineRoute({
+    path: '/events/reschedule',
+    method: 'POST',
+    summary: 'Reschedule a plugin-owned domain event',
+    description: "Invokes the owning plugin's {pluginId}.rescheduleEvent hook — the contract's one sanctioned mutation. Schedule never writes plugin domain data itself.",
+    body: rescheduleEventBody,
+    responses: { 200: okResponse, 400: errorResponse, 404: errorResponse, 500: errorResponse },
+    handler: async (_req, _ctx, { body }) => {
+      if (!Number.isFinite(Date.parse(body.to))) {
+        return json({ error: 'to must be an ISO-8601 instant' }, 400)
+      }
+      const hookName = `${body.pluginId}${RESCHEDULE_EVENT_SUFFIX}`
+      const registry = getHookRegistry()
+      if (!registry.has(hookName)) {
+        return json({ error: `Plugin '${body.pluginId}' does not support rescheduling` }, 404)
+      }
+      const result = await registry.invoke<{ ok: boolean; error?: string }>(hookName, {
+        eventId: body.eventId,
+        to: body.to,
+      })
+      if (!result?.ok) return json({ error: result?.error ?? 'Owner rejected the reschedule' }, 400)
+      return json({ ok: true })
     },
   }),
 

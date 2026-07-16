@@ -2,8 +2,9 @@
 
 import { useMemo } from 'react'
 import { Clock } from 'lucide-react'
-import { useOccurrences, type ScheduleJob, type ScheduleOccurrence } from "@makinbakin/sdk/hooks"
+import { useOccurrences, type ScheduleJob, type ScheduleOccurrence, type ScheduledDomainEvent } from "@makinbakin/sdk/hooks"
 import { OccurrenceCard, formatHour, jobsById, CALENDAR_HOURS } from './calendar-weekly'
+import { EventChip, eventInstant } from './event-popover'
 
 export function CalendarToday({
   jobs,
@@ -27,7 +28,7 @@ export function CalendarToday({
     return d
   }, [dayStart])
 
-  const { occurrences } = useOccurrences(dayStart.toISOString(), dayEnd.toISOString())
+  const { occurrences, events, refresh } = useOccurrences(dayStart.toISOString(), dayEnd.toISOString())
   const byId = useMemo(() => jobsById(jobs), [jobs])
 
   const todayFormatted = now.toLocaleDateString('en-US', {
@@ -37,7 +38,7 @@ export function CalendarToday({
     year: 'numeric',
   })
 
-  // Group today's occurrences by local hour (already sorted by the server).
+  // Group today's occurrences + domain events by local hour.
   const hourGrid = useMemo(() => {
     const map: Record<number, ScheduleOccurrence[]> = {}
     for (const occurrence of occurrences) {
@@ -45,8 +46,18 @@ export function CalendarToday({
       if (!map[hour]) map[hour] = []
       map[hour]!.push(occurrence)
     }
-    return { map, total: occurrences.length }
-  }, [occurrences])
+    return { map, total: occurrences.length + events.length }
+  }, [occurrences, events])
+
+  const eventHourGrid = useMemo(() => {
+    const map: Record<number, ScheduledDomainEvent[]> = {}
+    for (const event of events) {
+      const hour = new Date(eventInstant(event)).getHours()
+      if (!map[hour]) map[hour] = []
+      map[hour]!.push(event)
+    }
+    return map
+  }, [events])
 
   return (
     <div className="flex flex-col gap-3 h-full min-h-0">
@@ -64,6 +75,7 @@ export function CalendarToday({
         <div className="divide-y divide-border/[0.06]">
           {CALENDAR_HOURS.map(hour => {
             const hourOccurrences = hourGrid.map[hour] || []
+            const hourEvents = eventHourGrid[hour] || []
             const isCurrent = hour === currentHour
 
             return (
@@ -86,7 +98,7 @@ export function CalendarToday({
 
                 {/* Occurrence cards */}
                 <div className="flex-1 min-w-0">
-                  {hourOccurrences.length > 0 ? (
+                  {hourOccurrences.length + hourEvents.length > 0 ? (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                       {hourOccurrences.map(occurrence => {
                         const job = byId.get(occurrence.jobId)
@@ -101,6 +113,9 @@ export function CalendarToday({
                           />
                         )
                       })}
+                      {hourEvents.map(event => (
+                        <EventChip key={`${event.pluginId}-${event.id}`} event={event} onRescheduled={refresh} />
+                      ))}
                     </div>
                   ) : null}
                 </div>
