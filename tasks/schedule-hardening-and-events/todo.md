@@ -33,5 +33,10 @@
 - [ ] CHECKPOINT: #191 acceptance criteria verified live → Mark approves → merge → close #191
 
 ## Phase 5 — bakin-bits-official
-- [ ] T19 Reconcile projects hot-patch → messaging + projects adopt contract → live verify (M)
-- [ ] CHECKPOINT: all SPEC success criteria checked
+- [x] T19 Bits adoption (bits PR #87, merged 2026-07-16) — no hot-patch drift existed (already reconciled); messaging.scheduledEvents + rescheduleEvent shipped (manifest 0.8.0). NOTE: projects has NO milestones (no date-bearing domain concept) — contributes nothing; spec criterion 9 is messaging-only, honestly.
+- [x] CHECKPOINT: initiative complete. Bakin PRs #681 #682 #683 #685 merged (closes #191).
+
+## Post-initiative follow-ups
+- [ ] Cut a Bakin release: bits CI has been red since 2026-07-14 because plugins use SDK surface newer than the npm-published 0.1.0 (conversation-kit helpers) — a v* tag publishes @makinbakin/sdk and heals it
+- [ ] After the SDK release: swap messaging's local contract types for the @makinbakin/sdk exports (noted in plugins/messaging/lib/scheduled-events.ts)
+- [ ] Watch the 2s scheduled-events provider timeout (schedule:events logger logs elapsed ms on every drop)
