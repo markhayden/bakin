@@ -73,7 +73,7 @@ Full install, setup, operation, update, and troubleshooting docs live at [makinb
 - [Initial Setup](https://makinbakin.com/docs/start/first-time-setup/)
 - [Daily Operation](https://makinbakin.com/docs/start/operation/)
 - [Using Bakin](https://makinbakin.com/docs/using/essentials/)
-- [Extend Bakin](https://makinbakin.com/docs/extending/overview/)
+- [Make Bakin Yours](https://makinbakin.com/docs/extending/overview/)
 - [Build a Plugin](https://makinbakin.com/docs/extending/plugins/build/)
 - [SDK](https://makinbakin.com/docs/extending/sdk/overview/)
 - [CLI Reference](https://makinbakin.com/docs/reference/generated/cli/)

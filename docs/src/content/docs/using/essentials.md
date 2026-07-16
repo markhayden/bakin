@@ -86,7 +86,15 @@ Search runs through Bakin's configured search adapter. If the adapter or its mod
 
 ## Navigation
 
-This is the main menu. All apps have one, but this one is ours. Self-explanatory: if a plugin adds UI, you'll see it here.
+The sidebar starts with the two places that keep work moving: **Chat** and **Tasks**. Tasks is the default landing page. Everything else follows the way work develops:
+
+- **Plan & Automate** — Projects, Schedule, and Workflows
+- **Create** — Branding, Assets, and Messaging
+- **Operations** — Health, Team, Models, and Memory
+
+Installed plugins can join one of those sections. Custom destinations without a defined section collect under **Mix-ins**, which stays out of the way when it is empty.
+
+The bottom of the sidebar keeps product-wide actions close: **Make Bakin Yours** opens the discovery catalog for agent kits, plugins, and more, followed by Runtime and Settings. Collapse the sidebar for a 52px icon rail; grouped destinations open in a flyout by hover, focus, or click. On smaller screens, the menu opens as the full labeled drawer so the hierarchy never depends on icons alone.
 
 ## Dispatch Ticker
 
