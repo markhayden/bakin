@@ -20,7 +20,9 @@ import type { Task, ColumnId } from './types'
 import { tasksRoutes } from './lib/routes'
 import { taskToSearchDoc } from './lib/search-doc'
 import { registerTaskExecTools } from './lib/exec-tools'
+import { listScheduledTaskEvents, rescheduleTaskEvent } from './lib/scheduled-events'
 import { startMaintenance, stopMaintenance } from './lib/maintenance'
+import type { ScheduledEventsQuery, ScheduledEventReschedule } from '@makinbakin/sdk'
 
 const log = createLogger('tasks')
 
@@ -46,6 +48,21 @@ const tasksPlugin: BakinPlugin = definePlugin({
   ],
 
   activate(ctx: PluginContext) {
+    // ─── Scheduled domain events (#191) ────────────────────────────────
+    // Waiting (availableAt) and due (dueAt) tasks appear on the Schedule
+    // calendars via the scheduledEvents contract; rescheduleEvent is the one
+    // sanctioned mutation (moves the underlying date).
+    ctx.hooks.register(
+      'tasks.scheduledEvents',
+      (data: ScheduledEventsQuery) => listScheduledTaskEvents(data),
+      { hookKind: 'rpc', label: 'Scheduled task events', summary: 'Waiting/due tasks as read-only calendar events' },
+    )
+    ctx.hooks.register(
+      'tasks.rescheduleEvent',
+      (data: ScheduledEventReschedule) => rescheduleTaskEvent(data),
+      { hookKind: 'rpc', label: 'Reschedule a task event', summary: "Move a task's availableAt/dueAt from the calendar" },
+    )
+
     // ─── Search Content Type Registration ─────────────────────────────
 
     ctx.search.registerContentType({

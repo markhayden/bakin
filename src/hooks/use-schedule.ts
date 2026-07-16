@@ -288,7 +288,12 @@ export function useOccurrences(fromIso: string, toIso: string) {
         const data = JSON.parse(event.data)
         if (
           (data.type === 'activity' && data.message?.includes('Schedule')) ||
-          data.event?.startsWith('schedule.')
+          data.event?.startsWith('schedule.') ||
+          // Task dates feed the domain-event layer; the store broadcasts on
+          // every board write. External providers emit the documented
+          // `<pluginId>.scheduled_events_changed` audit event.
+          data.type === 'taskboard' ||
+          data.event?.endsWith('.scheduled_events_changed')
         ) {
           fetchOccurrences()
         }
