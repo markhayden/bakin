@@ -51,29 +51,34 @@ export function pickRollupTone(item: NavItem, badges: ReadonlyMap<string, NavBad
 }
 
 /**
- * Tone for the dot shown on a collapsed parent icon. The parent's own active
- * badge wins; otherwise it rolls up the children. Null → no dot.
+ * Tone for the dot shown on a collapsed parent icon. Pick the highest
+ * severity across the parent's own active badge and its children. Null → no
+ * dot.
  */
 export function collapsedParentRollupTone(
   item: NavItem,
   parentBadge: NavBadgeData | undefined,
   badges: ReadonlyMap<string, NavBadgeData>,
 ): NavBadgeTone | null {
-  if (badgeIsActive(parentBadge)) return parentBadge.tone ?? 'attention'
-  return pickRollupTone(item, badges)
+  const parentTone = badgeIsActive(parentBadge) ? (parentBadge.tone ?? 'attention') : null
+  const childTone = pickRollupTone(item, badges)
+  if (!parentTone) return childTone
+  if (!childTone) return parentTone
+  return TONE_PRIORITY[parentTone] <= TONE_PRIORITY[childTone] ? parentTone : childTone
 }
 
 /**
  * Aria-label suffix for a collapsed parent. When the dot comes from the
- * parent's own badge we announce its count/tone; when it comes from a child
- * rollup we announce that children need attention — otherwise the icon
- * changes silently for screen-reader users.
+ * parent's own badge we announce its count/tone; when a child provides the
+ * highest severity we announce that children need attention — otherwise the
+ * icon changes silently for screen-reader users.
  */
 export function collapsedParentAriaSuffix(
   parentBadge: NavBadgeData | undefined,
   rollupTone: NavBadgeTone | null,
 ): string {
-  if (badgeIsActive(parentBadge)) return navBadgeAriaSuffix(parentBadge)
   if (!rollupTone) return ''
+  const parentTone = badgeIsActive(parentBadge) ? (parentBadge.tone ?? 'attention') : null
+  if (parentTone === rollupTone) return navBadgeAriaSuffix(parentBadge)
   return `, children ${TONE_LABEL[rollupTone]}`
 }
