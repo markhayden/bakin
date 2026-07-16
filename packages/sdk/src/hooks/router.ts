@@ -29,27 +29,8 @@ interface Router {
 
 interface StringNavigationOptions {
   to: string
-  search: Record<string, unknown>
+  search: Record<string, string>
   hash: string
-}
-
-function parseRouterSearch(query: string): Record<string, unknown> {
-  const search: Record<string, unknown> = Object.create(null)
-  for (const [key, raw] of new URLSearchParams(query)) {
-    let value: unknown = raw
-    try {
-      value = JSON.parse(raw)
-    } catch {
-      // Ordinary strings are already decoded by URLSearchParams.
-    }
-    const previous = search[key]
-    search[key] = previous === undefined
-      ? value
-      : Array.isArray(previous)
-        ? [...previous, value]
-        : [previous, value]
-  }
-  return search
 }
 
 /**
@@ -57,6 +38,10 @@ function parseRouterSearch(query: string): Record<string, unknown> {
  * Passing the whole string as `to` makes typed dynamic routes discard their
  * query string, so the shared string router must preserve those fields
  * explicitly.
+ *
+ * Values pass through as RAW STRINGS — the host router uses plain-string
+ * serializers (packages/host/src/lib/search-params.ts), so nothing here
+ * needs to counteract JSON quoting, and "123"-shaped ids never coerce.
  */
 export function toNavigationOptions(url: string): StringNavigationOptions {
   const hashIndex = url.indexOf('#')
@@ -65,10 +50,8 @@ export function toNavigationOptions(url: string): StringNavigationOptions {
   const queryIndex = beforeHash.indexOf('?')
   const to = queryIndex >= 0 ? beforeHash.slice(0, queryIndex) : beforeHash
   const query = queryIndex >= 0 ? beforeHash.slice(queryIndex + 1) : ''
-  // Use the router's own parser so its matching stringifier preserves native
-  // query semantics. Feeding string "1" or "true" directly to TanStack makes
-  // it JSON-quote the value on the way back out (for example debug=%221%22).
-  const search = parseRouterSearch(query)
+  const search: Record<string, string> = Object.create(null)
+  for (const [key, raw] of new URLSearchParams(query)) search[key] = raw
 
   return { to, search, hash }
 }

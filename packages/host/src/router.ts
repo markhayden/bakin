@@ -6,6 +6,7 @@
  * plan) add more leaves under the root.
  */
 import { createRouter } from '@tanstack/react-router'
+import { parseSearchPlain, stringifySearchPlain } from './lib/search-params'
 import { Route as RootRoute } from './routes/__root'
 import { Route as IndexRoute } from './routes/index'
 import { Route as TasksRoute } from './routes/tasks'
@@ -65,6 +66,10 @@ export const router = createRouter({
   routeTree,
   defaultPreload: 'intent',
   defaultPreloadStaleTime: 0,
+  // Every query value is an opaque string — never JSON-coerced (PR3 3.1;
+  // see packages/host/src/lib/search-params.ts for why).
+  parseSearch: parseSearchPlain,
+  stringifySearch: stringifySearchPlain,
 })
 
 // Register the router instance for type safety across the app.

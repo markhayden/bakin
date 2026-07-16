@@ -1,8 +1,20 @@
 // @vitest-environment jsdom
 
 import { afterEach, describe, expect, it, mock } from 'bun:test'
+import { join } from 'path'
+import { tmpdir } from 'os'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import '../rtl-settle'
+
+// Pure SDK client components — no storage — but the content-dir resolvers
+// are mocked defensively per the repo-wide test isolation rule.
+const testDir = join(tmpdir(), `bakin-test-plugin-link-${Date.now()}`)
+const contentDirMock = () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({ root: testDir, db: join(testDir, 'bakin.db') }),
+})
+mock.module('../../src/core/content-dir', contentDirMock)
+mock.module('../../packages/core/src/content-dir', contentDirMock)
 
 const navigate = mock(() => undefined)
 
@@ -50,21 +62,21 @@ describe('PluginLink', () => {
 })
 
 describe('string router URL parsing', () => {
-  it('uses router-native value types for repeated values, flags, and a hash', () => {
+  it('keeps every value a plain string (PR3 3.1 — no JSON coercion); last duplicate wins', () => {
     expect(toNavigationOptions('/health?agent=main&agent=pixel&debug=1&enabled=true#details')).toEqual({
       to: '/health',
-      search: { agent: ['main', 'pixel'], debug: 1, enabled: true },
+      search: { agent: 'pixel', debug: '1', enabled: 'true' },
       hash: 'details',
     })
   })
 
-  it('keeps numeric and boolean query values unquoted through replace', () => {
+  it('passes flag-like values through replace as strings', () => {
     render(<ReplaceProbe />)
     fireEvent.click(screen.getByRole('button', { name: 'Replace' }))
 
     expect(navigate).toHaveBeenCalledWith({
       to: '/memory',
-      search: { debug: 1, enabled: true },
+      search: { debug: '1', enabled: 'true' },
       hash: '',
       replace: true,
     })
