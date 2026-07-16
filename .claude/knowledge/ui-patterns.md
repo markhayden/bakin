@@ -44,8 +44,8 @@ Cross-cutting UI lessons distilled from the chat/conversation-kit overhaul (2026
   renders the full expanded drawer. Plugins choose only a defined section or
   omit it for Mix-ins—never invent headings or placement behavior.
 - **Nav + search-hit icons resolve through maps.** A manifest `nav[].icon`
-  should exist in app-sidebar's `ICONS`; unknown or omitted nav icons fall
-  back to `Puzzle`. A hit renderer `icon` must exist in the ⌘K overlay's
+  should exist in app-sidebar's `ICONS`; unrecognized nav icons fall back to
+  `Puzzle`. A hit renderer `icon` must exist in the ⌘K overlay's
   `HIT_ICONS` or it renders the generic search-result treatment.
 - **The wait-for-the-agent story.** Any flow that dispatches an agent and
   returns must land the user somewhere that shows the work happening (banner

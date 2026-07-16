@@ -43,7 +43,7 @@ Keep the manifest declarations and the `registerPlugin()` call in sync: Bakin ru
 
 ## Navigation
 
-Navigation items should be stable and specific to the plugin. Use Lucide icon names; an unknown or omitted icon falls back to `Puzzle`. Prefer declaring nav in `bakin-plugin.json` `contributes.nav` (same NavItem shape, JSON) so it renders before your client loads; pass `navItems` to `registerPlugin()` only when nav must be computed at runtime.
+Navigation items should be stable and specific to the plugin. Use a valid Lucide icon name; an unrecognized name falls back to `Puzzle`. Prefer declaring nav in `bakin-plugin.json` `contributes.nav` (same NavItem shape, JSON) so it renders before your client loads; pass `navItems` to `registerPlugin()` only when nav must be computed at runtime.
 
 Choose `plan-and-automate`, `create`, or `operations` for a top-level item's `section`. Omit it for **Mix-ins**. Plugins cannot create headings or join the host-owned Chat/Tasks and utility regions. Official destinations stay first inside defined sections; custom items follow by `order` (default `100`), label, then ID. Children cannot declare a section.
 

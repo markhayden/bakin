@@ -265,9 +265,11 @@ export function Header() {
       {/* Mobile sidebar overlay */}
       {mobileOpen && (
         <div className="fixed inset-0 z-40 md:hidden">
-          <div
+          <button
+            type="button"
             className="absolute inset-0 bg-black/50"
             onClick={() => setMobileOpen(false)}
+            aria-label="Close navigation"
           />
           <div
             id="mobile-navigation-drawer"
