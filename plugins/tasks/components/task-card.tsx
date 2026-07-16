@@ -3,7 +3,7 @@
 import { useEffect, type CSSProperties } from 'react'
 import { useSortable } from '@dnd-kit/react/sortable'
 import { AlertTriangle, Users, X } from 'lucide-react'
-import { AgentAvatar } from "@makinbakin/sdk/components"
+import { AgentAvatar, PluginLink } from "@makinbakin/sdk/components"
 import { STATUS_BADGE_STYLES } from '../constants'
 import { compactDispatchFailureLabel, getLatestDispatchFailure } from '../lib/dispatch-failure'
 import { getTaskAvailableAtMs } from '../lib/scheduled'
@@ -152,8 +152,8 @@ export function TaskCardContent({ task, columnId, className, gateLabel, childTas
       {/* Budget-deferred indicator (cost-control v2): the task is eligible
           but the spend gate is holding it — visibly, never silently. */}
       {budgetHold && (
-        <a
-          href="/models?tab=spend"
+        <PluginLink
+          to="/models?tab=spend"
           onClick={(e) => e.stopPropagation()}
           onPointerDown={(e) => e.stopPropagation()}
           className="flex items-center gap-1.5 mt-1.5 px-2 py-1 rounded-md bg-red-500/10 border border-red-500/20 whitespace-nowrap overflow-hidden hover:bg-red-500/20"
@@ -161,7 +161,7 @@ export function TaskCardContent({ task, columnId, className, gateLabel, childTas
         >
           <span className="text-red-400 text-[11px] font-semibold shrink-0">{budgetHold.label}</span>
           <span className="text-red-400/60 text-[10px] truncate">{budgetHold.detail}</span>
-        </a>
+        </PluginLink>
       )}
 
       {/* Gate approval indicator */}
@@ -221,8 +221,8 @@ export function TaskCardContent({ task, columnId, className, gateLabel, childTas
       {/* Brand-blocked indicator (#419): the task is eligible but its brand
           is missing/draft — visibly deferring, never silently. */}
       {brandHold && (
-        <a
-          href="/brands"
+        <PluginLink
+          to="/brands"
           onClick={(e) => e.stopPropagation()}
           onPointerDown={(e) => e.stopPropagation()}
           className="flex items-center gap-1.5 mt-1.5 px-2 py-1 rounded-md bg-amber-500/10 border border-amber-500/20 whitespace-nowrap overflow-hidden hover:bg-amber-500/20"
@@ -230,7 +230,7 @@ export function TaskCardContent({ task, columnId, className, gateLabel, childTas
         >
           <span className="text-amber-400 text-[11px] font-semibold shrink-0">Brand unavailable</span>
           <span className="text-amber-400/60 text-[10px] truncate">{brandHold.detail}</span>
-        </a>
+        </PluginLink>
       )}
 
       {isFutureScheduled && task.availableAt && (

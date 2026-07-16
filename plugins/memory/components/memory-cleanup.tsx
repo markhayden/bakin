@@ -13,6 +13,7 @@
 import { useState } from 'react'
 import { Search, Send, CheckCircle2, AlertTriangle, Loader2, Lock } from 'lucide-react'
 import { Button, Input, Textarea, Badge, Label, Checkbox } from '@makinbakin/sdk/ui'
+import { PluginLink } from '@makinbakin/sdk/components'
 
 interface CleanupHit {
   rowId: string
@@ -239,7 +240,7 @@ export function MemoryCleanup() {
           <div className="text-sm font-medium">Dispatched {dispatch.dispatched.length} cleanup task(s)</div>
           {dispatch.dispatched.map((d) => (
             <div key={d.agent} className="text-xs text-muted-foreground">
-              {d.agent} → <a className="underline" href="/tasks">task {d.taskId}</a> ({d.hitCount} file(s){d.managedCount ? `, ${d.managedCount} pinned` : ''})
+              {d.agent} → <PluginLink className="underline" to="/tasks">task {d.taskId}</PluginLink> ({d.hitCount} file(s){d.managedCount ? `, ${d.managedCount} pinned` : ''})
             </div>
           ))}
           {dispatch.skipped.map((s) => (

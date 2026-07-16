@@ -1,4 +1,5 @@
 import { SearchX } from 'lucide-react'
+import { PluginLink } from '@makinbakin/sdk/components'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
@@ -29,12 +30,12 @@ export function SearchUnavailable({ retry, className }: SearchUnavailableProps) 
             Retry
           </Button>
         )}
-        <a
-          href="/health"
+        <PluginLink
+          to="/health"
           className="inline-flex h-8 items-center rounded-md px-3 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
         >
           Open health
-        </a>
+        </PluginLink>
       </div>
     </div>
   )
