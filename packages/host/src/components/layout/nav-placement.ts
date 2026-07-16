@@ -33,8 +33,8 @@ const OFFICIAL_ORDER: Readonly<Record<NavSection, readonly string[]>> = {
 }
 
 function compareText(a: string, b: string): number {
-  const normalizedA = a.trim().toLocaleLowerCase()
-  const normalizedB = b.trim().toLocaleLowerCase()
+  const normalizedA = a.trim().toLowerCase()
+  const normalizedB = b.trim().toLowerCase()
   if (normalizedA < normalizedB) return -1
   if (normalizedA > normalizedB) return 1
   return 0
