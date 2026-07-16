@@ -122,7 +122,28 @@ registerPlugin({
 })
 ```
 
-Patterns support exact paths and dynamic segments in `:id`, `[id]`, or `$id` form. Declare every registered pattern in `bakin-plugin.json` `contributes.routes` so direct navigation lazy-loads your client; if a route is visible in navigation, also declare it in `contributes.clientRoutes` for docs generation.
+Patterns support exact paths and dynamic segments in `:id`, `[id]`, or `$id` form. Declare every registered pattern in `bakin-plugin.json` `contributes.routes` so direct navigation lazy-loads your client; if a route is visible in navigation, also declare it in `contributes.clientRoutes` for docs generation. Avoid patterns that collide with Bakin's own pages (`/tasks`, `/chat`, …) — core routes always win, and the shell logs a shadow warning at boot when a plugin pattern can never render.
+
+## Navigating
+
+Internal navigation must stay client-side — a raw `<a href="/…">` or `window.location` assignment reloads the whole shell (and fails Bakin's lint/architecture checks for in-tree plugins). Use:
+
+```tsx
+import { PluginLink } from '@makinbakin/sdk/components'
+import { useRouter } from '@makinbakin/sdk/hooks'
+
+// Links: a real anchor (copy / cmd-click / middle-click all work) that
+// routes primary clicks through the client router.
+<PluginLink to={`/docs-basic/${item.id}`}>{item.name}</PluginLink>
+
+// Programmatic:
+const router = useRouter()
+router.push(`/docs-basic/${item.id}`)          // history entry; scrolls to top
+router.push(url, { scroll: false })            // keep scroll position
+router.replace(`/docs-basic?view=grid`)        // no history entry; keeps scroll
+```
+
+Query values are always plain strings (`?id=123` reads back as `'123'`), and multiple `useQueryState` setter calls in one handler compose into a single navigation.
 
 ## Calling your API routes
 

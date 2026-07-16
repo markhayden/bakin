@@ -27,10 +27,17 @@ State that is transient and not meaningful to bookmark (e.g., open modals, drag 
 ### Query params — for list-level state
 Filters, search, view mode, pagination. These are ephemeral and combinable. Use `useQueryState` / `useQueryArrayState`.
 
-### Path segments — for addressable resources
-Individual items (`/projects/abc123`) and their modes (`/projects/abc123/edit`, `/projects/new`). These are TanStack Router code-based routes under `packages/host/src/routes/` — each route renders `<Slot name="page:/route" />` so the owning plugin can register the page component via `registerPlugin({ slots: { ... } })`. Path-based routing is the target pattern for all plugins.
+### Path segments — for page identity
+Which page you are on: lists, full-page details, creation surfaces. TanStack Router code-based routes under `packages/host/src/routes/` — each route renders `<Slot name="page:/route" />` so the owning plugin registers the page component via `registerPlugin({ slots: { ... } })`.
 
-**Current state:** Projects and Workflows use path segments. Other plugins still use query params (`?taskId=`, `?jobId=`, etc.).
+**The taxonomy (routing overhaul, spec `.claude/specs/routing-overhaul.md` D1 — presentation-based):**
+
+| Shape | Rule | Examples |
+|---|---|---|
+| Path | Page identity: lists, full-page details, creation surfaces | `/chat/$chatId`, `/team/$id`, `/assets/$assetId`, `/brands/$brandId`, `/workflows/$id`, `/chat/new?agent=`, `/workflows/new` |
+| Query | Overlay identity (drawers) + tabs + view state — anything that composes with the page's other state | `?taskId=` `?jobId=` `?recordId=` (drawers, BY DESIGN), `?tab=`, `?view=` `?q=` `?agent=` `?status=` `?sort=` |
+
+Drawers deliberately stay query params: they're overlays over a list that must compose with filters (`/tasks?status=todo&taskId=x`), and closing one is just dropping a param. Chat is fully path-based (`/chat`, `/chat/$chatId`, `/chat/new?agent=<draft agent>` — see `.claude/knowledge/chat-plugin.md`); the retired `?chat=`/`?draft=` shapes are dead, no redirects by decision.
 
 ## Hook: `useQueryState` / `useQueryArrayState`
 
@@ -47,9 +54,12 @@ const [status, setStatus] = useQueryArrayState('status')
 ```
 
 - When value equals the default, the param is **removed** from the URL (clean URLs by default)
-- `setValue` uses `router.replace()` with `scroll: false` — no history spam, no scroll jump
+- `setValue` uses `router.replace()` — no history spam; replace never resets scroll
 - `pushValue` (third return) uses `router.push()` — creates a browser history entry for back-button navigation
 - Array values are comma-separated: `?status=todo,blocked,review`
+- **Setters batch per tick** (PR3): any number of setter calls in one handler compose into ONE navigation (push wins over replace). Calling two setters together is safe.
+- **Query values are plain strings** (PR3): the router never JSON-coerces — `?id=123` stays the string `'123'` on read, and values are never JSON-quoted in the URL (`packages/host/src/lib/search-params.ts`).
+- **Scroll** (PR3): `scrollRestoration` is on (element-level — the shell scrolls an inner div marked `data-scroll-restoration-id`); back/forward restores position. `push` scrolls to top unless `{ scroll: false }`; `replace` always keeps position.
 
 ## Suspense Requirement
 
@@ -83,7 +93,6 @@ registerPlugin({
 | `agent` | string | `main`, `all` | Agent filter (single-select) |
 | `status` | string[] | `todo,blocked` | Status filter (multi-select via FacetFilter) |
 | `type` | string[] | `images,video` | Type filter (multi-select via FacetFilter) |
-| `asset` | string | asset path | Deep-link to open asset detail |
 | `taskId` | string | task id | Deep-link to open task detail drawer |
 | `jobId` | string | job id | Deep-link to open schedule job detail drawer |
 | `recordId` | string | memory rowId (`<tier>:<hash>`) | Deep-link to open memory detail drawer (resolved via `GET /record`) |
@@ -97,26 +106,6 @@ registerPlugin({
 - `all` is the default for single-select filters — omit from URL when active
 - Empty array is default for multi-select — omit from URL when empty
 - Param names should be consistent across plugins (e.g., `q` for search everywhere, `view` for view mode)
-
-## Multi-param updates: never call two setters in one tick
-
-Each `useQueryState`/`useQueryArrayState` setter snapshots the **pre-update**
-search params and calls `router.replace` — two setters in the same handler
-clobber each other (the second nav drops the first's param). And `replace`
-creates no history entry, so browser back can't undo the navigation.
-
-For any interaction that updates multiple params (e.g. the assets folder
-click: `view` + `tags`), build ONE URL and `router.push` it — one atomic
-update, one history entry. Pattern (`VersionedAssetGrid.tsx` `pushParams`):
-
-```tsx
-const params = new URLSearchParams(searchParams.toString())
-// set/delete every param, honoring defaults-omitted
-router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
-```
-
-Rule of thumb: `replace` for filter tweaks within a view; `push` for
-navigation-like transitions the user expects back to undo.
 
 ## FacetFilter Component
 
@@ -168,13 +157,14 @@ Pattern: client-side filtering runs immediately (instant feedback), search fires
 
 | Plugin | URL State | Notes |
 |--------|-----------|-------|
+| Chat | ✅ Done | Path-based: `/chat/$chatId`, `/chat/new?agent=`; list filter `agent` |
 | Tasks | ✅ Done | `view`, `q`, `agent`, `status`, `taskId` (deep link). Edit/create state is component-level (`editing` useState), not URL-driven. |
 | Assets | ✅ Done | `view`, `q`, `type`, `asset`, `page`, `sort`, `dir` |
 | Messaging (Calendar) | ✅ Done | `view`, `q`, `agent`, `status`, `type`, `itemId` (deep link), `mode` (edit) |
 | Messaging (Brainstorm) | ✅ Done | `session` (deep link to planning session), search via parent PluginHeader |
 | Workflows | ✅ Done | `q` on list; path-based `/workflows/[id]` for canvas detail, step drawer via node click |
 | Schedule | ✅ Done | `view`, `q`, `agent`, `jobId` (deep link), `mode` (create/edit/duplicate) |
-| Health | ❌ Pending | |
+| Health | ✅ Done | `tab` (overview/activity/agents/system) |
 | Memory | ✅ Done | `q` (search query), `tier` (multi-select), `agent` (single-select — shared avatar-strip `AgentFilter`), `kind` (multi-select, durable-only), `recordId` (deep link — detail drawer, ⌘K target). Landing page is the search surface — no sub-routes. |
 | Projects | ✅ Done | `status`, `q` on list; path-based `/projects/[id]` and `/projects/[id]/edit` for detail |
-| Models | ❌ Pending | |
+| Models | ✅ Done | `tab` (agents/available/aliases/routing/spend) |
