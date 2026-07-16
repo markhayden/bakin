@@ -25,4 +25,4 @@ Tracks `tasks/plan-routing-overhaul.md`. Check items off as commits land.
 - [x] 3.3 Scroll restoration (scout container first) — `feat(host): scroll restoration`
 - [x] 3.4 NotFound page + catch-all + notFoundComponent + shadow warning — `feat(host): NotFound page + route-shadow warning`
 - [x] 3.5 Docs sweep: taxonomy rewrite, delete clobber rule + stale rows, CLAUDE.md bullet, authoring docs, README check — `docs: routing taxonomy sweep`
-- [ ] CHECKPOINT: suite+lint+tsc green · live pass (multi-param, string params, scroll, 404, tabs) · all spec Success Criteria 1–9 · Mark approves · merge · spec → Shipped
+- [x] CHECKPOINT: merged as PR #695 (2026-07-16) · spec flipped to Shipped · initiative COMPLETE

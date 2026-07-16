@@ -1,6 +1,6 @@
 # Spec: Routing Overhaul (pre-launch)
 
-**Status:** Draft — pending approval
+**Status:** SHIPPED — PR #692 + #693 + #695 merged 2026-07-16; all success criteria met
 **Date:** 2026-07-15
 **Priority:** Tech-debt reduction before launch. Deep links become a public contract at launch; URL shapes must be final before then.
 **Constraints:** Single user, single machine. NO backwards compatibility, NO redirect shims for old URL shapes. Clean and clear over compatible.
