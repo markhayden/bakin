@@ -43,7 +43,9 @@ Keep the manifest declarations and the `registerPlugin()` call in sync: Bakin ru
 
 ## Navigation
 
-Navigation items should be stable and specific to the plugin. Use lucide icon names. Include `order` only when the plugin has a strong placement requirement. Prefer declaring nav in `bakin-plugin.json` `contributes.nav` (same NavItem shape, JSON) so it renders before your client loads; pass `navItems` to `registerPlugin()` only when nav must be computed at runtime.
+Navigation items should be stable and specific to the plugin. Use Lucide icon names; an unknown or omitted icon falls back to `Puzzle`. Prefer declaring nav in `bakin-plugin.json` `contributes.nav` (same NavItem shape, JSON) so it renders before your client loads; pass `navItems` to `registerPlugin()` only when nav must be computed at runtime.
+
+Choose `plan-and-automate`, `create`, or `operations` for a top-level item's `section`. Omit it for **Mix-ins**. Plugins cannot create headings or join the host-owned Chat/Tasks and utility regions. Official destinations stay first inside defined sections; custom items follow by `order` (default `100`), label, then ID. Children cannot declare a section.
 
 <div class="table-light-full table-label">
 
@@ -54,10 +56,13 @@ Navigation items should be stable and specific to the plugin. Use lucide icon na
 | `icon` | Lucide icon name. |
 | `href` | Route path. |
 | `order` | Optional sort order. Defaults to `100`. |
+| `section` | Optional top-level section: `plan-and-automate`, `create`, or `operations`; omitted means Mix-ins. |
 | `children` | Nested nav items. |
 | `badge` | Optional initial badge — runtime values flow through `setNavBadge`. |
 
 </div>
+
+Groups need no special expansion flag. Expanded sidebars render a disclosure button; the collapsed rail exposes every group's children through the same hover, focus, and click flyout. Active groups open automatically, and choosing a child navigates normally.
 
 ## Nav badges
 
@@ -105,8 +110,9 @@ initial seed — runtime values from `setNavBadge` take precedence and are
 what the sidebar reads.
 
 Badges are cleaned up automatically when the owning plugin unregisters
-or hot-reloads. The sidebar renders a presence rollup dot on the
-collapsed parent when any child has a badge.
+or hot-reloads. A closed or collapsed parent renders one presence rollup
+dot using the highest severity across its own badge and all child badges;
+expanded children retain their real counts.
 
 ## Routes
 
