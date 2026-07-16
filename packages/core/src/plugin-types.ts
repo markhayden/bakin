@@ -82,6 +82,8 @@ export type { EventBus } from '@makinbakin/sdk/types'
 // ---------------------------------------------------------------------------
 // Navigation + Routes + UI Slots
 // ---------------------------------------------------------------------------
+export type NavSection = 'plan-and-automate' | 'create' | 'operations'
+
 export interface NavItem {
   id: string
   label: string
@@ -89,7 +91,10 @@ export interface NavItem {
   href: string
   order?: number
   children?: NavItem[]
+  section?: NavSection
+  /** @deprecated Removed after owned navigation groups migrate to the standard disclosure behavior. */
   alwaysExpanded?: boolean
+  /** @deprecated Removed after the owned Explore entry migrates to the shell promotion. */
   placement?: 'bottom'
 }
 

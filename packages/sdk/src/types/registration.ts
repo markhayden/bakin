@@ -24,6 +24,9 @@ export interface NavBadge {
   tone?: NavBadgeTone
 }
 
+/** Host-defined sidebar section a top-level plugin nav item may join. */
+export type NavSection = 'plan-and-automate' | 'create' | 'operations'
+
 /** Sidebar navigation item registered by a plugin via `ctx.registerNav()`. */
 export interface NavItem {
   /** Unique nav item id (used for active-state tracking and badge keying). */
@@ -38,7 +41,9 @@ export interface NavItem {
   order?: number
   /** Optional nested nav items for groups. */
   children?: NavItem[]
-  /** If true, the group cannot be collapsed. */
+  /** Top-level destination. Omit to render under Mix-ins. */
+  section?: NavSection
+  /** @deprecated Removed after owned navigation groups migrate to the standard disclosure behavior. */
   alwaysExpanded?: boolean
   /**
    * Initial badge state. Runtime updates flow through `setNavBadge` — the
@@ -46,11 +51,7 @@ export interface NavItem {
    * Most plugins leave this undefined and set badges purely at runtime.
    */
   badge?: NavBadge
-  /**
-   * Where the item renders in the sidebar. `'bottom'` pins it to the
-   * bottom section above Settings. Omit for the main nav list.
-   * Top-level items only — ignored on children.
-   */
+  /** @deprecated Removed after the owned Explore entry migrates to the shell promotion. */
   placement?: 'bottom'
 }
 
