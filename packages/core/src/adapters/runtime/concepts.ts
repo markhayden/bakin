@@ -1,6 +1,8 @@
-import type { AdapterInitOpts, RuntimeExecToolProvider, Unsubscribe } from '../shared'
+import type { AdapterInitOpts, MessageUsage, RuntimeExecToolProvider, Unsubscribe } from '../shared'
 import type { ActivityClass } from '@makinbakin/sdk/types'
 import type { ChannelCapability } from './capabilities'
+
+export type { MessageUsage } from '../shared'
 
 export type RuntimeMetadata = Record<string, unknown>
 
@@ -161,19 +163,6 @@ export interface MessageArgs extends RuntimeMessageToolPolicy {
  * assistant output text, strict `>`.
  */
 export const DEFAULT_OVERSIZED_OUTPUT_BYTES = 128 * 1024
-
-/** Token usage for one agent turn, when the runtime reports it. */
-export interface MessageUsage {
-  input?: number
-  output?: number
-  total?: number
-  /** Cached-input tokens read (priced far below fresh input when known). */
-  cacheRead?: number
-  /** Cached-input tokens written (cache creation). */
-  cacheWrite?: number
-  /** Resolved model the runtime ran, when known. */
-  model?: string
-}
 
 export interface MessageResult {
   id: string

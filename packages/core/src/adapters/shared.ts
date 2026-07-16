@@ -1,5 +1,4 @@
 import type { ActivityClass } from '@makinbakin/sdk/types'
-import type { MessageUsage } from './runtime/concepts'
 
 export type Unsubscribe = () => void
 
@@ -34,6 +33,19 @@ export interface RuntimeExecToolInvokeResult {
   ok: boolean
   /** Model-facing result text (JSON on success, `ERROR: …` on failure). */
   text: string
+}
+
+/** Token usage for one agent turn, when the runtime reports it. */
+export interface MessageUsage {
+  input?: number
+  output?: number
+  total?: number
+  /** Cached-input tokens read (priced far below fresh input when known). */
+  cacheRead?: number
+  /** Cached-input tokens written (cache creation). */
+  cacheWrite?: number
+  /** Resolved model the runtime ran, when known. */
+  model?: string
 }
 
 /**
