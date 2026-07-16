@@ -13,12 +13,12 @@ import {
 import { useMemo } from 'react'
 
 /**
- * `NavigateOptions` accepts `{ scroll?: boolean }` for call-site
- * readability; TanStack preserves scroll by default, so the flag is
- * accepted-and-ignored.
+ * `{ scroll?: boolean }` maps to TanStack's `resetScroll` (PR3 3.3):
+ * `push` scrolls to top unless `scroll: false`; `replace` is a state tweak
+ * (filters, drawers) and always keeps the scroll position.
  */
 interface Router {
-  push: (url: string, _opts?: { scroll?: boolean }) => void
+  push: (url: string, opts?: { scroll?: boolean }) => void
   replace: (url: string, _opts?: { scroll?: boolean }) => void
   back: () => void
   forward: () => void
@@ -64,11 +64,14 @@ export function toNavigationOptions(url: string): StringNavigationOptions {
 export function useRouter(): Router {
   const navigate = useNavigate()
   return useMemo<Router>(() => ({
-    push: (url) => {
-      navigate(toNavigationOptions(url) as any)
+    push: (url, opts) => {
+      navigate({
+        ...toNavigationOptions(url),
+        ...(opts?.scroll === false ? { resetScroll: false } : {}),
+      } as any)
     },
     replace: (url) => {
-      navigate({ ...toNavigationOptions(url), replace: true } as any)
+      navigate({ ...toNavigationOptions(url), replace: true, resetScroll: false } as any)
     },
     back: () => {
       if (typeof window !== 'undefined') window.history.back()

@@ -70,6 +70,10 @@ export const router = createRouter({
   // see packages/host/src/lib/search-params.ts for why).
   parseSearch: parseSearchPlain,
   stringifySearch: stringifySearchPlain,
+  // Back/forward restores scroll (PR3 3.3). The shell scrolls in an inner
+  // div, not the window — layout-shell marks it with
+  // data-scroll-restoration-id so the cache tracks it by selector.
+  scrollRestoration: true,
 })
 
 // Register the router instance for type safety across the app.

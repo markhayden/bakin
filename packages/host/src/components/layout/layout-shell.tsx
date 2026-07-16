@@ -44,9 +44,11 @@ export function LayoutShell({
           collapsed ? 'md:left-[52px]' : 'md:left-52'
         }`}
       >
-        {/* Main content — fills remaining space */}
+        {/* Main content — fills remaining space. The inner div is the app's
+            real scroll container; the id attribute opts it into TanStack's
+            element-level scroll restoration (router scrollRestoration: true). */}
         <main className="flex-1 min-w-0 overflow-hidden">
-          <div className="h-full overflow-y-auto flex flex-col">{children}</div>
+          <div data-scroll-restoration-id="bakin-main" className="h-full overflow-y-auto flex flex-col">{children}</div>
         </main>
 
         {/* Activity feed panel — fixed width column */}

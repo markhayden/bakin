@@ -79,6 +79,8 @@ describe('string router URL parsing', () => {
       search: { debug: '1', enabled: 'true' },
       hash: '',
       replace: true,
+      // replace = state tweak: never resets scroll (PR3 3.3)
+      resetScroll: false,
     })
   })
 
