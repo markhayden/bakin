@@ -80,6 +80,8 @@ export type {
   RuntimeImageProvider,
   RuntimeImageProviderCapabilities,
   RuntimeImagesAccess,
+  RuntimeExtensionInfo,
+  RuntimeExtensionsAccess,
   RuntimeMemoryEntry,
   RuntimeMemoryEntryStat,
   RuntimeMemoryPathMatch,

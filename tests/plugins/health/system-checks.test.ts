@@ -1057,10 +1057,10 @@ describe('plugin registration', () => {
     }
     await healthPlugin.activate(ctx as unknown as Parameters<typeof healthPlugin.activate>[0])
 
-    expect(registeredIds).toHaveLength(21)
+    expect(registeredIds).toHaveLength(22)
     expect(registeredIds).not.toContain('search-outbox')
     expect(registeredIds).toEqual(expect.arrayContaining([
-      'content-dir', 'capabilities', 'service', 'runtime', 'session-store',
+      'content-dir', 'capabilities', 'github-readiness', 'service', 'runtime', 'session-store',
       'channel-approvals', 'channel-aliases', 'restart-recovery', 'execution-safety',
       'context.startup-size', 'budget', 'usage.agent-burn', 'search',
       'search-consistency', 'search-spin', 'search-canary', 'search-engine-burn',

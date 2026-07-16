@@ -12,7 +12,7 @@
  * Anything else is an honest per-leg `missing` with a remediation string —
  * never a silent failure.
  */
-import { existsSync, readFileSync } from 'fs'
+import { existsSync, readFileSync, statSync } from 'fs'
 import { join } from 'path'
 import { readLockfile } from '../../../packages/core/src/agent-packages/lockfile'
 import { safeParseManifest, type SkillPackManifest } from '../../../packages/core/src/agent-packages/manifest'
@@ -22,6 +22,7 @@ import { getContentDir, getBakinPaths } from '@/core/content-dir'
 import { createAppServices, maybeGetAppServices } from '@/core/app-services'
 import { createLogger } from '@/core/logger'
 import { binPlatformKey } from './bin-installer'
+import { modelDest, npmPayloadDir } from './requirements-installer'
 
 const log = createLogger('capability-readiness')
 
@@ -43,14 +44,41 @@ export interface CapabilitySecretStatus {
   status: 'env' | 'store' | 'missing'
 }
 
+export interface CapabilityNpmStatus {
+  name: string
+  status: 'ok' | 'missing'
+}
+
+export interface CapabilityModelStatus {
+  name: string
+  /** Declared size — UIs surface it so a giant download is never a surprise. */
+  bytes: number
+  status: 'ok' | 'missing'
+}
+
+export interface CapabilityPrereqStatus {
+  name: string
+  kind: 'binary' | 'app'
+  help: string
+  optional: boolean
+  status: 'ok' | 'missing'
+}
+
 export interface CapabilityReadiness {
   capability: string
   packageId: string
   version: string
   name: string
+  /** What this capability adds/unlocks — the pack manifest's description. */
+  description: string
   skills: CapabilitySkillStatus[]
   bins: CapabilityBinStatus[]
+  npm: CapabilityNpmStatus[]
+  models: CapabilityModelStatus[]
+  prereqs: CapabilityPrereqStatus[]
   secrets: CapabilitySecretStatus[]
+  /** False when the pack declares `platforms` and this box isn't one of them. */
+  platformSupported: boolean
   ready: boolean
   /** Human remediation lines for every non-ok leg (empty when ready). */
   missing: string[]
@@ -112,6 +140,41 @@ export async function listCapabilities(): Promise<CapabilityReadiness[]> {
       if (!present) missing.push(`binary "${bin.name}" is missing — reinstall: bakin packages install ${id}`)
     }
 
+    const npm: CapabilityNpmStatus[] = []
+    for (const req of manifest.requires?.npm ?? []) {
+      const payload = npmPayloadDir(id, req.name)
+      const present = existsSync(payload)
+        && (Object.keys(req.dependencies).length === 0 || existsSync(join(payload, 'node_modules')))
+      npm.push({ name: req.name, status: present ? 'ok' : 'missing' })
+      if (!present) missing.push(`npm payload "${req.name}" is not installed — run: bakin packages sync ${key}`)
+    }
+
+    const models: CapabilityModelStatus[] = []
+    for (const req of manifest.requires?.models ?? []) {
+      const dest = modelDest(req.dest)
+      const present = existsSync(dest) && statSync(dest).size === req.bytes
+      models.push({ name: req.name, bytes: req.bytes, status: present ? 'ok' : 'missing' })
+      if (!present) missing.push(`model "${req.name}" (${Math.round(req.bytes / 1e6)} MB) is missing — run: bakin packages sync ${key}`)
+    }
+
+    const prereqs: CapabilityPrereqStatus[] = []
+    for (const req of manifest.requires?.prereqs ?? []) {
+      // The repo's hand-rolled Bun namespace omits `which` — cast (findSystemBun precedent).
+      const bunWhich = (Bun as unknown as { which: (bin: string) => string | null }).which
+      const present = req.kind === 'binary'
+        ? Boolean(bunWhich(req.probe))
+        : existsSync(req.probe)
+      prereqs.push({ name: req.name, kind: req.kind, help: req.help, optional: req.optional, status: present ? 'ok' : 'missing' })
+      // Prereqs are user-installed, never Bakin-installed — remediation is the
+      // help link. Optional prereqs surface as a leg but never block ready.
+      if (!present && !req.optional) missing.push(`${req.name} is not installed — get it: ${req.help}`)
+    }
+
+    const platformSupported = !manifest.platforms || (platform !== null && manifest.platforms.includes(platform))
+    if (!platformSupported) {
+      missing.push(`not available on this platform — needs ${manifest.platforms!.join(' or ')}`)
+    }
+
     const secrets: CapabilitySecretStatus[] = []
     for (const secret of manifest.secrets ?? []) {
       let status: CapabilitySecretStatus['status'] = 'missing'
@@ -132,9 +195,14 @@ export async function listCapabilities(): Promise<CapabilityReadiness[]> {
       packageId: id,
       version: entry.version,
       name: manifest.name,
+      description: manifest.description ?? '',
       skills,
       bins,
+      npm,
+      models,
+      prereqs,
       secrets,
+      platformSupported,
       ready: missing.length === 0,
       missing,
     })

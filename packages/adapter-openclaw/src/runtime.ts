@@ -48,7 +48,7 @@ import {
   verifyBakinMcpEntries,
   type BakinMcpConfig,
 } from './tool-access-provisioning'
-import { listConfiguredChannels, listLlmCredentials, listLlmCredentialsViaCli } from './credential-status'
+import { listConfiguredChannels, listLlmCredentials, listLlmCredentialsViaCli, type LlmCredential } from './credential-status'
 import { applyRoutingPolicy, readRoutingPolicy, setAgentModels } from './model-routing'
 import { beginAdapterTurnActivity, RuntimeError, RuntimeTurnError } from '@bakin/core/adapters/runtime'
 import { tryGetMainAgentId } from './main-agent'
@@ -1081,16 +1081,25 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
    * credentials". Never secrets.
    */
   credentialStatus = async (opts?: { agentId?: string }): Promise<RuntimeCredentialStatus> => {
-    let llmCredentials = listLlmCredentials(opts?.agentId)
-    if (llmCredentials.length === 0) {
-      try {
-        llmCredentials = await listLlmCredentialsViaCli((args) => this.exec(args), opts?.agentId)
-      } catch (err) {
-        this.logger.warn('OpenClaw auth-profile CLI probe failed; reporting no LLM providers', {
-          error: String(err),
-        })
+    // MERGE the JSON store with the CLI probe rather than only-CLI-when-empty:
+    // the two sources can each hold providers the other misses (a plugin
+    // provider like codex may surface only through `models auth list`, while a
+    // partially-populated auth-profiles.json would otherwise suppress the CLI
+    // read and hide it — the #615 false "no provider" warning). Union, dedup
+    // by provider (JSON wins the kind on collision — it's the richer record).
+    const jsonCreds = listLlmCredentials(opts?.agentId)
+    let cliCreds: LlmCredential[] = []
+    try {
+      cliCreds = await listLlmCredentialsViaCli((args) => this.exec(args), opts?.agentId)
+    } catch (err) {
+      // Only a hard failure with NOTHING from JSON is worth surfacing.
+      if (jsonCreds.length === 0) {
+        this.logger.warn('OpenClaw auth-profile CLI probe failed; reporting no LLM providers', { error: String(err) })
       }
     }
+    const byProvider = new Map<string, LlmCredential>()
+    for (const c of [...cliCreds, ...jsonCreds]) byProvider.set(c.provider, c)
+    const llmCredentials = [...byProvider.values()]
     return {
       llmProviders: llmCredentials.map((entry) => entry.provider),
       llmCredentials,
@@ -1252,10 +1261,20 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     },
     generate: async (input: RuntimeImageGenerateInput): Promise<RuntimeImageGenerationResult> => {
       // Native `infer image generate` has no file input, so a generate carrying
-      // reference images is served by the edit-style invocation (#418). The shim
-      // can't do references — the plugin rejects that combination upstream.
+      // reference images is served by the edit-style invocation (#418). When the
+      // native side can't serve the route, the shared shim takes the references
+      // as input images (WS3) — a keyed direct provider no longer dead-ends.
       if (input.referenceImages?.length) {
         const editInput: RuntimeImageEditInput = { ...input, files: input.referenceImages }
+        if (await this.canServeImageNatively(input)) {
+          return tagRuntimeServed(await this.runImageInference('edit', editInput))
+        }
+        const refProvider = input.provider
+        if (refProvider && isDirectImageProvider(refProvider)) {
+          const shimmed = await this.generateImageViaShim(input, input.referenceImages)
+          if (shimmed) return shimmed
+        }
+        // Last resort: the runtime may serve a model it didn't enumerate.
         return tagRuntimeServed(await this.runImageInference('edit', editInput))
       }
       if (await this.canServeImageNatively(input)) {
@@ -1274,6 +1293,15 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       return tagRuntimeServed(await this.runImageInference('generate', input))
     },
     edit: async (input: RuntimeImageEditInput): Promise<RuntimeImageGenerationResult> => {
+      // Native-first; a keyed direct provider the native side can't serve
+      // edits through the shared shim (input images, WS3).
+      if (!(await this.canServeImageNatively(input))) {
+        const provider = input.provider
+        if (provider && isDirectImageProvider(provider)) {
+          const shimmed = await this.generateImageViaShim(input, input.files)
+          if (shimmed) return shimmed
+        }
+      }
       return tagRuntimeServed(await this.runImageInference('edit', input))
     },
   }
@@ -1322,7 +1350,10 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     return models.includes(input.model)
   }
 
-  private async generateImageViaShim(input: RuntimeImageGenerateInput): Promise<RuntimeImageGenerationResult | null> {
+  private async generateImageViaShim(
+    input: RuntimeImageGenerateInput,
+    inputImages: string[] = [],
+  ): Promise<RuntimeImageGenerationResult | null> {
     const provider = input.provider
     if (!provider || !isDirectImageProvider(provider)) return null
     const resolved = resolveProviderApiKeySource(provider)
@@ -1345,6 +1376,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       ...(input.background !== undefined ? { background: input.background } : {}),
       ...(input.outputFormat !== undefined ? { outputFormat: input.outputFormat } : {}),
       ...(input.size !== undefined ? { size: input.size } : {}),
+      ...(inputImages.length > 0 ? { inputImages } : {}),
     })
     return {
       images: [{

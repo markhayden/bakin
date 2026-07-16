@@ -396,4 +396,43 @@ describe('schedule/jobs-reader', () => {
       expect(jobs[0].enabled).toBe(false)
     })
   })
+  describe('one-shot merged view', () => {
+    it('an unfired future one-shot: not completed, nextRun is its instant', async () => {
+      const AT = '2030-01-15T16:00:00.000Z'
+      writeSidecarFile({
+        version: 1,
+        jobs: { once: makeMeta({ jobId: 'once', schedule: { kind: 'at', expr: AT } }) },
+      })
+      const jobs = await readMergedJobs(cronReader([]), defaultOwner)
+      expect(jobs[0].schedule.type).toBe('at')
+      expect(jobs[0].completed).toBe(false)
+      expect(jobs[0].nextRun).toBe(AT)
+      expect(jobs[0].humanSchedule).toContain('Once')
+    })
+
+    it('a fired one-shot reads completed: disabled, completedAt set, no nextRun', async () => {
+      const AT = '2026-06-07T15:00:00.000Z'
+      writeSidecarFile({
+        version: 1,
+        jobs: {
+          once: makeMeta({ jobId: 'once', schedule: { kind: 'at', expr: AT }, enabled: false, completedAt: AT }),
+        },
+      })
+      const jobs = await readMergedJobs(cronReader([]), defaultOwner)
+      expect(jobs[0].completed).toBe(true)
+      expect(jobs[0].completedAt).toBe(AT)
+      expect(jobs[0].enabled).toBe(false)
+      expect(jobs[0].nextRun).toBeUndefined()
+    })
+
+    it('a cron job is never completed', async () => {
+      writeSidecarFile({
+        version: 1,
+        jobs: { daily: makeMeta({ jobId: 'daily', schedule: { kind: 'cron', expr: '0 9 * * *' } }) },
+      })
+      const jobs = await readMergedJobs(cronReader([]), defaultOwner)
+      expect(jobs[0].completed).toBe(false)
+      expect(jobs[0].nextRun).toBeDefined()
+    })
+  })
 })

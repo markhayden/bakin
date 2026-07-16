@@ -12,7 +12,7 @@
  * or filesystem coupling. Production wiring lives in the plugin entry (T4).
  * Catch-up of fires missed during downtime is handled separately (T6).
  */
-import { occurrencesBetween, prevRun } from './cron-eval'
+import { scheduleOccurrencesBetween, schedulePrevRun } from './cron-eval'
 import type { BakinJobMeta } from '../types'
 
 /** Default window scanned each tick. Must exceed the tick interval so no
@@ -59,7 +59,7 @@ export async function runSchedulerTick(deps: SchedulerDeps): Promise<void> {
 
   for (const meta of deps.listJobs()) {
     if (!isFireable(meta)) continue
-    const occurrences = occurrencesBetween(meta.schedule!.expr, meta.tz, from, to)
+    const occurrences = scheduleOccurrencesBetween(meta.schedule!, meta.tz, from, to)
     for (const occurrence of occurrences) {
       const runId = makeOccurrenceRunId(meta.jobId, occurrence)
       // Cheap pre-filter — the claim below is the authoritative dedup.
@@ -91,7 +91,7 @@ export async function runStartupCatchUp(deps: SchedulerDeps, catchUpWindowMs: nu
   const nowMs = deps.now()
   for (const meta of deps.listJobs()) {
     if (!isFireable(meta)) continue
-    const occurrence = prevRun(meta.schedule!.expr, meta.tz, new Date(nowMs))
+    const occurrence = schedulePrevRun(meta.schedule!, meta.tz, new Date(nowMs))
     if (!occurrence) continue
     // Don't fire an occurrence that predates the schedule's creation — a newly
     // created job has no "missed" runs from before it existed.

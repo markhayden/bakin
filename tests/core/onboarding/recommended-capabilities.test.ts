@@ -54,6 +54,14 @@ mock.module('../../../src/core/curated-catalog/load', () => ({
         trust: 'official', builtin: false, defaultSelected: true, ref: null, runtimes: ['*'],
         source: 'github:markhayden/plain-skills',
       },
+      {
+        // À-la-carte capability pack (NOT defaultSelected) — storefront
+        // inventory; must never flip the setup check to missing.
+        id: 'transcribe', kind: 'skill-pack', name: 'Audio Transcription', description: 'x',
+        category: 'capability', tags: [], useCases: [], dependencies: [], screenshots: [],
+        trust: 'official', builtin: false, defaultSelected: false, ref: null, runtimes: ['*'],
+        capability: 'transcribe', source: 'github:markhayden/bakin-bits-official#packs/transcribe',
+      },
     ],
   }),
 }))
@@ -80,6 +88,14 @@ describe('capabilities onboarding component', () => {
     const result = await recommendedCapabilitiesComponent.check()
     expect(result.status).toBe('missing')
     expect(result.remediation).toContain('BRAVE_SEARCH_API_KEY')
+  })
+
+  it('uninstalled à-la-carte packs never flip the check to missing', async () => {
+    lockPackages = { 'web-search-brave@1.0.0': { kind: 'skill-pack', version: '1.0.0' } }
+    readiness = [{ capability: 'web-search', packageId: 'web-search-brave', ready: true, missing: [] }]
+    const result = await recommendedCapabilitiesComponent.check()
+    expect(result.status).toBe('ok')
+    expect(result.message).toContain('more available in Explore')
   })
 
   it('is ok when installed and ready', async () => {

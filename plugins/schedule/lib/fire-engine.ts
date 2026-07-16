@@ -303,6 +303,13 @@ export async function runClaimedFire(
   }
 
   meta.lastTaskId = taskId
+  // A one-shot's single occurrence is now consumed (even a blocked catch-up
+  // materialized a task) — auto-disable + stamp completedAt so the job reads
+  // "completed" instead of pretending a next run exists. Run history stays.
+  if (meta.schedule?.kind === 'at') {
+    meta.enabled = false
+    meta.completedAt = new Date(opts.firedAtMs ?? Date.now()).toISOString()
+  }
   attachCronTask(jobId, runId, taskId)
   upsertJob(meta)
 

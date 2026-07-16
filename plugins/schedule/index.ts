@@ -7,7 +7,7 @@ import { definePlugin } from '@bakin/core/routing'
 import { readMergedJobs } from './lib/jobs-reader'
 import { readSidecar, resumeDuePauses } from './lib/sidecar'
 import { runStartupCatchUp } from './lib/scheduler'
-import { checkScheduleCutover, scheduleCutoverRepair } from './lib/health-checks'
+import { checkScheduleCutover, scheduleCutoverRepair, checkScheduleSync, scheduleSyncRepair } from './lib/health-checks'
 import { setPluginCtx, getPluginCtx } from './lib/plugin-context'
 import {
   MISSED_WINDOW_REASON,
@@ -30,9 +30,11 @@ import {
   readMergedRuntimeJobs,
   jobToSearchDoc,
 } from './lib/job-service'
+import { adoptCronJobs, type AdoptCronJobsInput } from './lib/cron-adoption'
 import { registerScheduleExecTools } from './lib/exec-tools'
 import { scheduleRoutes } from './lib/routes/jobs'
 import { createLogger } from '../../src/core/logger'
+import { getContentDir } from '../../src/core/content-dir'
 import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 
 const log = createLogger('schedule')
@@ -69,6 +71,12 @@ const schedulePlugin: BakinPlugin = definePlugin({
       hookKind: 'rpc',
       label: 'Ensure Bakin schedule',
       summary: 'Create or update a Bakin-managed runtime cron job and return the provider job id.',
+    })
+
+    ctx.hooks.register('schedule.adoptCronJobs', (data: unknown) => adoptCronJobs(ctx, data as AdoptCronJobsInput), {
+      hookKind: 'rpc',
+      label: 'Adopt runtime cron jobs',
+      summary: 'Adopt snapshotted runtime cron jobs into Bakin schedules during a runtime switch (opt-in, idempotent per job id).',
     })
 
     // ─── Search Content Type Registration ─────────────────────────────
@@ -126,17 +134,42 @@ const schedulePlugin: BakinPlugin = definePlugin({
 
     // Doctor check + repair surfacing any schedule whose cutover didn't complete
     // (e.g. the runtime unreachable at boot) — the end-user migration command.
+    const scheduleGroup = { key: 'schedules', label: 'Schedules' }
     ctx.registerHealthRepairAction(scheduleCutoverRepair(runScheduleCutover))
     ctx.registerHealthCheck({
       id: 'schedule-cutover',
       name: 'Bakin schedules cut over from runtime cron',
       description: 'Checks that Bakin-owned schedules no longer retain duplicate runtime cron fire paths.',
-      group: { key: 'schedules', label: 'Schedules' },
+      group: scheduleGroup,
       maxAgeMs: 2 * 60_000,
       run: async () => checkScheduleCutover(
         ctx.runtime.cron,
         () => Object.values(readSidecar().jobs).filter(j => j.isBakinJob).map(j => j.jobId),
         ctx.runtime.name,
+      ),
+    })
+
+    // Orphan native crons: runtime cron jobs invisible to Bakin's sidecar
+    // (e.g. created by an agent directly in the runtime). Detection is
+    // read-only and the repair only records requireTriage sidecar entries —
+    // it NEVER writes runtime cron state, so it cannot reintroduce the
+    // pre-#473 double-fire the legacy sync check was removed for.
+    const syncCron = ctx.runtime.cron
+    const syncContentDir = getContentDir()
+    if (syncCron) {
+      ctx.registerHealthRepairAction(
+        scheduleSyncRepair(syncContentDir, syncCron, () => getRuntimeMainAgentId(ctx.runtime)),
+      )
+    }
+    ctx.registerHealthCheck({
+      id: 'schedule-sync',
+      name: 'Runtime cron jobs tracked in Bakin sidecar',
+      description: 'Checks that native runtime cron jobs are visible in Bakin schedule ownership and marked for triage when needed.',
+      group: scheduleGroup,
+      maxAgeMs: 2 * 60_000,
+      run: async () => checkScheduleSync(
+        syncContentDir,
+        syncCron,
       ),
     })
 

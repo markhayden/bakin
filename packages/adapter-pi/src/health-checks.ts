@@ -12,12 +12,14 @@ import type {
   HealthCheckRegistrationInput,
   HealthCheckRunInput,
   JsonObject,
+  WatchIncidentInput,
 } from '@bakin/core/plugin-types'
 
 import { listAuthProviders } from './config'
-import { getPiAgentsRoot, getPiHome, getPiPath, getPiRegistryPath } from './home'
+import { getPiAgentsRoot, getPiHome, getPiRegistryPath } from './home'
 import { getModelRegistry } from './models'
 import { readRegistry } from './registry'
+import { createExtensionsSurface } from './extensions'
 
 const RUNTIME_GROUP = { key: 'runtime', label: 'Runtime' } as const
 
@@ -40,13 +42,37 @@ function observedError(
   }
 }
 
-function installationIncident(resourcePath: string): ActionIncidentInput {
+function observedWarning(
+  key: string,
+  summary: string,
+  incident: ActionIncidentInput,
+  evidence?: JsonObject,
+): HealthCheckRunInput {
+  return {
+    outcome: 'observed',
+    observations: [{ key, status: 'warning', summary, evidence, incident }],
+  }
+}
+
+function observedUnknown(
+  key: string,
+  summary: string,
+  incident: WatchIncidentInput,
+  detail?: string,
+): HealthCheckRunInput {
+  return {
+    outcome: 'observed',
+    observations: [{ key, status: 'unknown', summary, detail, incident }],
+  }
+}
+
+function installationIncident(resourceId: 'pi.home' | 'pi.agents-root', resourceLabel: string): ActionIncidentInput {
   return {
     key: 'installation',
     disposition: 'action_required',
     title: 'Pi runtime files are unavailable',
     impact: 'Pi cannot load or create Bakin agent workspaces until its runtime directories are available.',
-    resources: [{ kind: 'directory', id: resourcePath, label: resourcePath }],
+    resources: [{ kind: 'directory', id: resourceId, label: resourceLabel }],
     resolution: {
       key: 'initialize-pi',
       type: 'instructions',
@@ -68,7 +94,7 @@ function providerConfigurationIncident(): ActionIncidentInput {
     title: 'Pi has no usable model provider',
     impact: 'Pi cannot serve agent turns until at least one authenticated model is available.',
     resources: [
-      { kind: 'file', id: getPiPath('agent', 'auth.json'), label: 'Pi provider authentication' },
+      { kind: 'file', id: 'pi.auth', label: 'Pi provider authentication' },
       { kind: 'capability', id: 'runtime.models', label: 'Runtime models' },
     ],
     resolution: {
@@ -85,8 +111,10 @@ function providerConfigurationIncident(): ActionIncidentInput {
   }
 }
 
-/** Four independent Pi signals registered by the application composition root. */
-export function createPiHealthChecks(): HealthCheckRegistrationInput[] {
+/** Independent Pi signals registered by the application composition root. */
+export function createPiHealthChecks(
+  getSettings: () => Record<string, unknown> | undefined,
+): HealthCheckRegistrationInput[] {
   return [
     {
       id: 'home',
@@ -99,7 +127,7 @@ export function createPiHealthChecks(): HealthCheckRegistrationInput[] {
           return observedError(
             'home',
             `Pi home is missing at ${home}.`,
-            installationIncident(home),
+            installationIncident('pi.home', 'Pi home'),
           )
         }
 
@@ -120,7 +148,7 @@ export function createPiHealthChecks(): HealthCheckRegistrationInput[] {
               disposition: 'action_required',
               title: 'Pi agent registry is unreadable',
               impact: 'Bakin cannot safely resolve the Pi agent roster or its workspaces.',
-              resources: [{ kind: 'file', id: getPiRegistryPath(), label: 'Pi agent registry' }],
+              resources: [{ kind: 'file', id: 'pi.registry', label: 'Pi agent registry' }],
               resolution: {
                 key: 'repair-registry',
                 type: 'instructions',
@@ -155,7 +183,7 @@ export function createPiHealthChecks(): HealthCheckRegistrationInput[] {
           return observedError(
             'agents-root',
             `The Pi agent workspace root is not writable at ${root}.`,
-            installationIncident(root),
+            installationIncident('pi.agents-root', 'Pi agent workspace root'),
             err instanceof Error ? err.message : String(err),
           )
         }
@@ -215,7 +243,7 @@ export function createPiHealthChecks(): HealthCheckRegistrationInput[] {
               title: 'Pi model registry failed',
               impact: 'Bakin cannot determine which Pi models are available for agent turns.',
               resources: [
-                { kind: 'file', id: getPiPath('agent', 'models.json'), label: 'Pi model configuration' },
+                { kind: 'file', id: 'pi.models', label: 'Pi model configuration' },
                 { kind: 'capability', id: 'runtime.models', label: 'Runtime models' },
               ],
               resolution: {
@@ -231,6 +259,68 @@ export function createPiHealthChecks(): HealthCheckRegistrationInput[] {
               },
             },
             detail,
+          )
+        }
+      },
+    },
+    {
+      id: 'extensions',
+      name: 'Pi extension trust',
+      description: 'Verifies that installed Pi extensions follow the active trust policy and highlights approvals still awaiting review.',
+      group: RUNTIME_GROUP,
+      run: async () => {
+        try {
+          const extensions = await createExtensionsSurface(getSettings).list()
+          const pending = extensions.filter((extension) => extension.status === 'pending')
+          const evidence = {
+            installedExtensions: extensions.length,
+            allowedExtensions: extensions.filter((extension) => extension.status === 'allowed').length,
+            blockedExtensions: extensions.filter((extension) => extension.status === 'blocked').length,
+            pendingExtensions: pending.length,
+          }
+          if (pending.length === 0) {
+            return observedHealthy(
+              'extensions',
+              extensions.length === 0
+                ? 'No Pi extensions are installed.'
+                : `${extensions.length} Pi extension${extensions.length === 1 ? ' is' : 's are'} governed by the active trust policy with no approvals pending.`,
+              evidence,
+            )
+          }
+          return observedWarning(
+            'extensions',
+            `${pending.length} Pi extension${pending.length === 1 ? ' is' : 's are'} installed but will not load until approved.`,
+            {
+              key: 'extension-approval',
+              disposition: 'action_required',
+              title: 'Pi extensions are awaiting approval',
+              impact: 'Pending extension code remains disabled until an operator reviews and approves it.',
+              resources: [{ kind: 'capability', id: 'runtime.extensions', label: 'Pi extension trust' }],
+              resolution: {
+                key: 'review-extensions',
+                type: 'navigate',
+                label: 'Review Pi extensions',
+                href: '/runtime?tab=runtimes',
+              },
+            },
+            {
+              ...evidence,
+              pendingLabels: pending.slice(0, 20).map((extension) => extension.label),
+            },
+          )
+        } catch (err) {
+          return observedUnknown(
+            'extensions',
+            'Pi extension trust could not be verified.',
+            {
+              key: 'extension-discovery',
+              disposition: 'watch',
+              title: 'Pi extension discovery is unavailable',
+              impact: 'Bakin cannot confirm which Pi extensions are installed or awaiting approval.',
+              resources: [{ kind: 'capability', id: 'runtime.extensions', label: 'Pi extension trust' }],
+              resolution: { key: 'rerun', type: 'rerun', label: 'Rerun Health checks' },
+            },
+            err instanceof Error ? err.message : String(err),
           )
         }
       },

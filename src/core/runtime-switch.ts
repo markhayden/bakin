@@ -39,6 +39,7 @@ import { reconcileRoster, type RosterCarryReport } from './roster-reconcile'
 import { getSettings, updateSettings } from './settings'
 import { snapshotAgentContent, carryAgentContent, previewWorkspaceCarry, type AgentContentSnapshot, type WorkspaceCarryReport } from './workspace-carry'
 import { snapshotSourceCapabilities, buildCantCarryReport, type CantCarryLine, type SourceCapabilitySnapshot } from './switch-report'
+import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 
 const log = createLogger('runtime-switch')
 
@@ -55,6 +56,7 @@ export const RuntimeSwitchRequestSchema = z
     target: z.string().min(1),
     dryRun: z.boolean().optional(),
     copyWorkspaces: z.boolean().optional(),
+    adoptCron: z.boolean().optional(),
   })
   .strict()
 
@@ -67,6 +69,7 @@ export type SwitchPhase =
   | 'initialize'
   | 'provision'
   | 'reconcile-roster'
+  | 'adopt-cron'
   | 'carry-workspaces'
   | 'sync-agents'
   | 'validate-capabilities'
@@ -91,6 +94,8 @@ export interface RuntimeSwitchResult {
   sync: { drifted: boolean; findings: number; syncedAgents: number } | null
   capabilities: CapabilitySet | null
   toolAccess: ToolAccessProvisioningStatus | null
+  /** Opt-in cron adoption outcome (null when not requested / nothing to adopt). */
+  cron: { adopted: string[]; skipped: string[]; failed: Array<{ jobId: string; error: string }> } | null
   /** What stays behind, honestly (capability diff + counts; null when the phase didn't run). */
   cantCarry: CantCarryLine[] | null
   /** The TARGET's credential presence — a carried roster with no provider auth dispatches nothing. */
@@ -119,6 +124,69 @@ export interface SwitchRuntimeOptions {
    * constructed as a read-only secondary instance and shut down after.
    */
   dryRun?: boolean
+  /**
+   * Adopt the source runtime's native cron jobs into Bakin schedules
+   * (schedule plugin hook, idempotent per job id). Opt-in — never automatic;
+   * dry runs preview the would-adopt list.
+   */
+  adoptCron?: boolean
+}
+
+type CronAdoptionResult = NonNullable<RuntimeSwitchResult['cron']>
+
+/**
+ * Hand snapshotted source cron jobs to the schedule plugin's adoption hook.
+ * Absent hook (schedule plugin inactive) and empty snapshots are honest
+ * skips; failures never abort the switch — the flip already happened.
+ */
+async function runCronAdoption(
+  provider: string,
+  sourceCapabilities: SourceCapabilitySnapshot | null,
+  dryRun: boolean,
+  emit: (event: SwitchProgressEvent) => void,
+): Promise<CronAdoptionResult | null> {
+  const jobs = sourceCapabilities?.cronJobs ?? []
+  if (jobs.length === 0) {
+    emit({ phase: 'adopt-cron', status: 'skip', detail: sourceCapabilities?.hasCron ? 'no runtime cron jobs in the source snapshot' : 'source runtime has no cron surface' })
+    return null
+  }
+  try {
+    const outcome = await getHookRegistry().invoke<CronAdoptionResult>('schedule.adoptCronJobs', {
+      provider,
+      jobs,
+      dryRun,
+    })
+    if (!outcome) {
+      emit({ phase: 'adopt-cron', status: 'error', detail: 'schedule plugin hook unavailable — jobs NOT adopted (adopt individually from the Schedule page)' })
+      return { adopted: [], skipped: [], failed: jobs.map((j) => ({ jobId: j.job.id, error: 'schedule.adoptCronJobs hook unavailable' })) }
+    }
+    emit({
+      phase: 'adopt-cron',
+      status: 'ok',
+      detail: `${dryRun ? 'would adopt' : 'adopted'} ${outcome.adopted.length}, already Bakin ${outcome.skipped.length}, failed ${outcome.failed.length}`,
+    })
+    return outcome
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    emit({ phase: 'adopt-cron', status: 'error', detail: message })
+    return { adopted: [], skipped: [], failed: jobs.map((j) => ({ jobId: j.job.id, error: message })) }
+  }
+}
+
+/** Fold the adoption outcome into the cron can't-carry line, honestly. */
+function adjustCantCarryForAdoption(lines: CantCarryLine[], cron: CronAdoptionResult | null, dryRun: boolean): CantCarryLine[] {
+  if (!cron || cron.adopted.length === 0) return lines
+  return lines.map((line) => {
+    if (line.concern !== 'cron') return line
+    const verb = dryRun ? 'would be adopted' : 'adopted'
+    const remaining = (line.count ?? cron.adopted.length + cron.failed.length) - cron.adopted.length - cron.skipped.length
+    return {
+      ...line,
+      detail: remaining > 0
+        ? `${cron.adopted.length} runtime cron job(s) ${verb} into Bakin schedules; ${remaining} stay(s) behind`
+        : `runtime cron jobs ${verb} into Bakin schedules — nothing stays behind`,
+    }
+  })
 }
 
 function isRuntimeAdapterName(value: string): value is RuntimeAdapterName {
@@ -163,6 +231,7 @@ export async function switchRuntime(
     roster: null,
     workspaces: null,
     sync: null,
+    cron: null,
     capabilities: null,
     toolAccess: null,
     cantCarry: null,
@@ -279,7 +348,7 @@ export async function switchRuntime(
     const copyWorkspaces = opts.copyWorkspaces !== false
     try {
       // Optional-surface presence + counts must be read pre-teardown too.
-      sourceCapabilities = await snapshotSourceCapabilities(oldRuntime)
+      sourceCapabilities = await snapshotSourceCapabilities(oldRuntime, { captureCronJobs: opts.adoptCron === true })
       sourceRoster = await oldRuntime.agents.list()
       // Workspace content must be captured NOW — the source runtime is torn
       // down before the target exists (snapshotAgentContent degrades read
@@ -358,6 +427,14 @@ export async function switchRuntime(
       detail: `carried ${result.roster.carried.length}, existing ${result.roster.existing.length}, unmapped models ${result.roster.unmappedModels.length}, failed ${result.roster.failed.length}`,
     })
 
+    // ── adopt source cron jobs into Bakin schedules (opt-in) ─────────────
+    emit({ phase: 'adopt-cron', status: 'start' })
+    if (!opts.adoptCron) {
+      emit({ phase: 'adopt-cron', status: 'skip', detail: 'not requested (--adopt-cron)' })
+    } else {
+      result.cron = await runCronAdoption(from, sourceCapabilities, false, emit)
+    }
+
     // ── workspace content carry (switch-created agents only) ─────────────
     emit({ phase: 'carry-workspaces', status: 'start' })
     if (!copyWorkspaces) {
@@ -398,7 +475,7 @@ export async function switchRuntime(
     result.capabilities = await newRuntime.capabilities()
     result.toolAccess = await newRuntime.verifyToolAccess()
     if (sourceCapabilities) {
-      result.cantCarry = buildCantCarryReport(sourceCapabilities, newRuntime)
+      result.cantCarry = adjustCantCarryForAdoption(buildCantCarryReport(sourceCapabilities, newRuntime), result.cron, false)
     }
     try {
       result.credentials = await newRuntime.credentialStatus()
@@ -467,7 +544,7 @@ async function dryRunSwitch(
   let contentSnapshot: AgentContentSnapshot | null = null
   let sourceCapabilities: SourceCapabilitySnapshot | null = null
   try {
-    sourceCapabilities = await snapshotSourceCapabilities(source)
+    sourceCapabilities = await snapshotSourceCapabilities(source, { captureCronJobs: opts.adoptCron === true })
     sourceRoster = await source.agents.list()
     if (copyWorkspaces && sourceRoster.length > 0) {
       contentSnapshot = await snapshotAgentContent(source, sourceRoster)
@@ -489,6 +566,13 @@ async function dryRunSwitch(
       status: 'ok',
       detail: `would carry ${result.roster.carried.length}, existing ${result.roster.existing.length}, unmapped models ${result.roster.unmappedModels.length}`,
     })
+
+    emit({ phase: 'adopt-cron', status: 'start' })
+    if (!opts.adoptCron) {
+      emit({ phase: 'adopt-cron', status: 'skip', detail: 'not requested (--adopt-cron)' })
+    } else {
+      result.cron = await runCronAdoption(result.from, sourceCapabilities, true, emit)
+    }
 
     emit({ phase: 'carry-workspaces', status: 'start' })
     if (!copyWorkspaces) {
@@ -513,7 +597,7 @@ async function dryRunSwitch(
     emit({ phase: 'validate-capabilities', status: 'start' })
     result.capabilities = await targetRuntime.capabilities()
     if (sourceCapabilities) {
-      result.cantCarry = buildCantCarryReport(sourceCapabilities, targetRuntime)
+      result.cantCarry = adjustCantCarryForAdoption(buildCantCarryReport(sourceCapabilities, targetRuntime), result.cron, true)
     }
     try {
       result.credentials = await targetRuntime.credentialStatus()

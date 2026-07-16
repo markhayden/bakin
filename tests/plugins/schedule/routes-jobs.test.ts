@@ -92,19 +92,19 @@ mock.module('../../../src/core/task-service', () => ({
 }))
 
 // Mock plugin-registry (hook registry used by bridge — not under test here but must be present)
+// Fixture scheduled-events providers for the occurrences fan-in tests.
+const hookProviders: Record<string, (data: unknown) => Promise<unknown>> = {}
+const fixtureHookRegistry = () => ({
+  invoke: mock(async (name: string, data: unknown) => hookProviders[name]?.(data)),
+  register: mock(() => () => {}),
+  has: mock((name: string) => name in hookProviders),
+  getRegisteredHooks: () => Object.keys(hookProviders),
+})
 mock.module('../../../src/core/plugin-registry', () => ({
-  getHookRegistry: () => ({
-    invoke: mock(async () => undefined),
-    register: mock(() => () => {}),
-    has: mock(() => false),
-  }),
+  getHookRegistry: fixtureHookRegistry,
 }))
 mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
-  getHookRegistry: () => ({
-    invoke: mock(async () => undefined),
-    register: mock(() => () => {}),
-    has: mock(() => false),
-  }),
+  getHookRegistry: fixtureHookRegistry,
 }))
 
 // Mock runtime cron and jobs-reader — routes exercise adapter calls while
@@ -247,7 +247,8 @@ describe('schedule routes', () => {
       expect(status).toBe(200)
       expect(body.ok).toBe(true)
       expect(body.jobId).toMatch(/^sch_/)
-      expect(body.cron).toBe('0 9 * * *')
+      expect(body.kind).toBe('cron')
+      expect(body.expr).toBe('0 9 * * *')
       expect(body.human).toBe('Every day at 9am')
       expect(body.tz).toBeDefined()
 
@@ -266,6 +267,29 @@ describe('schedule routes', () => {
       // Verify audit
       expect(plugin.ctx.activity.audit).toHaveBeenCalled()
       expect(plugin.ctx.activity.log).toHaveBeenCalled()
+    })
+
+    it('creates a one-shot job from an ISO instant (kind at)', async () => {
+      const route = findRoute(plugin.routes, 'POST', '/')!
+      const future = '2099-01-15T16:00:00.000Z'
+      const { status, body } = await callRoute(route, plugin.ctx, {
+        body: { name: 'One-shot reminder', schedule: future, agentId: 'chef', taskPrompt: 'Remind me' },
+      })
+      expect(status).toBe(200)
+      expect(body.ok).toBe(true)
+      expect(body.kind).toBe('at')
+      expect(body.expr).toBe(future)
+      const meta = getJob(body.jobId as string)
+      expect(meta!.schedule).toEqual({ kind: 'at', expr: future })
+    })
+
+    it('rejects a one-shot whose instant is in the past', async () => {
+      const route = findRoute(plugin.routes, 'POST', '/')!
+      const { status, body } = await callRoute(route, plugin.ctx, {
+        body: { name: 'Too late', schedule: '2020-01-01T00:00:00.000Z', agentId: 'chef', taskPrompt: 'Nope' },
+      })
+      expect(status).toBe(400)
+      expect(String(body.error)).toMatch(/in the past/i)
     })
 
     it('creates a team-assigned job (#189)', async () => {
@@ -992,6 +1016,105 @@ describe('schedule routes', () => {
   })
 
   // -----------------------------------------------------------------------
+  // GET /occurrences — server-computed calendar feed
+  // -----------------------------------------------------------------------
+  describe('GET /occurrences', () => {
+    it('returns kind-aware, tz-correct occurrences for the range', async () => {
+      harness.mockMergedJobs.push(makeMergedJob({
+        id: 'occ-daily',
+        schedule: { type: 'cron', value: '0 9 * * *', tz: 'America/Denver' },
+        createdAt: '2026-01-01T00:00:00Z',
+      }))
+      const route = findRoute(plugin.routes, 'GET', '/occurrences')!
+      expect(route).toBeDefined()
+      const { status, body } = await callRoute(route, plugin.ctx, {
+        searchParams: { from: '2026-06-08T00:00:00Z', to: '2026-06-10T00:00:00Z' },
+      })
+      expect(status).toBe(200)
+      const items = body.occurrences as Array<{ jobId: string; at: string; past: boolean }>
+      expect(items.map(i => i.at)).toEqual(['2026-06-08T15:00:00.000Z', '2026-06-09T15:00:00.000Z'])
+      expect(items.every(i => i.jobId === 'occ-daily')).toBe(true)
+      expect(items.every(i => i.past)).toBe(true) // range is in the past relative to real now
+      expect(body.unevaluated).toEqual([])
+    })
+
+    it('rejects a missing/invalid range', async () => {
+      const route = findRoute(plugin.routes, 'GET', '/occurrences')!
+      const bad = await callRoute(route, plugin.ctx, { searchParams: { from: 'nope', to: '2026-06-10T00:00:00Z' } })
+      expect(bad.status).toBe(400)
+      const inverted = await callRoute(route, plugin.ctx, {
+        searchParams: { from: '2026-06-10T00:00:00Z', to: '2026-06-08T00:00:00Z' },
+      })
+      expect(inverted.status).toBe(400)
+    })
+
+    it('fans in plugin-contributed domain events with per-provider fault isolation', async () => {
+      hookProviders['tasks.scheduledEvents'] = async () => [{
+        id: 'evt-1', pluginId: 'tasks', title: 'Waiting task', kind: 'task-scheduled',
+        startsAt: '2026-06-09T15:00:00.000Z', url: '/tasks?taskId=t1', reschedulable: true,
+      }]
+      hookProviders['broken.scheduledEvents'] = async () => { throw new Error('boom') }
+      try {
+        const route = findRoute(plugin.routes, 'GET', '/occurrences')!
+        const { status, body } = await callRoute(route, plugin.ctx, {
+          searchParams: { from: '2026-06-08T00:00:00Z', to: '2026-06-10T00:00:00Z' },
+        })
+        expect(status).toBe(200)
+        const events = body.events as Array<{ id: string; pluginId: string }>
+        expect(events.map(e => e.id)).toEqual(['evt-1'])
+        expect(body.droppedProviders).toEqual(['broken'])
+      } finally {
+        delete hookProviders['tasks.scheduledEvents']
+        delete hookProviders['broken.scheduledEvents']
+      }
+    })
+
+    it('reschedules a domain event through the owner hook and surfaces rejections', async () => {
+      const calls: unknown[] = []
+      hookProviders['tasks.rescheduleEvent'] = async (data) => { calls.push(data); return { ok: true } }
+      hookProviders['grumpy.rescheduleEvent'] = async () => ({ ok: false, error: 'not movable' })
+      try {
+        const route = findRoute(plugin.routes, 'POST', '/events/reschedule')!
+        expect(route).toBeDefined()
+
+        const ok = await callRoute(route, plugin.ctx, {
+          body: { pluginId: 'tasks', eventId: 't-1:scheduled', to: '2026-07-04T15:00:00.000Z' },
+        })
+        expect(ok.status).toBe(200)
+        expect(calls).toEqual([{ eventId: 't-1:scheduled', to: '2026-07-04T15:00:00.000Z' }])
+
+        const rejected = await callRoute(route, plugin.ctx, {
+          body: { pluginId: 'grumpy', eventId: 'e1', to: '2026-07-04T15:00:00.000Z' },
+        })
+        expect(rejected.status).toBe(400)
+        expect(String(rejected.body.error)).toContain('not movable')
+
+        const unsupported = await callRoute(route, plugin.ctx, {
+          body: { pluginId: 'ghost', eventId: 'e1', to: '2026-07-04T15:00:00.000Z' },
+        })
+        expect(unsupported.status).toBe(404)
+
+        const badDate = await callRoute(route, plugin.ctx, {
+          body: { pluginId: 'tasks', eventId: 'e1', to: 'someday' },
+        })
+        expect(badDate.status).toBe(400)
+      } finally {
+        delete hookProviders['tasks.rescheduleEvent']
+        delete hookProviders['grumpy.rescheduleEvent']
+      }
+    })
+
+    it('rejects a range beyond the 62-day cap', async () => {
+      const route = findRoute(plugin.routes, 'GET', '/occurrences')!
+      const { status, body } = await callRoute(route, plugin.ctx, {
+        searchParams: { from: '2026-01-01T00:00:00Z', to: '2026-06-01T00:00:00Z' },
+      })
+      expect(status).toBe(400)
+      expect(String(body.error)).toMatch(/range too large/i)
+    })
+  })
+
+  // -----------------------------------------------------------------------
   // POST /parse — parse schedule expression
   // -----------------------------------------------------------------------
   describe('POST /parse', () => {
@@ -1004,7 +1127,8 @@ describe('schedule routes', () => {
       })
 
       expect(status).toBe(200)
-      expect(body.cron).toBe('0 9 * * *')
+      expect(body.kind).toBe('cron')
+      expect(body.expr).toBe('0 9 * * *')
       expect(body.human).toBe('Every day at 9am')
     })
 
@@ -1015,7 +1139,7 @@ describe('schedule routes', () => {
       })
 
       expect(status).toBe(200)
-      expect(body.cron).toBe('*/15 * * * *')
+      expect(body.expr).toBe('*/15 * * * *')
     })
 
     it('returns 400 when input is missing', async () => {

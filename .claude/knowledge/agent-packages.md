@@ -376,3 +376,15 @@ Agent packages now live outside the Bakin core repo:
 ## Companion future work (issues)
 
 - **#157** — V2 dispatch-time lesson retrieval. Implemented for installed agent-package lessons via `agent-lessons` search + lockfile filtering. Remaining follow-up: doctor/analytics reporting for indexed lessons that are never retrieved.
+
+## Capability packs (pi-parity, 2026-07-13)
+
+Skill-packs may declare `capability` (slug), `runtimes` (default `['*']`),
+`requires.bins[]` (pinned sha256-verified per-platform downloads →
+`~/.bakin/bin`), and enforced `secrets[]` (`secretSlot` + `help` drive the
+guided key step and boot env injection). Install resolves bare catalog
+names server-side; readiness is ONE engine
+(`src/core/agent-packages/capability-readiness.ts`) behind REST, doctor,
+`bakin check capabilities`, and the runtime hub. Full doc:
+`.claude/knowledge/capability-packs.md` — including the plugin vs pack vs
+agent taxonomy (coupling + composition rules) that keeps the lanes clean.

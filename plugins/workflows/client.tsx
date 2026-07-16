@@ -23,6 +23,7 @@ import { MapWorkflowNode } from './components/nodes/map-workflow-node'
 import { CreateTaskNode } from './components/nodes/create-task-node'
 import { SubflowGroupNode } from './components/nodes/subflow-group-node'
 import { WorkflowsPage } from './components/workflows-page'
+import { ApprovalsBadgeProvider } from './components/approvals-badge-provider'
 import { WorkflowDetail } from './components/workflow-detail'
 import { WorkflowCanvasEditor } from './components/workflow-canvas-editor'
 import {
@@ -49,6 +50,7 @@ registerPlugin({
   },
   id: 'workflows',
   slots: {
+    'nav-badge-providers': ApprovalsBadgeProvider,
     'page:/workflows': WorkflowsPage,
     'page:/workflows/[id]': WorkflowDetail,
     // WorkflowCanvasEditor handles both /new and /[id]/edit — the wrapper

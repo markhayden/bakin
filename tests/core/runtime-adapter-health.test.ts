@@ -4,15 +4,16 @@ import { createRuntimeAdapterHealthChecks } from '../../src/core/runtime-adapter
 
 describe('runtime adapter health composition', () => {
   test('exposes Pi probes separately from the runtime contract', () => {
-    expect(createRuntimeAdapterHealthChecks('pi').map((check) => check.id)).toEqual([
+    expect(createRuntimeAdapterHealthChecks('pi', () => undefined).map((check) => check.id)).toEqual([
       'home',
       'agents-root',
       'auth',
       'models',
+      'extensions',
     ])
   })
 
   test('does not recreate duplicate OpenClaw probes', () => {
-    expect(createRuntimeAdapterHealthChecks('openclaw')).toEqual([])
+    expect(createRuntimeAdapterHealthChecks('openclaw', () => undefined)).toEqual([])
   })
 })

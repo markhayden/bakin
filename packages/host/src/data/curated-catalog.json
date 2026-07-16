@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "updatedAt": "2026-07-13T00:00:00Z",
+  "updatedAt": "2026-07-14T05:00:00Z",
   "entries": [
     {
       "id": "pixel",
@@ -412,7 +412,7 @@
       "kind": "skill-pack",
       "name": "Web Search (Brave)",
       "emoji": "🔎",
-      "description": "Give your agents real web search — token-efficient research, docs lookup, and fresh information via the Brave Search API. Bakin installs the CLI and walks you through the free API key.",
+      "description": "Lets your agents search the web — fresh information, documentation, and news, read straight from the page and cited back to their sources. No browser required.",
       "category": "Research",
       "tags": [
         "capability",
@@ -432,6 +432,87 @@
         "*"
       ],
       "defaultSelected": true,
+      "screenshots": []
+    },
+    {
+      "id": "youtube-transcript",
+      "kind": "skill-pack",
+      "name": "YouTube Transcripts",
+      "emoji": "📺",
+      "description": "Lets your agents read YouTube videos — pull the transcript of any captioned video for notes, summaries, and research. No audio processing, no API key.",
+      "category": "Research",
+      "tags": [
+        "capability",
+        "research",
+        "video"
+      ],
+      "useCases": [
+        "Summarize talks and tutorials from a link",
+        "Pull quotes and timestamps from a video",
+        "Research topics covered in video form"
+      ],
+      "source": "github:markhayden/bakin-bits-official#packs/youtube-transcript",
+      "ref": null,
+      "trust": "official",
+      "capability": "youtube-transcript",
+      "runtimes": [
+        "*"
+      ],
+      "defaultSelected": false,
+      "screenshots": []
+    },
+    {
+      "id": "transcribe",
+      "kind": "skill-pack",
+      "name": "Audio Transcription",
+      "emoji": "🎙️",
+      "description": "Lets your agents turn audio and video files into text — meetings, voice memos, recordings — fully local, no API key, nothing leaves the box.",
+      "category": "Productivity",
+      "tags": [
+        "capability",
+        "audio",
+        "transcription"
+      ],
+      "useCases": [
+        "Transcribe a meeting recording and pull action items",
+        "Turn voice memos into notes",
+        "Make audio/video content searchable"
+      ],
+      "source": "github:markhayden/bakin-bits-official#packs/transcribe",
+      "ref": null,
+      "trust": "official",
+      "capability": "transcribe",
+      "runtimes": [
+        "*"
+      ],
+      "defaultSelected": false,
+      "screenshots": []
+    },
+    {
+      "id": "browser-tools",
+      "kind": "skill-pack",
+      "name": "Browser Tools",
+      "emoji": "🌐",
+      "description": "Lets your agents drive a real Chrome browser — open pages, read what actually renders, run JavaScript, take screenshots, and extract article text.",
+      "category": "Research",
+      "tags": [
+        "capability",
+        "browser",
+        "automation"
+      ],
+      "useCases": [
+        "Read JS-heavy pages that plain fetching can't see",
+        "Screenshot a page to verify what it renders",
+        "Extract clean article text from cluttered sites"
+      ],
+      "source": "github:markhayden/bakin-bits-official#packs/browser-tools",
+      "ref": null,
+      "trust": "official",
+      "capability": "browser",
+      "runtimes": [
+        "*"
+      ],
+      "defaultSelected": false,
       "screenshots": []
     }
   ]

@@ -35,10 +35,13 @@ export function createRuntimeAdapter(name: RuntimeAdapterName): AgentRuntimeAdap
  * Canonical Health registrations are composed beside an adapter, never
  * exposed as methods on the runtime contract itself.
  */
-export function createRuntimeAdapterHealthChecks(name: RuntimeAdapterName): HealthCheckRegistrationInput[] {
+export function createRuntimeAdapterHealthChecks(
+  name: RuntimeAdapterName,
+  getRuntimeSettings: () => Record<string, unknown> | undefined,
+): HealthCheckRegistrationInput[] {
   switch (name) {
     case 'pi':
-      return createPiHealthChecks()
+      return createPiHealthChecks(getRuntimeSettings)
     case 'openclaw':
       return []
     default:

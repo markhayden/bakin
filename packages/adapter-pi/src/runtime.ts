@@ -16,10 +16,11 @@ import { createAgentsSurface } from './agents'
 import { listAuthCredentials } from './config'
 import { MAIN_AGENT_ID, seedMainAgentIfEmpty } from './main-agent'
 import { createMemorySurface } from './memory'
-import { createMessagingSurface } from './messaging'
+import { createMessagingSurface, enforcePiOffline } from './messaging'
 import { capabilitiesForModel, createModelsSurface, resetModelRegistry } from './models'
 import { readRegistry } from './registry'
 import { createImagesSurface } from './images'
+import { createExtensionsSurface } from './extensions'
 import { codexImageAuth } from './codex-images'
 import { resolveProviderApiKeySource } from '@bakin/core/media'
 import { createSessionsSurface } from './sessions'
@@ -46,6 +47,13 @@ export class PiRuntimeAdapter implements AgentRuntimeAdapter {
    */
   async initialize(opts: AdapterInitOpts): Promise<void> {
     this.initOpts = opts
+    // A Bakin agent turn (and its provisioning) must NEVER install a Pi
+    // package — the SDK resolver would run npm/git install side effects
+    // (postinstall = arbitrary code) for any configured-but-missing package,
+    // bypassing the extension allowlist entirely. Force the resolver offline
+    // for the whole adapter lifecycle; installing packages is a deliberate
+    // terminal act, never a side effect of serving a turn.
+    enforcePiOffline()
   }
 
   async shutdown(): Promise<void> {}
@@ -158,6 +166,15 @@ export class PiRuntimeAdapter implements AgentRuntimeAdapter {
     return capabilitiesForModel(main?.model)
   }
 
+  /**
+   * Adapter-private settings, LIVE when the host provides the getter
+   * (getLiveSettings — settings edits apply next turn, no restart), else the
+   * boot snapshot / factory options (tests, thin callers).
+   */
+  private settingsNow(): Record<string, unknown> | undefined {
+    return this.initOpts?.getLiveSettings?.() ?? this.initOpts?.settings ?? this.options.settings
+  }
+
   agents: AgentRuntimeAdapter['agents'] = createAgentsSurface()
 
   messaging: AgentRuntimeAdapter['messaging'] = createMessagingSurface({
@@ -165,7 +182,8 @@ export class PiRuntimeAdapter implements AgentRuntimeAdapter {
     getLogger: () => this.initOpts?.logger,
     getToolActivity: () => this.initOpts?.onToolActivity,
     getTurnActivity: () => this.initOpts?.onTurnActivity,
-    getSettings: () => this.initOpts?.settings ?? this.options.settings,
+    // Live: extension policy + retry knobs apply on the NEXT TURN.
+    getSettings: () => this.settingsNow(),
   })
 
 
@@ -183,6 +201,14 @@ export class PiRuntimeAdapter implements AgentRuntimeAdapter {
       this._images = createImagesSurface({ carrierModel: imagesSettings?.carrierModel })
     }
     return this._images
+  }
+
+  /**
+   * Extension trust surface (WS4): inert discovery of what the resource
+   * loader would load, statused by the SAME policy the loader applies.
+   */
+  get extensions(): AgentRuntimeAdapter['extensions'] {
+    return createExtensionsSurface(() => this.settingsNow())
   }
 
   // channels/cron are OMITTED (P2.1): Pi has no delivery layer and no

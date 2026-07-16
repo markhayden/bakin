@@ -23,7 +23,8 @@ Pi is a minimal single-session coding harness — it has no agent roster, channe
 | `models.ts` | Pi `ModelRegistry` → `provider/id` catalog; `capabilities()` from model input modalities |
 | `config.ts` | `<pi-home>/agent/settings.json` + onboarding raw-key synthesis (authProfiles presence-only, `channels` → `{}`) |
 | `skills.ts` | Pi-native skill dirs: global `agent/skills/` + per-agent `<workspace>/.pi/skills/` |
-| `images.ts` | route: codex-native primary, direct-provider shim fallback for explicit keyed routes |
+| `images.ts` | route: codex-native primary; explicit keyed routes (openai/google) ride the shared shim with full generate/edit/multi-ref support (WS3) |
+| `extensions.ts` | INERT extension discovery (dir entries + settings.json packages) statused by the SAME policy the loader applies; the trust surface behind `runtime.extensions` (WS4) |
 | `codex-images.ts` | the codex image wire: OAuth token via Pi's ModelRegistry (refresh SDK-owned), account-id from the JWT claim, SSE `image_generation_call` → temp file; carrier model gpt-5.5 (settings-overridable via images.carrierModel) |
 | `health-checks.ts` | Doctor: pi home/registry, agents-root writable, auth providers, models available |
 
@@ -37,6 +38,7 @@ Pi is a minimal single-session coding harness — it has no agent roster, channe
 - Pi's own env override is `PI_CODING_AGENT_DIR` (NOT `PI_HOME`) — irrelevant here because the adapter passes explicit paths to every constructor.
 - Pi session JSONL **matches Bakin's session-usage parser contract 1:1** (`{type:'session'}` header; `{type:'message'}` with `message.usage.totalTokens` + `cost.total`) — the `pi-session-jsonl` tier serves raw file content and usage.db populates with zero core changes.
 - Pi's inner auto-retry (3 attempts, exponential) is tunable via `settings.runtime.settings.retry` (`{ enabled, maxRetries, baseDelayMs }`) — Bakin's dispatch owns the outer ladder; tests disable it.
+- **Auto-compaction is ON by default** (SDK settings default; long tasks compact, not die). The per-turn construction is `createTurnSettingsManager` (messaging.ts, exported) and `tests/adapter-pi/session-settings.test.ts` PINS the enabled default — an SDK flip fails the pin and forces an explicit override.
 
 ## Core seams added for Pi (adapter-neutral, OpenClaw unaffected)
 
@@ -48,10 +50,12 @@ Pi is a minimal single-session coding harness — it has no agent roster, channe
 
 | Surface | Behavior on Pi |
 |---|---|
-| channels | `list() → []`; sends/approvals throw typed `runtime_failed` ("not supported by the pi runtime"); the Chat plugin is the conversational surface |
-| cron | omitted entirely (optional contract member — consumers feature-detect; Bakin-owned task scheduling unaffected) |
-| images | **FULLY SUPPORTED, ZERO KEYS** (`images.ts` + `codex-images.ts`): the existing openai-codex OAuth drives the ChatGPT backend's hosted `image_generation` tool (gpt-image-2) — generation AND edits with input images (both probed live 2026-07-07). `providers()` reports `openai-codex` configured → plugin routes `servedBy: 'runtime'`. Explicit `provider: openai/google` routes still ride the shared direct-provider shim with a Bakin key (generate-only fallback). Caveats: the hosted tool takes no size params (`sizingHonored: false` — plugin probes real dims, exports own geometry); the endpoint is reverse-engineered (`chatgpt.com/backend-api/codex/responses`), so failures classify typed and the shim remains the keyed escape hatch |
+| channels | `list() → []`; sends/approvals throw typed `runtime_failed` ("not supported by the pi runtime"); the Chat plugin is the conversational surface. Pending workflow gates are NEVER silent: the workflows nav badge + toast/OS notification (`nav-badge-providers` slot) deliver approval attention in-app on every runtime |
+| cron | omitted entirely (optional contract member — consumers feature-detect). Agents self-schedule via `bakin_exec_schedule_*` (Bakin-owned scheduler); a switch OFF a cron-bearing runtime can adopt its native jobs into Bakin schedules (`--adopt-cron`, opt-in) |
+| images | **FULLY SUPPORTED, ZERO KEYS** (`images.ts` + `codex-images.ts`): the existing openai-codex OAuth drives the ChatGPT backend's hosted `image_generation` tool (gpt-image-2) — generation AND edits with input images (probed live 2026-07-07; full create/edit/multi-ref battery re-verified 2026-07-14, pi-ecosystem WS3). `providers()` reports `openai-codex` configured → plugin routes `servedBy: 'runtime'`. Explicit `provider: openai/google` routes ride the shared direct-provider shim with a Bakin key — since WS3 the shim takes input images too (OpenAI `/v1/images/edits` multipart, Gemini inline_data parts), so the keyed lane has FULL parity: generate, edit, multi-reference. `providers()` advertises the keyed rows (model ids mirror the plugin catalog) so the routing engine routes to them; the plugin's reference gate accepts `servedBy: 'shim'`. Caveats: the hosted tool takes no size params (`sizingHonored: false` — plugin probes real dims, exports own geometry); the endpoint is reverse-engineered (`chatgpt.com/backend-api/codex/responses`), so failures classify typed and the shim remains the keyed escape hatch |
 | media / createThread / editMessage | members genuinely absent — callers skip |
+| per-agent subagent models | `routingSupport().perAgentSubagentModel` stays FALSE (Pi has no native subagents) — but a switch onto Pi PRESERVES carried values in agent metadata (`carriedSubagentModel`, reconciler-owned) and restores them on the switch back; report line "preserved (not active on pi)" |
+| web search / browser / per-turn capabilities | capability packs (skill-packs) via agent-packages — see `.claude/knowledge/capability-packs.md`; Bakin ships no tool wrappers |
 
 Fast-follows on record: Discord bridge (reuse existing bot token), in-app approval channel.
 
@@ -79,3 +83,59 @@ Flip: `~/.bakin/settings.json` → `"runtime": { "adapter": "pi" }` → restart 
 ## Dev loop (rig)
 
 `bun run instance up --runtime pi && bun run instance dev --runtime pi` — Pi in-process on the host against a throwaway `PI_HOME` under `dev/pi-home` (state isolation; agent tools execute on this Mac inside dev-scoped workspaces), real HMR, no docker. `--mode sandbox --runtime pi` runs Bakin+Pi fully in-container (execution sandboxing). The rig drives the TUI `/login` at `up` and seeds `routing.defaultModel` from auth.json + the SDK's `defaultModelPerProvider`. A ChatGPT `/login` alone unlocks codex image gen/edit in the rig. Deep reference: `.claude/knowledge/dev-rig.md`.
+
+## Extension trust lane (pi-ecosystem WS4)
+
+- **Default flipped `all` → `allowlist` (empty)**: terminal-installed
+  extensions are discovered but INERT until approved — extensions run
+  unsandboxed in the server process, so loading is a trust decision.
+  Policy knob: `settings.runtime.settings.piExtensions { mode, allow }`.
+- **TRUE pre-load gate.** `extensionsOverride` is a POST-load filter — the SDK
+  jiti-imports every enabled extension BEFORE it runs, so a "pending"
+  extension's module code would execute (only its tools hidden). Instead:
+  `noExtensions: true` suppresses the settings-discovered set entirely and
+  ONLY approved absolute paths come back through `additionalExtensionPaths`.
+  Unapproved code is never imported. Pinned by a sentinel-writing fixture
+  extension (tests/integration/pi/extensions.test.ts) that fails if the
+  post-load filter ever returns.
+- **Trust identity is (real module path, content hash)** — names/basenames
+  collide across sources, symlinks can be repointed, and files can be
+  overwritten after approval, so approving pins the resolved path AND the
+  exact bytes. A swapped/repointed file reverts to pending (re-approve). No
+  pattern matching anywhere; the CLI resolves a human name to its unique path.
+- **Known residuals (accepted, single-user box; #670 follow-up if it goes multi-tenant):**
+  (a) *Import-time TOCTOU* — the hash is re-checked fresh each turn (a
+  persistently-swapped file is excluded next turn), but the SDK re-reads the
+  approved path at import with no integrity hook, so a swap in the narrow
+  window between our re-hash and the loader's read would import unverified
+  bytes; exploiting it needs an agent-planted background writer (already a
+  deeper compromise). (b) *Content-blind SDK extension cache* — re-approving
+  EDITED extension content keeps running the old bytes for the rest of the
+  process for the same agent (cache keyed by path+cwd, not content;
+  clearExtensionCache isn't exported); a restart or another agent's turn
+  flushes it. Never runs UNAPPROVED code — revoked paths aren't passed to the
+  loader at all. (c) *mode 'all' is user-scope* — loads every user-scope
+  discovered extension (not per-agent workspace/project scope), keeping
+  list()==turn; 'all' is an explicit trust-everything escape hatch.
+- **No turn ever installs or probes Pi packages.** The SDK's loader resolves
+  `packages[]` on every reload — installing missing ones (postinstall =
+  arbitrary code) and running the settings-configured `npmCommand` to locate
+  the npm root, neither offline-gated. A Bakin turn hardens its
+  SettingsManager (strips `packages[]`, pins `npmCommand` to the real binary)
+  and forces `PI_OFFLINE`, so an agent that writes `packages`/`npmCommand`
+  into its own workspace settings can't self-trigger code execution.
+  Installing Pi packages stays a terminal act (`pi install`).
+- **Discovery is the SDK package manager** (`resolve()` with `onMissing:
+  'skip'` — paths only, no imports, no installs, no network): it sees npm/git
+  packages, loose files/dirs, object-form `packages[]` entries and both
+  scopes, with the loader's own enable rules applied.
+- ONE trust engine: `src/core/runtime-extensions.ts` (list/allow/revoke,
+  audited) behind `GET/POST /api/runtime/extensions[/allow|/revoke]`,
+  `bakin runtime extensions {list,allow,revoke}`, the hub's Extensions
+  section (Runtimes tab, ConfirmDialog with the trusted-code + spends-
+  outside-budget-caps disclosure), and the `pi.extensions` doctor check
+  (pending → warn pointing at the hub). Allow refuses ids discovery doesn't
+  know. Sessions are per-turn: trust changes apply next turn, no restart.
+- Contract: `extensions?: RuntimeExtensionsAccess` (optional, feature-
+  detected; `.extensions!.` is arch-banned). Discovery NEVER executes
+  extension code.

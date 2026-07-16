@@ -81,11 +81,12 @@ async function cmdRuntimeCapabilities(): Promise<void> {
 interface RuntimeUseFlags {
   dryRun: boolean
   copyWorkspaces: boolean
+  adoptCron: boolean
 }
 
 async function cmdRuntimeUse(target: string | undefined, flags: RuntimeUseFlags): Promise<void> {
   if (!target) {
-    console.error('Usage: bakin runtime use <adapter> [--dry-run] [--no-copy-workspaces]')
+    console.error('Usage: bakin runtime use <adapter> [--dry-run] [--no-copy-workspaces] [--adopt-cron]')
     process.exit(1)
   }
   console.log(flags.dryRun
@@ -95,6 +96,7 @@ async function cmdRuntimeUse(target: string | undefined, flags: RuntimeUseFlags)
     target,
     ...(flags.dryRun ? { dryRun: true } : {}),
     ...(flags.copyWorkspaces ? {} : { copyWorkspaces: false }),
+    ...(flags.adoptCron ? { adoptCron: true } : {}),
   }) as Record<string, unknown>
 
   if (!result.ok) {
@@ -108,7 +110,7 @@ async function cmdRuntimeUse(target: string | undefined, flags: RuntimeUseFlags)
   }
 
   const would = flags.dryRun ? 'Would carry' : 'Carried'
-  const roster = result.roster as { carried: unknown[]; existing: string[]; unmappedModels: Array<{ agentId: string; sourceModel: string; field?: string }>; failed: Array<{ agentId: string; error: string }> } | null
+  const roster = result.roster as { carried: unknown[]; existing: string[]; unmappedModels: Array<{ agentId: string; sourceModel: string; field?: string }>; preserved?: Array<{ agentId: string; sourceModel: string }>; failed: Array<{ agentId: string; error: string }> } | null
   console.log(flags.dryRun ? `Would switch ${result.from} → ${result.to}` : `Switched ${result.from} → ${result.to}`)
   if (result.backupPath) console.log(`Settings backup: ${result.backupPath}`)
   if (roster) {
@@ -117,6 +119,18 @@ async function cmdRuntimeUse(target: string | undefined, flags: RuntimeUseFlags)
       const what = unmapped.field === 'subagentModel' ? 'subagent model' : 'model'
       console.log(`  ⚠ ${unmapped.agentId}: ${what} '${unmapped.sourceModel}' has no equivalent on ${result.to} — falls back to the routing default`)
     }
+    for (const kept of roster.preserved ?? []) {
+      console.log(`  ○ ${kept.agentId}: subagent model '${kept.sourceModel}' preserved (not active on ${result.to}) — restored on switch back`)
+    }
+  }
+  const cron = result.cron as { adopted: string[]; skipped: string[]; failed: Array<{ jobId: string; error: string }> } | null
+  if (cron) {
+    console.log(`Cron: ${flags.dryRun ? 'would adopt' : 'adopted'} ${cron.adopted.length}, already Bakin ${cron.skipped.length}, failed ${cron.failed.length}`)
+    for (const failure of cron.failed) {
+      console.log(`  ✗ ${failure.jobId}: ${failure.error}`)
+    }
+  }
+  if (roster) {
     for (const failure of roster.failed) {
       console.log(`  ✗ ${failure.agentId}: ${failure.error}`)
     }
@@ -175,13 +189,74 @@ async function cmdRuntimeUse(target: string | undefined, flags: RuntimeUseFlags)
   }
 }
 
+interface ExtensionsReport {
+  supported: boolean
+  mode: string
+  extensions: Array<{ id: string; label: string; source: string; path: string; sha256: string; status: string }>
+}
+
+/** `bakin runtime extensions [list|allow <id>|revoke <id>]` — trust lane (WS4). */
+async function cmdRuntimeExtensions(sub: string | undefined, name: string | undefined): Promise<void> {
+  if (sub === 'allow' || sub === 'revoke') {
+    if (!name) {
+      console.error(`Usage: bakin runtime extensions ${sub} <name|path>`)
+      process.exit(1)
+    }
+    // Trust identity is the module PATH (names collide across sources), but a
+    // human types a name: resolve it here and refuse ambiguity rather than
+    // guessing which file to trust.
+    const current = await apiGet('/api/runtime/extensions') as ExtensionsReport
+    const matches = current.extensions.filter((e) => e.path === name || e.label === name)
+    if (matches.length === 0) {
+      console.error(`Unknown extension "${name}". Run \`bakin runtime extensions list\` to see what's installed.`)
+      process.exit(1)
+    }
+    if (matches.length > 1) {
+      console.error(`"${name}" is ambiguous — pass the full path:`)
+      for (const m of matches) console.error(`  ${m.path}`)
+      process.exit(1)
+    }
+    const report = await apiPost(`/api/runtime/extensions/${sub}`, { id: matches[0]!.path }) as ExtensionsReport
+    console.log(`${sub === 'allow' ? 'Allowed' : 'Revoked'} "${matches[0]!.label}".`)
+    printExtensions(report)
+    return
+  }
+  if (sub !== undefined && sub !== 'list') {
+    console.error(`Unknown subcommand: runtime extensions ${sub}. Supported: list, allow <id>, revoke <id>`)
+    process.exit(1)
+  }
+  printExtensions(await apiGet('/api/runtime/extensions') as ExtensionsReport)
+}
+
+function printExtensions(report: ExtensionsReport): void {
+  if (!report.supported) {
+    console.log('The active runtime has no extension mechanism.')
+    return
+  }
+  console.log(`Extension policy: ${report.mode}`)
+  if (report.extensions.length === 0) {
+    console.log('No extensions discovered. Install with `pi install npm:<pkg>` (they stay inert until allowed here).')
+    return
+  }
+  for (const ext of report.extensions) {
+    const mark = ext.status === 'allowed' ? '✓' : ext.status === 'blocked' ? '✗' : '…'
+    console.log(`  ${mark} ${ext.label.padEnd(32)} ${ext.status.padEnd(8)} ${ext.source}`)
+    console.log(`    ${ext.path}`)
+  }
+  if (report.extensions.some((e) => e.status === 'pending')) {
+    console.log('Pending extensions are NOT loaded into agent turns — their code never runs. Approve with')
+    console.log('`bakin runtime extensions allow <name>`: an allowed extension is trusted code running inside the Bakin')
+    console.log('server process with full permissions, and any API keys it uses spend outside Bakin budget caps.')
+  }
+}
+
 export async function run(args: string[]): Promise<void> {
   if (args[0] === 'runtime') {
     if (args[1] === 'use') {
       const rest = args.slice(2)
       // Fail CLOSED on unknown flags: `--dryrun` silently ignored would run
       // a REAL switch where the user intended a preview.
-      const KNOWN_FLAGS = ['--dry-run', '--no-copy-workspaces']
+      const KNOWN_FLAGS = ['--dry-run', '--no-copy-workspaces', '--adopt-cron']
       const unknown = rest.filter((arg) => arg.startsWith('--') && !KNOWN_FLAGS.includes(arg))
       if (unknown.length > 0) {
         console.error(`Unknown flag(s): ${unknown.join(', ')}. Supported: ${KNOWN_FLAGS.join(', ')}`)
@@ -191,7 +266,10 @@ export async function run(args: string[]): Promise<void> {
       await cmdRuntimeUse(target, {
         dryRun: rest.includes('--dry-run'),
         copyWorkspaces: !rest.includes('--no-copy-workspaces'),
+        adoptCron: rest.includes('--adopt-cron'),
       })
+    } else if (args[1] === 'extensions') {
+      await cmdRuntimeExtensions(args[2], args[3])
     } else await cmdRuntimeCapabilities()
     return
   }

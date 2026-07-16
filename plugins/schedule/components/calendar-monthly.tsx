@@ -1,90 +1,27 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from "@makinbakin/sdk/ui"
+import { useOccurrences, type ScheduleJob, type ScheduleOccurrence, type ScheduledDomainEvent } from "@makinbakin/sdk/hooks"
 import { AgentBadge } from './agent-badge'
-import type { ScheduleJob } from "@makinbakin/sdk/hooks"
+import { agentDotGlow } from './agent-colors'
+import { jobsById } from './calendar-weekly'
+import { EventChip, eventInstant } from './event-popover'
 
-// Matching glow colors from the weekly view's AGENT_STYLES
-const AGENT_DOT_GLOW: Record<string, string> = {
-  main:    'rgba(96,165,250,0.35)',
-  chef:   'rgba(74,222,128,0.35)',
-  pixel:   'rgba(167,139,250,0.35)',
-  rolo:    'rgba(251,146,60,0.35)',
-  patch:   'rgba(161,161,170,0.25)',
-  explorer:   'rgba(52,211,153,0.35)',
-  trainer:    'rgba(34,211,238,0.35)',
-  coach:     'rgba(251,191,36,0.35)',
-}
-
-function getDaysInMonth(year: number, month: number): Date[] {
+function getCalendarGrid(year: number, month: number): (Date | null)[] {
   const days: Date[] = []
   const d = new Date(year, month, 1)
   while (d.getMonth() === month) {
     days.push(new Date(d))
     d.setDate(d.getDate() + 1)
   }
-  return days
-}
-
-function getCalendarGrid(year: number, month: number): (Date | null)[] {
-  const days = getDaysInMonth(year, month)
   const firstDow = days[0]!.getDay()
   const grid: (Date | null)[] = []
   for (let i = 0; i < firstDow; i++) grid.push(null)
   grid.push(...days)
   while (grid.length % 7 !== 0) grid.push(null)
   return grid
-}
-
-function jobFiringOnDay(job: ScheduleJob, date: Date): boolean {
-  if (!job.cron) return false
-  const parts = job.cron.split(/\s+/)
-  if (parts.length < 5) return false
-  const [, , domField, monField, dowField] = parts
-
-  if (monField !== '*') {
-    const months = expandField(monField!, 1, 12)
-    if (!months.includes(date.getMonth() + 1)) return false
-  }
-
-  const domMatch = domField === '*'
-  const dowMatch = dowField === '*'
-
-  if (!domMatch && !dowMatch) {
-    const doms = expandField(domField!, 1, 31)
-    const dows = expandField(dowField!, 0, 6)
-    if (!doms.includes(date.getDate()) && !dows.includes(date.getDay())) return false
-  } else if (!domMatch) {
-    const doms = expandField(domField!, 1, 31)
-    if (!doms.includes(date.getDate())) return false
-  } else if (!dowMatch) {
-    const dows = expandField(dowField!, 0, 6)
-    if (!dows.includes(date.getDay())) return false
-  }
-
-  return true
-}
-
-function expandField(field: string, min: number, max: number): number[] {
-  const result: number[] = []
-  for (const part of field.split(',')) {
-    if (part.includes('/')) {
-      const [range, step] = part.split('/')
-      const s = parseInt(step!, 10)
-      const start = range === '*' ? min : parseInt(range!, 10)
-      for (let i = start; i <= max; i += s) result.push(i)
-    } else if (part.includes('-')) {
-      const [a, b] = part.split('-')
-      for (let i = parseInt(a!, 10); i <= parseInt(b!, 10); i++) result.push(i)
-    } else if (part === '*') {
-      for (let i = min; i <= max; i++) result.push(i)
-    } else {
-      result.push(parseInt(part, 10))
-    }
-  }
-  return result
 }
 
 const DOW_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -102,25 +39,38 @@ export function CalendarMonthly({
   const [month, setMonth] = useState(now.getMonth())
 
   const grid = useMemo(() => getCalendarGrid(year, month), [year, month])
+  const monthStart = useMemo(() => new Date(year, month, 1), [year, month])
+  const monthEnd = useMemo(() => new Date(year, month + 1, 1), [year, month])
 
-  const jobsByDay = useMemo(() => {
-    const map = new Map<number, ScheduleJob[]>()
-    const days = getDaysInMonth(year, month)
-    for (const day of days) {
-      const matches = jobs.filter(j => {
-        if (!jobFiringOnDay(j, day)) return false
-        // Only show on or after the job's creation date
-        if (j.createdAt) {
-          const created = new Date(j.createdAt)
-          const createdDay = new Date(created.getFullYear(), created.getMonth(), created.getDate())
-          if (day < createdDay) return false
-        }
-        return true
-      })
-      if (matches.length > 0) map.set(day.getDate(), matches)
+  // Server-computed placements (kind-aware, tz/DST-correct) + domain events.
+  const { occurrences, events, refresh } = useOccurrences(monthStart.toISOString(), monthEnd.toISOString())
+  const byId = useMemo(() => jobsById(jobs), [jobs])
+
+  // Day-of-month → the day's occurrences (local dates; dedupe a job that
+  // fires multiple times a day down to one row at month zoom).
+  const occurrencesByDay = useMemo(() => {
+    const map = new Map<number, ScheduleOccurrence[]>()
+    for (const occurrence of occurrences) {
+      const d = new Date(occurrence.at)
+      if (d.getMonth() !== month || d.getFullYear() !== year) continue
+      const day = d.getDate()
+      const existing = map.get(day) ?? []
+      if (!existing.some(o => o.jobId === occurrence.jobId)) existing.push(occurrence)
+      map.set(day, existing)
     }
     return map
-  }, [jobs, year, month])
+  }, [occurrences, month, year])
+
+  const eventsByDay = useMemo(() => {
+    const map = new Map<number, ScheduledDomainEvent[]>()
+    for (const event of events) {
+      const d = new Date(eventInstant(event))
+      if (d.getMonth() !== month || d.getFullYear() !== year) continue
+      const day = d.getDate()
+      map.set(day, [...(map.get(day) ?? []), event])
+    }
+    return map
+  }, [events, month, year])
 
   const today = new Date()
   const isToday = (d: Date) =>
@@ -163,8 +113,9 @@ export function CalendarMonthly({
             return <div key={`empty-${i}`} className="bg-background/30 min-h-[88px]" />
           }
 
-          const dayJobs = jobsByDay.get(date.getDate()) || []
-          const hasJobs = dayJobs.length > 0
+          const dayOccurrences = occurrencesByDay.get(date.getDate()) || []
+          const dayEvents = eventsByDay.get(date.getDate()) || []
+          const hasRuns = dayOccurrences.length + dayEvents.length > 0
           const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate())
           const isPast = date.getTime() < todayStart.getTime()
           const MAX_SHOW = 3
@@ -175,7 +126,7 @@ export function CalendarMonthly({
               className={`
                 bg-background min-h-[88px] p-2 transition-colors
                 ${isToday(date) ? 'bg-blue-500/[0.04]' : ''}
-                ${hasJobs ? 'hover:bg-white/[0.02]' : ''}
+                ${hasRuns ? 'hover:bg-white/[0.02]' : ''}
               `}
             >
               {/* Date number */}
@@ -189,30 +140,37 @@ export function CalendarMonthly({
                 {date.getDate()}
               </div>
 
-              {/* Job indicators */}
+              {/* Run indicators */}
               <div className={`flex flex-col gap-1 ${isPast ? 'opacity-35 saturate-[0.3]' : ''}`}>
-                {dayJobs.slice(0, MAX_SHOW).map(j => (
-                  <button
-                    key={j.id}
-                    onClick={() => onSelectJob(j)}
-                    className={`group/dot flex items-center gap-1.5 w-full hover:bg-white/[0.04] rounded px-1 py-0.5 -mx-1 transition-colors ${isPast ? 'hover:opacity-60' : ''}`}
-                  >
-                    <span
-                      className="shrink-0 transition-transform group-hover/dot:scale-110"
-                      style={{ filter: isPast ? 'none' : `drop-shadow(0 0 3px ${AGENT_DOT_GLOW[j.agentId || ''] || 'transparent'})` }}
+                {dayOccurrences.slice(0, MAX_SHOW).map(occurrence => {
+                  const job = byId.get(occurrence.jobId)
+                  if (!job) return null
+                  return (
+                    <button
+                      key={occurrence.jobId}
+                      onClick={() => onSelectJob(job)}
+                      className={`group/dot flex items-center gap-1.5 w-full hover:bg-white/[0.04] rounded px-1 py-0.5 -mx-1 transition-colors ${isPast ? 'hover:opacity-60' : ''}`}
                     >
-                      <AgentBadge agentId={j.agentId} size="sm" showName={false} />
-                    </span>
-                    <span className={`text-[10px] truncate transition-colors ${isPast ? 'text-zinc-600' : 'text-zinc-400 group-hover/dot:text-zinc-300'}`}>
-                      {j.displayName || j.id}
-                    </span>
-                  </button>
-                ))}
-                {dayJobs.length > MAX_SHOW && (
+                      <span
+                        className="shrink-0 transition-transform group-hover/dot:scale-110"
+                        style={{ filter: isPast ? 'none' : `drop-shadow(0 0 3px ${agentDotGlow(job.agentId)})` }}
+                      >
+                        <AgentBadge agentId={job.agentId} size="sm" showName={false} />
+                      </span>
+                      <span className={`text-[10px] truncate transition-colors ${isPast ? 'text-zinc-600' : 'text-zinc-400 group-hover/dot:text-zinc-300'}`}>
+                        {job.displayName || job.id}
+                      </span>
+                    </button>
+                  )
+                })}
+                {dayOccurrences.length > MAX_SHOW && (
                   <span className="text-[9px] text-zinc-600 pl-1 font-medium">
-                    +{dayJobs.length - MAX_SHOW} more
+                    +{dayOccurrences.length - MAX_SHOW} more
                   </span>
                 )}
+                {dayEvents.map(event => (
+                  <EventChip key={`${event.pluginId}-${event.id}`} event={event} compact onRescheduled={refresh} />
+                ))}
               </div>
             </div>
           )

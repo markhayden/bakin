@@ -1,4 +1,4 @@
-import type { AgentRuntimeAdapter, ChatChunk, MessageArgs, RuntimeAgent, RuntimeSession, RuntimeToolActivity } from './concepts'
+import type { AgentRuntimeAdapter, ChatChunk, CronJob, CronRun, MessageArgs, RuntimeAgent, RuntimeSession, RuntimeToolActivity } from './concepts'
 import { RuntimeError } from './errors'
 
 /**
@@ -32,36 +32,57 @@ export function mockChannels(): NonNullable<AgentRuntimeAdapter['channels']> {
  * Usage: `createMockRuntimeAdapter({ cron: mockCron() })`
  */
 export function mockCron(): NonNullable<AgentRuntimeAdapter['cron']> {
+  // Stateful (Map-backed) so the conformance CRUD round-trip pins real
+  // behavior: created jobs are listable/gettable, updates persist, a missing
+  // id is null on get and a typed not_found on update — same contract shape
+  // the OpenClaw adapter has against its file store.
+  const jobs = new Map<string, CronJob>()
+  const runs = new Map<string, CronRun[]>()
+  let seq = 0
   const cron: NonNullable<AgentRuntimeAdapter['cron']> = {
-    list: async () => [],
-    get: async () => null,
-    create: async (input) => ({
-      id: input.id ?? `cron-${Date.now()}`,
-      name: input.name,
-      schedule: input.schedule,
-      command: input.command,
-      enabled: input.enabled ?? true,
-      toolsAllow: input.toolsAllow,
-      metadata: input.metadata,
-    }),
-    update: async (id, patch) => ({
-      id,
-      name: patch.name ?? id,
-      schedule: patch.schedule ?? '* * * * *',
-      command: patch.command ?? '',
-      enabled: patch.enabled ?? true,
-      toolsAllow: patch.toolsAllow === null ? undefined : patch.toolsAllow,
-      metadata: patch.metadata,
-    }),
-    remove: async () => {},
-    runNow: async (jobId) => ({
-      id: `run-${Date.now()}`,
-      jobId,
-      status: 'succeeded',
-      startedAt: new Date().toISOString(),
-      endedAt: new Date().toISOString(),
-    }),
-    listRuns: async () => [],
+    list: async () => [...jobs.values()],
+    get: async (id) => jobs.get(id) ?? null,
+    create: async (input) => {
+      const job: CronJob = {
+        id: input.id ?? `cron-${++seq}`,
+        name: input.name,
+        schedule: input.schedule,
+        command: input.command,
+        enabled: input.enabled ?? true,
+        toolsAllow: input.toolsAllow,
+        metadata: input.metadata,
+      }
+      jobs.set(job.id, job)
+      return job
+    },
+    update: async (id, patch) => {
+      const existing = jobs.get(id)
+      if (!existing) throw new RuntimeError(`cron job not found: ${id}`, { kind: 'not_found' })
+      const job: CronJob = {
+        ...existing,
+        ...(patch.name !== undefined ? { name: patch.name } : {}),
+        ...(patch.schedule !== undefined ? { schedule: patch.schedule } : {}),
+        ...(patch.command !== undefined ? { command: patch.command } : {}),
+        ...(patch.enabled !== undefined ? { enabled: patch.enabled } : {}),
+        ...(patch.toolsAllow !== undefined ? { toolsAllow: patch.toolsAllow === null ? undefined : patch.toolsAllow } : {}),
+        ...(patch.metadata !== undefined ? { metadata: patch.metadata } : {}),
+      }
+      jobs.set(id, job)
+      return job
+    },
+    remove: async (id) => { jobs.delete(id) },
+    runNow: async (jobId) => {
+      const run: CronRun = {
+        id: `run-${++seq}`,
+        jobId,
+        status: 'succeeded',
+        startedAt: new Date().toISOString(),
+        endedAt: new Date().toISOString(),
+      }
+      runs.set(jobId, [...(runs.get(jobId) ?? []), run])
+      return run
+    },
+    listRuns: async (jobId) => runs.get(jobId) ?? [],
     getRaw: async (id, reason) => {
       if (!reason) throw new Error('cron.getRaw requires a reason')
       return (await cron.get(id)) ?? null
@@ -81,7 +102,7 @@ export function mockCron(): NonNullable<AgentRuntimeAdapter['cron']> {
       const schedule = typeof raw.schedule === 'string'
         ? raw.schedule
         : raw.schedule?.expr ?? raw.schedule?.value ?? '* * * * *'
-      return {
+      const job: CronJob = {
         id,
         name: raw.name ?? raw.id ?? id,
         schedule,
@@ -90,6 +111,8 @@ export function mockCron(): NonNullable<AgentRuntimeAdapter['cron']> {
         toolsAllow: raw.toolsAllow,
         metadata: raw.metadata,
       }
+      jobs.set(id, job)
+      return job
     },
   }
   return cron

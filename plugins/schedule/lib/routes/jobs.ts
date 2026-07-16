@@ -10,8 +10,12 @@ import { defineRoute, searchRoute } from '@bakin/core/routing'
 import type { BakinJobMeta } from '../../types'
 import { getJob, upsertJob } from '../sidecar'
 import { parseSchedule } from '../cron-parser'
-import { getSystemTimezone, json } from '../schedule-util'
+import { getSystemTimezone, json, nativeCronTz } from '../schedule-util'
 import { readRuns } from '../runs-reader'
+import { computeOccurrences } from '../occurrences'
+import { collectDomainEvents, RESCHEDULE_EVENT_SUFFIX } from '../domain-events'
+import { getCronFire } from '../../../../src/core/execution-ledger'
+import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 import { fireManualRun } from '../fire-engine'
 import {
@@ -29,6 +33,13 @@ import { validateTeamAssignment, TaskValidationError } from '../../../../src/cor
 // ─── Schemas ─────────────────────────────────────────────────────────────
 
 const jobIdParams = z.object({ jobId: z.string().min(1) })
+/** Occurrence queries cap at ~2 months — the month view needs 6 weeks. */
+const MAX_OCCURRENCE_RANGE_MS = 62 * 24 * 60 * 60 * 1000
+const rescheduleEventBody = z.object({
+  pluginId: z.string().min(1),
+  eventId: z.string().min(1),
+  to: z.string().min(1),
+})
 const okResponse = z.object({ ok: z.literal(true) }).passthrough()
 const errorResponse = z.object({ error: z.string() }).passthrough()
 const passthrough = z.object({}).passthrough()
@@ -109,6 +120,64 @@ export const scheduleRoutes = [
         cron: j.schedule.type === 'cron' ? j.schedule.value : undefined,
       }))
       return json({ jobs })
+    },
+  }),
+
+  defineRoute({
+    path: '/occurrences',
+    method: 'GET',
+    summary: 'Job occurrences in a time range',
+    description: 'Server-computed, timezone-correct occurrence instants for every evaluable job (cron + one-shot), past occurrences enriched with their ledger disposition. The single source the calendar views render from.',
+    responses: { 200: passthrough, 400: errorResponse, 500: errorResponse },
+    handler: async (req) => {
+      const url = new URL(req.url)
+      const fromMs = Date.parse(url.searchParams.get('from') ?? '')
+      const toMs = Date.parse(url.searchParams.get('to') ?? '')
+      if (!Number.isFinite(fromMs) || !Number.isFinite(toMs)) {
+        return json({ error: 'from and to must be ISO-8601 instants' }, 400)
+      }
+      if (toMs <= fromMs) return json({ error: 'to must be after from' }, 400)
+      if (toMs - fromMs > MAX_OCCURRENCE_RANGE_MS) {
+        return json({ error: `range too large (max ${MAX_OCCURRENCE_RANGE_MS / 86_400_000} days)` }, 400)
+      }
+      const jobs = await readMergedRuntimeJobs()
+      const { items, unevaluated } = computeOccurrences(jobs, fromMs, toMs, {
+        nowMs: Date.now(),
+        getFire: (jobId, runId) => getCronFire(jobId, runId),
+      })
+      // Plugin-contributed domain events ride the same feed (#191): fan-in
+      // over `{pluginId}.scheduledEvents` hooks, per-provider fault-isolated.
+      const { events, droppedProviders } = await collectDomainEvents(
+        new Date(fromMs).toISOString(),
+        new Date(toMs).toISOString(),
+        { hooks: getHookRegistry() },
+      )
+      return json({ occurrences: items, events, unevaluated, droppedProviders })
+    },
+  }),
+
+  defineRoute({
+    path: '/events/reschedule',
+    method: 'POST',
+    summary: 'Reschedule a plugin-owned domain event',
+    description: "Invokes the owning plugin's {pluginId}.rescheduleEvent hook — the contract's one sanctioned mutation. Schedule never writes plugin domain data itself.",
+    body: rescheduleEventBody,
+    responses: { 200: okResponse, 400: errorResponse, 404: errorResponse, 500: errorResponse },
+    handler: async (_req, _ctx, { body }) => {
+      if (!Number.isFinite(Date.parse(body.to))) {
+        return json({ error: 'to must be an ISO-8601 instant' }, 400)
+      }
+      const hookName = `${body.pluginId}${RESCHEDULE_EVENT_SUFFIX}`
+      const registry = getHookRegistry()
+      if (!registry.has(hookName)) {
+        return json({ error: `Plugin '${body.pluginId}' does not support rescheduling` }, 404)
+      }
+      const result = await registry.invoke<{ ok: boolean; error?: string }>(hookName, {
+        eventId: body.eventId,
+        to: body.to,
+      })
+      if (!result?.ok) return json({ error: result?.error ?? 'Owner rejected the reschedule' }, 400)
+      return json({ ok: true })
     },
   }),
 
@@ -210,11 +279,13 @@ export const scheduleRoutes = [
       const raw = await cron.getRaw(jobId, 'schedule adopt: preserve native cron before Bakin takes ownership')
       if (!raw) return json({ error: 'Runtime cron snapshot not found' }, 404)
 
-      const parsed = body.schedule ? parseSchedule(body.schedule) : { cron: runtimeJob.schedule }
+      const tz = body.tz || existing?.tz || nativeCronTz(runtimeJob) || getSystemTimezone()
+      const parsed = body.schedule
+        ? parseSchedule(body.schedule, { tz })
+        : { kind: 'cron' as const, expr: runtimeJob.schedule }
       if (!parsed) return json({ error: 'Could not parse schedule' }, 400)
 
       const now = new Date().toISOString()
-      const tz = body.tz || existing?.tz || getSystemTimezone()
       const displayName = body.name || existing?.displayName || runtimeJob.name
       const owner = (body.owner ?? undefined) || existing?.owner || await getRuntimeMainAgentId(ctx.runtime)
       const taskPrompt = (body.taskPrompt ?? undefined) || existing?.taskPrompt || runtimeJob.command
@@ -240,7 +311,7 @@ export const scheduleRoutes = [
         jobId,
         isBakinJob: true,
         source: 'adopted',
-        schedule: { kind: 'cron', expr: parsed.cron },
+        schedule: { kind: parsed.kind, expr: parsed.expr },
         enabled: runtimeJob.enabled ?? true,
         displayName,
         agentId: adoptAgentId,

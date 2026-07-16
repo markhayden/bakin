@@ -40,7 +40,7 @@ const DENYLIST = [
     // non-null assertion — ban `.channels!.` / `.cron!.` so a consumer can
     // never turn "absent on this runtime" into a crash.
     label: 'non-null assertion on an optional runtime capability (feature-detect instead)',
-    regex: /\.(?:channels|cron)!\./,
+    regex: /\.(?:channels|cron|extensions)!\./,
   },
   {
     label: 'raw Pi home/path/SDK access outside adapter-pi',

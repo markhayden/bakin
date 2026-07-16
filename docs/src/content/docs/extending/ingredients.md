@@ -187,3 +187,29 @@ For exact fields, use [Plugin Manifest](/docs/extending/plugins/manifest/) and [
 - [Agent Kits](/docs/extending/agents/overview/): build installable teammates
 - [Server Contracts](/docs/extending/plugins/server-contracts/): routes, tools, hooks, search, health checks, skills, and workflows
 - [Lesson Blocks](/docs/extending/agents/lessons/): write toggleable context for agents
+
+## Capability packs
+
+Capability packs teach agents new tricks — web search, browser automation,
+transcription. They are skill-packs (agent packages) that name a
+`capability` and declare what they need: pinned binaries Bakin installs
+into its own bin dir, and API keys collected through a guided step into the
+masked secret store. Install one from Explore → Capabilities or
+`bakin packages install <name>`; readiness (content ✓ / binary ✓ / key ✓)
+shows on the Runtime page and in the doctor, with a remediation path for
+every missing leg.
+
+### Plugin, capability pack, or agent?
+
+One rule: **who consumes it.**
+
+| You are shipping | It is a | Because |
+|---|---|---|
+| UI, API routes, exec tools, health checks | Plugin | Bakin runs the code |
+| A skill wrapping external tools (a CLI, a web API) | Capability pack | Agents consume the content; no code runs inside Bakin |
+| A skill that teaches agents a plugin's own exec tools | Part of that plugin | It has no life without the plugin's code |
+| An identity — soul, role, persona | Agent package (`kind: "agent"`) | It joins the team roster |
+
+Capability packs never run code inside Bakin's process — their scripts
+execute as agent shell commands. Something needing both governance UI and
+agent content ships as a plugin plus a companion pack, never a hybrid.

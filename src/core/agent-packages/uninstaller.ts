@@ -66,24 +66,30 @@ export interface RemoveResult {
   deleteAgentError?: string
 }
 
+/** Projection kinds whose targets may be shared across packs (refcounted removal). */
+const SHARED_ARTIFACT_KINDS = new Set(['bin', 'model'])
+
 /**
- * Drop `bin` projections whose target another installed package (any key
- * except `selfKey`) still projects — shared binaries survive until their
- * LAST referencing package is removed. All other projections pass through.
+ * Drop `bin`/`model` projections whose target another installed package
+ * (any key except `selfKey`) still projects — shared artifacts survive
+ * until their LAST referencing package is removed. All other projections
+ * pass through. (npm payloads are per-pack paths — never shared.)
+ * Exported for the updater: dropping an artifact on version upgrade must
+ * honor the same sharing rule as package removal.
  */
-function withoutSharedBins(
+export function withoutSharedArtifacts(
   lock: ReturnType<typeof readLockfile>,
   selfKey: string,
   projections: NonNullable<ReturnType<typeof readLockfile>['packages'][string]['projections']>,
 ): typeof projections {
-  const otherBinTargets = new Set<string>()
+  const otherTargets = new Set<string>()
   for (const [key, pkg] of Object.entries(lock.packages)) {
     if (key === selfKey) continue
     for (const p of pkg.projections ?? []) {
-      if (p.kind === 'bin') otherBinTargets.add(p.target)
+      if (SHARED_ARTIFACT_KINDS.has(p.kind)) otherTargets.add(p.target)
     }
   }
-  return projections.filter((p) => p.kind !== 'bin' || !otherBinTargets.has(p.target))
+  return projections.filter((p) => !SHARED_ARTIFACT_KINDS.has(p.kind) || !otherTargets.has(p.target))
 }
 
 /**
@@ -108,7 +114,7 @@ export async function removePackageById(options: RemoveOptions): Promise<RemoveR
 
     // 1. Unproject parent
     if (entry.projections && entry.projections.length > 0) {
-      await unprojectPackage(withoutSharedBins(lock, options.packageId, entry.projections), { keepBlocks: options.keepBlocks })
+      await unprojectPackage(withoutSharedArtifacts(lock, options.packageId, entry.projections), { keepBlocks: options.keepBlocks })
     }
 
     // 2. Remove the install dir under ~/.bakin/packages/<kind>s/<id>@<ver>/
@@ -144,7 +150,7 @@ export async function removePackageById(options: RemoveOptions): Promise<RemoveR
           // Orphaned — unproject + remove install dir + recurse into its
           // own deps before dropping the lockfile entry.
           if (depEntry.projections && depEntry.projections.length > 0) {
-            await unprojectPackage(withoutSharedBins(l, depKey, depEntry.projections), { keepBlocks: options.keepBlocks })
+            await unprojectPackage(withoutSharedArtifacts(l, depKey, depEntry.projections), { keepBlocks: options.keepBlocks })
           }
           const depInstallDir = getPackageSourceDir(
             getContentDir(),

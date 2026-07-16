@@ -96,7 +96,7 @@ afterAll(() => {
 
 describe('checkScheduleSync - no jobs', () => {
   it('reports ok when the runtime has no cron jobs', async () => {
-    const results = observations(await checkScheduleSync(testDir, cronReader, 'main'))
+    const results = observations(await checkScheduleSync(testDir, cronReader))
     expect(results).toHaveLength(1)
     expect(results[0].key).toBe('runtime-cron')
     expect(results[0].status).toBe('healthy')
@@ -121,7 +121,7 @@ describe('checkScheduleSync - orphan detection', () => {
       },
     }))
 
-    const results = observations(await checkScheduleSync(testDir, cronReader, 'main'))
+    const results = observations(await checkScheduleSync(testDir, cronReader))
     expect(results).toHaveLength(1)
     expect(results[0].status).toBe('healthy')
     expect(results[0].summary).toMatch(/1 runtime cron job\(s\) are tracked/)
@@ -131,7 +131,7 @@ describe('checkScheduleSync - orphan detection', () => {
     runtimeJobs = [makeCronJob({ id: 'orphan-1', name: 'rogue-cron' })]
     writeFileSync(sidecarPath, JSON.stringify({ version: 1, jobs: {} }))
 
-    const results = observations(await checkScheduleSync(testDir, cronReader, 'main'))
+    const results = observations(await checkScheduleSync(testDir, cronReader))
     expect(results).toHaveLength(1)
     expect(results[0].status).toBe('warning')
     expect(results[0].incident?.resolution.type).toBe('repair')
@@ -144,7 +144,7 @@ describe('checkScheduleSync - repair', () => {
     runtimeJobs = [makeCronJob({ id: 'orphan-1', name: 'rogue-cron' })]
     writeFileSync(sidecarPath, JSON.stringify({ version: 1, jobs: {} }))
 
-    const results = observations(await checkScheduleSync(testDir, cronReader, 'boss'))
+    const results = observations(await checkScheduleSync(testDir, cronReader))
     expect(results).toHaveLength(1)
     expect(results[0].status).toBe('warning')
 
@@ -187,7 +187,7 @@ describe('checkScheduleSync - repair', () => {
 describe('checkScheduleSync - runtime failures', () => {
   it('warns when the runtime cron adapter cannot list jobs', async () => {
     runtimeError = new Error('adapter unavailable')
-    const results = observations(await checkScheduleSync(testDir, cronReader, 'main'))
+    const results = observations(await checkScheduleSync(testDir, cronReader))
     expect(results).toHaveLength(1)
     expect(results[0].status).toBe('unknown')
     expect(results[0].summary).toMatch(/Runtime cron jobs could not be read/)
@@ -195,27 +195,42 @@ describe('checkScheduleSync - runtime failures', () => {
 })
 
 describe('plugin registration', () => {
-  it('no longer registers the legacy schedule-sync / cron-wake health checks', async () => {
-    // Bakin owns scheduling now: a sync check whose repair re-created OpenClaw
-    // crons would reintroduce the double-fire, and the legacy main-session-wake
-    // repair is obsolete. Both registrations were removed (orphan-cron check
-    // arrives separately). This guards against either creeping back in.
+  interface RegisteredDef {
+    id: string
+    run: () => Promise<{
+      outcome: string
+      observations?: Array<{ status: string; summary: string }>
+      reason?: string
+    }>
+  }
+
+  interface RegisteredAction {
+    id: string
+  }
+
+  async function activateWithCtx(opts: { cron: boolean }): Promise<{
+    checks: RegisteredDef[]
+    actions: RegisteredAction[]
+  }> {
     const schedulePlugin = (await import('../../../plugins/schedule')).default
-    const registeredIds: string[] = []
-    const registeredActionIds: string[] = []
+    const checks: RegisteredDef[] = []
+    const actions: RegisteredAction[] = []
     const noop = mock()
     const noopAsync = mock(async () => {})
     const ctx: Record<string, unknown> = {
       pluginId: 'schedule',
       runtime: {
+        name: 'Test Runtime',
         agents: { list: mock(async () => [{ id: 'main', name: 'Main', role: 'Orchestrator' }]) },
-        cron: { list: mock(async () => []), get: mock(async () => null), remove: noopAsync },
+        ...(opts.cron
+          ? { cron: { list: mock(async () => []), get: mock(async () => null), remove: noopAsync } }
+          : {}),
       },
       registerRoute: noop, registerExecTool: noop, registerNav: noop,
       registerSlot: noop, registerSkill: noop, registerWorkflow: noop,
       registerNodeType: noop, registerNotificationChannel: noop,
-      registerHealthCheck: (def: { id: string }) => { registeredIds.push(def.id); return `schedule.${def.id}` },
-      registerHealthRepairAction: (def: { id: string }) => { registeredActionIds.push(def.id); return `schedule.${def.id}` },
+      registerHealthCheck: (def: RegisteredDef) => { checks.push(def); return `schedule.${def.id}` },
+      registerHealthRepairAction: (def: RegisteredAction) => { actions.push(def); return `schedule.${def.id}` },
       watchFiles: noop,
       getSettings: () => ({}),
       updateSettings: noop,
@@ -229,14 +244,43 @@ describe('plugin registration', () => {
       storage: {},
       events: { on: noop, emit: noop, off: noop },
     }
-    await schedulePlugin.activate(ctx as unknown as Parameters<typeof schedulePlugin.activate>[0])
-    schedulePlugin.onShutdown?.() // stop the scheduler interval started by activate
+    const plugin = schedulePlugin as { activate: (c: unknown) => Promise<void>; onShutdown?: () => void }
+    await plugin.activate(ctx)
+    plugin.onShutdown?.() // stop the scheduler interval started by activate
+    return { checks, actions }
+  }
 
-    expect(registeredIds).not.toContain('schedule-sync')
-    expect(registeredIds).not.toContain('schedule-legacy-cron-wake')
-    // The cutover/migration check replaces them.
-    expect(registeredIds).toContain('schedule-cutover')
-    expect(registeredActionIds).toContain('complete-cutover')
+  it('registers the schedule-sync orphan-cron check alongside schedule-cutover', async () => {
+    // schedule-sync detects native runtime crons invisible to Bakin's sidecar
+    // (e.g. created by an agent directly in the runtime). Its repair only
+    // writes requireTriage sidecar entries — it must NEVER write runtime cron
+    // state, which is what made the pre-#473 legacy sync check double-fire.
+    // The obsolete main-session-wake repair stays gone.
+    const { checks, actions } = await activateWithCtx({ cron: true })
+    const checkIds = checks.map(def => def.id)
+    const actionIds = actions.map(def => def.id)
+
+    expect(checkIds).toContain('schedule-sync')
+    expect(checkIds).toContain('schedule-cutover')
+    expect(checkIds).not.toContain('schedule-legacy-cron-wake')
+    expect(actionIds).toContain('track-runtime-cron')
+    expect(actionIds).toContain('complete-cutover')
+
+    const sync = checks.find(def => def.id === 'schedule-sync')!
+    const result = await sync.run()
+    expect(result.outcome).toBe('observed')
+    expect(result.observations?.every(observation => observation.status === 'healthy')).toBe(true)
+  })
+
+  it('registers schedule-sync as not applicable on runtimes without native cron', async () => {
+    const { checks, actions } = await activateWithCtx({ cron: false })
+    const sync = checks.find(def => def.id === 'schedule-sync')
+    expect(sync).toBeDefined()
+    expect(actions.map(def => def.id)).not.toContain('track-runtime-cron')
+
+    const result = await sync!.run()
+    expect(result.outcome).toBe('not_applicable')
+    expect(result.reason).toMatch(/no native cron/i)
   })
 })
 

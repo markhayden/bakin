@@ -41,7 +41,8 @@ export { useQueryArrayState } from '@/hooks/use-query-state'
 export { useScheduleJobs } from '@/hooks/use-schedule'
 /** Fetch run history for a scheduled job. */
 export { useRunHistory } from '@/hooks/use-schedule'
-export type { ScheduleJob, RunEntry } from '@/hooks/use-schedule'
+export { useOccurrences } from '@/hooks/use-schedule'
+export type { ScheduleJob, RunEntry, ScheduleOccurrence, ScheduledDomainEvent } from '@/hooks/use-schedule'
 /** Fetch dispatch run history for a task. */
 export { useTaskRunHistory } from '@/hooks/use-task-run-history'
 export type { TaskOutcome, TaskRunEntry } from '@/hooks/use-task-run-history'

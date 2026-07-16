@@ -80,9 +80,9 @@ describe('honest-empty surfaces', () => {
 })
 
 describe('canonical health registrations', () => {
-  test('exports four healthy, structured probes for a usable Pi home', async () => {
-    const checks = createPiHealthChecks()
-    expect(checks.map((check) => check.id)).toEqual(['home', 'agents-root', 'auth', 'models'])
+  test('exports five healthy, structured probes for a usable Pi home', async () => {
+    const checks = createPiHealthChecks(() => undefined)
+    expect(checks.map((check) => check.id)).toEqual(['home', 'agents-root', 'auth', 'models', 'extensions'])
     for (const check of checks) expect(parseHealthCheckRegistration(check).id).toBe(check.id)
 
     const runs = await Promise.all(checks.map((check) => check.run()))
@@ -97,9 +97,10 @@ describe('canonical health registrations', () => {
   test('missing auth reports one actionable canonical incident', async () => {
     rmSync(join(testDir, 'pi', 'agent', 'auth.json'))
     resetModelRegistry()
-    const auth = createPiHealthChecks().find((check) => check.id === 'auth')
+    const auth = createPiHealthChecks(() => undefined).find((check) => check.id === 'auth')
     const run = await auth?.run()
 
+    expect(parseHealthCheckRunInput(run).outcome).toBe('observed')
     expect(run?.outcome).toBe('observed')
     if (run?.outcome !== 'observed') throw new Error('expected observed auth health output')
     expect(run.observations[0]?.status).toBe('error')
@@ -108,11 +109,41 @@ describe('canonical health registrations', () => {
 
   test('the agent-root probe does not create a missing directory', async () => {
     rmSync(getPiAgentsRoot(), { recursive: true, force: true })
-    const root = createPiHealthChecks().find((check) => check.id === 'agents-root')
+    const root = createPiHealthChecks(() => undefined).find((check) => check.id === 'agents-root')
 
     const run = await root?.run()
 
+    expect(parseHealthCheckRunInput(run).outcome).toBe('observed')
     expect(run?.outcome).toBe('observed')
     expect(existsSync(getPiAgentsRoot())).toBe(false)
+  })
+
+  test('reports pending extensions canonically and follows the supplied trust policy', async () => {
+    const extensionsDir = join(testDir, 'pi', 'agent', 'extensions')
+    mkdirSync(extensionsDir, { recursive: true })
+    writeFileSync(join(extensionsDir, 'pending.ts'), 'export default () => {}')
+
+    const pendingCheck = createPiHealthChecks(() => ({
+      piExtensions: { mode: 'allowlist', allow: [] },
+    })).find((check) => check.id === 'extensions')
+    const pendingRun = await pendingCheck?.run()
+
+    expect(parseHealthCheckRunInput(pendingRun).outcome).toBe('observed')
+    expect(pendingRun?.outcome).toBe('observed')
+    if (pendingRun?.outcome !== 'observed') throw new Error('expected observed extension health output')
+    expect(pendingRun.observations[0]?.status).toBe('warning')
+    expect(pendingRun.observations[0]?.incident?.resolution).toMatchObject({
+      type: 'navigate',
+      href: '/runtime?tab=runtimes',
+    })
+
+    const blockedCheck = createPiHealthChecks(() => ({
+      piExtensions: { mode: 'none' },
+    })).find((check) => check.id === 'extensions')
+    const blockedRun = await blockedCheck?.run()
+
+    expect(blockedRun?.outcome).toBe('observed')
+    if (blockedRun?.outcome !== 'observed') throw new Error('expected observed extension health output')
+    expect(blockedRun.observations[0]?.status).toBe('healthy')
   })
 })

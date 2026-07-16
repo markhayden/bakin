@@ -57,8 +57,7 @@ jobs:
       # render-heavy component tests past the 5s default (observed 5.4-7.2s).
       - name: Tests
         run: bun test --parallel --isolate --timeout 15000 --path-ignore-patterns "tests/components/kanban-dnd.test.tsx"
-      # Quarantined serial step — kanban-dnd races under parallel CI despite
-      # per-file isolation + settle hooks (issue #650). Still GATES: a failure
-      # here fails the workflow. Quarantine != skip.
+      # Quarantined serial step — kanban-dnd destabilizes the parallel pool under
+      # contention on 2-vCPU runners (issue #650). Still GATES; quarantine != skip.
       - name: Quarantined serial tests (issue #650)
         run: bun test tests/components/kanban-dnd.test.tsx --isolate --timeout 15000

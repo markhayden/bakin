@@ -10,29 +10,33 @@ generated API, CLI, settings, and exec-tool references live under
 
 ## How It Works
 
-The schedule plugin sits between the **runtime cron adapter** and **Bakin's task board**:
+**Bakin owns scheduling for Bakin schedules** (post-#473 — see
+`.claude/knowledge/bakin-owned-scheduler.md`). Runtime cron is never in the
+fire path; native runtime crons are surfaced read-only alongside.
 
-1. **Runtime cron** manages timing and records run history.
-2. **Bakin sidecar** (`~/.bakin/schedule/sidecar.json`) stores metadata that the runtime cron adapter doesn't own: ownership, agent assignment, task prompts, pause state, failure tracking, processed run IDs, and reversible native-cron snapshots.
-3. **Run reconciler** watches successful runtime cron runs for Bakin-owned jobs, checks pause/skip/overlap rules, and creates tasks on the board exactly once per run.
+1. **Bakin sidecar** (`~/.bakin/schedule/sidecar.json`) is the source of
+   truth: the Bakin-owned `schedule` definition (`{ kind: 'cron' | 'at',
+   expr }`), ownership, agent/team assignment, task prompts, pause state,
+   failure tracking, and reversible native-cron snapshots.
+2. **The tick scheduler** (`lib/scheduler-loop.ts`) computes due occurrences
+   via the kind-aware eval in `lib/cron-eval.ts`, claims each occurrence in
+   the execution ledger (`cron_fires` — the (job_id, run_id) PK is the
+   exactly-once lock), and runs the shared post-claim path (pause/skip/
+   overlap/failure checks → task creation).
+3. **Startup catch-up** fires the single most-recent missed occurrence per
+   job: within the catch-up window into `todo`, older into `blocked` triage.
+4. **One-shot schedules** (`kind: 'at'`, an ISO instant) fire once through
+   the same machinery, then auto-disable with `completedAt` set — the
+   "Completed" state. Past instants are rejected at creation; editing a
+   completed one-shot's schedule re-arms it.
 
 ```
-Runtime cron fires   →  OpenClaw records a cron run
-                         ├── Bakin reconciler reads successful runs
-                         ├── Skip if runtime-only, already processed, paused, skipped, overlapping, or auto-paused
-                         ├── Create task on board (via task-service)
-                         └── Update sidecar (lastTaskId, processedRunIds, failure count, etc.)
+Tick (every ~30s)  →  due occurrences (cron exprs + one-shot instants)
+                       ├── ledger claim (job_id, run_id)  — exactly-once
+                       ├── pause / skip-N / overlap / auto-pause checks (skips are audited)
+                       ├── create task on board (via task-service)
+                       └── update sidecar (lastTaskId, failure count, one-shot completedAt)
 ```
-
-The `/bridge` endpoint remains as a private callback path for future runtimes or explicit webhook callers, but OpenClaw webhook delivery is not the canonical path for task creation.
-
-OpenClaw currently requires cron jobs to have either an agent-turn message or a
-main-session system-event payload. Bakin-owned schedules use an isolated,
-no-delivery, light-context agent-turn whose message stays in the reserved
-`bakin:*` namespace. This keeps OpenClaw's cron runner and run history active
-without waking the main Bakin session, which would otherwise see the schedule
-event as normal work and could create a second task before the reconciler creates
-the canonical scheduled task.
 
 ### Runtime vs Bakin Ownership
 
@@ -167,7 +171,7 @@ When the reconciler or bridge processes a successful runtime run, the shared tas
 
 OpenClaw supports per-cron tool policy on native isolated agent-turn jobs through `payload.toolsAllow` (`openclaw cron add/edit --tools`). The OpenClaw runtime adapter maps that field to `CronJob.toolsAllow` so Schedule can display and audit it without shelling out to the provider CLI.
 
-Bakin-owned schedules are different: runtime cron acts as a timer and Bakin creates tasks after successful runs are reconciled. The OpenClaw adapter deliberately leaves cron `toolsAllow` unset for Bakin-owned schedule timers because OpenClaw treats an allowlist with no registered tools as a failed run. These jobs do not rely on cron `toolsAllow` for the eventual task's MCP permissions. Hard scoping of `bakin_exec_*` MCP tools is a separate Bakin routing-layer concern tracked outside this plugin.
+Bakin-owned schedules are different: they have no backing runtime cron at all (the Bakin tick fires them), so cron `toolsAllow` does not apply to them. Hard scoping of `bakin_exec_*` MCP tools is a separate Bakin routing-layer concern tracked outside this plugin.
 
 Common native cron examples:
 

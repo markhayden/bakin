@@ -37,6 +37,9 @@ export interface ScheduleJob {
   lastRun?: string
   createdAt?: string
   updatedAt?: string
+  /** One-shot ('at') job that has fired: disabled with its consumed instant. */
+  completed?: boolean
+  completedAt?: string
 }
 
 export interface RunEntry {
@@ -237,6 +240,92 @@ export function useScheduleJobs(options: UseScheduleOptions = {}) {
     jobs: filtered, allJobs: jobs, loading, fetchFailed, refresh: fetchJobs,
     pauseJob, resumeJob, deleteJob, runNow, updateJob, adoptJob, restoreNative, skipNext, duplicateJob,
   }
+}
+
+/** A plugin-contributed dated event rendered alongside job occurrences (#191). */
+export interface ScheduledDomainEvent {
+  id: string
+  pluginId: string
+  title: string
+  startsAt?: string
+  endsAt?: string
+  dueAt?: string
+  kind: string
+  status?: string
+  url?: string
+  reschedulable?: boolean
+  metadata?: Record<string, unknown>
+}
+
+/** One server-computed calendar placement — see plugins/schedule/lib/occurrences.ts. */
+export interface ScheduleOccurrence {
+  jobId: string
+  /** Absolute instant, ISO-8601 UTC — render in the browser's local tz. */
+  at: string
+  past: boolean
+  /** Ledger disposition for past Bakin occurrences (absent = never claimed). */
+  disposition?: 'pending' | 'created' | 'skipped' | 'seeded'
+  taskId?: string
+  skipReason?: string
+}
+
+/**
+ * Server-computed occurrences for a time range — the ONLY placement source
+ * for the calendar views (kind-aware, timezone/DST-correct; the old client-
+ * side cron parsing is gone). Refetches on schedule SSE events.
+ */
+export function useOccurrences(fromIso: string, toIso: string) {
+  const [occurrences, setOccurrences] = useState<ScheduleOccurrence[]>([])
+  const [events, setEvents] = useState<ScheduledDomainEvent[]>([])
+  const [unevaluated, setUnevaluated] = useState<string[]>([])
+  const [droppedProviders, setDroppedProviders] = useState<string[]>([])
+  const [loading, setLoading] = useState(true)
+
+  const fetchOccurrences = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/plugins/schedule/occurrences?from=${encodeURIComponent(fromIso)}&to=${encodeURIComponent(toIso)}`)
+      if (res.ok) {
+        const data = await res.json()
+        setOccurrences(data.occurrences || [])
+        setEvents(data.events || [])
+        setUnevaluated(data.unevaluated || [])
+        setDroppedProviders(data.droppedProviders || [])
+      }
+    } catch { /* transient — SSE or the next range change refetches */ } finally {
+      setLoading(false)
+    }
+  }, [fromIso, toIso])
+
+  useEffect(() => {
+    fetchOccurrences()
+  }, [fetchOccurrences])
+
+  useEffect(() => {
+    const es = new EventSource('/api/events')
+    const handler = (event: MessageEvent) => {
+      try {
+        const data = JSON.parse(event.data)
+        if (
+          (data.type === 'activity' && data.message?.includes('Schedule')) ||
+          data.event?.startsWith('schedule.') ||
+          // Task dates feed the domain-event layer; the store broadcasts on
+          // every board write. External providers emit the documented
+          // `<pluginId>.scheduled_events_changed` audit event.
+          data.type === 'taskboard' ||
+          data.event?.endsWith('.scheduled_events_changed')
+        ) {
+          fetchOccurrences()
+        }
+      } catch { /* ignore */ }
+    }
+    es.addEventListener('message', handler)
+    return () => {
+      es.removeEventListener('message', handler)
+      es.close()
+    }
+  }, [fetchOccurrences])
+
+  return { occurrences, events, unevaluated, droppedProviders, loading, refresh: fetchOccurrences }
 }
 
 export function useRunHistory(jobId: string | null, limit = 20) {

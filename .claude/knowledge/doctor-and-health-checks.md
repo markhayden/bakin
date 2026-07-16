@@ -67,7 +67,7 @@ checks                         repair actions
 
 `src/lib/plugin-context-factory.ts` binds plugin ownership. Runtime composition binds adapter ownership. Hot reload removes both registries for the owner and tells the report cache to delete removed snapshots, so an unloaded plugin cannot leave a ghost finding.
 
-The selected Pi adapter checks contribute unique adapter facts (home, agents root, auth, and model). Generic runtime/channel checks remain Health-owned. OpenClaw does not duplicate those generic signals, and Search adapters do not expose a second health service.
+The selected Pi adapter checks contribute unique adapter facts (home, agents root, auth, models, and extension trust). Generic runtime/channel checks remain Health-owned. OpenClaw does not duplicate those generic signals, and Search adapters do not expose a second health service.
 
 ## Execution and report pipeline
 
@@ -144,17 +144,22 @@ Overview always displays the four stages. System owns detailed indexes, migratio
 
 ## First-party producer inventory
 
-There are 37 direct first-party plugin registration sites after the two approved Search consolidations:
+There are 39 direct first-party plugin registration sites after the two approved Search consolidations and the addition of GitHub readiness and runtime-cron tracking:
 
-- Health: 21 system/runtime/work-cost/Search/plugin checks
+- Health: 22 system/runtime/work-cost/Search/plugin checks
 - Team: 4
 - Tasks: 4
 - Workflows: 3
-- Assets, Brands, Git, Images, Schedule: 1 each
+- Schedule: 2
+- Assets, Brands, Git, Images: 1 each
 
-Health's local IDs are `content-dir`, `capabilities`, `service`, `runtime`, `session-store`, `channel-approvals`, `channel-aliases`, `restart-recovery`, `execution-safety`, `context.startup-size`, `budget`, `usage.agent-burn`, `search`, `search-consistency`, `search-spin`, `search-canary`, `search-engine-burn`, `skill`, `plugin-assets`, `plugin-artifacts`, and `plugin-registry`.
+Health's local IDs are `content-dir`, `capabilities`, `github-readiness`, `service`, `runtime`, `session-store`, `channel-approvals`, `channel-aliases`, `restart-recovery`, `execution-safety`, `context.startup-size`, `budget`, `usage.agent-burn`, `search`, `search-consistency`, `search-spin`, `search-canary`, `search-engine-burn`, `skill`, `plugin-assets`, `plugin-artifacts`, and `plugin-registry`.
 
 Health registers six local repair actions: journal revival, consistency rebuild, spin rebuild, canary restart, engine-burn restart, and runtime skill sync. Other plugin owners register their own actions beside their checks.
+
+The Brands `integrity` check uses the same `plugins/brands/lib/integrity.ts` scan as the brand integrity route. It reports unreadable manifests, dangling assets, tasks blocked by missing/draft brands, and stale drafts as structured observations and incidents; no consumer parses its summary text.
+
+The `capabilities` check projects the shared capability-readiness engine per installed pack. `github-readiness` is informational when `gh` is absent, but reports an action-required incident with explicit authentication instructions when the CLI is installed and unauthenticated. `bakin check capabilities` uses the same onboarding component rather than a parallel probe.
 
 ## Public consumers
 
@@ -180,6 +185,11 @@ The doctor cron retains its global settings under `settings.doctor`:
 
 - `intervalMs` — full-sweep cadence
 - `requireOnboard` — whether the core onboarding check applies
+- `escalation` — `off`, stable-ID notification, or delegated repair task
+- `escalationCooldownMs` — minimum interval before a closed/missing covering request may be replaced
+- `escalationStaleAfterMs` — maximum age for an open covering task to suppress a still-burning incident set
+
+Task escalation compares exact incident IDs. A fresh open task that covers every current action-required incident suppresses duplication. `done` and `archived` tasks are closed, while an open task older than `escalationStaleAfterMs` is treated as stalled and re-escalated after the normal cooldown. Scanning continues past a stale request so a newer fresh covering task still wins. Delivery and delegation failures are logged without aborting the doctor cron; failed notifications release their reservation so the next run can retry.
 
 ## Authoring checklist
 

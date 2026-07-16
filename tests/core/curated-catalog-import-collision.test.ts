@@ -36,7 +36,13 @@ import { catalogFilePath } from '../fixtures/catalog-file-import'
 import { staticCuratedCatalog } from '../../src/core/curated-catalog/load'
 
 describe('curated catalog vs file-typed import collision', () => {
-  it('the fixture actually poisons the module cache (path string, not JSON)', () => {
+  // Worker caveat: --isolate shards can reuse a process where a sibling file
+  // already plain-imported the catalog JSON — then the file-typed import
+  // resolves to the CACHED OBJECT and the poisoning can't be arranged here.
+  // The load-survival pin below is the real invariant and holds either way;
+  // this fixture-validity pin only runs when this process's cache is virgin.
+  const poisoningArranged = typeof catalogFilePath === 'string'
+  it.skipIf(!poisoningArranged)('the fixture actually poisons the module cache (path string, not JSON)', () => {
     expect(typeof catalogFilePath).toBe('string')
     expect(catalogFilePath).toContain('curated-catalog')
   })

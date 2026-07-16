@@ -28,7 +28,7 @@ mock.module('../../../src/core/logger', () => ({
 }))
 
 import type { ChatChunk, MessageArgs } from '../../../packages/core/src/adapters/runtime'
-import { createMockRuntimeAdapter } from '../../../packages/core/src/adapters/runtime/testing'
+import { createMockRuntimeAdapter, mockCron } from '../../../packages/core/src/adapters/runtime/testing'
 import { runtimeConformanceChecks, type RuntimeConformanceTarget } from './conformance'
 
 /** Every violation in one adapter: the anti-conformance fixture. */
@@ -225,6 +225,46 @@ describe('conformance suite teeth (broken adapter must fail every check)', () =>
     }
     await expect(runtimeConformanceChecks.initializeIsWriteFree(target))
       .rejects.toThrow(/conformance violation: initialize\(\) wrote to the adapter home/)
+  })
+
+  it('fails the cron-declaration check when a declared-absent adapter exposes the member', async () => {
+    const lying = { ...createMockRuntimeAdapter(), cron: mockCron() }
+    await expect(runtimeConformanceChecks.cronMemberMatchesDeclaration({ ...brokenTarget(), runtime: lying }, { cron: 'absent' }))
+      .rejects.toThrow(/conformance violation: cron declared absent/)
+  })
+
+  it('fails the cron-declaration check when a declared-present adapter omits the member', async () => {
+    await expect(runtimeConformanceChecks.cronMemberMatchesDeclaration({ ...brokenTarget(), runtime: createMockRuntimeAdapter() }, { cron: 'present' }))
+      .rejects.toThrow(/conformance violation: cron declared present/)
+  })
+
+  it('fails the cron round-trip on a stateless lie (created job missing from list)', async () => {
+    const statelessCron = { ...mockCron(), list: async () => [] }
+    const runtime = { ...createMockRuntimeAdapter(), cron: statelessCron }
+    await expect(runtimeConformanceChecks.cronCrudRoundTrip({ ...brokenTarget(), runtime }))
+      .rejects.toThrow(/conformance violation: created cron job is missing from cron\.list\(\)/)
+  })
+
+  it('fails the cron round-trip when get of a missing job throws instead of returning null', async () => {
+    const throwingCron = { ...mockCron(), get: async (id: string) => { throw new Error(`boom ${id}`) } }
+    const runtime = { ...createMockRuntimeAdapter(), cron: throwingCron }
+    await expect(runtimeConformanceChecks.cronCrudRoundTrip({ ...brokenTarget(), runtime }))
+      .rejects.toThrow()
+  })
+
+  it('fails the cron round-trip when update of a missing job resolves a fabricated row', async () => {
+    const base = mockCron()
+    const fabricatingCron = {
+      ...base,
+      update: async (id: string, patch: { schedule?: string }) => {
+        const existing = await base.get(id)
+        if (existing) return base.update(id, patch)
+        return { id, name: id, schedule: patch.schedule ?? '* * * * *', command: '', enabled: true }
+      },
+    }
+    const runtime = { ...createMockRuntimeAdapter(), cron: fabricatingCron }
+    await expect(runtimeConformanceChecks.cronCrudRoundTrip({ ...brokenTarget(), runtime }))
+      .rejects.toThrow(/conformance violation: cron\.update of a missing job resolved/)
   })
 
   it('fails the provisioning check when a second provision changes durable state', async () => {

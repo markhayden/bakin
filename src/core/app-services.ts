@@ -95,6 +95,9 @@ export async function createAppServices(): Promise<AppServices> {
   await runtime.initialize({
     ...adapterInit,
     settings: settings.runtime.settings,
+    // Live view: extension trust changes (and other per-turn knobs) apply on
+    // the next turn without a server restart.
+    getLiveSettings: () => getSettings().runtime.settings,
     execTools,
     onToolActivity,
     onTurnActivity,
@@ -110,7 +113,10 @@ export async function createAppServices(): Promise<AppServices> {
     if (adapterId) unregisterOwnerHealth('adapter', adapterId)
   }
   const runtimeLabel = runtime.name === 'pi' ? 'Pi' : runtime.name
-  for (const check of createRuntimeAdapterHealthChecks(settings.runtime.adapter)) {
+  for (const check of createRuntimeAdapterHealthChecks(
+    settings.runtime.adapter,
+    () => getSettings().runtime.settings,
+  )) {
     registerAdapterHealthCheck(runtime.name, runtimeLabel, check)
   }
 

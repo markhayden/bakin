@@ -18,13 +18,13 @@ mock.module('../../src/core/logger', () => ({
   createLogger: () => ({ info: () => {}, warn: () => {}, error: () => {}, debug: () => {} }),
 }))
 
-import { mapModelToCatalog, reconcileRoster } from '../../src/core/roster-reconcile'
+import { CARRIED_SUBAGENT_MODEL_KEY, mapModelToCatalog, reconcileRoster } from '../../src/core/roster-reconcile'
 import type { AgentRuntimeAdapter, RuntimeAgent } from '@bakin/core/adapters/runtime'
 
 function targetWith(overrides: {
   existing?: string[]
   catalog?: string[]
-  createImpl?: (input: { id: string; model?: string }) => Promise<unknown>
+  createImpl?: (input: { id: string; name?: string; model?: string; metadata?: Record<string, unknown> }) => Promise<unknown>
   updateImpl?: (agentId: string, input: { subagentModel?: string | null }) => Promise<unknown>
   perAgentSubagentModel?: boolean
 }): AgentRuntimeAdapter {
@@ -132,11 +132,16 @@ describe('reconcileRoster — subagentModel carry', () => {
     ])
   })
 
-  it('a runtime without per-agent subagent models gets a report line, not an update call', async () => {
+  it('a runtime without per-agent subagent models PRESERVES the value in metadata, no update call', async () => {
     const updates: string[] = []
+    const created: Array<{ id: string; metadata?: Record<string, unknown> }> = []
     const target = targetWith({
       catalog: ['openai-codex/gpt-5.5', 'openai-codex/gpt-5.5-mini'],
       perAgentSubagentModel: false,
+      createImpl: async (input) => {
+        created.push({ id: input.id, metadata: input.metadata })
+        return { id: input.id, name: input.name }
+      },
       updateImpl: async (agentId) => {
         updates.push(agentId)
         return { id: agentId, name: agentId }
@@ -144,9 +149,39 @@ describe('reconcileRoster — subagentModel carry', () => {
     })
     const report = await reconcileRoster(withSubagent, target)
     expect(updates).toEqual([])
-    expect(report.unmappedModels).toEqual([
-      { agentId: 'main', sourceModel: 'openai/gpt-5.5-mini', field: 'subagentModel' },
-    ])
+    expect(report.unmappedModels).toEqual([])
+    expect(report.preserved).toEqual([{ agentId: 'main', sourceModel: 'openai/gpt-5.5-mini' }])
+    expect(created[0]?.metadata?.[CARRIED_SUBAGENT_MODEL_KEY]).toBe('openai/gpt-5.5-mini')
+  })
+
+  it('round trip: a stashed subagent model is RESTORED on an honoring target and the stash is not re-carried', async () => {
+    const stashedSource: RuntimeAgent[] = [
+      {
+        id: 'main',
+        name: 'Main',
+        model: 'openai-codex/gpt-5.5',
+        metadata: { [CARRIED_SUBAGENT_MODEL_KEY]: 'openai/gpt-5.5-mini', emoji: '🤖' },
+      },
+    ]
+    const updates: Array<{ agentId: string; subagentModel?: string | null }> = []
+    const created: Array<{ id: string; metadata?: Record<string, unknown> }> = []
+    const target = targetWith({
+      catalog: ['openai/gpt-5.5', 'openai/gpt-5.5-mini'],
+      createImpl: async (input) => {
+        created.push({ id: input.id, metadata: input.metadata })
+        return { id: input.id, name: input.name }
+      },
+      updateImpl: async (agentId, input) => {
+        updates.push({ agentId, ...input })
+        return { id: agentId, name: agentId }
+      },
+    })
+    const report = await reconcileRoster(stashedSource, target)
+    expect(updates).toEqual([{ agentId: 'main', subagentModel: 'openai/gpt-5.5-mini' }])
+    expect(report.preserved).toEqual([])
+    // The stash key is reconciler-owned — consumed, never re-carried.
+    expect(created[0]?.metadata?.[CARRIED_SUBAGENT_MODEL_KEY]).toBeUndefined()
+    expect(created[0]?.metadata?.emoji).toBe('🤖')
   })
 
   it('dryRun classifies identically but never calls create or update', async () => {

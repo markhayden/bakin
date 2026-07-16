@@ -22,7 +22,7 @@ export function newScheduleId(): string {
 // validated leniently and a single malformed entry is dropped rather than
 // nuking every other valid schedule.
 const scheduleDefSchema = z.object({
-  kind: z.enum(['cron', 'every', 'at']),
+  kind: z.enum(['cron', 'at']),
   expr: z.string(),
 })
 

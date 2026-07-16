@@ -243,6 +243,53 @@ export function createRequestHandler(deps: RequestHandlerDeps): (req: IncomingMe
       return
     }
 
+    // One-click setup repair from the runtime hub: run a SAFE onboarding
+    // component's install() headlessly. Whitelisted — components with
+    // interactive prompts or package selection stay CLI/Explore territory.
+    if (url.pathname === '/api/runtime/onboarding/install' && req.method === 'POST') {
+      handleJsonPost(req, res, async (body) => {
+        const name = (body as { component?: string } | null)?.component
+        const FIXABLE = new Set(['mkdir', 'settings', 'search', 'search-models', 'plugin-assets', 'agent-sync'])
+        if (!name || !FIXABLE.has(name)) {
+          throw new Error(`component must be one of: ${[...FIXABLE].join(', ')}`)
+        }
+        const { COMPONENT_ORDER } = require('../onboarding/index') as typeof import('../onboarding/index')
+        const component = COMPONENT_ORDER.find((c) => c.name === name)
+        if (!component) throw new Error(`unknown component: ${name}`)
+        const result = await component.install({ interactive: false, autoApprove: true, json: false, checkOnly: false, force: false })
+        return { ok: result.status !== 'failed', result }
+      })
+      return
+    }
+
+    // Extension trust lane (WS4): inert discovery + allow/revoke through
+    // the ONE engine. Feature-detected — a runtime without extensions
+    // reports supported: false.
+    if (url.pathname === '/api/runtime/extensions' && req.method === 'GET') {
+      const { listRuntimeExtensions } = require('../runtime-extensions') as typeof import('../runtime-extensions')
+      listRuntimeExtensions()
+        .then((report) => jsonResponse(res, 200, report))
+        .catch((err) => jsonResponse(res, 500, { ok: false, error: err instanceof Error ? err.message : String(err) }))
+      return
+    }
+    if ((url.pathname === '/api/runtime/extensions/allow' || url.pathname === '/api/runtime/extensions/revoke') && req.method === 'POST') {
+      const mod = require('../runtime-extensions') as typeof import('../runtime-extensions')
+      const action = url.pathname.endsWith('/allow') ? mod.allowRuntimeExtension : mod.revokeRuntimeExtension
+      handleJsonPost(req, res, async (body) => {
+        const id = (body as { id?: unknown }).id
+        if (typeof id !== 'string' || id.length === 0) throw new BadRequestError('id is required')
+        try {
+          return await action(id)
+        } catch (err) {
+          // Trust-input errors (unknown id, wrong mode, not-in-allowlist) are
+          // caller-recoverable — 400, not a 500.
+          if (err instanceof mod.ExtensionTrustError) throw new BadRequestError(err.message)
+          throw err
+        }
+      })
+      return
+    }
+
     // Runtime switch (P3.2): runs the full orchestrated lifecycle; progress
     // streams over the activity SSE channel as runtime:switch events. A
     // completed switch requires a server restart to rebind plugin contexts —
@@ -257,10 +304,11 @@ export function createRequestHandler(deps: RequestHandlerDeps): (req: IncomingMe
           const detail = parsed.error.issues.map((i) => `${i.path.join('.') || 'body'}: ${i.message}`).join('; ')
           throw new BadRequestError(`Invalid runtime switch request — ${detail}`)
         }
-        const { target, dryRun, copyWorkspaces } = parsed.data
+        const { target, dryRun, copyWorkspaces, adoptCron } = parsed.data
         const result = await switchRuntime(target, {
           ...(dryRun !== undefined ? { dryRun } : {}),
           ...(copyWorkspaces !== undefined ? { copyWorkspaces } : {}),
+          ...(adoptCron !== undefined ? { adoptCron } : {}),
           onProgress: (event) => broadcast({ type: 'runtime:switch', ...event }),
         })
         broadcast({ type: 'runtime:switch:result', ok: result.ok, to: result.to, restartRequired: result.restartRequired })

@@ -13,7 +13,8 @@
     "tasks.read",
     "tasks.write",
     "assets.read",
-    "assets.write"
+    "assets.write",
+    "search.write"
   ],
   "contributes": {
     "apiRoutes": [

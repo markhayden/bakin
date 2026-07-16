@@ -15,9 +15,13 @@
  * services / dispatch start. Never call from createAppServices() — read-only
  * CLI paths must not mutate the process environment.
  */
-import { delimiter } from 'path'
+import { existsSync, readFileSync } from 'fs'
+import { delimiter, join } from 'path'
 import { getStoredSecret } from '@bakin/core/media'
-import { getBakinPaths } from '@/core/content-dir'
+import { readLockfile } from '../../packages/core/src/agent-packages/lockfile'
+import { safeParseManifest } from '../../packages/core/src/agent-packages/manifest'
+import { getPackageSourceDir } from '../../packages/core/src/agent-packages/package-paths'
+import { getBakinPaths, getContentDir } from '@/core/content-dir'
 import { createLogger } from '@/core/logger'
 
 const log = createLogger('secret-env')
@@ -68,4 +72,51 @@ export function ensureBakinBinOnPath(): void {
   const segments = (process.env.PATH ?? '').split(delimiter).filter(Boolean)
   if (segments.includes(bin)) return
   process.env.PATH = [bin, ...segments].join(delimiter)
+}
+
+/**
+ * Inject env vars declared by installed capability packs' model requirements
+ * (`requires.models[].env`) — the consuming binary finds its model through
+ * these (e.g. PARAKEET_CPP_MODEL_PATH). The literal `{dest}` expands to the
+ * model's absolute installed path. Same rules as secret injection: unset-only,
+ * env-first, never values in logs.
+ */
+export function injectPackModelEnv(): string[] {
+  const injected: string[] = []
+  let lock: ReturnType<typeof readLockfile>
+  try {
+    lock = readLockfile()
+  } catch (err) {
+    log.warn('Model env injection skipped — lockfile unreadable', { error: err instanceof Error ? err.message : String(err) })
+    return injected
+  }
+  for (const [key, entry] of Object.entries(lock.packages)) {
+    if (entry.kind !== 'skill-pack') continue
+    const id = key.includes('@') ? key.slice(0, key.lastIndexOf('@')) : key
+    const manifestPath = join(
+      getPackageSourceDir(getContentDir(), entry.kind, id, entry.version),
+      'bakin-package.json',
+    )
+    if (!existsSync(manifestPath)) continue
+    let manifest
+    try {
+      manifest = safeParseManifest(JSON.parse(readFileSync(manifestPath, 'utf-8')))
+    } catch (err) {
+      log.warn('Model env injection skipped for pack — manifest unreadable', {
+        packageKey: key, error: err instanceof Error ? err.message : String(err),
+      })
+      continue
+    }
+    if (!manifest.success || manifest.data.kind !== 'skill-pack') continue
+    for (const model of manifest.data.requires?.models ?? []) {
+      const dest = join(getContentDir(), 'models', model.dest)
+      for (const [envVar, raw] of Object.entries(model.env ?? {})) {
+        if (process.env[envVar] !== undefined && process.env[envVar] !== '') continue
+        process.env[envVar] = raw.replaceAll('{dest}', dest)
+        injected.push(envVar)
+      }
+    }
+  }
+  if (injected.length > 0) log.info(`Injected ${injected.length} pack model env var(s): ${injected.join(', ')}`)
+  return injected
 }

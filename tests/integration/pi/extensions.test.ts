@@ -7,7 +7,8 @@
 import { describe, test, expect, beforeAll, afterAll, mock } from 'bun:test'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { mkdirSync, rmSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'fs'
+import { createHash } from 'crypto'
 import { randomUUID } from 'crypto'
 
 globalThis.fetch = (Bun as unknown as { fetch: typeof fetch }).fetch
@@ -31,6 +32,8 @@ import { resetPiHome } from '../../../packages/adapter-pi/src/home'
 import { resetModelRegistry } from '../../../packages/adapter-pi/src/models'
 import { startFakeProvider, type FakeProvider, type FakeTurnScript } from './fake-provider'
 
+const allowEntry = (p: string) => ({ path: realpathSync(p), sha256: createHash('sha256').update(readFileSync(p)).digest('hex') })
+
 const FIXTURE_EXTENSION = `
 export default function (pi) {
   pi.registerTool({
@@ -41,6 +44,27 @@ export default function (pi) {
     async execute(_id, params) {
       return { content: [{ type: 'text', text: 'ext says ' + params.word }], details: undefined }
     },
+  })
+}
+`
+
+/**
+ * The security fixture: its module TOP LEVEL writes a sentinel. If the loader
+ * imports it, the file exists — proving whether unapproved code ran, which no
+ * tool-list assertion can show (a post-load filter hides tools but the module
+ * already executed).
+ */
+const SENTINEL = join(testDir, 'UNAPPROVED-CODE-RAN')
+const SIDE_EFFECT_EXTENSION = `
+import { writeFileSync } from 'fs'
+writeFileSync(${JSON.stringify(SENTINEL)}, 'imported')
+export default function (pi) {
+  pi.registerTool({
+    name: 'ext_sideeffect_noop',
+    label: 'ext_sideeffect_noop',
+    description: 'never approved',
+    parameters: { type: 'object', properties: {} },
+    async execute() { return { content: [], details: undefined } },
   })
 }
 `
@@ -81,6 +105,7 @@ beforeAll(() => {
   mkdirSync(extDir, { recursive: true })
   writeFileSync(join(extDir, 'bakin-fixture.ts'), FIXTURE_EXTENSION)
   writeFileSync(join(extDir, 'broken.ts'), 'throw new Error("broken extension on purpose")\n')
+  writeFileSync(join(extDir, 'side-effect.ts'), SIDE_EFFECT_EXTENSION)
   writeFileSync(join(testDir, 'pi', 'agent', 'auth.json'), JSON.stringify({ fakeai: { type: 'api_key', key: 'k' } }))
 })
 
@@ -90,12 +115,40 @@ afterAll(() => {
 })
 
 describe('pi extension policy', () => {
-  test("default ('all'): extension tool is live and callable; broken extension is contained", async () => {
+  test('THE SECURITY PROMISE: an unapproved extension is never IMPORTED — its module code never runs', async () => {
+    rmSync(SENTINEL, { force: true })
+    const fake = seedProvider([{ steps: [{ text: 'plain' }] }])
+    // allowlist mode with ONLY the fixture approved — side-effect.ts is pending.
+    const adapter = await adapterWithPolicy({
+      mode: 'allowlist',
+      allow: [allowEntry(join(testDir, 'pi', 'agent', 'extensions', 'bakin-fixture.ts'))],
+    })
+    await adapter.messaging.send({ agentId: 'main', content: 'go' })
+
+    // POSITIVE CONTROL: the APPROVED extension genuinely loaded — proving the
+    // loader actually ran and the negative assertions below aren't vacuous.
+    expect(requestToolNames(fake.requests[0])).toContain('ext_fixture_echo')
+    // …and the unapproved one's TOOLS are absent — necessary but NOT sufficient:
+    expect(requestToolNames(fake.requests[0])).not.toContain('ext_sideeffect_noop')
+    // …and, the point: its module was never imported, so its code never ran.
+    expect(existsSync(SENTINEL)).toBe(false)
+  })
+
+  test("DEFAULT ('allowlist', empty): discovered extensions stay INERT until approved (WS4 flip)", async () => {
+    rmSync(SENTINEL, { force: true })
+    const fake = seedProvider([{ steps: [{ text: 'no ext by default' }] }])
+    const adapter = await adapterWithPolicy(undefined)
+    await adapter.messaging.send({ agentId: 'main', content: 'plain' })
+    expect(requestToolNames(fake.requests[0])).not.toContain('ext_fixture_echo')
+    expect(existsSync(SENTINEL)).toBe(false) // nothing imported at all
+  })
+
+  test("'all': extension tool is live and callable; broken extension is contained", async () => {
     const fake = seedProvider([
       { steps: [{ toolCall: { name: 'ext_fixture_echo', args: { word: 'hello' } } }] },
       { steps: [{ text: 'ext round trip done' }] },
     ])
-    const adapter = await adapterWithPolicy(undefined)
+    const adapter = await adapterWithPolicy({ mode: 'all' })
     const result = await adapter.messaging.send({ agentId: 'main', content: 'use the ext tool' })
     expect(result.content).toBe('ext round trip done')
     expect(requestToolNames(fake.requests[0])).toContain('ext_fixture_echo')
@@ -110,14 +163,35 @@ describe('pi extension policy', () => {
     expect(requestToolNames(fake.requests[0])).not.toContain('ext_fixture_echo')
   })
 
-  test("'allowlist': matching pattern loads, non-matching drops", async () => {
-    const fake = seedProvider([{ steps: [{ text: 'a' }] }, { steps: [{ text: 'b' }] }])
-    const allowed = await adapterWithPolicy({ mode: 'allowlist', allow: ['bakin-fixture'] })
+  test('a file SWAPPED after approval does not load its new code (content-hash pin)', async () => {
+    rmSync(SENTINEL, { force: true })
+    const swap = join(testDir, 'pi', 'agent', 'extensions', 'swap.ts')
+    writeFileSync(swap, 'export default function(){}\n') // benign v1
+    const approved = allowEntry(swap) // approve v1's exact bytes
+    // Now an attacker overwrites the approved file with the sentinel-writer.
+    writeFileSync(swap, SIDE_EFFECT_EXTENSION)
+    const fake = seedProvider([{ steps: [{ text: 'x' }] }])
+    const adapter = await adapterWithPolicy({ mode: 'allowlist', allow: [approved] })
+    await adapter.messaging.send({ agentId: 'main', content: 'go' })
+    // The stored hash is v1's; the on-disk file is v2 → not loaded, no import.
+    expect(existsSync(SENTINEL)).toBe(false)
+  })
+
+  test("'allowlist': the approved PATH loads; a bare name or wrong path does not", async () => {
+    const fixture = join(testDir, 'pi', 'agent', 'extensions', 'bakin-fixture.ts')
+    const fake = seedProvider([{ steps: [{ text: 'a' }] }, { steps: [{ text: 'b' }] }, { steps: [{ text: 'c' }] }])
+
+    const allowed = await adapterWithPolicy({ mode: 'allowlist', allow: [allowEntry(fixture)] })
     await allowed.messaging.send({ agentId: 'main', content: 'x' })
     expect(requestToolNames(fake.requests[0])).toContain('ext_fixture_echo')
 
-    const denied = await adapterWithPolicy({ mode: 'allowlist', allow: ['something-else'] })
-    await denied.messaging.send({ agentId: 'main', content: 'y' })
+    // A basename is NOT trust — identity is the path (no pattern matching).
+    const byName = await adapterWithPolicy({ mode: 'allowlist', allow: ['bakin-fixture'] })
+    await byName.messaging.send({ agentId: 'main', content: 'y' })
     expect(requestToolNames(fake.requests[1])).not.toContain('ext_fixture_echo')
+
+    const denied = await adapterWithPolicy({ mode: 'allowlist', allow: [{ path: join(testDir, 'nope.ts'), sha256: 'x'.repeat(64) }] })
+    await denied.messaging.send({ agentId: 'main', content: 'z' })
+    expect(requestToolNames(fake.requests[2])).not.toContain('ext_fixture_echo')
   })
 })

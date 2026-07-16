@@ -224,8 +224,9 @@ export interface BakinSettings {
     /**
      * What the PERIODIC doctor does when a cycle produces ERROR findings:
      * 'task' creates ONE deduplicated delegated-repair task for the main
-     * agent (skipped while a covering repair task is open, and rate-limited
-     * by escalationCooldownMs); 'notify' messages the main agent; 'off'
+     * agent (skipped while a covering repair task is open and younger than
+     * escalationStaleAfterMs, and rate-limited by escalationCooldownMs);
+     * 'notify' messages the main agent; 'off'
      * keeps the old dashboard-only behavior. Manual `bakin doctor` runs are
      * never affected. Both agent-facing modes cost an agent turn and ride
      * the normal budget gates.
@@ -233,6 +234,14 @@ export interface BakinSettings {
     escalation: 'off' | 'notify' | 'task'
     /** Minimum gap before re-escalating the SAME error set as a new task. */
     escalationCooldownMs: number
+    /**
+     * How long an OPEN covering repair task suppresses re-escalation. The
+     * 2026-07-14 search wedge sat behind one stalled repair task for 34h
+     * because an open task muted escalation forever; past this age, a
+     * still-failing error set escalates a fresh task even though the old
+     * one is open.
+     */
+    escalationStaleAfterMs: number
   }
   diagnostics: {
     startup: {
@@ -390,6 +399,7 @@ export const DEFAULT_SETTINGS: BakinSettings = {
     requireOnboard: true,
     escalation: 'task',
     escalationCooldownMs: 6 * 60 * 60 * 1000, // 6 hours
+    escalationStaleAfterMs: 12 * 60 * 60 * 1000, // 12 hours
   },
   diagnostics: {
     startup: {

@@ -53,6 +53,7 @@ import { extractBlock, removeBlock } from '../../../packages/core/src/agent-pack
 import { unmarkUserEdited } from '../../../packages/core/src/agent-packages/markers'
 import { PackageNotInstalledError } from './errors'
 import { projectPackage, type ProjectorResult } from './projector'
+import { installManifestRequirements } from './requirements-installer'
 import { updatePackageById } from './updater'
 import { checkPackageUpdateAsync } from './checker'
 import {
@@ -184,10 +185,13 @@ async function reclaimTargets(
 }
 
 /**
- * Re-project a managed agent from its INSTALLED source dir (no network):
- * recompose blocks + re-write skills/assets, then update the lockfile's
- * projection records. Skipped (sentineled) targets keep their previous
- * lockfile entries so they stay tracked.
+ * Re-project a package from its INSTALLED source dir (no fetch of the
+ * package source): recompose blocks + re-write skills/assets, then update
+ * the lockfile's projection records. Skipped (sentineled) targets keep
+ * their previous lockfile entries so they stay tracked. The one exception
+ * to "no network": a capability pack's MISSING pinned binary is
+ * re-downloaded best-effort (bytes that aren't on disk can't be restored
+ * locally); an unchanged on-disk bin never touches the network.
  */
 async function applyLocalProjection(packageId: string): Promise<ProjectorResult> {
   const lock = readLockfile()
@@ -205,19 +209,45 @@ async function applyLocalProjection(packageId: string): Promise<ProjectorResult>
   }
   const manifest: Manifest = parseManifest(JSON.parse(readFileSync(manifestPath, 'utf-8')))
 
+  const installedBy = {
+    package: stripVersionFromKey(packageId),
+    version: entry.version,
+    ref: entry.ref,
+    commitSha: entry.commitSha,
+    installedAt: new Date().toISOString(),
+  }
   const result = await projectPackage({
     manifest,
     stagingDir: sourceDir,
     agentId: entry.agentId,
     enabledLessons: entry.kind === 'agent' ? entry.lessonsEnabled : undefined,
-    installedBy: {
-      package: stripVersionFromKey(packageId),
-      version: entry.version,
-      ref: entry.ref,
-      commitSha: entry.commitSha,
-      installedAt: new Date().toISOString(),
-    },
+    installedBy,
   })
+  // Requirement legs (bins/npm payloads/models) are part of the projected
+  // surface — re-adding them here keeps the lockfile honest AND makes local
+  // repair restore deleted artifacts (idempotent: on-disk state matching the
+  // pins is skipped, no network). Restoring MISSING bytes needs the network,
+  // so the pass is best-effort: offline, skills still repair and previous
+  // requirement rows stay tracked — readiness keeps reporting the missing
+  // leg with its remediation.
+  const REQUIREMENT_KINDS = new Set(['bin', 'npm-payload', 'model'])
+  try {
+    await installManifestRequirements({
+      manifest,
+      packId: stripVersionFromKey(packageId),
+      sourceDir,
+      installedBy,
+      result,
+    })
+  } catch (err) {
+    log.warn('Requirement restore failed during local re-projection — previous rows kept', {
+      packageId, error: err instanceof Error ? err.message : String(err),
+    })
+    const restored = new Set(result.projections.filter((p) => REQUIREMENT_KINDS.has(p.kind)).map((p) => p.target))
+    result.projections.push(
+      ...(entry.projections ?? []).filter((p) => REQUIREMENT_KINDS.has(p.kind) && !restored.has(p.target)),
+    )
+  }
 
   // Preserve lockfile records for targets the projector skipped (.userEdited)
   // — they're still package projections, just locally locked.
@@ -463,21 +493,40 @@ export interface PackSyncReceipt {
   changed: boolean
 }
 
+/** Lockfile lookup shared by the standalone-pack verbs — packs only. */
+function requirePackEntry(packageKey: string): PackageEntry {
+  const entry = readLockfile().packages[packageKey]
+  if (!entry) throw new PackageNotInstalledError(packageKey)
+  if (entry.kind === 'agent') {
+    throw new Error(`"${packageKey}" is an agent package — use \`bakin agents sync ${entry.agentId ?? packageKey}\`.`)
+  }
+  return entry
+}
+
 /**
- * Minimal sync symmetry for standalone packs (skill/workflow/lesson packs):
- * fetch + re-project via the updater, or report-only with --check. Packs
- * have no workspace blocks or receipts file — the response IS the receipt.
+ * Local-only pack repair: re-project a standalone pack from its INSTALLED
+ * source dir — no fetch, no version movement. This is the pack counterpart
+ * of the always-local re-projection agents get in syncAgent.
+ * userEdited skills are skipped by the projector, reported in `skipped`.
+ */
+export async function repairPackLocally(packageKey: string): Promise<ProjectorResult> {
+  requirePackEntry(packageKey)
+  return applyLocalProjection(packageKey)
+}
+
+/**
+ * Sync symmetry for standalone packs (skill/workflow/lesson packs): fetch +
+ * re-project via the updater, then ALWAYS re-project locally — the updater
+ * no-ops on an unchanged commit, so without the local pass a plain
+ * `bakin packages sync` could never repair drift (agent-sync symmetry).
+ * Report-only with --check. Packs have no workspace blocks or receipts
+ * file — the response IS the receipt.
  */
 export async function syncPack(
   packageId: string,
   opts: { check?: boolean } = {},
 ): Promise<PackSyncReceipt> {
-  const lock = readLockfile()
-  const entry = lock.packages[packageId]
-  if (!entry) throw new PackageNotInstalledError(packageId)
-  if (entry.kind === 'agent') {
-    throw new Error(`"${packageId}" is an agent package — use \`bakin agents sync ${entry.agentId ?? packageId}\`.`)
-  }
+  const entry = requirePackEntry(packageId)
 
   if (opts.check) {
     const status = await checkPackageUpdateAsync(packageId)
@@ -495,6 +544,7 @@ export async function syncPack(
   }
 
   const update = await updatePackageById({ packageId })
+  await applyLocalProjection(packageId)
   return {
     packageId,
     kind: entry.kind,

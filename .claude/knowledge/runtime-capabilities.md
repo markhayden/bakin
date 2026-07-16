@@ -28,6 +28,10 @@ Rules of the model:
   are omitted by runtimes without them (Pi omits both). Consumers
   feature-detect (`runtime.channels?.…`); an arch rule bans `.channels!.` /
   `.cron!.` in production code (`tests/architecture/adapter-boundary.test.ts`).
+  Since PR1 of #191 the conformance suite pins the cron side: each runner
+  declares `cron: 'present' | 'absent'` and a CRUD round-trip runs against
+  any adapter exposing the member (openclaw via the crab CLI shim — the real
+  CLI/file-store path). Absence must be member omission, never a stub.
 
 ## Tool access — one renderer, adapter-owned provisioning
 
@@ -161,8 +165,8 @@ unsupported.
   completed switch returns `restartRequired: true`; everything durable happens
   before the restart.
 - Surfaces: `bakin runtime` (capability report) /
-  `bakin runtime use <adapter> [--dry-run] [--no-copy-workspaces]` (CLI),
-  `POST /api/runtime/switch { target, dryRun?, copyWorkspaces? }` +
+  `bakin runtime use <adapter> [--dry-run] [--no-copy-workspaces] [--adopt-cron]` (CLI),
+  `POST /api/runtime/switch { target, dryRun?, copyWorkspaces?, adoptCron? }` +
   `GET /api/runtime/capabilities` + `GET /api/runtime/onboarding` (REST),
   and the `/runtime` host page (capability matrix, confirm-to-switch, live
   progress via `runtime:switch` SSE events, carry/workspace/stays-behind/
@@ -239,3 +243,35 @@ allowlist — see the contract doc, born of the P5.3 conflation below).
   scout) and the `projects` plugin carried mcporter invocation forms —
   neutralized at source (0.2.1 / 0.5.2+1.0.1) and re-synced. Shipped-repo
   guards can't see installed content; watch for this on other boxes.
+
+## pi-parity additions (P3/P4, 2026-07-13)
+
+- **Subagent-model preservation**: carrying onto a runtime with
+  `perAgentSubagentModel: false` STASHES the value in agent metadata
+  (`carriedSubagentModel`, reconciler-owned, stripped from normal metadata
+  carry) and reports `preserved`; the switch back restores it (mapped +
+  applied via `agents.update`, stash consumed). Capability flags stay
+  honest — unsupporting runtimes never receive a subagentModel update.
+- **Cron adoption (opt-in)**: `--adopt-cron` captures the source's native
+  cron jobs (list + per-job `getRaw`) during `snapshot-roster` — the one
+  window before teardown — and a new `adopt-cron` phase (after
+  `reconcile-roster`) hands them to the schedule plugin's
+  `schedule.adoptCronJobs` hook: Bakin jobs with `source: 'adopted'` +
+  `originalRuntimeCron` snapshot, idempotent per job id, dry-run previews.
+  `RuntimeSwitchResult.cron = { adopted, skipped, failed }`; the can't-carry
+  cron line folds the outcome in.
+- **Extension trust lane (WS4)** — `extensions?: RuntimeExtensionsAccess`
+  optional contract member (inert `list()`; Pi implements, mock/OpenClaw
+  omit). Trust mutations live in ONE engine (`src/core/runtime-extensions.ts`)
+  surfaced via REST + CLI + the hub's Extensions section + the adapter's
+  `pi.extensions` doctor check. Pi's load default is allowlist-empty.
+- **The /runtime page is the runtime hub** (`packages/host/src/routes/
+  runtime.tsx` + `components/runtime/`): Overview (plain-language capability
+  grid + legend + credential/tool-access tiles + live setup checks),
+  Capabilities (capability-pack readiness, remediation links; installs stay
+  in Explore), Runtimes (roster cards on the capability-card anatomy;
+  clicking a runtime opens the ConfirmDialog which owns the WHOLE switch
+  flow — options, consequences, preview trigger, typed confirm — per the
+  no-inline-actions rule; dry-run preview results render on the page,
+  live SSE steps, grouped result cards). Unknown ?tab= values fall back
+  to Overview.

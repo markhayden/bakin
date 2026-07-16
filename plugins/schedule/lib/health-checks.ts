@@ -63,7 +63,6 @@ async function orphanRuntimeJobs(contentDir: string, cron: RuntimeCronReader): P
 export async function checkScheduleSync(
   contentDir: string,
   cron: RuntimeCronReader | undefined,
-  _defaultOwner: string,
 ): Promise<HealthCheckRunInput> {
   if (!cron) return healthNotApplicable('The active runtime has no native cron surface to synchronize.')
 

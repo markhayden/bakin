@@ -29,6 +29,12 @@ const ProjectionKindSchema = z.enum([
   // refcount-aware in the uninstaller: a bin whose target is also projected
   // by another installed package survives that uninstall.
   'bin',
+  // Capability-pack npm payload dir (<home>/npm/<packId>/<name>): scripts +
+  // generated package.json + node_modules. Per-pack path — never shared.
+  'npm-payload',
+  // Capability-pack model file (<home>/models/<dest>). Refcount-aware like
+  // bins: a model another installed pack also projects survives removal.
+  'model',
   // Legacy (pre-layered-context). New code never writes lesson-marker
   // projections — lessons are composed into the workspace-file block. Kept in
   // the enum only so pre-migration lockfiles parse; the one-time migration
@@ -57,6 +63,8 @@ export const PROJECTION_KIND_POLICY: Record<ProjectionKind, ProjectionKindPolicy
   skill: { seedOnce: false, sidecarless: false, survivesUninstall: false },
   asset: { seedOnce: false, sidecarless: false, survivesUninstall: false },
   bin: { seedOnce: false, sidecarless: false, survivesUninstall: false },
+  'npm-payload': { seedOnce: false, sidecarless: false, survivesUninstall: false },
+  model: { seedOnce: false, sidecarless: false, survivesUninstall: false },
   'workspace-file': { seedOnce: false, sidecarless: true, survivesUninstall: true },
   persona: { seedOnce: true, sidecarless: true, survivesUninstall: true },
   'lesson-marker': { seedOnce: false, sidecarless: true, survivesUninstall: true },
