@@ -221,6 +221,9 @@ export function Header() {
         <button
           className="md:hidden mr-3 text-muted-foreground hover:text-foreground"
           onClick={() => setMobileOpen(!mobileOpen)}
+          aria-label={mobileOpen ? 'Close navigation' : 'Open navigation'}
+          aria-expanded={mobileOpen}
+          aria-controls="mobile-navigation-drawer"
         >
           {mobileOpen ? <X className="size-5" /> : <Menu className="size-5" />}
         </button>
@@ -265,8 +268,11 @@ export function Header() {
             className="absolute inset-0 bg-black/50"
             onClick={() => setMobileOpen(false)}
           />
-          <div className="absolute top-[var(--bakin-shell-top,3.5rem)] left-0 bottom-0 w-52 bg-background border-r border-border">
-            <AppSidebar onNavigate={() => setMobileOpen(false)} />
+          <div
+            id="mobile-navigation-drawer"
+            className="absolute bottom-0 left-0 top-[var(--bakin-shell-top,3.5rem)] w-52 overflow-hidden border-r border-border bg-background"
+          >
+            <AppSidebar forceExpanded onNavigate={() => setMobileOpen(false)} />
           </div>
         </div>
       )}
