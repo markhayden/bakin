@@ -5,7 +5,7 @@ import type { AgentRuntimeAdapter, CronJob, RuntimeMetadata } from '@bakin/core/
 import { createLogger } from '../../../src/core/logger'
 import { readSidecar, writeSidecar, withDefaults } from './sidecar'
 import { cronToHuman } from './cron-parser'
-import { nextRun as cronNextRun } from './cron-eval'
+import { scheduleNextRun } from './cron-eval'
 import type { RuntimeCronJobSnapshot, MergedJob, BakinJobMeta } from '../types'
 
 const log = createLogger('schedule:jobs')
@@ -108,6 +108,7 @@ export function mergeJob(
     maxFailures: meta?.maxFailures ?? 3,
     consecutiveFailures: meta?.consecutiveFailures ?? 0,
     lastTaskId: meta?.lastTaskId,
+    completedAt: meta?.completedAt,
     tz: meta?.tz ?? job.schedule.tz,
     createdAt: meta?.createdAt ?? job.createdAt,
 
@@ -117,10 +118,12 @@ export function mergeJob(
       : schedType === 'every'
         ? `Every ${Math.round(parseInt(schedValue, 10) / 1000)}s`
         : `Once at ${schedValue}`,
-    nextRun: schedType === 'cron' && schedValue
-      ? cronNextRun(schedValue, job.schedule.tz ?? meta?.tz, new Date())?.toISOString()
+    // 'every' only occurs on native runtime crons — no Bakin next-run math.
+    nextRun: (schedType === 'cron' || schedType === 'at') && schedValue && !meta?.completedAt
+      ? scheduleNextRun({ kind: schedType, expr: schedValue }, job.schedule.tz ?? meta?.tz, new Date())?.toISOString()
       : undefined,
     lastRun: undefined, // enriched by caller from run history
+    completed: meta?.schedule?.kind === 'at' && !!meta?.completedAt,
   }
 }
 

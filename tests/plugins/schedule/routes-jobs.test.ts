@@ -247,7 +247,8 @@ describe('schedule routes', () => {
       expect(status).toBe(200)
       expect(body.ok).toBe(true)
       expect(body.jobId).toMatch(/^sch_/)
-      expect(body.cron).toBe('0 9 * * *')
+      expect(body.kind).toBe('cron')
+      expect(body.expr).toBe('0 9 * * *')
       expect(body.human).toBe('Every day at 9am')
       expect(body.tz).toBeDefined()
 
@@ -266,6 +267,29 @@ describe('schedule routes', () => {
       // Verify audit
       expect(plugin.ctx.activity.audit).toHaveBeenCalled()
       expect(plugin.ctx.activity.log).toHaveBeenCalled()
+    })
+
+    it('creates a one-shot job from an ISO instant (kind at)', async () => {
+      const route = findRoute(plugin.routes, 'POST', '/')!
+      const future = '2099-01-15T16:00:00.000Z'
+      const { status, body } = await callRoute(route, plugin.ctx, {
+        body: { name: 'One-shot reminder', schedule: future, agentId: 'chef', taskPrompt: 'Remind me' },
+      })
+      expect(status).toBe(200)
+      expect(body.ok).toBe(true)
+      expect(body.kind).toBe('at')
+      expect(body.expr).toBe(future)
+      const meta = getJob(body.jobId as string)
+      expect(meta!.schedule).toEqual({ kind: 'at', expr: future })
+    })
+
+    it('rejects a one-shot whose instant is in the past', async () => {
+      const route = findRoute(plugin.routes, 'POST', '/')!
+      const { status, body } = await callRoute(route, plugin.ctx, {
+        body: { name: 'Too late', schedule: '2020-01-01T00:00:00.000Z', agentId: 'chef', taskPrompt: 'Nope' },
+      })
+      expect(status).toBe(400)
+      expect(String(body.error)).toMatch(/in the past/i)
     })
 
     it('creates a team-assigned job (#189)', async () => {
@@ -1004,7 +1028,8 @@ describe('schedule routes', () => {
       })
 
       expect(status).toBe(200)
-      expect(body.cron).toBe('0 9 * * *')
+      expect(body.kind).toBe('cron')
+      expect(body.expr).toBe('0 9 * * *')
       expect(body.human).toBe('Every day at 9am')
     })
 
@@ -1015,7 +1040,7 @@ describe('schedule routes', () => {
       })
 
       expect(status).toBe(200)
-      expect(body.cron).toBe('*/15 * * * *')
+      expect(body.expr).toBe('*/15 * * * *')
     })
 
     it('returns 400 when input is missing', async () => {

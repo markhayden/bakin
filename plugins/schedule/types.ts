@@ -17,7 +17,11 @@ export interface ScheduleSidecar {
  * scheduler reads `expr`/`tz` directly and never consults the runtime cron store.
  */
 export interface ScheduleDef {
-  kind: 'cron' | 'every' | 'at'
+  /** 'cron' = recurring expression; 'at' = one-shot ISO instant (fires once,
+   *  then the job auto-disables with a completed display state). The native
+   *  snapshot types below still carry 'every' — that's read-only rendering
+   *  of runtime-owned crons, never a Bakin schedule. */
+  kind: 'cron' | 'at'
   expr: string
 }
 
@@ -54,6 +58,10 @@ export interface BakinJobMeta {
   createdAt: string
   updatedAt: string
   lastTaskId?: string
+  /** One-shot ('at') jobs only: the occurrence instant that consumed the job.
+   *  Set with enabled=false when the single fire lands — the "completed"
+   *  display state. Never set for cron jobs. */
+  completedAt?: string
   // Run-level dedup lives in the execution ledger (cron_fires) — the legacy
   // processedRunIds/lastProcessedRunAt fields are seeded there once on boot.
   originalRuntimeCron?: {
@@ -136,6 +144,8 @@ export interface MergedJob {
   maxFailures: number
   consecutiveFailures: number
   lastTaskId?: string
+  /** One-shot ('at') consumption instant — see BakinJobMeta.completedAt. */
+  completedAt?: string
 
   tz?: string
   createdAt?: string
@@ -144,6 +154,9 @@ export interface MergedJob {
   humanSchedule: string
   nextRun?: string // ISO date
   lastRun?: RunEntry
+  /** One-shot that has fired: disabled with completedAt set. Drives the
+   *  "completed" badge instead of the generic disabled state. */
+  completed: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -166,7 +179,10 @@ export interface RunEntry {
 // ---------------------------------------------------------------------------
 
 export interface ParseResult {
-  cron: string
+  /** 'cron' = recurring; 'at' = one-shot (expr is a normalized ISO instant). */
+  kind: 'cron' | 'at'
+  /** Canonical schedule value: cron expression, or ISO-8601 instant. */
+  expr: string
   human: string
   confidence: 'high' | 'medium' | 'low'
   source: 'deterministic' | 'llm' | 'raw'

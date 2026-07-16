@@ -272,6 +272,27 @@ describe('schedule exec tools', () => {
   // bakin_exec_schedule_create
   // -----------------------------------------------------------------------
   describe('bakin_exec_schedule_create', () => {
+    it('creates a one-shot job from an ISO instant (agents self-schedule reminders)', async () => {
+      const tool = findTool(plugin.execTools, 'bakin_exec_schedule_create')!
+      const future = '2099-03-01T17:30:00.000Z'
+      const result = await callTool(tool, {
+        name: 'One-shot reminder', schedule: future, agentId: 'pixel', taskPrompt: 'Remind me once',
+      })
+      expect(result.ok).toBe(true)
+      expect(result.kind).toBe('at')
+      expect(result.expr).toBe(future)
+      expect(getJob(result.jobId as string)!.schedule).toEqual({ kind: 'at', expr: future })
+    })
+
+    it('rejects a past one-shot instant with a clear error', async () => {
+      const tool = findTool(plugin.execTools, 'bakin_exec_schedule_create')!
+      const result = await callTool(tool, {
+        name: 'Too late', schedule: '2020-01-01T00:00:00.000Z', agentId: 'pixel', taskPrompt: 'Nope',
+      })
+      expect(result.ok).toBe(false)
+      expect(String(result.error)).toMatch(/in the past/i)
+    })
+
     it('creates a job and returns jobId + cron info', async () => {
       const tool = findTool(plugin.execTools, 'bakin_exec_schedule_create')!
       expect(tool).toBeDefined()
@@ -285,7 +306,7 @@ describe('schedule exec tools', () => {
 
       expect(result.ok).toBe(true)
       expect(result.jobId).toMatch(/^sch_/)
-      expect(result.cron).toBe('0 9 * * *')
+      expect(result.expr).toBe('0 9 * * *')
       expect(result.tz).toBeDefined()
 
       // Bakin owns the schedule — no OpenClaw cron job is created.

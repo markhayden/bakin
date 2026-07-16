@@ -210,11 +210,13 @@ export const scheduleRoutes = [
       const raw = await cron.getRaw(jobId, 'schedule adopt: preserve native cron before Bakin takes ownership')
       if (!raw) return json({ error: 'Runtime cron snapshot not found' }, 404)
 
-      const parsed = body.schedule ? parseSchedule(body.schedule) : { cron: runtimeJob.schedule }
+      const tz = body.tz || existing?.tz || nativeCronTz(runtimeJob) || getSystemTimezone()
+      const parsed = body.schedule
+        ? parseSchedule(body.schedule, { tz })
+        : { kind: 'cron' as const, expr: runtimeJob.schedule }
       if (!parsed) return json({ error: 'Could not parse schedule' }, 400)
 
       const now = new Date().toISOString()
-      const tz = body.tz || existing?.tz || nativeCronTz(runtimeJob) || getSystemTimezone()
       const displayName = body.name || existing?.displayName || runtimeJob.name
       const owner = (body.owner ?? undefined) || existing?.owner || await getRuntimeMainAgentId(ctx.runtime)
       const taskPrompt = (body.taskPrompt ?? undefined) || existing?.taskPrompt || runtimeJob.command
@@ -240,7 +242,7 @@ export const scheduleRoutes = [
         jobId,
         isBakinJob: true,
         source: 'adopted',
-        schedule: { kind: 'cron', expr: parsed.cron },
+        schedule: { kind: parsed.kind, expr: parsed.expr },
         enabled: runtimeJob.enabled ?? true,
         displayName,
         agentId: adoptAgentId,

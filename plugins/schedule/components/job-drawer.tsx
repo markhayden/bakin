@@ -120,6 +120,8 @@ export function JobDrawer({
                 <div className="flex items-center gap-2 mt-1">
                   {job.paused ? (
                     <Badge className="bg-amber-500/20 text-amber-400">Paused</Badge>
+                  ) : job.completed ? (
+                    <Badge className="bg-sky-500/20 text-sky-400">Completed</Badge>
                   ) : job.enabled ? (
                     <Badge className="bg-emerald-500/20 text-emerald-400">Active</Badge>
                   ) : (
@@ -128,11 +130,15 @@ export function JobDrawer({
                   <Badge variant="outline" className="text-[10px] uppercase tracking-wider">
                     {job.source === 'adopted' ? 'Adopted' : job.isBakinJob ? 'Bakin schedule' : 'Runtime cron'}
                   </Badge>
-                  {job.nextRun && (
+                  {job.completed && job.completedAt ? (
+                    <span className="text-xs text-muted-foreground">
+                      Ran once — {new Date(job.completedAt).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                    </span>
+                  ) : job.nextRun ? (
                     <span className="text-xs text-muted-foreground">
                       Next: {new Date(job.nextRun).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
                     </span>
-                  )}
+                  ) : null}
                 </div>
               </div>
             </div>

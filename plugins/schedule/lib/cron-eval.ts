@@ -73,3 +73,43 @@ export function occurrencesBetween(expr: string, tz: string | undefined, from: D
     return []
   }
 }
+
+// ─── Schedule-aware dispatch (kind 'cron' | 'at') ───────────────────────────
+// The scheduler evaluates ScheduleDefs, not raw expressions: 'cron' delegates
+// to the expression engine above; 'at' is a single absolute ISO-8601 instant
+// (tz-independent — the tz parameter only shapes cron wall-clock evaluation).
+
+import type { ScheduleDef } from '../types'
+
+/** The instant an 'at' expr names, or null when unparseable. */
+function atInstant(expr: string): Date | null {
+  const ms = Date.parse(expr)
+  return Number.isFinite(ms) ? new Date(ms) : null
+}
+
+export function isValidScheduleDef(def: ScheduleDef): boolean {
+  return def.kind === 'at' ? atInstant(def.expr) !== null : isValidExpr(def.expr)
+}
+
+/** Next occurrence strictly after `after` — for 'at', the instant while it is
+ *  still in the future, then null forever (one-shots never repeat). */
+export function scheduleNextRun(def: ScheduleDef, tz: string | undefined, after: Date): Date | null {
+  if (def.kind !== 'at') return nextRun(def.expr, tz, after)
+  const instant = atInstant(def.expr)
+  return instant && instant.getTime() > after.getTime() ? instant : null
+}
+
+/** Most recent occurrence at or before `before` — for 'at', the instant once
+ *  it has passed (what startup catch-up looks for), else null. */
+export function schedulePrevRun(def: ScheduleDef, tz: string | undefined, before: Date): Date | null {
+  if (def.kind !== 'at') return prevRun(def.expr, tz, before)
+  const instant = atInstant(def.expr)
+  return instant && instant.getTime() <= before.getTime() ? instant : null
+}
+
+/** Occurrences in `(from, to]` — for 'at', at most the single instant. */
+export function scheduleOccurrencesBetween(def: ScheduleDef, tz: string | undefined, from: Date, to: Date): Date[] {
+  if (def.kind !== 'at') return occurrencesBetween(def.expr, tz, from, to)
+  const instant = atInstant(def.expr)
+  return instant && instant.getTime() > from.getTime() && instant.getTime() <= to.getTime() ? [instant] : []
+}

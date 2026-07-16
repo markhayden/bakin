@@ -190,3 +190,58 @@ describe('schedule/scheduler', () => {
     })
   })
 })
+
+// ─── One-shot 'at' schedules ────────────────────────────────────────────────
+
+describe("one-shot 'at' schedules", () => {
+  const AT = '2026-06-07T15:00:00.000Z'
+  const AT_MS = Date.parse(AT)
+  const atJob = (overrides: Partial<BakinJobMeta> = {}) =>
+    meta({ jobId: 'sch_once', schedule: { kind: 'at', expr: AT }, ...overrides })
+
+  it('fires exactly once at its instant; re-ticks and later ticks are no-ops', async () => {
+    const jobs = [atJob()]
+    const { deps, fired } = makeDeps(jobs, AT_MS + 30_000)
+    await runSchedulerTick(deps)
+    expect(fired).toHaveLength(1)
+    expect(fired[0].runId).toBe(`sch_once:${AT}`)
+
+    await runSchedulerTick(deps) // same window re-tick
+    expect(fired).toHaveLength(1)
+
+    const later = makeDeps(jobs, AT_MS + 24 * 60 * 60 * 1000, {})
+    await runSchedulerTick(later.deps)
+    expect(later.fired).toHaveLength(0) // instant long out of any window
+  })
+
+  it('does not fire before its instant', async () => {
+    const { deps, fired } = makeDeps([atJob()], AT_MS - 60_000)
+    await runSchedulerTick(deps)
+    expect(fired).toHaveLength(0)
+  })
+
+  it('catch-up fires a recently missed one-shot into todo', async () => {
+    const { deps, fired } = makeDeps([atJob()], AT_MS + 10 * 60_000)
+    await runStartupCatchUp(deps, 60 * 60_000)
+    expect(fired).toEqual([{ jobId: 'sch_once', runId: `sch_once:${AT}`, occurrence: AT, blocked: false }])
+  })
+
+  it('catch-up lands a stale missed one-shot in blocked triage', async () => {
+    const { deps, fired } = makeDeps([atJob()], AT_MS + 2 * 60 * 60_000)
+    await runStartupCatchUp(deps, 60 * 60_000)
+    expect(fired).toEqual([{ jobId: 'sch_once', runId: `sch_once:${AT}`, occurrence: AT, blocked: true }])
+  })
+
+  it('catch-up skips a one-shot created after its instant (no phantom miss)', async () => {
+    const { deps, fired } = makeDeps([atJob({ createdAt: '2026-06-08T00:00:00Z' })], Date.parse('2026-06-09T00:00:00Z'))
+    await runStartupCatchUp(deps, 60 * 60_000)
+    expect(fired).toHaveLength(0)
+  })
+
+  it('a disabled (completed) one-shot never fires again', async () => {
+    const { deps, fired } = makeDeps([atJob({ enabled: false })], AT_MS + 30_000)
+    await runSchedulerTick(deps)
+    await runStartupCatchUp(deps, 60 * 60_000)
+    expect(fired).toHaveLength(0)
+  })
+})
