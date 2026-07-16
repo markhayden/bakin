@@ -3,9 +3,10 @@
 import { Fragment, useMemo, useState } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from "@makinbakin/sdk/ui"
-import { useOccurrences, type ScheduleJob, type ScheduleOccurrence } from "@makinbakin/sdk/hooks"
+import { useOccurrences, type ScheduleJob, type ScheduleOccurrence, type ScheduledDomainEvent } from "@makinbakin/sdk/hooks"
 import { AgentBadge } from './agent-badge'
 import { agentStyle } from './agent-colors'
+import { EventChip, eventInstant } from './event-popover'
 
 export const CALENDAR_HOURS = Array.from({ length: 24 }, (_, i) => i)
 const DOW_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -137,8 +138,8 @@ export function CalendarWeekly({
   }, [weekStart])
 
   // Server-computed placements — the one occurrence engine (kind-aware,
-  // tz/DST-correct). The old client-side cron parsing is gone.
-  const { occurrences } = useOccurrences(weekStart.toISOString(), weekEnd.toISOString())
+  // tz/DST-correct) plus plugin-contributed domain events (#191).
+  const { occurrences, events, refresh } = useOccurrences(weekStart.toISOString(), weekEnd.toISOString())
   const byId = useMemo(() => jobsById(jobs), [jobs])
 
   const prev = () => setWeekStart(d => { const n = new Date(d); n.setDate(n.getDate() - 7); return n })
@@ -159,6 +160,18 @@ export function CalendarWeekly({
     }
     return map
   }, [occurrences])
+
+  // Domain events land in the same cells, rendered as distinct chips.
+  const eventGrid = useMemo(() => {
+    const map: Record<string, ScheduledDomainEvent[]> = {}
+    for (const event of events) {
+      const d = new Date(eventInstant(event))
+      const key = `${d.getDay()}-${d.getHours()}`
+      if (!map[key]) map[key] = []
+      map[key]!.push(event)
+    }
+    return map
+  }, [events])
 
   return (
     <div className="flex flex-col gap-3 h-full min-h-0">
@@ -206,6 +219,7 @@ export function CalendarWeekly({
               </div>
               {Array.from({ length: 7 }, (_, dow) => {
                 const cellOccurrences = grid[`${dow}-${hour}`] || []
+                const cellEvents = eventGrid[`${dow}-${hour}`] || []
                 const today = isToday(weekDates[dow]!)
                 return (
                   <div
@@ -213,7 +227,7 @@ export function CalendarWeekly({
                     className={`
                       border-l border-t border-border/[0.06] p-1
                       ${today ? 'bg-blue-500/[0.02]' : ''}
-                      ${cellOccurrences.length === 0 ? 'hover:bg-white/[0.01]' : ''}
+                      ${cellOccurrences.length + cellEvents.length === 0 ? 'hover:bg-white/[0.01]' : ''}
                     `}
                   >
                     {cellOccurrences.map(occurrence => {
@@ -228,6 +242,9 @@ export function CalendarWeekly({
                         />
                       )
                     })}
+                    {cellEvents.map(event => (
+                      <EventChip key={`${event.pluginId}-${event.id}`} event={event} compact onRescheduled={refresh} />
+                    ))}
                   </div>
                 )
               })}

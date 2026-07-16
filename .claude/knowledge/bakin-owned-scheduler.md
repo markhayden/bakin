@@ -53,6 +53,15 @@ runId, catch-up into `todo` within the window, blocked triage beyond it.
   One-time toggle + datetime-local picker) — persists `{ kind, expr }` and
   **rejects past instants** with a clear error.
 
+## Plugin-contributed domain events
+
+The calendars also render read-only dated events contributed by other
+plugins (publish dates, milestones, task deadlines) via the
+`{pluginId}.scheduledEvents` hook convention — see
+`.claude/knowledge/scheduled-domain-events.md`. Orthogonal to job firing:
+events are display + deep link (+ the optional owner-routed reschedule
+verb), never occurrences of the Bakin scheduler.
+
 ## Native OpenClaw crons (read-only)
 
 The crons the runtime/agents create for themselves are surfaced **read-only**. `lib/jobs-reader.ts` unions two sources: runtime crons (`cron.list()`) and store-owned Bakin schedules (synthesized from the stored schedule when they have no runtime cron). Mutating a non-Bakin job (PUT / pause / skip / delete, route + exec tool) is rejected with 403 / `ok:false` and guidance to **adopt** it first. `adopt` copies the expr into a Bakin schedule and removes the native cron; `restore-native` puts it back. The reader never auto-deletes a Bakin record (a read must not mutate the store) — only genuinely-orphaned non-Bakin sidecar entries are swept.
