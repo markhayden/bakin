@@ -28,6 +28,7 @@ import {
   Workflow,
   Zap,
 } from 'lucide-react'
+import { useRef, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import type { NavBadge as NavBadgeData, NavItem } from '@makinbakin/sdk'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -90,6 +91,76 @@ function navRowClass(active: boolean, collapsed: boolean): string {
       ? 'bg-foreground/[0.06] text-foreground shadow-[inset_2px_0_0_0_var(--color-pink-500)]'
       : 'text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground'
   }`
+}
+
+function CollapsedNavGroup({
+  item,
+  pathname,
+  badges,
+  onNavigate,
+}: Pick<SidebarNavItemProps, 'item' | 'pathname' | 'badges' | 'onNavigate'>) {
+  const [open, setOpen] = useState(false)
+  const suppressRestoredFocusRef = useRef(false)
+  const Icon = resolveNavIcon(item.icon)
+  const active = isNavActive(pathname, item.href)
+  const parentBadge = badges.get(item.id) ?? item.badge
+  const rollupTone = collapsedParentRollupTone(item, parentBadge, badges)
+  const rollupAriaSuffix = collapsedParentAriaSuffix(parentBadge, rollupTone)
+
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(nextOpen, details) => {
+        if (!nextOpen && details.reason === 'escape-key') suppressRestoredFocusRef.current = true
+        setOpen(nextOpen)
+      }}
+    >
+      <PopoverTrigger
+        type="button"
+        openOnHover
+        delay={120}
+        closeDelay={120}
+        onFocus={() => {
+          if (suppressRestoredFocusRef.current) {
+            suppressRestoredFocusRef.current = false
+            return
+          }
+          setOpen(true)
+        }}
+        className={`${navRowClass(active, true)} relative`}
+        aria-label={`${item.label}${rollupAriaSuffix}`}
+      >
+        <Icon className="size-4 shrink-0" />
+        {rollupTone && <NavBadgeDot tone={rollupTone} />}
+      </PopoverTrigger>
+      <PopoverContent side="right" align="start" sideOffset={8} className="w-48 gap-0.5 p-1.5">
+        <div className="px-2 py-1.5 text-xs font-semibold text-foreground">{item.label}</div>
+        {item.children!.map((child) => {
+          const ChildIcon = resolveNavIcon(child.icon)
+          const childActive = isNavActive(pathname, child.href)
+          const childBadge = badges.get(child.id) ?? child.badge
+          return (
+            <Link
+              key={child.id}
+              to={child.href}
+              onClick={onNavigate}
+              className={`flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                childActive
+                  ? 'bg-foreground/[0.07] text-foreground'
+                  : 'text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground'
+              }`}
+              aria-current={childActive ? 'page' : undefined}
+              aria-label={`${child.label}${navBadgeAriaSuffix(childBadge)}`}
+            >
+              <ChildIcon className="size-3.5 shrink-0" />
+              <span className="min-w-0 flex-1 truncate">{child.label}</span>
+              <NavBadge badge={childBadge} />
+            </Link>
+          )
+        })}
+      </PopoverContent>
+    </Popover>
+  )
 }
 
 export function SidebarNavItem({
@@ -162,50 +233,7 @@ export function SidebarNavItem({
   }
 
   if (hasChildren) {
-    const parentBadge = badgeFor(item)
-    const rollupTone = collapsedParentRollupTone(item, parentBadge, badges)
-    const rollupAriaSuffix = collapsedParentAriaSuffix(parentBadge, rollupTone)
-    return (
-      <Popover>
-        <PopoverTrigger
-          type="button"
-          openOnHover
-          delay={120}
-          closeDelay={120}
-          className={`${navRowClass(active, true)} relative`}
-          aria-label={`${item.label}${rollupAriaSuffix}`}
-        >
-          <Icon className="size-4 shrink-0" />
-          {rollupTone && <NavBadgeDot tone={rollupTone} />}
-        </PopoverTrigger>
-        <PopoverContent side="right" align="start" sideOffset={8} className="w-48 gap-0.5 p-1.5">
-          <div className="px-2 py-1.5 text-xs font-semibold text-foreground">{item.label}</div>
-          {item.children!.map((child) => {
-            const ChildIcon = resolveNavIcon(child.icon)
-            const childActive = isNavActive(pathname, child.href)
-            const childBadge = badgeFor(child)
-            return (
-              <Link
-                key={child.id}
-                to={child.href}
-                onClick={onNavigate}
-                className={`flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-                  childActive
-                    ? 'bg-foreground/[0.07] text-foreground'
-                    : 'text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground'
-                }`}
-                aria-current={childActive ? 'page' : undefined}
-                aria-label={`${child.label}${navBadgeAriaSuffix(childBadge)}`}
-              >
-                <ChildIcon className="size-3.5 shrink-0" />
-                <span className="min-w-0 flex-1 truncate">{child.label}</span>
-                <NavBadge badge={childBadge} />
-              </Link>
-            )
-          })}
-        </PopoverContent>
-      </Popover>
-    )
+    return <CollapsedNavGroup item={item} pathname={pathname} badges={badges} onNavigate={onNavigate} />
   }
 
   const flatBadge = badgeFor(item)

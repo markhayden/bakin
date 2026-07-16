@@ -11,6 +11,7 @@ import { usePathname } from '../../hooks/use-pathname'
 import { buildSidebarNavModel } from './nav-placement'
 import { isNavActive } from './nav-badge-logic'
 import { SidebarNavItem } from './sidebar-nav-item'
+import { SidebarPromo } from './sidebar-promo'
 
 const UTILITY_ITEMS: NavItem[] = [
   { id: 'runtime', label: 'Runtime', icon: 'ServerCog', href: '/runtime' },
@@ -111,6 +112,7 @@ export function AppSidebar({
       </div>
 
       <div role="group" aria-label="Utilities" className="flex shrink-0 flex-col gap-0.5 border-t border-border/70 pt-2">
+        <SidebarPromo collapsed={collapsed} pathname={pathname} onNavigate={onNavigate} />
         {UTILITY_ITEMS.map(renderNavItem)}
       </div>
     </nav>

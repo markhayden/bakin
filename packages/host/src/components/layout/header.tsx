@@ -230,6 +230,7 @@ export function Header() {
         <button
           onClick={toggle}
           className="hidden md:flex text-muted-foreground hover:text-foreground transition-colors p-1 rounded-md hover:bg-[rgba(255,255,255,0.06)] mr-2"
+          aria-label={collapsed ? 'Expand navigation' : 'Collapse navigation'}
         >
           {collapsed ? (
             <PanelLeft className="size-4" />

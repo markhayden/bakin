@@ -24,15 +24,6 @@
         "summary": "Fetch and cache the remote curated catalog"
       }
     ],
-    "nav": [
-      {
-        "id": "explore",
-        "label": "Extend Bakin",
-        "icon": "Compass",
-        "href": "/explore",
-        "placement": "bottom"
-      }
-    ],
     "slots": [
       "page:/explore"
     ]
