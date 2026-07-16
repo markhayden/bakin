@@ -245,6 +245,58 @@ const eslintConfig = defineConfig([
       }],
     },
   },
+  // No hard navigation for internal routes (routing overhaul D3): internal
+  // links go through PluginLink / TanStack Link / useRouter().push — never a
+  // full page load. CI gate + allowlist live in
+  // tests/architecture/no-hard-navigation.test.ts; this block mirrors it for
+  // in-editor feedback. Keep the two allowlists in sync.
+  {
+    files: [
+      "packages/host/src/**/*.{ts,tsx}",
+      "packages/sdk/src/**/*.{ts,tsx}",
+      "plugins/**/*.{ts,tsx}",
+      "src/components/**/*.{ts,tsx}",
+      "src/hooks/**/*.{ts,tsx}",
+      "src/lib/**/*.{ts,tsx}",
+      "src/context/**/*.{ts,tsx}",
+    ],
+    ignores: [
+      // Server handlers + dev tooling (reloads by design):
+      "packages/host/src/api/**",
+      "packages/host/src/dev-client/**",
+      // Deliberate full reloads, reasons in the arch test:
+      "src/components/unsaved-changes-guard.tsx",
+      "src/lib/browser-notify.ts",
+      "packages/host/src/components/layout/header.tsx",
+      "packages/host/src/plugin-host/PluginHost.tsx",
+      "packages/sdk/src/hooks/router.ts",
+      "src/hooks/use-sse.ts",
+    ],
+    rules: {
+      "no-restricted-syntax": ["error",
+        {
+          selector: "CallExpression[callee.property.name=/^(assign|replace|reload)$/][callee.object.property.name='location']",
+          message: "Hard navigation for internal routes is banned — use useRouter().push / PluginLink (see tests/architecture/no-hard-navigation.test.ts).",
+        },
+        {
+          selector: "CallExpression[callee.property.name=/^(assign|replace|reload)$/][callee.object.name='location']",
+          message: "Hard navigation for internal routes is banned — use useRouter().push / PluginLink (see tests/architecture/no-hard-navigation.test.ts).",
+        },
+        {
+          selector: "AssignmentExpression[left.property.name='href'][left.object.property.name='location']",
+          message: "`location.href =` full-reloads the shell — use useRouter().push / PluginLink.",
+        },
+        {
+          selector: "AssignmentExpression[left.property.name='href'][left.object.name='location']",
+          message: "`location.href =` full-reloads the shell — use useRouter().push / PluginLink.",
+        },
+        {
+          selector: "JSXOpeningElement[name.name='a'] JSXAttribute[name.name='href'] Literal[value=/^\\u002F(?!api\\u002F)/]",
+          message: "Raw internal <a href=\"/…\"> anchors full-reload the shell — use PluginLink (SDK) or TanStack Link.",
+        },
+      ],
+    },
+  },
 ]);
 
 export default eslintConfig;
