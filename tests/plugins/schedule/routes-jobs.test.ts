@@ -92,19 +92,19 @@ mock.module('../../../src/core/task-service', () => ({
 }))
 
 // Mock plugin-registry (hook registry used by bridge — not under test here but must be present)
+// Fixture scheduled-events providers for the occurrences fan-in tests.
+const hookProviders: Record<string, (data: unknown) => Promise<unknown>> = {}
+const fixtureHookRegistry = () => ({
+  invoke: mock(async (name: string, data: unknown) => hookProviders[name]?.(data)),
+  register: mock(() => () => {}),
+  has: mock((name: string) => name in hookProviders),
+  getRegisteredHooks: () => Object.keys(hookProviders),
+})
 mock.module('../../../src/core/plugin-registry', () => ({
-  getHookRegistry: () => ({
-    invoke: mock(async () => undefined),
-    register: mock(() => () => {}),
-    has: mock(() => false),
-  }),
+  getHookRegistry: fixtureHookRegistry,
 }))
 mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
-  getHookRegistry: () => ({
-    invoke: mock(async () => undefined),
-    register: mock(() => () => {}),
-    has: mock(() => false),
-  }),
+  getHookRegistry: fixtureHookRegistry,
 }))
 
 // Mock runtime cron and jobs-reader — routes exercise adapter calls while
@@ -1046,6 +1046,27 @@ describe('schedule routes', () => {
         searchParams: { from: '2026-06-10T00:00:00Z', to: '2026-06-08T00:00:00Z' },
       })
       expect(inverted.status).toBe(400)
+    })
+
+    it('fans in plugin-contributed domain events with per-provider fault isolation', async () => {
+      hookProviders['tasks.scheduledEvents'] = async () => [{
+        id: 'evt-1', pluginId: 'tasks', title: 'Waiting task', kind: 'task-scheduled',
+        startsAt: '2026-06-09T15:00:00.000Z', url: '/tasks?taskId=t1', reschedulable: true,
+      }]
+      hookProviders['broken.scheduledEvents'] = async () => { throw new Error('boom') }
+      try {
+        const route = findRoute(plugin.routes, 'GET', '/occurrences')!
+        const { status, body } = await callRoute(route, plugin.ctx, {
+          searchParams: { from: '2026-06-08T00:00:00Z', to: '2026-06-10T00:00:00Z' },
+        })
+        expect(status).toBe(200)
+        const events = body.events as Array<{ id: string; pluginId: string }>
+        expect(events.map(e => e.id)).toEqual(['evt-1'])
+        expect(body.droppedProviders).toEqual(['broken'])
+      } finally {
+        delete hookProviders['tasks.scheduledEvents']
+        delete hookProviders['broken.scheduledEvents']
+      }
     })
 
     it('rejects a range beyond the 62-day cap', async () => {

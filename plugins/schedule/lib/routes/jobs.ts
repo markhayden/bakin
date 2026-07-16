@@ -13,7 +13,9 @@ import { parseSchedule } from '../cron-parser'
 import { getSystemTimezone, json, nativeCronTz } from '../schedule-util'
 import { readRuns } from '../runs-reader'
 import { computeOccurrences } from '../occurrences'
+import { collectDomainEvents } from '../domain-events'
 import { getCronFire } from '../../../../src/core/execution-ledger'
+import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 import { fireManualRun } from '../fire-engine'
 import {
@@ -138,7 +140,14 @@ export const scheduleRoutes = [
         nowMs: Date.now(),
         getFire: (jobId, runId) => getCronFire(jobId, runId),
       })
-      return json({ occurrences: items, unevaluated })
+      // Plugin-contributed domain events ride the same feed (#191): fan-in
+      // over `{pluginId}.scheduledEvents` hooks, per-provider fault-isolated.
+      const { events, droppedProviders } = await collectDomainEvents(
+        new Date(fromMs).toISOString(),
+        new Date(toMs).toISOString(),
+        { hooks: getHookRegistry() },
+      )
+      return json({ occurrences: items, events, unevaluated, droppedProviders })
     },
   }),
 

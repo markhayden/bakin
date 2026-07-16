@@ -28,6 +28,7 @@ export * from './runtime'
 export * from './services'
 export * from './registration'
 export * from './context'
+export * from './scheduled-events'
 
 // The ONE public route type (declarative-generic) + its pure companions —
 // DECLARED here (api-route.ts is a leaf; reaching through ../routing pulled
