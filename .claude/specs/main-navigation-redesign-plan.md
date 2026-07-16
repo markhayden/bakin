@@ -227,12 +227,12 @@ If either feature branch already exists or a baseline fails, stop and report the
 
 ### Task 6 — Sync the Bits development SDK contract
 
-**Description:** Update the official Bits ambient SDK declaration before its plugins author new section fields.
+**Description:** Add the official Bits ambient SDK section declaration before its plugins author new section fields. Keep `alwaysExpanded` only until Task 7 removes its final source consumer and the ambient field together.
 
 **Acceptance criteria:**
 
 - [ ] Ambient `NavSection` matches the public Bakin enum exactly.
-- [ ] Ambient `NavItem` exposes `section` and no longer exposes `alwaysExpanded` or `placement`.
+- [ ] Ambient `NavItem` exposes `section` while existing plugin source remains buildable.
 - [ ] Bits typecheck remains green before plugin declarations change.
 
 **Verification:**
@@ -255,7 +255,7 @@ If either feature branch already exists or a baseline fails, stop and report the
 
 - [ ] Projects declares `plan-and-automate` and `FolderKanban` in manifest and client registration.
 - [ ] Messaging declares `create` and `Megaphone`; its children use CalendarDays, ClipboardList, and Lightbulb.
-- [ ] `alwaysExpanded` is gone; manifest/runtime declarations remain byte-shape equivalent for drift checking.
+- [ ] `alwaysExpanded` is gone from source and the ambient SDK contract; manifest/runtime declarations remain byte-shape equivalent for drift checking.
 - [ ] Bits tests, typecheck, lint, and build pass.
 
 **Verification:**
@@ -273,8 +273,9 @@ If either feature branch already exists or a baseline fails, stop and report the
 - `plugins/projects/client.tsx`
 - `plugins/messaging/bakin-plugin.json`
 - `plugins/messaging/client.tsx`
+- `types/sdk-ambient.d.ts`
 
-**Scope:** Medium (4 files).
+**Scope:** Medium (5 files).
 
 ### Checkpoint A — Contract and declarations
 
@@ -552,8 +553,8 @@ Every numbered commit is a tested rollback checkpoint. Commit only after its tas
 
 | # | Commit | Contents / rollback boundary |
 |---:|---|---|
-| 1 | `chore(sdk)!: sync navigation section contract` | Ambient SDK enum/field and removal of obsolete fields. |
-| 2 | `feat(nav): group official Projects and Messaging` | Both manifest/runtime declaration pairs, icons, and Messaging disclosure behavior. |
+| 1 | `chore(sdk): add navigation section contract` | Additive ambient SDK enum/field so plugin declarations can migrate without a broken checkpoint. |
+| 2 | `feat(nav)!: group official Projects and Messaging` | Both manifest/runtime declaration pairs, icons, Messaging disclosure behavior, and final ambient `alwaysExpanded` removal. |
 
 ### Cross-repository release order
 
