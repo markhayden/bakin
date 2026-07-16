@@ -1,292 +1,330 @@
 // @vitest-environment jsdom
 
-import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { useEffect, useState, type ReactNode } from 'react'
 import '../../rtl-settle'
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from 'react'
+import type { HealthIncident, HealthRepairTarget } from '@makinbakin/sdk/types'
 
-const clearReindexProgress = mock()
+let requestedTab = 'overview'
+let currentPath = '/health'
+let queryWrites: string[] = []
+let panelMounts: string[] = []
+let overviewHookCalls = 0
+let capturedRepairTarget: HealthRepairTarget | null = null
 
-// Pure client-component test (stubbed global fetch, no server imports) — the
-// isolation mocks are belt-and-braces per the repo's test rules.
-const contentDirMock = () => ({
-  getContentDir: () => '/tmp/bakin-test-health-page-unused',
-  getBakinPaths: () => ({ home: '/tmp/bakin-test-health-page-unused' }),
-})
-mock.module('../../../src/core/content-dir', contentDirMock)
-mock.module('../../../packages/core/src/content-dir', contentDirMock)
+let overviewRunChecks = mock(async () => ({ id: 'report-2' }))
+let overviewRefresh = mock(async () => undefined)
+
+const repairIncident = {
+  id: 'incident-1',
+  title: 'Search index is stale',
+} as HealthIncident
 
 mock.module('@makinbakin/sdk/hooks', () => ({
-  useContentStore: (selector: (state: { reindexProgress: Record<string, unknown>; clearReindexProgress: () => void }) => unknown) =>
-    selector({ reindexProgress: {}, clearReindexProgress }),
-  useQueryState: (_key: string, initial: string) => [initial, mock()],
+  usePathname: () => currentPath,
+  useQueryState: (_key: string, defaultValue: string) => {
+    const [value, setValue] = useState(requestedTab || defaultValue)
+    const writeValue = (next: string) => {
+      queryWrites.push(next)
+      setValue(next)
+    }
+    return [value, writeValue, writeValue]
+  },
 }))
 
-mock.module('@makinbakin/sdk/ui', () => ({
-  Card: ({ children }: { children: ReactNode }) => <section>{children}</section>,
-  CardHeader: ({ children }: { children: ReactNode }) => <header>{children}</header>,
-  CardTitle: ({ children }: { children: ReactNode }) => <h2>{children}</h2>,
-  CardContent: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-  Badge: ({ children }: { children: ReactNode }) => <span>{children}</span>,
-  Button: ({ children, ...props }: ButtonHTMLAttributes<HTMLButtonElement>) => <button {...props}>{children}</button>,
-  Input: (props: InputHTMLAttributes<HTMLInputElement>) => <input {...props} />,
-  Skeleton: () => <div data-testid="skeleton" />,
-  Dialog: ({ children, open }: { children: ReactNode; open?: boolean }) => open ? <div role="dialog">{children}</div> : null,
-  DialogContent: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-  DialogHeader: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-  DialogTitle: ({ children }: { children: ReactNode }) => <h2>{children}</h2>,
-  DialogDescription: ({ children }: { children: ReactNode }) => <p>{children}</p>,
-  DialogFooter: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+mock.module('../../../plugins/health/hooks/use-overview-data', () => ({
+  useOverviewData: () => {
+    overviewHookCalls += 1
+    return {
+      model: { reportId: 'report-1' },
+      runChecks: () => overviewRunChecks(),
+      refresh: () => overviewRefresh(),
+    }
+  },
 }))
 
-mock.module('@makinbakin/sdk/components', () => ({
-  PluginHeader: ({ title }: { title: string }) => <h1>{title}</h1>,
-  UnderlineTabs: ({ tabs }: { tabs: Array<{ label: string }> }) => (
-    <div>{tabs.map((tab) => <span key={tab.label}>{tab.label}</span>)}</div>
+function MountedPanel({ name, children }: { name: string; children?: ReactNode }) {
+  useEffect(() => {
+    panelMounts.push(name)
+  }, [name])
+  return <div data-testid={`${name}-panel`}>{children}</div>
+}
+
+mock.module('../../../plugins/health/components/overview-tab', () => ({
+  OverviewTab: ({
+    onRepair,
+    onRerun,
+  }: {
+    onRepair?: (incident: HealthIncident) => void
+    onRerun?: (incident: HealthIncident) => void
+  }) => (
+    <MountedPanel name="overview">
+      <button type="button" onClick={() => onRepair?.(repairIncident)}>Review repair</button>
+      <button type="button" onClick={() => onRerun?.(repairIncident)}>Check again</button>
+    </MountedPanel>
   ),
-  StackedColumnChart: ({ data }: { data: Array<{ x: string; values: Record<string, number> }> }) => (
-    <div data-testid="stacked-chart">
-      {data.map((d) => (
-        <span key={d.x} title={`${d.x}: ${Object.values(d.values).reduce((a, b) => a + b, 0)} tokens`} />
-      ))}
-    </div>
-  ),
-  ChartExplainer: ({ children }: { children: ReactNode }) => <p role="note">{children}</p>,
+}))
+
+mock.module('../../../plugins/health/components/agents-tab', () => ({
+  AgentsTab: () => <MountedPanel name="agents" />,
+}))
+
+mock.module('../../../plugins/health/components/activity-tab', () => ({
+  ActivityTab: () => <MountedPanel name="activity" />,
+}))
+
+mock.module('../../../plugins/health/components/system-tab', () => ({
+  SystemTab: () => <MountedPanel name="system" />,
+}))
+
+mock.module('../../../plugins/health/components/repair-dialog', () => ({
+  RepairDialog: ({
+    open,
+    target,
+    title,
+    onApplied,
+  }: {
+    open: boolean
+    target: HealthRepairTarget
+    title?: string
+    onApplied?: () => void
+  }) => {
+    capturedRepairTarget = target
+    if (!open) return null
+    return (
+      <div role="dialog" aria-label={title}>
+        <button type="button" onClick={onApplied}>Apply repair</button>
+      </div>
+    )
+  },
 }))
 
 import { HealthPage } from '../../../plugins/health/components/health-page'
+import { HEALTH_REPORT_SWEEP_TIMEOUT_MS } from '../../../plugins/health/hooks/use-health-report'
 
-function jsonResponse(body: unknown): Response {
+function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
+    status,
     headers: { 'Content-Type': 'application/json' },
   })
 }
 
-function setupHealthFetch(options: {
-  usage?: unknown[]
-  usageHistory?: Record<string, unknown>
-  searchTables?: unknown[]
-  registryPlugins?: unknown[]
-  manifestPlugins?: unknown[]
-} = {}) {
-  const fetchMock = mock((url: string, init?: RequestInit) => {
-    if (url === '/api/plugins/upgrade' && init?.method === 'POST') {
-      return Promise.resolve(jsonResponse({ ok: true, id: 'projects', noop: false }))
-    }
-    if (url === '/api/plugins/health/summary') {
-      return Promise.resolve(jsonResponse({
-        doctor: null,
-        errors1h: { total: 0, byKind: { mcp: 0, rest: 0, agent: 0 } },
-        activeSessions: [],
-        upSince: '2026-05-01T00:00:00.000Z',
-        server: { port: 3737, pid: 1, nodeVersion: 'v22.0.0', memoryMB: 512, totalMemoryMB: 4096 },
-      }))
-    }
-    if (url === '/api/plugins/health/registry') {
-      return Promise.resolve(jsonResponse({ plugins: options.registryPlugins ?? [] }))
-    }
-    if (url.startsWith('/api/plugins/manifest')) {
-      return Promise.resolve(jsonResponse({ plugins: options.manifestPlugins ?? [] }))
-    }
-    if (url === '/api/plugins/health/usage') {
-      return Promise.resolve(jsonResponse(options.usage ?? []))
-    }
-    if (url.startsWith('/api/plugins/health/usage-history')) {
-      return Promise.resolve(jsonResponse(options.usageHistory ?? {
-        window: '24h', since: '2026-05-01', scannedAt: null, byAgent: [], byDay: [],
-      }))
-    }
-    if (url === '/api/plugins/health/search-status') {
-      return Promise.resolve(jsonResponse({
-        enabled: true,
-        tables: options.searchTables ?? [],
-      }))
-    }
-    if (url.startsWith('/api/plugins/health/usage-feed')) {
-      return Promise.resolve(jsonResponse({
-        totals: { count: 0, errors: 0, errorRate: 0 },
-        topByName: [],
-        byAgent: [],
-        recent: [],
-      }))
-    }
-    return Promise.resolve(jsonResponse({}))
-  })
-  vi.stubGlobal('fetch', fetchMock)
-  return fetchMock
-}
+beforeEach(() => {
+  requestedTab = 'overview'
+  currentPath = '/health'
+  queryWrites = []
+  panelMounts = []
+  overviewHookCalls = 0
+  capturedRepairTarget = null
+  overviewRunChecks = mock(async () => ({ id: 'report-2' }))
+  overviewRefresh = mock(async () => undefined)
+})
 
 afterEach(() => {
+  vi.useRealTimers()
+  cleanup()
   vi.unstubAllGlobals()
-  clearReindexProgress.mockClear()
 })
 
-describe('HealthPage search stats', () => {
-  it('renders per-table doc counts from the blue/green snapshot', async () => {
-    const fetchMock = setupHealthFetch({
-      searchTables: [{
-        logical: 'bakin_tasks',
-        physical: 'bakin_tasks_v1_abcd1234',
-        schemaVersion: 1,
-        state: 'active',
-        phase: null,
-        pluginId: 'tasks',
-        healthy: true,
-        docCount: 17,
-        legs: [],
-      }],
+describe('HealthPage tab shell', () => {
+  it('normalizes an invalid tab to Overview and exposes linked tab semantics', async () => {
+    requestedTab = 'not-a-health-tab'
+
+    render(<HealthPage />)
+
+    const page = screen.getByTestId('health-page')
+    const overviewTab = screen.getByRole('tab', { name: 'Overview' })
+    const panel = screen.getByRole('tabpanel')
+
+    expect(page.className).toContain('@container/health')
+    expect(page.classList.contains('health-page')).toBe(true)
+    expect(screen.getByRole('heading', { name: 'Health' })).toBeDefined()
+    expect(within(screen.getByTestId('plugin-header')).queryByText('See what needs attention, fix it, and confirm Bakin is working.')).toBeNull()
+    expect(screen.getByRole('tablist', { name: 'Health sections' }).closest('[data-slot="underline-tabs"]')).not.toBeNull()
+    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
+      'Overview',
+      'Agents',
+      'Activity',
+      'System',
+    ])
+    expect(overviewTab.getAttribute('aria-selected')).toBe('true')
+    expect(overviewTab.getAttribute('aria-controls')).toBe(panel.id)
+    expect(panel.getAttribute('aria-labelledby')).toBe(overviewTab.id)
+    expect(screen.getByTestId('overview-panel')).toBeDefined()
+    expect(screen.queryByTestId('agents-panel')).toBeNull()
+    expect(screen.queryByTestId('activity-panel')).toBeNull()
+    expect(screen.queryByTestId('system-panel')).toBeNull()
+    await waitFor(() => expect(panelMounts).toEqual(['overview']))
+    expect(queryWrites).toEqual(['overview'])
+  })
+
+  it('does not rewrite the next route while Health is unmounting', async () => {
+    requestedTab = 'diagnostics'
+    currentPath = '/team/main'
+
+    render(<HealthPage />)
+
+    await act(async () => { await Promise.resolve() })
+    expect(queryWrites).toEqual([])
+  })
+
+  it('syncs the selected tab to the URL and mounts only the active panel', async () => {
+    render(<HealthPage />)
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Agents' }))
+
+    await waitFor(() => expect(queryWrites).toEqual(['agents']))
+    expect(screen.getByRole('tab', { name: 'Agents' }).getAttribute('aria-selected')).toBe('true')
+    expect(screen.getByTestId('agents-panel')).toBeDefined()
+    expect(screen.queryByTestId('overview-panel')).toBeNull()
+    expect(screen.queryByTestId('activity-panel')).toBeNull()
+    expect(screen.queryByTestId('system-panel')).toBeNull()
+    expect(panelMounts).toEqual(['overview', 'agents'])
+
+    const agentsTab = screen.getByRole('tab', { name: 'Agents' })
+    await act(async () => {
+      agentsTab.focus()
+      fireEvent.keyDown(agentsTab, { key: 'ArrowRight' })
+      await Promise.resolve()
     })
 
+    await waitFor(() => expect(screen.getByRole('tab', { name: 'Activity' }).getAttribute('aria-selected')).toBe('true'))
+    expect(queryWrites).toEqual(['agents', 'activity'])
+    expect(screen.getByTestId('activity-panel')).toBeDefined()
+    expect(screen.queryByTestId('agents-panel')).toBeNull()
+    expect(panelMounts).toEqual(['overview', 'agents', 'activity'])
+  })
+
+  it('runs fresh checks explicitly and announces only that explicit workflow', async () => {
+    let finishChecks: ((value: { id: string }) => void) | undefined
+    overviewRunChecks = mock(() => new Promise<{ id: string }>((resolve) => {
+      finishChecks = resolve
+    }))
+
     render(<HealthPage />)
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/plugins/health/search-status'))
-    expect(await screen.findByText('bakin_tasks')).toBeDefined()
-    expect(screen.getByText('17')).toBeDefined()
-  })
-})
+    const status = screen.getByTestId('health-action-status')
+    expect(status.textContent).toBe('')
+    expect(screen.queryByTestId('health-action-visible-status')).toBeNull()
 
-describe('HealthPage runtime usage display', () => {
-  it('shows the Runtime Usage token table without a dollar cost (cost lives in Bakin Spend)', async () => {
-    setupHealthFetch({
-      usage: [
-        {
-          agent: 'patch',
-          sessionId: 's1',
-          sessionStarted: '2026-05-26T10:00:00.000Z',
-          model: 'claude-4',
-          messages: 2,
-          tokens: { input: 1000, output: 500, cacheRead: 200, cacheWrite: 0, total: 1700 },
-          cost: { input: 0.01, output: 0.02, cacheRead: 0.001, cacheWrite: 0, total: 0.031, source: 'runtime' },
-        },
-        {
-          agent: 'local',
-          sessionId: 's2',
-          sessionStarted: '2026-05-26T11:00:00.000Z',
-          model: 'local-model',
-          messages: 1,
-          tokens: { input: 100, output: 50, cacheRead: 0, cacheWrite: 0, total: 150 },
-          cost: { input: null, output: null, cacheRead: null, cacheWrite: null, total: null, source: 'unavailable' },
-        },
-      ],
+    fireEvent.click(screen.getByRole('button', { name: 'Run checks' }))
+
+    expect(status.textContent).toBe('Running health checks.')
+    expect(screen.getByTestId('health-action-visible-status').textContent).toBe('Running health checks.')
+    expect(screen.getByRole('button', { name: 'Running checks…' }).hasAttribute('disabled')).toBe(true)
+    expect(overviewRunChecks).toHaveBeenCalledTimes(1)
+
+    finishChecks?.({ id: 'report-2' })
+    await waitFor(() => expect(status.textContent).toBe('Health checks completed.'))
+    expect(screen.getByTestId('health-action-visible-status').textContent).toBe('Health checks completed.')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Check again' }))
+    expect(status.textContent).toBe('Running health checks.')
+    expect(overviewRunChecks).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps Overview unmounted while another tab runs checks on demand', async () => {
+    requestedTab = 'agents'
+    const fetchMock = mock((_url: string | URL | Request, _init?: RequestInit) =>
+      Promise.resolve(jsonResponse({ error: 'unavailable' }, 503)))
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<HealthPage />)
+
+    expect(screen.getByTestId('agents-panel')).toBeDefined()
+    expect(overviewHookCalls).toBe(0)
+    expect(fetchMock).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Run checks' }))
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/plugins/health/doctor/run')
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    })
+    expect(fetchMock.mock.calls[0]?.[1]?.signal).toBeInstanceOf(AbortSignal)
+    const failure = 'Health checks could not be completed. Existing evidence remains visible.'
+    expect(screen.getByTestId('health-action-status').textContent).toBe(failure)
+    expect(screen.getByTestId('health-action-visible-status').textContent).toBe(failure)
+    expect(overviewHookCalls).toBe(0)
+    expect(screen.getByTestId('agents-panel')).toBeDefined()
+  })
+
+  it('times out a hung on-demand check and makes Run checks available again', async () => {
+    vi.useFakeTimers()
+    requestedTab = 'agents'
+    let requestSignal: AbortSignal | undefined
+    const fetchMock = mock((_url: string | URL | Request, init?: RequestInit) => {
+      requestSignal = init?.signal as AbortSignal | undefined
+      return new Promise<Response>(() => {})
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<HealthPage />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Run checks' }))
+    expect(screen.getByRole('button', { name: 'Running checks…' }).hasAttribute('disabled')).toBe(true)
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(HEALTH_REPORT_SWEEP_TIMEOUT_MS) })
+
+    expect(requestSignal?.aborted).toBe(true)
+    const failure = 'Health checks could not be completed. Existing evidence remains visible.'
+    expect(screen.getByTestId('health-action-status').textContent).toBe(failure)
+    expect(screen.getByRole('button', { name: 'Run checks' }).hasAttribute('disabled')).toBe(false)
+  })
+
+  it('also times out when a check responds but its body never settles', async () => {
+    vi.useFakeTimers()
+    requestedTab = 'system'
+    let requestSignal: AbortSignal | undefined
+    const fetchMock = mock((_url: string | URL | Request, init?: RequestInit) => {
+      requestSignal = init?.signal as AbortSignal | undefined
+      const response = jsonResponse({})
+      response.json = () => new Promise<never>(() => {})
+      return Promise.resolve(response)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<HealthPage />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Run checks' }))
+    await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+    expect(screen.getByRole('button', { name: 'Running checks…' }).hasAttribute('disabled')).toBe(true)
+    await act(async () => { await vi.advanceTimersByTimeAsync(HEALTH_REPORT_SWEEP_TIMEOUT_MS) })
+
+    expect(requestSignal?.aborted).toBe(true)
+    expect(screen.getByTestId('health-action-status').textContent)
+      .toBe('Health checks could not be completed. Existing evidence remains visible.')
+    expect(screen.getByRole('button', { name: 'Run checks' }).hasAttribute('disabled')).toBe(false)
+  })
+
+  it('does not announce success for a malformed 200 diagnostic response', async () => {
+    requestedTab = 'agents'
+    vi.stubGlobal('fetch', mock(async () => jsonResponse({ id: 'not-a-health-report' })))
+
+    render(<HealthPage />)
+    fireEvent.click(screen.getByRole('button', { name: 'Run checks' }))
+
+    await waitFor(() => expect(screen.getByTestId('health-action-status').textContent)
+      .toBe('Health checks could not be completed. Existing evidence remains visible.'))
+  })
+
+  it('opens a report-scoped incident repair and refreshes Overview after apply', async () => {
+    render(<HealthPage />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Review repair' }))
+
+    expect(screen.getByRole('dialog', { name: 'Repair Search index is stale' })).toBeDefined()
+    expect(capturedRepairTarget).toEqual({
+      type: 'incidents',
+      reportId: 'report-1',
+      ids: ['incident-1'],
     })
 
-    render(<HealthPage />)
-
-    // The runtime card is now usage-only (tokens), no dollar figure — cost
-    // moved to the separate "Bakin Spend" card to avoid two competing
-    // "cost" numbers.
-    expect(await screen.findByText('Latest Session Context')).toBeDefined()
-    expect(screen.getAllByText('patch').length).toBeGreaterThan(0)
-    // No runtime-reported dollar cost rendered on this card anymore.
-    expect(screen.queryByText(/reported/)).toBeNull()
-    expect(screen.queryByText(/\$0\.03/)).toBeNull()
-  })
-})
-
-describe('HealthPage plugin update controls', () => {
-  const registryPlugins = [{
-    id: 'projects',
-    name: 'Projects',
-    version: '2.0.0',
-    description: 'Project management',
-    source: 'user',
-    routes: 15,
-  }]
-
-  const manifestPlugins = [{
-    id: 'projects',
-    name: 'Projects',
-    version: '2.0.0',
-    source: 'github',
-    installed: {
-      type: 'github',
-      version: '2.0.0',
-      commitSha: 'oldsha',
-      remoteHeadSha: 'newsha',
-      lastChecked: '2026-06-01T12:00:00.000Z',
-    },
-    upgradeAvailable: true,
-    staleHintDays: null,
-  }]
-
-  it('checks plugin updates on load and renders update state with manual check', async () => {
-    const fetchMock = setupHealthFetch({ registryPlugins, manifestPlugins })
-
-    render(<HealthPage />)
-
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/plugins/manifest?check=1'))
-    expect(await screen.findByText('Update available')).toBeDefined()
-    expect(screen.getByRole('button', { name: 'Upgrade Projects' })).toBeDefined()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Check plugin updates now' }))
-    await waitFor(() => expect(fetchMock.mock.calls.filter((call) => call[0] === '/api/plugins/manifest?check=1').length).toBeGreaterThanOrEqual(2))
-  })
-
-  it('opens the plugin upgrade modal and calls the upgrade endpoint', async () => {
-    const fetchMock = setupHealthFetch({ registryPlugins, manifestPlugins })
-
-    render(<HealthPage />)
-
-    fireEvent.click(await screen.findByRole('button', { name: 'Upgrade Projects' }))
-    expect(screen.getByRole('dialog')).toBeDefined()
-    expect(screen.getByRole('heading', { name: 'Upgrade Projects' })).toBeDefined()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Upgrade plugin' }))
-
-    await waitFor(() => {
-      expect(fetchMock.mock.calls.some((call) => (
-        call[0] === '/api/plugins/upgrade'
-        && (call[1] as RequestInit | undefined)?.method === 'POST'
-        && String((call[1] as RequestInit | undefined)?.body).includes('"pluginId":"projects"')
-      ))).toBe(true)
-    })
-  })
-})
-
-describe('HealthPage usage history section', () => {
-  afterEach(() => cleanup())
-
-  it('renders per-agent rollups with partial-cost indicator and em-dash for no cost', async () => {
-    setupHealthFetch({
-      usageHistory: {
-        window: '24h',
-        since: '2026-05-01',
-        scannedAt: '2026-05-02T10:00:00.000Z',
-        byAgent: [
-          {
-            agent: 'basil',
-            tokens: { input: 1000, output: 500, cacheRead: 10, cacheWrite: 5, total: 1515 },
-            costUsdMicros: 12_000, costedMessages: 2, messageCount: 3,
-          },
-          {
-            agent: 'clover',
-            tokens: { input: 100, output: 50, cacheRead: 0, cacheWrite: 0, total: 150 },
-            costUsdMicros: null, costedMessages: 0, messageCount: 4,
-          },
-        ],
-        byDay: [
-          { day: '2026-05-01', tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 800 }, costUsdMicros: null, costedMessages: 0, messageCount: 2 },
-          { day: '2026-05-02', tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 865 }, costUsdMicros: null, costedMessages: 0, messageCount: 5 },
-        ],
-      },
-    })
-
-    render(<HealthPage />)
-
-    expect(await screen.findByText('Usage History')).toBeDefined()
-    expect(await screen.findByText('basil')).toBeDefined()
-    expect(screen.getByText('clover')).toBeDefined()
-    // Partial coverage marker on basil's runtime-reported cost.
-    expect(screen.getByTitle('Runtime-reported cost on 2 of 3 messages')).toBeDefined()
-    // clover reported no cost — em-dash, never $0.
-    expect(screen.getByText('—')).toBeDefined()
-    // Daily chart bars carry per-day tooltips.
-    expect(screen.getByTitle(/2026-05-01: 800 tokens/)).toBeDefined()
-  })
-
-  it('renders the honest empty state before any scan has completed', async () => {
-    setupHealthFetch()
-    render(<HealthPage />)
-    expect(await screen.findByText(/first transcript scan has not completed/)).toBeDefined()
+    fireEvent.click(screen.getByRole('button', { name: 'Apply repair' }))
+    await waitFor(() => expect(overviewRefresh).toHaveBeenCalledTimes(1))
   })
 })

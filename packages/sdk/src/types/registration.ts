@@ -2,10 +2,11 @@
 // module's self-containment + two-tier rationale.
 import type { ComponentType } from 'react'
 import type { z, ZodRawShape } from 'zod'
-import type { ActivityAPI, EventBus, HookAPI, PluginContext, StorageAdapter } from './context'
-import type { ContractStability, ContractVisibility, DocsExample, HttpMethod, SchemaLike, SourceLocation } from './primitives'
+import type { ActivityAPI, EventBus, HookAPI, StorageAdapter } from './context'
+import type { SchemaLike } from './primitives'
 import type { AgentRuntimeAdapter } from './runtime'
 import type { AssetsAPI, SearchAPI, TaskService } from './services'
+import type { ActivityClass } from './api-route'
 
 /** Visual tone for a {@link NavBadge}. Maps to a fixed palette in the sidebar.
  *  Ordered by severity: `error` (red) is the most urgent and wins rollups. */
@@ -116,6 +117,8 @@ export interface ExecToolDefinition<Shape extends ZodRawShape = ZodRawShape> {
   label?: string
   /** If true, this tool can fire multiple times in a single agent turn. */
   activityDuplicate?: boolean
+  /** Usage classification propagated by every generic exec-tool transport. Defaults to foreground user activity. */
+  activityClass?: ActivityClass
   /** Zod raw shape describing the tool's parameters. */
   parameters: Shape
   /** Handler. Params are inferred from `parameters` — declare once, get typed params. */
@@ -184,87 +187,6 @@ export interface PluginNotificationChannelInput {
   label: string
   initials?: string
   icon?: string
-}
-
-/** Result row returned by a health check (doctor). */
-export interface HealthCheckResult {
-  /** Stable check identifier. */
-  check: string
-  /** Severity of the result. */
-  status: 'ok' | 'warn' | 'error' | 'fixed'
-  /** Human-readable message describing the finding. */
-  message: string
-  /** Whether the issue can be auto-fixed by an attached repair handler. */
-  autoFixable: boolean
-  /**
-   * Optional machine-readable detail for UI consumers (#385). Convention:
-   * per-agent findings set `agents: string[]` so dashboards can attribute a
-   * result without parsing the message text.
-   */
-  data?: Record<string, unknown>
-}
-
-/** Repair safety tier: safe (auto), manual (needs review), destructive (data-affecting). */
-export type HealthRepairSafety = 'safe' | 'manual' | 'destructive'
-
-/** Single change a repair plan will apply. */
-export interface HealthRepairChange {
-  kind: 'file' | 'setting' | 'service' | 'runtime' | 'task' | 'other'
-  target: string
-  action: 'create' | 'update' | 'delete' | 'install' | 'invoke'
-  description: string
-}
-
-/** One item in a repair plan: what will change and why. */
-export interface HealthRepairPlanItem {
-  id: string
-  checkId: string
-  title: string
-  reason: string
-  safety: HealthRepairSafety
-  requiresConfirmation: boolean
-  changes: HealthRepairChange[]
-}
-
-/** Result of applying a single repair plan item. */
-export interface HealthRepairApplyResult {
-  id: string
-  checkId: string
-  status: 'applied' | 'skipped' | 'failed'
-  message: string
-  changes: HealthRepairChange[]
-}
-
-/** Two-phase repair handler attached to a health check. */
-export interface HealthRepairHandler {
-  plan(rows: HealthCheckResult[]): Promise<HealthRepairPlanItem[]>
-  apply(items: HealthRepairPlanItem[]): Promise<HealthRepairApplyResult[]>
-}
-
-/**
- * Health check registration input passed to `ctx.registerHealthCheck()`.
- * The plugin id is auto-namespaced as `{pluginId}.{id}`. `run()` returns an
- * array so one registered check can contribute multiple result rows.
- */
-export interface PluginHealthCheckInput {
-  id: string
-  name: string
-  /**
-   * Runs the check, returns any number of result rows. Throws/rejects are
-   * caught by the doctor orchestrator and converted to a synthetic error
-   * result — a single bad handler never crashes the sweep.
-   */
-  run: () => Promise<HealthCheckResult[]>
-  /**
-   * Legacy advisory flag for older admin surfaces. New code should derive
-   * repairability from `repair`.
-   */
-  autoFix?: boolean
-  /**
-   * Optional explicit repair contract. Diagnostics call only `run()`; repair
-   * flows call `plan()` first, then `apply()` after explicit confirmation.
-   */
-  repair?: HealthRepairHandler
 }
 
 // ---------------------------------------------------------------------------

@@ -260,7 +260,6 @@ export function createMockRuntimeAdapter(
     },
     ping: async () => alive,
     restart: async () => {},
-    getHealthChecks: () => [],
 
     agents: {
       list: async () => Array.from(agents.values()),

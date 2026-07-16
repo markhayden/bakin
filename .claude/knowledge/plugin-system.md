@@ -473,13 +473,13 @@ fs walk. `--check` runs per-plugin probes in parallel:
 Plain `list` shows a 7-day staleness hint when `lastChecked` is older
 than the threshold.
 
-Health's Active Plugins list merges `/api/plugins/health/registry` with
-`/api/plugins/manifest`. On first load it asks for
-`/api/plugins/manifest?check=1`; automatic refreshes reuse cached manifest
-status for up to one hour, and the manual **Check now** button bypasses that
-cache. Core/built-in plugin versions stay sourced from bundled plugin exports;
-user plugin versions and upgrade availability come from the plugin lockfile
-manifest rows. The in-list Upgrade button calls the same
+Health System's Installed plugins inventory merges
+`/api/plugins/health/registry` with `/api/plugins/manifest`. Initial and
+background reads use cached manifest state; the explicit **Check for updates**
+action adds `check=1`. Core/built-in plugin versions stay sourced from bundled
+plugin exports; user plugin versions and upgrade availability come from the
+plugin lockfile manifest rows. Exceptions (activation failures and available
+updates) render before the full inventory. The in-list Update action calls the same
 `POST /api/plugins/upgrade` endpoint as CLI upgrade and handles
 `awaitingConsent` before mutating disk.
 
@@ -507,8 +507,8 @@ Full teardown sweep through `packages/host/src/api/plugins/remove.ts`:
    - `removeExecToolsByPlugin(id)` — filters by `bakin_exec_<id>_*`
      name prefix
    - `unregisterPluginNodeTypes`, `unregisterPluginNotificationChannels`,
-     `unregisterPluginHealthChecks` — existing per-plugin APIs, now
-     called on remove
+     `unregisterPluginHealthChecks` — the Health sweep removes the owner's
+     checks, repair actions, and cached snapshots
    - `purgeContentType(table)` for every content type the plugin
      registered — atomic Antfly `dropTable`
 6. Filesystem deletes: skill dirs (per plan), `~/.bakin/plugin-
@@ -712,7 +712,8 @@ Provided to `activate()`. The plugin's only interface to the system:
 | `registerWorkflow(def, opts?)` | Register a plugin-shipped workflow definition. Plugin definitions must be portable; use symbolic agents such as `$assigned` rather than local runtime ids. User definitions in `~/.bakin/workflows/definitions/` always win on collision; cross-plugin id collisions are logged but do not throw out of `activate()`. Same-plugin re-registration is idempotent. |
 | `registerNodeType(def)` | Register a custom xyflow node kind for the workflow canvas (namespaced to `{pluginId}.{kind}`) |
 | `registerNotificationChannel(def)` | Register a notification channel (namespaced to `{pluginId}.{id}`) |
-| `registerHealthCheck(def)` | Register a doctor check (namespaced to `{pluginId}.{id}`). Picked up by `runPluginHealthChecks` in `src/core/doctor.ts`. Per-check try/catch lives in the orchestrator. Deep ref: `.claude/knowledge/doctor-and-health-checks.md`. |
+| `registerHealthCheck(def)` | Register a canonical diagnostic producer (namespaced to `{pluginId}.{id}`) with description, group, freshness, and structured observations. Runtime validation and per-check isolation live in core. |
+| `registerHealthRepairAction(def)` | Register a separately planned/applied repair action owned and namespaced with the plugin. Checks reference its local ID; diagnostics themselves never mutate. Deep ref: `.claude/knowledge/doctor-and-health-checks.md`. |
 | `watchFiles(patterns)` | Request file watcher notifications |
 | `getSettings<T>()` | Read this plugin's persisted settings from `plugin-settings/{id}.json` |
 | `updateSettings(patch)` | Merge partial update into settings, persist, notify `onSettingsChange` |
@@ -1098,13 +1099,11 @@ content-store counters:
 - **tasks** (blocked→`error` / review→`attention`, winning-severity) —
   `usePluginEvent('taskboard', refresh)`, the same signal the Kanban
   board uses.
-- **health** (failing checks, `error`-only) —
-  `usePluginEvent('doctor.run', refresh)`. The shell emits `doctor.run`
-  whenever a `doctor.run` audit event arrives (every doctor run already
-  emits one). This rides the existing audit SSE — no new broadcast, no
-  poll — and is the clean pattern for any cron/cache-backed source.
-  (Health is errors-only on purpose: many `warn` checks are steady-state,
-  so an amber badge would be permanent noise.)
+- **health** (unique non-advisory incidents) —
+  `usePluginEvent('health.report.changed', refresh)`. Every canonical report
+  revision emits this event; the badge projects incident identity and
+  disposition instead of parsing status messages. Advisory-only findings do
+  not create persistent navigation noise.
 
 ### Sidebar rendering
 
@@ -1409,7 +1408,7 @@ runReloadPipeline:
             HookRegistry.unregisterByPlugin,
             unregisterPluginNodeTypes,
             unregisterPluginNotificationChannels,
-            unregisterPluginHealthChecks,
+            unregisterPluginHealthChecks (checks + repair actions + snapshots),
             unregisterContentTypesByPlugin (preserve search tables),
             removePluginSkillsByPlugin
   4. Clear state arrays (routes/slots/navItems/etc.)

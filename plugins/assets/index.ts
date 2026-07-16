@@ -27,6 +27,7 @@ import { setUnmanagedEmitter } from './lib/unmanaged-tracker'
 import { getContentDir } from '../../src/core/content-dir'
 import { createLogger } from '../../src/core/logger'
 import { assetRepair, checkAssets, checkEnrichmentEngine } from './lib/health-checks'
+import { healthObserved } from '@makinbakin/sdk/utils'
 
 const log = createLogger('assets')
 
@@ -84,14 +85,21 @@ const assetsPlugin: BakinPlugin = definePlugin({
     registerAssetsExecTools(ctx)
 
     // ─── Health check (migrated out of core/doctor.ts per #139 C3) ──────
+    ctx.registerHealthRepairAction(assetRepair(getContentDir()))
     ctx.registerHealthCheck({
       id: 'assets',
       name: 'Asset store + manifest integrity',
-      run: async () => [
-        ...checkAssets(getContentDir()),
-        await checkEnrichmentEngine(ctx.getSettings<EnrichmentSettings>(), ctx.runtime ?? null),
-      ],
-      repair: assetRepair(getContentDir()),
+      description: 'Checks asset-store structure, manifests, retention, unmanaged files, and enrichment readiness.',
+      group: { key: 'assets', label: 'Assets' },
+      maxAgeMs: 5 * 60_000,
+      run: async () => {
+        const base = checkAssets(getContentDir())
+        if (base.outcome === 'not_applicable') return base
+        return healthObserved([
+          ...base.observations,
+          await checkEnrichmentEngine(ctx.getSettings<EnrichmentSettings>(), ctx.runtime ?? null),
+        ])
+      },
     })
   },
 

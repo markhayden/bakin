@@ -125,8 +125,10 @@ describe('GET /checks', () => {
     registerPluginHealthCheck('test-plugin', {
       id: 'my-check',
       name: 'My check',
-      autoFix: true,
-      run: async () => [],
+      description: 'Checks the test fixture.',
+      group: { key: 'tests', label: 'Tests' },
+      maxAgeMs: 30_000,
+      run: async () => ({ outcome: 'not_applicable', reason: 'Fixture only.' }),
     })
 
     const route = findRoute(plugin.routes, 'GET', '/checks')!
@@ -135,9 +137,12 @@ describe('GET /checks', () => {
     expect(checks).toHaveLength(1)
     expect(checks[0]).toEqual({
       id: 'test-plugin.my-check',
+      localId: 'my-check',
       name: 'My check',
-      pluginId: 'test-plugin',
-      autoFix: true,
+      description: 'Checks the test fixture.',
+      owner: { kind: 'plugin', id: 'test-plugin', label: 'test-plugin' },
+      group: { key: 'tests', label: 'Tests' },
+      maxAgeMs: 30_000,
     })
     // Make sure `run` wasn't serialized
     expect('run' in checks[0]).toBe(false)
@@ -145,10 +150,12 @@ describe('GET /checks', () => {
 
   it('returns multiple checks across plugins', async () => {
     registerPluginHealthCheck('test-plugin', {
-      id: 'one', name: 'One', run: async () => [],
+      id: 'one', name: 'One', description: 'One.', group: { key: 'tests', label: 'Tests' },
+      run: async () => ({ outcome: 'not_applicable', reason: 'Fixture only.' }),
     })
     registerPluginHealthCheck('other-plugin', {
-      id: 'one', name: 'Other One', run: async () => [],
+      id: 'one', name: 'Other One', description: 'Other one.', group: { key: 'tests', label: 'Tests' },
+      run: async () => ({ outcome: 'not_applicable', reason: 'Fixture only.' }),
     })
 
     const route = findRoute(plugin.routes, 'GET', '/checks')!
@@ -159,15 +166,18 @@ describe('GET /checks', () => {
     expect(ids).toEqual(['other-plugin.one', 'test-plugin.one'])
   })
 
-  it('autoFix defaults to false in the response when not set on registration', async () => {
+  it('does not expose producer functions or legacy repair flags', async () => {
     registerPluginHealthCheck('test-plugin', {
-      id: 'readonly', name: 'Readonly', run: async () => [],
+      id: 'readonly', name: 'Readonly', description: 'Read only.', group: { key: 'tests', label: 'Tests' },
+      run: async () => ({ outcome: 'not_applicable', reason: 'Fixture only.' }),
     })
 
     const route = findRoute(plugin.routes, 'GET', '/checks')!
     const { body } = await callRoute(route, plugin.ctx)
     const checks = body.checks as Array<Record<string, unknown>>
     const found = checks.find(c => c.id === 'test-plugin.readonly')!
-    expect(found.autoFix).toBe(false)
+    expect('run' in found).toBe(false)
+    expect('autoFix' in found).toBe(false)
+    expect('autoFixable' in found).toBe(false)
   })
 })

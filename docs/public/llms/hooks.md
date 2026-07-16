@@ -161,9 +161,9 @@ Health hooks expose registered readiness and diagnostic checks so other surfaces
 ### health.getCheck
 
 Label: Get a health check.
-Purpose: Returns metadata for one registered health check by id, without running the check. Use it when a plugin needs the check name, owner, and autofix capability before deciding what to show or run.
+Purpose: Returns canonical metadata for one registered Health check by stable id without executing it.
 Kind: rpc
-Source: plugins/health/index.ts:580
+Source: plugins/health/index.ts:553
 
 Example:
 
@@ -179,9 +179,9 @@ const result = await ctx.hooks.invoke(
 ### health.list
 
 Label: List health checks.
-Purpose: Returns the health checks registered by core and plugins without executing them. Use it when another surface needs to show the available diagnostics or autofix support.
+Purpose: Returns canonical metadata for registered Health checks without executing them.
 Kind: rpc
-Source: plugins/health/index.ts:579
+Source: plugins/health/index.ts:552
 
 Example:
 
@@ -434,7 +434,7 @@ Team hooks expose runtime agent and team metadata for plugins that need agent-aw
 Label: Check team exists.
 Purpose: Returns true when the given teamId is a configured team. Use it for write-time validation of team assignments.
 Kind: rpc
-Source: plugins/team/index.ts:307
+Source: plugins/team/index.ts:315
 
 Example:
 
@@ -450,7 +450,7 @@ const result = await ctx.hooks.invoke(
 Label: Get an agent.
 Purpose: Returns one runtime agent by id, including team-aware metadata when available. Use it when a plugin already has an agent id and needs the full display record.
 Kind: rpc
-Source: plugins/team/index.ts:286
+Source: plugins/team/index.ts:294
 
 Example:
 
@@ -468,7 +468,7 @@ const result = await ctx.hooks.invoke(
 Label: List agent ids.
 Purpose: Returns the ids of agents currently known to the runtime. Use it for lightweight validation, assignment pickers, or loops that do not need full agent metadata.
 Kind: rpc
-Source: plugins/team/index.ts:291
+Source: plugins/team/index.ts:299
 
 Example:
 
@@ -484,7 +484,7 @@ const result = await ctx.hooks.invoke(
 Label: Get agent team.
 Purpose: Returns the team currently assigned to an agent, or null when the agent is unassigned. Use it to add team context to task, workflow, or activity views.
 Kind: rpc
-Source: plugins/team/index.ts:298
+Source: plugins/team/index.ts:306
 
 Example:
 
@@ -502,7 +502,7 @@ const result = await ctx.hooks.invoke(
 Label: Get org structure.
 Purpose: Returns the current organization structure for teams and agents. Use it when a plugin needs the full hierarchy instead of individual team or agent records.
 Kind: rpc
-Source: plugins/team/index.ts:304
+Source: plugins/team/index.ts:312
 
 Example:
 
@@ -518,7 +518,7 @@ const result = await ctx.hooks.invoke(
 Label: List team members.
 Purpose: Returns the agents assigned to one team. Use it for team dashboards, routing rules, or workflow logic that needs team membership.
 Kind: rpc
-Source: plugins/team/index.ts:295
+Source: plugins/team/index.ts:303
 
 Example:
 
@@ -536,7 +536,7 @@ const result = await ctx.hooks.invoke(
 Label: List agents.
 Purpose: Returns runtime agents with their display and team metadata attached. Use it when another plugin needs the agent roster as Bakin presents it.
 Kind: rpc
-Source: plugins/team/index.ts:285
+Source: plugins/team/index.ts:293
 
 Example:
 
@@ -552,7 +552,7 @@ const result = await ctx.hooks.invoke(
 Label: Resolve team assignment.
 Purpose: Resolves a team-assigned task to the best-suited member via the routing LLM (#189). Returns {ok:true, agentId, reason, model} or {ok:false, kind: transient|structural, message} — dispatch classifies by kind. Use it from dispatch or any surface that must turn a teamId into a concrete agent.
 Kind: rpc
-Source: plugins/team/index.ts:310
+Source: plugins/team/index.ts:318
 
 Example:
 
@@ -568,7 +568,7 @@ const result = await ctx.hooks.invoke(
 Label: Resolve agent profile.
 Purpose: Returns the runtime profile for an agent id. Use it when a plugin needs the lower-level profile data behind an agent display record.
 Kind: rpc
-Source: plugins/team/index.ts:292
+Source: plugins/team/index.ts:300
 
 Example:
 

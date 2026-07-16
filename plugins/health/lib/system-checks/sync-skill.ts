@@ -8,71 +8,79 @@
  * because it creates/overwrites only Bakin's own skill file.
  */
 import { checkBakinRuntimeSkill, renderBakinRuntimeSkill } from '../../../../src/core/bakin-skill'
-import { healthOk, healthWarn, healthError } from '@makinbakin/sdk/utils'
+import { healthHealthy, healthObserved, healthUnknown, healthWarning } from '@makinbakin/sdk/utils'
 import type { AgentRuntimeAdapter } from '../../../../packages/core/src/adapters/runtime'
-import type { HealthCheckResult, HealthRepairHandler } from '../../../../packages/core/src/plugin-types'
+import type { HealthCheckRunInput, HealthRepairActionDefinition } from '@makinbakin/sdk'
+import { repairTargetSelection } from './repair-support'
 
-function ok(message: string): HealthCheckResult {
-  return healthOk('skill', message)
-}
-function warn(message: string, autoFixable = false): HealthCheckResult {
-  return healthWarn('skill', message, autoFixable)
-}
-function error(message: string): HealthCheckResult {
-  return healthError('skill', message)
-}
-function fixed(message: string): HealthCheckResult {
-  return { check: 'skill', status: 'fixed', message, autoFixable: true }
-}
-
-export async function checkAndSyncSkill(projectRoot: string, runtime: AgentRuntimeAdapter): Promise<HealthCheckResult[]> {
-  return checkAndSyncSkillInternal(projectRoot, runtime, false)
-}
-
-async function checkAndSyncSkillInternal(
+export async function checkAndSyncSkill(
   projectRoot: string,
   runtime: AgentRuntimeAdapter,
-  autoFix: boolean,
-): Promise<HealthCheckResult[]> {
+): Promise<HealthCheckRunInput> {
   let skillStatus: Awaited<ReturnType<typeof checkBakinRuntimeSkill>>
   try {
     skillStatus = await checkBakinRuntimeSkill(projectRoot, runtime)
   } catch (err) {
-    return [error(`Failed to render skill template: ${(err as Error).message}`)]
+    return healthObserved([healthUnknown({
+      key: 'runtime-skill',
+      summary: 'Bakin runtime skill could not be verified.',
+      detail: err instanceof Error ? err.message : String(err),
+      incident: {
+        key: 'inspection-failed',
+        title: 'Runtime skill status is unknown',
+        impact: 'Health cannot confirm whether agents have current Bakin instructions.',
+        disposition: 'watch',
+        resources: [{ kind: 'runtime', id: 'skill-bakin', label: 'Bakin runtime skill' }],
+        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
+      },
+    })])
   }
 
   if (skillStatus.upToDate) {
-    return [ok('Bakin skill is up to date')]
+    return healthObserved([healthHealthy({
+      key: 'runtime-skill',
+      summary: 'Bakin runtime skill is up to date.',
+      evidence: { installed: true, upToDate: true },
+    })])
   }
 
-  const installMessage = skillStatus.installed
-    ? 'Bakin skill is outdated in runtime'
-    : 'Bakin skill not installed in runtime'
-  if (!autoFix) {
-    return [warn(installMessage, true)]
-  }
-
-  try {
-    const renderedContent = renderBakinRuntimeSkill(projectRoot)
-    await runtime.skills.write({ name: 'bakin', instructions: renderedContent, metadata: { source: 'bakin-doctor' } })
-    return [fixed(skillStatus.installed ? 'Bakin skill updated in runtime' : 'Bakin skill installed in runtime')]
-  } catch (err) {
-    return [error(`Failed to update skill: ${err}`)]
-  }
+  return healthObserved([healthWarning({
+    key: 'runtime-skill',
+    summary: skillStatus.installed
+      ? 'Bakin runtime skill is outdated.'
+      : 'Bakin runtime skill is not installed.',
+    evidence: { installed: skillStatus.installed, upToDate: false },
+    incident: {
+      key: skillStatus.installed ? 'outdated' : 'missing',
+      title: skillStatus.installed ? 'Bakin runtime skill is outdated' : 'Bakin runtime skill is missing',
+      impact: 'Agents may use stale or incomplete instructions for Bakin tools and workflows.',
+      disposition: 'action_required',
+      resources: [{ kind: 'runtime', id: 'skill-bakin', label: 'Bakin runtime skill' }],
+      resolution: {
+        key: 'sync-runtime-skill',
+        type: 'repair',
+        label: skillStatus.installed ? 'Update runtime skill' : 'Install runtime skill',
+        actionId: 'sync-skill',
+      },
+    },
+  })])
 }
 
-export function syncSkillRepair(projectRoot: string, runtime: AgentRuntimeAdapter): HealthRepairHandler {
+export function syncSkillRepair(
+  projectRoot: string,
+  runtime: AgentRuntimeAdapter,
+): HealthRepairActionDefinition {
   return {
-    async plan(rows) {
-      const matching = rows.filter(row => row.check === 'skill' && row.autoFixable)
-      if (matching.length === 0) return []
+    id: 'sync-skill',
+    name: 'Sync Bakin runtime skill',
+    async plan(target) {
       return [{
-        id: 'health.sync-skill',
-        checkId: 'skill',
+        id: 'sync-runtime-skill',
+        actionId: 'sync-skill',
         title: 'Sync Bakin runtime skill',
-        reason: matching.map(row => row.message).join('; '),
+        reason: 'The runtime skill is missing or differs from Bakin\'s current generated instructions.',
         safety: 'safe',
-        requiresConfirmation: true,
+        ...repairTargetSelection(target),
         changes: [{
           kind: 'runtime',
           target: 'runtime skill:bakin',
@@ -83,22 +91,27 @@ export function syncSkillRepair(projectRoot: string, runtime: AgentRuntimeAdapte
     },
     async apply(items) {
       if (items.length === 0) return []
-      const rows = await checkAndSyncSkillInternal(projectRoot, runtime, true)
-      const failures = rows.filter(row => row.status === 'error')
-      return [{
-        id: 'health.sync-skill',
-        checkId: 'skill',
-        status: failures.length > 0 ? 'failed' : 'applied',
-        message: rows.map(row => row.message).join('; '),
-        changes: rows
-          .filter(row => row.status === 'fixed')
-          .map(row => ({
-            kind: 'runtime' as const,
-            target: 'runtime skill:bakin',
-            action: 'update' as const,
-            description: row.message,
-          })),
-      }]
+      try {
+        const renderedContent = renderBakinRuntimeSkill(projectRoot)
+        await runtime.skills.write({ name: 'bakin', instructions: renderedContent, metadata: { source: 'bakin-doctor' } })
+        return items.map((item) => ({
+          itemId: item.id,
+          actionId: item.actionId,
+          status: 'applied' as const,
+          message: 'Bakin runtime skill synced.',
+          affectedCheckIds: ['health.skill'],
+          changes: item.changes,
+        }))
+      } catch (err) {
+        return items.map((item) => ({
+          itemId: item.id,
+          actionId: item.actionId,
+          status: 'failed' as const,
+          message: err instanceof Error ? err.message : String(err),
+          affectedCheckIds: ['health.skill'],
+          changes: item.changes,
+        }))
+      }
     },
   }
 }

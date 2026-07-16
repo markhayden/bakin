@@ -3,7 +3,6 @@ import { existsSync, mkdirSync, readFileSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import type { PluginContext } from '@bakin/core/plugin-types'
-import { createHealthService } from '@bakin/core/app-services'
 import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
 import { createMockSearchAdapter } from '@bakin/core/adapters/search/testing'
 import { createMockBakinTaskStore } from '@bakin/core/tasks/testing'
@@ -281,7 +280,6 @@ describe('plugin runtime permission wrapper', () => {
       runtime,
       search,
       tasks: createMockBakinTaskStore(),
-      health: createHealthService([runtime, search]),
     }
     addExecTool({
       name: 'bakin_exec_fixture_probe',

@@ -124,7 +124,7 @@ mock.module('../../../src/core/task-store', () => ({
 
 // The spend engine's observed side — empty for route tests.
 mock.module('../../../packages/core/src/usage-history/store', () => ({
-  usageByAgentModelDaySince: () => [],
+  readUsageByAgentModelDaySince: () => [],
   toLocalDayKey: (tsMs: number) => {
     const d = new Date(tsMs)
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -222,6 +222,7 @@ describe('Models Plugin Activation', () => {
       'PUT /budget',
       'PUT /routing',
     ])
+    expect(activated.routes.find((route) => route.path === '/budget/status')?.activityClass).toBe('routine')
   })
 
   it('registers 2 exec tools', () => {

@@ -6,111 +6,73 @@
  * don't have). Both the page component and plugins/health/index.ts can now type
  * their route payloads against one set of contracts.
  */
-import type { HealthCheckResult } from '@makinbakin/sdk'
+import type {
+  InteractionCoverage as CanonicalInteractionCoverage,
+  UsageEntry as CanonicalUsageEntry,
+  UsageFeedResponse,
+  UsageKind as CanonicalUsageKind,
+} from './lib/usage-feed-route-schema'
+import type {
+  InteractionCategory as CanonicalInteractionCategory,
+  InteractionSummaryResponse,
+} from './lib/interaction-summary-route-schema'
+import type {
+  SearchStatusResponse,
+  SearchTelemetryResponse,
+} from './lib/system-route-schemas'
+import type { HealthLiveSummaryClient } from './lib/route-schemas'
 
-export interface McpSessionInfo {
-  agent: string
-  sessions: number
-  connectedAt: string
-}
+export type UsageKind = CanonicalUsageKind
+export type UsageEntry = CanonicalUsageEntry
 
-export interface DoctorData {
-  results: HealthCheckResult[]
-  summary: { total: number; errors: number; warnings: number }
-  cachedAt?: string
-}
+type CanonicalTopByNameRow = UsageFeedResponse['topByName'][number]
+export type TopByNameRow = Omit<CanonicalTopByNameRow, 'kind' | 'method'>
+  & Partial<Pick<CanonicalTopByNameRow, 'kind' | 'method'>>
 
-export interface ServerData {
-  port: number
-  pid: number
-  nodeVersion: string
-  memoryMB: number
-  totalMemoryMB: number
-}
+type CanonicalByAgentRow = UsageFeedResponse['byAgent'][number]
+export type ByAgentRow = Omit<CanonicalByAgentRow, 'attributed'>
+  & Partial<Pick<CanonicalByAgentRow, 'attributed'>>
 
-export interface PluginInfo {
-  id: string
-  name: string
-  version: string
-  latestVersion?: string | null
-  description: string
-  source: 'built-in' | 'user'
-  routes: number
-  installed?: {
-    version?: string
-    commitSha?: string
-    remoteHeadSha?: string
-    lastChecked?: string
-    newPermissions?: string[]
-  } | null
-  upgradeAvailable?: boolean
-  staleHintDays?: number | null
-}
+export type UsageOutcomeCounts = UsageFeedResponse['outcomes']
+export type UsageKindSummary = UsageFeedResponse['byKind'][number]
 
-export interface RegistryData {
-  plugins: PluginInfo[]
-}
+type CanonicalUsageFailureGroup = UsageFeedResponse['failureGroups'][number]
+export type UsageFailureGroup = Omit<
+  CanonicalUsageFailureGroup,
+  'destination' | 'method' | 'latestFailure'
+> & Partial<Pick<CanonicalUsageFailureGroup, 'destination' | 'method' | 'latestFailure'>>
 
-export interface PluginManifestEntry {
-  id: string
-  name: string
-  version: string
-  latestVersion?: string | null
-  source: 'core' | 'github' | 'local'
-  installed: PluginInfo['installed']
-  upgradeAvailable: boolean
-  staleHintDays: number | null
-}
+export type UsageFailureGroupPage = UsageFeedResponse['failureGroupPage']
 
-export interface PluginManifestData {
-  plugins: PluginManifestEntry[]
-}
-
-export interface ErrorsByKind {
-  total: number
-  byKind: { mcp: number; rest: number; agent: number }
-}
-
-export type UsageKind = 'mcp' | 'rest' | 'agent'
-
-export interface UsageEntry {
-  ts: string
-  kind: UsageKind
-  name: string
-  agent: string | null
-  durationMs: number | null
-  status: 'ok' | 'error'
-  meta?: Record<string, unknown>
-}
-
-export interface TopByNameRow {
-  name: string
-  count: number
-  errors: number
-  medianDurationMs: number | null
-}
-
-export interface ByAgentRow {
-  agent: string
-  count: number
-  errors: number
-  lastActivity: UsageEntry | null
-}
-
-export interface UsageFeedData {
-  totals: { count: number; errors: number; errorRate: number }
+/**
+ * Activity's normalized presentation shape. Current responses are defined by
+ * `usageFeedResponseSchema`; the optional fields here exist only for the
+ * explicitly isolated rolling-version adapter.
+ */
+export type UsageFeedData = Omit<
+  UsageFeedResponse,
+  'capabilities' | 'failureGroups' | 'failureGroupPage' | 'topByName' | 'agentCount' | 'byAgent'
+> & {
+  /** Additive server features; omitted by older strict servers. */
+  capabilities?: {
+    [Key in keyof UsageFeedResponse['capabilities']]?: boolean
+  }
+  failureGroups: UsageFailureGroup[]
+  /** Present on the bounded v2 feed; omitted only by compatibility projections. */
+  failureGroupPage?: UsageFailureGroupPage
   topByName: TopByNameRow[]
+  /** Exact distinct attributed-agent count; older servers may omit it. */
+  agentCount?: number
+  /** Bounded busiest-agent projection, with an optional unattributed row. */
   byAgent: ByAgentRow[]
-  recent: UsageEntry[]
 }
 
-export interface HealthSummary {
-  doctor: DoctorData | null
-  errors1h: ErrorsByKind | null
-  activeSessions: McpSessionInfo[] | null
-  upSince: string | null
-  server: ServerData | null
-}
+export type InteractionCategory = CanonicalInteractionCategory
+export type InteractionCoverageReason = CanonicalInteractionCoverage['reason']
+export type InteractionCoverage = CanonicalInteractionCoverage
+export type InteractionSummaryData = InteractionSummaryResponse
+
+export type HealthSummary = HealthLiveSummaryClient
 
 // --- Search health (blue/green index status) -------------------------------
 // Promoted from the inline shape the health page previously declared in-place,
@@ -119,40 +81,17 @@ export interface HealthSummary {
 // Canonical shapes live in the SDK (services.ts) — re-exported here so the
 // page component and /search-status route keep one import site. The old
 // local duplicate drifted the moment the SDK gained freshness fields.
-import type { SearchHealthTable as SdkSearchHealthTable } from '@makinbakin/sdk'
 export type { SearchHealthIndex as SearchHealthLeg, SearchHealthTable } from '@makinbakin/sdk'
 
-export interface SearchHealthData {
-  enabled: boolean
-  outbox?: { pending: number; quarantined: number; oldestPendingAt: number | null }
-  tables: SdkSearchHealthTable[]
-}
-
-export interface SearchTelemetryWindow {
-  query: { count: number; errors: number; medianMs: number | null }
-  drain: { count: number; errors: number }
-  enrich: { count: number; errors: number }
-}
-
-export interface SearchEnrichmentCoverage {
-  total: number
-  enriched: number
-  missing: number
-  stale: number
-  failed: number
-  skipped: number
-}
-
-export interface SearchTelemetryData {
-  windows: Record<'1h' | '24h', SearchTelemetryWindow>
-  outbox: { pending: number; quarantined: number }
-  enrichment: {
-    depth?: number
-    running?: number
-    failedRecent?: number
-    coverage?: SearchEnrichmentCoverage
-  } | null
-}
+export type SearchHealthData = SearchStatusResponse
+export type SearchTelemetryWindow = SearchTelemetryResponse['windows']['1h']
+export type SearchEnrichmentCoverage = NonNullable<
+  NonNullable<SearchTelemetryResponse['enrichment']>['coverage']
+>
+export type SearchTelemetryData = Pick<
+  SearchTelemetryResponse,
+  'windows' | 'outbox' | 'enrichment' | 'enrichmentEvidence'
+>
 
 export interface MeteredSpendData {
   totalUsdMicros: number
@@ -185,12 +124,41 @@ export interface UsageHistoryRollup {
   messageCount: number
 }
 
+export type UsageEvidenceCoverageStatus = 'complete' | 'partial' | 'unavailable'
+
+export type UsageEvidenceCoverageReason =
+  | 'complete'
+  | 'scan_not_run'
+  | 'scan_in_progress'
+  | 'scan_status_unavailable'
+  | 'missing_session_tier'
+  | 'roster_unavailable'
+  | 'agent_scan_failed'
+  | 'scan_failed'
+  | 'scan_stale'
+
+export interface UsageEvidenceCoverage {
+  status: UsageEvidenceCoverageStatus
+  reason: UsageEvidenceCoverageReason
+  agents: Array<{
+    agent: string
+    status: Extract<UsageEvidenceCoverageStatus, 'complete' | 'partial'>
+  }>
+}
+
 export interface UsageHistoryData {
   window: UsageHistoryWindow
   /** First local calendar day (YYYY-MM-DD) included — windows are day-aligned. */
   since: string
+  /** Current local calendar day (YYYY-MM-DD); its rollup is still in progress. */
+  throughDay: string
   /** ISO time of the last completed scan; null before the first sweep. */
   scannedAt: string | null
+  /**
+   * Transcript-scan completeness. Optional so a newer UI can still consume
+   * an older Health plugin response; absence must be treated conservatively.
+   */
+  coverage?: UsageEvidenceCoverage
   byAgent: Array<UsageHistoryRollup & { agent: string }>
   byDay: Array<UsageHistoryRollup & { day: string }>
   /** (agent × day) cells — the per-agent stacked chart series (#385). */
@@ -226,10 +194,21 @@ export interface AgentEffortFlag {
 
 export interface AgentEffortRow {
   agent: string
-  /** Bakin-attributed tokens in the window (execution ledger). */
-  windowTokens: number
+  /** Bakin-attributed tokens; null when any token-bearing call lacks token evidence. */
+  windowTokens: number | null
+  /** Null when no run was recorded or any recorded run lacks tracked cost. */
   windowCostUsdMicros: number | null
   runs: number
+  /** Token-bearing calls; media work is excluded. Present on current servers. */
+  tokenApplicableRuns?: number
+  /** Present on current servers; omitted by legacy servers. */
+  tokenMeteredRuns?: number
+  /** False when reported token totals cannot be safely represented as one aggregate. */
+  tokenAggregateRepresentable?: boolean
+  /** Present on current servers; omitted by legacy servers. */
+  costedRuns?: number
+  /** False when reported costs cannot be safely represented as one aggregate. */
+  costAggregateRepresentable?: boolean
   completions: number
   tokensPerCompletion: number | null
   /** Transcript-observed tokens; null when the usage scanner has no coverage. */
@@ -240,7 +219,42 @@ export interface AgentEffortRow {
 
 export interface AgentEffortData {
   window: AgentEffortWindow
+  /** Exact local calendar-day scope; optional for compatibility with older servers. */
+  since?: string
+  throughDay?: string
+  scopeLabel?: string
   /** ISO time of the last usage scan; observed columns are only as fresh as this. */
   scannedAt: string | null
+  /** Same transcript evidence snapshot used for observed/unattributed fields. */
+  coverage?: UsageEvidenceCoverage
   agents: AgentEffortRow[]
+}
+
+// ─── Startup-context summary (GET /api/context-report) ──────────────────────
+
+export interface ContextSummaryObserved {
+  inputTokens: number | null
+  cacheReadTokens: number | null
+  cacheWriteTokens: number | null
+  occurredAt: number
+}
+
+export interface ContextSummaryAgent {
+  agentId: string
+  staticTaskBytes: number
+  staticWorkflowBytes: number
+  estimatedMaxTaskBytes: number
+  workspaceAvailable: boolean
+  workspaceTotalBytes: number
+  lastObserved: ContextSummaryObserved | null
+}
+
+export interface ContextSummaryData {
+  ok: true
+  tokenEstimateNote: string
+  agents: ContextSummaryAgent[]
+}
+
+export interface ContextSettingsData {
+  dispatch?: { contextBudgetBytes?: number }
 }

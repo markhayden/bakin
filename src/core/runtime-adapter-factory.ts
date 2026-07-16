@@ -1,6 +1,7 @@
 import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
+import type { HealthCheckRegistrationInput } from '@bakin/core/plugin-types'
 import { createOpenClawRuntimeAdapter } from '@bakin/adapter-openclaw'
-import { createPiRuntimeAdapter } from '@bakin/adapter-pi'
+import { createPiHealthChecks, createPiRuntimeAdapter } from '@bakin/adapter-pi'
 import type { RuntimeAdapterName } from './settings'
 
 export interface RuntimeAdapterSupportInfo {
@@ -25,6 +26,24 @@ export function createRuntimeAdapter(name: RuntimeAdapterName): AgentRuntimeAdap
       return createOpenClawRuntimeAdapter()
     case 'pi':
       return createPiRuntimeAdapter()
+    default:
+      throw new Error(`Unknown runtime adapter: ${name}`)
+  }
+}
+
+/**
+ * Canonical Health registrations are composed beside an adapter, never
+ * exposed as methods on the runtime contract itself.
+ */
+export function createRuntimeAdapterHealthChecks(
+  name: RuntimeAdapterName,
+  getRuntimeSettings: () => Record<string, unknown> | undefined,
+): HealthCheckRegistrationInput[] {
+  switch (name) {
+    case 'pi':
+      return createPiHealthChecks(getRuntimeSettings)
+    case 'openclaw':
+      return []
     default:
       throw new Error(`Unknown runtime adapter: ${name}`)
   }

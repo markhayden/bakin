@@ -273,6 +273,7 @@ async function processJob(job: EnrichmentJob): Promise<void> {
     // Skips count as 'ok' — they are correct outcomes, not failures.
     recordUsage({
       kind: 'rest',
+      activityClass: 'system',
       name: 'assets.enrich',
       agent: null,
       durationMs: Date.now() - start,

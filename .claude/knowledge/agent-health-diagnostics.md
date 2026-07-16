@@ -64,25 +64,28 @@ timeline", not "broken".
 - Audit (`src/core/audit.ts`): `queryAuditEvents` gained an `agent` filter
   (both full-read and windowed tail paths).
 
-## HealthCheckResult.data convention
+## Canonical agent attribution
 
-`HealthCheckResult` (SDK `registration.ts`) has an optional
-`data?: Record<string, unknown>`. Per-agent checks attach
-`data: { agents: string[] }` so UIs attribute findings **without parsing
-message text**. Attached by: `team.agent-sync`, `context.startup-size`,
-`usage.agent-burn`. Consumed by: the dashboard AttentionSection, the Overview
-chips (`useAgentAttention`), and the finally-wired `drifted` package badge —
-all reading the CACHED doctor results from `/api/plugins/health/summary`
-(cron freshness; the Diagnostics tab's live scan is the fresh path).
+Per-agent Health incidents attach structured resources such as
+`{ kind: 'agent', id, label }`; supporting measurements live in bounded JSON
+evidence. Consumers filter canonical incidents/resources and never parse an
+agent name from summary text. `team.agent-sync`, `context.startup-size`, and
+`usage.agent-burn` are the reference producers.
+
+The Team Diagnostics tab reads canonical Health reports and selects incidents
+for its agent by resource ID. The Health Overview presents the same incidents
+in its action/verification/watch placement. The nav badge counts unique
+non-advisory incidents. `/summary` is live process data only and is not a
+second diagnostic response.
 
 ## Surfaces
 
-**Health dashboard** (`plugins/health/components/supervision-sections.tsx` +
-`usage-history-section.tsx`): LiveNowSection (`GET /live-now`, honest empty
-state, amber stale-heartbeat > 2 min), AttentionSection (chips →
-`/team/{id}?tab=diagnostics`), EffortSection (`GET /agent-effort?window=`,
-Bakin/observed/unattributed columns), per-agent stacked daily chart
-(`/usage-history` `byAgentDay`).
+**Health dashboard** (`plugins/health/components/overview-tab.tsx` +
+`agents-tab.tsx`): Overview shows actionable agent incidents alongside other
+canonical incidents and keeps fast live facts distinct from diagnostic
+evidence. Agents owns the day-aligned window, per-agent stacked daily chart,
+observed/attributed/unattributed comparison, outcomes, latest-session traffic,
+and clearly separated cost scopes. Every chart ships an exact data table.
 
 **Team Diagnostics tab** (`plugins/team/components/diagnostics-tab.tsx`):
 drift panel (live `GET /api/agent-packages/{id}/scan` + receipt + Sync now via
@@ -115,7 +118,8 @@ stores only — no adapter surface, no transcript parsing.
 
 ## Chart kit (`@makinbakin/sdk/components`)
 
-`StackedColumnChart`, `Sparkline`, `ChartExplainer` +
+`StackedColumnChart`, `BarChart`, `LineChart`, `Sparkline`,
+`ChartDataTable`, `ChartTooltip`, `ChartExplainer` +
 `CHART_SERIES_COLORS`/`assignSeriesColors` in `src/components/charts/`
 (re-exported via the SDK barrel; rides the existing `sdk-components` vendor
 bundle). Hand-rolled, no chart library (spec D9). The palette is the
@@ -128,5 +132,5 @@ gray "Other", never a new hue; color follows the entity, not its rank.
 - New burn signal → add a `BurnFlag` kind in `agent-burn.ts` + tests; every
   surface picks it up automatically.
 - New timeline event kind → add to `TIMELINE_AUDIT_KINDS` (+ severity set).
-- New per-agent doctor attribution → attach `data.agents` in the check;
-  chips/badges pick it up with no UI change.
+- New per-agent doctor attribution → attach an `agent` resource to the
+  canonical incident; downstream consumers pick it up without copy parsing.

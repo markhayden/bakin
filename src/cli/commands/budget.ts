@@ -29,7 +29,13 @@ interface SpendPayload {
   totalUsdMicros: number
   byAgent: Array<{ agent: string; costUsdMicros: number; runs: number }>
   byModel: Array<{ model: string; costUsdMicros: number; runs: number }>
-  facets?: { daily: WindowSpend; monthly: WindowSpend }
+  facets?: {
+    observedUsageEvidence?:
+      | { status: 'available' }
+      | { status: 'unavailable'; reason: 'usage_store_unavailable' }
+    daily: WindowSpend
+    monthly: WindowSpend
+  }
   pace?: { daily: { meteredUsdMicros: number | null }; monthly: { meteredUsdMicros: number | null } }
 }
 interface IncidentWire {

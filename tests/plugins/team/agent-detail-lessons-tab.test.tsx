@@ -54,6 +54,7 @@ mock.module('@/components/model-select', () => ({ ModelSelect: () => <div /> }))
 import { useAgentStore } from '../../../plugins/team/hooks/use-agent-store'
 import { AgentDetail } from '../../../plugins/team/components/agent-detail'
 import type { PackageStateRow } from '../../../plugins/team/types'
+import { HEALTHY_TEAM_HEALTH_REPORT } from './health-report-fixture'
 
 const PROFILE = {
   id: 'pixel', name: 'Pixel', emoji: '🎨', role: 'designer',
@@ -70,6 +71,9 @@ function setupFetch() {
     }
     if (u.startsWith('/api/plugins/models/available')) {
       return Promise.resolve({ ok: true, json: () => Promise.resolve({ models: [] }) } as Response)
+    }
+    if (u === '/api/plugins/health/doctor') {
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(HEALTHY_TEAM_HEALTH_REPORT) } as Response)
     }
     if (u.includes('/api/agent-packages/pixel/lessons')) {
       return Promise.resolve({
@@ -121,13 +125,13 @@ describe('AgentDetail — Lessons tab', () => {
   it('shows the Lessons tab in the tab bar', async () => {
     primeState()
     await openDetail()
-    expect(screen.getByRole('button', { name: 'Lessons' })).toBeDefined()
+    expect(screen.getByRole('tab', { name: 'Lessons' })).toBeDefined()
   })
 
   it('clicking Lessons writes tab=lessons to the URL', async () => {
     primeState()
     await openDetail()
-    fireEvent.click(screen.getByRole('button', { name: 'Lessons' }))
+    fireEvent.click(screen.getByRole('tab', { name: 'Lessons' }))
     expect(setTabSpy).toHaveBeenCalledWith('lessons')
   })
 

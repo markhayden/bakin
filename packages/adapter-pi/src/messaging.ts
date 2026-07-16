@@ -22,7 +22,9 @@ import {
 } from '@earendil-works/pi-coding-agent'
 
 import type {
+  AdapterInitOpts,
   AdapterLogger,
+  AdapterToolActivityEvent,
   AgentRuntimeAdapter,
   ChatChunk,
   MessageArgs,
@@ -30,7 +32,7 @@ import type {
   MessageUsage,
   RuntimeExecToolProvider,
 } from '@bakin/core/adapters/runtime'
-import { RuntimeError } from '@bakin/core/adapters/runtime'
+import { beginAdapterTurnActivity, RuntimeError } from '@bakin/core/adapters/runtime'
 import { summarizeStructured, unwrapToolResult } from '@bakin/core/format'
 import { redactSensitiveText } from '@bakin/core/redact'
 
@@ -204,6 +206,8 @@ export async function loadPathsForPolicy(policy: PiExtensionsTrust, agentDir: st
 export interface PiMessagingDeps {
   getExecTools: () => RuntimeExecToolProvider | undefined
   getLogger?: () => AdapterLogger | undefined
+  getToolActivity?: () => AdapterInitOpts['onToolActivity']
+  getTurnActivity?: () => AdapterInitOpts['onTurnActivity']
   /** Adapter-level runtime settings (settings.runtime.settings), e.g. { retry: RetrySettings }. */
   getSettings?: () => Record<string, unknown> | undefined
 }
@@ -498,19 +502,80 @@ function sessionEventChunks(event: AgentSessionEvent, state: { announcedThinking
 }
 
 /**
+ * Build the adapter-wide tool observer for one turn. Pi exposes matching call
+ * ids but not elapsed time, so derive duration from its call/result events.
+ * The tap is deliberately independent from MessageArgs.onActivity: either
+ * consumer may throw or be absent without affecting the other or the turn.
+ */
+function createToolActivityObserver(
+  args: MessageArgs,
+  deps: PiMessagingDeps,
+  turnId: string,
+): ((chunk: ChatChunk) => void) | undefined {
+  const onToolActivity = deps.getToolActivity?.()
+  if (!onToolActivity) return undefined
+  const startedAt = new Map<string, number>()
+
+  return (chunk: ChatChunk): void => {
+    if (chunk.type !== 'tool') return
+
+    const { phase, callId, toolName, status } = chunk.data
+    const correlationKey = callId ?? toolName
+    let durationMs = chunk.data.durationMs
+    if (phase === 'call') {
+      startedAt.set(correlationKey, Date.now())
+    } else {
+      const started = startedAt.get(correlationKey)
+      if (durationMs === undefined) {
+        // Pi currently brackets every result with a matching call event. Keep
+        // the result contract numeric even if a future SDK drops that start
+        // event; zero is the only honest lower bound in that degraded case.
+        durationMs = started === undefined ? 0 : Math.max(0, Date.now() - started)
+      }
+      startedAt.delete(correlationKey)
+    }
+
+    try {
+      const baseEvent = {
+        agentId: args.agentId,
+        activityClass: args.activityClass ?? 'user',
+        turnId,
+        threadId: args.threadId,
+        callId,
+        toolName,
+      }
+      const telemetryEvent: AdapterToolActivityEvent = phase === 'call'
+        ? { ...baseEvent, phase: 'call', status: 'running' }
+        : {
+            ...baseEvent,
+            phase: 'result',
+            status: status === 'completed' || status === 'aborted' ? status : 'failed',
+            ...(durationMs === undefined ? {} : { durationMs }),
+          }
+      onToolActivity(telemetryEvent)
+    } catch (err) {
+      deps.getLogger?.()?.warn('adapter-pi: onToolActivity callback threw; contained', { error: String(err) })
+    }
+  }
+}
+
+/**
  * Subscribe the send-path activity tap (MessageArgs.onActivity, T8): the
  * shared event→chunk mapping filtered to tool/status. Callback exceptions
  * are contained — a throwing tap never fails the turn.
  */
 function subscribeActivityTap(
   session: AgentSession,
-  onActivity: (chunk: ChatChunk) => void,
+  onActivity: MessageArgs['onActivity'],
+  onToolActivity: ((chunk: ChatChunk) => void) | undefined,
   deps: PiMessagingDeps,
 ): () => void {
   const state = { announcedThinking: false }
   return session.subscribe((event: AgentSessionEvent) => {
     for (const chunk of sessionEventChunks(event, state)) {
       if (chunk.type !== 'tool' && chunk.type !== 'status') continue
+      onToolActivity?.(chunk)
+      if (!onActivity) continue
       try {
         onActivity(chunk)
       } catch (err) {
@@ -548,33 +613,60 @@ export function createMessagingSurface(deps: PiMessagingDeps): AgentRuntimeAdapt
 
   return {
     async send(args: MessageArgs): Promise<MessageResult> {
-      return runTurn(args, async ({ session, record }, observer) => {
-        const before = session.getSessionStats()
-        const unsubscribeTap = args.onActivity ? subscribeActivityTap(session, args.onActivity, deps) : null
-        try {
-          await session.prompt(args.content, { images: imageContentsFor(args, record) })
-        } catch (err) {
-          throw toRuntimeError(err, {
-            aborted: args.signal?.aborted,
-            sessionId: session.sessionId,
-            model: resolveModelRef(args.model, record.model),
-          })
-        } finally {
-          unsubscribeTap?.()
-        }
-        if (args.signal?.aborted || observer.endedAborted) {
-          throw new RuntimeError('Pi turn aborted', { kind: 'aborted' })
-        }
-        persistThreadMapping(record.id, args.threadId, session)
-        throwOnTerminalFailure(observer, session, args, record)
-        const after = session.getSessionStats()
-        return {
-          id: randomUUID(),
-          content: session.getLastAssistantText() ?? observer.text,
-          usage: usageDelta(before, after, session),
-          metadata: { sessionId: session.sessionId },
-        }
+      const lifecycle = beginAdapterTurnActivity({
+        onActivity: deps.getTurnActivity?.(),
+        onCallbackError: (error) => {
+          deps.getLogger?.()?.warn('adapter-pi: onTurnActivity callback threw; contained', { error: String(error) })
+        },
+        agentId: args.agentId,
+        activityClass: args.activityClass ?? 'user',
+        threadId: args.threadId,
+        operation: 'send',
       })
+      try {
+        const result: MessageResult = await runTurn(args, async ({ session, record }, observer) => {
+          const before = session.getSessionStats()
+          const observeToolActivity = createToolActivityObserver(args, deps, lifecycle.turnId)
+          const unsubscribeTap = args.onActivity || observeToolActivity
+            ? subscribeActivityTap(session, args.onActivity, observeToolActivity, deps)
+            : null
+          try {
+            await session.prompt(args.content, { images: imageContentsFor(args, record) })
+          } catch (err) {
+            throw toRuntimeError(err, {
+              aborted: args.signal?.aborted,
+              sessionId: session.sessionId,
+              model: resolveModelRef(args.model, record.model),
+            })
+          } finally {
+            unsubscribeTap?.()
+          }
+          if (args.signal?.aborted || observer.endedAborted) {
+            throw new RuntimeError('Pi turn aborted', { kind: 'aborted' })
+          }
+          persistThreadMapping(record.id, args.threadId, session)
+          throwOnTerminalFailure(observer, session, args, record)
+          const after = session.getSessionStats()
+          return {
+            id: randomUUID(),
+            content: session.getLastAssistantText() ?? observer.text,
+            usage: usageDelta(before, after, session),
+            metadata: { sessionId: session.sessionId },
+          }
+        })
+        if (deps.getTurnActivity?.()) {
+          result.metadata = { ...(result.metadata ?? {}), adapterTurnId: lifecycle.turnId }
+        }
+        lifecycle.finish({ status: 'completed', resultId: result.id, usage: result.usage })
+        return result
+      } catch (error) {
+        lifecycle.finish({
+          status: args.signal?.aborted || (error instanceof RuntimeError && error.kind === 'aborted')
+            ? 'aborted'
+            : 'failed',
+        })
+        throw error
+      }
     },
 
     stream(args: MessageArgs): AsyncIterable<ChatChunk> {
@@ -590,10 +682,24 @@ export function createMessagingSurface(deps: PiMessagingDeps): AgentRuntimeAdapt
         notify?.()
       }
 
+      const lifecycle = beginAdapterTurnActivity({
+        onActivity: deps.getTurnActivity?.(),
+        onCallbackError: (error) => {
+          deps.getLogger?.()?.warn('adapter-pi: onTurnActivity callback threw; contained', { error: String(error) })
+        },
+        agentId: args.agentId,
+        activityClass: args.activityClass ?? 'user',
+        threadId: args.threadId,
+        operation: 'stream',
+      })
       const turn = runTurn(args, async ({ session, record }, observer) => {
         const chunkState = { announcedThinking: false }
+        const observeToolActivity = createToolActivityObserver(args, deps, lifecycle.turnId)
         const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
-          for (const chunk of sessionEventChunks(event, chunkState)) push(chunk)
+          for (const chunk of sessionEventChunks(event, chunkState)) {
+            observeToolActivity?.(chunk)
+            push(chunk)
+          }
         })
         try {
           await session.prompt(args.content, { images: imageContentsFor(args, record) })
@@ -614,10 +720,14 @@ export function createMessagingSurface(deps: PiMessagingDeps): AgentRuntimeAdapt
         }
       })
 
-      turn.then(finish, (rawErr) => {
+      turn.then(() => {
+        lifecycle.finish({ status: 'completed' })
+        finish()
+      }, (rawErr) => {
         // Normalize BEFORE classifying so pre-prompt raw throws (e.g. from
         // createAgentSession) carry a typed kind like everything else.
         const err = toRuntimeError(rawErr, { aborted: args.signal?.aborted })
+        lifecycle.finish({ status: err.kind === 'aborted' ? 'aborted' : 'failed' })
         if (err.kind === 'aborted') {
           // Contract: a deliberate abort ends the stream with a clean done —
           // matching the send path's kind:'aborted' settle. Never an error chunk.

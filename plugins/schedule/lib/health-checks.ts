@@ -1,260 +1,296 @@
-/**
- * Schedule-plugin-owned doctor check.
- *
- * Detects runtime cron jobs that aren't tracked in the Bakin schedule
- * sidecar.
- *
- * Registered in plugins/schedule/index.ts activate() via
- * ctx.registerHealthCheck. runDiagnostics() picks it up through the
- * plugin-check loop in src/core/doctor.ts's runPluginHealthChecks().
- */
+/** Canonical Schedule health checks and explicit repair actions. */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { dirname, join } from 'path'
 import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
 
 import { createLogger } from '../../../src/core/logger'
-import type { HealthCheckResult, HealthRepairHandler } from '../../../packages/core/src/plugin-types'
-import { healthOk as ok, healthWarn as warn, healthError as error } from '@makinbakin/sdk/utils'
+import type {
+  HealthCheckRunInput,
+  HealthObservationInput,
+  HealthRepairActionDefinition,
+} from '../../../packages/core/src/plugin-types'
+import {
+  healthError,
+  healthHealthy,
+  healthNotApplicable,
+  healthObserved,
+  healthUnknown,
+  healthWarning,
+} from '@makinbakin/sdk/utils'
 
 const log = createLogger('schedule:health')
-
-// cron is an OPTIONAL runtime capability (P2.1): checks accept undefined —
-// no native cron surface means nothing to sync, by design.
 type RuntimeCronReader = Pick<NonNullable<AgentRuntimeAdapter['cron']>, 'list'>
 
-// ─── Result constructors (inlined; matches workflows precedent) ─────────────
-
-function fixed(check: string, message: string): HealthCheckResult {
-  return { check, status: 'fixed', message, autoFixable: true }
+interface RuntimeJob {
+  id: string
+  name: string
 }
 
-// ─── Schedule sync: orphan runtime cron jobs not in Bakin's sidecar ────────
+interface ScheduleSidecar {
+  version: number
+  jobs: Record<string, unknown>
+}
 
-/**
- * Detect orphaned runtime cron jobs that aren't tracked in Bakin's
- * `schedule/sidecar.json`. The explicit repair handler creates a minimal sidecar
- * entry flagged `requireTriage: true` and explicitly leaves agentId
- * unset (the user must triage rather than have a guessed assignment).
- */
+function stablePart(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9._:-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 72) || 'unknown'
+}
+
+function bounded(value: string, max: number): string {
+  return value.length <= max ? value : `${value.slice(0, max - 1)}…`
+}
+
+function readScheduleSidecar(contentDir: string): ScheduleSidecar {
+  const path = join(contentDir, 'schedule', 'sidecar.json')
+  if (!existsSync(path)) return { version: 1, jobs: {} }
+  try {
+    const parsed = JSON.parse(readFileSync(path, 'utf-8')) as Partial<ScheduleSidecar>
+    return {
+      version: typeof parsed.version === 'number' ? parsed.version : 1,
+      jobs: parsed.jobs && typeof parsed.jobs === 'object' ? parsed.jobs : {},
+    }
+  } catch {
+    return { version: 1, jobs: {} }
+  }
+}
+
+async function orphanRuntimeJobs(contentDir: string, cron: RuntimeCronReader): Promise<{ jobs: RuntimeJob[]; orphans: RuntimeJob[] }> {
+  const jobs = (await cron.list()).map(job => ({ id: job.id, name: job.name || job.id }))
+  const sidecar = readScheduleSidecar(contentDir)
+  return { jobs, orphans: jobs.filter(job => !sidecar.jobs[job.id]) }
+}
+
+/** Detect runtime cron jobs that are visible to Bakin but absent from its sidecar. */
 export async function checkScheduleSync(
   contentDir: string,
   cron: RuntimeCronReader | undefined,
-  defaultOwner: string,
-): Promise<HealthCheckResult[]> {
-  return checkScheduleSyncInternal(contentDir, cron, defaultOwner, false)
+): Promise<HealthCheckRunInput> {
+  if (!cron) return healthNotApplicable('The active runtime has no native cron surface to synchronize.')
+
+  let scan: Awaited<ReturnType<typeof orphanRuntimeJobs>>
+  try {
+    scan = await orphanRuntimeJobs(contentDir, cron)
+  } catch (error) {
+    return healthObserved([healthUnknown({
+      key: 'runtime-cron',
+      summary: `Runtime cron jobs could not be read: ${error instanceof Error ? error.message : String(error)}`,
+      incident: {
+        key: 'runtime-cron',
+        title: 'Schedule synchronization could not be verified',
+        impact: 'Bakin cannot determine whether runtime cron jobs are tracked in its schedule sidecar.',
+        disposition: 'watch',
+        resources: [{ kind: 'runtime', id: 'cron', label: 'Runtime cron' }],
+        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun check' },
+      },
+    })])
+  }
+
+  if (scan.jobs.length === 0) {
+    return healthObserved([healthHealthy({ key: 'runtime-cron', summary: 'No runtime cron jobs require synchronization.' })])
+  }
+  if (scan.orphans.length === 0) {
+    return healthObserved([healthHealthy({
+      key: 'runtime-cron',
+      summary: `${scan.jobs.length} runtime cron job(s) are tracked in the Bakin sidecar.`,
+      evidence: { count: scan.jobs.length },
+    })])
+  }
+
+  const observations = scan.orphans.map(orphan => healthWarning({
+    key: `orphan-${stablePart(orphan.id)}`,
+    summary: bounded(`Runtime cron job ${orphan.name} (${orphan.id}) is not tracked in the Bakin sidecar.`, 500),
+    evidence: { jobId: orphan.id, name: orphan.name },
+    incident: {
+      key: `orphan-${stablePart(orphan.id)}`,
+      title: bounded(`Runtime cron job ${orphan.name} needs triage`, 120),
+      impact: 'The job is not visible in Bakin schedule ownership and may run without operator context.',
+      disposition: 'action_required' as const,
+      resources: [{ kind: 'schedule' as const, id: stablePart(orphan.id), label: bounded(orphan.name, 120) }],
+      resolution: { key: 'track-runtime-cron', type: 'repair' as const, label: 'Track for triage', actionId: 'track-runtime-cron' },
+    },
+  }))
+  return healthObserved(observations as [HealthObservationInput, ...HealthObservationInput[]])
 }
 
-async function checkScheduleSyncInternal(
-  contentDir: string,
-  cron: RuntimeCronReader | undefined,
-  defaultOwner: string,
-  autoFix: boolean,
-): Promise<HealthCheckResult[]> {
-  const checkName = 'schedule-sync'
-  const results: HealthCheckResult[] = []
-
-  if (!cron) {
-    return [ok(checkName, 'The active runtime has no native cron surface — nothing to sync.')]
-  }
-
-  let runtimeJobs: Array<{ id: string; name: string }>
-  try {
-    runtimeJobs = (await cron.list()).map(job => ({
-      id: job.id,
-      name: job.name || job.id,
-    }))
-  } catch (err) {
-    return [warn(checkName, `Failed to read runtime cron jobs: ${err}`)]
-  }
-
-  if (runtimeJobs.length === 0) {
-    return [ok(checkName, 'No runtime cron jobs to sync')]
-  }
-
-  // Read Bakin sidecar
-  let sidecar: { version: number; jobs: Record<string, unknown> }
-  try {
-    const sidecarPath = join(contentDir, 'schedule', 'sidecar.json')
-    if (existsSync(sidecarPath)) {
-      sidecar = JSON.parse(readFileSync(sidecarPath, 'utf-8'))
-    } else {
-      sidecar = { version: 1, jobs: {} }
-    }
-  } catch {
-    sidecar = { version: 1, jobs: {} }
-  }
-
-  const orphans: typeof runtimeJobs = []
-  for (const job of runtimeJobs) {
-    if (!sidecar.jobs[job.id]) {
-      orphans.push(job)
-    }
-  }
-
-  if (orphans.length === 0) {
-    return [ok(checkName, `${runtimeJobs.length} cron job(s), all tracked in Bakin sidecar`)]
-  }
-
-  for (const orphan of orphans) {
-    if (autoFix) {
-      // Auto-track: create minimal sidecar entry flagged for manual triage.
-      // This is not Bakin adoption; it only records runtime visibility state.
-      const now = new Date().toISOString()
-      const entry = {
-        jobId: orphan.id,
-        isBakinJob: false,
-        source: 'runtime',
-        displayName: orphan.name,
-        agentId: undefined, // Don't guess — flag for triage
-        owner: defaultOwner,
-        requireTriage: true,
-        createdAt: now,
-        updatedAt: now,
-      }
-      sidecar.jobs[orphan.id] = entry
-      results.push(fixed(checkName, `Tracked orphan runtime cron job "${orphan.name}" (id: ${orphan.id})`))
-      log.info('Tracked orphan cron job', { jobId: orphan.id, name: orphan.name })
-    } else {
-      results.push(warn(checkName, `Orphan runtime cron job "${orphan.name}" (id: ${orphan.id}) - not tracked in Bakin sidecar`, true))
-    }
-  }
-
-  // Write updated sidecar if we tracked anything
-  if (autoFix && results.some(r => r.status === 'fixed')) {
-    try {
-      const sidecarPath = join(contentDir, 'schedule', 'sidecar.json')
-      const dir = dirname(sidecarPath)
-      if (!existsSync(dir)) {
-        mkdirSync(dir, { recursive: true })
-      }
-      writeFileSync(sidecarPath, JSON.stringify(sidecar, null, 2), 'utf-8')
-    } catch (err) {
-      results.push(error(checkName, `Failed to write updated sidecar: ${err}`))
-    }
-  }
-
-  return results
-}
-
-// ─── Cutover: Bakin schedules still backed by a runtime cron job ───────────
-
-/**
- * Detect Bakin schedules that still have a backing runtime cron job. After
- * cutover a Bakin schedule fires from the store and must have NO runtime cron —
- * a lingering one means the cutover didn't complete (e.g. the runtime was
- * unreachable at boot) and the job can rogue-fire. The repair completes the
- * migration. Surfaced by `bakin doctor --full` (server-side check) and
- * completed by `bakin doctor --fix` — `bakin check` only routes the fixed
- * onboarding checks, not plugin-registered health checks like this one.
- * `runtimeName` labels messages with the active adapter (never hardcoded).
- */
+/** Detect Bakin-owned schedules that still have a backing runtime cron job. */
 export async function checkScheduleCutover(
   cron: RuntimeCronReader | undefined,
   bakinJobIds: () => string[],
   runtimeName?: string,
-): Promise<HealthCheckResult[]> {
-  const check = 'schedule-cutover'
-  if (!cron) {
-    return [ok(check, 'The active runtime has no native cron surface — all Bakin schedules are cut over by construction.')]
-  }
+): Promise<HealthCheckRunInput> {
+  if (!cron) return healthNotApplicable('The active runtime has no native cron surface; Bakin schedules are cut over by construction.')
+
   let runtimeIds: Set<string>
   try {
     runtimeIds = new Set((await cron.list()).map(job => job.id))
-  } catch (err) {
-    return [warn(check, `Failed to read runtime cron jobs: ${err}`)]
+  } catch (error) {
+    return healthObserved([healthUnknown({
+      key: 'cutover-verification',
+      summary: `Runtime cron could not be read: ${error instanceof Error ? error.message : String(error)}`,
+      incident: {
+        key: 'cutover-verification',
+        title: 'Schedule cutover could not be verified',
+        impact: 'Bakin cannot confirm that duplicate runtime cron fire paths are absent.',
+        disposition: 'watch',
+        resources: [{ kind: 'runtime', id: 'cron', label: `${runtimeName ?? 'Runtime'} cron` }],
+        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun check' },
+      },
+    })])
   }
 
   const lingering = bakinJobIds().filter(id => runtimeIds.has(id))
   if (lingering.length === 0) {
-    return [ok(check, `All Bakin schedules are cut over (no backing ${runtimeName ?? 'runtime'} cron jobs)`)]
+    return healthObserved([healthHealthy({
+      key: 'cutover',
+      summary: `All Bakin schedules are cut over from ${runtimeName ?? 'runtime'} cron.`,
+    })])
   }
-  return lingering.map(id =>
-    warn(check, `Bakin schedule "${id}" still has a ${runtimeName ?? 'runtime'} cron job and can rogue-fire — run the repair to complete cutover.`, true),
-  )
+  return healthObserved(lingering.map(id => healthError({
+    key: `lingering-${stablePart(id)}`,
+    summary: bounded(`Bakin schedule ${id} still has a ${runtimeName ?? 'runtime'} cron job.`, 500),
+    evidence: { jobId: id, runtime: runtimeName ?? 'runtime' },
+    incident: {
+      key: `lingering-${stablePart(id)}`,
+      title: bounded(`Schedule ${id} has two possible fire paths`, 120),
+      impact: 'The lingering runtime cron can rogue-fire and execute the schedule twice.',
+      disposition: 'action_required',
+      resources: [{ kind: 'schedule', id: stablePart(id), label: bounded(id, 120) }],
+      resolution: { key: 'complete-cutover', type: 'repair', label: 'Complete cutover', actionId: 'complete-cutover' },
+    },
+  })) as [HealthObservationInput, ...HealthObservationInput[]])
 }
 
+/** Complete the existing migration that imports schedule expressions and removes backing runtime cron jobs. */
 export function scheduleCutoverRepair(
   runMigration: () => Promise<{ migrated: number; failed: number }>,
-): HealthRepairHandler {
-  const check = 'schedule-cutover'
+): HealthRepairActionDefinition {
   return {
-    async plan(rows) {
-      const matching = rows.filter(row => row.check === check && row.autoFixable)
-      if (matching.length === 0) return []
+    id: 'complete-cutover',
+    name: 'Complete schedule cutover',
+    async plan() {
       return [{
-        id: 'schedule.complete-cutover',
-        checkId: check,
-        title: 'Complete cutover of Bakin schedules off runtime cron',
-        reason: matching.map(row => row.message).join('; '),
-        safety: 'safe',
-        requiresConfirmation: true,
+        id: 'complete-cutover',
+        actionId: 'complete-cutover',
+        title: 'Complete schedule cutover from runtime cron',
+        reason: 'One or more Bakin schedules still have a backing runtime cron job.',
+        safety: 'destructive',
+        incidentIds: [],
+        observationIds: [],
+        preconditions: [],
         changes: [{
           kind: 'runtime',
           target: 'runtime cron jobs',
           action: 'delete',
-          description: 'Import the schedule expression into Bakin and remove the backing runtime cron job.',
+          description: 'Import each schedule expression into Bakin and remove its backing runtime cron job.',
         }],
       }]
     },
     async apply(items) {
       if (items.length === 0) return []
-      const summary = await runMigration()
-      return [{
-        id: 'schedule.complete-cutover',
-        checkId: check,
-        status: summary.failed > 0 ? 'failed' : 'applied',
-        message: `Migrated ${summary.migrated} schedule(s) off runtime cron${summary.failed > 0 ? `, ${summary.failed} failed` : ''}`,
-        changes: summary.migrated > 0
-          ? [{ kind: 'runtime' as const, target: 'runtime cron jobs', action: 'delete' as const, description: `Removed ${summary.migrated} backing runtime cron job(s).` }]
-          : [],
-      }]
+      try {
+        const summary = await runMigration()
+        return items.map(item => ({
+          itemId: item.id,
+          actionId: item.actionId,
+          status: summary.failed > 0 ? 'failed' as const : 'applied' as const,
+          message: `Migrated ${summary.migrated} schedule(s) off runtime cron${summary.failed > 0 ? `; ${summary.failed} failed` : ''}.`,
+          affectedCheckIds: ['schedule.schedule-cutover'],
+          changes: summary.migrated > 0 ? item.changes : [],
+        }))
+      } catch (error) {
+        return items.map(item => ({
+          itemId: item.id,
+          actionId: item.actionId,
+          status: 'failed' as const,
+          message: error instanceof Error ? error.message : String(error),
+          affectedCheckIds: ['schedule.schedule-cutover'],
+          changes: [],
+        }))
+      }
     },
   }
 }
 
+/** Add unowned runtime cron jobs to the sidecar without guessing an agent assignment. */
 export function scheduleSyncRepair(
   contentDir: string,
   cron: RuntimeCronReader,
   resolveDefaultOwner: () => Promise<string>,
-): HealthRepairHandler {
+): HealthRepairActionDefinition {
   return {
-    async plan(rows) {
-      const matching = rows.filter(row => row.check === 'schedule-sync' && row.autoFixable)
-      if (matching.length === 0) return []
+    id: 'track-runtime-cron',
+    name: 'Track runtime cron jobs for triage',
+    async plan() {
+      let orphans: RuntimeJob[]
+      try { orphans = (await orphanRuntimeJobs(contentDir, cron)).orphans } catch { return [] }
+      if (orphans.length === 0) return []
       return [{
-        id: 'schedule.track-runtime-cron',
-        checkId: 'schedule-sync',
+        id: 'track-runtime-cron',
+        actionId: 'track-runtime-cron',
         title: 'Track orphan runtime cron jobs',
-        reason: matching.map(row => row.message).join('; '),
+        reason: `${orphans.length} runtime cron job(s) are absent from the schedule sidecar.`,
         safety: 'safe',
-        requiresConfirmation: true,
+        incidentIds: [],
+        observationIds: [],
+        preconditions: [],
         changes: [{
           kind: 'file',
           target: join(contentDir, 'schedule', 'sidecar.json'),
           action: 'update',
-          description: 'Add orphan runtime cron jobs to the schedule sidecar for manual triage.',
+          description: 'Add orphan runtime cron jobs to the sidecar with manual-triage flags and no guessed agent.',
         }],
       }]
     },
     async apply(items) {
       if (items.length === 0) return []
-      const defaultOwner = await resolveDefaultOwner()
-      const rows = await checkScheduleSyncInternal(contentDir, cron, defaultOwner, true)
-      const failures = rows.filter(row => row.status === 'error')
-      return [{
-        id: 'schedule.track-runtime-cron',
-        checkId: 'schedule-sync',
-        status: failures.length > 0 ? 'failed' : 'applied',
-        message: rows.map(row => row.message).join('; '),
-        changes: rows
-          .filter(row => row.status === 'fixed')
-          .map(row => ({
-            kind: 'file' as const,
-            target: join(contentDir, 'schedule', 'sidecar.json'),
-            action: 'update' as const,
-            description: row.message,
-          })),
-      }]
+      try {
+        const { orphans } = await orphanRuntimeJobs(contentDir, cron)
+        if (orphans.length === 0) {
+          return items.map(item => ({
+            itemId: item.id,
+            actionId: item.actionId,
+            status: 'skipped' as const,
+            message: 'All runtime cron jobs are already tracked.',
+            affectedCheckIds: ['schedule.schedule-sync'],
+            changes: [],
+          }))
+        }
+        const defaultOwner = await resolveDefaultOwner()
+        const sidecar = readScheduleSidecar(contentDir)
+        const now = new Date().toISOString()
+        for (const orphan of orphans) {
+          sidecar.jobs[orphan.id] = {
+            jobId: orphan.id,
+            isBakinJob: false,
+            source: 'runtime',
+            displayName: orphan.name,
+            owner: defaultOwner,
+            requireTriage: true,
+            createdAt: now,
+            updatedAt: now,
+          }
+          log.info('Tracked orphan cron job', { jobId: orphan.id, name: orphan.name })
+        }
+        const sidecarPath = join(contentDir, 'schedule', 'sidecar.json')
+        mkdirSync(dirname(sidecarPath), { recursive: true })
+        writeFileSync(sidecarPath, JSON.stringify(sidecar, null, 2), 'utf-8')
+        return items.map(item => ({
+          itemId: item.id,
+          actionId: item.actionId,
+          status: 'applied' as const,
+          message: `Tracked ${orphans.length} runtime cron job(s) for manual triage.`,
+          affectedCheckIds: ['schedule.schedule-sync'],
+          changes: item.changes,
+        }))
+      } catch (error) {
+        return items.map(item => ({
+          itemId: item.id,
+          actionId: item.actionId,
+          status: 'failed' as const,
+          message: error instanceof Error ? error.message : String(error),
+          affectedCheckIds: ['schedule.schedule-sync'],
+          changes: [],
+        }))
+      }
     },
   }
 }

@@ -74,6 +74,13 @@ function seedFullAssetsTree() {
   mkdirSync(join(assetsRoot, '.trash'), { recursive: true })
 }
 
+function observations(result = checkAssets(testDir)) {
+  if (result.outcome !== 'observed') throw new Error(`Expected observed Assets health, got ${result.outcome}`)
+  return result.observations
+}
+
+const repairTarget = { type: 'all_actionable' as const, reportId: 'test-report' }
+
 /** Seed a valid versioned asset directory under the 2026-03 shard. */
 function seedVersionedAsset(assetId: string, overrides?: { currentVersion?: number; files?: string[] }): string {
   const dir = join(storeDir, assetId)
@@ -97,15 +104,18 @@ function seedVersionedAsset(assetId: string, overrides?: { currentVersion?: numb
 // ─── Store shape ──────────────────────────────────────────────────────────
 
 describe('checkAssets — store shape', () => {
-  it('warns when assets/ directory does not exist (no autoFix)', () => {
-    const results = checkAssets(testDir)
-    expect(results.some(r => r.status === 'warn' && r.message.includes('assets/ directory not found') && r.autoFixable)).toBe(true)
+  it('surfaces a repair action when the assets directory does not exist', () => {
+    const results = observations()
+    expect(results.some(r =>
+      r.status === 'warning' &&
+      r.summary.includes('assets directory is missing') &&
+      r.incident.resolution.type === 'repair'
+    )).toBe(true)
   })
 
   it('repairs the assets/ tree explicitly', async () => {
-    const results = checkAssets(testDir)
     const repair = assetRepair(testDir)
-    const plan = await repair.plan(results)
+    const plan = await repair.plan(repairTarget)
     expect(plan).toHaveLength(1)
     const applied = await repair.apply(plan)
     expect(existsSync(assetsRoot)).toBe(true)
@@ -113,34 +123,34 @@ describe('checkAssets — store shape', () => {
     expect(existsSync(join(assetsRoot, 'inbox'))).toBe(true)
     expect(existsSync(join(assetsRoot, '.trash'))).toBe(true)
     expect(applied[0].status).toBe('applied')
-    expect(applied[0].changes.some(change => change.description.includes('Created assets/ directory'))).toBe(true)
+    expect(applied[0].changes.some(change => change.description.includes('asset store root'))).toBe(true)
   })
 
-  it('warns about missing required store directories without autoFix when assets/ exists', () => {
+  it('reports missing required store directories without mutating them', () => {
     mkdirSync(assetsRoot, { recursive: true })
-    const results = checkAssets(testDir)
-    expect(results.filter(r => r.status === 'warn' && r.message.includes('Missing assets/'))).toHaveLength(3)
+    const results = observations()
+    expect(results.filter(r => r.status === 'warning' && r.key.startsWith('directory-missing-'))).toHaveLength(3)
   })
 
   it('reports ok when the tree is empty and clean (incl. unimported + enrichment checks)', () => {
     seedFullAssetsTree()
-    const results = checkAssets(testDir)
+    const results = observations()
     expect(results).toHaveLength(3)
-    expect(results.every(r => r.status === 'ok')).toBe(true)
-    expect(results[0].message).toMatch(/Asset store is empty and healthy/)
-    expect(results[1].message).toMatch(/No unmanaged files/)
-    expect(results[2].message).toMatch(/enrichment/)
+    expect(results.every(r => r.status === 'healthy')).toBe(true)
+    expect(results[0].summary).toMatch(/asset store is empty and healthy/i)
+    expect(results[1].summary).toMatch(/No unmanaged files/)
+    expect(results[2].summary).toMatch(/enrichment/)
   })
 
-  it('warns (not auto-fixable) when unmanaged files await import', () => {
+  it('surfaces an advisory when unmanaged files await import', () => {
     seedFullAssetsTree()
     mkdirSync(join(assetsRoot, 'inbox'), { recursive: true })
     writeFileSync(join(assetsRoot, 'inbox', 'dropped.png'), 'x')
-    const results = checkAssets(testDir)
-    const unimported = results.find(r => r.check === 'assets.unimported')!
-    expect(unimported.status).toBe('warn')
-    expect(unimported.message).toContain('1 unmanaged file')
-    expect(unimported.autoFixable).toBe(false)
+    const results = observations()
+    const unimported = results.find(r => r.key === 'unimported')!
+    expect(unimported.status).toBe('warning')
+    expect(unimported.summary).toContain('1 unmanaged file')
+    expect(unimported.incident?.resolution.type).toBe('navigate')
   })
 
   it('warns about legacy top-level type directories instead of scanning them', () => {
@@ -149,24 +159,24 @@ describe('checkAssets — store shape', () => {
     mkdirSync(legacyDir, { recursive: true })
     writeFileSync(join(legacyDir, 'hero.png'), 'fake-image')
 
-    const results = checkAssets(testDir)
-    expect(results.some(r => r.status === 'warn' && r.message.includes('Unexpected assets/images/'))).toBe(true)
+    const results = observations()
+    expect(results.some(r => r.status === 'warning' && r.summary.includes('Unexpected assets/images'))).toBe(true)
   })
 
   it('warns about non-assetId entries inside a month shard', () => {
     seedFullAssetsTree()
     writeFileSync(join(storeDir, 'loose-file.png'), 'fake-image')
 
-    const results = checkAssets(testDir)
-    expect(results.some(r => r.status === 'warn' && r.message.includes('store entries must be assetId directories'))).toBe(true)
+    const results = observations()
+    expect(results.some(r => r.status === 'warning' && r.summary.includes('entries must be asset directories'))).toBe(true)
   })
 
   it('warns about non-canonical month shards', () => {
     seedFullAssetsTree()
     mkdirSync(join(storeRoot, 'not-a-shard'), { recursive: true })
 
-    const results = checkAssets(testDir)
-    expect(results.some(r => r.status === 'warn' && r.message.includes('canonical shards must be YYYY-MM'))).toBe(true)
+    const results = observations()
+    expect(results.some(r => r.status === 'warning' && r.summary.includes('canonical YYYY-MM shard'))).toBe(true)
   })
 })
 
@@ -178,24 +188,24 @@ describe('checkAssets — manifest integrity', () => {
     seedVersionedAsset('20260323-hero-a1b2c3d4')
     seedVersionedAsset('20260323-banner-b2c3d4e5')
 
-    const results = checkAssets(testDir)
-    expect(results.some(r => r.status === 'ok' && r.message.includes('2 versioned asset(s), all manifests valid'))).toBe(true)
+    const results = observations()
+    expect(results.some(r => r.status === 'healthy' && r.summary.includes('2 versioned asset(s) have valid manifests'))).toBe(true)
   })
 
   it('warns about an asset directory with no manifest', () => {
     seedFullAssetsTree()
     mkdirSync(join(storeDir, '20260323-broken-c3d4e5f6'), { recursive: true })
 
-    const results = checkAssets(testDir)
-    expect(results.some(r => r.status === 'warn' && r.message.includes('missing or invalid manifest.json'))).toBe(true)
+    const results = observations()
+    expect(results.some(r => r.status === 'warning' && r.summary.includes('missing or invalid manifest.json'))).toBe(true)
   })
 
   it('warns when currentVersion is not in versions[]', () => {
     seedFullAssetsTree()
     seedVersionedAsset('20260323-bad-d4e5f6a7', { currentVersion: 9 })
 
-    const results = checkAssets(testDir)
-    expect(results.some(r => r.status === 'warn' && r.message.includes('currentVersion 9 is not in versions[]'))).toBe(true)
+    const results = observations()
+    expect(results.some(r => r.status === 'warning' && r.summary.includes('currentVersion 9 is absent from versions[]'))).toBe(true)
   })
 
   it('warns when a version file is missing on disk', () => {
@@ -203,8 +213,8 @@ describe('checkAssets — manifest integrity', () => {
     // Manifest references v1.png but we write no version files.
     seedVersionedAsset('20260323-nofile-e5f6a7b8', { files: [] })
 
-    const results = checkAssets(testDir)
-    expect(results.some(r => r.status === 'warn' && r.message.includes('missing version file v1.png'))).toBe(true)
+    const results = observations()
+    expect(results.some(r => r.status === 'warning' && r.summary.includes('missing version file v1.png'))).toBe(true)
   })
 })
 
@@ -221,14 +231,14 @@ describe('checkAssets — trash purge', () => {
     const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000
     utimesSync(oldFile, thirtyDaysAgo / 1000, thirtyDaysAgo / 1000)
 
-    const results = checkAssets(testDir)
-    const applied = await assetRepair(testDir).apply(await assetRepair(testDir).plan(results))
+    const repair = assetRepair(testDir)
+    const applied = await repair.apply(await repair.plan(repairTarget))
     expect(existsSync(oldFile)).toBe(false)
     expect(existsSync(freshFile)).toBe(true)
-    expect(applied[0].changes.some(change => change.description.includes('Purged 1 expired'))).toBe(true)
+    expect(applied[0].changes.some(change => change.description.includes('Purge expired trash item'))).toBe(true)
   })
 
-  it('does not purge trash items without autoFix', () => {
+  it('does not purge trash items during diagnostics', () => {
     seedFullAssetsTree()
     const trashDir = join(assetsRoot, '.trash')
     const oldFile = join(trashDir, 'ancient.bin')
@@ -253,8 +263,8 @@ describe('checkAssets — disk usage', () => {
     truncateSync(bigFile, 6 * 1024 * 1024 * 1024)
     expect(statSync(bigFile).size).toBe(6 * 1024 * 1024 * 1024)
 
-    const results = checkAssets(testDir)
-    expect(results.some(r => r.status === 'warn' && r.message.includes('GB — consider cleanup'))).toBe(true)
+    const results = observations()
+    expect(results.some(r => r.status === 'warning' && r.summary.includes('GB'))).toBe(true)
   })
 })
 
@@ -264,6 +274,7 @@ describe('plugin registration', () => {
   it('registers the assets health check on activate', async () => {
     const assetsPlugin = (await import('../../../plugins/assets')).default
     const registeredIds: string[] = []
+    const registeredActionIds: string[] = []
     const noop = mock()
     const noopAsync = mock(async () => {})
     const ctx: Record<string, unknown> = {
@@ -272,6 +283,7 @@ describe('plugin registration', () => {
       registerSlot: noop, registerSkill: noop, registerWorkflow: noop,
       registerNodeType: noop, registerNotificationChannel: noop,
       registerHealthCheck: (def: { id: string }) => { registeredIds.push(def.id); return `assets.${def.id}` },
+      registerHealthRepairAction: (def: { id: string }) => { registeredActionIds.push(def.id); return `assets.${def.id}` },
       watchFiles: noop,
       getSettings: () => ({}),
       updateSettings: noop,
@@ -288,5 +300,6 @@ describe('plugin registration', () => {
     await assetsPlugin.activate(ctx as unknown as Parameters<typeof assetsPlugin.activate>[0])
 
     expect(registeredIds).toContain('assets')
+    expect(registeredActionIds).toContain('repair-store')
   })
 })

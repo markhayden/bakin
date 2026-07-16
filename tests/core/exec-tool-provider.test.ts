@@ -28,7 +28,7 @@ mock.module('../../src/core/audit', () => ({
   appendAudit: (...args: unknown[]) => auditCalls.push(args),
 }))
 
-import { addExecTool } from '../../src/core/exec-tools/registry'
+import { addExecTool, getExecTool } from '../../src/core/exec-tools/registry'
 import { createRuntimeExecToolProvider } from '../../src/core/exec-tools/provider'
 
 afterAll(() => {
@@ -70,8 +70,45 @@ describe('runtime exec-tool provider', () => {
     const result = await provider.invoke('bakin_exec_test_echo', { message: 'hi' }, 'agent-7')
     expect(result.ok).toBe(true)
     expect(JSON.parse(result.text)).toMatchObject({ ok: true, echoed: 'hi', agent: 'agent-7' })
-    expect(usageCalls[0]).toMatchObject({ kind: 'mcp', name: 'bakin_exec_test_echo', agent: 'agent-7', status: 'ok' })
+    expect(usageCalls[0]).toMatchObject({
+      kind: 'mcp',
+      activityClass: 'user',
+      name: 'bakin_exec_test_echo',
+      agent: 'agent-7',
+      status: 'ok',
+    })
     expect(auditCalls[0]?.[1]).toBe('exec.bakin_exec_test_echo.ok')
+  })
+
+  test('heartbeat invocation preserves its producer-declared routine activity class', async () => {
+    await import('../../src/core/exec-tools/tools/heartbeat')
+    const heartbeat = getExecTool('bakin_exec_heartbeat')
+    expect(heartbeat).toBeDefined()
+    // This handler does not consume PluginToolContext. Suppress context
+    // construction so the focused provider test does not need full AppServices.
+    const originalSource = heartbeat!.source
+    heartbeat!.source = undefined
+    usageCalls.length = 0
+
+    try {
+      const result = await provider.invoke(
+        'bakin_exec_heartbeat',
+        { status: 'idle', message: 'provider regression' },
+        'agent-7',
+      )
+
+      expect(result.ok).toBe(true)
+      const wrapperUsage = usageCalls.find((entry) =>
+        entry.kind === 'mcp' && entry.name === 'bakin_exec_heartbeat'
+      )
+      expect(wrapperUsage).toMatchObject({
+        activityClass: 'routine',
+        agent: 'agent-7',
+        status: 'ok',
+      })
+    } finally {
+      heartbeat!.source = originalSource
+    }
   })
 
   test('throwing handler yields ok:false + ERROR text, never throws across the seam', async () => {

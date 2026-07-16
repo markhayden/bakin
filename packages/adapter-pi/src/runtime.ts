@@ -16,13 +16,11 @@ import { createAgentsSurface } from './agents'
 import { listAuthCredentials } from './config'
 import { MAIN_AGENT_ID, seedMainAgentIfEmpty } from './main-agent'
 import { createMemorySurface } from './memory'
-import { createMessagingSurface } from './messaging'
+import { createMessagingSurface, enforcePiOffline } from './messaging'
 import { capabilitiesForModel, createModelsSurface, resetModelRegistry } from './models'
 import { readRegistry } from './registry'
-import { createHealthChecks } from './health-checks'
 import { createImagesSurface } from './images'
 import { createExtensionsSurface } from './extensions'
-import { enforcePiOffline } from './messaging'
 import { codexImageAuth } from './codex-images'
 import { resolveProviderApiKeySource } from '@bakin/core/media'
 import { createSessionsSurface } from './sessions'
@@ -30,10 +28,6 @@ import { createSkillsSurface } from './skills'
 
 export interface PiRuntimeAdapterOptions {
   settings?: Record<string, unknown>
-}
-
-function notImplemented(member: string): never {
-  throw new Error(`adapter-pi: ${member} is not implemented yet (build in progress)`)
 }
 
 export class PiRuntimeAdapter implements AgentRuntimeAdapter {
@@ -71,7 +65,8 @@ export class PiRuntimeAdapter implements AgentRuntimeAdapter {
    * signal for an in-process runtime — the old `initOpts !== null` was
    * vacuously true after boot and made the health plugin's runtime check
    * meaningless on Pi. Resolves false, never throws (unreadable auth.json
-   * reads as no credentials). Deep probes stay in getHealthChecks().
+   * reads as no credentials). Deeper probes are registered separately with
+   * the canonical Health registry at application composition.
    */
   async ping(): Promise<boolean> {
     if (this.initOpts === null) return false
@@ -180,15 +175,13 @@ export class PiRuntimeAdapter implements AgentRuntimeAdapter {
     return this.initOpts?.getLiveSettings?.() ?? this.initOpts?.settings ?? this.options.settings
   }
 
-  getHealthChecks(): ReturnType<AgentRuntimeAdapter['getHealthChecks']> {
-    return createHealthChecks(() => this.settingsNow())
-  }
-
   agents: AgentRuntimeAdapter['agents'] = createAgentsSurface()
 
   messaging: AgentRuntimeAdapter['messaging'] = createMessagingSurface({
     getExecTools: () => this.initOpts?.execTools,
     getLogger: () => this.initOpts?.logger,
+    getToolActivity: () => this.initOpts?.onToolActivity,
+    getTurnActivity: () => this.initOpts?.onTurnActivity,
     // Live: extension policy + retry knobs apply on the NEXT TURN.
     getSettings: () => this.settingsNow(),
   })

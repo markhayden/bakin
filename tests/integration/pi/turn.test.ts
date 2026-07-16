@@ -28,6 +28,7 @@ mock.module('../../../src/core/logger', () => ({
 }))
 
 import type { RuntimeError, RuntimeExecToolProvider, ChatChunk } from '../../../packages/core/src/adapters/runtime'
+import type { AdapterInitOpts } from '../../../packages/core/src/adapters/shared'
 import { createPiRuntimeAdapter } from '../../../packages/adapter-pi/src/index'
 import { resetPiHome } from '../../../packages/adapter-pi/src/home'
 import { resetModelRegistry } from '../../../packages/adapter-pi/src/models'
@@ -53,6 +54,40 @@ const execToolProvider: RuntimeExecToolProvider = {
 
 let provider: FakeProvider
 const adapter = createPiRuntimeAdapter()
+
+type ToolActivityEvent = Parameters<NonNullable<AdapterInitOpts['onToolActivity']>>[0]
+type TurnActivityEvent = Parameters<NonNullable<AdapterInitOpts['onTurnActivity']>>[0]
+
+function requireToolResult(event: ToolActivityEvent | undefined): Extract<ToolActivityEvent, { phase: 'result' }> {
+  if (!event || event.phase !== 'result') throw new Error('expected a tool result event')
+  return event
+}
+
+async function createTelemetryAdapter(
+  onToolActivity: NonNullable<AdapterInitOpts['onToolActivity']>,
+  onTurnActivity?: NonNullable<AdapterInitOpts['onTurnActivity']>,
+) {
+  const runtime = createPiRuntimeAdapter()
+  await runtime.initialize({
+    contentDir: join(testDir, 'bakin'),
+    execTools: execToolProvider,
+    settings: { retry: { enabled: false, provider: { maxRetries: 0 } } },
+    onToolActivity,
+    onTurnActivity,
+  })
+  return runtime
+}
+
+async function createTurnTelemetryAdapter(onTurnActivity: NonNullable<AdapterInitOpts['onTurnActivity']>) {
+  const runtime = createPiRuntimeAdapter()
+  await runtime.initialize({
+    contentDir: join(testDir, 'bakin'),
+    execTools: execToolProvider,
+    settings: { retry: { enabled: false, provider: { maxRetries: 0 } } },
+    onTurnActivity,
+  })
+  return runtime
+}
 
 function seedProvider(scripts: FakeTurnScript[]): FakeProvider {
   provider?.stop()
@@ -108,6 +143,80 @@ afterAll(() => {
 })
 
 describe('messaging.send', () => {
+  test('adapter-level turn lifecycle reports send success with identity, class, result, and usage', async () => {
+    const activity: TurnActivityEvent[] = []
+    const runtime = await createTurnTelemetryAdapter((event) => activity.push(event))
+    seedProvider([{ steps: [{ text: 'observed lifecycle' }] }])
+
+    const result = await runtime.messaging.send({
+      agentId: 'main',
+      content: 'hi',
+      threadId: 'task:turn-lifecycle-send:d1',
+      activityClass: 'system',
+    })
+
+    expect(activity).toHaveLength(2)
+    expect(activity[0]).toEqual({
+      agentId: 'main',
+      activityClass: 'system',
+      threadId: 'task:turn-lifecycle-send:d1',
+      operation: 'send',
+      phase: 'start',
+      status: 'running',
+      turnId: expect.any(String),
+    })
+    expect(activity[1]).toMatchObject({
+      agentId: 'main',
+      activityClass: 'system',
+      threadId: 'task:turn-lifecycle-send:d1',
+      operation: 'send',
+      phase: 'result',
+      status: 'completed',
+      turnId: activity[0]!.turnId,
+      durationMs: expect.any(Number),
+      resultId: result.id,
+      usage: result.usage,
+    })
+    expect(result.metadata).toMatchObject({ adapterTurnId: activity[0]!.turnId })
+  })
+
+  test.each([
+    ['failed', undefined],
+    ['aborted', AbortSignal.abort()],
+  ] as const)('adapter-level turn lifecycle reports send %s exactly once', async (status, signal) => {
+    const activity: TurnActivityEvent[] = []
+    const runtime = await createTurnTelemetryAdapter((event) => activity.push(event))
+
+    await expect(runtime.messaging.send({
+      agentId: status === 'failed' ? 'ghost' : 'main',
+      content: 'hi',
+      threadId: `task:turn-lifecycle-send-${status}:d1`,
+      signal,
+    })).rejects.toBeDefined()
+
+    expect(activity.map((event) => event.phase)).toEqual(['start', 'result'])
+    expect(activity[1]).toMatchObject({
+      operation: 'send',
+      status,
+      turnId: activity[0]!.turnId,
+      durationMs: expect.any(Number),
+    })
+  })
+
+  test('a throwing adapter-level turn observer never fails send', async () => {
+    let calls = 0
+    const runtime = await createTurnTelemetryAdapter(() => {
+      calls += 1
+      throw new Error('turn observer exploded')
+    })
+    seedProvider([{ steps: [{ text: 'still succeeds' }] }])
+
+    const result = await runtime.messaging.send({ agentId: 'main', content: 'hi' })
+
+    expect(result.content).toBe('still succeeds')
+    expect(calls).toBe(2)
+  })
+
   test('text turn returns content + usage delta + sessionId; canonical files enter the system prompt', async () => {
     const fake = seedProvider([
       { steps: [{ text: 'Hello ' }, { text: 'from Pi' }], usage: { prompt: 42, completion: 7 } },
@@ -211,6 +320,118 @@ describe('messaging.send', () => {
     expect(calls).toBeGreaterThan(0)
   })
 
+  test('adapter-level onToolActivity observes send tool calls without replacing per-turn onActivity', async () => {
+    const toolActivity: ToolActivityEvent[] = []
+    const lifecycle: TurnActivityEvent[] = []
+    const runtime = await createTelemetryAdapter(
+      (event) => toolActivity.push(event),
+      (event) => lifecycle.push(event),
+    )
+    seedProvider([
+      { steps: [{ toolCall: { name: 'bakin_exec_test_echo', args: { message: 'observe send' } } }] },
+      { steps: [{ text: 'observed send' }] },
+    ])
+    const turnActivity: ChatChunk[] = []
+
+    const result = await runtime.messaging.send({
+      agentId: 'main',
+      content: 'use the tool',
+      threadId: 'task:tool-telemetry-send:d1',
+      onActivity: (chunk) => turnActivity.push(chunk),
+    })
+
+    expect(result.content).toBe('observed send')
+    expect(toolActivity).toHaveLength(2)
+    expect(toolActivity[0]).toMatchObject({
+      agentId: 'main',
+      threadId: 'task:tool-telemetry-send:d1',
+      phase: 'call',
+      callId: expect.any(String),
+      toolName: 'bakin_exec_test_echo',
+      status: 'running',
+      turnId: lifecycle[0]!.turnId,
+    })
+    const resultDurationMs = requireToolResult(toolActivity[1]).durationMs
+    expect(typeof resultDurationMs).toBe('number')
+    expect(resultDurationMs!).toBeGreaterThanOrEqual(0)
+    expect(toolActivity[1]).toMatchObject({
+      agentId: 'main',
+      threadId: 'task:tool-telemetry-send:d1',
+      turnId: lifecycle[0]!.turnId,
+      phase: 'result',
+      callId: toolActivity[0]!.callId,
+      toolName: 'bakin_exec_test_echo',
+      status: 'completed',
+    })
+    expect(turnActivity.filter((chunk) => chunk.type === 'tool')).toHaveLength(2)
+  })
+
+  test('adapter-level onToolActivity observes stream tool calls', async () => {
+    const toolActivity: ToolActivityEvent[] = []
+    const lifecycle: TurnActivityEvent[] = []
+    const runtime = await createTelemetryAdapter(
+      (event) => toolActivity.push(event),
+      (event) => lifecycle.push(event),
+    )
+    seedProvider([
+      { steps: [{ toolCall: { name: 'bakin_exec_test_echo', args: { message: 'observe stream' } } }] },
+      { steps: [{ text: 'observed stream' }] },
+    ])
+
+    const chunks: ChatChunk[] = []
+    for await (const chunk of runtime.messaging.stream({
+      agentId: 'main',
+      content: 'use the tool',
+      threadId: 'chat:tool-telemetry-stream',
+      activityClass: 'system',
+    })) {
+      chunks.push(chunk)
+    }
+
+    expect(chunks.at(-1)?.type).toBe('done')
+    expect(toolActivity.map((event) => event.phase)).toEqual(['call', 'result'])
+    expect(toolActivity[0]).toMatchObject({
+      agentId: 'main',
+      threadId: 'chat:tool-telemetry-stream',
+      activityClass: 'system',
+      toolName: 'bakin_exec_test_echo',
+      status: 'running',
+      turnId: lifecycle[0]!.turnId,
+    })
+    const resultDurationMs = requireToolResult(toolActivity[1]).durationMs
+    expect(typeof resultDurationMs).toBe('number')
+    expect(resultDurationMs!).toBeGreaterThanOrEqual(0)
+    expect(toolActivity[1]).toMatchObject({
+      agentId: 'main',
+      threadId: 'chat:tool-telemetry-stream',
+      turnId: lifecycle[0]!.turnId,
+      activityClass: 'system',
+      toolName: 'bakin_exec_test_echo',
+      status: 'completed',
+    })
+  })
+
+  test('a throwing adapter-level onToolActivity callback never fails a turn', async () => {
+    let calls = 0
+    const runtime = await createTelemetryAdapter(() => {
+      calls += 1
+      throw new Error('tool telemetry exploded')
+    })
+    seedProvider([
+      { steps: [{ toolCall: { name: 'bakin_exec_test_echo', args: { message: 'still run' } } }] },
+      { steps: [{ text: 'still fine' }] },
+    ])
+
+    const result = await runtime.messaging.send({
+      agentId: 'main',
+      content: 'use the tool',
+      threadId: 'task:tool-telemetry-throw:d1',
+    })
+
+    expect(result.content).toBe('still fine')
+    expect(calls).toBe(2)
+  })
+
   test('provider 429 maps to provider_cooldown', async () => {
     // One seed only: with provider retries disabled exactly one request
     // fires; a residual retry would hit the empty-queue 500 and fail loudly.
@@ -251,6 +472,57 @@ describe('messaging.send', () => {
 })
 
 describe('messaging.stream', () => {
+  test.each([
+    ['completed', 'main', undefined],
+    ['failed', 'ghost', undefined],
+    ['aborted', 'main', AbortSignal.abort()],
+  ] as const)('adapter-level turn lifecycle reports stream %s exactly once', async (status, agentId, signal) => {
+    const activity: TurnActivityEvent[] = []
+    const runtime = await createTurnTelemetryAdapter((event) => activity.push(event))
+    if (status === 'completed') seedProvider([{ steps: [{ text: 'stream observed' }] }])
+
+    const chunks: ChatChunk[] = []
+    for await (const chunk of runtime.messaging.stream({
+      agentId,
+      content: 'go',
+      threadId: `chat:turn-lifecycle-stream-${status}`,
+      activityClass: 'routine',
+      signal,
+    })) {
+      chunks.push(chunk)
+    }
+
+    expect(chunks.at(-1)?.type).toBe(status === 'failed' ? 'error' : 'done')
+    expect(activity.map((event) => event.phase)).toEqual(['start', 'result'])
+    expect(activity[0]).toMatchObject({
+      agentId,
+      activityClass: 'routine',
+      operation: 'stream',
+      status: 'running',
+    })
+    expect(activity[1]).toMatchObject({
+      operation: 'stream',
+      status,
+      turnId: activity[0]!.turnId,
+      durationMs: expect.any(Number),
+    })
+  })
+
+  test('a throwing adapter-level turn observer never fails stream', async () => {
+    let calls = 0
+    const runtime = await createTurnTelemetryAdapter(() => {
+      calls += 1
+      throw new Error('turn observer exploded')
+    })
+    seedProvider([{ steps: [{ text: 'still streams' }] }])
+
+    const chunks = []
+    for await (const chunk of runtime.messaging.stream({ agentId: 'main', content: 'go' })) chunks.push(chunk)
+
+    expect(chunks.at(-1)?.type).toBe('done')
+    expect(calls).toBe(2)
+  })
+
   test('ordered chunks: status/text/tool → done', async () => {
     invocations.length = 0
     seedProvider([

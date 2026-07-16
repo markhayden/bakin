@@ -137,6 +137,7 @@ export interface BudgetSpendMemo {
 /** The fail-closed pseudo-rule when the spend ledger is unreadable. */
 const FAIL_CLOSED_DECISION: BudgetDecision = {
   action: 'defer',
+  cause: 'spend_evidence_unavailable',
   rule: { scope: 'global', lane: 'metered' },
   window: 'daily',
   unit: 'usd_micros',
@@ -208,6 +209,7 @@ export async function budgetGate(
       if (blocking) {
         return {
           action: 'defer',
+          cause: 'open_pause_incident',
           rule,
           window: blocking.window,
           unit: blocking.unit,
@@ -243,9 +245,58 @@ export async function budgetGate(
 
   const decision = evaluateBudget({ policy, turn, facets })
   if (decision.action !== 'allow') {
-    recordBudgetBreach(contentDir, agentId, decision, facets)
+    if (decision.cause === 'spend_evidence_incomplete' || decision.cause === 'spend_evidence_unavailable') {
+      recordSpendEvidenceDeferral(contentDir, agentId, decision, facets)
+    } else if (decision.cause === 'threshold') {
+      recordBudgetBreach(contentDir, agentId, decision, facets)
+    }
   }
   return decision
+}
+
+// Evidence gaps can heal as soon as a later runtime result reports usage, so
+// unlike a real cap breach they must not open a durable "cap reached"
+// incident. They are still audited once per rule/window for observability.
+const incompleteSpendEvidenceAudits = new Set<string>()
+
+function recordSpendEvidenceDeferral(
+  contentDir: string,
+  agentId: string,
+  decision:
+    | Extract<BudgetDecision, { cause: 'spend_evidence_incomplete' }>
+    | Extract<BudgetDecision, { cause: 'spend_evidence_unavailable' }>,
+  facets: BudgetSpendFacets,
+): void {
+  const windowStart = decision.window === 'monthly' ? facets.monthly.startMs : facets.daily.startMs
+  const key = JSON.stringify([
+    contentDir,
+    windowStart,
+    decision.window,
+    decision.rule.scope,
+    decision.rule.scopeId ?? '',
+    decision.rule.lane,
+  ])
+  if (incompleteSpendEvidenceAudits.has(key)) return
+  try {
+    appendAudit(contentDir, 'budget.deferred', agentId, {
+      scope: decision.rule.scope,
+      ...(decision.rule.scopeId ? { scopeId: decision.rule.scopeId } : {}),
+      lane: decision.rule.lane,
+      window: decision.window,
+      unit: decision.unit,
+      reason: decision.cause === 'spend_evidence_unavailable'
+        ? 'spend-evidence-unavailable'
+        : 'spend-evidence-incomplete',
+      knownSpentValue: decision.spentValue,
+      capValue: decision.capValue,
+      ...(decision.cause === 'spend_evidence_incomplete'
+        ? { unknownEvidenceCount: decision.unknownEvidenceCount }
+        : {}),
+    })
+    incompleteSpendEvidenceAudits.add(key)
+  } catch (err) {
+    log.error('Failed to audit incomplete spend evidence deferral', err, { agentId })
+  }
 }
 
 /**
@@ -256,7 +307,7 @@ export async function budgetGate(
 function recordBudgetBreach(
   contentDir: string,
   agentId: string,
-  decision: Extract<BudgetDecision, { action: 'warn' | 'defer' }>,
+  decision: Extract<BudgetDecision, { cause: 'threshold' }>,
   facets: BudgetSpendFacets,
 ): void {
   try {
@@ -352,7 +403,7 @@ export async function resolveDispatchRouting(task: DispatchTask, isRecovery: boo
  * path — a metering failure must not fail a successful turn.
  */
 function recordTurnCost(runId: string, taskId: string, agent: string, result: MessageResult, resolvedModel?: string): Promise<void> {
-  return meterAgentTurn({ runId, taskId, agent, result, resolvedModel })
+  return meterAgentTurn({ runId, taskId, agent, activityClass: 'user', result, resolvedModel })
 }
 
 /**

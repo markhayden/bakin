@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { readFileSync, mkdirSync, renameSync, unlinkSync } from 'fs'
+import { existsSync, readFileSync, mkdirSync, renameSync, unlinkSync } from 'fs'
 import { join, resolve } from 'path'
 import { execSync, spawn as nodeSpawn } from 'child_process'
 import { load as loadYaml } from 'js-yaml'
@@ -30,6 +30,7 @@ interface ScreenshotEntry {
   skip?: boolean
   debug?: boolean
   cropHeight?: number
+  cropHeightPx?: number
   cropLeft?: number
   gradient?: 'left-to-right' | 'right-to-left'
 }
@@ -53,6 +54,8 @@ function loadManifest(): Manifest {
 }
 
 async function ensureBrowser(): Promise<void> {
+  if (existsSync(chromium.executablePath())) return
+
   try {
     execSync('bunx playwright install chromium', { cwd: PROJECT_ROOT, stdio: 'inherit' })
   } catch {
@@ -62,7 +65,7 @@ async function ensureBrowser(): Promise<void> {
 
 async function isServerRunning(baseUrl: string): Promise<boolean> {
   try {
-    const res = await fetch(`${baseUrl}/api/health`, { signal: AbortSignal.timeout(2_000) })
+    const res = await fetch(`${baseUrl}/api/plugins/health/summary`, { signal: AbortSignal.timeout(2_000) })
     return res.ok
   } catch {
     return false
@@ -85,7 +88,7 @@ async function waitForServer(baseUrl: string): Promise<void> {
   const intervalMs = 1000
   for (let i = 0; i < maxRetries; i++) {
     try {
-      const res = await fetch(`${baseUrl}/api/health`)
+      const res = await fetch(`${baseUrl}/api/plugins/health/summary`)
       if (res.ok) {
         console.log(`Server ready after ${i + 1}s`)
         return
@@ -193,18 +196,22 @@ async function captureScreenshot(
     if (entry.selector) {
       const locator = page.locator(entry.selector).first()
       await locator.waitFor({ state: 'visible', timeout: 10_000 })
-      if (entry.cropHeight) {
+      if (entry.cropHeight || entry.cropHeightPx) {
         const box = await locator.boundingBox()
         if (box) {
+          const height = entry.cropHeightPx
+            ? Math.min(box.height, entry.cropHeightPx)
+            : box.height * entry.cropHeight!
           await page.screenshot({
             path: outputPath,
-            clip: { x: box.x, y: box.y, width: box.width, height: box.height * entry.cropHeight },
+            clip: { x: box.x, y: box.y, width: box.width, height },
+            animations: 'disabled',
           })
         } else {
-          await locator.screenshot({ path: outputPath })
+          await locator.screenshot({ path: outputPath, animations: 'disabled' })
         }
       } else {
-        await locator.screenshot({ path: outputPath })
+        await locator.screenshot({ path: outputPath, animations: 'disabled' })
       }
     } else {
       if (entry.cropHeight) {
@@ -212,11 +219,13 @@ async function captureScreenshot(
         await page.screenshot({
           path: outputPath,
           clip: { x: 0, y: 0, width: vp.width, height: vp.height * entry.cropHeight },
+          animations: 'disabled',
         })
       } else {
         await page.screenshot({
           path: outputPath,
           fullPage: entry.fullPage ?? false,
+          animations: 'disabled',
         })
       }
     }
@@ -266,7 +275,11 @@ function parseFilters(): { doc?: string; id?: string } {
 
 async function main(): Promise<void> {
   const manifest = loadManifest()
-  const { settings, screenshots } = manifest
+  const settings = {
+    ...manifest.settings,
+    baseUrl: process.env.BAKIN_SCREENSHOT_BASE_URL ?? manifest.settings.baseUrl,
+  }
+  const { screenshots } = manifest
   const filters = parseFilters()
 
   let candidates = screenshots.filter((s) => !s.skip)
@@ -310,6 +323,7 @@ async function main(): Promise<void> {
       viewport: settings.defaultViewport,
       deviceScaleFactor: settings.deviceScaleFactor,
       colorScheme: settings.colorScheme as 'dark' | 'light',
+      reducedMotion: 'reduce',
     })
 
     const outputDir = join(PROJECT_ROOT, settings.outputDir)

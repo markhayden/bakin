@@ -260,7 +260,7 @@ async function applyLocalProjection(packageId: string): Promise<ProjectorResult>
 }
 
 async function verifyAgent(agentId: string, packageId?: string): Promise<SyncFinding[]> {
-  const report = await scanAgentSync()
+  const report = await scanAgentSync(undefined, { agentId })
   return report.findings.filter(
     (f) => f.agentId === agentId || (packageId !== undefined && f.packageId === packageId),
   )

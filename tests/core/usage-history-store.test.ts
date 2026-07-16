@@ -6,7 +6,7 @@
 import { describe, it, expect, afterAll, mock } from 'bun:test'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { rmSync } from 'fs'
+import { mkdirSync, rmSync } from 'fs'
 import { randomUUID } from 'crypto'
 
 const testDir = join(tmpdir(), `bakin-test-usage-store-${Date.now()}-${randomUUID()}`)
@@ -37,9 +37,12 @@ import {
   usageByDaySince,
   usageByAgentDaySince,
   usageByAgentModelDaySince,
+  readUsageByAgentModelDaySince,
+  readUsageHistorySince,
+  UsageHistoryStoreReadError,
   type SessionDayUsage,
 } from '../../packages/core/src/usage-history/store'
-import { closeAllDbs } from '../../packages/core/src/storage/db'
+import { closeAllDbs, openNamedDb } from '../../packages/core/src/storage/db'
 
 afterAll(() => {
   closeAllDbs()
@@ -168,16 +171,33 @@ describe('usage-history store', () => {
   })
 
   it('scan state round-trips and updates on replace', () => {
-    expect(getScanState('missing')).toBeNull()
-    expect(getScanState('s1')).toEqual({ mtimeMs: 111, size: 222 })
+    expect(getScanState('missing', 'basil')).toBeNull()
+    expect(getScanState('s1', 'basil')).toEqual({ mtimeMs: 111, size: 222 })
     replaceSessionUsage('s1', 'basil', [row()], { mtimeMs: 999, size: 888 })
-    expect(getScanState('s1')).toEqual({ mtimeMs: 999, size: 888 })
+    expect(getScanState('s1', 'basil')).toEqual({ mtimeMs: 999, size: 888 })
+  })
+
+  it('keeps identical runtime session ids isolated by agent', () => {
+    replaceSessionUsage('shared-session', 'alpha', [row({ totalTokens: 10 })], {
+      mtimeMs: 10,
+      size: 100,
+    })
+    replaceSessionUsage('shared-session', 'beta', [row({ totalTokens: 20 })], {
+      mtimeMs: 20,
+      size: 200,
+    })
+
+    const byAgent = usageByAgentSince(DAY1)
+    expect(byAgent.find((entry) => entry.agent === 'alpha')?.tokens.total).toBe(10)
+    expect(byAgent.find((entry) => entry.agent === 'beta')?.tokens.total).toBe(20)
+    expect(getScanState('shared-session', 'alpha')).toEqual({ mtimeMs: 10, size: 100 })
+    expect(getScanState('shared-session', 'beta')).toEqual({ mtimeMs: 20, size: 200 })
   })
 
   it('empty rows still records scan state (session with no assistant messages)', () => {
     const ok = replaceSessionUsage('s6', 'quiet', [], { mtimeMs: 7, size: 7 })
     expect(ok).toBe(true)
-    expect(getScanState('s6')).toEqual({ mtimeMs: 7, size: 7 })
+    expect(getScanState('s6', 'quiet')).toEqual({ mtimeMs: 7, size: 7 })
     expect(usageByAgentSince(DAY1).find((a) => a.agent === 'quiet')).toBeUndefined()
   })
 
@@ -186,6 +206,7 @@ describe('usage-history store', () => {
     const byAgent = usageByAgentSince(DAY1)
     expect(byAgent.find((a) => a.agent === 'basil')?.tokens.total).toBe(195)
   })
+
 })
 
 describe('usageByAgentDaySince (#385)', () => {
@@ -258,5 +279,87 @@ describe('usageByAgentModelDaySince (cost-control v2)', () => {
     const only2 = usageByAgentModelDaySince(DAY2)
     expect(only2.every((c) => c.day >= DAY2)).toBe(true)
     expect(only2.find((c) => c.agent === 'lane-agent' && c.day === DAY1)).toBeUndefined()
+  })
+})
+
+describe('usage-history evidence migration', () => {
+  it('invalidates legacy derived rows and scan state before accepting a strict rescan', () => {
+    closeAllDbs()
+    const storePath = join(testDir, 'usage.db')
+    for (const suffix of ['', '-wal', '-shm']) rmSync(`${storePath}${suffix}`, { force: true })
+
+    const legacy = openNamedDb('usage', () => storePath)
+    legacy.applyMigrations('usage-history', [{
+      version: 1,
+      up: (handle) => {
+        handle.exec(
+          `CREATE TABLE session_usage_days (
+             session_id TEXT NOT NULL,
+             day TEXT NOT NULL,
+             model TEXT NOT NULL DEFAULT '',
+             agent TEXT NOT NULL,
+             input_tokens INTEGER NOT NULL DEFAULT 0,
+             output_tokens INTEGER NOT NULL DEFAULT 0,
+             cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+             cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+             total_tokens INTEGER NOT NULL DEFAULT 0,
+             cost_usd_micros INTEGER,
+             costed_messages INTEGER NOT NULL DEFAULT 0,
+             message_count INTEGER NOT NULL DEFAULT 0,
+             first_ts INTEGER NOT NULL,
+             last_ts INTEGER NOT NULL,
+             PRIMARY KEY (session_id, day, model)
+           )`,
+        )
+        handle.exec(
+          `CREATE TABLE session_scan_state (
+             session_id TEXT PRIMARY KEY,
+             agent TEXT NOT NULL,
+             mtime_ms INTEGER NOT NULL,
+             size INTEGER NOT NULL,
+             scanned_at INTEGER NOT NULL
+           )`,
+        )
+      },
+    }])
+    const legacyDb = legacy.db()
+    legacyDb.prepare(
+      `INSERT INTO session_usage_days
+         (session_id, day, model, agent, input_tokens, output_tokens, cache_read_tokens,
+          cache_write_tokens, total_tokens, cost_usd_micros, costed_messages, message_count,
+          first_ts, last_ts)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run('legacy-shared', DAY1, 'm1', 'legacy-agent', 31, 0, 0, 0, 31, null, 0, 1, T1, T1)
+    legacyDb.prepare(
+      `INSERT INTO session_scan_state (session_id, agent, mtime_ms, size, scanned_at)
+       VALUES (?, ?, ?, ?, ?)`,
+    ).run('legacy-shared', 'legacy-agent', 31, 310, T1)
+    closeAllDbs()
+
+    expect(usageByAgentSince(DAY1).find((entry) => entry.agent === 'legacy-agent')).toBeUndefined()
+    expect(getScanState('legacy-shared', 'legacy-agent')).toBeNull()
+
+    replaceSessionUsage('legacy-shared', 'new-agent', [row({ totalTokens: 47 })], {
+      mtimeMs: 47,
+      size: 470,
+    })
+    const byAgent = usageByAgentSince(DAY1)
+    expect(byAgent.find((entry) => entry.agent === 'legacy-agent')).toBeUndefined()
+    expect(byAgent.find((entry) => entry.agent === 'new-agent')?.tokens.total).toBe(47)
+    expect(getScanState('legacy-shared', 'new-agent')).toEqual({ mtimeMs: 47, size: 470 })
+  })
+})
+
+describe('strict usage-history reads', () => {
+  it('surfaces store failures instead of returning empty complete-looking rows', () => {
+    closeAllDbs()
+    const storePath = join(testDir, 'usage.db')
+    rmSync(storePath, { force: true })
+    mkdirSync(storePath)
+
+    expect(() => readUsageHistorySince(DAY1)).toThrow(UsageHistoryStoreReadError)
+    expect(() => readUsageByAgentModelDaySince(DAY1)).toThrow(UsageHistoryStoreReadError)
+
+    rmSync(storePath, { recursive: true, force: true })
   })
 })

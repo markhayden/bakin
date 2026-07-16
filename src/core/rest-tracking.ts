@@ -8,13 +8,15 @@
 
 import type { IncomingMessage, ServerResponse } from 'http'
 
-import { recordUsage } from './usage'
+import { recordUsage, type ActivityClass } from './usage'
 
 export function trackResponse(
   req: IncomingMessage,
   res: ServerResponse,
   url: URL,
   startMs: number,
+  activityClass: ActivityClass,
+  routePattern?: string,
 ): void {
   const origEnd = res.end.bind(res)
   res.end = function (...args: Parameters<typeof res.end>) {
@@ -26,6 +28,7 @@ export function trackResponse(
 
     recordUsage({
       kind: 'rest',
+      activityClass,
       name: normalizePath(path),
       agent,
       durationMs,
@@ -34,7 +37,11 @@ export function trackResponse(
       // 57% 5xx" watchdog alarm) — they stay visible via meta.httpStatus
       // but must not feed the 5xx error rate.
       status: status >= 500 ? 'error' : 'ok',
-      meta: { method, httpStatus: status },
+      meta: {
+        method,
+        httpStatus: status,
+        ...(routePattern ? { routePattern } : {}),
+      },
     })
 
     return origEnd(...args)

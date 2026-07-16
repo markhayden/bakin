@@ -16,21 +16,14 @@ import { getSettings } from '../../../../src/core/settings'
 import { getContentDir } from '../../../../src/core/content-dir'
 import { estimateMaxTaskDispatchBytes } from '../../../../src/core/context-report'
 import { getRuntimeMainAgentId } from '../../../../packages/core/src/adapters/runtime'
+import { stableKeyPart } from './key'
 import type { AgentRuntimeAdapter } from '../../../../packages/core/src/adapters/runtime'
-import type { HealthCheckResult } from '../../../../packages/core/src/plugin-types'
+import { healthHealthy, healthNotApplicable, healthObserved, healthUnknown, healthWarning } from '@makinbakin/sdk/utils'
+import type { HealthCheckRunInput, HealthObservationInput } from '@makinbakin/sdk'
 
-const CHECK = 'context.startup-size'
 const DEFAULT_BUDGET_BYTES = 64 * 1024
 
-function result(
-  status: HealthCheckResult['status'],
-  message: string,
-  data?: Record<string, unknown>,
-): HealthCheckResult {
-  return { check: CHECK, status, message, autoFixable: false, ...(data ? { data } : {}) }
-}
-
-export async function checkStartupContextSize(runtime: AgentRuntimeAdapter): Promise<HealthCheckResult[]> {
+export async function checkStartupContextSize(runtime: AgentRuntimeAdapter): Promise<HealthCheckRunInput> {
   const configured = getSettings().dispatch?.contextBudgetBytes
   const budget = typeof configured === 'number' && Number.isFinite(configured) && configured > 0
     ? Math.floor(configured)
@@ -39,19 +32,48 @@ export async function checkStartupContextSize(runtime: AgentRuntimeAdapter): Pro
   let agents
   try {
     agents = await runtime.agents.list()
-  } catch {
+  } catch (err) {
     // Reachability is the `runtime` check's job — a cost check shouldn't double-alert.
-    return [result('ok', 'Skipped — runtime unreachable (see the runtime check).')]
+    return healthObserved([healthUnknown({
+      key: 'roster',
+      summary: 'Startup-context size could not be verified.',
+      detail: err instanceof Error ? err.message : String(err),
+      incident: {
+        key: 'runtime-unavailable',
+        title: 'Startup-context size is unknown',
+        impact: 'Health cannot estimate how much context each agent receives at dispatch.',
+        disposition: 'watch',
+        resources: [{ kind: 'runtime', id: 'active', label: 'Active runtime' }],
+        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun after runtime recovery' },
+      },
+    })])
   }
   if (agents.length === 0) {
-    return [result('ok', 'No agents in the runtime roster.')]
+    return healthNotApplicable('There are no agents in the runtime roster to estimate.')
   }
 
-  const mainAgentId = await getRuntimeMainAgentId(runtime)
+  let mainAgentId: string
+  try {
+    mainAgentId = await getRuntimeMainAgentId(runtime)
+  } catch (err) {
+    return healthObserved([healthUnknown({
+      key: 'main-agent',
+      summary: 'Startup-context size could not be verified.',
+      detail: err instanceof Error ? err.message : String(err),
+      incident: {
+        key: 'main-agent-unavailable',
+        title: 'Main agent identity is unknown',
+        impact: 'Health cannot calculate accurate per-agent startup context without the main-agent relationship.',
+        disposition: 'watch',
+        resources: [{ kind: 'runtime', id: 'active', label: 'Active runtime' }],
+        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
+      },
+    })])
+  }
   const contentDir = getContentDir()
-  const over: string[] = []
-  const overAgents: string[] = []
+  const observations: HealthObservationInput[] = []
   for (const agent of agents) {
+    const agentLabel = agent.id.slice(0, 120)
     const est = estimateMaxTaskDispatchBytes(agent.id, mainAgentId, contentDir)
     if (est.totalBytes > budget) {
       const top = [...est.components]
@@ -59,19 +81,40 @@ export async function checkStartupContextSize(runtime: AgentRuntimeAdapter): Pro
         .slice(0, 3)
         .map((c) => `${c.source}=${c.bytes}B`)
         .join(', ')
-      over.push(`${agent.id} ~${est.totalBytes}B (top: ${top})`)
-      overAgents.push(agent.id)
+      observations.push(healthWarning({
+        key: `agent:${stableKeyPart(agent.id)}`,
+        summary: `${agentLabel}'s startup context exceeds its budget.`,
+        detail: `Estimated ${est.totalBytes} bytes against a ${budget}-byte budget. Largest components: ${top}. Dispatch remains enabled.`,
+        evidence: {
+          agentId: agent.id.slice(0, 500),
+          totalBytes: est.totalBytes,
+          budgetBytes: budget,
+          components: est.components.map(({ source, bytes }) => ({ source, bytes })),
+        },
+        incident: {
+          key: `over-budget:${stableKeyPart(agent.id)}`,
+          title: 'Startup context exceeds the configured budget',
+          impact: 'Large injected context increases token use and may crowd out task-relevant information, but does not block dispatch.',
+          disposition: 'watch',
+          resources: [{ kind: 'agent', id: stableKeyPart(agent.id), label: agentLabel }],
+          resolution: {
+            key: 'open-agent-diagnostics',
+            type: 'navigate',
+            label: 'Review agent diagnostics',
+            href: `/team/${encodeURIComponent(agent.id.slice(0, 1_000))}?tab=diagnostics`,
+          },
+        },
+      }))
     }
   }
 
-  if (over.length === 0) {
-    return [result('ok', `All ${agents.length} agent(s) within the ${budget}B per-dispatch context budget (dispatch.contextBudgetBytes).`)]
+  if (observations.length === 0) {
+    return healthObserved([healthHealthy({
+      key: 'budget',
+      summary: `All ${agents.length} agent${agents.length === 1 ? ' is' : 's are'} within the startup-context budget.`,
+      detail: `${budget} bytes per dispatch (dispatch.contextBudgetBytes).`,
+      evidence: { agentCount: agents.length, budgetBytes: budget },
+    })])
   }
-  return [result(
-    'warn',
-    `${over.length} agent(s) exceed the ${budget}B per-dispatch context budget: ${over.join('; ')}. `
-    + 'Warn-only — dispatch is never blocked. Inspect with `bakin agents context <id>`; '
-    + 'tune caps or raise dispatch.contextBudgetBytes.',
-    { agents: overAgents },
-  )]
+  return healthObserved(observations as [HealthObservationInput, ...HealthObservationInput[]])
 }

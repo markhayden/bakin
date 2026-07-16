@@ -1,215 +1,223 @@
-# Doctor & Health Checks
+# Doctor & Canonical Health
 
-## What this is
+## Purpose
 
-The "doctor" sweep — Bakin's periodic health audit — used to be a 1762-line monolith in `src/core/doctor.ts` with 18 builtin checks for everything from agent rosters to runtime skill sync. After #139, every check is **plugin-registered** via `ctx.registerHealthCheck`. `src/core/doctor.ts` is now ~170 lines: cron + cache + audit + notify, plus the `runPluginHealthChecks()` orchestrator.
+Doctor is Bakin's diagnostic execution engine. It runs owner-registered checks, validates their structured observations, retains honest last-known evidence, and publishes one immutable `HealthReport` used by the CLI, HTTP routes, dashboard, badge, delegation, notifications, and repair workflows.
 
-The single canonical result type is `HealthCheckResult`, exported from `@bakin/core/plugin-types` (re-exported via `@bakin/sdk` for plugin authors).
+The important invariant is **one contract, one registry, one report**. There is no flat-result compatibility response, adapter-specific health plane, or UI message parser. Producers describe evidence; core owns identity, freshness, orchestration, and projection; consumers read the canonical report.
 
-Runtime/search provider health belongs to adapters. `src/core/app-services.ts`
-collects adapter health checks through the shared health service, while
-plugin-registered doctor checks remain the product-level checks surfaced by the
-health plugin. A health check may call `ctx.runtime` or `ctx.search`, but it
-must not import provider clients or provider path helpers directly.
+Approved design: `.claude/specs/health-action-first-ui.md`.
 
-## Architecture at a glance
+## Contract home and ownership
 
-```
-server.ts boots
-  ↓ doctor.start(contentDir, projectRoot)
-src/core/doctor.ts
-  ├─ start() / stop()           cron lifecycle (configurable interval)
-  ├─ runDiagnostics()           gate + delegate + summarize + audit + notify + cache
-  ├─ runPluginHealthChecks()    iterates registry, per-check try/catch isolation
-  ├─ getLastResults()           cached lightweight reads (health page polls this)
-  └─ notifyUnfixableIssues()    escalates warn/error+!autoFixable to main agent
+The public producer and consumer types live only in `packages/sdk/src/types/health.ts` and are re-exported from `@makinbakin/sdk` / `@makinbakin/sdk/types`.
 
-src/core/health-check-registry.ts
-  ├─ registerHealthCheck(def)   appends; throws on duplicate id
-  ├─ listHealthChecks()         the orchestrator's source of truth
-  └─ unregisterPluginHealthChecks(pluginId)   plugin teardown sweep
-```
+Registrations have a core-stamped owner:
 
-The orchestrator is intentionally trivial — it has no opinion about what's being checked, only that each registered check `run()` produces zero or more `HealthCheckResult` rows. A throwing handler becomes one synthetic error row, never crashing the sweep.
+- `plugin:{pluginId}` for `ctx.registerHealthCheck()` and `ctx.registerHealthRepairAction()`
+- `adapter:{adapterId}` for checks selected while composing a runtime adapter
+- `core:{coreId}` for host-owned checks such as onboarding
 
-## Where every check lives now
+Core namespaces local check/action IDs with the owner ID. An owner-local `storage` check from the `docs-basic` plugin becomes `docs-basic.storage`. Observation and incident keys are stable within the registered check; display text is never identity.
 
-### Plugin-owned (8 checks)
+`src/core/health-contract.ts` performs exact runtime validation before registration or report publication. It validates IDs and bounds, group metadata, same-origin navigation, resources, owner-local repair references, JSON-safe/redacted evidence, and evidence size. Invalid registration fails activation and is visible through plugin activation health.
 
-| Plugin | File | Registered ids |
-|---|---|---|
-| `team` | `plugins/team/lib/health-checks.ts` | `agent-roster`, `personas`, `agent-sync` |
-| `tasks` | `plugins/tasks/lib/health-checks.ts` | `taskboard`, `task-consistency`, `order-integrity` |
-| `assets` | `plugins/assets/lib/health-checks.ts` | `assets` (+ `assets.unimported` rows — NOT auto-fixable, explicit import is the point; + `assets.enrichment` rows — repair enqueues the billed backfill behind confirmation) |
-| `schedule` | `plugins/schedule/lib/health-checks.ts` | `schedule-sync` |
-| `memory` | `plugins/memory/lib/health-checks.ts` | `search-tables` |
+## Producer contract
 
-(Plus 3 workflow checks already migrated under #137: `definitions`, `stale-instances`, `skills`.)
-
-### System-owned (19 checks, registered by health plugin)
-
-| File | Registered id |
-|---|---|
-| `plugins/health/lib/system-checks/content-dir.ts` | `content-dir` |
-| `plugins/health/lib/system-checks/execution-safety.ts` | `execution-safety` |
-| `plugins/health/lib/system-checks/budget.ts` | `budget` (rule-aware since cost-control v2: probes EVERY cap rule via the shared evaluator + spend engine; a missing policy is a standing warn — "spend is uncapped"; the kill switch gets its own warn row; breaching per-agent rules attach `data.agents` → 'budget' Attention chips, `data.rules` carries structured breach detail — UIs never parse message text) |
-| `plugins/health/lib/system-checks/agent-burn.ts` | `usage.agent-burn` (warn-only token-burn heuristics — effort-no-outcome / spike / unattributed; arithmetic in `src/core/agent-burn.ts`, shared with `GET /agent-effort` — see `.claude/knowledge/agent-health-diagnostics.md`) |
-| `plugins/health/lib/system-checks/plugin-artifacts.ts` | `plugin-artifacts` |
-| `plugins/health/lib/system-checks/context-report.ts` | `context.startup-size` (warn-only per-dispatch context budget vs `dispatch.contextBudgetBytes`; arithmetic shared with `src/core/context-report.ts` — see `.claude/knowledge/startup-context.md`) |
-| `plugins/health/lib/system-checks/service.ts` | `service` |
-| `plugins/health/lib/system-checks/runtime.ts` | `runtime` |
-| `plugins/health/lib/system-checks/session-store.ts` | `session-store` |
-| `plugins/health/lib/system-checks/channel-aliases.ts` | `channel-aliases` |
-| `plugins/health/lib/system-checks/restart-recovery.ts` | `restart-recovery` |
-| `plugins/health/lib/system-checks/channel-approvals.ts` | `channel-approvals` |
-| `plugins/health/lib/system-checks/search.ts` | `search` (engine reachable + OS-service supervision mode/provisioning via the factory-boundary `getSearchAdapterServiceStatus`) |
-| `plugins/health/lib/system-checks/search-outbox.ts` | `search-outbox` (journal depth / oldest pending / quarantined; repair = retryQuarantined, manual tier) |
-| `plugins/health/lib/system-checks/search-consistency.ts` | `search-consistency` (PARKED migrations + wiped physicals → destructive-tier blue/green rebuild repair; also hosts the hourly orphan + tombstone sweep — module-level throttle on the doctor interval, nothing at boot) |
-| `plugins/health/lib/system-checks/sync-skill.ts` | `skill` |
-| `plugins/health/lib/system-checks/plugin-assets.ts` | `plugin-assets` |
-| `plugins/health/index.ts` | `plugin-registry` |
-
-Health plugin is the natural home for system-level checks because it already orchestrates the doctor UI (`/api/plugins/health/doctor` route + `bakin_exec_health_doctor` MCP tool) and imports `runDiagnostics` / `getLastResults`. It also serves `GET /api/plugins/health/search-status` (blue/green table snapshot + outbox journal) and `GET /api/plugins/health/search-telemetry` (query/drain/enrichment activity from the usage recorder — no parallel stat store). The inversion is complete: health plugin both produces and consumes the doctor results.
-
-The registry and managed-block mechanics are core-owned. The health plugin
-registers/runs the checks, but CLI and plugin-host teardown import those shared
-surfaces from `src/core/*`, not from `plugins/health/*`.
-
-### Namespacing
-
-The registry namespaces ids: a plugin with `id: 'team'` registering a check with `id: 'agent-roster'` produces a check named `team.agent-roster` in the registry / synthetic-error fallback. **Result rows themselves keep unprefixed ids** (`r.check === 'agent-roster'`) — the implementation emits whatever it likes.
-
-## Authoring a new health check
-
-1. Create `plugins/{your-plugin}/lib/health-checks.ts`. Inline the result constructors:
-   ```ts
-   import type { HealthCheckResult } from '../../../packages/core/src/plugin-types'
-
-   function ok(check: string, message: string): HealthCheckResult { ... }
-   function warn(check: string, message: string, autoFixable = false): HealthCheckResult { ... }
-   function error(check: string, message: string): HealthCheckResult { ... }
-   function fixed(check: string, message: string): HealthCheckResult { ... }
-   ```
-2. Write the check function. Keep it report-only:
-   ```ts
-   export function checkMyThing(): HealthCheckResult[] {
-     // ...
-   }
-   ```
-3. Register in your plugin's `activate()`:
-   ```ts
-   ctx.registerHealthCheck({
-     id: 'my-thing',
-     name: 'Friendly description shown in admin UIs',
-     run: () => Promise.resolve(checkMyThing()),
-     repair: myThingRepair(), // optional; only called by explicit repair flows
-   })
-   ```
-4. If the check is repairable, expose a `HealthRepairHandler` with `plan()` and `apply()`. Diagnostics must not mutate state; `bakin doctor --fix` and delegated repair flows are the only callers that apply repairs.
-5. Don't catch your own errors — the orchestrator's try/catch handles them. Throw freely.
-6. **Per-agent findings must attach machine-readable attribution** (#385):
-   `HealthCheckResult.data` is an optional `Record<string, unknown>`; the
-   convention is `data: { agents: string[] }`. Dashboards (attention chips,
-   the drifted badge, Overview chips) read cached results by `data.agents` —
-   **never parse agent ids out of message text**. `team.agent-sync`,
-   `context.startup-size`, and `usage.agent-burn` are the reference
-   implementations.
-
-## Authoring a system check (in the health plugin)
-
-Same pattern, lives at `plugins/health/lib/system-checks/{your-check}.ts`. Register inside `plugins/health/index.ts`'s `activate()`. Keep system checks thin — most are 25-110 lines.
-
-## Managed-block infrastructure
-
-The old `src/core/agent-rules/` managed-context system (orchestrator rules +
-7 subagent sections injected by doctor) was deleted by the layered-context
-work. Its successor: Bakin-shipped default rules live in the ROLE CONTEXT
-FILES (`~/.bakin/team/context/roles/{orchestrator,subagent}.md`, defaults in
-`src/core/team-context-defaults.ts`), composed into each agent's single
-`bakin:managed` AGENTS.md block alongside global/team context and the package
-template. The `team.agent-sync` check covers staleness end-to-end (with
-per-layer attribution) and its repair handler runs a local sync; the old
-`orchestrator-rules` / `managed-blocks` / `agent-assets` checks and the
-`bakin agent-rules` CLI are gone.
-
-The marker primitives (`extractBlock`, `getBlockState`, `injectBlock`,
-`removeBlock`) live in `packages/core/src/agent-packages/managed-blocks.ts`
-and are shared with the projector/composer. Don't reimplement them.
-Malformed marker pairs are never repaired silently — the scanner reports
-`block-broken` and refuses auto-fix until the pair is fixed by hand.
-
-Deep reference: `.claude/knowledge/layered-context.md`.
-
-## Settings
-
-Doctor settings stay in core `~/.bakin/settings.json` under `settings.doctor.*`:
-- `intervalMs` — cron period (default 30 minutes)
-- `requireOnboard` — gate that returns a single `onboarded` error result when the machine isn't onboarded yet
-
-These remain core settings (not per-plugin) because the doctor cron itself is core-owned and `requireOnboard` is a global gate.
-
-## Audit & notify
-
-- Every doctor sweep appends `doctor.run` to `~/.bakin/audit.jsonl` with `{total, errors, warnings, fixes}`.
-- Unfixable issues (warn/error with `autoFixable: false`) get escalated to the main agent via `openclaw.sendMessage`. Dedup is key-based per cycle (`{check}:{status}` joined+sorted).
-- The cron clears the dedup set every cycle so recurring issues re-notify across cycles, but not within a single cycle.
-
-## Type contracts
-
-Both exported from `@bakin/core/plugin-types` (and re-exported from `@bakin/sdk`):
+`HealthCheckRegistrationInput` requires:
 
 ```ts
-export interface HealthCheckResult {
-  check: string
-  status: 'ok' | 'warn' | 'error' | 'fixed'
-  message: string
-  autoFixable: boolean
-}
-
-export interface PluginHealthCheckInput {
+{
   id: string
   name: string
-  run: () => Promise<HealthCheckResult[]>
-  repair?: HealthRepairHandler
-  autoFix?: boolean   // legacy metadata only; don't use for new checks
+  description: string
+  group: { key: string; label: string }
+  maxAgeMs?: number
+  run(): Promise<HealthCheckRunInput>
 }
 ```
 
-The orchestrator (`runPluginHealthChecks` in `src/core/doctor.ts`) wraps each `def.run()` call in try/catch. A throwing handler becomes:
-```ts
-{ check: def.id /* namespaced */, status: 'error', message: `Plugin health check threw: ${err.message}`, autoFixable: false }
+A run is either:
+
+- `{ outcome: 'observed', observations: [first, ...rest] }`
+- `{ outcome: 'not_applicable', reason }`
+
+Empty observed output is unrepresentable. Use the constructors from `@makinbakin/sdk/utils`:
+
+- `healthHealthy` — current evidence with no incident
+- `healthWarning` — advisory, watch, or action-required incident
+- `healthError` — action-required incident
+- `healthUnknown` — watch incident when evidence cannot be verified
+- `healthObserved` / `healthNotApplicable` — run wrappers
+
+Every observation has a stable key and human summary. Add structured `resources` to incidents and JSON evidence when consumers need attribution or detail. Agent attribution, for example, uses `{ kind: 'agent', id, label }`; no consumer parses an agent name from prose.
+
+Checks are diagnostic only. They must not repair, install, retry, reindex, restart, or otherwise mutate the state they inspect.
+
+## Registry and lifecycle
+
+`src/core/health-check-registry.ts` owns the two registries:
+
+```text
+checks                         repair actions
+  registerOwnedHealthCheck       registerOwnedHealthRepairAction
+  listHealthChecks               listHealthRepairActions
+  unregisterOwnerHealth          unregisterOwnerHealth
 ```
 
-## Test layout
+`src/lib/plugin-context-factory.ts` binds plugin ownership. Runtime composition binds adapter ownership. Hot reload removes both registries for the owner and tells the report cache to delete removed snapshots, so an unloaded plugin cannot leave a ghost finding.
 
-- **Behavioral tests live with the plugin**: `tests/plugins/{owner}/health-checks.test.ts`. Pattern matches `tests/plugins/workflows/health-checks.test.ts`.
-- **Orchestration tests live in core**: `tests/core/doctor.test.ts` covers the gate, the audit append, and the cache. `tests/core/doctor-plugin-checks.test.ts` covers the per-check try/catch isolation.
-- **Test isolation is mandatory** (CLAUDE.md rule): every test that touches storage mocks both content-dir shims, runtime/home adapters as needed, and the logger. Verbatim copy the current plugin health-check scaffolds instead of adding new direct runtime-client mocks.
+The selected Pi adapter checks contribute unique adapter facts (home, agents root, auth, models, and extension trust). Generic runtime/channel checks remain Health-owned. OpenClaw does not duplicate those generic signals, and Search adapters do not expose a second health service.
 
-## Migration history
+## Execution and report pipeline
 
-- **#137 (PR #138)**: First 3 checks moved out — workflow definitions, stale instances, skills. Established the registry + ctx.registerHealthCheck precedent.
-- **#139**: Migrated the remaining 15 checks across 9 commits, collapsed `DiagnosticResult` → `HealthCheckResult` (one canonical type), relocated managed-block infrastructure out of the doctor monolith, swung CLI imports.
-- **#174**: Moved health-check registry and managed-block infrastructure into `src/core/*`; health plugin now contributes checks without owning core doctor/CLI primitives.
-- **#172**: Unified `bakin agent-rules` and health orchestrator-rules checks with the core managed-block engine.
-- **#208**: Changed AGENTS.md projection from one physical marker pair per logical rule to one compact `managed-context` marker pair per agent, while keeping logical diagnostics and legacy-marker conversion.
+```text
+runDiagnostics() / runTargetedDiagnostics()
+  -> list owner-aware definitions
+  -> runHealthCheck() per definition
+  -> validate and stamp execution + observation identity
+  -> applyHealthCheckRun() to per-check cache
+  -> getHealthReport() immutable projection
+  -> emit health.report.changed
+```
 
-## brands.integrity (#419)
+Key files:
 
-Registered by the brands plugin (`plugins/brands/lib/health-checks.ts`),
-consuming the SAME `lib/integrity.ts` scan as `GET /:brandId/integrity`:
-dangling assetIds (logos/groups/defaultImageReferences), unreadable manifests,
-todo tasks waiting on ghost/draft brands (these are live brand-gate deferrals —
-warn → nav attention badge), and stale drafts (>7d unpublished, ok-level
-nudge). Structured `data` attached; no consumer parses message text.
+- `src/core/doctor.ts` — cron, full/targeted coordination, audit, optional notification
+- `src/core/doctor-checks.ts` — isolated check execution and validation
+- `src/core/doctor-report-cache.ts` — per-check current/last-valid state and report revisions
+- `src/core/health-report.ts` — incident merge, placement, sorting, counts, overall precedence
+- `src/core/health-search-readiness.ts` — Engine/Queries/Indexes/Journal projection
 
-## pi-parity additions (2026-07-13)
+A thrown, malformed, conflicting, or empty result becomes a core-owned **Unable to verify** incident. Other checks continue. The failure execution and latest valid snapshot are stored separately: failed current evidence does not erase previously valid evidence, but retained evidence is clearly stamped `snapshot: 'last_known'` and becomes stale at its original TTL plus grace.
 
-- `capabilities` — per-pack readiness findings (`capability.<slug>`),
-  warn + remediation from the single readiness engine; ok-with-invite when
-  none installed.
-- `github-readiness` — gh absent = informational ok; installed-but-
-  unauthenticated warns with `gh auth login`; probe-injected
-  (`plugins/health/lib/system-checks/github-readiness.ts`).
-- CLI: `bakin check capabilities` rides the `capabilities` onboarding
-  component (also the recommended-capability installer under `--yes`).
+Full sweeps are globally single-flight. Targeted runs are single-flight per check. A targeted run overlapping a full sweep joins the same check execution without corrupting `lastFullSweep`. A full-sweep marker is committed only if the registry membership stayed unchanged for the entire sweep.
+
+Every report change increments its revision and emits `health.report.changed`; cached reads never execute checks.
+
+## Report semantics
+
+`HealthReport` contains:
+
+- report ID, revision, generated time, and last completed full sweep
+- overall status and exact check/incident summaries
+- check execution states and latest valid snapshots
+- canonical observations and merged incidents
+- subsystem projections, currently Search readiness
+
+Overall precedence is operator-facing:
+
+1. action-required incident -> `needs_attention`
+2. required evidence missing/failed/invalid/stale -> `unknown_stale`
+3. fresh watch incident -> `degraded`
+4. otherwise -> `healthy`
+
+Advisories remain visible in detail but do not make the overall state unhealthy. Unknown is never collapsed into warning or healthy.
+
+Incident IDs derive from owner/check/stable keys, not titles or messages. Resources and compatible resolutions are deduplicated while projecting the report. This lets UI focus, notification dedupe, repair preconditions, and delegation survive copy edits.
+
+## Explicit repair protocol
+
+Repair actions are separate `HealthRepairActionDefinition` registrations with `plan(target)` and `apply(items)`.
+
+1. A consumer targets incident IDs, observation IDs, or all actionable incidents from a specific report.
+2. Core asks only referenced owner actions to plan concrete `HealthRepairPlanItem`s.
+3. `src/core/doctor-repair-plans.ts` stores the opaque plan server-side for ten minutes and binds each item to observation execution/status/resolution preconditions.
+4. Safe items may be preselected. Each manual/destructive item requires explicit confirmation.
+5. Apply rechecks expiry and only the affected evidence. Changed/resolved evidence returns typed `STALE_PLAN` with zero action calls.
+6. Applied actions report their own success/failure and affected check IDs. Core reruns those checks and returns verification separately.
+
+Never infer repairability from status or text. Never attach a mutation callback to a check result. Delegated repair records use the v2 store; bytes in the old v1 directory are an immutable archive and are not parsed by current code.
+
+## Search readiness
+
+Search deliberately has one readiness story:
+
+- **Engine** — Health's cheap `search` check owns enablement, installation, connectivity, supervision, and write-journal state.
+- **Queries** — `search-canary` runs a real query through the production path.
+- **Indexes** — the live check plus `search-consistency` / `search-spin` cover mappings, migrations, and zero-progress builds.
+- **Journal** — pending/old/quarantined writes from the canonical live Search observation.
+
+The old standalone Search-outbox and Memory Search-table registrations were absorbed by the live Health Search check. Deep canary/consistency/spin/engine-burn checks remain independent because they have different cost and freshness. Every non-healthy readiness stage references canonical observations/incidents.
+
+Overview always displays the four stages. System owns detailed indexes, migrations, journal, enrichment, and explicit reindex operations.
+
+## First-party producer inventory
+
+There are 39 direct first-party plugin registration sites after the two approved Search consolidations and the addition of GitHub readiness and runtime-cron tracking:
+
+- Health: 22 system/runtime/work-cost/Search/plugin checks
+- Team: 4
+- Tasks: 4
+- Workflows: 3
+- Schedule: 2
+- Assets, Brands, Git, Images: 1 each
+
+Health's local IDs are `content-dir`, `capabilities`, `github-readiness`, `service`, `runtime`, `session-store`, `channel-approvals`, `channel-aliases`, `restart-recovery`, `execution-safety`, `context.startup-size`, `budget`, `usage.agent-burn`, `search`, `search-consistency`, `search-spin`, `search-canary`, `search-engine-burn`, `skill`, `plugin-assets`, `plugin-artifacts`, and `plugin-registry`.
+
+Health registers six local repair actions: journal revival, consistency rebuild, spin rebuild, canary restart, engine-burn restart, and runtime skill sync. Other plugin owners register their own actions beside their checks.
+
+The Brands `integrity` check uses the same `plugins/brands/lib/integrity.ts` scan as the brand integrity route. It reports unreadable manifests, dangling assets, tasks blocked by missing/draft brands, and stale drafts as structured observations and incidents; no consumer parses its summary text.
+
+The `capabilities` check projects the shared capability-readiness engine per installed pack. `github-readiness` is informational when `gh` is absent, but reports an action-required incident with explicit authentication instructions when the CLI is installed and unauthenticated. `bakin check capabilities` uses the same onboarding component rather than a parallel probe.
+
+## Public consumers
+
+- `GET /api/plugins/health/doctor` returns the raw canonical report; `fresh=true` joins a full sweep.
+- `/summary` contains live process facts, not a second doctor projection.
+- `/search-readiness` projects the Search subsystem from a canonical report.
+- `/checks` returns canonical registration metadata.
+- Repair plan/apply routes are exact POST contracts; stale plans return HTTP 409 with `STALE_PLAN`.
+- `bakin_exec_health_doctor` and CLI doctor consume the same report.
+- Health Overview, System, nav badge, Team diagnostics, escalation, and delegation filter structured incidents/resources.
+
+Do not create a route-specific compatibility mapper or parse a diagnostic message. A consumer that needs new data should extend the canonical structured contract and its validation/tests.
+
+## Activity is a related but separate contract
+
+Every usage-recorder producer declares `activityClass: 'user' | 'system' | 'routine'`. Successful routine work is excluded from default Health Activity; routine failures always remain. See `.claude/knowledge/usage-recording.md`.
+
+## Audit, notification, and escalation
+
+Each completed full sweep appends `doctor.run` with report ID, registered count, incident counts, and overall status. Notification/escalation considers fresh `action_required` incidents and deduplicates by stable incident ID. It does not classify issues from severity text or whether an old row advertised an inline fix.
+
+The doctor cron retains its global settings under `settings.doctor`:
+
+- `intervalMs` — full-sweep cadence
+- `requireOnboard` — whether the core onboarding check applies
+- `escalation` — `off`, stable-ID notification, or delegated repair task
+- `escalationCooldownMs` — minimum interval before a closed/missing covering request may be replaced
+- `escalationStaleAfterMs` — maximum age for an open covering task to suppress a still-burning incident set
+
+Task escalation compares exact incident IDs. A fresh open task that covers every current action-required incident suppresses duplication. `done` and `archived` tasks are closed, while an open task older than `escalationStaleAfterMs` is treated as stalled and re-escalated after the normal cooldown. Scanning continues past a stale request so a newer fresh covering task still wins. Delivery and delegation failures are logged without aborting the doctor cron; failed notifications release their reservation so the next run can retry.
+
+## Authoring checklist
+
+1. Put the domain engine with its owner; keep the check a thin projection.
+2. Choose stable local check, observation, and incident keys.
+3. Supply name, description, group, and realistic `maxAgeMs`.
+4. Return at least one observation or explicit not-applicable.
+5. Model every branch, including unavailable dependencies, without invented success.
+6. Attach resources/evidence for attribution; keep evidence bounded and secret-safe.
+7. Use same-origin navigation, explicit instructions, rerun, or an owner-local repair reference.
+8. Register mutations separately and state concrete planned changes/safety.
+9. Add direct branch tests and plugin activation/unregistration coverage.
+10. Run `tests/architecture/health-contract.test.ts` so no compatibility plane is reintroduced.
+
+## Test map
+
+- `tests/core/health-contract.test.ts` — exact runtime input validation
+- `tests/core/health-check-registry.test.ts` — ownership, namespace, unregister
+- `tests/core/doctor-plugin-checks.test.ts` — isolated execution/invalid output
+- `tests/core/health-report.test.ts` — report merge, sort, precedence, IDs
+- `tests/core/doctor-cache.test.ts` — snapshot retention, TTL, flights, events
+- `tests/core/doctor-repair-plans.test.ts` / `doctor-repair.test.ts` — targeting, confirmation, staleness, verification
+- `tests/core/doctor-delegate.test.ts` / `doctor-escalation.test.ts` — structured downstream consumers
+- `tests/plugins/{owner}/health-checks.test.ts` — direct producer branches
+- `tests/architecture/health-contract.test.ts` — retired vocabulary and planes
+
+Storage-touching tests must isolate content directories and global registries. Use the SDK test context to capture checks and repair actions separately.
+
+## Decision record
+
+The single-version cutover replaced a flat message-oriented result array, inline repair metadata, a second adapter service, whole-report caching, and message-derived identity. Those shapes were intentionally removed rather than adapted: dual contracts made status, freshness, ownership, and repair safety impossible to trust consistently across UI, CLI, and automation.

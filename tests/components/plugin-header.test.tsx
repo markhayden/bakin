@@ -62,4 +62,77 @@ describe('PluginHeader search + warm indicator', () => {
 
     await waitFor(() => expect(onChange).toHaveBeenCalledWith('diagram'))
   })
+
+  it('wraps heading, search, and actions within the available container', () => {
+    render(
+      <PluginHeader
+        title="A deliberately long operational page title"
+        subtitle="Fresh evidence from every required source"
+        count={12}
+        meta={<span>Checked 2 minutes ago</span>}
+        search={{ value: '', onChange: () => {}, placeholder: 'Search records...' }}
+        actions={<button type="button">Run checks</button>}
+      />,
+    )
+
+    const root = screen.getByTestId('plugin-header')
+    const heading = screen.getByTestId('plugin-header-heading')
+    const controls = screen.getByTestId('plugin-header-controls')
+    const search = screen.getByTestId('plugin-header-search')
+
+    expect(root.className).toContain('flex-wrap')
+    expect(heading.className).toContain('min-w-0')
+    expect(heading.className).toContain('flex-col')
+    expect(controls.className).toContain('flex-wrap')
+    expect(search.className).toContain('max-w-full')
+    expect(search.className).toContain('motion-reduce:transition-none')
+    expect(search.className).not.toContain('w-[32rem]')
+    expect(screen.getByText('Fresh evidence from every required source').className).not.toContain('truncate')
+    expect(screen.getByRole('button', { name: 'Run checks' })).toBeDefined()
+  })
+
+  it('keeps supporting copy on its own row beneath the page title', () => {
+    render(
+      <PluginHeader
+        title="Health"
+        subtitle="Act on current issues, compare agents, review activity, and inspect system evidence."
+        count={4}
+        meta={<span>Checked just now</span>}
+        actions={<button type="button">Run checks</button>}
+      />,
+    )
+
+    const heading = screen.getByTestId('plugin-header-heading')
+    const titleRow = screen.getByTestId('plugin-header-title-row')
+    const subtitle = screen.getByText(/Act on current issues/)
+
+    expect(heading.className).toContain('flex-col')
+    expect(titleRow.className).toContain('flex-wrap')
+    expect(titleRow.compareDocumentPosition(subtitle) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(subtitle.className).toContain('w-full')
+    expect(titleRow.textContent).toContain('Health')
+    expect(titleRow.textContent).toContain('4')
+    expect(titleRow.textContent).not.toContain('Act on current issues')
+  })
+
+  it('places additive breadcrumbs above the title without truncating them', () => {
+    render(
+      <PluginHeader
+        title="Search indexes"
+        breadcrumbs={(
+          <nav aria-label="Breadcrumb">
+            <a href="/health">Health</a>
+            <span aria-hidden="true"> / </span>
+            <span>System</span>
+          </nav>
+        )}
+      />,
+    )
+
+    const breadcrumbs = screen.getByTestId('plugin-header-breadcrumbs')
+    const title = screen.getByRole('heading', { level: 1, name: 'Search indexes' })
+    expect(screen.getByRole('navigation', { name: 'Breadcrumb' })).toBeDefined()
+    expect(breadcrumbs.className).toContain('break-words')
+    expect(breadcrumbs.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
 })

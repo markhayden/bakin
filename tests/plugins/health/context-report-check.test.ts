@@ -26,6 +26,8 @@ mock.module('../../../src/core/settings', () => ({
 
 import { checkStartupContextSize } from '../../../plugins/health/lib/system-checks/context-report'
 import type { AgentRuntimeAdapter } from '../../../packages/core/src/adapters/runtime'
+import type { HealthCheckRunInput } from '@makinbakin/sdk'
+import { parseHealthCheckRunInput } from '../../../src/core/health-contract'
 
 function fakeRuntime(agentIds: string[] | 'down'): AgentRuntimeAdapter {
   return {
@@ -38,37 +40,43 @@ function fakeRuntime(agentIds: string[] | 'down'): AgentRuntimeAdapter {
   } as unknown as AgentRuntimeAdapter
 }
 
+function observed(run: HealthCheckRunInput) {
+  const parsed = parseHealthCheckRunInput(run)
+  expect(parsed.outcome).toBe('observed')
+  if (parsed.outcome !== 'observed') throw new Error(parsed.reason)
+  return parsed.observations
+}
+
 describe('context.startup-size check', () => {
   it('is ok when every agent fits the default budget', async () => {
     contextBudgetBytes = undefined
-    const [res] = await checkStartupContextSize(fakeRuntime(['main', 'jessica']))
-    expect(res.check).toBe('context.startup-size')
-    expect(res.status).toBe('ok')
-    expect(res.message).toContain('65536B')
-    expect(res.autoFixable).toBe(false)
+    const [res] = observed(await checkStartupContextSize(fakeRuntime(['main', 'jessica'])))
+    expect(res.key).toBe('budget')
+    expect(res.status).toBe('healthy')
+    expect(res.detail).toContain('65536 bytes')
   })
 
   it('warns (never errors) with top sources when an agent exceeds the configured budget', async () => {
     contextBudgetBytes = 1024 // static sections alone exceed this
-    const [res] = await checkStartupContextSize(fakeRuntime(['jessica']))
-    expect(res.status).toBe('warn')
-    expect(res.message).toContain('jessica')
-    expect(res.message).toContain('top:')
-    expect(res.message).toContain('never blocked')
-    expect(res.message).toContain('bakin agents context')
+    const [res] = observed(await checkStartupContextSize(fakeRuntime(['jessica'])))
+    expect(res.status).toBe('warning')
+    expect(res.summary).toContain('jessica')
+    expect(res.detail).toContain('Largest components')
+    expect(res.detail).toContain('Dispatch remains enabled')
+    expect(res.incident?.disposition).toBe('watch')
   })
 
   it('re-reads settings every run — raising the budget clears the warn without restart', async () => {
     contextBudgetBytes = 1024
-    expect((await checkStartupContextSize(fakeRuntime(['jessica'])))[0].status).toBe('warn')
+    expect(observed(await checkStartupContextSize(fakeRuntime(['jessica'])))[0].status).toBe('warning')
     contextBudgetBytes = 512 * 1024
-    expect((await checkStartupContextSize(fakeRuntime(['jessica'])))[0].status).toBe('ok')
+    expect(observed(await checkStartupContextSize(fakeRuntime(['jessica'])))[0].status).toBe('healthy')
   })
 
   it('skips quietly when the runtime is unreachable (the runtime check owns that alert)', async () => {
     contextBudgetBytes = undefined
-    const [res] = await checkStartupContextSize(fakeRuntime('down'))
-    expect(res.status).toBe('ok')
-    expect(res.message).toContain('Skipped')
+    const [res] = observed(await checkStartupContextSize(fakeRuntime('down')))
+    expect(res.status).toBe('unknown')
+    expect(res.summary).toContain('could not be verified')
   })
 })

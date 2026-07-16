@@ -44,6 +44,8 @@ type TestGlobal = typeof globalThis & {
   __bakinAppServices?: { runtime: ReturnType<typeof createMockRuntimeAdapter> }
 }
 
+let workspaceReadCalls: string[] = []
+
 function installRuntimeMock(): void {
   const runtime = createMockRuntimeAdapter({
     name: 'route-test-runtime',
@@ -56,6 +58,7 @@ function installRuntimeMock(): void {
     agents: {
       ...baseAgents,
       readWorkspaceFile: async (agentId: string, path: string): Promise<WorkspaceFile | null> => {
+        workspaceReadCalls.push(`${agentId}:${path}`)
         const file = join(openClawDir, 'workspaces', agentId, path)
         try {
           return {
@@ -92,6 +95,7 @@ beforeEach(() => {
   rmSync(testDir, { recursive: true, force: true })
   mkdirSync(testDir, { recursive: true })
   mkdirSync(openClawDir, { recursive: true })
+  workspaceReadCalls = []
   installRuntimeMock()
 })
 
@@ -505,10 +509,34 @@ describe('GET /api/agent-packages/{agentId}/scan (#385)', () => {
   })
 
   it('unknown agent scans to an empty findings list (not an error)', async () => {
+    const src = seedAgentPackage()
+    {
+      const { req, url } = makeRequest('POST', '/api/agent-packages/install', { source: src })
+      await installRoute.post(req, url)
+    }
+    workspaceReadCalls = []
+
     const { status, body } = await scan('nobody')
     expect(status).toBe(200)
     expect(body.ok).toBe(true)
     expect(body.packageId).toBeNull()
     expect(body.findings).toEqual([])
+    expect(workspaceReadCalls).toEqual([])
+  })
+
+  it('does not read another installed agent workspace', async () => {
+    for (const agentId of ['pixel', 'scout']) {
+      const src = seedAgentPackage(agentId)
+      const { req, url } = makeRequest('POST', '/api/agent-packages/install', { source: src })
+      const res = await installRoute.post(req, url)
+      expect(res.status).toBe(200)
+    }
+    workspaceReadCalls = []
+
+    const { status } = await scan('pixel')
+
+    expect(status).toBe(200)
+    expect(workspaceReadCalls.length).toBeGreaterThan(0)
+    expect(workspaceReadCalls.every((call) => call.startsWith('pixel:'))).toBe(true)
   })
 })

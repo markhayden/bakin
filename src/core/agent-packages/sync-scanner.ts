@@ -121,6 +121,11 @@ export interface SyncScanReport {
   migrationNeeded: boolean
 }
 
+export interface SyncScanOptions {
+  /** Restrict live workspace and package-projection reads to one agent. */
+  agentId?: string
+}
+
 // ─── Expected-state derivation ───────────────────────────────────────────────
 
 export function sha256OfString(s: string): string {
@@ -322,7 +327,10 @@ export function mainAgentOf(agents: RuntimeAgent[]): { id: string; name: string 
 
 // ─── Scanner ─────────────────────────────────────────────────────────────────
 
-export async function scanAgentSync(lockfile?: Lockfile): Promise<SyncScanReport> {
+export async function scanAgentSync(
+  lockfile?: Lockfile,
+  options: SyncScanOptions = {},
+): Promise<SyncScanReport> {
   const report: SyncScanReport = {
     findings: [],
     agentsScanned: 0,
@@ -332,22 +340,31 @@ export async function scanAgentSync(lockfile?: Lockfile): Promise<SyncScanReport
   }
   const lock = lockfile ?? readLockfile()
   const runtime = getAppServices().runtime
+  const packageEntries = Object.entries(lock.packages)
+  const scoped = options.agentId !== undefined
+  const entriesToScan = scoped
+    ? packageEntries.filter(([, entry]) => entry.kind === 'agent' && entry.agentId === options.agentId)
+    : packageEntries
 
   // 1. Role context files current vs shipped defaults.
-  for (const role of ['orchestrator', 'subagent'] as const) {
-    if (!isRoleContextCurrent(role)) {
-      report.findings.push({
-        type: 'role-context-stale',
-        severity: 'warn',
-        autoFixable: true,
-        message: `Role context roles/${role}.md is missing or its managed block differs from the shipped defaults`,
-      })
+  // These findings are fleet-wide and have no agent attribution, so they do
+  // not belong in a single-agent Diagnostics response.
+  if (!scoped) {
+    for (const role of ['orchestrator', 'subagent'] as const) {
+      if (!isRoleContextCurrent(role)) {
+        report.findings.push({
+          type: 'role-context-stale',
+          severity: 'warn',
+          autoFixable: true,
+          message: `Role context roles/${role}.md is missing or its managed block differs from the shipped defaults`,
+        })
+      }
     }
   }
 
   // 2. Lockfile-level checks: migration shape + installed source presence.
   const agentEntryByAgentId = new Map<string, { packageId: string; entry: PackageEntry }>()
-  for (const [packageId, entry] of Object.entries(lock.packages)) {
+  for (const [packageId, entry] of entriesToScan) {
     if (entry.kind === 'agent' && entry.agentId) {
       agentEntryByAgentId.set(entry.agentId, { packageId, entry })
     }
@@ -389,14 +406,18 @@ export async function scanAgentSync(lockfile?: Lockfile): Promise<SyncScanReport
       type: 'file-missing',
       severity: 'error',
       autoFixable: false,
+      agentId: options.agentId,
       message: `Failed to list runtime agents: ${err instanceof Error ? err.message : String(err)}`,
     })
     return report
   }
 
   const main = mainAgentOf(agents)
+  const agentsToScan = scoped
+    ? agents.filter((agent) => agent.id === options.agentId)
+    : agents
 
-  for (const agent of agents) {
+  for (const agent of agentsToScan) {
     report.agentsScanned++
     const owner = agentEntryByAgentId.get(agent.id)
 
@@ -492,7 +513,7 @@ export async function scanAgentSync(lockfile?: Lockfile): Promise<SyncScanReport
   }
 
   // 4. Skill + asset projections from the lockfile.
-  for (const [packageId, entry] of Object.entries(lock.packages)) {
+  for (const [packageId, entry] of entriesToScan) {
     for (const p of entry.projections ?? []) {
       if (p.kind === 'workspace-file' || p.kind === 'lesson-marker') continue
       // npm payloads + models are OWNED by the capability-readiness engine

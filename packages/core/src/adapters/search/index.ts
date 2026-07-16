@@ -1,4 +1,4 @@
-import type { AdapterHealthCheckDefinition, AdapterInitOpts } from '../shared'
+import type { AdapterInitOpts } from '../shared'
 import type {
   BatchResult,
   Document,
@@ -24,7 +24,6 @@ export interface SearchAdapter {
   initialize(opts?: AdapterInitOpts): Promise<void>
   shutdown(): Promise<void>
   available(): Promise<boolean>
-  getHealthChecks(): AdapterHealthCheckDefinition[]
 
   /** What this adapter can build/serve, in capability terms (D17). */
   capabilities(): SearchAdapterCapabilities

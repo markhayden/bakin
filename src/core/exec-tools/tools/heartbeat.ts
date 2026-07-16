@@ -12,6 +12,7 @@ import { addExecTool } from '../registry'
 addExecTool({
   name: 'bakin_exec_heartbeat',
   label: 'Sent heartbeat',
+  activityClass: 'routine',
   description:
     'Write a heartbeat signal. Call periodically (every 5-10 minutes) to indicate you are alive. Also call when starting or finishing a task.',
   source: 'core',
@@ -37,6 +38,7 @@ addExecTool({
       writeFileSync(join(heartbeatsDir, `${agent}.json`), JSON.stringify(entry, null, 2))
       recordUsage({
         kind: 'agent',
+        activityClass: 'routine',
         name: 'heartbeat',
         agent,
         durationMs: null,
@@ -51,6 +53,7 @@ addExecTool({
     } catch (err) {
       recordUsage({
         kind: 'agent',
+        activityClass: 'routine',
         name: 'heartbeat',
         agent,
         durationMs: null,

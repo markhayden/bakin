@@ -36,7 +36,12 @@ import type {
   WorkspaceFile,
   WorkspaceFileStat,
 } from '@bakin/core/adapters/runtime'
-import type { AdapterAuditEvent, AdapterHealthCheckDefinition, AdapterInitOpts, AdapterLogger } from '@bakin/core/adapters/shared'
+import type {
+  AdapterAuditEvent,
+  AdapterInitOpts,
+  AdapterLogger,
+  AdapterToolActivityEvent,
+} from '@bakin/core/adapters/shared'
 import {
   applyBakinMcpEntries,
   removeBakinMcpEntries,
@@ -45,7 +50,7 @@ import {
 } from './tool-access-provisioning'
 import { listConfiguredChannels, listLlmCredentials, listLlmCredentialsViaCli, type LlmCredential } from './credential-status'
 import { applyRoutingPolicy, readRoutingPolicy, setAgentModels } from './model-routing'
-import { RuntimeError, RuntimeTurnError } from '@bakin/core/adapters/runtime'
+import { beginAdapterTurnActivity, RuntimeError, RuntimeTurnError } from '@bakin/core/adapters/runtime'
 import { tryGetMainAgentId } from './main-agent'
 import { buildOpenClawAttachments } from './attachments'
 import { safeFileSize } from './file-utils'
@@ -93,7 +98,12 @@ import {
 } from './approval-helpers'
 import { openClawCliSessionId, openClawExplicitSessionKey } from './session-store'
 import { getOpenClawSession, listOpenClawSessions } from './sessions'
-import { streamOpenClawTurnChunks, tapOpenClawTurnActivity, type OpenClawActivityTap } from './stream-events'
+import {
+  streamOpenClawTurnChunks,
+  tapOpenClawTurnActivity,
+  type OpenClawActivityTap,
+  type OpenClawTurnFinish,
+} from './stream-events'
 import {
   writeOpenClawConfig, upsertOpenClawAgentConfig,
   updateOpenClawAgentIdentity, updateAgentAllowlist, removeOpenClawAgentConfig,
@@ -225,6 +235,8 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   private settings: OpenClawSettings
   private logger: AdapterLogger = noopLogger
   private auditEvent?: (event: AdapterAuditEvent) => void
+  private onToolActivity?: AdapterInitOpts['onToolActivity']
+  private onTurnActivity?: AdapterInitOpts['onTurnActivity']
   private bakinMcpBaseUrl?: string
   private approvalResponsesWarningLogged = false
   private approvalResolveWarningLogged = false
@@ -243,6 +255,8 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   async initialize(opts: AdapterInitOpts): Promise<void> {
     this.logger = opts.logger ?? noopLogger
     this.auditEvent = opts.audit
+    this.onToolActivity = opts.onToolActivity
+    this.onTurnActivity = opts.onTurnActivity
     this.bakinMcpBaseUrl = opts.bakinMcpBaseUrl
     this.settings = mergeSettings(opts.settings ?? (this.settings as unknown as Record<string, unknown>))
   }
@@ -268,40 +282,6 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
 
   async restart(): Promise<void> {
     await this.exec(['gateway', 'restart'])
-  }
-
-  getHealthChecks(): AdapterHealthCheckDefinition[] {
-    return [
-      {
-        id: 'gateway',
-        name: 'OpenClaw gateway',
-        run: async () => {
-          const reachable = await this.ping()
-          return [{
-            check: 'openclaw.gateway',
-            status: reachable ? 'ok' : 'warn',
-            message: reachable ? 'OpenClaw gateway is reachable' : 'OpenClaw gateway is unreachable',
-            autoFixable: false,
-          }]
-        },
-      },
-      {
-        id: 'channel-approval-responses',
-        name: 'OpenClaw channel approval responses',
-        run: async () => {
-          const channels = await this.channels.list()
-          const interactive = channels.filter(channel => channel.capabilities.includes('interactive-approval'))
-          return [{
-            check: 'openclaw.channel-approval-responses',
-            status: interactive.length > 0 ? 'ok' : 'warn',
-            message: interactive.length > 0
-              ? `OpenClaw channel approval responses are enabled for ${interactive.map(channel => channel.id).join(', ')}.`
-              : 'OpenClaw channel approval requests are render-only for configured channels. Approve/reject workflow gates in the Bakin UI until a channel advertises interactive-approval support.',
-            autoFixable: false,
-          }]
-        },
-      },
-    ]
   }
 
   agents = {
@@ -525,33 +505,73 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
 
   messaging = {
     send: async (args: MessageArgs) => {
-      warnUnenforceableToolPolicy(args, this.logger)
-      const { content, usage } = await this.chatCompletion({
+      const lifecycle = beginAdapterTurnActivity({
+        onActivity: this.onTurnActivity,
+        onCallbackError: (error) => {
+          this.logger.warn('onTurnActivity callback threw; contained', {
+            agentId: args.agentId,
+            err: error instanceof Error ? error.message : String(error),
+          })
+        },
         agentId: args.agentId,
-        messages: [{ role: 'user', content: args.content }],
-        sessionKey: args.threadId,
-        attachments: args.attachments,
-        ephemeral: args.ephemeral,
-        toolsMode: args.toolsMode,
-        model: args.model,
-        thinking: args.thinking,
-        oversizedOutputBytes: args.oversizedOutputBytes,
-        signal: args.signal,
-        onActivity: args.onActivity,
+        activityClass: args.activityClass ?? 'user',
+        threadId: args.threadId,
+        operation: 'send',
       })
-      // Threaded sends expose the real (deterministic) provider session id
-      // so callers can correlate the turn with forensics, usage, and audit.
-      const sessionId = args.threadId ? openClawCliSessionId(args.agentId, args.threadId) : undefined
-      return {
-        id: `msg-${Date.now()}`,
-        content,
-        ...(usage ? { usage } : {}),
-        ...(sessionId ? { metadata: { sessionId } } : {}),
+      try {
+        warnUnenforceableToolPolicy(args, this.logger)
+        const toolActivityTap = this.createToolActivityTap(
+          args.agentId,
+          args.threadId,
+          args.activityClass ?? 'user',
+          lifecycle.turnId,
+        )
+        const onActivity = args.onActivity || toolActivityTap
+          ? (chunk: ChatChunk): void => {
+              toolActivityTap?.(chunk)
+              args.onActivity?.(chunk)
+            }
+          : undefined
+        const { content, usage } = await this.chatCompletion({
+          agentId: args.agentId,
+          messages: [{ role: 'user', content: args.content }],
+          sessionKey: args.threadId,
+          attachments: args.attachments,
+          ephemeral: args.ephemeral,
+          toolsMode: args.toolsMode,
+          model: args.model,
+          thinking: args.thinking,
+          oversizedOutputBytes: args.oversizedOutputBytes,
+          signal: args.signal,
+          onActivity,
+        })
+        // Threaded sends expose the real (deterministic) provider session id
+        // so callers can correlate the turn with forensics, usage, and audit.
+        const sessionId = args.threadId ? openClawCliSessionId(args.agentId, args.threadId) : undefined
+        const adapterTurnId = this.onTurnActivity ? lifecycle.turnId : undefined
+        const result = {
+          id: `msg-${Date.now()}`,
+          content,
+          ...(usage ? { usage } : {}),
+          ...(sessionId || adapterTurnId
+            ? { metadata: { ...(sessionId ? { sessionId } : {}), ...(adapterTurnId ? { adapterTurnId } : {}) } }
+            : {}),
+        }
+        lifecycle.finish({ status: 'completed', resultId: result.id, usage: result.usage })
+        return result
+      } catch (error) {
+        lifecycle.finish({
+          status: args.signal?.aborted || (error instanceof RuntimeError && error.kind === 'aborted')
+            ? 'aborted'
+            : 'failed',
+        })
+        throw error
       }
     },
     stream: (args: MessageArgs): AsyncIterable<ChatChunk> => {
       warnUnenforceableToolPolicy(args, this.logger)
-      return this.streamChat({
+      const runtimeOutcome: { status?: 'completed' | 'failed' | 'aborted' } = {}
+      const stream = this.streamChat({
         agentId: args.agentId,
         messages: [{ role: 'user', content: args.content }],
         sessionKey: args.threadId,
@@ -562,7 +582,12 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
         thinking: args.thinking,
         oversizedOutputBytes: args.oversizedOutputBytes,
         signal: args.signal,
+      }, (outcome) => {
+        runtimeOutcome.status = outcome.kind === 'ok'
+          ? 'completed'
+          : outcome.kind === 'aborted' ? 'aborted' : 'failed'
       })
+      return this.observeMessagingStream(args, stream, () => runtimeOutcome.status)
     },
   }
 
@@ -1498,6 +1523,122 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     return headers
   }
 
+  /**
+   * Normalize one turn's tool chunks onto the adapter-level observability
+   * seam. Timing is derived locally when OpenClaw does not include it, and
+   * callback failures are contained so telemetry can never fail a turn.
+   */
+  private createToolActivityTap(
+    agentId: string,
+    threadId: string | undefined,
+    activityClass: AdapterToolActivityEvent['activityClass'],
+    turnId: string,
+  ): ((chunk: ChatChunk) => void) | undefined {
+    const onToolActivity = this.onToolActivity
+    if (!onToolActivity) return undefined
+
+    const turnStartedAt = Date.now()
+    const startedAt = new Map<string, { at: number; toolName: string }>()
+    return (chunk: ChatChunk): void => {
+      if (chunk.type !== 'tool') return
+
+      const activity = chunk.data
+      const correlationKey = activity.callId ?? `tool:${activity.toolName}`
+      let toolName = activity.toolName
+      let durationMs = activity.durationMs
+
+      if (activity.phase === 'call') {
+        startedAt.set(correlationKey, { at: Date.now(), toolName })
+      } else {
+        const started = startedAt.get(correlationKey)
+        if (started) {
+          toolName = started.toolName
+          startedAt.delete(correlationKey)
+        }
+        // OpenClaw does not currently put duration on its normalized result
+        // chunk. Prefer the correlated call timestamp; if a gateway dropped
+        // the start frame, the turn subscription timestamp is still a useful
+        // upper-bound rather than omitting timing altogether.
+        durationMs ??= Math.max(0, Date.now() - (started?.at ?? turnStartedAt))
+      }
+
+      const baseEvent = {
+        agentId,
+        activityClass,
+        turnId,
+        toolName,
+        ...(threadId ? { threadId } : {}),
+        ...(activity.callId ? { callId: activity.callId } : {}),
+      }
+      const event: AdapterToolActivityEvent = activity.phase === 'call'
+        ? { ...baseEvent, phase: 'call', status: 'running' }
+        : {
+            ...baseEvent,
+            phase: 'result',
+            status: activity.status === 'completed' || activity.status === 'aborted'
+              ? activity.status
+              : 'failed',
+            ...(durationMs === undefined ? {} : { durationMs }),
+          }
+      try {
+        onToolActivity(event)
+      } catch (err) {
+        this.logger.warn('onToolActivity callback threw; contained', {
+          agentId,
+          err: err instanceof Error ? err.message : String(err),
+        })
+      }
+    }
+  }
+
+  private async *observeMessagingStream(
+    args: MessageArgs,
+    stream: AsyncIterable<ChatChunk>,
+    getRuntimeStatus: () => 'completed' | 'failed' | 'aborted' | undefined,
+  ): AsyncIterable<ChatChunk> {
+    const lifecycle = beginAdapterTurnActivity({
+      onActivity: this.onTurnActivity,
+      onCallbackError: (error) => {
+        this.logger.warn('onTurnActivity callback threw; contained', {
+          agentId: args.agentId,
+          err: error instanceof Error ? error.message : String(error),
+        })
+      },
+      agentId: args.agentId,
+      activityClass: args.activityClass ?? 'user',
+      threadId: args.threadId,
+      operation: 'stream',
+    })
+    const onChunk = this.createToolActivityTap(
+      args.agentId,
+      args.threadId,
+      args.activityClass ?? 'user',
+      lifecycle.turnId,
+    )
+    let status: 'completed' | 'failed' | 'aborted' | undefined
+    let sourceEnded = false
+    try {
+      for await (const chunk of stream) {
+        onChunk?.(chunk)
+        if (chunk.type === 'error') status = getRuntimeStatus() ?? 'failed'
+        if (chunk.type === 'done') {
+          status = getRuntimeStatus() ?? (args.signal?.aborted ? 'aborted' : 'completed')
+        }
+        yield chunk
+      }
+      sourceEnded = true
+    } catch (error) {
+      status = args.signal?.aborted || (error instanceof RuntimeError && error.kind === 'aborted')
+        ? 'aborted'
+        : 'failed'
+      throw error
+    } finally {
+      // No terminal chunk + natural source end is a malformed failure. If
+      // the consumer returned early, the observed interaction was aborted.
+      lifecycle.finish({ status: status ?? (sourceEnded ? 'failed' : 'aborted') })
+    }
+  }
+
   private async chatCompletion(opts: OpenClawAgentTurnOptions): Promise<OpenClawTurnResult> {
     return this.runOpenClawAgentGateway(opts)
   }
@@ -1513,7 +1654,10 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
    * kind:'aborted' settle). Replaced the await-the-whole-turn one-blob yield
    * merged with the 200ms trajectory activity poll.
    */
-  private async *streamChat(opts: OpenClawAgentTurnOptions): AsyncIterable<ChatChunk> {
+  private async *streamChat(
+    opts: OpenClawAgentTurnOptions,
+    onFinish?: (outcome: OpenClawTurnFinish) => void,
+  ): AsyncIterable<ChatChunk> {
     const prompt = messagesToOpenClawPrompt(opts.messages)
     const idempotencyKey = opts.idempotencyKey ?? openClawTurnIdempotencyKey(prompt, opts.sessionKey)
     yield* streamOpenClawTurnChunks({
@@ -1525,6 +1669,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
         if (err instanceof RuntimeError) return { kind: 'error', errorKind: err.kind, message: err.message }
         return { kind: 'error', errorKind: 'runtime_failed', message: err instanceof Error ? err.message : String(err) }
       },
+      onFinish,
     })
   }
 

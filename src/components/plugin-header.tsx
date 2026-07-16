@@ -3,10 +3,12 @@ import { Search } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 
-interface PluginHeaderProps {
+export interface PluginHeaderProps {
   title: string
   subtitle?: string
   count?: number
+  /** Optional path context rendered above the title. Supply a labelled nav when interactive. */
+  breadcrumbs?: React.ReactNode
   actions?: React.ReactNode
   meta?: React.ReactNode
   search?: {
@@ -51,7 +53,11 @@ function DebouncedSearchInput({ value, onChange, placeholder, debounce = 300 }: 
   }, [])
 
   return (
-    <div className="relative w-80 focus-within:w-[32rem] transition-all duration-200">
+    <div
+      className="relative min-w-0 max-w-full flex-1 basis-80 transition-[flex-basis] duration-200 focus-within:basis-[32rem] motion-reduce:transition-none"
+      data-testid="plugin-header-search"
+      data-slot="plugin-header-search"
+    >
       <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
       <Input
         value={local}
@@ -63,32 +69,79 @@ function DebouncedSearchInput({ value, onChange, placeholder, debounce = 300 }: 
   )
 }
 
-export function PluginHeader({ title, subtitle, count, actions, meta, search }: PluginHeaderProps) {
+export function PluginHeader({
+  title,
+  subtitle,
+  count,
+  breadcrumbs,
+  actions,
+  meta,
+  search,
+}: PluginHeaderProps) {
   return (
-    <div className="flex items-center justify-between gap-4 w-full">
-      <div className="flex items-center gap-3 min-w-0">
-        <h1 className="text-xl font-semibold text-foreground">{title}</h1>
-        {count !== undefined && (
-          <Badge variant="secondary" className="text-[11px] font-mono tabular-nums px-1.5 py-0">
-            {count}
-          </Badge>
+    <div
+      className="flex w-full min-w-0 flex-wrap items-start justify-between gap-x-4 gap-y-3"
+      data-testid="plugin-header"
+      data-slot="plugin-header"
+    >
+      <div
+        className="flex min-w-0 flex-1 basis-64 flex-col items-start gap-1"
+        data-testid="plugin-header-heading"
+        data-slot="plugin-header-heading"
+      >
+        {breadcrumbs && (
+          <div
+            className="w-full min-w-0 break-words text-xs text-muted-foreground [&_a]:text-foreground/80 [&_a]:underline-offset-4 [&_a:hover]:underline"
+            data-testid="plugin-header-breadcrumbs"
+            data-slot="plugin-header-breadcrumbs"
+          >
+            {breadcrumbs}
+          </div>
         )}
+        <div
+          className="flex min-w-0 flex-wrap items-center gap-2"
+          data-testid="plugin-header-title-row"
+          data-slot="plugin-header-title-row"
+        >
+          <h1 className="min-w-0 break-words text-xl font-semibold text-foreground">{title}</h1>
+          {count !== undefined && (
+            <Badge variant="secondary" className="px-1.5 py-0 font-mono text-[11px] tabular-nums">
+              {count}
+            </Badge>
+          )}
+        </div>
         {subtitle && (
-          <p className="text-xs text-muted-foreground">{subtitle}</p>
+          <p className="w-full min-w-0 max-w-3xl break-words text-sm leading-relaxed text-muted-foreground">
+            {subtitle}
+          </p>
         )}
-        {meta}
-      </div>
-      <div className="flex items-center gap-3">
-        {search && (
-          <DebouncedSearchInput
-            value={search.value}
-            onChange={search.onChange}
-            placeholder={search.placeholder || 'Search...'}
-            debounce={search.debounce}
-          />
+        {meta && (
+          <div className="w-full min-w-0 break-words" data-slot="plugin-header-meta">
+            {meta}
+          </div>
         )}
-        {actions}
       </div>
+      {(search || actions) && (
+        <div
+          className="flex min-w-0 max-w-full flex-1 basis-72 flex-wrap items-center justify-end gap-3"
+          data-testid="plugin-header-controls"
+          data-slot="plugin-header-controls"
+        >
+          {search && (
+            <DebouncedSearchInput
+              value={search.value}
+              onChange={search.onChange}
+              placeholder={search.placeholder || 'Search...'}
+              debounce={search.debounce}
+            />
+          )}
+          {actions && (
+            <div className="flex min-w-0 flex-wrap items-center gap-2" data-slot="plugin-header-actions">
+              {actions}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

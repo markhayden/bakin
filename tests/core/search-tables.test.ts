@@ -313,6 +313,7 @@ describe('blue/green migration', () => {
     const defNoReindex = makeDef({
       schemaVersion: 3,
       reindex: async function* (): AsyncGenerator<{ key: string; doc: Record<string, unknown> }> {
+        yield* []
         throw new Error('resume must not re-backfill an already-landed green')
       },
     })

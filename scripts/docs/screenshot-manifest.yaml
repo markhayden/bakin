@@ -21,11 +21,17 @@ screenshots:
 
   - id: search-results
     doc: using/essentials
-    route: /health
+    route: /
     caption: "The search bar with full-text and semantic results across tasks, projects, memory, and assets."
-    waitFor: "text=Connected"
+    waitFor: "button[title^='Search everything']"
+    actions:
+      - click: "button[title^='Search everything']"
+      - waitFor: "[role='dialog']"
+      - type:
+          selector: "input[placeholder^='Search assets']"
+          text: "spring"
     delay: 1500
-    selector: "[data-slot='card']:has-text('Reindex All')"
+    selector: "[role='dialog']"
     viewport:
       width: 1920
       height: 900
@@ -351,10 +357,11 @@ screenshots:
 
   - id: dashboard
     doc: using/health
-    route: /health
-    caption: "The health dashboard: cost and context cards, usage tabs, doctor results, system status, all in one feed."
-    waitFor: "text=System Health"
+    route: /health?tab=overview
+    caption: "Health Overview leads with overall status, Search readiness, and anything the operator can act on."
+    waitFor: "text=Search readiness"
     delay: 1500
+    selector: "[data-testid='health-page']"
     cropHeight: 0.55
     viewport:
       width: 1920
@@ -362,11 +369,12 @@ screenshots:
 
   - id: usage-panel
     doc: using/health
-    route: /health?usage_tab=endpoints
-    caption: "The usage panel: tool, endpoint, and agent tabs, windowed to 5m, 1h, or 24h."
-    waitFor: "text=Endpoint Usage"
+    route: /health?tab=activity&activity_kind=rest&activity_window=1h
+    caption: "Failure-first Activity with request filtering, exact trend data, and routine success hidden by default."
+    waitFor: "text=Failure trend"
     delay: 1500
-    selector: "[data-slot='card']:has-text('Endpoint Usage')"
+    selector: "[data-testid='health-activity-tab']"
+    cropHeightPx: 1250
     viewport:
       width: 1920
       height: 900

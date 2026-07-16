@@ -17,14 +17,15 @@ import { assembleBudgetSpend } from '../../../../src/core/budget-spend'
 import { evaluateBudget, type BudgetPolicy, type BudgetRule, type TurnBillingContext } from '../../../../src/core/budget'
 import { getSettings } from '../../../../src/core/settings'
 import { getHookRegistry } from '../../../../packages/core/src/hooks/hook-registry-singleton'
-import type { HealthCheckResult } from '../../../../packages/core/src/plugin-types'
+import { healthError, healthHealthy, healthObserved, healthUnknown, healthWarning } from '@makinbakin/sdk/utils'
+import type { HealthCheckRunInput, HealthObservationInput, JsonObject } from '@makinbakin/sdk'
+import {
+  getUsageHistoryScanState,
+  getUsageHistoryScanStaleAfterMs,
+  type UsageHistoryScanStateSnapshot,
+} from '../usage-history-timer'
 
-const CHECK = 'budget'
 const WINDOW_MS = 24 * 60 * 60 * 1000
-
-function result(status: HealthCheckResult['status'], message: string, data?: Record<string, unknown>): HealthCheckResult {
-  return { check: CHECK, status, message, autoFixable: false, ...(data ? { data } : {}) }
-}
 
 function fmtValue(unit: 'usd_micros' | 'tokens', v: number): string {
   return unit === 'usd_micros' ? `$${(v / 1_000_000).toFixed(2)}` : `${v.toLocaleString()} tokens`
@@ -44,25 +45,123 @@ function ruleLabel(rule: BudgetRule): string {
   return rule.scopeId ? `${rule.scope} '${rule.scopeId}'` : 'global'
 }
 
-export async function checkBudget(): Promise<HealthCheckResult[]> {
-  const results: HealthCheckResult[] = []
+type ObservedSpendEvidence =
+  | { status: 'complete'; reason: 'complete'; scanAgeMs: number; staleAfterMs: number }
+  | { status: 'partial'; reason: string; scanAgeMs: number; staleAfterMs: number }
+  | { status: 'unavailable'; reason: string; scanAgeMs: number | null; staleAfterMs: number }
 
-  if (getSettings().dispatch.paused) {
-    results.push(result('warn', 'Dispatch is PAUSED (kill switch) — no task dispatch or billed media until resumed in Settings.', { paused: true }))
+function observedSpendEvidence(
+  facets: Awaited<ReturnType<typeof assembleBudgetSpend>>,
+  now: number,
+  before: UsageHistoryScanStateSnapshot,
+  after: UsageHistoryScanStateSnapshot,
+): ObservedSpendEvidence {
+  const staleAfterMs = getUsageHistoryScanStaleAfterMs()
+  if (facets.observedUsageEvidence.status === 'unavailable') {
+    return { status: 'unavailable', reason: facets.observedUsageEvidence.reason, scanAgeMs: null, staleAfterMs }
+  }
+  const scan = after.lastScan
+  if (before.inFlight || after.inFlight) {
+    return {
+      status: 'unavailable',
+      reason: 'scan_in_progress',
+      scanAgeMs: scan ? Math.max(0, now - scan.at) : null,
+      staleAfterMs,
+    }
+  }
+  if (before.generation !== after.generation || before.lastScan !== after.lastScan) {
+    return {
+      status: 'unavailable',
+      reason: 'scan_generation_changed',
+      scanAgeMs: scan ? Math.max(0, now - scan.at) : null,
+      staleAfterMs,
+    }
+  }
+  if (!scan) return { status: 'unavailable', reason: 'scan_not_run', scanAgeMs: null, staleAfterMs }
+  const scanAgeMs = Math.max(0, now - scan.at)
+  if (scanAgeMs > staleAfterMs) {
+    return { status: 'unavailable', reason: 'scan_stale', scanAgeMs, staleAfterMs }
+  }
+  if (scan.report.coverage.status !== 'complete') {
+    return {
+      status: scan.report.coverage.status,
+      reason: scan.report.coverage.reason,
+      scanAgeMs,
+      staleAfterMs,
+    }
+  }
+  return { status: 'complete', reason: 'complete', scanAgeMs, staleAfterMs }
+}
+
+export async function checkBudget(): Promise<HealthCheckRunInput> {
+  const observations: HealthObservationInput[] = []
+
+  if (getSettings().dispatch?.paused) {
+    observations.push(healthWarning({
+      key: 'dispatch-paused',
+      summary: 'Dispatch is paused.',
+      detail: 'The global kill switch is blocking task dispatch and billed media.',
+      evidence: { paused: true },
+      incident: {
+        key: 'dispatch-paused',
+        title: 'Global dispatch is paused',
+        impact: 'No tasks dispatch and no billed media runs until an operator resumes dispatch.',
+        disposition: 'action_required',
+        resources: [{ kind: 'setting', id: 'dispatch.paused', label: 'Dispatch kill switch' }],
+        resolution: {
+          key: 'resume-dispatch',
+          type: 'instructions',
+          label: 'Resume dispatch',
+          steps: ['Confirm it is safe to resume dispatch, then use Settings or the budget command.'],
+          command: 'bakin budget resume',
+        },
+      },
+    }))
   }
 
   let policy: BudgetPolicy | undefined
   try {
     policy = (await getHookRegistry().invoke<BudgetPolicy>('models.getBudgetPolicy', {})) ?? undefined
-  } catch {
-    policy = undefined
+  } catch (err) {
+    observations.push(healthUnknown({
+      key: 'policy',
+      summary: 'Spending policy could not be verified.',
+      detail: err instanceof Error ? err.message : String(err),
+      incident: {
+        key: 'policy-unavailable',
+        title: 'Spending policy is unavailable',
+        impact: 'Health cannot confirm whether agent spend is capped.',
+        disposition: 'watch',
+        resources: [{ kind: 'system', id: 'budget-policy', label: 'Spending policy' }],
+        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
+      },
+    }))
+    return healthObserved(observations as [HealthObservationInput, ...HealthObservationInput[]])
   }
   if (!policy?.rules?.length) {
     // Standing nag (spec V2): a fresh install must not run uncapped
     // UNKNOWINGLY. Warn is the visible tier (no notice level exists);
     // setting any cap rule clears it.
-    results.push(result('warn', 'No spending budget is set — agent spend is uncapped. Set one in Models → Spend or `bakin budget set`.'))
-    return results
+    observations.push(healthWarning({
+      key: 'policy',
+      summary: 'Agent spend is uncapped.',
+      detail: 'No spending budget is configured.',
+      evidence: { ruleCount: 0 },
+      incident: {
+        key: 'policy-missing',
+        title: 'No spending budget is set',
+        impact: 'Agents can accumulate unbounded metered spend without an operator knowingly accepting that risk.',
+        disposition: 'action_required',
+        resources: [{ kind: 'budget_rule', id: 'global', label: 'Global spending budget' }],
+        resolution: {
+          key: 'open-spend-settings',
+          type: 'navigate',
+          label: 'Set a spending budget',
+          href: '/models?tab=spend',
+        },
+      },
+    }))
+    return healthObserved(observations as [HealthObservationInput, ...HealthObservationInput[]])
   }
 
   // Open incidents block/alert independently of CURRENT spend — a pause-mode
@@ -72,39 +171,160 @@ export async function checkBudget(): Promise<HealthCheckResult[]> {
     const open = listBudgetIncidents({ openOnly: true })
     if (open.length > 0) {
       const pausing = open.filter((i) => i.kind === 'cap' && i.atCap === 'pause')
-      const status = pausing.length > 0 ? 'error' : 'warn'
-      const holdNote = pausing.length > 0 ? ` ${pausing.length} pause-mode hold(s) are BLOCKING dispatch until resolved.` : ''
-      results.push(
-        result(status, `${open.length} open budget incident(s) — resolve in Models → Spend or \`bakin budget incidents\`.${holdNote}`, {
-          incidents: open.map((i) => ({ id: i.id, scope: i.scope, scopeId: i.scopeId, lane: i.lane, window: i.window, kind: i.kind, atCap: i.atCap, status: i.status })),
-          ...(pausing.length ? { pausing: pausing.length } : {}),
-        }),
-      )
+      const evidence: JsonObject = {
+        incidents: open.map((incident) => ({
+          id: incident.id,
+          scope: incident.scope,
+          ...(incident.scopeId ? { scopeId: incident.scopeId } : {}),
+          lane: incident.lane,
+          window: incident.window,
+          kind: incident.kind,
+          atCap: incident.atCap,
+          status: incident.status,
+        })),
+        pausing: pausing.length,
+      }
+      const incident = {
+        key: 'open-incidents',
+        title: 'Budget incidents need resolution',
+        impact: pausing.length > 0
+          ? 'Pause-mode holds are blocking task dispatch until an operator resolves them.'
+          : 'Unresolved budget alerts can hide continued spend pressure.',
+        disposition: 'action_required' as const,
+        resources: open.slice(0, 50).map((entry) => ({
+          kind: 'budget_rule' as const,
+          id: String(entry.id),
+          label: (entry.scopeId ? `${entry.scope} ${entry.scopeId}` : entry.scope).slice(0, 120),
+        })),
+        resolution: {
+          key: 'open-spend-settings',
+          type: 'navigate' as const,
+          label: 'Resolve budget incidents',
+          href: '/models?tab=spend',
+        },
+      }
+      observations.push(pausing.length > 0
+        ? healthError({
+          key: 'incidents',
+          summary: `${open.length} budget incident${open.length === 1 ? '' : 's'} remain open; ${pausing.length} ${pausing.length === 1 ? 'is' : 'are'} blocking dispatch.`,
+          evidence,
+          incident,
+        })
+        : healthWarning({
+          key: 'incidents',
+          summary: `${open.length} budget incident${open.length === 1 ? ' remains' : 's remain'} open.`,
+          evidence,
+          incident,
+        }))
     }
   } catch (err) {
-    void err // incident read failure — the spend evaluation below still runs
+    observations.push(healthUnknown({
+      key: 'incidents',
+      summary: 'Open budget incidents could not be verified.',
+      detail: err instanceof Error ? err.message : String(err),
+      incident: {
+        key: 'incidents-unavailable',
+        title: 'Budget incident status is unknown',
+        impact: 'Health cannot confirm whether an unresolved budget hold is blocking dispatch.',
+        disposition: 'watch',
+        resources: [{ kind: 'system', id: 'budget-incidents', label: 'Budget incidents' }],
+        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
+      },
+    }))
   }
 
   const now = Date.now()
+  const usageScanBefore = getUsageHistoryScanState()
   let facets: Awaited<ReturnType<typeof assembleBudgetSpend>>
   try {
     facets = await assembleBudgetSpend(now)
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err)
     const kind = err instanceof LedgerUnavailableError ? 'unreachable' : 'failing'
-    results.push(result('error', `Spend ledger is ${kind} — budget gating is failing closed (dispatch deferring). ${detail}`))
-    return results
+    observations.push(healthError({
+      key: 'spend-ledger',
+      summary: `Spend ledger is ${kind}.`,
+      detail,
+      incident: {
+        key: 'spend-ledger-unavailable',
+        title: 'Spend ledger is unavailable',
+        impact: 'Budget gating fails closed, so task dispatch defers until spend can be evaluated.',
+        disposition: 'action_required',
+        resources: [{ kind: 'system', id: 'spend-ledger', label: 'Spend ledger' }],
+        resolution: {
+          key: 'restore-ledger',
+          type: 'instructions',
+          label: 'Restore the spend ledger',
+          steps: ['Check the execution-ledger storage path and permissions, then rerun Health.'],
+        },
+      },
+    }))
+    return healthObserved(observations as [HealthObservationInput, ...HealthObservationInput[]])
   }
+  const usageScanAfter = getUsageHistoryScanState()
+  const observedEvidence = observedSpendEvidence(facets, now, usageScanBefore, usageScanAfter)
 
-  const deferred = queryAuditEvents(getContentDir(), { kinds: ['budget.deferred'], sinceMs: WINDOW_MS }).length
+  let deferred = 0
+  let evidenceDeferred = 0
+  try {
+    const recentDeferrals = queryAuditEvents(getContentDir(), { kinds: ['budget.deferred'], sinceMs: WINDOW_MS })
+    for (const event of recentDeferrals) {
+      const reason = event.data.reason
+      if (reason === 'spend-evidence-incomplete'
+        || reason === 'spend-evidence-unavailable'
+        || reason === 'ledger-unavailable'
+        || reason === 'token-evidence-incomplete') {
+        evidenceDeferred++
+      } else {
+        deferred++
+      }
+    }
+  } catch (err) {
+    observations.push(healthUnknown({
+      key: 'deferred-history',
+      summary: 'Recent budget deferrals could not be verified.',
+      detail: err instanceof Error ? err.message : String(err),
+      incident: {
+        key: 'audit-unavailable',
+        title: 'Budget deferral history is unknown',
+        impact: 'Health cannot report how often budget gates deferred work in the last 24 hours.',
+        disposition: 'watch',
+        resources: [{ kind: 'file', id: 'audit-log', label: 'audit.jsonl' }],
+        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
+      },
+    }))
+  }
   const deferNote = deferred ? ` ${deferred} run(s) deferred in the last 24h.` : ''
 
   // Probe each rule with a synthetic matching turn — same evaluator, same
   // facets as the gate. Worst breach drives the row status.
   const breaches: Array<{ rule: BudgetRule; action: 'warn' | 'defer'; window: string; unit: 'usd_micros' | 'tokens'; spentValue: number; capValue: number }> = []
+  const incompleteSpendRules: Array<{
+    rule: BudgetRule
+    window: string
+    unit: 'usd_micros' | 'tokens'
+    cause: 'spend_evidence_incomplete' | 'spend_evidence_unavailable'
+    knownSpentValue: number
+    capValue: number
+    unknownEvidenceCount: number | null
+  }> = []
   for (const rule of policy.rules) {
     const decision = evaluateBudget({ policy: { rules: [rule] }, turn: matchingTurn(rule), facets })
     if (decision.action === 'allow') continue
+    if (decision.cause === 'spend_evidence_incomplete' || decision.cause === 'spend_evidence_unavailable') {
+      incompleteSpendRules.push({
+        rule,
+        window: decision.window,
+        unit: decision.unit,
+        cause: decision.cause,
+        knownSpentValue: decision.spentValue,
+        capValue: decision.capValue,
+        unknownEvidenceCount: decision.cause === 'spend_evidence_incomplete'
+          ? decision.unknownEvidenceCount
+          : null,
+      })
+      continue
+    }
     breaches.push({ rule, action: decision.action, window: decision.window, unit: decision.unit, spentValue: decision.spentValue, capValue: decision.capValue })
   }
 
@@ -113,7 +333,37 @@ export async function checkBudget(): Promise<HealthCheckResult[]> {
   // most common breach (the onboarding-created global rule).
   const agents = [...new Set(breaches.filter((b) => b.rule.scope === 'agent' && b.rule.scopeId).map((b) => b.rule.scopeId as string))]
   if (breaches.some((b) => b.rule.scope !== 'agent')) agents.push('global')
-  const data = {
+  const spendEvidence: JsonObject = {
+    daily: {
+      status: facets.spendEvidence.daily.status,
+      gaps: facets.spendEvidence.daily.gaps.map((gap) => ({
+        unit: gap.unit,
+        source: gap.source,
+        lane: gap.lane,
+        agent: gap.agent,
+        provider: gap.provider,
+        model: gap.model,
+        ...(gap.affectedScope ? { affectedScope: gap.affectedScope } : {}),
+        reasons: gap.reasons,
+        unknownCount: gap.unknownCount,
+      })),
+    },
+    monthly: {
+      status: facets.spendEvidence.monthly.status,
+      gaps: facets.spendEvidence.monthly.gaps.map((gap) => ({
+        unit: gap.unit,
+        source: gap.source,
+        lane: gap.lane,
+        agent: gap.agent,
+        provider: gap.provider,
+        model: gap.model,
+        ...(gap.affectedScope ? { affectedScope: gap.affectedScope } : {}),
+        reasons: gap.reasons,
+        unknownCount: gap.unknownCount,
+      })),
+    },
+  }
+  const data: JsonObject = {
     rules: breaches.map((b) => ({
       scope: b.rule.scope,
       ...(b.rule.scopeId ? { scopeId: b.rule.scopeId } : {}),
@@ -126,6 +376,22 @@ export async function checkBudget(): Promise<HealthCheckResult[]> {
     })),
     ...(agents.length ? { agents } : {}),
     deferred,
+    evidenceDeferred,
+    observedUsageEvidence: observedEvidence,
+    spendEvidence,
+    ...(incompleteSpendRules.length ? {
+      incompleteSpendRules: incompleteSpendRules.map((entry) => ({
+        scope: entry.rule.scope,
+        ...(entry.rule.scopeId ? { scopeId: entry.rule.scopeId } : {}),
+        lane: entry.rule.lane,
+        window: entry.window,
+        unit: entry.unit,
+        cause: entry.cause,
+        knownSpentValue: entry.knownSpentValue,
+        capValue: entry.capValue,
+        unknownEvidenceCount: entry.unknownEvidenceCount,
+      })),
+    } : {}),
   }
 
   const worst = breaches.find((b) => b.action === 'defer') ?? breaches[0]
@@ -134,14 +400,108 @@ export async function checkBudget(): Promise<HealthCheckResult[]> {
     const detail = capped
       .map((b) => `${ruleLabel(b.rule)} ${b.window} ${b.rule.lane} ${fmtValue(b.unit, b.spentValue)}/${fmtValue(b.unit, b.capValue)}`)
       .join('; ')
-    results.push(result('error', `${capped.length} budget cap(s) at/over limit — dispatch is deferring: ${detail}.${deferNote}`, data))
-  } else if (worst || deferred > 0) {
-    const detail = worst
-      ? ` ${ruleLabel(worst.rule)} ${worst.window} ${worst.rule.lane} at ${Math.round((worst.spentValue / worst.capValue) * 100)}% of ${fmtValue(worst.unit, worst.capValue)}.`
-      : ''
-    results.push(result('warn', `Spend approaching budget.${detail}${deferNote}`, data))
+    observations.push(healthError({
+      key: 'spend',
+      summary: `${capped.length} budget cap${capped.length === 1 ? ' is' : 's are'} at or over the limit.`,
+      detail: `Dispatch is deferring: ${detail}.${deferNote}`,
+      evidence: data,
+      incident: {
+        key: 'cap-reached',
+        title: 'Spending cap reached',
+        impact: 'Task dispatch is deferring for work covered by the capped budget rules.',
+        disposition: 'action_required',
+        resources: capped.slice(0, 50).map((entry, index) => ({
+          kind: 'budget_rule' as const,
+          id: budgetRuleId(entry.rule, index),
+          label: ruleLabel(entry.rule),
+        })),
+        resolution: {
+          key: 'open-spend-settings',
+          type: 'navigate',
+          label: 'Review spending caps',
+          href: '/models?tab=spend',
+        },
+      },
+    }))
+  } else if (incompleteSpendRules.length > 0
+    || (policy.rules.some((rule) => rule.scope === 'global' || rule.scope === 'agent')
+      && observedEvidence.status !== 'complete')) {
+    const detail = incompleteSpendRules.length > 0
+      ? `${incompleteSpendRules.length} budget rule${incompleteSpendRules.length === 1 ? '' : 's'} cannot be evaluated because one or more matching spend records have incomplete value or attribution evidence.`
+      : 'Known Bakin-managed spend is below its configured limits, but recent transcript-observed usage is incomplete.'
+    observations.push(healthUnknown({
+      key: 'spend',
+      summary: 'Spend could not be fully verified.',
+      detail,
+      evidence: data,
+      incident: {
+        key: 'spend-evidence-incomplete',
+        title: 'Spend evidence is incomplete',
+        impact: incompleteSpendRules.length > 0
+          ? 'Matching budget caps fail closed until spend values and billing attribution can be verified.'
+          : 'Health cannot confirm that agent spend outside Bakin-managed runs remains within budget.',
+        disposition: 'watch',
+        resources: incompleteSpendRules.length > 0
+          ? [
+              { kind: 'system' as const, id: 'spend-ledger', label: 'Spend ledger' },
+              { kind: 'system' as const, id: 'usage-history', label: 'Usage history' },
+            ]
+          : [{ kind: 'system', id: 'usage-history', label: 'Usage history' }],
+        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
+      },
+    }))
+  } else if (worst) {
+    const detail = ` ${ruleLabel(worst.rule)} ${worst.window} ${worst.rule.lane} at ${Math.round((worst.spentValue / worst.capValue) * 100)}% of ${fmtValue(worst.unit, worst.capValue)}.`
+    observations.push(healthWarning({
+      key: 'spend',
+      summary: 'Spend is approaching a budget limit.',
+      detail: `${detail}${deferNote}`.trim(),
+      evidence: data,
+      incident: {
+        key: 'approaching-cap',
+        title: 'Spend is approaching its cap',
+        impact: 'Covered work may begin deferring if spend continues at the current pace.',
+        disposition: 'watch',
+        resources: [{ kind: 'budget_rule', id: 'active', label: 'Active spending rules' }],
+        resolution: {
+          key: 'open-spend-settings',
+          type: 'navigate',
+          label: 'Review spending',
+          href: '/models?tab=spend',
+        },
+      },
+    }))
+  } else if (deferred > 0) {
+    observations.push(healthWarning({
+      key: 'spend',
+      summary: 'Spend is approaching a budget limit.',
+      detail: deferNote.trim(),
+      evidence: data,
+      incident: {
+        key: 'approaching-cap',
+        title: 'Spend is approaching its cap',
+        impact: 'Covered work may begin deferring if spend continues at the current pace.',
+        disposition: 'watch',
+        resources: [{ kind: 'budget_rule', id: 'active', label: 'Active spending rules' }],
+        resolution: {
+          key: 'open-spend-settings',
+          type: 'navigate',
+          label: 'Review spending',
+          href: '/models?tab=spend',
+        },
+      },
+    }))
   } else {
-    results.push(result('ok', `Spend within budget (${policy.rules.length} rule${policy.rules.length === 1 ? '' : 's'}).`, data))
+    observations.push(healthHealthy({
+      key: 'spend',
+      summary: `Spend is within budget across ${policy.rules.length} rule${policy.rules.length === 1 ? '' : 's'}.`,
+      evidence: data,
+    }))
   }
-  return results
+  return healthObserved(observations as [HealthObservationInput, ...HealthObservationInput[]])
+}
+
+function budgetRuleId(rule: BudgetRule, index: number): string {
+  const raw = [rule.scope, rule.scopeId, rule.lane, index].filter((value) => value !== undefined).join('-')
+  return raw.toLowerCase().replace(/[^a-z0-9._:-]/g, '-').slice(0, 120) || `rule-${index}`
 }

@@ -134,15 +134,19 @@ const schedulePlugin: BakinPlugin = definePlugin({
 
     // Doctor check + repair surfacing any schedule whose cutover didn't complete
     // (e.g. the runtime unreachable at boot) — the end-user migration command.
+    const scheduleGroup = { key: 'schedules', label: 'Schedules' }
+    ctx.registerHealthRepairAction(scheduleCutoverRepair(runScheduleCutover))
     ctx.registerHealthCheck({
       id: 'schedule-cutover',
       name: 'Bakin schedules cut over from runtime cron',
+      description: 'Checks that Bakin-owned schedules no longer retain duplicate runtime cron fire paths.',
+      group: scheduleGroup,
+      maxAgeMs: 2 * 60_000,
       run: async () => checkScheduleCutover(
         ctx.runtime.cron,
         () => Object.values(readSidecar().jobs).filter(j => j.isBakinJob).map(j => j.jobId),
         ctx.runtime.name,
       ),
-      repair: scheduleCutoverRepair(runScheduleCutover),
     })
 
     // Orphan native crons: runtime cron jobs invisible to Bakin's sidecar
@@ -151,17 +155,22 @@ const schedulePlugin: BakinPlugin = definePlugin({
     // it NEVER writes runtime cron state, so it cannot reintroduce the
     // pre-#473 double-fire the legacy sync check was removed for.
     const syncCron = ctx.runtime.cron
+    const syncContentDir = getContentDir()
+    if (syncCron) {
+      ctx.registerHealthRepairAction(
+        scheduleSyncRepair(syncContentDir, syncCron, () => getRuntimeMainAgentId(ctx.runtime)),
+      )
+    }
     ctx.registerHealthCheck({
       id: 'schedule-sync',
       name: 'Runtime cron jobs tracked in Bakin sidecar',
+      description: 'Checks that native runtime cron jobs are visible in Bakin schedule ownership and marked for triage when needed.',
+      group: scheduleGroup,
+      maxAgeMs: 2 * 60_000,
       run: async () => checkScheduleSync(
-        getContentDir(),
+        syncContentDir,
         syncCron,
-        syncCron ? await getRuntimeMainAgentId(ctx.runtime) : 'main',
       ),
-      ...(syncCron
-        ? { repair: scheduleSyncRepair(getContentDir(), syncCron, () => getRuntimeMainAgentId(ctx.runtime)) }
-        : {}),
     })
 
     // Fire (or block) anything missed while the server was down, then start the

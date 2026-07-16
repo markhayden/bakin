@@ -80,7 +80,14 @@ export interface SpendResponse {
   totalUsdMicros: number
   byAgent: SpendRowAgent[]
   byModel: SpendRowModel[]
-  facets?: { computedAt: number; daily: WindowSpendWire; monthly: WindowSpendWire }
+  facets?: {
+    computedAt: number
+    observedUsageEvidence?:
+      | { status: 'available' }
+      | { status: 'unavailable'; reason: 'usage_store_unavailable' }
+    daily: WindowSpendWire
+    monthly: WindowSpendWire
+  }
   pace?: { daily: PaceWire; monthly: PaceWire }
 }
 

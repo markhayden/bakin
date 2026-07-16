@@ -1,6 +1,10 @@
 import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
+import type { HealthIncident, HealthRepairTarget } from '../../packages/core/src/plugin-types'
 import { getAppServices } from './app-services'
-import { planDoctorRepair, type DoctorRepairPlanReport } from './doctor-repair'
+import { dispatchSingleTask } from './dispatch'
+import { getHealthReport } from './doctor-report-cache'
+import { runDiagnostics } from './doctor-execution'
+import { planDoctorRepair } from './doctor-repair'
 import {
   DoctorRepairRequestNotFoundError,
   createDoctorRepairRequest,
@@ -9,94 +13,77 @@ import {
   type DoctorRepairRequest,
 } from './doctor-repair-store'
 import { createTaskWithEffects } from './task-service'
-import { dispatchSingleTask } from './dispatch'
-import type { HealthCheckResult } from '../../packages/core/src/plugin-types'
 
 export interface DoctorDelegateOptions {
   contentDir: string
   projectRoot: string
   accepted: boolean
-  /**
-   * Override the unresolved-row selection. The cron escalation passes its
-   * ERROR rows directly — including safe-repairable ones, which
-   * unresolvedRows() deliberately excludes for the interactive --delegate
-   * flow (there the answer is `--fix`); the delegated agent can run the
-   * fix itself.
-   */
-  rows?: HealthCheckResult[]
+  target?: HealthRepairTarget
 }
 
 export interface DoctorDelegateReport {
   status: 'confirmation_required' | 'sent' | 'no_unresolved'
   request: DoctorRepairRequest
-  unresolved: HealthCheckResult[]
+  incidents: HealthIncident[]
 }
 
 export interface DoctorDelegateVerificationReport {
   request: DoctorRepairRequest
-  remaining: HealthCheckResult[]
+  remainingIncidentIds: string[]
   verified: boolean
+  reportId: string
 }
 
-function unresolvedRows(plan: DoctorRepairPlanReport): HealthCheckResult[] {
-  const safeRepairChecks = new Set(
-    plan.items
-      .filter(item => item.safety === 'safe')
-      .map(item => item.checkId),
-  )
-  return plan.diagnostics.filter(row => (
-    (row.status === 'warn' || row.status === 'error')
-    && !safeRepairChecks.has(row.check)
-  ))
+function summarize(incidents: readonly HealthIncident[]): string {
+  return `${incidents.length} incident${incidents.length === 1 ? '' : 's'} need attention`
 }
 
-function summarizeUnresolved(rows: HealthCheckResult[]): string {
-  if (rows.length === 0) return 'no unresolved doctor findings'
-  const errors = rows.filter(row => row.status === 'error').length
-  const warnings = rows.filter(row => row.status === 'warn').length
-  return `${errors} error${errors === 1 ? '' : 's'}, ${warnings} warning${warnings === 1 ? '' : 's'}`
-}
-
-function buildRepairBrief(request: DoctorRepairRequest, unresolved: HealthCheckResult[]): string {
-  const lines = [
-    `Doctor repair request: ${request.id}`,
+function buildRepairBrief(request: DoctorRepairRequest, incidents: readonly HealthIncident[]): string {
+  return [
+    `Health repair request: ${request.id}`,
     '',
-    'Resolve the following Bakin doctor findings. Use normal Bakin tools and update the linked task with progress.',
+    'Resolve these Bakin Health incidents. Use their stable IDs when recording progress.',
     '',
-    ...unresolved.map(row => `- [${row.status.toUpperCase()}] ${row.check}: ${row.message}`),
+    ...incidents.flatMap((incident) => [
+      `- ${incident.title} (${incident.id})`,
+      `  Impact: ${incident.impact}`,
+    ]),
     '',
-    'When you believe the issue is fixed, run `bakin doctor --full` and complete this task with a short summary.',
-  ]
-  return lines.join('\n')
-}
-
-function rowSignature(row: HealthCheckResult): string {
-  return `${row.check}:${row.status}:${row.message}`
+    'When the root causes are addressed, run fresh Health checks and complete this task with a short summary.',
+  ].join('\n')
 }
 
 export async function delegateDoctorRepair(options: DoctorDelegateOptions): Promise<DoctorDelegateReport> {
+  const report = getHealthReport()
+  const target = options.target ?? { type: 'all_actionable' as const, reportId: report.id }
   const plan = await planDoctorRepair({
     contentDir: options.contentDir,
     projectRoot: options.projectRoot,
+    target: { ...target, reportId: report.id } as HealthRepairTarget,
   })
-  const unresolved = options.rows ?? unresolvedRows(plan)
-  const request = createDoctorRepairRequest(options.contentDir, { plan, unresolved })
+  const incidentIds = target.type === 'incidents'
+    ? new Set(target.ids)
+    : target.type === 'observations'
+      ? new Set(report.incidents.filter((incident) => incident.observationIds.some((id) => target.ids.includes(id))).map((incident) => incident.id))
+      : new Set(report.incidents.filter((incident) => incident.disposition === 'action_required').map((incident) => incident.id))
+  const incidents = report.incidents.filter((incident) => incidentIds.has(incident.id))
+  const observationIds = [...new Set(incidents.flatMap((incident) => incident.observationIds))]
+  const request = createDoctorRepairRequest(options.contentDir, {
+    plan,
+    incidentIds: incidents.map((incident) => incident.id),
+    observationIds,
+  })
 
-  if (unresolved.length === 0) {
-    return { status: 'no_unresolved', request, unresolved }
-  }
-
-  if (!options.accepted) {
-    return { status: 'confirmation_required', request, unresolved }
-  }
+  if (incidents.length === 0) return { status: 'no_unresolved', request, incidents }
+  if (!options.accepted) return { status: 'confirmation_required', request, incidents }
 
   const runtime = getAppServices().runtime
   const agentId = await getRuntimeMainAgentId(runtime)
   const task = await createTaskWithEffects({
-    title: `Doctor repair: ${summarizeUnresolved(unresolved)}`,
+    title: `Health repair: ${summarize(incidents)}`,
     column: 'todo',
     assignee: agentId,
-    description: buildRepairBrief(request, unresolved),
+    description: buildRepairBrief(request, incidents),
     createdBy: 'system',
     source: {
       pluginId: 'health',
@@ -107,40 +94,30 @@ export async function delegateDoctorRepair(options: DoctorDelegateOptions): Prom
     channel: 'system',
   })
 
-  const withTask = updateDoctorRepairRequest(options.contentDir, request.id, current => ({
+  updateDoctorRepairRequest(options.contentDir, request.id, (current) => ({
     ...current,
     status: 'sent',
     taskId: task.id,
     agentId,
-    events: [
-      ...current.events,
-      {
-        ts: new Date().toISOString(),
-        type: 'task-created',
-        message: `Created linked repair task ${task.id}.`,
-        data: { taskId: task.id, agentId },
-      },
-    ],
+    events: [...current.events, {
+      ts: new Date().toISOString(),
+      type: 'task-created',
+      message: `Created linked repair task ${task.id}.`,
+      data: { taskId: task.id, agentId },
+    }],
   }))
-
-  const port = Number(process.env.PORT || 3737)
-  await dispatchSingleTask(task.id, options.contentDir, port, 'kick')
-
-  const sent = updateDoctorRepairRequest(options.contentDir, request.id, current => ({
+  await dispatchSingleTask(task.id, options.contentDir, Number(process.env.PORT || 3737), 'kick')
+  const sent = updateDoctorRepairRequest(options.contentDir, request.id, (current) => ({
     ...current,
     status: 'sent',
-    events: [
-      ...current.events,
-      {
-        ts: new Date().toISOString(),
-        type: 'dispatch-kicked',
-        message: `Kicked immediate dispatch for linked repair task ${task.id}.`,
-        data: { taskId: task.id, agentId },
-      },
-    ],
+    events: [...current.events, {
+      ts: new Date().toISOString(),
+      type: 'dispatch-kicked',
+      message: `Kicked immediate dispatch for linked repair task ${task.id}.`,
+      data: { taskId: task.id, agentId },
+    }],
   }))
-
-  return { status: 'sent', request: sent ?? withTask, unresolved }
+  return { status: 'sent', request: sent, incidents }
 }
 
 export async function verifyDoctorRepairRequest(
@@ -148,30 +125,21 @@ export async function verifyDoctorRepairRequest(
 ): Promise<DoctorDelegateVerificationReport> {
   const request = getDoctorRepairRequest(options.contentDir, options.requestId)
   if (!request) throw new DoctorRepairRequestNotFoundError(options.requestId)
-
-  const original = new Set(request.unresolved.map(rowSignature))
-  const plan = await planDoctorRepair({
-    contentDir: options.contentDir,
-    projectRoot: options.projectRoot,
-  })
-  const remaining = unresolvedRows(plan).filter(row => original.has(rowSignature(row)))
-  const verified = remaining.length === 0
-
-  const updated = updateDoctorRepairRequest(options.contentDir, request.id, current => ({
+  const report = await runDiagnostics(options.contentDir, options.projectRoot)
+  const active = new Set(report.incidents.map((incident) => incident.id))
+  const remainingIncidentIds = request.incidentIds.filter((id) => active.has(id))
+  const verified = remainingIncidentIds.length === 0
+  const updated = updateDoctorRepairRequest(options.contentDir, request.id, (current) => ({
     ...current,
     status: verified ? 'verified' : current.status,
-    events: [
-      ...current.events,
-      {
-        ts: new Date().toISOString(),
-        type: 'verified',
-        message: verified
-          ? 'Original doctor findings no longer reproduce.'
-          : `${remaining.length} original doctor finding(s) still reproduce.`,
-        data: { remaining: remaining.length },
-      },
-    ],
+    events: [...current.events, {
+      ts: new Date().toISOString(),
+      type: 'verified',
+      message: verified
+        ? 'Original Health incidents no longer reproduce.'
+        : `${remainingIncidentIds.length} original Health incident(s) still reproduce.`,
+      data: { remainingIncidentIds, reportId: report.id },
+    }],
   }))
-
-  return { request: updated, remaining, verified }
+  return { request: updated, remainingIncidentIds, verified, reportId: report.id }
 }

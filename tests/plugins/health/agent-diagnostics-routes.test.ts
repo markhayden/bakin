@@ -6,7 +6,7 @@
 import { describe, it, expect, beforeAll, afterAll, mock } from 'bun:test'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { rmSync } from 'fs'
+import { mkdirSync, rmSync } from 'fs'
 import { randomUUID } from 'crypto'
 
 const testDir = join(tmpdir(), `bakin-test-agent-diag-routes-${Date.now()}-${randomUUID()}`)
@@ -43,8 +43,9 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
 }))
 
 mock.module('../../../src/core/doctor', () => ({
-  getLastResults: () => null,
-  runDiagnostics: async () => [],
+  getLastReport: () => null,
+  runDiagnostics: async () => null,
+  runTargetedDiagnostics: async () => null,
 }))
 mock.module('../../../src/core/doctor-repair', () => ({
   planDoctorRepair: async () => ({ items: [], errors: [] }),
@@ -68,16 +69,21 @@ import { claimRun, settleRun, recordRunCost, recordCompletion } from '../../../s
 import { closeAllDbs } from '@bakin/core/storage/db'
 
 let activated: ActivatedPlugin
+const usageScanGlobal = globalThis as typeof globalThis & {
+  __bakinUsageHistoryLastScan?: unknown
+}
 
 const NOW = Date.now()
 const today = toLocalDayKey(NOW)
 
 beforeAll(async () => {
+  usageScanGlobal.__bakinUsageHistoryLastScan = null
   activated = await activatePlugin(healthPlugin, testDir)
 })
 
 afterAll(() => {
   stopUsageHistoryTimer()
+  usageScanGlobal.__bakinUsageHistoryLastScan = null
   closeAllDbs()
   rmSync(testDir, { recursive: true, force: true })
 })
@@ -123,6 +129,52 @@ describe('GET /live-now', () => {
     const after = await get('/live-now')
     expect(after.body.runs).toEqual([])
   })
+
+  it('keeps an expected purged task as an honest null title', async () => {
+    expect(claimRun({
+      runId: 'task:purged:d1',
+      taskId: 'purged',
+      seq: 1,
+      agent: 'pixel',
+      bootId: 'boot-live',
+      now: NOW - 30_000,
+    })).toEqual({ claimed: true })
+
+    try {
+      const { status, body } = await get('/live-now')
+      expect(status).toBe(200)
+      expect(body.runs).toEqual([
+        expect.objectContaining({ taskId: 'purged', taskTitle: null }),
+      ])
+    } finally {
+      settleRun('task:purged:d1', 'turn-ok')
+    }
+  })
+
+  it('does not describe a task-store failure as a purged task', async () => {
+    expect(claimRun({
+      runId: 'task:store-failure:d1',
+      taskId: 'store-failure',
+      seq: 1,
+      agent: 'pixel',
+      bootId: 'boot-live',
+      now: NOW - 30_000,
+    })).toEqual({ claimed: true })
+    const originalGet = activated.ctx.tasks.get
+    activated.ctx.tasks.get = async () => {
+      throw new Error('task store unavailable')
+    }
+
+    try {
+      const { status, body } = await get('/live-now')
+      expect(status).toBe(500)
+      expect(body.error).toBe('Live run details are unavailable.')
+      expect(body.runs).toBeUndefined()
+    } finally {
+      activated.ctx.tasks.get = originalGet
+      settleRun('task:store-failure:d1', 'turn-error')
+    }
+  })
 })
 
 describe('GET /agent-effort', () => {
@@ -146,16 +198,42 @@ describe('GET /agent-effort', () => {
       firstTs: NOW - 3_000_000,
       lastTs: NOW - 60_000,
     }], { mtimeMs: 1, size: 1 })
+    usageScanGlobal.__bakinUsageHistoryLastScan = {
+      at: NOW,
+      report: {
+        scanned: 1,
+        skipped: 0,
+        failed: 0,
+        coverage: {
+          status: 'complete',
+          reason: 'complete',
+          agents: [{ agent: 'pixel', status: 'complete' }],
+        },
+      },
+    }
 
     const { status, body } = await get('/agent-effort')
     expect(status).toBe(200)
     expect(body.window).toBe('24h')
+    expect(body.since).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    expect(body.throughDay).toBe(today)
+    expect(body.scopeLabel).toBe(`${body.since as string} through ${today}`)
+    expect(body.coverage).toEqual({
+      status: 'complete',
+      reason: 'complete',
+      agents: [{ agent: 'pixel', status: 'complete' }],
+    })
     const rows = body.agents as Array<Record<string, unknown>>
     const pixel = rows.find((r) => r.agent === 'pixel')!
     expect(pixel).toMatchObject({
       windowTokens: 200_000,
       windowCostUsdMicros: 40_000,
       runs: 2,
+      tokenApplicableRuns: 2,
+      tokenMeteredRuns: 2,
+      tokenAggregateRepresentable: true,
+      costedRuns: 2,
+      costAggregateRepresentable: true,
       completions: 1,
       tokensPerCompletion: 200_000,
       totalObservedTokens: 1_000_000,
@@ -169,6 +247,21 @@ describe('GET /agent-effort', () => {
     const { status } = await get('/agent-effort', { window: 'forever' })
     expect(status).toBe(400)
   })
+
+  it('returns the declared 503 when the execution ledger is unavailable', async () => {
+    closeAllDbs()
+    const ledgerPath = join(testDir, 'bakin.db')
+    rmSync(ledgerPath, { force: true })
+    mkdirSync(ledgerPath)
+
+    try {
+      const { status, body } = await get('/agent-effort')
+      expect(status).toBe(503)
+      expect(body.error).toBe('Execution ledger could not be read.')
+    } finally {
+      rmSync(ledgerPath, { recursive: true, force: true })
+    }
+  })
 })
 
 describe('GET /usage-history byAgentDay', () => {
@@ -177,5 +270,20 @@ describe('GET /usage-history byAgentDay', () => {
     const cells = body.byAgentDay as Array<{ agent: string; day: string; tokens: { total: number } }>
     const pixelToday = cells.find((c) => c.agent === 'pixel' && c.day === today)
     expect(pixelToday?.tokens.total).toBe(1_000_000)
+  })
+})
+
+describe('GET /agent-effort storage failure', () => {
+  it('returns unavailable instead of evaluating an empty usage store as zero', async () => {
+    closeAllDbs()
+    const storePath = join(testDir, 'usage.db')
+    rmSync(storePath, { force: true })
+    mkdirSync(storePath)
+
+    const { status, body } = await get('/agent-effort')
+
+    expect(status).toBe(503)
+    expect(body.error).toBe('Usage history store could not be read.')
+    rmSync(storePath, { recursive: true, force: true })
   })
 })

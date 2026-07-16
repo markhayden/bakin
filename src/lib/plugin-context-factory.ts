@@ -51,6 +51,7 @@ export interface PluginContextRegistrars {
   registerNodeType: PluginContext['registerNodeType']
   registerNotificationChannel: PluginContext['registerNotificationChannel']
   registerHealthCheck: PluginContext['registerHealthCheck']
+  registerHealthRepairAction: PluginContext['registerHealthRepairAction']
   watchFiles: PluginContext['watchFiles']
 }
 
@@ -95,6 +96,7 @@ export function buildPluginContext(opts: BuildPluginContextOptions): PluginConte
     registerNodeType: registrars.registerNodeType,
     registerNotificationChannel: registrars.registerNotificationChannel,
     registerHealthCheck: registrars.registerHealthCheck,
+    registerHealthRepairAction: registrars.registerHealthRepairAction,
     watchFiles: registrars.watchFiles,
     getSettings: <T = Record<string, unknown>>(): T => readPluginSettings<T>(pluginId),
     updateSettings: (patch: Record<string, unknown>): void => {
@@ -175,6 +177,7 @@ export function noopRegistrars(pluginId: string): PluginContextRegistrars {
     registerNodeType: (def) => `${pluginId}.${def.kind}`,
     registerNotificationChannel: (def) => `${pluginId}.${def.id}`,
     registerHealthCheck: (def) => `${pluginId}.${def.id}`,
+    registerHealthRepairAction: (def) => `${pluginId}.${def.id}`,
     watchFiles: () => {},
   }
 }

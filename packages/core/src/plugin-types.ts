@@ -21,9 +21,12 @@
 import type { z, ZodRawShape, ZodType } from 'zod'
 import type {
   ActivityAPI,
+  ActivityClass,
   EventBus,
   ExecToolResult,
-  PluginHealthCheckInput,
+  HealthCheckRegistrationInput,
+  HealthOwner,
+  HealthRepairActionDefinition,
   PluginLogger,
   SearchAPI,
   TaskLogEntry,
@@ -112,6 +115,7 @@ export interface RegisteredAPIRoute {
   examples?: DocsExample[]
   source?: SourceLocation
   permissions?: string[]
+  activityClass?: ActivityClass
 }
 
 export interface UISlotRegistration {
@@ -153,6 +157,7 @@ export interface ExecToolDefinition<Shape extends ZodRawShape = ZodRawShape> {
   description: string
   label?: string // Short human-readable action phrase for activity feed (e.g., "Created a task")
   activityDuplicate?: boolean // true = handler already emits a meaningful activity event; auto-audit can be hidden
+  activityClass?: ActivityClass // propagated by generic exec-tool transports; omitted tools are foreground user activity
   parameters: Shape
   /** Params are inferred from `parameters` — declare the shape once, get typed params. */
   handler: (params: z.infer<z.ZodObject<Shape>>, agent: string, ctx?: PluginToolContext) => Promise<ExecToolResult>
@@ -322,19 +327,74 @@ export interface NotificationChannelDef extends PluginNotificationChannelInput {
 // (doctor, app-services) and the in-repo plugin sites keep importing it from
 // '@bakin/core/plugin-types'.
 export type {
-  HealthCheckResult,
+  ActionIncidentInput,
+  AdvisoryIncidentInput,
+  CanonicalErrorObservation,
+  CanonicalHealthyObservation,
+  CanonicalUnknownObservation,
+  CanonicalWarningObservation,
+  ErrorObservationInput,
+  HealthCheckExecution,
+  HealthCheckRegistrationInput,
+  HealthCheckRunContext,
+  HealthCheckRunInput,
+  HealthCheckSnapshot,
+  HealthCheckState,
+  HealthDisposition,
+  HealthFullSweep,
+  HealthGroup,
+  HealthIncident,
+  HealthIncidentInput,
+  HealthInstructionsResolution,
+  HealthNavigateResolution,
+  HealthNonEmptyArray,
+  HealthObservation,
+  HealthObservationInput,
+  HealthObservationStatus,
+  HealthOwner,
+  HealthOwnerKind,
+  HealthRepairActionDefinition,
+  HealthRepairApplyRequest,
+  HealthRepairApplyResult,
   HealthRepairSafety,
   HealthRepairChange,
   HealthRepairPlanItem,
-  HealthRepairApplyResult,
-  HealthRepairHandler,
-  PluginHealthCheckInput,
+  HealthRepairPlan,
+  HealthRepairPrecondition,
+  HealthRepairResolution,
+  HealthRepairTarget,
+  HealthReport,
+  HealthReportStatus,
+  HealthReportSummary,
+  HealthResolution,
+  HealthResource,
+  HealthResourceKind,
+  HealthRerunResolution,
+  HealthyObservationInput,
+  JsonObject,
+  JsonValue,
+  SearchReadiness,
+  SearchReadinessStage,
+  SearchReadinessStageKey,
+  SearchReadinessStatus,
+  SearchStageStatus,
+  UnknownObservationInput,
+  WarningObservationInput,
+  WatchIncidentInput,
 } from '@makinbakin/sdk/types'
 
-/** Core-internal: a registered plugin health check with its resolved owner. */
-export interface HealthCheckDef extends PluginHealthCheckInput {
-  runtime: 'plugin'
-  pluginId: string
+/** Core-internal canonical registration with its resolved owner and local id. */
+export interface HealthCheckDef extends HealthCheckRegistrationInput {
+  id: string
+  localId: string
+  owner: HealthOwner
+}
+
+/** Core-internal canonical repair action with its resolved owner and local id. */
+export interface HealthRepairActionDef extends HealthRepairActionDefinition {
+  id: string
+  localId: string
+  owner: HealthOwner
 }
 
 export interface PluginContext {
@@ -380,7 +440,9 @@ export interface PluginContext {
    * sweep — throws are isolated, a single bad check never crashes the
    * doctor. Returns the namespaced id.
    */
-  registerHealthCheck(def: PluginHealthCheckInput): string
+  registerHealthCheck(def: HealthCheckRegistrationInput): string
+  /** Register an owner-local repair action referenced by Health observations. */
+  registerHealthRepairAction(def: HealthRepairActionDefinition): string
   watchFiles(patterns: string[]): void
   /** Read this plugin's persisted settings */
   getSettings<T = Record<string, unknown>>(): T

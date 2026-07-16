@@ -1,10 +1,10 @@
 /**
- * adapter-pi P11 — honest-empty surfaces + health checks.
+ * adapter-pi P11 — honest-empty surfaces + canonical health registrations.
  */
 import { describe, test, expect, beforeAll, afterAll, mock } from 'bun:test'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { mkdirSync, rmSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'fs'
 import { randomUUID } from 'crypto'
 
 const testDir = join(tmpdir(), `bakin-test-pi-unsup-${Date.now()}-${randomUUID()}`)
@@ -22,9 +22,10 @@ mock.module('../../src/core/logger', () => ({
 }))
 
 import type { RuntimeError } from '../../packages/core/src/adapters/runtime'
-import { createPiRuntimeAdapter } from '../../packages/adapter-pi/src/index'
-import { resetPiHome } from '../../packages/adapter-pi/src/home'
+import { createPiHealthChecks, createPiRuntimeAdapter } from '../../packages/adapter-pi/src/index'
+import { getPiAgentsRoot, resetPiHome } from '../../packages/adapter-pi/src/home'
 import { resetModelRegistry } from '../../packages/adapter-pi/src/models'
+import { parseHealthCheckRegistration, parseHealthCheckRunInput } from '../../src/core/health-contract'
 
 const adapter = createPiRuntimeAdapter()
 
@@ -33,6 +34,7 @@ beforeAll(async () => {
   resetModelRegistry()
   const agentDir = join(testDir, 'pi', 'agent')
   mkdirSync(agentDir, { recursive: true })
+  mkdirSync(getPiAgentsRoot(), { recursive: true })
   writeFileSync(join(agentDir, 'auth.json'), JSON.stringify({ fakeai: { type: 'api_key', key: 'k' } }))
   writeFileSync(join(agentDir, 'models.json'), JSON.stringify({
     providers: {
@@ -77,20 +79,71 @@ describe('honest-empty surfaces', () => {
   })
 })
 
-describe('health checks', () => {
-  test('all green on a healthy fixture home', async () => {
-    const checks = adapter.getHealthChecks()
-    expect(checks.length).toBe(3) // pi.home, pi.auth, pi.extensions (WS4)
-    const results = (await Promise.all(checks.map((c) => c.run()))).flat()
-    expect(results.every((r) => r.status === 'ok')).toBe(true)
+describe('canonical health registrations', () => {
+  test('exports five healthy, structured probes for a usable Pi home', async () => {
+    const checks = createPiHealthChecks(() => undefined)
+    expect(checks.map((check) => check.id)).toEqual(['home', 'agents-root', 'auth', 'models', 'extensions'])
+    for (const check of checks) expect(parseHealthCheckRegistration(check).id).toBe(check.id)
+
+    const runs = await Promise.all(checks.map((check) => check.run()))
+    for (const run of runs) expect(parseHealthCheckRunInput(run).outcome).toBe('observed')
+    expect(runs.every((run) => (
+      run.outcome === 'observed'
+      && run.observations.length === 1
+      && run.observations[0]?.status === 'healthy'
+    ))).toBe(true)
   })
 
-  test('missing auth reported as error', async () => {
+  test('missing auth reports one actionable canonical incident', async () => {
     rmSync(join(testDir, 'pi', 'agent', 'auth.json'))
     resetModelRegistry()
-    const checks = adapter.getHealthChecks()
-    const results = (await Promise.all(checks.map((c) => c.run()))).flat()
-    const auth = results.find((r) => r.check === 'pi.auth')
-    expect(auth?.status).toBe('error')
+    const auth = createPiHealthChecks(() => undefined).find((check) => check.id === 'auth')
+    const run = await auth?.run()
+
+    expect(parseHealthCheckRunInput(run).outcome).toBe('observed')
+    expect(run?.outcome).toBe('observed')
+    if (run?.outcome !== 'observed') throw new Error('expected observed auth health output')
+    expect(run.observations[0]?.status).toBe('error')
+    expect(run.observations[0]?.incident?.disposition).toBe('action_required')
+  })
+
+  test('the agent-root probe does not create a missing directory', async () => {
+    rmSync(getPiAgentsRoot(), { recursive: true, force: true })
+    const root = createPiHealthChecks(() => undefined).find((check) => check.id === 'agents-root')
+
+    const run = await root?.run()
+
+    expect(parseHealthCheckRunInput(run).outcome).toBe('observed')
+    expect(run?.outcome).toBe('observed')
+    expect(existsSync(getPiAgentsRoot())).toBe(false)
+  })
+
+  test('reports pending extensions canonically and follows the supplied trust policy', async () => {
+    const extensionsDir = join(testDir, 'pi', 'agent', 'extensions')
+    mkdirSync(extensionsDir, { recursive: true })
+    writeFileSync(join(extensionsDir, 'pending.ts'), 'export default () => {}')
+
+    const pendingCheck = createPiHealthChecks(() => ({
+      piExtensions: { mode: 'allowlist', allow: [] },
+    })).find((check) => check.id === 'extensions')
+    const pendingRun = await pendingCheck?.run()
+
+    expect(parseHealthCheckRunInput(pendingRun).outcome).toBe('observed')
+    expect(pendingRun?.outcome).toBe('observed')
+    if (pendingRun?.outcome !== 'observed') throw new Error('expected observed extension health output')
+    expect(pendingRun.observations[0]?.status).toBe('warning')
+    expect(pendingRun.observations[0]?.incident?.resolution).toMatchObject({
+      type: 'navigate',
+      href: '/runtime?tab=runtimes',
+    })
+
+    const blockedCheck = createPiHealthChecks(() => ({
+      piExtensions: { mode: 'none' },
+    })).find((check) => check.id === 'extensions')
+    const blockedRun = await blockedCheck?.run()
+
+    expect(blockedRun?.outcome).toBe('observed')
+    if (blockedRun?.outcome !== 'observed') throw new Error('expected observed extension health output')
+    expect(blockedRun.observations[0]?.status).toBe('healthy')
   })
 })

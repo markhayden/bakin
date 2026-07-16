@@ -19,7 +19,15 @@ import { getLiveRun, LedgerUnavailableError } from '../../src/core/execution-led
 import { appendAudit } from '../../src/core/audit'
 import { retrieveAgentPackageLessons } from '../../src/core/agent-packages/lesson-retrieval'
 import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
-import { agentSyncRepair, checkAgentRoster, checkPersonas, checkAgentSync, checkTeamRouting, personaRepair } from './lib/health-checks'
+import {
+  agentSyncMigrationRepair,
+  agentSyncRepair,
+  checkAgentRoster,
+  checkPersonas,
+  checkAgentSync,
+  checkTeamRouting,
+  personaRepair,
+} from './lib/health-checks'
 import {
   agentToMeta,
   listRuntimeAgentMetas,
@@ -295,9 +303,10 @@ const teamPlugin: BakinPlugin = definePlugin({
     ctx.hooks.register('team.getTeamMembers', (d: Record<string, unknown>) => {
       return getTeamMembers(ctx.runtime, d.teamId as string)
     }, { label: 'List team members.', summary: 'Returns the agents assigned to one team. Use it for team dashboards, routing rules, or workflow logic that needs team membership.', hookKind: 'rpc' })
-    ctx.hooks.register('team.getAgentTeam', async (d: Record<string, unknown>) => {
-      const ds = await mergeDisplayDefaults(ctx.runtime, readDisplaySettings())
-      const teamId = ds[d.id as string]?.teamId
+    ctx.hooks.register('team.getAgentTeam', (d: Record<string, unknown>) => {
+      // Team membership is stored explicitly. Reading it does not need the
+      // runtime-merged color/default view (or another full roster scan).
+      const teamId = readDisplaySettings()[d.id as string]?.teamId
       if (!teamId) return null
       return readTeams().find((t) => t.id === teamId) ?? null
     }, { label: 'Get agent team.', summary: 'Returns the team currently assigned to an agent, or null when the agent is unassigned. Use it to add team context to task, workflow, or activity views.', hookKind: 'rpc' })
@@ -726,26 +735,39 @@ const teamPlugin: BakinPlugin = definePlugin({
       list: () => ctx.runtime.agents.list(),
     }
 
+    ctx.registerHealthRepairAction(personaRepair(getContentDir(), runtimeAgentReader))
+    ctx.registerHealthRepairAction(agentSyncRepair())
+    ctx.registerHealthRepairAction(agentSyncMigrationRepair())
     ctx.registerHealthCheck({
       id: 'agent-roster',
       name: 'Runtime agent roster',
+      description: 'Checks that the runtime agent roster is readable and every agent has a unique stable id.',
+      group: { key: 'agents', label: 'Agents' },
+      maxAgeMs: 2 * 60_000,
       run: () => checkAgentRoster(runtimeAgentReader),
     })
     ctx.registerHealthCheck({
       id: 'personas',
       name: 'Persona files',
+      description: 'Checks that every runtime agent has a persona file.',
+      group: { key: 'agents', label: 'Agents' },
+      maxAgeMs: 5 * 60_000,
       run: () => checkPersonas(getContentDir(), runtimeAgentReader),
-      repair: personaRepair(getContentDir(), runtimeAgentReader),
     })
     ctx.registerHealthCheck({
       id: 'agent-sync',
       name: 'Agent sync (managed blocks + projections)',
+      description: 'Checks managed blocks, projections, role context, edit locks, and migration state.',
+      group: { key: 'agents', label: 'Agents' },
+      maxAgeMs: 2 * 60_000,
       run: () => checkAgentSync(),
-      repair: agentSyncRepair(),
     })
     ctx.registerHealthCheck({
       id: 'routing',
       name: 'Task routing readiness (#189)',
+      description: 'Checks that unresolved team-assigned tasks have credentials for their routing provider.',
+      group: { key: 'agents', label: 'Agents' },
+      maxAgeMs: 60_000,
       run: () => checkTeamRouting({
         routingProvider: ctx.getSettings<{ routingProvider?: string }>().routingProvider,
       }),

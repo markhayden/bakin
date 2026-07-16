@@ -12,10 +12,11 @@
  *
  * Data honesty rules: attributed numbers come from the run_costs ledger,
  * observed numbers from the usage.db transcript scans. When the scanner has
- * no coverage for the window, observed/unattributed are null — never a
- * fabricated zero.
+ * no coverage for the window, observed/unattributed are null. Likewise, a
+ * ledger rollup with unmetered runs has a null attributed total. Unknown
+ * values stay null — never a fabricated zero.
  */
-import { usageByAgentDaySince, toLocalDayKey } from '@bakin/core/usage-history/store'
+import { readUsageHistorySince, toLocalDayKey } from '@bakin/core/usage-history/store'
 import { getSettings } from './settings'
 import { runTokensByAgentSince, completionsByAgentSince } from './execution-ledger'
 
@@ -30,10 +31,21 @@ export interface BurnConfig {
 
 export interface AgentBurnInputs {
   agent: string
-  /** Bakin-metered tokens in the window (run_costs). */
-  attributedTokens: number
+  /** Bakin-metered tokens; null = one or more token-bearing ledger runs were not metered. */
+  attributedTokens: number | null
+  /** Tracked cost in the window; null = no activity or one or more runs were unpriced. */
   attributedCostUsdMicros: number | null
   runs: number
+  /** Runs for which token evidence is meaningful; media work is excluded. */
+  tokenApplicableRuns: number
+  /** Token-bearing runs with reported totals. Less than tokenApplicableRuns is partial. */
+  tokenMeteredRuns: number
+  /** False when the reported token subtotal exceeds the safe wire integer range. */
+  tokenAggregateRepresentable: boolean
+  /** Runs with reported tracked cost. Less than runs means tracked cost is partial. */
+  costedRuns: number
+  /** False when the reported cost subtotal exceeds the safe wire integer range. */
+  costAggregateRepresentable: boolean
   completions: number
   /** Transcript-observed tokens in the window; null = scanner has no coverage. */
   observedTokens: number | null
@@ -50,14 +62,46 @@ export interface BurnFlag {
 
 export interface AgentBurnReport {
   agent: string
-  windowTokens: number
+  /** Bakin-metered tokens; null = one or more token-bearing ledger runs were not metered. */
+  windowTokens: number | null
+  /** Tracked cost; null = no activity or one or more recorded runs were unpriced. */
   windowCostUsdMicros: number | null
   runs: number
+  tokenApplicableRuns: number
+  tokenMeteredRuns: number
+  tokenAggregateRepresentable: boolean
+  costedRuns: number
+  costAggregateRepresentable: boolean
   completions: number
   tokensPerCompletion: number | null
   totalObservedTokens: number | null
   unattributedTokens: number | null
   flags: BurnFlag[]
+}
+
+export interface AgentBurnCoverage {
+  agents: ReadonlyArray<{
+    agent: string
+    status: 'complete' | 'partial'
+  }>
+}
+
+export interface AgentBurnSources {
+  readUsageHistorySince: typeof readUsageHistorySince
+  runTokensByAgentSince: typeof runTokensByAgentSince
+  completionsByAgentSince: typeof completionsByAgentSince
+}
+
+export interface AgentBurnWindowScope {
+  since: string
+  throughDay: string
+  scopeLabel: string
+}
+
+const DEFAULT_AGENT_BURN_SOURCES: AgentBurnSources = {
+  readUsageHistorySince,
+  runTokensByAgentSince,
+  completionsByAgentSince,
 }
 
 /** 2100000 → "2.1M", 790000 → "790k" — chart-footer-friendly counts. */
@@ -67,21 +111,49 @@ export function formatTokens(n: number): string {
   return String(n)
 }
 
-/** Pure heuristic evaluation for one agent. */
-export function evaluateAgentBurn(inputs: AgentBurnInputs, config: BurnConfig): AgentBurnReport {
-  const flags: BurnFlag[] = []
-  const windowLabel = `${config.windowHours}h`
+function isNonNegativeSafeInteger(value: number | null): value is number {
+  return value !== null && Number.isSafeInteger(value) && value >= 0
+}
 
-  if (inputs.attributedTokens >= config.minTokensFloor && inputs.completions === 0) {
+/** Pure heuristic evaluation for one agent. */
+export function evaluateAgentBurn(
+  inputs: AgentBurnInputs,
+  config: BurnConfig,
+  windowLabel = 'the selected day-aligned window',
+): AgentBurnReport {
+  const flags: BurnFlag[] = []
+  const hasCompleteAttributedEvidence = inputs.tokenApplicableRuns <= inputs.runs
+    && inputs.tokenMeteredRuns <= inputs.tokenApplicableRuns
+    && inputs.tokenMeteredRuns === inputs.tokenApplicableRuns
+    && inputs.tokenAggregateRepresentable
+    && isNonNegativeSafeInteger(inputs.attributedTokens)
+  const attributedTokens = hasCompleteAttributedEvidence ? inputs.attributedTokens : null
+  const attributedCostUsdMicros = inputs.runs > 0
+    && inputs.costedRuns === inputs.runs
+    && inputs.costAggregateRepresentable
+    && isNonNegativeSafeInteger(inputs.attributedCostUsdMicros)
+    ? inputs.attributedCostUsdMicros
+    : null
+
+  if (
+    hasCompleteAttributedEvidence &&
+    attributedTokens !== null &&
+    attributedTokens >= config.minTokensFloor &&
+    inputs.completions === 0
+  ) {
     flags.push({
       kind: 'effort-no-outcome',
       message:
-        `'${inputs.agent}' used ${formatTokens(inputs.attributedTokens)} tokens across ` +
-        `${inputs.runs} run(s) in ${windowLabel} but completed no tasks — check its timeline`,
+        `'${inputs.agent}' used ${formatTokens(attributedTokens)} tokens across ` +
+        `${inputs.runs} run(s) during ${windowLabel} but completed no tasks — check its timeline`,
     })
   }
 
-  if (inputs.todayObservedTokens !== null && inputs.baselineDailyTokens.length > 0) {
+  if (
+    hasCompleteAttributedEvidence
+    && inputs.todayObservedTokens !== null
+    && inputs.baselineDailyTokens.length > 0
+  ) {
     const avg =
       inputs.baselineDailyTokens.reduce((a, b) => a + b, 0) / inputs.baselineDailyTokens.length
     if (
@@ -100,7 +172,9 @@ export function evaluateAgentBurn(inputs: AgentBurnInputs, config: BurnConfig): 
   }
 
   const unattributedTokens =
-    inputs.observedTokens === null ? null : Math.max(0, inputs.observedTokens - inputs.attributedTokens)
+    inputs.observedTokens === null || attributedTokens === null
+      ? null
+      : Math.max(0, inputs.observedTokens - attributedTokens)
   if (
     unattributedTokens !== null &&
     inputs.observedTokens !== null &&
@@ -112,18 +186,25 @@ export function evaluateAgentBurn(inputs: AgentBurnInputs, config: BurnConfig): 
       kind: 'unattributed',
       message:
         `'${inputs.agent}' used ${formatTokens(unattributedTokens)} tokens outside ` +
-        `Bakin-managed tasks in ${windowLabel} — review its recent sessions`,
+        `Bakin-managed tasks during ${windowLabel} — review its recent sessions`,
     })
   }
 
   return {
     agent: inputs.agent,
-    windowTokens: inputs.attributedTokens,
-    windowCostUsdMicros: inputs.attributedCostUsdMicros,
+    windowTokens: attributedTokens,
+    windowCostUsdMicros: attributedCostUsdMicros,
     runs: inputs.runs,
+    tokenApplicableRuns: inputs.tokenApplicableRuns,
+    tokenMeteredRuns: inputs.tokenMeteredRuns,
+    tokenAggregateRepresentable: inputs.tokenAggregateRepresentable,
+    costedRuns: inputs.costedRuns,
+    costAggregateRepresentable: inputs.costAggregateRepresentable,
     completions: inputs.completions,
     tokensPerCompletion:
-      inputs.completions > 0 ? Math.round(inputs.attributedTokens / inputs.completions) : null,
+      inputs.completions > 0 && attributedTokens !== null
+        ? Math.round(attributedTokens / inputs.completions)
+        : null,
     totalObservedTokens: inputs.observedTokens,
     unattributedTokens,
     flags,
@@ -136,6 +217,16 @@ function localDayStartMs(dayKey: string): number {
   return new Date(y!, m! - 1, d!).getTime()
 }
 
+export function getAgentBurnWindowScope(now: number, windowHours: number): AgentBurnWindowScope {
+  const since = toLocalDayKey(now - windowHours * 3_600_000)
+  const throughDay = toLocalDayKey(now)
+  return {
+    since,
+    throughDay,
+    scopeLabel: `${since} through ${throughDay}`,
+  }
+}
+
 /**
  * Assemble burn inputs for every agent seen in the window (ledger ∪ usage
  * history ∪ completions) and evaluate them. Windows are day-aligned on both
@@ -144,28 +235,35 @@ function localDayStartMs(dayKey: string): number {
  */
 export function buildAgentBurnReports(
   now = Date.now(),
-  opts: { windowHours?: number } = {},
+  opts: {
+    windowHours?: number
+    coverage?: AgentBurnCoverage
+    config?: BurnConfig
+    sources?: AgentBurnSources
+  } = {},
 ): AgentBurnReport[] {
-  const config = { ...getSettings().burn, ...(opts.windowHours ? { windowHours: opts.windowHours } : {}) }
-  const windowSinceDay = toLocalDayKey(now - config.windowHours * 3_600_000)
+  const config = { ...(opts.config ?? getSettings().burn), ...(opts.windowHours ? { windowHours: opts.windowHours } : {}) }
+  const sources = opts.sources ?? DEFAULT_AGENT_BURN_SOURCES
+  const windowScope = getAgentBurnWindowScope(now, config.windowHours)
+  const windowSinceDay = windowScope.since
   const dayAlignedSinceMs = localDayStartMs(windowSinceDay)
   const today = toLocalDayKey(now)
   const baselineSinceDay = toLocalDayKey(now - config.baselineDays * 86_400_000)
   const earliestDay = baselineSinceDay < windowSinceDay ? baselineSinceDay : windowSinceDay
 
-  const cells = usageByAgentDaySince(earliestDay)
-  // Scanner coverage is judged fleet-wide: any cell in the window means the
-  // scanner has run over it; a covered window with no cells for an agent is
-  // a true zero, an uncovered window is null.
-  const windowCovered = cells.some((c) => c.day >= windowSinceDay)
+  const cells = sources.readUsageHistorySince(earliestDay).byAgentDay
+  const coverageByAgent = new Map(
+    (opts.coverage?.agents ?? []).map((entry) => [entry.agent, entry.status]),
+  )
 
-  const attributed = runTokensByAgentSince(dayAlignedSinceMs)
-  const completions = completionsByAgentSince(dayAlignedSinceMs)
+  const attributed = sources.runTokensByAgentSince(dayAlignedSinceMs)
+  const completions = sources.completionsByAgentSince(dayAlignedSinceMs)
 
   const agents = new Set<string>([
     ...attributed.map((r) => r.agent),
     ...completions.map((r) => r.agent),
     ...cells.filter((c) => c.day >= windowSinceDay).map((c) => c.agent),
+    ...coverageByAgent.keys(),
   ])
 
   const reports: AgentBurnReport[] = []
@@ -174,23 +272,30 @@ export function buildAgentBurnReports(
     const agentCells = cells.filter((c) => c.agent === agent)
     const windowCells = agentCells.filter((c) => c.day >= windowSinceDay)
     const todayCell = agentCells.find((c) => c.day === today)
+    const hasCompleteCoverage = coverageByAgent.get(agent) === 'complete'
     reports.push(
       evaluateAgentBurn(
         {
           agent,
-          attributedTokens: att?.totalTokens ?? 0,
+          attributedTokens: att ? att.totalTokens : 0,
           attributedCostUsdMicros: att?.costUsdMicros ?? null,
           runs: att?.runs ?? 0,
+          tokenApplicableRuns: att?.tokenApplicableRuns ?? 0,
+          tokenMeteredRuns: att?.tokenMeteredRuns ?? 0,
+          tokenAggregateRepresentable: att?.tokenAggregateRepresentable ?? true,
+          costedRuns: att?.costedRuns ?? 0,
+          costAggregateRepresentable: att?.costAggregateRepresentable ?? true,
           completions: completions.find((r) => r.agent === agent)?.completions ?? 0,
-          observedTokens: windowCovered
+          observedTokens: hasCompleteCoverage
             ? windowCells.reduce((sum, c) => sum + c.tokens.total, 0)
             : null,
-          todayObservedTokens: todayCell ? todayCell.tokens.total : null,
+          todayObservedTokens: hasCompleteCoverage ? todayCell?.tokens.total ?? 0 : null,
           baselineDailyTokens: agentCells
             .filter((c) => c.day >= baselineSinceDay && c.day < today)
             .map((c) => c.tokens.total),
         },
         config,
+        windowScope.scopeLabel,
       ),
     )
   }

@@ -3,6 +3,15 @@ import { appendFileSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'f
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
+import type { AdapterInitOpts } from '../../packages/core/src/adapters/shared'
+
+type ToolActivityEvent = Parameters<NonNullable<AdapterInitOpts['onToolActivity']>>[0]
+type TurnActivityEvent = Parameters<NonNullable<AdapterInitOpts['onTurnActivity']>>[0]
+
+function requireToolResult(event: ToolActivityEvent | undefined): Extract<ToolActivityEvent, { phase: 'result' }> {
+  if (!event || event.phase !== 'result') throw new Error('expected a tool result event')
+  return event
+}
 
 const mockBakinHome = join(tmpdir(), `bakin-openclaw-stream-home-${Date.now()}-${randomUUID()}`)
 process.env.BAKIN_HOME = mockBakinHome
@@ -916,6 +925,172 @@ describe('OpenClaw runtime Gateway chat', () => {
     expect(JSON.stringify(chunks)).not.toContain('secret')
   })
 
+  describe('adapter-level turn lifecycle', () => {
+    async function createTurnTelemetryRuntime(onTurnActivity: NonNullable<AdapterInitOpts['onTurnActivity']>) {
+      const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+      const runtime = createOpenClawRuntimeAdapter()
+      await runtime.initialize({
+        contentDir: join(testDir, 'bakin'),
+        onTurnActivity,
+      })
+      return runtime
+    }
+
+    it('reports send success with identity, class, result, and usage', async () => {
+      FakeWebSocket.onRequest = (frame, ws) => {
+        if (frame.method !== 'agent') return
+        ws.emitMessage({ type: 'res', id: frame.id, ok: true, payload: gatewayAgentAcceptedAck() })
+        queueMicrotask(() => {
+          ws.emitMessage({
+            type: 'res',
+            id: frame.id,
+            ok: true,
+            payload: gatewayAgentPayload('observed lifecycle', { input: 12, output: 4, total: 16 }),
+          })
+        })
+      }
+      const activity: TurnActivityEvent[] = []
+      const runtime = await createTurnTelemetryRuntime((event) => activity.push(event))
+
+      const result = await runtime.messaging.send({
+        agentId: 'pixel',
+        content: 'hi',
+        threadId: 'task:turn-lifecycle-send:d1',
+        activityClass: 'system',
+      })
+
+      expect(activity).toHaveLength(2)
+      expect(activity[0]).toEqual({
+        agentId: 'pixel',
+        activityClass: 'system',
+        threadId: 'task:turn-lifecycle-send:d1',
+        operation: 'send',
+        phase: 'start',
+        status: 'running',
+        turnId: expect.any(String),
+      })
+      expect(activity[1]).toMatchObject({
+        operation: 'send',
+        phase: 'result',
+        status: 'completed',
+        turnId: activity[0]!.turnId,
+        durationMs: expect.any(Number),
+        resultId: result.id,
+        usage: result.usage,
+      })
+      expect(result.metadata).toMatchObject({ adapterTurnId: activity[0]!.turnId })
+    })
+
+    it.each([
+      ['failed', false],
+      ['aborted', true],
+    ] as const)('reports send %s exactly once', async (status, abortBeforeSend) => {
+      if (!abortBeforeSend) {
+        FakeWebSocket.onRequest = (frame, ws) => {
+          if (frame.method !== 'agent') return
+          ws.emitMessage({ type: 'res', id: frame.id, ok: false, error: { message: 'gateway exploded' } })
+        }
+      }
+      const activity: TurnActivityEvent[] = []
+      const runtime = await createTurnTelemetryRuntime((event) => activity.push(event))
+
+      await expect(runtime.messaging.send({
+        agentId: 'pixel',
+        content: 'hi',
+        threadId: `task:turn-lifecycle-send-${status}:d1`,
+        signal: abortBeforeSend ? AbortSignal.abort() : undefined,
+      })).rejects.toBeDefined()
+
+      expect(activity.map((event) => event.phase)).toEqual(['start', 'result'])
+      expect(activity[1]).toMatchObject({
+        operation: 'send',
+        status,
+        turnId: activity[0]!.turnId,
+        durationMs: expect.any(Number),
+      })
+    })
+
+    it.each([
+      ['completed', 'success'],
+      ['failed', 'failure'],
+      ['aborted', 'abort'],
+    ] as const)('reports stream %s exactly once', async (status, outcome) => {
+      if (outcome === 'failure') {
+        FakeWebSocket.onRequest = (frame, ws) => {
+          if (frame.method !== 'agent') return
+          ws.emitMessage({ type: 'res', id: frame.id, ok: false, error: { message: 'gateway exploded' } })
+        }
+      }
+      const activity: TurnActivityEvent[] = []
+      const runtime = await createTurnTelemetryRuntime((event) => activity.push(event))
+
+      const chunks = await collect(runtime.messaging.stream({
+        agentId: 'pixel',
+        content: 'go',
+        threadId: `chat:turn-lifecycle-stream-${status}`,
+        activityClass: 'routine',
+        signal: outcome === 'abort' ? AbortSignal.abort() : undefined,
+      }))
+
+      expect(chunks.at(-1)?.type).toBe(status === 'failed' ? 'error' : 'done')
+      expect(activity.map((event) => event.phase)).toEqual(['start', 'result'])
+      expect(activity[0]).toMatchObject({
+        agentId: 'pixel',
+        activityClass: 'routine',
+        operation: 'stream',
+        status: 'running',
+      })
+      expect(activity[1]).toMatchObject({
+        operation: 'stream',
+        status,
+        turnId: activity[0]!.turnId,
+        durationMs: expect.any(Number),
+      })
+    })
+
+    it('reports a runtime-pushed stream abort even without a caller signal', async () => {
+      FakeWebSocket.onRequest = (frame, ws) => {
+        if (frame.method !== 'agent') return
+        ws.emitMessage({ type: 'res', id: frame.id, ok: true, payload: gatewayAgentAcceptedAck() })
+        queueMicrotask(() => {
+          ws.emitMessage({
+            type: 'event',
+            event: 'chat',
+            payload: {
+              runId: 'run-1',
+              state: 'aborted',
+              stopReason: 'runtime',
+              message: { role: 'assistant', content: [] },
+            },
+          })
+        })
+      }
+      const activity: TurnActivityEvent[] = []
+      const runtime = await createTurnTelemetryRuntime((event) => activity.push(event))
+
+      const chunks = await collect(runtime.messaging.stream({ agentId: 'pixel', content: 'go' }))
+
+      expect(chunks.at(-1)?.type).toBe('done')
+      expect(activity.map((event) => event.phase)).toEqual(['start', 'result'])
+      expect(activity[1]).toMatchObject({ status: 'aborted', turnId: activity[0]!.turnId })
+    })
+
+    it('contains a throwing observer for send and stream', async () => {
+      let calls = 0
+      const runtime = await createTurnTelemetryRuntime(() => {
+        calls += 1
+        throw new Error('turn observer exploded')
+      })
+
+      const result = await runtime.messaging.send({ agentId: 'pixel', content: 'hi' })
+      const chunks = await collect(runtime.messaging.stream({ agentId: 'pixel', content: 'go' }))
+
+      expect(result.content).toBe('ok from gateway')
+      expect(chunks.at(-1)?.type).toBe('done')
+      expect(calls).toBe(4)
+    })
+  })
+
   // MessageArgs.onActivity — the send-path live-activity tap (T8/D-plan-1).
   describe('onActivity tap on messaging.send', () => {
     function scriptedToolTurn(ws: FakeWebSocket, frame: { id: string }): void {
@@ -972,6 +1147,20 @@ describe('OpenClaw runtime Gateway chat', () => {
       }, 120)
     }
 
+    async function createTelemetryRuntime(
+      onToolActivity: NonNullable<AdapterInitOpts['onToolActivity']>,
+      onTurnActivity?: NonNullable<AdapterInitOpts['onTurnActivity']>,
+    ) {
+      const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+      const runtime = createOpenClawRuntimeAdapter()
+      await runtime.initialize({
+        contentDir: join(testDir, 'bakin'),
+        onToolActivity,
+        onTurnActivity,
+      })
+      return runtime
+    }
+
     it('taps tool + status activity during a send turn, filtered to this run', async () => {
       FakeWebSocket.onRequest = (frame, ws) => {
         if (frame.method === 'agent') scriptedToolTurn(ws, frame)
@@ -1023,6 +1212,120 @@ describe('OpenClaw runtime Gateway chat', () => {
 
       expect(result.content).toBe('tap done')
       expect(calls).toBeGreaterThan(0)
+    })
+
+    it('adapter-level onToolActivity observes send tool calls without replacing per-turn onActivity', async () => {
+      FakeWebSocket.onRequest = (frame, ws) => {
+        if (frame.method === 'agent') scriptedToolTurn(ws, frame)
+      }
+      const toolActivity: ToolActivityEvent[] = []
+      const lifecycle: TurnActivityEvent[] = []
+      const runtime = await createTelemetryRuntime(
+        (event) => toolActivity.push(event),
+        (event) => lifecycle.push(event),
+      )
+      const turnActivity: Array<{ type: string }> = []
+
+      const result = await runtime.messaging.send({
+        agentId: 'pixel',
+        content: 'run the tool',
+        threadId: 'task:t-tool-telemetry-send:d1',
+        onActivity: (chunk) => turnActivity.push(chunk),
+      })
+
+      expect(result.content).toBe('tap done')
+      expect(toolActivity).toHaveLength(2)
+      expect(toolActivity[0]).toMatchObject({
+        agentId: 'pixel',
+        threadId: 'task:t-tool-telemetry-send:d1',
+        phase: 'call',
+        callId: 'call-1',
+        toolName: 'exec',
+        status: 'running',
+        turnId: lifecycle[0]!.turnId,
+      })
+      const resultDurationMs = requireToolResult(toolActivity[1]).durationMs
+      expect(typeof resultDurationMs).toBe('number')
+      expect(resultDurationMs!).toBeGreaterThanOrEqual(0)
+      expect(toolActivity[1]).toMatchObject({
+        agentId: 'pixel',
+        threadId: 'task:t-tool-telemetry-send:d1',
+        turnId: lifecycle[0]!.turnId,
+        phase: 'result',
+        callId: 'call-1',
+        toolName: 'exec',
+        status: 'completed',
+      })
+      expect(turnActivity.filter((chunk) => chunk.type === 'tool')).toHaveLength(2)
+    })
+
+    it('adapter-level onToolActivity observes stream tool calls', async () => {
+      FakeWebSocket.onRequest = (frame, ws) => {
+        if (frame.method === 'agent') scriptedToolTurn(ws, frame)
+      }
+      const toolActivity: ToolActivityEvent[] = []
+      const lifecycle: TurnActivityEvent[] = []
+      const runtime = await createTelemetryRuntime(
+        (event) => toolActivity.push(event),
+        (event) => lifecycle.push(event),
+      )
+
+      const chunks = await collect(runtime.messaging.stream({
+        agentId: 'pixel',
+        content: 'run the tool',
+        threadId: 'chat:tool-telemetry-stream',
+        activityClass: 'system',
+      }))
+
+      expect(chunks.at(-1)?.type).toBe('done')
+      expect(toolActivity.map((event) => event.phase)).toEqual(['call', 'result'])
+      expect(toolActivity[0]).toMatchObject({
+        agentId: 'pixel',
+        threadId: 'chat:tool-telemetry-stream',
+        activityClass: 'system',
+        callId: 'call-1',
+        toolName: 'exec',
+        status: 'running',
+        turnId: lifecycle[0]!.turnId,
+      })
+      const resultDurationMs = requireToolResult(toolActivity[1]).durationMs
+      expect(typeof resultDurationMs).toBe('number')
+      expect(resultDurationMs!).toBeGreaterThanOrEqual(0)
+      expect(toolActivity[1]).toMatchObject({
+        agentId: 'pixel',
+        threadId: 'chat:tool-telemetry-stream',
+        turnId: lifecycle[0]!.turnId,
+        activityClass: 'system',
+        callId: 'call-1',
+        toolName: 'exec',
+        status: 'completed',
+      })
+    })
+
+    it('contains a throwing adapter-level onToolActivity callback — send and stream still succeed', async () => {
+      FakeWebSocket.onRequest = (frame, ws) => {
+        if (frame.method === 'agent') scriptedToolTurn(ws, frame)
+      }
+      let calls = 0
+      const runtime = await createTelemetryRuntime(() => {
+        calls += 1
+        throw new Error('tool telemetry exploded')
+      })
+
+      const result = await runtime.messaging.send({
+        agentId: 'pixel',
+        content: 'run the tool',
+        threadId: 'task:t-tool-telemetry-throw:d1',
+      })
+      const chunks = await collect(runtime.messaging.stream({
+        agentId: 'pixel',
+        content: 'run the tool again',
+        threadId: 'chat:tool-telemetry-throw',
+      }))
+
+      expect(result.content).toBe('tap done')
+      expect(chunks.at(-1)?.type).toBe('done')
+      expect(calls).toBe(4)
     })
 
     it('absent tap: send behaves exactly as before', async () => {

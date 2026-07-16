@@ -6,23 +6,52 @@
  * so plugins have a single import path instead of reaching into `@/lib/*`.
  */
 
-import type { HealthCheckResult } from '../types'
+import type {
+  ErrorObservationInput,
+  HealthNonEmptyArray,
+  HealthObservationInput,
+  HealthyObservationInput,
+  NotApplicableHealthCheckRunInput,
+  ObservedHealthCheckRunInput,
+  UnknownObservationInput,
+  WarningObservationInput,
+} from '../types'
 
-/** Build an `ok` health-check result. */
-export function healthOk(check: string, message: string): HealthCheckResult {
-  return { check, status: 'ok', message, autoFixable: false }
+type HealthyObservationFields = Omit<HealthyObservationInput, 'status'>
+type WarningObservationFields = Omit<WarningObservationInput, 'status'>
+type ErrorObservationFields = Omit<ErrorObservationInput, 'status'>
+type UnknownObservationFields = Omit<UnknownObservationInput, 'status'>
+
+/** Build a healthy observation. Healthy observations cannot carry incidents. */
+export function healthHealthy(input: HealthyObservationFields): HealthyObservationInput {
+  return { ...input, status: 'healthy' }
 }
-/** Build a `warn` health-check result (optionally auto-fixable). */
-export function healthWarn(check: string, message: string, autoFixable = false): HealthCheckResult {
-  return { check, status: 'warn', message, autoFixable }
+
+/** Build a warning observation with an explicit advisory/watch/action disposition. */
+export function healthWarning(input: WarningObservationFields): WarningObservationInput {
+  return { ...input, status: 'warning' }
 }
-/** Build an `error` health-check result (optionally auto-fixable). */
-export function healthError(check: string, message: string, autoFixable = false): HealthCheckResult {
-  return { check, status: 'error', message, autoFixable }
+
+/** Build an error observation. Its incident must require operator action. */
+export function healthError(input: ErrorObservationFields): ErrorObservationInput {
+  return { ...input, status: 'error' }
 }
-/** Build a `fixed` health-check result (the auto-repair just ran). */
-export function healthFixed(check: string, message: string): HealthCheckResult {
-  return { check, status: 'fixed', message, autoFixable: true }
+
+/** Build an Unknown verification observation with a watch disposition. */
+export function healthUnknown(input: UnknownObservationFields): UnknownObservationInput {
+  return { ...input, status: 'unknown' }
+}
+
+/** Build a successful observed run. Empty diagnostic output is unrepresentable. */
+export function healthObserved(
+  observations: HealthNonEmptyArray<HealthObservationInput>,
+): ObservedHealthCheckRunInput {
+  return { outcome: 'observed', observations }
+}
+
+/** Build an explicit successful not-applicable run. */
+export function healthNotApplicable(reason: string): NotApplicableHealthCheckRunInput {
+  return { outcome: 'not_applicable', reason }
 }
 
 /** Tailwind class merger (clsx + tailwind-merge). */

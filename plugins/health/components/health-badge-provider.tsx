@@ -6,17 +6,15 @@ import { useHealthSummary } from '../hooks/use-health-summary'
 
 /**
  * Background component (renders nothing) mounted via the host's
- * `nav-badge-providers` slot. Shows a red `error` count on the Health nav
- * item when doctor reports ≥1 failing check, cleared otherwise (bakin
- * #265). Errors only — warnings are often steady-state per install and
- * would make the badge permanent noise. Refresh rides the `doctor.run`
- * SSE signal — no cron, heartbeat, or poll.
+ * `nav-badge-providers` slot. Counts unique action/watch incidents (never raw
+ * observations or advisories), using an urgent tone when any incident needs
+ * action. Refresh rides the canonical report event—no cron or poll.
  */
 export function HealthBadgeProvider() {
-  const { errors } = useHealthSummary()
+  const { count, tone } = useHealthSummary()
 
-  const badge: NavBadge | null = errors !== null && errors > 0
-    ? { count: errors, tone: 'error' }
+  const badge: NavBadge | null = count !== null && count > 0
+    ? { count, tone }
     : null
 
   useNavBadge('health', 'health', badge)

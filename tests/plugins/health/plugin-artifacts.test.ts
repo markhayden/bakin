@@ -33,6 +33,15 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
 import { checkPluginArtifacts } from '../../../plugins/health/lib/system-checks/plugin-artifacts'
 import { writeProvenance, WHISKIT_PROVENANCE_VERSION, type WhiskitBuildProvenance } from '../../../src/core/whiskit/provenance'
 import { EXTERNALS_CONTRACT } from '../../../src/core/whiskit/externals'
+import type { HealthCheckRunInput } from '@makinbakin/sdk'
+import { parseHealthCheckRunInput } from '../../../src/core/health-contract'
+
+function observed(run: HealthCheckRunInput) {
+  const parsed = parseHealthCheckRunInput(run)
+  expect(parsed.outcome).toBe('observed')
+  if (parsed.outcome !== 'observed') throw new Error(parsed.reason)
+  return parsed.observations
+}
 
 function installPlugin(id: string, externalsContract: string): void {
   const dir = join(testDir, 'plugins', id)
@@ -66,22 +75,23 @@ beforeEach(() => {
 })
 
 describe('checkPluginArtifacts', () => {
-  it('is ok when no plugins are installed', () => {
+  it('is healthy when no plugins are installed', async () => {
     rmSync(join(testDir, 'plugins'), { recursive: true, force: true })
-    expect(checkPluginArtifacts()[0].status).toBe('ok')
+    expect(observed(await checkPluginArtifacts())[0].status).toBe('healthy')
   })
 
-  it('is ok when all installed artifacts are compatible', () => {
+  it('is healthy when all installed artifacts are compatible', async () => {
     installPlugin('foo', EXTERNALS_CONTRACT)
-    expect(checkPluginArtifacts()[0].status).toBe('ok')
+    expect(observed(await checkPluginArtifacts())[0].status).toBe('healthy')
   })
 
-  it('warns about a needs-update artifact (incompatible externals contract)', () => {
+  it('warns about a needs-update artifact (incompatible externals contract)', async () => {
     installPlugin('foo', EXTERNALS_CONTRACT)
     installPlugin('stale', 'react18-old-vX')
-    const r = checkPluginArtifacts()[0]
-    expect(r.status).toBe('warn')
-    expect(r.message).toContain('stale')
-    expect(r.message).toContain('needs update')
+    const r = observed(await checkPluginArtifacts())[0]
+    expect(r.status).toBe('warning')
+    expect(r.summary).toContain('stale')
+    expect(r.summary).toContain('compatible update')
+    expect(r.incident?.disposition).toBe('action_required')
   })
 })

@@ -187,7 +187,7 @@ const eventBus = new BakinEventBus(broadcast)
     contentDir: CONTENT_DIR,
     sendNotification: (message: string) => {
       getRuntimeMainAgentId(appServices.runtime)
-        .then((agentId) => appServices.runtime.messaging.send({ agentId, content: message }))
+        .then((agentId) => appServices.runtime.messaging.send({ agentId, content: message, activityClass: 'system' }))
         .catch(err => {
           log.error('Failed to notify main agent of completion', err)
         })

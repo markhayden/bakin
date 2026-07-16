@@ -21,7 +21,7 @@ Harden the scheduling foundation (register the dead `schedule-sync` doctor check
 ```
 PR1 (independent hardening) ──────────────┐
 PR2 'at' engine ── depends on nothing new ┤
-PR3 occurrences endpoint ── benefits from PR2 ('at' occurrences flow through) 
+PR3 occurrences endpoint ── benefits from PR2 ('at' occurrences flow through)
 PR4 contract + providers + UI ── depends on PR3 (fan-in extends the endpoint)
 bits adoption ── depends on PR4 merged
 ```

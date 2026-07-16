@@ -129,6 +129,7 @@ mock.module('../../../src/core/logger', () => ({
 import { agentSyncComponent } from '../../../src/core/onboarding/agent-sync'
 import { installPackage } from '../../../src/core/agent-packages/installer'
 import {
+  agentSyncMigrationRepair,
   agentSyncRepair,
   checkAgentRoster,
   checkPersonas,
@@ -136,6 +137,13 @@ import {
   checkTeamRouting,
   personaRepair,
 } from '../../../plugins/team/lib/health-checks'
+
+const repairTarget = { type: 'all_actionable' as const, reportId: 'test-report' }
+
+function observations<T extends { outcome: string }>(result: T) {
+  if (result.outcome !== 'observed') throw new Error(`Expected observed Team health, got ${result.outcome}`)
+  return (result as T & { observations: Array<{ key: string; status: string; summary: string; detail?: string; incident?: { resolution: { type: string } } }> }).observations
+}
 
 const runtimeAgentReader = {
   list: async () => {
@@ -173,50 +181,50 @@ describe('checkTeamRouting', () => {
     const readBoard = () => ({
       columns: { inProgress: [{ id: 't0', team: 'development', agent: 'reviewer' }] },
     })
-    const results = await checkTeamRouting({
+    const results = observations(await checkTeamRouting({
       routingProvider: 'anthropic',
       readBoard,
       keySource: () => null,
-    })
-    expect(results[0].status).toBe('ok')
+    }))
+    expect(results[0].status).toBe('healthy')
   })
 
   it('passes quietly when no team-assigned tasks exist', async () => {
-    const results = await checkTeamRouting({
+    const results = observations(await checkTeamRouting({
       routingProvider: 'anthropic',
       readBoard: board([undefined, undefined]),
       keySource: () => null,
-    })
+    }))
     expect(results).toHaveLength(1)
-    expect(results[0].status).toBe('ok')
+    expect(results[0].status).toBe('healthy')
   })
 
   it('warns when team tasks exist but no routing key resolves', async () => {
-    const results = await checkTeamRouting({
+    const results = observations(await checkTeamRouting({
       routingProvider: 'anthropic',
       readBoard: board(['development', undefined]),
       keySource: () => null,
-    })
-    expect(results[0].status).toBe('warn')
-    expect(results[0].message).toContain('anthropic')
+    }))
+    expect(results[0].status).toBe('error')
+    expect(results[0].summary).toContain('anthropic')
   })
 
   it('passes when team tasks exist and the key resolves', async () => {
-    const results = await checkTeamRouting({
+    const results = observations(await checkTeamRouting({
       routingProvider: 'anthropic',
       readBoard: board(['development']),
       keySource: () => ({ apiKey: 'k', source: 'env' as const }),
-    })
-    expect(results[0].status).toBe('ok')
+    }))
+    expect(results[0].status).toBe('healthy')
   })
 
   it('ignores done/archived team tasks', async () => {
-    const results = await checkTeamRouting({
+    const results = observations(await checkTeamRouting({
       routingProvider: 'anthropic',
       readBoard: board(['development'], 'done'),
       keySource: () => null,
-    })
-    expect(results[0].status).toBe('ok')
+    }))
+    expect(results[0].status).toBe('healthy')
   })
 })
 
@@ -225,31 +233,31 @@ describe('checkTeamRouting', () => {
 describe('checkAgentRoster', () => {
   it('reports an error when the runtime roster cannot be read', async () => {
     runtimeError = new Error('adapter unavailable')
-    const results = await checkAgentRoster(runtimeAgentReader)
+    const results = observations(await checkAgentRoster(runtimeAgentReader))
     expect(results).toHaveLength(1)
-    expect(results[0].check).toBe('agent-roster')
-    expect(results[0].status).toBe('error')
-    expect(results[0].message).toMatch(/runtime agent roster/)
+    expect(results[0].key).toBe('roster-read')
+    expect(results[0].status).toBe('unknown')
+    expect(results[0].summary).toMatch(/runtime agent roster/i)
   })
 
   it('reports ok when runtime returns a coherent roster', async () => {
     runtimeAgents = [makeRuntimeAgent('main'), makeRuntimeAgent('patch')]
-    const results = await checkAgentRoster(runtimeAgentReader)
+    const results = observations(await checkAgentRoster(runtimeAgentReader))
     expect(results).toHaveLength(1)
-    expect(results[0].status).toBe('ok')
-    expect(results[0].message).toMatch(/2 runtime agent/)
+    expect(results[0].status).toBe('healthy')
+    expect(results[0].summary).toMatch(/2 runtime agent/)
   })
 
   it('warns about duplicate runtime agent ids', async () => {
     runtimeAgents = [makeRuntimeAgent('main'), makeRuntimeAgent('main')]
-    const results = await checkAgentRoster(runtimeAgentReader)
-    expect(results.some(r => r.status === 'warn' && r.message.includes('Duplicate'))).toBe(true)
+    const results = observations(await checkAgentRoster(runtimeAgentReader))
+    expect(results.some(r => r.status === 'warning' && r.summary.includes('appears more than once'))).toBe(true)
   })
 
   it('warns about runtime agents without ids', async () => {
     runtimeAgents = [{ id: '', name: 'Broken' }]
-    const results = await checkAgentRoster(runtimeAgentReader)
-    expect(results.some(r => r.status === 'warn' && r.message.includes('without an id'))).toBe(true)
+    const results = observations(await checkAgentRoster(runtimeAgentReader))
+    expect(results.some(r => r.status === 'warning' && r.summary.includes('has no id'))).toBe(true)
   })
 })
 
@@ -266,11 +274,11 @@ describe('checkPersonas', () => {
     writeFileSync(join(personasDir, 'main.md'), '# Main')
     // patch and pixel are missing
 
-    const results = await checkPersonas(testDir, runtimeAgentReader)
-    const warnings = results.filter(r => r.status === 'warn')
+    const results = observations(await checkPersonas(testDir, runtimeAgentReader))
+    const warnings = results.filter(r => r.status === 'warning')
     expect(warnings.length).toBeGreaterThanOrEqual(2) // patch + pixel missing
-    expect(warnings.some(r => r.message.includes('patch'))).toBe(true)
-    expect(warnings.some(r => r.message.includes('pixel'))).toBe(true)
+    expect(warnings.some(r => r.summary.includes('patch'))).toBe(true)
+    expect(warnings.some(r => r.summary.includes('pixel'))).toBe(true)
   })
 
   it('reports ok when every agent has a persona', async () => {
@@ -280,15 +288,15 @@ describe('checkPersonas', () => {
       writeFileSync(join(personasDir, `${agent}.md`), `# ${agent}`)
     }
 
-    const results = await checkPersonas(testDir, runtimeAgentReader)
+    const results = observations(await checkPersonas(testDir, runtimeAgentReader))
     expect(results).toHaveLength(1)
-    expect(results[0].status).toBe('ok')
-    expect(results[0].message).toMatch(/All 3 agents/)
+    expect(results[0].status).toBe('healthy')
+    expect(results[0].summary).toMatch(/All 3 runtime agent/)
   })
 
-  it('warns when the personas directory is missing (no autoFix)', async () => {
-    const results = await checkPersonas(testDir, runtimeAgentReader)
-    expect(results.some(r => r.status === 'warn' && r.message.includes('No personas directory'))).toBe(true)
+  it('offers a repair when the personas directory is missing', async () => {
+    const results = observations(await checkPersonas(testDir, runtimeAgentReader))
+    expect(results.some(r => r.status === 'warning' && r.summary.includes('personas directory is missing') && r.incident?.resolution.type === 'repair')).toBe(true)
   })
 
   it('does not create stub persona files during diagnostics', async () => {
@@ -296,8 +304,8 @@ describe('checkPersonas', () => {
     mkdirSync(personasDir, { recursive: true })
     writeFileSync(join(personasDir, 'main.md'), '# Main')
 
-    const results = await checkPersonas(testDir, runtimeAgentReader)
-    expect(results.some(r => r.status === 'warn' && r.message.includes('patch'))).toBe(true)
+    const results = observations(await checkPersonas(testDir, runtimeAgentReader))
+    expect(results.some(r => r.status === 'warning' && r.summary.includes('patch'))).toBe(true)
     const after = readdirSync(personasDir)
     expect(after).not.toContain('patch.md')
     expect(after).not.toContain('pixel.md')
@@ -307,9 +315,8 @@ describe('checkPersonas', () => {
     const personasDir = join(testDir, 'team', 'personas')
     expect(existsSync(personasDir)).toBe(false)
 
-    const results = await checkPersonas(testDir, runtimeAgentReader)
     const repair = personaRepair(testDir, runtimeAgentReader)
-    const plan = await repair.plan(results)
+    const plan = await repair.plan(repairTarget)
     expect(plan).toHaveLength(1)
     const applied = await repair.apply(plan)
     expect(applied[0].status).toBe('applied')
@@ -327,32 +334,30 @@ describe('checkAgentSync — wrapper', () => {
     // Empty roster + empty lockfile + freshly seeded context files = clean.
     const { seedContextFiles } = await import('../../../src/core/team-context')
     seedContextFiles()
-    const results = await checkAgentSync()
+    const results = observations(await checkAgentSync())
     expect(results).toHaveLength(1)
-    expect(results[0].check).toBe('agent-sync')
-    expect(results[0].status).toBe('ok')
+    expect(results[0].key).toBe('sync')
+    expect(results[0].status).toBe('healthy')
   })
 
-  it('reports stale role context as an auto-fixable warn', async () => {
+  it('reports stale role context with the local sync repair', async () => {
     // No context files seeded → role-context-stale findings.
-    const results = await checkAgentSync()
-    expect(results.some((r) => r.status === 'warn' && r.autoFixable)).toBe(true)
+    const results = observations(await checkAgentSync())
+    expect(results.some((r) => r.status === 'warning' && r.incident?.resolution.type === 'repair')).toBe(true)
   })
 
-  it('plans a safe local-sync repair for auto-fixable findings and applies it', async () => {
-    const results = await checkAgentSync()
+  it('plans and applies a safe repair for locally managed drift', async () => {
     const repair = agentSyncRepair()
-    const plan = await repair.plan(results)
+    const plan = await repair.plan(repairTarget)
     expect(plan.length).toBeGreaterThanOrEqual(1)
-    const local = plan.find((p) => p.id === 'team.agent-sync.local')
+    const local = plan.find((p) => p.id === 'sync-agents')
     expect(local?.safety).toBe('safe')
-    expect(local?.requiresConfirmation).toBe(false)
 
     const applied = await repair.apply([local!])
     expect(applied[0].status).toBe('applied')
 
-    const after = await checkAgentSync()
-    expect(after[0].status).toBe('ok')
+    const after = observations(await checkAgentSync())
+    expect(after[0].status).toBe('healthy')
   })
 
   it('plans the migration as a destructive, confirmation-required item', async () => {
@@ -369,13 +374,12 @@ describe('checkAgentSync — wrapper', () => {
         },
       },
     })
-    const results = await checkAgentSync()
-    expect(results.some((r) => r.message.includes('migration'))).toBe(true)
+    const results = observations(await checkAgentSync())
+    expect(results.some((r) => r.summary.includes('migration'))).toBe(true)
 
-    const plan = await agentSyncRepair().plan(results)
-    const migrate = plan.find((p) => p.id === 'team.agent-sync.migrate')
+    const plan = await agentSyncMigrationRepair().plan(repairTarget)
+    const migrate = plan.find((p) => p.id === 'migrate-agent-blocks')
     expect(migrate?.safety).toBe('destructive')
-    expect(migrate?.requiresConfirmation).toBe(true)
   })
 })
 
@@ -485,6 +489,7 @@ describe('plugin registration', () => {
   it('registers all owned health checks on activate', async () => {
     const teamPlugin = (await import('../../../plugins/team')).default
     const registeredIds: string[] = []
+    const registeredActionIds: string[] = []
     const noop = mock()
     const noopAsync = mock(async () => {})
     const ctx: Record<string, unknown> = {
@@ -499,6 +504,7 @@ describe('plugin registration', () => {
       registerNodeType: noop,
       registerNotificationChannel: noop,
       registerHealthCheck: (def: { id: string }) => { registeredIds.push(def.id); return `team.${def.id}` },
+      registerHealthRepairAction: (def: { id: string }) => { registeredActionIds.push(def.id); return `team.${def.id}` },
       watchFiles: noop,
       getSettings: () => ({}),
       updateSettings: noop,
@@ -520,5 +526,6 @@ describe('plugin registration', () => {
     expect(registeredIds).toContain('agent-roster')
     expect(registeredIds).toContain('personas')
     expect(registeredIds).toContain('agent-sync')
+    expect(registeredActionIds).toEqual(expect.arrayContaining(['create-personas', 'sync-agents', 'migrate-agent-blocks']))
   })
 })

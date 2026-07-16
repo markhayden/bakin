@@ -50,7 +50,7 @@ mock.module('@bakin/core/hooks/hook-registry-singleton', hookRegistryMock)
 mock.module('../../src/core/plugin-registry', hookRegistryMock)
 
 let spendThrows = false
-type CostRow = { runId: string; agent: string; model: string | null; provider: string | null; lane: 'metered' | 'subscription' | null; totalTokens: number | null; costUsdMicros: number | null; occurredAt: number }
+type CostRow = { runId: string; agent: string; model: string | null; provider: string | null; lane: 'metered' | 'subscription' | null; usageKind?: 'tokens' | 'media'; totalTokens: number | null; costUsdMicros: number | null; occurredAt: number }
 const costRows: CostRow[] = []
 // In-memory emulation of the budget_incidents UNIQUE (the durable debounce).
 const incidentKeys = new Map<string, { id: number; status: string; atCap: string }>()
@@ -66,7 +66,7 @@ mock.module('../../src/core/execution-ledger', () => ({
   spendTotal: () => { if (spendThrows) throw new Error('ledger down'); return 0 },
   listRunCostsSince: (sinceMs: number) => {
     if (spendThrows) throw new Error('ledger down')
-    return costRows.filter((r) => r.occurredAt >= sinceMs)
+    return costRows.filter((r) => r.occurredAt >= sinceMs).map((r) => ({ usageKind: r.usageKind ?? 'tokens', ...r }))
   },
   openBudgetIncident: (input: Record<string, unknown>) => {
     const key = `${input.scope}:${input.scopeId ?? ''}:${input.lane}:${input.window}:${input.windowStartMs}:${input.kind}`
@@ -92,8 +92,12 @@ mock.module('../../src/core/execution-ledger', () => ({
 // The spend engine's observed-usage side (usage.db) — empty unless a test seeds it.
 type UsageCell = { agent: string; day: string; model: string; tokens: { input: number; output: number; cacheRead: number; cacheWrite: number; total: number }; costUsdMicros: number | null; costedMessages: number; messageCount: number }
 const usageCells: UsageCell[] = []
+let usageReadFails = false
 mock.module('../../packages/core/src/usage-history/store', () => ({
-  usageByAgentModelDaySince: (sinceDay: string) => usageCells.filter((c) => c.day >= sinceDay),
+  readUsageByAgentModelDaySince: (sinceDay: string) => {
+    if (usageReadFails) throw new Error('usage store unavailable')
+    return usageCells.filter((c) => c.day >= sinceDay)
+  },
   toLocalDayKey: (tsMs: number) => {
     const d = new Date(tsMs)
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -102,8 +106,12 @@ mock.module('../../packages/core/src/usage-history/store', () => ({
 
 // Settings: real defaults except the kill switch, which tests toggle.
 let dispatchPausedSetting = false
+let settingsThrows = false
 mock.module('../../src/core/settings', () => ({
-  getSettings: () => ({ dispatch: { paused: dispatchPausedSetting, maxConcurrentTurns: 3, maxTurnsPerAgent: 1, oversizedOutputBytes: 131072 } }),
+  getSettings: () => {
+    if (settingsThrows) throw new Error('settings unavailable')
+    return { dispatch: { paused: dispatchPausedSetting, maxConcurrentTurns: 3, maxTurnsPerAgent: 1, oversizedOutputBytes: 131072 } }
+  },
 }))
 
 import { budgetGate, deferForBudget } from '../../src/core/dispatch'
@@ -117,6 +125,8 @@ beforeEach(() => {
   auditCalls.length = 0
   costRows.length = 0
   usageCells.length = 0
+  usageReadFails = false
+  settingsThrows = false
   incidentKeys.clear()
   incidentOpens.length = 0
 })
@@ -141,6 +151,34 @@ describe('budgetGate', () => {
     expect(auditCalls.some((c) => c[1] === 'budget.deferred')).toBe(true)
   })
 
+  it('FAIL-CLOSED: global totals defer when observed usage cannot be read', async () => {
+    budgetPolicy = GLOBAL_10
+    usageReadFails = true
+
+    const decision = await budgetGate('pixel', dir)
+
+    expect(decision).toMatchObject({ action: 'defer', cause: 'spend_evidence_unavailable' })
+    expect(incidentOpens).toHaveLength(0)
+  })
+
+  it('observed usage outages do not block attributed-only provider caps', async () => {
+    budgetPolicy = { rules: [{ scope: 'provider', scopeId: 'google', lane: 'metered', dailyCap: 10 }] }
+    billingImpl = () => ({ provider: 'google', lane: 'metered', model: 'google/gemini-3-flash' })
+    costRows.push({ runId: 'provider-known', agent: 'pixel', model: 'google/gemini-3-flash', provider: 'google', lane: 'metered', totalTokens: 1, costUsdMicros: 1_000_000, occurredAt: Date.now() })
+    usageReadFails = true
+
+    expect(await budgetGate('pixel', dir)).toEqual({ action: 'allow' })
+  })
+
+  it('a known cap breach still opens an incident when observed usage is unavailable', async () => {
+    budgetPolicy = GLOBAL_10
+    costRows.push({ runId: 'known-cap-with-usage-outage', agent: 'pixel', model: 'google/g', provider: 'google', lane: 'metered', totalTokens: 1, costUsdMicros: 10_000_000, occurredAt: Date.now() })
+    usageReadFails = true
+
+    expect(await budgetGate('pixel', dir)).toMatchObject({ action: 'defer', cause: 'threshold' })
+    expect(incidentOpens).toHaveLength(1)
+  })
+
   it('defers on attributed spend at the cap (parity with the pre-engine gate)', async () => {
     budgetPolicy = GLOBAL_10
     costRows.push({ runId: 'r1', agent: 'pixel', model: 'google/gemini-3-flash', provider: 'google', lane: 'metered', totalTokens: 100, costUsdMicros: 10_000_000, occurredAt: Date.now() })
@@ -149,6 +187,7 @@ describe('budgetGate', () => {
 
   it('counts UNATTRIBUTED observed spend toward the cap (total-observed basis, V4)', async () => {
     budgetPolicy = GLOBAL_10
+    billingImpl = () => ({ provider: 'google', lane: 'metered', model: 'google/gemini-3-flash' })
     const now = Date.now()
     const d = new Date(now)
     const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -181,6 +220,146 @@ describe('budgetGate', () => {
     billingImpl = () => ({ provider: 'openai-codex', lane: 'subscription', model: 'openai-codex/gpt-5.5-codex' })
     costRows.push({ runId: 'r-m', agent: 'pixel', model: 'google/gemini-3-flash', provider: 'google', lane: 'metered', totalTokens: 10, costUsdMicros: 99_000_000, occurredAt: Date.now() })
     expect((await budgetGate('pixel', dir)).action).toBe('allow')
+  })
+
+  it('FAIL-CLOSED: defers a subscription turn when matching token evidence is incomplete', async () => {
+    budgetPolicy = { rules: [{ scope: 'agent', scopeId: 'pixel', lane: 'subscription', dailyCap: 10_000 }] }
+    billingImpl = () => ({ provider: 'openai-codex', lane: 'subscription', model: 'openai-codex/gpt-5.5-codex' })
+    costRows.push({
+      runId: 'turn:unknown-subscription-tokens',
+      agent: 'pixel',
+      model: 'openai-codex/gpt-5.5-codex',
+      provider: 'openai-codex',
+      lane: 'subscription',
+      usageKind: 'tokens',
+      totalTokens: null,
+      costUsdMicros: null,
+      occurredAt: Date.now(),
+    })
+
+    const decision = await budgetGate('pixel', dir)
+
+    expect(decision).toMatchObject({
+      action: 'defer',
+      cause: 'spend_evidence_incomplete',
+      unit: 'tokens',
+      spentValue: 0,
+      unknownEvidenceCount: 1,
+    })
+    // Evidence gaps are transient, so they fail closed without fabricating a
+    // durable cap-reached incident.
+    expect(incidentOpens).toHaveLength(0)
+  })
+
+  it('FAIL-CLOSED: an unknown historical lane/provider can match a provider token cap', async () => {
+    budgetPolicy = { rules: [{ scope: 'provider', scopeId: 'openai-codex', lane: 'subscription', dailyCap: 10_000 }] }
+    billingImpl = () => ({ provider: 'openai-codex', lane: 'subscription', model: 'openai-codex/gpt-5.5-codex' })
+    costRows.push({
+      runId: 'turn:unknown-subscription-dimensions',
+      agent: 'other-agent',
+      model: null,
+      provider: null,
+      lane: null,
+      usageKind: 'tokens',
+      totalTokens: null,
+      costUsdMicros: null,
+      occurredAt: Date.now(),
+    })
+
+    expect(await budgetGate('pixel', dir)).toMatchObject({
+      action: 'defer',
+      cause: 'spend_evidence_incomplete',
+      unknownEvidenceCount: 1,
+    })
+  })
+
+  it('FAIL-CLOSED: known tokens with an unresolved historical lane do not become an exact zero', async () => {
+    budgetPolicy = { rules: [{ scope: 'global', lane: 'subscription', dailyCap: 10_000 }] }
+    billingImpl = () => ({ provider: 'openai-codex', lane: 'subscription', model: 'openai-codex/gpt-5.5-codex' })
+    costRows.push({
+      runId: 'turn:known-tokens-unknown-lane',
+      agent: 'pixel',
+      model: 'openai-codex/gpt-5.5-codex',
+      provider: 'openai-codex',
+      lane: null,
+      usageKind: 'tokens',
+      totalTokens: 900,
+      costUsdMicros: null,
+      occurredAt: Date.now(),
+    })
+
+    expect(await budgetGate('pixel', dir)).toMatchObject({
+      action: 'defer',
+      cause: 'spend_evidence_incomplete',
+      unit: 'tokens',
+      spentValue: 0,
+      unknownEvidenceCount: 1,
+    })
+    expect(incidentOpens).toHaveLength(0)
+  })
+
+  it('FAIL-CLOSED: an unpriced metered media row blocks without fabricating a cap incident', async () => {
+    budgetPolicy = { rules: [{ scope: 'agent', scopeId: 'pixel', lane: 'metered', dailyCap: 10 }] }
+    billingImpl = () => ({ provider: 'openai', lane: 'metered', model: 'openai/gpt-image-2' })
+    costRows.push({
+      runId: 'image:pricing-hook-failed',
+      agent: 'pixel',
+      model: 'openai/gpt-image-2',
+      provider: 'openai',
+      lane: 'metered',
+      usageKind: 'media',
+      totalTokens: null,
+      costUsdMicros: null,
+      occurredAt: Date.now(),
+    })
+
+    expect(await budgetGate('pixel', dir)).toMatchObject({
+      action: 'defer',
+      cause: 'spend_evidence_incomplete',
+      unit: 'usd_micros',
+      spentValue: 0,
+      unknownEvidenceCount: 1,
+    })
+    expect(incidentOpens).toHaveLength(0)
+  })
+
+  it('FAIL-CLOSED: partial observed costs retain their known subtotal', async () => {
+    budgetPolicy = GLOBAL_10
+    billingImpl = () => ({ provider: 'google', lane: 'metered', model: 'google/gemini-3-flash' })
+    const d = new Date()
+    usageCells.push({
+      agent: 'pixel',
+      day: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`,
+      model: 'google/gemini-3-flash',
+      tokens: { input: 500, output: 100, cacheRead: 0, cacheWrite: 0, total: 600 },
+      costUsdMicros: 250_000,
+      costedMessages: 1,
+      messageCount: 3,
+    })
+
+    expect(await budgetGate('pixel', dir)).toMatchObject({
+      action: 'defer',
+      cause: 'spend_evidence_incomplete',
+      unit: 'usd_micros',
+      spentValue: 250_000,
+      unknownEvidenceCount: 2,
+    })
+    expect(incidentOpens).toHaveLength(0)
+  })
+
+  it('a proven threshold breach dominates simultaneous evidence gaps', async () => {
+    budgetPolicy = GLOBAL_10
+    costRows.push(
+      { runId: 'known-cap', agent: 'pixel', model: 'google/g', provider: 'google', lane: 'metered', totalTokens: 10, costUsdMicros: 10_000_000, occurredAt: Date.now() },
+      { runId: 'unpriced', agent: 'pixel', model: 'openai/gpt-image-2', provider: 'openai', lane: 'metered', usageKind: 'media', totalTokens: null, costUsdMicros: null, occurredAt: Date.now() },
+    )
+
+    expect(await budgetGate('pixel', dir)).toMatchObject({
+      action: 'defer',
+      cause: 'threshold',
+      spentValue: 10_000_000,
+    })
+    expect(incidentOpens).toHaveLength(1)
   })
 
   it('a breach opens ONE incident and ONE audit across repeated gate calls (durable debounce)', async () => {
@@ -226,6 +405,11 @@ describe('budgetGate', () => {
     // gate re-assembles for today and sees the over-cap spend.
     const emptyFacets = () => Promise.resolve({
       computedAt: 0,
+      observedUsageEvidence: { status: 'available' as const },
+      spendEvidence: {
+        daily: { status: 'complete' as const, gaps: [] },
+        monthly: { status: 'complete' as const, gaps: [] },
+      },
       daily: { startMs: 0, global: { meteredUsdMicros: 0, meteredTokens: 0, subscriptionTokens: 0, unpricedMeteredTokens: 0, unattributed: { meteredUsdMicros: 0, meteredTokens: 0, subscriptionTokens: 0 } }, byAgent: {}, byProvider: {}, byModel: {} },
       monthly: { startMs: 0, global: { meteredUsdMicros: 0, meteredTokens: 0, subscriptionTokens: 0, unpricedMeteredTokens: 0, unattributed: { meteredUsdMicros: 0, meteredTokens: 0, subscriptionTokens: 0 } }, byAgent: {}, byProvider: {}, byModel: {} },
     })
@@ -273,6 +457,98 @@ describe('budgetGate', () => {
     // A different provider is unaffected.
     const allowed = await gateBilledMediaCall({ agent: 'pixel', model: 'black-forest-labs/flux-pro' })
     expect(allowed.allowed).toBe(true)
+  })
+
+  it('MEDIA GATE: returns an evidence-specific refusal for unpriced metered work', async () => {
+    budgetPolicy = { rules: [{ scope: 'global', lane: 'metered', dailyCap: 10 }] }
+    billingImpl = () => ({ provider: 'openai', lane: 'metered', model: 'openai/gpt-image-2' })
+    costRows.push({
+      runId: 'image:unpriced',
+      agent: 'pixel',
+      model: 'openai/gpt-image-2',
+      provider: 'openai',
+      lane: 'metered',
+      usageKind: 'media',
+      totalTokens: null,
+      costUsdMicros: null,
+      occurredAt: Date.now(),
+    })
+
+    const refused = await gateBilledMediaCall({ agent: 'pixel', model: 'openai/gpt-image-2' })
+
+    expect(refused.allowed).toBe(false)
+    if (!refused.allowed) {
+      expect(refused.refusal.code).toBe('budget_evidence_incomplete')
+      expect(refused.refusal.spentValue).toBe(0)
+      expect(refused.refusal.message).toContain('evidence is incomplete')
+    }
+    expect(incidentOpens).toHaveLength(0)
+  })
+
+  it('MEDIA GATE: reports an unavailable ledger as evidence failure, not a fake $0 cap', async () => {
+    budgetPolicy = GLOBAL_10
+    spendThrows = true
+
+    const refused = await gateBilledMediaCall({ agent: 'pixel', model: 'openai/gpt-image-2' })
+
+    expect(refused.allowed).toBe(false)
+    if (!refused.allowed) {
+      expect(refused.refusal.code).toBe('budget_evidence_incomplete')
+      expect(refused.refusal.message).toContain('evidence is unavailable')
+      expect(refused.refusal.message).not.toContain('$0.00')
+    }
+  })
+
+  it('MEDIA GATE: reports an unavailable observed-usage store without blaming the ledger', async () => {
+    budgetPolicy = GLOBAL_10
+    usageReadFails = true
+
+    const refused = await gateBilledMediaCall({ agent: 'pixel', model: 'openai/gpt-image-2' })
+
+    expect(refused.allowed).toBe(false)
+    if (!refused.allowed) {
+      expect(refused.refusal.code).toBe('budget_evidence_incomplete')
+      expect(refused.refusal.message).toContain('spend evidence can be read')
+      expect(refused.refusal.message).not.toContain('ledger')
+    }
+  })
+
+  it('MEDIA GATE: unexpected gate failure is still evidence-specific for machine consumers', async () => {
+    settingsThrows = true
+
+    const refused = await gateBilledMediaCall({ agent: 'pixel', model: 'openai/gpt-image-2' })
+
+    expect(refused.allowed).toBe(false)
+    if (!refused.allowed) {
+      expect(refused.refusal.code).toBe('budget_evidence_incomplete')
+      expect(refused.refusal.message).toContain('gate unavailable')
+    }
+  })
+
+  it('MEDIA GATE: maps an open pause-mode budget incident to dispatch paused', async () => {
+    budgetPolicy = { rules: [{ scope: 'global', lane: 'metered', dailyCap: 10, atCap: 'pause' }] }
+    billingImpl = () => ({ provider: 'openai', lane: 'metered', model: 'openai/gpt-image-2' })
+    costRows.push({
+      runId: 'known-pause-cap',
+      agent: 'pixel',
+      model: 'openai/gpt-image-2',
+      provider: 'openai',
+      lane: 'metered',
+      usageKind: 'media',
+      totalTokens: null,
+      costUsdMicros: 10_000_000,
+      occurredAt: Date.now(),
+    })
+    expect(await budgetGate('pixel', dir)).toMatchObject({ action: 'defer', cause: 'threshold' })
+    costRows.length = 0
+
+    const refused = await gateBilledMediaCall({ agent: 'pixel', model: 'openai/gpt-image-2' })
+
+    expect(refused.allowed).toBe(false)
+    if (!refused.allowed) {
+      expect(refused.refusal.code).toBe('dispatch_paused')
+      expect(refused.refusal.message).toContain('pause-mode budget incident')
+    }
   })
 
   it('MEDIA GATE: warn does not block; kill switch does', async () => {

@@ -1,41 +1,77 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
 import { usePluginEvent } from '@makinbakin/sdk/hooks'
-
-interface HealthSummaryResponse {
-  doctor: { summary?: { errors?: number; warnings?: number; total?: number } } | null
-}
+import type { NavBadgeTone } from '@makinbakin/sdk'
+import {
+  useHealthResource,
+  type HealthResourceRequestContext,
+} from './use-health-resource'
 
 interface UseHealthSummaryResult {
-  errors: number | null
+  count: number | null
+  tone: Extract<NavBadgeTone, 'error' | 'attention'>
+}
+
+interface HealthSummaryPayload {
+  incidents: Array<{
+    id: string
+    disposition: 'advisory' | 'watch' | 'action_required'
+  }>
+}
+
+type HealthSummaryDisposition = HealthSummaryPayload['incidents'][number]['disposition']
+
+function isHealthSummaryDisposition(value: unknown): value is HealthSummaryDisposition {
+  return value === 'advisory' || value === 'watch' || value === 'action_required'
+}
+
+function parseHealthSummary(value: unknown): HealthSummaryPayload {
+  if (typeof value !== 'object' || value === null || !('incidents' in value) || !Array.isArray(value.incidents)) {
+    throw new Error('Health summary response was invalid')
+  }
+  const incidents = value.incidents.map((incident) => {
+    if (typeof incident !== 'object' || incident === null
+      || !('id' in incident) || typeof incident.id !== 'string'
+      || !('disposition' in incident)
+      || !isHealthSummaryDisposition(incident.disposition)) {
+      throw new Error('Health summary response was invalid')
+    }
+    return {
+      id: incident.id,
+      disposition: incident.disposition,
+    }
+  })
+  return { incidents }
+}
+
+async function requestHealthSummary(
+  url: string,
+  context: HealthResourceRequestContext,
+): Promise<HealthSummaryPayload> {
+  const response = await fetch(url, { signal: context.signal })
+  if (!response.ok) throw new Error(`Failed to load health summary (${response.status})`)
+  return parseHealthSummary(await response.json())
 }
 
 /**
- * Count of failing (`status: 'error'`) doctor checks for the Health nav
- * badge. Reads the existing `/summary` aggregate (cheap, in-memory) and
- * refetches on each SSE 'doctor.run' event — i.e. on every
- * `doctor.run` (startup / watchdog interval / on-demand). No new EventSource,
- * no poll. `errors` is null until the first load.
+ * Unique non-advisory incident count for the Health nav badge. The canonical
+ * cached report is cheap to project and is refreshed through the shell's one
+ * plugin-event connection; this hook opens no EventSource and does not poll.
  */
 export function useHealthSummary(): UseHealthSummaryResult {
-  const [errors, setErrors] = useState<number | null>(null)
+  const resource = useHealthResource<HealthSummaryPayload>('/api/plugins/health/doctor', {
+    request: requestHealthSummary,
+  })
+  usePluginEvent('health.report.changed', () => { void resource.refresh('reconcile') })
 
-  const refresh = useCallback(async () => {
-    try {
-      const response = await fetch('/api/plugins/health/summary')
-      if (!response.ok) throw new Error(`Failed to load health summary (${response.status})`)
-      const data = await response.json() as HealthSummaryResponse
-      setErrors(data.doctor?.summary?.errors ?? 0)
-    } catch (err) {
-      // Keep the last good value; the next doctor.run retries. Log at debug
-      // so a persistently-failing summary is diagnosable without noise.
-      console.debug('[health] nav-badge summary fetch failed', err)
-    }
-  }, [])
-
-  useEffect(() => { void refresh() }, [refresh])
-  usePluginEvent('doctor.run', refresh)
-
-  return { errors }
+  if (!resource.data) return { count: null, tone: 'attention' }
+  const incidents = [...new Map(
+    resource.data.incidents
+      .filter((incident) => incident.disposition !== 'advisory')
+      .map((incident) => [incident.id, incident]),
+  ).values()]
+  return {
+    count: incidents.length,
+    tone: incidents.some((incident) => incident.disposition === 'action_required') ? 'error' : 'attention',
+  }
 }

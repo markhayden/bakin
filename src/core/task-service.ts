@@ -249,6 +249,7 @@ export async function moveTaskWithEffects(
   }
   recordUsage({
     kind: 'agent',
+    activityClass: 'user',
     name: `task.${to.toLowerCase()}`,
     agent,
     durationMs: null,
@@ -335,6 +336,7 @@ export async function blockTaskWithEffects(
   appendAudit(contentDir, 'task.blocked', agent, { id: taskId, title, reason }, channel)
   recordUsage({
     kind: 'agent',
+    activityClass: 'user',
     name: 'task.blocked',
     agent,
     durationMs: null,
@@ -533,6 +535,7 @@ export async function createTaskWithEffects(opts: {
   }, opts.channel)
   recordUsage({
     kind: 'agent',
+    activityClass: 'user',
     name: 'task.created',
     agent: opts.createdBy || 'system',
     durationMs: null,
@@ -591,9 +594,10 @@ export async function reportComplete(
     const orchestratorId = await getRuntimeMainAgentId(runtime)
     const result = await runtime.messaging.send({
       agentId: orchestratorId,
+      activityClass: 'system',
       content: `TASK COMPLETE: ${title} — ${summary}`,
     })
-    await meterAgentTurn({ agent: orchestratorId, result, name: 'orchestrator-notify' })
+    await meterAgentTurn({ agent: orchestratorId, activityClass: 'system', result, name: 'orchestrator-notify' })
   } catch (err) {
     log.warn('Failed to notify orchestrator of task completion', err)
   }

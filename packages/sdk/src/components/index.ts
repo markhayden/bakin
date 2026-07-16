@@ -77,8 +77,12 @@ export { MarkdownEditor } from '@/components/markdown-editor'
 export { ModelSelect } from '@/components/model-select'
 /** Standard plugin page wrapper with header, content area, and toaster. */
 export { PageLayout } from '@/components/page-layout'
+/** Client-side link for runtime-registered plugin and cross-plugin routes. */
+export { PluginLink } from './plugin-link'
+export type { PluginLinkProps } from './plugin-link'
 /** Plugin page header with title, count badge, search, and action buttons. */
 export { PluginHeader } from '@/components/plugin-header'
+export type { PluginHeaderProps } from '@/components/plugin-header'
 /** Render a settings form from a PluginSettingsSchema definition. */
 export { PluginSettingsRenderer } from '@/components/plugin-settings-renderer'
 export type { PluginSettingsSchema } from '@/components/plugin-settings-renderer'
@@ -137,9 +141,18 @@ export { formatRelativeTime, formatAbsoluteTime } from '@/components/conversatio
 /** Icon component for a notification channel (Discord, Slack, email, etc.). */
 export { ChannelIcon } from '@bakin/workflows/hooks/channel-icon'
 
-// Chart kit (#385) — hand-rolled, validated palette, no chart library.
+// Chart kit (#385) — dependency-free SVG charts with exact accessible tables.
 
-/** Stacked column chart with legend toggle + per-column hover breakdown. */
+/** Exact table/disclosure shared by visual chart summaries. */
+export { ChartDataTable } from '@/components/charts/chart-data-table'
+export type { ChartDataTableProps, ChartDatum, ChartSeries } from '@/components/charts/chart-data-table'
+/** Multi-series SVG line chart with keyboard-equivalent marks. */
+export { LineChart } from '@/components/charts/line-chart'
+export type { LineChartProps } from '@/components/charts/line-chart'
+/** Grouped or stacked SVG bar chart with keyboard-equivalent marks. */
+export { BarChart } from '@/components/charts/bar-chart'
+export type { BarChartProps } from '@/components/charts/bar-chart'
+/** Stacked column chart with legend toggle + per-column pointer/keyboard breakdown. */
 export { StackedColumnChart } from '@/components/charts/stacked-column-chart'
 export type { StackedColumnChartProps, StackedColumnDatum } from '@/components/charts/stacked-column-chart'
 /** Tiny inline SVG trend line for embedding beside a stat. */

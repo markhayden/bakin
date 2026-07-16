@@ -1,9 +1,9 @@
 {
   "id": "health",
   "name": "Health",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "bakin": ">=1.0.0",
-  "description": "System health dashboard — MCP stats, diagnostics, and uptime",
+  "description": "Action-first system health, Search readiness, diagnostics, and repair",
   "contentFiles": [],
   "secrets": [],
   "dependencies": [],
@@ -13,56 +13,127 @@
     "runtime.agents",
     "runtime.channels",
     "runtime.skills",
-    "search.read"
+    "search.read",
+    "search.write"
   ],
   "contributes": {
     "apiRoutes": [
       {
         "method": "GET",
         "path": "/checks",
-        "summary": "List registered plugin health checks (metadata only; does not execute them)."
-      },
-      {
-        "method": "GET",
-        "path": "/doctor",
-        "summary": "Run or read cached doctor diagnostics"
-      },
-      {
-        "method": "GET",
-        "path": "/registry",
-        "summary": "Inspect registered plugin and runtime surfaces"
-      },
-      {
-        "method": "GET",
-        "path": "/search-status",
-        "summary": "Read search indexing health and adapter status"
+        "summary": "List canonical health-check metadata"
       },
       {
         "method": "GET",
         "path": "/summary",
-        "summary": "Get a compact system health summary"
-      },
-      {
-        "method": "GET",
-        "path": "/usage",
-        "summary": "Get current token and cost usage metrics"
+        "summary": "Get live operational facts"
       },
       {
         "method": "GET",
         "path": "/usage-feed",
-        "summary": "Stream usage updates for the health dashboard"
+        "summary": "Get classified activity and failure buckets"
+      },
+      {
+        "method": "GET",
+        "path": "/interaction-summary",
+        "summary": "Get compact all-interaction dashboard telemetry"
+      },
+      {
+        "method": "GET",
+        "path": "/search-status",
+        "summary": "Read detailed Search adapter and index status"
+      },
+      {
+        "method": "GET",
+        "path": "/search-readiness",
+        "summary": "Read canonical Search readiness"
+      },
+      {
+        "method": "GET",
+        "path": "/search-telemetry",
+        "summary": "Get Search activity and canonical evidence"
+      },
+      {
+        "method": "GET",
+        "path": "/usage",
+        "summary": "Get latest session token usage"
+      },
+      {
+        "method": "GET",
+        "path": "/usage-snapshot",
+        "summary": "Get evidence-qualified latest agent usage"
+      },
+      {
+        "method": "GET",
+        "path": "/usage-history",
+        "summary": "Get historical agent token usage"
+      },
+      {
+        "method": "GET",
+        "path": "/live-now",
+        "summary": "Get in-flight dispatch runs"
+      },
+      {
+        "method": "GET",
+        "path": "/agent-effort",
+        "summary": "Compare agent effort and outcomes"
+      },
+      {
+        "method": "GET",
+        "path": "/registry",
+        "summary": "Inspect installed plugin surfaces"
+      },
+      {
+        "method": "GET",
+        "path": "/doctor",
+        "summary": "Read the canonical Health report"
+      },
+      {
+        "method": "POST",
+        "path": "/doctor/run",
+        "summary": "Run fresh Health diagnostics"
+      },
+      {
+        "method": "POST",
+        "path": "/doctor/repair/plan",
+        "summary": "Plan targeted Health repairs"
+      },
+      {
+        "method": "POST",
+        "path": "/doctor/repair/apply",
+        "summary": "Apply and verify a held repair plan"
+      },
+      {
+        "method": "POST",
+        "path": "/doctor/delegate",
+        "summary": "Delegate targeted Health incidents"
+      },
+      {
+        "method": "GET",
+        "path": "/doctor/repair",
+        "summary": "List delegated repair requests"
+      },
+      {
+        "method": "GET",
+        "path": "/doctor/repair/:requestId",
+        "summary": "Get a delegated repair request"
+      },
+      {
+        "method": "POST",
+        "path": "/doctor/repair/:requestId/verify",
+        "summary": "Verify a delegated repair request"
       }
     ],
     "execTools": [
       {
         "name": "bakin_exec_health_doctor",
-        "summary": "Run system diagnostics (agent roster, skill sync, runtime, taskboard, assets, etc",
-        "description": "Run system diagnostics (agent roster, skill sync, runtime, taskboard, assets, etc.). Returns detailed check results. Use fresh=true to force a full re-check instead of returning cached results."
+        "summary": "Return the canonical Health report",
+        "description": "Return the canonical Health report. Use fresh=true to join or start a full diagnostic sweep first."
       },
       {
         "name": "bakin_exec_health_status",
-        "summary": "Get a quick system health summary — uptime, memory, active MCP sessions, and doctor error/warning counts",
-        "description": "Get a quick system health summary — uptime, memory, active MCP sessions, and doctor error/warning counts. Useful for checking system state before starting work."
+        "summary": "Get a quick canonical health and live-runtime summary",
+        "description": "Get uptime, memory, summed connected sessions, recent activity failures, canonical overall status, and incident counts."
       }
     ],
     "cliCommands": [
@@ -74,7 +145,7 @@
       {
         "name": "doctor",
         "usage": "bakin doctor [--full] [--notify-agent] [--fix|--delegate] [--yes]",
-        "summary": "Run health checks, apply explicit safe fixes, or create a delegated repair task."
+        "summary": "Run canonical health checks, apply selected repairs, or create a delegated repair task."
       }
     ],
     "docs": {

@@ -77,10 +77,6 @@ export class AntflyAdapter implements SearchAdapter {
     return this.client.available()
   }
 
-  getHealthChecks() {
-    return this.client.getHealthChecks()
-  }
-
   capabilities() {
     return this.client.capabilities()
   }

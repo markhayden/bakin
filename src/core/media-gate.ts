@@ -18,7 +18,7 @@ const log = createLogger('media-gate')
 
 /** Typed refusal a billed media tool relays to the agent (cost-control v2). */
 export interface MediaGateRefusal {
-  code: 'budget_exceeded' | 'dispatch_paused'
+  code: 'budget_exceeded' | 'budget_evidence_incomplete' | 'dispatch_paused'
   scope?: string
   scopeId?: string
   lane?: 'metered' | 'subscription'
@@ -47,6 +47,41 @@ export async function gateBilledMediaCall(opts: { agent: string; model: string }
     }
     const decision = await budgetGate(opts.agent, contentDir, undefined, { model: opts.model, billedMedia: true })
     if (decision.action !== 'defer') return { allowed: true }
+    if (decision.cause === 'spend_evidence_incomplete' || decision.cause === 'spend_evidence_unavailable') {
+      const unavailable = decision.cause === 'spend_evidence_unavailable'
+      return {
+        allowed: false,
+        refusal: {
+          code: 'budget_evidence_incomplete',
+          scope: decision.rule.scope,
+          ...(decision.rule.scopeId ? { scopeId: decision.rule.scopeId } : {}),
+          lane: decision.rule.lane,
+          window: decision.window,
+          unit: decision.unit,
+          capValue: decision.capValue,
+          spentValue: decision.spentValue,
+          message: unavailable
+            ? 'Budget spend evidence is unavailable — billed media is blocked until spend evidence can be read.'
+            : 'Budget spend evidence is incomplete — billed media is blocked until spend can be verified.',
+        },
+      }
+    }
+    if (decision.cause === 'open_pause_incident') {
+      return {
+        allowed: false,
+        refusal: {
+          code: 'dispatch_paused',
+          scope: decision.rule.scope,
+          ...(decision.rule.scopeId ? { scopeId: decision.rule.scopeId } : {}),
+          lane: decision.rule.lane,
+          window: decision.window,
+          unit: decision.unit,
+          capValue: decision.capValue,
+          spentValue: decision.spentValue,
+          message: 'A pause-mode budget incident is blocking dispatch and billed media until an operator resolves it.',
+        },
+      }
+    }
     const fmt = (v: number) => (decision.unit === 'usd_micros' ? `$${(v / 1_000_000).toFixed(2)}` : `${v.toLocaleString()} tokens`)
     const scopeLabel = decision.rule.scopeId ? `${decision.rule.scope} '${decision.rule.scopeId}'` : decision.rule.scope
     return {
@@ -67,7 +102,7 @@ export async function gateBilledMediaCall(opts: { agent: string; model: string }
     log.error('Billed-media gate failed; refusing (fail-closed)', err, { agent: opts.agent, model: opts.model })
     return {
       allowed: false,
-      refusal: { code: 'budget_exceeded', message: 'Budget gate unavailable — billed media is blocked (fail-closed).' },
+      refusal: { code: 'budget_evidence_incomplete', message: 'Budget gate unavailable — billed media is blocked (fail-closed).' },
     }
   }
 }

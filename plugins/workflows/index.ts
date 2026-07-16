@@ -98,22 +98,31 @@ const workflowsPlugin: BakinPlugin = definePlugin({
     registerWorkflowHooks(ctx)
 
     // ─── Health checks (migrated out of core/doctor.ts per #137) ─────
+    ctx.registerHealthRepairAction(staleWorkflowInstancesRepair(getContentDir()))
+    ctx.registerHealthRepairAction(workflowSkillDriftRepair(getContentDir()))
     ctx.registerHealthCheck({
       id: 'definitions',
       name: 'Workflow definition integrity',
+      description: 'Checks workflow schemas and every skill or nested-workflow reference.',
+      group: { key: 'workflows', label: 'Workflows' },
+      maxAgeMs: 5 * 60_000,
       run: () => checkWorkflowDefinitions(getContentDir()),
     })
     ctx.registerHealthCheck({
       id: 'stale-instances',
       name: 'Stale workflow instances',
+      description: 'Finds workflow instances that are stalled or belong to deleted tasks.',
+      group: { key: 'workflows', label: 'Workflows' },
+      maxAgeMs: 2 * 60_000,
       run: () => checkStaleWorkflowInstances(getContentDir()),
-      repair: staleWorkflowInstancesRepair(getContentDir()),
     })
     ctx.registerHealthCheck({
       id: 'skills',
       name: 'Workflow skills validation',
+      description: 'Checks workflow skill metadata and managed-source drift.',
+      group: { key: 'workflows', label: 'Workflows' },
+      maxAgeMs: 5 * 60_000,
       run: async () => checkWorkflowSkills(getContentDir()),
-      repair: workflowSkillDriftRepair(getContentDir()),
     })
 
     // ─── MCP Exec Tools ────────────────────────────────────────────────

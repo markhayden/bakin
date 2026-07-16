@@ -86,6 +86,7 @@ describe('memory tiers → usage scan', () => {
 
     const full = await adapter.memory.getEntry(SESSION_TIER_ID, entries[0].id, { agentId: 'main' })
     const parsed = parseSessionUsageMessages(full!.content)
+    expect(parsed.integrity).toEqual({ status: 'complete', malformedLines: 0 })
     expect(parsed.sessionId).toBeTruthy()
     expect(parsed.messages.length).toBe(2)
     expect(parsed.messages[0].model).toBe('fake-model')

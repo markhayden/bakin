@@ -714,7 +714,7 @@ curl -sS \
   -X PUT \
   'http://localhost:3737/api/plugins/brands/<brandId>' \
   -H 'Content-Type: application/json' \
-  --data '{"name":"value","description":"value","palette":[{"name":"value","hex":"value","usage":"value"}],"rules":["value"],"terminology":[{"term":"value","rule":"value"}],"cardDocs":["value"],"draft":true,"logos":[{"assetId":"value","variant":"value"}],"assetGroups":[{"name":"value","description":"value","assetIds":["value"]}],"defaultImageReferences":["value"],"source":{"repo":"value","ref":"value","commit":"value","importedAt":"value"}}'
+  --data '{"name":"value","description":"value","palette":[{"name":"value","hex":"value","usage":"value"}],"rules":["value"],"terminology":[{"term":"value","rule":"value"}],"cardDocs":["value"],"disabledLessons":["value"],"logos":[{"assetId":"value","variant":"value"}],"assetGroups":[{"name":"value","description":"value","assetIds":["value"]}],"defaultImageReferences":["value"],"source":{"repo":"value","ref":"value","commit":"value","importedAt":"value"}}'
 ```
 </OpenApiReference>
 
@@ -765,6 +765,16 @@ curl -sS \
 ```
 </OpenApiReference>
 
+<OpenApiReference operationId="brands.post.brand-id-docs-kind-name-brainstorm">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/brands/<brandId>/docs/<kind>/<name>/brainstorm' \
+  -H 'Content-Type: application/json' \
+  --data '{"agent":"value","message":"value","history":[{"role":"user","content":"value"}],"docContent":"value"}'
+```
+</OpenApiReference>
+
 <OpenApiReference operationId="brands.post.brand-id-export">
 ```sh frame="terminal" showLineNumbers
 curl -sS \
@@ -800,6 +810,14 @@ curl -sS \
 ```
 </OpenApiReference>
 
+<OpenApiReference operationId="brands.post.brand-id-unpublish">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/brands/<brandId>/unpublish'
+```
+</OpenApiReference>
+
 <OpenApiReference operationId="brands.get.blocked-tasks">
 ```sh frame="terminal" showLineNumbers
 curl -sS \
@@ -813,7 +831,7 @@ curl -sS \
   -X POST \
   'http://localhost:3737/api/plugins/brands/builder' \
   -H 'Content-Type: application/json' \
-  --data '{"id":"value","name":"value","agent":"value","product":"value","audience":"value","tone":"value","competitors":"value","urls":"value","notes":"value","logoAssetId":"value"}'
+  --data '{"id":"value","name":"value","agent":"value","product":"value","audience":"value","tone":"value","competitors":"value","urls":"value","notes":"value","logoAssetId":"value","materialAssetIds":["value"]}'
 ```
 </OpenApiReference>
 
@@ -1033,7 +1051,7 @@ curl -sS \
   -X POST \
   'http://localhost:3737/api/plugins/health/doctor/delegate' \
   -H 'Content-Type: application/json' \
-  --data '{"accepted":true}'
+  --data '{"accepted":true,"target":"value"}'
 ```
 </OpenApiReference>
 
@@ -1065,14 +1083,17 @@ curl -sS \
   -X POST \
   'http://localhost:3737/api/plugins/health/doctor/repair/apply' \
   -H 'Content-Type: application/json' \
-  --data '{"accepted":true,"itemIds":["value"],"allowDestructive":true}'
+  --data '{"planId":"value","itemIds":["value"],"confirmedItemIds":["value"]}'
 ```
 </OpenApiReference>
 
-<OpenApiReference operationId="health.get.doctor-repair-plan">
+<OpenApiReference operationId="health.post.doctor-repair-plan">
 ```sh frame="terminal" showLineNumbers
 curl -sS \
-  'http://localhost:3737/api/plugins/health/doctor/repair/plan'
+  -X POST \
+  'http://localhost:3737/api/plugins/health/doctor/repair/plan' \
+  -H 'Content-Type: application/json' \
+  --data '{"target":"value"}'
 ```
 </OpenApiReference>
 
@@ -1087,6 +1108,13 @@ curl -sS \
 ```sh frame="terminal" showLineNumbers
 curl -sS \
   'http://localhost:3737/api/plugins/health/registry'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="health.get.search-readiness">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/health/search-readiness'
 ```
 </OpenApiReference>
 
@@ -1121,7 +1149,7 @@ curl -sS \
 <OpenApiReference operationId="health.get.usage-feed">
 ```sh frame="terminal" showLineNumbers
 curl -sS \
-  'http://localhost:3737/api/plugins/health/usage-feed?kind=<kind>&window=<window>&agent=<agent>'
+  'http://localhost:3737/api/plugins/health/usage-feed?kind=<kind>&window=<window>&agent=<agent>&includeRoutine=<includeRoutine>'
 ```
 </OpenApiReference>
 
@@ -2147,5 +2175,5 @@ curl -sS \
 </OpenApiReference>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Jul 12, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Jul 13, 2026 · Bakin 0.0.0-dev</span>
 </aside>

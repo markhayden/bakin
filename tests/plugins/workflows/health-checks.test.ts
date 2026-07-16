@@ -2,8 +2,8 @@
  * Workflow health checks — migration regression coverage.
  *
  * Asserts that the three functions moved out of src/core/doctor.ts
- * (#137) continue to produce `HealthCheckResult[]` rows with the same
- * shape and semantics as they did pre-migration. Exercises each check
+ * (#137) continue to produce canonical Health observations with the same
+ * operator-facing semantics. Exercises each check
  * against fixture workflow data written to a temp directory.
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach, mock } from 'bun:test'
@@ -97,6 +97,12 @@ import {
 const skillsDir = join(testDir, 'workflows', 'skills')
 const definitionsDir = join(testDir, 'workflows', 'definitions')
 const instancesDir = join(testDir, 'workflows', 'instances')
+const repairTarget = { type: 'all_actionable' as const, reportId: 'test-report' }
+
+function observations<T extends { outcome: string }>(result: T) {
+  if (result.outcome !== 'observed') throw new Error(`Expected observed workflow health, got ${result.outcome}`)
+  return (result as T & { observations: Array<{ key: string; status: string; summary: string; incident?: { resolution: { type: string } } }> }).observations
+}
 
 beforeAll(() => {
   mkdirSync(skillsDir, { recursive: true })
@@ -119,15 +125,15 @@ beforeEach(() => {
 
 describe('checkWorkflowSkills', () => {
   it('returns an ok result when the skills directory is empty', () => {
-    const results = checkWorkflowSkills(testDir)
+    const results = observations(checkWorkflowSkills(testDir))
     expect(results).toHaveLength(1)
-    expect(results[0].status).toBe('ok')
+    expect(results[0].status).toBe('healthy')
   })
 
   it('flags a skill missing YAML frontmatter', () => {
     writeFileSync(join(skillsDir, 'bad.md'), 'just some content, no frontmatter')
-    const results = checkWorkflowSkills(testDir)
-    expect(results.some(r => r.status === 'warn' && r.message.includes('no YAML frontmatter'))).toBe(true)
+    const results = observations(checkWorkflowSkills(testDir))
+    expect(results.some(r => r.status === 'warning' && r.summary.includes('no YAML frontmatter'))).toBe(true)
   })
 
   it('flags a skill missing output_schema', () => {
@@ -135,8 +141,8 @@ describe('checkWorkflowSkills', () => {
       join(skillsDir, 'no-schema.md'),
       '---\nname: no-schema\ndescription: test\n---\nbody',
     )
-    const results = checkWorkflowSkills(testDir)
-    expect(results.some(r => r.status === 'warn' && r.message.includes('no output_schema'))).toBe(true)
+    const results = observations(checkWorkflowSkills(testDir))
+    expect(results.some(r => r.status === 'warning' && r.summary.includes('no output_schema'))).toBe(true)
   })
 
   it('returns ok when all skills have output_schema', () => {
@@ -144,9 +150,9 @@ describe('checkWorkflowSkills', () => {
       join(skillsDir, 'good.md'),
       '---\nname: good\noutput_schema: { foo: string }\n---\nbody',
     )
-    const results = checkWorkflowSkills(testDir)
+    const results = observations(checkWorkflowSkills(testDir))
     expect(results).toHaveLength(1)
-    expect(results[0].status).toBe('ok')
+    expect(results[0].status).toBe('healthy')
   })
 
   it('flags stale local skills that shadow managed plugin skills', () => {
@@ -182,11 +188,11 @@ Return image_filename and promptAssetFilename after savePromptPacket.
 `,
     )
 
-    const results = checkWorkflowSkills(testDir)
+    const results = observations(checkWorkflowSkills(testDir))
 
-    const stale = results.find(result => result.message.includes('appears stale'))
-    expect(stale?.status).toBe('warn')
-    expect(stale?.autoFixable).toBe(false)
+    const stale = results.find(result => result.summary.includes('appears stale'))
+    expect(stale?.status).toBe('warning')
+    expect(stale?.incident?.resolution.type).toBe('navigate')
   })
 
   it('plans and applies safe repair for managed stale skills', async () => {
@@ -226,24 +232,23 @@ Return image_filename and promptAssetFilename after savePromptPacket.
       installedAt: '2026-06-02T00:00:00.000Z',
     })
 
-    const rows = checkWorkflowSkills(testDir)
     const repair = workflowSkillDriftRepair(testDir)
-    const plan = await repair.plan(rows)
+    const plan = await repair.plan(repairTarget)
     const applied = await repair.apply(plan)
 
     expect(plan).toHaveLength(1)
     expect(plan[0].title).toContain('generate-image')
     expect(applied[0].status).toBe('applied')
-    expect(checkWorkflowSkills(testDir)[0].status).toBe('ok')
+    expect(observations(checkWorkflowSkills(testDir))[0].status).toBe('healthy')
   })
 })
 
 describe('checkWorkflowDefinitions', () => {
   it('returns ok when no definitions exist', async () => {
-    const results = await checkWorkflowDefinitions(testDir)
+    const results = observations(await checkWorkflowDefinitions(testDir))
     expect(results).toHaveLength(1)
-    expect(results[0].status).toBe('ok')
-    expect(results[0].message).toMatch(/All workflow references resolve/)
+    expect(results[0].status).toBe('healthy')
+    expect(results[0].summary).toMatch(/All workflow references and schemas resolve/)
   })
 
   it('warns when a definition carries unknown YAML keys (strict-schema drift)', async () => {
@@ -263,12 +268,12 @@ steps:
     on_approve: done
 `,
     )
-    const results = await checkWorkflowDefinitions(testDir)
+    const results = observations(await checkWorkflowDefinitions(testDir))
     expect(results.some(r =>
-      r.status === 'warn' &&
-      r.message.includes('stale-fields') &&
-      r.message.includes('unknown YAML keys') &&
-      r.message.includes('on_approve'),
+      r.status === 'warning' &&
+      r.summary.includes('stale-fields') &&
+      r.summary.includes('unknown YAML keys') &&
+      r.summary.includes('on_approve'),
     )).toBe(true)
   })
 
@@ -285,11 +290,11 @@ steps:
     workflow_id: ghost-child
 `,
     )
-    const results = await checkWorkflowDefinitions(testDir)
+    const results = observations(await checkWorkflowDefinitions(testDir))
     expect(results.some(r =>
-      r.status === 'warn' &&
-      r.message.includes('orphan-parent') &&
-      r.message.includes('ghost-child'),
+      r.status === 'warning' &&
+      r.summary.includes('orphan-parent') &&
+      r.summary.includes('ghost-child'),
     )).toBe(true)
   })
 
@@ -311,11 +316,11 @@ steps:
     workflow_id: ghost-map-child
 `,
     )
-    const results = await checkWorkflowDefinitions(testDir)
+    const results = observations(await checkWorkflowDefinitions(testDir))
     expect(results.some(r =>
-      r.status === 'warn' &&
-      r.message.includes('map-orphan') &&
-      r.message.includes('ghost-map-child'),
+      r.status === 'warning' &&
+      r.summary.includes('map-orphan') &&
+      r.summary.includes('ghost-map-child'),
     )).toBe(true)
   })
 
@@ -370,17 +375,17 @@ steps:
     agent: main
 `,
     )
-    const results = await checkWorkflowDefinitions(testDir)
+    const results = observations(await checkWorkflowDefinitions(testDir))
     expect(results.some(r =>
-      r.status === 'warn' &&
-      r.message.includes('map-parent') &&
-      r.message.includes('nested map'),
+      r.status === 'warning' &&
+      r.summary.includes('map-parent') &&
+      r.summary.includes('map_workflow'),
     )).toBe(true)
     // The leaf-level map (map-inner -> map-leaf) is fine — only one map deep.
     expect(results.some(r =>
-      r.status === 'warn' &&
-      r.message.startsWith('Workflow "map-inner"') &&
-      r.message.includes('nested map'),
+      r.status === 'warning' &&
+      r.summary.startsWith('Workflow map-inner') &&
+      r.summary.includes('map_workflow'),
     )).toBe(false)
   })
 
@@ -421,8 +426,8 @@ steps:
     workflow_id: registry-child
 `,
       )
-      const results = await checkWorkflowDefinitions(testDir)
-      expect(results.some(r => r.message.includes('happy-parent'))).toBe(false)
+      const results = observations(await checkWorkflowDefinitions(testDir))
+      expect(results.some(r => r.summary.includes('happy-parent'))).toBe(false)
     } finally {
       clearSourceRegistry()
     }
@@ -444,8 +449,8 @@ steps:
     skill: missing-skill
 `,
     )
-    const results = await checkWorkflowDefinitions(testDir)
-    expect(results.some(r => r.status === 'warn' && r.message.includes('missing-skill'))).toBe(true)
+    const results = observations(await checkWorkflowDefinitions(testDir))
+    expect(results.some(r => r.status === 'warning' && r.summary.includes('missing-skill'))).toBe(true)
   })
 
   it('resolves skills registered by agent packages (no local file shadow needed)', async () => {
@@ -469,8 +474,8 @@ steps:
     skill: packaged-skill
 `,
       )
-      const results = await checkWorkflowDefinitions(testDir)
-      expect(results.some(r => r.message.includes('packaged-skill'))).toBe(false)
+      const results = observations(await checkWorkflowDefinitions(testDir))
+      expect(results.some(r => r.summary.includes('packaged-skill'))).toBe(false)
     } finally {
       unregisterAgentPackageSkills('pixel')
     }
@@ -479,10 +484,10 @@ steps:
 
 describe('checkStaleWorkflowInstances', () => {
   it('returns ok when no instances exist', async () => {
-    const results = await checkStaleWorkflowInstances(testDir)
+    const results = observations(await checkStaleWorkflowInstances(testDir))
     expect(results).toHaveLength(1)
-    expect(results[0].status).toBe('ok')
-    expect(results[0].message).toMatch(/No stale workflow instances/)
+    expect(results[0].status).toBe('healthy')
+    expect(results[0].summary).toMatch(/No stale or orphaned workflow instances/)
   })
 
   it('flags an orphaned instance (task no longer on board)', async () => {
@@ -497,8 +502,8 @@ describe('checkStaleWorkflowInstances', () => {
         updatedAt: new Date().toISOString(),
       }),
     )
-    const results = await checkStaleWorkflowInstances(testDir)
-    expect(results.some(r => r.status === 'warn' && r.message.includes(orphanedId))).toBe(true)
+    const results = observations(await checkStaleWorkflowInstances(testDir))
+    expect(results.some(r => r.status === 'warning' && r.summary.includes(orphanedId))).toBe(true)
     expect(existsSync(join(instancesDir, `${orphanedId}.json`))).toBe(true)
   })
 
@@ -514,9 +519,8 @@ describe('checkStaleWorkflowInstances', () => {
         updatedAt: new Date().toISOString(),
       }),
     )
-    const results = await checkStaleWorkflowInstances(testDir)
     const repair = staleWorkflowInstancesRepair(testDir)
-    const plan = await repair.plan(results)
+    const plan = await repair.plan(repairTarget)
     expect(plan).toHaveLength(1)
     const applied = await repair.apply(plan)
     expect(applied[0].status).toBe('applied')
@@ -535,7 +539,7 @@ describe('checkStaleWorkflowInstances', () => {
         updatedAt: threeHoursAgo,
       }),
     )
-    const results = await checkStaleWorkflowInstances(testDir)
-    expect(results.some(r => r.status === 'warn' && r.message.includes('in_progress'))).toBe(true)
+    const results = observations(await checkStaleWorkflowInstances(testDir))
+    expect(results.some(r => r.status === 'warning' && r.summary.includes('waiting-step'))).toBe(true)
   })
 })

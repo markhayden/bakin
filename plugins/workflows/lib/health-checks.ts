@@ -1,20 +1,19 @@
-/**
- * Workflow-plugin-owned doctor checks.
- *
- * Migrated out of src/core/doctor.ts (#137) — these three functions
- * operate on workflow-plugin data (definitions, instances, skills) so
- * they belong with the plugin that owns that data model.
- *
- * Registered in plugins/workflows/index.ts activate() via
- * ctx.registerHealthCheck. runDiagnostics() picks them up through the
- * plugin-check loop in src/core/doctor.ts's runPluginHealthChecks().
- */
+/** Canonical Workflows health checks and independently registered repairs. */
 import { existsSync, readFileSync, readdirSync, unlinkSync } from 'fs'
 import { join } from 'path'
 
 import { readTaskboard } from '../../../src/core/task-store'
-import type { HealthCheckResult, HealthRepairHandler } from '../../../packages/core/src/plugin-types'
-import { healthOk as ok, healthWarn as warn, healthFixed as fixed } from '@makinbakin/sdk/utils'
+import type {
+  HealthCheckRunInput,
+  HealthObservationInput,
+  HealthRepairActionDefinition,
+} from '../../../packages/core/src/plugin-types'
+import {
+  healthHealthy,
+  healthObserved,
+  healthUnknown,
+  healthWarning,
+} from '@makinbakin/sdk/utils'
 import { splitFrontmatter } from '@bakin/core/format/frontmatter'
 
 import { listDefinitions } from './parser'
@@ -28,69 +27,140 @@ import {
   type WorkflowSkillDriftReport,
 } from './workflow-skill-drift'
 
-// ─── Result constructors (inlined; eventual migration target) ─────────────
+function stablePart(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9._:-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48) || 'unknown'
+}
 
+function bounded(value: string, max: number): string {
+  return value.length <= max ? value : `${value.slice(0, max - 1)}…`
+}
 
-// ─── Workflow skills: YAML + output_schema check ──────────────────────────
+function workflowWarning(input: {
+  key: string
+  summary: string
+  impact: string
+  workflowId?: string
+  resourceKind?: 'workflow' | 'file' | 'task'
+  disposition?: 'advisory' | 'watch' | 'action_required'
+  repairActionId?: string
+  evidence?: Record<string, string | number | boolean | null>
+}): HealthObservationInput {
+  const disposition = input.disposition ?? (input.repairActionId ? 'action_required' : 'advisory')
+  const resourceId = input.workflowId
+  return healthWarning({
+    key: input.key,
+    summary: bounded(input.summary, 500),
+    evidence: input.evidence,
+    incident: {
+      key: input.key,
+      title: bounded(input.summary, 120),
+      impact: input.impact,
+      disposition,
+      resources: resourceId
+        ? [{ kind: input.resourceKind ?? 'workflow', id: stablePart(resourceId), label: bounded(resourceId, 120) }]
+        : [{ kind: 'plugin', id: 'workflows', label: 'Workflows' }],
+      resolution: input.repairActionId
+        ? { key: input.repairActionId, type: 'repair', label: 'Review repair', actionId: input.repairActionId }
+        : { key: 'review-workflows', type: 'navigate', label: 'Review Workflows', href: '/workflows' },
+    },
+  })
+}
 
-/**
- * Scan `{contentDir}/workflows/skills/*.md` for missing YAML frontmatter or
- * missing `output_schema`. Warnings-only — no auto-fix.
- */
-export function checkWorkflowSkills(contentDir: string): HealthCheckResult[] {
-  const results: HealthCheckResult[] = []
+/** Validate workflow skill metadata and detect managed-source drift. */
+export function checkWorkflowSkills(contentDir: string): HealthCheckRunInput {
+  const observations: HealthObservationInput[] = []
   const skillsDir = join(contentDir, 'workflows', 'skills')
 
-  if (!existsSync(skillsDir)) return results
-
-  try {
-    const files = readdirSync(skillsDir).filter(f => f.endsWith('.md'))
-    for (const file of files) {
-      try {
-        const content = readFileSync(join(skillsDir, file), 'utf-8')
-        if (splitFrontmatter(content).raw === null) {
-          results.push(warn('workflow-skills', `Skill ${file} has no YAML frontmatter — output will not be validated`))
-          continue
+  if (existsSync(skillsDir)) {
+    try {
+      const files = readdirSync(skillsDir).filter(file => file.endsWith('.md'))
+      for (const file of files) {
+        try {
+          const content = readFileSync(join(skillsDir, file), 'utf-8')
+          if (splitFrontmatter(content).raw === null) {
+            observations.push(workflowWarning({
+              key: `frontmatter-${stablePart(file)}`,
+              summary: `Workflow skill ${file} has no YAML frontmatter.`,
+              impact: 'The skill output cannot be validated reliably.',
+              workflowId: file,
+              resourceKind: 'file',
+              disposition: 'action_required',
+            }))
+            continue
+          }
+          if (!content.includes('output_schema')) {
+            observations.push(workflowWarning({
+              key: `output-schema-${stablePart(file)}`,
+              summary: `Workflow skill ${file} has no output_schema.`,
+              impact: 'Step output will not be validated server-side.',
+              workflowId: file,
+              resourceKind: 'file',
+              disposition: 'action_required',
+            }))
+          }
+        } catch {
+          observations.push(workflowWarning({
+            key: `unreadable-${stablePart(file)}`,
+            summary: `Workflow skill ${file} could not be read.`,
+            impact: 'Bakin cannot verify or execute the skill definition reliably.',
+            workflowId: file,
+            resourceKind: 'file',
+            disposition: 'watch',
+          }))
         }
-        if (!content.includes('output_schema')) {
-          results.push(warn('workflow-skills', `Skill ${file} has no output_schema — step output will not be validated server-side`))
-        }
-      } catch {
-        results.push(warn('workflow-skills', `Could not read skill file: ${file}`))
       }
+    } catch {
+      observations.push(healthUnknown({
+        key: 'skills-directory',
+        summary: 'The workflow skills directory could not be inspected.',
+        incident: {
+          key: 'skills-directory',
+          title: 'Workflow skill verification is unavailable',
+          impact: 'Skill metadata and drift could not be verified during this run.',
+          disposition: 'watch',
+          resources: [{ kind: 'directory', id: 'workflows.skills', label: 'Workflow skills' }],
+          resolution: { key: 'rerun', type: 'rerun', label: 'Rerun check' },
+        },
+      }))
     }
-  } catch {
-    // skills dir exists but can't be read
   }
 
   for (const report of scanWorkflowSkillDrift(contentDir)) {
-    results.push(warn(
-      'workflow-skills',
-      workflowSkillDriftMessage(report),
-      report.repairable,
-    ))
+    observations.push(workflowWarning({
+      key: `drift-${stablePart(report.skillName)}`,
+      summary: workflowSkillDriftMessage(report),
+      impact: 'Workflow execution may use a stale local skill instead of its current managed source.',
+      workflowId: report.filePath,
+      resourceKind: 'file',
+      disposition: report.repairable ? 'action_required' : 'advisory',
+      repairActionId: report.repairable ? 'repair-skill-drift' : undefined,
+      evidence: { skill: report.skillName, repairability: report.repairability },
+    }))
   }
 
-  if (results.length === 0) {
-    results.push(ok('workflow-skills', 'All workflow skills have output_schema'))
+  if (observations.length === 0) {
+    observations.push(healthHealthy({ key: 'skills', summary: 'Workflow skills have valid output schemas and no managed-source drift.' }))
   }
-
-  return results
+  return healthObserved(observations as [HealthObservationInput, ...HealthObservationInput[]])
 }
 
-export function workflowSkillDriftRepair(contentDir: string): HealthRepairHandler {
+/** Re-project only drifted workflow skills whose source identity is known. */
+export function workflowSkillDriftRepair(contentDir: string): HealthRepairActionDefinition {
   return {
-    async plan(rows) {
-      if (!rows.some(row => row.check === 'workflow-skills')) return []
+    id: 'repair-skill-drift',
+    name: 'Repair workflow skill drift',
+    async plan() {
       return scanWorkflowSkillDrift(contentDir)
         .filter(report => report.repairable)
         .map(report => ({
-          id: workflowSkillRepairItemId(report.skillName),
-          checkId: 'workflow-skills',
+          id: `skill-${stablePart(report.skillName)}`,
+          actionId: 'repair-skill-drift',
           title: `Repair workflow skill ${report.skillName}`,
           reason: workflowSkillDriftMessage(report),
-          safety: 'safe' as const,
-          requiresConfirmation: true,
+          safety: report.repairability === 'safe-managed' ? 'safe' as const : 'manual' as const,
+          incidentIds: [],
+          observationIds: [],
+          preconditions: [],
           changes: [{
             kind: 'file' as const,
             target: report.filePath,
@@ -100,47 +170,32 @@ export function workflowSkillDriftRepair(contentDir: string): HealthRepairHandle
         }))
     },
     async apply(items) {
-      const results = []
-      for (const item of items) {
-        const skillName = skillNameFromRepairItemId(item.id)
-        if (!skillName) {
-          results.push({
-            id: item.id,
-            checkId: 'workflow-skills',
+      const reports = scanWorkflowSkillDrift(contentDir)
+      return items.map(item => {
+        const target = item.changes.find(change => change.kind === 'file')?.target
+        const report = reports.find(candidate => candidate.filePath === target && candidate.repairable)
+        if (!report) {
+          return {
+            itemId: item.id,
+            actionId: item.actionId,
             status: 'skipped' as const,
-            message: `Skipped unknown workflow skill repair item "${item.id}".`,
+            message: 'The workflow skill no longer has repairable managed-source drift.',
+            affectedCheckIds: ['workflows.skills'],
             changes: [],
-          })
-          continue
+          }
         }
-        const result = repairWorkflowSkillDrift({
-          contentDir,
-          skillName,
-          confirmKnownOld: true,
-        })
-        results.push({
-          id: item.id,
-          checkId: 'workflow-skills',
+        const result = repairWorkflowSkillDrift({ contentDir, skillName: report.skillName, confirmKnownOld: true })
+        return {
+          itemId: item.id,
+          actionId: item.actionId,
           status: result.status === 'applied' ? 'applied' as const : result.status === 'failed' ? 'failed' as const : 'skipped' as const,
           message: result.message,
-          changes: result.status === 'applied'
-            ? item.changes
-            : [],
-        })
-      }
-      return results
+          affectedCheckIds: ['workflows.skills'],
+          changes: result.status === 'applied' ? item.changes : [],
+        }
+      })
     },
   }
-}
-
-function workflowSkillRepairItemId(skillName: string): string {
-  return `workflows.repair-workflow-skill-drift.${skillName}`
-}
-
-function skillNameFromRepairItemId(id: string): string | null {
-  const prefix = 'workflows.repair-workflow-skill-drift.'
-  if (!id.startsWith(prefix)) return null
-  return id.slice(prefix.length) || null
 }
 
 function workflowSkillDriftMessage(report: WorkflowSkillDriftReport): string {
@@ -149,221 +204,256 @@ function workflowSkillDriftMessage(report: WorkflowSkillDriftReport): string {
     : `agent package ${report.managedSource.id}`
   const findings = report.findings.map(finding => finding.label).join('; ')
   const repairNote = report.repairable
-    ? 'Safe repair is available.'
+    ? 'A source-aware repair is available.'
     : `Advisory only: ${workflowSkillRepairabilityLabel(report.repairability)}.`
-  return `Workflow skill "${report.skillName}" shadows managed ${source} skill and appears stale: ${findings}. ${repairNote}`
+  return `Workflow skill ${report.skillName} shadows managed ${source} and appears stale: ${findings}. ${repairNote}`
 }
 
 function workflowSkillRepairabilityLabel(repairability: WorkflowSkillDriftReport['repairability']): string {
   switch (repairability) {
-    case 'custom-advisory':
-      return 'local file is unmarked or customized'
-    case 'user-edited':
-      return 'local file is marked user-edited'
-    case 'known-old-confirmable':
-      return 'known old managed file requires confirmation'
-    case 'safe-managed':
-      return 'file is managed and unedited'
+    case 'custom-advisory': return 'the local file is unmarked or customized'
+    case 'user-edited': return 'the local file is marked user-edited'
+    case 'known-old-confirmable': return 'the known old managed file requires confirmation'
+    case 'safe-managed': return 'the file is managed and unedited'
   }
 }
 
-// ─── Workflow definitions: skill + nested-workflow reference integrity ─────
-
-/**
- * Verify every step `skill:` reference and every nested `workflow_id`
- * reference in every workflow definition resolves. Walks builtin + parallel
- * children. Nested-workflow existence is checked HERE (against the live
- * user-disk + registry set) rather than at plugin-default load time, because
- * load order must not decide validity (#374) — this check is order-independent
- * and stays current under hot reload.
- */
-export async function checkWorkflowDefinitions(contentDir: string): Promise<HealthCheckResult[]> {
-  const results: HealthCheckResult[] = []
+/** Verify skill references, nested workflow references, and strict schema shape. */
+export async function checkWorkflowDefinitions(contentDir: string): Promise<HealthCheckRunInput> {
+  const observations: HealthObservationInput[] = []
   const skillsDir = join(contentDir, 'workflows', 'skills')
-
-  // Mirror the skill-loader's resolution tiers: a skill "exists" when a user
-  // file is on disk OR an agent package / plugin registered it. Checking the
-  // file alone false-positives whenever a packaged skill has no local shadow.
-  const registered = new Set([
-    ...getAgentPackageSkills().keys(),
-    ...getPluginSkills().keys(),
-  ])
-  const skillExists = (name: string): boolean =>
-    existsSync(join(skillsDir, `${name}.md`)) || registered.has(name)
+  const registered = new Set([...getAgentPackageSkills().keys(), ...getPluginSkills().keys()])
+  const skillExists = (name: string): boolean => existsSync(join(skillsDir, `${name}.md`)) || registered.has(name)
 
   try {
-    const defs = listDefinitions(contentDir)
-    // listDefinitions merges user-disk and plugin/agent-package registry
-    // definitions (user wins), so this set IS the resolvable-workflow universe.
-    const knownWorkflowIds = new Set(defs.map((entry) => entry.name))
-    for (const { name, definition } of defs) {
-      // Strict-schema drift: the CRUD boundary rejects unknown keys, but
-      // definitions loaded from disk or registered by plugins never pass
-      // through zod — surface stray keys here so silently-dead YAML fields
-      // (the on_approve/dependsOn pattern) can't accumulate unnoticed.
-      const { source: _s, pluginId: _p, packageId: _k, ...bare } = definition
+    const definitions = listDefinitions(contentDir)
+    const knownWorkflowIds = new Set(definitions.map(entry => entry.name))
+    for (const { name, definition } of definitions) {
+      const workflowKey = stablePart(name)
+      const { source: _source, pluginId: _pluginId, packageId: _packageId, ...bare } = definition
       const parsed = workflowDefinitionSchema.safeParse(bare)
       if (!parsed.success) {
-        for (const issue of parsed.error.issues) {
-          if (issue.message.includes('Unrecognized key')) {
-            const at = issue.path.length ? ` at ${issue.path.join('.')}` : ''
-            results.push(warn('workflow-definitions', `Workflow "${name}" has unknown YAML keys${at}: ${issue.message}`))
-          }
-        }
+        parsed.error.issues.forEach((issue, index) => {
+          if (!issue.message.includes('Unrecognized key')) return
+          const at = issue.path.length ? ` at ${issue.path.join('.')}` : ''
+          observations.push(workflowWarning({
+            key: `schema-${workflowKey}-${index}`,
+            summary: `Workflow ${name} has unknown YAML keys${at}: ${issue.message}`,
+            impact: 'Unknown fields are ignored, so the workflow may not behave as its author intended.',
+            workflowId: name,
+            disposition: 'action_required',
+          }))
+        })
       }
+
       for (const step of definition.steps) {
-        const skillName = (step as { skill?: string }).skill
-        if (skillName && !skillExists(skillName)) {
-          results.push(warn('workflow-definitions', `Workflow "${name}" step "${(step as { id: string }).id}" references skill "${skillName}" which does not exist`))
+        const typedStep = step as { id: string; skill?: string; type?: string; workflow_id?: string; steps?: Array<{ id: string; skill?: string }> }
+        if (typedStep.skill && !skillExists(typedStep.skill)) {
+          observations.push(workflowWarning({
+            key: `skill-${workflowKey}-${stablePart(typedStep.id)}-${stablePart(typedStep.skill)}`,
+            summary: `Workflow ${name} step ${typedStep.id} references missing skill ${typedStep.skill}.`,
+            impact: 'The workflow cannot execute this step.',
+            workflowId: name,
+            disposition: 'action_required',
+          }))
         }
-        const stepType = (step as { type?: string }).type
-        if (stepType === 'workflow' || stepType === 'map_workflow') {
-          const workflowId = (step as { workflow_id?: string }).workflow_id
-          if (workflowId && !knownWorkflowIds.has(workflowId)) {
-            results.push(warn('workflow-definitions', `Workflow "${name}" step "${(step as { id: string }).id}" references nested workflow "${workflowId}" which does not exist`))
+        if (typedStep.type === 'workflow' || typedStep.type === 'map_workflow') {
+          const childId = typedStep.workflow_id
+          if (childId && !knownWorkflowIds.has(childId)) {
+            observations.push(workflowWarning({
+              key: `nested-${workflowKey}-${stablePart(typedStep.id)}-${stablePart(childId)}`,
+              summary: `Workflow ${name} step ${typedStep.id} references missing workflow ${childId}.`,
+              impact: 'The nested workflow step cannot start.',
+              workflowId: name,
+              disposition: 'action_required',
+            }))
           }
-          // Nested maps (a map child whose workflow contains another map) are
-          // structurally legal but unsupported/untested in v1 — advisory only.
-          if (stepType === 'map_workflow' && workflowId) {
-            const child = defs.find((entry) => entry.name === workflowId)
-            const childHasMap = child?.definition.steps.some(
-              (childStep) => (childStep as { type?: string }).type === 'map_workflow',
-            )
+          if (typedStep.type === 'map_workflow' && childId) {
+            const child = definitions.find(entry => entry.name === childId)
+            const childHasMap = child?.definition.steps.some(childStep => (childStep as { type?: string }).type === 'map_workflow')
             if (childHasMap) {
-              results.push(warn('workflow-definitions', `Workflow "${name}" step "${(step as { id: string }).id}" fans out to "${workflowId}" which itself contains a map_workflow step — nested maps are unsupported in v1`))
+              observations.push(workflowWarning({
+                key: `nested-map-${workflowKey}-${stablePart(typedStep.id)}`,
+                summary: `Workflow ${name} maps to ${childId}, which also contains a map_workflow step.`,
+                impact: 'Nested maps are unsupported in v1 and may not execute reliably.',
+                workflowId: name,
+                disposition: 'advisory',
+              }))
             }
           }
         }
-        // Check parallel children too
-        if (stepType === 'parallel' && 'steps' in step) {
-          for (const child of (step as { steps: Array<{ id: string; skill?: string }> }).steps) {
-            if (child.skill && !skillExists(child.skill)) {
-              results.push(warn('workflow-definitions', `Workflow "${name}" parallel step "${child.id}" references skill "${child.skill}" which does not exist`))
-            }
+        if (typedStep.type === 'parallel') {
+          for (const child of typedStep.steps ?? []) {
+            if (!child.skill || skillExists(child.skill)) continue
+            observations.push(workflowWarning({
+              key: `parallel-skill-${workflowKey}-${stablePart(child.id)}-${stablePart(child.skill)}`,
+              summary: `Workflow ${name} parallel step ${child.id} references missing skill ${child.skill}.`,
+              impact: 'The parallel workflow branch cannot execute this step.',
+              workflowId: name,
+              disposition: 'action_required',
+            }))
           }
         }
       }
     }
   } catch {
-    // No definitions or parser error — non-fatal
+    return healthObserved([healthUnknown({
+      key: 'definitions-scan',
+      summary: 'Workflow definitions could not be inspected.',
+      incident: {
+        key: 'definitions-scan',
+        title: 'Workflow definition verification is unavailable',
+        impact: 'Bakin could not verify workflow references during this run.',
+        disposition: 'watch',
+        resources: [{ kind: 'directory', id: 'workflows.definitions', label: 'Workflow definitions' }],
+        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun check' },
+      },
+    })])
   }
 
-  if (results.length === 0) {
-    results.push(ok('workflow-definitions', 'All workflow references resolve'))
+  if (observations.length === 0) {
+    observations.push(healthHealthy({ key: 'definitions', summary: 'All workflow references and schemas resolve.' }))
   }
-
-  return results
+  return healthObserved(observations as [HealthObservationInput, ...HealthObservationInput[]])
 }
 
-// ─── Stale / orphaned workflow instances ──────────────────────────────────
-
-/**
- * Flag in-progress instances stuck > 2 hours, and orphaned instances whose
- * tasks no longer exist on the board. `autoFix` is read from settings (no
- * longer a parameter) — matches the core doctor pattern.
- *
- * Reads the Bakin task store directly; task metadata is not owned by a plugin
- * hook.
- */
-export async function checkStaleWorkflowInstances(contentDir: string): Promise<HealthCheckResult[]> {
-  return checkStaleWorkflowInstancesInternal(contentDir, false)
+interface WorkflowInstanceFinding {
+  taskId: string
+  currentStepId: string | null
+  ageHours?: number
 }
 
-async function checkStaleWorkflowInstancesInternal(contentDir: string, autoFix: boolean): Promise<HealthCheckResult[]> {
-  const results: HealthCheckResult[] = []
+function scanWorkflowInstances(contentDir: string): { orphans: WorkflowInstanceFinding[]; stale: WorkflowInstanceFinding[] } {
+  const instances = listInstances(undefined, contentDir)
+  const board = readTaskboard() as unknown as { columns: Record<string, Array<{ id: string }>> }
+  const taskIds = new Set(Object.values(board.columns).flatMap(column => column.map(task => task.id)))
+  const orphans: WorkflowInstanceFinding[] = []
+  const stale: WorkflowInstanceFinding[] = []
+  const staleThreshold = 2 * 60 * 60 * 1000
 
+  for (const instance of instances) {
+    if (!taskIds.has(instance.taskId)) {
+      orphans.push({ taskId: instance.taskId, currentStepId: instance.currentStepId ?? null })
+      continue
+    }
+    if (instance.status !== 'in_progress') continue
+    const updated = new Date(instance.updatedAt).getTime()
+    if (!Number.isFinite(updated)) continue
+    const age = Date.now() - updated
+    if (age > staleThreshold) {
+      stale.push({ taskId: instance.taskId, currentStepId: instance.currentStepId ?? null, ageHours: Math.round(age / 360_000) / 10 })
+    }
+  }
+  return { orphans, stale }
+}
+
+/** Flag orphaned instance files and in-progress workflows with no update for two hours. */
+export async function checkStaleWorkflowInstances(contentDir: string): Promise<HealthCheckRunInput> {
+  let scan: ReturnType<typeof scanWorkflowInstances>
   try {
-    const allInstances = listInstances(undefined, contentDir)
-
-    interface BoardTask { id: string }
-    const board = readTaskboard() as unknown as { columns: Record<string, BoardTask[]> }
-    const { columns } = board
-    const allTaskIds = new Set<string>()
-    for (const col of Object.values(columns)) {
-      for (const task of col) {
-        allTaskIds.add(task.id)
-      }
-    }
-
-    const now = Date.now()
-    const staleThreshold = 2 * 60 * 60 * 1000 // 2 hours
-
-    for (const instance of allInstances) {
-      // Orphaned instance — task deleted from board
-      if (!allTaskIds.has(instance.taskId)) {
-        if (autoFix) {
-          const instancePath = join(contentDir, 'workflows', 'instances', `${instance.taskId}.json`)
-          try {
-            unlinkSync(instancePath)
-            results.push(fixed('workflow-instances', `Removed orphaned workflow instance for deleted task "${instance.taskId}"`))
-          } catch {
-            results.push(warn('workflow-instances', `Orphaned workflow instance for deleted task "${instance.taskId}" — could not remove`))
-          }
-        } else {
-          results.push(warn('workflow-instances', `Orphaned workflow instance for deleted task "${instance.taskId}" — task no longer on board`, true))
-        }
-        continue
-      }
-
-      // Stale in-progress instances
-      if (instance.status !== 'in_progress') continue
-      const updated = new Date(instance.updatedAt).getTime()
-      if (isNaN(updated)) continue
-      const age = now - updated
-      if (age > staleThreshold) {
-        const hours = Math.round(age / (60 * 60 * 1000) * 10) / 10
-        results.push(warn('workflow-instances', `Workflow instance for task "${instance.taskId}" has been in_progress on step "${instance.currentStepId}" for ${hours}h with no updates`))
-      }
-    }
+    scan = scanWorkflowInstances(contentDir)
   } catch {
-    // No instances directory — non-fatal
+    return healthObserved([healthUnknown({
+      key: 'instances-scan',
+      summary: 'Workflow instances could not be inspected.',
+      incident: {
+        key: 'instances-scan',
+        title: 'Workflow instance verification is unavailable',
+        impact: 'Bakin cannot determine whether workflow runs are stale or orphaned.',
+        disposition: 'watch',
+        resources: [{ kind: 'directory', id: 'workflows.instances', label: 'Workflow instances' }],
+        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun check' },
+      },
+    })])
   }
 
-  if (results.length === 0) {
-    results.push(ok('workflow-instances', 'No stale workflow instances'))
+  const observations: HealthObservationInput[] = scan.orphans.map(orphan => workflowWarning({
+    key: `orphan-${stablePart(orphan.taskId)}`,
+    summary: `Workflow instance for deleted task ${orphan.taskId} is orphaned.`,
+    impact: 'The stale instance file consumes state and can confuse workflow history.',
+    workflowId: orphan.taskId,
+    resourceKind: 'task',
+    repairActionId: 'remove-orphan-instances',
+  }))
+  for (const stale of scan.stale) {
+    observations.push(workflowWarning({
+      key: `stale-${stablePart(stale.taskId)}`,
+      summary: `Workflow for task ${stale.taskId} has remained on ${stale.currentStepId ?? 'an unknown step'} for ${stale.ageHours}h.`,
+      impact: 'Work assigned to this workflow may be stalled.',
+      workflowId: stale.taskId,
+      resourceKind: 'task',
+      disposition: 'watch',
+      evidence: { ageHours: stale.ageHours ?? 0 },
+    }))
   }
-
-  return results
+  if (observations.length === 0) {
+    observations.push(healthHealthy({ key: 'instances', summary: 'No stale or orphaned workflow instances were found.' }))
+  }
+  return healthObserved(observations as [HealthObservationInput, ...HealthObservationInput[]])
 }
 
-export function staleWorkflowInstancesRepair(contentDir: string): HealthRepairHandler {
+/** Delete instance files only after their tasks have disappeared from the current board. */
+export function staleWorkflowInstancesRepair(contentDir: string): HealthRepairActionDefinition {
   return {
-    async plan(rows) {
-      const matching = rows.filter(row => row.check === 'workflow-instances' && row.autoFixable)
-      if (matching.length === 0) return []
+    id: 'remove-orphan-instances',
+    name: 'Remove orphaned workflow instances',
+    async plan() {
+      let orphans: WorkflowInstanceFinding[]
+      try { orphans = scanWorkflowInstances(contentDir).orphans } catch { return [] }
+      if (orphans.length === 0) return []
       return [{
-        id: 'workflows.remove-orphan-instances',
-        checkId: 'workflow-instances',
+        id: 'remove-orphans',
+        actionId: 'remove-orphan-instances',
         title: 'Remove orphaned workflow instances',
-        reason: matching.map(row => row.message).join('; '),
-        safety: 'safe',
-        requiresConfirmation: true,
-        changes: [{
-          kind: 'file',
-          target: join(contentDir, 'workflows', 'instances'),
-          action: 'delete',
-          description: 'Delete workflow instance files whose tasks no longer exist on the board.',
-        }],
+        reason: `${orphans.length} workflow instance file(s) refer to tasks that no longer exist.`,
+        safety: 'destructive',
+        incidentIds: [],
+        observationIds: [],
+        preconditions: [],
+        changes: orphans.map(orphan => ({
+          kind: 'file' as const,
+          target: join(contentDir, 'workflows', 'instances', `${orphan.taskId}.json`),
+          action: 'delete' as const,
+          description: `Delete the orphaned instance for task ${orphan.taskId}.`,
+        })),
       }]
     },
     async apply(items) {
       if (items.length === 0) return []
-      const rows = await checkStaleWorkflowInstancesInternal(contentDir, true)
-      const failures = rows.filter(row => row.status === 'error')
-      return [{
-        id: 'workflows.remove-orphan-instances',
-        checkId: 'workflow-instances',
-        status: failures.length > 0 ? 'failed' : 'applied',
-        message: rows.map(row => row.message).join('; '),
-        changes: rows
-          .filter(row => row.status === 'fixed')
-          .map(row => ({
-            kind: 'file' as const,
-            target: join(contentDir, 'workflows', 'instances'),
-            action: 'delete' as const,
-            description: row.message,
-          })),
-      }]
+      let orphans: WorkflowInstanceFinding[]
+      try { orphans = scanWorkflowInstances(contentDir).orphans } catch (error) {
+        return items.map(item => ({
+          itemId: item.id,
+          actionId: item.actionId,
+          status: 'failed' as const,
+          message: error instanceof Error ? error.message : String(error),
+          affectedCheckIds: ['workflows.stale-instances'],
+          changes: [],
+        }))
+      }
+      const changes: Array<{ kind: 'file'; target: string; action: 'delete'; description: string }> = []
+      const failures: string[] = []
+      for (const orphan of orphans) {
+        const target = join(contentDir, 'workflows', 'instances', `${orphan.taskId}.json`)
+        try {
+          unlinkSync(target)
+          changes.push({ kind: 'file' as const, target, action: 'delete' as const, description: `Deleted orphaned instance for ${orphan.taskId}.` })
+        } catch (error) {
+          failures.push(`${orphan.taskId}: ${error instanceof Error ? error.message : String(error)}`)
+        }
+      }
+      return items.map(item => ({
+        itemId: item.id,
+        actionId: item.actionId,
+        status: failures.length > 0 ? 'failed' as const : orphans.length > 0 ? 'applied' as const : 'skipped' as const,
+        message: failures.length > 0
+          ? `Removed ${changes.length} orphaned instance(s); ${failures.length} failed.`
+          : orphans.length > 0
+            ? `Removed ${orphans.length} orphaned workflow instance(s).`
+            : 'No orphaned workflow instances remain.',
+        affectedCheckIds: ['workflows.stale-instances'],
+        changes,
+      }))
     },
   }
 }

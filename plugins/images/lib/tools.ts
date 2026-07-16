@@ -457,6 +457,7 @@ async function persistImageResult(
   // inference is a separate billed path from chat-turn tokens.
   await meterImageTurn({
     agent,
+    activityClass: 'user',
     model: `${req.route.provider}/${req.route.model}`,
     count: result.images.length,
     taskId: params.taskId ?? null,

@@ -1,22 +1,18 @@
-/**
- * Assets-plugin-owned doctor check.
- *
- * Verifies the assets/ store shape (directory structure, canonical month
- * shards), disk usage, trash retention, and — the heart of it — versioned
- * asset integrity: every asset is a directory under
- * assets/store/<YYYY-MM>/<assetId>/ with a valid manifest.json whose
- * currentVersion resolves and whose version + thumbnail files exist on disk.
- *
- * Registered in plugins/assets/index.ts activate() via
- * ctx.registerHealthCheck. runDiagnostics() picks it up through the
- * plugin-check loop in src/core/doctor.ts's runPluginHealthChecks().
- */
+/** Canonical Assets health observations and explicit repair action. */
 import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from 'fs'
 import { join } from 'path'
 
-import type { HealthCheckResult, HealthRepairHandler } from '../../../packages/core/src/plugin-types'
-import { healthOk as ok, healthWarn as warn, healthFixed as fixed } from '@makinbakin/sdk/utils'
-
+import type {
+  HealthCheckRunInput,
+  HealthObservationInput,
+  HealthRepairActionDefinition,
+  HealthRepairChange,
+} from '../../../packages/core/src/plugin-types'
+import {
+  healthHealthy,
+  healthObserved,
+  healthWarning,
+} from '@makinbakin/sdk/utils'
 import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
 
 import { isValidAssetId } from './asset-id'
@@ -27,52 +23,73 @@ import { readManifest } from './manifest'
 import { resolveEnrichmentEngine } from './enrichment/engine'
 import type { EnrichmentSettings } from './enrichment/providers'
 
-// ─── Result constructors (inlined; matches workflows precedent) ─────────────
-
-
-// ─── Asset health: store shape, disk usage, trash, manifest integrity ──────
-
 const REQUIRED_ASSET_DIRS = ['store', 'inbox', '.trash'] as const
 const STORE_SHARD_RE = /^\d{4}-\d{2}$/
+const TRASH_RETENTION_MS = 7 * 24 * 60 * 60 * 1000
 
-/**
- * Verify directory structure, month-shard naming, disk usage, trash
- * retention, and versioned-asset manifest integrity for the assets tree
- * under {contentDir}/assets/.
- *
- * Explicit repair paths:
- *   - create missing assets/, store/, inbox/, and .trash/
- *   - purge .trash/ items older than 7 days
- */
-export function checkAssets(contentDir: string): HealthCheckResult[] {
-  return [...checkAssetsInternal(contentDir, false), ...checkUnimported(), ...checkEnrichment()]
+function stablePart(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9._:-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'unknown'
 }
 
-/**
- * Unimported-files check (D7): the doctor's scheduled sweep is one of the
- * two on-demand scan triggers (the Import view is the other). NOT
- * auto-fixable by design — turning a file into an asset is an explicit
- * user decision; the check names the count and points at the verbs.
- */
-export function checkUnimported(): HealthCheckResult[] {
+function bounded(value: string, max: number): string {
+  return value.length <= max ? value : `${value.slice(0, max - 1)}…`
+}
+
+function assetWarning(input: {
+  key: string
+  summary: string
+  impact: string
+  resourceId?: string
+  repair?: boolean
+  disposition?: 'advisory' | 'watch' | 'action_required'
+  evidence?: Record<string, string | number | boolean | null>
+}): HealthObservationInput {
+  const disposition = input.disposition ?? (input.repair ? 'action_required' : 'advisory')
+  const summary = bounded(input.summary, 500)
+  return healthWarning({
+    key: input.key,
+    summary,
+    evidence: input.evidence,
+    incident: {
+      key: input.key,
+      title: bounded(input.summary, 120),
+      impact: input.impact,
+      disposition,
+      resources: input.resourceId
+        ? [{ kind: 'asset', id: stablePart(input.resourceId), label: bounded(input.resourceId, 120) }]
+        : [{ kind: 'directory', id: 'assets', label: 'Assets store' }],
+      resolution: input.repair
+        ? { key: 'repair-store', type: 'repair', label: 'Repair asset store', actionId: 'repair-store' }
+        : { key: 'review-assets', type: 'navigate', label: 'Review Assets', href: '/assets' },
+    },
+  })
+}
+
+/** Store shape, manifest integrity, unmanaged files, and enrichment coverage. */
+export function checkAssets(contentDir: string): HealthCheckRunInput {
+  return healthObserved([
+    ...checkAssetStore(contentDir),
+    ...checkUnimported(),
+    ...checkEnrichment(),
+  ] as [HealthObservationInput, ...HealthObservationInput[]])
+}
+
+/** Unmanaged files require an explicit import decision and are never repaired automatically. */
+export function checkUnimported(): HealthObservationInput[] {
   const files = scanUnmanaged()
-  reseedUnmanaged(files.map(f => f.relPath))
+  reseedUnmanaged(files.map(file => file.relPath))
   if (files.length === 0) {
-    return [ok('assets.unimported', 'No unmanaged files awaiting import')]
+    return [healthHealthy({ key: 'unimported', summary: 'No unmanaged files are awaiting import.' })]
   }
-  return [warn(
-    'assets.unimported',
-    `${files.length} unmanaged file(s) under assets/ awaiting explicit import — Assets → Import, or \`bakin assets import --all\``,
-    false,
-  )]
+  return [assetWarning({
+    key: 'unimported',
+    summary: `${files.length} unmanaged file(s) are awaiting explicit import.`,
+    impact: 'Files outside the managed asset store are unavailable to asset search and versioning.',
+    disposition: 'advisory',
+    evidence: { count: files.length },
+  })]
 }
 
-/**
- * Enrichment coverage (D8/T12): counts come straight from manifests — the
- * durable record. Failed rows carry the last error; missing/stale rows are
- * repairable via the billed backfill (`bakin assets enrich --all`), which
- * is deliberately NOT auto-fix (it costs money).
- */
 export interface EnrichmentCoverage {
   total: number
   enriched: number
@@ -82,11 +99,6 @@ export interface EnrichmentCoverage {
   skipped: number
 }
 
-/**
- * Coverage counts for the health tile's "X/Y enriched" — computed straight
- * from summaries (the summary's `enrichment` field already folds in the
- * stale-version distinction; no per-asset manifest re-read on the poll path).
- */
 export function enrichmentCoverage(): EnrichmentCoverage {
   const summaries = listAssets()
   const coverage: EnrichmentCoverage = { total: summaries.length, enriched: 0, missing: 0, stale: 0, failed: 0, skipped: 0 }
@@ -96,13 +108,13 @@ export function enrichmentCoverage(): EnrichmentCoverage {
       case 'stale': coverage.stale++; break
       case 'failed': coverage.failed++; break
       case 'skipped': coverage.skipped++; break
-      default: coverage.missing++ // 'none' + pending that never completed
+      default: coverage.missing++
     }
   }
   return coverage
 }
 
-export function checkEnrichment(): HealthCheckResult[] {
+export function checkEnrichment(): HealthObservationInput[] {
   const summaries = listAssets()
   let missing = 0
   let stale = 0
@@ -115,136 +127,206 @@ export function checkEnrichment(): HealthCheckResult[] {
     if (enrichment.status === 'failed') { failed++; continue }
     if (enrichment.status === 'done' && (enrichment.forVersion ?? 0) < manifest.currentVersion) stale++
   }
-  const results: HealthCheckResult[] = []
+
+  const observations: HealthObservationInput[] = []
   if (failed > 0) {
-    results.push(warn('assets.enrichment', `${failed} asset(s) failed vision enrichment — retry with 'bakin assets enrich --all --force' after checking provider keys`, false))
+    observations.push(assetWarning({
+      key: 'enrichment-failed',
+      summary: `${failed} asset(s) failed vision enrichment.`,
+      impact: 'Those assets may be harder to discover and reuse through semantic search.',
+      disposition: 'advisory',
+      evidence: { failed },
+    }))
   }
   if (missing + stale > 0) {
-    results.push(warn('assets.enrichment', `${missing + stale} asset(s) without current enrichment (${missing} never enriched, ${stale} stale) — 'bakin assets enrich --all' (billed)`, false))
+    observations.push(assetWarning({
+      key: 'enrichment-incomplete',
+      summary: `${missing + stale} asset(s) lack current enrichment (${missing} missing, ${stale} stale).`,
+      impact: 'Asset descriptions and semantic search metadata may be incomplete.',
+      disposition: 'advisory',
+      evidence: { missing, stale },
+    }))
   }
-  if (results.length === 0) {
-    results.push(ok('assets.enrichment', 'All assets carry current enrichment (or recorded skips)'))
+  if (observations.length === 0) {
+    observations.push(healthHealthy({
+      key: 'enrichment',
+      summary: 'All assets carry current enrichment or a recorded skip.',
+      evidence: { total: summaries.length },
+    }))
   }
-  return results
+  return observations
 }
 
-/**
- * Which engine would serve an image-enrichment job RIGHT NOW (spec §5) —
- * direct API model, runtime agent turns (subscription quota), or neither.
- * Async (capability probe) and settings/runtime-dependent, so it's wired
- * from the plugin's registerHealthCheck rather than checkAssets().
- */
+/** Which engine would serve an image-enrichment job right now. */
 export async function checkEnrichmentEngine(
   settings: EnrichmentSettings,
   runtime: AgentRuntimeAdapter | null,
-): Promise<HealthCheckResult> {
+): Promise<HealthObservationInput> {
   if (settings.enrichmentEnabled === false) {
-    return ok('assets.enrichment-engine', 'Vision enrichment disabled in settings')
+    return healthHealthy({ key: 'enrichment-engine', summary: 'Vision enrichment is disabled in settings.' })
   }
   const resolution = await resolveEnrichmentEngine(settings, { kind: 'image' }, { runtime })
   if (!resolution.ok) {
-    return warn('assets.enrichment-engine', `No enrichment engine available — new assets will record skips: ${resolution.reason}`, false)
+    return assetWarning({
+      key: 'enrichment-engine',
+      summary: `No enrichment engine is available: ${resolution.reason}`,
+      impact: 'New assets will record enrichment skips until a compatible engine is configured.',
+      disposition: 'advisory',
+    })
   }
   const engine = resolution.engine
-  return engine.name === 'runtime'
-    ? ok('assets.enrichment-engine', `Enrichment engine: runtime agent '${engine.modelId.slice('runtime:'.length)}' (image-capable; agent turns spend subscription quota, ~35s/asset)`)
-    : ok('assets.enrichment-engine', `Enrichment engine: direct API (${engine.modelId})`)
+  return healthHealthy({
+    key: 'enrichment-engine',
+    summary: engine.name === 'runtime'
+      ? `Runtime agent enrichment is ready with ${engine.modelId.slice('runtime:'.length)}.`
+      : `Direct API enrichment is ready with ${engine.modelId}.`,
+    evidence: { engine: engine.name, model: engine.modelId },
+  })
 }
 
-function checkAssetsInternal(contentDir: string, autoFix: boolean): HealthCheckResult[] {
-  const results: HealthCheckResult[] = []
+function checkAssetStore(contentDir: string): HealthObservationInput[] {
+  const observations: HealthObservationInput[] = []
   const assetsRoot = join(contentDir, 'assets')
 
   if (!existsSync(assetsRoot)) {
-    if (autoFix) {
-      mkdirSync(assetsRoot, { recursive: true })
-      results.push(fixed('assets', 'Created assets/ directory'))
-    } else {
-      results.push(warn('assets', 'assets/ directory not found', true))
-      return results
-    }
+    return [assetWarning({
+      key: 'store-missing',
+      summary: 'The assets directory is missing.',
+      impact: 'Assets cannot be imported, generated, or retrieved until the store exists.',
+      repair: true,
+    })]
   }
 
   for (const dirName of REQUIRED_ASSET_DIRS) {
     const dirPath = join(assetsRoot, dirName)
     if (!existsSync(dirPath)) {
-      if (autoFix) {
-        mkdirSync(dirPath, { recursive: true })
-        results.push(fixed('assets', `Created assets/${dirName}/ directory`))
-      } else {
-        results.push(warn('assets', `Missing assets/${dirName}/ directory`, true))
-      }
+      observations.push(assetWarning({
+        key: `directory-missing-${stablePart(dirName)}`,
+        summary: `The assets/${dirName} directory is missing.`,
+        impact: 'The asset store cannot reliably complete all import, storage, and retention operations.',
+        repair: true,
+      }))
     } else {
       try {
         if (!statSync(dirPath).isDirectory()) {
-          results.push(warn('assets', `assets/${dirName} exists but is not a directory`))
+          observations.push(assetWarning({
+            key: `directory-invalid-${stablePart(dirName)}`,
+            summary: `assets/${dirName} exists but is not a directory.`,
+            impact: 'Operations that depend on this asset-store location will fail.',
+            disposition: 'action_required',
+          }))
         }
-      } catch { /* skip unreadable entry */ }
+      } catch {
+        observations.push(assetWarning({
+          key: `directory-unreadable-${stablePart(dirName)}`,
+          summary: `assets/${dirName} could not be inspected.`,
+          impact: 'Bakin cannot verify that this asset-store location is usable.',
+          disposition: 'watch',
+        }))
+      }
     }
   }
 
   const trashDir = join(assetsRoot, '.trash')
   const storeRoot = join(assetsRoot, 'store')
 
-  // Flag unexpected top-level entries — the store only knows store/inbox/.trash.
   try {
     const knownRootEntries = new Set<string>(REQUIRED_ASSET_DIRS)
     for (const entry of readdirSync(assetsRoot)) {
       if (knownRootEntries.has(entry)) continue
-      const fullPath = join(assetsRoot, entry)
       try {
-        if (statSync(fullPath).isDirectory()) {
-          results.push(warn('assets', `Unexpected assets/${entry}/ directory is ignored by the asset store`))
+        if (statSync(join(assetsRoot, entry)).isDirectory()) {
+          observations.push(assetWarning({
+            key: `unexpected-root-${stablePart(entry)}`,
+            summary: `Unexpected assets/${entry} directory is ignored by the asset store.`,
+            impact: 'Files in this directory are not managed, indexed, or versioned as assets.',
+          }))
         }
-      } catch { /* skip unreadable entries */ }
+      } catch { /* another observation already provides the useful operator path */ }
     }
-  } catch { /* skip unreadable root */ }
+  } catch {
+    observations.push(assetWarning({
+      key: 'store-unreadable',
+      summary: 'The assets directory could not be read.',
+      impact: 'Bakin cannot verify or enumerate the managed asset store.',
+      disposition: 'watch',
+    }))
+  }
 
-  // Versioned assets (asset-as-directory): month shards + manifest integrity.
   let versionedCount = 0
   let brokenCount = 0
   if (existsSync(storeRoot)) {
     let shards: string[]
     try {
-      shards = readdirSync(storeRoot).filter(d => {
-        if (d.startsWith('.')) return false
-        try { return statSync(join(storeRoot, d)).isDirectory() } catch { return false }
+      shards = readdirSync(storeRoot).filter(dir => {
+        if (dir.startsWith('.')) return false
+        try { return statSync(join(storeRoot, dir)).isDirectory() } catch { return false }
       })
     } catch { shards = [] }
 
     for (const shard of shards) {
       const shardDir = join(storeRoot, shard)
       if (!STORE_SHARD_RE.test(shard)) {
-        results.push(warn('assets', `Unexpected assets/store/${shard}/ shard; canonical shards must be YYYY-MM`))
+        observations.push(assetWarning({
+          key: `invalid-shard-${stablePart(shard)}`,
+          summary: `assets/store/${shard} is not a canonical YYYY-MM shard.`,
+          impact: 'Assets in this shard may not be discoverable through normal store traversal.',
+        }))
         continue
       }
-
       let entries: string[]
       try { entries = readdirSync(shardDir) } catch { continue }
       for (const entry of entries) {
         if (!isValidAssetId(entry)) {
-          results.push(warn('assets', `Unexpected assets/store/${shard}/${entry}; store entries must be assetId directories`))
+          observations.push(assetWarning({
+            key: `invalid-entry-${stablePart(shard)}-${stablePart(entry)}`,
+            summary: `Unexpected store entry ${shard}/${entry}; entries must be asset directories.`,
+            impact: 'This entry is ignored by asset lookup and integrity tooling.',
+          }))
           continue
         }
         versionedCount++
         const dirAbs = join(shardDir, entry)
         const manifest = readManifest(dirAbs)
         if (!manifest) {
-          results.push(warn('assets', `Versioned asset ${entry} has a missing or invalid manifest.json`))
+          observations.push(assetWarning({
+            key: `manifest-missing-${stablePart(entry)}`,
+            summary: `Asset ${entry} has a missing or invalid manifest.json.`,
+            impact: 'The asset cannot be read or versioned reliably.',
+            resourceId: entry,
+            disposition: 'action_required',
+          }))
           brokenCount++
           continue
         }
-        if (!manifest.versions.some(v => v.version === manifest.currentVersion)) {
-          results.push(warn('assets', `Versioned asset ${entry}: currentVersion ${manifest.currentVersion} is not in versions[]`))
+        if (!manifest.versions.some(version => version.version === manifest.currentVersion)) {
+          observations.push(assetWarning({
+            key: `current-version-${stablePart(entry)}`,
+            summary: `Asset ${entry} currentVersion ${manifest.currentVersion} is absent from versions[].`,
+            impact: 'The asset points at a version that cannot be resolved.',
+            resourceId: entry,
+            disposition: 'action_required',
+          }))
           brokenCount++
         }
-        for (const v of manifest.versions) {
-          if (!existsSync(join(dirAbs, v.file))) {
-            results.push(warn('assets', `Versioned asset ${entry}: missing version file ${v.file}`))
+        for (const version of manifest.versions) {
+          if (!existsSync(join(dirAbs, version.file))) {
+            observations.push(assetWarning({
+              key: `version-file-${stablePart(entry)}-${version.version}`,
+              summary: `Asset ${entry} is missing version file ${version.file}.`,
+              impact: 'That asset version cannot be opened or exported.',
+              resourceId: entry,
+              disposition: 'action_required',
+            }))
             brokenCount++
           }
-          if (v.thumb && !existsSync(join(dirAbs, v.thumb))) {
-            results.push(warn('assets', `Versioned asset ${entry}: missing thumbnail ${v.thumb}`))
+          if (version.thumb && !existsSync(join(dirAbs, version.thumb))) {
+            observations.push(assetWarning({
+              key: `thumbnail-${stablePart(entry)}-${version.version}`,
+              summary: `Asset ${entry} is missing thumbnail ${version.thumb}.`,
+              impact: 'Previews for that asset version may fail to render.',
+              resourceId: entry,
+            }))
             brokenCount++
           }
         }
@@ -252,7 +334,6 @@ function checkAssetsInternal(contentDir: string, autoFix: boolean): HealthCheckR
     }
   }
 
-  // Disk usage check
   try {
     let totalSize = 0
     function walkSize(dir: string): void {
@@ -263,100 +344,127 @@ function checkAssetsInternal(contentDir: string, autoFix: boolean): HealthCheckR
             const stat = statSync(fullPath)
             if (stat.isFile()) totalSize += stat.size
             else if (stat.isDirectory() && !entry.startsWith('.')) walkSize(fullPath)
-          } catch { /* skip */ }
+          } catch { /* ignore entries that vanish during a scan */ }
         }
-      } catch { /* skip */ }
+      } catch { /* an unreadable subtree is not a disk-usage claim */ }
     }
     walkSize(assetsRoot)
-
     const sizeGB = totalSize / (1024 * 1024 * 1024)
     if (sizeGB > 5) {
-      results.push(warn('assets', `Assets directory is ${sizeGB.toFixed(1)} GB — consider cleanup`))
+      observations.push(assetWarning({
+        key: 'disk-usage',
+        summary: `The assets directory uses ${sizeGB.toFixed(1)} GB.`,
+        impact: 'Continued growth may consume the available disk space.',
+        evidence: { bytes: totalSize },
+      }))
     }
-  } catch { /* skip size check */ }
+  } catch { /* disk usage is advisory only */ }
 
-  // Trash cleanup
-  try {
-    if (existsSync(trashDir)) {
-      const trashFiles = readdirSync(trashDir)
-      const cutoff = Date.now() - (7 * 24 * 60 * 60 * 1000) // 7 days
-      let purged = 0
-      let expired = 0
-      for (const file of trashFiles) {
-        try {
-          // Retention is measured from DELETION time (the `__deleted-<ms>`
-          // suffix), not file mtime — renameSync preserves the original mtime,
-          // so an old asset deleted today must not be purged immediately.
-          const m = /__deleted-(\d+)$/.exec(file)
-          const deletedAt = m ? Number(m[1]) : statSync(join(trashDir, file)).mtimeMs
-          if (deletedAt < cutoff) {
-            if (autoFix) {
-              rmSync(join(trashDir, file), { recursive: true, force: true })
-              purged++
-            } else {
-              expired++
-            }
-          }
-        } catch { /* skip */ }
-      }
-      if (purged > 0) {
-        results.push(fixed('assets', `Purged ${purged} expired item(s) from .trash/ (>7 days old)`))
-      }
-      if (expired > 0) {
-        results.push(warn('assets', `${expired} expired item(s) in .trash/ older than 7 days`, true))
-      }
-    }
-  } catch { /* skip */ }
+  const expired = expiredTrashEntries(trashDir)
+  if (expired.length > 0) {
+    observations.push(assetWarning({
+      key: 'expired-trash',
+      summary: `${expired.length} expired item(s) remain in asset trash beyond seven days.`,
+      impact: 'Expired trash continues consuming disk space.',
+      repair: true,
+      evidence: { count: expired.length },
+    }))
+  }
 
   if (versionedCount > 0 && brokenCount === 0) {
-    results.push(ok('assets', `${versionedCount} versioned asset(s), all manifests valid`))
+    observations.push(healthHealthy({
+      key: 'manifest-integrity',
+      summary: `${versionedCount} versioned asset(s) have valid manifests.`,
+      evidence: { count: versionedCount },
+    }))
   }
-
-  if (results.length === 0) {
-    results.push(ok('assets', 'Asset store is empty and healthy'))
+  if (observations.length === 0) {
+    observations.push(healthHealthy({ key: 'store', summary: 'The asset store is empty and healthy.' }))
   }
-
-  return results
+  return observations
 }
 
-export function assetRepair(contentDir: string): HealthRepairHandler {
+function expiredTrashEntries(trashDir: string): string[] {
+  if (!existsSync(trashDir)) return []
+  const cutoff = Date.now() - TRASH_RETENTION_MS
+  try {
+    return readdirSync(trashDir).filter(file => {
+      try {
+        const match = /__deleted-(\d+)$/.exec(file)
+        const deletedAt = match ? Number(match[1]) : statSync(join(trashDir, file)).mtimeMs
+        return deletedAt < cutoff
+      } catch { return false }
+    })
+  } catch { return [] }
+}
+
+function pendingAssetRepairChanges(contentDir: string): HealthRepairChange[] {
+  const assetsRoot = join(contentDir, 'assets')
+  const changes: HealthRepairChange[] = []
+  if (!existsSync(assetsRoot)) {
+    changes.push({ kind: 'file', target: assetsRoot, action: 'create', description: 'Create the asset store root and required directories.' })
+  } else {
+    for (const dirName of REQUIRED_ASSET_DIRS) {
+      const target = join(assetsRoot, dirName)
+      if (!existsSync(target)) changes.push({ kind: 'file', target, action: 'create', description: `Create assets/${dirName}.` })
+    }
+  }
+  for (const file of expiredTrashEntries(join(assetsRoot, '.trash'))) {
+    changes.push({ kind: 'file', target: join(assetsRoot, '.trash', file), action: 'delete', description: `Purge expired trash item ${file}.` })
+  }
+  return changes
+}
+
+/** Create missing store directories and purge only trash beyond retention. */
+export function assetRepair(contentDir: string): HealthRepairActionDefinition {
   return {
-    async plan(rows) {
-      const matching = rows.filter(row => row.check === 'assets' && row.autoFixable)
-      if (matching.length === 0) return []
+    id: 'repair-store',
+    name: 'Repair asset store',
+    async plan() {
+      const changes = pendingAssetRepairChanges(contentDir)
+      if (changes.length === 0) return []
+      const deletesFiles = changes.some(change => change.action === 'delete')
       return [{
-        id: 'assets.repair-store',
-        checkId: 'assets',
-        title: 'Repair asset store structure',
-        reason: matching.map(row => row.message).join('; '),
-        safety: 'safe',
-        requiresConfirmation: true,
-        changes: [{
-          kind: 'file',
-          target: join(contentDir, 'assets'),
-          action: 'update',
-          description: 'Create missing asset directories and purge expired trash.',
-        }],
+        id: 'repair-store',
+        actionId: 'repair-store',
+        title: 'Repair asset store structure and retention',
+        reason: deletesFiles
+          ? 'Required asset directories are missing or expired trash is consuming disk space.'
+          : 'Required asset-store directories are missing.',
+        safety: deletesFiles ? 'destructive' : 'safe',
+        incidentIds: [],
+        observationIds: [],
+        preconditions: [],
+        changes,
       }]
     },
     async apply(items) {
       if (items.length === 0) return []
-      const rows = checkAssetsInternal(contentDir, true)
-      const failures = rows.filter(row => row.status === 'error')
-      return [{
-        id: 'assets.repair-store',
-        checkId: 'assets',
-        status: failures.length > 0 ? 'failed' : 'applied',
-        message: rows.map(row => row.message).join('; '),
-        changes: rows
-          .filter(row => row.status === 'fixed')
-          .map(row => ({
-            kind: 'file' as const,
-            target: join(contentDir, 'assets'),
-            action: 'update' as const,
-            description: row.message,
-          })),
-      }]
+      try {
+        const assetsRoot = join(contentDir, 'assets')
+        mkdirSync(assetsRoot, { recursive: true })
+        for (const dirName of REQUIRED_ASSET_DIRS) mkdirSync(join(assetsRoot, dirName), { recursive: true })
+        const purged = expiredTrashEntries(join(assetsRoot, '.trash'))
+        for (const file of purged) rmSync(join(assetsRoot, '.trash', file), { recursive: true, force: true })
+        const changes = items.flatMap(item => item.changes)
+        return items.map(item => ({
+          itemId: item.id,
+          actionId: item.actionId,
+          status: 'applied' as const,
+          message: `Repaired the asset store${purged.length > 0 ? ` and purged ${purged.length} expired trash item(s)` : ''}.`,
+          affectedCheckIds: ['assets.assets'],
+          changes,
+        }))
+      } catch (error) {
+        return items.map(item => ({
+          itemId: item.id,
+          actionId: item.actionId,
+          status: 'failed' as const,
+          message: error instanceof Error ? error.message : String(error),
+          affectedCheckIds: ['assets.assets'],
+          changes: [],
+        }))
+      }
     },
   }
 }

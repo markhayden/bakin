@@ -14,15 +14,16 @@
  *    (tokens/cost/outcome) interleaved with notable events, expandable logs.
  *
  * Also exports useAgentAttention + DiagnosticsChips: the Overview tab's
- * drift/context/burn status chips, derived from the CACHED doctor results
- * (data.agents) — same source as the dashboard attention rollup.
+ * drift/context/burn status chips, derived from canonical cached Health
+ * incidents and their structured agent resources.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2, RefreshCw } from 'lucide-react'
 import { Button, Badge, Skeleton } from '@makinbakin/sdk/ui'
 import { Sparkline, ChartExplainer } from '@makinbakin/sdk/components'
 import { usePluginEvent, useJsonFetch } from '@makinbakin/sdk/hooks'
 import { formatDuration } from '@makinbakin/sdk/utils'
+import type { HealthReport } from '@makinbakin/sdk/types'
 import type { ScanFinding, TimelineEventView } from '../types'
 
 // ── Small shared bits ────────────────────────────────────────────────────────
@@ -55,13 +56,88 @@ function formatTokens(n: number): string {
   return String(n)
 }
 
-async function getJson<T>(url: string): Promise<T | null> {
+async function getJson<T>(url: string, signal?: AbortSignal): Promise<T | null> {
   try {
-    const res = await fetch(url)
+    const res = await fetch(url, { signal })
     if (!res.ok) return null
     return (await res.json()) as T
   } catch {
     return null
+  }
+}
+
+const DIAGNOSTICS_REQUEST_TIMEOUT_MS = 15_000
+
+class DiagnosticsRequestTimeoutError extends Error {
+  constructor() {
+    super('Request timed out')
+    this.name = 'DiagnosticsRequestTimeoutError'
+  }
+}
+
+async function fetchWithDeadline(
+  url: string,
+  init: RequestInit,
+  controller: AbortController,
+): Promise<Response> {
+  let timeout: ReturnType<typeof globalThis.setTimeout> | undefined
+  try {
+    return await Promise.race([
+      fetch(url, { ...init, signal: controller.signal }),
+      new Promise<never>((_resolve, reject) => {
+        timeout = globalThis.setTimeout(() => {
+          controller.abort()
+          reject(new DiagnosticsRequestTimeoutError())
+        }, DIAGNOSTICS_REQUEST_TIMEOUT_MS)
+      }),
+    ])
+  } finally {
+    if (timeout !== undefined) globalThis.clearTimeout(timeout)
+  }
+}
+
+function useTimedJsonFetch<T>(url: string) {
+  const [data, setData] = useState<T | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [retryNonce, setRetryNonce] = useState(0)
+
+  useEffect(() => {
+    const controller = new AbortController()
+    let active = true
+    setData(null)
+    setLoading(true)
+    setError(null)
+
+    void fetchWithDeadline(url, {}, controller)
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`Request failed (${response.status})`)
+        return (await response.json()) as T
+      })
+      .then((body) => {
+        if (!active) return
+        setData(body)
+        setLoading(false)
+      })
+      .catch((cause: unknown) => {
+        if (!active) return
+        setError(cause instanceof DiagnosticsRequestTimeoutError
+          ? 'Request timed out.'
+          : 'Request failed.')
+        setLoading(false)
+      })
+
+    return () => {
+      active = false
+      controller.abort()
+    }
+  }, [retryNonce, url])
+
+  return {
+    data,
+    loading,
+    error,
+    refresh: () => setRetryNonce((nonce) => nonce + 1),
   }
 }
 
@@ -74,35 +150,27 @@ export interface AgentAttention {
   burn: boolean
 }
 
-interface DoctorRowLike {
-  check?: string
-  status?: string
-  data?: { agents?: unknown }
-}
-
-function rowFlagsAgent(rows: DoctorRowLike[], check: string, agentId: string): boolean {
-  return rows.some(
-    (row) =>
-      row.check === check &&
-      row.status !== 'ok' &&
-      row.status !== 'fixed' &&
-      Array.isArray(row.data?.agents) &&
-      (row.data.agents as unknown[]).includes(agentId),
+function reportFlagsAgent(report: HealthReport, checkId: string, agentId: string): boolean {
+  const observationIds = new Set(
+    report.observations
+      .filter(observation => observation.checkId === checkId)
+      .map(observation => observation.id),
   )
+  return report.incidents.some(incident => (
+    incident.disposition !== 'advisory'
+    && incident.resources.some(resource => resource.kind === 'agent' && resource.id === agentId)
+    && incident.observationIds.some(observationId => observationIds.has(observationId))
+  ))
 }
 
-/** Drift/context/burn flags for one agent from the cached doctor results. */
+/** Drift/context/burn flags for one agent from canonical cached Health incidents. */
 export function useAgentAttention(agentId: string): AgentAttention {
-  // A failed summary fetch leaves data null → same "not loaded" flags the
-  // old swallow-errors getJson produced.
-  const summary = useJsonFetch<{ doctor?: { results?: DoctorRowLike[] } | null }>(
-    '/api/plugins/health/summary',
-  )
+  const health = useJsonFetch<HealthReport>('/api/plugins/health/doctor')
   // Re-fetch when the agent changes (matches the old per-effect behavior):
   // an instance surviving /team/a → /team/b navigation must not flag the new
   // agent from a stale doctor snapshot. Skips the mount run — the hook
   // already fetches on mount; this only covers agentId CHANGES.
-  const { refresh } = summary
+  const { refresh } = health
   const mountedAgent = useRef(agentId)
   useEffect(() => {
     if (mountedAgent.current === agentId) return
@@ -110,14 +178,14 @@ export function useAgentAttention(agentId: string): AgentAttention {
     refresh()
   }, [agentId, refresh])
   return useMemo(() => {
-    const rows = summary.data?.doctor?.results ?? []
+    const report = health.data
     return {
-      loaded: Boolean(summary.data?.doctor),
-      drift: rowFlagsAgent(rows, 'agent-sync', agentId),
-      context: rowFlagsAgent(rows, 'context.startup-size', agentId),
-      burn: rowFlagsAgent(rows, 'usage.agent-burn', agentId),
+      loaded: report !== null,
+      drift: report ? reportFlagsAgent(report, 'team.agent-sync', agentId) : false,
+      context: report ? reportFlagsAgent(report, 'health.context.startup-size', agentId) : false,
+      burn: report ? reportFlagsAgent(report, 'health.usage.agent-burn', agentId) : false,
     }
-  }, [summary.data, agentId])
+  }, [health.data, agentId])
 }
 
 export function DiagnosticsChips({ agentId, onOpen }: { agentId: string; onOpen: () => void }) {
@@ -178,39 +246,102 @@ function DriftPanel({ agentId }: { agentId: string }) {
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
   const [syncError, setSyncError] = useState<string | null>(null)
+  const [retryNonce, setRetryNonce] = useState(0)
+  const syncControllerRef = useRef<AbortController | null>(null)
 
-  const load = useCallback(async () => {
+  useEffect(() => {
+    const controller = new AbortController()
+    let active = true
+    let completed = false
+    let scanBody: ScanPayload | null = null
+    let receiptBody: ReceiptPayload | null = null
+
     setLoading(true)
-    const [scanBody, receiptBody] = await Promise.all([
-      getJson<ScanPayload>(`/api/agent-packages/${encodeURIComponent(agentId)}/scan`),
-      getJson<ReceiptPayload>(`/api/agent-packages/${encodeURIComponent(agentId)}/receipt`),
+    setScan(null)
+    setReceipt(null)
+
+    const requests = Promise.allSettled([
+      getJson<ScanPayload>(
+        `/api/agent-packages/${encodeURIComponent(agentId)}/scan`,
+        controller.signal,
+      ).then((body) => { scanBody = body }),
+      getJson<ReceiptPayload>(
+        `/api/agent-packages/${encodeURIComponent(agentId)}/receipt`,
+        controller.signal,
+      ).then((body) => { receiptBody = body }),
     ])
-    setScan(scanBody)
-    setReceipt(receiptBody?.receipt ?? null)
-    setLoading(false)
+
+    const finish = () => {
+      if (!active || completed) return
+      completed = true
+      setScan(scanBody)
+      setReceipt(receiptBody?.receipt ?? null)
+      setLoading(false)
+    }
+
+    const timeout = globalThis.setTimeout(() => {
+      controller.abort()
+      finish()
+    }, DIAGNOSTICS_REQUEST_TIMEOUT_MS)
+
+    void requests.then(() => {
+      globalThis.clearTimeout(timeout)
+      finish()
+    })
+
+    return () => {
+      active = false
+      globalThis.clearTimeout(timeout)
+      controller.abort()
+    }
+  }, [agentId, retryNonce])
+
+  useEffect(() => {
+    const controller = syncControllerRef.current
+    syncControllerRef.current = null
+    controller?.abort()
+    setSyncing(false)
+    setSyncError(null)
+    return () => {
+      const activeController = syncControllerRef.current
+      syncControllerRef.current = null
+      activeController?.abort()
+    }
   }, [agentId])
 
-  useEffect(() => { void load() }, [load])
-
   const handleSync = async () => {
+    syncControllerRef.current?.abort()
+    const controller = new AbortController()
+    syncControllerRef.current = controller
     setSyncing(true)
     setSyncError(null)
     try {
-      const res = await fetch(`/api/agent-packages/${encodeURIComponent(agentId)}/sync`, {
+      const res = await fetchWithDeadline(`/api/agent-packages/${encodeURIComponent(agentId)}/sync`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({}),
-      })
+      }, controller)
+      if (syncControllerRef.current !== controller) return
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
+        if (syncControllerRef.current !== controller) return
         setSyncError(body.migrationRequired
           ? 'This agent needs the one-time block migration — run `bakin agents sync` in a terminal.'
           : (body.error ?? `sync failed (${res.status})`))
         return
       }
-      await load()
+      if (syncControllerRef.current !== controller) return
+      setRetryNonce((nonce) => nonce + 1)
+    } catch (cause) {
+      if (syncControllerRef.current !== controller) return
+      setSyncError(cause instanceof DiagnosticsRequestTimeoutError
+        ? 'Sync timed out. Try again.'
+        : 'Sync could not be completed. Try again.')
     } finally {
-      setSyncing(false)
+      if (syncControllerRef.current === controller) {
+        syncControllerRef.current = null
+        setSyncing(false)
+      }
     }
   }
 
@@ -222,7 +353,12 @@ function DriftPanel({ agentId }: { agentId: string }) {
       title="Drift"
       actions={
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setRetryNonce((nonce) => nonce + 1)}
+            disabled={loading}
+          >
             <RefreshCw className="mr-1 size-3" /> Rescan
           </Button>
           <Button size="sm" onClick={() => void handleSync()} disabled={syncing || !scan?.packageId}>
@@ -305,34 +441,48 @@ interface ContextReportPayload {
   }
 }
 
-const DEFAULT_CONTEXT_BUDGET = 64 * 1024
-
 function ContextPanel({ agentId }: { agentId: string }) {
-  // Both reads degrade independently: a failed report renders the
-  // "unavailable" panel; failed settings keep the default budget.
-  const reportRes = useJsonFetch<ContextReportPayload>(
+  // Both reads degrade independently. A failed settings request must not be
+  // confused with the configured budget: the estimate remains useful, but
+  // its threshold is unknown until settings recover.
+  const reportRes = useTimedJsonFetch<ContextReportPayload>(
     `/api/context-report/${encodeURIComponent(agentId)}`,
   )
-  const settingsRes = useJsonFetch<{ dispatch?: { contextBudgetBytes?: number } }>('/api/settings')
+  const settingsRes = useTimedJsonFetch<{ dispatch?: { contextBudgetBytes?: number } }>('/api/settings')
   const loading = reportRes.loading || settingsRes.loading
   const payload = reportRes.data
   const configured = settingsRes.data?.dispatch?.contextBudgetBytes
   const budget =
-    typeof configured === 'number' && configured > 0 ? configured : DEFAULT_CONTEXT_BUDGET
+    typeof configured === 'number' && configured > 0 ? configured : null
 
   if (loading) return <Panel title="Context budget"><Skeleton className="h-16 w-full" /></Panel>
   const report = payload?.report
   if (!report) {
     return (
-      <Panel title="Context budget">
-        <p className="text-sm text-muted-foreground">Context report unavailable.</p>
+      <Panel
+        title="Context budget"
+        actions={(
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={reportRes.refresh}
+            disabled={reportRes.loading}
+            aria-label="Retry context report"
+          >
+            Retry
+          </Button>
+        )}
+      >
+        <p className="text-sm text-muted-foreground">
+          Context report unavailable{reportRes.error === 'Request timed out.' ? ' because the request timed out.' : '.'}
+        </p>
       </Panel>
     )
   }
 
   const estimated = report.dispatch.estimatedMaxTaskBytes
-  const pct = Math.min(100, (estimated / budget) * 100)
-  const over = estimated > budget
+  const pct = budget === null ? null : Math.min(100, (estimated / budget) * 100)
+  const over = budget === null ? false : estimated > budget
   const topSections = [...report.dispatch.task.sections].sort((a, b) => b.bytes - a.bytes).slice(0, 5)
   const observedInputs = report.observed.runs
     .map((r) => r.inputTokens)
@@ -347,16 +497,37 @@ function ContextPanel({ agentId }: { agentId: string }) {
             <span>
               Estimated per-dispatch context:{' '}
               <span className={`font-medium ${over ? 'text-amber-400' : ''}`}>{formatBytes(estimated)}</span>
-              <span className="text-muted-foreground"> of {formatBytes(budget)} budget</span>
+              {budget !== null && (
+                <span className="text-muted-foreground"> of {formatBytes(budget)} budget</span>
+              )}
             </span>
-            {over && <Badge variant="secondary" className="text-amber-400">over budget</Badge>}
+            {budget === null ? (
+              <Badge variant="secondary">budget unknown</Badge>
+            ) : over ? (
+              <Badge variant="secondary" className="text-amber-400">over budget</Badge>
+            ) : null}
           </div>
-          <div className="h-2 overflow-hidden rounded-full bg-border/60">
-            <div
-              className={`h-full rounded-full ${over ? 'bg-amber-500' : 'bg-emerald-500'}`}
-              style={{ width: `${pct}%` }}
-            />
-          </div>
+          {pct === null ? (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded border border-border/60 px-3 py-2">
+              <p className="text-sm text-muted-foreground">Configured budget unavailable.</p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={settingsRes.refresh}
+                disabled={settingsRes.loading}
+                aria-label="Retry context budget"
+              >
+                Retry
+              </Button>
+            </div>
+          ) : (
+            <div className="h-2 overflow-hidden rounded-full bg-border/60">
+              <div
+                className={`h-full rounded-full ${over ? 'bg-amber-500' : 'bg-emerald-500'}`}
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+          )}
         </div>
 
         <div>
@@ -458,18 +629,49 @@ function useAgentLiveActivity(agentId: string): { label: string; ts: number } | 
 
 function TimelinePanel({ agentId }: { agentId: string }) {
   const [window, setWindow] = useState<'24h' | '7d'>('24h')
-  const [events, setEvents] = useState<TimelineEventView[] | null>(null)
+  const [events, setEvents] = useState<TimelineEventView[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [retryNonce, setRetryNonce] = useState(0)
   const live = useAgentLiveActivity(agentId)
 
   useEffect(() => {
-    let cancelled = false
-    getJson<{ ok: boolean; events?: TimelineEventView[] }>(
-      `/api/plugins/team/${encodeURIComponent(agentId)}/timeline?window=${window}`,
-    ).then((body) => {
-      if (!cancelled) setEvents(body?.events ?? null)
+    const controller = new AbortController()
+    setLoading(true)
+    setError(null)
+    const timeout = globalThis.setTimeout(() => {
+      controller.abort()
+      setEvents([])
+      setError('Activity timeline unavailable.')
+      setLoading(false)
+    }, DIAGNOSTICS_REQUEST_TIMEOUT_MS)
+
+    fetch(`/api/plugins/team/${encodeURIComponent(agentId)}/timeline?window=${window}`, {
+      signal: controller.signal,
     })
-    return () => { cancelled = true }
-  }, [agentId, window])
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`Request failed (${response.status})`)
+        return (await response.json()) as { ok: boolean; events?: TimelineEventView[] }
+      })
+      .then((body) => {
+        if (controller.signal.aborted) return
+        if (!Array.isArray(body.events)) throw new Error('Timeline response was invalid')
+        setEvents(body.events)
+        setLoading(false)
+      })
+      .catch((cause: unknown) => {
+        if (controller.signal.aborted || (cause as { name?: string })?.name === 'AbortError') return
+        setEvents([])
+        setError('Activity timeline unavailable.')
+        setLoading(false)
+      })
+      .finally(() => globalThis.clearTimeout(timeout))
+
+    return () => {
+      globalThis.clearTimeout(timeout)
+      controller.abort()
+    }
+  }, [agentId, window, retryNonce])
 
   return (
     <Panel
@@ -499,8 +701,20 @@ function TimelinePanel({ agentId }: { agentId: string }) {
           <span className="truncate text-xs text-blue-200/90" title={live.label}>{live.label}</span>
         </div>
       )}
-      {events === null ? (
+      {loading ? (
         <Skeleton className="h-16 w-full" />
+      ) : error ? (
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded border border-border/60 px-3 py-2">
+          <p className="text-sm text-muted-foreground">{error}</p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setRetryNonce((nonce) => nonce + 1)}
+            aria-label="Retry activity timeline"
+          >
+            Retry
+          </Button>
+        </div>
       ) : events.length === 0 ? (
         <p className="text-sm text-muted-foreground">No activity in this window.</p>
       ) : (

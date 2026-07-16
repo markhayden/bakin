@@ -544,8 +544,16 @@ export interface AgentUsage {
   agent: string
   sessionId: string
   sessionStarted: string
+  /** Latest timestamp carried by an assistant usage message; absent on older servers. */
+  lastMessageAt?: string | null
   model: string
   messages: number
+  /**
+   * Assistant messages whose runtime usage carried a complete cost total,
+   * either explicit or derivable from every positive token component. Absent
+   * on older servers, where cost coverage is unknown.
+   */
+  costedMessages?: number
   tokens: {
     input: number
     output: number

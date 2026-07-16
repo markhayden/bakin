@@ -30,21 +30,59 @@ const probe = (path: string | null, authed: boolean): GhProbe => ({
 })
 
 describe('github readiness check', () => {
-  it('absent gh is informational ok', async () => {
-    const [r] = await checkGithubReadiness(probe(null, false))
-    expect(r.status).toBe('ok')
-    expect(r.message).toContain('not installed')
+  it('reports an absent optional gh installation as healthy', async () => {
+    const result = await checkGithubReadiness(probe(null, false))
+
+    expect(result.outcome).toBe('observed')
+    if (result.outcome !== 'observed') throw new Error('expected observations')
+    expect(result.observations).toEqual([expect.objectContaining({
+      key: 'github-cli',
+      status: 'healthy',
+      summary: 'GitHub CLI is not installed.',
+      evidence: { installed: false, authenticated: false },
+    })])
   })
 
-  it('unauthenticated gh warns with remediation', async () => {
-    const [r] = await checkGithubReadiness(probe('/opt/homebrew/bin/gh', false))
-    expect(r.status).toBe('warn')
-    expect(r.message).toContain('gh auth login')
+  it('reports an unauthenticated gh installation as an actionable warning', async () => {
+    const result = await checkGithubReadiness(probe('/opt/homebrew/bin/gh', false))
+
+    expect(result.outcome).toBe('observed')
+    if (result.outcome !== 'observed') throw new Error('expected observations')
+    const [observation] = result.observations
+    expect(observation).toEqual(expect.objectContaining({
+      key: 'github-cli',
+      status: 'warning',
+      summary: 'GitHub CLI needs authentication.',
+      evidence: {
+        installed: true,
+        authenticated: false,
+        path: '/opt/homebrew/bin/gh',
+      },
+    }))
+    expect(observation.incident).toEqual(expect.objectContaining({
+      key: 'authentication-required',
+      disposition: 'action_required',
+      resolution: expect.objectContaining({
+        type: 'instructions',
+        command: 'gh auth login',
+      }),
+    }))
   })
 
-  it('authenticated gh is ok', async () => {
-    const [r] = await checkGithubReadiness(probe('/opt/homebrew/bin/gh', true))
-    expect(r.status).toBe('ok')
-    expect(r.message).toContain('authenticated')
+  it('reports an authenticated gh installation as healthy', async () => {
+    const result = await checkGithubReadiness(probe('/opt/homebrew/bin/gh', true))
+
+    expect(result.outcome).toBe('observed')
+    if (result.outcome !== 'observed') throw new Error('expected observations')
+    expect(result.observations).toEqual([expect.objectContaining({
+      key: 'github-cli',
+      status: 'healthy',
+      summary: 'GitHub CLI is authenticated.',
+      evidence: {
+        installed: true,
+        authenticated: true,
+        path: '/opt/homebrew/bin/gh',
+      },
+    })])
   })
 })

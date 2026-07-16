@@ -142,6 +142,7 @@ export const brandRoutes = [
   defineRoute({
     path: '/blocked-tasks',
     method: 'GET',
+    activityClass: 'routine',
     summary: 'Todo tasks currently deferring on a missing/draft brand',
     description:
       'Derived state for the board badge (#419) — effective brand resolved server-side (own → ancestry → project hook), never task metadata. Side-effect free.',

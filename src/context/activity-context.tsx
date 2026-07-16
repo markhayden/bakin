@@ -1,11 +1,11 @@
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useState } from 'react'
 
 const STORAGE_KEY = 'bakin-activity-log-open'
 
 /** SSR-safe default — always true on first render, synced from localStorage in effect */
 const DEFAULT_OPEN = true
 
-export const ActivityContext = createContext({ open: false, toggle: () => {} })
+export const ActivityContext = createContext({ open: false, toggle: () => {}, close: () => {} })
 export const useActivityContext = () => useContext(ActivityContext)
 
 export function ActivityProvider({ children }: { children: React.ReactNode }) {
@@ -20,13 +20,18 @@ export function ActivityProvider({ children }: { children: React.ReactNode }) {
       }
     } catch {}
   }, [])
-  const toggle = () => setOpen((prev) => {
+  const toggle = useCallback(() => setOpen((prev) => {
     const next = !prev
     try { localStorage.setItem(STORAGE_KEY, String(next)) } catch {}
     return next
-  })
+  }), [])
+  const close = useCallback(() => setOpen((current) => {
+    if (!current) return current
+    try { localStorage.setItem(STORAGE_KEY, 'false') } catch {}
+    return false
+  }), [])
   return (
-    <ActivityContext.Provider value={{ open, toggle }}>
+    <ActivityContext.Provider value={{ open, toggle, close }}>
       {children}
     </ActivityContext.Provider>
   )

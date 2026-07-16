@@ -121,11 +121,48 @@ describe('MCP usage wiring (integration)', () => {
     const entry = feed.recent.find((e) => e.name === toolName)
     expect(entry).toBeDefined()
     expect(entry!.kind).toBe('mcp')
+    expect(entry!.activityClass).toBe('user')
     expect(entry!.agent).toBe('testAgent')
     expect(entry!.status).toBe('ok')
     expect(entry!.durationMs).not.toBeNull()
     expect(entry!.durationMs!).toBeGreaterThanOrEqual(0)
     expect((entry!.meta as Record<string, unknown>)?.label).toBe('Dummy Success')
+  })
+
+  it('hides the successful heartbeat wrapper by default and reveals it as routine on opt-in', async () => {
+    const { registerTools } = require('../../src/core/mcp-server') as typeof import('../../src/core/mcp-server')
+    const { getExecTool } = require('@/core/exec-tools/registry') as typeof import('@/core/exec-tools/registry')
+    const { getUsageFeed } = require('../../src/core/usage') as typeof import('../../src/core/usage')
+
+    const heartbeat = getExecTool('bakin_exec_heartbeat')
+    expect(heartbeat).toBeDefined()
+    // Heartbeat does not consume PluginToolContext; leave full AppServices out
+    // of this focused transport/usage integration test.
+    const originalSource = heartbeat!.source
+    heartbeat!.source = undefined
+
+    try {
+      const { server, captured } = makeMockServer()
+      registerTools(server, () => 'testAgent')
+      const handler = captured.get('bakin_exec_heartbeat')
+      expect(handler).toBeDefined()
+
+      const result = await handler!({ status: 'idle', message: 'mcp regression' })
+      expect(result.isError).toBeFalsy()
+
+      const defaultFeed = getUsageFeed({ kind: 'mcp', window: '5m' })
+      expect(defaultFeed.recent.find((entry) => entry.name === 'bakin_exec_heartbeat')).toBeUndefined()
+
+      const routineFeed = getUsageFeed({ kind: 'mcp', window: '5m', includeRoutine: true })
+      const wrapper = routineFeed.recent.find((entry) => entry.name === 'bakin_exec_heartbeat')
+      expect(wrapper).toMatchObject({
+        activityClass: 'routine',
+        agent: 'testAgent',
+        status: 'ok',
+      })
+    } finally {
+      heartbeat!.source = originalSource
+    }
   })
 
   it('records a not-ok handler result as an error entry', async () => {

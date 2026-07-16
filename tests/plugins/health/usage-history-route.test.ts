@@ -5,7 +5,7 @@
 import { describe, it, expect, beforeAll, afterAll, mock } from 'bun:test'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { rmSync } from 'fs'
+import { mkdirSync, rmSync } from 'fs'
 import { randomUUID } from 'crypto'
 
 const testDir = join(tmpdir(), `bakin-test-usage-route-${Date.now()}-${randomUUID()}`)
@@ -45,8 +45,9 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
 
 // The plugin module pulls the doctor/repair graph — irrelevant here.
 mock.module('../../../src/core/doctor', () => ({
-  getLastResults: () => null,
-  runDiagnostics: async () => [],
+  getLastReport: () => null,
+  runDiagnostics: async () => null,
+  runTargetedDiagnostics: async () => null,
 }))
 mock.module('../../../src/core/doctor-repair', () => ({
   planDoctorRepair: async () => ({ items: [], errors: [] }),
@@ -66,10 +67,24 @@ import healthPlugin from '../../../plugins/health'
 import { activatePlugin, callRoute, findRoute, type ActivatedPlugin } from '../test-helpers'
 import { replaceSessionUsage, toLocalDayKey } from '@bakin/core/usage-history/store'
 import { closeAllDbs } from '@bakin/core/storage/db'
-import { startUsageHistoryTimer, stopUsageHistoryTimer } from '../../../plugins/health/lib/usage-history-timer'
+import {
+  MAX_SCAN_MINUTES,
+  MIN_SCAN_MINUTES,
+  getUsageHistoryScanStaleAfterMs,
+  isUsageHistoryScanInFlight,
+  normalizeUsageHistoryScanMinutes,
+  runUsageHistoryScan,
+  startUsageHistoryTimer,
+  stopUsageHistoryTimer,
+} from '../../../plugins/health/lib/usage-history-timer'
 import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
 
 let activated: ActivatedPlugin
+const usageScanGlobal = globalThis as typeof globalThis & {
+  __bakinUsageHistoryLastScan?: unknown
+  __bakinUsageHistoryScanInFlight?: Promise<void> | null
+  __bakinUsageHistoryScanPending?: boolean
+}
 
 const DAY_MS = 24 * 60 * 60 * 1000
 const today = toLocalDayKey(Date.now())
@@ -99,6 +114,9 @@ function seed(sessionId: string, agent: string, day: string, total: number, tsMs
 }
 
 beforeAll(async () => {
+  usageScanGlobal.__bakinUsageHistoryLastScan = null
+  usageScanGlobal.__bakinUsageHistoryScanInFlight = null
+  usageScanGlobal.__bakinUsageHistoryScanPending = false
   activated = await activatePlugin(healthPlugin, testDir)
   seed('s-today', 'basil', today, 100, Date.now())
   seed('s-10d', 'basil', tenDaysAgo, 1_000, Date.now() - 10 * DAY_MS)
@@ -107,6 +125,9 @@ beforeAll(async () => {
 
 afterAll(() => {
   stopUsageHistoryTimer()
+  usageScanGlobal.__bakinUsageHistoryLastScan = null
+  usageScanGlobal.__bakinUsageHistoryScanInFlight = null
+  usageScanGlobal.__bakinUsageHistoryScanPending = false
   closeAllDbs()
   rmSync(testDir, { recursive: true, force: true })
 })
@@ -151,12 +172,129 @@ describe('GET /usage-history', () => {
   it('reports scannedAt null before any sweep has completed', async () => {
     const { body } = await getHistory()
     expect(body.scannedAt).toBeNull()
+    expect(body.coverage).toEqual({
+      status: 'unavailable',
+      reason: 'scan_not_run',
+      agents: [],
+    })
     expect(body.since).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    expect(body.throughDay).toBe(today)
+  })
+
+  it('publishes partial per-agent coverage without claiming a completed legacy scan', async () => {
+    usageScanGlobal.__bakinUsageHistoryLastScan = {
+      at: Date.now(),
+      report: {
+        scanned: 1,
+        skipped: 0,
+        failed: 1,
+        coverage: {
+          status: 'partial',
+          reason: 'agent_scan_failed',
+          agents: [
+            { agent: 'basil', status: 'complete' },
+            { agent: 'clover', status: 'partial' },
+          ],
+        },
+      },
+    }
+
+    const { body } = await getHistory()
+
+    expect(body.scannedAt).toBeNull()
+    expect(body.coverage).toEqual({
+      status: 'partial',
+      reason: 'agent_scan_failed',
+      agents: [
+        { agent: 'basil', status: 'complete' },
+        { agent: 'clover', status: 'partial' },
+      ],
+    })
+    usageScanGlobal.__bakinUsageHistoryLastScan = null
+  })
+
+  it('downgrades an expired complete scan instead of presenting retained rows as current', async () => {
+    usageScanGlobal.__bakinUsageHistoryLastScan = {
+      at: Date.now() - getUsageHistoryScanStaleAfterMs() - 1,
+      report: {
+        scanned: 1,
+        skipped: 0,
+        failed: 0,
+        coverage: {
+          status: 'complete',
+          reason: 'complete',
+          agents: [{ agent: 'basil', status: 'complete' }],
+        },
+      },
+    }
+
+    const { body } = await getHistory()
+
+    expect(body.scannedAt).toBeNull()
+    expect(body.coverage).toEqual({
+      status: 'unavailable',
+      reason: 'scan_stale',
+      agents: [],
+    })
+    expect((body.byAgent as Array<{ agent: string }>).some((row) => row.agent === 'basil')).toBe(true)
+    usageScanGlobal.__bakinUsageHistoryLastScan = null
+  })
+
+  it('withholds complete evidence while a new scan generation is in progress', async () => {
+    const completeReport = {
+      scanned: 1,
+      skipped: 0,
+      failed: 0,
+      coverage: {
+        status: 'complete' as const,
+        reason: 'complete' as const,
+        agents: [{ agent: 'basil', status: 'complete' as const }],
+      },
+    }
+    usageScanGlobal.__bakinUsageHistoryLastScan = {
+      at: Date.now(),
+      report: completeReport,
+    }
+    let releaseScan!: (report: typeof completeReport) => void
+    let pendingWasVisibleAtScannerStart = false
+    const scan = runUsageHistoryScan(createMockRuntimeAdapter(), async () => {
+      pendingWasVisibleAtScannerStart = isUsageHistoryScanInFlight()
+      return await new Promise<typeof completeReport>((resolve) => { releaseScan = resolve })
+    })
+
+    const during = await getHistory()
+
+    expect(pendingWasVisibleAtScannerStart).toBe(true)
+    expect(during.body.scannedAt).toBeNull()
+    expect(during.body.coverage).toEqual({
+      status: 'unavailable',
+      reason: 'scan_in_progress',
+      agents: [],
+    })
+
+    releaseScan(completeReport)
+    await scan
+    const after = await getHistory()
+    expect(after.body.coverage).toEqual(completeReport.coverage)
+    expect(after.body.scannedAt).not.toBeNull()
+  })
+
+  it('returns unavailable when the durable store cannot be read', async () => {
+    closeAllDbs()
+    const storePath = join(testDir, 'usage.db')
+    rmSync(storePath, { force: true })
+    mkdirSync(storePath)
+
+    const { status, body } = await getHistory()
+
+    expect(status).toBe(503)
+    expect(body.error).toBe('Usage history store could not be read.')
+    rmSync(storePath, { recursive: true, force: true })
   })
 })
 
 describe('usage-history timer', () => {
-  it('start is idempotent and stop clears the handle', () => {
+  it('keeps the same timer for the same interval and reschedules a changed interval', () => {
     const g = globalThis as { __bakinUsageHistoryTimer?: unknown }
     // activate() already armed it.
     expect(g.__bakinUsageHistoryTimer).toBeTruthy()
@@ -164,11 +302,34 @@ describe('usage-history timer', () => {
     startUsageHistoryTimer(createMockRuntimeAdapter(), 5)
     expect(g.__bakinUsageHistoryTimer).toBe(first)
 
+    startUsageHistoryTimer(createMockRuntimeAdapter(), 12)
+    expect(g.__bakinUsageHistoryTimer).not.toBe(first)
+    expect(getUsageHistoryScanStaleAfterMs()).toBe(24 * 60_000)
+
     stopUsageHistoryTimer()
     expect(g.__bakinUsageHistoryTimer).toBeNull()
 
     startUsageHistoryTimer(createMockRuntimeAdapter(), 5)
     expect(g.__bakinUsageHistoryTimer).toBeTruthy()
     stopUsageHistoryTimer()
+  })
+
+  it('normalizes non-finite, fractional, and out-of-range intervals', () => {
+    expect(normalizeUsageHistoryScanMinutes(Number.NaN)).toBe(5)
+    expect(normalizeUsageHistoryScanMinutes(Number.POSITIVE_INFINITY)).toBe(5)
+    expect(normalizeUsageHistoryScanMinutes(2.6)).toBe(3)
+    expect(normalizeUsageHistoryScanMinutes(-10)).toBe(MIN_SCAN_MINUTES)
+    expect(normalizeUsageHistoryScanMinutes(MAX_SCAN_MINUTES + 10)).toBe(MAX_SCAN_MINUTES)
+  })
+
+  it('applies saved interval changes without a plugin restart', async () => {
+    const g = globalThis as { __bakinUsageHistoryTimer?: unknown }
+    startUsageHistoryTimer(activated.ctx.runtime, 5)
+    const before = g.__bakinUsageHistoryTimer
+
+    await healthPlugin.onSettingsChange?.({ usageHistoryScanMinutes: 9 })
+
+    expect(g.__bakinUsageHistoryTimer).not.toBe(before)
+    expect(getUsageHistoryScanStaleAfterMs()).toBe(18 * 60_000)
   })
 })

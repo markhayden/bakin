@@ -278,6 +278,7 @@ export function buildSearchAPI(pluginId: string, opts?: BuildSearchAPIOptions): 
       const startedAt = Date.now()
       const record = (status: 'ok' | 'error') => recordUsage({
         kind: 'rest',
+        activityClass: 'user',
         name: 'search.query',
         agent: null,
         durationMs: Date.now() - startedAt,

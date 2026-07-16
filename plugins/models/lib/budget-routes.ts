@@ -122,6 +122,7 @@ export const budgetStatusRoutes = [
   defineRoute({
     path: '/budget/status',
     method: 'GET',
+    activityClass: 'routine',
     summary: 'Live budget gate status (side-effect-free)',
     description: 'Kill-switch state, per-agent gate status (ok | warn | deferred), providers currently deferred by provider rules, and open incidents — the poll behind task badges and the pause banner. Never opens incidents or audits.',
     responses: { 200: passthrough, 500: errorResponse },

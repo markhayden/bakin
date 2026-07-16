@@ -8,7 +8,8 @@
  */
 import { execFile } from 'child_process'
 import { promisify } from 'util'
-import type { HealthCheckResult } from '../../../../packages/core/src/plugin-types'
+import { healthHealthy, healthObserved, healthWarning } from '@makinbakin/sdk/utils'
+import type { HealthCheckRunInput } from '@makinbakin/sdk'
 
 const execFileAsync = promisify(execFile)
 
@@ -39,23 +40,46 @@ export const defaultGhProbe: GhProbe = {
   },
 }
 
-export async function checkGithubReadiness(probe: GhProbe = defaultGhProbe): Promise<HealthCheckResult[]> {
+export async function checkGithubReadiness(probe: GhProbe = defaultGhProbe): Promise<HealthCheckRunInput> {
   const ghPath = await probe.which()
   if (!ghPath) {
-    return [{
-      check: 'github-readiness',
-      status: 'ok',
-      message: 'GitHub CLI (gh) is not installed — agents can still do local git work via worktree tools. Install gh to add issue/PR/release abilities.',
-      autoFixable: false,
-    }]
+    return healthObserved([healthHealthy({
+      key: 'github-cli',
+      summary: 'GitHub CLI is not installed.',
+      detail: 'GitHub CLI is optional. Agents can still do local git work, but issue, pull request, and release operations require gh.',
+      evidence: { installed: false, authenticated: false },
+    })])
   }
+
   const authed = await probe.authOk()
-  return [{
-    check: 'github-readiness',
-    status: authed ? 'ok' : 'warn',
-    message: authed
-      ? `GitHub CLI is installed and authenticated (${ghPath})`
-      : `GitHub CLI is installed (${ghPath}) but not authenticated — agents' GitHub operations will fail. Run: gh auth login`,
-    autoFixable: false,
-  }]
+  const evidence = { installed: true, authenticated: authed, path: ghPath }
+  if (authed) {
+    return healthObserved([healthHealthy({
+      key: 'github-cli',
+      summary: 'GitHub CLI is authenticated.',
+      detail: `Agents can use GitHub issues, pull requests, and releases through ${ghPath}.`,
+      evidence,
+    })])
+  }
+
+  return healthObserved([healthWarning({
+    key: 'github-cli',
+    summary: 'GitHub CLI needs authentication.',
+    detail: `GitHub CLI is installed at ${ghPath}, but GitHub operations will fail until it is authenticated.`,
+    evidence,
+    incident: {
+      key: 'authentication-required',
+      title: 'GitHub CLI needs authentication',
+      impact: 'Agents cannot create or update GitHub issues, pull requests, or releases.',
+      disposition: 'action_required',
+      resources: [{ kind: 'system', id: 'github-cli', label: 'GitHub CLI' }],
+      resolution: {
+        key: 'authenticate',
+        type: 'instructions',
+        label: 'Authenticate GitHub CLI',
+        steps: ['Run `gh auth login` and follow the prompts to sign in to GitHub.'],
+        command: 'gh auth login',
+      },
+    },
+  })])
 }

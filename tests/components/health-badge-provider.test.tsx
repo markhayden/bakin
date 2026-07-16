@@ -16,9 +16,10 @@ mock.module('../../packages/core/src/content-dir', () => ({
 }))
 
 // Controllable error count from the mocked data hook.
-let mockErrors: number | null = null
+let mockCount: number | null = null
+let mockTone: 'error' | 'attention' = 'attention'
 mock.module('../../plugins/health/hooks/use-health-summary', () => ({
-  useHealthSummary: () => ({ errors: mockErrors }),
+  useHealthSummary: () => ({ count: mockCount, tone: mockTone }),
 }))
 
 // Mock the shared useNavBadge hook — its wiring is covered in
@@ -32,7 +33,8 @@ import '../rtl-settle'
 import { HealthBadgeProvider } from '../../plugins/health/components/health-badge-provider'
 
 beforeEach(() => {
-  mockErrors = null
+  mockCount = null
+  mockTone = 'attention'
   useNavBadge.mockClear()
 })
 
@@ -43,29 +45,31 @@ describe('HealthBadgeProvider', () => {
   })
 
   it('passes a red error badge with the failing-check count', () => {
-    mockErrors = 2
+    mockCount = 2
+    mockTone = 'error'
     render(<HealthBadgeProvider />)
     expect(useNavBadge).toHaveBeenLastCalledWith('health', 'health', { count: 2, tone: 'error' })
   })
 
   it('passes null when there are zero errors', () => {
-    mockErrors = 0
+    mockCount = 0
     render(<HealthBadgeProvider />)
     expect(useNavBadge).toHaveBeenLastCalledWith('health', 'health', null)
   })
 
   it('passes null before the summary has loaded', () => {
-    mockErrors = null
+    mockCount = null
     render(<HealthBadgeProvider />)
     expect(useNavBadge).toHaveBeenLastCalledWith('health', 'health', null)
   })
 
   it('transitions error count → 0 (cleared)', () => {
-    mockErrors = 3
+    mockCount = 3
+    mockTone = 'error'
     const { rerender } = render(<HealthBadgeProvider />)
     expect(useNavBadge).toHaveBeenLastCalledWith('health', 'health', { count: 3, tone: 'error' })
 
-    mockErrors = 0
+    mockCount = 0
     rerender(<HealthBadgeProvider />)
     expect(useNavBadge).toHaveBeenLastCalledWith('health', 'health', null)
   })

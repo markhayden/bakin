@@ -11,7 +11,9 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, mock } from 'bun
 import { mkdirSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
+import type { HealthReport } from '@makinbakin/sdk/types'
 import type { ActivatedPlugin } from '../test-helpers'
+import type { UsageEntry as HealthUsageEntry } from '../../../plugins/health/types'
 
 const testDir = join(tmpdir(), `bakin-test-health-routes-${Date.now()}`)
 
@@ -56,56 +58,98 @@ mock.module('../../../src/core/settings', () => ({
   })),
 }))
 
-const mockDoctorResults = [
-  { check: 'runtime', status: 'ok', message: 'Runtime responding' },
-  { check: 'taskboard', status: 'warn', message: 'Missing columns' },
-  { check: 'agents', status: 'error', message: 'Roster mismatch' },
+const generatedAt = '2026-04-01T10:00:00.000Z'
+const searchStages = [
+  { key: 'engine' as const, label: 'Engine', status: 'healthy' as const, summary: 'Engine checks are healthy.', observedAt: generatedAt, staleAt: '2026-04-01T10:01:00.000Z', observationIds: ['health.search:engine'] },
+  { key: 'queries' as const, label: 'Queries', status: 'healthy' as const, summary: 'Queries checks are healthy.', observedAt: generatedAt, staleAt: '2026-04-01T10:02:00.000Z', observationIds: ['health.search-canary:queries'] },
+  { key: 'indexes' as const, label: 'Indexes', status: 'healthy' as const, summary: 'Indexes checks are healthy.', observedAt: generatedAt, staleAt: '2026-04-01T10:05:00.000Z', observationIds: ['health.search:indexes'] },
+  { key: 'journal' as const, label: 'Journal', status: 'healthy' as const, summary: 'Journal checks are healthy.', observedAt: generatedAt, staleAt: '2026-04-01T10:01:00.000Z', observationIds: ['health.search:journal'] },
 ]
 
+const cachedReport: HealthReport = {
+  id: 'health-report-1',
+  revision: 4,
+  generatedAt,
+  overallStatus: 'needs_attention',
+  lastFullSweep: { id: 'sweep-1', startedAt: generatedAt, completedAt: generatedAt },
+  checks: [],
+  observations: [{
+    id: 'tasks.taskboard:columns', key: 'columns', status: 'error',
+    summary: 'Task board columns are missing.', checkId: 'tasks.taskboard', checkName: 'Task board',
+    owner: { kind: 'plugin', id: 'tasks', label: 'Tasks' }, group: { key: 'tasks', label: 'Tasks' },
+    checkedAt: generatedAt, observedAt: generatedAt, staleAt: '2026-04-01T10:02:00.000Z', snapshot: 'current',
+    incidentId: 'tasks:taskboard:missing-columns',
+    incident: {
+      key: 'taskboard.missing-columns', disposition: 'action_required', title: 'Task board columns are missing',
+      impact: 'Tasks cannot move through the full workflow.',
+      resources: [{ kind: 'plugin', id: 'tasks', label: 'Tasks' }],
+      resolution: { key: 'repair-board', type: 'repair', label: 'Repair board', actionId: 'tasks.repair-store' },
+    },
+  }],
+  incidents: [{
+    id: 'tasks:taskboard:missing-columns', status: 'error', disposition: 'action_required',
+    title: 'Task board columns are missing', impact: 'Tasks cannot move through the full workflow.',
+    resources: [{ kind: 'plugin', id: 'tasks', label: 'Tasks' }],
+    resolution: { key: 'repair-board', type: 'repair', label: 'Repair board', actionId: 'tasks.repair-store' },
+    observationIds: ['tasks.taskboard:columns'], observedAt: generatedAt, staleAt: '2026-04-01T10:02:00.000Z', stale: false,
+  }],
+  subsystems: {
+    search: {
+      status: 'healthy', summary: 'Search is healthy across engine, queries, indexes, and journal.',
+      observedAt: generatedAt, staleAt: '2026-04-01T10:01:00.000Z', stages: searchStages, incidentIds: [],
+    },
+  },
+  summary: {
+    checks: { registered: 0, completed: 0, failed: 0, invalid: 0, notApplicable: 0 },
+    incidents: { actionRequired: 1, watching: 0, advisory: 0, unknown: 0 },
+  },
+}
+
+const freshReport: HealthReport = { ...cachedReport, id: 'health-report-2', revision: 5 }
+const runDiagnosticsMock = mock(async () => freshReport)
+
 mock.module('../../../src/core/doctor', () => ({
-  getLastResults: mock(() => ({
-    results: mockDoctorResults,
-    timestamp: Date.now(),
-  })),
-  runDiagnostics: mock(async () => mockDoctorResults),
+  getLastReport: mock(() => cachedReport),
+  runDiagnostics: runDiagnosticsMock,
+  runTargetedDiagnostics: mock(async () => freshReport),
 }))
 
 const mockRepairPlan = {
-  diagnostics: mockDoctorResults,
+  planId: 'repair-plan-1',
+  basedOnReportId: cachedReport.id,
+  target: { type: 'incidents' as const, reportId: cachedReport.id, ids: ['tasks:taskboard:missing-columns'] },
+  createdAt: generatedAt,
+  expiresAt: '2026-04-01T10:10:00.000Z',
   items: [{
-    id: 'repair.taskboard',
-    checkId: 'taskboard',
-    healthCheckId: 'tasks.taskboard',
-    pluginId: 'tasks',
-    checkName: 'Task board',
+    id: 'tasks.repair-store:repair.taskboard',
+    actionId: 'tasks.repair-store',
     title: 'Repair taskboard',
     reason: 'Missing columns',
-    safety: 'safe',
-    requiresConfirmation: true,
+    safety: 'safe' as const,
+    incidentIds: ['tasks:taskboard:missing-columns'],
+    observationIds: ['tasks.taskboard:columns'],
+    preconditions: [{ observationId: 'tasks.taskboard:columns', executionId: 'execution-1', status: 'error' as const, resolutionKey: 'repair-board' }],
     changes: [{ kind: 'file', target: 'tasks/board.json', action: 'update', description: 'Add missing columns' }],
   }],
-  errors: [],
-  summary: { diagnostics: 3, repairableChecks: 1, totalItems: 1, safeItems: 1, blockedItems: 0, planErrors: 0 },
 }
 const mockRepairApply = {
-  status: 'applied',
-  plan: mockRepairPlan,
-  applied: [{
-    id: 'repair.taskboard',
-    checkId: 'taskboard',
+  planId: mockRepairPlan.planId,
+  basedOnReportId: cachedReport.id,
+  results: [{
+    itemId: mockRepairPlan.items[0].id,
+    actionId: 'tasks.repair-store',
     status: 'applied',
     message: 'Added missing columns',
+    affectedCheckIds: ['tasks.taskboard'],
     changes: [{ kind: 'file', target: 'tasks/board.json', action: 'update', description: 'Add missing columns' }],
   }],
-  skipped: [],
-  errors: [],
-  verification: [{ check: 'taskboard', status: 'ok', message: 'Taskboard healthy', autoFixable: false }],
-  summary: { planned: 1, applied: 1, skipped: 0, failed: 0, verificationErrors: 0, verificationWarnings: 0 },
+  affectedCheckIds: ['tasks.taskboard'],
+  verifiedReportId: freshReport.id,
+  verifiedIncidentIds: [],
+  report: freshReport,
 }
 const planDoctorRepairMock = mock(async () => mockRepairPlan)
-const applyDoctorRepairMock = mock(async (options: { accepted: boolean }) => (
-  options.accepted ? mockRepairApply : { ...mockRepairApply, status: 'confirmation_required', applied: [], verification: [] }
-))
+const applyDoctorRepairMock = mock(async () => mockRepairApply)
 
 mock.module('../../../src/core/doctor-repair', () => ({
   planDoctorRepair: planDoctorRepairMock,
@@ -114,25 +158,28 @@ mock.module('../../../src/core/doctor-repair', () => ({
 
 const mockDelegateRequest = {
   id: 'repair-1',
+  version: 2,
   kind: 'delegate',
   status: 'sent',
   createdAt: '2026-04-01T00:00:00.000Z',
   updatedAt: '2026-04-01T00:01:00.000Z',
   plan: mockRepairPlan,
-  unresolved: [mockDoctorResults[2]],
+  incidentIds: ['tasks:taskboard:missing-columns'],
+  observationIds: ['tasks.taskboard:columns'],
   taskId: 'task-repair-1',
   agentId: 'main',
   events: [{ ts: '2026-04-01T00:00:00.000Z', type: 'created', message: 'created' }],
 }
 const delegateDoctorRepairMock = mock(async (options: { accepted: boolean }) => (
   options.accepted
-    ? { status: 'sent', request: mockDelegateRequest, unresolved: mockDelegateRequest.unresolved }
-    : { status: 'confirmation_required', request: { ...mockDelegateRequest, status: 'planned', taskId: undefined, agentId: undefined }, unresolved: mockDelegateRequest.unresolved }
+    ? { status: 'sent', request: mockDelegateRequest, incidents: cachedReport.incidents }
+    : { status: 'confirmation_required', request: { ...mockDelegateRequest, status: 'planned', taskId: undefined, agentId: undefined }, incidents: cachedReport.incidents }
 ))
 const verifyDoctorRepairRequestMock = mock(async () => ({
   request: { ...mockDelegateRequest, status: 'verified' },
-  remaining: [],
+  remainingIncidentIds: [],
   verified: true,
+  reportId: freshReport.id,
 }))
 
 mock.module('../../../src/core/doctor-delegate', () => ({
@@ -147,9 +194,32 @@ mock.module('../../../src/core/doctor-repair-store', () => ({
 }))
 
 mock.module('../../../src/core/agent-usage', () => ({
-  getAllAgentUsage: () => [
-    { agent: 'patch', sessionId: 's1', model: 'claude-4', messages: 10, tokens: { total: 1000 }, cost: { total: 0.05, source: 'runtime' } },
-  ],
+  getAllAgentUsage: () => [{
+    agent: 'patch',
+    sessionId: 's1',
+    sessionStarted: '2026-04-01T00:00:00.000Z',
+    lastMessageAt: '2026-04-01T00:10:00.000Z',
+    model: 'claude-4',
+    messages: 10,
+    costedMessages: 10,
+    tokens: { input: 600, output: 200, cacheRead: 200, cacheWrite: 0, total: 1_000 },
+    cost: { input: null, output: null, cacheRead: null, cacheWrite: null, total: 0.05, source: 'runtime' },
+  }],
+  getAgentUsageSnapshot: () => ({
+    generatedAt: '2026-04-01T00:10:00.000Z',
+    source: { status: 'complete', reason: 'complete', failedAgents: [] },
+    sessions: [{
+      agent: 'patch',
+      sessionId: 's1',
+      sessionStarted: '2026-04-01T00:00:00.000Z',
+      lastMessageAt: '2026-04-01T00:10:00.000Z',
+      model: 'claude-4',
+      messages: 10,
+      costedMessages: 10,
+      tokens: { input: 600, output: 200, cacheRead: 200, cacheWrite: 0, total: 1_000 },
+      cost: { input: null, output: null, cacheRead: null, cacheWrite: null, total: 0.05, source: 'runtime' },
+    }],
+  }),
   // Consumed by the usage-history scanner, which rides the plugin's import
   // graph via the scan timer (#359).
   getSessionJsonlTierId: async () => null,
@@ -212,6 +282,7 @@ mock.module('../../../src/core/task-store', () => taskStoreMock)
 // ---------------------------------------------------------------------------
 
 import { activatePlugin, findRoute, findTool, callRoute, callTool } from '../test-helpers'
+import { agentUsageSnapshotResponseSchema } from '../../../plugins/health/lib/agent-route-schemas'
 const healthPlugin = (await import('../../../plugins/health')).default as typeof import('../../../plugins/health').default
 import { recordUsage, clearUsage } from '../../../src/core/usage'
 
@@ -229,6 +300,7 @@ afterAll(() => {
 
 beforeEach(() => {
   clearUsage()
+  runDiagnosticsMock.mockClear()
 })
 
 // ---------------------------------------------------------------------------
@@ -236,8 +308,8 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 
 describe('Health Plugin Routes', () => {
-  it('registers 17 routes', () => {
-    expect(activated.routes.length).toBe(17)
+  it('registers 21 routes', () => {
+    expect(activated.routes.length).toBe(21)
   })
 
   it('registers 2 exec tools', () => {
@@ -255,7 +327,7 @@ describe('Health Plugin Routes', () => {
 
       const { status, body } = await callRoute(route, activated.ctx)
       expect(status).toBe(200)
-      expect(body.doctor).toBeDefined()
+      expect(body.doctor).toBeUndefined()
       expect(body.server).toBeDefined()
       expect(body.upSince).toBe('2026-04-01T00:00:00Z')
       expect(Array.isArray(body.activeSessions)).toBe(true)
@@ -271,6 +343,23 @@ describe('Health Plugin Routes', () => {
       expect(body.mcp).toBeUndefined()
     })
 
+    it('returns unavailable instead of fabricating zero sessions when the MCP provider is absent', async () => {
+      const host = globalThis as typeof globalThis & { __bakinGetMcpSessions?: () => unknown }
+      const provider = host.__bakinGetMcpSessions
+      delete host.__bakinGetMcpSessions
+      try {
+        const route = findRoute(activated.routes, 'GET', '/summary')!
+        const { status, body } = await callRoute(route, activated.ctx)
+
+        expect(status).toBe(503)
+        expect(body.error).toBe('MCP session evidence is unavailable.')
+        expect(body.activeSessions).toBeUndefined()
+        expect(body.upSince).toBeUndefined()
+      } finally {
+        host.__bakinGetMcpSessions = provider
+      }
+    })
+
     it('includes server memory info', async () => {
       const route = findRoute(activated.routes, 'GET', '/summary')!
       const { body } = await callRoute(route, activated.ctx)
@@ -280,27 +369,28 @@ describe('Health Plugin Routes', () => {
       expect((server.totalMemoryMB as number)).toBeGreaterThan(0)
     })
 
-    it('includes doctor summary with error/warning counts', async () => {
+    it('does not embed a competing doctor report', async () => {
       const route = findRoute(activated.routes, 'GET', '/summary')!
       const { body } = await callRoute(route, activated.ctx)
-      const doctor = body.doctor as Record<string, unknown>
-      const summary = doctor.summary as Record<string, number>
-      expect(summary.total).toBe(3)
-      expect(summary.errors).toBe(1)
-      expect(summary.warnings).toBe(1)
+      expect(body.doctor).toBeUndefined()
+      expect(body.report).toBeUndefined()
     })
 
     it('includes errors1h sourced from the real recorder', async () => {
-      recordUsage({ kind: 'mcp', name: 't1', agent: 'a', durationMs: 5, status: 'error' })
-      recordUsage({ kind: 'mcp', name: 't2', agent: 'a', durationMs: 5, status: 'error' })
-      recordUsage({ kind: 'rest', name: '/api/x', agent: null, durationMs: 5, status: 'error' })
-      recordUsage({ kind: 'agent', name: 'dispatch', agent: 'a', durationMs: null, status: 'ok' })
+      recordUsage({ kind: 'mcp', activityClass: 'user', name: 't1', agent: 'a', durationMs: 5, status: 'error' })
+      recordUsage({ kind: 'mcp', activityClass: 'user', name: 't2', agent: 'a', durationMs: 5, status: 'error' })
+      recordUsage({ kind: 'rest', activityClass: 'user', name: '/api/x', agent: null, durationMs: 5, status: 'error' })
+      recordUsage({
+        kind: 'rest', activityClass: 'routine', name: '/api/plugins/health/missing', agent: null, durationMs: 5, status: 'ok',
+        meta: { httpStatus: 404 },
+      })
+      recordUsage({ kind: 'agent', activityClass: 'user', name: 'dispatch', agent: 'a', durationMs: null, status: 'ok' })
 
       const route = findRoute(activated.routes, 'GET', '/summary')!
       const { body } = await callRoute(route, activated.ctx)
       expect(body.errors1h).toEqual({
-        total: 3,
-        byKind: { mcp: 2, rest: 1, agent: 0 },
+        total: 4,
+        byKind: { mcp: 2, rest: 2, agent: 0 },
       })
     })
   })
@@ -317,6 +407,38 @@ describe('Health Plugin Routes', () => {
     })
   })
 
+  describe('GET /usage-snapshot', () => {
+    it('qualifies latest-session traffic with source coverage', async () => {
+      const route = findRoute(activated.routes, 'GET', '/usage-snapshot')!
+      const { status, body } = await callRoute(route, activated.ctx)
+
+      expect(status).toBe(200)
+      expect(agentUsageSnapshotResponseSchema.safeParse(body).success).toBe(true)
+      expect(body.source).toEqual({ status: 'complete', reason: 'complete', failedAgents: [] })
+      expect(body.sessions).toEqual([expect.objectContaining({
+        agent: 'patch',
+        lastMessageAt: '2026-04-01T00:10:00.000Z',
+      })])
+    })
+  })
+
+  describe('windowed telemetry query validation', () => {
+    it.each(['/usage-history', '/agent-effort', '/interaction-summary'])(
+      'rejects unknown query keys on GET %s',
+      async (path) => {
+        const route = findRoute(activated.routes, 'GET', path)!
+        expect(route).toBeDefined()
+
+        const { status, body } = await callRoute(route, activated.ctx, {
+          searchParams: { window: '24h', unexpected: 'value' },
+        })
+
+        expect(status).toBe(400)
+        expect(body.error).toBe('invalid input')
+      },
+    )
+  })
+
   describe('GET /search-status', () => {
     it('returns search adapter health data', async () => {
       const route = findRoute(activated.routes, 'GET', '/search-status')!
@@ -328,11 +450,24 @@ describe('Health Plugin Routes', () => {
     })
   })
 
+  describe('GET /search-readiness', () => {
+    it('returns the cached canonical Search projection without executing diagnostics', async () => {
+      const { runTargetedDiagnostics } = await import('../../../src/core/doctor')
+      const route = findRoute(activated.routes, 'GET', '/search-readiness')!
+      const { status, body } = await callRoute(route, activated.ctx)
+
+      expect(status).toBe(200)
+      expect(body.reportId).toBe(cachedReport.id)
+      expect((body.readiness as { status: string }).status).toBe('healthy')
+      expect(runTargetedDiagnostics).not.toHaveBeenCalled()
+    })
+  })
+
   describe('GET /search-telemetry', () => {
     it('composes usage windows, outbox stats, and search doctor rows', async () => {
-      recordUsage({ kind: 'rest', name: 'search.query', agent: null, durationMs: 12, status: 'ok' })
-      recordUsage({ kind: 'rest', name: 'search.query', agent: null, durationMs: 30, status: 'error' })
-      recordUsage({ kind: 'rest', name: 'search.drain', agent: null, durationMs: 5, status: 'ok', meta: { processed: 3 } })
+      recordUsage({ kind: 'rest', activityClass: 'user', name: 'search.query', agent: null, durationMs: 12, status: 'ok' })
+      recordUsage({ kind: 'rest', activityClass: 'user', name: 'search.query', agent: null, durationMs: 30, status: 'error' })
+      recordUsage({ kind: 'rest', activityClass: 'system', name: 'search.drain', agent: null, durationMs: 5, status: 'ok', meta: { processed: 3 } })
 
       const route = findRoute(activated.routes, 'GET', '/search-telemetry')!
       expect(route).toBeDefined()
@@ -341,13 +476,60 @@ describe('Health Plugin Routes', () => {
       const telemetry = body as unknown as {
         windows: Record<string, { query: { count: number; errors: number }; drain: { count: number } }>
         outbox: { pending: number; quarantined: number }
-        doctor: { rows: unknown[] }
+        reportId: string
+        readiness: { status: string }
+        observations: unknown[]
       }
       expect(telemetry.windows['1h'].query.count).toBe(2)
       expect(telemetry.windows['1h'].query.errors).toBe(1)
       expect(telemetry.windows['1h'].drain.count).toBe(1)
       expect(typeof telemetry.outbox.pending).toBe('number')
-      expect(Array.isArray(telemetry.doctor.rows)).toBe(true)
+      expect(telemetry.reportId).toBe(cachedReport.id)
+      expect(telemetry.readiness.status).toBe('healthy')
+      expect(Array.isArray(telemetry.observations)).toBe(true)
+    })
+
+    it('keeps core Search telemetry available when enrichment stats throw', async () => {
+      const { getHookRegistry } = await import('../../../packages/core/src/hooks/hook-registry-singleton')
+      const unregister = getHookRegistry().register('assets.enrichmentStats', () => {
+        throw new Error('assets stats failed')
+      }, 'test-health')
+      try {
+        const route = findRoute(activated.routes, 'GET', '/search-telemetry')!
+        const { status, body } = await callRoute(route, activated.ctx)
+
+        expect(status).toBe(200)
+        expect(body.enrichment).toBeNull()
+        expect(body.enrichmentEvidence).toEqual({ status: 'unavailable', reason: 'provider_failed' })
+        expect(body.windows).toBeDefined()
+        expect(body.outbox).toBeDefined()
+      } finally {
+        unregister()
+      }
+    })
+
+    it('bounds a never-settling enrichment provider without losing core telemetry', async () => {
+      const { getHookRegistry } = await import('../../../packages/core/src/hooks/hook-registry-singleton')
+      const unregister = getHookRegistry().register(
+        'assets.enrichmentStats',
+        () => new Promise<never>(() => {}),
+        'test-health',
+      )
+      try {
+        const route = findRoute(activated.routes, 'GET', '/search-telemetry')!
+        const outcome = await Promise.race([
+          callRoute(route, activated.ctx),
+          new Promise<'test-timeout'>((resolve) => setTimeout(() => resolve('test-timeout'), 1_000)),
+        ])
+
+        expect(outcome).not.toBe('test-timeout')
+        if (outcome === 'test-timeout') return
+        expect(outcome.status).toBe(200)
+        expect(outcome.body.enrichment).toBeNull()
+        expect(outcome.body.enrichmentEvidence).toEqual({ status: 'unavailable', reason: 'provider_timeout' })
+      } finally {
+        unregister()
+      }
     })
   })
 
@@ -362,13 +544,32 @@ describe('Health Plugin Routes', () => {
       expect(body.execTools).toBeUndefined()
       expect((body.plugins as unknown[]).length).toBe(2)
     })
+
+    it('returns unavailable instead of an empty plugin list when the provider is absent', async () => {
+      const host = globalThis as typeof globalThis & { __bakinGetRegistrySnapshot?: () => unknown[] }
+      const provider = host.__bakinGetRegistrySnapshot
+      delete host.__bakinGetRegistrySnapshot
+      try {
+        const route = findRoute(activated.routes, 'GET', '/registry')!
+        const { status, body } = await callRoute(route, activated.ctx)
+
+        expect(status).toBe(503)
+        expect(body.error).toBe('Plugin registry evidence is unavailable.')
+        expect(body.plugins).toBeUndefined()
+      } finally {
+        host.__bakinGetRegistrySnapshot = provider
+      }
+    })
   })
 
   describe('GET /usage-feed', () => {
     it('returns usage entries from the real recorder', async () => {
-      recordUsage({ kind: 'mcp', name: 'bakin_exec_tasks_list', agent: 'main-operator', durationMs: 12, status: 'ok' })
-      recordUsage({ kind: 'mcp', name: 'bakin_exec_tasks_list', agent: 'main-operator', durationMs: 8, status: 'ok' })
-      recordUsage({ kind: 'rest', name: '/api/plugins/tasks/list', agent: null, durationMs: 20, status: 'ok' })
+      recordUsage({
+        kind: 'mcp', activityClass: 'user', name: 'bakin_exec_tasks_list', agent: 'main-operator', durationMs: 12, status: 'ok',
+        tokensIn: 120, tokensOut: 30, tokensCacheRead: 80, tokensCacheWrite: 10, costUsdMicros: 4_200,
+      })
+      recordUsage({ kind: 'mcp', activityClass: 'user', name: 'bakin_exec_tasks_list', agent: 'main-operator', durationMs: 8, status: 'ok' })
+      recordUsage({ kind: 'rest', activityClass: 'user', name: '/api/plugins/tasks/list', agent: null, durationMs: 20, status: 'ok' })
 
       const route = findRoute(activated.routes, 'GET', '/usage-feed')!
       expect(route).toBeDefined()
@@ -377,24 +578,340 @@ describe('Health Plugin Routes', () => {
         searchParams: { kind: 'mcp', window: '1h' },
       })
       expect(status).toBe(200)
+      expect(body.capabilities).toEqual({
+        exactFailureTargeting: true,
+        sourceBalancedActivity: true,
+      })
       const totals = (body as { totals: { count: number } }).totals
-      const topByName = (body as { topByName: Array<{ name: string; count: number }> }).topByName
+      const topByName = (body as {
+        topByName: Array<{
+          kind?: string
+          method?: string | null
+          name: string
+          count: number
+        }>
+      }).topByName
+      const recent = (body as { recent: HealthUsageEntry[] }).recent
+      const recentFailures = (body as { recentFailures: Array<{ id: string }> }).recentFailures
+      const recentUnverified = (body as { recentUnverified: Array<{ id: string }> }).recentUnverified
       expect(totals.count).toBe(2)
       expect(topByName[0].name).toBe('bakin_exec_tasks_list')
       expect(topByName[0].count).toBe(2)
+      expect(topByName[0]).toMatchObject({
+        kind: 'mcp',
+        method: null,
+      })
+      expect(topByName[0]).not.toHaveProperty('failureGroupRank')
+      expect(recent).toHaveLength(2)
+      expect(new Set(recent.map((entry) => entry.id)).size).toBe(2)
+      const metered = recent.find((entry) => entry.tokensIn === 120)
+      expect(metered).toMatchObject({
+        tokensIn: 120,
+        tokensOut: 30,
+        tokensCacheRead: 80,
+        tokensCacheWrite: 10,
+        costUsdMicros: 4_200,
+      })
+      expect(recentFailures).toEqual([])
+      expect(recentUnverified).toEqual([])
     })
 
-    it('defaults window to 1h when omitted', async () => {
-      recordUsage({ kind: 'agent', name: 'heartbeat', agent: 'main-operator', durationMs: null, status: 'ok' })
+    it('returns the complete Activity dashboard contract for the requested window', async () => {
+      const now = Date.now()
+      const mcpFailureAt = new Date(now - 4_000).toISOString()
+      const unattributedRestFailureAt = new Date(now - 2_500).toISOString()
+      const restFailureAt = new Date(now - 2_000).toISOString()
+      recordUsage({ kind: 'mcp', activityClass: 'user', name: 'shared-destination', agent: 'main', durationMs: 10, status: 'error', ts: mcpFailureAt })
+      recordUsage({ kind: 'mcp', activityClass: 'user', name: 'shared-destination', agent: 'pixel', durationMs: 5, status: 'ok', ts: new Date(now - 3_000).toISOString() })
+      recordUsage({ kind: 'rest', activityClass: 'system', name: 'shared-destination', agent: null, durationMs: 10, status: 'error', ts: unattributedRestFailureAt })
+      recordUsage({ kind: 'rest', activityClass: 'user', name: 'shared-destination', agent: 'scout', durationMs: 30, status: 'error', ts: restFailureAt })
+      recordUsage({
+        kind: 'mcp', activityClass: 'user', name: 'tool-result-gap', agent: 'main', durationMs: 20, status: 'ok', ts: new Date(now - 1_500).toISOString(),
+        meta: { resultMissing: true, turnTerminalStatus: 'completed' },
+      })
+      recordUsage({
+        kind: 'agent', activityClass: 'user', name: 'dispatch-canceled', agent: 'patch', durationMs: null, status: 'ok', ts: new Date(now - 1_000).toISOString(),
+        meta: { terminalStatus: 'aborted' },
+      })
+      recordUsage({ kind: 'agent', activityClass: 'user', name: 'dispatch-succeeded', agent: 'patch', durationMs: 50, status: 'ok', ts: new Date(now - 500).toISOString() })
+
+      const route = findRoute(activated.routes, 'GET', '/usage-feed')!
+      const { status, body } = await callRoute(route, activated.ctx, {
+        searchParams: { window: '24h' },
+      })
+      expect(status).toBe(200)
+
+      const feed = body as unknown as {
+        window: string
+        coverage: { startsAt: string; hasFullWindow: boolean; reason: string }
+        outcomes: { failed: number; unverified: number; canceled: number; succeeded: number }
+        byKind: Array<{ kind: string; total: number; failures: number }>
+        failureGroupPage: { total: number; offset: number; limit: number; hasMore: boolean }
+        failureGroups: Array<{
+          kind: string
+          name: string
+          destination: string
+          method: string | null
+          attempts: number
+          failures: number
+          firstFailureAt: string
+          lastFailureAt: string
+          agents: string[]
+          unattributedFailures: number
+          systemFailures: number
+          medianFailureDurationMs: number | null
+          latestFailure: HealthUsageEntry
+        }>
+      }
+      expect(feed.window).toBe('24h')
+      expect(Number.isFinite(Date.parse(feed.coverage.startsAt))).toBe(true)
+      expect(typeof feed.coverage.hasFullWindow).toBe('boolean')
+      expect(['full_window', 'process_restart', 'buffer_limit']).toContain(feed.coverage.reason)
+      expect(feed.outcomes).toEqual({ failed: 3, unverified: 1, canceled: 1, succeeded: 2 })
+      expect(feed.byKind).toEqual([
+        { kind: 'mcp', total: 3, failures: 1 },
+        { kind: 'rest', total: 2, failures: 2 },
+        { kind: 'agent', total: 2, failures: 0 },
+      ])
+      expect(feed.failureGroupPage).toEqual({ total: 2, offset: 0, limit: 25, hasMore: false })
+      expect(feed.failureGroups).toEqual([
+        {
+          kind: 'rest',
+          name: 'shared-destination',
+          destination: 'shared-destination',
+          method: null,
+          attempts: 2,
+          failures: 2,
+          firstFailureAt: unattributedRestFailureAt,
+          lastFailureAt: restFailureAt,
+          agents: ['scout'],
+          unattributedFailures: 0,
+          systemFailures: 1,
+          medianFailureDurationMs: 20,
+          latestFailure: expect.objectContaining({
+            name: 'shared-destination',
+            agent: 'scout',
+            ts: restFailureAt,
+          }),
+        },
+        {
+          kind: 'mcp',
+          name: 'shared-destination',
+          destination: 'shared-destination',
+          method: null,
+          attempts: 2,
+          failures: 1,
+          firstFailureAt: mcpFailureAt,
+          lastFailureAt: mcpFailureAt,
+          agents: ['main'],
+          unattributedFailures: 0,
+          systemFailures: 0,
+          medianFailureDurationMs: 10,
+          latestFailure: expect.objectContaining({
+            name: 'shared-destination',
+            agent: 'main',
+            ts: mcpFailureAt,
+          }),
+        },
+      ])
+    })
+
+    it('exposes the exact agent count with a bounded by-agent projection', async () => {
+      for (let index = 0; index < 12; index++) {
+        recordUsage({
+          kind: 'mcp', activityClass: 'user', name: 'agent-work', agent: `agent-${index}`, durationMs: 1, status: 'ok',
+        })
+      }
+      recordUsage({
+        kind: 'rest', activityClass: 'user', name: '/api/unattributed-work', agent: null, durationMs: 1, status: 'ok',
+      })
+
+      const route = findRoute(activated.routes, 'GET', '/usage-feed')!
+      const { status, body } = await callRoute(route, activated.ctx, {
+        searchParams: { window: '1h' },
+      })
+      const feed = body as unknown as {
+        agentCount?: number
+        byAgent: Array<{ agent: string; attributed: boolean }>
+      }
+
+      expect(status).toBe(200)
+      expect({
+        agentCount: feed.agentCount,
+        attributedRows: feed.byAgent.filter((row) => row.attributed).length,
+        unknownRows: feed.byAgent.filter((row) => !row.attributed).length,
+        totalRows: feed.byAgent.length,
+      }).toEqual({
+        agentCount: 12,
+        attributedRows: 10,
+        unknownRows: 1,
+        totalRows: 11,
+      })
+    })
+
+    it('keeps a literal unknown agent separate from the unattributed projection', async () => {
+      recordUsage({
+        kind: 'mcp', activityClass: 'user', name: 'main-work', agent: 'main', durationMs: 1, status: 'ok',
+      })
+      recordUsage({
+        kind: 'mcp', activityClass: 'user', name: 'named-unknown-work', agent: 'unknown', durationMs: 1, status: 'ok',
+      })
+      recordUsage({
+        kind: 'rest', activityClass: 'user', name: '/api/unattributed-work', agent: null, durationMs: 1, status: 'ok',
+      })
+
+      const route = findRoute(activated.routes, 'GET', '/usage-feed')!
+      const { status, body } = await callRoute(route, activated.ctx, {
+        searchParams: { window: '1h' },
+      })
+      const feed = body as unknown as {
+        agentCount: number
+        byAgent: Array<{
+          agent: string
+          attributed: boolean
+          count: number
+          errors: number
+          lastActivity: unknown
+        }>
+      }
+
+      expect(status).toBe(200)
+      expect(feed.agentCount).toBe(2)
+      expect(feed.byAgent.filter((row) => row.agent === 'unknown')).toEqual([
+        { agent: 'unknown', attributed: true, count: 1, errors: 0, lastActivity: expect.anything() },
+        { agent: 'unknown', attributed: false, count: 1, errors: 0, lastActivity: expect.anything() },
+      ])
+    })
+
+    it('paginates failure groups with a safe bounded limit', async () => {
+      const now = Date.now()
+      for (let index = 0; index < 3; index++) {
+        recordUsage({
+          kind: 'rest',
+          activityClass: 'user',
+          name: `/api/plugins/tasks/task-${index}`,
+          agent: 'main',
+          durationMs: index + 1,
+          status: 'error',
+          ts: new Date(now - (3 - index) * 1000).toISOString(),
+          meta: {
+            routePattern: `/api/plugins/tasks/:taskId/action-${index}`,
+            method: index === 2 ? 'POST' : 'GET',
+            error: `failure-${index}`,
+          },
+        })
+      }
+
+      const route = findRoute(activated.routes, 'GET', '/usage-feed')!
+      const { status, body } = await callRoute(route, activated.ctx, {
+        searchParams: {
+          window: '1h',
+          failureGroupOffset: '1',
+          failureGroupLimit: '1',
+        },
+      })
+
+      expect(status).toBe(200)
+      expect(body.failureGroupPage).toEqual({ total: 3, offset: 1, limit: 1, hasMore: true })
+      expect(body.failureGroups).toEqual([
+        expect.objectContaining({
+          destination: '/api/plugins/tasks/:taskId/action-1',
+          method: 'GET',
+          latestFailure: expect.objectContaining({
+            name: '/api/plugins/tasks/task-1',
+            meta: expect.objectContaining({ error: 'failure-1' }),
+          }),
+        }),
+      ])
+    })
+
+    it('resolves an exact failure target to its current ranked page', async () => {
+      const destination = '/api/plugins/search/query'
+      recordUsage({
+        kind: 'rest', activityClass: 'user', name: destination, agent: 'main', durationMs: 4, status: 'error',
+        meta: { method: 'POST', routePattern: destination },
+      })
+      for (let index = 0; index < 2; index++) {
+        recordUsage({
+          kind: 'mcp', activityClass: 'user', name: `leader-${index}`, agent: 'main', durationMs: 2, status: 'error',
+        })
+      }
+
+      const route = findRoute(activated.routes, 'GET', '/usage-feed')!
+      const { status, body } = await callRoute(route, activated.ctx, {
+        searchParams: {
+          window: '1h',
+          failureGroupLimit: '1',
+          failureGroupTargetKind: 'rest',
+          failureGroupTargetMethod: 'post',
+          failureGroupTargetDestination: destination,
+        },
+      })
+
+      expect(status).toBe(200)
+      expect(body.failureGroupPage).toEqual({ total: 3, offset: 2, limit: 1, hasMore: false })
+      expect(body.failureGroups).toEqual([
+        expect.objectContaining({ kind: 'rest', method: 'POST', destination }),
+      ])
+    })
+
+    it('accepts an empty target method as the exact null method', async () => {
+      recordUsage({
+        kind: 'mcp', activityClass: 'user', name: 'web.search', agent: 'main', durationMs: 4, status: 'error',
+      })
+
+      const route = findRoute(activated.routes, 'GET', '/usage-feed')!
+      const { status, body } = await callRoute(route, activated.ctx, {
+        searchParams: {
+          failureGroupTargetKind: 'mcp',
+          failureGroupTargetMethod: '',
+          failureGroupTargetDestination: 'web.search',
+        },
+      })
+
+      expect(status).toBe(200)
+      expect((body.failureGroups as Array<Record<string, unknown>>)[0]).toMatchObject({
+        kind: 'mcp', method: null, destination: 'web.search',
+      })
+    })
+
+    it('rejects partial exact failure targets', async () => {
+      const route = findRoute(activated.routes, 'GET', '/usage-feed')!
+      const partialTargets: Array<Record<string, string>> = [
+        { failureGroupTargetKind: 'rest' },
+        { failureGroupTargetKind: 'rest', failureGroupTargetMethod: 'GET' },
+        { failureGroupTargetDestination: '/api/plugins/search/query' },
+      ]
+
+      for (const searchParams of partialTargets) {
+        const result = await callRoute(route, activated.ctx, { searchParams })
+        expect(result.status).toBe(400)
+      }
+    })
+
+    it('defaults to 1h and hides successful routine activity', async () => {
+      recordUsage({ kind: 'agent', activityClass: 'routine', name: 'heartbeat', agent: 'main-operator', durationMs: null, status: 'ok' })
       const route = findRoute(activated.routes, 'GET', '/usage-feed')!
       const { status, body } = await callRoute(route, activated.ctx)
       expect(status).toBe(200)
-      expect((body as { totals: { count: number } }).totals.count).toBe(1)
+      expect((body as { totals: { count: number } }).totals.count).toBe(0)
+    })
+
+    it('includes routine success only when requested and never hides routine failure', async () => {
+      recordUsage({ kind: 'agent', activityClass: 'routine', name: 'heartbeat', agent: 'main-operator', durationMs: null, status: 'ok' })
+      recordUsage({ kind: 'agent', activityClass: 'routine', name: 'heartbeat', agent: 'main-operator', durationMs: null, status: 'error' })
+      const route = findRoute(activated.routes, 'GET', '/usage-feed')!
+
+      const hidden = await callRoute(route, activated.ctx, { searchParams: { window: '1h' } })
+      expect((hidden.body as { totals: { count: number } }).totals.count).toBe(1)
+
+      const shown = await callRoute(route, activated.ctx, { searchParams: { window: '1h', includeRoutine: 'true' } })
+      expect((shown.body as { totals: { count: number } }).totals.count).toBe(2)
     })
 
     it('filters by agent', async () => {
-      recordUsage({ kind: 'mcp', name: 'x', agent: 'alice', durationMs: 1, status: 'ok' })
-      recordUsage({ kind: 'mcp', name: 'x', agent: 'bob', durationMs: 1, status: 'ok' })
+      recordUsage({ kind: 'mcp', activityClass: 'user', name: 'x', agent: 'alice', durationMs: 1, status: 'ok' })
+      recordUsage({ kind: 'mcp', activityClass: 'user', name: 'x', agent: 'bob', durationMs: 1, status: 'ok' })
       const route = findRoute(activated.routes, 'GET', '/usage-feed')!
       const { body } = await callRoute(route, activated.ctx, {
         searchParams: { window: '1h', agent: 'alice' },
@@ -418,49 +935,116 @@ describe('Health Plugin Routes', () => {
       })
       expect(status).toBe(400)
     })
+
+    it('rejects unsafe failure-group pagination values', async () => {
+      const route = findRoute(activated.routes, 'GET', '/usage-feed')!
+      const negativeOffset = await callRoute(route, activated.ctx, {
+        searchParams: { failureGroupOffset: '-1' },
+      })
+      const oversizedLimit = await callRoute(route, activated.ctx, {
+        searchParams: { failureGroupLimit: '101' },
+      })
+
+      expect(negativeOffset.status).toBe(400)
+      expect(oversizedLimit.status).toBe(400)
+    })
+  })
+
+  describe('GET /interaction-summary', () => {
+    it('returns a meaningful-interaction dashboard summary from the real recorder', async () => {
+      recordUsage({
+        kind: 'mcp', activityClass: 'user', name: 'bakin_exec_images_generate', agent: 'main-operator', durationMs: 40, status: 'ok',
+        meta: { resultMissing: true, turnTerminalStatus: 'completed' },
+      })
+      recordUsage({ kind: 'rest', activityClass: 'system', name: '/api/search/query', agent: null, durationMs: 20, status: 'error' })
+      recordUsage({ kind: 'agent', activityClass: 'routine', name: 'heartbeat', agent: 'main-operator', durationMs: null, status: 'ok' })
+
+      const route = findRoute(activated.routes, 'GET', '/interaction-summary')
+      expect(route).toBeDefined()
+
+      const { status, body } = await callRoute(route!, activated.ctx, {
+        searchParams: { window: '1h' },
+      })
+      expect(status).toBe(200)
+
+      const summary = body as unknown as {
+        window: string
+        coverage: { startsAt: string; hasFullWindow: boolean; reason: string }
+        totals: { count: number; errors: number; unverified: number; foreground: number; background: number }
+        categories: Array<{ key: string; count: number; errors: number }>
+        topDestinations: Array<{ category: string; name: string; count: number; errors: number; medianDurationMs: number | null }>
+        timeBuckets: Array<{ start: string; count: number; failureCount: number }>
+      }
+      expect(summary.window).toBe('1h')
+      expect(Number.isFinite(Date.parse(summary.coverage.startsAt))).toBe(true)
+      expect(typeof summary.coverage.hasFullWindow).toBe('boolean')
+      expect(['full_window', 'process_restart', 'buffer_limit']).toContain(summary.coverage.reason)
+      expect(summary.totals).toEqual({ count: 2, errors: 1, unverified: 1, foreground: 1, background: 1 })
+      expect(summary.categories).toEqual([
+        { key: 'tools', count: 1, errors: 0 },
+        { key: 'api', count: 1, errors: 1 },
+        { key: 'agents', count: 0, errors: 0 },
+      ])
+      expect(summary.topDestinations).toEqual(expect.arrayContaining([
+        { category: 'tools', name: 'bakin_exec_images_generate', count: 1, errors: 0, medianDurationMs: 40 },
+        { category: 'api', name: '/api/search/query', count: 1, errors: 1, medianDurationMs: 20 },
+      ]))
+      expect(summary.topDestinations.some((destination) => destination.name === 'heartbeat')).toBe(false)
+      expect(summary.timeBuckets.reduce((total, bucket) => total + bucket.count, 0)).toBe(2)
+      expect(summary.timeBuckets.reduce((total, bucket) => total + bucket.failureCount, 0)).toBe(1)
+    })
   })
 
   describe('GET /doctor', () => {
-    it('returns cached results by default', async () => {
+    it('returns the raw cached canonical report by default', async () => {
       const route = findRoute(activated.routes, 'GET', '/doctor')!
       expect(route).toBeDefined()
 
       const { status, body } = await callRoute(route, activated.ctx)
       expect(status).toBe(200)
-      expect(body.cachedAt).toBeDefined()
-      const summary = body.summary as Record<string, number>
-      expect(summary.total).toBe(3)
-      expect(summary.errors).toBe(1)
+      expect(body.id).toBe(cachedReport.id)
+      expect(body.overallStatus).toBe('needs_attention')
+      expect(body.results).toBeUndefined()
     })
 
-    it('runs fresh diagnostics when ?fresh=true', async () => {
-      const { runDiagnostics } = await import('../../../src/core/doctor')
+    it('rejects state-changing query parameters without running diagnostics', async () => {
       const route = findRoute(activated.routes, 'GET', '/doctor')!
 
-      const { status, body } = await callRoute(route, activated.ctx, {
+      const { status } = await callRoute(route, activated.ctx, {
         searchParams: { fresh: 'true' },
       })
+      expect(status).toBe(400)
+      expect(runDiagnosticsMock).not.toHaveBeenCalled()
+    })
+
+    it('runs fresh diagnostics only through the explicit JSON POST route', async () => {
+      const route = findRoute(activated.routes, 'POST', '/doctor/run')!
+
+      const { status, body } = await callRoute(route, activated.ctx, {
+        body: { notifyAgent: true },
+      })
       expect(status).toBe(200)
-      expect(body.cachedAt).toBeDefined()
-      expect(runDiagnostics).toHaveBeenCalled()
+      expect(body.id).toBe(freshReport.id)
+      expect(runDiagnosticsMock).toHaveBeenCalledWith(testDir, process.cwd(), { notifyAgent: true })
     })
   })
 
   describe('doctor repair routes', () => {
     it('returns a deterministic repair plan without applying it', async () => {
-      const route = findRoute(activated.routes, 'GET', '/doctor/repair/plan')!
+      const route = findRoute(activated.routes, 'POST', '/doctor/repair/plan')!
       expect(route).toBeDefined()
 
-      const { status, body } = await callRoute(route, activated.ctx)
+      const target = { type: 'incidents', reportId: cachedReport.id, ids: ['tasks:taskboard:missing-columns'] }
+      const { status, body } = await callRoute(route, activated.ctx, { body: { target } })
 
       expect(status).toBe(200)
-      expect(body.summary).toMatchObject({ totalItems: 1, safeItems: 1 })
+      expect(body.planId).toBe(mockRepairPlan.planId)
       expect(body.items).toEqual(mockRepairPlan.items)
-      expect(planDoctorRepairMock).toHaveBeenCalled()
+      expect(planDoctorRepairMock).toHaveBeenCalledWith(expect.objectContaining({ target }))
       expect(applyDoctorRepairMock).not.toHaveBeenCalled()
     })
 
-    it('requires accepted=true before applying deterministic repairs', async () => {
+    it('rejects the removed accepted=true repair shape', async () => {
       const route = findRoute(activated.routes, 'POST', '/doctor/repair/apply')!
       expect(route).toBeDefined()
 
@@ -468,24 +1052,25 @@ describe('Health Plugin Routes', () => {
         body: { accepted: false },
       })
 
-      expect(status).toBe(409)
-      expect(body.status).toBe('confirmation_required')
-      expect(applyDoctorRepairMock).toHaveBeenCalledWith(expect.objectContaining({ accepted: false }))
+      expect(status).toBe(400)
+      expect(body.error).toBe('invalid input')
+      expect(applyDoctorRepairMock).not.toHaveBeenCalled()
     })
 
-    it('applies deterministic repairs when accepted=true', async () => {
+    it('applies selected items from a server-held repair plan', async () => {
       const route = findRoute(activated.routes, 'POST', '/doctor/repair/apply')!
 
       const { status, body } = await callRoute(route, activated.ctx, {
-        body: { accepted: true, itemIds: ['repair.taskboard'] },
+        body: { planId: mockRepairPlan.planId, itemIds: [mockRepairPlan.items[0].id], confirmedItemIds: [] },
       })
 
       expect(status).toBe(200)
-      expect(body.status).toBe('applied')
-      expect(body.summary).toMatchObject({ applied: 1, failed: 0 })
+      expect(body.verifiedReportId).toBe(freshReport.id)
+      expect(body.results).toEqual(mockRepairApply.results)
       expect(applyDoctorRepairMock).toHaveBeenCalledWith(expect.objectContaining({
-        accepted: true,
-        itemIds: ['repair.taskboard'],
+        planId: mockRepairPlan.planId,
+        itemIds: [mockRepairPlan.items[0].id],
+        confirmedItemIds: [],
       }))
     })
   })
@@ -555,8 +1140,8 @@ describe('Health Exec Tools', () => {
     it('returns system health summary from real state', async () => {
       // Seed a few real usage entries; the exec tool now reads from the
       // unified recorder via getStatsByMs rather than a mocked HTTP source.
-      recordUsage({ kind: 'mcp', name: 'bakin_exec_tasks_list', agent: 'patch', durationMs: 5, status: 'ok' })
-      recordUsage({ kind: 'rest', name: '/api/plugins/tasks/list', agent: null, durationMs: 3, status: 'error' })
+      recordUsage({ kind: 'mcp', activityClass: 'user', name: 'bakin_exec_tasks_list', agent: 'patch', durationMs: 5, status: 'ok' })
+      recordUsage({ kind: 'rest', activityClass: 'user', name: '/api/plugins/tasks/list', agent: null, durationMs: 3, status: 'error' })
 
       const tool = findTool(activated.execTools, 'bakin_exec_health_status')!
       expect(tool).toBeDefined()
@@ -569,21 +1154,20 @@ describe('Health Exec Tools', () => {
       expect(result.activeSessions).toBe(1)
       expect(result.calls1h).toBe(2)
       expect(result.errors1h).toBe(1)
-      expect(result.doctorErrors).toBe(1)
-      expect(result.doctorWarnings).toBe(1)
+      expect(result.overallStatus).toBe('needs_attention')
+      expect(result.reportId).toBe(cachedReport.id)
+      expect(result.incidents).toEqual(cachedReport.summary.incidents)
     })
   })
 
   describe('bakin_exec_health_doctor', () => {
-    it('returns cached results when fresh is not set', async () => {
+    it('returns the cached canonical report when fresh is not set', async () => {
       const tool = findTool(activated.execTools, 'bakin_exec_health_doctor')!
       expect(tool).toBeDefined()
 
       const result = await callTool(tool, {})
       expect(result.ok).toBe(true)
-      expect(result.cachedAt).toBeDefined()
-      const summary = result.summary as Record<string, number>
-      expect(summary.errors).toBe(1)
+      expect((result.report as HealthReport).id).toBe(cachedReport.id)
     })
 
     it('runs fresh diagnostics when fresh=true', async () => {
@@ -592,7 +1176,7 @@ describe('Health Exec Tools', () => {
 
       const result = await callTool(tool, { fresh: true })
       expect(result.ok).toBe(true)
-      expect(result.cachedAt).toBeDefined()
+      expect((result.report as HealthReport).id).toBe(freshReport.id)
       expect(runDiagnostics).toHaveBeenCalled()
     })
   })

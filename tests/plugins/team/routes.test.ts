@@ -110,6 +110,8 @@ mock.module('../../../src/core/agent-usage', () => ({
 
 mock.module('../../../src/core/usage', () => ({
   getStatsByMs: mock(() => ({ total: 0, errors: 0 })),
+  getUsageObservationCursor: mock(() => 0),
+  reconcileObservedUsage: mock(() => false),
   // The search outbox pump (imported transitively) records drain telemetry.
   recordUsage: mock(() => {}),
   getUsageFeed: mock(() => ({ totals: { count: 0, errors: 0, errorRate: 0 }, topByName: [], byAgent: [], recent: [] })),
@@ -172,7 +174,6 @@ function makeRuntimeMock() {
     shutdown: async () => {},
     ping: async () => true,
     restart: async () => {},
-    getHealthChecks: () => [],
     agents: {
       list: async () => rosterAgents.current.map((agent) => ({
         id: agent.id,

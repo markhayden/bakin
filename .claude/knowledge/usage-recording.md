@@ -2,18 +2,19 @@
 
 All MCP tool calls, REST requests, and agent lifecycle events flow through **one** in-memory recorder in `src/core/usage.ts`. The previous fragmentation (`request-log.ts` + `toolStats` in registry.ts) caused the health dashboard to show zeros while real traffic was flowing — that incident is the reason this is a single source of truth.
 
-**Never add a parallel stat-tracking system.** The health plugin's `/usage-feed` route and the tabbed Usage section on the health page are the only consumers you should add to.
+**Never add a parallel stat-tracking system.** The health plugin's `/usage-feed` route and failure-first Activity tab are the primary operator consumers.
 
 ## Writing
 
 ```ts
-recordUsage({ kind, name, agent, durationMs, status, meta, tokensIn?, tokensOut?, tokensCacheRead?, tokensCacheWrite?, costUsdMicros? })
+recordUsage({ kind, name, activityClass, agent, durationMs, status, meta, tokensIn?, tokensOut?, tokensCacheRead?, tokensCacheWrite?, costUsdMicros? })
 ```
 
 | Field | Values |
 |---|---|
 | `kind` | `'mcp' \| 'rest' \| 'agent'` |
 | `name` | tool name / route path / event name |
+| `activityClass` | required producer-owned class: `'user' \| 'system' \| 'routine'` |
 | `agent` | optional agent id |
 | `durationMs` | numeric |
 | `status` | `'ok' \| 'error'` |
@@ -26,14 +27,24 @@ The token/cost fields are the **live** half of cost metering (the durable half i
 
 The ring buffer holds 10 000 entries, FIFO-evicted.
 
+### Activity classification
+
+Classification belongs to the producer because the recorder cannot infer user intent from an endpoint or tool name:
+
+- `user` — direct user/agent work the operator normally wants to see
+- `system` — meaningful platform work such as dispatch lifecycle or repair
+- `routine` — polling, heartbeat, scanning, and maintenance success that would otherwise dominate the feed
+
+`activityClass` has no default. New recording sites must choose one. Default reads omit successful routine events, but **routine failures always remain**. `getUsageFeed({ includeRoutine: true })` restores routine success for debugging. Never hide a failure because its producer is routine and never maintain a route-name suppression list in Health.
+
 ## Runtime session usage
 
-Health's context and cost cards do **not** come from the in-memory usage recorder above. They are derived from runtime session JSONL entries via `src/core/agent-usage.ts`, then served by `plugins/health` at `/usage`.
+Health's latest-session token surface and runtime-reported transcript-cost rollups do **not** come from the in-memory usage recorder above. They are derived from runtime session JSONL entries via `src/core/agent-usage.ts`; the newest-session snapshot is served by `plugins/health` at `/usage`, while the durable multi-session rollups below back the selected-window cost summary.
 
 - Token fields (`input`, `output`, `cacheRead`, `cacheWrite`, `totalTokens`) are summed from assistant messages in each agent's latest session.
 - Cost fields are runtime-reported only. Bakin does not map model ids to pricing tables for Health.
 - Missing runtime cost is represented as unavailable, not `$0.00`.
-- The "Latest Session Context" card is **latest-session scoped** (context pressure). Multi-session history is the separate pipeline below.
+- **Latest session token usage** is cumulative traffic in each agent's newest transcript, not current context-window occupancy. Multi-session history is the separate pipeline below.
 
 ## Usage history (multi-session, durable — #359)
 
@@ -46,13 +57,13 @@ Invariants:
 - **Day attribution is per message** (local calendar day of the message's own timestamp; session start as fallback), so long-lived main sessions don't dump weeks of tokens on one day.
 - **History outlives its source.** Deleting/rotating a session file just stops updates; ingested rows are permanent (no tombstones, no retention cap).
 - **Cost is runtime-reported only and NULL-honest** — stored as micro-dollar sums with `costed_messages`/`message_count` coverage counts; a group with no reported cost sums to `null`, never `$0`. Bakin never prices these rows.
-- Serving: `GET /api/plugins/health/usage-history?window=24h|7d|30d` — windows are **day-aligned** (every local calendar day the window touches). The Usage History section on the health page renders it (URL param `uw`).
+- Serving: `GET /api/plugins/health/usage-history?window=24h|7d|30d` — windows are **day-aligned** (every local calendar day the window touches). The Health Agents tab renders it with URL param `agents_window`.
 
 ## Reading
 
 | API | Use |
 |---|---|
-| `getUsageFeed({ kind?, window, agent? })` | Top-N / by-agent / recent aggregation |
+| `getUsageFeed({ kind?, window, agent?, includeRoutine? })` | Top-N / by-agent / recent aggregation plus exact failure buckets |
 | `getStatsByMs({ kind?, windowMs, agent? })` | Total + error counts (used by watchdog) |
 | `getErrorCount(windowMs)` | Errors tile on `/summary` |
 
@@ -61,10 +72,12 @@ Windows: `'5m' | '1h' | '24h'`.
 ## Auto-recording sites
 
 - **MCP** — `src/core/mcp-server.ts:registerTools` records every tool call.
-- **REST** — `trackResponse` middleware in `src/core/rest-tracking.ts` records every response.
+- **REST** — `trackResponse` middleware in `src/core/rest-tracking.ts` records every response using required route metadata classification.
 - **Agent** — dispatch / heartbeat / lifecycle modules emit `kind: 'agent'` entries.
 
 Manual `recordUsage` calls are only needed for new flows that aren't covered by the three auto-recorders above.
+
+Health's own successful polls are routine, so opening Health cannot make Health the loudest default Activity source. Request-trace browser verification guards this behavior.
 
 ## Startup Diagnostics and Remote Metrics Boundary
 

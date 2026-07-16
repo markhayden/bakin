@@ -1,24 +1,11 @@
 'use client'
 
-/**
- * Generic doctor repair flow (layered-context spec, C10) — the first repair
- * affordance in the Health UI. Works for ANY check whose handler offers
- * repairs, not just agent-sync:
- *
- *   plan (GET /doctor/repair/plan) → per-item review with safety labels →
- *   explicit selection (safe items pre-checked; manual/destructive items
- *   require individually ticking their confirmation box) →
- *   apply (POST /doctor/repair/apply { accepted, itemIds, allowDestructive })
- *   → results + verification.
- *
- * Destructive consent is structural: the apply engine refuses non-safe items
- * unless the caller passed explicit itemIds + allowDestructive, which this
- * dialog only sends for items the user ticked one-by-one.
- */
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import type { HealthRepairTarget } from '@makinbakin/sdk/types'
 import {
   Badge,
   Button,
+  Checkbox,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -26,230 +13,204 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@makinbakin/sdk/ui'
-import { AlertTriangle, CircleCheck, Wrench } from 'lucide-react'
+import { AlertTriangle, CircleCheck, RefreshCw, Wrench } from 'lucide-react'
+import { useRepairPlan } from '../hooks/use-repair-plan'
 
-interface RepairChange {
-  kind: string
-  target: string
-  action: string
-  description: string
+const SAFETY_STYLES = {
+  safe: 'border-success/30 bg-success/10 text-success',
+  manual: 'border-warning/30 bg-warning/10 text-warning',
+  destructive: 'border-destructive/30 bg-destructive/10 text-destructive',
+} as const
+
+function repairErrorTitle(stale: boolean, outcomeUnknown: boolean): string {
+  if (stale) return 'The evidence changed before apply.'
+  if (outcomeUnknown) return 'The repair outcome needs confirmation.'
+  return 'The repair request failed.'
 }
 
-interface RepairPlanItem {
-  id: string
-  checkId: string
-  healthCheckId: string
-  checkName: string
-  title: string
-  reason: string
-  safety: 'safe' | 'manual' | 'destructive'
-  requiresConfirmation: boolean
-  changes: RepairChange[]
-}
-
-interface RepairPlanReport {
-  items: RepairPlanItem[]
-  errors: Array<{ healthCheckId: string; message: string }>
-  summary: { totalItems: number; safeItems: number }
-}
-
-interface RepairApplyResult {
-  id: string
-  checkId: string
-  status: 'applied' | 'skipped' | 'failed'
-  message: string
-}
-
-interface RepairApplyReport {
-  status: 'confirmation_required' | 'applied'
-  applied: RepairApplyResult[]
-  skipped: RepairApplyResult[]
-  errors: Array<{ healthCheckId: string; message: string }>
-  verification: Array<{ check: string; status: string; message: string }>
-}
-
-const SAFETY_STYLES: Record<RepairPlanItem['safety'], string> = {
-  safe: 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300',
-  manual: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300',
-  destructive: 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300',
-}
-
-export function RepairDialog({ open, onOpenChange, onApplied }: {
+export function RepairDialog({
+  open,
+  onOpenChange,
+  target,
+  title = 'Repair this issue',
+  onApplied,
+}: {
   open: boolean
   onOpenChange: (open: boolean) => void
+  target: HealthRepairTarget
+  title?: string
   onApplied?: () => void
 }) {
-  const [plan, setPlan] = useState<RepairPlanReport | null>(null)
-  const [planning, setPlanning] = useState(false)
-  const [planError, setPlanError] = useState<string | null>(null)
+  const repair = useRepairPlan(target)
+  const { planRepair } = repair
   const [selected, setSelected] = useState<Set<string>>(new Set())
-  const [applying, setApplying] = useState(false)
-  const [result, setResult] = useState<RepairApplyReport | null>(null)
-  const [applyError, setApplyError] = useState<string | null>(null)
-
-  const loadPlan = useCallback(async () => {
-    setPlanning(true)
-    setPlanError(null)
-    setResult(null)
-    try {
-      const res = await fetch('/api/plugins/health/doctor/repair/plan')
-      if (!res.ok) throw new Error(`plan failed (${res.status})`)
-      const report = await res.json() as RepairPlanReport
-      setPlan(report)
-      // Safe items are pre-selected; anything requiring confirmation starts
-      // unticked — consent is per item, never implied.
-      setSelected(new Set(report.items.filter((i) => i.safety === 'safe' && !i.requiresConfirmation).map((i) => i.id)))
-    } catch (err) {
-      setPlanError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setPlanning(false)
-    }
-  }, [])
+  const [announcement, setAnnouncement] = useState('')
 
   useEffect(() => {
-    if (open) void loadPlan()
-  }, [open, loadPlan])
+    if (!open) return
+    setSelected(new Set())
+    setAnnouncement('Planning repair options.')
+    void planRepair().then((plan) => {
+      if (!plan) return
+      setSelected(new Set(plan.items.filter((item) => item.safety === 'safe').map((item) => item.id)))
+      setAnnouncement(`Repair plan ready with ${plan.items.length} option${plan.items.length === 1 ? '' : 's'}.`)
+    })
+  }, [open, planRepair])
 
-  const destructiveSelected = useMemo(
-    () => plan?.items.some((i) => selected.has(i.id) && i.safety !== 'safe') ?? false,
-    [plan, selected],
+  const selectedItems = useMemo(
+    () => repair.plan?.items.filter((item) => selected.has(item.id)) ?? [],
+    [repair.plan, selected],
   )
+  const confirmedItemIds = selectedItems.filter((item) => item.safety !== 'safe').map((item) => item.id)
+  const hasNonSafe = confirmedItemIds.length > 0
 
   const toggle = (id: string) => {
-    setSelected((prev) => {
-      const next = new Set(prev)
+    setSelected((current) => {
+      const next = new Set(current)
       if (next.has(id)) next.delete(id)
       else next.add(id)
       return next
     })
   }
 
+  const replan = async () => {
+    setAnnouncement('Re-planning against the latest Health evidence.')
+    const plan = await repair.planRepair()
+    if (!plan) return
+    setSelected(new Set(plan.items.filter((item) => item.safety === 'safe').map((item) => item.id)))
+    setAnnouncement('Repair plan updated.')
+  }
+
   const apply = async () => {
-    if (!plan || selected.size === 0) return
-    setApplying(true)
-    setApplyError(null)
-    try {
-      const res = await fetch('/api/plugins/health/doctor/repair/apply', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          accepted: true,
-          itemIds: [...selected],
-          allowDestructive: destructiveSelected,
-        }),
-      })
-      const report = await res.json() as RepairApplyReport
-      if (!res.ok && (report as unknown as { error?: string }).error) {
-        throw new Error((report as unknown as { error: string }).error)
-      }
-      setResult(report)
-      onApplied?.()
-    } catch (err) {
-      setApplyError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setApplying(false)
-    }
+    setAnnouncement('Applying the selected repairs, then verifying affected checks.')
+    const result = await repair.applyRepair([...selected], confirmedItemIds)
+    if (!result) return
+    const failed = result.results.filter((item) => item.status === 'failed').length
+    setAnnouncement(failed > 0
+      ? `${failed} repair${failed === 1 ? '' : 's'} failed. Verification completed.`
+      : result.verifiedIncidentIds.length === 0
+        ? 'Repairs applied and the selected issue no longer appears in fresh evidence.'
+        : 'Repairs applied, but verification found that the issue still needs attention.')
+    onApplied?.()
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!repair.applying) onOpenChange(nextOpen)
+      }}
+    >
+      <DialogContent className="max-h-[min(88vh,52rem)] max-w-2xl overflow-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Wrench className="size-4" /> Repair
+            <Wrench className="size-4" aria-hidden="true" /> {title}
           </DialogTitle>
           <DialogDescription>
-            Review the planned repairs. Safe items are pre-selected; anything
-            marked manual or destructive needs its own checkbox ticked.
+            Safe changes are selected for you. Manual or destructive changes remain off until you confirm each one.
           </DialogDescription>
         </DialogHeader>
 
-        {planning && <p className="text-sm text-muted-foreground">Planning repairs…</p>}
-        {planError && <p className="text-sm text-red-400">{planError}</p>}
+        <p className="sr-only" role="status" aria-live="polite">{announcement}</p>
 
-        {!planning && plan && !result && (
-          <div className="space-y-3 max-h-96 overflow-y-auto">
-            {plan.items.length === 0 && (
-              <p className="text-sm text-muted-foreground">
-                Nothing repairable right now — remaining findings need manual attention.
-              </p>
-            )}
-            {plan.items.map((item) => (
-              <label
-                key={item.id}
-                className={`flex items-start gap-3 rounded-md border p-3 cursor-pointer ${item.safety === 'destructive' ? 'border-red-300 dark:border-red-900' : 'border-border'}`}
-              >
-                <input
-                  type="checkbox"
-                  className="mt-1"
-                  checked={selected.has(item.id)}
-                  onChange={() => toggle(item.id)}
-                  aria-label={`Select repair: ${item.title}`}
-                />
-                <span className="space-y-1 text-sm">
-                  <span className="flex items-center gap-2 font-medium">
-                    {item.title}
-                    <Badge className={`${SAFETY_STYLES[item.safety]} text-[10px] px-1.5`}>{item.safety}</Badge>
-                  </span>
-                  <span className="block text-muted-foreground">{item.reason}</span>
-                  {item.changes.map((change, i) => (
-                    <span key={i} className="block text-xs text-muted-foreground">
-                      → {change.action} {change.target}: {change.description}
-                    </span>
-                  ))}
-                  {item.safety === 'destructive' && (
-                    <span className="flex items-center gap-1 text-xs text-red-500">
-                      <AlertTriangle className="size-3" /> Overwrites content — tick to confirm explicitly.
-                    </span>
-                  )}
-                </span>
-              </label>
-            ))}
-            {plan.errors.length > 0 && (
-              <p className="text-xs text-yellow-500">
-                {plan.errors.length} check(s) failed to plan: {plan.errors.map((e) => e.healthCheckId).join(', ')}
-              </p>
-            )}
+        {repair.planning && (
+          <div role="status" className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
+            <RefreshCw className="size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+            Planning against the current evidence…
           </div>
         )}
 
-        {result && (
-          <div className="space-y-2 max-h-96 overflow-y-auto text-sm">
-            {[...result.applied, ...result.skipped].map((r) => (
-              <div key={r.id} className="flex items-start gap-2">
-                {r.status === 'applied'
-                  ? <CircleCheck className="size-4 shrink-0 text-green-500 mt-0.5" />
-                  : <AlertTriangle className="size-4 shrink-0 text-yellow-500 mt-0.5" />}
-                <span><span className="font-medium">{r.id}</span> — {r.status}: {r.message}</span>
+        {repair.error && (
+          <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm">
+            <p className="font-medium text-destructive">{repairErrorTitle(repair.stale, repair.outcomeUnknown)}</p>
+            <p className="mt-1 text-muted-foreground">{repair.error}</p>
+            {repair.stale && <Button className="mt-3" size="sm" variant="outline" onClick={() => void replan()}>Re-plan from fresh evidence</Button>}
+          </div>
+        )}
+
+        {!repair.planning && repair.plan && !repair.result && !repair.stale && (
+          <div className="max-h-[min(52vh,28rem)] space-y-3 overflow-y-auto pr-1">
+            {repair.plan.items.length === 0 && (
+              <p className="rounded-lg border border-border/70 p-4 text-sm text-muted-foreground">
+                No deterministic repair is available for this issue. Follow its resolution steps instead.
+              </p>
+            )}
+            {repair.plan.items.map((item) => {
+              const nonSafe = item.safety !== 'safe'
+              return (
+                <div key={item.id} className="flex items-start gap-3 rounded-xl border border-border/80 p-4 focus-within:ring-2 focus-within:ring-ring">
+                  <Checkbox
+                    className="mt-1"
+                    checked={selected.has(item.id)}
+                    onCheckedChange={() => toggle(item.id)}
+                    aria-label={`${nonSafe ? 'Select and confirm' : 'Select'} repair: ${item.title}`}
+                  />
+                  <span className="min-w-0 space-y-2 text-sm">
+                    <span className="flex flex-wrap items-center gap-2 font-medium text-foreground">
+                      {item.title}
+                      <Badge variant="outline" className={SAFETY_STYLES[item.safety]}>{item.safety}</Badge>
+                    </span>
+                    <span className="block text-muted-foreground">{item.reason}</span>
+                    {item.changes.length > 0 && (
+                      <span className="block rounded-lg bg-muted/50 p-2 text-xs text-muted-foreground">
+                        {item.changes.map((change) => `${change.action} ${change.target}: ${change.description}`).join(' · ')}
+                      </span>
+                    )}
+                    {nonSafe && (
+                      <span className="flex items-start gap-1.5 text-xs text-warning">
+                        <AlertTriangle className="mt-0.5 size-3 shrink-0" aria-hidden="true" />
+                        Selecting this item is its individual confirmation. Review the described change first.
+                      </span>
+                    )}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {repair.result && (
+          <div className="max-h-[min(52vh,28rem)] space-y-3 overflow-y-auto" data-testid="repair-result">
+            {repair.result.results.map((item) => (
+              <div key={item.itemId} className="flex items-start gap-2 rounded-lg border border-border/70 p-3 text-sm">
+                {item.status === 'applied'
+                  ? <CircleCheck className="mt-0.5 size-4 shrink-0 text-success" aria-hidden="true" />
+                  : <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden="true" />}
+                <div><p className="font-medium capitalize">{item.status}</p><p className="text-muted-foreground">{item.message}</p></div>
               </div>
             ))}
-            {result.errors.map((e, i) => (
-              <p key={i} className="text-red-400 text-xs">{e.healthCheckId}: {e.message}</p>
-            ))}
-            {result.verification.length > 0 && (
-              <p className="text-xs text-muted-foreground">
-                Verification: {result.verification.filter((v) => v.status === 'ok' || v.status === 'fixed').length}/{result.verification.length} checks clean after repair.
+            <div className={repair.result.verifiedIncidentIds.length === 0
+              ? 'rounded-lg border border-success/30 bg-success/5 p-3 text-sm'
+              : 'rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm'}>
+              <p className="font-medium">Verification</p>
+              <p className="mt-1 text-muted-foreground">
+                {repair.result.verifiedIncidentIds.length === 0
+                  ? 'Fresh checks no longer show the selected issue.'
+                  : `The repair ran, but ${repair.result.verifiedIncidentIds.length} related incident${repair.result.verifiedIncidentIds.length === 1 ? '' : 's'} remain.`}
               </p>
-            )}
+            </div>
           </div>
         )}
-        {applyError && <p className="text-sm text-red-400">{applyError}</p>}
 
         <DialogFooter>
-          {!result ? (
+          {!repair.result ? (
             <>
-              <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
               <Button
-                onClick={apply}
-                disabled={applying || selected.size === 0}
-                variant={destructiveSelected ? 'destructive' : 'default'}
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+                disabled={repair.applying}
               >
-                {applying ? 'Applying…' : destructiveSelected ? `Apply ${selected.size} (incl. destructive)` : `Apply ${selected.size} repair${selected.size === 1 ? '' : 's'}`}
+                Cancel
+              </Button>
+              <Button
+                onClick={() => void apply()}
+                disabled={repair.planning || repair.applying || selected.size === 0 || repair.stale}
+                variant={hasNonSafe ? 'destructive' : 'default'}
+              >
+                {repair.applying ? 'Applying and verifying…' : `Apply ${selected.size} repair${selected.size === 1 ? '' : 's'}`}
               </Button>
             </>
-          ) : (
-            <Button onClick={() => onOpenChange(false)}>Done</Button>
-          )}
+          ) : <Button onClick={() => onOpenChange(false)}>Done</Button>}
         </DialogFooter>
       </DialogContent>
     </Dialog>

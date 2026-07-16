@@ -81,7 +81,6 @@ export function createSearchAdapterHarness() {
   const mappingFingerprint = mock(() => 'harness-mapping-v1')
   const shutdown = mock(async () => {})
   const available = mock(async () => availableValue)
-  const getHealthChecks = mock(() => [])
 
   const tablesList = mock(async (): Promise<TableInfo[]> => (
     Array.from(tables.entries()).map(([name, config]) => ({
@@ -180,7 +179,6 @@ export function createSearchAdapterHarness() {
     initialize,
     shutdown,
     available,
-    getHealthChecks,
     capabilities,
     mappingFingerprint,
     tables: {
@@ -225,7 +223,6 @@ export function createSearchAdapterHarness() {
       initialize,
       shutdown,
       available,
-      getHealthChecks,
       capabilities,
       mappingFingerprint,
       tablesList,

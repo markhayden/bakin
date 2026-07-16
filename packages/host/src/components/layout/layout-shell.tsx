@@ -1,6 +1,12 @@
 import { useSidebarContext } from '@/context/sidebar-context'
 import { useActivityContext } from '@/context/activity-context'
 import { ActivityFeed } from '@/components/tasks/activity-feed'
+import { usePathname, useSearchParams } from '@makinbakin/sdk/hooks'
+import { useEffect } from 'react'
+
+export function shouldAutoCollapseActivity(pathname: string, searchParams: URLSearchParams): boolean {
+  return pathname === '/health' && searchParams.get('tab') === 'activity'
+}
 
 export function LayoutShell({
   sidebar,
@@ -10,7 +16,16 @@ export function LayoutShell({
   children: React.ReactNode
 }) {
   const { collapsed } = useSidebarContext()
-  const { open: activityOpen } = useActivityContext()
+  const { open: activityOpen, close: closeActivity } = useActivityContext()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const collapseForActivityDashboard = shouldAutoCollapseActivity(pathname, searchParams)
+
+  useEffect(() => {
+    if (!collapseForActivityDashboard) return
+    const timeout = window.setTimeout(closeActivity, 0)
+    return () => window.clearTimeout(timeout)
+  }, [closeActivity, collapseForActivityDashboard])
 
   return (
     <>

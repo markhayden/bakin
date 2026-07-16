@@ -81,7 +81,6 @@ describe('reference plugin (install → activate → every surface)', () => {
   beforeAll(async () => {
     mkdirSync(testDir, { recursive: true })
 
-    const { createHealthService } = await import('@bakin/core/app-services')
     const { createMockRuntimeAdapter } = await import('@bakin/core/adapters/runtime/testing')
     const { createMockSearchAdapter } = await import('@bakin/core/adapters/search/testing')
     const { createMockBakinTaskStore } = await import('@bakin/core/tasks/testing')
@@ -91,7 +90,6 @@ describe('reference plugin (install → activate → every surface)', () => {
       runtime,
       search,
       tasks: createMockBakinTaskStore(),
-      health: createHealthService([runtime, search]),
     }
 
     // --- install: copy examples/reference-plugin like commit.ts does ---

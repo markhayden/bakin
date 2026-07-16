@@ -4,125 +4,59 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 
 const testDir = mkdtempSync(join(tmpdir(), 'bakin-doctor-delegate-'))
-
-process.env.BAKIN_HOME = testDir
-
-const mockPlan = {
-  diagnostics: [
-    { check: 'runtime', status: 'error', message: 'Runtime unreachable', autoFixable: false },
-    { check: 'taskboard', status: 'warn', message: 'Missing columns', autoFixable: true },
-  ],
-  items: [{
-    id: 'repair.taskboard',
-    checkId: 'taskboard',
-    healthCheckId: 'tasks.taskboard',
-    pluginId: 'tasks',
-    checkName: 'Taskboard',
-    title: 'Repair taskboard',
-    reason: 'Missing columns',
-    safety: 'safe',
-    requiresConfirmation: true,
-    changes: [{ kind: 'file', target: 'tasks/board.json', action: 'update', description: 'Add missing columns' }],
-  }],
-  errors: [],
-  summary: { diagnostics: 2, repairableChecks: 1, totalItems: 1, safeItems: 1, blockedItems: 0, planErrors: 0 },
-}
-
 const createTaskWithEffects = mock(async () => ({ id: 'task-doctor-repair' }))
 const dispatchSingleTask = mock(async () => {})
+const report = {
+  id: 'health-report-1',
+  incidents: [{
+    id: 'health:search:unavailable', status: 'error', disposition: 'action_required',
+    title: 'Search is unavailable', impact: 'Search requests fail.', resources: [],
+    resolution: { key: 'restart', type: 'repair', label: 'Restart', actionId: 'health.restart' },
+    observationIds: ['health.search:engine'], observedAt: '2026-07-13T12:00:00.000Z', staleAt: '2026-07-13T12:10:00.000Z', stale: false,
+  }],
+}
+const plan = {
+  planId: 'repair-plan-1', basedOnReportId: report.id,
+  target: { type: 'all_actionable', reportId: report.id },
+  createdAt: '2026-07-13T12:00:00.000Z', expiresAt: '2026-07-13T12:10:00.000Z', items: [],
+}
 
-mock.module('../../src/core/doctor-repair', () => ({
-  planDoctorRepair: mock(async () => mockPlan),
-}))
-
-mock.module('../../src/core/task-service', () => ({
-  createTaskWithEffects,
-}))
-
-mock.module('../../src/core/dispatch', () => ({
-  dispatchSingleTask,
-}))
-
-mock.module('../../src/core/app-services', () => ({
-  getAppServices: () => ({
-    runtime: {
-      agents: {
-        list: async () => [{ id: 'main', name: 'Main', role: 'Orchestrator' }],
-      },
-    },
-  }),
-}))
-mock.module('../../src/core/app-services-store', () => ({
-  getAppServices: () => ({
-    runtime: {
-      agents: {
-        list: async () => [{ id: 'main', name: 'Main', role: 'Orchestrator' }],
-      },
-    },
-  }),
-}))
-
-mock.module('../../src/core/logger', () => ({
-  createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
-}))
+mock.module('../../src/core/doctor-report-cache', () => ({ getHealthReport: () => report }))
+mock.module('../../src/core/doctor-repair', () => ({ planDoctorRepair: async () => plan }))
+mock.module('../../src/core/task-service', () => ({ createTaskWithEffects }))
+mock.module('../../src/core/dispatch', () => ({ dispatchSingleTask }))
+mock.module('../../src/core/app-services', () => ({ getAppServices: () => ({ runtime: { agents: { list: async () => [{ id: 'main' }] } } }) }))
+mock.module('../../src/core/app-services-store', () => ({ getAppServices: () => ({ runtime: { agents: { list: async () => [{ id: 'main' }] } } }) }))
+mock.module('@bakin/core/adapters/runtime', () => ({ getRuntimeMainAgentId: async () => 'main' }))
 
 import { delegateDoctorRepair } from '../../src/core/doctor-delegate'
 import { getDoctorRepairRequest, listDoctorRepairRequests } from '../../src/core/doctor-repair-store'
 
 beforeEach(() => {
   rmSync(testDir, { recursive: true, force: true })
-  mock.clearAllMocks()
+  createTaskWithEffects.mockClear()
+  dispatchSingleTask.mockClear()
 })
+afterEach(() => rmSync(testDir, { recursive: true, force: true }))
 
-afterEach(() => {
-  rmSync(testDir, { recursive: true, force: true })
-})
-
-describe('delegateDoctorRepair', () => {
-  it('creates a planned request without task mutation until accepted', async () => {
-    const report = await delegateDoctorRepair({
-      contentDir: testDir,
-      projectRoot: testDir,
-      accepted: false,
-    })
-
-    expect(report.status).toBe('confirmation_required')
-    expect(report.request.status).toBe('planned')
-    expect(report.unresolved.map(row => row.check)).toEqual(['runtime'])
+describe('structured Health delegation', () => {
+  it('persists stable incident identity without task mutation before acceptance', async () => {
+    const result = await delegateDoctorRepair({ contentDir: testDir, projectRoot: testDir, accepted: false })
+    expect(result.status).toBe('confirmation_required')
+    expect(result.request).toMatchObject({ version: 2, incidentIds: ['health:search:unavailable'], observationIds: ['health.search:engine'] })
     expect(createTaskWithEffects).not.toHaveBeenCalled()
-    expect(dispatchSingleTask).not.toHaveBeenCalled()
-
-    const stored = getDoctorRepairRequest(testDir, report.request.id)
-    expect(stored?.status).toBe('planned')
+    expect(getDoctorRepairRequest(testDir, result.request.id)?.incidentIds).toEqual(['health:search:unavailable'])
   })
 
-  it('creates a board task assigned to main and kicks dispatch when accepted', async () => {
-    const report = await delegateDoctorRepair({
-      contentDir: testDir,
-      projectRoot: testDir,
-      accepted: true,
-    })
-
-    expect(report.status).toBe('sent')
-    expect(report.request.taskId).toBe('task-doctor-repair')
-    expect(report.request.agentId).toBe('main')
+  it('creates one linked task with stable IDs and kicks dispatch after acceptance', async () => {
+    const result = await delegateDoctorRepair({ contentDir: testDir, projectRoot: testDir, accepted: true })
+    expect(result.status).toBe('sent')
     expect(createTaskWithEffects).toHaveBeenCalledWith(expect.objectContaining({
-      title: expect.stringContaining('Doctor repair'),
-      column: 'todo',
       assignee: 'main',
-      createdBy: 'system',
-      source: expect.objectContaining({
-        pluginId: 'health',
-        entityType: 'doctor-repair',
-        entityId: report.request.id,
-        purpose: 'delegated-repair',
-      }),
+      description: expect.stringContaining('health:search:unavailable'),
+      source: expect.objectContaining({ entityId: result.request.id }),
     }))
     expect(dispatchSingleTask).toHaveBeenCalledWith('task-doctor-repair', testDir, 3737, 'kick')
-
-    const stored = getDoctorRepairRequest(testDir, report.request.id)
-    expect(stored?.status).toBe('sent')
-    expect(stored?.events.map(event => event.type)).toEqual(['created', 'task-created', 'dispatch-kicked'])
     expect(listDoctorRepairRequests(testDir)).toHaveLength(1)
   })
 })

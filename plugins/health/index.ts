@@ -4,21 +4,47 @@
  */
 import { totalmem } from 'os'
 import { z } from 'zod'
-import type { BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
+import type { BakinPlugin, HealthRepairTarget, PluginContext } from '@bakin/core/plugin-types'
 import { definePlugin, defineRoute } from '@bakin/core/routing'
-import { usageByAgentSince, usageByDaySince, usageByAgentDaySince, toLocalDayKey } from '@bakin/core/usage-history/store'
-import { listLiveRuns } from '../../src/core/execution-ledger'
-import { buildAgentBurnReports } from '../../src/core/agent-burn'
-import { getLastResults, runDiagnostics } from '../../src/core/doctor'
+import {
+  readUsageHistorySince,
+  toLocalDayKey,
+  UsageHistoryStoreReadError,
+} from '@bakin/core/usage-history/store'
+import { LedgerUnavailableError, listLiveRuns } from '../../src/core/execution-ledger'
+import { buildAgentBurnReports, getAgentBurnWindowScope } from '../../src/core/agent-burn'
+import { getLastReport, runDiagnostics } from '../../src/core/doctor'
 import { createLogger } from '../../src/core/logger'
-import { getAllAgentUsage } from '../../src/core/agent-usage'
-import { startUsageHistoryTimer, stopUsageHistoryTimer, getLastUsageScan, DEFAULT_SCAN_MINUTES } from './lib/usage-history-timer'
+import { getAgentUsageSnapshot, getAllAgentUsage } from '../../src/core/agent-usage'
+import {
+  startUsageHistoryTimer,
+  stopUsageHistoryTimer,
+  getLastUsageScan,
+  isUsageHistoryScanInFlight,
+  getUsageHistoryScanStaleAfterMs,
+  DEFAULT_SCAN_MINUTES,
+} from './lib/usage-history-timer'
 import { DoctorRepairRequestNotFoundError } from '../../src/core/doctor-repair-store'
 import { getContentDir } from '../../src/core/content-dir'
 import { applyDoctorRepair, planDoctorRepair } from '../../src/core/doctor-repair'
+import { HealthContractError } from '../../src/core/health-contract'
+import {
+  DoctorRepairConfirmationError,
+  DoctorRepairStalePlanError,
+} from '../../src/core/doctor-repair-plans'
 import { delegateDoctorRepair, verifyDoctorRepairRequest } from '../../src/core/doctor-delegate'
 import { getDoctorRepairRequest, listDoctorRepairRequests } from '../../src/core/doctor-repair-store'
-import { getUsageFeed, getErrorCount, getStatsByMs, WINDOW_MS, type UsageKind, type WindowKey } from '../../src/core/usage'
+import {
+  DEFAULT_FAILURE_GROUP_LIMIT,
+  MAX_FAILURE_GROUP_LIMIT,
+  getInteractionSummary,
+  getUsageFeed,
+  getErrorCount,
+  getStatsByMs,
+  WINDOW_MS,
+  type UsageKind,
+  type WindowKey,
+} from '../../src/core/usage'
 import {
   listHealthChecks,
   getHealthCheck,
@@ -38,109 +64,136 @@ import { checkStartupContextSize } from './lib/system-checks/context-report'
 import { checkBudget } from './lib/system-checks/budget'
 import { checkAgentBurn } from './lib/system-checks/agent-burn'
 import { checkSearchAdapter } from './lib/system-checks/search'
-import { checkSearchOutbox, searchOutboxRepair } from './lib/system-checks/search-outbox'
+import { searchOutboxRepair } from './lib/system-checks/search-outbox'
 import { checkSearchConsistency, searchConsistencyRepair } from './lib/system-checks/search-consistency'
 import { checkSearchSpin, searchSpinRepair } from './lib/system-checks/search-spin'
 import { checkSearchCanary, checkSearchEngineBurn, searchCanaryRepair, searchEngineBurnRepair } from './lib/system-checks/search-engine-watch'
 import { checkAndSyncSkill, syncSkillRepair } from './lib/system-checks/sync-skill'
 import { checkPluginAssets } from './lib/system-checks/plugin-assets'
 import { checkPluginArtifacts } from './lib/system-checks/plugin-artifacts'
-
-type RegistryAccessor = () => Array<Record<string, unknown>>
-type McpSessionsAccessor = () => { activeSessions: Array<{ agent: string; sessions: number; connectedAt: string }>; upSince: string }
-
-function getRegistrySnapshot() {
-  const fn = (globalThis as unknown as { __bakinGetRegistrySnapshot?: RegistryAccessor }).__bakinGetRegistrySnapshot
-  return fn ? fn() : []
-}
-
-function getMcpSessions(): { activeSessions: Array<{ agent: string; sessions: number; connectedAt: string }>; upSince: string } {
-  const fn = (globalThis as unknown as { __bakinGetMcpSessions?: McpSessionsAccessor }).__bakinGetMcpSessions
-  return fn ? fn() : { activeSessions: [], upSince: new Date().toISOString() }
-}
+import { checkPluginRegistry } from './lib/system-checks/plugin-registry'
+import {
+  agentEffortResponseSchema,
+  agentUsageSnapshotResponseSchema,
+  agentUsageResponseSchema,
+  agentWindowQuerySchema,
+  usageHistoryResponseSchema,
+} from './lib/agent-route-schemas'
+import {
+  healthChecksResponseSchema,
+  healthErrorResponseSchema,
+  healthLiveSummarySchema,
+  healthRepairApplyReportSchema,
+  healthRepairApplyRequestSchema,
+  healthRepairPlanRequestSchema,
+  healthRepairPlanSchema,
+  healthRepairTargetSchema,
+  healthReportSchema,
+  searchReadinessResponseSchema,
+} from './lib/route-schemas'
+import type { UsageEvidenceCoverage } from './types'
+import {
+  getMcpSessions,
+  getRegistrySnapshot,
+} from './lib/host-providers'
+import {
+  usageFeedResponseSchema,
+} from './lib/usage-feed-route-schema'
+import { interactionSummaryResponseSchema } from './lib/interaction-summary-route-schema'
+import { withDeadline } from './lib/request-deadline'
+import {
+  searchEnrichmentSchema,
+  searchStatusResponseSchema,
+  searchTelemetryResponseSchema,
+  systemRegistryResponseSchema,
+} from './lib/system-route-schemas'
 
 const log = createLogger('health')
+const SEARCH_ENRICHMENT_STATS_TIMEOUT_MS = 250
+let usageHistoryRuntime: PluginContext['runtime'] | null = null
+
+class SearchEnrichmentStatsTimeoutError extends Error {
+  constructor() {
+    super('Search enrichment telemetry timed out.')
+    this.name = 'SearchEnrichmentStatsTimeoutError'
+  }
+}
+
+function currentUsageEvidence(): {
+  coverage: UsageEvidenceCoverage
+  scannedAt: string | null
+} {
+  if (isUsageHistoryScanInFlight()) {
+    return {
+      coverage: { status: 'unavailable', reason: 'scan_in_progress', agents: [] },
+      scannedAt: null,
+    }
+  }
+  const lastScan = getLastUsageScan()
+  const scanStale = lastScan
+    ? Math.max(0, Date.now() - lastScan.at) > getUsageHistoryScanStaleAfterMs()
+    : false
+  const reportedCoverage = scanStale ? null : lastScan?.report.coverage
+  const coverage: UsageEvidenceCoverage = reportedCoverage ?? {
+    status: 'unavailable',
+    reason: scanStale ? 'scan_stale' : lastScan ? 'scan_status_unavailable' : 'scan_not_run',
+    agents: [],
+  }
+  return {
+    coverage,
+    // Keep the legacy field conservative: older clients understand null as
+    // incomplete evidence, but cannot interpret partial per-agent coverage.
+    scannedAt: lastScan && coverage.status === 'complete'
+      ? new Date(lastScan.at).toISOString()
+      : null,
+  }
+}
 
 const stripRun = (def: HealthCheckDef) => ({
   id: def.id,
+  localId: def.localId,
   name: def.name,
-  pluginId: def.pluginId,
-  autoFix: !!def.repair || !!def.autoFix,
+  description: def.description,
+  owner: def.owner,
+  group: def.group,
+  ...(def.maxAgeMs === undefined ? {} : { maxAgeMs: def.maxAgeMs }),
 })
-
-function buildDoctorResponse(results: Array<{ status: string }> & unknown[]) {
-  const errors = results.filter(r => r.status === 'error').length
-  const warnings = results.filter(r => r.status === 'warn').length
-  return { results, summary: { total: results.length, errors, warnings } }
-}
-
-function checkPluginRegistry() {
-  const failed = getRegistrySnapshot().filter(plugin => plugin.status === 'failed')
-  if (failed.length === 0) {
-    return [{
-      check: 'plugin-registry',
-      status: 'ok' as const,
-      message: 'All plugins activated',
-      autoFixable: false,
-    }]
-  }
-
-  return failed.map(plugin => {
-    const id = String(plugin.id ?? 'unknown')
-    const code = typeof plugin.errorCode === 'string' ? plugin.errorCode : 'activation_failed'
-    const message = typeof plugin.errorMessage === 'string' && plugin.errorMessage.length > 0
-      ? plugin.errorMessage
-      : 'No failure details recorded'
-    return {
-      check: `plugin-registry:${id}`,
-      status: 'error' as const,
-      message: `${id} failed (${code}): ${message}`,
-      autoFixable: false,
-    }
-  })
-}
 
 // ─── Schemas ─────────────────────────────────────────────────────────────
 
 const passthrough = z.object({}).passthrough()
 const errorResponse = z.object({ error: z.string() }).passthrough()
 
-const checksResponse = z.object({
-  checks: z.array(z.object({
-    id: z.string(),
-    name: z.string(),
-    pluginId: z.string().optional(),
-    autoFix: z.boolean(),
-  })),
-})
-
-const summaryResponse = z.object({
-  doctor: z.unknown().nullable(),
-  errors1h: z.unknown(),  // recorder returns { total, byKind } — keep loose
-  activeSessions: z.array(z.unknown()),
-  upSince: z.string(),
-  server: z.object({
-    port: z.number(),
-    pid: z.number(),
-    nodeVersion: z.string(),
-    memoryMB: z.number(),
-    totalMemoryMB: z.number(),
-  }),
-})
-
 const usageFeedQuery = z.object({
   kind: z.enum(['mcp', 'rest', 'agent']).optional(),
   window: z.enum(['5m', '1h', '24h']).default('1h'),
   agent: z.string().min(1).optional(),
+  includeRoutine: z.enum(['true', 'false']).default('false'),
+  failureGroupOffset: z.coerce.number().int().nonnegative().default(0),
+  failureGroupLimit: z.coerce.number().int().min(1).max(MAX_FAILURE_GROUP_LIMIT)
+    .default(DEFAULT_FAILURE_GROUP_LIMIT),
+  failureGroupTargetKind: z.enum(['mcp', 'rest', 'agent']).optional(),
+  failureGroupTargetMethod: z.string().max(32).optional(),
+  failureGroupTargetDestination: z.string().min(1).max(2_048).optional(),
+}).strict().superRefine((query, ctx) => {
+  const targetFields = [
+    query.failureGroupTargetKind,
+    query.failureGroupTargetMethod,
+    query.failureGroupTargetDestination,
+  ]
+  const providedCount = targetFields.filter((field) => field !== undefined).length
+  if (providedCount !== 0 && providedCount !== targetFields.length) {
+    ctx.addIssue({
+      code: 'custom',
+      message: 'failure group target fields must be provided together',
+      path: ['failureGroupTargetKind'],
+    })
+  }
 })
 
-const usageHistoryQuery = z.object({
-  window: z.enum(['24h', '7d', '30d']).default('24h'),
-})
-
-const agentEffortQuery = z.object({
-  window: z.enum(['24h', '7d', '30d']).default('24h'),
-})
+const interactionSummaryQuery = z.object({
+  window: z.enum(['5m', '1h', '24h']).default('1h'),
+}).strict()
 
 const AGENT_EFFORT_WINDOW_HOURS: Record<'24h' | '7d' | '30d', number> = {
   '24h': 24,
@@ -154,43 +207,20 @@ const USAGE_HISTORY_WINDOW_MS: Record<'24h' | '7d' | '30d', number> = {
   '30d': 30 * 24 * 60 * 60 * 1000,
 }
 
-const doctorQuery = z.object({
-  fresh: z.union([z.literal('true'), z.literal('false')]).optional(),
-  notifyAgent: z.union([z.literal('true'), z.literal('false')]).optional(),
-})
+const doctorReadQuery = z.object({}).strict()
 
-const doctorResponse = z.object({
-  results: z.array(passthrough),
-  summary: z.object({
-    total: z.number(),
-    errors: z.number(),
-    warnings: z.number(),
-  }),
-  cachedAt: z.string().optional(),
-})
-
-const doctorRepairApplyBody = z.object({
-  accepted: z.boolean(),
-  itemIds: z.array(z.string()).optional(),
-  allowDestructive: z.boolean().optional(),
-})
+const doctorRunBody = z.object({
+  notifyAgent: z.boolean().default(false),
+}).strict()
 
 const acceptedBody = z.object({
   accepted: z.boolean(),
-})
+  target: healthRepairTargetSchema.optional(),
+}).strict()
 
 const repairRequestParams = z.object({
   requestId: z.string().min(1),
-})
-
-const searchStatusResponse = z.object({
-  enabled: z.boolean(),
-  tables: z.array(passthrough),
-}).passthrough()
-
-const registryResponse = z.object({
-  plugins: z.array(passthrough),
-})
+}).strict()
 
 // ─── Routes (declarative) ────────────────────────────────────────────────
 
@@ -198,9 +228,10 @@ const routes = [
   defineRoute({
     path: '/checks',
     method: 'GET',
+    activityClass: 'routine',
     summary: 'List registered plugin health checks',
     description: 'Returns metadata only; does not execute the checks.',
-    responses: { 200: checksResponse },
+    responses: { 200: healthChecksResponseSchema },
     handler: async () => {
       return Response.json({ checks: listHealthChecks().map(stripRun) })
     },
@@ -209,62 +240,98 @@ const routes = [
   defineRoute({
     path: '/summary',
     method: 'GET',
+    activityClass: 'routine',
     summary: 'Aggregated health summary',
-    description: 'Snapshot of doctor cache, recent error counts, MCP sessions, and host process metrics.',
-    responses: { 200: summaryResponse },
+    description: 'Live operational facts only: recent failures, MCP sessions, and host process metrics.',
+    responses: { 200: healthLiveSummarySchema, 503: errorResponse },
     handler: async () => {
-      const port = process.env.PORT || 3737
-      const cached = getLastResults()
-      const doctor = cached ? {
-        results: cached.results,
-        summary: {
-          total: cached.results.length,
-          errors: cached.results.filter(r => r.status === 'error').length,
-          warnings: cached.results.filter(r => r.status === 'warn').length,
-        },
-        cachedAt: new Date(cached.timestamp).toISOString(),
-      } : null
-      const mcp = getMcpSessions()
-      const errors1h = getErrorCount(WINDOW_MS['1h'])
-      return Response.json({
-        doctor,
-        errors1h,
-        activeSessions: mcp.activeSessions,
-        upSince: mcp.upSince,
-        server: {
-          port: Number(port),
-          pid: process.pid,
-          nodeVersion: process.version,
-          memoryMB: Math.round(process.memoryUsage().rss / 1024 / 1024),
-          totalMemoryMB: Math.round(totalmem() / 1024 / 1024),
-        },
-      })
+      try {
+        const port = process.env.PORT || 3737
+        const mcp = getMcpSessions()
+        const errors1h = getErrorCount(WINDOW_MS['1h'])
+        return Response.json({
+          errors1h,
+          activeSessions: mcp.activeSessions,
+          upSince: mcp.upSince,
+          server: {
+            port: Number(port),
+            pid: process.pid,
+            nodeVersion: process.version,
+            memoryMB: Math.round(process.memoryUsage().rss / 1024 / 1024),
+            totalMemoryMB: Math.round(totalmem() / 1024 / 1024),
+          },
+        })
+      } catch (error) {
+        log.error('MCP session evidence provider failed', error)
+        return Response.json({ error: 'MCP session evidence is unavailable.' }, { status: 503 })
+      }
     },
   }),
 
   defineRoute({
     path: '/usage-feed',
     method: 'GET',
+    activityClass: 'routine',
     summary: 'Unified usage feed',
-    description: 'Backs the tabbed usage section on the health page. Filters by kind, time window, and agent.',
+    description: 'Backs failure-first Health Activity with kind, time-window, agent, and routine-success filtering.',
     query: usageFeedQuery,
-    responses: { 200: passthrough, 400: errorResponse },
+    responses: { 200: usageFeedResponseSchema, 400: errorResponse },
     handler: async (_req, _ctx, { query }) => {
-      const { kind, window, agent } = query
+      const {
+        kind,
+        window,
+        agent,
+        includeRoutine,
+        failureGroupOffset,
+        failureGroupLimit,
+        failureGroupTargetKind,
+        failureGroupTargetMethod,
+        failureGroupTargetDestination,
+      } = query
       return Response.json(getUsageFeed({
         ...(kind ? { kind: kind as UsageKind } : {}),
         window: window as WindowKey,
         ...(agent ? { agent } : {}),
+        includeRoutine: includeRoutine === 'true',
+        failureGroupOffset,
+        failureGroupLimit,
+        ...(failureGroupTargetKind !== undefined
+          && failureGroupTargetMethod !== undefined
+          && failureGroupTargetDestination !== undefined
+          ? {
+              failureGroupTarget: {
+                kind: failureGroupTargetKind as UsageKind,
+                method: failureGroupTargetMethod.trim().length > 0
+                  ? failureGroupTargetMethod.trim().toUpperCase()
+                  : null,
+                destination: failureGroupTargetDestination,
+              },
+            }
+          : {}),
       }))
+    },
+  }),
+
+  defineRoute({
+    path: '/interaction-summary',
+    method: 'GET',
+    activityClass: 'routine',
+    summary: 'Overview meaningful-interaction summary',
+    description: 'Aggregates user and autonomous system activity into foreground/background volume, failures, result gaps, and destinations.',
+    query: interactionSummaryQuery,
+    responses: { 200: interactionSummaryResponseSchema, 400: errorResponse },
+    handler: async (_req, _ctx, { query }) => {
+      return Response.json(getInteractionSummary({ window: query.window as WindowKey }))
     },
   }),
 
   defineRoute({
     path: '/search-status',
     method: 'GET',
+    activityClass: 'routine',
     summary: 'Search adapter health',
     description: 'Returns search adapter readiness and per-table index stats.',
-    responses: { 200: searchStatusResponse },
+    responses: { 200: searchStatusResponseSchema },
     handler: async (_req, ctx) => {
       const health = ctx.search.health ? await ctx.search.health() : { enabled: false, tables: [] }
       return Response.json(health)
@@ -272,11 +339,30 @@ const routes = [
   }),
 
   defineRoute({
+    path: '/search-readiness',
+    method: 'GET',
+    activityClass: 'routine',
+    summary: 'Read canonical Search readiness',
+    description: 'Returns the cached canonical Search projection without executing diagnostics or maintenance.',
+    responses: { 200: searchReadinessResponseSchema, 500: healthErrorResponseSchema },
+    handler: async () => {
+      try {
+        const report = getLastReport()
+        return Response.json({ reportId: report.id, readiness: report.subsystems.search })
+      } catch (error) {
+        log.error('Search readiness read failed', error)
+        return Response.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 })
+      }
+    },
+  }),
+
+  defineRoute({
     path: '/search-telemetry',
     method: 'GET',
+    activityClass: 'routine',
     summary: 'Search activity telemetry',
-    description: 'Query/drain/enrichment activity from the shared usage recorder, outbox depth, and the latest search doctor rows.',
-    responses: { 200: passthrough },
+    description: 'Query/drain/enrichment activity, journal depth, and canonical Search evidence from the current Health report.',
+    responses: { 200: searchTelemetryResponseSchema },
     handler: async () => {
       const { getUsageFeed } = await import('../../src/core/usage')
       const { outboxStats } = await import('../../src/core/search-outbox')
@@ -295,21 +381,49 @@ const routes = [
       }
 
       let enrichment: unknown = null
-      try {
-        const { getHookRegistry } = await import('../../packages/core/src/hooks/hook-registry-singleton')
-        enrichment = await getHookRegistry().invoke('assets.enrichmentStats', {})
-      } catch { /* assets plugin absent or hook unregistered */ }
+      let enrichmentEvidence:
+        | { status: 'available' }
+        | { status: 'not_configured' }
+        | { status: 'unavailable'; reason: 'provider_failed' | 'provider_timeout' | 'invalid_response' }
+        = { status: 'not_configured' }
+      const { getHookRegistry } = await import('../../packages/core/src/hooks/hook-registry-singleton')
+      const hooks = getHookRegistry()
+      if (hooks.has('assets.enrichmentStats')) {
+        try {
+          const raw = await withDeadline(
+            hooks.invoke('assets.enrichmentStats', {}),
+            SEARCH_ENRICHMENT_STATS_TIMEOUT_MS,
+            { timeoutError: () => new SearchEnrichmentStatsTimeoutError() },
+          )
+          const parsed = searchEnrichmentSchema.safeParse(raw)
+          if (parsed.success) {
+            enrichment = parsed.data
+            enrichmentEvidence = { status: 'available' }
+          } else {
+            enrichmentEvidence = { status: 'unavailable', reason: 'invalid_response' }
+          }
+        } catch (error) {
+          const reason = error instanceof SearchEnrichmentStatsTimeoutError
+            ? 'provider_timeout'
+            : 'provider_failed'
+          enrichmentEvidence = { status: 'unavailable', reason }
+          log.warn('Optional Search enrichment telemetry is unavailable', { reason })
+        }
+      }
 
-      const doctor = getLastResults()
-      const searchRows = (doctor?.results ?? []).filter((row) =>
-        row.check === 'search' || row.check === 'search-outbox' || row.check === 'search-consistency' || row.check === 'search-spin'
-        || row.check === 'search-canary' || row.check === 'search-engine-burn')
+      const report = getLastReport()
+      const searchObservations = report.observations.filter((row) => row.group.key === 'search')
+      const searchIncidentIds = new Set(searchObservations.flatMap((row) => row.incidentId ? [row.incidentId] : []))
 
       return Response.json({
         windows: { '1h': byName('1h'), '24h': byName('24h') },
         outbox: outboxStats(),
         enrichment,
-        doctor: { rows: searchRows, at: doctor ? new Date(doctor.timestamp).toISOString() : null },
+        enrichmentEvidence,
+        reportId: report.id,
+        readiness: report.subsystems.search,
+        observations: searchObservations,
+        incidents: report.incidents.filter((incident) => searchIncidentIds.has(incident.id)),
       })
     },
   }),
@@ -317,119 +431,172 @@ const routes = [
   defineRoute({
     path: '/usage',
     method: 'GET',
-    summary: 'Agent context/token usage',
-    description: 'Returns token + context usage per agent from runtime sessions.',
-    responses: { 200: z.array(passthrough) },
+    activityClass: 'routine',
+    summary: 'Latest-session agent token traffic',
+    description: 'Returns cumulative token traffic from each agent\'s newest runtime transcript; this is not context-window occupancy.',
+    responses: { 200: agentUsageResponseSchema },
     handler: async (_req, ctx) => {
       return Response.json(await getAllAgentUsage(ctx.runtime))
     },
   }),
 
   defineRoute({
+    path: '/usage-snapshot',
+    method: 'GET',
+    activityClass: 'routine',
+    summary: 'Evidence-qualified latest agent usage',
+    description: 'Returns latest-session token traffic with explicit transcript-source coverage and per-agent read failures.',
+    responses: { 200: agentUsageSnapshotResponseSchema },
+    handler: async (_req, ctx) => {
+      return Response.json(await getAgentUsageSnapshot(ctx.runtime))
+    },
+  }),
+
+  defineRoute({
     path: '/usage-history',
     method: 'GET',
+    activityClass: 'routine',
     summary: 'Historical agent token usage',
     description: 'Durable per-agent and per-day token rollups from the usage-history store. Windows are day-aligned: a window includes every local calendar day it touches. Cost is runtime-reported only.',
-    query: usageHistoryQuery,
-    responses: { 200: passthrough, 400: errorResponse },
+    query: agentWindowQuerySchema,
+    responses: { 200: usageHistoryResponseSchema, 400: errorResponse, 503: errorResponse },
     handler: async (_req, _ctx, { query }) => {
       const windowMs = USAGE_HISTORY_WINDOW_MS[query.window]
-      const since = toLocalDayKey(Date.now() - windowMs)
-      const lastScan = getLastUsageScan()
-      return Response.json({
-        window: query.window,
-        since,
-        scannedAt: lastScan ? new Date(lastScan.at).toISOString() : null,
-        byAgent: usageByAgentSince(since),
-        byDay: usageByDaySince(since),
-        byAgentDay: usageByAgentDaySince(since),
-      })
+      const now = Date.now()
+      const since = toLocalDayKey(now - windowMs)
+      const evidence = currentUsageEvidence()
+      try {
+        const snapshot = readUsageHistorySince(since)
+        return Response.json({
+          window: query.window,
+          since,
+          throughDay: toLocalDayKey(now),
+          ...evidence,
+          ...snapshot,
+        })
+      } catch (err) {
+        log.error('Usage history store read failed', err)
+        return Response.json({ error: 'Usage history store could not be read.' }, { status: 503 })
+      }
     },
   }),
 
   defineRoute({
     path: '/live-now',
     method: 'GET',
+    activityClass: 'routine',
     summary: 'In-flight dispatch runs',
     description: 'Every currently-running dispatch run across all agents (execution ledger), with running-for and heartbeat age. The honest answer to "is anything running right now".',
-    responses: { 200: passthrough },
+    responses: { 200: passthrough, 500: errorResponse },
     handler: async (_req, ctx) => {
-      const now = Date.now()
-      const runs = await Promise.all(listLiveRuns().map(async (run) => {
-        let taskTitle: string | null = null
-        try {
-          taskTitle = (await ctx.tasks.get(run.taskId))?.title ?? null
-        } catch { /* task purged mid-flight — the run row still deserves display */ }
-        return {
-          agent: run.agent,
-          taskId: run.taskId,
-          taskTitle,
-          runId: run.runId,
-          startedAt: run.startedAt,
-          runningForMs: Math.max(0, now - run.startedAt),
-          heartbeatAgeMs: Math.max(0, now - run.heartbeatAt),
-        }
-      }))
-      return Response.json({ runs, generatedAt: new Date(now).toISOString() })
+      try {
+        const now = Date.now()
+        const runs = await Promise.all(listLiveRuns().map(async (run) => {
+          const taskTitle = (await ctx.tasks.get(run.taskId))?.title ?? null
+          return {
+            agent: run.agent,
+            taskId: run.taskId,
+            taskTitle,
+            runId: run.runId,
+            startedAt: run.startedAt,
+            runningForMs: Math.max(0, now - run.startedAt),
+            heartbeatAgeMs: Math.max(0, now - run.heartbeatAt),
+          }
+        }))
+        return Response.json({ runs, generatedAt: new Date(now).toISOString() })
+      } catch (error) {
+        log.error('Live run details could not be loaded', error)
+        return Response.json({ error: 'Live run details are unavailable.' }, { status: 500 })
+      }
     },
   }),
 
   defineRoute({
     path: '/agent-effort',
     method: 'GET',
+    activityClass: 'routine',
     summary: 'Per-agent effort vs outcome',
     description: 'Token burn per agent joined with task completions and transcript-observed totals (Bakin-attributed vs total observed vs unattributed), plus warn-only burn flags. Same engine as the usage.agent-burn doctor check.',
-    query: agentEffortQuery,
-    responses: { 200: passthrough, 400: errorResponse },
+    query: agentWindowQuerySchema,
+    responses: { 200: agentEffortResponseSchema, 400: errorResponse, 503: errorResponse },
     handler: async (_req, _ctx, { query }) => {
-      const lastScan = getLastUsageScan()
-      const agents = buildAgentBurnReports(Date.now(), { windowHours: AGENT_EFFORT_WINDOW_HOURS[query.window] })
-      return Response.json({
-        window: query.window,
-        scannedAt: lastScan ? new Date(lastScan.at).toISOString() : null,
-        agents,
-      })
+      const evidence = currentUsageEvidence()
+      try {
+        const now = Date.now()
+        const windowHours = AGENT_EFFORT_WINDOW_HOURS[query.window]
+        const scope = getAgentBurnWindowScope(now, windowHours)
+        const agents = buildAgentBurnReports(now, {
+          windowHours,
+          coverage: evidence.coverage,
+        })
+        return Response.json({
+          window: query.window,
+          ...scope,
+          ...evidence,
+          agents,
+        })
+      } catch (err) {
+        if (err instanceof UsageHistoryStoreReadError) {
+          log.error('Agent effort usage store read failed', err)
+          return Response.json({ error: 'Usage history store could not be read.' }, { status: 503 })
+        }
+        if (err instanceof LedgerUnavailableError) {
+          log.error('Agent effort execution ledger read failed', err)
+          return Response.json({ error: 'Execution ledger could not be read.' }, { status: 503 })
+        }
+        throw err
+      }
     },
   }),
 
   defineRoute({
     path: '/registry',
     method: 'GET',
+    activityClass: 'routine',
     summary: 'List registered plugins',
     description: 'Returns the plugin registry snapshot — installed plugin metadata and route counts.',
-    responses: { 200: registryResponse },
+    responses: { 200: systemRegistryResponseSchema, 503: errorResponse },
     handler: async () => {
-      return Response.json({ plugins: getRegistrySnapshot() })
+      try {
+        return Response.json({ plugins: getRegistrySnapshot() })
+      } catch (error) {
+        log.error('Plugin registry evidence provider failed', error)
+        return Response.json({ error: 'Plugin registry evidence is unavailable.' }, { status: 503 })
+      }
     },
   }),
 
   defineRoute({
     path: '/doctor',
     method: 'GET',
-    summary: 'Run system diagnostics',
-    description: 'Returns cached doctor results by default; pass ?fresh=true to force a fresh run.',
-    query: doctorQuery,
-    responses: { 200: doctorResponse, 500: errorResponse },
-    handler: async (_req, _ctx, { query }) => {
-      const fresh = query.fresh === 'true'
-      if (!fresh) {
-        const cached = getLastResults()
-        if (cached) {
-          return Response.json({
-            ...buildDoctorResponse(cached.results),
-            cachedAt: new Date(cached.timestamp).toISOString(),
-          })
-        }
-      }
+    activityClass: 'routine',
+    summary: 'Read the canonical Health report',
+    description: 'Returns the canonical cached Health report without executing checks or other work.',
+    query: doctorReadQuery,
+    responses: { 200: healthReportSchema, 500: healthErrorResponseSchema },
+    handler: async () => {
       try {
-        const results = await runDiagnostics(getContentDir(), process.cwd(), {
-          notifyAgent: query.notifyAgent === 'true',
-        })
-        return Response.json({
-          ...buildDoctorResponse(results),
-          cachedAt: new Date().toISOString(),
-        })
+        return Response.json(getLastReport())
       } catch (err) {
+        log.error('Health report request failed', err)
+        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/doctor/run',
+    method: 'POST',
+    summary: 'Run fresh Health diagnostics',
+    description: 'Explicitly starts or joins a fresh diagnostic sweep and optionally notifies the configured agent.',
+    body: doctorRunBody,
+    responses: { 200: healthReportSchema, 500: healthErrorResponseSchema },
+    handler: async (_req, _ctx, { body }) => {
+      try {
+        const report = await runDiagnostics(getContentDir(), process.cwd(), { notifyAgent: body.notifyAgent })
+        return Response.json(report)
+      } catch (err) {
+        log.error('Health diagnostics run failed', err)
         return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
       }
     },
@@ -437,19 +604,25 @@ const routes = [
 
   defineRoute({
     path: '/doctor/repair/plan',
-    method: 'GET',
+    method: 'POST',
     summary: 'Plan deterministic doctor repairs',
-    description: 'Runs diagnostics and returns safe/manual repair plan items without mutating state.',
-    responses: { 200: passthrough, 500: errorResponse },
-    handler: async () => {
+    description: 'Plans only the selected canonical incidents or observations without mutating state.',
+    body: healthRepairPlanRequestSchema,
+    responses: { 200: healthRepairPlanSchema, 500: healthErrorResponseSchema },
+    handler: async (_req, _ctx, { body }) => {
       try {
-        const report = await planDoctorRepair({
+        const plan = await planDoctorRepair({
           contentDir: getContentDir(),
           projectRoot: process.cwd(),
+          target: body.target as HealthRepairTarget,
         })
-        return Response.json(report)
+        return Response.json(plan)
       } catch (err) {
-        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+        log.error('Health repair planning failed', err)
+        return Response.json({
+          error: err instanceof Error ? err.message : String(err),
+          ...(err instanceof HealthContractError ? { code: err.code } : {}),
+        }, { status: 500 })
       }
     },
   }),
@@ -458,23 +631,31 @@ const routes = [
     path: '/doctor/repair/apply',
     method: 'POST',
     summary: 'Apply deterministic doctor repairs',
-    description: 'Applies safe repair plan items only after accepted=true, then reruns affected checks for verification.',
-    body: doctorRepairApplyBody,
-    responses: { 200: passthrough, 409: passthrough, 500: errorResponse },
+    description: 'Applies selected server-held plan items after validating freshness and individual non-safe confirmations, then verifies affected checks.',
+    body: healthRepairApplyRequestSchema,
+    responses: { 200: healthRepairApplyReportSchema, 409: healthErrorResponseSchema, 500: healthErrorResponseSchema },
     handler: async (_req, _ctx, { body }) => {
       try {
         const report = await applyDoctorRepair({
           contentDir: getContentDir(),
           projectRoot: process.cwd(),
-          accepted: body.accepted,
+          planId: body.planId,
           itemIds: body.itemIds,
-          allowDestructive: body.allowDestructive,
+          confirmedItemIds: body.confirmedItemIds,
         })
-        return Response.json(report, {
-          status: report.status === 'confirmation_required' ? 409 : 200,
-        })
+        return Response.json(report)
       } catch (err) {
-        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+        if (err instanceof DoctorRepairStalePlanError) {
+          return Response.json({ error: err.message, code: err.code }, { status: 409 })
+        }
+        if (err instanceof DoctorRepairConfirmationError) {
+          return Response.json({ error: err.message, code: err.code, itemIds: err.itemIds }, { status: 409 })
+        }
+        log.error('Health repair apply failed', err)
+        return Response.json({
+          error: err instanceof Error ? err.message : String(err),
+          ...(err instanceof HealthContractError ? { code: err.code } : {}),
+        }, { status: 500 })
       }
     },
   }),
@@ -492,11 +673,13 @@ const routes = [
           contentDir: getContentDir(),
           projectRoot: process.cwd(),
           accepted: body.accepted,
+          ...(body.target ? { target: body.target as HealthRepairTarget } : {}),
         })
         return Response.json(report, {
           status: report.status === 'confirmation_required' ? 409 : 200,
         })
       } catch (err) {
+        log.error('Health repair delegation failed', err)
         return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
       }
     },
@@ -505,6 +688,7 @@ const routes = [
   defineRoute({
     path: '/doctor/repair',
     method: 'GET',
+    activityClass: 'routine',
     summary: 'List doctor repair requests',
     description: 'Returns durable delegated doctor repair requests.',
     responses: { 200: passthrough },
@@ -514,6 +698,7 @@ const routes = [
   defineRoute({
     path: '/doctor/repair/:requestId',
     method: 'GET',
+    activityClass: 'routine',
     summary: 'Show a doctor repair request',
     description: 'Returns one durable doctor repair request by id.',
     params: repairRequestParams,
@@ -542,6 +727,7 @@ const routes = [
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
         const status = err instanceof DoctorRepairRequestNotFoundError ? 404 : 500
+        if (status === 500) log.error('Health repair verification failed', err)
         return Response.json({ error: message }, { status })
       }
     },
@@ -551,14 +737,12 @@ const routes = [
 const healthPlugin: BakinPlugin = definePlugin({
   id: 'health',
   name: 'Health',
-  version: '1.0.0',
+  version: '1.4.0',
   routes,
 
   settingsSchema: {
     fields: [
-      { key: 'refreshInterval', type: 'number', label: 'Refresh interval (seconds)', description: 'How often to poll for updated metrics', default: 30 },
-      { key: 'showDetailedMetrics', type: 'boolean', label: 'Detailed metrics', description: 'Show per-plugin and per-tool breakdowns', default: true },
-      { key: 'usageHistoryScanMinutes', type: 'number', label: 'Usage history scan interval (minutes)', description: 'How often session transcripts are swept into the durable usage history', default: 5 },
+      { key: 'usageHistoryScanMinutes', type: 'number', label: 'Usage history scan interval (minutes)', description: 'How often session transcripts are swept into durable usage history (1–1,440 minutes)', default: 5 },
     ],
   },
 
@@ -573,26 +757,27 @@ const healthPlugin: BakinPlugin = definePlugin({
     // First sweep runs one full interval after activation — boot does
     // zero scan work. onShutdown stops it (hot-reload safe).
     const settings = ctx.getSettings<{ usageHistoryScanMinutes?: number }>()
+    usageHistoryRuntime = ctx.runtime
     startUsageHistoryTimer(ctx.runtime, settings.usageHistoryScanMinutes ?? DEFAULT_SCAN_MINUTES)
 
     // ─── Health-check registry hooks ─────────────────────────────────
     // `run` is not serializable and isn't useful to consumers that only
     // want registry metadata. Strip it at the boundary.
-    ctx.hooks.register('health.list', () => listHealthChecks().map(stripRun), { label: 'List health checks.', summary: 'Returns the health checks registered by core and plugins without executing them. Use it when another surface needs to show the available diagnostics or autofix support.', hookKind: 'rpc' })
+    ctx.hooks.register('health.list', () => listHealthChecks().map(stripRun), { label: 'List health checks.', summary: 'Returns canonical metadata for registered Health checks without executing them.', hookKind: 'rpc' })
     ctx.hooks.register('health.getCheck', (d: Record<string, unknown>) => {
       const def = getHealthCheck(d.id as string)
       return def ? stripRun(def) : null
-    }, { label: 'Get a health check.', summary: 'Returns metadata for one registered health check by id, without running the check. Use it when a plugin needs the check name, owner, and autofix capability before deciding what to show or run.', hookKind: 'rpc' })
+    }, { label: 'Get a health check.', summary: 'Returns canonical metadata for one registered Health check by stable id without executing it.', hookKind: 'rpc' })
 
     // --- Exec tools (MCP) ---
 
     ctx.registerExecTool({
       name: 'bakin_exec_health_status',
       label: 'Checked system health',
-      description: 'Get a quick system health summary — uptime, memory, active MCP sessions, and doctor error/warning counts. Useful for checking system state before starting work.',
+      description: 'Get a quick canonical system health summary with uptime, memory, connected session count, activity failures, and incident counts.',
       parameters: {},
       handler: async () => {
-        const cached = getLastResults()
+        const report = getLastReport()
         const mcp = getMcpSessions()
         const stats1h = getStatsByMs({ windowMs: WINDOW_MS['1h'] })
 
@@ -605,12 +790,13 @@ const healthPlugin: BakinPlugin = definePlugin({
           memoryMB,
           totalMemoryMB,
           memoryPercent: Math.round((memoryMB / totalMemoryMB) * 100),
-          activeSessions: mcp.activeSessions.length,
+          activeSessions: mcp.activeSessions.reduce((total, row) => total + row.sessions, 0),
           calls1h: stats1h.total,
           errors1h: stats1h.errors,
-          doctorErrors: cached ? cached.results.filter(r => r.status === 'error').length : null,
-          doctorWarnings: cached ? cached.results.filter(r => r.status === 'warn').length : null,
-          doctorLastRun: cached ? new Date(cached.timestamp).toISOString() : null,
+          overallStatus: report.overallStatus,
+          reportId: report.id,
+          reportGeneratedAt: report.generatedAt,
+          incidents: report.summary.incidents,
         }
       },
     })
@@ -618,170 +804,241 @@ const healthPlugin: BakinPlugin = definePlugin({
     ctx.registerExecTool({
       name: 'bakin_exec_health_doctor',
       label: 'Ran diagnostics',
-      description: 'Run system diagnostics (agent roster, skill sync, runtime, taskboard, assets, etc.). Returns detailed check results. Use fresh=true to force a full re-check instead of returning cached results.',
+      description: 'Return the canonical Health report. Use fresh=true to join or start a full diagnostic sweep first.',
       parameters: {
         fresh: z.boolean().optional().describe('Force fresh diagnostics instead of cached results'),
       },
       handler: async (params: Record<string, unknown>) => {
         const fresh = params.fresh === true
 
-        if (!fresh) {
-          const cached = getLastResults()
-          if (cached) {
-            return {
-              ok: true,
-              ...buildDoctorResponse(cached.results),
-              cachedAt: new Date(cached.timestamp).toISOString(),
-            }
-          }
-        }
-
         try {
-          const results = await runDiagnostics(getContentDir(), process.cwd())
-          return { ok: true, ...buildDoctorResponse(results), cachedAt: new Date().toISOString() }
+          const report = fresh
+            ? await runDiagnostics(getContentDir(), process.cwd())
+            : getLastReport()
+          return { ok: true, report }
         } catch (err) {
+          log.error('Health diagnostics exec tool failed', err)
           return { ok: false, error: err instanceof Error ? err.message : String(err) }
         }
       },
     })
 
-    // ─── System health checks (migrated out of core/doctor.ts per #139 C6+) ──
+    // ─── First-party Health producers ──────────────────────────────────────
+    const systemGroup = { key: 'system', label: 'System' }
+    const runtimeGroup = { key: 'runtime', label: 'Runtime' }
+    const workGroup = { key: 'work-cost', label: 'Work & Cost' }
+    const searchGroup = { key: 'search', label: 'Search' }
+    const pluginsGroup = { key: 'plugins', label: 'Plugins' }
+
     ctx.registerHealthCheck({
       id: 'content-dir',
       name: 'Content directory location',
-      run: () => Promise.resolve(checkContentDir()),
+      description: 'Confirms where Bakin stores its local state.',
+      group: systemGroup,
+      maxAgeMs: 3_600_000,
+      run: () => checkContentDir(),
     })
     ctx.registerHealthCheck({
       id: 'capabilities',
       name: 'Capability-pack readiness',
+      description: 'Checks that installed capability packs have their required content and tools.',
+      group: pluginsGroup,
+      maxAgeMs: 900_000,
       run: () => checkCapabilities(),
     })
     ctx.registerHealthCheck({
       id: 'github-readiness',
       name: 'GitHub CLI readiness',
+      description: 'Confirms GitHub CLI authentication for issue, pull request, and release operations.',
+      group: systemGroup,
+      maxAgeMs: 300_000,
       run: () => checkGithubReadiness(),
     })
     ctx.registerHealthCheck({
       id: 'service',
       name: 'macOS LaunchAgent plist',
-      run: () => Promise.resolve(checkService(process.cwd())),
+      description: 'Verifies the managed macOS background service is installed, current, and loaded.',
+      group: systemGroup,
+      maxAgeMs: 300_000,
+      run: () => checkService(process.cwd()),
     })
     ctx.registerHealthCheck({
       id: 'runtime',
       name: 'Runtime reachability',
+      description: 'Confirms the active agent runtime can serve turns.',
+      group: runtimeGroup,
+      maxAgeMs: 60_000,
       run: () => checkRuntime(ctx.runtime),
     })
     ctx.registerHealthCheck({
       id: 'session-store',
       name: 'Runtime session-store growth',
+      description: 'Watches runtime session artifacts for excessive disk use and orphan growth.',
+      group: runtimeGroup,
+      maxAgeMs: 600_000,
       run: () => checkSessionStore(ctx.runtime),
     })
     ctx.registerHealthCheck({
       id: 'channel-approvals',
       name: 'Runtime channel approval responses',
+      description: 'Checks whether runtime channels can return workflow approval decisions.',
+      group: runtimeGroup,
+      maxAgeMs: 300_000,
       run: () => checkChannelApprovals(ctx.runtime),
     })
     ctx.registerHealthCheck({
       id: 'channel-aliases',
       name: 'Runtime channel aliases',
+      description: 'Validates configured channel aliases and the alert channel against the active runtime.',
+      group: runtimeGroup,
+      maxAgeMs: 300_000,
       run: () => checkChannelAliases(ctx.runtime),
     })
     ctx.registerHealthCheck({
       id: 'restart-recovery',
       name: 'Restart recovery candidates',
+      description: 'Finds stale in-progress tasks that need automatic or manual restart recovery.',
+      group: systemGroup,
+      maxAgeMs: 120_000,
       run: () => checkRestartRecovery(),
     })
     ctx.registerHealthCheck({
       id: 'execution-safety',
       name: 'Duplicate-execution suppression + ledger health',
+      description: 'Confirms the execution ledger is reachable and surfaces recently suppressed duplicate work.',
+      group: systemGroup,
+      maxAgeMs: 300_000,
       run: () => checkExecutionSafety(),
     })
     ctx.registerHealthCheck({
       id: 'context.startup-size',
       name: 'Per-dispatch startup context budget',
+      description: 'Estimates each agent\'s injected startup context against the configured cost guardrail.',
+      group: workGroup,
+      maxAgeMs: 600_000,
       run: () => checkStartupContextSize(ctx.runtime),
     })
     ctx.registerHealthCheck({
       id: 'budget',
       name: 'Spend vs budget caps',
+      description: 'Evaluates spending policy, open holds, and current usage against every budget rule.',
+      group: workGroup,
+      maxAgeMs: 120_000,
       run: () => checkBudget(),
     })
     ctx.registerHealthCheck({
       id: 'usage.agent-burn',
       name: 'Agent token burn (effort, spikes, unattributed)',
+      description: 'Flags unusually high, spiking, or unattributed agent token use.',
+      group: workGroup,
+      maxAgeMs: 600_000,
       run: () => checkAgentBurn(),
     })
     ctx.registerHealthCheck({
       id: 'search',
-      name: 'Search engine binary, supervision + connection',
+      name: 'Search engine and write journal',
+      description: 'Checks Search enablement, engine installation and connectivity, supervision, and journal drain state.',
+      group: searchGroup,
+      maxAgeMs: 60_000,
       run: () => checkSearchAdapter(),
-    })
-    ctx.registerHealthCheck({
-      id: 'search-outbox',
-      name: 'Search write journal (outbox) drain state',
-      run: () => checkSearchOutbox(),
-      repair: searchOutboxRepair(),
     })
     ctx.registerHealthCheck({
       id: 'search-consistency',
       name: 'Search table consistency + deep sweep',
+      description: 'Verifies logical-to-physical index mappings and performs throttled orphan maintenance.',
+      group: searchGroup,
+      maxAgeMs: 300_000,
+      timeoutMs: 120_000,
       run: () => checkSearchConsistency(),
-      repair: searchConsistencyRepair(),
     })
     ctx.registerHealthCheck({
       id: 'search-spin',
       name: 'Search backfill-spin watchdog (zero-progress building legs)',
+      description: 'Detects index legs that remain building without queued work or measurable progress.',
+      group: searchGroup,
+      maxAgeMs: 300_000,
       run: () => checkSearchSpin(),
-      repair: searchSpinRepair(),
     })
     ctx.registerHealthCheck({
       id: 'search-canary',
       name: 'Search canary (a real query through the production path)',
+      description: 'Runs a real cross-table query to verify Search serves production traffic, not only probes.',
+      group: searchGroup,
+      maxAgeMs: 120_000,
       run: () => checkSearchCanary(),
-      repair: searchCanaryRepair(),
     })
     ctx.registerHealthCheck({
       id: 'search-engine-burn',
       name: 'Search engine burn watchdog (CPU + wedge signatures)',
+      description: 'Watches Search process CPU and engine logs for a persistent zero-progress wedge.',
+      group: searchGroup,
+      maxAgeMs: 120_000,
       run: () => checkSearchEngineBurn(),
-      repair: searchEngineBurnRepair(),
     })
     ctx.registerHealthCheck({
       id: 'skill',
       name: 'Bakin SKILL.md sync to runtime',
+      description: 'Confirms the runtime has Bakin\'s current generated skill instructions.',
+      group: runtimeGroup,
+      maxAgeMs: 900_000,
       run: () => checkAndSyncSkill(process.cwd(), ctx.runtime),
-      repair: syncSkillRepair(process.cwd(), ctx.runtime),
     })
     ctx.registerHealthCheck({
       id: 'plugin-assets',
       name: 'Plugin-shipped runtime skills install state',
+      description: 'Checks installation and drift for runtime skills shipped by plugins.',
+      group: pluginsGroup,
+      maxAgeMs: 900_000,
       run: () => checkPluginAssets(),
     })
     ctx.registerHealthCheck({
       id: 'plugin-artifacts',
       name: 'Installed plugin artifact compatibility',
-      run: () => Promise.resolve(checkPluginArtifacts()),
+      description: 'Verifies user-installed plugin artifacts are compatible with and trusted by this host.',
+      group: pluginsGroup,
+      maxAgeMs: 900_000,
+      run: () => checkPluginArtifacts(),
     })
     ctx.registerHealthCheck({
       id: 'plugin-registry',
       name: 'Plugin activation state',
-      run: () => Promise.resolve(checkPluginRegistry()),
+      description: 'Surfaces plugins that failed during activation and are unavailable.',
+      group: pluginsGroup,
+      maxAgeMs: 300_000,
+      run: () => checkPluginRegistry(),
     })
+
+    ctx.registerHealthRepairAction(searchOutboxRepair())
+    ctx.registerHealthRepairAction(searchConsistencyRepair())
+    ctx.registerHealthRepairAction(searchSpinRepair())
+    ctx.registerHealthRepairAction(searchCanaryRepair())
+    ctx.registerHealthRepairAction(searchEngineBurnRepair())
+    ctx.registerHealthRepairAction(syncSkillRepair(process.cwd(), ctx.runtime))
+  },
+
+  onSettingsChange(settings) {
+    if (!usageHistoryRuntime) return
+    startUsageHistoryTimer(
+      usageHistoryRuntime,
+      typeof settings.usageHistoryScanMinutes === 'number'
+        ? settings.usageHistoryScanMinutes
+        : DEFAULT_SCAN_MINUTES,
+    )
   },
 
   onShutdown() {
     stopUsageHistoryTimer()
+    usageHistoryRuntime = null
   },
 
   onReady() {
-    const cached = getLastResults()
-    if (cached) {
-      const errors = cached.results.filter(r => r.status === 'error').length
-      const warns = cached.results.filter(r => r.status === 'warn').length
-      log.info(`Ready — baseline: ${errors} errors, ${warns} warnings from ${cached.results.length} checks`)
-    } else {
-      log.info('Ready — no cached doctor results yet')
-    }
+    const report = getLastReport()
+    log.info('Ready — canonical Health baseline', {
+      reportId: report.id,
+      overallStatus: report.overallStatus,
+      registeredChecks: report.summary.checks.registered,
+      incidents: report.summary.incidents,
+    })
   },
 })
 

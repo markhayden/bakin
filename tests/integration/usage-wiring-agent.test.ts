@@ -270,7 +270,7 @@ describe('T2.3 agent usage wiring', () => {
     const result = await tool!.handler({ status: 'working', message: 'test' }, 'alice')
     expect((result as { ok: boolean }).ok).toBe(true)
 
-    const feed = getUsageFeed({ window: '5m', kind: 'agent' })
+    const feed = getUsageFeed({ window: '5m', kind: 'agent', includeRoutine: true })
     const heartbeats = feed.recent.filter(e => e.name === 'heartbeat')
     expect(heartbeats.length).toBe(1)
     expect(heartbeats[0]).toMatchObject({
@@ -278,6 +278,7 @@ describe('T2.3 agent usage wiring', () => {
       name: 'heartbeat',
       agent: 'alice',
       status: 'ok',
+      activityClass: 'routine',
     })
   })
 
@@ -295,6 +296,7 @@ describe('T2.3 agent usage wiring', () => {
       name: 'task.inprogress',
       agent: 'alice',
       status: 'ok',
+      activityClass: 'user',
     })
     expect(lifecycle[0].meta).toMatchObject({ taskId: 'task-1', previousStatus: 'todo' })
   })
@@ -344,6 +346,7 @@ describe('T2.3 agent usage wiring', () => {
       name: 'dispatch',
       agent: 'alice',
       status: 'ok',
+      activityClass: 'user',
     })
     expect(dispatches[0].meta).toMatchObject({ taskId: 'dispatch-task-1' })
   })

@@ -141,8 +141,8 @@ Agents call into the same surfaces you do. Search and health checks are exposed 
 <!-- /docs:exec-tools -->
 
 <!-- docs:exec-tools health -->
-- `bakin_exec_health_doctor`: Run system diagnostics (agent roster, skill sync, runtime, taskboard, assets, etc.). Returns detailed check results. Use fresh=true to force a full re-check instead of returning cached results.
-- `bakin_exec_health_status`: Get a quick system health summary — uptime, memory, active MCP sessions, and doctor error/warning counts. Useful for checking system state before starting work.
+- `bakin_exec_health_doctor`: Return the canonical Health report. Use fresh=true to join or start a full diagnostic sweep first.
+- `bakin_exec_health_status`: Get a quick canonical system health summary with uptime, memory, connected session count, activity failures, and incident counts.
 <!-- /docs:exec-tools -->
 
 Full schemas and arguments in the [Exec tools reference](/docs/reference/generated/exec-tools/).

@@ -1,155 +1,143 @@
-/**
- * Health-check registry — unit tests for the store shape.
- *
- * Mirrors tests/plugins/workflows/notification-channel-registry.test.ts
- * but without any builtin-seeding assertions — this registry is
- * plugin-contributions-only.
- */
 import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { join } from 'path'
-import { tmpdir } from 'os'
-
-const testDir = join(tmpdir(), `bakin-test-health-registry-${Date.now()}`)
-
-mock.module('@bakin/core/main-agent', () => ({
-  getMainAgentId: () => 'main',
-  tryGetMainAgentId: () => 'main',
-  getMainAgentName: () => 'Main',
-}))
-
-mock.module('../../src/core/content-dir', () => ({
-  getContentDir: () => testDir,
-  getBakinPaths: () => ({ root: testDir }),
-}))
-mock.module('../../packages/core/src/content-dir', () => ({
-  getContentDir: () => testDir,
-  getBakinPaths: () => ({ root: testDir }),
-}))
-mock.module('../../src/core/logger', () => ({
-  createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
-}))
-mock.module('@/core/task-store', () => ({
-  readTaskboard: () => ({ columns: { todo: [], 'in-progress': [], done: [] } }),
-  getAllTasks: () => ({ columns: { todo: [], 'in-progress': [], done: [] } }),
-  getTask: () => null,
-}))
-
+import { healthHealthy, healthObserved } from '@makinbakin/sdk/utils'
+import { HealthContractError } from '../../src/core/health-contract'
 import {
-  registerHealthCheck,
   getHealthCheck,
+  getHealthRepairAction,
   listHealthChecks,
-  unregisterHealthCheck,
+  listHealthRepairActions,
+  onHealthRegistryChanged,
+  registerAdapterHealthCheck,
   registerPluginHealthCheck,
+  registerPluginHealthRepairAction,
+  unregisterOwnerHealth,
   unregisterPluginHealthChecks,
 } from '../../src/core/health-check-registry'
 
-// Track ids we add per-test so we can clean up between tests.
-const added: string[] = []
+const owners = [
+  ['plugin', 'test-plugin'],
+  ['plugin', 'other-plugin'],
+  ['adapter', 'pi'],
+] as const
+
 afterEach(() => {
-  for (const id of added) unregisterHealthCheck(id)
-  added.length = 0
+  for (const [kind, id] of owners) unregisterOwnerHealth(kind, id)
 })
 
-describe('health-check-registry — baseline', () => {
-  it('starts empty (no builtin self-seeding)', () => {
-    expect(listHealthChecks()).toHaveLength(0)
+function check(id = 'reachability') {
+  return {
+    id,
+    name: 'Runtime reachability',
+    description: 'Checks whether the configured runtime can serve a turn.',
+    group: { key: 'runtime', label: 'Runtime' },
+    maxAgeMs: 60_000,
+    run: async () => healthObserved([
+      healthHealthy({ key: 'ping', summary: 'Runtime answered.' }),
+    ]),
+  }
+}
+
+function action(id = 'restart') {
+  return {
+    id,
+    name: 'Restart runtime',
+    plan: async () => [],
+    apply: async () => [],
+  }
+}
+
+describe('owner-aware Health registry', () => {
+  it('starts without built-in self-seeding', () => {
+    expect(listHealthChecks()).toEqual([])
+    expect(listHealthRepairActions()).toEqual([])
   })
-})
 
-describe('health-check-registry — register / get / list', () => {
-  it('registers and retrieves a check', () => {
-    registerHealthCheck({
-      runtime: 'plugin',
-      pluginId: 'test',
-      id: 'test.foo',
-      name: 'Foo check',
+  it('namespaces checks and stamps immutable plugin ownership', () => {
+    const id = registerPluginHealthCheck('test-plugin', check(), 'Test Plugin')
+
+    expect(id).toBe('test-plugin.reachability')
+    expect(getHealthCheck(id)).toMatchObject({
+      id,
+      localId: 'reachability',
+      name: 'Runtime reachability',
+      description: expect.any(String),
+      group: { key: 'runtime', label: 'Runtime' },
+      maxAgeMs: 60_000,
+      owner: { kind: 'plugin', id: 'test-plugin', label: 'Test Plugin' },
+    })
+  })
+
+  it('keeps same local ids separate across owner kinds', () => {
+    registerPluginHealthCheck('test-plugin', check(), 'Test Plugin')
+    registerAdapterHealthCheck('pi', 'Pi', check())
+
+    expect(listHealthChecks().map((row) => row.id)).toEqual([
+      'pi.reachability',
+      'test-plugin.reachability',
+    ])
+  })
+
+  it('rejects duplicate owner-local registrations', () => {
+    registerPluginHealthCheck('test-plugin', check())
+    expect(() => registerPluginHealthCheck('test-plugin', check())).toThrow(/already registered/)
+  })
+
+  it('rejects the removed legacy shape with a typed activation contract error', () => {
+    expect(() => registerPluginHealthCheck('test-plugin', {
+      id: 'legacy',
+      name: 'Legacy check',
       run: async () => [],
-    })
-    added.push('test.foo')
-    const def = getHealthCheck('test.foo')
-    expect(def).toBeDefined()
-    expect(def!.name).toBe('Foo check')
-    expect(def!.pluginId).toBe('test')
-  })
-
-  it('throws on duplicate id', () => {
-    registerHealthCheck({
-      runtime: 'plugin', pluginId: 'test', id: 'test.dupe', name: 'Dupe', run: async () => [],
-    })
-    added.push('test.dupe')
-    expect(() =>
-      registerHealthCheck({
-        runtime: 'plugin', pluginId: 'test', id: 'test.dupe', name: 'Again', run: async () => [],
-      }),
-    ).toThrow(/already registered/)
-  })
-
-  it('returns undefined for unknown ids', () => {
-    expect(getHealthCheck('nope')).toBeUndefined()
-  })
-
-  it('list returns all registered entries', () => {
-    registerHealthCheck({
-      runtime: 'plugin', pluginId: 'test', id: 'test.a', name: 'A', run: async () => [],
-    })
-    registerHealthCheck({
-      runtime: 'plugin', pluginId: 'test', id: 'test.b', name: 'B', run: async () => [],
-    })
-    added.push('test.a', 'test.b')
-    expect(listHealthChecks()).toHaveLength(2)
-  })
-})
-
-describe('health-check-registry — plugin helper', () => {
-  it('namespaces ids as {pluginId}.{id}', () => {
-    const result = registerPluginHealthCheck('myplugin', {
-      id: 'reachability',
-      name: 'My reachability check',
-      run: async () => [],
-    })
-    added.push(result)
-    expect(result).toBe('myplugin.reachability')
-    expect(getHealthCheck('myplugin.reachability')?.pluginId).toBe('myplugin')
-  })
-
-  it('preserves autoFix flag', () => {
-    const result = registerPluginHealthCheck('myplugin', {
-      id: 'cleanup',
-      name: 'Cleanup check',
       autoFix: true,
-      run: async () => [],
-    })
-    added.push(result)
-    expect(getHealthCheck(result)?.autoFix).toBe(true)
-  })
-
-  it('defaults autoFix to undefined when not passed', () => {
-    const result = registerPluginHealthCheck('myplugin', {
-      id: 'readonly',
-      name: 'Readonly check',
-      run: async () => [],
-    })
-    added.push(result)
-    expect(getHealthCheck(result)?.autoFix).toBeUndefined()
+    } as never)).toThrow(HealthContractError)
   })
 })
 
-describe('health-check-registry — plugin teardown', () => {
-  it('unregisterPluginHealthChecks removes only the named plugin', () => {
-    registerPluginHealthCheck('plugin-a', { id: 'one', name: 'A-one', run: async () => [] })
-    registerPluginHealthCheck('plugin-a', { id: 'two', name: 'A-two', run: async () => [] })
-    registerPluginHealthCheck('plugin-b', { id: 'one', name: 'B-one', run: async () => [] })
-
-    unregisterPluginHealthChecks('plugin-a')
-
-    expect(getHealthCheck('plugin-a.one')).toBeUndefined()
-    expect(getHealthCheck('plugin-a.two')).toBeUndefined()
-    expect(getHealthCheck('plugin-b.one')).toBeDefined()
-
-    unregisterHealthCheck('plugin-b.one')  // cleanup
+describe('separate repair-action registry', () => {
+  it('namespaces and retrieves an owner-local action independently', () => {
+    const id = registerPluginHealthRepairAction('test-plugin', action(), 'Test Plugin')
+    expect(id).toBe('test-plugin.restart')
+    expect(getHealthRepairAction(id)).toMatchObject({
+      id,
+      localId: 'restart',
+      owner: { kind: 'plugin', id: 'test-plugin', label: 'Test Plugin' },
+    })
+    expect(listHealthChecks()).toEqual([])
   })
 
-  it('is idempotent — unregistering an unknown plugin is a no-op', () => {
-    expect(() => unregisterPluginHealthChecks('never-registered')).not.toThrow()
+  it('rejects an invalid action before insertion', () => {
+    expect(() => registerPluginHealthRepairAction('test-plugin', {
+      id: 'Bad action',
+      name: '',
+      plan: 'not-callable',
+      apply: async () => [],
+    } as never)).toThrow(HealthContractError)
+    expect(listHealthRepairActions()).toEqual([])
+  })
+})
+
+describe('owner teardown and cache invalidation seam', () => {
+  it('removes checks and repair actions for only the selected owner', () => {
+    registerPluginHealthCheck('test-plugin', check())
+    registerPluginHealthRepairAction('test-plugin', action())
+    registerPluginHealthCheck('other-plugin', check())
+
+    unregisterPluginHealthChecks('test-plugin')
+
+    expect(getHealthCheck('test-plugin.reachability')).toBeUndefined()
+    expect(getHealthRepairAction('test-plugin.restart')).toBeUndefined()
+    expect(getHealthCheck('other-plugin.reachability')).toBeDefined()
+  })
+
+  it('publishes exact removed check ids for report-cache pruning', () => {
+    registerPluginHealthCheck('test-plugin', check('one'))
+    registerPluginHealthCheck('test-plugin', check('two'))
+    const listener = mock()
+    const unsubscribe = onHealthRegistryChanged(listener)
+
+    unregisterPluginHealthChecks('test-plugin')
+
+    expect(listener).toHaveBeenCalledTimes(1)
+    expect(listener).toHaveBeenCalledWith(['test-plugin.one', 'test-plugin.two'])
+    unsubscribe()
   })
 })

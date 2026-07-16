@@ -40,6 +40,7 @@ export async function crossTableSearch(q: string, opts?: {
     const response = await crossTableSearchInner(q, opts)
     recordUsage({
       kind: 'rest',
+      activityClass: 'user',
       name: 'search.query',
       agent: null,
       durationMs: Date.now() - startedAt,
@@ -48,7 +49,7 @@ export async function crossTableSearch(q: string, opts?: {
     })
     return response
   } catch (err) {
-    recordUsage({ kind: 'rest', name: 'search.query', agent: null, durationMs: Date.now() - startedAt, status: 'error' })
+    recordUsage({ kind: 'rest', activityClass: 'user', name: 'search.query', agent: null, durationMs: Date.now() - startedAt, status: 'error' })
     throw err
   }
 }

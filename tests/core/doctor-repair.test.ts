@@ -1,266 +1,225 @@
-import { describe, it, expect, afterEach, beforeEach, mock } from 'bun:test'
-import { mkdtempSync, rmSync } from 'fs'
-import { join } from 'path'
-import { tmpdir } from 'os'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { healthError, healthHealthy, healthObserved } from '@makinbakin/sdk/utils'
 
-const testDir = mkdtempSync(join(tmpdir(), 'bakin-doctor-repair-'))
-
-process.env.BAKIN_HOME = testDir
-
-mock.module('../../src/core/logger', () => ({
-  createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
+const appendAudit = mock()
+mock.module('../../src/core/audit', () => ({ appendAudit }))
+mock.module('../../src/core/settings', () => ({
+  getSettings: () => ({ doctor: { intervalMs: 60_000, requireOnboard: false, escalation: 'off', escalationCooldownMs: 60_000 } }),
 }))
+mock.module('../../src/core/onboarding/state', () => ({ isOnboarded: () => true }))
+mock.module('../../src/core/logger', () => ({ createLogger: () => ({ debug: mock(), info: mock(), warn: mock(), error: mock() }) }))
 
+import { applyHealthCheckRun, getHealthReport, resetHealthReportCache } from '../../src/core/doctor-report-cache'
+import { runHealthCheck } from '../../src/core/doctor-checks'
+import { applyDoctorRepair, planDoctorRepair } from '../../src/core/doctor-repair'
+import { clearStoredRepairPlans, DoctorRepairConfirmationError, DoctorRepairStalePlanError } from '../../src/core/doctor-repair-plans'
 import {
-  planDoctorRepair,
-  applyDoctorRepair,
-} from '../../src/core/doctor-repair'
-import {
-  registerHealthCheck,
+  getHealthCheck,
+  registerPluginHealthCheck,
+  registerPluginHealthRepairAction,
   unregisterHealthCheck,
+  unregisterPluginHealthChecks,
 } from '../../src/core/health-check-registry'
-import type {
-  HealthCheckDef,
-  HealthCheckResult,
-  HealthRepairApplyResult,
-  HealthRepairPlanItem,
-} from '../../packages/core/src/plugin-types'
 
-const registered: string[] = []
+let unhealthy = true
+let applyBarrier: Promise<void> | null = null
+let planResultOverride: unknown
+let applyResultOverride: unknown
+const applyAction = mock(async (items: any[]) => {
+  if (applyBarrier) await applyBarrier
+  unhealthy = false
+  if (applyResultOverride !== undefined) return applyResultOverride as any
+  return items.map((item) => ({
+    itemId: item.id,
+    actionId: item.actionId,
+    status: 'applied' as const,
+    message: 'Restarted Search.',
+    affectedCheckIds: ['repair-test.search'],
+    changes: item.changes,
+  }))
+})
 
-function warn(check: string, message = 'needs repair'): HealthCheckResult {
-  return { check, status: 'warn', message, autoFixable: true }
+async function seed() {
+  registerPluginHealthRepairAction('repair-test', {
+    id: 'restart-search',
+    name: 'Restart Search',
+    plan: async () => planResultOverride !== undefined
+      ? planResultOverride as any
+      : [{
+          id: 'restart', actionId: 'restart-search', title: 'Restart Search', reason: 'Search is unavailable.', safety: 'safe',
+          incidentIds: [], observationIds: [], preconditions: [],
+          changes: [{ kind: 'service', target: 'search', action: 'invoke', description: 'Restart Search.' }],
+        }],
+    apply: applyAction,
+  })
+  const id = registerPluginHealthCheck('repair-test', {
+    id: 'search', name: 'Search readiness', description: 'Checks Search availability.', group: { key: 'search', label: 'Search' },
+    run: async () => healthObserved(unhealthy ? [healthError({
+      key: 'engine', summary: 'Search is unavailable.',
+      incident: {
+        key: 'unavailable', title: 'Search is unavailable', impact: 'Search requests fail.', disposition: 'action_required',
+        resolution: { key: 'restart', type: 'repair', label: 'Review restart', actionId: 'restart-search' },
+      },
+    })] : [healthHealthy({ key: 'engine', summary: 'Search is ready.' })]),
+  }, 'Repair Test')
+  const run = await runHealthCheck(getHealthCheck(id)!, { executionId: () => 'execution-1' })
+  applyHealthCheckRun(run)
 }
 
-function ok(check: string, message = 'healthy'): HealthCheckResult {
-  return { check, status: 'ok', message, autoFixable: false }
-}
-
-function registerTestCheck(input: Partial<HealthCheckDef> & Pick<HealthCheckDef, 'id' | 'run'>): HealthCheckDef {
-  const def: HealthCheckDef = {
-    runtime: 'plugin',
-    pluginId: 'repair-test',
-    name: input.name ?? input.id,
-    autoFix: input.autoFix,
-    repair: input.repair,
-    ...input,
-  }
-  registerHealthCheck(def)
-  registered.push(def.id)
-  return def
-}
-
-beforeEach(() => {
-  rmSync(testDir, { recursive: true, force: true })
+beforeEach(async () => {
+  resetHealthReportCache()
+  clearStoredRepairPlans()
+  unhealthy = true
+  applyBarrier = null
+  planResultOverride = undefined
+  applyResultOverride = undefined
+  applyAction.mockClear()
+  appendAudit.mockClear()
+  await seed()
 })
 
 afterEach(() => {
-  for (const id of registered.splice(0)) {
-    unregisterHealthCheck(id)
-  }
+  unregisterPluginHealthChecks('repair-test')
+  unregisterHealthCheck('core.onboarded')
 })
 
-describe('planDoctorRepair', () => {
-  it('plans repair items from checks that expose repair handlers', async () => {
-    const planItems: HealthRepairPlanItem[] = [{
-      id: 'repair.safe',
-      checkId: 'drift',
-      title: 'Repair drift',
-      reason: 'drifted',
-      safety: 'safe',
-      requiresConfirmation: true,
-      changes: [{ kind: 'file', target: 'AGENTS.md', action: 'update', description: 'Rewrite managed block' }],
+describe('targeted canonical doctor repair', () => {
+  it('stamps owner action ids and immutable evidence preconditions', async () => {
+    const report = getHealthReport()
+    const plan = await planDoctorRepair({
+      contentDir: '/tmp/content', projectRoot: '/tmp/project',
+      target: { type: 'incidents', reportId: report.id, ids: [report.incidents[0].id] },
+    })
+    expect(plan.items[0]).toMatchObject({
+      id: 'repair-test.restart-search:restart',
+      actionId: 'repair-test.restart-search',
+      observationIds: ['repair-test.search:engine'],
+      preconditions: [{ observationId: 'repair-test.search:engine', executionId: 'execution-1', status: 'error', resolutionKey: 'restart' }],
+    })
+  })
+
+  it('rejects malformed plan output without retaining its payload', async () => {
+    const secret = 'plan-output-must-not-leak'
+    planResultOverride = [{
+      id: 'restart', actionId: 'restart-search', title: 'Restart Search', reason: 'Search is unavailable.', safety: 'safe',
+      incidentIds: [], observationIds: [], preconditions: [], changes: [], secret,
     }]
-    registerTestCheck({
-      id: 'repair-test.drift',
-      run: async () => [warn('drift', 'drifted')],
-      repair: {
-        plan: async (rows) => {
-          expect(rows).toHaveLength(1)
-          expect(rows[0].check).toBe('drift')
-          return planItems
-        },
-        apply: async () => [],
-      },
-    })
-    registerTestCheck({
-      id: 'repair-test.report-only',
-      run: async () => [warn('report-only')],
-    })
+    const report = getHealthReport()
 
-    const report = await planDoctorRepair({ contentDir: testDir, projectRoot: testDir })
+    let rejected: unknown
+    try {
+      await planDoctorRepair({
+        contentDir: '/tmp/content', projectRoot: '/tmp/project',
+        target: { type: 'all_actionable', reportId: report.id },
+      })
+    } catch (error) {
+      rejected = error
+    }
 
-    expect(report.diagnostics).toHaveLength(2)
-    expect(report.items).toHaveLength(1)
-    expect(report.items[0]).toMatchObject({
-      id: 'repair.safe',
-      checkId: 'drift',
-      healthCheckId: 'repair-test.drift',
-      pluginId: 'repair-test',
-      checkName: 'repair-test.drift',
-    })
-    expect(report.summary).toMatchObject({ totalItems: 1, safeItems: 1, blockedItems: 0, planErrors: 0 })
+    expect(rejected).toMatchObject({ code: 'INVALID_HEALTH_REPAIR_PLAN_OUTPUT' })
+    expect(JSON.stringify(rejected)).not.toContain(secret)
   })
 
-  it('keeps non-safe plan items blocked from automatic application', async () => {
-    registerTestCheck({
-      id: 'repair-test.manual',
-      run: async () => [warn('manual')],
-      repair: {
-        plan: async () => [{
-          id: 'repair.manual',
-          checkId: 'manual',
-          title: 'Manual repair',
-          reason: 'needs judgement',
-          safety: 'manual',
-          requiresConfirmation: true,
-          changes: [{ kind: 'other', target: 'operator', action: 'invoke', description: 'Decide manually' }],
-        }],
-        apply: async () => {
-          throw new Error('manual item should not apply')
-        },
-      },
+  it('applies then targeted-verifies without equating mutation with health', async () => {
+    const report = getHealthReport()
+    const plan = await planDoctorRepair({ contentDir: '/tmp/content', projectRoot: '/tmp/project', target: { type: 'all_actionable', reportId: report.id } })
+    const result = await applyDoctorRepair({
+      contentDir: '/tmp/content', projectRoot: '/tmp/project', planId: plan.planId,
+      itemIds: [plan.items[0].id], confirmedItemIds: [],
     })
-
-    const report = await planDoctorRepair({ contentDir: testDir, projectRoot: testDir })
-
-    expect(report.items).toHaveLength(1)
-    expect(report.items[0].safety).toBe('manual')
-    expect(report.summary).toMatchObject({ totalItems: 1, safeItems: 0, blockedItems: 1 })
-  })
-})
-
-describe('applyDoctorRepair', () => {
-  it('requires explicit acceptance before applying repairs', async () => {
-    let applied = false
-    registerTestCheck({
-      id: 'repair-test.confirm',
-      run: async () => [warn('confirm')],
-      repair: {
-        plan: async () => [{
-          id: 'repair.confirm',
-          checkId: 'confirm',
-          title: 'Repair confirm',
-          reason: 'needs repair',
-          safety: 'safe',
-          requiresConfirmation: true,
-          changes: [{ kind: 'file', target: 'file', action: 'update', description: 'update file' }],
-        }],
-        apply: async () => {
-          applied = true
-          return []
-        },
-      },
-    })
-
-    const report = await applyDoctorRepair({ contentDir: testDir, projectRoot: testDir, accepted: false })
-
-    expect(report.status).toBe('confirmation_required')
-    expect(report.plan.items).toHaveLength(1)
-    expect(report.applied).toEqual([])
-    expect(applied).toBe(false)
+    expect(result.results[0].status).toBe('applied')
+    expect(result.verifiedReportId).toBe(result.report.id)
+    expect(result.report.observations.find((row) => row.checkId === 'repair-test.search')?.status).toBe('healthy')
+    expect(result.verifiedIncidentIds).toEqual([])
   })
 
-  it('applies safe items, skips non-safe items, and reruns affected checks', async () => {
-    let repaired = false
-    registerTestCheck({
-      id: 'repair-test.apply',
-      run: async () => repaired ? [ok('apply')] : [warn('apply')],
-      repair: {
-        plan: async () => [
-          {
-            id: 'repair.apply.safe',
-            checkId: 'apply',
-            title: 'Safe repair',
-            reason: 'drifted',
-            safety: 'safe',
-            requiresConfirmation: true,
-            changes: [{ kind: 'file', target: 'file', action: 'update', description: 'update file' }],
-          },
-          {
-            id: 'repair.apply.manual',
-            checkId: 'apply',
-            title: 'Manual repair',
-            reason: 'ambiguous',
-            safety: 'manual',
-            requiresConfirmation: true,
-            changes: [{ kind: 'other', target: 'operator', action: 'invoke', description: 'manual step' }],
-          },
-        ],
-        apply: async (items): Promise<HealthRepairApplyResult[]> => {
-          expect(items.map(item => item.id)).toEqual(['repair.apply.safe'])
-          repaired = true
-          return [{
-            id: 'repair.apply.safe',
-            checkId: 'apply',
-            status: 'applied',
-            message: 'updated file',
-            changes: items[0].changes,
-          }]
-        },
-      },
+  it('turns malformed apply output into a payload-free failure and still verifies the mutation', async () => {
+    const report = getHealthReport()
+    const plan = await planDoctorRepair({
+      contentDir: '/tmp/content', projectRoot: '/tmp/project',
+      target: { type: 'all_actionable', reportId: report.id },
+    })
+    const secret = 'apply-output-must-not-leak'
+    applyResultOverride = [{
+      itemId: 'invented-item',
+      actionId: plan.items[0].actionId,
+      status: 'applied',
+      message: secret,
+      affectedCheckIds: ['repair-test.search'],
+      changes: [],
+    }]
+
+    const result = await applyDoctorRepair({
+      contentDir: '/tmp/content', projectRoot: '/tmp/project', planId: plan.planId,
+      itemIds: [plan.items[0].id], confirmedItemIds: [],
     })
 
-    const report = await applyDoctorRepair({ contentDir: testDir, projectRoot: testDir, accepted: true })
-
-    expect(report.status).toBe('applied')
-    expect(report.applied).toHaveLength(1)
-    expect(report.skipped).toHaveLength(1)
-    expect(report.verification).toEqual([ok('apply')])
-    expect(report.summary).toMatchObject({ applied: 1, skipped: 1, failed: 0, verificationErrors: 0, verificationWarnings: 0 })
+    expect(result.results).toEqual([expect.objectContaining({
+      status: 'failed',
+      message: 'Health repair apply output failed contract validation.',
+    })])
+    expect(JSON.stringify(result.results)).not.toContain(secret)
+    expect(result.report.observations.find((row) => row.checkId === 'repair-test.search')?.status).toBe('healthy')
   })
 
-  it('isolates apply failures and continues unrelated repairs', async () => {
-    registerTestCheck({
-      id: 'repair-test.fail',
-      run: async () => [warn('fail')],
-      repair: {
-        plan: async () => [{
-          id: 'repair.fail',
-          checkId: 'fail',
-          title: 'Failing repair',
-          reason: 'broken',
-          safety: 'safe',
-          requiresConfirmation: true,
-          changes: [{ kind: 'service', target: 'svc', action: 'install', description: 'install svc' }],
-        }],
-        apply: async () => {
-          throw new Error('boom')
-        },
-      },
-    })
-    registerTestCheck({
-      id: 'repair-test.ok',
-      run: async () => [warn('ok')],
-      repair: {
-        plan: async () => [{
-          id: 'repair.ok',
-          checkId: 'ok',
-          title: 'Working repair',
-          reason: 'broken',
-          safety: 'safe',
-          requiresConfirmation: true,
-          changes: [{ kind: 'file', target: 'ok', action: 'update', description: 'update ok' }],
-        }],
-        apply: async (items) => [{
-          id: items[0].id,
-          checkId: 'ok',
-          status: 'applied',
-          message: 'ok',
-          changes: items[0].changes,
-        }],
-      },
-    })
+  it('rejects changed target evidence with zero action calls', async () => {
+    const report = getHealthReport()
+    const plan = await planDoctorRepair({ contentDir: '/tmp/content', projectRoot: '/tmp/project', target: { type: 'all_actionable', reportId: report.id } })
+    unhealthy = false
+    applyHealthCheckRun(await runHealthCheck(getHealthCheck('repair-test.search')!, { executionId: () => 'execution-2' }))
+    await expect(applyDoctorRepair({
+      contentDir: '/tmp/content', projectRoot: '/tmp/project', planId: plan.planId,
+      itemIds: [plan.items[0].id], confirmedItemIds: [],
+    })).rejects.toBeInstanceOf(DoctorRepairStalePlanError)
+    expect(applyAction).not.toHaveBeenCalled()
+  })
 
-    const report = await applyDoctorRepair({ contentDir: testDir, projectRoot: testDir, accepted: true })
+  it('allows only one concurrent application to claim a repair plan', async () => {
+    const report = getHealthReport()
+    const plan = await planDoctorRepair({
+      contentDir: '/tmp/content', projectRoot: '/tmp/project',
+      target: { type: 'all_actionable', reportId: report.id },
+    })
+    let releaseApply!: () => void
+    applyBarrier = new Promise<void>((resolve) => { releaseApply = resolve })
+    const options = {
+      contentDir: '/tmp/content', projectRoot: '/tmp/project', planId: plan.planId,
+      itemIds: [plan.items[0].id], confirmedItemIds: [],
+    }
 
-    expect(report.status).toBe('applied')
-    expect(report.applied.some(result => result.id === 'repair.ok' && result.status === 'applied')).toBe(true)
-    expect(report.applied.some(result => result.id === 'repair-test.fail.apply-error' && result.status === 'failed')).toBe(true)
-    expect(report.errors).toContainEqual(expect.objectContaining({
-      phase: 'apply',
-      healthCheckId: 'repair-test.fail',
-      message: 'boom',
-    }))
+    const first = applyDoctorRepair(options)
+    await Promise.resolve()
+    const second = applyDoctorRepair(options)
+    const settledPromise = Promise.allSettled([first, second])
+    await Promise.resolve()
+    const applyCallsBeforeRelease = applyAction.mock.calls.length
+    releaseApply()
+    const settled = await settledPromise
+
+    expect(applyCallsBeforeRelease).toBe(1)
+    expect(settled[0].status).toBe('fulfilled')
+    expect(settled[1]).toMatchObject({ status: 'rejected', reason: expect.any(DoctorRepairStalePlanError) })
+  })
+
+  it('requires individual confirmation for non-safe items', async () => {
+    unregisterPluginHealthChecks('repair-test')
+    resetHealthReportCache()
+    clearStoredRepairPlans()
+    registerPluginHealthRepairAction('repair-test', {
+      id: 'manual', name: 'Manual repair',
+      plan: async () => [{ id: 'manual', actionId: 'manual', title: 'Manual repair', reason: 'Needs review.', safety: 'manual', incidentIds: [], observationIds: [], preconditions: [], changes: [] }],
+      apply: applyAction,
+    })
+    const id = registerPluginHealthCheck('repair-test', {
+      id: 'manual-check', name: 'Manual check', description: 'Manual repair test.', group: { key: 'system', label: 'System' },
+      run: async () => healthObserved([healthError({ key: 'broken', summary: 'Broken.', incident: {
+        key: 'broken', title: 'Broken', impact: 'Needs repair.', disposition: 'action_required',
+        resolution: { key: 'manual', type: 'repair', label: 'Review', actionId: 'manual' },
+      } })]),
+    })
+    applyHealthCheckRun(await runHealthCheck(getHealthCheck(id)!, { executionId: () => 'execution-manual' }))
+    const report = getHealthReport()
+    const plan = await planDoctorRepair({ contentDir: '/tmp/content', projectRoot: '/tmp/project', target: { type: 'all_actionable', reportId: report.id } })
+    await expect(applyDoctorRepair({ contentDir: '/tmp/content', projectRoot: '/tmp/project', planId: plan.planId, itemIds: [plan.items[0].id], confirmedItemIds: [] })).rejects.toBeInstanceOf(DoctorRepairConfirmationError)
   })
 })

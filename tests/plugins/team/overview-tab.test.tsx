@@ -45,6 +45,7 @@ mock.module('@makinbakin/sdk/components', () => ({
 import { useAgentStore } from '../../../plugins/team/hooks/use-agent-store'
 import { OverviewTab } from '../../../plugins/team/components/overview-tab'
 import type { PackageStateRow } from '../../../plugins/team/types'
+import { HEALTHY_TEAM_HEALTH_REPORT } from './health-report-fixture'
 
 const PROFILE = {
   id: 'pixel',
@@ -59,7 +60,7 @@ const PROFILE = {
 }
 
 interface FetchExpectation {
-  stats?: { usage: { agent: string; sessionId: string; sessionStarted: string; model: string; messages: number; tokens: { input: number; output: number; cacheRead: number; cacheWrite: number; total: number }; cost: { input: number | null; output: number | null; cacheRead: number | null; cacheWrite: number | null; total: number | null; source: 'runtime' | 'unavailable' } } | null }
+  stats?: { usage: { agent: string; sessionId: string; sessionStarted: string; model: string; messages: number; costedMessages?: number; tokens: { input: number; output: number; cacheRead: number; cacheWrite: number; total: number }; cost: { input: number | null; output: number | null; cacheRead: number | null; cacheWrite: number | null; total: number | null; source: 'runtime' | 'unavailable' } } | null }
   recentActivity?: { ok: boolean; activity?: { windowMs: Record<string, number>; errors: Record<string, number>; sinceServerStart: string } }
   skills?: { skills: Array<{ id: string }> }
   lessons?: { ok: boolean; lessons?: Array<{ enabled: boolean }> }
@@ -72,6 +73,7 @@ function setupFetch(exp: FetchExpectation) {
   global.fetch = mock((url: RequestInfo | URL, init?: RequestInit) => {
     const u = String(url)
     teamRoutes.push({ url: u, init })
+    if (u === '/api/plugins/health/doctor') return Promise.resolve({ ok: true, json: () => Promise.resolve(HEALTHY_TEAM_HEALTH_REPORT) } as Response)
     if (u.endsWith('/stats')) return Promise.resolve({ ok: true, json: () => Promise.resolve(exp.stats ?? { usage: null }) } as Response)
     if (u.endsWith('/recent-activity')) return Promise.resolve({ ok: true, json: () => Promise.resolve(exp.recentActivity ?? { ok: true, activity: { windowMs: { '5m': 0, '1h': 0, '24h': 0 }, errors: { '5m': 0, '1h': 0, '24h': 0 }, sinceServerStart: new Date().toISOString() } }) } as Response)
     if (u.endsWith('/skills')) return Promise.resolve({ ok: true, json: () => Promise.resolve(exp.skills ?? { skills: [] }) } as Response)
@@ -185,6 +187,74 @@ describe('OverviewTab', () => {
     expect(screen.queryByText('$0.00')).toBeNull()
   })
 
+  it('qualifies a partial latest-session cost and omits the misleading per-message average', async () => {
+    setupFetch({
+      stats: {
+        usage: {
+          agent: 'pixel',
+          sessionId: 's',
+          sessionStarted: '',
+          model: 'gpt-test',
+          messages: 2,
+          costedMessages: 1,
+          tokens: { input: 200, output: 100, cacheRead: 0, cacheWrite: 0, total: 300 },
+          cost: { input: null, output: null, cacheRead: null, cacheWrite: null, total: 0.03, source: 'runtime' },
+        },
+      },
+    })
+
+    renderTab()
+
+    await waitFor(() => expect(screen.getByText('$0.03+')).toBeDefined())
+    expect(screen.getByText('Partial reported cost · 1 of 2 messages')).toBeDefined()
+    expect(screen.queryByText(/\/msg$/)).toBeNull()
+  })
+
+  it('only shows a per-message average when every message reported cost', async () => {
+    setupFetch({
+      stats: {
+        usage: {
+          agent: 'pixel',
+          sessionId: 's',
+          sessionStarted: '',
+          model: 'gpt-test',
+          messages: 2,
+          costedMessages: 2,
+          tokens: { input: 200, output: 100, cacheRead: 0, cacheWrite: 0, total: 300 },
+          cost: { input: null, output: null, cacheRead: null, cacheWrite: null, total: 0.04, source: 'runtime' },
+        },
+      },
+    })
+
+    renderTab()
+
+    await waitFor(() => expect(screen.getByText('$0.04')).toBeDefined())
+    expect(screen.getByText('$0.02/msg')).toBeDefined()
+    expect(screen.queryByText('$0.04+')).toBeNull()
+  })
+
+  it('treats legacy cost coverage as unknown instead of exact', async () => {
+    setupFetch({
+      stats: {
+        usage: {
+          agent: 'pixel',
+          sessionId: 's',
+          sessionStarted: '',
+          model: 'gpt-test',
+          messages: 2,
+          tokens: { input: 200, output: 100, cacheRead: 0, cacheWrite: 0, total: 300 },
+          cost: { input: null, output: null, cacheRead: null, cacheWrite: null, total: 0.03, source: 'runtime' },
+        },
+      },
+    })
+
+    renderTab()
+
+    await waitFor(() => expect(screen.getByText('$0.03+')).toBeDefined())
+    expect(screen.getByText('Reported cost · coverage unavailable')).toBeDefined()
+    expect(screen.queryByText(/\/msg$/)).toBeNull()
+  })
+
   it('writes /team on team select change', async () => {
     renderTab()
     const teamSelect = screen.getAllByRole('combobox').find((s) => (s as HTMLSelectElement).value === 'team-design') as HTMLSelectElement
@@ -206,6 +276,9 @@ describe('OverviewTab', () => {
     // endpoint must render blur's fallback, never pixel's numbers.
     global.fetch = mock((url: RequestInfo | URL) => {
       const u = String(url)
+      if (u === '/api/plugins/health/doctor') {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(HEALTHY_TEAM_HEALTH_REPORT) } as Response)
+      }
       if (u.endsWith('/pixel/stats')) {
         return Promise.resolve({ ok: true, json: () => Promise.resolve({ usage: { agent: 'pixel', sessionId: 's', sessionStarted: '', model: 'claude-opus-4-7', messages: 12, tokens: { input: 1000, output: 500, cacheRead: 200, cacheWrite: 50, total: 1750 }, cost: { input: 0.01, output: 0.02, cacheRead: 0.001, cacheWrite: 0.001, total: 0.03, source: 'runtime' } } }) } as Response)
       }

@@ -76,14 +76,13 @@ export { DEFAULT_SETTINGS, getSettings, updateSettings, resetSettingsCache } fro
 export type { BakinSettings, RuntimeAdapterSettings, RuntimeAdapterName, SearchAdapterSettings, SearchAdapterName } from './settings'
 
 // Adapter contracts
-export type { AppServices, HealthService } from './app-services'
-export { createHealthService } from './app-services'
+export type { AppServices } from './app-services'
 export type {
   AdapterAuditEvent,
-  AdapterHealthCheckDefinition,
-  AdapterHealthCheckResult,
   AdapterInitOpts,
   AdapterLogger,
+  AdapterToolActivityEvent,
+  AdapterTurnActivityEvent,
   AdapterVersionInfo,
   Unsubscribe,
 } from './adapters/shared'

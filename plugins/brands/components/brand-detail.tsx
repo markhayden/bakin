@@ -12,7 +12,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { MarkdownContent, UnderlineTabs, SaveBar, SectionCard, ConfirmDialog, AssetPicker, DangerZone, EmptyState, ErrorState, StatTile, StatusBadge, useUnsavedChangesGuard } from '@makinbakin/sdk/components'
 import {
-  Button, Badge, Input, Textarea, Switch, Label, Skeleton, Progress,
+  Button, Input, Textarea, Switch, Label, Skeleton, Progress,
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
 } from '@makinbakin/sdk/ui'
@@ -1604,4 +1604,3 @@ function BrandSettingsTab({
     </div>
   )
 }
-

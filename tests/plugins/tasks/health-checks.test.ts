@@ -201,15 +201,18 @@ describe('checkTaskboard', () => {
     storeBoard.columns.todo.push({ id: 't1', title: 'Queued task' })
     storeBoard.columns.inProgress.push({ id: 't2', title: 'Running task' })
     const results = checkTaskboard()
-    expect(results).toHaveLength(1)
-    expect(results[0].status).toBe('ok')
-    expect(results[0].message).toMatch(/2 tasks in Bakin task JSON store/)
+    expect(results.outcome).toBe('observed')
+    if (results.outcome !== 'observed') throw new Error('expected observations')
+    expect(results.observations).toHaveLength(1)
+    expect(results.observations[0].status).toBe('healthy')
+    expect(results.observations[0].summary).toMatch(/2 tasks in the Bakin task store/)
   })
 
   it('returns ok with zero tasks when the store is empty', () => {
     const results = checkTaskboard()
-    expect(results[0].status).toBe('ok')
-    expect(results[0].message).toMatch(/0 tasks/)
+    if (results.outcome !== 'observed') throw new Error('expected observations')
+    expect(results.observations[0].status).toBe('healthy')
+    expect(results.observations[0].summary).toMatch(/0 tasks/)
   })
 })
 
@@ -218,16 +221,18 @@ describe('checkTaskboard', () => {
 describe('checkTaskConsistency', () => {
   it('reports ok when the Bakin task store is available and empty', async () => {
     const results = await checkTaskConsistency(testDir)
-    expect(results).toHaveLength(1)
-    expect(results[0].status).toBe('ok')
-    expect(results[0].message).toMatch(/0 in-progress, 0 done/)
+    if (results.outcome !== 'observed') throw new Error('expected observations')
+    expect(results.observations).toHaveLength(1)
+    expect(results.observations[0].status).toBe('healthy')
+    expect(results.observations[0].summary).toMatch(/0 in progress and 0 done/)
   })
 
   it('reports ok when no inProgress / done tasks exist', async () => {
     const results = await checkTaskConsistency(testDir)
-    expect(results).toHaveLength(1)
-    expect(results[0].status).toBe('ok')
-    expect(results[0].message).toMatch(/0 in-progress, 0 done/)
+    if (results.outcome !== 'observed') throw new Error('expected observations')
+    expect(results.observations).toHaveLength(1)
+    expect(results.observations[0].status).toBe('healthy')
+    expect(results.observations[0].summary).toMatch(/0 in progress and 0 done/)
   })
 
   it('flags an in-progress task assigned to an unknown agent', async () => {
@@ -237,13 +242,15 @@ describe('checkTaskConsistency', () => {
     writeFileSync(pathJoin(testDir, 'heartbeats', 'ghost.json'), '{}')
 
     const results = await checkTaskConsistency(testDir)
-    expect(results.some(r => r.status === 'warn' && r.message.includes('unknown agent "ghost"'))).toBe(true)
+    if (results.outcome !== 'observed') throw new Error('expected observations')
+    expect(results.observations.some(r => r.status === 'warning' && r.summary.includes('unknown agent “ghost”'))).toBe(true)
   })
 
   it('flags an in-progress task with no heartbeat file', async () => {
     storeBoard.columns.inProgress.push({ id: 't2', title: 'Heartbeatless work', agent: 'patch', log: [{}] })
     const results = await checkTaskConsistency(testDir)
-    expect(results.some(r => r.status === 'warn' && r.message.includes('no heartbeat file'))).toBe(true)
+    if (results.outcome !== 'observed') throw new Error('expected observations')
+    expect(results.observations.some(r => r.status === 'warning' && r.key === 'heartbeat-missing:t2')).toBe(true)
   })
 
   it('flags an in-progress task with zero log entries', async () => {
@@ -251,7 +258,8 @@ describe('checkTaskConsistency', () => {
     mkdirSync(pathJoin(testDir, 'heartbeats'), { recursive: true })
     writeFileSync(pathJoin(testDir, 'heartbeats', 'patch.json'), '{}')
     const results = await checkTaskConsistency(testDir)
-    expect(results.some(r => r.status === 'warn' && r.message.includes('zero log entries'))).toBe(true)
+    if (results.outcome !== 'observed') throw new Error('expected observations')
+    expect(results.observations.some(r => r.status === 'warning' && r.key === 'progress-missing:t3')).toBe(true)
   })
 
   it('flags an agent overloaded with > 3 concurrent in-progress tasks', async () => {
@@ -261,32 +269,37 @@ describe('checkTaskConsistency', () => {
       id: `t${i}`, title: `Task ${i}`, agent: 'patch', log: [{}],
     })))
     const results = await checkTaskConsistency(testDir)
-    expect(results.some(r => r.status === 'warn' && r.message.includes('overloaded'))).toBe(true)
+    if (results.outcome !== 'observed') throw new Error('expected observations')
+    expect(results.observations.some(r => r.status === 'warning' && r.key === 'overloaded:patch')).toBe(true)
   })
 
-  it('warns about orphaned dependsOn on a done task without autoFix', async () => {
+  it('offers an explicit repair for orphaned dependsOn on a done task', async () => {
     storeBoard.columns.done.push({ id: 'd1', title: 'Stale dep', dependsOn: 'old-task' })
     const results = await checkTaskConsistency(testDir)
-    expect(results.some(r => r.status === 'warn' && r.message.includes('orphaned dependsOn') && r.autoFixable)).toBe(true)
+    if (results.outcome !== 'observed') throw new Error('expected observations')
+    const finding = results.observations.find(r => r.key === 'orphaned-dependency:d1')
+    expect(finding?.status).toBe('warning')
+    expect(finding?.incident?.resolution).toMatchObject({ type: 'repair', actionId: 'clear-done-depends-on' })
   })
 
   it('does not clear orphaned dependsOn during diagnostics', async () => {
     storeBoard.columns.done.push({ id: 'd2', title: 'Auto-clear', dependsOn: 'orphan' })
     const results = await checkTaskConsistency(testDir)
-    expect(results.some(r => r.status === 'warn' && r.message.includes('orphaned dependsOn'))).toBe(true)
+    if (results.outcome !== 'observed') throw new Error('expected observations')
+    expect(results.observations.some(r => r.key === 'orphaned-dependency:d2')).toBe(true)
     expect(clearedDependencies).toEqual([])
   })
 
   it('plans and applies orphaned dependsOn repair explicitly', async () => {
     storeBoard.columns.done.push({ id: 'd2', title: 'Repair clear', dependsOn: 'orphan' })
-    const results = await checkTaskConsistency(testDir)
     const repair = taskConsistencyRepair()
-    const plan = await repair.plan(results)
+    const plan = await repair.plan({ type: 'all_actionable', reportId: 'report-1' })
     expect(plan).toHaveLength(1)
-    expect(plan[0].id).toBe('tasks.clear-done-depends-on')
+    expect(plan[0].id).toBe('clear-completed-task-dependencies')
 
     const applied = await repair.apply(plan)
     expect(applied[0].status).toBe('applied')
+    expect(applied[0].actionId).toBe('clear-done-depends-on')
     expect(clearedDependencies).toContain('d2')
   })
 })
@@ -296,10 +309,12 @@ describe('checkTaskConsistency', () => {
 describe('checkTaskPositionIntegrity', () => {
   it('reports ok when no tasks exist', async () => {
     const results = await checkTaskPositionIntegrity()
-    expect(results).toHaveLength(1)
-    expect(results[0].check).toBe('order-integrity')
-    expect(results[0].status).toBe('ok')
-    expect(results[0].message).toMatch(/No tasks to check/)
+    expect(results.outcome).toBe('observed')
+    if (results.outcome !== 'observed') throw new Error('expected observations')
+    expect(results.observations).toHaveLength(1)
+    expect(results.observations[0].key).toBe('order')
+    expect(results.observations[0].status).toBe('healthy')
+    expect(results.observations[0].summary).toMatch(/No tasks need order validation/)
   })
 
   it('reports ok when all tasks have unique orders', async () => {
@@ -309,19 +324,21 @@ describe('checkTaskPositionIntegrity', () => {
     )
     storeBoard.columns.inProgress.push({ id: 'c', title: 'Running C', order: 0, updatedAt: 3 })
     const results = await checkTaskPositionIntegrity()
-    expect(results[0].status).toBe('ok')
-    expect(results[0].message).toMatch(/All 3 tasks have valid unique order values/)
+    if (results.outcome !== 'observed') throw new Error('expected observations')
+    expect(results.observations[0].status).toBe('healthy')
+    expect(results.observations[0].summary).toMatch(/All 3 tasks have valid unique order values/)
   })
 
-  it('warns when orders are missing without autoFix', async () => {
+  it('offers the order repair when orders are missing', async () => {
     storeBoard.columns.todo.push(
       { id: 'a', title: 'Queued A', updatedAt: 1 },
       { id: 'b', title: 'Queued B', updatedAt: 2 },
     )
     const results = await checkTaskPositionIntegrity()
-    expect(results[0].status).toBe('warn')
-    expect(results[0].autoFixable).toBe(true)
-    expect(results[0].message).toMatch(/missing/)
+    if (results.outcome !== 'observed') throw new Error('expected observations')
+    expect(results.observations[0].status).toBe('warning')
+    expect(results.observations[0].incident?.resolution).toMatchObject({ type: 'repair', actionId: 'reorder-columns' })
+    expect(results.observations[0].summary).toMatch(/missing/)
   })
 
   it('warns when duplicate orders exist within a column', async () => {
@@ -330,8 +347,9 @@ describe('checkTaskPositionIntegrity', () => {
       { id: 'b', title: 'Queued B', order: 0, updatedAt: 2 },
     )
     const results = await checkTaskPositionIntegrity()
-    expect(results[0].status).toBe('warn')
-    expect(results[0].message).toMatch(/duplicates/)
+    if (results.outcome !== 'observed') throw new Error('expected observations')
+    expect(results.observations[0].status).toBe('warning')
+    expect(results.observations[0].summary).toMatch(/duplicate/)
   })
 
   it('does not reorder during diagnostics', async () => {
@@ -340,7 +358,8 @@ describe('checkTaskPositionIntegrity', () => {
     storeBoard.columns.todo.push(older, newer)
 
     const results = await checkTaskPositionIntegrity()
-    expect(results[0].status).toBe('warn')
+    if (results.outcome !== 'observed') throw new Error('expected observations')
+    expect(results.observations[0].status).toBe('warning')
     expect(newer.order).toBeUndefined()
     expect(older.order).toBeUndefined()
   })
@@ -350,9 +369,8 @@ describe('checkTaskPositionIntegrity', () => {
     const newer: StoreTask = { id: 'newer', title: 'Newer', updatedAt: 200 }
     storeBoard.columns.todo.push(older, newer)
 
-    const results = await checkTaskPositionIntegrity()
     const repair = taskOrderRepair()
-    const plan = await repair.plan(results)
+    const plan = await repair.plan({ type: 'all_actionable', reportId: 'report-1' })
     expect(plan).toHaveLength(1)
     const applied = await repair.apply(plan)
     expect(applied[0].status).toBe('applied')
@@ -367,6 +385,7 @@ describe('plugin registration', () => {
   it('registers all owned health checks on activate', async () => {
     const tasksPlugin = (await import('../../../plugins/tasks')).default
     const registeredIds: string[] = []
+    const registeredActionIds: string[] = []
     const noop = mock()
     const noopAsync = mock(async () => {})
     const ctx: Record<string, unknown> = {
@@ -378,6 +397,7 @@ describe('plugin registration', () => {
       registerSlot: noop, registerSkill: noop, registerWorkflow: noop,
       registerNodeType: noop, registerNotificationChannel: noop,
       registerHealthCheck: (def: { id: string }) => { registeredIds.push(def.id); return `tasks.${def.id}` },
+      registerHealthRepairAction: (def: { id: string }) => { registeredActionIds.push(def.id); return `tasks.${def.id}` },
       watchFiles: noop,
       getSettings: () => ({}),
       updateSettings: noop,
@@ -396,5 +416,7 @@ describe('plugin registration', () => {
     expect(registeredIds).toContain('taskboard')
     expect(registeredIds).toContain('task-consistency')
     expect(registeredIds).toContain('order-integrity')
+    expect(registeredIds).toContain('session-death-incidents')
+    expect(registeredActionIds).toEqual(['clear-done-depends-on', 'reorder-columns'])
   })
 })

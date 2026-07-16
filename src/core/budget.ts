@@ -56,17 +56,50 @@ export interface WindowSpend {
   byModel: Record<string, LaneSums>
 }
 
+export type BudgetScope = 'global' | 'agent' | 'provider' | 'model'
+export type BudgetWindow = 'daily' | 'monthly'
+export type BudgetUnit = 'usd_micros' | 'tokens'
+
+/**
+ * Evidence that prevents one or more scoped budget subtotals from being
+ * treated as exact. Known values remain in the numeric facets; gaps describe
+ * only the records whose value or attribution is incomplete.
+ */
+export interface SpendEvidenceGap {
+  unit: BudgetUnit
+  source: 'attributed_run' | 'observed_message'
+  lane: BillingLane | null
+  agent: string
+  provider: string | null
+  model: string | null
+  /** Present when an aggregate overflow affects only this rollup scope. */
+  affectedScope?: BudgetScope
+  reasons: Array<'value_missing' | 'lane_unknown' | 'provider_unknown' | 'model_unknown'>
+  /** Runs for attributed evidence; messages for observed evidence. */
+  unknownCount: number
+}
+
+export interface SpendEvidenceWindow {
+  status: 'complete' | 'incomplete'
+  gaps: SpendEvidenceGap[]
+}
+
 export interface BudgetSpendFacets {
   computedAt: number
+  /** Whether the observed-usage store contributed to these facets. */
+  observedUsageEvidence:
+    | { status: 'available' }
+    | { status: 'unavailable'; reason: 'usage_store_unavailable' }
+  /** Completeness of the token and dollar subtotals, scoped to each cap window. */
+  spendEvidence: {
+    daily: SpendEvidenceWindow
+    monthly: SpendEvidenceWindow
+  }
   daily: WindowSpend
   monthly: WindowSpend
 }
 
 
-
-export type BudgetScope = 'global' | 'agent' | 'provider' | 'model'
-export type BudgetWindow = 'daily' | 'monthly'
-export type BudgetUnit = 'usd_micros' | 'tokens'
 
 export interface BudgetRule {
   scope: BudgetScope
@@ -103,6 +136,37 @@ export type BudgetDecision =
   | { action: 'allow' }
   | {
       action: 'warn' | 'defer'
+      cause: 'threshold'
+      rule: BudgetRule
+      window: BudgetWindow
+      unit: BudgetUnit
+      spentValue: number
+      capValue: number
+    }
+  | {
+      action: 'defer'
+      cause: 'spend_evidence_incomplete'
+      rule: BudgetRule
+      window: BudgetWindow
+      unit: BudgetUnit
+      /** Sum of reported values only; deliberately not presented as total. */
+      spentValue: number
+      capValue: number
+      /** Null only for a legacy facet payload with no evidence contract. */
+      unknownEvidenceCount: number | null
+    }
+  | {
+      action: 'defer'
+      cause: 'spend_evidence_unavailable'
+      rule: BudgetRule
+      window: BudgetWindow
+      unit: BudgetUnit
+      spentValue: number
+      capValue: number
+    }
+  | {
+      action: 'defer'
+      cause: 'open_pause_incident'
       rule: BudgetRule
       window: BudgetWindow
       unit: BudgetUnit
@@ -157,6 +221,55 @@ function ruleSpentValue(rule: BudgetRule, w: WindowSpend): number {
     : bucket.meteredUsdMicros + (unattributed?.meteredUsdMicros ?? 0)
 }
 
+function gapMatchesRule(gap: SpendEvidenceGap, rule: BudgetRule): boolean {
+  const ruleUnit: BudgetUnit = rule.lane === 'subscription' ? 'tokens' : 'usd_micros'
+  if (gap.unit !== ruleUnit) return false
+  if (gap.lane !== null && gap.lane !== rule.lane) return false
+  if (gap.affectedScope !== undefined && gap.affectedScope !== rule.scope) return false
+  const couldChangeSubtotal = gap.reasons.includes('value_missing') || gap.reasons.includes('lane_unknown')
+  switch (rule.scope) {
+    case 'global':
+      return couldChangeSubtotal
+    case 'agent':
+      return gap.agent === rule.scopeId && couldChangeSubtotal
+    case 'provider':
+      return gap.source === 'attributed_run'
+        && rule.scopeId !== undefined
+        && (gap.provider === null || gap.provider === rule.scopeId)
+        && (couldChangeSubtotal || gap.reasons.includes('provider_unknown'))
+    case 'model':
+      return gap.source === 'attributed_run'
+        && rule.scopeId !== undefined
+        && (gap.model === null || gap.model === rule.scopeId)
+        && (couldChangeSubtotal || gap.reasons.includes('model_unknown'))
+  }
+}
+
+/**
+ * Number of matching records with incomplete spend evidence. `null` means the caller
+ * supplied legacy facets with no completeness contract, which is itself
+ * incomplete evidence and therefore fails closed for every cap.
+ */
+function unknownSpendEvidence(
+  facets: BudgetSpendFacets,
+  rule: BudgetRule,
+  window: BudgetWindow,
+): number | null {
+  const evidence = facets.spendEvidence?.[window]
+  if (!evidence) return null
+  if (evidence.status === 'complete' && evidence.gaps.length === 0) return 0
+  if (evidence.gaps.length === 0) return null
+  let matching = 0
+  for (const gap of evidence.gaps) {
+    if (!gapMatchesRule(gap, rule)) continue
+    if (!Number.isSafeInteger(gap.unknownCount) || gap.unknownCount <= 0) return null
+    matching = matching > Number.MAX_SAFE_INTEGER - gap.unknownCount
+      ? Number.MAX_SAFE_INTEGER
+      : matching + gap.unknownCount
+  }
+  return matching
+}
+
 /** The rule's cap for a window, converted to the spend unit (micros for USD). */
 function ruleCapValue(rule: BudgetRule, window: BudgetWindow): number | null {
   const cap = window === 'daily' ? rule.dailyCap : rule.monthlyCap
@@ -179,6 +292,8 @@ export function evaluateBudget(input: {
 }): BudgetDecision {
   const rules = input.policy.rules ?? []
   let worstWarn: BudgetDecision | null = null
+  let incompleteEvidence: Extract<BudgetDecision, { cause: 'spend_evidence_incomplete' }> | null = null
+  let unavailableEvidence: Extract<BudgetDecision, { cause: 'spend_evidence_unavailable' }> | null = null
   for (const rule of rules) {
     if (!ruleMatchesTurn(rule, input.turn)) continue
     for (const window of WINDOWS) {
@@ -187,13 +302,40 @@ export function evaluateBudget(input: {
       const spentValue = ruleSpentValue(rule, window === 'daily' ? input.facets.daily : input.facets.monthly)
       const unit: BudgetUnit = rule.lane === 'metered' ? 'usd_micros' : 'tokens'
       if (spentValue >= capValue) {
-        return { action: 'defer', rule, window, unit, spentValue, capValue }
+        return { action: 'defer', cause: 'threshold', rule, window, unit, spentValue, capValue }
+      }
+      if ((rule.scope === 'global' || rule.scope === 'agent')
+        && input.facets.observedUsageEvidence.status === 'unavailable') {
+        unavailableEvidence ??= {
+          action: 'defer',
+          cause: 'spend_evidence_unavailable',
+          rule,
+          window,
+          unit,
+          spentValue,
+          capValue,
+        }
+        continue
+      }
+      const unknownEvidenceCount = unknownSpendEvidence(input.facets, rule, window)
+      if (unknownEvidenceCount === null || unknownEvidenceCount > 0) {
+        incompleteEvidence ??= {
+          action: 'defer',
+          cause: 'spend_evidence_incomplete',
+          rule,
+          window,
+          unit,
+          spentValue,
+          capValue,
+          unknownEvidenceCount,
+        }
+        continue
       }
       const warnPct = rule.warnPct ?? DEFAULT_WARN_PCT
       if (!worstWarn && spentValue >= capValue * warnPct) {
-        worstWarn = { action: 'warn', rule, window, unit, spentValue, capValue }
+        worstWarn = { action: 'warn', cause: 'threshold', rule, window, unit, spentValue, capValue }
       }
     }
   }
-  return worstWarn ?? { action: 'allow' }
+  return unavailableEvidence ?? incompleteEvidence ?? worstWarn ?? { action: 'allow' }
 }

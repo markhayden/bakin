@@ -1,67 +1,30 @@
-/**
- * Explicit doctor repair orchestration.
- *
- * Normal diagnostics stay report-only. This module is the deterministic repair
- * boundary: callers must ask for a plan, then explicitly accept before any
- * check-owned repair handler can mutate state.
- */
-import { appendAudit } from './audit'
-import { runDetailedPluginHealthChecks } from './doctor-checks'
-import { getHealthCheck } from './health-check-registry'
+/** Targeted canonical Health repair planning, application, and verification. */
 import type {
-  HealthCheckDef,
-  HealthCheckResult,
+  HealthObservation,
   HealthRepairApplyResult,
+  HealthRepairPlan,
   HealthRepairPlanItem,
+  HealthRepairTarget,
+  HealthReport,
 } from '../../packages/core/src/plugin-types'
+import { appendAudit } from './audit'
+import { getHealthReport } from './doctor-report-cache'
+import { runTargetedDiagnostics } from './doctor-execution'
+import { getHealthRepairAction } from './health-check-registry'
+import {
+  HealthContractError,
+  parseHealthRepairApplyOutput,
+  parseHealthRepairPlanOutput,
+} from './health-contract'
+import {
+  claimRepairApplication,
+  createStoredRepairPlan,
+} from './doctor-repair-plans'
 
-export interface DoctorRepairPlanItem extends HealthRepairPlanItem {
-  healthCheckId: string
-  pluginId: string
-  checkName: string
-}
+type IncidentObservation = Exclude<HealthObservation, { status: 'healthy' }>
 
-export interface DoctorRepairError {
-  phase: 'plan' | 'apply' | 'verify'
-  healthCheckId: string
-  pluginId: string
-  checkName: string
-  message: string
-}
-
-export interface DoctorRepairPlanSummary {
-  diagnostics: number
-  repairableChecks: number
-  totalItems: number
-  safeItems: number
-  blockedItems: number
-  planErrors: number
-}
-
-export interface DoctorRepairPlanReport {
-  diagnostics: HealthCheckResult[]
-  items: DoctorRepairPlanItem[]
-  errors: DoctorRepairError[]
-  summary: DoctorRepairPlanSummary
-}
-
-export interface DoctorRepairApplySummary {
-  planned: number
-  applied: number
-  skipped: number
-  failed: number
-  verificationErrors: number
-  verificationWarnings: number
-}
-
-export interface DoctorRepairApplyReport {
-  status: 'confirmation_required' | 'applied'
-  plan: DoctorRepairPlanReport
-  applied: HealthRepairApplyResult[]
-  skipped: HealthRepairApplyResult[]
-  errors: DoctorRepairError[]
-  verification: HealthCheckResult[]
-  summary: DoctorRepairApplySummary
+function hasIncident(observation: HealthObservation): observation is IncidentObservation {
+  return observation.status !== 'healthy'
 }
 
 export interface DoctorRepairOptions {
@@ -69,232 +32,245 @@ export interface DoctorRepairOptions {
   projectRoot: string
 }
 
+export interface DoctorRepairPlanOptions extends DoctorRepairOptions {
+  target: HealthRepairTarget
+}
+
 export interface DoctorRepairApplyOptions extends DoctorRepairOptions {
-  accepted: boolean
-  itemIds?: string[]
-  /**
-   * Apply non-safe (manual/destructive) items too. Honored ONLY when the
-   * caller explicitly selected items via `itemIds` — a blanket apply can
-   * never sweep destructive repairs in. The UI's per-item confirmation
-   * checkboxes are the consent surface for this flag.
-   */
-  allowDestructive?: boolean
+  planId: string
+  itemIds: string[]
+  confirmedItemIds: string[]
 }
 
-function errorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err)
+export interface DoctorRepairApplyReport {
+  planId: string
+  basedOnReportId: string
+  results: HealthRepairApplyResult[]
+  affectedCheckIds: string[]
+  verifiedReportId: string
+  verifiedIncidentIds: string[]
+  report: HealthReport
 }
 
-function needsRepair(row: HealthCheckResult): boolean {
-  return row.status === 'warn' || row.status === 'error'
-}
-
-function enrichPlanItem(def: HealthCheckDef, item: HealthRepairPlanItem): DoctorRepairPlanItem {
-  return {
-    ...item,
-    healthCheckId: def.id,
-    pluginId: def.pluginId,
-    checkName: def.name,
+function targetObservationIds(report: HealthReport, target: HealthRepairTarget): string[] {
+  if (target.reportId !== report.id) {
+    throw new Error('Repair planning requires the current Health report.')
   }
+  if (target.type === 'observations') return [...new Set(target.ids)]
+  const incidentIds = target.type === 'incidents'
+    ? new Set(target.ids)
+    : new Set(report.incidents.filter((incident) => incident.disposition === 'action_required').map((incident) => incident.id))
+  return [...new Set(report.incidents
+    .filter((incident) => incidentIds.has(incident.id))
+    .flatMap((incident) => incident.observationIds))]
 }
 
-function summarizePlan(
-  diagnostics: HealthCheckResult[],
-  items: DoctorRepairPlanItem[],
-  errors: DoctorRepairError[],
-): DoctorRepairPlanSummary {
-  return {
-    diagnostics: diagnostics.length,
-    repairableChecks: new Set(items.map(item => item.healthCheckId)).size,
-    totalItems: items.length,
-    safeItems: items.filter(item => item.safety === 'safe').length,
-    blockedItems: items.filter(item => item.safety !== 'safe').length,
-    planErrors: errors.length,
-  }
-}
-
-async function verifyHealthCheck(def: HealthCheckDef): Promise<HealthCheckResult[]> {
-  try {
-    const rows = await def.run()
-    if (!Array.isArray(rows)) {
-      return [{
-        check: def.id,
-        status: 'error',
-        message: `Plugin health check returned non-array: ${typeof rows}`,
-        autoFixable: false,
-      }]
-    }
-    return rows
-  } catch (err) {
-    return [{
-      check: def.id,
-      status: 'error',
-      message: `Plugin health check threw: ${errorMessage(err)}`,
-      autoFixable: false,
-    }]
-  }
-}
-
-export async function planDoctorRepair(options: DoctorRepairOptions): Promise<DoctorRepairPlanReport> {
-  void options.projectRoot
-  const groups = await runDetailedPluginHealthChecks()
-  const diagnostics = groups.flatMap(group => group.results)
-  const items: DoctorRepairPlanItem[] = []
-  const errors: DoctorRepairError[] = []
-
-  for (const { def, results } of groups) {
-    if (!def.repair || !results.some(needsRepair)) continue
-    try {
-      const planned = await def.repair.plan(results.filter(needsRepair))
-      items.push(...planned.map(item => enrichPlanItem(def, item)))
-    } catch (err) {
-      errors.push({
-        phase: 'plan',
-        healthCheckId: def.id,
-        pluginId: def.pluginId,
-        checkName: def.name,
-        message: errorMessage(err),
-      })
+function executionId(report: HealthReport, observationId: string): string | null {
+  for (const check of report.checks) {
+    if (check.latestValidSnapshot?.observations.some((row) => row.id === observationId)) {
+      return check.latestValidSnapshot.executionId
     }
   }
+  return null
+}
 
-  const report = {
-    diagnostics,
-    items,
-    errors,
-    summary: summarizePlan(diagnostics, items, errors),
+function repairObservations(report: HealthReport, target: HealthRepairTarget): IncidentObservation[] {
+  const ids = new Set(targetObservationIds(report, target))
+  return report.observations
+    .filter(hasIncident)
+    .filter((observation) => ids.has(observation.id) && observation.incident.resolution.type === 'repair')
+}
+
+function canonicalizeItem(
+  item: HealthRepairPlanItem,
+  actionId: string,
+  eligible: readonly IncidentObservation[],
+  report: HealthReport,
+): HealthRepairPlanItem {
+  const requested = item.observationIds.length > 0 ? new Set(item.observationIds) : new Set(eligible.map((row) => row.id))
+  const observations = eligible.filter((row) => requested.has(row.id))
+  if (observations.length === 0) throw new Error(`Repair plan item ${item.id} did not target eligible observations.`)
+  const observationIds = observations.map((row) => row.id).sort()
+  const incidentIds = [...new Set(observations.map((row) => row.incidentId))].sort()
+  return {
+    ...structuredClone(item),
+    id: `${actionId}:${item.id}`,
+    actionId,
+    observationIds,
+    incidentIds,
+    preconditions: observations.map((observation) => {
+      const sourceExecutionId = executionId(report, observation.id)
+      if (!sourceExecutionId) throw new Error(`Repair observation ${observation.id} has no source execution.`)
+      return {
+        observationId: observation.id,
+        executionId: sourceExecutionId,
+        status: observation.status,
+        resolutionKey: observation.incident.resolution.key,
+      }
+    }),
   }
+}
 
-  appendAudit(options.contentDir, 'doctor.fix.planned', 'system', {
-    diagnostics: report.summary.diagnostics,
-    totalItems: report.summary.totalItems,
-    safeItems: report.summary.safeItems,
-    blockedItems: report.summary.blockedItems,
-    planErrors: report.summary.planErrors,
+function planOutput(
+  raw: unknown,
+  actionId: string,
+  localActionId: string,
+): HealthRepairPlanItem[] {
+  const items = parseHealthRepairPlanOutput(raw)
+  const ids = new Set<string>()
+  for (const item of items) {
+    if ((item.actionId !== localActionId && item.actionId !== actionId) || ids.has(item.id)) {
+      throw new HealthContractError(
+        'INVALID_HEALTH_REPAIR_PLAN_OUTPUT',
+        'Health repair plan output failed contract validation.',
+        [{ code: 'repair_output_identity', path: '$', message: 'Repair plan identities do not match the invoked action.' }],
+      )
+    }
+    ids.add(item.id)
+  }
+  return items
+}
+
+function applyOutput(
+  raw: unknown,
+  actionId: string,
+  items: readonly HealthRepairPlanItem[],
+): HealthRepairApplyResult[] {
+  const results = parseHealthRepairApplyOutput(raw)
+  const expected = new Set(items.map((item) => item.id))
+  const seen = new Set<string>()
+  const identitiesMatch = results.length === expected.size && results.every((result) => {
+    if (result.actionId !== actionId || !expected.has(result.itemId) || seen.has(result.itemId)) return false
+    seen.add(result.itemId)
+    return true
   })
+  if (!identitiesMatch) {
+    throw new HealthContractError(
+      'INVALID_HEALTH_REPAIR_APPLY_OUTPUT',
+      'Health repair apply output failed contract validation.',
+      [{ code: 'repair_output_identity', path: '$', message: 'Repair apply identities do not match the selected plan items.' }],
+    )
+  }
+  return results
+}
 
-  return report
+export async function planDoctorRepair(options: DoctorRepairPlanOptions): Promise<HealthRepairPlan> {
+  void options.projectRoot
+  const report = getHealthReport()
+  const observations = repairObservations(report, options.target)
+  const byAction = new Map<string, IncidentObservation[]>()
+  for (const observation of observations) {
+    const resolution = observation.incident.resolution
+    if (resolution.type !== 'repair') continue
+    const rows = byAction.get(resolution.actionId) ?? []
+    rows.push(observation)
+    byAction.set(resolution.actionId, rows)
+  }
+
+  const items: HealthRepairPlanItem[] = []
+  const dedupe = new Set<string>()
+  for (const [actionId, eligible] of byAction) {
+    const action = getHealthRepairAction(actionId)
+    if (!action) throw new Error(`Repair action ${actionId} is no longer registered.`)
+    const planned = planOutput(await action.plan(options.target), action.id, action.localId)
+    for (const item of planned) {
+      const canonical = canonicalizeItem(item, actionId, eligible, report)
+      if (dedupe.has(canonical.id)) continue
+      dedupe.add(canonical.id)
+      items.push(canonical)
+    }
+  }
+  items.sort((a, b) => a.actionId.localeCompare(b.actionId) || a.id.localeCompare(b.id))
+
+  const plan = createStoredRepairPlan({
+    basedOnReportId: report.id,
+    target: { ...options.target, reportId: report.id } as HealthRepairTarget,
+    items,
+  })
+  appendAudit(options.contentDir, 'doctor.fix.planned', 'system', {
+    planId: plan.planId,
+    reportId: report.id,
+    items: plan.items.length,
+    safe: plan.items.filter((item) => item.safety === 'safe').length,
+    nonSafe: plan.items.filter((item) => item.safety !== 'safe').length,
+  })
+  return plan
+}
+
+function failedResult(item: HealthRepairPlanItem, error: unknown): HealthRepairApplyResult {
+  return {
+    itemId: item.id,
+    actionId: item.actionId,
+    status: 'failed',
+    message: error instanceof Error ? error.message : String(error),
+    affectedCheckIds: [],
+    changes: item.changes,
+  }
 }
 
 export async function applyDoctorRepair(options: DoctorRepairApplyOptions): Promise<DoctorRepairApplyReport> {
-  const plan = await planDoctorRepair(options)
-  const selectedIds = options.itemIds ? new Set(options.itemIds) : null
-  const selectedItems = selectedIds
-    ? plan.items.filter(item => selectedIds.has(item.id))
-    : plan.items
+  void options.projectRoot
+  const current = getHealthReport()
+  const validated = claimRepairApplication({
+    planId: options.planId,
+    itemIds: options.itemIds,
+    confirmedItemIds: options.confirmedItemIds,
+    report: current,
+  })
 
-  if (!options.accepted) {
-    return {
-      status: 'confirmation_required',
-      plan,
-      applied: [],
-      skipped: [],
-      errors: [],
-      verification: [],
-      summary: {
-        planned: selectedItems.length,
-        applied: 0,
-        skipped: 0,
-        failed: 0,
-        verificationErrors: 0,
-        verificationWarnings: 0,
-      },
+  const byAction = new Map<string, HealthRepairPlanItem[]>()
+  for (const item of validated.items) {
+    const rows = byAction.get(item.actionId) ?? []
+    rows.push(item)
+    byAction.set(item.actionId, rows)
+  }
+
+  const results: HealthRepairApplyResult[] = []
+  for (const [actionId, items] of byAction) {
+    const action = getHealthRepairAction(actionId)
+    if (!action) {
+      results.push(...items.map((item) => failedResult(item, new Error(`Repair action ${actionId} is no longer registered.`))))
+      continue
     }
-  }
-
-  const destructiveAllowed = options.allowDestructive === true && !!options.itemIds
-  const safeItems = selectedItems.filter(item => item.safety === 'safe' || destructiveAllowed)
-  const blockedItems = selectedItems.filter(item => item.safety !== 'safe' && !destructiveAllowed)
-  const skipped: HealthRepairApplyResult[] = blockedItems.map(item => ({
-    id: item.id,
-    checkId: item.checkId,
-    status: 'skipped',
-    message: `Skipped ${item.safety} repair item; deterministic doctor repair only applies safe items.`,
-    changes: item.changes,
-  }))
-
-  const groupsByCheck = new Map<string, DoctorRepairPlanItem[]>()
-  for (const item of safeItems) {
-    const existing = groupsByCheck.get(item.healthCheckId) ?? []
-    existing.push(item)
-    groupsByCheck.set(item.healthCheckId, existing)
-  }
-
-  const applied: HealthRepairApplyResult[] = []
-  const errors: DoctorRepairError[] = [...plan.errors]
-
-  for (const [healthCheckId, items] of groupsByCheck.entries()) {
-    const def = getHealthCheck(healthCheckId)
-    if (!def?.repair) continue
     try {
-      const results = await def.repair.apply(items)
-      applied.push(...results)
-    } catch (err) {
-      const message = errorMessage(err)
-      errors.push({
-        phase: 'apply',
-        healthCheckId: def.id,
-        pluginId: def.pluginId,
-        checkName: def.name,
-        message,
-      })
-      applied.push({
-        id: `${def.id}.apply-error`,
-        checkId: def.id,
-        status: 'failed',
-        message,
-        changes: items.flatMap(item => item.changes),
-      })
+      results.push(...applyOutput(await action.apply(items), actionId, items))
+    } catch (error) {
+      results.push(...items.map((item) => failedResult(item, error)))
     }
   }
 
-  const verification: HealthCheckResult[] = []
-  for (const healthCheckId of groupsByCheck.keys()) {
-    const def = getHealthCheck(healthCheckId)
-    if (!def) continue
-    try {
-      verification.push(...await verifyHealthCheck(def))
-    } catch (err) {
-      errors.push({
-        phase: 'verify',
-        healthCheckId: def.id,
-        pluginId: def.pluginId,
-        checkName: def.name,
-        message: errorMessage(err),
-      })
-    }
-  }
+  const selectedObservationIds = new Set(validated.items.flatMap((item) => item.observationIds))
+  const inferredCheckIds = current.observations
+    .filter((observation) => selectedObservationIds.has(observation.id))
+    .map((observation) => observation.checkId)
+  const affectedCheckIds = [...new Set([...inferredCheckIds, ...results.flatMap((result) => result.affectedCheckIds)])].sort()
+  const report = await runTargetedDiagnostics(affectedCheckIds)
+  const verifiedIncidentIds = report.incidents
+    .filter((incident) => incident.observationIds.some((id) => selectedObservationIds.has(id)))
+    .map((incident) => incident.id)
+    .sort()
 
-  const failed = applied.filter(result => result.status === 'failed').length
-  const verificationErrors = verification.filter(row => row.status === 'error').length
-  const verificationWarnings = verification.filter(row => row.status === 'warn').length
-
-  appendAudit(options.contentDir, failed > 0 ? 'doctor.fix.failed' : 'doctor.fix.applied', 'system', {
-    planned: selectedItems.length,
-    applied: applied.filter(result => result.status === 'applied').length,
-    skipped: skipped.length,
-    failed,
+  appendAudit(options.contentDir, results.some((result) => result.status === 'failed') ? 'doctor.fix.failed' : 'doctor.fix.applied', 'system', {
+    planId: options.planId,
+    reportId: report.id,
+    applied: results.filter((result) => result.status === 'applied').length,
+    skipped: results.filter((result) => result.status === 'skipped').length,
+    failed: results.filter((result) => result.status === 'failed').length,
   })
   appendAudit(options.contentDir, 'doctor.fix.verified', 'system', {
-    checks: groupsByCheck.size,
-    errors: verificationErrors,
-    warnings: verificationWarnings,
+    planId: options.planId,
+    reportId: report.id,
+    affectedCheckIds,
+    remainingIncidentIds: verifiedIncidentIds,
   })
 
   return {
-    status: 'applied',
-    plan,
-    applied,
-    skipped,
-    errors,
-    verification,
-    summary: {
-      planned: selectedItems.length,
-      applied: applied.filter(result => result.status === 'applied').length,
-      skipped: skipped.length,
-      failed,
-      verificationErrors,
-      verificationWarnings,
-    },
+    planId: options.planId,
+    basedOnReportId: validated.plan.basedOnReportId,
+    results,
+    affectedCheckIds,
+    verifiedReportId: report.id,
+    verifiedIncidentIds,
+    report,
   }
 }

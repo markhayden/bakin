@@ -43,7 +43,6 @@ export function createMockSearchAdapter(
     initialize: async () => {},
     shutdown: async () => {},
     available: async () => true,
-    getHealthChecks: () => [],
     capabilities: () => ({
       legs: ['full-text', 'text-embedding', 'media-embedding'],
       rerank: false,

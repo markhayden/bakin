@@ -58,6 +58,7 @@ mock.module('@/components/model-select', () => ({ ModelSelect: () => <div /> }))
 
 import { useAgentStore } from '../../../plugins/team/hooks/use-agent-store'
 import { AgentDetail } from '../../../plugins/team/components/agent-detail'
+import { HEALTHY_TEAM_HEALTH_REPORT } from './health-report-fixture'
 
 const PROFILE = {
   id: 'pixel',
@@ -83,6 +84,9 @@ function setupFetch() {
     }
     if (u.startsWith('/api/plugins/models/available')) {
       return Promise.resolve({ ok: true, json: () => Promise.resolve({ models: [] }) } as Response)
+    }
+    if (u === '/api/plugins/health/doctor') {
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(HEALTHY_TEAM_HEALTH_REPORT) } as Response)
     }
     if (u === '/api/agent-packages?check=1' && init?.method !== 'POST') {
       return Promise.resolve({

@@ -161,6 +161,7 @@ function seedRegistryEntry(opts: SeedOptions = {}): void {
     nodeKinds: [] as string[],
     channelIds: [] as string[],
     healthCheckIds: [] as string[],
+    healthRepairActionIds: [] as string[],
     ctx: {
       pluginId: 'fixture',
       registerNav: () => {},
@@ -175,6 +176,7 @@ function seedRegistryEntry(opts: SeedOptions = {}): void {
         state.healthCheckIds.push(ns)
         return ns
       },
+      registerHealthRepairAction: (def: { id: string }) => `fixture.${def.id}`,
       watchFiles: () => {},
       getSettings: () => ({}),
       updateSettings: () => {},

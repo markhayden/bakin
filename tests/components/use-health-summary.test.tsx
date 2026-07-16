@@ -25,8 +25,8 @@ import '../rtl-settle'
 import { useHealthSummary } from '../../plugins/health/hooks/use-health-summary'
 
 function Probe() {
-  const { errors } = useHealthSummary()
-  return <span data-testid="errors">{errors === null ? 'null' : String(errors)}</span>
+  const { count, tone } = useHealthSummary()
+  return <span data-testid="count">{count === null ? 'null' : `${count}:${tone}`}</span>
 }
 
 const fetchMock = mock()
@@ -40,46 +40,85 @@ function summaryResponse(body: unknown) {
   return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } })
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((resolvePromise) => { resolve = resolvePromise })
+  return { promise, resolve }
+}
+
 describe('useHealthSummary', () => {
-  it('extracts doctor.summary.errors', async () => {
-    fetchMock.mockResolvedValue(summaryResponse({ doctor: { summary: { errors: 3, warnings: 5 } } }))
+  it('counts unique non-advisory incidents and uses the urgent tone', async () => {
+    fetchMock.mockResolvedValue(summaryResponse({ incidents: [
+      { id: 'action', disposition: 'action_required' },
+      { id: 'action', disposition: 'action_required' },
+      { id: 'watch', disposition: 'watch' },
+      { id: 'advisory', disposition: 'advisory' },
+    ] }))
     render(<Probe />)
-    await waitFor(() => expect(screen.getByTestId('errors').textContent).toBe('3'))
+    await waitFor(() => expect(screen.getByTestId('count').textContent).toBe('2:error'))
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/plugins/health/doctor')
+    expect(fetchMock.mock.calls[0]?.[1]?.signal).toBeInstanceOf(AbortSignal)
   })
 
-  it('returns 0 when doctor is null', async () => {
-    fetchMock.mockResolvedValue(summaryResponse({ doctor: null }))
+  it('uses attention when only watch incidents remain', async () => {
+    fetchMock.mockResolvedValue(summaryResponse({ incidents: [{ id: 'watch', disposition: 'watch' }] }))
     render(<Probe />)
-    await waitFor(() => expect(screen.getByTestId('errors').textContent).toBe('0'))
+    await waitFor(() => expect(screen.getByTestId('count').textContent).toBe('1:attention'))
   })
 
-  it('returns 0 when the summary has no errors field', async () => {
-    fetchMock.mockResolvedValue(summaryResponse({ doctor: { summary: { warnings: 2 } } }))
+  it('returns zero when only advisories exist', async () => {
+    fetchMock.mockResolvedValue(summaryResponse({ incidents: [{ id: 'info', disposition: 'advisory' }] }))
     render(<Probe />)
-    await waitFor(() => expect(screen.getByTestId('errors').textContent).toBe('0'))
+    await waitFor(() => expect(screen.getByTestId('count').textContent).toBe('0:attention'))
   })
 
-  it('refetches on a doctor.run event', async () => {
-    fetchMock.mockResolvedValue(summaryResponse({ doctor: { summary: { errors: 1 } } }))
+  it('refetches on a health.report.changed event', async () => {
+    fetchMock.mockResolvedValue(summaryResponse({ incidents: [{ id: 'watch', disposition: 'watch' }] }))
     render(<Probe />)
-    await waitFor(() => expect(screen.getByTestId('errors').textContent).toBe('1'))
+    await waitFor(() => expect(screen.getByTestId('count').textContent).toBe('1:attention'))
 
     fetchMock.mockClear()
-    fetchMock.mockResolvedValue(summaryResponse({ doctor: { summary: { errors: 4 } } }))
-    act(() => { emitPluginEvent({ event: 'doctor.run' }) })
-    await waitFor(() => expect(screen.getByTestId('errors').textContent).toBe('4'))
+    fetchMock.mockResolvedValue(summaryResponse({ incidents: [
+      { id: 'one', disposition: 'action_required' },
+      { id: 'two', disposition: 'watch' },
+    ] }))
+    act(() => { emitPluginEvent({ event: 'health.report.changed' }) })
+    await waitFor(() => expect(screen.getByTestId('count').textContent).toBe('2:error'))
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
   it('keeps the last good value on a failed fetch', async () => {
-    fetchMock.mockResolvedValue(summaryResponse({ doctor: { summary: { errors: 2 } } }))
+    fetchMock.mockResolvedValue(summaryResponse({ incidents: [{ id: 'one', disposition: 'action_required' }] }))
     render(<Probe />)
-    await waitFor(() => expect(screen.getByTestId('errors').textContent).toBe('2'))
+    await waitFor(() => expect(screen.getByTestId('count').textContent).toBe('1:error'))
 
     fetchMock.mockRejectedValue(new Error('network down'))
-    act(() => { emitPluginEvent({ event: 'doctor.run' }) })
+    act(() => { emitPluginEvent({ event: 'health.report.changed' }) })
     // Value is retained (no throw, no reset to null).
     await waitFor(() => expect(fetchMock).toHaveBeenCalled())
-    expect(screen.getByTestId('errors').textContent).toBe('2')
+    expect(screen.getByTestId('count').textContent).toBe('1:error')
+  })
+
+  it('supersedes an older request when a newer report event arrives', async () => {
+    const first = deferred<Response>()
+    fetchMock
+      .mockReturnValueOnce(first.promise)
+      .mockResolvedValueOnce(summaryResponse({ incidents: [
+        { id: 'action', disposition: 'action_required' },
+        { id: 'watch', disposition: 'watch' },
+      ] }))
+    render(<Probe />)
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    const firstSignal = fetchMock.mock.calls[0]?.[1]?.signal as AbortSignal
+
+    act(() => { emitPluginEvent({ event: 'health.report.changed' }) })
+    await waitFor(() => expect(screen.getByTestId('count').textContent).toBe('2:error'))
+    expect(firstSignal.aborted).toBe(true)
+
+    await act(async () => {
+      first.resolve(summaryResponse({ incidents: [{ id: 'old', disposition: 'watch' }] }))
+      await first.promise
+    })
+    expect(screen.getByTestId('count').textContent).toBe('2:error')
   })
 })

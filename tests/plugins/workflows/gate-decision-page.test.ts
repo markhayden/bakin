@@ -70,6 +70,7 @@ const { gateRoutes } = await import('@bakin/workflows/lib/routes/gates')
 const { createApprovalRecord } = await import('@bakin/workflows/lib/approval-store')
 
 const pageRoute = gateRoutes.find(r => r.path === '/gates/:taskId/decision' && r.method === 'GET')!
+const statusRoute = gateRoutes.find(r => r.path === '/gates/status' && r.method === 'GET')!
 const ctx = {} as never
 
 function pageRequest(query: string): Request {
@@ -102,6 +103,10 @@ function seedPendingRecord(
 }
 
 describe('gate decision page', () => {
+  it('classifies the gate-status poll as routine activity', () => {
+    expect(statusRoute.activityClass).toBe('routine')
+  })
+
   beforeEach(() => {
     rmSync(testDir, { recursive: true, force: true })
     mkdirSync(testDir, { recursive: true })

@@ -2,7 +2,8 @@
 // module's self-containment + two-tier rationale.
 import type { ZodRawShape } from 'zod'
 import type { ContractStability, ContractVisibility, DocsExample, SchemaLike } from './primitives'
-import type { ContentFile, ExecToolDefinition, NavItem, PluginHealthCheckInput, PluginNodeTypeInput, PluginNotificationChannelInput, PluginSettingsSchema, SkillDefinition, UISlotRegistration, WorkflowDefinitionInput } from './registration'
+import type { HealthCheckRegistrationInput, HealthRepairActionDefinition } from './health'
+import type { ContentFile, ExecToolDefinition, NavItem, PluginNodeTypeInput, PluginNotificationChannelInput, PluginSettingsSchema, SkillDefinition, UISlotRegistration, WorkflowDefinitionInput } from './registration'
 import type { AgentRuntimeAdapter } from './runtime'
 import type { AssetsAPI, SearchAPI, TaskService } from './services'
 
@@ -116,8 +117,10 @@ export interface PluginContext {
   registerNodeType<T = unknown>(def: PluginNodeTypeInput<T>): string
   /** Register a notification channel the runtime can deliver to. */
   registerNotificationChannel(def: PluginNotificationChannelInput): string
-  /** Register a health check that runs on `bakin doctor`. */
-  registerHealthCheck(def: PluginHealthCheckInput): string
+  /** Register an owner-scoped health check that runs during doctor sweeps. */
+  registerHealthCheck(def: HealthCheckRegistrationInput): string
+  /** Register an owner-scoped repair action referenced by health incidents. */
+  registerHealthRepairAction(def: HealthRepairActionDefinition): string
   /** Subscribe to file globs for live updates (Chokidar-based). */
   watchFiles(patterns: string[]): void
   /** Read this plugin's persisted settings. */

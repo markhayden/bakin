@@ -67,6 +67,53 @@ function openApiPath(path: string): string {
   return path.replace(/:([A-Za-z0-9_]+)/g, '{$1}')
 }
 
+function resolveDocumentLocalRef(document: unknown, ref: string): boolean {
+  if (ref === '#') return true
+  if (!ref.startsWith('#/')) return false
+
+  let current: unknown = document
+  for (const rawToken of ref.slice(2).split('/')) {
+    let token: string
+    try {
+      token = decodeURIComponent(rawToken).replace(/~1/g, '/').replace(/~0/g, '~')
+    } catch {
+      return false
+    }
+    if (typeof current !== 'object' || current === null || !Object.prototype.hasOwnProperty.call(current, token)) {
+      return false
+    }
+    current = (current as Record<string, unknown>)[token]
+  }
+  return true
+}
+
+function unresolvedDocumentLocalRefs(document: unknown): Array<{ ref: string; location: string }> {
+  const unresolved = new Map<string, string>()
+
+  const visit = (value: unknown, location: string): void => {
+    if (Array.isArray(value)) {
+      value.forEach((entry, index) => visit(entry, `${location}/${index}`))
+      return
+    }
+    if (typeof value !== 'object' || value === null) return
+
+    const record = value as Record<string, unknown>
+    if (typeof record.$ref === 'string'
+      && record.$ref.startsWith('#')
+      && !resolveDocumentLocalRef(document, record.$ref)
+      && !unresolved.has(record.$ref)) {
+      unresolved.set(record.$ref, `${location}/$ref`)
+    }
+    for (const [key, entry] of Object.entries(record)) {
+      const escapedKey = key.replace(/~/g, '~0').replace(/\//g, '~1')
+      visit(entry, `${location}/${escapedKey}`)
+    }
+  }
+
+  visit(document, '#')
+  return [...unresolved].map(([ref, location]) => ({ ref, location }))
+}
+
 const cliCommandNames = new Set(CLI_COMMANDS.map(command => command.name))
 const cliAliases = new Set(CLI_COMMANDS.flatMap(command => command.aliases ?? []))
 const cliTopLevelNames = new Set([...cliCommandNames].map(name => name.split(' ')[0]))
@@ -448,6 +495,9 @@ if (existsSync(openApiPathOnDisk)) {
     if (spec.openapi !== '3.1.0') errors.push('docs/public/openapi.json: openapi must be 3.1.0')
     if (spec.info?.title !== 'Bakin API') errors.push('docs/public/openapi.json: info.title must be "Bakin API"')
     if (!spec.paths || Object.keys(spec.paths).length === 0) errors.push('docs/public/openapi.json: paths must not be empty')
+    for (const unresolved of unresolvedDocumentLocalRefs(spec)) {
+      errors.push(`docs/public/openapi.json: unresolved local $ref ${unresolved.ref} at ${unresolved.location}`)
+    }
     // Extracted plugins (messaging, projects) are exempt from typed-contract
     // validation and are excluded from openapi.json by the generator. Don't
     // require them here either — the docs surface for those plugins comes

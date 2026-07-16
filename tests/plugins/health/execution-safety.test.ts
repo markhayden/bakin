@@ -33,10 +33,19 @@ mock.module('../../../packages/core/src/logger', loggerMock)
 
 import { checkExecutionSafety } from '@bakin/health/lib/system-checks/execution-safety'
 import { closeDb } from '../../../packages/core/src/storage/db'
+import type { HealthCheckRunInput } from '@makinbakin/sdk'
+import { parseHealthCheckRunInput } from '../../../src/core/health-contract'
 
 function appendAuditLine(event: string, agoMs = 60_000): void {
   const line = JSON.stringify({ ts: new Date(Date.now() - agoMs).toISOString(), event, agent: 'test', data: {} })
   appendFileSync(join(testDir, 'audit.jsonl'), line + '\n', 'utf-8')
+}
+
+function observed(run: HealthCheckRunInput) {
+  const parsed = parseHealthCheckRunInput(run)
+  expect(parsed.outcome).toBe('observed')
+  if (parsed.outcome !== 'observed') throw new Error(parsed.reason)
+  return parsed.observations
 }
 
 beforeEach(() => {
@@ -52,8 +61,8 @@ afterEach(() => {
 describe('execution-safety health check', () => {
   it('is ok when no suppressions happened in the window', async () => {
     appendAuditLine('task.completed') // unrelated events don't count
-    const [result] = await checkExecutionSafety()
-    expect(result.status).toBe('ok')
+    const [result] = observed(await checkExecutionSafety())
+    expect(result.status).toBe('healthy')
   })
 
   it('warns with per-kind counts when the guards fired', async () => {
@@ -62,17 +71,20 @@ describe('execution-safety health check', () => {
     appendAuditLine('task.completion_suppressed')
     appendAuditLine('task.run_superseded')
 
-    const [result] = await checkExecutionSafety()
-    expect(result.status).toBe('warn')
-    expect(result.message).toContain('4 duplicate execution(s) suppressed')
-    expect(result.message).toContain('schedule.fire_suppressed=2')
-    expect(result.message).toContain('task.completion_suppressed=1')
+    const [result] = observed(await checkExecutionSafety())
+    expect(result.status).toBe('warning')
+    expect(result.summary).toContain('4 duplicate executions were suppressed')
+    expect(result.evidence?.counts).toEqual({
+      'schedule.fire_suppressed': 2,
+      'task.completion_suppressed': 1,
+      'task.run_superseded': 1,
+    })
   })
 
   it('ignores suppressions older than 24h', async () => {
     appendAuditLine('task.dispatch_suppressed', 25 * 60 * 60 * 1000)
-    const [result] = await checkExecutionSafety()
-    expect(result.status).toBe('ok')
+    const [result] = observed(await checkExecutionSafety())
+    expect(result.status).toBe('healthy')
   })
 
   it('errors when the ledger is unreachable (guards are failing closed)', async () => {
@@ -80,8 +92,8 @@ describe('execution-safety health check', () => {
     mkdirSync(join(testDir, 'blocked', 'bakin.db'), { recursive: true }) // a directory at the db path
     dbPath = join(testDir, 'blocked', 'bakin.db')
 
-    const [result] = await checkExecutionSafety()
+    const [result] = observed(await checkExecutionSafety())
     expect(result.status).toBe('error')
-    expect(result.message).toContain('failing closed')
+    expect(result.incident?.impact).toContain('fail closed')
   })
 })

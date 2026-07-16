@@ -1,5 +1,8 @@
-import type { AdapterHealthCheckDefinition, AdapterInitOpts, RuntimeExecToolProvider, Unsubscribe } from '../shared'
+import type { AdapterInitOpts, MessageUsage, RuntimeExecToolProvider, Unsubscribe } from '../shared'
+import type { ActivityClass } from '@makinbakin/sdk/types'
 import type { ChannelCapability } from './capabilities'
+
+export type { MessageUsage } from '../shared'
 
 export type RuntimeMetadata = Record<string, unknown>
 
@@ -94,6 +97,8 @@ export interface MessageAttachment {
 export interface MessageArgs extends RuntimeMessageToolPolicy {
   agentId: string
   content: string
+  /** Producer-assigned usage class; omitted interactive turns default to user. */
+  activityClass?: ActivityClass
   /**
    * Image attachments for the turn (runtime support is declared by
    * `capabilities().imageInput`; adapters reject unsupported media loudly
@@ -158,19 +163,6 @@ export interface MessageArgs extends RuntimeMessageToolPolicy {
  * assistant output text, strict `>`.
  */
 export const DEFAULT_OVERSIZED_OUTPUT_BYTES = 128 * 1024
-
-/** Token usage for one agent turn, when the runtime reports it. */
-export interface MessageUsage {
-  input?: number
-  output?: number
-  total?: number
-  /** Cached-input tokens read (priced far below fresh input when known). */
-  cacheRead?: number
-  /** Cached-input tokens written (cache creation). */
-  cacheWrite?: number
-  /** Resolved model the runtime ran, when known. */
-  model?: string
-}
 
 export interface MessageResult {
   id: string
@@ -818,9 +810,8 @@ export interface AgentRuntimeAdapter {
    * "Can this runtime serve a turn?" — a CHEAP probe (an HTTP health hit, a
    * credential-presence read; never an LLM call). Resolves `false` rather
    * than throwing when the runtime cannot serve (unreachable process,
-   * uninitialized adapter, no LLM credentials). Deep diagnostics belong to
-   * getHealthChecks(), not here — the health plugin's `runtime` check
-   * renders this as reachable/not-responding.
+   * uninitialized adapter, no LLM credentials). Deeper diagnostics are
+   * registered separately with the canonical Health registry.
    */
   ping(): Promise<boolean>
   /**
@@ -831,7 +822,6 @@ export interface AgentRuntimeAdapter {
    * writes and expect the next read to reflect them.
    */
   restart(): Promise<void>
-  getHealthChecks(): AdapterHealthCheckDefinition[]
 
   /**
    * CRUD error contract (R28): `get` returns `null` for a missing agent —

@@ -21,7 +21,12 @@ const contentDirMock = () => ({
 mock.module('../../src/core/content-dir', contentDirMock)
 mock.module('../../packages/core/src/content-dir', contentDirMock)
 
-import { getAllAgentUsage, parseSessionUsageContent, parseSessionUsageMessages } from '../../src/core/agent-usage'
+import {
+  getAgentUsageSnapshot,
+  getAllAgentUsage,
+  parseSessionUsageContent,
+  parseSessionUsageMessages,
+} from '../../src/core/agent-usage'
 
 interface FixtureSession {
   agentId: string
@@ -133,6 +138,49 @@ describe('parseSessionUsageContent', () => {
     expect(result?.cost.total).toBe(0)
   })
 
+  it('honors an explicit zero total instead of replacing it with component costs', () => {
+    const content = [
+      JSON.stringify({ type: 'session', id: 'sess-explicit-zero', timestamp: '2026-03-26T10:00:00Z' }),
+      JSON.stringify({
+        type: 'message',
+        message: {
+          role: 'assistant',
+          model: 'local-model',
+          usage: {
+            input: 100,
+            output: 50,
+            totalTokens: 150,
+            cost: { input: 0.25, output: 0.5, total: 0 },
+          },
+        },
+      }),
+    ].join('\n') + '\n'
+
+    expect(parseSessionUsageContent(content, 'local')?.cost.total).toBe(0)
+  })
+
+  it('derives total tokens from components when the runtime omits the additive total', () => {
+    const content = [
+      JSON.stringify({ type: 'session', id: 'sess-derived-tokens', timestamp: '2026-03-26T10:00:00Z' }),
+      JSON.stringify({
+        type: 'message',
+        message: {
+          role: 'assistant',
+          model: 'claude-opus-4-6',
+          usage: { input: 100, output: 50, cacheRead: 25, cacheWrite: 10 },
+        },
+      }),
+    ].join('\n') + '\n'
+
+    expect(parseSessionUsageContent(content, 'patch')?.tokens).toEqual({
+      input: 100,
+      output: 50,
+      cacheRead: 25,
+      cacheWrite: 10,
+      total: 185,
+    })
+  })
+
   it('derives total cost from runtime component costs when total is omitted', () => {
     const content = [
       JSON.stringify({ type: 'session', id: 'sess-component-cost', timestamp: '2026-03-26T10:00:00Z' }),
@@ -198,6 +246,50 @@ describe('parseSessionUsageContent', () => {
 
     expect(result).not.toBeNull()
     expect(result?.cost.total).toBeCloseTo(0.12)
+  })
+
+  it('withholds an aggregate whose individually finite costs overflow', () => {
+    const content = [
+      JSON.stringify({ type: 'session', id: 'sess-cost-overflow', timestamp: '2026-03-26T10:00:00Z' }),
+      JSON.stringify({
+        type: 'message',
+        message: {
+          role: 'assistant',
+          model: 'runtime-model',
+          usage: { input: 1, output: 0, totalTokens: 1, cost: { total: Number.MAX_VALUE } },
+        },
+      }),
+      JSON.stringify({
+        type: 'message',
+        message: {
+          role: 'assistant',
+          model: 'runtime-model',
+          usage: { input: 1, output: 0, totalTokens: 1, cost: { total: Number.MAX_VALUE } },
+        },
+      }),
+    ].join('\n')
+
+    expect(parseSessionUsageContent(content, 'overflow')).toBeNull()
+  })
+
+  it('normalizes parseable session timestamps to the wire datetime shape', () => {
+    const content = [
+      JSON.stringify({ type: 'session', id: 'sess-normalized-time', timestamp: 'July 15, 2026 12:00:00 UTC' }),
+      JSON.stringify({
+        type: 'message',
+        timestamp: 'July 15, 2026 12:01:00 UTC',
+        message: {
+          role: 'assistant',
+          model: 'runtime-model',
+          usage: { input: 1, output: 0, totalTokens: 1 },
+        },
+      }),
+    ].join('\n')
+
+    const result = parseSessionUsageContent(content, 'normalized')
+
+    expect(result?.sessionStarted).toBe('2026-07-15T12:00:00.000Z')
+    expect(result?.lastMessageAt).toBe('2026-07-15T12:01:00.000Z')
   })
 })
 
@@ -347,7 +439,7 @@ describe('getAllAgentUsage', () => {
     expect(result[1].agent).toBe('small')
   })
 
-  it('handles malformed JSONL lines gracefully', async () => {
+  it('withholds a partially parsed session instead of publishing an incomplete total', async () => {
     sessions.push({
       agentId: 'broken',
       id: 'session-1.jsonl',
@@ -364,9 +456,246 @@ describe('getAllAgentUsage', () => {
       ].join('\n') + '\n',
     })
 
-    const result = await getAllAgentUsage(makeRuntime())
-    expect(result).toHaveLength(1)
-    expect(result[0].messages).toBe(1)
+    const snapshot = await getAgentUsageSnapshot(makeRuntime())
+    expect(snapshot.sessions).toEqual([])
+    expect(snapshot.source).toEqual({
+      status: 'partial',
+      reason: 'session_read_failures',
+      failedAgents: ['broken'],
+    })
+  })
+})
+
+describe('getAgentUsageSnapshot', () => {
+  it('reports an unavailable transcript source instead of an empty complete fleet', async () => {
+    const runtime = makeRuntime()
+    runtime.memory.listTiers = async () => { throw new Error('runtime offline') }
+
+    const snapshot = await getAgentUsageSnapshot(runtime)
+
+    expect(snapshot.sessions).toEqual([])
+    expect(snapshot.source).toEqual({
+      status: 'unavailable',
+      reason: 'transcript_source_unavailable',
+      failedAgents: [],
+    })
+  })
+
+  it('reports an unavailable agent roster instead of no activity', async () => {
+    const runtime = makeRuntime()
+    runtime.agents.list = async () => { throw new Error('roster offline') }
+
+    const snapshot = await getAgentUsageSnapshot(runtime)
+
+    expect(snapshot.sessions).toEqual([])
+    expect(snapshot.source).toEqual({
+      status: 'unavailable',
+      reason: 'agent_roster_unavailable',
+      failedAgents: [],
+    })
+  })
+
+  it('keeps successful agents while naming agents whose session evidence failed', async () => {
+    writeSession('alpha', 'alpha.jsonl', [
+      { type: 'session', id: 'alpha-session', timestamp: '2026-07-15T10:00:00Z' },
+      { type: 'message', timestamp: '2026-07-15T10:01:00Z', message: { role: 'assistant', model: 'm1', usage: { input: 10, output: 2 } } },
+    ], { updatedAt: '2026-07-15T10:01:00Z' })
+    writeSession('beta', 'beta.jsonl', [
+      { type: 'session', id: 'beta-session', timestamp: '2026-07-15T10:00:00Z' },
+      { type: 'message', timestamp: '2026-07-15T10:02:00Z', message: { role: 'assistant', model: 'm1', usage: { input: 20, output: 4 } } },
+    ], { updatedAt: '2026-07-15T10:02:00Z' })
+    const runtime = makeRuntime()
+    const read = runtime.memory.getEntry.bind(runtime.memory)
+    runtime.memory.getEntry = async (tierId, id, opts) => {
+      if (opts?.agentId === 'beta') throw new Error('cannot read beta')
+      return await read(tierId, id, opts)
+    }
+
+    const snapshot = await getAgentUsageSnapshot(runtime)
+
+    expect(snapshot.sessions.map((row) => row.agent)).toEqual(['alpha'])
+    expect(snapshot.source).toEqual({
+      status: 'partial',
+      reason: 'session_read_failures',
+      failedAgents: ['beta'],
+    })
+  })
+
+  it('withholds schema-invalid and overflowing usage from the latest-session snapshot', async () => {
+    writeSession('alpha', 'alpha.jsonl', [
+      { type: 'session', id: 'alpha-session', timestamp: '2026-07-15T10:00:00Z' },
+      { type: 'message', timestamp: '2026-07-15T10:01:00Z', message: { role: 'assistant', model: 'm1', usage: { input: 10.5, output: 2 } } },
+    ], { updatedAt: '2026-07-15T10:01:00Z' })
+    writeSession('beta', 'beta.jsonl', [
+      { type: 'session', id: 'beta-session', timestamp: '2026-07-15T10:00:00Z' },
+      { type: 'message', timestamp: '2026-07-15T10:01:00Z', message: { role: 'assistant', model: 'm1', usage: { input: Number.MAX_SAFE_INTEGER, output: 0 } } },
+      { type: 'message', timestamp: '2026-07-15T10:02:00Z', message: { role: 'assistant', model: 'm1', usage: { input: 1, output: 0 } } },
+    ], { updatedAt: '2026-07-15T10:02:00Z' })
+    writeSession('gamma', 'gamma.jsonl', [
+      { type: 'session', id: 'gamma-session', timestamp: '2026-07-15T10:00:00Z' },
+      { type: 'message', timestamp: '2026-07-15T10:03:00Z', message: { role: 'assistant', model: 'm1', usage: {} } },
+    ], { updatedAt: '2026-07-15T10:03:00Z' })
+
+    const snapshot = await getAgentUsageSnapshot(makeRuntime())
+
+    expect(snapshot.sessions).toEqual([])
+    expect(snapshot.source).toEqual({
+      status: 'partial',
+      reason: 'session_read_failures',
+      failedAgents: ['alpha', 'beta', 'gamma'],
+    })
+  })
+
+  it('withholds a session when the compatibility scan cannot read every candidate', async () => {
+    writeSession('alpha', 'readable.jsonl', [
+      { type: 'session', id: 'readable-session', timestamp: '2026-07-15T10:00:00Z' },
+      { type: 'message', timestamp: '2026-07-15T10:01:00Z', message: { role: 'assistant', model: 'm1', usage: { input: 10, output: 2 } } },
+    ], { updatedAt: '2026-07-15T10:01:00Z' })
+    writeSession('alpha', 'unreadable.jsonl', [
+      { type: 'session', id: 'unreadable-session', timestamp: '2026-07-15T11:00:00Z' },
+    ])
+    const runtime = makeRuntime()
+    const read = runtime.memory.getEntry.bind(runtime.memory)
+    runtime.memory.getEntry = async (tierId, id, opts) => {
+      if (id === 'unreadable.jsonl') throw new Error('cannot read candidate')
+      return await read(tierId, id, opts)
+    }
+
+    const snapshot = await getAgentUsageSnapshot(runtime)
+
+    expect(snapshot.source).toEqual({
+      status: 'partial',
+      reason: 'session_read_failures',
+      failedAgents: ['alpha'],
+    })
+    expect(snapshot.sessions).toEqual([])
+  })
+
+  it('selects from listing metadata and reads only the newest full transcript', async () => {
+    writeSession('alpha', 'old.jsonl', [
+      { type: 'session', id: 'old-session', timestamp: '2026-07-15T12:00:00Z' },
+      { type: 'message', timestamp: '2026-07-15T12:01:00Z', message: { role: 'assistant', model: 'old', usage: { input: 100, output: 0 } } },
+    ], { updatedAt: '2026-07-15T12:01:00Z' })
+    writeSession('alpha', 'active.jsonl', [
+      { type: 'session', id: 'active-session', timestamp: '2026-07-14T12:00:00Z' },
+      { type: 'message', timestamp: '2026-07-15T13:01:00Z', message: { role: 'assistant', model: 'active', usage: { input: 200, output: 0 } } },
+    ], { updatedAt: '2026-07-15T13:01:00Z' })
+    const runtime = makeRuntime()
+    const read = runtime.memory.getEntry.bind(runtime.memory)
+    const getEntry = mock(async (...args: Parameters<typeof runtime.memory.getEntry>) => await read(...args))
+    runtime.memory.getEntry = getEntry
+
+    const snapshot = await getAgentUsageSnapshot(runtime)
+
+    expect(getEntry).toHaveBeenCalledTimes(1)
+    expect(snapshot.sessions[0]).toMatchObject({
+      sessionId: 'active-session',
+      model: 'active',
+      lastMessageAt: '2026-07-15T13:01:00.000Z',
+    })
+    expect(snapshot.source.status).toBe('complete')
+  })
+
+  it('withholds a metadata-selected session that changes while its transcript is read', async () => {
+    writeSession('alpha', 'active.jsonl', [
+      { type: 'session', id: 'active-session', timestamp: '2026-07-15T12:00:00Z' },
+      { type: 'message', timestamp: '2026-07-15T12:01:00Z', message: { role: 'assistant', model: 'active', usage: { input: 100, output: 0 } } },
+    ], { updatedAt: '2026-07-15T12:01:00Z' })
+    const runtime = makeRuntime()
+    const contentSize = Buffer.byteLength(sessions[0].content, 'utf-8')
+    let statCalls = 0
+    runtime.memory.statEntry = async () => {
+      statCalls++
+      return statCalls === 1
+        ? { mtimeMs: 1_000, size: contentSize }
+        : { mtimeMs: 2_000, size: contentSize + 64 }
+    }
+
+    const snapshot = await getAgentUsageSnapshot(runtime)
+
+    expect(statCalls).toBe(2)
+    expect(snapshot.sessions).toEqual([])
+    expect(snapshot.source).toEqual({
+      status: 'partial',
+      reason: 'session_read_failures',
+      failedAgents: ['alpha'],
+    })
+  })
+
+  it('withholds a metadata-selected prefix that does not match a stable file generation', async () => {
+    writeSession('alpha', 'active.jsonl', [
+      { type: 'session', id: 'active-session', timestamp: '2026-07-15T12:00:00Z' },
+      { type: 'message', timestamp: '2026-07-15T12:01:00Z', message: { role: 'assistant', model: 'active', usage: { input: 100, output: 0 } } },
+    ], { updatedAt: '2026-07-15T12:01:00Z' })
+    const runtime = makeRuntime()
+    const reportedSize = Buffer.byteLength(sessions[0].content, 'utf-8') + 64
+    runtime.memory.statEntry = async () => ({ mtimeMs: 1_000, size: reportedSize })
+
+    const snapshot = await getAgentUsageSnapshot(runtime)
+
+    expect(snapshot.sessions).toEqual([])
+    expect(snapshot.source).toEqual({
+      status: 'partial',
+      reason: 'session_read_failures',
+      failedAgents: ['alpha'],
+    })
+  })
+
+  it('withholds a session when stat evidence appears during its read', async () => {
+    writeSession('alpha', 'active.jsonl', [
+      { type: 'session', id: 'active-session', timestamp: '2026-07-15T12:00:00Z' },
+      { type: 'message', timestamp: '2026-07-15T12:01:00Z', message: { role: 'assistant', model: 'active', usage: { input: 100, output: 0 } } },
+    ], { updatedAt: '2026-07-15T12:01:00Z' })
+    const runtime = makeRuntime()
+    const contentSize = Buffer.byteLength(sessions[0].content, 'utf-8')
+    let statCalls = 0
+    runtime.memory.statEntry = async () => {
+      statCalls++
+      return statCalls === 1 ? null : { mtimeMs: 1_000, size: contentSize }
+    }
+
+    const snapshot = await getAgentUsageSnapshot(runtime)
+
+    expect(snapshot.sessions).toEqual([])
+    expect(snapshot.source).toEqual({
+      status: 'partial',
+      reason: 'session_read_failures',
+      failedAgents: ['alpha'],
+    })
+  })
+
+  it('withholds compatibility-scan evidence when any candidate changes during its read', async () => {
+    writeSession('alpha', 'older.jsonl', [
+      { type: 'session', id: 'older-session', timestamp: '2026-07-15T10:00:00Z' },
+      { type: 'message', timestamp: '2026-07-15T10:01:00Z', message: { role: 'assistant', model: 'older', usage: { input: 10, output: 0 } } },
+    ])
+    writeSession('alpha', 'active.jsonl', [
+      { type: 'session', id: 'active-session', timestamp: '2026-07-15T12:00:00Z' },
+      { type: 'message', timestamp: '2026-07-15T12:01:00Z', message: { role: 'assistant', model: 'active', usage: { input: 100, output: 0 } } },
+    ])
+    const runtime = makeRuntime()
+    const statCalls = new Map<string, number>()
+    runtime.memory.statEntry = async (_tierId, id) => {
+      const call = (statCalls.get(id) ?? 0) + 1
+      statCalls.set(id, call)
+      const session = sessions.find((entry) => entry.id === id)!
+      const size = Buffer.byteLength(session.content, 'utf-8')
+      if (id === 'active.jsonl' && call === 2) return { mtimeMs: 2_000, size: size + 64 }
+      return { mtimeMs: 1_000, size }
+    }
+
+    const snapshot = await getAgentUsageSnapshot(runtime)
+
+    expect(statCalls).toEqual(new Map([
+      ['older.jsonl', 2],
+      ['active.jsonl', 2],
+    ]))
+    expect(snapshot.sessions).toEqual([])
+    expect(snapshot.source).toEqual({
+      status: 'partial',
+      reason: 'session_read_failures',
+      failedAgents: ['alpha'],
+    })
   })
 })
 
@@ -386,7 +715,7 @@ describe('parseSessionUsageMessages', () => {
 
     const parsed = parseSessionUsageMessages(content)
     expect(parsed.sessionId).toBe('sess-1')
-    expect(parsed.sessionStarted).toBe('2026-07-01T10:00:00Z')
+    expect(parsed.sessionStarted).toBe('2026-07-01T10:00:00.000Z')
     expect(parsed.messages).toHaveLength(2)
 
     expect(parsed.messages[0].tsMs).toBe(Date.parse('2026-07-01T10:01:00Z'))
@@ -409,7 +738,7 @@ describe('parseSessionUsageMessages', () => {
     expect(parsed.messages[0].model).toBe('')
   })
 
-  it('skips malformed lines, non-assistant roles, and usage-less messages', () => {
+  it('surfaces malformed lines while retaining valid messages for inspection', () => {
     const content = [
       'not json {{{',
       JSON.stringify({ type: 'message', message: { role: 'user' } }),
@@ -417,8 +746,171 @@ describe('parseSessionUsageMessages', () => {
       JSON.stringify({ type: 'message', timestamp: '2026-07-01T10:00:00Z', message: { role: 'assistant', usage: { input: 3, output: 4, totalTokens: 7 } } }),
     ].join('\n')
     const parsed = parseSessionUsageMessages(content)
+    expect(parsed.integrity).toEqual({ status: 'partial', malformedLines: 1 })
     expect(parsed.messages).toHaveLength(1)
     expect(parsed.messages[0].tokens.total).toBe(7)
+  })
+
+  it('reports complete integrity when every non-empty line is valid JSON', () => {
+    const parsed = parseSessionUsageMessages([
+      JSON.stringify({ type: 'session', id: 's' }),
+      JSON.stringify({ type: 'message', message: { role: 'user' } }),
+    ].join('\n'))
+
+    expect(parsed.integrity).toEqual({ status: 'complete', malformedLines: 0 })
+  })
+
+  it('marks structurally invalid known message rows partial', () => {
+    const parsed = parseSessionUsageMessages([
+      JSON.stringify({ type: 'message' }),
+      JSON.stringify({ type: 'message', message: null }),
+      JSON.stringify({ type: 'message', message: {} }),
+      JSON.stringify({ type: 'message', message: { role: 42 } }),
+      JSON.stringify({ type: 'message', timestamp: 42, message: { role: 'user' } }),
+      JSON.stringify({ type: 'message', message: { role: 'assistant', model: 42 } }),
+      JSON.stringify({ type: 'message', message: { role: 'user', content: 'valid and intentionally ignored' } }),
+      JSON.stringify({ type: 'message', message: { role: 'assistant', model: 'm1' } }),
+    ].join('\n'))
+
+    expect(parsed.integrity).toEqual({ status: 'partial', malformedLines: 6 })
+    expect(parsed.messages).toEqual([])
+  })
+
+  it('treats valid JSON scalars and arrays as malformed transcript rows', () => {
+    const parsed = parseSessionUsageMessages([
+      'null',
+      '42',
+      '[]',
+      JSON.stringify({ type: 'session', id: 's' }),
+    ].join('\n'))
+
+    expect(parsed.integrity).toEqual({ status: 'partial', malformedLines: 3 })
+  })
+
+  it('requires a string transcript type while keeping unknown string types forward-compatible', () => {
+    const malformed = parseSessionUsageMessages([
+      JSON.stringify({}),
+      JSON.stringify({ type: 42 }),
+    ].join('\n'))
+    const forwardCompatible = parseSessionUsageMessages(JSON.stringify({
+      type: 'future_runtime_metadata',
+      payload: { version: 1 },
+    }))
+
+    expect(malformed.integrity).toEqual({ status: 'partial', malformedLines: 2 })
+    expect(forwardCompatible.integrity).toEqual({ status: 'complete', malformedLines: 0 })
+  })
+
+  it('marks invalid known timestamps partial instead of publishing incompatible evidence', () => {
+    const parsed = parseSessionUsageMessages([
+      JSON.stringify({ type: 'session', id: 's', timestamp: 'not-a-date' }),
+      JSON.stringify({
+        type: 'message',
+        timestamp: 'also-not-a-date',
+        message: { role: 'assistant', usage: { input: 1, output: 0, totalTokens: 1 } },
+      }),
+    ].join('\n'))
+
+    expect(parsed.integrity).toEqual({ status: 'partial', malformedLines: 2 })
+    expect(parsed.messages).toEqual([])
+  })
+
+  it('rejects parseable message timestamps outside the four-digit wire year range', () => {
+    const parsed = parseSessionUsageMessages(JSON.stringify({
+      type: 'message',
+      timestamp: '+275760-09-13T00:00:00.000Z',
+      message: { role: 'assistant', usage: { input: 1, output: 0, totalTokens: 1 } },
+    }))
+
+    expect(parsed.integrity).toEqual({ status: 'partial', malformedLines: 1 })
+    expect(parsed.messages).toEqual([])
+  })
+
+  it('rejects invalid assistant token and cost fields instead of coercing them into totals', () => {
+    const tokenFields = ['input', 'output', 'cacheRead', 'cacheWrite', 'totalTokens'] as const
+    const costFields = ['input', 'output', 'cacheRead', 'cacheWrite', 'total'] as const
+    const invalidTokenLines = tokenFields.map((field, index) => JSON.stringify({
+      type: 'message',
+      message: {
+        role: 'assistant',
+        usage: { input: 1, output: 1, [field]: index === 0 ? '3' : -1 },
+      },
+    }))
+    const invalidCostLines = costFields.map((field) => JSON.stringify({
+      type: 'message',
+      message: {
+        role: 'assistant',
+        usage: { input: 1, output: 1, cost: { [field]: -1 } },
+      },
+    }))
+    const invalidUsageShape = JSON.stringify({
+      type: 'message',
+      message: { role: 'assistant', usage: [] },
+    })
+    const fractionalTokenLines = tokenFields.map((field) => JSON.stringify({
+      type: 'message',
+      message: {
+        role: 'assistant',
+        usage: { input: 1, output: 1, [field]: 1.5 },
+      },
+    }))
+    const unsafeTokenLines = tokenFields.map((field) => JSON.stringify({
+      type: 'message',
+      message: {
+        role: 'assistant',
+        usage: { input: 1, output: 1, [field]: Number.MAX_SAFE_INTEGER + 1 },
+      },
+    }))
+    const validLine = JSON.stringify({
+      type: 'message',
+      message: { role: 'assistant', usage: { input: 2, output: 1, totalTokens: 3 } },
+    })
+
+    const parsed = parseSessionUsageMessages([
+      ...invalidTokenLines,
+      ...invalidCostLines,
+      invalidUsageShape,
+      ...fractionalTokenLines,
+      ...unsafeTokenLines,
+      validLine,
+    ].join('\n'))
+
+    expect(parsed.integrity).toEqual({ status: 'partial', malformedLines: 21 })
+    expect(parsed.messages).toHaveLength(1)
+    expect(parsed.messages[0].tokens.total).toBe(3)
+  })
+
+  it('marks incomplete or contradictory token totals partial', () => {
+    const parsed = parseSessionUsageMessages([
+      JSON.stringify({
+        type: 'message',
+        message: { role: 'assistant', usage: { input: 10 } },
+      }),
+      JSON.stringify({
+        type: 'message',
+        message: { role: 'assistant', usage: { input: 10, output: 5, totalTokens: 0 } },
+      }),
+      JSON.stringify({
+        type: 'message',
+        message: { role: 'assistant', usage: {} },
+      }),
+    ].join('\n'))
+
+    expect(parsed.integrity).toEqual({ status: 'partial', malformedLines: 3 })
+    expect(parsed.messages).toEqual([])
+  })
+
+  it('rejects total-only transcript usage instead of fabricating zero components', () => {
+    const content = JSON.stringify({
+      type: 'message',
+      message: { role: 'assistant', usage: { totalTokens: 15 } },
+    })
+
+    const parsed = parseSessionUsageMessages(content)
+
+    expect(parsed.integrity).toEqual({ status: 'partial', malformedLines: 1 })
+    expect(parsed.messages).toEqual([])
+    expect(parseSessionUsageContent(content, 'main')).toBeNull()
   })
 
   it('agrees with parseSessionUsageContent sums (single-parser invariant)', () => {

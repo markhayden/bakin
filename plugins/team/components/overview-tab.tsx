@@ -148,6 +148,34 @@ export function OverviewTab({
   )
   const loading = statsRes.loading || activityRes.loading || skillsRes.loading || lessonsRes.loading
   const usage = statsRes.error ? null : (statsRes.data?.usage ?? null)
+  const reportedCost = usage?.cost.total ?? null
+  const costedMessages = usage?.costedMessages
+  const costCoverageKnown = Boolean(
+    usage
+    && typeof costedMessages === 'number'
+    && Number.isInteger(costedMessages)
+    && costedMessages >= 0
+    && costedMessages <= usage.messages
+    && (costedMessages === 0
+      ? reportedCost === null && usage.cost.source === 'unavailable'
+      : reportedCost !== null && usage.cost.source === 'runtime'),
+  )
+  const costCoverageComplete = Boolean(
+    usage
+    && costCoverageKnown
+    && usage.messages > 0
+    && costedMessages === usage.messages,
+  )
+  const costValue = reportedCost === null
+    ? '—'
+    : `${fmtCost(reportedCost)}${costCoverageComplete ? '' : '+'}`
+  const costSublabel = !usage || reportedCost === null
+    ? undefined
+    : costCoverageComplete
+      ? `${fmtCost(reportedCost / usage.messages)}/msg`
+      : costCoverageKnown
+        ? `Partial reported cost · ${costedMessages} of ${usage.messages} messages`
+        : 'Reported cost · coverage unavailable'
   const activity =
     !activityRes.error && activityRes.data?.ok && activityRes.data.activity ? activityRes.data.activity : null
   const skillCount = skillsRes.loading
@@ -268,8 +296,8 @@ export function OverviewTab({
           />
           <MetricTile
             label="Cost"
-            value={loading ? '—' : fmtCost(usage?.cost.total ?? null)}
-            sublabel={usage && usage.messages > 0 && usage.cost.total !== null ? `${fmtCost(usage.cost.total / usage.messages)}/msg` : undefined}
+            value={loading ? '—' : costValue}
+            sublabel={loading ? undefined : costSublabel}
             icon={Coins}
             accent="text-emerald-300"
             accentBg="bg-emerald-500/15"

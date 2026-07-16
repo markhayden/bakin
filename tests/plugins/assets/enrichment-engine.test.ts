@@ -180,24 +180,23 @@ describe('runtimeEngineAvailability capability gating', () => {
   })
 })
 
-describe('checkEnrichmentEngine doctor row', () => {
+describe('checkEnrichmentEngine health observation', () => {
   it('reports the active runtime engine + agent when keyless and capable', async () => {
     const row = await checkEnrichmentEngine({}, runtimeWith({ imageInput: true, audioInput: false }))
-    expect(row.status).toBe('ok')
-    expect(row.message).toContain("runtime agent 'enrich'")
-    expect(row.message).toContain('subscription quota')
+    expect(row.status).toBe('healthy')
+    expect(row.summary).toContain('Runtime agent enrichment is ready with enrich')
   })
 
   it('reports the direct engine when a key is configured', async () => {
     setAnthropicKey()
     const row = await checkEnrichmentEngine({}, null)
-    expect(row.status).toBe('ok')
-    expect(row.message).toContain('direct API (anthropic/claude-haiku-4-5)')
+    expect(row.status).toBe('healthy')
+    expect(row.summary).toContain('Direct API enrichment is ready with anthropic/claude-haiku-4-5')
   })
 
   it('warns with the composed capability verdict when nothing can serve', async () => {
     const row = await checkEnrichmentEngine({}, runtimeWith({ imageInput: false, audioInput: false }))
-    expect(row.status).toBe('warn')
-    expect(row.message).toContain("agent 'enrich' has no image input")
+    expect(row.status).toBe('warning')
+    expect(row.summary).toContain("agent 'enrich' has no image input")
   })
 })

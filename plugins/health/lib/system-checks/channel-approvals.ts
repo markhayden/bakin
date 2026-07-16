@@ -7,45 +7,66 @@
  */
 import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
 import { hasChannelCapability } from '@bakin/core/adapters/runtime'
-import type { HealthCheckResult } from '../../../../packages/core/src/plugin-types'
+import { healthHealthy, healthNotApplicable, healthObserved, healthUnknown, healthWarning } from '@makinbakin/sdk/utils'
+import type { HealthCheckRunInput } from '@makinbakin/sdk'
+import { stableKeyPart } from './key'
 
 export async function checkChannelApprovals(
   runtime: Pick<AgentRuntimeAdapter, 'channels'>
-): Promise<HealthCheckResult[]> {
+): Promise<HealthCheckRunInput> {
   // Optional capability (P2.1): no channel layer → gates are UI-only by
   // design, not a degraded state worth warning about.
   if (!runtime.channels) {
-    return [{
-      check: 'channel-approvals',
-      status: 'ok',
-      message: 'The active runtime has no channel layer — approve/reject workflow gates in the Bakin UI.',
-      autoFixable: false,
-    }]
+    return healthNotApplicable('The active runtime has no channel layer; workflow gates remain available in the Bakin UI.')
   }
   try {
     const channels = await runtime.channels.list()
     const interactive = channels.filter((channel) => hasChannelCapability(channel.capabilities, 'interactive-approval'))
     if (interactive.length > 0) {
-      return [{
-        check: 'channel-approvals',
-        status: 'ok',
-        message: `Interactive channel approvals available on: ${interactive.map((channel) => channel.label || channel.id).join(', ')}`,
-        autoFixable: false,
-      }]
+      return healthObserved([healthHealthy({
+        key: 'interactive-support',
+        summary: 'Interactive channel approvals are available.',
+        detail: `Available on ${interactive.slice(0, 20).map((channel) => channel.label || channel.id).join(', ')}`.slice(0, 3_999) + '.',
+        evidence: { channelIds: interactive.slice(0, 50).map((channel) => channel.id.slice(0, 500)) },
+      })])
     }
 
-    return [{
-      check: 'channel-approvals',
-      status: 'warn',
-      message: 'Runtime channel approvals are render-only. Approve/reject workflow gates in the Bakin UI until a runtime channel reports interactive-approval support.',
-      autoFixable: false,
-    }]
+    return healthObserved([healthWarning({
+      key: 'interactive-support',
+      summary: 'Runtime channel approvals are render-only.',
+      detail: 'Approve or reject workflow gates in the Bakin UI until a runtime channel supports interactive approvals.',
+      evidence: { channelIds: channels.slice(0, 50).map((channel) => channel.id.slice(0, 500)) },
+      incident: {
+        key: 'render-only',
+        title: 'Channel approvals require the Bakin UI',
+        impact: 'Operators cannot approve or reject workflow gates directly from runtime channels.',
+        disposition: 'advisory',
+        resources: channels.slice(0, 50).map((channel) => ({
+          kind: 'channel' as const,
+          id: stableKeyPart(channel.id),
+          label: (channel.label || channel.id).slice(0, 120),
+        })),
+        resolution: {
+          key: 'open-gates',
+          type: 'navigate',
+          label: 'Review workflow gates',
+          href: '/tasks',
+        },
+      },
+    })])
   } catch (err) {
-    return [{
-      check: 'channel-approvals',
-      status: 'warn',
-      message: `Could not inspect runtime channel approval capabilities: ${err instanceof Error ? err.message : String(err)}`,
-      autoFixable: false,
-    }]
+    return healthObserved([healthUnknown({
+      key: 'interactive-support',
+      summary: 'Channel approval support could not be verified.',
+      detail: err instanceof Error ? err.message : String(err),
+      incident: {
+        key: 'inspection-failed',
+        title: 'Channel approval support is unknown',
+        impact: 'Health cannot confirm whether approvals can be completed from runtime channels.',
+        disposition: 'watch',
+        resources: [{ kind: 'runtime', id: 'active', label: 'Active runtime' }],
+        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
+      },
+    })])
   }
 }

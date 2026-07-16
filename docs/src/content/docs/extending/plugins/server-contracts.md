@@ -218,24 +218,50 @@ registered or returns `{ ok: false, error }`, the run is recorded as a failure.
 
 ## Health Checks
 
-Doctor checks are plugin-registered. Each `ctx.registerHealthCheck()` call adds one row to the registry; the doctor sweep runs registered checks and isolates failures.
+Health checks are plugin-registered, owner-aware producers. Each `ctx.registerHealthCheck()` call adds one definition to the canonical registry. The runner isolates failures, validates the complete result, stamps ownership and freshness, and projects one immutable `HealthReport` for every consumer.
 
 ```ts
+import { healthHealthy, healthObserved } from '@makinbakin/sdk/utils'
+
 ctx.registerHealthCheck({
   id: 'storage',
   name: 'Docs Basic storage',
-  run: async () => [
-    {
-      check: 'docs-basic.storage',
-      status: 'ok',
-      message: 'Storage is reachable.',
-      autoFixable: false,
-    },
-  ],
+  description: 'Verifies that the plugin storage directory is readable.',
+  group: { key: 'storage', label: 'Storage' },
+  maxAgeMs: 60_000,
+  run: async () => healthObserved([
+    healthHealthy({
+      key: 'directory',
+      summary: 'Plugin storage is reachable.',
+      evidence: { mode: 'read-write' },
+    }),
+  ]),
 })
 ```
 
-The registered ID is auto-namespaced to `{pluginId}.{id}`. A throwing check becomes a synthetic error result and does not crash the sweep.
+The registered ID is namespaced to `{pluginId}.{id}`. Observation and incident keys remain stable within that check; titles and messages are display text, never identity. Use structured resources and JSON-safe evidence so UI, CLI, delegation, and repair flows do not parse prose.
+
+An observed run must contain at least one observation. Return `healthNotApplicable(reason)` when a check does not apply. Do not return an empty array, invent a healthy result after a failed read, or mutate state while diagnosing. A thrown or invalid result becomes a core-owned **Unable to verify** incident while unrelated checks continue.
+
+Status and incident disposition are intentionally constrained:
+
+- `healthHealthy(...)` has no incident.
+- `healthWarning(...)` carries an advisory, watch, or action-required incident.
+- `healthError(...)` always carries an action-required incident.
+- `healthUnknown(...)` carries a watch incident for evidence that could not be verified.
+
+Core stamps the plugin owner, full check and observation IDs, execution timestamps, snapshot freshness, and incident IDs. `maxAgeMs` controls when retained evidence becomes stale; stale last-known evidence is never presented as current health.
+
+### Repair actions
+
+Register deterministic repairs separately with `ctx.registerHealthRepairAction()`, then reference the owner-local action ID from an observation's repair resolution. A repair action has two phases:
+
+1. `plan(target)` describes concrete changes, safety (`safe`, `manual`, or `destructive`), and affected evidence without mutating anything.
+2. `apply(items)` performs only the selected plan items and returns applied/skipped/failed results plus affected check IDs.
+
+The server stores the opaque plan, binds it to observation execution IDs and resolution keys, and expires it after ten minutes. Manual and destructive items require individual confirmation. If affected evidence changes or resolves before apply, the server returns `STALE_PLAN` and performs zero mutations. After apply, core reruns affected checks so “applied” and “verified” remain distinct.
+
+Registration validates IDs and lengths, group metadata, same-origin navigation, resource shapes, evidence JSON safety and size, and owner-local repair references. Invalid registration fails plugin activation and appears in the plugin failure registry. Hot reload removes the plugin's checks, repair actions, and cached snapshots together.
 
 ## Settings
 

@@ -1,8 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { atomicWriteJson } from '@bakin/core/storage/atomic-write'
-import type { HealthCheckResult } from '../../packages/core/src/plugin-types'
-import type { DoctorRepairPlanReport } from './doctor-repair'
+import type { HealthRepairPlan } from '../../packages/core/src/plugin-types'
 
 /** Typed absence — routes map to 404 by instanceof, never message text. */
 export class DoctorRepairRequestNotFoundError extends Error {
@@ -22,13 +21,15 @@ export interface DoctorRepairRequestEvent {
 }
 
 export interface DoctorRepairRequest {
+  version: 2
   id: string
   kind: 'delegate'
   status: DoctorRepairRequestStatus
   createdAt: string
   updatedAt: string
-  plan: DoctorRepairPlanReport
-  unresolved: HealthCheckResult[]
+  plan: HealthRepairPlan
+  incidentIds: string[]
+  observationIds: string[]
   taskId?: string
   agentId?: string
   events: DoctorRepairRequestEvent[]
@@ -42,20 +43,30 @@ function monthShard(dateIso: string): string {
   return dateIso.slice(0, 7)
 }
 
-function repairRoot(contentDir: string): string {
+/**
+ * `doctor/repair-requests` is the immutable v1 archive. V2 deliberately uses
+ * a distinct root and never lists or parses bytes from that legacy directory.
+ */
+export function repairRequestV2Root(contentDir: string): string {
+  return join(contentDir, 'doctor', 'repair-requests-v2')
+}
+
+export function legacyRepairRequestArchiveRoot(contentDir: string): string {
   return join(contentDir, 'doctor', 'repair-requests')
 }
 
 function requestPath(contentDir: string, request: Pick<DoctorRepairRequest, 'id' | 'createdAt'>): string {
-  return join(repairRoot(contentDir), monthShard(request.createdAt), `${request.id}.json`)
+  return join(repairRequestV2Root(contentDir), monthShard(request.createdAt), `${request.id}.json`)
 }
 
 function readRequestFile(path: string): DoctorRepairRequest {
-  return JSON.parse(readFileSync(path, 'utf-8')) as DoctorRepairRequest
+  const parsed = JSON.parse(readFileSync(path, 'utf-8')) as DoctorRepairRequest
+  if (parsed.version !== 2) throw new Error('Unsupported doctor repair request version')
+  return parsed
 }
 
 function findRequestPath(contentDir: string, requestId: string): string | null {
-  const root = repairRoot(contentDir)
+  const root = repairRequestV2Root(contentDir)
   if (!existsSync(root)) return null
   for (const shard of readdirSync(root)) {
     const path = join(root, shard, `${requestId}.json`)
@@ -67,26 +78,24 @@ function findRequestPath(contentDir: string, requestId: string): string | null {
 export function createDoctorRepairRequest(
   contentDir: string,
   input: {
-    plan: DoctorRepairPlanReport
-    unresolved: HealthCheckResult[]
+    plan: HealthRepairPlan
+    incidentIds: string[]
+    observationIds: string[]
     events?: DoctorRepairRequestEvent[]
   },
 ): DoctorRepairRequest {
   const ts = nowIso()
-  const id = `repair-${crypto.randomUUID()}`
   const request: DoctorRepairRequest = {
-    id,
+    version: 2,
+    id: `repair-${crypto.randomUUID()}`,
     kind: 'delegate',
     status: 'planned',
     createdAt: ts,
     updatedAt: ts,
-    plan: input.plan,
-    unresolved: input.unresolved,
-    events: input.events ?? [{
-      ts,
-      type: 'created',
-      message: 'Delegated doctor repair request planned.',
-    }],
+    plan: structuredClone(input.plan),
+    incidentIds: [...new Set(input.incidentIds)].sort(),
+    observationIds: [...new Set(input.observationIds)].sort(),
+    events: input.events ?? [{ ts, type: 'created', message: 'Delegated Health repair request planned.' }],
   }
   atomicWriteJson(requestPath(contentDir, request), request)
   return request
@@ -105,32 +114,20 @@ export function updateDoctorRepairRequest(
   const path = findRequestPath(contentDir, requestId)
   if (!path) throw new DoctorRepairRequestNotFoundError(requestId)
   const current = readRequestFile(path)
-  const next = { ...update(current), updatedAt: nowIso() }
+  const next = { ...update(current), version: 2 as const, updatedAt: nowIso() }
   atomicWriteJson(path, next)
   return next
 }
 
-export function appendDoctorRepairRequestEvent(
-  contentDir: string,
-  requestId: string,
-  event: Omit<DoctorRepairRequestEvent, 'ts'>,
-): DoctorRepairRequest {
-  return updateDoctorRepairRequest(contentDir, requestId, request => ({
-    ...request,
-    events: [...request.events, { ...event, ts: nowIso() }],
-  }))
-}
-
 export function listDoctorRepairRequests(contentDir: string): DoctorRepairRequest[] {
-  const root = repairRoot(contentDir)
+  const root = repairRequestV2Root(contentDir)
   if (!existsSync(root)) return []
   const requests: DoctorRepairRequest[] = []
   for (const shard of readdirSync(root)) {
     const dir = join(root, shard)
     if (!existsSync(dir)) continue
     for (const file of readdirSync(dir)) {
-      if (!file.endsWith('.json')) continue
-      requests.push(readRequestFile(join(dir, file)))
+      if (file.endsWith('.json')) requests.push(readRequestFile(join(dir, file)))
     }
   }
   return requests.sort((a, b) => b.createdAt.localeCompare(a.createdAt))

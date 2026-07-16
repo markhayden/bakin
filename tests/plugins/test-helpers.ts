@@ -25,7 +25,8 @@ import type {
   BakinPlugin,
   SearchResult,
   SearchResponse,
-  PluginHealthCheckInput,
+  HealthCheckRegistrationInput,
+  HealthRepairActionDefinition,
   SearchQueryParams,
   WorkflowDefinitionInput,
 } from '@bakin/core/plugin-types'
@@ -207,7 +208,8 @@ export function createTestContext(pluginId: string, testDir: string): ActivatedP
     registerNotificationChannel: (def: Parameters<PluginContext['registerNotificationChannel']>[0]) => {
       return registerPluginNotificationChannel(pluginId, def)
     },
-    registerHealthCheck: vi.fn((def: PluginHealthCheckInput) => `${pluginId}.${def.id}`),
+    registerHealthCheck: vi.fn((def: HealthCheckRegistrationInput) => `${pluginId}.${def.id}`),
+    registerHealthRepairAction: vi.fn((def: HealthRepairActionDefinition) => `${pluginId}.${def.id}`),
     watchFiles: vi.fn(),
     getSettings: (() => ({})) as PluginContext['getSettings'],
     updateSettings: vi.fn(),

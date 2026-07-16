@@ -1,85 +1,238 @@
 /**
- * `bakin doctor [--full] [--fix] [--delegate] [repair ...]` — offline/full
- * health checks, deterministic repair plan/apply, and delegated repair.
- * Relocated verbatim from cli/bakin.ts (B5.3 command-module split).
+ * `bakin doctor [--full] [--fix] [--delegate] [repair ...]` — canonical
+ * Health reports, targeted deterministic repair, and delegated repair.
  */
+import type {
+  HealthCheckState,
+  HealthIncident,
+  HealthIncidentInput,
+  HealthObservation,
+  HealthObservationStatus,
+  HealthRepairApplyResult,
+  HealthRepairPlan,
+  HealthRepairTarget,
+  HealthReport,
+  HealthReportStatus,
+  SearchReadinessStage,
+} from '@makinbakin/sdk/types'
 import { apiGet, apiPost } from '../http'
 import { print } from '../output'
 import { exitUsage, exitUnknownSubcommand, promptYesNo } from '../help'
 import { renderInkReport } from '../../core/cli/ui/render-report'
 
-type CliDoctorResult = {
-  results: Array<{ check: string; status: string; message: string }>
-  summary: { total: number; errors: number; warnings: number }
-  mode?: 'offline' | 'full'
+type DoctorMode = 'offline' | 'full'
+type DoctorExitCode = 0 | 1 | 2
+
+interface CliDoctorRepairApply {
+  planId: string
+  basedOnReportId: string
+  results: HealthRepairApplyResult[]
+  affectedCheckIds: string[]
+  verifiedReportId: string
+  verifiedIncidentIds: string[]
+  report: HealthReport
 }
 
-type CliDoctorRepairChange = {
-  kind: string
-  target: string
-  action: string
-  description: string
-}
-
-type CliDoctorRepairPlanItem = {
-  id: string
-  checkId: string
-  healthCheckId?: string
-  pluginId?: string
-  checkName?: string
-  title: string
-  reason: string
-  safety: 'safe' | 'manual' | 'destructive'
-  requiresConfirmation: boolean
-  changes: CliDoctorRepairChange[]
-}
-
-type CliDoctorRepairPlan = {
-  diagnostics: Array<{ check: string; status: string; message: string; autoFixable?: boolean }>
-  items: CliDoctorRepairPlanItem[]
-  errors: Array<{ phase: string; healthCheckId: string; message: string }>
-  summary: {
-    diagnostics: number
-    repairableChecks: number
-    totalItems: number
-    safeItems: number
-    blockedItems: number
-    planErrors: number
-  }
-}
-
-type CliDoctorRepairApply = {
-  status: 'confirmation_required' | 'applied'
-  plan: CliDoctorRepairPlan
-  applied: Array<{ id: string; checkId: string; status: string; message: string; changes: CliDoctorRepairChange[] }>
-  skipped: Array<{ id: string; checkId: string; status: string; message: string; changes: CliDoctorRepairChange[] }>
-  errors: Array<{ phase: string; healthCheckId: string; message: string }>
-  verification: Array<{ check: string; status: string; message: string; autoFixable?: boolean }>
-  summary: {
-    planned: number
-    applied: number
-    skipped: number
-    failed: number
-    verificationErrors: number
-    verificationWarnings: number
-  }
-}
-
-type CliDoctorDelegateReport = {
+interface CliDoctorDelegateReport {
   status: 'confirmation_required' | 'sent' | 'no_unresolved'
   request: Record<string, unknown>
-  unresolved: Array<{ check: string; status: string; message: string; autoFixable?: boolean }>
+  incidents: HealthIncident[]
 }
 
-function summarizeDoctorResults(results: CliDoctorResult['results']): CliDoctorResult['summary'] {
+interface OfflineCheckResult {
+  name: string
+  status: 'ok' | 'missing' | 'broken' | 'warn' | 'error'
+  message: string
+  remediation?: string
+}
+
+const coreOwner = { kind: 'core' as const, id: 'core', label: 'Bakin' }
+const localGroup = { key: 'offline-local', label: 'Local setup' }
+const unverifiedGroup = { key: 'offline-unverified', label: 'Requires server' }
+
+function futureIso(timestamp: string, milliseconds: number): string {
+  return new Date(Date.parse(timestamp) + milliseconds).toISOString()
+}
+
+function stablePart(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9.-]+/g, '-').replace(/^-|-$/g, '') || 'check'
+}
+
+function offlineCheckId(name: string): string {
+  return `core.offline.${stablePart(name)}`
+}
+
+function offlineIncident(
+  name: string,
+  status: 'warning' | 'error',
+  remediation?: string,
+): HealthIncidentInput {
+  const id = stablePart(name)
+  const base = {
+    key: 'attention',
+    title: `${name} needs attention`,
+    impact: 'Local setup may be incomplete or inconsistent.',
+    resources: [{ kind: 'system' as const, id, label: name }],
+    resolution: {
+      key: 'review-setup',
+      type: 'instructions' as const,
+      label: 'Review local setup',
+      steps: [remediation ?? `Run the ${name} onboarding step again.`] as [string],
+    },
+  }
+  return status === 'error'
+    ? { ...base, disposition: 'action_required' }
+    : { ...base, disposition: 'watch' }
+}
+
+function localObservation(result: OfflineCheckResult, generatedAt: string): HealthObservation {
+  const checkId = offlineCheckId(result.name)
+  const status: HealthObservationStatus = result.status === 'ok'
+    ? 'healthy'
+    : result.status === 'warn'
+      ? 'warning'
+      : 'error'
+  const base = {
+    id: `${checkId}:status`,
+    key: 'status',
+    summary: result.message,
+    ...(result.remediation ? { detail: result.remediation } : {}),
+    checkId,
+    checkName: result.name,
+    owner: coreOwner,
+    group: localGroup,
+    checkedAt: generatedAt,
+    observedAt: generatedAt,
+    staleAt: futureIso(generatedAt, 5 * 60_000),
+    snapshot: 'current' as const,
+  }
+  if (status === 'healthy') return { ...base, status }
+  const incident = offlineIncident(result.name, status, result.remediation)
   return {
-    total: results.length,
-    errors: results.filter(r => r.status === 'error').length,
-    warnings: results.filter(r => r.status === 'warn').length,
+    ...base,
+    status,
+    incidentId: `core:offline:${stablePart(result.name)}:attention`,
+    incident,
+  } as HealthObservation
+}
+
+function unknownObservation(
+  id: string,
+  name: string,
+  summary: string,
+  generatedAt: string,
+  resources: HealthIncidentInput['resources'] = [{ kind: 'system', id }],
+): HealthObservation {
+  const checkId = offlineCheckId(id)
+  return {
+    id: `${checkId}:unverified`,
+    key: 'unverified',
+    status: 'unknown',
+    summary,
+    checkId,
+    checkName: name,
+    owner: coreOwner,
+    group: unverifiedGroup,
+    checkedAt: generatedAt,
+    observedAt: generatedAt,
+    staleAt: generatedAt,
+    snapshot: 'current',
+    incidentId: `core:offline:${id}:unverified`,
+    incident: {
+      key: `${id}-unverified`,
+      title: `${name} could not be verified`,
+      impact: 'Offline diagnostics could not establish current evidence for this source.',
+      disposition: 'watch',
+      resources,
+      resolution: { key: 'rerun-full', type: 'rerun', label: 'Run full diagnostics' },
+    },
   }
 }
 
-async function runOfflineDoctor(): Promise<CliDoctorResult> {
+function observedCheckState(observation: HealthObservation, generatedAt: string): HealthCheckState {
+  const executionId = `offline:${observation.checkId}:${generatedAt}`
+  return {
+    checkId: observation.checkId,
+    checkName: observation.checkName,
+    description: `Offline local check for ${observation.checkName}.`,
+    owner: observation.owner,
+    group: observation.group,
+    latestExecution: {
+      id: executionId,
+      checkId: observation.checkId,
+      startedAt: generatedAt,
+      completedAt: generatedAt,
+      outcome: 'observed',
+    },
+    latestValidSnapshot: { executionId, observations: [observation] },
+  }
+}
+
+function failedCheckState(observation: HealthObservation, generatedAt: string, code: string, message: string): HealthCheckState {
+  return {
+    checkId: observation.checkId,
+    checkName: observation.checkName,
+    description: `Offline verification boundary for ${observation.checkName}.`,
+    owner: observation.owner,
+    group: observation.group,
+    latestExecution: {
+      id: `offline:${observation.checkId}:${generatedAt}`,
+      checkId: observation.checkId,
+      startedAt: generatedAt,
+      completedAt: generatedAt,
+      outcome: 'failed',
+      error: { code, message },
+    },
+  }
+}
+
+function canonicalIncidents(observations: readonly HealthObservation[], generatedAt: string): HealthIncident[] {
+  return observations.flatMap((observation): HealthIncident[] => {
+    if (observation.status === 'healthy') return []
+    return [{
+      id: observation.incidentId,
+      status: observation.status,
+      disposition: observation.incident.disposition,
+      title: observation.incident.title,
+      impact: observation.incident.impact,
+      resources: observation.incident.resources ?? [],
+      resolution: observation.incident.resolution,
+      observationIds: [observation.id],
+      observedAt: observation.observedAt,
+      staleAt: observation.staleAt,
+      stale: Date.parse(observation.staleAt) <= Date.parse(generatedAt),
+    }]
+  })
+}
+
+function deriveOfflineStatus(checks: readonly HealthCheckState[], incidents: readonly HealthIncident[]): HealthReportStatus {
+  if (incidents.some(incident => incident.disposition === 'action_required')) return 'needs_attention'
+  if (
+    checks.some(check => check.latestExecution.outcome === 'failed' || check.latestExecution.outcome === 'invalid')
+    || incidents.some(incident => incident.status === 'unknown' || incident.stale)
+  ) return 'unknown_stale'
+  if (incidents.some(incident => incident.disposition === 'watch')) return 'degraded'
+  return 'healthy'
+}
+
+function offlineSearchStages(): SearchReadinessStage[] {
+  return ([
+    ['engine', 'Engine'],
+    ['queries', 'Queries'],
+    ['indexes', 'Indexes'],
+    ['journal', 'Journal'],
+  ] as const).map(([key, label]) => ({
+    key,
+    label,
+    status: 'unknown',
+    summary: `${label} readiness is unverified in offline mode.`,
+    observedAt: null,
+    staleAt: null,
+    observationIds: [],
+  }))
+}
+
+async function runOfflineDoctor(): Promise<HealthReport> {
   const [
     { mkdirComponent },
     { settingsComponent },
@@ -95,7 +248,9 @@ async function runOfflineDoctor(): Promise<CliDoctorResult> {
     import('../../core/onboarding/agent-sync'),
     import('../../core/onboarding/recommended-plugins'),
   ])
-  const checks = []
+  const generatedAt = new Date().toISOString()
+  const observations: HealthObservation[] = []
+  const checks: HealthCheckState[] = []
   for (const component of [
     mkdirComponent,
     settingsComponent,
@@ -105,77 +260,163 @@ async function runOfflineDoctor(): Promise<CliDoctorResult> {
     recommendedPluginsComponent,
   ]) {
     try {
-      checks.push(await component.check())
-    } catch (err) {
-      checks.push({
-        name: component.name,
-        status: 'error' as const,
-        message: `check() threw: ${err instanceof Error ? err.message : String(err)}`,
+      const observation = localObservation(await component.check(), generatedAt)
+      observations.push(observation)
+      checks.push(observedCheckState(observation, generatedAt))
+    } catch (error) {
+      const observation = unknownObservation(
+        component.name,
+        component.name,
+        `${component.name} could not be checked in offline mode.`,
+        generatedAt,
+      )
+      observations.push({
+        ...observation,
+        detail: error instanceof Error ? error.message : String(error),
       })
+      checks.push(failedCheckState(observation, generatedAt, 'OFFLINE_CHECK_FAILED', 'The local check did not complete.'))
     }
   }
-  const results: CliDoctorResult['results'] = checks.map(check => ({
-    check: check.name,
-    status: check.status === 'ok' ? 'ok' : check.status === 'warn' ? 'warn' : 'error',
-    message: check.remediation ? `${check.message} ${check.remediation}` : check.message,
-  }))
-  results.push({
-    check: 'runtime',
-    status: 'warn',
-    message: 'Skipped live runtime checks in offline mode. Run `bakin doctor --full` after `bakin start` to verify runtime reachability, agents, LLM providers, and channels.',
-  })
-  results.push({
-    check: 'plugin-assets',
-    status: 'warn',
-    message: 'Skipped runtime skill projection checks in offline mode. Run `bakin doctor --full` after `bakin start` to verify plugin assets.',
-  })
-  results.push({
-    check: 'server-backed-checks',
-    status: 'warn',
-    message: 'Skipped plugin, search index, workflow, task, and server health checks that require the Bakin server. Run `bakin doctor --full` after `bakin start`.',
-  })
-  return { results, summary: summarizeDoctorResults(results), mode: 'offline' }
+
+  const unverified = [
+    unknownObservation(
+      'runtime',
+      'Runtime health',
+      'Runtime reachability, agents, providers, and channels are unverified offline.',
+      generatedAt,
+      [{ kind: 'runtime', id: 'active' }],
+    ),
+    unknownObservation(
+      'plugin-assets',
+      'Plugin asset projections',
+      'Runtime plugin asset projections are unverified offline.',
+      generatedAt,
+      [{ kind: 'asset', id: 'plugin-projections' }],
+    ),
+    unknownObservation(
+      'server-checks',
+      'Server-backed health',
+      'Plugin, search, workflow, task, and server health are unverified offline.',
+      generatedAt,
+      [{ kind: 'system', id: 'server-backed-health' }],
+    ),
+  ]
+  for (const observation of unverified) {
+    observations.push(observation)
+    checks.push(failedCheckState(
+      observation,
+      generatedAt,
+      'OFFLINE_UNVERIFIED',
+      'This source requires a running Bakin server.',
+    ))
+  }
+
+  const incidents = canonicalIncidents(observations, generatedAt)
+  const overallStatus = deriveOfflineStatus(checks, incidents)
+  const serverIncidentId = 'core:offline:server-checks:unverified'
+  return {
+    id: `health-report-offline-${generatedAt}`,
+    revision: 0,
+    generatedAt,
+    overallStatus,
+    lastFullSweep: null,
+    checks,
+    observations,
+    incidents,
+    subsystems: {
+      search: {
+        status: 'unknown',
+        summary: 'Search readiness is unverified in offline mode.',
+        observedAt: null,
+        staleAt: null,
+        stages: offlineSearchStages(),
+        incidentIds: [serverIncidentId],
+      },
+    },
+    summary: {
+      checks: {
+        registered: checks.length,
+        completed: checks.filter(check => check.latestExecution.outcome === 'observed' || check.latestExecution.outcome === 'not_applicable').length,
+        failed: checks.filter(check => check.latestExecution.outcome === 'failed').length,
+        invalid: checks.filter(check => check.latestExecution.outcome === 'invalid').length,
+        notApplicable: checks.filter(check => check.latestExecution.outcome === 'not_applicable').length,
+      },
+      incidents: {
+        actionRequired: incidents.filter(incident => incident.disposition === 'action_required').length,
+        watching: incidents.filter(incident => incident.disposition === 'watch').length,
+        advisory: incidents.filter(incident => incident.disposition === 'advisory').length,
+        unknown: incidents.filter(incident => incident.status === 'unknown').length,
+      },
+    },
+  }
 }
 
-async function runFullDoctor(options: { notifyAgent: boolean }): Promise<CliDoctorResult> {
-  const query = options.notifyAgent
-    ? '/api/plugins/health/doctor?fresh=true&notifyAgent=true'
-    : '/api/plugins/health/doctor?fresh=true'
-  const result = await apiGet(query) as CliDoctorResult
-  return { ...result, mode: 'full' }
+async function runFullDoctor(options: { notifyAgent?: boolean } = {}): Promise<HealthReport> {
+  return await apiPost('/api/plugins/health/doctor/run', {
+    notifyAgent: options.notifyAgent === true,
+  }) as HealthReport
 }
 
-async function runDoctorRepairPlan(): Promise<CliDoctorRepairPlan> {
-  return await apiGet('/api/plugins/health/doctor/repair/plan') as CliDoctorRepairPlan
+function doctorExitCode(report: Pick<HealthReport, 'overallStatus'>): DoctorExitCode {
+  switch (report.overallStatus) {
+    case 'healthy':
+      return 0
+    case 'degraded':
+      return 2
+    case 'needs_attention':
+    case 'unknown_stale':
+      return 1
+  }
 }
 
-async function runDoctorRepairApply(): Promise<CliDoctorRepairApply> {
-  return await apiPost('/api/plugins/health/doctor/repair/apply', { accepted: true }) as CliDoctorRepairApply
+async function runDoctorRepairPlan(report: HealthReport): Promise<HealthRepairPlan> {
+  const target: HealthRepairTarget = { type: 'all_actionable', reportId: report.id }
+  return await apiPost('/api/plugins/health/doctor/repair/plan', { target }) as HealthRepairPlan
 }
 
-async function runDoctorDelegateApply(): Promise<CliDoctorDelegateReport> {
-  return await apiPost('/api/plugins/health/doctor/delegate', { accepted: true }) as CliDoctorDelegateReport
+async function runDoctorRepairApply(plan: HealthRepairPlan, itemIds: [string, ...string[]]): Promise<CliDoctorRepairApply> {
+  return await apiPost('/api/plugins/health/doctor/repair/apply', {
+    planId: plan.planId,
+    itemIds,
+    confirmedItemIds: [],
+  }) as CliDoctorRepairApply
 }
 
-function doctorRepairExitCode(report: CliDoctorRepairApply): 0 | 1 | 2 {
-  if (report.summary.failed > 0 || report.summary.verificationErrors > 0 || report.errors.length > 0) return 1
-  if (report.summary.verificationWarnings > 0) return 2
-  return 0
+async function runDoctorDelegateApply(report: HealthReport, incidents: [HealthIncident, ...HealthIncident[]]): Promise<CliDoctorDelegateReport> {
+  const target: HealthRepairTarget = {
+    type: 'incidents',
+    reportId: report.id,
+    ids: incidents.map(incident => incident.id) as [string, ...string[]],
+  }
+  return await apiPost('/api/plugins/health/doctor/delegate', { accepted: true, target }) as CliDoctorDelegateReport
 }
 
-function printDoctorRepairJson(data: unknown, exitCode: 0 | 1 | 2, error: { code: string; message: string } | null = null): void {
+function repairApplyExitCode(report: CliDoctorRepairApply): DoctorExitCode {
+  if (report.results.some(result => result.status === 'failed')) return 1
+  return doctorExitCode(report.report)
+}
+
+function printDoctorCommandJson(
+  command: string,
+  data: unknown,
+  exitCode: DoctorExitCode,
+  error: { code: string; message: string } | null = null,
+): void {
   console.log(JSON.stringify({
     ok: error === null && exitCode !== 1,
-    command: 'doctor --fix',
+    command,
     exitCode,
     data,
     error,
   }, null, 2))
 }
 
-function printDoctorRepairPlan(plan: CliDoctorRepairPlan): void {
+function printDoctorRepairPlan(plan: HealthRepairPlan): void {
+  const safe = plan.items.filter(item => item.safety === 'safe').length
+  const manual = plan.items.filter(item => item.safety === 'manual').length
+  const destructive = plan.items.filter(item => item.safety === 'destructive').length
   console.log('Doctor repair plan')
-  console.log(`${plan.summary.safeItems} safe, ${plan.summary.blockedItems} blocked, ${plan.summary.planErrors} plan errors`)
+  console.log(`${safe} safe, ${manual} manual, ${destructive} destructive`)
   if (plan.items.length === 0) {
     console.log('No deterministic repairs available.')
     return
@@ -183,6 +424,7 @@ function printDoctorRepairPlan(plan: CliDoctorRepairPlan): void {
   for (const item of plan.items) {
     console.log(`\n[${item.safety.toUpperCase()}] ${item.title}`)
     console.log(`  id: ${item.id}`)
+    console.log(`  action: ${item.actionId}`)
     console.log(`  reason: ${item.reason}`)
     for (const change of item.changes) {
       console.log(`  - ${change.action} ${change.target}: ${change.description}`)
@@ -192,133 +434,135 @@ function printDoctorRepairPlan(plan: CliDoctorRepairPlan): void {
 
 function printDoctorRepairApply(report: CliDoctorRepairApply): void {
   console.log('Doctor repair results')
-  for (const result of report.applied) {
-    const label = result.status === 'applied' ? 'APPLIED' : result.status.toUpperCase()
-    console.log(`[${label}] ${result.id}: ${result.message}`)
+  for (const result of report.results) {
+    console.log(`[${result.status.toUpperCase()}] ${result.actionId}: ${result.message}`)
   }
-  for (const result of report.skipped) {
-    console.log(`[SKIPPED] ${result.id}: ${result.message}`)
-  }
-  console.log(`\n${report.summary.applied} applied, ${report.summary.skipped} skipped, ${report.summary.failed} failed`)
-  if (report.verification.length > 0) {
-    console.log(`${report.summary.verificationErrors} verification errors, ${report.summary.verificationWarnings} verification warnings`)
-  }
+  const applied = report.results.filter(result => result.status === 'applied').length
+  const skipped = report.results.filter(result => result.status === 'skipped').length
+  const failed = report.results.filter(result => result.status === 'failed').length
+  console.log(`\n${applied} applied, ${skipped} skipped, ${failed} failed`)
+  console.log(`${report.verifiedIncidentIds.length} selected incident(s) remain after verification`)
 }
 
-function unresolvedDelegateRows(plan: CliDoctorRepairPlan): CliDoctorRepairPlan['diagnostics'] {
-  const safeRepairChecks = new Set(
-    plan.items
-      .filter(item => item.safety === 'safe')
-      .map(item => item.checkId),
-  )
-  return plan.diagnostics.filter(row => (
-    (row.status === 'warn' || row.status === 'error')
-    && !safeRepairChecks.has(row.check)
-  ))
-}
-
-function printDoctorDelegatePreview(plan: CliDoctorRepairPlan, unresolved: CliDoctorRepairPlan['diagnostics']): void {
+function printDoctorDelegatePreview(incidents: readonly HealthIncident[]): void {
   console.log('Doctor delegated repair preview')
-  if (unresolved.length === 0) {
-    console.log('No unresolved findings need delegated repair.')
+  if (incidents.length === 0) {
+    console.log('No action-required incidents need delegated repair.')
     return
   }
-  for (const row of unresolved) {
-    console.log(`[${row.status.toUpperCase()}] ${row.check}: ${row.message}`)
+  for (const incident of incidents) {
+    console.log(`[${incident.status.toUpperCase()}] ${incident.id}: ${incident.title}`)
+    console.log(`  ${incident.impact}`)
   }
 }
 
 function printDoctorDelegateResult(report: CliDoctorDelegateReport): void {
   if (report.status === 'no_unresolved') {
-    console.log('No unresolved findings need delegated repair.')
+    console.log('No action-required incidents need delegated repair.')
     return
   }
   const request = report.request as { id?: string; taskId?: string; agentId?: string }
   console.log(`Delegated doctor repair ${request.id ?? ''}`)
   if (request.taskId) console.log(`Task: ${request.taskId}`)
   if (request.agentId) console.log(`Agent: ${request.agentId}`)
+  for (const incident of report.incidents) console.log(`  ${incident.id}: ${incident.title}`)
 }
 
-async function printDoctorRepairPlanTui(plan: CliDoctorRepairPlan): Promise<void> {
-  return renderInkReport(() => import('../../core/cli/ui/doctor-repair'), (m) => m.DoctorRepairPlan, { plan })
+async function printDoctorRepairPlanTui(plan: HealthRepairPlan): Promise<void> {
+  return renderInkReport(() => import('../../core/cli/ui/doctor-repair'), module => module.DoctorRepairPlan, { plan })
 }
 
-async function printDoctorRepairApplyTui(report: CliDoctorRepairApply, opts: { showBrand?: boolean } = {}): Promise<void> {
-  return renderInkReport(() => import('../../core/cli/ui/doctor-repair'), (m) => m.DoctorRepairApplyReport, { report, showBrand: opts.showBrand })
+async function printDoctorRepairApplyTui(report: CliDoctorRepairApply, options: { showBrand?: boolean } = {}): Promise<void> {
+  return renderInkReport(() => import('../../core/cli/ui/doctor-repair'), module => module.DoctorRepairApplyReport, {
+    report,
+    showBrand: options.showBrand,
+  })
 }
 
-async function printDoctorDelegatePreviewTui(unresolved: CliDoctorRepairPlan['diagnostics']): Promise<void> {
-  return renderInkReport(() => import('../../core/cli/ui/doctor-repair'), (m) => m.DoctorDelegatePreview, { unresolved })
+async function printDoctorDelegatePreviewTui(incidents: HealthIncident[]): Promise<void> {
+  return renderInkReport(() => import('../../core/cli/ui/doctor-repair'), module => module.DoctorDelegatePreview, { incidents })
 }
 
-async function printDoctorDelegateResultTui(report: CliDoctorDelegateReport, opts: { showBrand?: boolean } = {}): Promise<void> {
-  return renderInkReport(() => import('../../core/cli/ui/doctor-repair'), (m) => m.DoctorDelegateResult, { report, showBrand: opts.showBrand })
+async function printDoctorDelegateResultTui(report: CliDoctorDelegateReport, options: { showBrand?: boolean } = {}): Promise<void> {
+  return renderInkReport(() => import('../../core/cli/ui/doctor-repair'), module => module.DoctorDelegateResult, {
+    report,
+    showBrand: options.showBrand,
+  })
 }
 
 async function printDoctorRepairRequestsTui(requests: Array<Record<string, unknown>>): Promise<void> {
-  return renderInkReport(() => import('../../core/cli/ui/doctor-repair'), (m) => m.DoctorRepairRequestsReport, { requests })
+  return renderInkReport(() => import('../../core/cli/ui/doctor-repair'), module => module.DoctorRepairRequestsReport, { requests })
 }
 
 async function printDoctorRepairRequestTui(request: Record<string, unknown>): Promise<void> {
-  return renderInkReport(() => import('../../core/cli/ui/doctor-repair'), (m) => m.DoctorRepairRequestReport, { request })
+  return renderInkReport(() => import('../../core/cli/ui/doctor-repair'), module => module.DoctorRepairRequestReport, { request })
 }
 
 async function printDoctorRepairVerifyTui(requestId: string, result: Record<string, unknown>): Promise<void> {
-  return renderInkReport(() => import('../../core/cli/ui/doctor-repair'), (m) => m.DoctorRepairVerifyReport, { requestId, result })
+  return renderInkReport(() => import('../../core/cli/ui/doctor-repair'), module => module.DoctorRepairVerifyReport, { requestId, result })
 }
 
-async function confirmDoctorRepair(plan: CliDoctorRepairPlan): Promise<boolean> {
-  if (plan.summary.safeItems === 0) return false
-  return promptYesNo(`Apply ${plan.summary.safeItems} safe repair item${plan.summary.safeItems === 1 ? '' : 's'}?`)
+async function confirmDoctorRepair(count: number): Promise<boolean> {
+  if (count === 0) return false
+  return promptYesNo(`Apply ${count} safe repair item${count === 1 ? '' : 's'}?`)
 }
 
-async function confirmDoctorDelegate(unresolved: CliDoctorRepairPlan['diagnostics']): Promise<boolean> {
-  if (unresolved.length === 0) return false
-  return promptYesNo(`Create a delegated repair task for ${unresolved.length} finding${unresolved.length === 1 ? '' : 's'}?`)
+async function confirmDoctorDelegate(count: number): Promise<boolean> {
+  if (count === 0) return false
+  return promptYesNo(`Create a delegated repair task for ${count} incident${count === 1 ? '' : 's'}?`)
 }
 
 async function cmdDoctorFix(options: { json: boolean; yes: boolean; isTTY: boolean }): Promise<void> {
-  let acceptedInteractively = false
-  if (!options.yes) {
-    const plan = await runDoctorRepairPlan()
+  const current = await runFullDoctor()
+  const plan = await runDoctorRepairPlan(current)
+  const safeItemIds = plan.items.filter(item => item.safety === 'safe').map(item => item.id)
+  if (safeItemIds.length === 0) {
     if (options.json) {
-      if (plan.summary.totalItems === 0) {
-        printDoctorRepairJson({ status: 'planned', plan }, 0)
-        return
-      }
-      printDoctorRepairJson(
-        { status: 'confirmation_required', plan },
-        1,
-        { code: 'CONFIRMATION_REQUIRED', message: 'Run `bakin doctor --fix --yes` to apply safe deterministic repairs.' },
-      )
-      process.exit(1)
-    }
-
-    if (options.isTTY) {
+      printDoctorCommandJson('doctor --fix', { status: 'no_safe_repairs', plan }, 0)
+    } else if (options.isTTY) {
       await printDoctorRepairPlanTui(plan)
     } else {
       printDoctorRepairPlan(plan)
     }
-    if (plan.summary.totalItems === 0) return
+    return
+  }
 
-    if (!options.isTTY) {
-      console.log('\nRun `bakin doctor --fix --yes` to apply safe deterministic repairs.')
+  let acceptedInteractively = false
+  if (!options.yes) {
+    if (options.json) {
+      printDoctorCommandJson(
+        'doctor --fix',
+        { status: 'confirmation_required', plan },
+        1,
+        { code: 'CONFIRMATION_REQUIRED', message: 'Run `bakin doctor --fix --yes` to apply the safe plan items.' },
+      )
       process.exit(1)
     }
-    const accepted = await confirmDoctorRepair(plan)
-    if (!accepted) {
+    if (options.isTTY) await printDoctorRepairPlanTui(plan)
+    else printDoctorRepairPlan(plan)
+
+    if (!options.isTTY) {
+      console.log('\nRun `bakin doctor --fix --yes` to apply the safe plan items.')
+      process.exit(1)
+    }
+    if (!await confirmDoctorRepair(safeItemIds.length)) {
       console.log('Repair cancelled.')
       process.exit(1)
     }
     acceptedInteractively = true
   }
 
-  const report = await runDoctorRepairApply()
-  const exitCode = doctorRepairExitCode(report)
+  const report = await runDoctorRepairApply(plan, safeItemIds as [string, ...string[]])
+  const exitCode = repairApplyExitCode(report)
   if (options.json) {
-    printDoctorRepairJson(report, exitCode, exitCode === 1
-      ? { code: 'DOCTOR_REPAIR_FAILED', message: 'One or more deterministic doctor repairs failed or did not verify.' }
-      : null)
+    printDoctorCommandJson(
+      'doctor --fix',
+      report,
+      exitCode,
+      exitCode === 1 && report.results.some(result => result.status === 'failed')
+        ? { code: 'DOCTOR_REPAIR_FAILED', message: 'One or more selected Health repair actions failed.' }
+        : null,
+    )
     if (exitCode !== 0) process.exit(exitCode)
     return
   }
@@ -331,45 +575,48 @@ async function cmdDoctorFix(options: { json: boolean; yes: boolean; isTTY: boole
   if (exitCode !== 0) process.exit(exitCode)
 }
 
+function actionRequiredIncidents(report: HealthReport): HealthIncident[] {
+  return report.incidents.filter(incident => incident.disposition === 'action_required')
+}
+
 async function cmdDoctorDelegate(options: { json: boolean; yes: boolean; isTTY: boolean }): Promise<void> {
+  const current = await runFullDoctor()
+  const incidents = actionRequiredIncidents(current)
+  if (incidents.length === 0) {
+    const result = { status: 'no_action_required', reportId: current.id, incidents: [] }
+    if (options.json) printDoctorCommandJson('doctor --delegate', result, 0)
+    else if (options.isTTY) await printDoctorDelegatePreviewTui([])
+    else printDoctorDelegatePreview([])
+    return
+  }
+
   let acceptedInteractively = false
   if (!options.yes) {
-    const plan = await runDoctorRepairPlan()
-    const unresolved = unresolvedDelegateRows(plan)
     if (options.json) {
-      if (unresolved.length === 0) {
-        printDoctorRepairJson({ status: 'no_unresolved', plan, unresolved }, 0)
-        return
-      }
-      printDoctorRepairJson(
-        { status: 'confirmation_required', plan, unresolved },
+      printDoctorCommandJson(
+        'doctor --delegate',
+        { status: 'confirmation_required', reportId: current.id, incidents },
         1,
         { code: 'CONFIRMATION_REQUIRED', message: 'Run `bakin doctor --delegate --yes` to create the delegated repair task.' },
       )
       process.exit(1)
     }
-
-    if (options.isTTY) {
-      await printDoctorDelegatePreviewTui(unresolved)
-    } else {
-      printDoctorDelegatePreview(plan, unresolved)
-    }
-    if (unresolved.length === 0) return
+    if (options.isTTY) await printDoctorDelegatePreviewTui(incidents)
+    else printDoctorDelegatePreview(incidents)
     if (!options.isTTY) {
       console.log('\nRun `bakin doctor --delegate --yes` to create the delegated repair task.')
       process.exit(1)
     }
-    const accepted = await confirmDoctorDelegate(unresolved)
-    if (!accepted) {
+    if (!await confirmDoctorDelegate(incidents.length)) {
       console.log('Delegated repair cancelled.')
       process.exit(1)
     }
     acceptedInteractively = true
   }
 
-  const report = await runDoctorDelegateApply()
+  const report = await runDoctorDelegateApply(current, incidents as [HealthIncident, ...HealthIncident[]])
   if (options.json) {
-    printDoctorRepairJson(report, 0)
+    printDoctorCommandJson('doctor --delegate', report, 0)
     return
   }
   if (options.isTTY) {
@@ -402,7 +649,7 @@ async function cmdDoctorRepair(args: string[], options: { json: boolean; isTTY: 
   if (sub === 'list') {
     const result = await apiGet('/api/plugins/health/doctor/repair') as { requests?: Array<Record<string, unknown>> }
     if (options.json) {
-      printDoctorRepairJson(result, 0)
+      printDoctorCommandJson('doctor repair list', result, 0)
       return
     }
     const requests = doctorRepairRequestList(result.requests)
@@ -421,9 +668,7 @@ async function cmdDoctorRepair(args: string[], options: { json: boolean; isTTY: 
   }
 
   if (sub !== 'show' && sub !== 'verify') {
-    if (options.isTTY) {
-      await exitUnknownSubcommand('doctor repair', sub, ['list', 'show', 'verify'])
-    }
+    if (options.isTTY) await exitUnknownSubcommand('doctor repair', sub, ['list', 'show', 'verify'])
     console.error(`Unknown doctor repair subcommand: ${sub}`)
     process.exit(1)
   }
@@ -431,9 +676,7 @@ async function cmdDoctorRepair(args: string[], options: { json: boolean; isTTY: 
   const requestId = args[2]
   if (!requestId) {
     const usage = `bakin doctor repair ${sub} <request-id>`
-    if (options.isTTY) {
-      await exitUsage(usage)
-    }
+    if (options.isTTY) await exitUsage(usage)
     console.error(`Usage: ${usage}`)
     process.exit(1)
   }
@@ -441,7 +684,7 @@ async function cmdDoctorRepair(args: string[], options: { json: boolean; isTTY: 
   if (sub === 'show') {
     const result = await apiGet(`/api/plugins/health/doctor/repair/${encodeURIComponent(requestId)}`)
     if (options.json) {
-      printDoctorRepairJson(result, 0)
+      printDoctorCommandJson('doctor repair show', result, 0)
       return
     }
     if (options.isTTY) {
@@ -452,19 +695,45 @@ async function cmdDoctorRepair(args: string[], options: { json: boolean; isTTY: 
     return
   }
 
-  if (sub === 'verify') {
-    const result = await apiPost(`/api/plugins/health/doctor/repair/${encodeURIComponent(requestId)}/verify`)
-    if (options.json) {
-      printDoctorRepairJson(result, 0)
-      return
-    }
-    if (options.isTTY) {
-      await printDoctorRepairVerifyTui(requestId, doctorRepairRecord(result) ?? {})
-      return
-    }
-    print(result)
+  const result = await apiPost(`/api/plugins/health/doctor/repair/${encodeURIComponent(requestId)}/verify`)
+  if (options.json) {
+    printDoctorCommandJson('doctor repair verify', result, 0)
     return
   }
+  if (options.isTTY) {
+    await printDoctorRepairVerifyTui(requestId, doctorRepairRecord(result) ?? {})
+    return
+  }
+  print(result)
+}
+
+function printPlainDoctor(report: HealthReport): void {
+  const represented = new Set<string>()
+  for (const observation of report.observations) {
+    represented.add(observation.checkId)
+    const status = observation.snapshot === 'last_known'
+      ? 'LAST KNOWN'
+      : observation.status === 'healthy'
+        ? 'OK'
+        : observation.status === 'warning'
+          ? 'WARN'
+          : observation.status === 'error'
+            ? 'FAIL'
+            : 'UNKNOWN'
+    const summary = observation.snapshot === 'last_known'
+      ? `Last known: ${observation.summary}`
+      : observation.summary
+    console.log(`  [${status}] ${observation.checkId}: ${summary}`)
+  }
+  for (const check of report.checks) {
+    if (represented.has(check.checkId) || check.latestExecution.outcome === 'observed') continue
+    const status = check.latestExecution.outcome === 'not_applicable' ? 'N/A' : 'UNKNOWN'
+    const message = check.latestExecution.reason ?? check.latestExecution.error?.message ?? 'No current evidence.'
+    console.log(`  [${status}] ${check.checkId}: ${message}`)
+  }
+  console.log('')
+  const incidents = report.summary.incidents
+  console.log(`${report.overallStatus}: ${incidents.actionRequired} action required, ${incidents.watching} watching, ${incidents.advisory} advisory, ${incidents.unknown} unknown`)
 }
 
 async function cmdDoctor(args: string[] = process.argv.slice(2)): Promise<void> {
@@ -487,57 +756,22 @@ async function cmdDoctor(args: string[] = process.argv.slice(2)): Promise<void> 
     await cmdDoctorDelegate({ json, yes, isTTY })
     return
   }
-  const result = full ? await runFullDoctor({ notifyAgent }) : await runOfflineDoctor()
 
+  const mode: DoctorMode = full ? 'full' : 'offline'
+  const report = full ? await runFullDoctor({ notifyAgent }) : await runOfflineDoctor()
+  const exitCode = doctorExitCode(report)
   if (json) {
-    console.log(JSON.stringify({
-      ok: result.summary.errors === 0,
-      command: 'doctor',
-      exitCode: result.summary.errors > 0 ? 1 : result.summary.warnings > 0 ? 2 : 0,
-      data: result,
-      error: result.summary.errors > 0
-        ? { code: 'DOCTOR_ERRORS', message: `${result.summary.errors} doctor check${result.summary.errors === 1 ? '' : 's'} failed` }
-        : null,
-    }, null, 2))
-    if (result.summary.errors > 0) process.exit(1)
-    if (result.summary.warnings > 0) process.exit(2)
-    return
-  }
-
-  if (isTTY) {
+    console.log(JSON.stringify(report, null, 2))
+  } else if (isTTY) {
     const { DoctorReport } = await import('../../core/cli/ui/doctor')
     const { renderToString } = await import('../../core/cli/ui/render-to-string')
     const { createElement } = await import('react')
-    console.log(renderToString(createElement(DoctorReport, {
-      results: result.results,
-      summary: result.summary,
-      mode: result.mode,
-    })))
-    if (result.summary.errors > 0) process.exit(1)
-    if (result.summary.warnings > 0) process.exit(2)
-    return
-  }
-
-  const statusIcon: Record<string, string> = { ok: 'OK', warn: 'WARN', error: 'FAIL', fixed: 'FIXED' }
-
-  for (const r of result.results) {
-    const icon = statusIcon[r.status] || r.status
-    console.log(`  [${icon}] ${r.check}: ${r.message}`)
-  }
-
-  console.log('')
-  const { total, errors, warnings } = result.summary
-  if (errors > 0) {
-    console.log(`${errors} errors, ${warnings} warnings out of ${total} checks`)
-  } else if (warnings > 0) {
-    console.log(`${warnings} warnings out of ${total} checks`)
+    console.log(renderToString(createElement(DoctorReport, { report, mode })))
   } else {
-    console.log(`All ${total} checks passed`)
+    printPlainDoctor(report)
   }
-  if (errors > 0) process.exit(1)
-  if (warnings > 0) process.exit(2)
+  if (exitCode !== 0) process.exit(exitCode)
 }
-
 
 export async function run(args: string[]): Promise<void> {
   await cmdDoctor(args.slice(1))

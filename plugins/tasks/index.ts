@@ -111,27 +111,39 @@ const tasksPlugin: BakinPlugin = definePlugin({
     registerTaskExecTools(ctx)
     startMaintenance(ctx)
 
-    // ─── Health checks (migrated out of core/doctor.ts per #139 C2) ─────
+    // ─── Health checks and explicit repair actions ────────────────────
+    ctx.registerHealthRepairAction(taskConsistencyRepair())
+    ctx.registerHealthRepairAction(taskOrderRepair())
     ctx.registerHealthCheck({
       id: 'taskboard',
-      name: 'Taskboard SQLite reachability',
+      name: 'Task store',
+      description: 'Verifies that Bakin-owned task data is readable.',
+      group: { key: 'tasks', label: 'Tasks' },
+      maxAgeMs: 5 * 60_000,
       run: () => Promise.resolve(checkTaskboard()),
     })
     ctx.registerHealthCheck({
       id: 'task-consistency',
-      name: 'Task consistency (orphans, overload, stale in-progress)',
+      name: 'Task consistency',
+      description: 'Finds stale assignments, missing progress, overloaded agents, and completed-task dependencies.',
+      group: { key: 'tasks', label: 'Tasks' },
+      maxAgeMs: 5 * 60_000,
       run: () => checkTaskConsistency(getContentDir(), ctx.runtime.agents),
-      repair: taskConsistencyRepair(),
     })
     ctx.registerHealthCheck({
       id: 'order-integrity',
-      name: 'Task position / order integrity',
+      name: 'Task order integrity',
+      description: 'Checks that every task has a unique numeric order within its column.',
+      group: { key: 'tasks', label: 'Tasks' },
+      maxAgeMs: 5 * 60_000,
       run: () => Promise.resolve(checkTaskPositionIntegrity()),
-      repair: taskOrderRepair(),
     })
     ctx.registerHealthCheck({
       id: 'session-death-incidents',
-      name: 'Runtime session deaths (last 24h)',
+      name: 'Runtime session deaths',
+      description: 'Surfaces agent turns that died during execution in the last 24 hours.',
+      group: { key: 'activity', label: 'Activity' },
+      maxAgeMs: 2 * 60_000,
       run: () => Promise.resolve(checkSessionDeathIncidents(getContentDir(), queryAuditEvents)),
     })
   },

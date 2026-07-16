@@ -10,11 +10,11 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:pat
 import { promisify } from 'node:util'
 import { z } from 'zod'
 import type {
-  BakinPlugin,
   ExecToolResult,
-  HealthCheckResult,
+  HealthCheckRunInput,
   PluginContext,
 } from '@bakin/core/plugin-types'
+import { healthHealthy, healthObserved, healthWarning } from '@makinbakin/sdk/utils'
 import type { PluginContextLite } from '@bakin/core/routing'
 import { definePlugin, defineRoute } from '@bakin/core/routing'
 import { getContentDir } from '../../packages/core/src/content-dir'
@@ -518,42 +518,48 @@ async function releaseWorktree(
   }
 }
 
-async function checkWorktrees(ctx: PluginContextLite): Promise<HealthCheckResult[]> {
+export async function checkWorktrees(ctx: PluginContextLite): Promise<HealthCheckRunInput> {
   try {
     const registry = readRegistry(ctx)
     const active = registry.worktrees.filter((entry) => entry.state === 'active')
     if (active.length === 0) {
-      return [{
-        check: 'git.worktrees',
-        status: 'ok',
-        message: 'No active git worktrees tracked by Bakin.',
-        autoFixable: false,
-      }]
+      return healthObserved([healthHealthy({ key: 'registry', summary: 'No active git worktrees are tracked.' })])
     }
 
     const missing = active.filter((entry) => !existsSync(entry.worktreePath))
     if (missing.length > 0) {
-      return missing.map((entry) => ({
-        check: `git.worktrees.${entry.id}`,
-        status: 'warn',
-        message: `Tracked worktree for task ${entry.taskId} is missing: ${entry.worktreePath}`,
-        autoFixable: false,
-      }))
+      return healthObserved(missing.map((entry) => healthWarning({
+        key: `missing.${entry.id}`,
+        summary: `The worktree for task ${entry.taskId} is missing.`,
+        evidence: { worktreePath: entry.worktreePath },
+        incident: {
+          key: `missing.${entry.id}`,
+          title: 'A tracked Git worktree is missing',
+          impact: `Task ${entry.taskId} may no longer have its isolated working directory.`,
+          disposition: 'action_required',
+          resources: [{ kind: 'task', id: entry.taskId, label: entry.taskId }, { kind: 'directory', id: entry.worktreePath }],
+          resolution: { key: 'release-worktree', type: 'instructions', label: 'Review worktree', steps: ['Confirm the task no longer needs this worktree, then release its stale registry entry with the Git release tool.'] },
+        },
+      })) as [ReturnType<typeof healthWarning>, ...ReturnType<typeof healthWarning>[]])
     }
 
-    return [{
-      check: 'git.worktrees',
-      status: 'ok',
-      message: `${active.length} active git worktree${active.length === 1 ? '' : 's'} tracked.`,
-      autoFixable: false,
-    }]
+    return healthObserved([healthHealthy({
+      key: 'registry',
+      summary: `${active.length} active git worktree${active.length === 1 ? '' : 's'} tracked.`,
+      evidence: { active: active.length },
+    })])
   } catch (err) {
-    return [{
-      check: 'git.worktrees',
-      status: 'error',
-      message: err instanceof Error ? err.message : String(err),
-      autoFixable: false,
-    }]
+    return healthObserved([healthWarning({
+      key: 'registry-read',
+      summary: 'The Git worktree registry could not be read.',
+      detail: err instanceof Error ? err.message : String(err),
+      incident: {
+        key: 'registry-unreadable', title: 'Git worktree state could not be verified',
+        impact: 'Bakin cannot confirm whether task worktrees are present and clean.', disposition: 'watch',
+        resources: [{ kind: 'file', id: REGISTRY_PATH, label: 'Git worktree registry' }],
+        resolution: { key: 'retry', type: 'rerun', label: 'Check again' },
+      },
+    })])
   }
 }
 
@@ -661,6 +667,8 @@ const gitPlugin = definePlugin({
     ctx.registerHealthCheck({
       id: 'worktrees',
       name: 'Git worktree registry',
+      description: 'Checks that active task worktrees still exist and the registry is readable.',
+      group: { key: 'git', label: 'Git' },
       run: () => checkWorktrees(ctx),
     })
   },
