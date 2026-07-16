@@ -64,7 +64,9 @@
         "id": "brands",
         "label": "Branding",
         "icon": "Paintbrush",
-        "href": "/brands"
+        "href": "/brands",
+        "order": 10,
+        "section": "create"
       }
     ],
     "slots": [

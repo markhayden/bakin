@@ -152,9 +152,10 @@
       {
         "id": "schedule",
         "label": "Schedule",
-        "icon": "AlarmClock",
+        "icon": "CalendarClock",
         "href": "/schedule",
-        "order": 22
+        "order": 20,
+        "section": "plan-and-automate"
       }
     ],
     "slots": [
