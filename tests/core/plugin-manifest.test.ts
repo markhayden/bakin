@@ -371,24 +371,20 @@ describe('plugin manifest declarative client contributions (lazy loading)', () =
     })).toThrow(/children\[0\]\.section is only valid on top-level nav items/)
   })
 
-  it('keeps legacy nav fields parseable while their owned consumers migrate', () => {
-    const manifest = parsePluginManifest({
-      ...baseManifest,
-      contributes: {
-        nav: [{ id: 'group', label: 'Group', placement: 'bottom', alwaysExpanded: true }],
-      },
-    })
-    expect(manifest.contributes?.nav?.[0]).toMatchObject({
-      placement: 'bottom',
-      alwaysExpanded: true,
-    })
-  })
-
-  it('continues to reject invalid legacy nav placement during migration', () => {
+  it('rejects removed nav placement with migration guidance', () => {
     expect(() => parsePluginManifest({
       ...baseManifest,
-      contributes: { nav: [{ id: 'x', label: 'X', placement: 'top' }] },
-    })).toThrow(/placement must be "bottom"/)
+      contributes: {
+        nav: [{ id: 'x', label: 'X', placement: 'bottom' }],
+      },
+    })).toThrow(/placement was removed.*section.*host-owned/)
+  })
+
+  it('rejects removed alwaysExpanded with disclosure migration guidance', () => {
+    expect(() => parsePluginManifest({
+      ...baseManifest,
+      contributes: { nav: [{ id: 'group', label: 'Group', alwaysExpanded: true }] },
+    })).toThrow(/alwaysExpanded was removed.*disclosure/)
   })
 
   it('rejects route patterns under /api and duplicates', () => {

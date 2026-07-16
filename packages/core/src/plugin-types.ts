@@ -92,10 +92,6 @@ export interface NavItem {
   order?: number
   children?: NavItem[]
   section?: NavSection
-  /** @deprecated Removed after owned navigation groups migrate to the standard disclosure behavior. */
-  alwaysExpanded?: boolean
-  /** @deprecated Removed after the owned Explore entry migrates to the shell promotion. */
-  placement?: 'bottom'
 }
 
 /**

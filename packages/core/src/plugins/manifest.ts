@@ -223,6 +223,12 @@ const NAV_SECTION_SET = new Set<string>(NAV_SECTIONS)
 
 function parseNavItem(raw: unknown, label: string, topLevel: boolean): NavItem {
   if (!isRecord(raw)) throw new PluginManifestError(`${label} must be an object`)
+  if (raw.placement !== undefined) {
+    throw new PluginManifestError(`${label}.placement was removed; use section for normal destinations. Primary and utility regions are host-owned`)
+  }
+  if (raw.alwaysExpanded !== undefined) {
+    throw new PluginManifestError(`${label}.alwaysExpanded was removed; navigation groups use the standard disclosure behavior`)
+  }
   const item: NavItem = {
     id: stringField(raw, 'id', { required: true })!,
     label: stringField(raw, 'label', { required: true })!,
@@ -250,18 +256,6 @@ function parseNavItem(raw: unknown, label: string, topLevel: boolean): NavItem {
       throw new PluginManifestError(`${label}.section must be one of: ${NAV_SECTIONS.join(', ')}`)
     }
     item.section = raw.section as NavSection
-  }
-  if (raw.alwaysExpanded !== undefined) {
-    if (typeof raw.alwaysExpanded !== 'boolean') {
-      throw new PluginManifestError(`${label}.alwaysExpanded must be a boolean`)
-    }
-    item.alwaysExpanded = raw.alwaysExpanded
-  }
-  if (raw.placement !== undefined) {
-    if (raw.placement !== 'bottom') {
-      throw new PluginManifestError(`${label}.placement must be "bottom" when present`)
-    }
-    item.placement = raw.placement
   }
   if (raw.badge !== undefined) {
     if (!isRecord(raw.badge)) throw new PluginManifestError(`${label}.badge must be an object`)

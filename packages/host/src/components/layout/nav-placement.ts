@@ -91,14 +91,3 @@ export function buildSidebarNavModel(items: readonly NavItem[]): SidebarNavModel
 
   return { primary, sections }
 }
-
-/** @deprecated Temporary bridge until AppSidebar switches to buildSidebarNavModel. */
-export function partitionNavItems(items: readonly NavItem[]): { main: NavItem[]; bottom: NavItem[] } {
-  const main: NavItem[] = []
-  const bottom: NavItem[] = []
-  for (const item of items) {
-    if (item.placement === 'bottom') bottom.push(item)
-    else main.push(item)
-  }
-  return { main, bottom }
-}

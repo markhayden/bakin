@@ -43,16 +43,12 @@ export interface NavItem {
   children?: NavItem[]
   /** Top-level destination. Omit to render under Mix-ins. */
   section?: NavSection
-  /** @deprecated Removed after owned navigation groups migrate to the standard disclosure behavior. */
-  alwaysExpanded?: boolean
   /**
    * Initial badge state. Runtime updates flow through `setNavBadge` — the
    * rendered badge for an item is `runtimeRegistry.get(id) ?? item.badge`.
    * Most plugins leave this undefined and set badges purely at runtime.
    */
   badge?: NavBadge
-  /** @deprecated Removed after the owned Explore entry migrates to the shell promotion. */
-  placement?: 'bottom'
 }
 
 // The legacy non-generic `APIRoute` (registered via the deleted
