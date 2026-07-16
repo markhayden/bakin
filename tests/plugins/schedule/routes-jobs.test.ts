@@ -1016,6 +1016,49 @@ describe('schedule routes', () => {
   })
 
   // -----------------------------------------------------------------------
+  // GET /occurrences — server-computed calendar feed
+  // -----------------------------------------------------------------------
+  describe('GET /occurrences', () => {
+    it('returns kind-aware, tz-correct occurrences for the range', async () => {
+      harness.mockMergedJobs.push(makeMergedJob({
+        id: 'occ-daily',
+        schedule: { type: 'cron', value: '0 9 * * *', tz: 'America/Denver' },
+        createdAt: '2026-01-01T00:00:00Z',
+      }))
+      const route = findRoute(plugin.routes, 'GET', '/occurrences')!
+      expect(route).toBeDefined()
+      const { status, body } = await callRoute(route, plugin.ctx, {
+        searchParams: { from: '2026-06-08T00:00:00Z', to: '2026-06-10T00:00:00Z' },
+      })
+      expect(status).toBe(200)
+      const items = body.occurrences as Array<{ jobId: string; at: string; past: boolean }>
+      expect(items.map(i => i.at)).toEqual(['2026-06-08T15:00:00.000Z', '2026-06-09T15:00:00.000Z'])
+      expect(items.every(i => i.jobId === 'occ-daily')).toBe(true)
+      expect(items.every(i => i.past)).toBe(true) // range is in the past relative to real now
+      expect(body.unevaluated).toEqual([])
+    })
+
+    it('rejects a missing/invalid range', async () => {
+      const route = findRoute(plugin.routes, 'GET', '/occurrences')!
+      const bad = await callRoute(route, plugin.ctx, { searchParams: { from: 'nope', to: '2026-06-10T00:00:00Z' } })
+      expect(bad.status).toBe(400)
+      const inverted = await callRoute(route, plugin.ctx, {
+        searchParams: { from: '2026-06-10T00:00:00Z', to: '2026-06-08T00:00:00Z' },
+      })
+      expect(inverted.status).toBe(400)
+    })
+
+    it('rejects a range beyond the 62-day cap', async () => {
+      const route = findRoute(plugin.routes, 'GET', '/occurrences')!
+      const { status, body } = await callRoute(route, plugin.ctx, {
+        searchParams: { from: '2026-01-01T00:00:00Z', to: '2026-06-01T00:00:00Z' },
+      })
+      expect(status).toBe(400)
+      expect(String(body.error)).toMatch(/range too large/i)
+    })
+  })
+
+  // -----------------------------------------------------------------------
   // POST /parse — parse schedule expression
   // -----------------------------------------------------------------------
   describe('POST /parse', () => {

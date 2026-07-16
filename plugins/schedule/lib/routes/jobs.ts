@@ -12,6 +12,8 @@ import { getJob, upsertJob } from '../sidecar'
 import { parseSchedule } from '../cron-parser'
 import { getSystemTimezone, json, nativeCronTz } from '../schedule-util'
 import { readRuns } from '../runs-reader'
+import { computeOccurrences } from '../occurrences'
+import { getCronFire } from '../../../../src/core/execution-ledger'
 import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 import { fireManualRun } from '../fire-engine'
 import {
@@ -29,6 +31,8 @@ import { validateTeamAssignment, TaskValidationError } from '../../../../src/cor
 // ─── Schemas ─────────────────────────────────────────────────────────────
 
 const jobIdParams = z.object({ jobId: z.string().min(1) })
+/** Occurrence queries cap at ~2 months — the month view needs 6 weeks. */
+const MAX_OCCURRENCE_RANGE_MS = 62 * 24 * 60 * 60 * 1000
 const okResponse = z.object({ ok: z.literal(true) }).passthrough()
 const errorResponse = z.object({ error: z.string() }).passthrough()
 const passthrough = z.object({}).passthrough()
@@ -109,6 +113,32 @@ export const scheduleRoutes = [
         cron: j.schedule.type === 'cron' ? j.schedule.value : undefined,
       }))
       return json({ jobs })
+    },
+  }),
+
+  defineRoute({
+    path: '/occurrences',
+    method: 'GET',
+    summary: 'Job occurrences in a time range',
+    description: 'Server-computed, timezone-correct occurrence instants for every evaluable job (cron + one-shot), past occurrences enriched with their ledger disposition. The single source the calendar views render from.',
+    responses: { 200: passthrough, 400: errorResponse, 500: errorResponse },
+    handler: async (req) => {
+      const url = new URL(req.url)
+      const fromMs = Date.parse(url.searchParams.get('from') ?? '')
+      const toMs = Date.parse(url.searchParams.get('to') ?? '')
+      if (!Number.isFinite(fromMs) || !Number.isFinite(toMs)) {
+        return json({ error: 'from and to must be ISO-8601 instants' }, 400)
+      }
+      if (toMs <= fromMs) return json({ error: 'to must be after from' }, 400)
+      if (toMs - fromMs > MAX_OCCURRENCE_RANGE_MS) {
+        return json({ error: `range too large (max ${MAX_OCCURRENCE_RANGE_MS / 86_400_000} days)` }, 400)
+      }
+      const jobs = await readMergedRuntimeJobs()
+      const { items, unevaluated } = computeOccurrences(jobs, fromMs, toMs, {
+        nowMs: Date.now(),
+        getFire: (jobId, runId) => getCronFire(jobId, runId),
+      })
+      return json({ occurrences: items, unevaluated })
     },
   }),
 

@@ -242,6 +242,68 @@ export function useScheduleJobs(options: UseScheduleOptions = {}) {
   }
 }
 
+/** One server-computed calendar placement — see plugins/schedule/lib/occurrences.ts. */
+export interface ScheduleOccurrence {
+  jobId: string
+  /** Absolute instant, ISO-8601 UTC — render in the browser's local tz. */
+  at: string
+  past: boolean
+  /** Ledger disposition for past Bakin occurrences (absent = never claimed). */
+  disposition?: 'pending' | 'created' | 'skipped' | 'seeded'
+  taskId?: string
+  skipReason?: string
+}
+
+/**
+ * Server-computed occurrences for a time range — the ONLY placement source
+ * for the calendar views (kind-aware, timezone/DST-correct; the old client-
+ * side cron parsing is gone). Refetches on schedule SSE events.
+ */
+export function useOccurrences(fromIso: string, toIso: string) {
+  const [occurrences, setOccurrences] = useState<ScheduleOccurrence[]>([])
+  const [unevaluated, setUnevaluated] = useState<string[]>([])
+  const [loading, setLoading] = useState(true)
+
+  const fetchOccurrences = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/plugins/schedule/occurrences?from=${encodeURIComponent(fromIso)}&to=${encodeURIComponent(toIso)}`)
+      if (res.ok) {
+        const data = await res.json()
+        setOccurrences(data.occurrences || [])
+        setUnevaluated(data.unevaluated || [])
+      }
+    } catch { /* transient — SSE or the next range change refetches */ } finally {
+      setLoading(false)
+    }
+  }, [fromIso, toIso])
+
+  useEffect(() => {
+    fetchOccurrences()
+  }, [fetchOccurrences])
+
+  useEffect(() => {
+    const es = new EventSource('/api/events')
+    const handler = (event: MessageEvent) => {
+      try {
+        const data = JSON.parse(event.data)
+        if (
+          (data.type === 'activity' && data.message?.includes('Schedule')) ||
+          data.event?.startsWith('schedule.')
+        ) {
+          fetchOccurrences()
+        }
+      } catch { /* ignore */ }
+    }
+    es.addEventListener('message', handler)
+    return () => {
+      es.removeEventListener('message', handler)
+      es.close()
+    }
+  }, [fetchOccurrences])
+
+  return { occurrences, unevaluated, loading, refresh: fetchOccurrences }
+}
+
 export function useRunHistory(jobId: string | null, limit = 20) {
   const [runs, setRuns] = useState<RunEntry[]>([])
   const [loading, setLoading] = useState(false)

@@ -19,8 +19,8 @@
 - [ ] CHECKPOINT: live one-shot end-to-end → Mark approves → merge
 
 ## PR3 — refactor(schedule): server-computed occurrences feed the calendars
-- [ ] T11 Occurrences endpoint (kind-aware, past/future annotated, ledger disposition, DST-pinned) (M)
-- [ ] T12 Calendars consume endpoint; delete client cron parsing; consolidate agent colors (L)
+- [x] T11 Occurrences endpoint (kind-aware, past/future annotated, ledger disposition, DST-pinned) (M)
+- [x] T12 Calendars consume endpoint; delete client cron parsing; consolidate agent colors; disposition dots (L)
 - [ ] CHECKPOINT: calendars eyeballed live → Mark approves → merge
 
 ## PR4 — feat(schedule): plugin-contributed scheduled domain events
