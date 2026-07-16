@@ -17,11 +17,31 @@
  * protection, documented on the surfaces.
  */
 import { createLogger } from './logger'
-import { dayStartMs, monthStartMs, type LaneSums, type UnattributedSums, type ScopeSpend, type WindowSpend, type BudgetSpendFacets } from './budget'
+import {
+  dayStartMs,
+  monthStartMs,
+  type SpendEvidenceGap,
+  type SpendEvidenceWindow,
+  type BudgetScope,
+  type BudgetUnit,
+  type LaneSums,
+  type UnattributedSums,
+  type ScopeSpend,
+  type WindowSpend,
+  type BudgetSpendFacets,
+} from './budget'
 
 const log = createLogger('budget-spend')
 
-export type { LaneSums, UnattributedSums, ScopeSpend, WindowSpend, BudgetSpendFacets } from './budget'
+export type {
+  SpendEvidenceGap,
+  SpendEvidenceWindow,
+  LaneSums,
+  UnattributedSums,
+  ScopeSpend,
+  WindowSpend,
+  BudgetSpendFacets,
+} from './budget'
 
 function emptyLanes(): LaneSums {
   return { meteredUsdMicros: 0, meteredTokens: 0, subscriptionTokens: 0, unpricedMeteredTokens: 0 }
@@ -38,14 +58,160 @@ function emptyWindow(startMs: number): WindowSpend {
 
 type Lane = 'metered' | 'subscription'
 
-function addAttributed(target: LaneSums, lane: Lane, tokens: number, usdMicros: number | null): void {
+function safeSum(current: number, increment: number): number | null {
+  if (!Number.isSafeInteger(current) || current < 0) return null
+  if (!Number.isSafeInteger(increment) || increment < 0) return null
+  if (current > Number.MAX_SAFE_INTEGER - increment) return null
+  return current + increment
+}
+
+function addAttributed(
+  target: LaneSums,
+  lane: Lane,
+  tokens: number | null,
+  usdMicros: number | null,
+): BudgetUnit[] {
+  const incomplete = new Set<BudgetUnit>()
   if (lane === 'subscription') {
-    target.subscriptionTokens += tokens
+    if (tokens !== null) {
+      const next = safeSum(target.subscriptionTokens, tokens)
+      if (next === null) incomplete.add('tokens')
+      else target.subscriptionTokens = next
+    }
+    return [...incomplete]
+  }
+  if (tokens !== null) {
+    const meteredTokens = safeSum(target.meteredTokens, tokens)
+    if (meteredTokens === null) incomplete.add('tokens')
+    else target.meteredTokens = meteredTokens
+    if (usdMicros === null) {
+      const unpricedTokens = safeSum(target.unpricedMeteredTokens, tokens)
+      if (unpricedTokens === null) incomplete.add('tokens')
+      else target.unpricedMeteredTokens = unpricedTokens
+    }
+  }
+  if (usdMicros !== null) {
+    const cost = safeSum(target.meteredUsdMicros, usdMicros)
+    if (cost === null) incomplete.add('usd_micros')
+    else target.meteredUsdMicros = cost
+  }
+  return [...incomplete]
+}
+
+function emptySpendEvidence(): SpendEvidenceWindow {
+  return { status: 'complete', gaps: [] }
+}
+
+function recordEvidenceGap(
+  evidence: SpendEvidenceWindow,
+  gap: Omit<SpendEvidenceGap, 'unknownCount'>,
+  unknownCount: number,
+): void {
+  const normalizedCount = !Number.isFinite(unknownCount)
+    ? Number.MAX_SAFE_INTEGER
+    : Math.min(Number.MAX_SAFE_INTEGER, Math.max(0, Math.floor(unknownCount)))
+  if (normalizedCount <= 0 || gap.reasons.length === 0) return
+  evidence.status = 'incomplete'
+  const reasons = [...gap.reasons].sort() as SpendEvidenceGap['reasons']
+  const existing = evidence.gaps.find((candidate) =>
+    candidate.unit === gap.unit
+    && candidate.source === gap.source
+    && candidate.lane === gap.lane
+    && candidate.agent === gap.agent
+    && candidate.provider === gap.provider
+    && candidate.model === gap.model
+    && candidate.affectedScope === gap.affectedScope
+    && candidate.reasons.join('\0') === reasons.join('\0'))
+  if (existing) {
+    existing.unknownCount = safeSum(existing.unknownCount, normalizedCount) ?? Number.MAX_SAFE_INTEGER
     return
   }
-  target.meteredTokens += tokens
-  if (usdMicros === null) target.unpricedMeteredTokens += tokens
-  else target.meteredUsdMicros += usdMicros
+  evidence.gaps.push({ ...gap, reasons, unknownCount: normalizedCount })
+}
+
+function sortEvidenceGaps(evidence: SpendEvidenceWindow): void {
+  evidence.gaps.sort((a, b) =>
+    a.unit.localeCompare(b.unit)
+    || a.source.localeCompare(b.source)
+    || (a.lane ?? '').localeCompare(b.lane ?? '')
+    || a.agent.localeCompare(b.agent)
+    || (a.provider ?? '').localeCompare(b.provider ?? '')
+    || (a.model ?? '').localeCompare(b.model ?? '')
+    || (a.affectedScope ?? '').localeCompare(b.affectedScope ?? '')
+    || a.reasons.join('\0').localeCompare(b.reasons.join('\0')))
+}
+
+function attributedEvidenceReasons(input: {
+  valueMissing: boolean
+  lane: Lane | null
+  provider: string | null
+  model: string | null
+}): SpendEvidenceGap['reasons'] {
+  const reasons: SpendEvidenceGap['reasons'] = []
+  if (input.valueMissing) reasons.push('value_missing')
+  if (input.lane === null) reasons.push('lane_unknown')
+  if (input.provider === null) reasons.push('provider_unknown')
+  if (input.model === null) reasons.push('model_unknown')
+  return reasons
+}
+
+function recordAggregateGap(
+  evidence: SpendEvidenceWindow,
+  input: {
+    unit: BudgetUnit
+    source: SpendEvidenceGap['source']
+    lane: Lane
+    agent: string
+    provider: string | null
+    model: string | null
+    affectedScope: BudgetScope
+    unknownCount?: number
+  },
+): void {
+  recordEvidenceGap(evidence, {
+    ...input,
+    reasons: ['value_missing'],
+  }, input.unknownCount ?? 1)
+}
+
+function addAttributedToScope(input: {
+  target: LaneSums
+  evidence: SpendEvidenceWindow
+  affectedScope: BudgetScope
+  lane: Lane
+  tokens: number | null
+  usdMicros: number | null
+  agent: string
+  provider: string | null
+  model: string | null
+}): void {
+  const incompleteUnits = addAttributed(input.target, input.lane, input.tokens, input.usdMicros)
+  for (const unit of incompleteUnits) {
+    recordAggregateGap(input.evidence, {
+      unit,
+      source: 'attributed_run',
+      lane: input.lane,
+      agent: input.agent,
+      provider: input.provider,
+      model: input.model,
+      affectedScope: input.affectedScope,
+    })
+  }
+}
+
+function missingObservedCostCount(cell: {
+  costUsdMicros: number | null
+  costedMessages: number
+  messageCount: number
+}): number {
+  const messageCount = Math.max(0, Math.floor(cell.messageCount))
+  const costedMessages = Math.max(0, Math.floor(cell.costedMessages))
+  if (messageCount === 0) return 0
+  if (costedMessages < messageCount) return messageCount - costedMessages
+  // A complete coverage count without a subtotal, or a count that exceeds
+  // the number of messages, is internally inconsistent and cannot prove $0.
+  if (cell.costUsdMicros === null || costedMessages > messageCount) return messageCount
+  return 0
 }
 
 /** Per-(agent, day, lane) sums used to compute the observed−attributed delta. */
@@ -53,6 +219,66 @@ interface DayLaneSums {
   tokens: number
   /** Dollars from rows that actually carried a cost (NULL-honest). */
   usdMicros: number
+  /** False once an input could not be represented in the exact subtotal. */
+  tokensComplete: boolean
+  usdComplete: boolean
+}
+
+function emptyDayLaneSums(): DayLaneSums {
+  return { tokens: 0, usdMicros: 0, tokensComplete: true, usdComplete: true }
+}
+
+function addDayLaneValue(sums: DayLaneSums, key: 'tokens' | 'usdMicros', value: number): boolean {
+  const next = safeSum(sums[key], value)
+  if (next === null) {
+    if (key === 'tokens') sums.tokensComplete = false
+    else sums.usdComplete = false
+    return false
+  }
+  sums[key] = next
+  return true
+}
+
+function safeCombinedIncrement(base: number, current: number, increment: number): number | null {
+  const subtotal = safeSum(base, current)
+  if (subtotal === null || safeSum(subtotal, increment) === null) return null
+  return safeSum(current, increment)
+}
+
+function addUnattributed(
+  scope: ScopeSpend,
+  lane: Lane,
+  deltaTokens: number,
+  deltaUsdMicros: number,
+): BudgetUnit[] {
+  const incomplete = new Set<BudgetUnit>()
+  if (lane === 'subscription') {
+    const next = safeCombinedIncrement(
+      scope.subscriptionTokens,
+      scope.unattributed.subscriptionTokens,
+      deltaTokens,
+    )
+    if (next === null) incomplete.add('tokens')
+    else scope.unattributed.subscriptionTokens = next
+    return [...incomplete]
+  }
+
+  const tokens = safeCombinedIncrement(
+    scope.meteredTokens,
+    scope.unattributed.meteredTokens,
+    deltaTokens,
+  )
+  if (tokens === null) incomplete.add('tokens')
+  else scope.unattributed.meteredTokens = tokens
+
+  const cost = safeCombinedIncrement(
+    scope.meteredUsdMicros,
+    scope.unattributed.meteredUsdMicros,
+    deltaUsdMicros,
+  )
+  if (cost === null) incomplete.add('usd_micros')
+  else scope.unattributed.meteredUsdMicros = cost
+  return [...incomplete]
 }
 
 function laneKey(agent: string, day: string, lane: Lane): string {
@@ -61,22 +287,21 @@ function laneKey(agent: string, day: string, lane: Lane): string {
 
 async function resolveObservedLane(
   invoke: ((name: string, data: Record<string, unknown>) => Promise<unknown>) | null,
-  cache: Map<string, Lane>,
+  cache: Map<string, Lane | null>,
   agent: string,
   model: string,
-): Promise<Lane> {
+): Promise<Lane | null> {
   const key = `${agent}\0${model}`
-  const hit = cache.get(key)
-  if (hit) return hit
-  let lane: Lane = 'metered' // conservative: unknown auth reads as real money
+  if (cache.has(key)) return cache.get(key) ?? null
+  let lane: Lane | null = null
   if (invoke) {
     try {
       const billing = (await invoke('models.resolveBilling', { agentId: agent, model: model || undefined })) as
         | { lane?: string }
         | undefined
-      if (billing?.lane === 'subscription') lane = 'subscription'
+      if (billing?.lane === 'subscription' || billing?.lane === 'metered') lane = billing.lane
     } catch (err) {
-      log.warn('resolveBilling failed for observed usage; defaulting to metered', {
+      log.warn('resolveBilling failed for observed usage; leaving its lane unresolved', {
         agent, model, err: err instanceof Error ? err.message : String(err),
       })
     }
@@ -102,6 +327,8 @@ export async function assembleBudgetSpend(now: number): Promise<BudgetSpendFacet
   const monthStart = monthStartMs(now)
   const daily = emptyWindow(dayStart)
   const monthly = emptyWindow(monthStart)
+  const dailySpendEvidence = emptySpendEvidence()
+  const monthlySpendEvidence = emptySpendEvidence()
   const todayKey = usageStore.toLocalDayKey(dayStart)
   let observedUsageEvidence: BudgetSpendFacets['observedUsageEvidence'] = { status: 'available' }
 
@@ -109,54 +336,235 @@ export async function assembleBudgetSpend(now: number): Promise<BudgetSpendFacet
   // Keyed sums retained for the delta computation below.
   const attributedByLane = new Map<string, DayLaneSums>()
   for (const row of listRunCostsSince(monthStart)) {
-    const lane: Lane = row.lane === 'subscription' ? 'subscription' : 'metered'
-    const tokens = row.totalTokens ?? 0
+    const lane: Lane | null = row.lane === 'subscription' || row.lane === 'metered' ? row.lane : null
+    // Null means either token evidence is missing or tokens do not apply.
+    // `usageKind` distinguishes those states; only the former creates a gap.
+    const tokens = row.usageKind === 'tokens' ? row.totalTokens : null
     const usd = lane === 'metered' ? row.costUsdMicros : null
-    const windows = row.occurredAt >= dayStart ? [monthly, daily] : [monthly]
-    for (const w of windows) {
-      addAttributed(w.global, lane, tokens, usd)
-      addAttributed((w.byAgent[row.agent] ??= emptyScope()), lane, tokens, usd)
-      const provider = row.provider ?? 'other'
-      addAttributed((w.byProvider[provider] ??= emptyLanes()), lane, tokens, usd)
-      const model = row.model ?? ''
-      addAttributed((w.byModel[model] ??= emptyLanes()), lane, tokens, usd)
+    const windowPairs: Array<{ window: WindowSpend; evidence: SpendEvidenceWindow }> = row.occurredAt >= dayStart
+      ? [
+          { window: monthly, evidence: monthlySpendEvidence },
+          { window: daily, evidence: dailySpendEvidence },
+        ]
+      : [{ window: monthly, evidence: monthlySpendEvidence }]
+    const evidenceWindows = windowPairs.map((pair) => pair.evidence)
+
+    if (row.usageKind === 'tokens' && (lane === 'subscription' || lane === null)) {
+      const reasons = attributedEvidenceReasons({
+        valueMissing: row.totalTokens === null,
+        lane,
+        provider: row.provider,
+        model: row.model,
+      })
+      for (const evidence of evidenceWindows) {
+        recordEvidenceGap(evidence, {
+          unit: 'tokens',
+          source: 'attributed_run',
+          lane,
+          agent: row.agent,
+          provider: row.provider,
+          model: row.model,
+          reasons,
+        }, 1)
+      }
     }
-    const day = usageStore.toLocalDayKey(row.occurredAt)
-    const key = laneKey(row.agent, day, lane)
-    const sums = attributedByLane.get(key) ?? { tokens: 0, usdMicros: 0 }
-    sums.tokens += tokens
-    sums.usdMicros += usd ?? 0
-    attributedByLane.set(key, sums)
+    if (lane === 'metered' || lane === null) {
+      const reasons = attributedEvidenceReasons({
+        valueMissing: row.costUsdMicros === null,
+        lane,
+        provider: row.provider,
+        model: row.model,
+      })
+      for (const evidence of evidenceWindows) {
+        recordEvidenceGap(evidence, {
+          unit: 'usd_micros',
+          source: 'attributed_run',
+          lane,
+          agent: row.agent,
+          provider: row.provider,
+          model: row.model,
+          reasons,
+        }, 1)
+      }
+    }
+    if (lane !== null) {
+      for (const { window, evidence } of windowPairs) {
+        addAttributedToScope({
+          target: window.global,
+          evidence,
+          affectedScope: 'global',
+          lane,
+          tokens,
+          usdMicros: usd,
+          agent: row.agent,
+          provider: row.provider,
+          model: row.model,
+        })
+        addAttributedToScope({
+          target: (window.byAgent[row.agent] ??= emptyScope()),
+          evidence,
+          affectedScope: 'agent',
+          lane,
+          tokens,
+          usdMicros: usd,
+          agent: row.agent,
+          provider: row.provider,
+          model: row.model,
+        })
+        const provider = row.provider ?? 'other'
+        addAttributedToScope({
+          target: (window.byProvider[provider] ??= emptyLanes()),
+          evidence,
+          affectedScope: 'provider',
+          lane,
+          tokens,
+          usdMicros: usd,
+          agent: row.agent,
+          provider: row.provider,
+          model: row.model,
+        })
+        const model = row.model ?? ''
+        addAttributedToScope({
+          target: (window.byModel[model] ??= emptyLanes()),
+          evidence,
+          affectedScope: 'model',
+          lane,
+          tokens,
+          usdMicros: usd,
+          agent: row.agent,
+          provider: row.provider,
+          model: row.model,
+        })
+      }
+      const day = usageStore.toLocalDayKey(row.occurredAt)
+      const key = laneKey(row.agent, day, lane)
+      const sums = attributedByLane.get(key) ?? emptyDayLaneSums()
+      if (tokens !== null) addDayLaneValue(sums, 'tokens', tokens)
+      if (usd !== null) addDayLaneValue(sums, 'usdMicros', usd)
+      attributedByLane.set(key, sums)
+    }
   }
 
   // ---- observed (usage.db) → unattributed delta --------------------------
   try {
     const invoke = hooksModule ? (n: string, d: Record<string, unknown>) => hooksModule.getHookRegistry().invoke(n, d) : null
-    const laneCache = new Map<string, Lane>()
+    const laneCache = new Map<string, Lane | null>()
     const observedByLane = new Map<string, DayLaneSums>()
     for (const cell of usageStore.readUsageByAgentModelDaySince(usageStore.toLocalDayKey(monthStart))) {
       const lane = await resolveObservedLane(invoke, laneCache, cell.agent, cell.model)
+      const evidenceWindows = cell.day === todayKey
+        ? [monthlySpendEvidence, dailySpendEvidence]
+        : [monthlySpendEvidence]
+      if (lane === null) {
+        const observedCount = Math.max(1, Math.floor(cell.messageCount))
+        const missingCostCount = missingObservedCostCount(cell)
+        for (const evidence of evidenceWindows) {
+          recordEvidenceGap(evidence, {
+            unit: 'tokens',
+            source: 'observed_message',
+            lane: null,
+            agent: cell.agent,
+            provider: null,
+            model: cell.model || null,
+            reasons: ['lane_unknown'],
+          }, observedCount)
+          recordEvidenceGap(evidence, {
+            unit: 'usd_micros',
+            source: 'observed_message',
+            lane: null,
+            agent: cell.agent,
+            provider: null,
+            model: cell.model || null,
+            reasons: missingCostCount > 0 ? ['lane_unknown', 'value_missing'] : ['lane_unknown'],
+          }, observedCount)
+        }
+        continue
+      }
+      if (lane === 'metered') {
+        const missingCostCount = missingObservedCostCount(cell)
+        for (const evidence of evidenceWindows) {
+          recordEvidenceGap(evidence, {
+            unit: 'usd_micros',
+            source: 'observed_message',
+            lane,
+            agent: cell.agent,
+            provider: null,
+            model: cell.model || null,
+            reasons: ['value_missing'],
+          }, missingCostCount)
+        }
+      }
       const key = laneKey(cell.agent, cell.day, lane)
-      const sums = observedByLane.get(key) ?? { tokens: 0, usdMicros: 0 }
-      sums.tokens += cell.tokens.total
-      if (lane === 'metered' && cell.costUsdMicros !== null) sums.usdMicros += cell.costUsdMicros
+      const sums = observedByLane.get(key) ?? emptyDayLaneSums()
+      const observedCount = Math.max(1, Math.floor(cell.messageCount))
+      if (!addDayLaneValue(sums, 'tokens', cell.tokens.total)) {
+        for (const evidence of evidenceWindows) {
+          for (const affectedScope of ['global', 'agent'] as const) {
+            recordAggregateGap(evidence, {
+              unit: 'tokens',
+              source: 'observed_message',
+              lane,
+              agent: cell.agent,
+              provider: null,
+              model: cell.model || null,
+              affectedScope,
+              unknownCount: observedCount,
+            })
+          }
+        }
+      }
+      if (lane === 'metered' && cell.costUsdMicros !== null
+        && !addDayLaneValue(sums, 'usdMicros', cell.costUsdMicros)) {
+        for (const evidence of evidenceWindows) {
+          for (const affectedScope of ['global', 'agent'] as const) {
+            recordAggregateGap(evidence, {
+              unit: 'usd_micros',
+              source: 'observed_message',
+              lane,
+              agent: cell.agent,
+              provider: null,
+              model: cell.model || null,
+              affectedScope,
+              unknownCount: observedCount,
+            })
+          }
+        }
+      }
       observedByLane.set(key, sums)
     }
     for (const [key, observed] of observedByLane) {
       const [agent, day, lane] = key.split('\0') as [string, string, Lane]
-      const attributed = attributedByLane.get(key) ?? { tokens: 0, usdMicros: 0 }
-      const deltaTokens = Math.max(0, observed.tokens - attributed.tokens)
-      const deltaUsd = lane === 'metered' ? Math.max(0, observed.usdMicros - attributed.usdMicros) : 0
+      const attributed = attributedByLane.get(key) ?? emptyDayLaneSums()
+      // An observed partial subtotal is still a safe lower bound. An
+      // attributed partial subtotal is not safe to subtract: doing so could
+      // fabricate an unattributed delta and a false cap incident.
+      const deltaTokens = attributed.tokensComplete ? Math.max(0, observed.tokens - attributed.tokens) : 0
+      const deltaUsd = lane === 'metered' && attributed.usdComplete
+        ? Math.max(0, observed.usdMicros - attributed.usdMicros)
+        : 0
       if (deltaTokens === 0 && deltaUsd === 0) continue
-      const windows = day === todayKey ? [monthly, daily] : [monthly]
-      for (const w of windows) {
-        const scopes = [w.global, (w.byAgent[agent] ??= emptyScope())]
-        for (const scope of scopes) {
-          if (lane === 'subscription') {
-            scope.unattributed.subscriptionTokens += deltaTokens
-          } else {
-            scope.unattributed.meteredTokens += deltaTokens
-            scope.unattributed.meteredUsdMicros += deltaUsd
+      const windowPairs: Array<{ window: WindowSpend; evidence: SpendEvidenceWindow }> = day === todayKey
+        ? [
+            { window: monthly, evidence: monthlySpendEvidence },
+            { window: daily, evidence: dailySpendEvidence },
+          ]
+        : [{ window: monthly, evidence: monthlySpendEvidence }]
+      for (const { window, evidence } of windowPairs) {
+        const scopes: Array<{ scope: ScopeSpend; affectedScope: 'global' | 'agent' }> = [
+          { scope: window.global, affectedScope: 'global' },
+          { scope: (window.byAgent[agent] ??= emptyScope()), affectedScope: 'agent' },
+        ]
+        for (const { scope, affectedScope } of scopes) {
+          for (const unit of addUnattributed(scope, lane, deltaTokens, deltaUsd)) {
+            recordAggregateGap(evidence, {
+              unit,
+              source: 'observed_message',
+              lane,
+              agent,
+              provider: null,
+              model: null,
+              affectedScope,
+            })
           }
         }
       }
@@ -168,7 +576,18 @@ export async function assembleBudgetSpend(now: number): Promise<BudgetSpendFacet
     log.error('Observed-usage delta failed; spend is attributed-only this pass', err)
   }
 
-  return { computedAt: now, observedUsageEvidence, daily, monthly }
+  sortEvidenceGaps(dailySpendEvidence)
+  sortEvidenceGaps(monthlySpendEvidence)
+  return {
+    computedAt: now,
+    observedUsageEvidence,
+    spendEvidence: {
+      daily: dailySpendEvidence,
+      monthly: monthlySpendEvidence,
+    },
+    daily,
+    monthly,
+  }
 }
 
 /** Next local midnight after the window start. */

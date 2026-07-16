@@ -19,7 +19,11 @@ import { getSettings } from '../../../../src/core/settings'
 import { getHookRegistry } from '../../../../packages/core/src/hooks/hook-registry-singleton'
 import { healthError, healthHealthy, healthObserved, healthUnknown, healthWarning } from '@makinbakin/sdk/utils'
 import type { HealthCheckRunInput, HealthObservationInput, JsonObject } from '@makinbakin/sdk'
-import { getLastUsageScan, getUsageHistoryScanStaleAfterMs } from '../usage-history-timer'
+import {
+  getUsageHistoryScanState,
+  getUsageHistoryScanStaleAfterMs,
+  type UsageHistoryScanStateSnapshot,
+} from '../usage-history-timer'
 
 const WINDOW_MS = 24 * 60 * 60 * 1000
 
@@ -49,12 +53,30 @@ type ObservedSpendEvidence =
 function observedSpendEvidence(
   facets: Awaited<ReturnType<typeof assembleBudgetSpend>>,
   now: number,
+  before: UsageHistoryScanStateSnapshot,
+  after: UsageHistoryScanStateSnapshot,
 ): ObservedSpendEvidence {
   const staleAfterMs = getUsageHistoryScanStaleAfterMs()
   if (facets.observedUsageEvidence.status === 'unavailable') {
     return { status: 'unavailable', reason: facets.observedUsageEvidence.reason, scanAgeMs: null, staleAfterMs }
   }
-  const scan = getLastUsageScan()
+  const scan = after.lastScan
+  if (before.inFlight || after.inFlight) {
+    return {
+      status: 'unavailable',
+      reason: 'scan_in_progress',
+      scanAgeMs: scan ? Math.max(0, now - scan.at) : null,
+      staleAfterMs,
+    }
+  }
+  if (before.generation !== after.generation || before.lastScan !== after.lastScan) {
+    return {
+      status: 'unavailable',
+      reason: 'scan_generation_changed',
+      scanAgeMs: scan ? Math.max(0, now - scan.at) : null,
+      staleAfterMs,
+    }
+  }
   if (!scan) return { status: 'unavailable', reason: 'scan_not_run', scanAgeMs: null, staleAfterMs }
   const scanAgeMs = Math.max(0, now - scan.at)
   if (scanAgeMs > staleAfterMs) {
@@ -212,6 +234,7 @@ export async function checkBudget(): Promise<HealthCheckRunInput> {
   }
 
   const now = Date.now()
+  const usageScanBefore = getUsageHistoryScanState()
   let facets: Awaited<ReturnType<typeof assembleBudgetSpend>>
   try {
     facets = await assembleBudgetSpend(now)
@@ -238,11 +261,24 @@ export async function checkBudget(): Promise<HealthCheckRunInput> {
     }))
     return healthObserved(observations as [HealthObservationInput, ...HealthObservationInput[]])
   }
-  const spendEvidence = observedSpendEvidence(facets, now)
+  const usageScanAfter = getUsageHistoryScanState()
+  const observedEvidence = observedSpendEvidence(facets, now, usageScanBefore, usageScanAfter)
 
   let deferred = 0
+  let evidenceDeferred = 0
   try {
-    deferred = queryAuditEvents(getContentDir(), { kinds: ['budget.deferred'], sinceMs: WINDOW_MS }).length
+    const recentDeferrals = queryAuditEvents(getContentDir(), { kinds: ['budget.deferred'], sinceMs: WINDOW_MS })
+    for (const event of recentDeferrals) {
+      const reason = event.data.reason
+      if (reason === 'spend-evidence-incomplete'
+        || reason === 'spend-evidence-unavailable'
+        || reason === 'ledger-unavailable'
+        || reason === 'token-evidence-incomplete') {
+        evidenceDeferred++
+      } else {
+        deferred++
+      }
+    }
   } catch (err) {
     observations.push(healthUnknown({
       key: 'deferred-history',
@@ -263,9 +299,32 @@ export async function checkBudget(): Promise<HealthCheckRunInput> {
   // Probe each rule with a synthetic matching turn — same evaluator, same
   // facets as the gate. Worst breach drives the row status.
   const breaches: Array<{ rule: BudgetRule; action: 'warn' | 'defer'; window: string; unit: 'usd_micros' | 'tokens'; spentValue: number; capValue: number }> = []
+  const incompleteSpendRules: Array<{
+    rule: BudgetRule
+    window: string
+    unit: 'usd_micros' | 'tokens'
+    cause: 'spend_evidence_incomplete' | 'spend_evidence_unavailable'
+    knownSpentValue: number
+    capValue: number
+    unknownEvidenceCount: number | null
+  }> = []
   for (const rule of policy.rules) {
     const decision = evaluateBudget({ policy: { rules: [rule] }, turn: matchingTurn(rule), facets })
     if (decision.action === 'allow') continue
+    if (decision.cause === 'spend_evidence_incomplete' || decision.cause === 'spend_evidence_unavailable') {
+      incompleteSpendRules.push({
+        rule,
+        window: decision.window,
+        unit: decision.unit,
+        cause: decision.cause,
+        knownSpentValue: decision.spentValue,
+        capValue: decision.capValue,
+        unknownEvidenceCount: decision.cause === 'spend_evidence_incomplete'
+          ? decision.unknownEvidenceCount
+          : null,
+      })
+      continue
+    }
     breaches.push({ rule, action: decision.action, window: decision.window, unit: decision.unit, spentValue: decision.spentValue, capValue: decision.capValue })
   }
 
@@ -274,7 +333,37 @@ export async function checkBudget(): Promise<HealthCheckRunInput> {
   // most common breach (the onboarding-created global rule).
   const agents = [...new Set(breaches.filter((b) => b.rule.scope === 'agent' && b.rule.scopeId).map((b) => b.rule.scopeId as string))]
   if (breaches.some((b) => b.rule.scope !== 'agent')) agents.push('global')
-  const data = {
+  const spendEvidence: JsonObject = {
+    daily: {
+      status: facets.spendEvidence.daily.status,
+      gaps: facets.spendEvidence.daily.gaps.map((gap) => ({
+        unit: gap.unit,
+        source: gap.source,
+        lane: gap.lane,
+        agent: gap.agent,
+        provider: gap.provider,
+        model: gap.model,
+        ...(gap.affectedScope ? { affectedScope: gap.affectedScope } : {}),
+        reasons: gap.reasons,
+        unknownCount: gap.unknownCount,
+      })),
+    },
+    monthly: {
+      status: facets.spendEvidence.monthly.status,
+      gaps: facets.spendEvidence.monthly.gaps.map((gap) => ({
+        unit: gap.unit,
+        source: gap.source,
+        lane: gap.lane,
+        agent: gap.agent,
+        provider: gap.provider,
+        model: gap.model,
+        ...(gap.affectedScope ? { affectedScope: gap.affectedScope } : {}),
+        reasons: gap.reasons,
+        unknownCount: gap.unknownCount,
+      })),
+    },
+  }
+  const data: JsonObject = {
     rules: breaches.map((b) => ({
       scope: b.rule.scope,
       ...(b.rule.scopeId ? { scopeId: b.rule.scopeId } : {}),
@@ -287,7 +376,22 @@ export async function checkBudget(): Promise<HealthCheckRunInput> {
     })),
     ...(agents.length ? { agents } : {}),
     deferred,
-    observedUsageEvidence: spendEvidence,
+    evidenceDeferred,
+    observedUsageEvidence: observedEvidence,
+    spendEvidence,
+    ...(incompleteSpendRules.length ? {
+      incompleteSpendRules: incompleteSpendRules.map((entry) => ({
+        scope: entry.rule.scope,
+        ...(entry.rule.scopeId ? { scopeId: entry.rule.scopeId } : {}),
+        lane: entry.rule.lane,
+        window: entry.window,
+        unit: entry.unit,
+        cause: entry.cause,
+        knownSpentValue: entry.knownSpentValue,
+        capValue: entry.capValue,
+        unknownEvidenceCount: entry.unknownEvidenceCount,
+      })),
+    } : {}),
   }
 
   const worst = breaches.find((b) => b.action === 'defer') ?? breaches[0]
@@ -319,10 +423,35 @@ export async function checkBudget(): Promise<HealthCheckRunInput> {
         },
       },
     }))
-  } else if (worst || deferred > 0) {
-    const detail = worst
-      ? ` ${ruleLabel(worst.rule)} ${worst.window} ${worst.rule.lane} at ${Math.round((worst.spentValue / worst.capValue) * 100)}% of ${fmtValue(worst.unit, worst.capValue)}.`
-      : ''
+  } else if (incompleteSpendRules.length > 0
+    || (policy.rules.some((rule) => rule.scope === 'global' || rule.scope === 'agent')
+      && observedEvidence.status !== 'complete')) {
+    const detail = incompleteSpendRules.length > 0
+      ? `${incompleteSpendRules.length} budget rule${incompleteSpendRules.length === 1 ? '' : 's'} cannot be evaluated because one or more matching spend records have incomplete value or attribution evidence.`
+      : 'Known Bakin-managed spend is below its configured limits, but recent transcript-observed usage is incomplete.'
+    observations.push(healthUnknown({
+      key: 'spend',
+      summary: 'Spend could not be fully verified.',
+      detail,
+      evidence: data,
+      incident: {
+        key: 'spend-evidence-incomplete',
+        title: 'Spend evidence is incomplete',
+        impact: incompleteSpendRules.length > 0
+          ? 'Matching budget caps fail closed until spend values and billing attribution can be verified.'
+          : 'Health cannot confirm that agent spend outside Bakin-managed runs remains within budget.',
+        disposition: 'watch',
+        resources: incompleteSpendRules.length > 0
+          ? [
+              { kind: 'system' as const, id: 'spend-ledger', label: 'Spend ledger' },
+              { kind: 'system' as const, id: 'usage-history', label: 'Usage history' },
+            ]
+          : [{ kind: 'system', id: 'usage-history', label: 'Usage history' }],
+        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
+      },
+    }))
+  } else if (worst) {
+    const detail = ` ${ruleLabel(worst.rule)} ${worst.window} ${worst.rule.lane} at ${Math.round((worst.spentValue / worst.capValue) * 100)}% of ${fmtValue(worst.unit, worst.capValue)}.`
     observations.push(healthWarning({
       key: 'spend',
       summary: 'Spend is approaching a budget limit.',
@@ -342,19 +471,24 @@ export async function checkBudget(): Promise<HealthCheckRunInput> {
         },
       },
     }))
-  } else if (spendEvidence.status !== 'complete') {
-    observations.push(healthUnknown({
+  } else if (deferred > 0) {
+    observations.push(healthWarning({
       key: 'spend',
-      summary: 'Spend could not be fully verified.',
-      detail: 'Known Bakin-managed spend is below its configured limits, but recent transcript-observed usage is incomplete.',
+      summary: 'Spend is approaching a budget limit.',
+      detail: deferNote.trim(),
       evidence: data,
       incident: {
-        key: 'spend-evidence-incomplete',
-        title: 'Observed spend evidence is incomplete',
-        impact: 'Health cannot confirm that agent spend outside Bakin-managed runs remains within budget.',
+        key: 'approaching-cap',
+        title: 'Spend is approaching its cap',
+        impact: 'Covered work may begin deferring if spend continues at the current pace.',
         disposition: 'watch',
-        resources: [{ kind: 'system', id: 'usage-history', label: 'Usage history' }],
-        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
+        resources: [{ kind: 'budget_rule', id: 'active', label: 'Active spending rules' }],
+        resolution: {
+          key: 'open-spend-settings',
+          type: 'navigate',
+          label: 'Review spending',
+          href: '/models?tab=spend',
+        },
       },
     }))
   } else {
