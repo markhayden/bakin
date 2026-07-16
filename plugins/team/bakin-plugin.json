@@ -313,7 +313,8 @@
         "label": "Team",
         "icon": "Users",
         "href": "/team",
-        "order": 60
+        "order": 20,
+        "section": "operations"
       }
     ],
     "slots": [

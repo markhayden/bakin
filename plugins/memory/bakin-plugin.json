@@ -134,7 +134,8 @@
         "label": "Memory",
         "icon": "Brain",
         "href": "/memory",
-        "order": 50
+        "order": 40,
+        "section": "operations"
       }
     ],
     "slots": [

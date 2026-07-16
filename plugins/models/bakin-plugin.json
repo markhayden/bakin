@@ -122,7 +122,8 @@
         "label": "Models",
         "icon": "Cpu",
         "href": "/models",
-        "order": 70
+        "order": 30,
+        "section": "operations"
       }
     ],
     "slots": [
