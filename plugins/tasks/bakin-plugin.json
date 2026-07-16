@@ -1,7 +1,7 @@
 {
   "id": "tasks",
   "name": "Tasks",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "bakin": ">=1.0.0",
   "description": "Kanban task management with Bakin task-store persistence, agent assignment, and dependency tracking",
   "contentFiles": [],

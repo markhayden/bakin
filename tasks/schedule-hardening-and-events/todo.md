@@ -24,12 +24,12 @@
 - [ ] CHECKPOINT: calendars eyeballed live → Mark approves → merge
 
 ## PR4 — feat(schedule): plugin-contributed scheduled domain events
-- [ ] T13 SDK ScheduledDomainEvent type + server-side zod schema (S)
-- [ ] T14 Hook fan-in on occurrences endpoint (2s timeout, honest droppedProviders) (M)
-- [ ] T15 tasks.scheduledEvents provider + change events (M)
-- [ ] T16 Calendar rendering: distinct event chips + popover + deep links (M)
-- [ ] T17 Reschedule verb: ConfirmDialog date picker + tasks.rescheduleEvent (M)
-- [ ] T18 Docs (external-author guide, knowledge doc, CLAUDE.md blurb) + manifest bumps (S)
+- [x] T13 SDK ScheduledDomainEvent type + server-side zod schema (S)
+- [x] T14 Hook fan-in on occurrences endpoint (2s timeout, honest droppedProviders) (M)
+- [x] T15 tasks.scheduledEvents provider + taskboard-broadcast refetch (M)
+- [x] T16 Calendar rendering: distinct event chips + popover + deep links (M)
+- [x] T17 Reschedule verb: POST /events/reschedule + ConfirmDialog picker + tasks.rescheduleEvent (M)
+- [x] T18 Docs (external-author guide, knowledge doc, CLAUDE.md blurb) + manifests (schedule 1.2.0, tasks minor) (S)
 - [ ] CHECKPOINT: #191 acceptance criteria verified live → Mark approves → merge → close #191
 
 ## Phase 5 — bakin-bits-official
