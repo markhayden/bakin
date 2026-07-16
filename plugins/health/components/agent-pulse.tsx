@@ -12,7 +12,11 @@ import type {
   UsageHistoryData,
 } from '../types'
 import { formatRuntimeCost, formatTokenCount } from '../lib/format'
-import { buildAgentPulseRows, type AgentPulseRow } from '../lib/agent-pulse-view-model'
+import {
+  buildAgentPulseRows,
+  hasCurrentAgentEffortCoverage,
+  type AgentPulseRow,
+} from '../lib/agent-pulse-view-model'
 
 export interface AgentPulsePending {
   effort: boolean
@@ -42,6 +46,18 @@ function plural(count: number, singular: string, pluralLabel = `${singular}s`): 
   return `${count} ${count === 1 ? singular : pluralLabel}`
 }
 
+function latestSessionCostLabel(session: AgentUsage): string | null {
+  if (session.cost.total === null) return null
+  const cost = formatRuntimeCost(session.cost.total)
+  if (session.costedMessages === undefined) {
+    return `${cost}+ reported cost · coverage unavailable`
+  }
+  if (session.costedMessages < session.messages) {
+    return `${cost}+ reported cost · ${session.costedMessages} of ${session.messages} messages`
+  }
+  return `${cost} reported cost`
+}
+
 function Metric({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="min-w-0">
@@ -60,6 +76,12 @@ function ReviewStatus({ row, checking }: { row: AgentPulseRow; checking: boolean
   }
   if (row.reviewState === 'clear') {
     return <StatusBadge tone="success" variant="outline">No review flags</StatusBadge>
+  }
+  if (row.effort && !hasCurrentAgentEffortCoverage(row.effort)) {
+    return <StatusBadge tone="neutral" variant="outline">Coverage unavailable</StatusBadge>
+  }
+  if (row.effort && row.effort.runs > 0 && row.effort.windowTokens === null) {
+    return <StatusBadge tone="neutral" variant="outline">Metering incomplete</StatusBadge>
   }
   return <StatusBadge tone="neutral" variant="outline">Coverage unavailable</StatusBadge>
 }
@@ -157,6 +179,7 @@ function LatestSessionDetails({ row, id, checking, unavailable }: {
   unavailable: boolean
 }) {
   const session = row.latestSession
+  const costLabel = session ? latestSessionCostLabel(session) : null
   return (
     <div
       id={id}
@@ -165,24 +188,29 @@ function LatestSessionDetails({ row, id, checking, unavailable }: {
       className="border-t border-foreground/10 bg-foreground/[0.018] px-4 py-3"
     >
       {session ? (
-        <div className="grid gap-3 @[36rem]/agent-pulse:grid-cols-[minmax(11rem,1.5fr)_repeat(4,minmax(5rem,1fr))]">
-          <div className="min-w-0">
-            <p className="truncate font-medium text-foreground" title={session.model}>{session.model}</p>
-            <p className="text-xs text-muted-foreground">
-              {plural(session.messages, 'message')} · {formatTokenCount(session.tokens.total)} tokens
-            </p>
+        <div>
+          <div className="grid gap-3 @[36rem]/agent-pulse:grid-cols-[minmax(11rem,1.5fr)_repeat(4,minmax(5rem,1fr))]">
+            <div className="min-w-0">
+              <p className="truncate font-medium text-foreground" title={session.model}>{session.model}</p>
+              <p className="text-xs text-muted-foreground">
+                {plural(session.messages, 'message')} · {formatTokenCount(session.tokens.total)} tokens
+              </p>
+            </div>
+            {([
+              ['Input', session.tokens.input],
+              ['Output', session.tokens.output],
+              ['Cache read', session.tokens.cacheRead],
+              ['Cache write', session.tokens.cacheWrite],
+            ] as const).map(([label, value]) => (
+              <dl key={label}>
+                <dt className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</dt>
+                <dd className="mt-0.5 font-medium tabular-nums text-foreground">{formatTokenCount(value)}</dd>
+              </dl>
+            ))}
           </div>
-          {([
-            ['Input', session.tokens.input],
-            ['Output', session.tokens.output],
-            ['Cache read', session.tokens.cacheRead],
-            ['Cache write', session.tokens.cacheWrite],
-          ] as const).map(([label, value]) => (
-            <dl key={label}>
-              <dt className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</dt>
-              <dd className="mt-0.5 font-medium tabular-nums text-foreground">{formatTokenCount(value)}</dd>
-            </dl>
-          ))}
+          {costLabel && (
+            <p className="mt-2 text-xs text-muted-foreground">{costLabel}</p>
+          )}
         </div>
       ) : checking ? (
         <p className="text-sm text-muted-foreground">Checking latest session…</p>
@@ -212,6 +240,20 @@ function AgentPulseRowView({ row, expanded, pending, unavailable, liveNowStale, 
   const detailsId = useId()
   const headingId = useId()
   const flag = row.effort?.flags[0]
+  const tokenCoverage = !row.effort || !hasCurrentAgentEffortCoverage(row.effort)
+    ? 'coverage unavailable'
+    : row.effort.tokenAggregateRepresentable === false
+      ? `${row.effort.tokenMeteredRuns} of ${row.effort.tokenApplicableRuns} token-bearing calls reported totals · combined total too large to report`
+      : row.effort.tokenMeteredRuns !== row.effort.tokenApplicableRuns
+        ? `${row.effort.tokenMeteredRuns} of ${row.effort.tokenApplicableRuns} token-bearing calls metered`
+        : null
+  const costCoverage = !row.effort || !hasCurrentAgentEffortCoverage(row.effort)
+    ? 'coverage unavailable'
+    : row.effort.costAggregateRepresentable === false
+      ? `${row.effort.costedRuns} of ${row.effort.runs} runs priced · combined cost too large to report`
+      : row.effort.costedRuns !== row.effort.runs
+        ? `${row.effort.costedRuns} of ${row.effort.runs} runs priced`
+        : null
   const activitySummary = row.liveRun
     ? row.liveRun.taskTitle ?? 'Active task title unavailable'
     : flag?.message
@@ -263,8 +305,16 @@ function AgentPulseRowView({ row, expanded, pending, unavailable, liveNowStale, 
             <p className="text-sm text-muted-foreground">Checking…</p>
           ) : row.effort ? (
             <>
-              <p className="font-medium text-foreground">{plural(row.effort.runs, 'metered run')}</p>
-              <p className="text-xs text-muted-foreground">{plural(row.effort.completions, 'task completion')}</p>
+              <p className="font-medium text-foreground">{plural(row.effort.runs, 'tracked run')}</p>
+              <p className="text-xs text-muted-foreground">
+                {row.effort.windowTokens === null
+                  ? `Token totals unavailable${tokenCoverage ? ` · ${tokenCoverage}` : ''}`
+                  : `${formatTokenCount(row.effort.windowTokens)} tracked tokens`}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {plural(row.effort.completions, 'task completion')}
+                {costCoverage ? ` · cost ${costCoverage}` : ''}
+              </p>
             </>
           ) : (
             <p className="text-sm text-muted-foreground">Work evidence unavailable</p>

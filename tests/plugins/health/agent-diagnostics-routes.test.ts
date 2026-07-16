@@ -229,6 +229,11 @@ describe('GET /agent-effort', () => {
       windowTokens: 200_000,
       windowCostUsdMicros: 40_000,
       runs: 2,
+      tokenApplicableRuns: 2,
+      tokenMeteredRuns: 2,
+      tokenAggregateRepresentable: true,
+      costedRuns: 2,
+      costAggregateRepresentable: true,
       completions: 1,
       tokensPerCompletion: 200_000,
       totalObservedTokens: 1_000_000,
@@ -241,6 +246,21 @@ describe('GET /agent-effort', () => {
   it('rejects an unknown window with 400', async () => {
     const { status } = await get('/agent-effort', { window: 'forever' })
     expect(status).toBe(400)
+  })
+
+  it('returns the declared 503 when the execution ledger is unavailable', async () => {
+    closeAllDbs()
+    const ledgerPath = join(testDir, 'bakin.db')
+    rmSync(ledgerPath, { force: true })
+    mkdirSync(ledgerPath)
+
+    try {
+      const { status, body } = await get('/agent-effort')
+      expect(status).toBe(503)
+      expect(body.error).toBe('Execution ledger could not be read.')
+    } finally {
+      rmSync(ledgerPath, { recursive: true, force: true })
+    }
   })
 })
 

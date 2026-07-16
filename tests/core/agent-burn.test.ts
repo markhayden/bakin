@@ -43,17 +43,32 @@ const config: BurnConfig = {
 }
 
 function inputs(overrides: Partial<AgentBurnInputs> = {}): AgentBurnInputs {
-  return {
+  const merged: AgentBurnInputs = {
     agent: 'pixel',
     attributedTokens: 0,
     attributedCostUsdMicros: null,
     runs: 0,
+    tokenApplicableRuns: 0,
+    tokenMeteredRuns: 0,
+    tokenAggregateRepresentable: true,
+    costedRuns: 0,
+    costAggregateRepresentable: true,
     completions: 0,
     observedTokens: null,
     todayObservedTokens: null,
     baselineDailyTokens: [],
     ...overrides,
   }
+  if (overrides.tokenApplicableRuns === undefined) {
+    merged.tokenApplicableRuns = merged.runs
+  }
+  if (overrides.tokenMeteredRuns === undefined) {
+    merged.tokenMeteredRuns = merged.attributedTokens === null ? 0 : merged.tokenApplicableRuns
+  }
+  if (overrides.costedRuns === undefined) {
+    merged.costedRuns = merged.attributedCostUsdMicros === null ? 0 : merged.runs
+  }
+  return merged
 }
 
 function flagKinds(i: AgentBurnInputs) {
@@ -153,6 +168,131 @@ describe('unattributed', () => {
     const report = evaluateAgentBurn(inputs({ attributedTokens: 800_000, completions: 2 }), config)
     expect(report.totalObservedTokens).toBeNull()
     expect(report.unattributedTokens).toBeNull()
+    expect(report.flags).toEqual([])
+  })
+
+  it('null attributed metering stays unknown instead of fabricating usage or ratios', () => {
+    const report = evaluateAgentBurn(
+      inputs({
+        attributedTokens: null,
+        observedTokens: 1_000_000,
+        runs: 3,
+        tokenApplicableRuns: 3,
+        tokenMeteredRuns: 0,
+        completions: 2,
+      }),
+      config,
+    )
+
+    expect(report.windowTokens).toBeNull()
+    expect(report.unattributedTokens).toBeNull()
+    expect(report.tokensPerCompletion).toBeNull()
+    expect(report.flags).toEqual([])
+  })
+
+  it('null attributed metering cannot trigger effort-no-outcome', () => {
+    const report = evaluateAgentBurn(
+      inputs({
+        attributedTokens: null,
+        observedTokens: 1_000_000,
+        runs: 3,
+        tokenApplicableRuns: 3,
+        tokenMeteredRuns: 0,
+      }),
+      config,
+    )
+
+    expect(report.flags.some((flag) => flag.kind === 'effort-no-outcome')).toBe(false)
+  })
+
+  it('suppresses every burn judgment when only some runs have token evidence', () => {
+    const report = evaluateAgentBurn(
+      inputs({
+        attributedTokens: null,
+        attributedCostUsdMicros: null,
+        runs: 4,
+        tokenApplicableRuns: 4,
+        tokenMeteredRuns: 3,
+        costedRuns: 2,
+        completions: 0,
+        observedTokens: 2_000_000,
+        todayObservedTokens: 2_000_000,
+        baselineDailyTokens: [100_000, 200_000],
+      }),
+      config,
+    )
+
+    expect(report.windowTokens).toBeNull()
+    expect(report.windowCostUsdMicros).toBeNull()
+    expect(report.tokensPerCompletion).toBeNull()
+    expect(report.unattributedTokens).toBeNull()
+    expect(report.flags).toEqual([])
+    expect(report.tokenApplicableRuns).toBe(4)
+    expect(report.tokenMeteredRuns).toBe(3)
+    expect(report.costedRuns).toBe(2)
+  })
+
+  it('sanitizes a numeric subtotal when coverage counts say it is partial', () => {
+    const report = evaluateAgentBurn(
+      inputs({
+        attributedTokens: 900_000,
+        attributedCostUsdMicros: 30_000,
+        runs: 4,
+        tokenApplicableRuns: 4,
+        tokenMeteredRuns: 3,
+        costedRuns: 2,
+        completions: 2,
+        observedTokens: 1_000_000,
+      }),
+      config,
+    )
+
+    expect(report.windowTokens).toBeNull()
+    expect(report.windowCostUsdMicros).toBeNull()
+    expect(report.tokensPerCompletion).toBeNull()
+    expect(report.unattributedTokens).toBeNull()
+    expect(report.flags).toEqual([])
+  })
+
+  it('withholds unsafe token and cost aggregates even when every run reported evidence', () => {
+    const report = evaluateAgentBurn(
+      inputs({
+        attributedTokens: Number.MAX_SAFE_INTEGER * 2,
+        attributedCostUsdMicros: Number.MAX_SAFE_INTEGER * 2,
+        runs: 2,
+        tokenApplicableRuns: 2,
+        tokenMeteredRuns: 2,
+        tokenAggregateRepresentable: false,
+        costedRuns: 2,
+        costAggregateRepresentable: false,
+        completions: 1,
+        observedTokens: 100,
+      }),
+      config,
+    )
+
+    expect(report.windowTokens).toBeNull()
+    expect(report.windowCostUsdMicros).toBeNull()
+    expect(report.tokensPerCompletion).toBeNull()
+    expect(report.unattributedTokens).toBeNull()
+    expect(report.flags).toEqual([])
+  })
+
+  it('treats media-only interactions as complete zero token evidence', () => {
+    const report = evaluateAgentBurn(
+      inputs({
+        attributedTokens: 0,
+        runs: 2,
+        tokenApplicableRuns: 0,
+        tokenMeteredRuns: 0,
+        observedTokens: 0,
+      }),
+      config,
+    )
+
+    expect(report.windowTokens).toBe(0)
+    expect(report.tokenApplicableRuns).toBe(0)
+    expect(report.tokenMeteredRuns).toBe(0)
     expect(report.flags).toEqual([])
   })
 })

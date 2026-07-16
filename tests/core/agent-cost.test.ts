@@ -70,6 +70,8 @@ describe('meterAgentTurn', () => {
     await meterAgentTurn({ runId: 'task:t1:d1', taskId: 't1', agent: 'pixel', activityClass: 'user', result: { id: 'm', usage: { input: 1, output: 1 } } })
     expect(costRows[0].runId).toBe('task:t1:d1')
     expect(costRows[0].taskId).toBe('t1')
+    expect(costRows[0].usageKind).toBe('tokens')
+    expect(costRows[0].totalTokens).toBe(2)
   })
 
   it('threads cache read/write tokens into the cost row and the usage entry', async () => {
@@ -80,6 +82,46 @@ describe('meterAgentTurn', () => {
     })
     expect(costRows[0]).toMatchObject({ cacheReadTokens: 900, cacheWriteTokens: 40 })
     expect(usageRows[0]).toMatchObject({ tokensCacheRead: 900, tokensCacheWrite: 40 })
+  })
+
+  it('preserves an explicit total even when separately reported cache tokens are larger', async () => {
+    await meterAgentTurn({
+      agent: 'pixel',
+      activityClass: 'user',
+      result: { id: 'm', usage: { input: 537, output: 73, total: 610, cacheRead: 34_200 } },
+    })
+
+    expect(costRows[0]).toMatchObject({
+      inputTokens: 537,
+      outputTokens: 73,
+      cacheReadTokens: 34_200,
+      totalTokens: 610,
+    })
+  })
+
+  it('includes cache components when it must derive a missing total', async () => {
+    await meterAgentTurn({
+      agent: 'pixel',
+      activityClass: 'user',
+      result: { id: 'm', usage: { input: 537, output: 73, cacheRead: 34_200 } },
+    })
+
+    expect(costRows[0].totalTokens).toBe(34_810)
+  })
+
+  it('withholds a derived total when either base token counter is missing', async () => {
+    await meterAgentTurn({
+      agent: 'pixel',
+      activityClass: 'user',
+      result: { id: 'm', usage: { input: 537, cacheRead: 34_200 } },
+    })
+
+    expect(costRows[0]).toMatchObject({
+      inputTokens: 537,
+      outputTokens: null,
+      cacheReadTokens: 34_200,
+      totalTokens: null,
+    })
   })
 
   it('omits cache fields entirely when the runtime reports no cache usage', async () => {
@@ -113,9 +155,48 @@ describe('meterAgentTurn', () => {
 
   it('records null cost (unmetered) when pricing is unavailable, never throws', async () => {
     priceTurnImpl = () => { throw new Error('boom') }
-    await meterAgentTurn({ agent: 'pixel', activityClass: 'user', result: { id: 'm', usage: { input: 1, output: 1 } } })
-    // priceTurn threw → whole meter swallowed; no row, no throw.
-    expect(costRows).toHaveLength(0)
+    await meterAgentTurn({ agent: 'pixel', activityClass: 'user', resolvedModel: 'fallback/model', result: { id: 'm', usage: { input: 1, output: 1 } } })
+    expect(costRows).toHaveLength(1)
+    expect(costRows[0]).toMatchObject({
+      agent: 'pixel',
+      model: 'fallback/model',
+      usageKind: 'tokens',
+      totalTokens: 2,
+      costUsdMicros: null,
+      provider: null,
+      lane: null,
+    })
+    expect(usageRows).toHaveLength(1)
+  })
+
+  it('rejects malformed counters as unknown without inventing a total', async () => {
+    await meterAgentTurn({
+      agent: 'pixel',
+      activityClass: 'user',
+      result: { id: 'm', usage: { input: -1, output: 2, cacheRead: Number.POSITIVE_INFINITY } },
+    })
+
+    expect(costRows[0]).toMatchObject({
+      inputTokens: null,
+      outputTokens: 2,
+      cacheReadTokens: null,
+      totalTokens: null,
+    })
+    expect(usageRows[0]).toMatchObject({ tokensOut: 2 })
+    expect('tokensIn' in usageRows[0]).toBe(false)
+    expect('tokensCacheRead' in usageRows[0]).toBe(false)
+  })
+
+  it('rejects malformed pricing as unpriced evidence', async () => {
+    priceTurnImpl = () => ({ model: 'provider/model', costUsdMicros: -25 })
+    await meterAgentTurn({
+      agent: 'pixel',
+      activityClass: 'user',
+      result: { id: 'm', usage: { input: 1, output: 2 } },
+    })
+
+    expect(costRows[0].costUsdMicros).toBeNull()
+    expect('costUsdMicros' in usageRows[0]).toBe(false)
   })
 })
 
@@ -124,7 +205,14 @@ describe('meterImageTurn', () => {
     priceImageImpl = () => ({ model: 'black-forest-labs/flux-pro', costUsdMicros: 110_000 })
     await meterImageTurn({ agent: 'pixel', activityClass: 'user', model: 'black-forest-labs/flux-pro', count: 2, taskId: 't1' })
     expect(costRows).toHaveLength(1)
-    expect(costRows[0]).toMatchObject({ agent: 'pixel', model: 'black-forest-labs/flux-pro', taskId: 't1', costUsdMicros: 110_000 })
+    expect(costRows[0]).toMatchObject({
+      agent: 'pixel',
+      model: 'black-forest-labs/flux-pro',
+      taskId: 't1',
+      usageKind: 'media',
+      totalTokens: null,
+      costUsdMicros: 110_000,
+    })
     expect(String(costRows[0].runId)).toStartWith('image:')
     expect(usageRows[0]).toMatchObject({ name: 'image', costUsdMicros: 110_000 })
   })
@@ -140,5 +228,22 @@ describe('meterImageTurn', () => {
     priceImageImpl = () => ({ model: 'google/nanobanana', provider: 'google', lane: 'metered', costUsdMicros: 55_000 })
     await meterImageTurn({ agent: 'pixel', activityClass: 'user', model: 'google/nanobanana', count: 1 })
     expect(costRows[0]).toMatchObject({ provider: 'google', lane: 'metered' })
+  })
+
+  it('records an unpriced media row when image pricing fails', async () => {
+    priceImageImpl = () => { throw new Error('catalog unavailable') }
+    await meterImageTurn({ agent: 'pixel', activityClass: 'user', model: 'openai/gpt-image-2', count: 1 })
+
+    expect(costRows).toHaveLength(1)
+    expect(costRows[0]).toMatchObject({
+      agent: 'pixel',
+      model: 'openai/gpt-image-2',
+      usageKind: 'media',
+      totalTokens: null,
+      costUsdMicros: null,
+      provider: null,
+      lane: null,
+    })
+    expect(usageRows).toHaveLength(1)
   })
 })

@@ -11,7 +11,7 @@ import {
   toLocalDayKey,
   UsageHistoryStoreReadError,
 } from '@bakin/core/usage-history/store'
-import { listLiveRuns } from '../../src/core/execution-ledger'
+import { LedgerUnavailableError, listLiveRuns } from '../../src/core/execution-ledger'
 import { buildAgentBurnReports, getAgentBurnWindowScope } from '../../src/core/agent-burn'
 import { getLastReport, runDiagnostics } from '../../src/core/doctor'
 import { createLogger } from '../../src/core/logger'
@@ -20,6 +20,7 @@ import {
   startUsageHistoryTimer,
   stopUsageHistoryTimer,
   getLastUsageScan,
+  isUsageHistoryScanInFlight,
   getUsageHistoryScanStaleAfterMs,
   DEFAULT_SCAN_MINUTES,
 } from './lib/usage-history-timer'
@@ -121,6 +122,12 @@ function currentUsageEvidence(): {
   coverage: UsageEvidenceCoverage
   scannedAt: string | null
 } {
+  if (isUsageHistoryScanInFlight()) {
+    return {
+      coverage: { status: 'unavailable', reason: 'scan_in_progress', agents: [] },
+      scannedAt: null,
+    }
+  }
   const lastScan = getLastUsageScan()
   const scanStale = lastScan
     ? Math.max(0, Date.now() - lastScan.at) > getUsageHistoryScanStaleAfterMs()
@@ -528,9 +535,15 @@ const routes = [
           agents,
         })
       } catch (err) {
-        if (!(err instanceof UsageHistoryStoreReadError)) throw err
-        log.error('Agent effort usage store read failed', err)
-        return Response.json({ error: 'Usage history store could not be read.' }, { status: 503 })
+        if (err instanceof UsageHistoryStoreReadError) {
+          log.error('Agent effort usage store read failed', err)
+          return Response.json({ error: 'Usage history store could not be read.' }, { status: 503 })
+        }
+        if (err instanceof LedgerUnavailableError) {
+          log.error('Agent effort execution ledger read failed', err)
+          return Response.json({ error: 'Execution ledger could not be read.' }, { status: 503 })
+        }
+        throw err
       }
     },
   }),

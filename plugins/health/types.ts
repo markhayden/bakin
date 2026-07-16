@@ -129,6 +129,7 @@ export type UsageEvidenceCoverageStatus = 'complete' | 'partial' | 'unavailable'
 export type UsageEvidenceCoverageReason =
   | 'complete'
   | 'scan_not_run'
+  | 'scan_in_progress'
   | 'scan_status_unavailable'
   | 'missing_session_tier'
   | 'roster_unavailable'
@@ -193,10 +194,21 @@ export interface AgentEffortFlag {
 
 export interface AgentEffortRow {
   agent: string
-  /** Bakin-attributed tokens in the window (execution ledger). */
-  windowTokens: number
+  /** Bakin-attributed tokens; null when any token-bearing call lacks token evidence. */
+  windowTokens: number | null
+  /** Null when no run was recorded or any recorded run lacks tracked cost. */
   windowCostUsdMicros: number | null
   runs: number
+  /** Token-bearing calls; media work is excluded. Present on current servers. */
+  tokenApplicableRuns?: number
+  /** Present on current servers; omitted by legacy servers. */
+  tokenMeteredRuns?: number
+  /** False when reported token totals cannot be safely represented as one aggregate. */
+  tokenAggregateRepresentable?: boolean
+  /** Present on current servers; omitted by legacy servers. */
+  costedRuns?: number
+  /** False when reported costs cannot be safely represented as one aggregate. */
+  costAggregateRepresentable?: boolean
   completions: number
   tokensPerCompletion: number | null
   /** Transcript-observed tokens; null when the usage scanner has no coverage. */

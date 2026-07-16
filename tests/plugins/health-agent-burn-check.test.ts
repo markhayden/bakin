@@ -2,7 +2,7 @@
  * usage.agent-burn doctor check (#385) — maps burn evaluator reports to
  * warning observations with machine-readable agent evidence.
  */
-import { describe, it, expect, mock } from 'bun:test'
+import { afterEach, describe, it, expect, mock } from 'bun:test'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
@@ -32,6 +32,14 @@ import type { AgentBurnReport } from '../../src/core/agent-burn'
 let reports: AgentBurnReport[] = []
 let throwLedger = false
 let receivedOptions: unknown
+const usageScanGlobal = globalThis as typeof globalThis & {
+  __bakinUsageHistoryLastScan?: unknown
+  __bakinUsageHistoryScanPending?: boolean
+}
+
+afterEach(() => {
+  usageScanGlobal.__bakinUsageHistoryScanPending = false
+})
 
 import { checkAgentBurnWith } from '../../plugins/health/lib/system-checks/agent-burn'
 import { LedgerUnavailableError } from '../../packages/core/src/execution/ledger'
@@ -43,6 +51,11 @@ const cleanReport = {
   windowTokens: 1000,
   windowCostUsdMicros: null,
   runs: 2,
+  tokenApplicableRuns: 2,
+  tokenMeteredRuns: 2,
+  tokenAggregateRepresentable: true,
+  costedRuns: 0,
+  costAggregateRepresentable: true,
   completions: 2,
   tokensPerCompletion: 500,
   totalObservedTokens: 1200,
@@ -130,6 +143,123 @@ describe('checkAgentBurn', () => {
     g.__bakinUsageHistoryLastScan = null
   })
 
+  it('reports unknown when recorded runs have incomplete token metering', async () => {
+    const g = globalThis as typeof globalThis & { __bakinUsageHistoryLastScan?: unknown }
+    g.__bakinUsageHistoryLastScan = {
+      at: Date.now(),
+      report: {
+        scanned: 1,
+        skipped: 0,
+        failed: 0,
+        coverage: {
+          status: 'complete',
+          reason: 'complete',
+          agents: [{ agent: 'scout', status: 'complete' }],
+        },
+      },
+    }
+    reports = [{
+      ...cleanReport,
+      windowTokens: null,
+      windowCostUsdMicros: null,
+      tokenApplicableRuns: 2,
+      tokenMeteredRuns: 1,
+      costedRuns: 0,
+      tokensPerCompletion: null,
+      unattributedTokens: null,
+    }]
+
+    const results = observed(await checkAgentBurn())
+
+    expect(results).toHaveLength(1)
+    expect(results[0]!.status).toBe('unknown')
+    expect(results[0]!.summary).toContain('metering is incomplete')
+    expect(results[0]!.detail).toContain('1 of 2 token-bearing recorded calls')
+    expect(results[0]!.evidence).toMatchObject({
+      agents: ['scout'],
+      runs: 2,
+      tokenApplicableRuns: 2,
+      tokenMeteredRuns: 1,
+    })
+    g.__bakinUsageHistoryLastScan = null
+  })
+
+  it('reports unrepresentable token and cost aggregates without changing honest coverage counts', async () => {
+    const g = globalThis as typeof globalThis & { __bakinUsageHistoryLastScan?: unknown }
+    g.__bakinUsageHistoryLastScan = {
+      at: Date.now(),
+      report: {
+        scanned: 1,
+        skipped: 0,
+        failed: 0,
+        coverage: {
+          status: 'complete',
+          reason: 'complete',
+          agents: [{ agent: 'scout', status: 'complete' }],
+        },
+      },
+    }
+    reports = [{
+      ...cleanReport,
+      windowTokens: null,
+      windowCostUsdMicros: null,
+      tokenMeteredRuns: 2,
+      tokenAggregateRepresentable: false,
+      costedRuns: 2,
+      costAggregateRepresentable: false,
+      tokensPerCompletion: null,
+      unattributedTokens: null,
+    }]
+
+    const results = observed(await checkAgentBurn())
+
+    expect(results).toHaveLength(2)
+    expect(results.map((result) => result.key)).toEqual(['metering', 'cost-aggregation'])
+    expect(results[0]!.detail).toContain('2 of 2 token-bearing recorded calls reported totals')
+    expect(results[0]!.evidence).toMatchObject({
+      tokenApplicableRuns: 2,
+      tokenMeteredRuns: 2,
+      unrepresentableAggregateAgents: ['scout'],
+    })
+    expect(results[1]!.detail).toContain('1 agent aggregate exceeded the safe reporting range across 2 priced calls')
+    g.__bakinUsageHistoryLastScan = null
+  })
+
+  it('does not call media-only work incomplete token metering', async () => {
+    const g = globalThis as typeof globalThis & { __bakinUsageHistoryLastScan?: unknown }
+    g.__bakinUsageHistoryLastScan = {
+      at: Date.now(),
+      report: {
+        scanned: 1,
+        skipped: 0,
+        failed: 0,
+        coverage: {
+          status: 'complete',
+          reason: 'complete',
+          agents: [{ agent: 'scout', status: 'complete' }],
+        },
+      },
+    }
+    reports = [{
+      ...cleanReport,
+      windowTokens: 0,
+      runs: 2,
+      tokenApplicableRuns: 0,
+      tokenMeteredRuns: 0,
+      completions: 0,
+      tokensPerCompletion: null,
+      totalObservedTokens: 0,
+      unattributedTokens: 0,
+    }]
+
+    const results = observed(await checkAgentBurn())
+
+    expect(results).toHaveLength(1)
+    expect(results[0]!.status).toBe('healthy')
+    expect(results[0]!.summary).not.toContain('incomplete')
+    g.__bakinUsageHistoryLastScan = null
+  })
+
   it('does not mint a fresh healthy verdict from an expired complete scan', async () => {
     const now = Date.parse('2026-07-14T18:00:00.000Z')
     const staleAfterMs = 10 * 60_000
@@ -158,6 +288,31 @@ describe('checkAgentBurn', () => {
     expect(results[0]!.status).toBe('unknown')
     expect(results[0]!.evidence).toMatchObject({ reason: 'scan_stale' })
     expect(receivedOptions).toEqual({ coverage: { agents: [] } })
+  })
+
+  it('does not mint a healthy verdict while the usage store is changing generations', async () => {
+    usageScanGlobal.__bakinUsageHistoryLastScan = {
+      at: Date.now(),
+      report: {
+        scanned: 1,
+        skipped: 0,
+        failed: 0,
+        coverage: {
+          status: 'complete',
+          reason: 'complete',
+          agents: [{ agent: 'scout', status: 'complete' }],
+        },
+      },
+    }
+    usageScanGlobal.__bakinUsageHistoryScanPending = true
+    reports = [{ ...cleanReport, totalObservedTokens: null, unattributedTokens: null }]
+
+    const results = observed(await checkAgentBurn())
+
+    expect(results[0]!.status).toBe('unknown')
+    expect(results[0]!.evidence).toMatchObject({ reason: 'scan_in_progress' })
+    expect(receivedOptions).toEqual({ coverage: { agents: [] } })
+    usageScanGlobal.__bakinUsageHistoryLastScan = null
   })
 
   it('emits one warn row per flagged agent with data.agents attribution', async () => {

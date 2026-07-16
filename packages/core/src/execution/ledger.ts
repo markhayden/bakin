@@ -24,6 +24,7 @@ import { join } from 'path'
 import { createLogger } from '../logger'
 import { getBakinPaths } from '../content-dir'
 import { applyMigrations, getDb, withTx, StorageUnavailableError, type Db } from '../storage/db'
+import { normalizeRunCostUsdMicros, normalizeRunTokenEvidence, type RunUsageKind } from './token-evidence'
 
 const log = createLogger('execution-ledger')
 
@@ -209,6 +210,80 @@ const MIGRATIONS = [
          )`,
       )
       db.exec("CREATE INDEX budget_incidents_live ON budget_incidents(status) WHERE status IN ('open','acknowledged')")
+    },
+  },
+  {
+    // Token coverage applies only to token-bearing interactions. Image/media
+    // turns intentionally have no token total and must not make an agent's
+    // otherwise complete token evidence look partial. Legacy image rows are
+    // recognizable by their durable run-id prefix; every other legacy row
+    // keeps the historical token-bearing meaning. Component-only rows can be
+    // repaired exactly, so recover their total during the same migration.
+    version: 7,
+    up: (db: Db) => {
+      db.exec("ALTER TABLE run_costs ADD COLUMN usage_kind TEXT NOT NULL DEFAULT 'tokens' CHECK (usage_kind IN ('tokens','media'))")
+      db.exec("UPDATE run_costs SET usage_kind = 'media' WHERE run_id LIKE 'image:%'")
+      db.exec(
+        `UPDATE run_costs
+            SET total_tokens = COALESCE(input_tokens, 0)
+                             + COALESCE(output_tokens, 0)
+                             + COALESCE(cache_read_tokens, 0)
+                             + COALESCE(cache_write_tokens, 0)
+          WHERE usage_kind = 'tokens'
+            AND total_tokens IS NULL
+            AND input_tokens IS NOT NULL
+            AND output_tokens IS NOT NULL
+            AND typeof(input_tokens) = 'integer' AND input_tokens BETWEEN 0 AND 9007199254740991
+            AND typeof(output_tokens) = 'integer' AND output_tokens BETWEEN 0 AND 9007199254740991
+            AND (cache_read_tokens IS NULL OR (typeof(cache_read_tokens) = 'integer' AND cache_read_tokens BETWEEN 0 AND 9007199254740991))
+            AND (cache_write_tokens IS NULL OR (typeof(cache_write_tokens) = 'integer' AND cache_write_tokens BETWEEN 0 AND 9007199254740991))
+            AND COALESCE(input_tokens, 0)
+              + COALESCE(output_tokens, 0)
+              + COALESCE(cache_read_tokens, 0)
+              + COALESCE(cache_write_tokens, 0) <= 9007199254740991`,
+      )
+      db.exec(
+        `UPDATE run_costs SET total_tokens = NULL
+          WHERE usage_kind = 'tokens'
+            AND total_tokens IS NOT NULL
+            AND (
+              (input_tokens IS NOT NULL AND (typeof(input_tokens) != 'integer' OR input_tokens < 0 OR input_tokens > 9007199254740991))
+              OR (output_tokens IS NOT NULL AND (typeof(output_tokens) != 'integer' OR output_tokens < 0 OR output_tokens > 9007199254740991))
+              OR (cache_read_tokens IS NOT NULL AND (typeof(cache_read_tokens) != 'integer' OR cache_read_tokens < 0 OR cache_read_tokens > 9007199254740991))
+              OR (cache_write_tokens IS NOT NULL AND (typeof(cache_write_tokens) != 'integer' OR cache_write_tokens < 0 OR cache_write_tokens > 9007199254740991))
+              OR (
+                input_tokens IS NOT NULL
+                AND output_tokens IS NOT NULL
+                AND typeof(input_tokens) = 'integer'
+                AND typeof(output_tokens) = 'integer'
+                AND input_tokens BETWEEN 0 AND 9007199254740991
+                AND output_tokens BETWEEN 0 AND 9007199254740991
+                AND input_tokens + output_tokens > total_tokens
+              )
+            )`,
+      )
+      for (const column of ['input_tokens', 'output_tokens', 'total_tokens', 'cache_read_tokens', 'cache_write_tokens']) {
+        db.exec(
+          `UPDATE run_costs SET ${column} = NULL
+            WHERE usage_kind = 'tokens'
+              AND ${column} IS NOT NULL
+              AND (typeof(${column}) != 'integer' OR ${column} < 0 OR ${column} > 9007199254740991)`,
+        )
+      }
+      db.exec(
+        `UPDATE run_costs SET cost_usd_micros = NULL
+          WHERE cost_usd_micros IS NOT NULL
+            AND (typeof(cost_usd_micros) != 'integer' OR cost_usd_micros < 0 OR cost_usd_micros > 9007199254740991)`,
+      )
+      db.exec(
+        `UPDATE run_costs
+            SET input_tokens = NULL,
+                output_tokens = NULL,
+                total_tokens = NULL,
+                cache_read_tokens = NULL,
+                cache_write_tokens = NULL
+          WHERE usage_kind = 'media'`,
+      )
     },
   },
 ]
@@ -806,6 +881,8 @@ export function putIdempotent(key: string, kind: string, result: unknown, now?: 
  */
 export type BillingLane = 'metered' | 'subscription'
 
+export type { RunUsageKind } from './token-evidence'
+
 export interface RunCostInput {
   runId: string
   /** Null for non-dispatch turns (watchdog/doctor/orchestrator sends). */
@@ -814,8 +891,13 @@ export interface RunCostInput {
   model?: string
   /** Provider segment of the model id (e.g. 'anthropic'); null when unknown. */
   provider?: string | null
-  /** Billing lane; null when undetectable (readers treat as metered). */
+  /** Billing lane; null when the runtime cannot classify it safely. */
   lane?: BillingLane | null
+  /**
+   * Token-bearing chat/run versus non-token media work. Optional only for
+   * compatibility with older internal callers; new writers must be explicit.
+   */
+  usageKind?: RunUsageKind
   inputTokens?: number | null
   outputTokens?: number | null
   totalTokens?: number | null
@@ -825,6 +907,12 @@ export interface RunCostInput {
   /** Estimated cost; null when the model has no catalog pricing (unmetered). */
   costUsdMicros?: number | null
   occurredAt: number
+}
+
+function usageKindFor(input: RunCostInput): RunUsageKind {
+  if (input.usageKind === undefined) return input.runId.startsWith('image:') ? 'media' : 'tokens'
+  if (input.usageKind === 'tokens' || input.usageKind === 'media') return input.usageKind
+  throw new TypeError(`invalid run usage kind: ${String(input.usageKind)}`)
 }
 
 export interface SpendByAgentRow {
@@ -843,15 +931,24 @@ export interface SpendByModelRow {
  * Record the cost of one settled run. first-write-wins on run_id (a transport
  * retry of the same run can't double-count). Token/cost columns are nullable:
  * an unmetered run (no usage, or a model with no catalog pricing) still gets a
- * row — it counts as a run with zero dollars, never a fabricated cost.
+ * row — it counts as a run while its cost remains unknown, never a
+ * fabricated zero-dollar result.
  */
 export function recordRunCost(input: RunCostInput): void {
+  const usageKind = usageKindFor(input)
+  const tokens = normalizeRunTokenEvidence(usageKind, {
+    input: input.inputTokens,
+    output: input.outputTokens,
+    total: input.totalTokens,
+    cacheRead: input.cacheReadTokens,
+    cacheWrite: input.cacheWriteTokens,
+  })
   guard(`recordRunCost(${input.runId})`, () => {
     ledger()
       .prepare(
         `INSERT OR IGNORE INTO run_costs
-           (run_id, task_id, agent, model, provider, lane, input_tokens, output_tokens, total_tokens, cache_read_tokens, cache_write_tokens, cost_usd_micros, occurred_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           (run_id, task_id, agent, model, provider, lane, usage_kind, input_tokens, output_tokens, total_tokens, cache_read_tokens, cache_write_tokens, cost_usd_micros, occurred_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         input.runId,
@@ -860,12 +957,13 @@ export function recordRunCost(input: RunCostInput): void {
         input.model ?? null,
         input.provider ?? null,
         input.lane ?? null,
-        input.inputTokens ?? null,
-        input.outputTokens ?? null,
-        input.totalTokens ?? null,
-        input.cacheReadTokens ?? null,
-        input.cacheWriteTokens ?? null,
-        input.costUsdMicros ?? null,
+        usageKind,
+        tokens.input,
+        tokens.output,
+        tokens.total,
+        tokens.cacheRead,
+        tokens.cacheWrite,
+        normalizeRunCostUsdMicros(input.costUsdMicros),
         input.occurredAt,
       )
   })
@@ -919,6 +1017,7 @@ export interface RunCostSpendRow {
   model: string | null
   provider: string | null
   lane: BillingLane | null
+  usageKind: RunUsageKind
   totalTokens: number | null
   costUsdMicros: number | null
   occurredAt: number
@@ -934,9 +1033,10 @@ export function listRunCostsSince(sinceMs: number): RunCostSpendRow[] {
     return ledger()
       .prepare<{
         run_id: string; agent: string; model: string | null; provider: string | null
-        lane: string | null; total_tokens: number | null; cost_usd_micros: number | null; occurred_at: number
+        lane: string | null; usage_kind: string | null; total_tokens: number | null
+        cost_usd_micros: number | null; occurred_at: number
       }, [number]>(
-        `SELECT run_id, agent, model, provider, lane, total_tokens, cost_usd_micros, occurred_at
+        `SELECT run_id, agent, model, provider, lane, usage_kind, total_tokens, cost_usd_micros, occurred_at
            FROM run_costs WHERE occurred_at >= ?`,
       )
       .all(sinceMs)
@@ -946,6 +1046,7 @@ export function listRunCostsSince(sinceMs: number): RunCostSpendRow[] {
         model: r.model,
         provider: r.provider,
         lane: r.lane === 'metered' || r.lane === 'subscription' ? r.lane : null,
+        usageKind: r.usage_kind === 'media' ? 'media' : 'tokens',
         totalTokens: r.total_tokens,
         costUsdMicros: r.cost_usd_micros,
         occurredAt: r.occurred_at,
@@ -1188,10 +1289,21 @@ export function recentRunsByAgent(agent: string, opts: { sinceMs?: number; limit
 
 export interface AgentTokenRollup {
   agent: string
-  /** SUM over nullable columns — null when no run in the window was metered. */
+  /** SUM over token-bearing rows. Compare metered with applicable before treating this as complete. */
   totalTokens: number | null
+  /** SUM over nullable columns. Use costedRuns before treating this as complete. */
   costUsdMicros: number | null
   runs: number
+  /** Rows for which a token total is meaningful (media work is excluded). */
+  tokenApplicableRuns: number
+  /** Token-bearing rows whose total token count was reported. */
+  tokenMeteredRuns: number
+  /** Whether the reported token subtotal fits the safe JavaScript/wire integer range. */
+  tokenAggregateRepresentable: boolean
+  /** Rows whose tracked cost was reported, including an explicit zero. */
+  costedRuns: number
+  /** Whether the reported cost subtotal fits the safe JavaScript/wire integer range. */
+  costAggregateRepresentable: boolean
 }
 
 /**
@@ -1202,12 +1314,42 @@ export interface AgentTokenRollup {
 export function runTokensByAgentSince(sinceMs: number): AgentTokenRollup[] {
   return guard('runTokensByAgentSince', () => {
     return ledger()
-      .prepare<{ agent: string; tokens: number | null; micros: number | null; runs: number }, [number]>(
-        `SELECT agent, SUM(total_tokens) AS tokens, SUM(cost_usd_micros) AS micros, COUNT(*) AS runs
+      .prepare<{
+        agent: string
+        tokens: number | null
+        micros: number | null
+        runs: number
+        token_applicable_runs: number
+        token_metered_runs: number
+        costed_runs: number
+      }, [number]>(
+        `SELECT agent,
+                TOTAL(CASE WHEN usage_kind = 'tokens' THEN total_tokens END) AS tokens,
+                TOTAL(cost_usd_micros) AS micros,
+                COUNT(*) AS runs,
+                SUM(CASE WHEN usage_kind = 'tokens' THEN 1 ELSE 0 END) AS token_applicable_runs,
+                SUM(CASE WHEN usage_kind = 'tokens' AND total_tokens IS NOT NULL THEN 1 ELSE 0 END) AS token_metered_runs,
+                COUNT(cost_usd_micros) AS costed_runs
            FROM run_costs WHERE occurred_at >= ? GROUP BY agent`,
       )
       .all(sinceMs)
-      .map((r) => ({ agent: r.agent, totalTokens: r.tokens, costUsdMicros: r.micros, runs: r.runs }))
+      .map((r) => {
+        const tokens = normalizeRunTokenEvidence('tokens', { total: r.tokens }).total
+        const micros = normalizeRunCostUsdMicros(r.micros)
+        return {
+          agent: r.agent,
+          totalTokens: r.token_applicable_runs === 0
+            ? 0
+            : r.token_metered_runs === 0 ? null : tokens,
+          costUsdMicros: r.costed_runs === 0 ? null : micros,
+          runs: r.runs,
+          tokenApplicableRuns: r.token_applicable_runs,
+          tokenMeteredRuns: r.token_metered_runs,
+          tokenAggregateRepresentable: r.token_metered_runs === 0 || tokens !== null,
+          costedRuns: r.costed_runs,
+          costAggregateRepresentable: r.costed_runs === 0 || micros !== null,
+        }
+      })
   })
 }
 

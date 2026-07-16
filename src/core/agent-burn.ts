@@ -12,8 +12,9 @@
  *
  * Data honesty rules: attributed numbers come from the run_costs ledger,
  * observed numbers from the usage.db transcript scans. When the scanner has
- * no coverage for the window, observed/unattributed are null — never a
- * fabricated zero.
+ * no coverage for the window, observed/unattributed are null. Likewise, a
+ * ledger rollup with unmetered runs has a null attributed total. Unknown
+ * values stay null — never a fabricated zero.
  */
 import { readUsageHistorySince, toLocalDayKey } from '@bakin/core/usage-history/store'
 import { getSettings } from './settings'
@@ -30,10 +31,21 @@ export interface BurnConfig {
 
 export interface AgentBurnInputs {
   agent: string
-  /** Bakin-metered tokens in the window (run_costs). */
-  attributedTokens: number
+  /** Bakin-metered tokens; null = one or more token-bearing ledger runs were not metered. */
+  attributedTokens: number | null
+  /** Tracked cost in the window; null = no activity or one or more runs were unpriced. */
   attributedCostUsdMicros: number | null
   runs: number
+  /** Runs for which token evidence is meaningful; media work is excluded. */
+  tokenApplicableRuns: number
+  /** Token-bearing runs with reported totals. Less than tokenApplicableRuns is partial. */
+  tokenMeteredRuns: number
+  /** False when the reported token subtotal exceeds the safe wire integer range. */
+  tokenAggregateRepresentable: boolean
+  /** Runs with reported tracked cost. Less than runs means tracked cost is partial. */
+  costedRuns: number
+  /** False when the reported cost subtotal exceeds the safe wire integer range. */
+  costAggregateRepresentable: boolean
   completions: number
   /** Transcript-observed tokens in the window; null = scanner has no coverage. */
   observedTokens: number | null
@@ -50,9 +62,16 @@ export interface BurnFlag {
 
 export interface AgentBurnReport {
   agent: string
-  windowTokens: number
+  /** Bakin-metered tokens; null = one or more token-bearing ledger runs were not metered. */
+  windowTokens: number | null
+  /** Tracked cost; null = no activity or one or more recorded runs were unpriced. */
   windowCostUsdMicros: number | null
   runs: number
+  tokenApplicableRuns: number
+  tokenMeteredRuns: number
+  tokenAggregateRepresentable: boolean
+  costedRuns: number
+  costAggregateRepresentable: boolean
   completions: number
   tokensPerCompletion: number | null
   totalObservedTokens: number | null
@@ -92,6 +111,10 @@ export function formatTokens(n: number): string {
   return String(n)
 }
 
+function isNonNegativeSafeInteger(value: number | null): value is number {
+  return value !== null && Number.isSafeInteger(value) && value >= 0
+}
+
 /** Pure heuristic evaluation for one agent. */
 export function evaluateAgentBurn(
   inputs: AgentBurnInputs,
@@ -99,17 +122,38 @@ export function evaluateAgentBurn(
   windowLabel = 'the selected day-aligned window',
 ): AgentBurnReport {
   const flags: BurnFlag[] = []
+  const hasCompleteAttributedEvidence = inputs.tokenApplicableRuns <= inputs.runs
+    && inputs.tokenMeteredRuns <= inputs.tokenApplicableRuns
+    && inputs.tokenMeteredRuns === inputs.tokenApplicableRuns
+    && inputs.tokenAggregateRepresentable
+    && isNonNegativeSafeInteger(inputs.attributedTokens)
+  const attributedTokens = hasCompleteAttributedEvidence ? inputs.attributedTokens : null
+  const attributedCostUsdMicros = inputs.runs > 0
+    && inputs.costedRuns === inputs.runs
+    && inputs.costAggregateRepresentable
+    && isNonNegativeSafeInteger(inputs.attributedCostUsdMicros)
+    ? inputs.attributedCostUsdMicros
+    : null
 
-  if (inputs.attributedTokens >= config.minTokensFloor && inputs.completions === 0) {
+  if (
+    hasCompleteAttributedEvidence &&
+    attributedTokens !== null &&
+    attributedTokens >= config.minTokensFloor &&
+    inputs.completions === 0
+  ) {
     flags.push({
       kind: 'effort-no-outcome',
       message:
-        `'${inputs.agent}' used ${formatTokens(inputs.attributedTokens)} tokens across ` +
+        `'${inputs.agent}' used ${formatTokens(attributedTokens)} tokens across ` +
         `${inputs.runs} run(s) during ${windowLabel} but completed no tasks — check its timeline`,
     })
   }
 
-  if (inputs.todayObservedTokens !== null && inputs.baselineDailyTokens.length > 0) {
+  if (
+    hasCompleteAttributedEvidence
+    && inputs.todayObservedTokens !== null
+    && inputs.baselineDailyTokens.length > 0
+  ) {
     const avg =
       inputs.baselineDailyTokens.reduce((a, b) => a + b, 0) / inputs.baselineDailyTokens.length
     if (
@@ -128,7 +172,9 @@ export function evaluateAgentBurn(
   }
 
   const unattributedTokens =
-    inputs.observedTokens === null ? null : Math.max(0, inputs.observedTokens - inputs.attributedTokens)
+    inputs.observedTokens === null || attributedTokens === null
+      ? null
+      : Math.max(0, inputs.observedTokens - attributedTokens)
   if (
     unattributedTokens !== null &&
     inputs.observedTokens !== null &&
@@ -146,12 +192,19 @@ export function evaluateAgentBurn(
 
   return {
     agent: inputs.agent,
-    windowTokens: inputs.attributedTokens,
-    windowCostUsdMicros: inputs.attributedCostUsdMicros,
+    windowTokens: attributedTokens,
+    windowCostUsdMicros: attributedCostUsdMicros,
     runs: inputs.runs,
+    tokenApplicableRuns: inputs.tokenApplicableRuns,
+    tokenMeteredRuns: inputs.tokenMeteredRuns,
+    tokenAggregateRepresentable: inputs.tokenAggregateRepresentable,
+    costedRuns: inputs.costedRuns,
+    costAggregateRepresentable: inputs.costAggregateRepresentable,
     completions: inputs.completions,
     tokensPerCompletion:
-      inputs.completions > 0 ? Math.round(inputs.attributedTokens / inputs.completions) : null,
+      inputs.completions > 0 && attributedTokens !== null
+        ? Math.round(attributedTokens / inputs.completions)
+        : null,
     totalObservedTokens: inputs.observedTokens,
     unattributedTokens,
     flags,
@@ -224,9 +277,14 @@ export function buildAgentBurnReports(
       evaluateAgentBurn(
         {
           agent,
-          attributedTokens: att?.totalTokens ?? 0,
+          attributedTokens: att ? att.totalTokens : 0,
           attributedCostUsdMicros: att?.costUsdMicros ?? null,
           runs: att?.runs ?? 0,
+          tokenApplicableRuns: att?.tokenApplicableRuns ?? 0,
+          tokenMeteredRuns: att?.tokenMeteredRuns ?? 0,
+          tokenAggregateRepresentable: att?.tokenAggregateRepresentable ?? true,
+          costedRuns: att?.costedRuns ?? 0,
+          costAggregateRepresentable: att?.costAggregateRepresentable ?? true,
           completions: completions.find((r) => r.agent === agent)?.completions ?? 0,
           observedTokens: hasCompleteCoverage
             ? windowCells.reduce((sum, c) => sum + c.tokens.total, 0)

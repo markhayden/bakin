@@ -27,6 +27,11 @@ describe('buildAgentPulseRows', () => {
           windowTokens: 800,
           windowCostUsdMicros: 40_000,
           runs: 4,
+          tokenApplicableRuns: 4,
+          tokenMeteredRuns: 4,
+          tokenAggregateRepresentable: true,
+          costedRuns: 4,
+          costAggregateRepresentable: true,
           completions: 2,
           tokensPerCompletion: 400,
           totalObservedTokens: 1_000,
@@ -38,6 +43,11 @@ describe('buildAgentPulseRows', () => {
           windowTokens: 100,
           windowCostUsdMicros: null,
           runs: 2,
+          tokenApplicableRuns: 2,
+          tokenMeteredRuns: 2,
+          tokenAggregateRepresentable: true,
+          costedRuns: 0,
+          costAggregateRepresentable: true,
           completions: 0,
           tokensPerCompletion: null,
           totalObservedTokens: 200,
@@ -125,6 +135,11 @@ describe('buildAgentPulseRows', () => {
         windowTokens: 0,
         windowCostUsdMicros: null,
         runs: 0,
+        tokenApplicableRuns: 0,
+        tokenMeteredRuns: 0,
+        tokenAggregateRepresentable: true,
+        costedRuns: 0,
+        costAggregateRepresentable: true,
         completions: 0,
         tokensPerCompletion: null,
         totalObservedTokens: null,
@@ -146,6 +161,46 @@ describe('buildAgentPulseRows', () => {
     expect(row?.historyCostUsdMicros).toBeNull()
     expect(row?.startupContextPercent).toBeNull()
     expect(row?.evidenceAligned).toBe(false)
+  })
+
+  it('cannot clear review status when ledger token coverage is partial', () => {
+    const effort: AgentEffortData = {
+      window: '24h',
+      scannedAt: '2026-07-14T18:00:00.000Z',
+      coverage: {
+        status: 'complete',
+        reason: 'complete',
+        agents: [{ agent: 'partial-metering', status: 'complete' }],
+      },
+      agents: [{
+        agent: 'partial-metering',
+        windowTokens: null,
+        windowCostUsdMicros: null,
+        runs: 3,
+        tokenApplicableRuns: 2,
+        tokenMeteredRuns: 1,
+        tokenAggregateRepresentable: true,
+        costedRuns: 1,
+        costAggregateRepresentable: true,
+        completions: 1,
+        tokensPerCompletion: null,
+        totalObservedTokens: 1_000,
+        unattributedTokens: null,
+        flags: [],
+      }],
+    }
+
+    const [row] = buildAgentPulseRows({
+      effort,
+      history: null,
+      latestSessions: [],
+      liveNow: null,
+      context: null,
+      contextBudgetBytes: null,
+    })
+
+    expect(row?.reviewState).toBe('unknown')
+    expect(row?.effort?.windowTokens).toBeNull()
   })
 
   it('does not trust retained legacy rows before the first completed scan after restart', () => {
@@ -228,6 +283,11 @@ describe('buildAgentPulseRows', () => {
         windowTokens: 0,
         windowCostUsdMicros: null,
         runs: 1,
+        tokenApplicableRuns: 1,
+        tokenMeteredRuns: 1,
+        tokenAggregateRepresentable: true,
+        costedRuns: 0,
+        costAggregateRepresentable: true,
         completions: 0,
         tokensPerCompletion: null,
         totalObservedTokens: null,
@@ -246,6 +306,42 @@ describe('buildAgentPulseRows', () => {
     })
 
     expect(row?.reviewState).toBe('review')
+  })
+
+  it('withholds legacy effort subtotals and derived verdicts when coverage counters are absent', () => {
+    const effort: AgentEffortData = {
+      window: '24h',
+      scannedAt: '2026-07-14T18:00:00.000Z',
+      agents: [{
+        agent: 'legacy',
+        windowTokens: 9_999,
+        windowCostUsdMicros: 42_000,
+        runs: 2,
+        completions: 1,
+        tokensPerCompletion: 9_999,
+        totalObservedTokens: 10_000,
+        unattributedTokens: 1,
+        flags: [{ kind: 'spike', message: 'Legacy subtotal looked high.' }],
+      }],
+    }
+
+    const [row] = buildAgentPulseRows({
+      effort,
+      history: null,
+      latestSessions: [],
+      liveNow: null,
+      context: null,
+      contextBudgetBytes: null,
+    })
+
+    expect(row?.reviewState).toBe('unknown')
+    expect(row?.effort).toMatchObject({
+      windowTokens: null,
+      windowCostUsdMicros: null,
+      tokensPerCompletion: null,
+      unattributedTokens: null,
+      flags: [],
+    })
   })
 
   it('chooses the longest-running task and retains the number of concurrent runs', () => {

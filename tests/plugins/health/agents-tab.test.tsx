@@ -20,7 +20,7 @@ mock.module('@makinbakin/sdk/hooks', () => ({
 
 import { AgentsTab } from '../../../plugins/health/components/agents-tab'
 import { AgentPulse } from '../../../plugins/health/components/agent-pulse'
-import type { UsageHistoryData } from '../../../plugins/health/types'
+import type { AgentEffortData, UsageHistoryData } from '../../../plugins/health/types'
 
 const originalFetch = globalThis.fetch
 
@@ -109,13 +109,31 @@ function history(window: '24h' | '7d' | '30d') {
 function effort(window: '24h' | '7d' | '30d') {
   return {
     window,
-    scannedAt: '2026-07-13T12:00:00.000Z',
+    since: '2026-07-12',
+    throughDay: '2026-07-13',
+    scopeLabel: '2026-07-12 through 2026-07-13',
+    scannedAt: null,
+    coverage: {
+      status: 'partial',
+      reason: 'agent_scan_failed',
+      agents: [
+        { agent: 'main', status: 'complete' },
+        { agent: 'enrich', status: 'partial' },
+        { agent: 'pixel', status: 'complete' },
+        { agent: 'scout', status: 'complete' },
+      ],
+    },
     agents: [
       {
         agent: 'main',
         windowTokens: 120,
         windowCostUsdMicros: 8_000,
         runs: 1,
+        tokenApplicableRuns: 1,
+        tokenMeteredRuns: 1,
+        tokenAggregateRepresentable: true,
+        costedRuns: 1,
+        costAggregateRepresentable: true,
         completions: 1,
         tokensPerCompletion: 120,
         totalObservedTokens: 120,
@@ -127,6 +145,11 @@ function effort(window: '24h' | '7d' | '30d') {
         windowTokens: 0,
         windowCostUsdMicros: null,
         runs: 0,
+        tokenApplicableRuns: 0,
+        tokenMeteredRuns: 0,
+        tokenAggregateRepresentable: true,
+        costedRuns: 0,
+        costAggregateRepresentable: true,
         completions: 0,
         tokensPerCompletion: null,
         totalObservedTokens: null,
@@ -138,6 +161,11 @@ function effort(window: '24h' | '7d' | '30d') {
         windowTokens: 900,
         windowCostUsdMicros: 25_000,
         runs: 3,
+        tokenApplicableRuns: 3,
+        tokenMeteredRuns: 3,
+        tokenAggregateRepresentable: true,
+        costedRuns: 3,
+        costAggregateRepresentable: true,
         completions: 2,
         tokensPerCompletion: 450,
         totalObservedTokens: 1_000,
@@ -149,6 +177,11 @@ function effort(window: '24h' | '7d' | '30d') {
         windowTokens: 200,
         windowCostUsdMicros: null,
         runs: 2,
+        tokenApplicableRuns: 2,
+        tokenMeteredRuns: 2,
+        tokenAggregateRepresentable: true,
+        costedRuns: 0,
+        costAggregateRepresentable: true,
         completions: 0,
         tokensPerCompletion: null,
         totalObservedTokens: 300,
@@ -604,7 +637,7 @@ describe('AgentsTab', () => {
     expect(agentRow(surface, 'pixel').textContent).not.toContain('No active task reported')
   })
 
-  it('states metered runs and task completions separately instead of claiming runs completed', async () => {
+  it('states tracked runs, token totals, and task completions separately', async () => {
     stubAgentFetch()
     render(<AgentsTab />)
 
@@ -613,11 +646,177 @@ describe('AgentsTab', () => {
     const pixel = agentRow(surface, 'pixel')
     const scout = agentRow(surface, 'scout')
 
-    expect(pixel.textContent).toContain('3 metered runs')
+    expect(pixel.textContent).toContain('3 tracked runs')
+    expect(pixel.textContent).toContain('900 tracked tokens')
     expect(pixel.textContent).toContain('2 task completions')
-    expect(scout.textContent).toContain('2 metered runs')
+    expect(scout.textContent).toContain('2 tracked runs')
+    expect(scout.textContent).toContain('200 tracked tokens')
     expect(scout.textContent).toContain('0 task completions')
     expect(surface.textContent).not.toMatch(/\d+ of \d+ runs completed/i)
+  })
+
+  it('labels partial token and cost evidence instead of rendering a plausible subtotal', () => {
+    const effort: AgentEffortData = {
+      window: '24h',
+      scannedAt: '2026-07-13T12:00:00.000Z',
+      coverage: {
+        status: 'complete',
+        reason: 'complete',
+        agents: [{ agent: 'partial-metering', status: 'complete' }],
+      },
+      agents: [{
+        agent: 'partial-metering',
+        windowTokens: null,
+        windowCostUsdMicros: null,
+        runs: 3,
+        tokenApplicableRuns: 2,
+        tokenMeteredRuns: 1,
+        tokenAggregateRepresentable: true,
+        costedRuns: 1,
+        costAggregateRepresentable: true,
+        completions: 1,
+        tokensPerCompletion: null,
+        totalObservedTokens: 1_000,
+        unattributedTokens: null,
+        flags: [],
+      }],
+    }
+
+    render(
+      <AgentPulse
+        effort={effort}
+        history={null}
+        latestSessions={[]}
+        liveNow={null}
+        context={null}
+        contextBudgetBytes={null}
+        pending={{ effort: false, history: false, latestSessions: false, liveNow: false, context: false, settings: false }}
+        unavailable={{ effort: false, history: false, latestSessions: false, liveNow: false, context: false, settings: false }}
+        errors={[]}
+        onRetry={() => {}}
+      />,
+    )
+
+    const row = agentRow(agentSurface(), 'partial-metering')
+    expect(row.textContent).toContain('Metering incomplete')
+    expect(row.textContent).toContain('3 tracked runs')
+    expect(row.textContent).toContain('Token totals unavailable · 1 of 2 token-bearing calls metered')
+    expect(row.textContent).toContain('1 task completion · cost 1 of 3 runs priced')
+    expect(row.textContent).not.toContain('0 tracked tokens')
+  })
+
+  it('withholds legacy effort subtotals when per-dimension coverage is unavailable', () => {
+    const legacyEffort: AgentEffortData = {
+      window: '24h',
+      scannedAt: '2026-07-13T12:00:00.000Z',
+      agents: [{
+        agent: 'legacy',
+        windowTokens: 8_000,
+        windowCostUsdMicros: 25_000,
+        runs: 2,
+        completions: 1,
+        tokensPerCompletion: 8_000,
+        totalObservedTokens: 9_000,
+        unattributedTokens: 1_000,
+        flags: [],
+      }],
+    }
+
+    render(
+      <AgentPulse
+        effort={legacyEffort}
+        history={null}
+        latestSessions={[]}
+        liveNow={null}
+        context={null}
+        contextBudgetBytes={null}
+        pending={{ effort: false, history: false, latestSessions: false, liveNow: false, context: false, settings: false }}
+        unavailable={{ effort: false, history: false, latestSessions: false, liveNow: false, context: false, settings: false }}
+        errors={[]}
+        onRetry={() => {}}
+      />,
+    )
+
+    const row = agentRow(agentSurface(), 'legacy')
+    expect(row.textContent).toContain('Coverage unavailable')
+    expect(row.textContent).toContain('Token totals unavailable · coverage unavailable')
+    expect(row.textContent).toContain('Cost unavailable')
+    expect(row.textContent).not.toContain('8.0k tracked tokens')
+    expect(row.textContent).not.toContain('$0.03')
+  })
+
+  it('explains safely withheld aggregate totals without faking incomplete coverage counts', () => {
+    const effort: AgentEffortData = {
+      window: '24h',
+      scannedAt: '2026-07-13T12:00:00.000Z',
+      agents: [{
+        agent: 'huge',
+        windowTokens: null,
+        windowCostUsdMicros: null,
+        runs: 2,
+        tokenApplicableRuns: 2,
+        tokenMeteredRuns: 2,
+        tokenAggregateRepresentable: false,
+        costedRuns: 2,
+        costAggregateRepresentable: false,
+        completions: 1,
+        tokensPerCompletion: null,
+        totalObservedTokens: null,
+        unattributedTokens: null,
+        flags: [],
+      }],
+    }
+
+    render(
+      <AgentPulse
+        effort={effort}
+        history={null}
+        latestSessions={[]}
+        liveNow={null}
+        context={null}
+        contextBudgetBytes={null}
+        pending={{ effort: false, history: false, latestSessions: false, liveNow: false, context: false, settings: false }}
+        unavailable={{ effort: false, history: false, latestSessions: false, liveNow: false, context: false, settings: false }}
+        errors={[]}
+        onRetry={() => {}}
+      />,
+    )
+
+    const row = agentRow(agentSurface(), 'huge')
+    expect(row.textContent).toContain('2 of 2 token-bearing calls reported totals · combined total too large to report')
+    expect(row.textContent).toContain('2 of 2 runs priced · combined cost too large to report')
+  })
+
+  it('qualifies partial reported cost in latest-session details', () => {
+    render(
+      <AgentPulse
+        effort={null}
+        history={null}
+        latestSessions={[{
+          agent: 'partial-cost',
+          sessionId: 'session-1',
+          sessionStarted: '2026-07-13T12:00:00.000Z',
+          lastMessageAt: '2026-07-13T12:02:00.000Z',
+          model: 'gpt-test',
+          messages: 2,
+          costedMessages: 1,
+          tokens: { input: 200, output: 100, cacheRead: 0, cacheWrite: 0, total: 300 },
+          cost: { input: null, output: null, cacheRead: null, cacheWrite: null, total: 0.03, source: 'runtime' },
+        }]}
+        liveNow={null}
+        context={null}
+        contextBudgetBytes={null}
+        pending={{ effort: false, history: false, latestSessions: false, liveNow: false, context: false, settings: false }}
+        unavailable={{ effort: false, history: false, latestSessions: false, liveNow: false, context: false, settings: false }}
+        errors={[]}
+        onRetry={() => {}}
+      />,
+    )
+
+    const row = agentRow(agentSurface(), 'partial-cost')
+    fireEvent.click(within(row).getByRole('button', { name: /partial-cost.*details/i }))
+    expect(row.textContent).toContain('$0.03+ reported cost')
+    expect(row.textContent).toContain('1 of 2 messages')
   })
 
   it('distinguishes clear review coverage from unavailable coverage without saying No issues', async () => {

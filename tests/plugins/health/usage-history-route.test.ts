@@ -71,7 +71,9 @@ import {
   MAX_SCAN_MINUTES,
   MIN_SCAN_MINUTES,
   getUsageHistoryScanStaleAfterMs,
+  isUsageHistoryScanInFlight,
   normalizeUsageHistoryScanMinutes,
+  runUsageHistoryScan,
   startUsageHistoryTimer,
   stopUsageHistoryTimer,
 } from '../../../plugins/health/lib/usage-history-timer'
@@ -80,6 +82,8 @@ import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
 let activated: ActivatedPlugin
 const usageScanGlobal = globalThis as typeof globalThis & {
   __bakinUsageHistoryLastScan?: unknown
+  __bakinUsageHistoryScanInFlight?: Promise<void> | null
+  __bakinUsageHistoryScanPending?: boolean
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -111,6 +115,8 @@ function seed(sessionId: string, agent: string, day: string, total: number, tsMs
 
 beforeAll(async () => {
   usageScanGlobal.__bakinUsageHistoryLastScan = null
+  usageScanGlobal.__bakinUsageHistoryScanInFlight = null
+  usageScanGlobal.__bakinUsageHistoryScanPending = false
   activated = await activatePlugin(healthPlugin, testDir)
   seed('s-today', 'basil', today, 100, Date.now())
   seed('s-10d', 'basil', tenDaysAgo, 1_000, Date.now() - 10 * DAY_MS)
@@ -120,6 +126,8 @@ beforeAll(async () => {
 afterAll(() => {
   stopUsageHistoryTimer()
   usageScanGlobal.__bakinUsageHistoryLastScan = null
+  usageScanGlobal.__bakinUsageHistoryScanInFlight = null
+  usageScanGlobal.__bakinUsageHistoryScanPending = false
   closeAllDbs()
   rmSync(testDir, { recursive: true, force: true })
 })
@@ -230,6 +238,45 @@ describe('GET /usage-history', () => {
     })
     expect((body.byAgent as Array<{ agent: string }>).some((row) => row.agent === 'basil')).toBe(true)
     usageScanGlobal.__bakinUsageHistoryLastScan = null
+  })
+
+  it('withholds complete evidence while a new scan generation is in progress', async () => {
+    const completeReport = {
+      scanned: 1,
+      skipped: 0,
+      failed: 0,
+      coverage: {
+        status: 'complete' as const,
+        reason: 'complete' as const,
+        agents: [{ agent: 'basil', status: 'complete' as const }],
+      },
+    }
+    usageScanGlobal.__bakinUsageHistoryLastScan = {
+      at: Date.now(),
+      report: completeReport,
+    }
+    let releaseScan!: (report: typeof completeReport) => void
+    let pendingWasVisibleAtScannerStart = false
+    const scan = runUsageHistoryScan(createMockRuntimeAdapter(), async () => {
+      pendingWasVisibleAtScannerStart = isUsageHistoryScanInFlight()
+      return await new Promise<typeof completeReport>((resolve) => { releaseScan = resolve })
+    })
+
+    const during = await getHistory()
+
+    expect(pendingWasVisibleAtScannerStart).toBe(true)
+    expect(during.body.scannedAt).toBeNull()
+    expect(during.body.coverage).toEqual({
+      status: 'unavailable',
+      reason: 'scan_in_progress',
+      agents: [],
+    })
+
+    releaseScan(completeReport)
+    await scan
+    const after = await getHistory()
+    expect(after.body.coverage).toEqual(completeReport.coverage)
+    expect(after.body.scannedAt).not.toBeNull()
   })
 
   it('returns unavailable when the durable store cannot be read', async () => {

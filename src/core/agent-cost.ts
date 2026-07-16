@@ -13,6 +13,7 @@ import { randomUUID } from 'crypto'
 
 import { createLogger } from './logger'
 import type { MessageResult } from '@bakin/core/adapters/runtime'
+import { normalizeRunCostUsdMicros, normalizeRunTokenEvidence } from '@bakin/core/execution/token-evidence'
 import type { ActivityClass } from '@makinbakin/sdk/types'
 
 const log = createLogger('agent-cost')
@@ -43,6 +44,7 @@ async function recordSpend(e: {
   /** Billing attribution from the pricing hook; null when unattributed. */
   provider?: string | null
   lane?: 'metered' | 'subscription' | null
+  usageKind: 'tokens' | 'media'
   costUsdMicros: number | null
   /** Usage-recorder entry name (e.g. 'turn', 'image'). */
   name: string
@@ -55,6 +57,8 @@ async function recordSpend(e: {
       import('./execution-ledger'),
       import('./usage'),
     ])
+    const tokens = normalizeRunTokenEvidence(e.usageKind, e.tokens)
+    const costUsdMicros = normalizeRunCostUsdMicros(e.costUsdMicros)
     recordRunCost({
       runId: e.runId,
       taskId: e.taskId ?? null,
@@ -62,12 +66,13 @@ async function recordSpend(e: {
       model: e.model ?? undefined,
       provider: e.provider ?? null,
       lane: e.lane ?? null,
-      inputTokens: e.tokens?.input ?? null,
-      outputTokens: e.tokens?.output ?? null,
-      totalTokens: e.tokens?.total ?? null,
-      cacheReadTokens: e.tokens?.cacheRead ?? null,
-      cacheWriteTokens: e.tokens?.cacheWrite ?? null,
-      costUsdMicros: e.costUsdMicros,
+      usageKind: e.usageKind,
+      inputTokens: tokens.input,
+      outputTokens: tokens.output,
+      totalTokens: tokens.total,
+      cacheReadTokens: tokens.cacheRead,
+      cacheWriteTokens: tokens.cacheWrite,
+      costUsdMicros,
       occurredAt: Date.now(),
     })
     recordUsage({
@@ -77,11 +82,11 @@ async function recordSpend(e: {
       agent: e.agent,
       durationMs: null,
       status: 'ok',
-      ...(e.tokens?.input !== undefined ? { tokensIn: e.tokens.input } : {}),
-      ...(e.tokens?.output !== undefined ? { tokensOut: e.tokens.output } : {}),
-      ...(e.tokens?.cacheRead !== undefined ? { tokensCacheRead: e.tokens.cacheRead } : {}),
-      ...(e.tokens?.cacheWrite !== undefined ? { tokensCacheWrite: e.tokens.cacheWrite } : {}),
-      ...(e.costUsdMicros !== null ? { costUsdMicros: e.costUsdMicros } : {}),
+      ...(tokens.input !== null ? { tokensIn: tokens.input } : {}),
+      ...(tokens.output !== null ? { tokensOut: tokens.output } : {}),
+      ...(tokens.cacheRead !== null ? { tokensCacheRead: tokens.cacheRead } : {}),
+      ...(tokens.cacheWrite !== null ? { tokensCacheWrite: tokens.cacheWrite } : {}),
+      ...(costUsdMicros !== null ? { costUsdMicros } : {}),
       meta: { ...(e.taskId ? { taskId: e.taskId } : {}), ...(e.model ? { model: e.model } : {}), ...(e.meta ?? {}) },
     })
   } catch (err) {
@@ -111,12 +116,17 @@ export async function meterAgentTurn(opts: {
     // requested — a per-turn override the provider rejected/fell back from
     // must be priced against what ran, not what we asked for (review #3).
     const ranModel = usage?.model ?? opts.resolvedModel
-    const priced = await (await loadHooks()).invoke<{
+    let priced: {
       model: string | null; provider?: string | null; lane?: 'metered' | 'subscription' | null; costUsdMicros: number | null
-    }>(
-      'models.priceTurn',
-      { agentId: opts.agent, model: ranModel, input: usage?.input, output: usage?.output, cacheRead: usage?.cacheRead, cacheWrite: usage?.cacheWrite },
-    )
+    } | undefined
+    try {
+      priced = await (await loadHooks()).invoke(
+        'models.priceTurn',
+        { agentId: opts.agent, model: ranModel, input: usage?.input, output: usage?.output, cacheRead: usage?.cacheRead, cacheWrite: usage?.cacheWrite },
+      )
+    } catch (err) {
+      log.error('Failed to price agent turn; recording unpriced usage', err, { agent: opts.agent, runId: opts.runId })
+    }
     await recordSpend({
       runId: opts.runId ?? `turn:${randomUUID()}`,
       taskId: opts.taskId,
@@ -128,6 +138,7 @@ export async function meterAgentTurn(opts: {
       model: priced?.model ?? ranModel ?? null,
       provider: priced?.provider ?? null,
       lane: priced?.lane ?? null,
+      usageKind: 'tokens',
       costUsdMicros: priced?.costUsdMicros ?? null,
       name: opts.name ?? 'turn',
       tokens: { input: usage?.input, output: usage?.output, total: usage?.total, cacheRead: usage?.cacheRead, cacheWrite: usage?.cacheWrite },
@@ -159,12 +170,17 @@ export async function meterImageTurn(opts: {
   taskId?: string | null
 }): Promise<void> {
   try {
-    const priced = await (await loadHooks()).invoke<{
+    let priced: {
       model: string | null; provider?: string | null; lane?: 'metered' | 'subscription' | null; costUsdMicros: number | null
-    }>(
-      'models.priceImage',
-      { model: opts.model, count: opts.count },
-    )
+    } | undefined
+    try {
+      priced = await (await loadHooks()).invoke(
+        'models.priceImage',
+        { model: opts.model, count: opts.count },
+      )
+    } catch (err) {
+      log.error('Failed to price image turn; recording unpriced usage', err, { agent: opts.agent, model: opts.model })
+    }
     await recordSpend({
       runId: `image:${randomUUID()}`,
       taskId: opts.taskId,
@@ -174,6 +190,7 @@ export async function meterImageTurn(opts: {
       model: priced?.model ?? opts.model,
       provider: priced?.provider ?? null,
       lane: priced?.lane ?? null,
+      usageKind: 'media',
       costUsdMicros: priced?.costUsdMicros ?? null,
       name: 'image',
       meta: { count: opts.count },

@@ -10,10 +10,78 @@
  */
 import { buildAgentBurnReports } from '../../../../src/core/agent-burn'
 import { LedgerUnavailableError } from '../../../../src/core/execution-ledger'
-import { getLastUsageScan, getUsageHistoryScanStaleAfterMs } from '../usage-history-timer'
+import {
+  getLastUsageScan,
+  getUsageHistoryScanStaleAfterMs,
+  isUsageHistoryScanInFlight,
+} from '../usage-history-timer'
 import { healthError, healthHealthy, healthObserved, healthUnknown, healthWarning } from '@makinbakin/sdk/utils'
 import type { HealthCheckRunInput, HealthObservationInput } from '@makinbakin/sdk'
 import { stableKeyPart } from './key'
+
+function incompleteMeteringObservation(
+  reports: Array<{
+    agent: string
+    runs: number
+    tokenApplicableRuns: number
+    tokenMeteredRuns: number
+    tokenAggregateRepresentable: boolean
+  }>,
+): HealthObservationInput {
+  const runCount = reports.reduce((sum, report) => sum + report.runs, 0)
+  const applicableRunCount = reports.reduce((sum, report) => sum + report.tokenApplicableRuns, 0)
+  const meteredRunCount = reports.reduce((sum, report) => sum + report.tokenMeteredRuns, 0)
+  const unrepresentableAgents = reports
+    .filter((report) => !report.tokenAggregateRepresentable)
+    .map((report) => report.agent)
+  const detail = unrepresentableAgents.length > 0
+    ? `${meteredRunCount} of ${applicableRunCount} token-bearing recorded calls reported totals, but ${unrepresentableAgents.length} agent aggregate${unrepresentableAgents.length === 1 ? '' : 's'} exceeded the safe reporting range.`
+    : `${meteredRunCount} of ${applicableRunCount} token-bearing recorded calls reported totals across ${reports.length} agent(s).`
+  return healthUnknown({
+    key: 'metering',
+    summary: 'Agent token burn metering is incomplete.',
+    detail,
+    evidence: {
+      agents: reports.map((report) => report.agent),
+      runs: runCount,
+      tokenApplicableRuns: applicableRunCount,
+      tokenMeteredRuns: meteredRunCount,
+      unrepresentableAggregateAgents: unrepresentableAgents,
+    },
+    incident: {
+      key: 'token-metering-incomplete',
+      title: 'Agent token metering is incomplete',
+      impact: 'Health cannot calculate agent burn, efficiency, or unattributed usage from partial token-bearing call totals.',
+      disposition: 'watch',
+      resources: [{ kind: 'system', id: 'execution-ledger', label: 'Execution ledger' }],
+      resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
+    },
+  })
+}
+
+function unrepresentableCostObservation(
+  reports: Array<{ agent: string; runs: number; costedRuns: number; costAggregateRepresentable: boolean }>,
+): HealthObservationInput {
+  const affected = reports.filter((report) => !report.costAggregateRepresentable)
+  const costedRunCount = affected.reduce((sum, report) => sum + report.costedRuns, 0)
+  return healthUnknown({
+    key: 'cost-aggregation',
+    summary: 'Agent cost totals could not be represented safely.',
+    detail: `${affected.length} agent aggregate${affected.length === 1 ? '' : 's'} exceeded the safe reporting range across ${costedRunCount} priced call${costedRunCount === 1 ? '' : 's'}.`,
+    evidence: {
+      agents: affected.map((report) => report.agent),
+      costedRuns: costedRunCount,
+    },
+    incident: {
+      key: 'cost-aggregate-unrepresentable',
+      title: 'Agent cost aggregate is too large to report safely',
+      impact: 'Health cannot publish a trustworthy combined agent cost until the selected window changes.',
+      disposition: 'watch',
+      resources: [{ kind: 'system', id: 'execution-ledger', label: 'Execution ledger' }],
+      resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
+    },
+  })
+}
 
 export async function checkAgentBurnWith(
   deps: {
@@ -28,7 +96,8 @@ export async function checkAgentBurnWith(
   const now = (deps.now ?? Date.now)()
   const staleAfterMs = (deps.scanStaleAfterMs ?? getUsageHistoryScanStaleAfterMs)()
   const scanAgeMs = lastScan ? Math.max(0, now - lastScan.at) : null
-  const scanFresh = scanAgeMs !== null && scanAgeMs <= staleAfterMs
+  const scanInFlight = isUsageHistoryScanInFlight()
+  const scanFresh = !scanInFlight && scanAgeMs !== null && scanAgeMs <= staleAfterMs
   try {
     reports = (deps.buildReports ?? buildAgentBurnReports)(now, {
       // Stale transcript rows remain useful history, but cannot create a new
@@ -72,22 +141,32 @@ export async function checkAgentBurnWith(
   }
 
   const flagged = reports.filter((r) => r.flags.length > 0)
+  const incompletelyMetered = reports.filter((report) => report.windowTokens === null)
+  const meteringUnknown = incompletelyMetered.length > 0
+    ? incompleteMeteringObservation(incompletelyMetered)
+    : null
+  const unrepresentableCosts = reports.filter((report) => !report.costAggregateRepresentable)
+  const costAggregationUnknown = unrepresentableCosts.length > 0
+    ? unrepresentableCostObservation(unrepresentableCosts)
+    : null
   if (flagged.length === 0) {
     const incompleteCoverage = !scanFresh
       || lastScan?.report.coverage.status !== 'complete'
       || reports.some((report) => report.totalObservedTokens === null)
     if (incompleteCoverage) {
-      return healthObserved([healthUnknown({
+      const transcriptUnknown = healthUnknown({
         key: 'usage',
         summary: 'Agent token burn could not be verified.',
         detail: 'Runtime transcript coverage is incomplete, so zero observed usage cannot be confirmed.',
         evidence: {
           coverage: scanFresh ? lastScan?.report.coverage.status ?? 'unavailable' : 'unavailable',
           reason: lastScan
-            ? scanFresh
+            ? scanInFlight
+              ? 'scan_in_progress'
+              : scanFresh
               ? lastScan.report.coverage.reason
               : 'scan_stale'
-            : 'scan_not_run',
+            : scanInFlight ? 'scan_in_progress' : 'scan_not_run',
           scanAgeMs,
           staleAfterMs,
         },
@@ -99,7 +178,18 @@ export async function checkAgentBurnWith(
           resources: [{ kind: 'system', id: 'usage-history', label: 'Usage history' }],
           resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
         },
-      })])
+      })
+      return healthObserved([
+        transcriptUnknown,
+        ...(meteringUnknown ? [meteringUnknown] : []),
+        ...(costAggregationUnknown ? [costAggregationUnknown] : []),
+      ])
+    }
+    if (meteringUnknown || costAggregationUnknown) {
+      return healthObserved([
+        ...(meteringUnknown ? [meteringUnknown] : []),
+        ...(costAggregationUnknown ? [costAggregationUnknown] : []),
+      ] as [HealthObservationInput, ...HealthObservationInput[]])
     }
     const scope = reports.length === 0 ? 'no agent activity in the window' : `${reports.length} agent(s) evaluated`
     return healthObserved([healthHealthy({
@@ -137,6 +227,8 @@ export async function checkAgentBurnWith(
       },
     })
   })
+  if (meteringUnknown) observations.push(meteringUnknown)
+  if (costAggregationUnknown) observations.push(costAggregationUnknown)
   return healthObserved(observations as [HealthObservationInput, ...HealthObservationInput[]])
 }
 

@@ -315,6 +315,8 @@ describe('read-only CLI TTY commands — agents and packages', () => {
       scannedAt: null,
       agents: [{
         agent: 'pixel', windowTokens: 2_100_000, windowCostUsdMicros: 40_000, runs: 14, completions: 0,
+        tokenApplicableRuns: 14, tokenMeteredRuns: 14, tokenAggregateRepresentable: true,
+        costedRuns: 14, costAggregateRepresentable: true,
         tokensPerCompletion: null, totalObservedTokens: null, unattributedTokens: null,
         flags: [{ kind: 'effort-no-outcome', message: "'pixel' used 2.1M tokens across 14 run(s) in 24h but completed no tasks — check its timeline" }],
       }],
@@ -339,6 +341,90 @@ describe('read-only CLI TTY commands — agents and packages', () => {
     expect(output()).toContain('effort-no-outcome')
     expect(output()).toContain('resize hero images')
     expect(output()).toContain('turn-ok')
+  })
+
+  it('labels partial agent-doctor token and cost evidence as unavailable', async () => {
+    const { main } = await import('../../cli/bakin')
+
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      ok: true,
+      scannedAt: '2026-07-05T00:00:00Z',
+      findings: [],
+    }))
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      ok: true,
+      report: { dispatch: { estimatedMaxTaskBytes: 80_000 }, workspace: { available: true, totalBytes: 40_960 } },
+    }))
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      window: '24h',
+      scannedAt: '2026-07-05T00:00:00Z',
+      agents: [{
+        agent: 'pixel',
+        windowTokens: null,
+        windowCostUsdMicros: null,
+        runs: 2,
+        tokenApplicableRuns: 2,
+        tokenMeteredRuns: 1,
+        tokenAggregateRepresentable: true,
+        costedRuns: 0,
+        costAggregateRepresentable: true,
+        completions: 1,
+        tokensPerCompletion: null,
+        totalObservedTokens: 900_000,
+        unattributedTokens: null,
+        flags: [],
+      }],
+    }))
+    fetchMock.mockResolvedValueOnce(jsonResponse({ ok: true, events: [] }))
+
+    process.argv = ['bun', 'cli/bakin.ts', 'agents', 'doctor', 'pixel']
+    await main()
+
+    expect(output()).toContain('Bakin tokens unavailable (1 of 2 token-bearing calls metered)')
+    expect(output()).toContain('tracked cost unavailable (0 of 2 runs priced)')
+    expect(output()).toContain('Burn flags unavailable because token metering is incomplete.')
+    expect(output()).not.toContain('No burn flags in the window.')
+    expect(output()).not.toContain('Bakin 0 tok')
+  })
+
+  it('does not present legacy agent-doctor subtotals as complete evidence', async () => {
+    const { main } = await import('../../cli/bakin')
+
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      ok: true,
+      scannedAt: '2026-07-05T00:00:00Z',
+      findings: [],
+    }))
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      ok: true,
+      report: { dispatch: { estimatedMaxTaskBytes: 80_000 }, workspace: { available: true, totalBytes: 40_960 } },
+    }))
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      window: '24h',
+      scannedAt: '2026-07-05T00:00:00Z',
+      agents: [{
+        agent: 'pixel',
+        windowTokens: 900_000,
+        windowCostUsdMicros: 40_000,
+        runs: 2,
+        completions: 1,
+        tokensPerCompletion: 900_000,
+        totalObservedTokens: 1_000_000,
+        unattributedTokens: 100_000,
+        flags: [],
+      }],
+    }))
+    fetchMock.mockResolvedValueOnce(jsonResponse({ ok: true, events: [] }))
+
+    process.argv = ['bun', 'cli/bakin.ts', 'agents', 'doctor', 'pixel']
+    await main()
+
+    expect(output()).toContain('Bakin tokens unavailable (coverage unavailable)')
+    expect(output()).toContain('tracked cost unavailable (coverage unavailable)')
+    expect(output()).toContain('Burn flags unavailable because token metering is incomplete.')
+    expect(output()).not.toContain('Bakin 900k tok')
+    expect(output()).not.toContain('tracked cost $0.0400')
+    expect(output()).not.toContain('900k tok/completion')
   })
 
   it('agent doctor degrades per-section when endpoints fail, and --json prints raw', async () => {

@@ -17,8 +17,8 @@ type UsageCell = {
 const usageCells: UsageCell[] = []
 let storeThrows = false
 const attributed = [
-  { agent: 'basil', totalTokens: 10, costUsdMicros: null, runs: 1 },
-  { agent: 'clover', totalTokens: 10, costUsdMicros: null, runs: 1 },
+  { agent: 'basil', totalTokens: 10, costUsdMicros: null, runs: 1, tokenApplicableRuns: 1, tokenMeteredRuns: 1, tokenAggregateRepresentable: true, costedRuns: 0, costAggregateRepresentable: true },
+  { agent: 'clover', totalTokens: 10, costUsdMicros: null, runs: 1, tokenApplicableRuns: 1, tokenMeteredRuns: 1, tokenAggregateRepresentable: true, costedRuns: 0, costAggregateRepresentable: true },
 ]
 
 function localDayKey(tsMs: number): string {
@@ -86,6 +86,80 @@ describe('buildAgentBurnReports coverage', () => {
     expect(reports.find((report) => report.agent === 'basil')?.totalObservedTokens).toBe(100)
     expect(reports.find((report) => report.agent === 'clover')?.totalObservedTokens).toBeNull()
     expect(reports.find((report) => report.agent === 'sage')?.totalObservedTokens).toBe(0)
+    expect(reports.find((report) => report.agent === 'sage')?.windowTokens).toBe(0)
+  })
+
+  it('preserves a nullable ledger total as unknown instead of treating it as zero', () => {
+    usageCells.push({
+      agent: 'basil', day: TODAY,
+      tokens: { input: 1_000_000, output: 0, cacheRead: 0, cacheWrite: 0, total: 1_000_000 },
+      costUsdMicros: null, costedMessages: 0, messageCount: 1,
+    })
+    const unknownMeteringSources: AgentBurnSources = {
+      ...sources,
+      runTokensByAgentSince: () => [{
+        agent: 'basil',
+        totalTokens: null,
+        costUsdMicros: null,
+        runs: 3,
+        tokenApplicableRuns: 3,
+        tokenMeteredRuns: 0,
+        tokenAggregateRepresentable: true,
+        costedRuns: 0,
+        costAggregateRepresentable: true,
+      }],
+    }
+
+    const basil = buildAgentBurnReports(NOW, {
+      config,
+      sources: unknownMeteringSources,
+      coverage: { agents: [{ agent: 'basil', status: 'complete' }] },
+    }).find((report) => report.agent === 'basil')
+
+    expect(basil?.windowTokens).toBeNull()
+    expect(basil?.totalObservedTokens).toBe(1_000_000)
+    expect(basil?.unattributedTokens).toBeNull()
+    expect(basil?.flags).toEqual([])
+  })
+
+  it('does not publish plausible partial token or cost subtotals', () => {
+    usageCells.push({
+      agent: 'basil', day: TODAY,
+      tokens: { input: 1_000_000, output: 0, cacheRead: 0, cacheWrite: 0, total: 1_000_000 },
+      costUsdMicros: null, costedMessages: 0, messageCount: 1,
+    })
+    const partiallyMeteredSources: AgentBurnSources = {
+      ...sources,
+      runTokensByAgentSince: () => [{
+        agent: 'basil',
+        totalTokens: 600_000,
+        costUsdMicros: 40_000,
+        runs: 3,
+        tokenApplicableRuns: 3,
+        tokenMeteredRuns: 2,
+        tokenAggregateRepresentable: true,
+        costedRuns: 1,
+        costAggregateRepresentable: true,
+      }],
+    }
+
+    const basil = buildAgentBurnReports(NOW, {
+      config,
+      sources: partiallyMeteredSources,
+      coverage: { agents: [{ agent: 'basil', status: 'complete' }] },
+    }).find((report) => report.agent === 'basil')
+
+    expect(basil).toMatchObject({
+      windowTokens: null,
+      windowCostUsdMicros: null,
+      runs: 3,
+      tokenApplicableRuns: 3,
+      tokenMeteredRuns: 2,
+      costedRuns: 1,
+      totalObservedTokens: 1_000_000,
+      unattributedTokens: null,
+      flags: [],
+    })
   })
 
   it('propagates a store read failure instead of evaluating empty usage as zero', () => {
@@ -133,6 +207,11 @@ describe('buildAgentBurnReports coverage', () => {
         totalTokens: 600_000,
         costUsdMicros: null,
         runs: 3,
+        tokenApplicableRuns: 3,
+        tokenMeteredRuns: 3,
+        tokenAggregateRepresentable: true,
+        costedRuns: 0,
+        costAggregateRepresentable: true,
       }],
     }
 

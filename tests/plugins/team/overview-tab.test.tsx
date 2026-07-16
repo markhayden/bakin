@@ -60,7 +60,7 @@ const PROFILE = {
 }
 
 interface FetchExpectation {
-  stats?: { usage: { agent: string; sessionId: string; sessionStarted: string; model: string; messages: number; tokens: { input: number; output: number; cacheRead: number; cacheWrite: number; total: number }; cost: { input: number | null; output: number | null; cacheRead: number | null; cacheWrite: number | null; total: number | null; source: 'runtime' | 'unavailable' } } | null }
+  stats?: { usage: { agent: string; sessionId: string; sessionStarted: string; model: string; messages: number; costedMessages?: number; tokens: { input: number; output: number; cacheRead: number; cacheWrite: number; total: number }; cost: { input: number | null; output: number | null; cacheRead: number | null; cacheWrite: number | null; total: number | null; source: 'runtime' | 'unavailable' } } | null }
   recentActivity?: { ok: boolean; activity?: { windowMs: Record<string, number>; errors: Record<string, number>; sinceServerStart: string } }
   skills?: { skills: Array<{ id: string }> }
   lessons?: { ok: boolean; lessons?: Array<{ enabled: boolean }> }
@@ -185,6 +185,74 @@ describe('OverviewTab', () => {
     renderTab()
     await waitFor(() => expect(screen.getByText('150')).toBeDefined())
     expect(screen.queryByText('$0.00')).toBeNull()
+  })
+
+  it('qualifies a partial latest-session cost and omits the misleading per-message average', async () => {
+    setupFetch({
+      stats: {
+        usage: {
+          agent: 'pixel',
+          sessionId: 's',
+          sessionStarted: '',
+          model: 'gpt-test',
+          messages: 2,
+          costedMessages: 1,
+          tokens: { input: 200, output: 100, cacheRead: 0, cacheWrite: 0, total: 300 },
+          cost: { input: null, output: null, cacheRead: null, cacheWrite: null, total: 0.03, source: 'runtime' },
+        },
+      },
+    })
+
+    renderTab()
+
+    await waitFor(() => expect(screen.getByText('$0.03+')).toBeDefined())
+    expect(screen.getByText('Partial reported cost · 1 of 2 messages')).toBeDefined()
+    expect(screen.queryByText(/\/msg$/)).toBeNull()
+  })
+
+  it('only shows a per-message average when every message reported cost', async () => {
+    setupFetch({
+      stats: {
+        usage: {
+          agent: 'pixel',
+          sessionId: 's',
+          sessionStarted: '',
+          model: 'gpt-test',
+          messages: 2,
+          costedMessages: 2,
+          tokens: { input: 200, output: 100, cacheRead: 0, cacheWrite: 0, total: 300 },
+          cost: { input: null, output: null, cacheRead: null, cacheWrite: null, total: 0.04, source: 'runtime' },
+        },
+      },
+    })
+
+    renderTab()
+
+    await waitFor(() => expect(screen.getByText('$0.04')).toBeDefined())
+    expect(screen.getByText('$0.02/msg')).toBeDefined()
+    expect(screen.queryByText('$0.04+')).toBeNull()
+  })
+
+  it('treats legacy cost coverage as unknown instead of exact', async () => {
+    setupFetch({
+      stats: {
+        usage: {
+          agent: 'pixel',
+          sessionId: 's',
+          sessionStarted: '',
+          model: 'gpt-test',
+          messages: 2,
+          tokens: { input: 200, output: 100, cacheRead: 0, cacheWrite: 0, total: 300 },
+          cost: { input: null, output: null, cacheRead: null, cacheWrite: null, total: 0.03, source: 'runtime' },
+        },
+      },
+    })
+
+    renderTab()
+
+    await waitFor(() => expect(screen.getByText('$0.03+')).toBeDefined())
+    expect(screen.getByText('Reported cost · coverage unavailable')).toBeDefined()
+    expect(screen.queryByText(/\/msg$/)).toBeNull()
   })
 
   it('writes /team on team select change', async () => {

@@ -20,8 +20,14 @@ export interface AgentDoctorFindingData {
 }
 
 export interface AgentDoctorEffortData {
-  windowTokens: number
+  windowTokens: number | null
+  windowCostUsdMicros: number | null
   runs: number
+  tokenApplicableRuns?: number
+  tokenMeteredRuns?: number
+  tokenAggregateRepresentable?: boolean
+  costedRuns?: number
+  costAggregateRepresentable?: boolean
   completions: number
   tokensPerCompletion: number | null
   totalObservedTokens: number | null
@@ -55,7 +61,7 @@ export interface AgentDoctorData {
 }
 
 function tokensText(n: number | null | undefined): string {
-  if (n === null || n === undefined) return '-'
+  if (n === null || n === undefined) return 'unavailable'
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`
   return String(n)
@@ -70,11 +76,53 @@ function durationText(ms: number | null | undefined): string {
   return `${Math.floor(m / 60)}h${m % 60}m`
 }
 
+type CurrentAgentDoctorEffortData = AgentDoctorEffortData & Required<Pick<
+  AgentDoctorEffortData,
+  | 'tokenApplicableRuns'
+  | 'tokenMeteredRuns'
+  | 'tokenAggregateRepresentable'
+  | 'costedRuns'
+  | 'costAggregateRepresentable'
+>>
+
+function hasCurrentEffortCoverage(
+  effort: AgentDoctorEffortData | null,
+): effort is CurrentAgentDoctorEffortData {
+  return effort !== null
+    && effort.tokenApplicableRuns !== undefined
+    && effort.tokenMeteredRuns !== undefined
+    && effort.tokenAggregateRepresentable !== undefined
+    && effort.costedRuns !== undefined
+    && effort.costAggregateRepresentable !== undefined
+}
+
 export function AgentDoctorReport({ data, color = true }: { data: AgentDoctorData; color?: boolean }) {
   const findings = data.scan?.findings ?? []
   const flags = data.effort?.flags ?? []
   const driftStatus = data.scan === null ? 'skip' : findings.some((f) => f.severity === 'error') ? 'fail' : findings.length > 0 ? 'warn' : 'ok'
-  const burnStatus = data.effort === null ? 'skip' : flags.length > 0 ? 'warn' : 'ok'
+  const currentEffort = hasCurrentEffortCoverage(data.effort) ? data.effort : null
+  const burnEvidenceComplete = currentEffort !== null && currentEffort.windowTokens !== null
+  const burnStatus = !burnEvidenceComplete ? 'skip' : flags.length > 0 ? 'warn' : 'ok'
+  const tokenCoverage = !currentEffort
+    ? 'coverage unavailable'
+    : !currentEffort.tokenAggregateRepresentable
+      ? `${currentEffort.tokenMeteredRuns} of ${currentEffort.tokenApplicableRuns} token-bearing calls reported totals; combined total too large to report`
+      : currentEffort.tokenMeteredRuns !== currentEffort.tokenApplicableRuns
+        ? `${currentEffort.tokenMeteredRuns} of ${currentEffort.tokenApplicableRuns} token-bearing calls metered`
+        : null
+  const costCoverage = !currentEffort
+    ? 'coverage unavailable'
+    : !currentEffort.costAggregateRepresentable
+      ? `${currentEffort.costedRuns} of ${currentEffort.runs} runs priced; combined cost too large to report`
+      : currentEffort.costedRuns !== currentEffort.runs
+        ? `${currentEffort.costedRuns} of ${currentEffort.runs} runs priced`
+        : null
+  const attributedText = burnEvidenceComplete
+    ? `Bakin ${tokensText(currentEffort.windowTokens)} tok`
+    : `Bakin tokens unavailable${tokenCoverage ? ` (${tokenCoverage})` : ''}`
+  const trackedCostText = currentEffort && currentEffort.windowCostUsdMicros !== null
+    ? `tracked cost $${(currentEffort.windowCostUsdMicros / 1_000_000).toFixed(4)}`
+    : `tracked cost unavailable${costCoverage ? ` (${costCoverage})` : ''}`
 
   return (
     <Box flexDirection="column">
@@ -91,7 +139,7 @@ export function AgentDoctorReport({ data, color = true }: { data: AgentDoctorDat
             value: data.context ? bytesText(data.context.estimatedMaxTaskBytes) : 'unavailable',
             status: data.context ? 'ok' : 'skip',
           },
-          { label: 'burn flags', value: data.effort === null ? 'unavailable' : String(flags.length), status: burnStatus },
+          { label: 'burn flags', value: burnEvidenceComplete ? String(flags.length) : 'unavailable', status: burnStatus },
           {
             label: 'runs/completions',
             value: data.effort ? `${data.effort.runs}/${data.effort.completions}` : '-',
@@ -124,9 +172,11 @@ export function AgentDoctorReport({ data, color = true }: { data: AgentDoctorDat
         ) : (
           <Box flexDirection="column">
             <Text>
-              {`Bakin ${tokensText(data.effort.windowTokens)} tok · observed ${tokensText(data.effort.totalObservedTokens)} · unattributed ${tokensText(data.effort.unattributedTokens)} · ${tokensText(data.effort.tokensPerCompletion)} tok/completion`}
+              {`${attributedText} · ${trackedCostText} · observed ${tokensText(data.effort.totalObservedTokens)} · unattributed ${tokensText(currentEffort?.unattributedTokens)} · ${tokensText(currentEffort?.tokensPerCompletion)} tok/completion`}
             </Text>
-            {flags.length > 0 ? (
+            {!burnEvidenceComplete ? (
+              <Text dimColor>Burn flags unavailable because token metering is incomplete.</Text>
+            ) : flags.length > 0 ? (
               <FindingRows rows={flags.map((f) => ({ status: 'warn' as const, label: f.kind, message: f.message }))} color={color} />
             ) : (
               <Text dimColor>No burn flags in the window.</Text>

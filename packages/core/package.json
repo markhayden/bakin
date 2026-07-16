@@ -55,6 +55,7 @@
     "./storage/walk": "./src/storage/walk.ts",
     "./storage/db": "./src/storage/db.ts",
     "./execution/ledger": "./src/execution/ledger.ts",
+    "./execution/token-evidence": "./src/execution/token-evidence.ts",
     "./events": "./src/events/event-bus.ts",
     "./workflows/*": "./src/workflows/*.ts",
     "./parsers/*": "./src/parsers/*.ts",

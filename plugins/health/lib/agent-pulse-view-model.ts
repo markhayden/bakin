@@ -45,6 +45,38 @@ function byAgent<T>(rows: T[], getAgent: (row: T) => string): Map<string, T> {
   return new Map(rows.map((row) => [getAgent(row), row]))
 }
 
+type CurrentAgentEffortRow = AgentEffortRow & Required<Pick<
+  AgentEffortRow,
+  | 'tokenApplicableRuns'
+  | 'tokenMeteredRuns'
+  | 'tokenAggregateRepresentable'
+  | 'costedRuns'
+  | 'costAggregateRepresentable'
+>>
+
+/** Legacy effort rows predate per-dimension coverage and cannot prove their subtotals are complete. */
+export function hasCurrentAgentEffortCoverage(row: AgentEffortRow): row is CurrentAgentEffortRow {
+  return row.tokenApplicableRuns !== undefined
+    && row.tokenMeteredRuns !== undefined
+    && row.tokenAggregateRepresentable !== undefined
+    && row.costedRuns !== undefined
+    && row.costAggregateRepresentable !== undefined
+}
+
+function qualifyEffortRow(row: AgentEffortRow | null): AgentEffortRow | null {
+  if (!row || hasCurrentAgentEffortCoverage(row)) return row
+  return {
+    ...row,
+    // A legacy SUM is only a reported subtotal: without coverage counters it
+    // cannot support an exact total, derived ratio/delta, or burn verdict.
+    windowTokens: null,
+    windowCostUsdMicros: null,
+    tokensPerCompletion: null,
+    unattributedTokens: null,
+    flags: [],
+  }
+}
+
 function usageCoverageForAgent(
   agent: string,
   history: UsageHistoryData | null,
@@ -100,7 +132,7 @@ export function buildAgentPulseRows({
   )
 
   return [...agents].map((agent): AgentPulseRow => {
-    const effortRow = efforts.get(agent) ?? null
+    const effortRow = qualifyEffortRow(efforts.get(agent) ?? null)
     const historyRow = histories.get(agent) ?? null
     const contextRow = contexts.get(agent) ?? null
     const agentLiveRuns = liveRuns.get(agent) ?? []
@@ -108,7 +140,10 @@ export function buildAgentPulseRows({
     const usageCoverage = usageCoverageForAgent(agent, history, effort, historyRow, effortRow)
     const reviewState: AgentReviewState = effortRow && effortRow.flags.length > 0
       ? 'review'
-      : !effortRow || effortRow.totalObservedTokens === null || usageCoverage !== 'complete'
+      : !effortRow
+        || effortRow.windowTokens === null
+        || effortRow.totalObservedTokens === null
+        || usageCoverage !== 'complete'
         ? 'unknown'
         : 'clear'
     const startupContextPercent = contextRow && contextBudgetBytes && contextBudgetBytes > 0

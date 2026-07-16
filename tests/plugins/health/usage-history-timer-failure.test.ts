@@ -3,17 +3,23 @@ import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
 
 import {
   getLastUsageScan,
+  getUsageHistoryScanState,
+  isUsageHistoryScanInFlight,
   runUsageHistoryScan,
 } from '../../../plugins/health/lib/usage-history-timer'
 
 const g = globalThis as typeof globalThis & {
   __bakinUsageHistoryLastScan?: unknown
   __bakinUsageHistoryScanInFlight?: Promise<void> | null
+  __bakinUsageHistoryScanPending?: boolean
+  __bakinUsageHistoryScanGeneration?: number
 }
 
 afterEach(() => {
   g.__bakinUsageHistoryLastScan = null
   g.__bakinUsageHistoryScanInFlight = null
+  g.__bakinUsageHistoryScanPending = false
+  g.__bakinUsageHistoryScanGeneration = undefined
 })
 
 describe('usage-history timer failures', () => {
@@ -71,14 +77,50 @@ describe('usage-history timer failures', () => {
     }
 
     const first = runUsageHistoryScan(createMockRuntimeAdapter(), scanner)
+    const firstGeneration = getUsageHistoryScanState().generation
     const second = runUsageHistoryScan(createMockRuntimeAdapter(), scanner)
+    await Promise.resolve()
 
     expect(calls).toBe(1)
     expect(second).toBe(first)
+    expect(firstGeneration).toBe(1)
+    expect(getUsageHistoryScanState().generation).toBe(firstGeneration)
+    expect(isUsageHistoryScanInFlight()).toBe(true)
     resolveScan(report)
     await Promise.all([first, second])
 
     expect(getLastUsageScan()?.report).toEqual(report)
+    expect(isUsageHistoryScanInFlight()).toBe(false)
     expect(g.__bakinUsageHistoryScanInFlight).toBeNull()
+  })
+
+  it('coalesces a re-entrant scan request made before the scanner yields', async () => {
+    const runtime = createMockRuntimeAdapter()
+    const report = {
+      scanned: 0,
+      skipped: 0,
+      failed: 0,
+      coverage: {
+        status: 'complete' as const,
+        reason: 'complete' as const,
+        agents: [],
+      },
+    }
+    let calls = 0
+    let nested: Promise<void> | undefined
+    const scanner = async () => {
+      calls += 1
+      if (calls === 1) nested = runUsageHistoryScan(runtime, scanner)
+      return report
+    }
+
+    const first = runUsageHistoryScan(runtime, scanner)
+    await Promise.resolve()
+
+    expect(calls).toBe(1)
+    expect(nested).toBe(first)
+    expect(getUsageHistoryScanState().generation).toBe(1)
+    await first
+    expect(isUsageHistoryScanInFlight()).toBe(false)
   })
 })

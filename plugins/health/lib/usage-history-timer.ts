@@ -18,7 +18,17 @@ const g = globalThis as typeof globalThis & {
   __bakinUsageHistoryTimer?: ReturnType<typeof setInterval> | null
   __bakinUsageHistoryLastScan?: { at: number; report: UsageScanReport } | null
   __bakinUsageHistoryScanInFlight?: Promise<void> | null
+  __bakinUsageHistoryScanPending?: boolean
+  __bakinUsageHistoryScanGeneration?: number
   __bakinUsageHistoryScanIntervalMs?: number
+}
+
+export interface UsageHistoryScanStateSnapshot {
+  /** Monotonic identity of the most recently started sweep. */
+  generation: number
+  /** True until that sweep has published its completion evidence. */
+  inFlight: boolean
+  lastScan: { at: number; report: UsageScanReport } | null
 }
 
 export const DEFAULT_SCAN_MINUTES = 5
@@ -38,7 +48,13 @@ export function runUsageHistoryScan(
 ): Promise<void> {
   if (g.__bakinUsageHistoryScanInFlight) return g.__bakinUsageHistoryScanInFlight
 
-  const run = (async () => {
+  // Publish pending evidence before invoking the scanner: a scanner can begin
+  // mutating durable rows synchronously before its first await.
+  g.__bakinUsageHistoryScanGeneration = (g.__bakinUsageHistoryScanGeneration ?? 0) + 1
+  g.__bakinUsageHistoryScanPending = true
+  // Queue scanner invocation so the coalescing promise is globally visible
+  // before any synchronous scanner work can re-enter this function.
+  const run = Promise.resolve().then(async () => {
     try {
       const report = await scanner(runtime)
       g.__bakinUsageHistoryLastScan = { at: Date.now(), report }
@@ -57,10 +73,11 @@ export function runUsageHistoryScan(
       }
       log.warn('usage history scan failed', { err: err instanceof Error ? err.message : String(err) })
     }
-  })()
+  })
   g.__bakinUsageHistoryScanInFlight = run
   void run.finally(() => {
     if (g.__bakinUsageHistoryScanInFlight === run) {
+      g.__bakinUsageHistoryScanPending = false
       g.__bakinUsageHistoryScanInFlight = null
     }
   })
@@ -90,6 +107,24 @@ export function stopUsageHistoryTimer(): void {
 /** Completion info of the most recent sweep, or null before the first one. */
 export function getLastUsageScan(): { at: number; report: UsageScanReport } | null {
   return g.__bakinUsageHistoryLastScan ?? null
+}
+
+/** True from immediately before a sweep starts until its evidence is published. */
+export function isUsageHistoryScanInFlight(): boolean {
+  return g.__bakinUsageHistoryScanPending === true
+}
+
+/**
+ * Capture one synchronous identity/state snapshot for readers that span an
+ * await. Comparing snapshots prevents a read assembled across two durable
+ * usage generations from being presented as complete evidence.
+ */
+export function getUsageHistoryScanState(): UsageHistoryScanStateSnapshot {
+  return {
+    generation: g.__bakinUsageHistoryScanGeneration ?? 0,
+    inFlight: isUsageHistoryScanInFlight(),
+    lastScan: getLastUsageScan(),
+  }
 }
 
 /** Evidence becomes stale after two missed scheduled sweeps. */

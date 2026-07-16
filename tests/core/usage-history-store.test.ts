@@ -282,8 +282,8 @@ describe('usageByAgentModelDaySince (cost-control v2)', () => {
   })
 })
 
-describe('usage-history v1 migration', () => {
-  it('preserves legacy rows and scan state while adopting agent-scoped keys', () => {
+describe('usage-history evidence migration', () => {
+  it('invalidates legacy derived rows and scan state before accepting a strict rescan', () => {
     closeAllDbs()
     const storePath = join(testDir, 'usage.db')
     for (const suffix of ['', '-wal', '-shm']) rmSync(`${storePath}${suffix}`, { force: true })
@@ -336,16 +336,17 @@ describe('usage-history v1 migration', () => {
     ).run('legacy-shared', 'legacy-agent', 31, 310, T1)
     closeAllDbs()
 
-    expect(usageByAgentSince(DAY1).find((entry) => entry.agent === 'legacy-agent')?.tokens.total).toBe(31)
-    expect(getScanState('legacy-shared', 'legacy-agent')).toEqual({ mtimeMs: 31, size: 310 })
+    expect(usageByAgentSince(DAY1).find((entry) => entry.agent === 'legacy-agent')).toBeUndefined()
+    expect(getScanState('legacy-shared', 'legacy-agent')).toBeNull()
 
     replaceSessionUsage('legacy-shared', 'new-agent', [row({ totalTokens: 47 })], {
       mtimeMs: 47,
       size: 470,
     })
     const byAgent = usageByAgentSince(DAY1)
-    expect(byAgent.find((entry) => entry.agent === 'legacy-agent')?.tokens.total).toBe(31)
+    expect(byAgent.find((entry) => entry.agent === 'legacy-agent')).toBeUndefined()
     expect(byAgent.find((entry) => entry.agent === 'new-agent')?.tokens.total).toBe(47)
+    expect(getScanState('legacy-shared', 'new-agent')).toEqual({ mtimeMs: 47, size: 470 })
   })
 })
 

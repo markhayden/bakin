@@ -548,6 +548,12 @@ export interface AgentUsage {
   lastMessageAt?: string | null
   model: string
   messages: number
+  /**
+   * Assistant messages whose runtime usage carried a complete cost total,
+   * either explicit or derivable from every positive token component. Absent
+   * on older servers, where cost coverage is unknown.
+   */
+  costedMessages?: number
   tokens: {
     input: number
     output: number

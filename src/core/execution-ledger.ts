@@ -59,6 +59,7 @@ export type {
   RunCostRow,
   RunCostSpendRow,
   BillingLane,
+  RunUsageKind,
   BudgetIncidentInput,
   BudgetIncidentRow,
   BudgetIncidentKind,

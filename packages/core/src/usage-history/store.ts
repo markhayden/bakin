@@ -115,6 +115,18 @@ const MIGRATIONS = [
       db.exec('CREATE INDEX session_usage_days_by_agent ON session_usage_days(agent, day)')
     },
   },
+  {
+    // v3 tightens transcript integrity and cost-coverage semantics. Rows
+    // produced by the older permissive parser cannot be upgraded safely from
+    // their aggregates alone, and retaining their scan state would skip the
+    // strict parser forever. Both tables are derived evidence, so clear only
+    // them; extant transcripts repopulate trustworthy rows on the next sweep.
+    version: 3,
+    up: (db: Db) => {
+      db.exec('DELETE FROM session_usage_days')
+      db.exec('DELETE FROM session_scan_state')
+    },
+  },
 ]
 
 function db(): Db {
@@ -135,7 +147,7 @@ export interface SessionDayUsage {
   totalTokens: number
   /** Runtime-reported cost sum in micro-dollars; null when none reported. */
   costUsdMicros: number | null
-  /** Messages that carried runtime-reported cost (coverage numerator). */
+  /** Messages with complete runtime-reported cost evidence (coverage numerator). */
   costedMessages: number
   messageCount: number
   firstTs: number
