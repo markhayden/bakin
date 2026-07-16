@@ -6,6 +6,7 @@
  * plan) add more leaves under the root.
  */
 import { createRouter } from '@tanstack/react-router'
+import { NotFoundPage } from './components/not-found'
 import { parseSearchPlain, stringifySearchPlain } from './lib/search-params'
 import { Route as RootRoute } from './routes/__root'
 import { Route as IndexRoute } from './routes/index'
@@ -74,6 +75,10 @@ export const router = createRouter({
   // div, not the window — layout-shell marks it with
   // data-scroll-restoration-id so the cache tracks it by selector.
   scrollRestoration: true,
+  // Unknown paths normally land in the `$` catch-all (which renders
+  // NotFoundPage when no plugin claims them); this is the backstop for
+  // notFound() thrown inside routes.
+  defaultNotFoundComponent: NotFoundPage,
 })
 
 // Register the router instance for type safety across the app.

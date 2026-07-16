@@ -26,6 +26,7 @@ import {
   subscribeLazyPlugins,
   subscribeRegistry,
 } from '@makinbakin/sdk/internal'
+import { NotFoundPage } from '../components/not-found'
 import { Route as RootRoute } from './__root'
 
 /** Boundary so a crashing lazily-loaded page can't white-screen the shell. */
@@ -110,11 +111,7 @@ function PluginCatchAllPage() {
       // registry fills in when the client's registerPlugin runs.
       return <PluginLoadingPage />
     }
-    return (
-      <div className="p-6 text-sm text-muted-foreground">
-        Page not found.
-      </div>
-    )
+    return <NotFoundPage />
   }
 
   const Page = match.component
