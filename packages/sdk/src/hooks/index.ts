@@ -117,3 +117,5 @@ export { usePathname } from './router'
 export { useSearchParams } from './router'
 /** Current route's typed path parameters. */
 export { useParams } from './router'
+/** Split a browser-style URL string into TanStack navigate options (non-hook). */
+export { toNavigationOptions } from './router'

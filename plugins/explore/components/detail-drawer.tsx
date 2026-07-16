@@ -1,5 +1,5 @@
 import { ArrowUpRight, Check, Image as ImageIcon } from 'lucide-react'
-import { BakinDrawer } from '@makinbakin/sdk/components'
+import { BakinDrawer, PluginLink } from '@makinbakin/sdk/components'
 import { Badge } from '@makinbakin/sdk/ui'
 import { EntryVisual } from './catalog-card'
 import type { ExploreCatalogEntry } from '../types'
@@ -108,12 +108,12 @@ export function DetailDrawer({
         )}
 
         {entry.updateAvailable === true && entry.kind === 'agent' && (
-          <a
-            href={`/team/${entry.id}`}
+          <PluginLink
+            to={`/team/${entry.id}`}
             className="flex items-center gap-1 text-sm text-amber-400 hover:underline"
           >
             Update available — manage in Team <ArrowUpRight className="size-3.5" />
-          </a>
+          </PluginLink>
         )}
 
         {actions && <div className="mt-2 flex justify-end gap-2">{actions}</div>}

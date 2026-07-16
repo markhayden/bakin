@@ -1,5 +1,16 @@
 # URL State & Deep Linking
 
+## Navigation Rule — never a full reload (routing overhaul PR1)
+
+Internal navigation ALWAYS goes through the SPA router; a hard navigation re-boots the whole shell (manifest fetch, plugin loads, SSE reconnect):
+
+- **Links:** `PluginLink` from `@makinbakin/sdk/components` (plugins + shared `src/components`) or TanStack `Link` (host internals). Both keep real-anchor semantics (copy, cmd/middle-click) while routing primary clicks client-side. Raw internal `<a href="/…">` is banned; `<a href="/api/…">` (real server resources: downloads, exports) is exempt.
+- **Programmatic:** `useRouter().push/replace` from `@makinbakin/sdk/hooks` — never `window.location.assign/replace/href`.
+- **Outside React (OS notification clicks):** `navigateToUrl()` in `src/lib/browser-notify.ts` routes through the `globalThis.__bakinNavigate` bridge the host registers at boot (`packages/host/src/main.tsx`); falls back to a hard load only when the shell isn't booted. globalThis because plugin bundles inline their own copy of that module.
+- **Toast click-throughs** navigate via `useRouter().push` and dismiss themselves with the id `toast()` returns (see chat's `ReplyToast` / workflows' `GateToast`).
+
+Enforced twice: `tests/architecture/no-hard-navigation.test.ts` (CI gate — scanner with teeth + path-pinned allowlist with reasons) and mirrored `no-restricted-syntax` rules in `eslint.config.mjs` (editor feedback). Keep the two allowlists in sync. Legitimate full reloads (unsaved-changes guard, `router.refresh()`, dev loop, update recovery, plugin-failure banner, manifest-change reload) are allowlisted there — new entries must be recovery/dev-tooling paths, never user-facing links.
+
 ## Rule
 
 All interactive UI state that a user would want to bookmark, share, or navigate back to **must** be reflected in the URL. This includes:

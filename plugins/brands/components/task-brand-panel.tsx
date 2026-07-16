@@ -10,6 +10,7 @@
  */
 import { useEffect, useState } from 'react'
 import { useDebug, useJsonFetch } from '@makinbakin/sdk/hooks'
+import { PluginLink } from '@makinbakin/sdk/components'
 
 interface TaskBrandInfo {
   brandId: string
@@ -80,9 +81,9 @@ export function TaskBrandPanel({ taskId }: { taskId?: string }) {
           <span className="text-xs text-muted-foreground">({SOURCE_LABEL[brand.source]})</span>
         </div>
         {brand.blocked && (
-          <a href="/brands" className="text-xs font-medium text-amber-400 hover:underline">
+          <PluginLink to="/brands" className="text-xs font-medium text-amber-400 hover:underline">
             brand unavailable — dispatch is waiting
-          </a>
+          </PluginLink>
         )}
       </div>
 
