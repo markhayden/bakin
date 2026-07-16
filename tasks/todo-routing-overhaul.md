@@ -12,11 +12,11 @@ Tracks `tasks/plan-routing-overhaul.md`. Check items off as commits land.
 - [ ] CHECKPOINT: suite+lint+tsc green (done 2026-07-15: 7710 pass/0 fail, lint 0 errors, tsc clean) · live pass on 3737 (anchors, toasts, OS notif — SSE conn survives) · Mark approves · merge
 
 ## PR2 — feat/chat-path-routing
-- [ ] 2.1 Host routes chat.$chatId + chat.new + ranking test — `feat(host): /chat/$chatId and /chat/new routes`
-- [ ] 2.2 Chat page identity from path props; draft → /chat/new?agent= — `feat(chat): page reads identity from path; draft moves to /chat/new`
-- [ ] 2.3 All URL builders → path (attention.ts, toast, OS notif, ⌘K hit); zero `?chat=` grep — `feat(chat): path URLs in toast/notification/search builders`
-- [ ] 2.4 RTL + attention pathname table tests — `test(chat): path-based deep-link coverage`
-- [ ] 2.5 chat-plugin.md (+conversation-kit.md) docs — `docs(knowledge): chat-plugin URL surface`
+- [x] 2.1 Host routes chat.$chatId + chat.new + ranking test — `feat(host): /chat/$chatId and /chat/new routes`
+- [x] 2.2 Chat page identity from path props; draft → /chat/new?agent= — `feat(chat): page reads identity from path; draft moves to /chat/new`
+- [x] 2.3 All URL builders → path (attention.ts, toast, OS notif, ⌘K hit); zero `?chat=` grep — `feat(chat): path URLs in toast/notification/search builders`
+- [x] 2.4 RTL + attention pathname table tests — `test(chat): path-based deep-link coverage`
+- [x] 2.5 chat-plugin.md (+conversation-kit.md) docs — `docs(knowledge): chat-plugin URL surface`
 - [ ] CHECKPOINT: suite+lint+tsc green · live pass (cold-boot deep link, draft first-send, back/forward, all three entry points) · Mark approves · merge
 
 ## PR3 — feat/router-polish
