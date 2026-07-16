@@ -11,7 +11,7 @@
  * lands on the task detail where gates are approved/rejected.
  */
 import { useCallback, useEffect } from 'react'
-import { useNavBadge, usePluginEvent, toast } from '@makinbakin/sdk/hooks'
+import { useNavBadge, usePluginEvent, useRouter, toast, useToastStore } from '@makinbakin/sdk/hooks'
 import { pluginFetch } from '@makinbakin/sdk/utils'
 import { useState } from 'react'
 
@@ -20,6 +20,23 @@ import { attentionForGate, gateBadge, gateUrl, type GateReachedPayload } from '.
 
 interface PendingGatesResponse {
   gates: Array<{ taskId: string; stepId: string; label?: string }>
+}
+
+function GateToast({ url, title, body, onNavigate }: { url: string; title: string; body: string; onNavigate?: () => void }) {
+  const router = useRouter()
+  return (
+    <button
+      type="button"
+      className="text-left"
+      onClick={() => {
+        onNavigate?.()
+        router.push(url)
+      }}
+    >
+      <span className="font-medium">{title}</span>
+      <span className="block text-xs text-muted-foreground">{body}</span>
+    </button>
+  )
 }
 
 export function ApprovalsBadgeProvider() {
@@ -43,15 +60,15 @@ export function ApprovalsBadgeProvider() {
     const gate = payload as unknown as GateReachedPayload
     const attention = attentionForGate(gate, window.location)
     if (!attention.notify) return
-    toast(
-      <button
-        type="button"
-        className="text-left"
-        onClick={() => { window.location.href = attention.url }}
-      >
-        <span className="font-medium">{attention.title}</span>
-        <span className="block text-xs text-muted-foreground">{attention.body}</span>
-      </button>,
+    // The closure reads `id` only on click, after toast() has returned it —
+    // navigating in-app dismisses the toast instead of leaving it to expire.
+    const id: string = toast(
+      <GateToast
+        url={attention.url}
+        title={attention.title}
+        body={attention.body}
+        onNavigate={() => useToastStore.getState().dismiss(id)}
+      />,
       'info',
     )
     sendBrowserNotification(attention.title, attention.body, gateUrl(gate))
