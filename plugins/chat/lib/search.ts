@@ -2,7 +2,7 @@
  * Chat search integration (S11) — transcripts join global search as a
  * file-backed content type: one doc per chat (title, agent, recent
  * message text), synced by the watcher on every JSONL append, deep-linked
- * from the ⌘K overlay via /chat?chat=<id>.
+ * from the ⌘K overlay via /chat/<id>.
  */
 import { basename } from 'path'
 

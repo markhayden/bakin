@@ -52,10 +52,16 @@ export function attentionForDone(payload: ChatDonePayload, ctx: AttentionContext
   }
 }
 
-/** The chat the user is currently viewing, derived from the URL. */
-export function visibleChatIdFromLocation(pathname: string, search: string): string {
-  if (!pathname.startsWith('/chat')) return ''
-  return new URLSearchParams(search).get('chat') ?? ''
+/**
+ * The chat the user is currently viewing, derived from the URL path
+ * (/chat/$chatId since the PR2 path migration). /chat (list) and /chat/new
+ * (draft) view no conversation, so they never suppress attention.
+ */
+export function visibleChatIdFromLocation(pathname: string): string {
+  const match = /^\/chat\/([^/]+)\/?$/.exec(pathname)
+  if (!match) return ''
+  const id = decodeURIComponent(match[1])
+  return id === 'new' ? '' : id
 }
 
 /** Nav badge from unread totals + in-flight turns: count wins, dot while working. */

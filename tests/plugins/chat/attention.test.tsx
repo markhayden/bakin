@@ -70,10 +70,17 @@ describe('attentionForDone (pure rules)', () => {
 })
 
 describe('attention helpers', () => {
-  it('visibleChatIdFromLocation only matches the chat page', () => {
-    expect(visibleChatIdFromLocation('/chat', '?chat=c1')).toBe('c1')
-    expect(visibleChatIdFromLocation('/tasks', '?chat=c1')).toBe('')
-    expect(visibleChatIdFromLocation('/chat', '')).toBe('')
+  it('visibleChatIdFromLocation parses the /chat/$chatId path (PR2 migration)', () => {
+    expect(visibleChatIdFromLocation('/chat/c1')).toBe('c1')
+    expect(visibleChatIdFromLocation('/chat/c1/')).toBe('c1')
+    expect(visibleChatIdFromLocation('/chat/abc%20def')).toBe('abc def')
+    // No conversation in view — list, draft, other pages, deeper paths:
+    expect(visibleChatIdFromLocation('/chat')).toBe('')
+    expect(visibleChatIdFromLocation('/chat/new')).toBe('')
+    expect(visibleChatIdFromLocation('/tasks')).toBe('')
+    expect(visibleChatIdFromLocation('/chat/c1/extra')).toBe('')
+    // The retired ?chat= shape is dead by decision (no redirects):
+    expect(visibleChatIdFromLocation('/chat')).toBe('')
   })
 
   it('badgeFor: unread count wins, working dot otherwise, null when idle', () => {
