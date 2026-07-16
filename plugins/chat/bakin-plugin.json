@@ -85,6 +85,8 @@
     ],
     "slots": [
       "page:/chat",
+      "page:/chat/[chatId]",
+      "page:/chat/new",
       "nav-badge-providers"
     ]
   }

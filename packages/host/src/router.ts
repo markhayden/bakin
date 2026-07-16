@@ -22,6 +22,8 @@ import { Route as BrandsRoute } from './routes/brands'
 import { Route as BrandDetailRoute } from './routes/brands.$brandId'
 import { Route as BrandDocEditorRoute } from './routes/brands.$brandId.docs.$kind.$name'
 import { Route as ChatRoute } from './routes/chat'
+import { Route as ChatNewRoute } from './routes/chat.new'
+import { Route as ChatDetailRoute } from './routes/chat.$chatId'
 import { Route as ExploreRoute } from './routes/explore'
 import { Route as HealthRoute } from './routes/health'
 import { Route as MemoryRoute } from './routes/memory'
@@ -47,6 +49,8 @@ const routeTree = RootRoute.addChildren([
   BrandDetailRoute,
   BrandDocEditorRoute,
   ChatRoute,
+  ChatNewRoute,
+  ChatDetailRoute,
   ExploreRoute,
   HealthRoute,
   MemoryRoute,

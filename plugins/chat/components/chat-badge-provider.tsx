@@ -37,7 +37,7 @@ function ReplyToast({ chatId, agentId, preview, onNavigate }: { chatId: string; 
       data-chat-toast={chatId}
       onClick={() => {
         onNavigate?.()
-        router.push(`/chat?chat=${encodeURIComponent(chatId)}`)
+        router.push(`/chat/${encodeURIComponent(chatId)}`)
       }}
       className="flex max-w-sm items-start gap-2 text-left"
     >
@@ -92,7 +92,7 @@ export function ChatBadgeProvider() {
       return next
     })
     const actions = attentionForDone(done, {
-      visibleChatId: visibleChatIdFromLocation(window.location.pathname, window.location.search),
+      visibleChatId: visibleChatIdFromLocation(window.location.pathname),
       settings: settingsRef.current,
     })
     if (actions.toast) {
@@ -111,7 +111,7 @@ export function ChatBadgeProvider() {
     if (actions.sound) playReplyChime()
     if (actions.browserNotification && done.preview) {
       // browser-notify self-suppresses while the tab is focused.
-      sendBrowserNotification(`${done.agentId} replied`, done.preview, `/chat?chat=${done.chatId}`)
+      sendBrowserNotification(`${done.agentId} replied`, done.preview, `/chat/${encodeURIComponent(done.chatId)}`)
     }
     void refreshUnread()
   })
@@ -123,7 +123,7 @@ export function ChatBadgeProvider() {
       next.delete(id)
       return next
     })
-    const visible = visibleChatIdFromLocation(window.location.pathname, window.location.search)
+    const visible = visibleChatIdFromLocation(window.location.pathname)
     if (visible !== id && settingsRef.current.toasts) {
       toast(`Chat reply failed: ${String(payload.message ?? 'unknown error')}`, 'error')
     }

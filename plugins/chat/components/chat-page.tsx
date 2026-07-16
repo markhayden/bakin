@@ -3,8 +3,12 @@
  * grouped rail, and the conversation pane (launcher when nothing is
  * selected, draft mode before first send).
  *
- * URL state: ?chat=<chatId> (active chat), ?draft=<agentId> (draft
- * conversation), ?agents=a,b (rail facet filter).
+ * URL surface (routing overhaul PR2, spec D2 — path = page identity):
+ *   /chat                  — list / launcher; ?agent= is the rail filter
+ *   /chat/$chatId          — active conversation (chatId arrives as a prop
+ *                            from the host route); ?agent= filter carries
+ *   /chat/new?agent=<id>   — draft composer; here ?agent= is the DRAFT
+ *                            agent, so the rail renders unfiltered
  *
  * Keyboard shortcuts (page-scoped): ⌘⇧O new chat (launcher), ⌥↑/⌥↓
  * previous/next chat, ⇧Esc focus the composer.
@@ -32,30 +36,28 @@ async function createAndSend(agentId: string, content: string): Promise<string |
   return res.ok ? chat.id : chat.id // chat exists either way; errors surface in the view
 }
 
-function ChatPageInner() {
-  const [chatId] = useQueryState('chat', '')
-  const [draftAgent] = useQueryState('draft', '')
-  const [agentFilter, setAgentFilter] = useQueryState('agent', '')
+interface ChatPageProps {
+  /** Active conversation id — threaded in by the /chat/$chatId host route. */
+  chatId?: string
+  /** Draft mode — set by the /chat/new registration; agent rides ?agent=. */
+  draft?: boolean
+}
+
+function ChatPageInner({ chatId = '', draft = false }: ChatPageProps) {
+  const [agentParam, setAgentParam] = useQueryState('agent', '')
+  // On /chat/new the agent param IS the draft agent (spec D2); on the list
+  // and conversation routes it's the rail filter. Never both.
+  const draftAgent = draft ? agentParam : ''
+  const agentFilter = draft ? '' : agentParam
   const [search, setSearch] = useState('')
   const [collapsed, setCollapsed] = useRailCollapsed()
   const { chats, allChats, loading, refresh } = useChats(agentFilter)
   const router = useRouter()
 
-  // ONE navigation per transition. Two useQueryState setters in the same
-  // tick lose updates (each builds from the pre-navigation params snapshot,
-  // so the second clobbers the first — the "booted back to the launcher"
-  // bug). Reads window.location.search at CALL time.
-  const setParams = useCallback(
-    (patch: Record<string, string>) => {
-      const params = new URLSearchParams(window.location.search)
-      for (const [key, value] of Object.entries(patch)) {
-        if (value) params.set(key, value)
-        else params.delete(key)
-      }
-      const qs = params.toString()
-      router.replace(qs ? `/chat?${qs}` : '/chat')
-    },
-    [router],
+  /** Carry the active rail filter across page-identity navigations. */
+  const withFilter = useCallback(
+    (path: string) => (agentFilter ? `${path}?agent=${encodeURIComponent(agentFilter)}` : path),
+    [agentFilter],
   )
 
   // Live in-flight indicators: seed from the list, keep fresh via events.
@@ -89,14 +91,15 @@ function ChatPageInner() {
     )
   }, [chats, search])
 
+  // push — conversations are places; back/forward walks between them.
   const openChat = useCallback(
-    (id: string) => setParams({ chat: id, draft: '' }),
-    [setParams],
+    (id: string) => router.push(withFilter(`/chat/${encodeURIComponent(id)}`)),
+    [router, withFilter],
   )
 
   const startDraft = useCallback(
-    (agentId: string) => setParams({ chat: '', draft: agentId }),
-    [setParams],
+    (agentId: string) => router.push(`/chat/new?agent=${encodeURIComponent(agentId)}`),
+    [router],
   )
 
   // Page-scoped keyboard shortcuts.
@@ -105,7 +108,7 @@ function ChatPageInner() {
       // ⌘⇧O — new chat (back to the launcher)
       if (e.metaKey && e.shiftKey && e.key.toLowerCase() === 'o') {
         e.preventDefault()
-        setParams({ chat: '', draft: '' })
+        router.push(withFilter('/chat'))
         return
       }
       // ⌥↑ / ⌥↓ — previous/next chat in the visible list
@@ -132,7 +135,7 @@ function ChatPageInner() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [chatId, visibleChats, openChat, setParams])
+  }, [chatId, visibleChats, openChat, router, withFilter])
 
   return (
     <div className="flex h-full flex-col" data-chat-pane>
@@ -155,7 +158,12 @@ function ChatPageInner() {
           collapsed={collapsed}
           onCollapse={setCollapsed}
           onSelect={openChat}
-          onAgentFilter={setAgentFilter}
+          onAgentFilter={(v) => {
+            // On /chat/new the agent param is the draft agent — a rail
+            // filter click there navigates back to the (filtered) list.
+            if (draft) router.push(v ? `/chat?agent=${encodeURIComponent(v)}` : '/chat')
+            else setAgentParam(v)
+          }}
           onChanged={() => { void refresh() }}
         />
         {chatId ? (
@@ -166,7 +174,8 @@ function ChatPageInner() {
             agentId={draftAgent}
             createAndSend={createAndSend}
             onCreated={(id) => {
-              openChat(id)
+              // replace — the dead draft URL shouldn't survive in history.
+              router.replace(`/chat/${encodeURIComponent(id)}`)
               void refresh()
             }}
           />
@@ -178,10 +187,10 @@ function ChatPageInner() {
   )
 }
 
-export function ChatPage() {
+export function ChatPage(props: ChatPageProps) {
   return (
     <Suspense fallback={null}>
-      <ChatPageInner />
+      <ChatPageInner {...props} />
     </Suspense>
   )
 }
