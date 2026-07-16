@@ -7,7 +7,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AgentAvatar } from '@makinbakin/sdk/components'
-import { useAgent, useNavBadge, usePluginEvent, toast } from '@makinbakin/sdk/hooks'
+import { useAgent, useNavBadge, usePluginEvent, useRouter, toast, useToastStore } from '@makinbakin/sdk/hooks'
 import { pluginFetch } from '@makinbakin/sdk/utils'
 
 import { sendBrowserNotification } from '../../../src/lib/browser-notify'
@@ -28,13 +28,17 @@ interface ChatAttentionSettings {
 
 const DEFAULT_ATTENTION_SETTINGS: ChatAttentionSettings = { sound: true, toasts: true }
 
-function ReplyToast({ chatId, agentId, preview }: { chatId: string; agentId: string; preview?: string }) {
+function ReplyToast({ chatId, agentId, preview, onNavigate }: { chatId: string; agentId: string; preview?: string; onNavigate?: () => void }) {
   const agent = useAgent(agentId)
+  const router = useRouter()
   return (
     <button
       type="button"
       data-chat-toast={chatId}
-      onClick={() => window.location.assign(`/chat?chat=${encodeURIComponent(chatId)}`)}
+      onClick={() => {
+        onNavigate?.()
+        router.push(`/chat?chat=${encodeURIComponent(chatId)}`)
+      }}
       className="flex max-w-sm items-start gap-2 text-left"
     >
       <AgentAvatar agentId={agentId} size="xs" />
@@ -92,7 +96,17 @@ export function ChatBadgeProvider() {
       settings: settingsRef.current,
     })
     if (actions.toast) {
-      toast(<ReplyToast chatId={done.chatId} agentId={done.agentId} preview={done.preview} />, 'info')
+      // The closure reads `id` only on click, after toast() has returned it —
+      // navigating in-app dismisses the toast instead of leaving it to expire.
+      const id: string = toast(
+        <ReplyToast
+          chatId={done.chatId}
+          agentId={done.agentId}
+          preview={done.preview}
+          onNavigate={() => useToastStore.getState().dismiss(id)}
+        />,
+        'info',
+      )
     }
     if (actions.sound) playReplyChime()
     if (actions.browserNotification && done.preview) {

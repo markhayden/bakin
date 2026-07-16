@@ -16,7 +16,7 @@ export interface Toast {
 
 interface ToastStore {
   toasts: Toast[]
-  add: (toast: Omit<Toast, 'id'>) => void
+  add: (toast: Omit<Toast, 'id'>) => string
   dismiss: (id: string) => void
 }
 
@@ -30,11 +30,12 @@ export const useToastStore = create<ToastStore>((set) => ({
     setTimeout(() => {
       set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }))
     }, toast.duration ?? DEFAULT_DURATION[toast.type])
+    return id
   },
   dismiss: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
 }))
 
-/** Convenience: call from anywhere without hooks */
-export function toast(message: ReactNode, type: Toast['type'] = 'info', duration?: number) {
-  useToastStore.getState().add({ message, type, ...(duration ? { duration } : {}) })
+/** Convenience: call from anywhere without hooks. Returns the toast id for programmatic dismiss. */
+export function toast(message: ReactNode, type: Toast['type'] = 'info', duration?: number): string {
+  return useToastStore.getState().add({ message, type, ...(duration ? { duration } : {}) })
 }
