@@ -111,9 +111,11 @@ export function AppSidebar({
         })}
       </div>
 
-      <div role="group" aria-label="Utilities" className="flex shrink-0 flex-col gap-0.5 border-t border-border/70 pt-2">
+      <div role="group" aria-label="Utilities" className="flex shrink-0 flex-col gap-0.5 pt-2">
         <SidebarPromo collapsed={collapsed} pathname={pathname} onNavigate={onNavigate} />
-        {UTILITY_ITEMS.map(renderNavItem)}
+        <div className="flex flex-col gap-0.5 border-t border-border/70 pt-2">
+          {UTILITY_ITEMS.map(renderNavItem)}
+        </div>
       </div>
     </nav>
   )

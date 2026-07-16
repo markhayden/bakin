@@ -18,24 +18,19 @@ export function SidebarPromo({ collapsed, pathname, onNavigate }: SidebarPromoPr
         onClick={onNavigate}
         data-testid="sidebar-promo"
         aria-current={active ? 'page' : undefined}
-        className={`group relative mb-1.5 min-h-[76px] overflow-hidden rounded-lg border px-3 py-2.5 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+        className={`group mb-1.5 min-h-[76px] rounded-lg border px-3 py-2.5 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
           active
             ? 'border-pink-500/45 bg-pink-500/[0.10]'
             : 'border-pink-500/20 bg-pink-500/[0.045] hover:border-pink-500/35 hover:bg-pink-500/[0.075]'
         }`}
       >
-        <img
-          src="/bakin-hop.svg"
-          alt=""
-          aria-hidden="true"
-          className="pointer-events-none absolute -bottom-5 -right-7 w-28 invert opacity-[0.07] transition-opacity duration-150 group-hover:opacity-[0.11]"
-        />
-        <span className="relative flex items-center gap-1.5 text-xs font-semibold text-foreground">
-          Make Bakin Yours
-          <ArrowUpRight className="size-3 text-pink-400" aria-hidden="true" />
-        </span>
-        <span className="relative mt-1 block max-w-[145px] text-[10px] leading-[1.35] text-muted-foreground">
+        <span className="block text-sm font-semibold text-foreground">Make Bakin Yours</span>
+        <span className="mt-1 block text-xs leading-4 text-muted-foreground">
           Do more with Bakin—discover agent kits, plugins &amp; more.
+        </span>
+        <span className="mt-2.5 inline-flex items-center gap-1 rounded-md border border-pink-500/25 bg-pink-500/[0.09] px-2 py-1 text-[11px] font-medium text-pink-300 transition-colors group-hover:border-pink-500/40 group-hover:bg-pink-500/[0.14]">
+          Browse add-ons
+          <ArrowUpRight className="size-3" aria-hidden="true" />
         </span>
       </Link>
     )

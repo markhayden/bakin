@@ -349,8 +349,9 @@ If either feature branch already exists or a baseline fails, stop and report the
 
 **Acceptance criteria:**
 
-- [ ] Expanded tile uses the exact title/copy and restrained cropped `bakin-hop.svg` treatment.
+- [ ] Expanded tile uses the exact title/copy, a `Browse add-ons` button-style CTA, readable type, and no background artwork.
 - [ ] Collapsed tile uses `Blocks`, a standalone accessible label, and visually differs from ordinary rows.
+- [ ] The utility divider renders below the tile and above Runtime/Settings.
 - [ ] Both link to `/explore` and close the mobile drawer after selection.
 - [ ] Explore no longer contributes `Extend Bakin` nav or obsolete `placement`, while all Explore routes/slots still work.
 
@@ -482,7 +483,7 @@ bun run dev:mock
 - [ ] Mobile drawer shows the full hierarchy and closes after flat/child navigation.
 - [ ] Keyboard flow proves visible focus, disclosure state, flyout entry/exit, tooltips/accessibility labels, and every nested route.
 - [ ] Badge pills/dots and accessible announcements remain accurate.
-- [ ] Make Bakin Yours copy/artwork feels restrained and legible; no gradient/saturated treatment appears.
+- [ ] Make Bakin Yours copy and typography feel restrained and legible; no background artwork, gradient, or saturated treatment appears.
 - [ ] Screenshots exist for expanded, collapsed, mobile, and short-height states.
 
 **Verification:**

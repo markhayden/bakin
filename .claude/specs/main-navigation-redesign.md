@@ -110,8 +110,10 @@ Replace the Explore plugin's ordinary `Extend Bakin` bottom nav contribution wit
 
 - Title: **Make Bakin Yours**
 - Supporting copy: **Do more with Bakin—discover agent kits, plugins & more.**
-- Expanded treatment: a restrained, branded card using the existing `packages/host/public/bakin-hop.svg` as a small, partially cropped pink decorative mark.
+- CTA: **Browse add-ons**
+- Expanded treatment: a restrained, branded card with no background artwork, type large enough to scan comfortably, and a button-style CTA at the bottom.
 - Collapsed treatment: a distinct `Blocks` icon tile.
+- The utility divider sits below the promotional tile and above Runtime/Settings.
 - Avoid gradients and saturated generic promotional styling.
 - `/explore` remains a discovery/install storefront. A build-your-own path is out of scope and tracked separately in [GitHub issue #688](https://github.com/markhayden/bakin/issues/688).
 
@@ -359,13 +361,13 @@ export function buildSidebarNavModel(items: readonly NavItem[]): SidebarNavModel
 
 Run against the local mock app with representative official and custom nav items:
 
-- Expanded desktop at 1440×900: story/order, headings, fixed regions, only middle scrolls, active states, Make Bakin Yours artwork/copy.
+- Expanded desktop at 1440×900: story/order, headings, fixed regions, only middle scrolls, active states, and Make Bakin Yours copy/type.
 - Collapsed desktop at 1440×900: 52px width, grouping gaps, tooltips, badge dots, all nested links reachable by pointer and keyboard, distinct promotional tile.
 - Short desktop viewport: primary and utility regions remain visible while middle scrolls.
 - Mobile viewport: full drawer, section labels, disclosure touch behavior, drawer closes after navigation, fixed/scrollable regions.
 - Keyboard pass: Tab order, visible focus, disclosure `aria-expanded`, flyout entry/escape, icon-only labels.
 - Route pass: `/`, `/chat`, every official top-level destination, all Messaging children, `/explore`, `/runtime`, and `/settings`.
-- Visual tuning pass for density, separators, cropped hop artwork, and whether the provisional group-open behavior feels natural.
+- Visual tuning pass for density, separators, promotional typography, and whether the provisional group-open behavior feels natural.
 - Capture before/after screenshots for expanded, collapsed, and mobile states for review.
 
 ### Regression verification
@@ -402,7 +404,7 @@ Update documentation in the same implementation commits as the contract or behav
 7. Official entries lead each section; custom entries follow deterministically.
 8. Every child route remains reachable and understandable in expanded, collapsed, mobile, pointer, touch, and keyboard use.
 9. Badge counts become accessible severity dots when space is constrained and never aggregate misleading totals.
-10. Make Bakin Yours links to the unchanged Explore experience with the approved branded copy and restrained artwork.
+10. Make Bakin Yours links to the unchanged Explore experience with the approved branded copy and restrained card treatment.
 11. Obsolete `placement` and `alwaysExpanded` contract paths are removed cleanly without compatibility shims.
 12. Relevant tests, typechecks, lint, builds, docs, and real-browser checks pass in both repositories.
 13. Expanded, collapsed, and mobile screenshots are reviewed before the final visual treatment is considered complete.
