@@ -50,7 +50,7 @@ export interface BillingOverride {
 /** Shape of models plugin settings */
 export interface ModelsPluginSettings {
   defaultModel?: string
-  /** Per-turn model/thinking routing policy (origins + tag overrides). */
+  /** Per-turn model/thinking routing policy (work classes + tag overrides). */
   routing?: RoutingConfig
   /** Spend-cap policy (global + per-agent daily/monthly limits). */
   budget?: BudgetPolicy

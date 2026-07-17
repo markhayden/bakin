@@ -6,8 +6,9 @@ import { EmptyState } from "@makinbakin/sdk/components"
 import { ModelSelect } from "@makinbakin/sdk/components"
 import type { ModelsData } from './use-models-data'
 
-// Dispatch origins routing can target, with a short hint of what each is.
-const ROUTING_ORIGINS = [
+// Dispatch work classes routing can target, with a short hint of what each
+// is. (System work classes join this table in the matrix redesign — T5.2.)
+const DISPATCH_CLASSES = [
   { id: 'scheduled', label: 'Scheduled', hint: 'Cron-fired tasks' },
   { id: 'workflow', label: 'Workflow', hint: 'Workflow step turns' },
   { id: 'adhoc', label: 'Ad-hoc', hint: 'Manually kicked tasks' },
@@ -20,14 +21,14 @@ const THINKING_LEVELS = ['inherit', 'off', 'minimal', 'low', 'medium', 'high', '
 export function RoutingTab({ m }: { m: ModelsData }) {
   const {
     pendingRouting, setPendingRouting, saveRouting, saving, displayRouting,
-    setOriginField, addTagOverride, updateTagOverride, removeTagOverride, modelOptions,
+    setRouteField, addTagOverride, updateTagOverride, removeTagOverride, modelOptions,
   } = m
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
-          Route each dispatch origin to a model and thinking level. Leave a row blank to inherit the agent&apos;s configured model. Tag overrides win over origin policies.
+          Route each work class to a model and thinking level. Leave a row blank to inherit the agent&apos;s configured model. Tag overrides win over class routes.
         </p>
         {pendingRouting && (
           <div className="flex items-center gap-2">
@@ -43,14 +44,14 @@ export function RoutingTab({ m }: { m: ModelsData }) {
         <Table>
           <TableHeader>
             <TableRow className="bg-card">
-              <TableHead>Origin</TableHead>
+              <TableHead>Work class</TableHead>
               <TableHead>Model</TableHead>
               <TableHead className="w-[160px]">Thinking</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {ROUTING_ORIGINS.map((o) => {
-              const policy = displayRouting.policies.find((p) => p.origin === o.id)
+            {DISPATCH_CLASSES.map((o) => {
+              const route = displayRouting.routes.find((r) => r.workClass === o.id)
               return (
                 <TableRow key={o.id}>
                   <TableCell>
@@ -59,16 +60,16 @@ export function RoutingTab({ m }: { m: ModelsData }) {
                   </TableCell>
                   <TableCell>
                     <ModelSelect
-                      value={policy?.model ?? ''}
-                      onChange={(v) => setOriginField(o.id, 'model', v)}
+                      value={route?.model ?? ''}
+                      onChange={(v) => setRouteField(o.id, 'model', v)}
                       models={modelOptions}
                     />
                   </TableCell>
                   <TableCell>
                     <select
                       className="h-8 w-full rounded-md border border-border bg-background px-2 text-sm"
-                      value={policy?.thinking ?? 'inherit'}
-                      onChange={(e) => setOriginField(o.id, 'thinking', e.target.value)}
+                      value={route?.thinking ?? 'inherit'}
+                      onChange={(e) => setRouteField(o.id, 'thinking', e.target.value)}
                     >
                       {THINKING_LEVELS.map((t) => <option key={t} value={t}>{t}</option>)}
                     </select>

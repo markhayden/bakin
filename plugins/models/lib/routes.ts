@@ -277,7 +277,10 @@ export const modelsRoutes = [
     handler: async (_req, ctx) => {
       try {
         const settings = ctx.getSettings<ModelsPluginSettings>()
-        return Response.json(settings.routing ?? { policies: [], tagOverrides: [] })
+        const routing = settings.routing
+        // Legacy origin-shaped configs read as unset until the one-shot
+        // migration (routing-migration.ts) rewrites them at activation.
+        return Response.json(routing && 'routes' in routing ? routing : { routes: [], tagOverrides: [] })
       } catch (err) {
         return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
       }
@@ -293,8 +296,8 @@ export const modelsRoutes = [
     handler: async (_req, ctx, { body }) => {
       try {
         (ctx as unknown as PluginContext).updateSettings({ routing: body })
-        ctx.activity.audit('routing.updated', 'system', { policies: body.policies.length, tagOverrides: body.tagOverrides.length })
-        ctx.activity.log('system', `Updated routing policy (${body.policies.length} origins, ${body.tagOverrides.length} tag overrides)`, { category: 'models' })
+        ctx.activity.audit('routing.updated', 'system', { routes: body.routes.length, tagOverrides: body.tagOverrides.length })
+        ctx.activity.log('system', `Updated routing policy (${body.routes.length} work classes, ${body.tagOverrides.length} tag overrides)`, { category: 'models' })
         return Response.json({ ok: true })
       } catch (err) {
         return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })

@@ -672,13 +672,13 @@ describe('routing config', () => {
     const route = findRoute(activated.routes, 'GET', '/routing')!
     const { status, body } = await callRoute(route, activated.ctx)
     expect(status).toBe(200)
-    expect(body).toEqual({ policies: [], tagOverrides: [] })
+    expect(body).toEqual({ routes: [], tagOverrides: [] })
   })
 
-  it('PUT /routing validates and persists policies + tag overrides', async () => {
+  it('PUT /routing validates and persists routes + tag overrides', async () => {
     const route = findRoute(activated.routes, 'PUT', '/routing')!
     const config = {
-      policies: [{ origin: 'scheduled', model: 'anthropic/claude-haiku-4-5', thinking: 'low' }],
+      routes: [{ workClass: 'scheduled', model: 'anthropic/claude-haiku-4-5', thinking: 'low' }],
       tagOverrides: [{ tag: 'heavy', model: 'anthropic/claude-opus-4-6' }],
     }
     const { status, body } = await callRoute(route, activated.ctx, { body: config })
@@ -687,10 +687,10 @@ describe('routing config', () => {
     expect(activated.ctx.updateSettings).toHaveBeenCalledWith({ routing: config })
   })
 
-  it('PUT /routing rejects an unknown origin', async () => {
+  it('PUT /routing rejects an unknown work class', async () => {
     const route = findRoute(activated.routes, 'PUT', '/routing')!
     const { status } = await callRoute(route, activated.ctx, {
-      body: { policies: [{ origin: 'bogus', model: 'm' }], tagOverrides: [] },
+      body: { routes: [{ workClass: 'bogus', model: 'm' }], tagOverrides: [] },
     })
     expect(status).toBe(400)
   })

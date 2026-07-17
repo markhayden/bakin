@@ -116,8 +116,12 @@ export function registerModelsHooks(ctx: PluginContext): void {
   // when none is set → dispatch inherits the agent's configured model.
   ctx.hooks.register('models.getRoutingConfig', () => {
     const settings = ctx.getSettings<ModelsPluginSettings>()
-    return settings.routing ?? { policies: [], tagOverrides: [] }
-  }, { label: 'Get routing config.', summary: 'Returns the per-turn model/thinking routing policy (origins + tag overrides) that dispatch applies before each agent turn. Use it to read the current routing rules.', hookKind: 'rpc' })
+    const routing = settings.routing
+    // Legacy origin-shaped configs read as unset until the one-shot
+    // migration (routing-migration.ts) rewrites them at activation.
+    if (routing && 'routes' in routing) return routing
+    return { routes: [], tagOverrides: [] }
+  }, { label: 'Get routing config.', summary: 'Returns the per-turn model/thinking routing policy (work classes + tag overrides) applied before each routable agent turn. Use it to read the current routing rules.', hookKind: 'rpc' })
 
   // Expose the budget policy to core dispatch, which consults it before
   // claiming a run. Empty when none is set → no gating. A legacy-shaped
