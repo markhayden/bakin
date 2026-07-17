@@ -47,6 +47,11 @@ export interface ScopeSpend extends LaneSums {
   unattributed: UnattributedSums
 }
 
+/** Lane sums + run count for one work class (unit-economics slice). */
+export interface WorkClassSums extends LaneSums {
+  runs: number
+}
+
 export interface WindowSpend {
   startMs: number
   global: ScopeSpend
@@ -54,6 +59,12 @@ export interface WindowSpend {
   /** Attributed-only rollups (see module header). */
   byProvider: Record<string, LaneSums>
   byModel: Record<string, LaneSums>
+  /**
+   * Attributed-only, keyed by work class — the dimension that routes IS the
+   * dimension spend reports on. Special keys: 'media' (image/media rows,
+   * classless by design) and 'unclassified' (pre-migration token rows).
+   */
+  byWorkClass: Record<string, WorkClassSums>
 }
 
 export type BudgetScope = 'global' | 'agent' | 'provider' | 'model'

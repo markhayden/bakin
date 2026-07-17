@@ -23,7 +23,7 @@ mock.module('../../src/core/logger', () => ({ createLogger: () => ({ info: mock(
 type CostRow = {
   runId: string; agent: string; model: string | null; provider: string | null
   lane: 'metered' | 'subscription' | null; usageKind: 'tokens' | 'media'; totalTokens: number | null
-  costUsdMicros: number | null; occurredAt: number
+  costUsdMicros: number | null; workClass?: string | null; occurredAt: number
 }
 type UsageCell = {
   agent: string; day: string; model: string
@@ -115,6 +115,24 @@ describe('assembleBudgetSpend', () => {
     expect(s.monthly.byProvider.google?.meteredUsdMicros).toBe(3_000_000)
     expect(s.monthly.byProvider['openai-codex']?.subscriptionTokens).toBe(5000)
     expect(s.monthly.byModel['google/gemini-3-flash']?.meteredUsdMicros).toBe(3_000_000)
+  })
+
+  it('facets attributed spend by work class (unit economics slice)', async () => {
+    costRows.push(
+      { runId: 't1', agent: 'pixel', model: 'g/f', provider: 'g', lane: 'metered', usageKind: 'tokens', totalTokens: 1000, costUsdMicros: 2_000_000, workClass: 'scheduled', occurredAt: TODAY },
+      { runId: 't2', agent: 'pixel', model: 'g/f', provider: 'g', lane: 'metered', usageKind: 'tokens', totalTokens: 200, costUsdMicros: 400_000, workClass: 'scheduled', occurredAt: TODAY },
+      { runId: 't3', agent: 'main', model: 'a/h', provider: 'a', lane: 'subscription', usageKind: 'tokens', totalTokens: 500, costUsdMicros: null, workClass: 'auto-title', occurredAt: TODAY },
+      { runId: 't4', agent: 'main', model: 'legacy', provider: null, lane: 'metered', usageKind: 'tokens', totalTokens: 50, costUsdMicros: 10_000, workClass: null, occurredAt: TODAY },
+      { runId: 'img1', agent: 'pixel', model: 'g/img', provider: 'g', lane: 'metered', usageKind: 'media', totalTokens: null, costUsdMicros: 39_000, workClass: null, occurredAt: TODAY },
+    )
+    const s = await assembleBudgetSpend(NOW)
+    const wc = s.daily.byWorkClass
+    expect(wc.scheduled).toMatchObject({ runs: 2, meteredUsdMicros: 2_400_000, meteredTokens: 1200 })
+    expect(wc['auto-title']).toMatchObject({ runs: 1, subscriptionTokens: 500, meteredUsdMicros: 0 })
+    // Pre-migration token rows are honestly 'unclassified'; media rows are
+    // classless by design and get their own bucket — never mixed.
+    expect(wc.unclassified).toMatchObject({ runs: 1, meteredUsdMicros: 10_000 })
+    expect(wc.media).toMatchObject({ runs: 1, meteredUsdMicros: 39_000 })
   })
 
   it('does not silently classify NULL-lane rows as metered', async () => {
