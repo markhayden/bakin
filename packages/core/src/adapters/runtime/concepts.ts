@@ -220,8 +220,11 @@ export type ChatChunk =
   | { type: 'tool'; content?: string; data: RuntimeToolActivity }
   /** Turn lifecycle hint (e.g. 'thinking'). */
   | { type: 'status'; content?: string; data?: RuntimeMetadata }
-  /** Clean turn end (success or deliberate abort) — exactly once, always last. */
-  | { type: 'done'; content?: string; data?: RuntimeMetadata }
+  /** Clean turn end (success or deliberate abort) — exactly once, always last.
+   *  `usage` carries the turn's token accounting when the runtime reports it —
+   *  parity with `send()`: a runtime whose send results carry usage must
+   *  attach it here too (conformance-pinned), so streamed turns are meterable. */
+  | { type: 'done'; content?: string; data?: RuntimeMetadata; usage?: MessageUsage }
   /** Terminal failure — `data.kind` carries the RuntimeError kind when known. */
   | { type: 'error'; content?: string; data?: RuntimeMetadata }
 

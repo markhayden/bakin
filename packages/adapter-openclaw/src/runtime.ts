@@ -1616,6 +1616,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       lifecycle.turnId,
     )
     let status: 'completed' | 'failed' | 'aborted' | undefined
+    let doneUsage: MessageUsage | undefined
     let sourceEnded = false
     try {
       for await (const chunk of stream) {
@@ -1623,6 +1624,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
         if (chunk.type === 'error') status = getRuntimeStatus() ?? 'failed'
         if (chunk.type === 'done') {
           status = getRuntimeStatus() ?? (args.signal?.aborted ? 'aborted' : 'completed')
+          doneUsage = chunk.usage
         }
         yield chunk
       }
@@ -1635,7 +1637,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     } finally {
       // No terminal chunk + natural source end is a malformed failure. If
       // the consumer returned early, the observed interaction was aborted.
-      lifecycle.finish({ status: status ?? (sourceEnded ? 'failed' : 'aborted') })
+      lifecycle.finish({ status: status ?? (sourceEnded ? 'failed' : 'aborted'), usage: doneUsage })
     }
   }
 

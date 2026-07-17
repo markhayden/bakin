@@ -293,6 +293,38 @@ export const runtimeConformanceChecks = {
   },
 
   /**
+   * Usage parity (work-class attribution): a runtime whose send() results
+   * carry token usage must attach the same accounting to the stream's
+   * terminal `done` chunk — otherwise streamed turns (chat) are unmeterable
+   * while sent turns bill. N/A on runtimes that report no usage at all.
+   */
+  async streamDoneCarriesUsageWhereSendDoes(target: RuntimeConformanceTarget): Promise<void> {
+    await target.prepareOkTurn?.()
+    const sent = await target.runtime.messaging.send({
+      agentId: target.agentId,
+      content: 'conformance: usage parity send',
+      threadId: target.newThreadId(),
+    })
+    if (!sent.usage) return // runtime reports no usage anywhere — nothing to pin
+    await target.prepareOkTurn?.()
+    let done: Extract<ChatChunk, { type: 'done' }> | undefined
+    for await (const chunk of target.runtime.messaging.stream({
+      agentId: target.agentId,
+      content: 'conformance: usage parity stream',
+      threadId: target.newThreadId(),
+    })) {
+      if (chunk.type === 'done') done = chunk
+    }
+    if (!done) fail('usage-parity stream ended without a done chunk')
+    if (!done.usage) {
+      fail('send() reports usage but the stream done chunk carries none — streamed turns would be unmeterable (stream usage parity)')
+    }
+    const anyCount = [done.usage.input, done.usage.output, done.usage.total]
+      .some((n) => typeof n === 'number' && Number.isFinite(n))
+    if (!anyCount) fail('stream done usage carries no numeric token counts')
+  },
+
+  /**
    * Tool-using streams carry the R5b taxonomy: classified chunk types only,
    * structured RuntimeToolActivity on every tool chunk, valid format hints,
    * done exactly-once-and-last.
@@ -589,6 +621,10 @@ export function runRuntimeConformanceSuite(
 
     it('stream yields done exactly once, last', async () => {
       await runtimeConformanceChecks.streamDoneExactlyOnceAndLast(getTarget())
+    })
+
+    it('stream done carries usage where send does (usage parity)', async () => {
+      await runtimeConformanceChecks.streamDoneCarriesUsageWhereSendDoes(getTarget())
     })
 
     it('tool turns stream classified, structured chunks', async () => {
