@@ -571,6 +571,24 @@ export function useModelsData() {
     setPendingRouting({ ...base, tagOverrides: base.tagOverrides.filter((_, i) => i !== index) })
   }
 
+  /** Merge recommended routes in and persist (the Apply-recommended confirm). */
+  const applyRecommendedRoutes = async (proposals: Array<{ workClass: string; model: string }>) => {
+    const base = pendingRouting ?? routing
+    const merged: RoutingConfigShape = {
+      routes: [...base.routes, ...proposals.map((p) => ({ workClass: p.workClass, model: p.model }))],
+      tagOverrides: base.tagOverrides,
+    }
+    const res = await fetch('/api/plugins/models/routing', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(merged),
+    })
+    const data = await res.json()
+    if (!data.ok) throw new Error(data.error ?? 'Failed to apply recommended routes')
+    setRouting(merged)
+    setPendingRouting(null)
+  }
+
   const saveRouting = async () => {
     if (!pendingRouting) return
     setSaving('routing')
@@ -637,7 +655,7 @@ export function useModelsData() {
     effectiveDefaultModel, effectiveDefaultSubagentModel, effectiveFallbackModels, fallbackCandidates,
     // routing
     routing, routingSupport, pendingRouting, setPendingRouting, displayRouting,
-    setRouteField, addTagOverride, updateTagOverride, removeTagOverride, saveRouting,
+    setRouteField, addTagOverride, updateTagOverride, removeTagOverride, saveRouting, applyRecommendedRoutes,
     // spend + budget
     spend, spendLoading,
     budgetRules, pendingRules, setPendingRules, saveBudgetRules, budgetError, budgetWarnings,

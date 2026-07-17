@@ -218,6 +218,7 @@ describe('Models Plugin Activation', () => {
       'POST /config',
       'POST /defaults',
       'POST /refresh',
+      'POST /routing/recommend',
       'POST /runtime/restart',
       'PUT /billing/overrides',
       'PUT /budget',

@@ -290,6 +290,31 @@ export const modelsRoutes = [
   }),
 
   defineRoute({
+    path: '/routing/recommend',
+    method: 'POST',
+    summary: 'Compute recommended cheap-model routes for unrouted system classes',
+    description: 'Proposal list only — nothing is written. The UI shows the diff in a ConfirmDialog; confirming PUTs the routes.',
+    responses: { 200: passthrough, 500: errorResponse },
+    handler: async (_req, ctx) => {
+      try {
+        const { buildRoutingHealthDeps, recommendRoutes } = await import('./health-checks')
+        const deps = buildRoutingHealthDeps(ctx as unknown as PluginContext, {
+          readRoutingConfig: () => {
+            const stored = ctx.getSettings<ModelsPluginSettings>().routing
+            if (isLegacyRouting(stored)) return migrateLegacyRouting(stored)
+            return stored ?? { routes: [], tagOverrides: [] }
+          },
+          listAvailableModels: async () => (await fetchAvailableModels(ctx as unknown as PluginContext)).models,
+          listRunCostsSince: (sinceMs) => listRunCostsSince(sinceMs),
+        })
+        return Response.json(await recommendRoutes(deps))
+      } catch (err) {
+        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+      }
+    },
+  }),
+
+  defineRoute({
     path: '/routing',
     method: 'PUT',
     summary: 'Replace the routing policy',

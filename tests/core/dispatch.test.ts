@@ -885,8 +885,9 @@ describe('dispatch', () => {
       await dispatchTasks(tempDir, 3737)
       await awaitDispatchIdle()
 
-      // run_id == threadId; scoped by t0 so prior tests' rows don't bleed in.
-      const costed = listRunCostsSince(t0).filter((r) => r.agent === 'pixel')
+      // run_id == threadId — scope by the task's run id so a prior test's
+      // late-settling pixel row can never bleed in under load.
+      const costed = listRunCostsSince(t0).filter((r) => r.runId.startsWith('task:t-cost:'))
       expect(costed).toHaveLength(1)
       expect(costed[0]).toMatchObject({ costUsdMicros: 123_456 })
     })
@@ -905,7 +906,7 @@ describe('dispatch', () => {
       await dispatchTasks(tempDir, 3737)
       await awaitDispatchIdle()
 
-      const trainer = listRunCostsSince(t0).filter((r) => r.agent === 'trainer')
+      const trainer = listRunCostsSince(t0).filter((r) => r.runId.startsWith('task:t-unmetered:'))
       expect(trainer).toHaveLength(1)
       expect(trainer[0]).toMatchObject({ costUsdMicros: null }) // honest null, never $0
     })

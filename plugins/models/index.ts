@@ -15,6 +15,9 @@ import { registerModelsHooks } from './lib/register-hooks'
 import { registerModelsExecTools } from './lib/exec-tools'
 import { isLegacyBudget, migrateLegacyBudget } from './lib/budget-migration'
 import { isLegacyRouting, migrateLegacyRouting } from './lib/routing-migration'
+import { buildRoutingHealthDeps, checkModelRouting, recommendedRoutesRepair } from './lib/health-checks'
+import { fetchAvailableModels } from './lib/available-models'
+import { listRunCostsSince } from '../../src/core/execution-ledger'
 import type { ModelsPluginSettings } from './types'
 
 // ---------------------------------------------------------------------------
@@ -56,6 +59,30 @@ const modelsPlugin: BakinPlugin = definePlugin({
 
     // MCP Exec Tools — read-only agent access
     registerModelsExecTools(ctx)
+
+    // models.routing health check + apply-recommended repair (repair first —
+    // the check's resolution references its actionId).
+    const routingDeps = buildRoutingHealthDeps(ctx, {
+      readRoutingConfig: () => {
+        const stored = ctx.getSettings<ModelsPluginSettings>().routing
+        if (isLegacyRouting(stored)) return migrateLegacyRouting(stored)
+        return stored ?? { routes: [], tagOverrides: [] }
+      },
+      listAvailableModels: async () => (await fetchAvailableModels(ctx)).models,
+      listRunCostsSince: (sinceMs) => listRunCostsSince(sinceMs),
+    })
+    ctx.registerHealthRepairAction(recommendedRoutesRepair(routingDeps, (newRoutes) => {
+      const current = routingDeps.getRoutingConfig()
+      ctx.updateSettings({ routing: { ...current, routes: [...current.routes, ...newRoutes] } })
+    }))
+    ctx.registerHealthCheck({
+      id: 'routing',
+      name: 'Work-class model routing',
+      description: 'Flags unrouted system classes, routes to unavailable models, clamping thinking levels, and premium models on cheap work.',
+      group: { key: 'models', label: 'Models' },
+      maxAgeMs: 60_000,
+      run: () => checkModelRouting(routingDeps),
+    })
   },
 })
 
