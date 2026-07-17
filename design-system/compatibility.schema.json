@@ -1,0 +1,76 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://bakin.dev/schemas/ui-compatibility-v1.json",
+  "title": "Bakin official UI compatibility matrix",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "generatedBy", "firstPartyScope", "repositories", "sdk", "plugins"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "generatedBy": { "const": "bun run ui:census:generate" },
+    "firstPartyScope": { "const": ["core", "official-bits"] },
+    "repositories": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bakin", "bakin-bits-official"],
+      "properties": {
+        "bakin": { "$ref": "#/definitions/repository" },
+        "bakin-bits-official": { "$ref": "#/definitions/repository" }
+      }
+    },
+    "sdk": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["workspaceVersion", "officialBitsFixtureVersion"],
+      "properties": {
+        "workspaceVersion": { "type": "string", "minLength": 1 },
+        "officialBitsFixtureVersion": { "type": "string", "minLength": 1 }
+      }
+    },
+    "plugins": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/definitions/plugin" },
+      "required": ["messaging", "projects", "_template"]
+    }
+  },
+  "definitions": {
+    "repository": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ref"],
+      "properties": {
+        "ref": { "type": "string", "pattern": "^[0-9a-f]{40}$" }
+      }
+    },
+    "plugin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "role", "version", "bakinRange", "routes", "slots"],
+      "properties": {
+        "repository": { "const": "bakin-bits-official" },
+        "role": { "enum": ["official-plugin", "author-template"] },
+        "version": { "type": "string", "minLength": 1 },
+        "bakinRange": { "type": "string", "minLength": 1 },
+        "routes": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["total", "visual", "aliases"],
+          "properties": {
+            "total": { "type": "integer", "minimum": 0 },
+            "visual": { "type": "integer", "minimum": 0 },
+            "aliases": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        "slots": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

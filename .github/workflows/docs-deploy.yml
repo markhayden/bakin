@@ -32,14 +32,17 @@ jobs:
         with:
           ref: ${{ inputs.version_ref || github.ref }}
 
-      # docs:check walks the sibling bakin-bits-official repo for the
-      # extracted messaging + projects plugins (see scripts/docs/source-
-      # scan.ts). Cloned ABOVE $GITHUB_WORKSPACE so other tooling
+      # docs:check and ui:census:check share this official Bits source root.
+      # Cloned ABOVE $GITHUB_WORKSPACE so other tooling
       # (e.g. test runners) doesn't accidentally recurse into it.
       # actions/checkout rejects paths outside the workspace, so use
       # plain git clone (the repo is public).
       - name: Clone bakin-bits-official (extracted plugins)
-        run: git clone --depth 1 https://github.com/markhayden/bakin-bits-official.git "${{ runner.workspace }}/external/bakin-bits-official"
+        run: |
+          BITS_REF="$(node -p "require('./design-system/compatibility.json').repositories['bakin-bits-official'].ref")"
+          git clone --filter=blob:none --no-checkout https://github.com/markhayden/bakin-bits-official.git "${{ runner.workspace }}/external/bakin-bits-official"
+          git -C "${{ runner.workspace }}/external/bakin-bits-official" fetch --depth 1 origin "$BITS_REF"
+          git -C "${{ runner.workspace }}/external/bakin-bits-official" checkout --detach FETCH_HEAD
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -48,6 +51,11 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      - name: Official UI census
+        env:
+          BAKIN_DOCS_EXTERNAL_SOURCES: ${{ runner.workspace }}/external/bakin-bits-official/plugins
+        run: bun run ui:census:check
 
       - name: Build docs
         env:

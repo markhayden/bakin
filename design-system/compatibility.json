@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "generatedBy": "bun run ui:census:generate",
+  "firstPartyScope": [
+    "core",
+    "official-bits"
+  ],
+  "repositories": {
+    "bakin": {
+      "ref": "ff32546a22d6caeb57dfb7d88fd1bbd5ac01a49a"
+    },
+    "bakin-bits-official": {
+      "ref": "7c9aa15b0caf8dab6dcae459d3f55e8a5370abf7"
+    }
+  },
+  "sdk": {
+    "workspaceVersion": "0.0.0-workspace",
+    "officialBitsFixtureVersion": "0.0.1-rc.1"
+  },
+  "plugins": {
+    "messaging": {
+      "repository": "bakin-bits-official",
+      "role": "official-plugin",
+      "version": "0.8.0",
+      "bakinRange": ">=0.0.1-rc.1",
+      "routes": {
+        "total": 5,
+        "visual": 4,
+        "aliases": [
+          "/messaging"
+        ]
+      },
+      "slots": [
+        "nav-badge-providers"
+      ]
+    },
+    "projects": {
+      "repository": "bakin-bits-official",
+      "role": "official-plugin",
+      "version": "0.7.0",
+      "bakinRange": ">=0.0.1-rc.1",
+      "routes": {
+        "total": 4,
+        "visual": 3,
+        "aliases": [
+          "/projects/new"
+        ]
+      },
+      "slots": []
+    },
+    "_template": {
+      "repository": "bakin-bits-official",
+      "role": "author-template",
+      "version": "0.0.0",
+      "bakinRange": ">=0.0.1-rc.1",
+      "routes": {
+        "total": 0,
+        "visual": 0,
+        "aliases": []
+      },
+      "slots": [
+        "page:/_template"
+      ]
+    }
+  }
+}

@@ -2,25 +2,32 @@
   "schemaVersion": 1,
   "generatedBy": "bun run ui:census:generate",
   "scope": {
+    "mode": "official",
     "repositories": [
-      "bakin"
+      "bakin",
+      "bakin-bits-official"
     ],
     "includes": [
       "host routes",
       "core plugin page and embedded slots",
       "shared TSX component units",
-      "public @makinbakin/sdk/components exports"
+      "public @makinbakin/sdk/components exports",
+      "official Bits runtime routes and redirect aliases",
+      "official Bits page and embedded slots",
+      "official Bits plugin author template"
     ]
   },
   "summary": {
-    "total": 270,
+    "total": 282,
     "byKind": {
       "host-route": 26,
-      "plugin-slot": 28,
+      "plugin-route": 9,
+      "plugin-slot": 30,
+      "plugin-template": 1,
       "shared-component": 93,
       "sdk-ui-export": 123
     },
-    "nonVisualAliases": 1
+    "nonVisualAliases": 3
   },
   "entries": [
     {
@@ -648,6 +655,307 @@
       ]
     },
     {
+      "id": "plugin-route:messaging:/messaging",
+      "kind": "plugin-route",
+      "owner": {
+        "repository": "bakin-bits-official",
+        "area": "plugin",
+        "pluginId": "messaging"
+      },
+      "identity": {
+        "route": "/messaging"
+      },
+      "sourcePath": "bakin-bits-official/plugins/messaging/client.tsx",
+      "symbols": [
+        "MessagingIndexRoute"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "non-visual-alias",
+      "evidence": [
+        {
+          "type": "manifest-route",
+          "path": "bakin-bits-official/plugins/messaging/bakin-plugin.json",
+          "detail": "contributes.routes[0].path"
+        },
+        {
+          "type": "client-registration",
+          "path": "bakin-bits-official/plugins/messaging/client.tsx",
+          "detail": "registerPlugin routes \"/messaging\" -> MessagingIndexRoute"
+        }
+      ]
+    },
+    {
+      "id": "plugin-route:messaging:/messaging/brainstorm",
+      "kind": "plugin-route",
+      "owner": {
+        "repository": "bakin-bits-official",
+        "area": "plugin",
+        "pluginId": "messaging"
+      },
+      "identity": {
+        "route": "/messaging/brainstorm"
+      },
+      "sourcePath": "bakin-bits-official/plugins/messaging/client.tsx",
+      "symbols": [
+        "MessagingBrainstormRoute"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "manifest-route",
+          "path": "bakin-bits-official/plugins/messaging/bakin-plugin.json",
+          "detail": "contributes.routes[4].path"
+        },
+        {
+          "type": "client-registration",
+          "path": "bakin-bits-official/plugins/messaging/client.tsx",
+          "detail": "registerPlugin routes \"/messaging/brainstorm\" -> MessagingBrainstormRoute"
+        }
+      ]
+    },
+    {
+      "id": "plugin-route:messaging:/messaging/calendar",
+      "kind": "plugin-route",
+      "owner": {
+        "repository": "bakin-bits-official",
+        "area": "plugin",
+        "pluginId": "messaging"
+      },
+      "identity": {
+        "route": "/messaging/calendar"
+      },
+      "sourcePath": "bakin-bits-official/plugins/messaging/client.tsx",
+      "symbols": [
+        "MessagingCalendarRoute"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "manifest-route",
+          "path": "bakin-bits-official/plugins/messaging/bakin-plugin.json",
+          "detail": "contributes.routes[1].path"
+        },
+        {
+          "type": "client-registration",
+          "path": "bakin-bits-official/plugins/messaging/client.tsx",
+          "detail": "registerPlugin routes \"/messaging/calendar\" -> MessagingCalendarRoute"
+        }
+      ]
+    },
+    {
+      "id": "plugin-route:messaging:/messaging/plans",
+      "kind": "plugin-route",
+      "owner": {
+        "repository": "bakin-bits-official",
+        "area": "plugin",
+        "pluginId": "messaging"
+      },
+      "identity": {
+        "route": "/messaging/plans"
+      },
+      "sourcePath": "bakin-bits-official/plugins/messaging/client.tsx",
+      "symbols": [
+        "MessagingPlansRoute"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "manifest-route",
+          "path": "bakin-bits-official/plugins/messaging/bakin-plugin.json",
+          "detail": "contributes.routes[2].path"
+        },
+        {
+          "type": "client-registration",
+          "path": "bakin-bits-official/plugins/messaging/client.tsx",
+          "detail": "registerPlugin routes \"/messaging/plans\" -> MessagingPlansRoute"
+        }
+      ]
+    },
+    {
+      "id": "plugin-route:messaging:/messaging/plans/[id]",
+      "kind": "plugin-route",
+      "owner": {
+        "repository": "bakin-bits-official",
+        "area": "plugin",
+        "pluginId": "messaging"
+      },
+      "identity": {
+        "route": "/messaging/plans/[id]"
+      },
+      "sourcePath": "bakin-bits-official/plugins/messaging/client.tsx",
+      "symbols": [
+        "MessagingPlanWorkspaceRoute"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "manifest-route",
+          "path": "bakin-bits-official/plugins/messaging/bakin-plugin.json",
+          "detail": "contributes.routes[3].path"
+        },
+        {
+          "type": "client-registration",
+          "path": "bakin-bits-official/plugins/messaging/client.tsx",
+          "detail": "registerPlugin routes \"/messaging/plans/[id]\" -> MessagingPlanWorkspaceRoute"
+        }
+      ]
+    },
+    {
+      "id": "plugin-route:projects:/projects",
+      "kind": "plugin-route",
+      "owner": {
+        "repository": "bakin-bits-official",
+        "area": "plugin",
+        "pluginId": "projects"
+      },
+      "identity": {
+        "route": "/projects"
+      },
+      "sourcePath": "bakin-bits-official/plugins/projects/client.tsx",
+      "symbols": [
+        "ProjectsIndexRoute"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "manifest-route",
+          "path": "bakin-bits-official/plugins/projects/bakin-plugin.json",
+          "detail": "contributes.routes[0].path"
+        },
+        {
+          "type": "client-registration",
+          "path": "bakin-bits-official/plugins/projects/client.tsx",
+          "detail": "registerPlugin routes \"/projects\" -> ProjectsIndexRoute"
+        }
+      ]
+    },
+    {
+      "id": "plugin-route:projects:/projects/[id]",
+      "kind": "plugin-route",
+      "owner": {
+        "repository": "bakin-bits-official",
+        "area": "plugin",
+        "pluginId": "projects"
+      },
+      "identity": {
+        "route": "/projects/[id]"
+      },
+      "sourcePath": "bakin-bits-official/plugins/projects/client.tsx",
+      "symbols": [
+        "ProjectDetailRoute"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "manifest-route",
+          "path": "bakin-bits-official/plugins/projects/bakin-plugin.json",
+          "detail": "contributes.routes[2].path"
+        },
+        {
+          "type": "client-registration",
+          "path": "bakin-bits-official/plugins/projects/client.tsx",
+          "detail": "registerPlugin routes \"/projects/[id]\" -> ProjectDetailRoute"
+        }
+      ]
+    },
+    {
+      "id": "plugin-route:projects:/projects/[id]/edit",
+      "kind": "plugin-route",
+      "owner": {
+        "repository": "bakin-bits-official",
+        "area": "plugin",
+        "pluginId": "projects"
+      },
+      "identity": {
+        "route": "/projects/[id]/edit"
+      },
+      "sourcePath": "bakin-bits-official/plugins/projects/client.tsx",
+      "symbols": [
+        "ProjectEditRoute"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "manifest-route",
+          "path": "bakin-bits-official/plugins/projects/bakin-plugin.json",
+          "detail": "contributes.routes[3].path"
+        },
+        {
+          "type": "client-registration",
+          "path": "bakin-bits-official/plugins/projects/client.tsx",
+          "detail": "registerPlugin routes \"/projects/[id]/edit\" -> ProjectEditRoute"
+        }
+      ]
+    },
+    {
+      "id": "plugin-route:projects:/projects/new",
+      "kind": "plugin-route",
+      "owner": {
+        "repository": "bakin-bits-official",
+        "area": "plugin",
+        "pluginId": "projects"
+      },
+      "identity": {
+        "route": "/projects/new"
+      },
+      "sourcePath": "bakin-bits-official/plugins/projects/client.tsx",
+      "symbols": [
+        "ProjectsNewRoute"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "non-visual-alias",
+      "evidence": [
+        {
+          "type": "manifest-route",
+          "path": "bakin-bits-official/plugins/projects/bakin-plugin.json",
+          "detail": "contributes.routes[1].path"
+        },
+        {
+          "type": "client-registration",
+          "path": "bakin-bits-official/plugins/projects/client.tsx",
+          "detail": "registerPlugin routes \"/projects/new\" -> ProjectsNewRoute"
+        }
+      ]
+    },
+    {
+      "id": "plugin-slot:_template:page:/_template",
+      "kind": "plugin-slot",
+      "owner": {
+        "repository": "bakin-bits-official",
+        "area": "plugin",
+        "pluginId": "_template"
+      },
+      "identity": {
+        "slot": "page:/_template",
+        "route": "/_template"
+      },
+      "sourcePath": "bakin-bits-official/plugins/_template/client.tsx",
+      "symbols": [
+        "TemplatePage"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "manifest-slot",
+          "path": "bakin-bits-official/plugins/_template/bakin-plugin.json",
+          "detail": "contributes.slots[0]"
+        },
+        {
+          "type": "client-registration",
+          "path": "bakin-bits-official/plugins/_template/client.tsx",
+          "detail": "registerPlugin slots \"page:/_template\" -> TemplatePage"
+        }
+      ]
+    },
+    {
       "id": "plugin-slot:assets:nav-badge-providers",
       "kind": "plugin-slot",
       "owner": {
@@ -1139,6 +1447,36 @@
       ]
     },
     {
+      "id": "plugin-slot:messaging:nav-badge-providers",
+      "kind": "plugin-slot",
+      "owner": {
+        "repository": "bakin-bits-official",
+        "area": "plugin",
+        "pluginId": "messaging"
+      },
+      "identity": {
+        "slot": "nav-badge-providers"
+      },
+      "sourcePath": "bakin-bits-official/plugins/messaging/client.tsx",
+      "symbols": [
+        "PlansBadgeProvider"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "embedded-surface",
+      "evidence": [
+        {
+          "type": "manifest-slot",
+          "path": "bakin-bits-official/plugins/messaging/bakin-plugin.json",
+          "detail": "contributes.slots[0]"
+        },
+        {
+          "type": "client-registration",
+          "path": "bakin-bits-official/plugins/messaging/client.tsx",
+          "detail": "registerPlugin slots \"nav-badge-providers\" -> PlansBadgeProvider"
+        }
+      ]
+    },
+    {
       "id": "plugin-slot:models:page:/models",
       "kind": "plugin-slot",
       "owner": {
@@ -1505,6 +1843,29 @@
           "type": "client-registration",
           "path": "plugins/workflows/client.tsx",
           "detail": "registerPlugin slots \"page:/workflows/new\" -> WorkflowCanvasEditor"
+        }
+      ]
+    },
+    {
+      "id": "plugin-template:_template",
+      "kind": "plugin-template",
+      "owner": {
+        "repository": "bakin-bits-official",
+        "area": "plugin",
+        "pluginId": "_template"
+      },
+      "identity": {
+        "component": "_template"
+      },
+      "sourcePath": "bakin-bits-official/plugins/_template/bakin-plugin.json",
+      "symbols": [],
+      "exportStatus": "not-applicable",
+      "classification": "public-contract",
+      "evidence": [
+        {
+          "type": "manifest-template",
+          "path": "bakin-bits-official/plugins/_template/bakin-plugin.json",
+          "detail": "official plugin author template manifest"
         }
       ]
     },

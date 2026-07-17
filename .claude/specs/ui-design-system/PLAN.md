@@ -218,9 +218,9 @@ missing Bits route fails; `bun run docs:check` still uses the same source root.
 
 ### Checkpoint 0A — Census truth
 
-- [ ] Core and Bits counts are reviewed against manifests and registrations.
-- [ ] Seeded unknown core and Bits surfaces make the gate fail.
-- [ ] Baseline artifacts contain no private/runtime data.
+- [x] Core and Bits counts are reviewed against manifests and registrations.
+- [x] Seeded unknown core and Bits surfaces make the gate fail.
+- [x] Baseline artifacts contain no private/runtime data.
 
 ### T4 — Build the legacy-style ratchet
 

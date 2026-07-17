@@ -11,11 +11,14 @@
     "scope": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["repositories", "includes"],
+      "required": ["mode", "repositories", "includes"],
       "properties": {
+        "mode": { "enum": ["official", "partial-core-only"] },
         "repositories": {
           "type": "array",
-          "const": ["bakin"]
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "enum": ["bakin", "bakin-bits-official"] }
         },
         "includes": {
           "type": "array",
@@ -34,10 +37,19 @@
         "byKind": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["host-route", "plugin-slot", "shared-component", "sdk-ui-export"],
+          "required": [
+            "host-route",
+            "plugin-route",
+            "plugin-slot",
+            "plugin-template",
+            "shared-component",
+            "sdk-ui-export"
+          ],
           "properties": {
             "host-route": { "type": "integer", "minimum": 0 },
+            "plugin-route": { "type": "integer", "minimum": 0 },
             "plugin-slot": { "type": "integer", "minimum": 0 },
+            "plugin-template": { "type": "integer", "minimum": 0 },
             "shared-component": { "type": "integer", "minimum": 0 },
             "sdk-ui-export": { "type": "integer", "minimum": 0 }
           }
@@ -69,14 +81,21 @@
       "properties": {
         "id": { "type": "string", "minLength": 1 },
         "kind": {
-          "enum": ["host-route", "plugin-slot", "shared-component", "sdk-ui-export"]
+          "enum": [
+            "host-route",
+            "plugin-route",
+            "plugin-slot",
+            "plugin-template",
+            "shared-component",
+            "sdk-ui-export"
+          ]
         },
         "owner": {
           "type": "object",
           "additionalProperties": false,
           "required": ["repository", "area"],
           "properties": {
-            "repository": { "const": "bakin" },
+            "repository": { "enum": ["bakin", "bakin-bits-official"] },
             "area": { "enum": ["host", "sdk", "plugin"] },
             "pluginId": { "type": "string", "minLength": 1 }
           }
@@ -123,7 +142,9 @@
               "type": {
                 "enum": [
                   "route-definition",
+                  "manifest-route",
                   "manifest-slot",
+                  "manifest-template",
                   "client-registration",
                   "source-export",
                   "public-export"

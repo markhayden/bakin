@@ -1,17 +1,28 @@
 #!/usr/bin/env bun
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'node:path'
 import Ajv from 'ajv'
 import ts from 'typescript'
 
+import { externalSourceRoots } from '../docs/source-scan'
+
 const REPO_ROOT = resolve(import.meta.dir, '../..')
 const CENSUS_PATH = join(REPO_ROOT, 'design-system/census.json')
 const SCHEMA_PATH = join(REPO_ROOT, 'design-system/census.schema.json')
+const COMPATIBILITY_PATH = join(REPO_ROOT, 'design-system/compatibility.json')
+const COMPATIBILITY_SCHEMA_PATH = join(REPO_ROOT, 'design-system/compatibility.schema.json')
 const SDK_COMPONENT_ENTRYPOINT = '@makinbakin/sdk/components'
 const SDK_COMPONENT_BARREL = 'packages/sdk/src/components/index.ts'
 
-export type CensusKind = 'host-route' | 'plugin-slot' | 'shared-component' | 'sdk-ui-export'
+export type CensusKind =
+  | 'host-route'
+  | 'plugin-route'
+  | 'plugin-slot'
+  | 'plugin-template'
+  | 'shared-component'
+  | 'sdk-ui-export'
 export type CensusClassification =
   | 'visual-surface'
   | 'embedded-surface'
@@ -20,7 +31,14 @@ export type CensusClassification =
   | 'public-contract'
 
 export interface CensusEvidence {
-  type: 'route-definition' | 'manifest-slot' | 'client-registration' | 'source-export' | 'public-export'
+  type:
+    | 'route-definition'
+    | 'manifest-route'
+    | 'manifest-slot'
+    | 'manifest-template'
+    | 'client-registration'
+    | 'source-export'
+    | 'public-export'
   path: string
   detail: string
 }
@@ -29,7 +47,7 @@ export interface CensusEntry {
   id: string
   kind: CensusKind
   owner: {
-    repository: 'bakin'
+    repository: 'bakin' | 'bakin-bits-official'
     area: 'host' | 'sdk' | 'plugin'
     pluginId?: string
   }
@@ -51,7 +69,8 @@ export interface CensusDocument {
   schemaVersion: 1
   generatedBy: string
   scope: {
-    repositories: ['bakin']
+    mode: 'official' | 'partial-core-only'
+    repositories: Array<'bakin' | 'bakin-bits-official'>
     includes: string[]
   }
   summary: {
@@ -60,6 +79,32 @@ export interface CensusDocument {
     nonVisualAliases: number
   }
   entries: CensusEntry[]
+}
+
+export interface CompatibilityMatrix {
+  schemaVersion: 1
+  generatedBy: string
+  firstPartyScope: ['core', 'official-bits']
+  repositories: {
+    bakin: { ref: string }
+    'bakin-bits-official': { ref: string }
+  }
+  sdk: {
+    workspaceVersion: string
+    officialBitsFixtureVersion: string
+  }
+  plugins: Record<string, {
+    repository: 'bakin-bits-official'
+    role: 'official-plugin' | 'author-template'
+    version: string
+    bakinRange: string
+    routes: {
+      total: number
+      visual: number
+      aliases: string[]
+    }
+    slots: string[]
+  }>
 }
 
 interface PublicExport {
@@ -74,6 +119,13 @@ interface ClientSlotRegistration {
   slot: string
   symbol: string
   sourcePath: string
+}
+
+interface ClientBinding {
+  key: string
+  symbol: string
+  sourcePath: string
+  redirectOnly: boolean
 }
 
 function walkFiles(root: string, include: (path: string) => boolean): string[] {
@@ -273,6 +325,72 @@ function collectClientSlots(root: string, pluginDirectory: string): Map<string, 
   return registrations
 }
 
+function bitsSourcePath(bitsPluginsRoot: string, path: string): string {
+  return `bakin-bits-official/plugins/${portablePath(bitsPluginsRoot, path)}`
+}
+
+function collectClientBindings(
+  bitsPluginsRoot: string,
+  pluginDirectory: string,
+  propertyKey: 'routes' | 'slots',
+): Map<string, ClientBinding> {
+  const candidates = [
+    join(bitsPluginsRoot, pluginDirectory, 'client.tsx'),
+    join(bitsPluginsRoot, pluginDirectory, 'client.ts'),
+  ]
+  const path = candidates.find((candidate) => existsSync(candidate))
+  if (!path) return new Map()
+  const file = sourceFile(path)
+  const bindings = new Map<string, ClientBinding>()
+
+  const symbolDefinition = (symbol: string): string => {
+    for (const statement of file.statements) {
+      if (ts.isFunctionDeclaration(statement) && statement.name?.text === symbol) return statement.getText(file)
+      if (ts.isVariableStatement(statement)) {
+        for (const declaration of statement.declarationList.declarations) {
+          if (ts.isIdentifier(declaration.name) && declaration.name.text === symbol) return declaration.getText(file)
+        }
+      }
+    }
+    return ''
+  }
+
+  const visit = (node: ts.Node): void => {
+    if (
+      ts.isCallExpression(node)
+      && ts.isIdentifier(node.expression)
+      && node.expression.text === 'registerPlugin'
+      && node.arguments[0]
+      && ts.isObjectLiteralExpression(node.arguments[0])
+    ) {
+      const contribution = node.arguments[0].properties.find((property) => (
+        ts.isPropertyAssignment(property) && propertyName(property.name, file) === propertyKey
+      ))
+      if (contribution && ts.isPropertyAssignment(contribution) && ts.isObjectLiteralExpression(contribution.initializer)) {
+        for (const property of contribution.initializer.properties) {
+          if (!ts.isPropertyAssignment(property)) continue
+          const key = propertyName(property.name, file)
+          if (!key) continue
+          if (bindings.has(key)) {
+            throw new Error(`${bitsSourcePath(bitsPluginsRoot, path)} registers ${propertyKey} key ${JSON.stringify(key)} more than once`)
+          }
+          const symbol = property.initializer.getText(file)
+          const definition = ts.isIdentifier(property.initializer) ? symbolDefinition(symbol) : symbol
+          bindings.set(key, {
+            key,
+            symbol,
+            sourcePath: bitsSourcePath(bitsPluginsRoot, path),
+            redirectOnly: definition.includes('.replace(') && definition.includes('return null'),
+          })
+        }
+      }
+    }
+    ts.forEachChild(node, visit)
+  }
+  visit(file)
+  return bindings
+}
+
 function routeEntries(root: string): CensusEntry[] {
   const routeRoot = join(root, 'packages/host/src/routes')
   return walkFiles(routeRoot, (path) => path.endsWith('.tsx')).map((path) => {
@@ -360,6 +478,130 @@ function pluginSlotEntries(root: string): CensusEntry[] {
   })
 }
 
+function officialBitsEntries(bitsPluginsRoot: string): CensusEntry[] {
+  if (!existsSync(bitsPluginsRoot)) {
+    throw new Error(
+      'Official Bits plugins input is unavailable. Clone bakin-bits-official beside Bakin or set BAKIN_DOCS_EXTERNAL_SOURCES; use --core-only only for explicitly partial local checks.',
+    )
+  }
+  const pluginDirectories = readdirSync(bitsPluginsRoot, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .sort()
+  const entries: CensusEntry[] = []
+
+  for (const pluginDirectory of pluginDirectories) {
+    const manifestFile = join(bitsPluginsRoot, pluginDirectory, 'bakin-plugin.json')
+    const manifest = existsSync(manifestFile) ? JSON.parse(readFileSync(manifestFile, 'utf-8')) as {
+      id?: string
+      contributes?: {
+        routes?: Array<{ path?: string }>
+        slots?: Array<string | { name?: string }>
+      }
+    } : null
+    const pluginId = manifest?.id ?? pluginDirectory
+    const manifestPath = bitsSourcePath(bitsPluginsRoot, manifestFile)
+    const manifestRoutes = new Map<string, number>()
+    for (const [index, declaration] of (manifest?.contributes?.routes ?? []).entries()) {
+      const route = declaration.path
+      if (!route) throw new Error(`${manifestPath} contributes.routes[${index}] has no path`)
+      if (manifestRoutes.has(route)) throw new Error(`${manifestPath} declares route ${JSON.stringify(route)} more than once`)
+      manifestRoutes.set(route, index)
+    }
+    const clientRoutes = collectClientBindings(bitsPluginsRoot, pluginDirectory, 'routes')
+    for (const route of [...new Set([...manifestRoutes.keys(), ...clientRoutes.keys()])].sort()) {
+      const manifestIndex = manifestRoutes.get(route)
+      const registration = clientRoutes.get(route)
+      const evidence: CensusEvidence[] = []
+      if (manifestIndex !== undefined) {
+        evidence.push({
+          type: 'manifest-route',
+          path: manifestPath,
+          detail: `contributes.routes[${manifestIndex}].path`,
+        })
+      }
+      if (registration) {
+        evidence.push({
+          type: 'client-registration',
+          path: registration.sourcePath,
+          detail: `registerPlugin routes ${JSON.stringify(route)} -> ${registration.symbol}`,
+        })
+      }
+      entries.push({
+        id: `plugin-route:${pluginId}:${route}`,
+        kind: 'plugin-route',
+        owner: { repository: 'bakin-bits-official', area: 'plugin', pluginId },
+        identity: { route },
+        sourcePath: registration?.sourcePath ?? manifestPath,
+        symbols: registration ? [registration.symbol] : [],
+        exportStatus: 'not-applicable',
+        classification: registration?.redirectOnly ? 'non-visual-alias' : 'visual-surface',
+        evidence,
+      })
+    }
+
+    const manifestSlots = new Map<string, number>()
+    for (const [index, declaration] of (manifest?.contributes?.slots ?? []).entries()) {
+      const slot = typeof declaration === 'string' ? declaration : declaration.name
+      if (!slot) throw new Error(`${manifestPath} contributes.slots[${index}] has no slot name`)
+      if (manifestSlots.has(slot)) throw new Error(`${manifestPath} declares slot ${JSON.stringify(slot)} more than once`)
+      manifestSlots.set(slot, index)
+    }
+    const clientSlots = collectClientBindings(bitsPluginsRoot, pluginDirectory, 'slots')
+    for (const slot of [...new Set([...manifestSlots.keys(), ...clientSlots.keys()])].sort()) {
+      const manifestIndex = manifestSlots.get(slot)
+      const registration = clientSlots.get(slot)
+      const route = slot.startsWith('page:') ? slot.slice('page:'.length) : undefined
+      const evidence: CensusEvidence[] = []
+      if (manifestIndex !== undefined) {
+        evidence.push({
+          type: 'manifest-slot',
+          path: manifestPath,
+          detail: `contributes.slots[${manifestIndex}]`,
+        })
+      }
+      if (registration) {
+        evidence.push({
+          type: 'client-registration',
+          path: registration.sourcePath,
+          detail: `registerPlugin slots ${JSON.stringify(slot)} -> ${registration.symbol}`,
+        })
+      }
+      entries.push({
+        id: `plugin-slot:${pluginId}:${slot}`,
+        kind: 'plugin-slot',
+        owner: { repository: 'bakin-bits-official', area: 'plugin', pluginId },
+        identity: { slot, ...(route ? { route } : {}) },
+        sourcePath: registration?.sourcePath ?? manifestPath,
+        symbols: registration ? [registration.symbol] : [],
+        exportStatus: 'not-applicable',
+        classification: route ? 'visual-surface' : 'embedded-surface',
+        evidence,
+      })
+    }
+
+    if (pluginDirectory === '_template') {
+      entries.push({
+        id: 'plugin-template:_template',
+        kind: 'plugin-template',
+        owner: { repository: 'bakin-bits-official', area: 'plugin', pluginId },
+        identity: { component: '_template' },
+        sourcePath: manifestPath,
+        symbols: [],
+        exportStatus: 'not-applicable',
+        classification: 'public-contract',
+        evidence: [{
+          type: 'manifest-template',
+          path: manifestPath,
+          detail: 'official plugin author template manifest',
+        }],
+      })
+    }
+  }
+
+  return entries
+}
+
 function componentOwner(sourcePath: string): CensusEntry['owner'] {
   const pluginMatch = sourcePath.match(/^plugins\/([^/]+)\//)
   if (pluginMatch) return { repository: 'bakin', area: 'plugin', pluginId: pluginMatch[1] }
@@ -440,7 +682,9 @@ function sdkExportEntries(publicExports: readonly PublicExport[]): CensusEntry[]
 function summarize(entries: readonly CensusEntry[]): CensusDocument['summary'] {
   const byKind: Record<CensusKind, number> = {
     'host-route': 0,
+    'plugin-route': 0,
     'plugin-slot': 0,
+    'plugin-template': 0,
     'shared-component': 0,
     'sdk-ui-export': 0,
   }
@@ -465,6 +709,7 @@ export function scanCoreCensus(root = REPO_ROOT): CensusDocument {
     schemaVersion: 1,
     generatedBy: 'bun run ui:census:generate',
     scope: {
+      mode: 'partial-core-only',
       repositories: ['bakin'],
       includes: [
         'host routes',
@@ -472,6 +717,43 @@ export function scanCoreCensus(root = REPO_ROOT): CensusDocument {
         'shared TSX component units',
         'public @makinbakin/sdk/components exports',
       ],
+    },
+    summary: summarize(entries),
+    entries,
+  }
+}
+
+export function scanOfficialCensus(root: string, bitsPluginsRoot: string): CensusDocument {
+  const core = scanCoreCensus(root)
+  const entries = [...core.entries, ...officialBitsEntries(bitsPluginsRoot)]
+    .sort((a, b) => a.id.localeCompare(b.id))
+  return {
+    ...core,
+    scope: {
+      mode: 'official',
+      repositories: ['bakin', 'bakin-bits-official'],
+      includes: [
+        ...core.scope.includes,
+        'official Bits runtime routes and redirect aliases',
+        'official Bits page and embedded slots',
+        'official Bits plugin author template',
+      ],
+    },
+    summary: summarize(entries),
+    entries,
+  }
+}
+
+export function toCoreOnlyCensus(census: CensusDocument): CensusDocument {
+  const entries = census.entries
+    .filter((entry) => entry.owner.repository === 'bakin')
+    .sort((a, b) => a.id.localeCompare(b.id))
+  return {
+    ...census,
+    scope: {
+      mode: 'partial-core-only',
+      repositories: ['bakin'],
+      includes: census.scope.includes.filter((item) => !item.startsWith('official Bits')),
     },
     summary: summarize(entries),
     entries,
@@ -504,6 +786,12 @@ export function validateCensus(census: CensusDocument): string[] {
     if (entry.kind === 'host-route' && entry.identity.route === '<undeclared>') {
       errors.push(`${entry.id} uses an unsupported route declaration`)
     }
+    if (entry.kind === 'plugin-route') {
+      const evidenceTypes = new Set(entry.evidence.map((item) => item.type))
+      if (!entry.identity.route) errors.push(`${entry.id} has no route identity`)
+      if (!evidenceTypes.has('manifest-route')) errors.push(`${entry.id} is missing its manifest route declaration`)
+      if (!evidenceTypes.has('client-registration')) errors.push(`${entry.id} is missing its client route registration`)
+    }
     if (entry.kind === 'plugin-slot' && !entry.identity.slot) errors.push(`${entry.id} has no slot identity`)
     if (entry.kind === 'plugin-slot') {
       const evidenceTypes = new Set(entry.evidence.map((item) => item.type))
@@ -511,12 +799,23 @@ export function validateCensus(census: CensusDocument): string[] {
       if (!evidenceTypes.has('client-registration')) errors.push(`${entry.id} is missing its client slot registration`)
     }
     if (entry.kind === 'shared-component' && !entry.identity.component) errors.push(`${entry.id} has no component identity`)
+    if (entry.kind === 'plugin-template' && entry.owner.repository !== 'bakin-bits-official') {
+      errors.push(`${entry.id} is not owned by official Bits`)
+    }
     if (entry.kind === 'sdk-ui-export' && (!entry.identity.symbol || !entry.identity.entrypoint)) {
       errors.push(`${entry.id} has no public export identity`)
     }
   }
   const expectedSummary = summarize(census.entries)
   if (!sameValue(census.summary, expectedSummary)) errors.push('census summary does not match entries')
+  if (
+    census.scope.mode === 'official'
+    && !sameValue(census.scope.repositories, ['bakin', 'bakin-bits-official'])
+  ) errors.push('official census scope must include core and official Bits')
+  if (
+    census.scope.mode === 'partial-core-only'
+    && census.entries.some((entry) => entry.owner.repository !== 'bakin')
+  ) errors.push('partial core-only census contains non-core entries')
   return errors
 }
 
@@ -534,43 +833,187 @@ export function diffCensusEntries(expected: CensusDocument, actual: CensusDocume
   return errors
 }
 
-function validateAgainstSchema(census: CensusDocument): string[] {
-  const schema = JSON.parse(readFileSync(SCHEMA_PATH, 'utf-8'))
+function gitRef(repository: string): string {
+  return execFileSync('git', ['-C', repository, 'rev-parse', 'HEAD'], { encoding: 'utf-8' }).trim()
+}
+
+function packageVersion(path: string): string {
+  if (!existsSync(path)) throw new Error(`Missing package metadata required for compatibility matrix: ${path}`)
+  const value = JSON.parse(readFileSync(path, 'utf-8')) as { version?: string }
+  if (!value.version) throw new Error(`Package metadata has no version: ${path}`)
+  return value.version
+}
+
+export function buildCompatibilityMatrix(
+  root: string,
+  bitsPluginsRoot: string,
+  refs?: { bakinRef: string; bitsRef: string },
+): CompatibilityMatrix {
+  const census = scanOfficialCensus(root, bitsPluginsRoot)
+  const bitsRepository = dirname(bitsPluginsRoot)
+  const plugins: CompatibilityMatrix['plugins'] = {}
+  for (const pluginId of ['messaging', 'projects', '_template']) {
+    const manifestPath = join(bitsPluginsRoot, pluginId, 'bakin-plugin.json')
+    if (!existsSync(manifestPath)) throw new Error(`Official Bits compatibility input is missing ${pluginId}/bakin-plugin.json`)
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8')) as {
+      version?: string
+      bakin?: string
+    }
+    const routes = census.entries.filter((entry) => (
+      entry.kind === 'plugin-route'
+      && entry.owner.repository === 'bakin-bits-official'
+      && entry.owner.pluginId === pluginId
+    ))
+    const slots = census.entries.filter((entry) => (
+      entry.kind === 'plugin-slot'
+      && entry.owner.repository === 'bakin-bits-official'
+      && entry.owner.pluginId === pluginId
+      && entry.identity.slot
+    ))
+    plugins[pluginId] = {
+      repository: 'bakin-bits-official',
+      role: pluginId === '_template' ? 'author-template' : 'official-plugin',
+      version: manifest.version ?? 'unknown',
+      bakinRange: manifest.bakin ?? 'unknown',
+      routes: {
+        total: routes.length,
+        visual: routes.filter((entry) => entry.classification === 'visual-surface').length,
+        aliases: routes
+          .filter((entry) => entry.classification === 'non-visual-alias')
+          .map((entry) => entry.identity.route!)
+          .sort(),
+      },
+      slots: slots.map((entry) => entry.identity.slot!).sort(),
+    }
+  }
+
+  return {
+    schemaVersion: 1,
+    generatedBy: 'bun run ui:census:generate',
+    firstPartyScope: ['core', 'official-bits'],
+    repositories: {
+      bakin: { ref: refs?.bakinRef ?? gitRef(root) },
+      'bakin-bits-official': { ref: refs?.bitsRef ?? gitRef(bitsRepository) },
+    },
+    sdk: {
+      workspaceVersion: packageVersion(join(root, 'packages/sdk/package.json')),
+      officialBitsFixtureVersion: packageVersion(join(bitsRepository, 'test-sdk/package.json')),
+    },
+    plugins,
+  }
+}
+
+export function validateCompatibilityMatrix(matrix: CompatibilityMatrix): string[] {
+  const errors: string[] = []
+  if (!sameValue(matrix.firstPartyScope, ['core', 'official-bits'])) {
+    errors.push('compatibility matrix must name core and official Bits as first-party')
+  }
+  for (const [repository, record] of Object.entries(matrix.repositories)) {
+    if (!/^[0-9a-f]{40}$/.test(record.ref)) errors.push(`${repository} compatibility ref is not a full Git commit`)
+  }
+  if (!matrix.sdk.workspaceVersion || !matrix.sdk.officialBitsFixtureVersion) {
+    errors.push('compatibility matrix is missing SDK versions')
+  }
+  for (const pluginId of ['messaging', 'projects', '_template']) {
+    const plugin = matrix.plugins[pluginId]
+    if (!plugin) {
+      errors.push(`compatibility matrix is missing official Bits ${pluginId}`)
+      continue
+    }
+    if (plugin.repository !== 'bakin-bits-official') errors.push(`${pluginId} is not owned by official Bits`)
+    if (!plugin.version || plugin.version === 'unknown') errors.push(`${pluginId} has no recorded version`)
+    if (!plugin.bakinRange || plugin.bakinRange === 'unknown') errors.push(`${pluginId} has no recorded Bakin range`)
+  }
+  return errors
+}
+
+function validateAgainstSchema(value: unknown, schemaPath: string): string[] {
+  const schema = JSON.parse(readFileSync(schemaPath, 'utf-8'))
   const validate = new Ajv({ allErrors: true }).compile(schema)
-  if (validate(census)) return []
+  if (validate(value)) return []
   return (validate.errors ?? []).map((error) => `${error.instancePath || '<root>'} ${error.message}`)
 }
 
+function officialBitsPluginsRoot(): string {
+  for (const root of externalSourceRoots()) {
+    const candidates = [root, join(root, 'plugins')]
+    for (const candidate of candidates) {
+      if (['messaging', 'projects', '_template'].every((plugin) => existsSync(join(candidate, plugin, 'bakin-plugin.json')))) {
+        return candidate
+      }
+    }
+  }
+  throw new Error(
+    'Official Bits plugins input is unavailable. Use the existing BAKIN_DOCS_EXTERNAL_SOURCES plugins root or clone bakin-bits-official beside Bakin; pass --core-only only for explicitly partial local checks.',
+  )
+}
+
 function generate(): void {
-  const census = scanCoreCensus(REPO_ROOT)
-  const errors = [...validateCensus(census), ...validateAgainstSchema(census)]
+  const bitsPluginsRoot = officialBitsPluginsRoot()
+  const census = scanOfficialCensus(REPO_ROOT, bitsPluginsRoot)
+  const compatibility = buildCompatibilityMatrix(REPO_ROOT, bitsPluginsRoot)
+  const errors = [
+    ...validateCensus(census),
+    ...validateAgainstSchema(census, SCHEMA_PATH),
+    ...validateCompatibilityMatrix(compatibility),
+    ...validateAgainstSchema(compatibility, COMPATIBILITY_SCHEMA_PATH),
+  ]
   if (errors.length > 0) throw new Error(`Invalid generated UI census:\n- ${errors.join('\n- ')}`)
   mkdirSync(dirname(CENSUS_PATH), { recursive: true })
   writeFileSync(CENSUS_PATH, `${JSON.stringify(census, null, 2)}\n`)
-  console.log(`Generated ${portablePath(REPO_ROOT, CENSUS_PATH)} with ${census.entries.length} entries`)
+  writeFileSync(COMPATIBILITY_PATH, `${JSON.stringify(compatibility, null, 2)}\n`)
+  console.log(`Generated official ${portablePath(REPO_ROOT, CENSUS_PATH)} with ${census.entries.length} entries`)
+  console.log(`Generated ${portablePath(REPO_ROOT, COMPATIBILITY_PATH)} for core and official Bits`)
 }
 
-function check(): void {
+function check(coreOnly: boolean): void {
   if (!existsSync(CENSUS_PATH)) throw new Error('Missing design-system/census.json; run bun run ui:census:generate')
   const checkedIn = JSON.parse(readFileSync(CENSUS_PATH, 'utf-8')) as CensusDocument
-  const actual = scanCoreCensus(REPO_ROOT)
+  if (!existsSync(COMPATIBILITY_PATH)) {
+    throw new Error('Missing design-system/compatibility.json; run bun run ui:census:generate')
+  }
+  const compatibility = JSON.parse(readFileSync(COMPATIBILITY_PATH, 'utf-8')) as CompatibilityMatrix
+  const actual = coreOnly
+    ? scanCoreCensus(REPO_ROOT)
+    : scanOfficialCensus(REPO_ROOT, officialBitsPluginsRoot())
+  const expected = coreOnly ? toCoreOnlyCensus(checkedIn) : checkedIn
   const errors = [
     ...validateCensus(checkedIn),
-    ...validateAgainstSchema(checkedIn),
+    ...validateAgainstSchema(checkedIn, SCHEMA_PATH),
+    ...validateCompatibilityMatrix(compatibility),
+    ...validateAgainstSchema(compatibility, COMPATIBILITY_SCHEMA_PATH),
     ...validateCensus(actual),
-    ...diffCensusEntries(checkedIn, actual),
+    ...diffCensusEntries(expected, actual),
   ]
-  if (!sameValue(checkedIn.scope, actual.scope)) errors.push('census scope metadata is stale')
-  if (!sameValue(checkedIn.summary, actual.summary)) errors.push('census summary metadata is stale')
+  if (!sameValue(expected.scope, actual.scope)) errors.push('census scope metadata is stale')
+  if (!sameValue(expected.summary, actual.summary)) errors.push('census summary metadata is stale')
+  if (!coreOnly) {
+    const bitsPluginsRoot = officialBitsPluginsRoot()
+    const currentCompatibility = buildCompatibilityMatrix(REPO_ROOT, bitsPluginsRoot, {
+      bakinRef: compatibility.repositories.bakin.ref,
+      bitsRef: compatibility.repositories['bakin-bits-official'].ref,
+    })
+    if (!sameValue(compatibility, currentCompatibility)) errors.push('official SDK compatibility matrix is stale')
+  }
   if (errors.length > 0) throw new Error(`UI census is stale or invalid:\n- ${[...new Set(errors)].join('\n- ')}`)
-  console.log(`UI census valid: ${actual.entries.length} entries account for the current core surface`)
+  if (coreOnly) {
+    console.log(`UI census valid in PARTIAL core-only mode: ${actual.entries.length} entries (official Bits not checked)`)
+  } else {
+    console.log(`Official UI census valid: ${actual.entries.length} entries across core and official Bits`)
+  }
 }
 
 async function main(): Promise<void> {
   const command = process.argv[2]
-  if (command === 'generate') generate()
-  else if (command === 'check') check()
-  else throw new Error('Usage: bun run scripts/ui/census.ts <generate|check>')
+  const flags = process.argv.slice(3)
+  const coreOnly = flags.includes('--core-only')
+  const unknownFlags = flags.filter((flag) => flag !== '--core-only')
+  if (unknownFlags.length > 0) throw new Error(`Unknown UI census option: ${unknownFlags[0]}`)
+  if (command === 'generate') {
+    if (coreOnly) throw new Error('Core-only generation cannot replace the official checked-in census')
+    generate()
+  } else if (command === 'check') check(coreOnly)
+  else throw new Error('Usage: bun run scripts/ui/census.ts <generate|check> [--core-only]')
 }
 
 if (import.meta.main) {
