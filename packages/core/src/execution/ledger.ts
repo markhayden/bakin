@@ -1325,8 +1325,8 @@ export interface AgentTokenRollup {
 
 /**
  * Per-agent token/cost sums since a timestamp — the attributed side of the
- * effort-vs-outcome view (#385). Unlike spendByAgent this keeps token sums
- * and stays NULL-honest on cost.
+ * effort-vs-outcome view (#385). Keeps token sums and stays NULL-honest on
+ * cost (never a fabricated zero).
  */
 export function runTokensByAgentSince(sinceMs: number): AgentTokenRollup[] {
   return guard('runTokensByAgentSince', () => {

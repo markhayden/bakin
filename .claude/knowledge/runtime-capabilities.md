@@ -88,7 +88,7 @@ need crosses a neutral method:
 |---|---|
 | tool-access wiring | `provisionToolAccess()` family |
 | credential presence (onboarding llm/channels) | `credentialStatus()` — names only, never secrets |
-| model routing policy (defaults/fallbacks/aliases/subagent defaults) | `models.routingPolicy()` / `setRoutingPolicy()` + `models.routingSupport()` (declares which knobs the runtime HONORS; unsupported patches are rejected, never silently stored) |
+| model routing policy (defaults/fallbacks/aliases/subagent defaults) | `models.routingPolicy()` / `setRoutingPolicy()` + `models.routingSupport()` (declares which knobs the runtime HONORS; unsupported patches are rejected, never silently stored). `RuntimeRoutingSupport.supportedThinkingLevels` declares which per-turn thinking levels the runtime honors (Pi: `off`…`xhigh`; OpenClaw: all 8 incl. `adaptive`/`max`) — Bakin's work-class thinking routes clamp-and-warn against it (`applyThinkingCapability`), never a silent drop |
 | per-agent model assignments | `agents.update({ model, subagentModel })` — null clears; OpenClaw persists into `agents.list[]`, Pi into its registry |
 | roster integrity (onboarding runtime check) | `agents.list()` + adapter-resolved `metadata.workspacePath` |
 
@@ -197,8 +197,16 @@ unsupported.
    e.g. `delivery: 'native'` ⇔ `channels` present); provisioning
    idempotency; nonexistent-id `agents.update`/`agents.remove` reject
    `kind:'not_found'` (reads return null; workspace-file writes provision
-   on demand by design). `teeth.conformance.test.ts` proves the checks
-   reject violators — a new runner is three target hooks, not new checks.
+   on demand by design); `streamDoneCarriesUsageWhereSendDoes` — the
+   `done` chunk variant carries `usage?: MessageUsage`, and a runtime
+   whose `send()` results report usage MUST attach it to stream `done`
+   (Pi computes a session-stats delta; OpenClaw threads its RPC result
+   usage through the chunk machine) — chat metering depends on it;
+   `thinkingLevelHonesty` — every level declared in
+   `routingSupport().supportedThinkingLevels` must serve a clean turn.
+   `teeth.conformance.test.ts` proves the checks
+   reject violators (incl. per-lie adapters for the two routing pins) — a
+   new runner is three target hooks, not new checks.
 4. Nothing else: prompts, AGENTS.md sections, provisioning, onboarding
    checks, the switch, and the management page all derive from the contract.
 

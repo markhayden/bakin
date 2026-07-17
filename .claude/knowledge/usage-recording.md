@@ -23,7 +23,7 @@ recordUsage({ kind, name, activityClass, agent, durationMs, status, meta, tokens
 | `costUsdMicros` | estimated turn cost in micro-dollars; omitted when unmetered |
 | `meta` | free-form record for extra context |
 
-The token/cost fields are the **live** half of cost metering (the durable half is the ledger `run_costs` table — see `.claude/knowledge/execution-ledger.md`). Dispatch's settle path emits a `kind:'agent', name:'turn'` entry carrying them. This stays the single live stat feed — **never** add a parallel cost tracker.
+The token/cost fields are the **live** half of cost metering (the durable half is the ledger `run_costs` table — see `.claude/knowledge/execution-ledger.md`). Dispatch's settle path emits a `kind:'agent', name:'turn'` entry carrying them. Every caller of the shared meter (`meterAgentTurn` in `src/core/agent-cost.ts`) MUST name its `workClass` (required — the routing + spend-attribution dimension; optional `routeSource` records how the model was chosen); the recorder entry's `meta` carries `workClass` so the live feed slices on the same dimension the durable rows do. This stays the single live stat feed — **never** add a parallel cost tracker.
 
 The ring buffer holds 10 000 entries, FIFO-evicted.
 
@@ -106,7 +106,9 @@ no fourth tracking system:
 
 - Ledger (`run_costs`/`runs`/`completions`): `runTokensByAgentSince`
   (NULL-honest token/cost sums), `listRunsByAgent` (runs LEFT JOIN run_costs —
-  the timeline run spine), `listLiveRuns` (status='running' snapshot behind
+  the timeline run spine; rows carry `workClass`/`routeSource`, which Team
+  Diagnostics renders as the `· via class route`/`tag:<x>` receipt),
+  `listLiveRuns` (status='running' snapshot behind
   `GET /api/plugins/health/live-now`), `completionsByAgentSince`.
 - usage.db: `usageByAgentDaySince` — the (agent × day) cross-tab, exposed as
   `byAgentDay` on `GET /usage-history` (stacked chart) and joined day-aligned

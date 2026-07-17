@@ -48,9 +48,18 @@ resolved tasks (`moveTaskToInProgress`):
   reason, model}` | `{ok:false, kind: 'transient'|'structural', message}`.
   Consumers classify by `kind`, never message text (house rule).
 
-Config: team plugin settings `routingProvider` (anthropic|openai|google) +
-`routingModel` (default `claude-haiku-4-5-20251001`). Keys resolve env →
-secret store via `resolveProviderKeySource`.
+Config: the router model comes from the models routing matrix's
+`'team-routing'` work-class row — the call sites in `plugins/team/index.ts`
+resolve it via `resolveSystemRoute('team-routing')` and pass the route into
+the resolver's deps. The route's canonical `provider/model` id splits into
+the direct-call pair (`parseRoutedModel` — supported providers
+anthropic|openai|google; an unsupported provider is an HONEST structural
+error, never silently re-routed to a provider the operator didn't
+configure); no route = anthropic + `DEFAULT_ROUTING_MODEL`
+(`claude-haiku-4-5-20251001`). The old plugin settings
+`routingProvider`/`routingModel` are DELETED — an onReady seed migration
+folds them into the matrix row via the `models.seedWorkClassRoute` hook.
+Keys resolve env → secret store via `resolveProviderKeySource`.
 
 ## LLM transport
 
@@ -158,7 +167,8 @@ same `team.resolveAssignment` hook.
 
 `team.routing` (warn-only, local-only): active **unresolved** team tasks
 (`team && !agent` — resolved tasks never re-invoke the router; post-review
-R7) exist but no key resolves for the configured routing provider — they
+R7) exist but no key resolves for the routing provider (derived from the
+`'team-routing'` matrix route's model id; default anthropic) — they
 will all block at dispatch.
 `plugins/team/lib/health-checks.ts::checkTeamRouting`.
 

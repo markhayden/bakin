@@ -283,3 +283,20 @@ Each commit builds green and passes the full suite; each phase is a rollback poi
 5. Backfill prefix mapping — verify `turn:` run-ids are exclusively relay-ish before mapping them to `relay` (else NULL).
 6. Premium-on-cheap warn threshold — catalog price percentile vs static list; keep warn-only.
 7. Whether `bakin spend` byWorkClass lands in `budget.ts` CLI module or a new `spend` section (follow existing file).
+
+---
+
+## 13. As-Built Addendum (post-implementation, 2026-07-17)
+
+Deviations from this spec — each deliberate, found during build/test. Authoritative behavior lives in `.claude/knowledge/{models-plugin,dispatch,execution-ledger,usage-recording,chat-plugin,doctor-and-health-checks,runtime-capabilities}.md`.
+
+1. **`turn:` backfill is NULL, not `relay`** (§5.3 contingency resolved as the spec's own open item 5 anticipated): `turn:` was the shared synthetic run-id for relays AND generic operator sends with no stored discriminator — mapping it would mislabel history. Only `chat:%:title` → `auto-title` backfills.
+2. **`supportedThinkingLevels` lives on `RuntimeRoutingSupport`**, not a messaging capability surface (§7 touch-map wording): thinking is a routing knob; `routingSupport()` is sync/static and already drives UI knob-hiding via `/config`.
+3. **Chat metering required an adapter contract change**: `messaging.stream()` carried no usage on either adapter. The `done` ChatChunk gained `usage?` (Pi session-stats delta incl. partial usage on clean aborts; OpenClaw threads its RPC result usage) — conformance-pinned (`streamDoneCarriesUsageWhereSendDoes` + teeth).
+4. **Enrichment routes DOCUMENT jobs only** — attachment turns stay override-free (bakin#584 gateway attachment gate); every enrichment send is now metered either way (a previously unattributed spend path found during build).
+5. **`restartAgent` was NOT dead code** (host API calls it) — kept; only `deliverTaskToAgent` deleted. `startAgent` kick-offs now meter under `send` (metered-only).
+6. **`ThinkingLevel` type kept its name** (no rename); the resolver reports provenance via `ResolvedTurn.source` and clamps via `ResolvedTurn.thinkingClamp`; the `task.routed` audit carries `source`/`requestedThinking`/`clamped`.
+7. **byWorkClass browse rollups add two special buckets**: `media` (image rows, classless by design) and `unclassified` (pre-migration token rows) — never mixed.
+8. **Routing migration mirrors budget-migration exactly**: one-shot at activation PLUS migrate-on-read guards (the read-guard is the established convention, not a dual-read shim).
+9. **VISION_MODELS moved to `packages/core/src/llm/vision-models.ts`** — the recommend engine needed it and a models→assets plugin import would violate the plugin boundary; providers.ts re-exports.
+10. **Legacy rollup deletion is architecture-pinned** (`tests/architecture/no-legacy-spend-rollups.test.ts`); `/spend` byAgent/byModel rows now carry `costUsdMicros: null` for unpriced buckets (previously fabricated `$0`).
