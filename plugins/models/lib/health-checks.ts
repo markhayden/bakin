@@ -29,8 +29,10 @@ const SEVEN_DAYS_MS = 7 * 86_400_000
 
 export interface RoutingHealthDeps {
   getRoutingConfig(): RoutingConfig
-  /** Models usable on the active runtime (available !== false). */
-  listAvailableModels(): Promise<Array<{ id: string }>>
+  /** Models usable on the active runtime (available !== false); `tier` is the
+   *  runtime-merged tier (catalog or id heuristic) — the catalog alone has no
+   *  entries for runtime-private families like openai-codex. */
+  listAvailableModels(): Promise<Array<{ id: string; tier?: string }>>
   supportedThinkingLevels(): readonly string[]
   /** run_costs rows for the premium-on-cheap scan window. */
   listRecentRunCosts(sinceMs: number): RunCostSpendRow[]
@@ -53,25 +55,36 @@ function pricingRank(id: string): number | null {
   return known.pricing.inputPer1M + known.pricing.outputPer1M
 }
 
-function tierRank(id: string): number {
-  const tier = getKnownModel(id)?.tier
+interface Candidate {
+  id: string
+  /** Runtime-merged tier fallback when the catalog has no entry. */
+  tier?: string
+}
+
+function tierRank(c: Candidate): number {
+  const tier = getKnownModel(c.id)?.tier ?? c.tier
   return tier !== undefined && tier in TIER_ORDER ? TIER_ORDER[tier] : 99
 }
 
-function cheapestFirst(a: string, b: string): number {
-  const pa = pricingRank(a)
-  const pb = pricingRank(b)
+function cheapestFirst(a: Candidate, b: Candidate): number {
+  const pa = pricingRank(a.id)
+  const pb = pricingRank(b.id)
   if (pa !== null && pb !== null && pa !== pb) return pa - pb
   if (pa !== null && pb === null) return -1
   if (pa === null && pb !== null) return 1
   return tierRank(a) - tierRank(b)
 }
 
+/** A candidate is "cheap-eligible" when it has catalog pricing or a sub-premium tier. */
+function cheapEligible(c: Candidate): boolean {
+  return pricingRank(c.id) !== null || tierRank(c) < TIER_ORDER.premium
+}
+
 /** Compute the recommended-route proposals for every unrouted recommended class. */
 export async function recommendRoutes(deps: RoutingHealthDeps): Promise<{ proposals: RouteProposal[]; skipped: RouteSkip[] }> {
   const config = deps.getRoutingConfig()
   const routed = new Set(config.routes.map((r) => r.workClass))
-  const available = (await deps.listAvailableModels()).map((m) => m.id)
+  const available: Candidate[] = await deps.listAvailableModels()
   const visionIds = new Set(VISION_MODELS.map((m) => m.id))
 
   const proposals: RouteProposal[] = []
@@ -79,21 +92,23 @@ export async function recommendRoutes(deps: RoutingHealthDeps): Promise<{ propos
   for (const cls of WORK_CLASSES) {
     if (!cls.routable || !cls.recommendedTier || routed.has(cls.id)) continue
     const pool = cls.recommendedTier === 'cheap-vision'
-      ? available.filter((id) => visionIds.has(id))
-      : available.filter((id) => pricingRank(id) !== null || tierRank(id) < 99)
+      ? available.filter((c) => visionIds.has(c.id))
+      : available.filter(cheapEligible)
     if (pool.length === 0) {
       skipped.push({
         workClass: cls.id,
         reason: cls.recommendedTier === 'cheap-vision'
           ? 'No vision-capable model is available on the active runtime'
-          : 'No priced/tiered model is available on the active runtime',
+          : available.length > 0
+            ? 'Only premium-tier models are available on the active runtime — nothing cheaper to route to'
+            : 'No models are available on the active runtime',
       })
       continue
     }
     const pick = [...pool].sort(cheapestFirst)[0]
     proposals.push({
       workClass: cls.id,
-      model: pick,
+      model: pick.id,
       reason: cls.recommendedTier === 'cheap-vision' ? 'cheapest vision-capable available model' : 'cheapest available model',
     })
   }
@@ -220,12 +235,14 @@ export function buildRoutingHealthDeps(ctx: {
   runtime: { models: { routingSupport(): { supportedThinkingLevels: readonly string[] } } }
 }, helpers: {
   readRoutingConfig(): RoutingConfig
-  listAvailableModels(): Promise<Array<{ id: string; available?: boolean }>>
+  listAvailableModels(): Promise<Array<{ id: string; available?: boolean; tier?: string }>>
   listRunCostsSince(sinceMs: number): RunCostSpendRow[]
 }): RoutingHealthDeps {
   return {
     getRoutingConfig: helpers.readRoutingConfig,
-    listAvailableModels: async () => (await helpers.listAvailableModels()).filter((m) => m.available !== false),
+    listAvailableModels: async () => (await helpers.listAvailableModels())
+      .filter((m) => m.available !== false)
+      .map((m) => ({ id: m.id, ...(m.tier ? { tier: m.tier } : {}) })),
     supportedThinkingLevels: () => ctx.runtime.models.routingSupport().supportedThinkingLevels,
     listRecentRunCosts: (sinceMs) => {
       try {

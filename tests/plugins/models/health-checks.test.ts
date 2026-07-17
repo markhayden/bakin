@@ -68,6 +68,31 @@ describe('recommendRoutes', () => {
     expect(proposals.find((p) => p.workClass === 'enrichment')).toBeUndefined()
   })
 
+  it('uses runtime-merged tiers when the catalog has no entry (Codex-only box)', async () => {
+    const { proposals, skipped } = await recommendRoutes(deps({
+      listAvailableModels: async () => [
+        { id: 'openai-codex/gpt-5.4', tier: 'premium' },
+        { id: 'openai-codex/gpt-5.4-mini', tier: 'budget' },
+        { id: 'openai-codex/gpt-5.5', tier: 'premium' },
+      ],
+    }))
+    const byClass = new Map(proposals.map((p) => [p.workClass, p]))
+    expect(byClass.get('auto-title')?.model).toBe('openai-codex/gpt-5.4-mini')
+    expect(byClass.get('relay')?.model).toBe('openai-codex/gpt-5.4-mini')
+    // No vision model on this runtime — enrichment skips honestly.
+    expect(skipped).toEqual([expect.objectContaining({ workClass: 'enrichment' })])
+  })
+
+  it('skips with an honest reason when only premium models exist', async () => {
+    const { proposals, skipped } = await recommendRoutes(deps({
+      listAvailableModels: async () => [{ id: 'openai-codex/gpt-5.5', tier: 'premium' }],
+    }))
+    expect(proposals).toEqual([])
+    expect(skipped).toEqual(expect.arrayContaining([
+      expect.objectContaining({ workClass: 'relay', reason: expect.stringContaining('Only premium-tier') }),
+    ]))
+  })
+
   it('already-routed classes are not proposed', async () => {
     const { proposals } = await recommendRoutes(deps({
       getRoutingConfig: () => ({ routes: [{ workClass: 'auto-title', model: 'x/y' }], tagOverrides: [] }),
@@ -136,7 +161,7 @@ describe('recommendedRoutesRepair', () => {
     const plan = await repair.plan({ kind: 'check', checkId: 'models.routing' } as never)
     expect(plan).toHaveLength(1)
     expect(plan[0]?.changes.length).toBeGreaterThanOrEqual(4)
-    const results = await repair.apply(plan, { kind: 'check', checkId: 'models.routing' } as never)
+    const results = await repair.apply(plan)
     expect(results[0]?.status).toBe('applied')
     expect(applied[0]?.find((r) => r.workClass === 'auto-title')?.model).toBe('google/gemini-2.5-flash')
   })
