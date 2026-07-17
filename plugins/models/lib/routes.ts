@@ -22,6 +22,7 @@ import {
 import { spendTotal, spendByAgent, spendByModel, listBudgetIncidents, resolveBudgetIncident, LedgerUnavailableError } from '../../../src/core/execution-ledger'
 import { assembleBudgetSpend, paceProjection, dayEndMs, monthEndMs } from '../../../src/core/budget-spend'
 import { budgetStatusRoutes } from './budget-routes'
+import { isLegacyRouting, migrateLegacyRouting } from './routing-migration'
 import {
   getRuntimeSync,
   markConfigDirty,
@@ -276,11 +277,11 @@ export const modelsRoutes = [
     responses: { 200: passthrough, 500: errorResponse },
     handler: async (_req, ctx) => {
       try {
-        const settings = ctx.getSettings<ModelsPluginSettings>()
-        const routing = settings.routing
-        // Legacy origin-shaped configs read as unset until the one-shot
-        // migration (routing-migration.ts) rewrites them at activation.
-        return Response.json(routing && 'routes' in routing ? routing : { routes: [], tagOverrides: [] })
+        const routing = ctx.getSettings<ModelsPluginSettings>().routing
+        // Read-guard mirrors models.getRoutingConfig: legacy shapes migrate
+        // on read rather than reading as unset.
+        if (isLegacyRouting(routing)) return Response.json(migrateLegacyRouting(routing))
+        return Response.json(routing ?? { routes: [], tagOverrides: [] })
       } catch (err) {
         return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
       }

@@ -14,6 +14,7 @@ import { modelsRoutes } from './lib/routes'
 import { registerModelsHooks } from './lib/register-hooks'
 import { registerModelsExecTools } from './lib/exec-tools'
 import { isLegacyBudget, migrateLegacyBudget } from './lib/budget-migration'
+import { isLegacyRouting, migrateLegacyRouting } from './lib/routing-migration'
 import type { ModelsPluginSettings } from './types'
 
 // ---------------------------------------------------------------------------
@@ -40,6 +41,14 @@ const modelsPlugin: BakinPlugin = definePlugin({
     const budget = ctx.getSettings<ModelsPluginSettings>().budget
     if (isLegacyBudget(budget)) {
       ctx.updateSettings({ budget: migrateLegacyBudget(budget) })
+    }
+
+    // One-shot routing-shape migration (origin policies → work-class routes).
+    // Same discipline: runs before hooks register so models.getRoutingConfig
+    // never serves the legacy shape.
+    const routing = ctx.getSettings<ModelsPluginSettings>().routing
+    if (isLegacyRouting(routing)) {
+      ctx.updateSettings({ routing: migrateLegacyRouting(routing) })
     }
 
     // Hooks — cross-plugin communication

@@ -15,6 +15,7 @@ import { getKnownModel, computeCostUsdMicros, computeImageCostUsdMicros } from '
 import { markConfigDirty, markRuntimeRestarted, resolveAgents } from './config-io'
 import { resolveBilling } from './billing'
 import { isLegacyBudget, migrateLegacyBudget } from './budget-migration'
+import { isLegacyRouting, migrateLegacyRouting } from './routing-migration'
 import { normalizeModelId } from './model-id'
 import { fetchAvailableModels } from './available-models'
 
@@ -115,12 +116,12 @@ export function registerModelsHooks(ctx: PluginContext): void {
   // model/thinking for each turn before sending. Returns an empty config
   // when none is set → dispatch inherits the agent's configured model.
   ctx.hooks.register('models.getRoutingConfig', () => {
-    const settings = ctx.getSettings<ModelsPluginSettings>()
-    const routing = settings.routing
-    // Legacy origin-shaped configs read as unset until the one-shot
-    // migration (routing-migration.ts) rewrites them at activation.
-    if (routing && 'routes' in routing) return routing
-    return { routes: [], tagOverrides: [] }
+    const routing = ctx.getSettings<ModelsPluginSettings>().routing
+    // A legacy-shaped config (a settings file restored AFTER the one-shot
+    // activation migration ran) migrates on READ too — dispatch must never
+    // silently ignore routes the operator believes exist.
+    if (isLegacyRouting(routing)) return migrateLegacyRouting(routing)
+    return routing ?? { routes: [], tagOverrides: [] }
   }, { label: 'Get routing config.', summary: 'Returns the per-turn model/thinking routing policy (work classes + tag overrides) applied before each routable agent turn. Use it to read the current routing rules.', hookKind: 'rpc' })
 
   // Expose the budget policy to core dispatch, which consults it before
