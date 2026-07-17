@@ -27,8 +27,12 @@ interface WindowSpend { startMs: number; global: ScopeSpend; byAgent: Record<str
 interface SpendPayload {
   window: string
   totalUsdMicros: number
-  byAgent: Array<{ agent: string; costUsdMicros: number; runs: number }>
-  byModel: Array<{ model: string; costUsdMicros: number; runs: number }>
+  byAgent: Array<{ agent: string; costUsdMicros: number | null; runs: number }>
+  byModel: Array<{ model: string; costUsdMicros: number | null; runs: number }>
+  byWorkClass?: Array<{
+    workClass: string; runs: number; totalTokens: number | null
+    costUsdMicros: number | null; subscriptionTokens: number; avgCostUsdMicros: number | null
+  }>
   facets?: {
     observedUsageEvidence?:
       | { status: 'available' }
@@ -163,6 +167,17 @@ export async function cmdSpend(args: string[]): Promise<void> {
   if (spend.byModel.length) {
     console.log(`\nBy model (${spend.window}):`)
     printTable(spend.byModel.map((r) => ({ model: r.model, runs: r.runs, 'est. cost': r.costUsdMicros ? usd(r.costUsdMicros) : '—' })))
+  }
+  if (spend.byWorkClass?.length) {
+    console.log(`\nBy work class (${spend.window}):`)
+    printTable(spend.byWorkClass.map((r) => ({
+      class: r.workClass === 'unclassified' ? 'unclassified (pre-migration)' : r.workClass,
+      runs: r.runs,
+      tokens: r.totalTokens !== null ? tokens(r.totalTokens) : '—',
+      'est. cost': r.costUsdMicros !== null ? usd(r.costUsdMicros) : '—',
+      'sub tokens': r.subscriptionTokens ? tokens(r.subscriptionTokens) : '—',
+      'avg $/run': r.avgCostUsdMicros !== null ? usd(r.avgCostUsdMicros) : '—',
+    })))
   }
 }
 
