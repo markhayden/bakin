@@ -68,6 +68,8 @@ describe('collectArtifactSizes', () => {
     }
     seed('packages/host/public/vendor/sdk-index.js', 100)
     seed('packages/host/public/vendor/sdk-shared-abc123.js', 250)
+    seed('packages/host/public/vendor/react.js', 75)
+    seed('packages/host/public/globals.css', 60)
     seed('packages/host/dist/main.js', 500)
     seed('plugins/tasks/dist/client.js', 40)
     seed('plugins/tasks/dist/client.css', 10)
@@ -76,12 +78,15 @@ describe('collectArtifactSizes', () => {
 
     const report = collectArtifactSizes(root)
 
-    expect(report.vendor.total).toBe(350)
+    expect(report.vendor.total).toBe(425)
     expect(report.vendor.files.map((f) => f.name).sort()).toEqual([
+      'react.js',
       'sdk-index.js',
       'sdk-shared-abc123.js',
     ])
+    expect(report.sdk.total).toBe(350)
     expect(report.plugins.total).toBe(50)
+    expect(report.css.total).toBe(70)
     expect(report.hostShell.total).toBe(500)
     expect(report.binaries.total).toBe(1000)
     expect(report.binaries.files[0].name).toBe('bakin-darwin-arm64')
@@ -93,6 +98,8 @@ describe('collectArtifactSizes', () => {
     const report = collectArtifactSizes(emptyRoot)
     expect(report.vendor.files).toEqual([])
     expect(report.vendor.total).toBe(0)
+    expect(report.sdk.total).toBe(0)
+    expect(report.css.total).toBe(0)
     expect(report.binaries.files).toEqual([])
   })
 })

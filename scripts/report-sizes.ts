@@ -3,9 +3,9 @@
  *
  * Two sections:
  *
- * 1. Artifact sizes — vendor bundles, plugin client bundles, the host
- *    shell, and compiled binaries, measured from what's on disk. Sections
- *    whose artifacts aren't built are skipped with a hint.
+ * 1. Artifact sizes — vendor and SDK bundles, plugin client bundles, CSS,
+ *    the host shell, and compiled binaries, measured from what's on disk.
+ *    Sections whose artifacts aren't built are skipped with a hint.
  * 2. Server-graph breakdown — bundles server.ts (non-compile, target bun)
  *    with `--metafile` into a throwaway dir and attributes input bytes to
  *    top-level node_modules packages (app code grouped by top-level dir).
@@ -36,7 +36,9 @@ export interface ArtifactSection {
 
 export interface ArtifactReport {
   vendor: ArtifactSection
+  sdk: ArtifactSection
   plugins: ArtifactSection
+  css: ArtifactSection
   hostShell: ArtifactSection
   binaries: ArtifactSection
 }
@@ -83,26 +85,37 @@ function scanDir(dir: string, filter: (name: string) => boolean): ArtifactSectio
 
 /** Measure built artifacts under the repo root. Pure scan, no builds. */
 export function collectArtifactSizes(rootDir: string): ArtifactReport {
-  const vendor = scanDir(join(rootDir, 'packages/host/public/vendor'), (n) => n.endsWith('.js'))
+  const vendorDir = join(rootDir, 'packages/host/public/vendor')
+  const vendor = scanDir(vendorDir, (n) => n.endsWith('.js'))
+  const sdk = scanDir(vendorDir, (n) => n.startsWith('sdk-') && n.endsWith('.js'))
 
   const pluginFiles: SizeRow[] = []
+  const cssFiles: SizeRow[] = []
+  const hostCss = join(rootDir, 'packages/host/public/globals.css')
+  if (existsSync(hostCss)) cssFiles.push({ name: 'host/globals.css', bytes: statSync(hostCss).size })
   const pluginsDir = join(rootDir, 'plugins')
   if (existsSync(pluginsDir)) {
     for (const id of readdirSync(pluginsDir)) {
       for (const file of ['client.js', 'client.css']) {
         const path = join(pluginsDir, id, 'dist', file)
-        if (existsSync(path)) pluginFiles.push({ name: `${id}/${file}`, bytes: statSync(path).size })
+        if (!existsSync(path)) continue
+        const row = { name: `${id}/${file}`, bytes: statSync(path).size }
+        pluginFiles.push(row)
+        if (file.endsWith('.css')) cssFiles.push(row)
       }
     }
   }
   pluginFiles.sort((a, b) => b.bytes - a.bytes)
+  cssFiles.sort((a, b) => b.bytes - a.bytes)
 
   const hostShell = scanDir(join(rootDir, 'packages/host/dist'), (n) => n.endsWith('.js'))
   const binaries = scanDir(join(rootDir, 'dist'), (n) => n.startsWith('bakin-'))
 
   return {
     vendor,
+    sdk,
     plugins: { files: pluginFiles, total: pluginFiles.reduce((s, f) => s + f.bytes, 0) },
+    css: { files: cssFiles, total: cssFiles.reduce((s, f) => s + f.bytes, 0) },
     hostShell,
     binaries,
   }
@@ -156,7 +169,9 @@ async function reportServerGraph(): Promise<void> {
 async function main(): Promise<void> {
   const report = collectArtifactSizes(REPO_ROOT)
   printSection('Vendor bundles (packages/host/public/vendor)', report.vendor, 'run: bun run build:vendors')
+  printSection('SDK browser bundles (packages/host/public/vendor/sdk-*)', report.sdk, 'run: bun run build:vendors')
   printSection('Plugin client bundles (plugins/*/dist)', report.plugins, 'run: bun run build:plugins')
+  printSection('Browser CSS (host and plugins)', report.css, 'run: bun run build:css && bun run build:plugins')
   printSection('Host shell (packages/host/dist)', report.hostShell, 'run: bun run build:host-shell')
   printSection('Compiled binaries (dist/)', report.binaries, 'run: bun run build:binary')
   await reportServerGraph()
