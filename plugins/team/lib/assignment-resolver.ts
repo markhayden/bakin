@@ -44,9 +44,11 @@ export type ResolveAssignmentResult =
   | { ok: true; agentId: string; reason: string; model: string }
   | { ok: false; kind: 'transient' | 'structural'; message: string }
 
-export interface RoutingSettings {
-  routingProvider?: string
-  routingModel?: string
+/** The team-routing work-class route (from the models routing matrix). */
+export interface TeamRoutingRoute {
+  /** Canonical `provider/model` id; absent = default router model. */
+  model?: string
+  source?: string
 }
 
 const PickSchema = z.object({
@@ -66,7 +68,8 @@ type Transport = <T>(request: {
 
 export interface ResolverDeps {
   runtime: AgentRuntimeAdapter
-  settings: RoutingSettings
+  /** Resolved 'team-routing' matrix route; absent/empty = defaults. */
+  route?: TeamRoutingRoute
   /** Injectable for tests; defaults are the real collaborators. */
   transport?: Transport
   keySource?: typeof resolveProviderKeySource
@@ -75,10 +78,27 @@ export interface ResolverDeps {
   getStatus?: (agentId: string) => string
 }
 
-function normalizeProvider(value: string | undefined): DirectProviderId {
-  return value === 'openai' || value === 'google' || value === 'anthropic'
-    ? value
-    : DEFAULT_ROUTING_PROVIDER
+const DIRECT_PROVIDERS: readonly DirectProviderId[] = ['anthropic', 'openai', 'google']
+
+/**
+ * Split a matrix `provider/model` id into the direct-provider call pair.
+ * An unsupported provider is an HONEST structural error (never silently
+ * re-routed to a different provider than the operator configured).
+ */
+function parseRoutedModel(id: string | undefined):
+  | { ok: true; provider: DirectProviderId; model: string }
+  | { ok: false; message: string }
+  | null {
+  const trimmed = id?.trim()
+  if (!trimmed) return null
+  const slash = trimmed.indexOf('/')
+  const provider = slash === -1 ? '' : trimmed.slice(0, slash)
+  const model = slash === -1 ? trimmed : trimmed.slice(slash + 1)
+  if (!(DIRECT_PROVIDERS as readonly string[]).includes(provider)) {
+    return { ok: false, message: `Team-routing route model "${trimmed}" uses provider "${provider || 'unknown'}" — team routing supports ${DIRECT_PROVIDERS.join('/')} direct calls. Fix the route in Models → Routing.` }
+  }
+  if (!model) return { ok: false, message: `Team-routing route model "${trimmed}" has no model segment` }
+  return { ok: true, provider: provider as DirectProviderId, model }
 }
 
 function excerpt(text: string | null, budget: number): string {
@@ -138,8 +158,10 @@ export async function resolveTeamAssignment(
   const getTeamMembers = deps.getTeamMembers ?? defaultGetTeamMembers
 
   try {
-    const provider = normalizeProvider(deps.settings.routingProvider)
-    const model = deps.settings.routingModel?.trim() || DEFAULT_ROUTING_MODEL
+    const routed = parseRoutedModel(deps.route?.model)
+    if (routed && !routed.ok) return { ok: false, kind: 'structural', message: routed.message }
+    const provider = routed?.provider ?? DEFAULT_ROUTING_PROVIDER
+    const model = routed?.model ?? DEFAULT_ROUTING_MODEL
 
     if (!readTeams().some((t) => t.id === request.teamId)) {
       return { ok: false, kind: 'structural', message: `Team "${request.teamId}" does not exist` }
