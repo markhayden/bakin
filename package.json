@@ -25,6 +25,8 @@
     "size:report": "bun run scripts/report-sizes.ts",
     "ui:baseline:capture": "bun run scripts/ui/baseline.ts capture",
     "ui:baseline:check": "bun run scripts/ui/baseline.ts check",
+    "ui:census:generate": "bun run scripts/ui/census.ts generate",
+    "ui:census:check": "bun run scripts/ui/census.ts check",
     "prestart": "bun run build:css && bun run build:vendors && bun run build:plugins && bun run build:host-shell && bun run build:assets-manifest",
     "start": "bun run prestart && bun run server.ts serve",
     "server": "bun run server.ts serve",
