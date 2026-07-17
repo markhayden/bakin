@@ -14,6 +14,7 @@ mock.module('../../packages/core/src/content-dir', () => ({ getContentDir: () =>
 
 import {
   classifyDispatchWorkClass,
+  clampThinkingLevel,
   resolveTurnModel,
   resolveWorkClassRoute,
   WORK_CLASSES,
@@ -123,6 +124,30 @@ describe('resolveWorkClassRoute', () => {
       tagOverrides: [],
     }
     expect(resolveWorkClassRoute(config, 'relay')).toEqual({ model: 'm', source: 'class' })
+  })
+})
+
+describe('clampThinkingLevel (clamp-and-warn, never silent drop)', () => {
+  const PI = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh']
+
+  it('passes supported levels through unclamped', () => {
+    expect(clampThinkingLevel('high', PI)).toEqual({ applied: 'high', clamped: false })
+  })
+
+  it("clamps 'max' down to the highest supported level", () => {
+    expect(clampThinkingLevel('max', PI)).toEqual({ applied: 'xhigh', clamped: true })
+  })
+
+  it("clamps 'adaptive' (no ordinal) to inherit", () => {
+    expect(clampThinkingLevel('adaptive', PI)).toEqual({ applied: undefined, clamped: true })
+  })
+
+  it('clamps to inherit when nothing lower is supported', () => {
+    expect(clampThinkingLevel('low', ['high', 'xhigh'])).toEqual({ applied: undefined, clamped: true })
+  })
+
+  it('walks down past unsupported intermediate rungs', () => {
+    expect(clampThinkingLevel('max', ['off', 'medium'])).toEqual({ applied: 'medium', clamped: true })
   })
 })
 

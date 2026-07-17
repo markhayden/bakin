@@ -10,16 +10,40 @@
  * exactly as before routing existed).
  */
 import { createLogger } from './logger'
-import { resolveWorkClassRoute, type ResolvedTurn, type RoutingConfig, type WorkClass } from './model-routing'
+import { clampThinkingLevel, resolveWorkClassRoute, type ResolvedTurn, type RoutingConfig, type WorkClass } from './model-routing'
 
 const log = createLogger('system-route')
+
+/**
+ * Clamp a resolved route's thinking level to what the active runtime declares
+ * it honors (clamp-and-warn — never silent, never a failed turn). Shared by
+ * dispatch and system-send resolution. Fail-open: if the capability read
+ * fails, the route passes through unchanged (the adapter's own guard is the
+ * backstop).
+ */
+export async function applyThinkingCapability(route: ResolvedTurn, workClass: WorkClass): Promise<ResolvedTurn> {
+  if (!route.thinking) return route
+  try {
+    const { getAppServices } = await import('./app-services')
+    const supported = getAppServices().runtime.models.routingSupport().supportedThinkingLevels
+    const { applied, clamped } = clampThinkingLevel(route.thinking, supported)
+    if (!clamped) return route
+    log.warn('Thinking level clamped to runtime support', { workClass, requested: route.thinking, applied: applied ?? 'inherit' })
+    const next: ResolvedTurn = { ...route, thinkingClamp: { requested: route.thinking, applied } }
+    if (applied) next.thinking = applied
+    else delete next.thinking
+    return next
+  } catch {
+    return route
+  }
+}
 
 export async function resolveSystemRoute(workClass: WorkClass): Promise<ResolvedTurn> {
   try {
     const { getHookRegistry } = await import('@bakin/core/hooks/hook-registry-singleton')
     const config = await getHookRegistry().invoke<RoutingConfig>('models.getRoutingConfig', {})
     if (!config) return { source: 'inherit' }
-    return resolveWorkClassRoute(config, workClass)
+    return await applyThinkingCapability(resolveWorkClassRoute(config, workClass), workClass)
   } catch (err) {
     log.error('System route resolve failed; using agent default', err, { workClass })
     return { source: 'inherit' }

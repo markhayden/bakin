@@ -383,11 +383,13 @@ export async function resolveDispatchRouting(task: DispatchTask, isRecovery: boo
   try {
     const config = await hooks().invoke<RoutingConfig>('models.getRoutingConfig', {})
     if (!config) return { source: 'inherit' }
-    return resolveTurnModel({
+    const resolved = resolveTurnModel({
       task: { tags: task.tags, scheduleJobId: task.scheduleJobId, workflowId: task.workflowId, parentId: task.parentId },
       isRecovery,
       config,
     })
+    const { applyThinkingCapability } = await import('./system-route')
+    return await applyThinkingCapability(resolved, classifyDispatchWorkClass(task, isRecovery))
   } catch (err) {
     log.error('Routing resolve failed; using agent default', err, { id: task.id })
     return { source: 'inherit' }
@@ -549,9 +551,10 @@ export function fireDispatchTurn(opts: {
         abort.abort('task-deleted')
         throw new RuntimeError('Task deleted before dispatch turn fired', { kind: 'aborted' })
       }
-      if (routing.model || routing.thinking) {
+      if (routing.model || routing.thinking || routing.thinkingClamp) {
         appendAudit(opts.contentDir, 'task.routed', opts.targetAgent, {
           source: routing.source,
+          ...(routing.thinkingClamp ? { requestedThinking: routing.thinkingClamp.requested, clamped: true } : {}),
           id: opts.task.id,
           ...(routing.model ? { model: routing.model } : {}),
           ...(routing.thinking ? { thinking: routing.thinking } : {}),

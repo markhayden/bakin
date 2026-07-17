@@ -602,6 +602,13 @@ export interface RuntimeRoutingSupport {
   aliases: boolean
   /** Per-agent subagentModel via agents.update. */
   perAgentSubagentModel: boolean
+  /**
+   * Per-turn thinking levels this runtime HONORS on messaging.send. Bakin's
+   * routing layer clamps requested levels to this set (with receipt + audit
+   * evidence) before the send — an adapter must honor every level it
+   * declares and declare every level it honors (conformance-pinned).
+   */
+  supportedThinkingLevels: readonly string[]
 }
 
 export interface RuntimeAvailableModel {

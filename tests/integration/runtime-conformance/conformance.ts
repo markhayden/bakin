@@ -293,6 +293,32 @@ export const runtimeConformanceChecks = {
   },
 
   /**
+   * Thinking-level honesty: every level an adapter DECLARES in
+   * routingSupport().supportedThinkingLevels must be honored — a turn sent
+   * at that level settles cleanly (Bakin's routing layer clamps to this set
+   * before the send, so a declared-but-broken level would fail real turns).
+   */
+  async thinkingLevelHonesty(target: RuntimeConformanceTarget): Promise<void> {
+    const support = target.runtime.models.routingSupport()
+    const declared = support.supportedThinkingLevels
+    if (!Array.isArray(declared)) fail('routingSupport() declares no supportedThinkingLevels array')
+    if (declared.length === 0) fail('routingSupport() declares an empty supportedThinkingLevels — a runtime that honors none must still accept turns without the param; declare the honored set')
+    for (const level of declared) {
+      await target.prepareOkTurn?.()
+      try {
+        await target.runtime.messaging.send({
+          agentId: target.agentId,
+          content: `conformance: thinking level ${level}`,
+          threadId: target.newThreadId(),
+          thinking: level,
+        })
+      } catch (err) {
+        fail(`declared thinking level '${level}' failed a turn (${String(err)}) — declare only levels the runtime honors`)
+      }
+    }
+  },
+
+  /**
    * Usage parity (work-class attribution): a runtime whose send() results
    * carry token usage must attach the same accounting to the stream's
    * terminal `done` chunk — otherwise streamed turns (chat) are unmeterable
@@ -625,6 +651,10 @@ export function runRuntimeConformanceSuite(
 
     it('stream done carries usage where send does (usage parity)', async () => {
       await runtimeConformanceChecks.streamDoneCarriesUsageWhereSendDoes(getTarget())
+    })
+
+    it('declared thinking levels are honored (thinking honesty)', async () => {
+      await runtimeConformanceChecks.thinkingLevelHonesty(getTarget())
     })
 
     it('tool turns stream classified, structured chunks', async () => {

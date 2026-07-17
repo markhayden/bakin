@@ -73,13 +73,15 @@ describe('config surface', () => {
 })
 
 describe('routing policy (P2.3)', () => {
-  test('declares defaultModel-only support', () => {
+  test('declares defaultModel-only support + the honored thinking ladder', () => {
     expect(adapter.models.routingSupport()).toEqual({
       defaultModel: true,
       fallbackModels: false,
       defaultSubagentModel: false,
       aliases: false,
       perAgentSubagentModel: false,
+      // adaptive/max have no Pi semantics — Bakin clamps before the send.
+      supportedThinkingLevels: ['off', 'minimal', 'low', 'medium', 'high', 'xhigh'],
     })
   })
 

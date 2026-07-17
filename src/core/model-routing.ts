@@ -104,6 +104,8 @@ export interface ResolvedTurn {
   thinking?: ThinkingLevel
   /** Which layer won: a tag override, the class route, or nothing (inherit). */
   source: RouteSource
+  /** Present when the requested thinking level was clamped to the runtime's declared support. */
+  thinkingClamp?: { requested: ThinkingLevel; applied: ThinkingLevel | undefined }
 }
 
 /**
@@ -152,6 +154,36 @@ export function resolveWorkClassRoute(config: RoutingConfig, workClass: WorkClas
     ...(thinking ? { thinking } : {}),
     source,
   }
+}
+
+/**
+ * Ordinal thinking ladder for clamping — 'max' sits above 'xhigh';
+ * 'adaptive' has no ordinal (clamps to inherit when unsupported).
+ */
+const THINKING_LADDER: readonly ThinkingLevel[] = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']
+
+export interface ThinkingClampResult {
+  /** Level to actually send; undefined = inherit (no override). */
+  applied: ThinkingLevel | undefined
+  /** True when applied differs from requested — surface it, never silent. */
+  clamped: boolean
+}
+
+/**
+ * Clamp a requested thinking level to what the active runtime declares it
+ * honors (clamp-and-warn — the fix for Pi silently dropping 'max'/'adaptive').
+ * Unsupported ordinal levels clamp DOWN to the nearest supported level;
+ * 'adaptive' (no ordinal) clamps to inherit.
+ */
+export function clampThinkingLevel(requested: ThinkingLevel, supported: readonly string[]): ThinkingClampResult {
+  if (supported.includes(requested)) return { applied: requested, clamped: false }
+  const idx = THINKING_LADDER.indexOf(requested)
+  if (idx === -1) return { applied: undefined, clamped: true } // adaptive
+  for (let i = idx - 1; i >= 0; i--) {
+    const candidate = THINKING_LADDER[i]
+    if (supported.includes(candidate)) return { applied: candidate, clamped: true }
+  }
+  return { applied: undefined, clamped: true }
 }
 
 /**
