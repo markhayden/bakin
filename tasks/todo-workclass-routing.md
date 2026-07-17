@@ -33,7 +33,7 @@ Rule: every commit builds green + full suite passes (`bun run test`). TDD RED→
 - [x] ✅ Checkpoint 5: misrouting detectable; one-click good state (suite 7801 pass)
 
 ## Phase 6 — Docs + close-out
-- [ ] T6.1 `docs(knowledge): work-class routing sweep` — 7 knowledge docs + CLAUDE.md + README check + SPEC.md as-built addendum + archive spec to .claude/specs/workclass-routing.md
+- [x] T6.1 `docs(knowledge): work-class routing sweep` — 8 knowledge docs (+team-aware-assignment) + CLAUDE.md key pattern + README checked (no claims to update) + as-built addendum + spec archived (058ce0eb1)
 
 ## Standing rules
 - Never commit `generated-version.ts` or `packages/host/src/api/_embedded-assets-static.ts` (pre-existing modified, not ours)
