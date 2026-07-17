@@ -869,7 +869,7 @@ describe('dispatch', () => {
     })
 
     it('records a run_costs row from the turn usage + priceTurn hook on settle', async () => {
-      const { spendTotal } = require('../../src/core/execution-ledger') as typeof import('../../src/core/execution-ledger')
+      const { listRunCostsSince } = require('../../src/core/execution-ledger') as typeof import('../../src/core/execution-ledger')
       setDispatchColumns({ todo: [{ id: 't-cost', title: 'Costed task', agent: 'pixel' }] })
       vi.mocked(getHookRegistry).mockReturnValue({
         invoke: mock(async (hook: string) => {
@@ -886,11 +886,13 @@ describe('dispatch', () => {
       await awaitDispatchIdle()
 
       // run_id == threadId; scoped by t0 so prior tests' rows don't bleed in.
-      expect(spendTotal({ agent: 'pixel', sinceMs: t0 })).toBe(123_456)
+      const costed = listRunCostsSince(t0).filter((r) => r.agent === 'pixel')
+      expect(costed).toHaveLength(1)
+      expect(costed[0]).toMatchObject({ costUsdMicros: 123_456 })
     })
 
     it('records an unmetered run_costs row (zero dollars) when the turn reports no usage', async () => {
-      const { spendByAgent } = require('../../src/core/execution-ledger') as typeof import('../../src/core/execution-ledger')
+      const { listRunCostsSince } = require('../../src/core/execution-ledger') as typeof import('../../src/core/execution-ledger')
       setDispatchColumns({ todo: [{ id: 't-unmetered', title: 'Unmetered task', agent: 'trainer' }] })
       vi.mocked(getHookRegistry).mockReturnValue({
         invoke: mock(async () => undefined), // no priceTurn handler → null model/cost
@@ -903,8 +905,9 @@ describe('dispatch', () => {
       await dispatchTasks(tempDir, 3737)
       await awaitDispatchIdle()
 
-      const trainer = spendByAgent(t0).find((r) => r.agent === 'trainer')
-      expect(trainer).toEqual({ agent: 'trainer', costUsdMicros: 0, runs: 1 })
+      const trainer = listRunCostsSince(t0).filter((r) => r.agent === 'trainer')
+      expect(trainer).toHaveLength(1)
+      expect(trainer[0]).toMatchObject({ costUsdMicros: null }) // honest null, never $0
     })
 
     it('applies the resolved routing model/thinking to the turn (work-class route)', async () => {
@@ -934,11 +937,9 @@ describe('dispatch', () => {
     })
 
     it('defers dispatch when a budget cap is exceeded (task stays in todo, no send)', async () => {
-      const { spendTotal } = require('../../src/core/execution-ledger') as typeof import('../../src/core/execution-ledger')
       // Seed >$1 of spend "today" for the agent so a $1 daily cap is exceeded.
       const { recordRunCost } = require('../../src/core/execution-ledger') as typeof import('../../src/core/execution-ledger')
       recordRunCost({ workClass: null, runId: 'seed:budget:d1', taskId: 'seed-b', agent: 'pixel', model: 'm', inputTokens: 1, outputTokens: 1, totalTokens: 2, costUsdMicros: 2_000_000, occurredAt: Date.now() })
-      void spendTotal
       setDispatchColumns({ todo: [{ id: 't-budget', title: 'Over budget', agent: 'pixel' }] })
       vi.mocked(getHookRegistry).mockReturnValue({
         invoke: mock(async (hook: string) => {

@@ -87,10 +87,10 @@ class FakeLedgerUnavailable extends Error {}
 let incidentsList: unknown[] = []
 const incidentResolves: Array<Record<string, unknown>> = []
 mock.module('../../../src/core/execution-ledger', () => ({
-  spendTotal: mock(() => 150_000),
-  spendByAgent: mock(() => [{ agent: 'pixel', costUsdMicros: 100_000, runs: 4 }, { agent: 'patch', costUsdMicros: 0, runs: 2 }]),
-  spendByModel: mock(() => [{ model: 'anthropic/claude-sonnet-4-6', costUsdMicros: 100_000, runs: 4 }, { model: '', costUsdMicros: 0, runs: 2 }]),
-  listRunCostsSince: mock(() => [{ runId: 'r1', agent: 'pixel', model: 'anthropic/claude-sonnet-4-6', provider: 'anthropic', lane: 'metered', totalTokens: 100, costUsdMicros: 150_000, occurredAt: Date.now() }]),
+  listRunCostsSince: mock(() => [
+    { runId: 'r1', agent: 'pixel', model: 'anthropic/claude-sonnet-4-6', provider: 'anthropic', lane: 'metered', usageKind: 'tokens', totalTokens: 100, costUsdMicros: 150_000, workClass: 'scheduled', routeSource: 'class', occurredAt: Date.now() },
+    { runId: 'r2', agent: 'patch', model: '', provider: null, lane: null, usageKind: 'tokens', totalTokens: 40, costUsdMicros: null, workClass: null, routeSource: null, occurredAt: Date.now() },
+  ]),
   listBudgetIncidents: mock(() => incidentsList),
   resolveBudgetIncident: mock((input: unknown) => { incidentResolves.push(input as Record<string, unknown>); return true }),
   resolveExpiredBudgetIncidents: mock(() => 0),
@@ -940,20 +940,25 @@ describe('GET /spend', () => {
     expect(body.pace).toHaveProperty('monthly')
   })
 
-  it('returns windowed spend rollups (total, byAgent, byModel)', async () => {
+  it('returns windowed spend rollups (total, byAgent, byModel, byWorkClass) — NULL-honest', async () => {
     const route = findRoute(activated.routes, 'GET', '/spend')!
     const { status, body } = await callRoute(route, activated.ctx, { searchParams: { window: '24h' } })
     expect(status).toBe(200)
     expect(body.window).toBe('24h')
     expect(body.totalUsdMicros).toBe(150_000)
     expect(body.byAgent).toEqual([
-      { agent: 'pixel', costUsdMicros: 100_000, runs: 4 },
-      { agent: 'patch', costUsdMicros: 0, runs: 2 },
+      { agent: 'pixel', costUsdMicros: 150_000, runs: 1 },
+      // Unpriced bucket reports null — never the legacy fabricated $0.
+      { agent: 'patch', costUsdMicros: null, runs: 1 },
     ])
     // Unmodeled '' model id surfaces as a recognizable "unknown" label.
     expect(body.byModel).toEqual(expect.arrayContaining([
-      { model: 'anthropic/claude-sonnet-4-6', costUsdMicros: 100_000, runs: 4 },
-      { model: 'unknown', costUsdMicros: 0, runs: 2 },
+      { model: 'anthropic/claude-sonnet-4-6', costUsdMicros: 150_000, runs: 1 },
+      { model: 'unknown', costUsdMicros: null, runs: 1 },
+    ]))
+    expect(body.byWorkClass).toEqual(expect.arrayContaining([
+      expect.objectContaining({ workClass: 'scheduled', runs: 1, costUsdMicros: 150_000, avgCostUsdMicros: 150_000 }),
+      expect.objectContaining({ workClass: 'unclassified', runs: 1, costUsdMicros: null }),
     ]))
   })
 

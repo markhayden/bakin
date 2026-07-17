@@ -19,7 +19,8 @@ import {
   writePersistedCache,
   clearPersistedCache,
 } from './models-cache'
-import { spendTotal, spendByAgent, spendByModel, listBudgetIncidents, resolveBudgetIncident, LedgerUnavailableError } from '../../../src/core/execution-ledger'
+import { listRunCostsSince, listBudgetIncidents, resolveBudgetIncident, LedgerUnavailableError } from '../../../src/core/execution-ledger'
+import { rollupSpend } from './spend-rollup'
 import { assembleBudgetSpend, paceProjection, dayEndMs, monthEndMs } from '../../../src/core/budget-spend'
 import { budgetStatusRoutes } from './budget-routes'
 import { isLegacyRouting, migrateLegacyRouting } from './routing-migration'
@@ -383,7 +384,9 @@ export const modelsRoutes = [
       try {
         const window = parseSpendWindow(new URL(req.url).searchParams.get('window'))
         const sinceMs = window === 'all' ? 0 : Date.now() - SPEND_WINDOW_MS[window]
-        const byModel = spendByModel(sinceMs).map((r) => ({ ...r, model: r.model || 'unknown' }))
+        // NULL-honest rollups over raw rows (replaced the ledger GROUP-BY
+        // verbs whose COALESCE fabricated $0 for unpriced buckets).
+        const rollups = rollupSpend(listRunCostsSince(sinceMs))
         // Cap-window facets from the shared engine (lane/provider split +
         // pace) ride alongside the rolling browse rollups — utilization
         // always computes on calendar cap windows, whatever the selector.
@@ -404,16 +407,17 @@ export const modelsRoutes = [
         return Response.json({
           window,
           estimated: true,
-          totalUsdMicros: spendTotal({ sinceMs }),
-          byAgent: spendByAgent(sinceMs),
-          byModel,
+          totalUsdMicros: rollups.totalUsdMicros,
+          byAgent: rollups.byAgent,
+          byModel: rollups.byModel,
+          byWorkClass: rollups.byWorkClass,
           facets,
           pace,
         })
       } catch (err) {
         // A reporting read must not crash the page when the ledger is down.
         if (err instanceof LedgerUnavailableError) {
-          return Response.json({ error: 'Spend ledger unavailable', totalUsdMicros: 0, byAgent: [], byModel: [] }, { status: 500 })
+          return Response.json({ error: 'Spend ledger unavailable', totalUsdMicros: 0, byAgent: [], byModel: [], byWorkClass: [] }, { status: 500 })
         }
         return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
       }

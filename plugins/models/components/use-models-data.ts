@@ -51,8 +51,16 @@ export interface BudgetStatusWire {
   openIncidents: BudgetIncidentWire[]
 }
 
-export interface SpendRowAgent { agent: string; costUsdMicros: number; runs: number }
-export interface SpendRowModel { model: string; costUsdMicros: number; runs: number }
+export interface SpendRowAgent { agent: string; costUsdMicros: number | null; runs: number }
+export interface SpendRowModel { model: string; costUsdMicros: number | null; runs: number }
+export interface SpendRowWorkClass {
+  workClass: string
+  runs: number
+  totalTokens: number | null
+  costUsdMicros: number | null
+  subscriptionTokens: number
+  avgCostUsdMicros: number | null
+}
 export interface LaneSumsWire {
   meteredUsdMicros: number
   meteredTokens: number
@@ -80,6 +88,7 @@ export interface SpendResponse {
   totalUsdMicros: number
   byAgent: SpendRowAgent[]
   byModel: SpendRowModel[]
+  byWorkClass?: SpendRowWorkClass[]
   facets?: {
     computedAt: number
     observedUsageEvidence?:

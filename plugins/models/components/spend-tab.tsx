@@ -524,6 +524,35 @@ export function SpendTab({ m }: { m: ModelsData }) {
               </TableBody>
             </Table>
           </div>
+
+          <div className="overflow-hidden rounded-xl border border-border">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-card">
+                  <TableHead>Work class</TableHead>
+                  <TableHead className="text-right">Runs</TableHead>
+                  <TableHead className="text-right">Tokens</TableHead>
+                  <TableHead className="text-right">Est. cost</TableHead>
+                  <TableHead className="text-right">Subscription tokens</TableHead>
+                  <TableHead className="text-right">Avg $/run</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {!spend.byWorkClass || spend.byWorkClass.length === 0 ? (
+                  <TableRow><TableCell colSpan={6} className="text-muted-foreground">No spend in this window</TableCell></TableRow>
+                ) : spend.byWorkClass.map((r) => (
+                  <TableRow key={r.workClass}>
+                    <TableCell className="font-medium">{r.workClass === 'unclassified' ? <span className="text-muted-foreground">unclassified (pre-migration)</span> : r.workClass}</TableCell>
+                    <TableCell className="text-right tabular-nums">{r.runs}</TableCell>
+                    <TableCell className="text-right tabular-nums">{r.totalTokens !== null ? fmtTokens(r.totalTokens) : <span className="text-muted-foreground">—</span>}</TableCell>
+                    <TableCell className="text-right tabular-nums">{r.costUsdMicros !== null ? formatUsd(r.costUsdMicros) : <span className="text-muted-foreground">$ unavailable</span>}</TableCell>
+                    <TableCell className="text-right tabular-nums">{r.subscriptionTokens ? fmtTokens(r.subscriptionTokens) : <span className="text-muted-foreground">—</span>}</TableCell>
+                    <TableCell className="text-right tabular-nums">{r.avgCostUsdMicros !== null ? formatUsd(r.avgCostUsdMicros) : <span className="text-muted-foreground">—</span>}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </>
       )}
     </div>

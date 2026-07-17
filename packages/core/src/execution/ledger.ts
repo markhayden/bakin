@@ -977,18 +977,6 @@ function usageKindFor(input: RunCostInput): RunUsageKind {
   throw new TypeError(`invalid run usage kind: ${String(input.usageKind)}`)
 }
 
-export interface SpendByAgentRow {
-  agent: string
-  costUsdMicros: number
-  runs: number
-}
-
-export interface SpendByModelRow {
-  model: string
-  costUsdMicros: number
-  runs: number
-}
-
 /**
  * Record the cost of one settled run. first-write-wins on run_id (a transport
  * retry of the same run can't double-count). Token/cost columns are nullable:
@@ -1033,47 +1021,6 @@ export function recordRunCost(input: RunCostInput): void {
   })
 }
 
-/** Total estimated spend (micro-dollars) in a window, optionally scoped to one agent. */
-export function spendTotal(opts: { agent?: string; sinceMs: number; untilMs?: number }): number {
-  return guard('spendTotal', () => {
-    const clauses = ['occurred_at >= ?']
-    const params: (string | number)[] = [opts.sinceMs]
-    if (opts.untilMs !== undefined) { clauses.push('occurred_at <= ?'); params.push(opts.untilMs) }
-    if (opts.agent !== undefined) { clauses.push('agent = ?'); params.push(opts.agent) }
-    const row = ledger()
-      .prepare<{ total: number }, (string | number)[]>(
-        `SELECT COALESCE(SUM(cost_usd_micros), 0) AS total FROM run_costs WHERE ${clauses.join(' AND ')}`,
-      )
-      .get(...params)
-    return row?.total ?? 0
-  })
-}
-
-/** Per-agent spend rollup since a timestamp (cost in micro-dollars, run count). */
-export function spendByAgent(sinceMs: number): SpendByAgentRow[] {
-  return guard('spendByAgent', () => {
-    return ledger()
-      .prepare<{ agent: string; micros: number; runs: number }, [number]>(
-        `SELECT agent, COALESCE(SUM(cost_usd_micros), 0) AS micros, COUNT(*) AS runs
-           FROM run_costs WHERE occurred_at >= ? GROUP BY agent`,
-      )
-      .all(sinceMs)
-      .map((r) => ({ agent: r.agent, costUsdMicros: r.micros, runs: r.runs }))
-  })
-}
-
-/** Per-model spend rollup since a timestamp. Rows with no model are grouped under ''. */
-export function spendByModel(sinceMs: number): SpendByModelRow[] {
-  return guard('spendByModel', () => {
-    return ledger()
-      .prepare<{ model: string | null; micros: number; runs: number }, [number]>(
-        `SELECT model, COALESCE(SUM(cost_usd_micros), 0) AS micros, COUNT(*) AS runs
-           FROM run_costs WHERE occurred_at >= ? GROUP BY model`,
-      )
-      .all(sinceMs)
-      .map((r) => ({ model: r.model ?? '', costUsdMicros: r.micros, runs: r.runs }))
-  })
-}
 
 export interface RunCostSpendRow {
   runId: string
