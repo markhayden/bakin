@@ -71,6 +71,19 @@ export async function maybeAutoTitle(ctx: TitleContext, chatId: string): Promise
       ].join('\n'),
     })
 
+    // Attribute the title call's spend (work class 'auto-title'). The run id
+    // rides the durable `chat:<id>:title` prefix — the same shape the v8
+    // ledger backfill recognizes. Never throws (meterAgentTurn contract).
+    const { meterAgentTurn } = await import('../../../src/core/agent-cost')
+    await meterAgentTurn({
+      runId: `chat:${chatId}:title`,
+      agent: chat.agentId,
+      activityClass: 'system',
+      workClass: 'auto-title',
+      result,
+      name: 'auto-title',
+    })
+
     const title = cleanTitle(result.content)
     if (!title) {
       log.warn(`auto-title got an unusable reply for ${chatId} — keeping the fallback`)

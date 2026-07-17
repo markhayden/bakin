@@ -45,6 +45,14 @@ mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({ info: () => {}, warn: () => {}, error: () => {}, debug: () => {} }),
 }))
 
+// Capture metering (T2.2): chat turns are attributed run_costs rows now —
+// mocked so the test never touches the real ledger.
+const meteredTurns: Array<Record<string, unknown>> = []
+mock.module('../../../src/core/agent-cost', () => ({
+  meterAgentTurn: async (opts: Record<string, unknown>) => { meteredTurns.push(opts) },
+  meterImageTurn: async () => {},
+}))
+
 import chatPlugin from '../../../plugins/chat'
 import { createChat, readTranscript } from '../../../plugins/chat/lib/store'
 import { abortChatTurn, startChatTurn, waitForTurn } from '../../../plugins/chat/lib/stream-bridge'
@@ -150,6 +158,40 @@ describe('chat stream bridge', () => {
     const turnIds = rows.slice(1).map((r) => (r as { turnId?: string }).turnId)
     expect(new Set(turnIds).size).toBe(1)
     expect(turnIds[0]).toBeTruthy()
+  })
+
+  test("chat turns are metered: done usage → meterAgentTurn with workClass 'chat'", async () => {
+    const chat = await createChat({ agentId: 'main' })
+    meteredTurns.length = 0
+    scriptStream(async function* () {
+      yield { type: 'text', content: 'reply' } as ChatChunk
+      yield { type: 'done', usage: { input: 120, output: 30, total: 150, model: 'anthropic/claude-haiku-4-5' } } as ChatChunk
+    })
+
+    expect(await startChatTurn(activated.ctx, chat.id, 'meter me')).toBe('accepted')
+    await waitForTurn(chat.id)
+
+    // Scope to the chat-class entry — the chained auto-title may also meter.
+    const chatMeters = meteredTurns.filter((t) => t.workClass === 'chat')
+    expect(chatMeters.length).toBe(1)
+    const m = chatMeters[0]
+    expect(m).toMatchObject({ agent: 'main', activityClass: 'user', workClass: 'chat' })
+    expect(String(m.runId)).toStartWith(`chat:${chat.id}:turn:`)
+    expect((m.result as { usage?: { total?: number } }).usage?.total).toBe(150)
+  })
+
+  test('a done chunk with no usage still meters the run (tokens unknown, never $0)', async () => {
+    const chat = await createChat({ agentId: 'main' })
+    meteredTurns.length = 0
+    scriptStream(async function* () {
+      yield { type: 'text', content: 'no usage here' } as ChatChunk
+      yield { type: 'done' } as ChatChunk
+    })
+    expect(await startChatTurn(activated.ctx, chat.id, 'meter me anyway')).toBe('accepted')
+    await waitForTurn(chat.id)
+    const chatMeters = meteredTurns.filter((t) => t.workClass === 'chat')
+    expect(chatMeters.length).toBe(1)
+    expect((chatMeters[0].result as { usage?: unknown }).usage).toBeUndefined()
   })
 
   test('abort: stream cancels, partial text kept, aborted row persisted, chat.done carries aborted', async () => {

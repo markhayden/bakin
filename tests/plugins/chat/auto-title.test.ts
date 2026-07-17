@@ -36,6 +36,14 @@ mock.module('../../../src/core/dispatch-turns', () => ({
   budgetGate: async () => ({ action: gateAction, rule: { scope: 'global', lane: 'metered' }, window: 'daily', unit: 'usd_micros' }),
 }))
 
+// Capture metering: the title call itself is attributed spend (T2.2) —
+// mocked so tests never touch the real ledger.
+const meteredTurns: Array<Record<string, unknown>> = []
+mock.module('../../../src/core/agent-cost', () => ({
+  meterAgentTurn: async (opts: Record<string, unknown>) => { meteredTurns.push(opts) },
+  meterImageTurn: async () => {},
+}))
+
 import chatPlugin from '../../../plugins/chat'
 import { createChat, getChatSummary, readTranscript } from '../../../plugins/chat/lib/store'
 import { startChatTurn, waitForTurn } from '../../../plugins/chat/lib/stream-bridge'
@@ -73,6 +81,11 @@ describe('chat auto-titling', () => {
 
     const after = getChatSummary(chat.id)
     expect(after?.title).toBe('Reddit Post Hunt')
+
+    // The title send is attributed spend: work class 'auto-title', run id on
+    // the durable chat:<id>:title prefix (the v8 backfill's safe prefix).
+    const titleMeter = meteredTurns.find((m) => m.workClass === 'auto-title')
+    expect(titleMeter).toMatchObject({ agent: 'main', activityClass: 'system', runId: `chat:${chat.id}:title` })
     expect(after?.titleSource).toBe('llm')
     // the titling call is ephemeral and never rides the chat thread
     expect(sendCalls).toHaveLength(1)
