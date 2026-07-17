@@ -135,6 +135,7 @@ export function useModelsData() {
   const [spend, setSpend] = useState<SpendResponse | null>(null)
   const [spendLoading, setSpendLoading] = useState(false)
   const [routing, setRouting] = useState<RoutingConfigShape>({ routes: [], tagOverrides: [] })
+  const [routingSupport, setRoutingSupport] = useState<ModelsConfigResponse['support'] | null>(null)
   const [pendingRouting, setPendingRouting] = useState<RoutingConfigShape | null>(null)
   const [budgetRules, setBudgetRules] = useState<BudgetRuleWire[]>([])
   const [pendingRules, setPendingRules] = useState<BudgetRuleWire[] | null>(null)
@@ -155,6 +156,7 @@ export function useModelsData() {
       setDefaultModel(data.defaultModel)
       setDefaultSubagentModel(data.defaultSubagentModel)
       setFallbackModels(data.fallbackModels ?? [])
+      setRoutingSupport(data.support ?? null)
       setPendingDefaultModel(null)
       setPendingDefaultSubagentModel(undefined)
       setPendingFallbackModels(null)
@@ -634,7 +636,7 @@ export function useModelsData() {
     hasPending, defaultsDirty,
     effectiveDefaultModel, effectiveDefaultSubagentModel, effectiveFallbackModels, fallbackCandidates,
     // routing
-    routing, pendingRouting, setPendingRouting, displayRouting,
+    routing, routingSupport, pendingRouting, setPendingRouting, displayRouting,
     setRouteField, addTagOverride, updateTagOverride, removeTagOverride, saveRouting,
     // spend + budget
     spend, spendLoading,

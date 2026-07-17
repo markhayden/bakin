@@ -23,6 +23,15 @@ export interface ModelsConfigResponse {
   defaultModel: string
   defaultSubagentModel: string | null
   fallbackModels: string[]
+  /** Which routing knobs the ACTIVE runtime honors — UIs hide the rest. */
+  support?: {
+    defaultModel: boolean
+    fallbackModels: boolean
+    defaultSubagentModel: boolean
+    aliases: boolean
+    perAgentSubagentModel: boolean
+    supportedThinkingLevels: string[]
+  }
 }
 
 
