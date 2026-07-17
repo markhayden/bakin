@@ -932,7 +932,7 @@ describe('dispatch', () => {
       const { spendTotal } = require('../../src/core/execution-ledger') as typeof import('../../src/core/execution-ledger')
       // Seed >$1 of spend "today" for the agent so a $1 daily cap is exceeded.
       const { recordRunCost } = require('../../src/core/execution-ledger') as typeof import('../../src/core/execution-ledger')
-      recordRunCost({ runId: 'seed:budget:d1', taskId: 'seed-b', agent: 'pixel', model: 'm', inputTokens: 1, outputTokens: 1, totalTokens: 2, costUsdMicros: 2_000_000, occurredAt: Date.now() })
+      recordRunCost({ workClass: null, runId: 'seed:budget:d1', taskId: 'seed-b', agent: 'pixel', model: 'm', inputTokens: 1, outputTokens: 1, totalTokens: 2, costUsdMicros: 2_000_000, occurredAt: Date.now() })
       void spendTotal
       setDispatchColumns({ todo: [{ id: 't-budget', title: 'Over budget', agent: 'pixel' }] })
       vi.mocked(getHookRegistry).mockReturnValue({

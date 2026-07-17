@@ -15,6 +15,7 @@ import { createLogger } from './logger'
 import type { MessageResult } from '@bakin/core/adapters/runtime'
 import { normalizeRunCostUsdMicros, normalizeRunTokenEvidence } from '@bakin/core/execution/token-evidence'
 import type { ActivityClass } from '@makinbakin/sdk/types'
+import type { WorkClass } from './model-routing'
 
 const log = createLogger('agent-cost')
 
@@ -46,6 +47,10 @@ async function recordSpend(e: {
   lane?: 'metered' | 'subscription' | null
   usageKind: 'tokens' | 'media'
   costUsdMicros: number | null
+  /** Work performed (routing + spend dimension); null only for classless media. */
+  workClass: WorkClass | null
+  /** How the model was chosen ('tag:<name>' | 'class' | 'inherit'); null when unrouted. */
+  routeSource?: string | null
   /** Usage-recorder entry name (e.g. 'turn', 'image'). */
   name: string
   tokens?: { input?: number; output?: number; total?: number; cacheRead?: number; cacheWrite?: number }
@@ -73,6 +78,8 @@ async function recordSpend(e: {
       cacheReadTokens: tokens.cacheRead,
       cacheWriteTokens: tokens.cacheWrite,
       costUsdMicros,
+      workClass: e.workClass,
+      routeSource: e.routeSource ?? null,
       occurredAt: Date.now(),
     })
     recordUsage({
@@ -87,7 +94,12 @@ async function recordSpend(e: {
       ...(tokens.cacheRead !== null ? { tokensCacheRead: tokens.cacheRead } : {}),
       ...(tokens.cacheWrite !== null ? { tokensCacheWrite: tokens.cacheWrite } : {}),
       ...(costUsdMicros !== null ? { costUsdMicros } : {}),
-      meta: { ...(e.taskId ? { taskId: e.taskId } : {}), ...(e.model ? { model: e.model } : {}), ...(e.meta ?? {}) },
+      meta: {
+        ...(e.taskId ? { taskId: e.taskId } : {}),
+        ...(e.model ? { model: e.model } : {}),
+        ...(e.workClass ? { workClass: e.workClass } : {}),
+        ...(e.meta ?? {}),
+      },
     })
   } catch (err) {
     log.error('Failed to record spend event', err, { agent: e.agent, runId: e.runId })
@@ -107,6 +119,10 @@ export async function meterAgentTurn(opts: {
   /** Model dispatch routed this turn to, if any — used only when the runtime
    *  didn't report the model it actually ran. */
   resolvedModel?: string
+  /** Work performed — every caller names its class (the routing + spend dimension). */
+  workClass: WorkClass
+  /** How the model was chosen ('tag:<name>' | 'class' | 'inherit'); omit when unrouted. */
+  routeSource?: string
   /** Usage-recorder entry name (default 'turn'). */
   name?: string
 }): Promise<void> {
@@ -140,6 +156,8 @@ export async function meterAgentTurn(opts: {
       lane: priced?.lane ?? null,
       usageKind: 'tokens',
       costUsdMicros: priced?.costUsdMicros ?? null,
+      workClass: opts.workClass,
+      routeSource: opts.routeSource ?? null,
       name: opts.name ?? 'turn',
       tokens: { input: usage?.input, output: usage?.output, total: usage?.total, cacheRead: usage?.cacheRead, cacheWrite: usage?.cacheWrite },
       meta: {
@@ -192,6 +210,8 @@ export async function meterImageTurn(opts: {
       lane: priced?.lane ?? null,
       usageKind: 'media',
       costUsdMicros: priced?.costUsdMicros ?? null,
+      // Media is classless by design — work classes are a token-turn concept.
+      workClass: null,
       name: 'image',
       meta: { count: opts.count },
     })

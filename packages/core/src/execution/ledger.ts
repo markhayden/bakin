@@ -286,6 +286,21 @@ const MIGRATIONS = [
       )
     },
   },
+  {
+    // Work-class attribution (the routing + spend dimension). The ONLY safe
+    // historical backfill is the unique `chat:%:title` prefix → auto-title.
+    // `turn:` was the shared synthetic id for relays AND generic operator
+    // sends with no stored discriminator — mapping it would mislabel history,
+    // so it stays honestly NULL ("unclassified (pre-migration)"), as do
+    // dispatch-era `task:` rows (their class was computed then discarded) and
+    // media rows (work classes are a token-turn concept).
+    version: 8,
+    up: (db: Db) => {
+      db.exec('ALTER TABLE run_costs ADD COLUMN work_class TEXT')
+      db.exec('ALTER TABLE run_costs ADD COLUMN route_source TEXT')
+      db.exec("UPDATE run_costs SET work_class = 'auto-title' WHERE run_id LIKE 'chat:%:title'")
+    },
+  },
 ]
 
 /** Open the db with this module's schema applied. Every verb goes through here. */
@@ -945,6 +960,14 @@ export interface RunCostInput {
   cacheWriteTokens?: number | null
   /** Estimated cost; null when the model has no catalog pricing (unmetered). */
   costUsdMicros?: number | null
+  /**
+   * The work performed (routing + spend dimension) — REQUIRED so every new
+   * writer names its class at the call site (compile-time forcing function).
+   * Null is reserved for work that has no class (media) — never a default.
+   */
+  workClass: string | null
+  /** How the turn's model was chosen: 'tag:<name>' | 'class' | 'inherit'. */
+  routeSource?: string | null
   occurredAt: number
 }
 
@@ -986,8 +1009,8 @@ export function recordRunCost(input: RunCostInput): void {
     ledger()
       .prepare(
         `INSERT OR IGNORE INTO run_costs
-           (run_id, task_id, agent, model, provider, lane, usage_kind, input_tokens, output_tokens, total_tokens, cache_read_tokens, cache_write_tokens, cost_usd_micros, occurred_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           (run_id, task_id, agent, model, provider, lane, usage_kind, input_tokens, output_tokens, total_tokens, cache_read_tokens, cache_write_tokens, cost_usd_micros, work_class, route_source, occurred_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         input.runId,
@@ -1003,6 +1026,8 @@ export function recordRunCost(input: RunCostInput): void {
         tokens.cacheRead,
         tokens.cacheWrite,
         normalizeRunCostUsdMicros(input.costUsdMicros),
+        input.workClass,
+        input.routeSource ?? null,
         input.occurredAt,
       )
   })
@@ -1059,6 +1084,9 @@ export interface RunCostSpendRow {
   usageKind: RunUsageKind
   totalTokens: number | null
   costUsdMicros: number | null
+  /** Null = unclassified (pre-migration rows, or classless media work). */
+  workClass: string | null
+  routeSource: string | null
   occurredAt: number
 }
 
@@ -1073,9 +1101,10 @@ export function listRunCostsSince(sinceMs: number): RunCostSpendRow[] {
       .prepare<{
         run_id: string; agent: string; model: string | null; provider: string | null
         lane: string | null; usage_kind: string | null; total_tokens: number | null
-        cost_usd_micros: number | null; occurred_at: number
+        cost_usd_micros: number | null; work_class: string | null; route_source: string | null
+        occurred_at: number
       }, [number]>(
-        `SELECT run_id, agent, model, provider, lane, usage_kind, total_tokens, cost_usd_micros, occurred_at
+        `SELECT run_id, agent, model, provider, lane, usage_kind, total_tokens, cost_usd_micros, work_class, route_source, occurred_at
            FROM run_costs WHERE occurred_at >= ?`,
       )
       .all(sinceMs)
@@ -1088,6 +1117,8 @@ export function listRunCostsSince(sinceMs: number): RunCostSpendRow[] {
         usageKind: r.usage_kind === 'media' ? 'media' : 'tokens',
         totalTokens: r.total_tokens,
         costUsdMicros: r.cost_usd_micros,
+        workClass: r.work_class,
+        routeSource: r.route_source,
         occurredAt: r.occurred_at,
       }))
   })

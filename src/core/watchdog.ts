@@ -141,7 +141,7 @@ async function sendMainAgentAlert(message: string): Promise<void> {
   const runtime = getAppServices().runtime
   const agentId = await getRuntimeMainAgentId(runtime)
   const result = await runtime.messaging.send({ agentId, content: message, activityClass: 'system' })
-  await meterAgentTurn({ agent: agentId, activityClass: 'system', result, name: 'watchdog-alert' })
+  await meterAgentTurn({ agent: agentId, activityClass: 'system', result, workClass: 'relay', name: 'watchdog-alert' })
 }
 
 export function start(contentDir: string): void {

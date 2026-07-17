@@ -20,7 +20,7 @@ import { getAppServices } from './app-services-store'
 import { RuntimeError, RuntimeTurnError, type ChatChunk, type MessageResult } from '@bakin/core/adapters/runtime'
 import { claimNextRun, loseRun, settleRun, openBudgetIncident, resolveExpiredBudgetIncidents, findOpenCapIncident, type ClaimNextRunResult } from './execution-ledger'
 import { meterAgentTurn } from './agent-cost'
-import { resolveTurnModel, type ResolvedTurn, type RoutingConfig } from './model-routing'
+import { classifyDispatchWorkClass, resolveTurnModel, type DispatchWorkClass, type ResolvedTurn, type RoutingConfig } from './model-routing'
 import { evaluateBudget, ruleMatchesTurn, dayStartMs, monthStartMs, type BudgetPolicy, type BudgetDecision, type TurnBillingContext } from './budget'
 import { assembleBudgetSpend, type BudgetSpendFacets } from './budget-spend'
 import { notifyBudgetIncidentOpened } from './budget-notify'
@@ -402,8 +402,8 @@ export async function resolveDispatchRouting(task: DispatchTask, isRecovery: boo
  * same data also feeds the live usage recorder. Never throws into the settle
  * path — a metering failure must not fail a successful turn.
  */
-function recordTurnCost(runId: string, taskId: string, agent: string, result: MessageResult, resolvedModel?: string): Promise<void> {
-  return meterAgentTurn({ runId, taskId, agent, activityClass: 'user', result, resolvedModel })
+function recordTurnCost(runId: string, taskId: string, agent: string, result: MessageResult, workClass: DispatchWorkClass, resolvedModel?: string): Promise<void> {
+  return meterAgentTurn({ runId, taskId, agent, activityClass: 'user', result, resolvedModel, workClass })
 }
 
 /**
@@ -585,7 +585,8 @@ export function fireDispatchTurn(opts: {
       }
       // Attribute the turn's token/dollar cost (run_id == threadId). The
       // resolved routing model is what actually ran — price against it.
-      await recordTurnCost(opts.threadId, opts.task.id, opts.targetAgent, result, routing.model)
+      const workClass = classifyDispatchWorkClass(opts.task, opts.isRecovery ?? false)
+      await recordTurnCost(opts.threadId, opts.task.id, opts.targetAgent, result, workClass, routing.model)
       let completedDecomposition = false
       await withStateLock(() => {
         const state = loadDispatchState(opts.contentDir)

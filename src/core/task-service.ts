@@ -597,7 +597,7 @@ export async function reportComplete(
       activityClass: 'system',
       content: `TASK COMPLETE: ${title} — ${summary}`,
     })
-    await meterAgentTurn({ agent: orchestratorId, activityClass: 'system', result, name: 'orchestrator-notify' })
+    await meterAgentTurn({ agent: orchestratorId, activityClass: 'system', result, workClass: 'relay', name: 'orchestrator-notify' })
   } catch (err) {
     log.warn('Failed to notify orchestrator of task completion', err)
   }

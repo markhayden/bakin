@@ -180,8 +180,8 @@ describe('GET /live-now', () => {
 describe('GET /agent-effort', () => {
   it('joins attributed, observed, and unattributed per agent', async () => {
     // Attributed: 200k tokens across 2 runs, 1 completion.
-    recordRunCost({ runId: 'task:e1:d1', taskId: 'e1', agent: 'pixel', totalTokens: 150_000, costUsdMicros: 30_000, occurredAt: NOW - 3_600_000 })
-    recordRunCost({ runId: 'task:e2:d1', taskId: 'e2', agent: 'pixel', totalTokens: 50_000, costUsdMicros: 10_000, occurredAt: NOW - 1_800_000 })
+    recordRunCost({ workClass: null, runId: 'task:e1:d1', taskId: 'e1', agent: 'pixel', totalTokens: 150_000, costUsdMicros: 30_000, occurredAt: NOW - 3_600_000 })
+    recordRunCost({ workClass: null, runId: 'task:e2:d1', taskId: 'e2', agent: 'pixel', totalTokens: 50_000, costUsdMicros: 10_000, occurredAt: NOW - 1_800_000 })
     recordCompletion('e1', { agent: 'pixel', now: NOW - 3_500_000 })
     // Observed: 1M today → 800k unattributed (>50% share, >100k floor).
     replaceSessionUsage('sess-pixel', 'pixel', [{

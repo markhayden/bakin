@@ -98,7 +98,7 @@ export async function notifyActionRequiredIncidents(report: HealthReport): Promi
     }
     boundNotificationStates()
     try {
-      await meterAgentTurn({ agent: agentId, activityClass: 'system', result, name: 'doctor-notify' })
+      await meterAgentTurn({ agent: agentId, activityClass: 'system', result, workClass: 'relay', name: 'doctor-notify' })
     } catch (error) {
       log.warn('Health incident notification was delivered but could not be metered', { error })
     }
