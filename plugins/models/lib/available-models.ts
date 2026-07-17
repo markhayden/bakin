@@ -114,11 +114,22 @@ function warnRuntimeModelFetchFailed(message: string): void {
   console.warn(`Failed to fetch models from runtime: ${message}`)
 }
 
+/**
+ * Recompute catalog-derived enrichment on cache-served rows. Tier (and its
+ * heuristic) is code, not runtime data — a persisted cache written by an
+ * older heuristic/catalog must never pin stale labels (live incident: the
+ * cheap-route recommender saw gpt-5.4-mini as 'premium' from a pre-fix
+ * cache until a manual refresh).
+ */
+function withFreshTiers(models: AvailableModel[]): AvailableModel[] {
+  return models.map((m) => ({ ...m, tier: getKnownModel(m.id)?.tier ?? tierFromId(m.id) }))
+}
+
 export async function fetchAvailableModels(ctx: PluginContext): Promise<FetchResult> {
   // 1. Hot read — in-memory cache (fresh by TTL)
   const memCached = getModelsCache()
   if (memCached && Date.now() - memCached.fetchedAt < CACHE_TTL) {
-    return { models: memCached.models, cached: true, cachedAt: memCached.fetchedAt, stale: false }
+    return { models: withFreshTiers(memCached.models), cached: true, cachedAt: memCached.fetchedAt, stale: false }
   }
 
   // 2. Persistent cache hydration — survives server restart even when
@@ -128,7 +139,7 @@ export async function fetchAvailableModels(ctx: PluginContext): Promise<FetchRes
   if (diskCached) {
     setModelsCache({ models: diskCached.models, fetchedAt: diskCached.fetchedAt })
     const stale = Date.now() - diskCached.fetchedAt >= CACHE_TTL
-    return { models: diskCached.models, cached: true, cachedAt: diskCached.fetchedAt, stale }
+    return { models: withFreshTiers(diskCached.models), cached: true, cachedAt: diskCached.fetchedAt, stale }
   }
 
   // 3. No cache → live fetch. Dedupe concurrent callers against one
