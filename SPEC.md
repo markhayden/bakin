@@ -1,228 +1,285 @@
-# Spec: Scheduled Tasks Hardening + Plugin-Contributed Scheduled Domain Events (#191)
+# Spec — Work-Class Model Routing & Cost Confidence (models plugin hardening)
 
-> Issue: https://github.com/markhayden/bakin/issues/191
-> Status: DRAFT — awaiting approval
-> Date: 2026-07-14
-> Owner: Mark Hayden (single-user machine; no backwards compatibility, no shims)
+**Status:** DRAFT — awaiting approval
+**Date:** 2026-07-16
+**Origin:** Operator pass: "control what models are used for what tasks, and report it clearly enough that users trust it." Successor to `.claude/specs/models-cost-optimization.md` (origin routing) and `.claude/specs/cost-control-v2.md` (#464 budget rules/incidents — shipped).
+**Related knowledge:** `.claude/knowledge/{models-plugin,dispatch,execution-ledger,usage-recording,chat-plugin,doctor-and-health-checks,agent-health-diagnostics,runtime-capabilities}.md`
+**Branch:** `feat/workclass-routing` in the MAIN checkout (test-live-before-merge: Mark verifies on 3737 before merge).
 
-## Objective
+---
 
-Make scheduled recurring **and one-shot** tasks rock solid — surviving runtime switches and long uptimes on a single runtime — then extend Schedule into the single calendar surface for everything time-shaped in Bakin: cron jobs, one-shot schedules, and read-only **scheduled domain events** contributed by any plugin (in-tree or external) through a typed SDK contract.
+## 1. Objective
 
-**User:** the single operator of this Bakin install (plus external plugin authors who adopt the contract).
+A single-operator Bakin install must make model spend **controllable per kind of work and provably so**:
 
-**Success looks like:** you open Schedule's calendar and see, on correct timezone-aware math, every upcoming cron fire, every one-shot task you've queued for later, every task waiting on `availableAt` or due by `dueAt`, and (after bits adoption) every Messaging publish date and Projects milestone — each clearly labeled by source, deep-linked to its owner, and — where the owner supports it — reschedulable from a date-picker dialog. None of it breaks when a plugin is missing, the runtime is switched, or the box has been up for a year.
+1. **Every LLM-consuming call site is a named work class** in one routing matrix — not just dispatch turns. Cheap work (titles, relays, triage) runs on cheap models when routed; nothing is invisible or unroutable by omission.
+2. **Every Bakin-initiated send is metered and attributed to its work class** — "unattributed" shrinks to genuinely external agent activity.
+3. **Routing decisions leave evidence** — every cost row records what work class it was and how its model was chosen; the operator can see "ran on X via class route" per run, and spend per work class per window.
+4. **Misrouting is detected, not discovered on the bill** — a routing health check flags unrouted system classes, routes pointing at unavailable models, unsupported thinking levels on the active runtime, and expensive models on cheap classes.
+5. **Getting to a good state is one click** — "Apply recommended routes" proposes cheap-tier routes for system classes from actually-available models; the operator confirms. No silent defaults.
+6. **Existing honesty rules extend, not fork** — one spend engine, NULL-honest dollars, unit-per-lane, typed reasons; the legacy `$0`-fabricating rollups are deleted.
 
-## Cron Stability Review (pi + openclaw) — audit findings
+**Non-goals (explicitly out of scope):** savings estimator ("you saved $X") — deferred until route evidence has accumulated; work-class × agent routing grid (per-agent preference stays at the runtime default-model layer); silent smart defaults; subscription quota-window gating; image-generation routing (separate billed path, already provider/budget-gated per call); invoice-exact costs.
 
-This review was requested alongside #191. Findings drive Workstream A.
+**Confirmed non-issues (audit):** heartbeats are JSON status files — zero inference on both runtimes; Pi has no runtime cron; watchdog/doctor sends are event-driven, never periodic. There is no timer-based background burn to fix.
 
-### The Bakin-owned scheduler (fires all Bakin schedules) — SOLID
-- Own tick engine (`plugins/schedule/lib/scheduler.ts` + `scheduler-loop.ts`), dependency-injected, fake-clock tested.
-- Exactly-once via execution-ledger claims (`cron_fires` `(job_id, run_id)` PK); re-ticks and crashes are no-ops; `healPendingCronClaims` recovers claim-then-crash gaps.
-- Startup catch-up coalesces an outage to one occurrence; within-window fires into `todo`, older into `blocked` triage; skips are visible (`schedule.fire_skipped` + `skip_reason`).
-- Runtime cron is **never** in the fire path for Bakin schedules (post-#473). Runtime switches cannot kill Bakin schedules — they fire from the store regardless of adapter.
+---
 
-### OpenClaw cron (native, surfaced read-only) — FUNCTIONAL, LOWEST-ASSURANCE SURFACE
-- Transport is CLI-shelling (`execFileAsync` per call), not gateway RPC. CRUD works with the gateway down; `runNow` implicitly needs it and doesn't surface gateway-down distinctly.
-- No retries anywhere (deliberate for non-idempotent ops); 30s/35s timeouts; heavy defensive loose-JSON normalization in `cron-store.ts` signals unstable CLI output shape; `listRuns` falls back to reading `~/.openclaw/cron/runs/*.jsonl` directly.
-- **Zero conformance/integration coverage** — only argv-shape unit tests with mocked exec. The conformance suite (`tests/integration/runtime-conformance/`) never touches the optional `cron` member.
-- Degrade path is good: `readMergedJobs` try/catches `cron.list()` and falls back to Bakin-owned schedules with a warning.
+## 2. Ground truth (audit summary, 2026-07-16)
 
-### Pi cron — CORRECTLY ABSENT
-- The `cron` member is intentionally omitted (not stubbed); consumers feature-detect member presence. Bakin schedules ARE the scheduling answer on Pi; agents self-schedule via `bakin_exec_schedule_*`. No work needed beyond conformance pinning the absence.
+What exists on main:
 
-### Defects / gaps found (fixed in this initiative)
-1. **`schedule-sync` health check is dead code that claims to be live** — written, tested, its file header says it's registered, but `plugins/schedule/index.ts` only registers `schedule-cutover`. Orphan native crons are silently undetected. → PR1
-2. **`ScheduleDef.kind` allows `'at' | 'every'` but both are dead** — nothing produces them (every creation path hardcodes `kind: 'cron'`) and `scheduler.ts:62` feeds `expr` straight to the cron parser, so an `'at'` job could never fire. Vestigial type noise sitting on a latent bug. → PR2 (make `'at'` real, delete `'every'`)
-3. **Calendar views hand-parse raw cron strings client-side** (`calendar-weekly.tsx`, `calendar-monthly.tsx`, `calendar-today.tsx` split cron fields by hand) instead of using the server's `cron-eval` engine — wrong for TZ/DST and anything beyond simple exprs; no server endpoint returns future occurrences. → PR3
-4. **`cron_fires` ledger rows are never pruned** — unbounded growth; deleted jobs' rows linger forever. Slow on a single-user box, but real on a years-uptime machine. → PR1
-5. **No test pins "Bakin schedules survive a runtime switch"** — the initiative's core fear is only enforced by architecture, not by a test. → PR1
-6. Minor: duplicated hardcoded agent-color maps in `calendar-weekly.tsx` / `calendar-monthly.tsx`. → PR3 (consolidated during the calendar refactor)
+- **Origin routing is live but dispatch-only.** `src/core/model-routing.ts`: `Origin = scheduled|workflow|adhoc|recovery|decomposition`, `classifyOrigin` (deterministic from task shape), `resolveTurnModel` cascade tag → origin → inherit, model + thinking resolved independently. Applied once per dispatch (`dispatch-turns.ts:382`), threaded to `messaging.send`, priced against the routed model, `task.routed` audit on non-inherit. Config: `settings.routing` (models plugin), UI = Models → Routing tab. Both adapters honor per-turn `model`; Pi accepts thinking `off..xhigh` but **silently drops `adaptive`/`max`** (`adapter-pi/src/messaging.ts:48`); OpenClaw passes all levels.
+- **Seven unrouted system call sites** run on agent-default models: chat auto-title (`plugins/chat/lib/auto-title.ts:60`), asset enrichment (`plugins/assets/lib/enrichment/runtime.ts:149`), doctor escalation (`src/core/doctor-escalation.ts:92`), watchdog alert (`src/core/watchdog.ts:143`), budget-notify relay (`src/core/budget-notify.ts:87`), task-complete orchestrator notify (`src/core/task-service.ts:595`), generic sends (`src/core/agents.ts:76`, `src/lib/agents.ts`). Team assignment (`plugins/team/lib/assignment-resolver.ts:182`) is a **separate hardcoded direct-provider call** (default `claude-haiku-4-5`, config orphaned in team settings `routingModel`/`routingProvider`) outside the runtime and the routing UI.
+- **Attribution holes:** auto-title spend is budget-gated but **never metered** (no `run_costs` row); chat turns are never attributed (land only as usage.db "unattributed" burn). All other runtime sends are metered via `meterAgentTurn`.
+- **Evidence holes:** `run_costs` has **no work-type column** (origin computed then discarded; only run_id prefixes `task:`/`turn:`/`image:`/`chat:<id>:title` hint at it). The `task.routed` audit is **write-only** — no `mapAuditMessage` humanizer, not in `TIMELINE_AUDIT_KINDS`; no UI anywhere shows a routing decision. Nothing records route source (tag vs class vs inherit).
+- **Reporting state:** Spend tab facets = byAgent/byProvider/byModel only; **byAgent + byModel headline tables still read legacy `spendByAgent`/`spendByModel` rollups (`ledger.ts:1012-1051`) that `COALESCE(SUM,0)` — fabricating `$0`** for unpriced rows, contradicting the NULL-honest engine facets rendered above them. Model-per-run is visible only in Team Diagnostics timeline. No per-work-class slice exists anywhere.
+- **Competitor:** paperclip has no model routing (metering + caps only; its incidents idea already absorbed in v2). Routing-product UX research: §3.
 
-### Deliberate stances we are NOT changing (documented, not fixed)
-- No retry on the OpenClaw cron CLI surface (safe default for non-idempotent ops; degrade path already honest).
-- `--adopt-cron` on runtime switch stays opt-in.
-- Cron stays out of `CapabilitySet` (member-presence detection is the contract).
+Gap table:
 
-## Tech Stack
+| # | Gap | Evidence |
+|---|-----|----------|
+| R1 | Only dispatch turns routable; 7 system sites + team-routing bypass the matrix | call-site audit above |
+| R2 | Auto-title spend unmetered; chat unattributed | `auto-title.ts:60` (no meter call); no `meterAgentTurn` in `plugins/chat/lib/` |
+| R3 | No work-class column on `run_costs`; no per-class spend facet | `ledger.ts:142-152`, `budget-spend.ts` facets |
+| R4 | Routing evidence write-only (`task.routed` unread); no route-source record | `map-audit-message.ts:5-56`, `timeline.ts:17-26` |
+| R5 | No routing health check (unrouted classes / unavailable models / capability mismatch) | `plugins/models/` has no health-checks file |
+| R6 | Pi silently drops `adaptive`/`max` thinking; UI offers them anyway | `adapter-pi/src/messaging.ts:48` vs `routing-tab.tsx:18` |
+| R7 | Legacy `$0`-fabricating rollups back two headline Spend tables | `ledger.ts:1012-1051`, `use-models-data.ts:82` |
+| R8 | Team-routing model config orphaned outside the routing surface | `assignment-resolver.ts:31-32,141-142` |
 
-Existing stack, no new dependencies: Bun ≥1.2, TypeScript strict, Zod at boundaries, React 19 + TanStack Router (client), `cron-parser` (already sole-imported by `cron-eval.ts`), execution ledger (`bun:sqlite` via `packages/core/src/storage/db.ts`), HookRegistry for all cross-plugin calls.
+---
 
-## Commands
+## 3. Competitor research (routing-product sweep, 2026-07-16)
 
-```
-Full test suite:   bun run test
-Single test file:  bun test tests/plugins/schedule/scheduler.test.ts --isolate
-Typecheck:         bun run typecheck
-Build (binary):    bun run build        # never commit generated-version.ts
-Dev loop:          bun run dev          # server code NOT watched; manual restart
-Dev with mock:     bun run dev:mock
-Live verify:       Skill: /verify (isolated server from source)
-```
+Products examined: LiteLLM, OpenRouter, Portkey, Helicone, Claude Code/Codex CLI, paperclip (web recheck). Full report in the session record; what this spec adopts:
 
-## Design Decisions (locked in interview 2026-07-14)
+**Adopted patterns:**
+1. **Closed-enum work class as the routing key** (vs LiteLLM/Helicone free-form tags, which typo into orphan spend buckets) — Bakin controls every caller, so classes are an enum with a guaranteed inherit/default behavior (Portkey's "mandatory default → routing is a total function").
+2. **Route receipt on every turn** (OpenRouter's `model`-in-response / Claude Code's `modelUsage`): the ledger row carries `{workClass, routeSource, model, applied thinking}` — evidence attached to the turn, never reconstructed from logs.
+3. **One key, two uses** (LiteLLM tags / Portkey metadata / Helicone properties all converge here): the dimension that routes IS the dimension spend reports on. `byWorkClass` falls out of routing for free.
+4. **Effort as a co-equal column with clamp-and-warn** (Claude Code): per-class thinking level; when the active runtime doesn't support the requested level, clamp to the nearest supported level and record requested→applied on the receipt — never fail the turn, never silently comply (fixes Pi's current silent drop, which is strictly worse than clamping).
+5. **Recommended preset with diff preview** (Claude Code's `opusplan` spirit, avoiding OpenRouter auto-router opacity): one opinionated proposal, applied only through an explicit preview of exactly which rows change.
+6. **Unit economics per class row** (Helicone Properties page): the byWorkClass table shows cost, run count, and avg cost/run — not just totals.
+
+**Anti-patterns avoided:** opaque auto-routing (OpenRouter `auto`); routing visibility as an afterthought (LiteLLM — users reverse-engineer routes from spend rows); config-ID indirection for a single user (Portkey — the matrix is THE live config, edited in place); silent clamping in non-interactive paths (all clamps leave audit evidence); multi-layer inheritance without showing which layer won (the receipt names the source).
+
+**Paperclip recheck:** still no model routing as of v2026.626.0 — metering + caps only (new: per-wake "heartbeat preflight budget caps"). The work-class routing matrix remains open field vs the closest competitor.
+
+---
+
+## 4. Locked decisions (operator interview, 2026-07-16)
 
 | # | Decision | Choice |
 |---|----------|--------|
-| D1 | Scope & order | All three workstreams, A (harden) → B (one-shot) → C (#191 events) |
-| D2 | C UI surface | Full calendar grid — extend the existing Today/Week/Month views |
-| D3 | Calendar math debt | Fix now: server-side occurrences endpoint via `cron-eval`; delete client-side cron parsing |
-| D4 | One-shot primitive | Make `kind: 'at'` real in the scheduler; **delete** dead `'every'`; keep task `availableAt` as-is (different job: task exists now, dispatch later) |
-| D5 | One-shot semantics | Post-fire: auto-disable, display "completed", run history preserved, never auto-delete. Missed-fire: identical to cron (catch-up window → todo, older → blocked triage, ledger exactly-once). Creation: NL parse ("tomorrow at 9am"), job form, exec tools |
-| D6 | C contract mechanism | Hook suffix convention: providers register `{pluginId}.scheduledEvents` (hookKind `'rpc'`); Schedule discovers via `getRegisteredHooks()` suffix match, invokes each with a range, zod-validates per provider, isolates failures. `ScheduledDomainEvent` type exported from `@makinbakin/sdk`. No new core machinery |
-| D7 | v1 in-tree providers | Tasks only (`availableAt` → scheduled, `dueAt` → due). Workflows deferred (no future-dated concepts in-tree). Contract additionally proven by a test-harness provider |
-| D8 | Actions on events | Read-only + deep link + ONE optional verb: **reschedule** via conventional `{pluginId}.rescheduleEvent` hook; Schedule renders a date-picker ConfirmDialog. Tasks implements it. Generic action protocol rejected |
-| D9 | Data path | ONE endpoint `GET /api/plugins/schedule/occurrences?from=&to=`: unified chronological feed of job occurrences (server-computed) + domain events (hook fan-in). Calendars consume it exclusively. SSE-driven refetch |
-| D10 | PR structure | Four sequential PRs (below), each live-tested on 3737 before merge |
-| D11 | External adoption | **In scope**: bits work item — messaging (publish dates) + projects (milestones) in `bakin-bits-official` implement the contract after PR4 merges |
+| W1 | Ambition | **Visible routing matrix** — every call site a named work class with assigned model/effort; deterministic, auditable. No automatic/LLM-picked routing |
+| W2 | Confidence surfaces | Per-work-class spend breakdown + per-turn route evidence + routing health check. **No savings estimator this round** |
+| W3 | Research | Routing-product web sweep (no paperclip re-clone) |
+| W4 | Taxonomy | **One unified WorkClass enum replaces Origin outright** (no shims, rename through) |
+| W5 | Attribution | **Meter every Bakin-initiated send**, incl. chat + auto-titles |
+| W6 | Defaults | **No silent defaults.** "Apply recommended routes" one-click proposal + health-check nag while system classes are unrouted |
+| W7 | Dimensions | Routes per **work class + tag overrides** (global). Per-agent stays at runtime default-model layer |
+| W8 | Tech debt (in-pass) | Delete legacy rollups (R7); capability-honest thinking levels (R6); fold team-routing config into the matrix (R8); one-shot migrate `settings.routing` origins → work classes |
 
-## Contract Shapes (v1)
+---
 
-```typescript
-// @makinbakin/sdk — exported for external authors
-export interface ScheduledDomainEvent {
-  id: string                    // stable within the owning plugin
-  pluginId: string              // owner (must match the registering plugin)
-  title: string
-  startsAt?: string             // ISO; at least one of startsAt/dueAt required
-  endsAt?: string               // ISO; optional range end
-  dueAt?: string                // ISO; deadline semantics (rendered distinctly)
-  kind: string                  // owner vocabulary, e.g. 'task-due' | 'publish' | 'milestone'
-  status?: string               // owner vocabulary, display-only
-  url?: string                  // deep link into the owner's UI
-  reschedulable?: boolean       // true → owner registered {pluginId}.rescheduleEvent
-  metadata?: Record<string, unknown>  // read-only extras
-}
+## 5. Feature specs
 
-// Hook: `{pluginId}.scheduledEvents` (hookKind 'rpc')
-//   input:  { from: string; to: string }        // ISO range
-//   output: ScheduledDomainEvent[]
-// Hook: `{pluginId}.rescheduleEvent` (hookKind 'rpc', optional)
-//   input:  { eventId: string; to: string }     // new ISO instant for the event's primary date
-//   output: { ok: true } | { ok: false; error: string }
+### 5.1 WorkClass taxonomy (W4 — replaces `Origin`)
+
+`src/core/model-routing.ts` is rewritten around:
+
+```ts
+type WorkClass =
+  // dispatch classes (classified from task shape, as today)
+  | 'scheduled' | 'workflow' | 'adhoc' | 'recovery' | 'decomposition'
+  // system classes (declared by the call site)
+  | 'auto-title'          // chat auto-titles
+  | 'enrichment'          // asset vision/caption/OCR turns
+  | 'relay'               // doctor escalation, watchdog alert, budget-notify, orchestrator notify
+  | 'team-routing'        // team.resolveAssignment direct-provider classification
+  | 'send'                // generic/other Bakin-initiated agent sends
+  | 'chat'                // interactive chat turns (metered-only, NOT routable)
 ```
 
-Occurrences endpoint item (server-internal, consumed by calendars):
+- Each class has static metadata in one table: `{ id, label, description, routable: boolean, kind: 'dispatch'|'system', recommendedTier?: 'cheap'|'cheap-vision' }`. `chat` is `routable: false` — interactive chat model choice belongs to the operator/agent, but its spend is attributed (W5).
+- `classifyOrigin` → `classifyDispatchWorkClass` (same deterministic precedence). System classes are **declared at the call site**, never inferred.
+- The four relay-ish sites share one `relay` class (same shape of work: short system notification turn to the main agent). Splitting further would add matrix rows without adding routing value.
+- `RoutingConfig` becomes `{ routes: WorkClassRoute[]; tagOverrides: TagOverride[] }` with `WorkClassRoute { workClass, model?, thinking? }`. Tag overrides unchanged (dispatch-only — tags are a task concept).
+- **Migration:** one-shot in models plugin settings load (pattern: `budget-migration.ts`): `policies[{origin,…}]` → `routes[{workClass,…}]` 1:1; old key deleted. No dual-read.
 
-```typescript
-type OccurrenceItem =
-  | { source: 'schedule'; jobId: string; at: string; job: /* summary */ }   // cron + 'at' occurrences via cron-eval
-  | { source: 'event'; event: ScheduledDomainEvent }                        // validated hook fan-in
+**Acceptance:** all five dispatch classes classify exactly as before (regression); every system call site compiles against a declared class; `Origin` identifier is gone from the codebase.
+
+### 5.2 Routing for system sends (R1, R8)
+
+- `resolveTurnModel(config, workClass, tags)` — same cascade (tag → class route → inherit), tags empty for system classes.
+- A small helper `resolveSystemRoute(workClass)` (core, reads the `models.getRoutingConfig` hook like dispatch does) is called by each system site; resolved `{model, thinking}` passes into `messaging.send` args. Sites: auto-title, enrichment, relay ×4, generic sends (`send` class).
+- **Team-routing fold-in:** `assignment-resolver` reads the matrix route for `team-routing` to pick its direct-provider model; team settings `routingModel`/`routingProvider` are **deleted** (one-shot migrate: if set and no matrix route exists, seed the matrix route from them). Provider derives from the routed model id; the direct-provider transport stays as-is.
+- Unrouted (`inherit`) system classes behave exactly as today: agent default model, no thinking override.
+
+**Acceptance:** setting `auto-title → <cheap model>` changes the model Pi/OpenClaw actually receive for the next title turn (adapter-level assertion); relay routes apply to all four relay sites; team-routing route changes the direct-provider call's model; with no routes, behavior is byte-identical to today.
+
+### 5.3 Full attribution (W5, R2)
+
+- **Every Bakin-initiated runtime send is metered** with its work class. New/changed call sites: auto-title (`meterAgentTurn` after send with `workClass:'auto-title'`), chat turns (metered in the chat turn-completion path with `workClass:'chat'`), enrichment + relays + generic sends pass their class through the existing `meterAgentTurn` path.
+- `run_costs` migration (next ledger version): add `work_class TEXT NULL`. **Backfill** from run_id prefix heuristics (`task:` → NULL(dispatch-era rows keep honest NULL — their dispatch class wasn't recorded), `image:` → excluded (media), `chat:<id>:title` → `auto-title`, `turn:` → `relay`); anything ambiguous stays NULL. NULL renders as "unclassified (pre-migration)" — never guessed.
+- `RunCostInput` gains required `workClass` (compile-time forcing function: no new unclassified rows).
+
+**Acceptance:** after one auto-title and one chat turn, both have `run_costs` rows with correct class + lane + tokens; unattributed delta for that agent shrinks correspondingly; dispatch rows carry their dispatch class.
+
+### 5.4 Route evidence (W2, R4)
+
+- `run_costs` also gains `route_source TEXT NULL` — `'tag:<name>' | 'class' | 'inherit'` recorded at metering time for every routed-capable turn, plus the applied thinking level and any clamp (`requested → applied`, §5.7). The tuple `(work_class, route_source, model, thinking)` is the per-turn **route receipt** (research pattern #2) — evidence attached to the turn, never reconstructed from logs.
+- Team Diagnostics timeline run rows extend to `model · tokens · $ · via <route_source>`; `task.routed` audit gets a `mapAuditMessage` humanizer ("Routed to <model> (<thinking>) via <source>") and joins `TIMELINE_AUDIT_KINDS`.
+- Task detail (run history) shows the same line — read from `listRunsByTask`, no new query engine.
+
+**Acceptance:** a tag-overridden run shows `via tag:<name>`; a class-routed run shows `via class`; an inherit run shows the agent default with `via inherit`; the audit renders human-readable in the timeline.
+
+### 5.5 Per-work-class spend facet (W2, R3)
+
+- `assembleBudgetSpend` facets gain `byWorkClass` (attributed-only — same honesty stance as byProvider/byModel, §13.3 of the v2 spec; unattributed delta stays on global/agent scopes). Both token and micro-dollar sums per class, lane-aware.
+- Spend tab: new "By work class" table (class | runs | tokens | est. $ metered | tokens subscription | **avg cost/run**), with NULL-class rows shown as "unclassified" (Helicone unit-economics pattern — per-class averages expose "titles cost $0.002/run" at a glance). CLI `bakin spend` gains the same block.
+- **No budget-rule scope extension this round** — rules stay global/agent/provider/model; a `workClass` cap scope is a natural later extension the rule shape already permits structurally.
+
+**Acceptance:** an auto-title turn and a dispatch turn land in different facet rows; Spend tab + CLI agree with the engine; subscription-lane classes show tokens only.
+
+### 5.6 Routing health check + recommended routes (W6, R5)
+
+- New `plugins/models/lib/health-checks.ts` registering `models.routing` via `ctx.registerHealthCheck`:
+  - **warn:** routable system classes with no route ("Auto-titles run on each agent's default model — route them to a cheap model"), listing estimated recent spend for that class as evidence.
+  - **error:** route points at a model absent from the available-models cache; route requests a thinking level the active runtime doesn't support.
+  - **warn:** cheap-class turn observed on a premium-priced model in the last 7d (catalog price threshold; warn-only, evidence rows attached as structured `data` — UIs never parse text).
+- **Recommended routes:** server route `POST /api/plugins/models/routing/recommend` computes proposals: for each unrouted routable system class pick the cheapest available model (catalog pricing, active-runtime availability; `enrichment` requires a vision-capable model — `cheap-vision` tier). Response is a proposal list; UI renders an "Apply recommended routes" button on the Routing tab opening a **ConfirmDialog** (house rule: whole action flow in the modal) listing each proposed route; confirm PUTs the routes. A deterministic repair action (`ctx.registerHealthRepairAction`) applies the same proposal from the doctor surface.
+
+**Acceptance:** fresh state → warn with per-class evidence; applying recommendations clears it; deleting the routed model from availability flips to error; on Pi a route with `thinking: 'max'` is an error, on OpenClaw it is not.
+
+### 5.7 Capability-honest thinking levels with clamp-and-warn (W8, R6)
+
+- The runtime messaging capability surface declares `supportedThinkingLevels: ThinkingLevel[]` (Pi: `off..xhigh`; OpenClaw: all; mock: declared subset). Adapter-owned, exposed through the models `/config` payload alongside `routingSupport`.
+- Routing tab thinking dropdowns render **only supported levels** for the active runtime (prevention).
+- If a persisted route still carries an unsupported level (e.g. after a runtime switch), the resolution layer **clamps to the nearest supported lower level** (`max`→`xhigh`, `adaptive`→inherit since it has no ordinal) instead of Pi's current silent drop-to-inherit. Every clamp is recorded on the route receipt (`requested → applied`) and leaves audit evidence — never silent, never a failed turn (research pattern: Claude Code clamp-and-warn; anti-pattern: silent clamps in non-interactive paths).
+- The health check (§5.6) flags standing routes that clamp on the active runtime so the operator can fix the config, and the runtime conformance suite gains a capability-honesty check: an adapter must honor every level it declares and declare every level it honors.
+
+**Acceptance:** Pi UI shows no `adaptive`/`max`; a persisted `max` route on Pi runs at `xhigh` with receipt + audit evidence of the clamp; conformance teeth fail a mock that lies about supported levels.
+
+### 5.8 Legacy rollup deletion (W8, R7)
+
+- `spendTotal`/`spendByAgent`/`spendByModel` (`ledger.ts:1012-1051`) are **deleted**; the Spend tab's byAgent/byModel tables re-read from the engine's NULL-honest facets (which already exist). `RunCostRow` legacy shape absorbed into the modern row type where `recentRunsByAgent` needs it.
+- Every `$` number on the Spend tab now traces to `assembleBudgetSpend` — the "one engine" invariant becomes literally true, not "true where it matters".
+
+**Acceptance:** an unpriced run shows tokens with no fabricated `$0` in byAgent/byModel; totals match the lane summary for the same window; grep proves no caller of the deleted verbs.
+
+---
+
+## 6. Commands
+
+- Build: `bun run build` (⚠ mutates `generated-version.ts` — never commit it).
+- Tests: `bun run test` (full, CI flags); `bun test tests/<path> --isolate` (single file).
+- Dev: `bun run dev:mock` for UI; `bun run instance dev` for real-adapter verification; `/verify` skill for isolated end-to-end boot.
+- Live verification: branch runs on 3737 via `nohup bun run dev` from this checkout (server restart required — server code isn't watched).
+
+## 7. Project structure (touch map)
+
+```
+src/core/model-routing.ts                    WorkClass taxonomy + metadata table; classifyDispatchWorkClass; resolveTurnModel; resolveSystemRoute
+src/core/dispatch-turns.ts                   rename threading (origin→workClass); route_source into metering; audit unchanged shape
+src/core/agent-cost.ts                       meterAgentTurn workClass/route_source params
+src/core/{doctor-escalation,watchdog,budget-notify,task-service,agents}.ts, src/lib/agents.ts   relay/send class + route resolution
+plugins/chat/lib/{auto-title,stream-bridge or turn-completion path}.ts   auto-title + chat metering + auto-title routing
+plugins/assets/lib/enrichment/runtime.ts     enrichment class + routing
+plugins/team/lib/assignment-resolver.ts      team-routing matrix route; delete routingModel/routingProvider settings (seed-migrate)
+packages/core/src/execution/ledger.ts        run_costs +work_class +route_source (migration + prefix backfill); delete spendTotal/spendByAgent/spendByModel
+src/core/execution-ledger.ts                 facade updates
+src/core/budget-spend.ts                     byWorkClass facet
+packages/core/src/adapters/runtime/concepts.ts   supportedThinkingLevels on messaging capability surface
+packages/adapter-pi/src/*                    declare levels; keep guard
+packages/adapter-openclaw/src/*              declare levels
+tests/integration/runtime-conformance/*      thinking-level honesty check + teeth
+plugins/models/types.ts                      RoutingConfig routes shape
+plugins/models/lib/{register-hooks,routes,route-schemas}.ts   routing GET/PUT new shape; /routing/recommend; config exposes supported levels
+plugins/models/lib/health-checks.ts          NEW — models.routing check + repair action
+plugins/models/lib/routing-migration.ts      NEW — one-shot settings migration (pattern: budget-migration.ts)
+plugins/models/components/routing-tab.tsx    matrix (dispatch + system sections), supported-levels filter, Apply-recommended ConfirmDialog
+plugins/models/components/spend-tab.tsx      byWorkClass table; byAgent/byModel re-pointed at engine facets
+plugins/models/components/use-models-data.ts data shapes
+plugins/team/{lib,components}/*              timeline route_source line
+src/lib/map-audit-message.ts                 task.routed humanizer
+plugins/team/lib/timeline.ts                 TIMELINE_AUDIT_KINDS + task.routed; run row route_source
+src/cli/commands/budget.ts (or spend)        byWorkClass block in bakin spend
+tests/**                                     per §9
+.claude/knowledge/{models-plugin,dispatch,execution-ledger,usage-recording,chat-plugin,doctor-and-health-checks,runtime-capabilities}.md + CLAUDE.md Cost Control/key-patterns lines
+README.md                                    check for model-routing claims during docs phase
 ```
 
-Zod-validate every provider's output at Schedule's boundary; a provider that throws, times out, or returns invalid rows is dropped from the feed with a logged warning — never breaks the endpoint (acceptance criterion of #191).
+## 8. Code style
 
-## Work Breakdown & Commit Strategy
+Repo conventions unchanged: TS strict; zod at boundaries (new/changed routes); `createLogger`; kebab-case; conventional commits with scope; typed reasons — never classify by message text; UIs read structured `data`; plugin cross-calls via hooks only; adapter boundary respected (thinking-level declaration is adapter-owned; no provider identifiers upstream).
 
-Every commit conventional, one logical change, suite green at every commit. Branches in the MAIN checkout (3737 serves them); Mark live-tests each PR before merge.
+## 9. Testing strategy
 
-### PR1 — `fix(schedule): harden scheduling foundation` (Workstream A)
-1. `fix(schedule): register the schedule-sync health check` — wire the orphaned check into `activate()`; reconcile its file-header claim with reality.
-2. `feat(core): cron_fires retention sweep` — age+count-bounded pruning in the ledger (preserve rows inside the catch-up window and the most recent N per job so exactly-once dedup and run history keep working); sweep job-removed rows; wired into the existing watchdog/doctor cadence.
-3. `test(conformance): pin the optional cron member` — conformance checks: member honesty (present on openclaw mock via `mockCron()`, absent on pi), CRUD round-trip against the mock, adoption path; teeth entry proving the checks bite.
-4. `test(integration): Bakin schedules survive runtime switch` — both directions (openclaw→pi, pi→openclaw), with and without `--adopt-cron`; schedules keep firing post-switch.
-5. `docs(knowledge): record audit stances` — update `.claude/knowledge/bakin-owned-scheduler.md` (+ `runtime-capabilities.md` cron note).
+CLAUDE.md testing rules mandatory (mock BOTH content-dir resolvers + runtime homes; `getBakinPaths` mocks include `db`; `closeDb()` before `rmSync`; `--isolate`; RTL files import rtl-settle). TDD per task.
 
-**Rollback:** pure hardening; reverting restores today's behavior exactly.
+- **Taxonomy:** classify truth table (dispatch classes regression vs old `classifyOrigin`); resolver cascade incl. tag overrides; `chat` unroutable; settings migration one-shot (old policies → routes, old key gone; idempotent re-run).
+- **System routing:** each call site passes its class + resolved route to `messaging.send` (mock runtime asserts args); team-routing model comes from matrix; seed-migration from old team settings.
+- **Attribution:** auto-title + chat turns produce `run_costs` rows (class, lane, tokens); `RunCostInput.workClass` required (type-level); ledger migration + prefix backfill truth table; NULL stays NULL.
+- **Evidence:** route_source recorded for tag/class/inherit; timeline rows + humanized audit render (RTL); `listRunsByTask` carries fields.
+- **Facet:** byWorkClass sums (tokens + $ per lane; NULL bucket); parity engine ↔ /spend ↔ CLI.
+- **Health check:** unrouted-class warn with evidence rows; unavailable-model error; unsupported-thinking error per runtime; premium-on-cheap warn; repair action applies proposals; recommend endpoint picks cheapest (vision-capable for enrichment).
+- **Capability honesty:** conformance check + teeth file; Pi declares subset; UI filter (RTL).
+- **Legacy deletion:** no fabricated $0 (unpriced-run regression); grep-style architecture assertion that deleted verbs have no callers.
+- **Regressions:** no-routes behavior identical; budget gate still prices routed model; existing budget/incident suites green.
 
-### PR2 — `feat(schedule): first-class one-shot 'at' schedules` (Workstream B)
-1. `refactor(schedule): delete dead 'every' schedule kind` — narrow `ScheduleDef.kind` to `'cron' | 'at'`.
-2. `feat(schedule): evaluate 'at' schedules in the engine` — `cron-eval` (or a thin kind-dispatch above it) understands `'at'` (ISO expr, exactly one occurrence); scheduler tick + startup catch-up + `nextRun`/`prevRun` handle it; post-fire auto-disable with preserved history; "completed" derivation in `MergedJob`.
-3. `feat(schedule): create one-shot schedules end-to-end` — NL parse one-shot phrases; `schedule-input` + `job-form` support; routes + zod; exec tools (`bakin_exec_schedule_create` accepts one-shots) so agents self-schedule on any runtime.
-4. `test(schedule): one-shot lifecycle` — fake-clock: fires once, never re-fires, catch-up within window, blocked triage beyond, completed display state.
-5. `docs(knowledge): one-shot semantics` — scheduler knowledge doc section.
+## 10. Boundaries
 
-**Rollback:** reverting removes the feature; no schema migration (sidecar JSON is additive).
+**Always:** one spend engine behind every $ figure; NULL-honest (never fabricate, incl. backfill); unit-per-lane; work classes declared at call sites (never inferred from strings/run-ids at read time except the one-shot backfill); ConfirmDialog for apply-recommended (whole flow in the modal); adapter boundary (levels declared by adapters; direct-provider transport stays in team plugin); typed reasons.
 
-### PR3 — `refactor(schedule): server-computed occurrences feed the calendars` (Workstream C1 — behavior-preserving debt fix)
-1. `feat(schedule): occurrences endpoint` — `GET /occurrences?from=&to=` computing per-job occurrences via `occurrencesBetween` (jobs only at this stage; TZ-correct).
-2. `refactor(schedule): calendars consume the occurrences endpoint` — Today/Week/Month render fetched occurrences; DELETE all client-side cron parsing (`getJobHour`/`jobOnDow`/`expandField`/`jobFiringOnDay`); consolidate the duplicated agent-color maps into one shared module.
-3. `test(schedule): occurrence endpoint + calendar rendering` — TZ/DST cases the old client math got wrong; calendar view tests updated to fixture the endpoint.
+**Ask first:** adding a `workClass` budget-rule scope; routing interactive `chat`; auto-applying recommended routes without confirmation; splitting the `relay` class further.
 
-**Rollback:** revert restores client-side math; zero feature loss (this PR adds none).
+**Never:** parallel spend math; shims/dual-read for old shapes (`Origin`, old `settings.routing`, team `routingModel`, legacy rollups — all deleted); silent thinking-level mapping; guessed backfill; commit `generated-version.ts`; tests touching real home dirs.
 
-### PR4 — `feat(schedule): plugin-contributed scheduled domain events` (Workstream C2 — the #191 feature)
-1. `feat(sdk): ScheduledDomainEvent contract types` — SDK-exported types + zod schema.
-2. `feat(schedule): domain-event fan-in on the occurrences endpoint` — hook discovery by suffix, per-provider validation/isolation/timeout, unified sorted feed, SSE refetch conventions.
-3. `feat(tasks): tasks.scheduledEvents provider` — availableAt/dueAt tasks as events, deep links to the board.
-4. `feat(schedule): render domain events on the calendars` — visually distinct from job occurrences (source/kind badges), event popover with deep link; graceful empty/missing-provider behavior.
-5. `feat(schedule): reschedule verb` — `reschedulable` events get a date-picker ConfirmDialog invoking `{pluginId}.rescheduleEvent`; `feat(tasks): rescheduleEvent hook` implements it for availableAt/dueAt.
-6. `test(schedule|tasks|sdk): contract, providers, isolation` — including the #191 acceptance criterion: a broken/missing provider drops its events without breaking Schedule.
-7. `docs: contract authoring guide` — `docs/src/content/docs/extending/plugins/` page for external authors; `.claude/knowledge/` doc for the contract; CLAUDE.md Key Patterns blurb; schedule + tasks plugin manifest version bumps.
+## 11. Phased roadmap + commit strategy (rollback checkpoints)
 
-**Rollback:** revert leaves PR3's correct calendars intact; contract disappears cleanly (hooks unregister with plugins).
+Each commit builds green and passes the full suite; each phase is a rollback point.
 
-### Work item 5 — bits adoption (`bakin-bits-official`, after PR4 merges)
-- `messaging.scheduledEvents` (publish dates, reschedulable) + `projects.scheduledEvents` (milestones, read-only) in their respective plugins; manifest version bumps per bits convention.
-- Live-verified against the real install; note: installed projects plugin was previously hot-patched — reconcile installed state with repo state first.
+**Phase 1 — Taxonomy + ledger foundation**
+- C1.1 `refactor(core): WorkClass taxonomy replaces Origin (rename-through, dispatch classes 1:1)`
+- C1.2 `feat(core): run_costs work_class + route_source columns (migration + prefix backfill)`
+- C1.3 `feat(models): settings.routing one-shot migration to work-class routes`
+- *Checkpoint: behavior identical; new columns land; old shapes gone.*
 
-## Project Structure (touched surfaces)
+**Phase 2 — Full attribution + evidence**
+- C2.1 `feat(core): meterAgentTurn carries workClass/route_source; RunCostInput requires class`
+- C2.2 `feat(chat): meter auto-title + chat turns into run_costs`
+- C2.3 `feat(team,lib): timeline + task detail route evidence; task.routed humanizer + timeline kind`
+- *Checkpoint: every Bakin send attributed; evidence visible.*
 
-```
-plugins/schedule/lib/         → scheduler, cron-eval kind dispatch, occurrences, event fan-in
-plugins/schedule/lib/routes/  → occurrences route
-plugins/schedule/components/  → calendar-{today,weekly,monthly}, event popover, reschedule dialog
-plugins/tasks/lib/            → scheduledEvents + rescheduleEvent providers
-packages/sdk/src/             → ScheduledDomainEvent types (+ zod)
-packages/core/src/execution/  → cron_fires retention
-tests/plugins/schedule/       → engine/endpoint/calendar/contract tests
-tests/integration/runtime-conformance/ → cron member conformance
-tests/integration/            → switch-survival test
-.claude/knowledge/            → bakin-owned-scheduler.md update + scheduled-events doc
-docs/src/content/docs/extending/plugins/ → external-author contract guide
-```
+**Phase 3 — System-send routing**
+- C3.1 `feat(core): resolveSystemRoute + relay/send/enrichment/auto-title call sites honor the matrix`
+- C3.2 `feat(team): team-routing folds into the matrix; orphan settings deleted (seed-migrate)`
+- *Checkpoint: matrix controls every routable class.*
 
-## Code Style
+**Phase 4 — Reporting**
+- C4.1 `feat(core): byWorkClass spend facet`
+- C4.2 `feat(models): Spend tab by-work-class table; byAgent/byModel re-pointed at engine; legacy rollups deleted`
+- C4.3 `feat(cli): bakin spend by-work-class block`
+- *Checkpoint: per-class spend visible everywhere; $0 fabrication gone.*
 
-Match surrounding code. Example of the provider registration (the pattern external authors copy):
+**Phase 5 — Health + recommendations + capability honesty**
+- C5.1 `feat(core,adapters): supportedThinkingLevels capability + conformance check`
+- C5.2 `feat(models): routing tab matrix redesign (system section, supported-levels filter)`
+- C5.3 `feat(models): routing health check + /routing/recommend + Apply-recommended ConfirmDialog + repair action`
+- *Checkpoint: misrouting detectable; one-click good state.*
 
-```typescript
-// plugins/tasks/index.ts — inside activate(ctx)
-ctx.hooks.register(
-  'tasks.scheduledEvents',
-  async (data: { from: string; to: string }): Promise<ScheduledDomainEvent[]> => {
-    return listScheduledTaskEvents(parseRange(data))
-  },
-  { pluginId: 'tasks', metadata: { hookKind: 'rpc', label: 'Scheduled task events' } },
-)
-```
+**Phase 6 — Docs + close-out**
+- C6.1 `docs(knowledge): work-class routing — models-plugin/dispatch/execution-ledger/usage-recording/chat-plugin/doctor/runtime-capabilities + CLAUDE.md; README check`
 
-Conventions: kebab-case files, PascalCase types, zod at every boundary, `createLogger('schedule')`, no empty catches, `const` over `let`, URL-backed view state via `useQueryState`.
+## 12. Open items for the plan phase
 
-## Testing Strategy
-
-- **bun:test**, all files mock both content-dir resolvers + OpenClaw home per CLAUDE.md; `--isolate`; RTL files import `rtl-settle`.
-- Engine/lifecycle: fake-clock unit tests (existing harness in `tests/plugins/schedule/helpers/`).
-- Ledger retention: real-ledger temp-dir tests with `closeDb()` teardown.
-- Conformance: shared checks across mock/pi/openclaw-mock + teeth file.
-- Contract: zod validation, per-provider fault isolation (throwing provider, invalid rows, slow provider), missing-plugin graceful drop.
-- UI: calendar view tests against fixtured occurrences endpoint; reschedule dialog flow.
-- Every PR: full `bun run test` green + live verification on 3737 by Mark before merge.
-
-## Boundaries
-
-- **Always:** ledger claims before any fire; zod at hook boundaries; per-provider fault isolation; occurrence math server-side only; docs updated in the same PR as the change; bits plugin manifest version bumps in the same PR.
-- **Ask first:** any ledger schema migration beyond the retention sweep; any change to dispatch semantics of `availableAt`; any new settings keys; touching the live `~/.bakin` state.
-- **Never:** runtime cron in the Bakin-schedule fire path; Schedule mutating plugin domain data outside the typed reschedule hook; parallel occurrence-math implementations; auto-converting raw dates/files into events; backwards-compat shims (single-user machine — delete dead surface instead).
-
-## Success Criteria
-
-1. `bakin doctor --full` runs the schedule-sync check; orphan native crons are detected and repairable.
-2. Conformance suite fails if an adapter lies about cron presence/behavior; teeth prove it.
-3. Integration test proves Bakin schedules fire after a runtime switch in both directions.
-4. `cron_fires` is bounded; retention never breaks exactly-once inside the catch-up window (test-pinned).
-5. "Remind me tomorrow at 9am" as an agent exec-tool call creates a one-shot that fires exactly once, survives a restart, catches up if missed, and shows "completed" with history afterward.
-6. Calendars place a `30 21 * * *` job correctly across a DST boundary in the job's tz (test-pinned; the old client math demonstrably couldn't).
-7. A plugin registering `{pluginId}.scheduledEvents` appears on the calendar, clearly badged, deep-linked; killing that plugin removes its events and nothing else breaks.
-8. A waiting task's date can be moved from the calendar via the reschedule dialog; the task's `availableAt` actually changes.
-9. Messaging publish dates + Projects milestones visible on the calendar (bits work item).
-10. All knowledge docs + external-author docs updated; README checked (no impact expected); zero regressions in the existing schedule test suite.
-
-## Open Questions (for the plan phase, not blockers)
-
-All resolved at plan review 2026-07-14 (details in `tasks/schedule-hardening-and-events/plan.md`):
-1. Retention: max-age **30 days**, keep-last-20-per-job, never prune pending/recent rows; sweep daily.
-2. Provider timeout: 2s per provider — ship it, log elapsed time on every drop, watch real latencies during live testing and retune if tight.
-3. `'at'` NL vocabulary: enumerated in plan (tomorrow/today/weekday/in-N/date phrases + ISO + date-picker fallback).
-4. Past occurrences: yes — full-range feed annotated past/future, past fires enriched with ledger disposition.
+1. Chat metering placement — exact hook in the chat turn-completion path (stream-bridge vs turn recorder) where usage is known; confirm usage fields are available on Pi + OpenClaw chat paths.
+2. Enrichment vision-capability detection for `cheap-vision` recommendations — what the models cache/catalog exposes; fallback when no cheap vision model exists (skip with reason, never propose blind).
+3. `send` class breadth — confirm `src/lib/agents.ts` start/restart/deliver sends should be routable or metered-only.
+4. Thinking-level declaration surface — messaging capability vs `routingSupport()`; pick one, conformance-pin it.
+5. Backfill prefix mapping — verify `turn:` run-ids are exclusively relay-ish before mapping them to `relay` (else NULL).
+6. Premium-on-cheap warn threshold — catalog price percentile vs static list; keep warn-only.
+7. Whether `bakin spend` byWorkClass lands in `budget.ts` CLI module or a new `spend` section (follow existing file).
