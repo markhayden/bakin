@@ -193,6 +193,11 @@ test suite.
 pattern for Messaging, Projects, and the official plugin template. Record exact
 Bakin/Bits refs and SDK versions used by conformance runs.
 
+**Discovered prerequisite:** the pre-revamp capture found that Messaging still
+declares the removed `contributes.nav[].alwaysExpanded` field and is rejected by
+current Bakin. Remove that field in the Bits compatibility slice before using
+Messaging as conformance evidence; Projects remains the valid T1 Bits specimen.
+
 **Acceptance:**
 
 - Messaging's four custom routes, Projects' four custom routes, badge slots,

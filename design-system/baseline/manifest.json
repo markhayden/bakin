@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "baselineId": "pre-revamp",
+  "fixture": {
+    "baseUrl": "http://127.0.0.1:3737",
+    "healthPath": "/api/plugins/health/summary",
+    "command": ["bun", "run", "dev:mock"],
+    "fixedNow": "2026-04-07T12:00:00.000Z",
+    "colorScheme": "dark",
+    "redactSelectors": [
+      "span[title='Next dispatch']",
+      "[data-testid='nav-badge-pill']"
+    ]
+  },
+  "viewports": {
+    "desktop": { "width": 1440, "height": 900 },
+    "mobile": { "width": 320, "height": 800 }
+  },
+  "scenarios": [
+    {
+      "id": "tasks-list",
+      "archetype": "list-index",
+      "owner": "core",
+      "route": "/tasks",
+      "ready": "main",
+      "viewports": ["desktop", "mobile"]
+    },
+    {
+      "id": "projects-grid",
+      "archetype": "list-index",
+      "owner": "bits",
+      "route": "/projects",
+      "ready": "main",
+      "expectText": "Projects",
+      "viewports": ["desktop", "mobile"]
+    },
+    {
+      "id": "agent-detail",
+      "archetype": "detail",
+      "owner": "core",
+      "route": "/team/jessica",
+      "ready": "main",
+      "redactSelectors": [
+        "main code[title*='/workspaces/']",
+        "main section:has-text('Metrics')",
+        "main section:has-text('Counts since server start')"
+      ],
+      "viewports": ["desktop", "mobile"]
+    },
+    {
+      "id": "settings",
+      "archetype": "settings-form",
+      "owner": "core",
+      "route": "/settings",
+      "ready": "main",
+      "viewports": ["desktop", "mobile"]
+    },
+    {
+      "id": "health-overview",
+      "archetype": "dashboard-overview",
+      "owner": "core",
+      "route": "/health?tab=activity",
+      "ready": ".health-page",
+      "expectText": "Activity",
+      "viewports": ["desktop", "mobile"]
+    },
+    {
+      "id": "chat-draft",
+      "archetype": "conversation",
+      "owner": "core",
+      "route": "/chat/new?agent=jessica",
+      "ready": "main",
+      "viewports": ["desktop", "mobile"]
+    },
+    {
+      "id": "runtime-overview",
+      "archetype": "inspector",
+      "owner": "core",
+      "route": "/runtime",
+      "ready": "main",
+      "viewports": ["desktop", "mobile"]
+    },
+    {
+      "id": "workflow-create",
+      "archetype": "workflow-action",
+      "owner": "core",
+      "route": "/workflows/new",
+      "ready": "main",
+      "viewports": ["desktop", "mobile"]
+    }
+  ]
+}

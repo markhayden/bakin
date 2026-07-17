@@ -12,7 +12,7 @@ comparison, and deletion of replaced styling/allowances.
 
 ## Phase 0 — Inventory and evidence
 
-- [ ] T1 Capture the reproducible pre-revamp baseline
+- [x] T1 Capture the reproducible pre-revamp baseline
 - [ ] T2 Define and generate the core UI census
 - [ ] T3 Include Bits and create the compatibility matrix
 - [ ] Checkpoint 0A: census truth reviewed

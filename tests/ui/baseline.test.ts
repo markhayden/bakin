@@ -1,20 +1,31 @@
 import { describe, expect, it } from 'bun:test'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 
 import {
   REQUIRED_PAGE_ARCHETYPES,
   countStyleViolations,
+  expandCapturePlan,
   findPortabilityViolations,
+  selectFixtureMode,
   validateBaselineScenarios,
+  type BaselineManifest,
   type BaselineScenario,
 } from '../../scripts/ui/baseline'
+
+const manifest = JSON.parse(readFileSync(
+  resolve(import.meta.dir, '../../design-system/baseline/manifest.json'),
+  'utf-8',
+)) as BaselineManifest
 
 function completeScenarios(): BaselineScenario[] {
   return REQUIRED_PAGE_ARCHETYPES.map((archetype, index) => ({
     id: archetype,
     archetype,
     owner: index === 0 ? 'bits' : 'core',
-    route: index === 0 ? '/messaging/plans' : `/${archetype}`,
+    route: index === 0 ? '/projects' : `/${archetype}`,
     ready: 'main',
+    expectText: index === 0 ? 'Projects' : undefined,
     viewports: ['desktop', 'mobile'],
   }))
 }
@@ -46,6 +57,40 @@ describe('validateBaselineScenarios', () => {
     expect(validateBaselineScenarios(scenarios)).toContain(`duplicate scenario id "${scenarios[0].id}"`)
     expect(validateBaselineScenarios(scenarios)).toContain(
       `scenario "${scenarios[0].id}" route must be a root-relative application path`,
+    )
+  })
+})
+
+describe('the checked-in baseline manifest', () => {
+  it('expands to a unique desktop/mobile capture for every scenario', () => {
+    expect(validateBaselineScenarios(manifest.scenarios)).toEqual([])
+
+    const plan = expandCapturePlan(manifest)
+    expect(plan).toHaveLength(16)
+    expect(new Set(plan.map((target) => target.outputFile)).size).toBe(plan.length)
+    expect(plan.filter((target) => target.owner === 'bits')).toHaveLength(2)
+    expect(plan.map((target) => target.viewportId).sort()).toEqual([
+      ...Array(8).fill('desktop'),
+      ...Array(8).fill('mobile'),
+    ])
+  })
+})
+
+describe('selectFixtureMode', () => {
+  it('starts a fresh fixture for the default capture URL', () => {
+    expect(selectFixtureMode({ explicitBaseUrl: false, serverReady: false })).toBe('start')
+  })
+
+  it('only reuses a running fixture when the caller opted in explicitly', () => {
+    expect(selectFixtureMode({ explicitBaseUrl: true, serverReady: true })).toBe('use-existing')
+    expect(() => selectFixtureMode({ explicitBaseUrl: false, serverReady: true })).toThrow(
+      'already has a healthy server',
+    )
+  })
+
+  it('does not try to start the fixed fixture command for an unreachable custom URL', () => {
+    expect(() => selectFixtureMode({ explicitBaseUrl: true, serverReady: false })).toThrow(
+      'Explicit baseline server is not reachable',
     )
   })
 })
