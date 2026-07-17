@@ -7,6 +7,7 @@ import { join } from 'path'
 import { getAppServices } from './app-services'
 import { createLogger } from './logger'
 import { meterAgentTurn } from './agent-cost'
+import { resolveSystemRoute, routeSendArgs } from './system-route'
 import { createFileBakinTaskStore } from '@bakin/core/tasks/store'
 import { getBakinPaths } from './content-dir'
 
@@ -73,8 +74,9 @@ export async function sendMessageToAgent(
   message: string
 ): Promise<{ ok: boolean; reply?: string; error?: string }> {
   try {
-    const result = await getAppServices().runtime.messaging.send({ agentId, content: message })
-    await meterAgentTurn({ agent: agentId, activityClass: 'user', result, workClass: 'send', name: 'send' })
+    const route = await resolveSystemRoute('send')
+    const result = await getAppServices().runtime.messaging.send({ agentId, content: message, ...routeSendArgs(route) })
+    await meterAgentTurn({ agent: agentId, activityClass: 'user', result, workClass: 'send', routeSource: route.source, resolvedModel: route.model, name: 'send' })
     return { ok: true, reply: result.content ?? '' }
   } catch (err) {
     log.error(`Failed to send message to agent ${agentId}`, err)

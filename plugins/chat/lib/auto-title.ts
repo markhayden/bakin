@@ -57,11 +57,17 @@ export async function maybeAutoTitle(ctx: TitleContext, chatId: string): Promise
     const assistant = rows.find((r) => r.kind === 'assistant')
     if (user?.kind !== 'user' || assistant?.kind !== 'assistant') return
 
+    // Work-class route: auto-title is the canonical cheap-model class. No
+    // route = inherit (agent default), exactly as before routing existed.
+    const { resolveSystemRoute, routeSendArgs } = await import('../../../src/core/system-route')
+    const route = await resolveSystemRoute('auto-title')
+
     const result = await ctx.runtime.messaging.send({
       agentId: chat.agentId,
       activityClass: 'system',
       ephemeral: true,
       threadId: `chat:${chatId}:title`,
+      ...routeSendArgs(route),
       content: [
         'Reply with ONLY a short title (3-6 words) for this conversation.',
         'No quotes, no trailing punctuation, no explanation.',
@@ -80,6 +86,8 @@ export async function maybeAutoTitle(ctx: TitleContext, chatId: string): Promise
       agent: chat.agentId,
       activityClass: 'system',
       workClass: 'auto-title',
+      routeSource: route.source,
+      resolvedModel: route.model,
       result,
       name: 'auto-title',
     })
