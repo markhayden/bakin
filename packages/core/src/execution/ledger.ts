@@ -1432,6 +1432,9 @@ export interface RunWithCostRow extends RunRow {
   cacheReadTokens: number | null
   cacheWriteTokens: number | null
   costUsdMicros: number | null
+  /** Route receipt: work performed + how its model was chosen (null pre-migration). */
+  workClass: string | null
+  routeSource: string | null
 }
 
 /**
@@ -1455,9 +1458,12 @@ export function listRunsByAgent(agent: string, opts: { sinceMs?: number; limit?:
         cache_read_tokens: number | null
         cache_write_tokens: number | null
         cost_usd_micros: number | null
+        work_class: string | null
+        route_source: string | null
       }, (string | number)[]>(
         `SELECT r.*, c.model, c.input_tokens, c.output_tokens, c.total_tokens,
-                c.cache_read_tokens, c.cache_write_tokens, c.cost_usd_micros
+                c.cache_read_tokens, c.cache_write_tokens, c.cost_usd_micros,
+                c.work_class, c.route_source
            FROM runs r LEFT JOIN run_costs c ON c.run_id = r.run_id
           WHERE ${clauses.join(' AND ')}
           ORDER BY r.started_at DESC LIMIT ?`,
@@ -1472,6 +1478,8 @@ export function listRunsByAgent(agent: string, opts: { sinceMs?: number; limit?:
         cacheReadTokens: r.cache_read_tokens,
         cacheWriteTokens: r.cache_write_tokens,
         costUsdMicros: r.cost_usd_micros,
+        workClass: r.work_class,
+        routeSource: r.route_source,
       }))
   })
 }

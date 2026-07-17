@@ -188,6 +188,9 @@ export type TimelineEventView =
       outputTokens: number | null
       totalTokens: number | null
       costUsdMicros: number | null
+      /** Route receipt (null = pre-migration rows). */
+      workClass: string | null
+      routeSource: string | null
       logs: Array<{ ts: string; message: string }>
       logsTruncated: boolean
     }

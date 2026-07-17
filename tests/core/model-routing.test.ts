@@ -88,7 +88,7 @@ describe('classifyDispatchWorkClass', () => {
 
 describe('resolveWorkClassRoute', () => {
   it('returns nothing for an empty config — inherit', () => {
-    expect(resolveWorkClassRoute(EMPTY, 'auto-title')).toEqual({})
+    expect(resolveWorkClassRoute(EMPTY, 'auto-title')).toEqual({ source: 'inherit' })
   })
 
   it('applies the matching work-class route', () => {
@@ -97,7 +97,7 @@ describe('resolveWorkClassRoute', () => {
       tagOverrides: [],
     }
     expect(resolveWorkClassRoute(config, 'auto-title'))
-      .toEqual({ model: 'anthropic/claude-haiku-4-5', thinking: 'off' })
+      .toEqual({ model: 'anthropic/claude-haiku-4-5', thinking: 'off', source: 'class' })
   })
 
   it('other classes do not match — inherit', () => {
@@ -105,7 +105,7 @@ describe('resolveWorkClassRoute', () => {
       routes: [{ workClass: 'relay', model: 'm' }],
       tagOverrides: [],
     }
-    expect(resolveWorkClassRoute(config, 'send')).toEqual({})
+    expect(resolveWorkClassRoute(config, 'send')).toEqual({ source: 'inherit' })
   })
 
   it('a tag override beats the class route when tags are provided', () => {
@@ -114,7 +114,7 @@ describe('resolveWorkClassRoute', () => {
       tagOverrides: [{ tag: 'heavy', model: 'anthropic/claude-opus-4-6' }],
     }
     expect(resolveWorkClassRoute(config, 'adhoc', ['heavy']))
-      .toEqual({ model: 'anthropic/claude-opus-4-6' })
+      .toEqual({ model: 'anthropic/claude-opus-4-6', source: 'tag:heavy' })
   })
 
   it("treats a route thinking of 'inherit' as no override", () => {
@@ -122,13 +122,13 @@ describe('resolveWorkClassRoute', () => {
       routes: [{ workClass: 'relay', model: 'm', thinking: 'inherit' }],
       tagOverrides: [],
     }
-    expect(resolveWorkClassRoute(config, 'relay')).toEqual({ model: 'm' })
+    expect(resolveWorkClassRoute(config, 'relay')).toEqual({ model: 'm', source: 'class' })
   })
 })
 
 describe('resolveTurnModel (dispatch wrapper)', () => {
   it('returns nothing for an empty config — unchanged dispatch (inherit)', () => {
-    expect(resolveTurnModel({ task: {}, config: EMPTY })).toEqual({})
+    expect(resolveTurnModel({ task: {}, config: EMPTY })).toEqual({ source: 'inherit' })
   })
 
   it('classifies the task and applies the matching route', () => {
@@ -137,7 +137,7 @@ describe('resolveTurnModel (dispatch wrapper)', () => {
       tagOverrides: [],
     }
     expect(resolveTurnModel({ task: { scheduleJobId: 'j' }, config }))
-      .toEqual({ model: 'anthropic/claude-haiku-4-5', thinking: 'low' })
+      .toEqual({ model: 'anthropic/claude-haiku-4-5', thinking: 'low', source: 'class' })
   })
 
   it('resolves model and thinking independently across layers', () => {
@@ -147,7 +147,7 @@ describe('resolveTurnModel (dispatch wrapper)', () => {
       tagOverrides: [{ tag: 'careful', thinking: 'high' }],
     }
     expect(resolveTurnModel({ task: { tags: ['careful'] }, config }))
-      .toEqual({ model: 'anthropic/claude-sonnet-4-6', thinking: 'high' })
+      .toEqual({ model: 'anthropic/claude-sonnet-4-6', thinking: 'high', source: 'tag:careful' })
   })
 
   it('recovery context routes to the recovery route', () => {
@@ -156,7 +156,7 @@ describe('resolveTurnModel (dispatch wrapper)', () => {
       tagOverrides: [],
     }
     expect(resolveTurnModel({ task: { scheduleJobId: 'j' }, isRecovery: true, config }))
-      .toEqual({ model: 'anthropic/claude-opus-4-6' })
+      .toEqual({ model: 'anthropic/claude-opus-4-6', source: 'class' })
   })
 
   it('returns nothing when no route matches the class', () => {
@@ -164,6 +164,6 @@ describe('resolveTurnModel (dispatch wrapper)', () => {
       routes: [{ workClass: 'scheduled', model: 'm' }],
       tagOverrides: [],
     }
-    expect(resolveTurnModel({ task: {}, config })).toEqual({}) // adhoc, no route
+    expect(resolveTurnModel({ task: {}, config })).toEqual({ source: 'inherit' }) // adhoc, no route
   })
 })

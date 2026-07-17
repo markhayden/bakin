@@ -738,6 +738,7 @@ function TimelinePanel({ agentId }: { agentId: string }) {
                     {event.inputTokens !== null && `${formatTokens(event.inputTokens)} in`}
                     {event.outputTokens !== null && ` / ${formatTokens(event.outputTokens)} out`}
                     {event.costUsdMicros !== null && ` · $${(event.costUsdMicros / 1_000_000).toFixed(2)}`}
+                    {event.routeSource && ` · via ${event.routeSource === 'class' ? 'class route' : event.routeSource}`}
                   </div>
                   {event.logs.length > 0 && (
                     <details className="mt-1">

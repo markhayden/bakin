@@ -89,6 +89,8 @@ function run(overrides: Partial<RunWithCostRow> = {}): RunWithCostRow {
     cacheReadTokens: null,
     cacheWriteTokens: null,
     costUsdMicros: 40_000,
+    workClass: 'adhoc',
+    routeSource: 'class',
     ...overrides,
   }
 }

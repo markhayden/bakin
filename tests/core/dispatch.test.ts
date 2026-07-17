@@ -926,6 +926,11 @@ describe('dispatch', () => {
       const args = mockRuntimeSend.mock.calls[0]?.[0] as Record<string, unknown>
       expect(args.model).toBe('anthropic/claude-haiku-4-5')
       expect(args.thinking).toBe('low')
+
+      // Route receipt on the cost row: class + source recorded at metering.
+      const { listRunCostsSince } = require('../../src/core/execution-ledger') as typeof import('../../src/core/execution-ledger')
+      const row = listRunCostsSince(0).find((r) => r.runId.startsWith('task:t-routed:'))
+      expect(row).toMatchObject({ workClass: 'scheduled', routeSource: 'class' })
     })
 
     it('defers dispatch when a budget cap is exceeded (task stays in todo, no send)', async () => {

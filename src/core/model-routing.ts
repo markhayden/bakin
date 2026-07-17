@@ -92,10 +92,18 @@ export interface RoutableTask {
   parentId?: string | null
 }
 
-/** The resolved per-turn overrides. Empty object = inherit (unchanged dispatch). */
+/**
+ * How a turn's model/thinking were chosen — the route receipt's provenance
+ * half, recorded on the run_costs row so evidence rides the turn itself.
+ */
+export type RouteSource = `tag:${string}` | 'class' | 'inherit'
+
+/** The resolved per-turn overrides. No model/thinking = inherit (unchanged dispatch). */
 export interface ResolvedTurn {
   model?: string
   thinking?: ThinkingLevel
+  /** Which layer won: a tag override, the class route, or nothing (inherit). */
+  source: RouteSource
 }
 
 /**
@@ -133,9 +141,16 @@ export function resolveWorkClassRoute(config: RoutingConfig, workClass: WorkClas
   const model = tag?.model ?? route?.model
   const thinking = normalizeThinking(tag?.thinking) ?? normalizeThinking(route?.thinking)
 
+  // Provenance: a tag override that contributed anything wins the receipt;
+  // else the class route; else inherit.
+  const tagContributed = tag !== undefined && (tag.model !== undefined || normalizeThinking(tag.thinking) !== undefined)
+  const routeContributed = route !== undefined && (route.model !== undefined || normalizeThinking(route.thinking) !== undefined)
+  const source: RouteSource = tagContributed ? `tag:${tag.tag}` : routeContributed ? 'class' : 'inherit'
+
   return {
     ...(model ? { model } : {}),
     ...(thinking ? { thinking } : {}),
+    source,
   }
 }
 
