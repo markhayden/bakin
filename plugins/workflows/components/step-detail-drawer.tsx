@@ -14,6 +14,7 @@ import {
 import { ChannelIcon } from '../hooks/channel-icon'
 import {
   User,
+  Users,
   ShieldCheck,
   Megaphone,
   Ban,
@@ -25,6 +26,7 @@ import {
   RefreshCw,
   Wrench,
 } from 'lucide-react'
+import { isTeamStepToken, teamIdFromToken } from '@bakin/core/workflows/team-token'
 import type {
   WorkflowStep,
   AgentStep,
@@ -93,8 +95,9 @@ function DeniedToolsSection({ tools }: { tools?: string[] }) {
 // ─── Step Type Details ─────────────────────────────────────────────
 
 function AgentStepDetail({ step }: { step: AgentStep }) {
-  const lookedUp = useAgent(step.agent)
-  const agentMeta = step.agent !== '$assigned' ? lookedUp : undefined
+  const isDynamic = step.agent === '$assigned' || isTeamStepToken(step.agent)
+  const lookedUp = useAgent(!isDynamic ? step.agent : '')
+  const agentMeta = !isDynamic ? lookedUp : undefined
 
   return (
     <div className="space-y-6">
@@ -104,12 +107,20 @@ function AgentStepDetail({ step }: { step: AgentStep }) {
           <span className="inline-flex size-10 items-center justify-center rounded-full bg-blue-900/50 ring-1 ring-blue-500/40">
             <User className="size-5 text-blue-400" />
           </span>
+        ) : isTeamStepToken(step.agent) ? (
+          <span className="inline-flex size-10 items-center justify-center rounded-full bg-purple-900/50 ring-1 ring-purple-500/40">
+            <Users className="size-5 text-purple-400" />
+          </span>
         ) : (
           <AgentAvatar agentId={step.agent} size="lg" />
         )}
         <div className="flex-1 min-w-0">
           <div className="text-sm font-medium text-foreground">
-            {step.agent === '$assigned' ? 'Assigned Agent' : agentMeta?.name ?? step.agent}
+            {step.agent === '$assigned'
+              ? 'Assigned Agent'
+              : isTeamStepToken(step.agent)
+                ? `Team · ${teamIdFromToken(step.agent)}`
+                : agentMeta?.name ?? step.agent}
           </div>
           <div className="flex items-center gap-2 mt-1">
             <StepTypeBadge type="agent" />
@@ -260,9 +271,17 @@ function OutputStepDetail({ step }: { step: OutputStep }) {
       {/* Agent hero (if present) */}
       {step.agent && (
         <div className="flex items-center gap-4 rounded-lg p-4 border border-border bg-surface">
-          <AgentAvatar agentId={step.agent} size="lg" />
+          {isTeamStepToken(step.agent) ? (
+            <span className="inline-flex size-10 items-center justify-center rounded-full bg-purple-900/50 ring-1 ring-purple-500/40">
+              <Users className="size-5 text-purple-400" />
+            </span>
+          ) : (
+            <AgentAvatar agentId={step.agent} size="lg" />
+          )}
           <div className="flex-1 min-w-0">
-            <div className="text-sm font-medium text-foreground">{step.agent}</div>
+            <div className="text-sm font-medium text-foreground">
+              {isTeamStepToken(step.agent) ? `Team · ${teamIdFromToken(step.agent)}` : step.agent}
+            </div>
             <div className="flex items-center gap-2 mt-1">
               <StepTypeBadge type="output" />
               {step.skill && (
