@@ -1,9 +1,18 @@
-# Bakin UI Style Guide (preliminary)
+# Bakin UI Style Guide (migration-era reference)
 
 The decided visual + interaction system, distilled from the chat overhaul
-(2026-07) and the brands UX pass. This is the PRELIMINARY cut — a full style
-guide (with visual specimens and a lint story) is a tracked follow-up. Sister
-docs: `ui-patterns.md` (gotchas + war stories), `repo-architecture.md`.
+(2026-07), the brands UX pass, and the design-system foundation. This file
+records migration guidance and decisions until the complete system replaces
+its preliminary rules. Sister docs: `ui-patterns.md` (gotchas + war stories),
+`repo-architecture.md`.
+
+The authoritative executable reference is the public SDK-only Storybook at
+`/docs/ui/`; curated plugin-author guidance begins at
+`/docs/extending/ui/overview/`. The local maintainer Storybook may also contain
+explicitly internal migration stories, which are not SDK contracts. Routing is
+owned by `.claude/specs/routing-overhaul.md` and
+`.claude/knowledge/url-state-deep-linking.md`; UI migrations consume that
+taxonomy rather than inventing a parallel navigation model.
 
 Rule zero: **assemble from the SDK first**. If a pattern below has a named
 component, hand-rolling it is a defect, not a preference.

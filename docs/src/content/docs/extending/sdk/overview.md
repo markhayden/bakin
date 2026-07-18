@@ -107,6 +107,7 @@ SDK exports are the compatibility promise. Host files, package aliases, generate
 
 ## Related
 
+- [UI Style Guide and Component Catalog](/docs/extending/ui/overview/)
 - [Plugin Manifest](/docs/extending/plugins/manifest/)
 - [Server Contracts](/docs/extending/plugins/server-contracts/)
 - [Client UI](/docs/extending/plugins/client-ui/)

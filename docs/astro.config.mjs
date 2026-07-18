@@ -141,6 +141,7 @@ export default defineConfig({
               ],
             },
             { label: 'SDK', slug: 'extending/sdk/overview' },
+            { label: 'UI Style Guide', slug: 'extending/ui/overview' },
             { label: 'Architecture', slug: 'extending/architecture' },
             { label: "Bakin' Core", slug: 'extending/development-workflow' },
             { label: 'Quality Control', slug: 'extending/quality-control' },
