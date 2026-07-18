@@ -26,7 +26,7 @@ comparison, and deletion of replaced styling/allowances.
 - [x] T7 Split public/internal audiences and deterministic fixtures
 - [x] T8 Add canonical Playwright visual infrastructure
 - [x] Checkpoint 1A: visual harness has teeth
-- [ ] T9 Add story accessibility and cross-browser behavior projects
+- [x] T9 Add story accessibility and cross-browser behavior projects
 - [ ] T10a Integrate UI CI gates and failure artifacts
 - [ ] T10b Integrate the public catalog with docs deployment
 - [ ] Checkpoint 1B: workbench foundation green

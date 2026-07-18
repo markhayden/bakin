@@ -26,6 +26,20 @@ const preview: Preview = {
   },
   parameters: {
     layout: 'centered',
+    a11y: {
+      test: 'error',
+      options: {
+        runOnly: [
+          'wcag2a',
+          'wcag2aa',
+          'wcag21a',
+          'wcag21aa',
+          'wcag22a',
+          'wcag22aa',
+          'best-practice',
+        ],
+      },
+    },
     bakinFixture: DEFAULT_STORY_FIXTURE,
     viewport: {
       options: BAKIN_STORYBOOK_VIEWPORTS,

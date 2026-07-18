@@ -11,7 +11,10 @@ const audience: StorybookAudience = process.env.BAKIN_STORYBOOK_AUDIENCE === 'pu
 const config: StorybookConfig = {
   framework: '@storybook/react-vite',
   stories: storyGlobsForAudience(audience),
-  addons: [],
+  addons: [
+    '@storybook/addon-a11y',
+    '@storybook/addon-vitest',
+  ],
   tags: {
     public: {},
     internal: {},

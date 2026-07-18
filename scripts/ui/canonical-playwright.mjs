@@ -66,14 +66,17 @@ function assertCanonical(mode) {
   }
 }
 
-function runPlaywright(update) {
+function runPlaywright(config, update) {
   assertCanonical(update ? 'update' : 'render')
   if (update && process.env.BAKIN_UI_VISUAL_SEED_DIFF) {
     throw new Error('Refusing to update snapshots while BAKIN_UI_VISUAL_SEED_DIFF is set')
   }
   const executable = join(REPO_ROOT, 'node_modules/.bin/playwright')
-  const args = ['test', '--config=playwright.ui.config.ts']
+  const args = ['test', `--config=${config}`]
   if (update) args.push('--update-snapshots=all')
+  if (config === 'playwright.browser.config.ts' && process.env.BAKIN_UI_BROWSER_PROJECT) {
+    args.push(`--project=${process.env.BAKIN_UI_BROWSER_PROJECT}`)
+  }
   const result = spawnSync(executable, args, {
     cwd: REPO_ROOT,
     env: process.env,
@@ -86,9 +89,10 @@ function runPlaywright(update) {
 function main() {
   const command = process.argv[2]
   if (command === '--check-render') assertCanonical('render')
-  else if (command === '--run-tests') runPlaywright(false)
-  else if (command === '--run-update') runPlaywright(true)
-  else throw new Error('Expected --check-render, --run-tests, or --run-update')
+  else if (command === '--run-tests') runPlaywright('playwright.ui.config.ts', false)
+  else if (command === '--run-update') runPlaywright('playwright.ui.config.ts', true)
+  else if (command === '--run-browsers') runPlaywright('playwright.browser.config.ts', false)
+  else throw new Error('Expected --check-render, --run-tests, --run-update, or --run-browsers')
 }
 
 const isMain = process.argv[1]

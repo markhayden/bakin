@@ -39,10 +39,14 @@
     "ui:test:visual": "bun run scripts/ui/run-visual-tests.ts",
     "ui:test:visual:teeth": "bun run scripts/ui/verify-visual-teeth.ts",
     "ui:snapshots:update": "bun run scripts/ui/update-snapshots.ts",
+    "ui:test:stories": "vitest --run --project=storybook",
+    "ui:test:stories:teeth": "bun run scripts/ui/verify-story-teeth.ts",
+    "ui:test:browsers": "bun run scripts/ui/run-browser-tests.ts",
+    "ui:test:browsers:teeth": "bun run scripts/ui/verify-browser-teeth.ts",
     "prestart": "bun run build:css && bun run build:vendors && bun run build:plugins && bun run build:host-shell && bun run build:assets-manifest",
     "start": "bun run prestart && bun run server.ts serve",
     "server": "bun run server.ts serve",
-    "lint": "eslint src packages plugins tests scripts storybook .storybook dev cli server.ts bakin.config.ts playwright.ui.config.ts eslint.config.mjs",
+    "lint": "eslint src packages plugins tests scripts storybook .storybook dev cli server.ts bakin.config.ts playwright.ui.config.ts playwright.browser.config.ts vitest.config.ts eslint.config.mjs",
     "lint:home-bypasses": "bun run scripts/bin/check-home-bypasses.mjs",
     "typecheck": "tsc -p tsconfig.app.json --noEmit",
     "check:cycles": "bun scripts/check-cycles.ts",
@@ -112,6 +116,8 @@
     "@fontsource/jetbrains-mono": "5.2.8",
     "@happy-dom/global-registrator": "^20.9.0",
     "@makinbakin/sdk": "workspace:*",
+    "@storybook/addon-a11y": "10.5.2",
+    "@storybook/addon-vitest": "10.5.2",
     "@storybook/react-vite": "10.5.2",
     "@tailwindcss/cli": "^4.2.4",
     "@tailwindcss/postcss": "^4.2.2",
@@ -122,6 +128,7 @@
     "@types/nodemailer": "^7.0.11",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@vitest/browser-playwright": "4.1.10",
     "eslint": "^9",
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^7.1.1",
@@ -133,6 +140,7 @@
     "tailwindcss": "^4",
     "typescript": "^5",
     "typescript-eslint": "^8.59.0",
-    "vite": "7.3.2"
+    "vite": "7.3.2",
+    "vitest": "4.1.10"
   }
 }

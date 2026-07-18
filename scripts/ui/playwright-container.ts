@@ -30,7 +30,7 @@ function isCanonical(mode: VisualRunMode): boolean {
   return validateCanonicalEnvironment(currentCanonicalEnvironment(), mode).length === 0
 }
 
-function dockerCommand(mode: VisualRunMode): string[] {
+function dockerCommand(commandName: string): string[] {
   const user = typeof process.getuid === 'function' && typeof process.getgid === 'function'
     ? [`${process.getuid()}:${process.getgid()}`]
     : []
@@ -43,13 +43,18 @@ function dockerCommand(mode: VisualRunMode): string[] {
     '--workdir', '/work',
     '--env', `BAKIN_UI_CANONICAL_IMAGE=${CANONICAL_PLAYWRIGHT_IMAGE}`,
     '--env', 'BAKIN_UI_STORYBOOK_PREBUILT=1',
+    '--env', 'XDG_CACHE_HOME=/tmp/bakin-playwright-cache',
+    '--env', 'XDG_CONFIG_HOME=/tmp/bakin-playwright-config',
   ]
   if (process.env.BAKIN_UI_VISUAL_SEED_DIFF) {
     command.push('--env', 'BAKIN_UI_VISUAL_SEED_DIFF=1')
   }
+  if (process.env.BAKIN_UI_BROWSER_PROJECT) {
+    command.push('--env', `BAKIN_UI_BROWSER_PROJECT=${process.env.BAKIN_UI_BROWSER_PROJECT}`)
+  }
   command.push(
     CANONICAL_PLAYWRIGHT_IMAGE,
-    'node', 'scripts/ui/canonical-playwright.mjs', canonicalCommand(mode),
+    'node', 'scripts/ui/canonical-playwright.mjs', commandName,
   )
   return command
 }
@@ -74,6 +79,23 @@ export async function runCanonicalVisual(mode: VisualRunMode): Promise<void> {
   console.log(`Running visual ${mode} in ${CANONICAL_PLAYWRIGHT_IMAGE} (linux/amd64) from ${platform()}/${arch()}.`)
   const buildExit = await run(['bun', 'run', 'ui:build:public'])
   if (buildExit !== 0) throw new Error(`Public Storybook build failed with exit code ${buildExit}`)
-  const exitCode = await run(dockerCommand(mode))
+  const exitCode = await run(dockerCommand(canonicalCommand(mode)))
   if (exitCode !== 0) throw new Error(`Canonical Docker visual ${mode} failed with exit code ${exitCode}`)
+}
+
+export async function runCanonicalBrowsers(): Promise<void> {
+  if (isCanonical('render')) {
+    const exitCode = await run(['node', 'scripts/ui/canonical-playwright.mjs', '--run-browsers'])
+    if (exitCode !== 0) throw new Error(`Canonical browser suite failed with exit code ${exitCode}`)
+    return
+  }
+  if (process.env.CI) {
+    throw new Error(`CI browser tests must run in ${CANONICAL_PLAYWRIGHT_IMAGE}`)
+  }
+
+  console.log(`Running browser behavior tests in ${CANONICAL_PLAYWRIGHT_IMAGE} (linux/amd64) from ${platform()}/${arch()}.`)
+  const buildExit = await run(['bun', 'run', 'ui:build:public'])
+  if (buildExit !== 0) throw new Error(`Public Storybook build failed with exit code ${buildExit}`)
+  const exitCode = await run(dockerCommand('--run-browsers'))
+  if (exitCode !== 0) throw new Error(`Canonical Docker browser suite failed with exit code ${exitCode}`)
 }

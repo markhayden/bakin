@@ -144,6 +144,171 @@ function hasStaticPublicTag(file: ts.SourceFile): boolean {
     && value.elements.some((element) => ts.isStringLiteralLike(element) && element.text === 'public')
 }
 
+function objectProperty(object: ts.ObjectLiteralExpression, name: string): ts.PropertyAssignment | undefined {
+  return object.properties.find((property): property is ts.PropertyAssignment => (
+    ts.isPropertyAssignment(property)
+    && (ts.isIdentifier(property.name) || ts.isStringLiteralLike(property.name))
+    && property.name.text === name
+  ))
+}
+
+function unwrapStaticExpression(
+  expression: ts.Expression,
+  declarations: ReadonlyMap<string, ts.Expression>,
+): ts.Expression {
+  if (
+    ts.isSatisfiesExpression(expression)
+    || ts.isAsExpression(expression)
+    || ts.isTypeAssertionExpression(expression)
+    || ts.isParenthesizedExpression(expression)
+  ) return unwrapStaticExpression(expression.expression, declarations)
+  if (ts.isIdentifier(expression) && declarations.has(expression.text)) {
+    return unwrapStaticExpression(declarations.get(expression.text)!, declarations)
+  }
+  return expression
+}
+
+function staticObject(
+  parent: ts.ObjectLiteralExpression,
+  name: string,
+  declarations: ReadonlyMap<string, ts.Expression>,
+): ts.ObjectLiteralExpression | undefined {
+  const property = objectProperty(parent, name)
+  if (!property) return undefined
+  const value = unwrapStaticExpression(property.initializer, declarations)
+  return ts.isObjectLiteralExpression(value) ? value : undefined
+}
+
+function isStaticBoolean(
+  parent: ts.ObjectLiteralExpression,
+  name: string,
+  declarations: ReadonlyMap<string, ts.Expression>,
+  expected: boolean,
+): boolean {
+  const property = objectProperty(parent, name)
+  const expectedKind = expected ? ts.SyntaxKind.TrueKeyword : ts.SyntaxKind.FalseKeyword
+  return Boolean(property && unwrapStaticExpression(property.initializer, declarations).kind === expectedKind)
+}
+
+function isStaticTrue(
+  parent: ts.ObjectLiteralExpression,
+  name: string,
+  declarations: ReadonlyMap<string, ts.Expression>,
+): boolean {
+  return isStaticBoolean(parent, name, declarations, true)
+}
+
+function staticString(
+  parent: ts.ObjectLiteralExpression,
+  name: string,
+  declarations: ReadonlyMap<string, ts.Expression>,
+): string | undefined {
+  const property = objectProperty(parent, name)
+  if (!property) return undefined
+  const value = unwrapStaticExpression(property.initializer, declarations)
+  return ts.isStringLiteralLike(value) ? value.text : undefined
+}
+
+function disablesA11yRule(
+  a11y: ts.ObjectLiteralExpression,
+  declarations: ReadonlyMap<string, ts.Expression>,
+): boolean {
+  const config = staticObject(a11y, 'config', declarations)
+  const rulesProperty = config && objectProperty(config, 'rules')
+  if (!rulesProperty) return false
+  const rules = unwrapStaticExpression(rulesProperty.initializer, declarations)
+  if (!ts.isArrayLiteralExpression(rules)) return false
+  return rules.elements.some((element) => {
+    const rule = unwrapStaticExpression(element as ts.Expression, declarations)
+    return ts.isObjectLiteralExpression(rule) && isStaticBoolean(rule, 'enabled', declarations, false)
+  })
+}
+
+function hasA11ySuppression(
+  story: ts.ObjectLiteralExpression,
+  declarations: ReadonlyMap<string, ts.Expression>,
+): boolean {
+  const parameters = staticObject(story, 'parameters', declarations)
+  const a11y = parameters && staticObject(parameters, 'a11y', declarations)
+  const globals = staticObject(story, 'globals', declarations)
+  const globalA11y = globals && staticObject(globals, 'a11y', declarations)
+  if (globalA11y && isStaticTrue(globalA11y, 'manual', declarations)) return true
+  if (!a11y) return false
+
+  const testMode = staticString(a11y, 'test', declarations)
+  const context = staticObject(a11y, 'context', declarations)
+  return testMode === 'todo'
+    || testMode === 'off'
+    || isStaticTrue(a11y, 'disable', declarations)
+    || Boolean(context && objectProperty(context, 'exclude'))
+    || disablesA11yRule(a11y, declarations)
+}
+
+function hasA11ySuppressionEvidence(
+  story: ts.ObjectLiteralExpression,
+  declarations: ReadonlyMap<string, ts.Expression>,
+): boolean {
+  const parameters = staticObject(story, 'parameters', declarations)
+  const metadata = parameters && staticObject(parameters, 'bakinA11ySuppression', declarations)
+  return Boolean(
+    metadata
+    && staticString(metadata, 'reason', declarations)?.trim()
+    && staticString(metadata, 'evidence', declarations)?.trim(),
+  )
+}
+
+function collectPublicStoryA11yViolations(rootDir = REPO_ROOT): PublicStoryViolation[] {
+  const canonicalRoot = realpathSync(rootDir)
+  const publicRoot = realpathSync(join(canonicalRoot, PUBLIC_ROOT))
+  const stories = walkSourceFiles(publicRoot).filter((path) => /\.stories\.(?:ts|tsx)$/.test(path))
+  const violations: PublicStoryViolation[] = []
+
+  for (const storyPath of stories) {
+    const file = sourceFile(storyPath)
+    const declarations = new Map<string, ts.Expression>()
+    const storyObjects: Array<{ expression: ts.Expression, line: number }> = []
+
+    for (const statement of file.statements) {
+      if (ts.isVariableStatement(statement)) {
+        const exported = statement.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword) ?? false
+        for (const declaration of statement.declarationList.declarations) {
+          if (!ts.isIdentifier(declaration.name) || !declaration.initializer) continue
+          declarations.set(declaration.name.text, declaration.initializer)
+          if (exported) {
+            storyObjects.push({
+              expression: declaration.initializer,
+              line: file.getLineAndCharacterOfPosition(declaration.getStart(file)).line + 1,
+            })
+          }
+        }
+      } else if (ts.isExportAssignment(statement) && !statement.isExportEquals) {
+        storyObjects.push({
+          expression: statement.expression,
+          line: file.getLineAndCharacterOfPosition(statement.getStart(file)).line + 1,
+        })
+      }
+    }
+
+    for (const candidate of storyObjects) {
+      const expression = unwrapStaticExpression(candidate.expression, declarations)
+      if (!ts.isObjectLiteralExpression(expression) || !hasA11ySuppression(expression, declarations)) continue
+      if (hasA11ySuppressionEvidence(expression, declarations)) continue
+      violations.push({
+        path: portablePath(canonicalRoot, storyPath),
+        line: candidate.line,
+        message: 'accessibility suppression requires non-empty parameters.bakinA11ySuppression.reason and .evidence',
+      })
+    }
+  }
+  return violations
+}
+
+export function validatePublicStoryA11yContract(rootDir = REPO_ROOT): string[] {
+  return collectPublicStoryA11yViolations(rootDir).map((violation) => (
+    `${violation.path}${violation.line ? `:${violation.line}` : ''} ${violation.message}`
+  ))
+}
+
 function bannedBareImport(specifier: string): string | null {
   if (specifier === '@makinbakin/sdk/internal' || specifier.startsWith('@makinbakin/sdk/internal/')) {
     return `public catalog cannot import ${specifier}; use a supported @makinbakin/sdk/* entrypoint`
@@ -167,6 +332,8 @@ export function collectPublicStoryViolations(rootDir = REPO_ROOT): PublicStoryVi
   const queue = [...stories]
   const visited = new Set<string>()
   const violations: PublicStoryViolation[] = []
+
+  violations.push(...collectPublicStoryA11yViolations(canonicalRoot))
 
   for (const story of stories) {
     const parsed = sourceFile(story)
