@@ -43,6 +43,8 @@
       },
       "devDependencies": {
         "@eslint/js": "^10.0.1",
+        "@fontsource/inter": "5.2.8",
+        "@fontsource/jetbrains-mono": "5.2.8",
         "@happy-dom/global-registrator": "^20.9.0",
         "@makinbakin/sdk": "workspace:*",
         "@storybook/react-vite": "10.5.2",

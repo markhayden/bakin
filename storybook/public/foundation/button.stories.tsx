@@ -1,10 +1,10 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { Button } from '@/components/ui/button'
+import { Button } from '@makinbakin/sdk/ui'
 
 const meta = {
-  title: 'Internal/Foundation/Button',
+  title: 'Foundation/Button',
   component: Button,
-  tags: ['internal'],
+  tags: ['public'],
   args: {
     children: 'Continue',
   },

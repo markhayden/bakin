@@ -18,6 +18,7 @@ dist/
 /build
 /out/
 /storybook-static/
+/storybook-static-public/
 
 # misc
 .DS_Store

@@ -1,0 +1,22 @@
+html,
+body,
+#storybook-root {
+  font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+}
+
+code,
+kbd,
+pre,
+samp {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+html[data-bakin-reduced-motion='true'] *,
+html[data-bakin-reduced-motion='true'] *::before,
+html[data-bakin-reduced-motion='true'] *::after {
+  animation-delay: 0s !important;
+  animation-duration: 0s !important;
+  scroll-behavior: auto !important;
+  transition-delay: 0s !important;
+  transition-duration: 0s !important;
+}

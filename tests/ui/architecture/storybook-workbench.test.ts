@@ -20,7 +20,8 @@ describe('Storybook workbench foundation', () => {
 
     expect(manifest.scripts['ui:dev']).toContain('storybook dev')
     expect(manifest.scripts['ui:dev']).toContain('--host 127.0.0.1')
-    expect(manifest.scripts['ui:build']).toContain('storybook build')
+    expect(manifest.scripts['ui:build']).toContain('scripts/ui/build-storybook.ts maintainer')
+    expect(manifest.scripts['ui:build:public']).toContain('scripts/ui/build-storybook.ts public')
 
     for (const dependency of ['storybook', '@storybook/react-vite', 'vite']) {
       expect(manifest.devDependencies[dependency]).toBeDefined()
@@ -28,17 +29,21 @@ describe('Storybook workbench foundation', () => {
     }
   })
 
-  it('uses the supported React/Vite framework and the internal story root', () => {
+  it('uses the supported React/Vite framework and explicit audience roots', () => {
     const mainConfig = readRepoFile('.storybook/main.ts')
 
     expect(mainConfig).toContain("from '@storybook/react-vite'")
     expect(mainConfig).toContain("framework: '@storybook/react-vite'")
-    expect(mainConfig).toContain("'../storybook/**/*.stories.@(ts|tsx)'")
+    expect(mainConfig).toContain('stories: storyGlobsForAudience(audience)')
+
+    const audienceConfig = readRepoFile('.storybook/audiences.ts')
+    expect(audienceConfig).toContain("'../storybook/public/**/*.stories.@(ts|tsx)'")
+    expect(audienceConfig).toContain("'../storybook/internal/**/*.stories.@(ts|tsx)'")
   })
 
   it('renders a real public SDK component under the canonical compiled stylesheet', () => {
     const preview = readRepoFile('.storybook/preview.tsx')
-    const foundationStory = readRepoFile('storybook/internal/foundation.stories.tsx')
+    const foundationStory = readRepoFile('storybook/public/foundation/button.stories.tsx')
 
     expect(preview).toContain("import '../packages/host/public/globals.css'")
     expect(foundationStory).toContain("from '@makinbakin/sdk/ui'")
