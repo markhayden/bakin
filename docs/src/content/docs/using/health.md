@@ -116,7 +116,7 @@ Plugin authors should see [Server contracts](/docs/extending/plugins/server-cont
 
 | Setting | Type | Default | What it does |
 | --- | --- | --- | --- |
-| Usage history scan interval (minutes) | `number` | `5` | How often session transcripts are swept into the durable usage history |
+| Usage history scan interval (minutes) | `number` | `5` | How often session transcripts are swept into durable usage history (1–1,440 minutes) |
 
 </div>
 <!-- /docs:settings -->

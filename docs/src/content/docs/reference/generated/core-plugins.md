@@ -72,7 +72,7 @@ description: Generated catalog of official plugins supported by Bakin.
       <td>Messaging<br/><span>Content messaging with scheduling, brainstorming, and multi-agent content pipeline</span></td>
       <td><code>messaging</code></td>
       <td>Official</td>
-      <td><code>0.7.0</code></td>
+      <td><code>0.8.0</code></td>
       <td><code>team</code> <code>workflows</code></td>
     </tr>
     <tr>
@@ -93,14 +93,14 @@ description: Generated catalog of official plugins supported by Bakin.
       <td>Schedule<br/><span>Cron job scheduling through the runtime adapter with task creation</span></td>
       <td><code>schedule</code></td>
       <td>Core</td>
-      <td><code>1.0.2</code></td>
+      <td><code>1.2.0</code></td>
       <td><code>tasks</code></td>
     </tr>
     <tr>
       <td>Tasks<br/><span>Kanban task management with Bakin task-store persistence, agent assignment, and dependency tracking</span></td>
       <td><code>tasks</code></td>
       <td>Core</td>
-      <td><code>2.2.0</code></td>
+      <td><code>2.3.0</code></td>
       <td>none</td>
     </tr>
     <tr>
@@ -121,5 +121,5 @@ description: Generated catalog of official plugins supported by Bakin.
 </table>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Jul 13, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Jul 17, 2026 · Bakin 0.0.0-dev</span>
 </aside>

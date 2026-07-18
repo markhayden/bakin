@@ -122,6 +122,9 @@ import { useSearch, useDebug } from '@makinbakin/sdk/hooks'
 | `useJsonFetch` | Cancellable JSON GET with a `{ data, loading, error, refresh }` lifecycle. |
 | `usePluginJsonFetch` | Cancellable JSON GET with a `{ data, loading, error, refresh }` lifecycle. |
 | `UseJsonFetchResult` | — |
+| `useOccurrences` | — |
+| `ScheduleOccurrence` | — |
+| `ScheduledDomainEvent` | — |
 | `useTaskRunHistory` | Fetch dispatch run history for a task. |
 | `TaskOutcome` | — |
 | `TaskRunEntry` | — |
@@ -134,6 +137,7 @@ import { useSearch, useDebug } from '@makinbakin/sdk/hooks'
 | `useHistoryBack` | History-aware back for detail surfaces reachable from many places — real back() with a fallback route for cold deep-links. |
 | `useHorizontalResize` | Resize a side-by-side split pane by dragging the divider between columns. |
 | `useAvailableModels` | The available-models catalog (cached, read-only); empty until loaded. |
+| `toNavigationOptions` | Split a browser-style URL string into TanStack navigate options (non-hook). |
 
 ## `@makinbakin/sdk/components`
 
@@ -193,6 +197,8 @@ import { PluginHeader, FacetFilter, AgentAvatar } from '@makinbakin/sdk/componen
 | `MarkdownEditor` | Editable markdown text area with preview toggle. |
 | `ModelSelect` | Model picker dropdown listing available models from the catalog. |
 | `PageLayout` | Standard plugin page wrapper with header, content area, and toaster. |
+| `PluginLink` | Client-side link for runtime-registered plugin and cross-plugin routes. |
+| `PluginLinkProps` | — |
 | `PluginHeader` | Plugin page header with title, count badge, search, and action buttons. |
 | `PluginHeaderProps` | — |
 | `PluginSettingsRenderer` | Render a settings form from a PluginSettingsSchema definition. |
@@ -331,6 +337,7 @@ import type { BakinPlugin, PluginContext, ExecToolDefinition } from '@makinbakin
 | `ObservedHealthCheckRunInput` | — |
 | `NotApplicableHealthCheckRunInput` | — |
 | `HealthCheckRunInput` | — |
+| `HealthCheckRunContext` | Cancellation context supplied by core when it executes a health check. |
 | `HealthCheckRegistrationInput` | Plugin- or adapter-authored check definition; core supplies owner metadata. |
 | `HealthRepairSafety` | — |
 | `HealthRepairChange` | — |
@@ -455,5 +462,5 @@ Source: `packages/sdk/src/routing/index.ts`.
 | `DefinePluginInput` | — |
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Jul 13, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Jul 17, 2026 · Bakin 0.0.0-dev</span>
 </aside>
