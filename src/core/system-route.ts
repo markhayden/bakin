@@ -24,7 +24,10 @@ const log = createLogger('system-route')
 export async function applyThinkingCapability(route: ResolvedTurn, workClass: WorkClass): Promise<ResolvedTurn> {
   if (!route.thinking) return route
   try {
-    const { getAppServices } = await import('./app-services')
+    // Leaf accessor (app-services-store), NOT the composition root — a
+    // ./app-services import here closes the exec-tool/dispatch cycle back
+    // to app-services (caught by check:cycles in CI).
+    const { getAppServices } = await import('./app-services-store')
     const supported = getAppServices().runtime.models.routingSupport().supportedThinkingLevels
     const { applied, clamped } = clampThinkingLevel(route.thinking, supported)
     if (!clamped) return route
