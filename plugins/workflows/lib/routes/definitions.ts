@@ -142,6 +142,10 @@ async function knownTeamIdsFor(definition: WorkflowDefinition, ctx: PluginContex
   try {
     const checks = await Promise.all(ids.map(async (teamId) =>
       [teamId, await ctx.hooks.invoke<boolean>('team.exists', { teamId })] as const))
+    // An unregistered hook invokes to undefined (never a boolean) — the team
+    // plugin is unavailable, so skip existence checks rather than treating
+    // every team as unknown.
+    if (checks.some(([, exists]) => exists === undefined)) return undefined
     return new Set(checks.filter(([, exists]) => exists === true).map(([teamId]) => teamId))
   } catch {
     return undefined

@@ -82,7 +82,11 @@ export async function validateWorkflowForStart(
       try {
         const checks = await Promise.all(teamIds.map(async (teamId) =>
           [teamId, await ctx.hooks.invoke<boolean>('team.exists', { teamId })] as const))
-        knownTeamIds = new Set(checks.filter(([, exists]) => exists === true).map(([teamId]) => teamId))
+        // Unregistered hook → undefined (never a boolean): team plugin
+        // unavailable, skip existence checks rather than rejecting all teams.
+        knownTeamIds = checks.some(([, exists]) => exists === undefined)
+          ? undefined
+          : new Set(checks.filter(([, exists]) => exists === true).map(([teamId]) => teamId))
       } catch {
         knownTeamIds = undefined
       }
