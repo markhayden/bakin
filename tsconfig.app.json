@@ -22,7 +22,8 @@
     "dev/**/*.ts",
     "cli/**/*.ts",
     "server.ts",
-    "bakin.config.ts"
+    "bakin.config.ts",
+    "playwright.ui.config.ts"
   ],
   "exclude": [
     "node_modules",

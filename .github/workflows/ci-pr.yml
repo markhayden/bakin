@@ -13,6 +13,13 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  visual:
+    name: UI visuals
+    if: ${{ github.event.pull_request.draft == false }}
+    uses: ./.github/workflows/ui-visual.yml
+    permissions:
+      contents: read
+
   check:
     name: Checks
     if: ${{ github.event.pull_request.draft == false }}

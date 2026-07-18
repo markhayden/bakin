@@ -19,6 +19,8 @@ dist/
 /out/
 /storybook-static/
 /storybook-static-public/
+/playwright-report/
+/test-results/
 
 # misc
 .DS_Store

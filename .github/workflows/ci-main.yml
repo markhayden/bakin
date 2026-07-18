@@ -11,6 +11,12 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  visual:
+    name: UI visuals
+    uses: ./.github/workflows/ui-visual.yml
+    permissions:
+      contents: read
+
   full:
     name: Full Checks
     runs-on: ubuntu-latest

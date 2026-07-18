@@ -24,8 +24,8 @@ comparison, and deletion of replaced styling/allowances.
 
 - [x] T6 Scaffold the React/Vite Storybook workbench
 - [x] T7 Split public/internal audiences and deterministic fixtures
-- [ ] T8 Add canonical Playwright visual infrastructure
-- [ ] Checkpoint 1A: visual harness has teeth
+- [x] T8 Add canonical Playwright visual infrastructure
+- [x] Checkpoint 1A: visual harness has teeth
 - [ ] T9 Add story accessibility and cross-browser behavior projects
 - [ ] T10a Integrate UI CI gates and failure artifacts
 - [ ] T10b Integrate the public catalog with docs deployment

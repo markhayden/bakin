@@ -1,0 +1,45 @@
+name: UI Visual Checks
+
+on:
+  workflow_call:
+
+jobs:
+  visual:
+    name: Canonical Playwright visuals
+    runs-on: ubuntu-24.04
+    container:
+      image: mcr.microsoft.com/playwright:v1.60.0-noble
+      options: --init --ipc=host
+    permissions:
+      contents: read
+    env:
+      CI: true
+      BAKIN_UI_CANONICAL_IMAGE: mcr.microsoft.com/playwright:v1.60.0-noble
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Verify canonical image
+        run: node scripts/ui/canonical-playwright.mjs --check-render
+
+      - name: Run visual baselines
+        run: bun run ui:test:visual
+
+      - name: Upload visual failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: ui-visual-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            playwright-report/ui
+            test-results/ui-visual
