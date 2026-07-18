@@ -159,12 +159,20 @@ description: Generated reference for Bakin core settings defaults.
   </thead>
   <tbody>
     <tr>
+      <td><code>doctor.checkTimeoutMs</code></td>
+      <td><code>30000</code></td>
+    </tr>
+    <tr>
       <td><code>doctor.escalation</code></td>
       <td><code>&quot;task&quot;</code></td>
     </tr>
     <tr>
       <td><code>doctor.escalationCooldownMs</code></td>
       <td><code>21600000</code></td>
+    </tr>
+    <tr>
+      <td><code>doctor.escalationStaleAfterMs</code></td>
+      <td><code>43200000</code></td>
     </tr>
     <tr>
       <td><code>doctor.intervalMs</code></td>
@@ -453,5 +461,5 @@ description: Generated reference for Bakin core settings defaults.
 
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Jul 13, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Jul 17, 2026 · Bakin 0.0.0-dev</span>
 </aside>

@@ -163,7 +163,7 @@ Health hooks expose registered readiness and diagnostic checks so other surfaces
 Label: Get a health check.
 Purpose: Returns canonical metadata for one registered Health check by stable id without executing it.
 Kind: rpc
-Source: plugins/health/index.ts:553
+Source: plugins/health/index.ts:767
 
 Example:
 
@@ -181,7 +181,7 @@ const result = await ctx.hooks.invoke(
 Label: List health checks.
 Purpose: Returns canonical metadata for registered Health checks without executing them.
 Kind: rpc
-Source: plugins/health/index.ts:552
+Source: plugins/health/index.ts:766
 
 Example:
 
@@ -364,12 +364,28 @@ const result = await ctx.hooks.invoke(
 
 ## Schedule
 
+### schedule.adoptCronJobs
+
+Label: Adopt runtime cron jobs
+Purpose: Adopt snapshotted runtime cron jobs into Bakin schedules during a runtime switch (opt-in, idempotent per job id).
+Kind: rpc
+Source: plugins/schedule/index.ts:76
+
+Example:
+
+```ts
+const result = await ctx.hooks.invoke(
+  'schedule.adoptCronJobs',
+  {},
+)
+```
+
 ### schedule.ensureBakinJob
 
 Label: Ensure Bakin schedule
 Purpose: Create or update a Bakin-managed runtime cron job and return the provider job id.
 Kind: rpc
-Source: plugins/schedule/index.ts:68
+Source: plugins/schedule/index.ts:70
 
 Example:
 
@@ -434,7 +450,7 @@ Team hooks expose runtime agent and team metadata for plugins that need agent-aw
 Label: Check team exists.
 Purpose: Returns true when the given teamId is a configured team. Use it for write-time validation of team assignments.
 Kind: rpc
-Source: plugins/team/index.ts:315
+Source: plugins/team/index.ts:316
 
 Example:
 
@@ -502,7 +518,7 @@ const result = await ctx.hooks.invoke(
 Label: Get org structure.
 Purpose: Returns the current organization structure for teams and agents. Use it when a plugin needs the full hierarchy instead of individual team or agent records.
 Kind: rpc
-Source: plugins/team/index.ts:312
+Source: plugins/team/index.ts:313
 
 Example:
 
@@ -552,7 +568,7 @@ const result = await ctx.hooks.invoke(
 Label: Resolve team assignment.
 Purpose: Resolves a team-assigned task to the best-suited member via the routing LLM (#189). Returns {ok:true, agentId, reason, model} or {ok:false, kind: transient|structural, message} — dispatch classifies by kind. Use it from dispatch or any surface that must turn a teamId into a concrete agent.
 Kind: rpc
-Source: plugins/team/index.ts:318
+Source: plugins/team/index.ts:319
 
 Example:
 

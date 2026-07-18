@@ -1041,7 +1041,7 @@ curl -sS \
 <OpenApiReference operationId="health.get.doctor">
 ```sh frame="terminal" showLineNumbers
 curl -sS \
-  'http://localhost:3737/api/plugins/health/doctor?fresh=<fresh>&notifyAgent=<notifyAgent>'
+  'http://localhost:3737/api/plugins/health/doctor'
 ```
 </OpenApiReference>
 
@@ -1097,6 +1097,23 @@ curl -sS \
 ```
 </OpenApiReference>
 
+<OpenApiReference operationId="health.post.doctor-run">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/health/doctor/run' \
+  -H 'Content-Type: application/json' \
+  --data '{"notifyAgent":true}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="health.get.interaction-summary">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/health/interaction-summary?window=<window>'
+```
+</OpenApiReference>
+
 <OpenApiReference operationId="health.get.live-now">
 ```sh frame="terminal" showLineNumbers
 curl -sS \
@@ -1149,7 +1166,7 @@ curl -sS \
 <OpenApiReference operationId="health.get.usage-feed">
 ```sh frame="terminal" showLineNumbers
 curl -sS \
-  'http://localhost:3737/api/plugins/health/usage-feed?kind=<kind>&window=<window>&agent=<agent>&includeRoutine=<includeRoutine>'
+  'http://localhost:3737/api/plugins/health/usage-feed?kind=<kind>&window=<window>&agent=<agent>&includeRoutine=<includeRoutine>&failureGroupOffset=<failureGroupOffset>&failureGroupLimit=<failureGroupLimit>&failureGroupTargetKind=<failureGroupTargetKind>&failureGroupTargetMethod=<failureGroupTargetMethod>&failureGroupTargetDestination=<failureGroupTargetDestination>'
 ```
 </OpenApiReference>
 
@@ -1157,6 +1174,13 @@ curl -sS \
 ```sh frame="terminal" showLineNumbers
 curl -sS \
   'http://localhost:3737/api/plugins/health/usage-history?window=<window>'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="health.get.usage-snapshot">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/health/usage-snapshot'
 ```
 </OpenApiReference>
 
@@ -1571,6 +1595,23 @@ curl -sS \
 ```sh frame="terminal" showLineNumbers
 curl -sS \
   'http://localhost:3737/api/plugins/schedule/<jobId>/runs?limit=<limit>'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="schedule.post.events-reschedule">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/schedule/events/reschedule' \
+  -H 'Content-Type: application/json' \
+  --data '{"pluginId":"value","eventId":"value","to":"value"}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="schedule.get.occurrences">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/schedule/occurrences'
 ```
 </OpenApiReference>
 
@@ -2175,5 +2216,5 @@ curl -sS \
 </OpenApiReference>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Jul 13, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Jul 17, 2026 · Bakin 0.0.0-dev</span>
 </aside>
