@@ -390,6 +390,7 @@ export function createMockRuntimeAdapter(
         defaultSubagentModel: true,
         aliases: true,
         perAgentSubagentModel: true,
+        supportedThinkingLevels: ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'adaptive', 'max'],
       }),
       routingPolicy: async () => ({ ...mockRoutingPolicy }),
       setRoutingPolicy: async (patch, _reason) => {

@@ -24,7 +24,7 @@
  *    with no events at all; the recovery ladder can surface trajectory-
  *    recovered content the same way).
  */
-import type { ChatChunk } from '@bakin/core/adapters/runtime'
+import type { ChatChunk, MessageUsage } from '@bakin/core/adapters/runtime'
 
 import {
   chatCumulativeText,
@@ -56,7 +56,7 @@ function bareToolName(name: string): string {
 
 /** How one OpenClaw turn ended, from the RPC settle (or a pushed abort). */
 export type OpenClawTurnFinish =
-  | { kind: 'ok'; content: string | null }
+  | { kind: 'ok'; content: string | null; usage?: MessageUsage }
   | { kind: 'aborted' }
   | { kind: 'error'; errorKind: string; message?: string }
 
@@ -211,10 +211,11 @@ export class OpenClawTurnChunkMachine {
     if (this.done) return []
     if (outcome.kind === 'ok') {
       // Flush BEFORE latching done so the resilience path (no events at all)
-      // still delivers the final text.
+      // still delivers the final text. Usage rides the done chunk (parity
+      // with send() — conformance-pinned) so streamed turns are meterable.
       const residual = this.flushTo(outcome.content)
       this.done = true
-      return [...residual, { type: 'done' }]
+      return [...residual, { type: 'done', ...(outcome.usage ? { usage: outcome.usage } : {}) }]
     }
     this.done = true
     if (outcome.kind === 'aborted') return [{ type: 'done' }]
@@ -286,7 +287,7 @@ export interface OpenClawTurnStreamDeps {
   /** The turn's idempotency key — the runId frames will carry until the ack says otherwise. */
   idempotencyKey: string
   /** Send the agent RPC; `onAccepted` fires on the gateway's first answer. */
-  run: (hooks: { onAccepted: (ack: OpenClawGatewayAcceptedAck) => void }) => Promise<{ content: string }>
+  run: (hooks: { onAccepted: (ack: OpenClawGatewayAcceptedAck) => void }) => Promise<{ content: string; usage?: MessageUsage }>
   /** Map a rejected RPC to a terminal outcome (kind:'aborted' → clean done). */
   classifyFailure: (err: unknown) => OpenClawTurnFinish
   /** Internal terminal-outcome tap; callback failures are contained. */
@@ -361,7 +362,7 @@ export async function* streamOpenClawTurnChunks(deps: OpenClawTurnStreamDeps): A
   })
   rpc.then(
     (result) => {
-      const outcome = { kind: 'ok', content: result.content } as const
+      const outcome = { kind: 'ok', content: result.content, usage: result.usage } as const
       const chunks = machine.finish(outcome)
       notifyFinish(outcome, chunks)
       push(chunks)

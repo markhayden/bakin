@@ -7,6 +7,7 @@
 import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 import type { HealthIncident, HealthReport } from '../../packages/core/src/plugin-types'
 import { meterAgentTurn } from './agent-cost'
+import { resolveSystemRoute, routeSendArgs } from './system-route'
 import { getAppServices } from './app-services'
 import { createLogger } from './logger'
 import { getSettings } from './settings'
@@ -89,7 +90,8 @@ export async function notifyActionRequiredIncidents(report: HealthReport): Promi
   try {
     const runtime = getAppServices().runtime
     const agentId = await getRuntimeMainAgentId(runtime)
-    const result = await runtime.messaging.send({ agentId, content: message, activityClass: 'system' })
+    const route = await resolveSystemRoute('relay')
+    const result = await runtime.messaging.send({ agentId, content: message, activityClass: 'system', ...routeSendArgs(route) })
     const sentAt = Date.now()
     for (const { incident, state } of reserved) {
       if (notificationStates.get(incident.id) === state) {
@@ -98,7 +100,7 @@ export async function notifyActionRequiredIncidents(report: HealthReport): Promi
     }
     boundNotificationStates()
     try {
-      await meterAgentTurn({ agent: agentId, activityClass: 'system', result, name: 'doctor-notify' })
+      await meterAgentTurn({ agent: agentId, activityClass: 'system', result, workClass: 'relay', routeSource: route.source, resolvedModel: route.model, name: 'doctor-notify' })
     } catch (error) {
       log.warn('Health incident notification was delivered but could not be metered', { error })
     }

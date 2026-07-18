@@ -23,6 +23,15 @@ export interface ModelsConfigResponse {
   defaultModel: string
   defaultSubagentModel: string | null
   fallbackModels: string[]
+  /** Which routing knobs the ACTIVE runtime honors — UIs hide the rest. */
+  support?: {
+    defaultModel: boolean
+    fallbackModels: boolean
+    defaultSubagentModel: boolean
+    aliases: boolean
+    perAgentSubagentModel: boolean
+    supportedThinkingLevels: string[]
+  }
 }
 
 
@@ -50,7 +59,7 @@ export interface BillingOverride {
 /** Shape of models plugin settings */
 export interface ModelsPluginSettings {
   defaultModel?: string
-  /** Per-turn model/thinking routing policy (origins + tag overrides). */
+  /** Per-turn model/thinking routing policy (work classes + tag overrides). */
   routing?: RoutingConfig
   /** Spend-cap policy (global + per-agent daily/monthly limits). */
   budget?: BudgetPolicy

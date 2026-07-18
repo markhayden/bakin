@@ -1,84 +1,176 @@
 'use client'
 
-import { Plus, Layers } from 'lucide-react'
+import { useState } from 'react'
+import { Plus, Layers, Wand2 } from 'lucide-react'
 import { Button, Input, Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from "@makinbakin/sdk/ui"
-import { EmptyState } from "@makinbakin/sdk/components"
+import { ConfirmDialog, EmptyState } from "@makinbakin/sdk/components"
 import { ModelSelect } from "@makinbakin/sdk/components"
+import { WORK_CLASSES } from '../../../src/core/model-routing'
 import type { ModelsData } from './use-models-data'
 
-// Dispatch origins routing can target, with a short hint of what each is.
-const ROUTING_ORIGINS = [
-  { id: 'scheduled', label: 'Scheduled', hint: 'Cron-fired tasks' },
-  { id: 'workflow', label: 'Workflow', hint: 'Workflow step turns' },
-  { id: 'adhoc', label: 'Ad-hoc', hint: 'Manually kicked tasks' },
-  { id: 'recovery', label: 'Recovery', hint: 'Session-death re-dispatch' },
-  { id: 'decomposition', label: 'Decomposition', hint: 'Subtask breakdown' },
-] as const
+interface RecommendPayload {
+  proposals: Array<{ workClass: string; model: string; reason: string }>
+  skipped: Array<{ workClass: string; reason: string }>
+}
 
-const THINKING_LEVELS = ['inherit', 'off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'adaptive', 'max'] as const
+// The full ordered ladder; the active runtime's declared support filters it.
+const ALL_THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'adaptive', 'max'] as const
+
+const DISPATCH_ROWS = WORK_CLASSES.filter((c) => c.kind === 'dispatch' && c.routable)
+const SYSTEM_ROWS = WORK_CLASSES.filter((c) => c.kind === 'system' && c.routable)
 
 export function RoutingTab({ m }: { m: ModelsData }) {
   const {
-    pendingRouting, setPendingRouting, saveRouting, saving, displayRouting,
-    setOriginField, addTagOverride, updateTagOverride, removeTagOverride, modelOptions,
+    pendingRouting, setPendingRouting, saveRouting, saving, displayRouting, routingSupport,
+    setRouteField, addTagOverride, updateTagOverride, removeTagOverride, modelOptions, applyRecommendedRoutes,
   } = m
+
+  // Apply-recommended flow: propose (server) → diff preview in a ConfirmDialog
+  // (house rule: the whole action flow lives in the modal) → confirm PUTs.
+  const [recommend, setRecommend] = useState<RecommendPayload | null>(null)
+  const [recommendBusy, setRecommendBusy] = useState(false)
+  const [recommendError, setRecommendError] = useState<string | null>(null)
+
+  const openRecommend = async () => {
+    setRecommendError(null)
+    try {
+      const res = await fetch('/api/plugins/models/routing/recommend', { method: 'POST' })
+      const data = await res.json() as RecommendPayload & { error?: string }
+      if (!res.ok) throw new Error(data.error ?? `Recommend failed (${res.status})`)
+      setRecommend(data)
+    } catch (err) {
+      setRecommend({ proposals: [], skipped: [] })
+      setRecommendError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  const confirmRecommend = async () => {
+    if (!recommend || recommend.proposals.length === 0) { setRecommend(null); return }
+    setRecommendBusy(true)
+    setRecommendError(null)
+    try {
+      await applyRecommendedRoutes(recommend.proposals)
+      setRecommend(null)
+    } catch (err) {
+      setRecommendError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setRecommendBusy(false)
+    }
+  }
+
+  // Only offer levels the active runtime honors (capability honesty). A
+  // persisted-but-unsupported level still clamps at send time with audit
+  // evidence; the routing health check flags it.
+  const supported = routingSupport?.supportedThinkingLevels
+  const thinkingLevels = ['inherit', ...(supported ?? ALL_THINKING_LEVELS)]
+
+  const thinkingSelect = (value: string | undefined, onChange: (v: string) => void) => (
+    <select
+      className="h-8 w-full rounded-md border border-border bg-background px-2 text-sm"
+      value={value ?? 'inherit'}
+      onChange={(e) => onChange(e.target.value)}
+    >
+      {thinkingLevels.map((t) => <option key={t} value={t}>{t}</option>)}
+      {value && !thinkingLevels.includes(value) && (
+        <option value={value}>{value} (clamps — not supported by this runtime)</option>
+      )}
+    </select>
+  )
+
+  const classTable = (rows: typeof DISPATCH_ROWS, header: string) => (
+    <div className="overflow-hidden rounded-xl border border-border">
+      <Table>
+        <TableHeader>
+          <TableRow className="bg-card">
+            <TableHead>{header}</TableHead>
+            <TableHead>Model</TableHead>
+            <TableHead className="w-[160px]">Thinking</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map((c) => {
+            const route = displayRouting.routes.find((r) => r.workClass === c.id)
+            return (
+              <TableRow key={c.id}>
+                <TableCell>
+                  <div className="font-medium">{c.label}</div>
+                  <div className="text-[11px] text-muted-foreground">{c.description}</div>
+                </TableCell>
+                <TableCell>
+                  <ModelSelect
+                    value={route?.model ?? ''}
+                    onChange={(v) => setRouteField(c.id, 'model', v)}
+                    models={modelOptions}
+                  />
+                </TableCell>
+                <TableCell>
+                  {thinkingSelect(route?.thinking, (v) => setRouteField(c.id, 'thinking', v))}
+                </TableCell>
+              </TableRow>
+            )
+          })}
+        </TableBody>
+      </Table>
+    </div>
+  )
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
-          Route each dispatch origin to a model and thinking level. Leave a row blank to inherit the agent&apos;s configured model. Tag overrides win over origin policies.
+          Route each work class to a model and thinking level. Leave a row blank to inherit the agent&apos;s configured model. Tag overrides win over class routes. Interactive chat is metered but never routed.
         </p>
-        {pendingRouting && (
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="xs" onClick={() => setPendingRouting(null)}>Discard</Button>
-            <Button size="xs" onClick={saveRouting} disabled={saving === 'routing'}>
-              {saving === 'routing' ? 'Saving...' : 'Save Routing'}
-            </Button>
-          </div>
-        )}
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="xs" onClick={openRecommend}>
+            <Wand2 className="h-3 w-3" /> Apply recommended routes
+          </Button>
+          {pendingRouting && (
+            <>
+              <Button variant="outline" size="xs" onClick={() => setPendingRouting(null)}>Discard</Button>
+              <Button size="xs" onClick={saveRouting} disabled={saving === 'routing'}>
+                {saving === 'routing' ? 'Saving...' : 'Save Routing'}
+              </Button>
+            </>
+          )}
+        </div>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-border">
-        <Table>
-          <TableHeader>
-            <TableRow className="bg-card">
-              <TableHead>Origin</TableHead>
-              <TableHead>Model</TableHead>
-              <TableHead className="w-[160px]">Thinking</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {ROUTING_ORIGINS.map((o) => {
-              const policy = displayRouting.policies.find((p) => p.origin === o.id)
-              return (
-                <TableRow key={o.id}>
-                  <TableCell>
-                    <div className="font-medium">{o.label}</div>
-                    <div className="text-[11px] text-muted-foreground">{o.hint}</div>
-                  </TableCell>
-                  <TableCell>
-                    <ModelSelect
-                      value={policy?.model ?? ''}
-                      onChange={(v) => setOriginField(o.id, 'model', v)}
-                      models={modelOptions}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <select
-                      className="h-8 w-full rounded-md border border-border bg-background px-2 text-sm"
-                      value={policy?.thinking ?? 'inherit'}
-                      onChange={(e) => setOriginField(o.id, 'thinking', e.target.value)}
-                    >
-                      {THINKING_LEVELS.map((t) => <option key={t} value={t}>{t}</option>)}
-                    </select>
-                  </TableCell>
-                </TableRow>
-              )
-            })}
-          </TableBody>
-        </Table>
-      </div>
+      <ConfirmDialog
+        open={recommend !== null}
+        title="Apply recommended routes"
+        description={recommend && recommend.proposals.length > 0 ? (
+          <span className="block space-y-1">
+            <span className="block">These work classes will route to cheap models (nothing else changes):</span>
+            {recommend.proposals.map((p) => (
+              <span key={p.workClass} className="block font-mono text-xs">{p.workClass} → {p.model} <span className="text-muted-foreground">({p.reason})</span></span>
+            ))}
+            {recommend.skipped.map((s) => (
+              <span key={s.workClass} className="block text-xs text-muted-foreground">skipped {s.workClass}: {s.reason}</span>
+            ))}
+          </span>
+        ) : (
+          <span className="block">
+            Nothing to apply — every recommended class already has a route.
+            {recommend?.skipped.map((s) => (
+              <span key={s.workClass} className="block text-xs text-muted-foreground">skipped {s.workClass}: {s.reason}</span>
+            ))}
+          </span>
+        )}
+        confirmLabel={recommend && recommend.proposals.length > 0 ? `Apply ${recommend.proposals.length} route(s)` : 'Close'}
+        confirmVariant="default"
+        busy={recommendBusy}
+        error={recommendError}
+        onConfirm={confirmRecommend}
+        onCancel={() => { setRecommend(null); setRecommendError(null) }}
+      />
+
+      {classTable(DISPATCH_ROWS, 'Task dispatch')}
+
+      <h3 className="text-sm font-medium">System work</h3>
+      <p className="text-xs text-muted-foreground">
+        Background sends Bakin makes on your behalf — titles, enrichment, relays, team routing. These are the cheap-model wins.
+      </p>
+      {classTable(SYSTEM_ROWS, 'System class')}
 
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-medium">Tag overrides</h3>
@@ -107,13 +199,7 @@ export function RoutingTab({ m }: { m: ModelsData }) {
                     <ModelSelect value={row.model ?? ''} onChange={(v) => updateTagOverride(i, 'model', v)} models={modelOptions} />
                   </TableCell>
                   <TableCell>
-                    <select
-                      className="h-8 w-full rounded-md border border-border bg-background px-2 text-sm"
-                      value={row.thinking ?? 'inherit'}
-                      onChange={(e) => updateTagOverride(i, 'thinking', e.target.value)}
-                    >
-                      {THINKING_LEVELS.map((t) => <option key={t} value={t}>{t}</option>)}
-                    </select>
+                    {thinkingSelect(row.thinking, (v) => updateTagOverride(i, 'thinking', v))}
                   </TableCell>
                   <TableCell>
                     <Button variant="ghost" size="xs" onClick={() => removeTagOverride(i)} className="text-muted-foreground hover:text-destructive">Remove</Button>

@@ -55,6 +55,7 @@ const KNOWN_CYCLES = new Set<string>([
  */
 const TOLERATED_CYCLES = new Set<string>([
   key(['packages/sdk/src/hooks/index.ts', 'src/hooks/use-query-state.ts']),
+  key(['packages/sdk/src/components/index.ts', 'src/components/search-unavailable.tsx']),
   key(['packages/sdk/src/components/index.ts', 'src/components/integrated-brainstorm/index.tsx', 'src/components/integrated-brainstorm/empty-state.tsx']),
   key(['packages/sdk/src/components/index.ts', 'src/components/integrated-brainstorm/index.tsx', 'src/components/integrated-brainstorm/input-row.tsx']),
   key(['packages/sdk/src/components/index.ts', 'src/components/integrated-brainstorm/index.tsx', 'src/components/integrated-brainstorm/input-row.tsx', 'src/components/integrated-brainstorm/use-brainstorm-state.ts', 'src/components/integrated-brainstorm/thinking-indicator.tsx']),

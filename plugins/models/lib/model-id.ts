@@ -9,8 +9,11 @@
  */
 
 export function tierFromId(id: string): 'budget' | 'standard' | 'premium' {
-  if (id.includes('gpt-5') || id.includes('opus') || id.includes('pro')) return 'premium'
+  // Small-model markers win over family markers: 'gpt-5.4-mini' is the cheap
+  // lane of a premium family — labeling it premium starved the cheap-route
+  // recommender on Codex-only runtimes.
   if (id.includes('flash') || id.includes('haiku') || id.includes('mini')) return 'budget'
+  if (id.includes('gpt-5') || id.includes('opus') || id.includes('pro')) return 'premium'
   if (id.includes('sonnet')) return 'standard'
   return 'budget'
 }

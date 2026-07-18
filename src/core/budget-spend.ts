@@ -28,6 +28,7 @@ import {
   type UnattributedSums,
   type ScopeSpend,
   type WindowSpend,
+  type WorkClassSums,
   type BudgetSpendFacets,
 } from './budget'
 
@@ -40,6 +41,7 @@ export type {
   UnattributedSums,
   ScopeSpend,
   WindowSpend,
+  WorkClassSums,
   BudgetSpendFacets,
 } from './budget'
 
@@ -53,7 +55,7 @@ function emptyScope(): ScopeSpend {
   return { ...emptyLanes(), unattributed: emptyUnattributed() }
 }
 function emptyWindow(startMs: number): WindowSpend {
-  return { startMs, global: emptyScope(), byAgent: {}, byProvider: {}, byModel: {} }
+  return { startMs, global: emptyScope(), byAgent: {}, byProvider: {}, byModel: {}, byWorkClass: {} }
 }
 
 type Lane = 'metered' | 'subscription'
@@ -435,6 +437,14 @@ export async function assembleBudgetSpend(now: number): Promise<BudgetSpendFacet
           provider: row.provider,
           model: row.model,
         })
+        // Work-class slice (unit economics): the dimension that routes IS the
+        // dimension spend reports on. 'media' = classless-by-design image
+        // rows; 'unclassified' = pre-migration token rows. Reporting-only —
+        // no cap rules bind here, so no evidence-gap plumbing.
+        const workClass = row.usageKind === 'media' ? 'media' : (row.workClass ?? 'unclassified')
+        const wc: WorkClassSums = (window.byWorkClass[workClass] ??= { ...emptyLanes(), runs: 0 })
+        addAttributed(wc, lane, tokens, usd)
+        wc.runs += 1
       }
       const day = usageStore.toLocalDayKey(row.occurredAt)
       const key = laneKey(row.agent, day, lane)

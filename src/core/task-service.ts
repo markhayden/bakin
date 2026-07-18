@@ -15,6 +15,7 @@ import { recordUsage } from './usage'
 import { checkAndContinueDependents } from './continuation'
 import { getAppServices } from './app-services-store'
 import { meterAgentTurn } from './agent-cost'
+import { resolveSystemRoute, routeSendArgs } from './system-route'
 import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 import type { TaskSource } from '@bakin/core/tasks/store'
 import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
@@ -592,12 +593,14 @@ export async function reportComplete(
   try {
     const runtime = getAppServices().runtime
     const orchestratorId = await getRuntimeMainAgentId(runtime)
+    const route = await resolveSystemRoute('relay')
     const result = await runtime.messaging.send({
       agentId: orchestratorId,
       activityClass: 'system',
       content: `TASK COMPLETE: ${title} — ${summary}`,
+      ...routeSendArgs(route),
     })
-    await meterAgentTurn({ agent: orchestratorId, activityClass: 'system', result, name: 'orchestrator-notify' })
+    await meterAgentTurn({ agent: orchestratorId, activityClass: 'system', result, workClass: 'relay', routeSource: route.source, resolvedModel: route.model, name: 'orchestrator-notify' })
   } catch (err) {
     log.warn('Failed to notify orchestrator of task completion', err)
   }

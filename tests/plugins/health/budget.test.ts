@@ -89,7 +89,7 @@ afterEach(() => {
 })
 
 function seedSpend(costUsdMicros: number): void {
-  recordRunCost({
+  recordRunCost({ workClass: null,
     runId: `seed:${randomUUID()}`,
     taskId: 't',
     agent: 'pixel',
@@ -128,7 +128,7 @@ describe('budget health check', () => {
 
   it('is unknown, never healthy, when a subscription run has no token total', async () => {
     budgetPolicy = { rules: [{ scope: 'provider', scopeId: 'openai-codex', lane: 'subscription', dailyCap: 100_000 }] }
-    recordRunCost({
+    recordRunCost({ workClass: null,
       runId: `unknown-tokens:${randomUUID()}`,
       agent: 'pixel',
       // All billing dimensions are unknown. The evidence must conservatively
@@ -154,7 +154,7 @@ describe('budget health check', () => {
 
   it('is unknown when a metered media row has no applicable price', async () => {
     budgetPolicy = { rules: [{ scope: 'global', lane: 'metered', dailyCap: 100 }] }
-    recordRunCost({
+    recordRunCost({ workClass: null,
       runId: `image:pricing-hook-failed:${randomUUID()}`,
       agent: 'pixel',
       model: 'openai/gpt-image-2',
@@ -227,7 +227,7 @@ describe('budget health check', () => {
     const monthStart = new Date()
     monthStart.setDate(1)
     monthStart.setHours(1, 0, 0, 0)
-    recordRunCost({
+    recordRunCost({ workClass: null,
       runId: `image:older-unpriced:${randomUUID()}`,
       agent: 'pixel',
       model: 'openai/gpt-image-2',
@@ -406,7 +406,7 @@ describe('budget health check', () => {
   it('keeps a proven cap breach critical when matching spend values are also missing', async () => {
     budgetPolicy = { rules: [{ scope: 'global', lane: 'metered', dailyCap: 10 }] }
     seedSpend(10_000_000)
-    recordRunCost({
+    recordRunCost({ workClass: null,
       runId: `image:unpriced-alongside-breach:${randomUUID()}`,
       agent: 'pixel',
       model: 'openai/gpt-image-2',
@@ -436,7 +436,7 @@ describe('budget health check', () => {
       ],
     }
     seedSpend(8_500_000)
-    recordRunCost({
+    recordRunCost({ workClass: null,
       runId: `subscription:unknown-beside-warning:${randomUUID()}`,
       agent: 'pixel',
       model: 'openai-codex/gpt-5.5-codex',

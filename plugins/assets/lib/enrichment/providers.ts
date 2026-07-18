@@ -16,26 +16,12 @@ import {
   resolveProviderKeySource,
   type DirectProviderId,
 } from '@bakin/core/llm/provider-keys'
+// The vision-capable model list lives in ONE shared home (also consumed by
+// the models plugin's cheap-vision route recommendations).
+import { VISION_MODELS, type VisionCostTier, type VisionModelDescriptor } from '@bakin/core/llm/vision-models'
 
-export type VisionCostTier = 'budget' | 'standard' | 'premium'
-
-export interface VisionModelDescriptor {
-  /** Catalog id (plugins/models known-models), e.g. anthropic/claude-haiku-4-5. */
-  id: string
-  provider: DirectProviderId
-  /** Provider-native model id (catalog prefix stripped). */
-  apiModel: string
-  audioInput: boolean
-  costTier: VisionCostTier
-}
-
-export const VISION_MODELS: VisionModelDescriptor[] = [
-  { id: 'anthropic/claude-haiku-4-5', provider: 'anthropic', apiModel: 'claude-haiku-4-5', audioInput: false, costTier: 'budget' },
-  { id: 'google/gemini-2.5-flash', provider: 'google', apiModel: 'gemini-2.5-flash', audioInput: true, costTier: 'budget' },
-  { id: 'anthropic/claude-sonnet-4-6', provider: 'anthropic', apiModel: 'claude-sonnet-4-6', audioInput: false, costTier: 'standard' },
-  { id: 'openai/gpt-4o', provider: 'openai', apiModel: 'gpt-4o', audioInput: false, costTier: 'standard' },
-  { id: 'google/gemini-2.5-pro', provider: 'google', apiModel: 'gemini-2.5-pro', audioInput: true, costTier: 'premium' },
-]
+export { VISION_MODELS }
+export type { VisionCostTier, VisionModelDescriptor }
 
 const TIER_ORDER: Record<VisionCostTier, number> = { budget: 0, standard: 1, premium: 2 }
 

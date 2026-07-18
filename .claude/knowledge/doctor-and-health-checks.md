@@ -144,14 +144,14 @@ Overview always displays the four stages. System owns detailed indexes, migratio
 
 ## First-party producer inventory
 
-There are 39 direct first-party plugin registration sites after the two approved Search consolidations and the addition of GitHub readiness and runtime-cron tracking:
+There are 40 direct first-party plugin registration sites after the two approved Search consolidations, the addition of GitHub readiness and runtime-cron tracking, and the work-class routing check:
 
 - Health: 22 system/runtime/work-cost/Search/plugin checks
 - Team: 4
 - Tasks: 4
 - Workflows: 3
 - Schedule: 2
-- Assets, Brands, Git, Images: 1 each
+- Assets, Brands, Git, Images, Models: 1 each
 
 Health's local IDs are `content-dir`, `capabilities`, `github-readiness`, `service`, `runtime`, `session-store`, `channel-approvals`, `channel-aliases`, `restart-recovery`, `execution-safety`, `context.startup-size`, `budget`, `usage.agent-burn`, `search`, `search-consistency`, `search-spin`, `search-canary`, `search-engine-burn`, `skill`, `plugin-assets`, `plugin-artifacts`, and `plugin-registry`.
 
@@ -160,6 +160,8 @@ Health registers six local repair actions: journal revival, consistency rebuild,
 The Brands `integrity` check uses the same `plugins/brands/lib/integrity.ts` scan as the brand integrity route. It reports unreadable manifests, dangling assets, tasks blocked by missing/draft brands, and stale drafts as structured observations and incidents; no consumer parses its summary text.
 
 The `capabilities` check projects the shared capability-readiness engine per installed pack. `github-readiness` is informational when `gh` is absent, but reports an action-required incident with explicit authentication instructions when the CLI is installed and unauthenticated. `bakin check capabilities` uses the same onboarding component rather than a parallel probe.
+
+The Models `routing` check (`models.routing`, `plugins/models/lib/health-checks.ts`) warns on unrouted recommended system work classes (with per-class 7d spend evidence), errors on routes targeting unavailable models, and warns on standing thinking clamps and premium-tier models observed on cheap-recommended classes. Its `apply-recommended-routes` repair action applies the same recommendation engine the Routing tab's `POST /routing/recommend` preview uses. See `.claude/knowledge/models-plugin.md` § Routing.
 
 ## Public consumers
 

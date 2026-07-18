@@ -19,9 +19,11 @@ import {
   writePersistedCache,
   clearPersistedCache,
 } from './models-cache'
-import { spendTotal, spendByAgent, spendByModel, listBudgetIncidents, resolveBudgetIncident, LedgerUnavailableError } from '../../../src/core/execution-ledger'
+import { listRunCostsSince, listBudgetIncidents, resolveBudgetIncident, LedgerUnavailableError } from '../../../src/core/execution-ledger'
+import { rollupSpend } from './spend-rollup'
 import { assembleBudgetSpend, paceProjection, dayEndMs, monthEndMs } from '../../../src/core/budget-spend'
 import { budgetStatusRoutes } from './budget-routes'
+import { isLegacyRouting, migrateLegacyRouting } from './routing-migration'
 import {
   getRuntimeSync,
   markConfigDirty,
@@ -276,8 +278,36 @@ export const modelsRoutes = [
     responses: { 200: passthrough, 500: errorResponse },
     handler: async (_req, ctx) => {
       try {
-        const settings = ctx.getSettings<ModelsPluginSettings>()
-        return Response.json(settings.routing ?? { policies: [], tagOverrides: [] })
+        const routing = ctx.getSettings<ModelsPluginSettings>().routing
+        // Read-guard mirrors models.getRoutingConfig: legacy shapes migrate
+        // on read rather than reading as unset.
+        if (isLegacyRouting(routing)) return Response.json(migrateLegacyRouting(routing))
+        return Response.json(routing ?? { routes: [], tagOverrides: [] })
+      } catch (err) {
+        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/routing/recommend',
+    method: 'POST',
+    summary: 'Compute recommended cheap-model routes for unrouted system classes',
+    description: 'Proposal list only — nothing is written. The UI shows the diff in a ConfirmDialog; confirming PUTs the routes.',
+    responses: { 200: passthrough, 500: errorResponse },
+    handler: async (_req, ctx) => {
+      try {
+        const { buildRoutingHealthDeps, recommendRoutes } = await import('./health-checks')
+        const deps = buildRoutingHealthDeps(ctx as unknown as PluginContext, {
+          readRoutingConfig: () => {
+            const stored = ctx.getSettings<ModelsPluginSettings>().routing
+            if (isLegacyRouting(stored)) return migrateLegacyRouting(stored)
+            return stored ?? { routes: [], tagOverrides: [] }
+          },
+          listAvailableModels: async () => (await fetchAvailableModels(ctx as unknown as PluginContext)).models,
+          listRunCostsSince: (sinceMs) => listRunCostsSince(sinceMs),
+        })
+        return Response.json(await recommendRoutes(deps))
       } catch (err) {
         return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
       }
@@ -293,8 +323,8 @@ export const modelsRoutes = [
     handler: async (_req, ctx, { body }) => {
       try {
         (ctx as unknown as PluginContext).updateSettings({ routing: body })
-        ctx.activity.audit('routing.updated', 'system', { policies: body.policies.length, tagOverrides: body.tagOverrides.length })
-        ctx.activity.log('system', `Updated routing policy (${body.policies.length} origins, ${body.tagOverrides.length} tag overrides)`, { category: 'models' })
+        ctx.activity.audit('routing.updated', 'system', { routes: body.routes.length, tagOverrides: body.tagOverrides.length })
+        ctx.activity.log('system', `Updated routing policy (${body.routes.length} work classes, ${body.tagOverrides.length} tag overrides)`, { category: 'models' })
         return Response.json({ ok: true })
       } catch (err) {
         return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
@@ -379,7 +409,9 @@ export const modelsRoutes = [
       try {
         const window = parseSpendWindow(new URL(req.url).searchParams.get('window'))
         const sinceMs = window === 'all' ? 0 : Date.now() - SPEND_WINDOW_MS[window]
-        const byModel = spendByModel(sinceMs).map((r) => ({ ...r, model: r.model || 'unknown' }))
+        // NULL-honest rollups over raw rows (replaced the ledger GROUP-BY
+        // verbs whose COALESCE fabricated $0 for unpriced buckets).
+        const rollups = rollupSpend(listRunCostsSince(sinceMs))
         // Cap-window facets from the shared engine (lane/provider split +
         // pace) ride alongside the rolling browse rollups — utilization
         // always computes on calendar cap windows, whatever the selector.
@@ -400,16 +432,17 @@ export const modelsRoutes = [
         return Response.json({
           window,
           estimated: true,
-          totalUsdMicros: spendTotal({ sinceMs }),
-          byAgent: spendByAgent(sinceMs),
-          byModel,
+          totalUsdMicros: rollups.totalUsdMicros,
+          byAgent: rollups.byAgent,
+          byModel: rollups.byModel,
+          byWorkClass: rollups.byWorkClass,
           facets,
           pace,
         })
       } catch (err) {
         // A reporting read must not crash the page when the ledger is down.
         if (err instanceof LedgerUnavailableError) {
-          return Response.json({ error: 'Spend ledger unavailable', totalUsdMicros: 0, byAgent: [], byModel: [] }, { status: 500 })
+          return Response.json({ error: 'Spend ledger unavailable', totalUsdMicros: 0, byAgent: [], byModel: [], byWorkClass: [] }, { status: 500 })
         }
         return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
       }

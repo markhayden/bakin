@@ -293,6 +293,64 @@ export const runtimeConformanceChecks = {
   },
 
   /**
+   * Thinking-level honesty: every level an adapter DECLARES in
+   * routingSupport().supportedThinkingLevels must be honored — a turn sent
+   * at that level settles cleanly (Bakin's routing layer clamps to this set
+   * before the send, so a declared-but-broken level would fail real turns).
+   */
+  async thinkingLevelHonesty(target: RuntimeConformanceTarget): Promise<void> {
+    const support = target.runtime.models.routingSupport()
+    const declared = support.supportedThinkingLevels
+    if (!Array.isArray(declared)) fail('routingSupport() declares no supportedThinkingLevels array')
+    if (declared.length === 0) fail('routingSupport() declares an empty supportedThinkingLevels — a runtime that honors none must still accept turns without the param; declare the honored set')
+    for (const level of declared) {
+      await target.prepareOkTurn?.()
+      try {
+        await target.runtime.messaging.send({
+          agentId: target.agentId,
+          content: `conformance: thinking level ${level}`,
+          threadId: target.newThreadId(),
+          thinking: level,
+        })
+      } catch (err) {
+        fail(`declared thinking level '${level}' failed a turn (${String(err)}) — declare only levels the runtime honors`)
+      }
+    }
+  },
+
+  /**
+   * Usage parity (work-class attribution): a runtime whose send() results
+   * carry token usage must attach the same accounting to the stream's
+   * terminal `done` chunk — otherwise streamed turns (chat) are unmeterable
+   * while sent turns bill. N/A on runtimes that report no usage at all.
+   */
+  async streamDoneCarriesUsageWhereSendDoes(target: RuntimeConformanceTarget): Promise<void> {
+    await target.prepareOkTurn?.()
+    const sent = await target.runtime.messaging.send({
+      agentId: target.agentId,
+      content: 'conformance: usage parity send',
+      threadId: target.newThreadId(),
+    })
+    if (!sent.usage) return // runtime reports no usage anywhere — nothing to pin
+    await target.prepareOkTurn?.()
+    let done: Extract<ChatChunk, { type: 'done' }> | undefined
+    for await (const chunk of target.runtime.messaging.stream({
+      agentId: target.agentId,
+      content: 'conformance: usage parity stream',
+      threadId: target.newThreadId(),
+    })) {
+      if (chunk.type === 'done') done = chunk
+    }
+    if (!done) fail('usage-parity stream ended without a done chunk')
+    if (!done.usage) {
+      fail('send() reports usage but the stream done chunk carries none — streamed turns would be unmeterable (stream usage parity)')
+    }
+    const anyCount = [done.usage.input, done.usage.output, done.usage.total]
+      .some((n) => typeof n === 'number' && Number.isFinite(n))
+    if (!anyCount) fail('stream done usage carries no numeric token counts')
+  },
+
+  /**
    * Tool-using streams carry the R5b taxonomy: classified chunk types only,
    * structured RuntimeToolActivity on every tool chunk, valid format hints,
    * done exactly-once-and-last.
@@ -589,6 +647,14 @@ export function runRuntimeConformanceSuite(
 
     it('stream yields done exactly once, last', async () => {
       await runtimeConformanceChecks.streamDoneExactlyOnceAndLast(getTarget())
+    })
+
+    it('stream done carries usage where send does (usage parity)', async () => {
+      await runtimeConformanceChecks.streamDoneCarriesUsageWhereSendDoes(getTarget())
+    })
+
+    it('declared thinking levels are honored (thinking honesty)', async () => {
+      await runtimeConformanceChecks.thinkingLevelHonesty(getTarget())
     })
 
     it('tool turns stream classified, structured chunks', async () => {

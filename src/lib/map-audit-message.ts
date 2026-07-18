@@ -17,6 +17,14 @@ export function mapAuditMessage(event: string, data: Record<string, unknown>): s
       return `Dispatch failed: ${data.error || 'unknown error'}`
     }
     case 'task.updated': return `Updated: ${data.title}`
+    // Route receipt (work-class routing): what the matrix chose and why.
+    case 'task.routed': {
+      const parts = [data.model, data.thinking ? `thinking ${data.thinking}` : null].filter(Boolean)
+      const via = typeof data.source === 'string' && data.source !== 'inherit'
+        ? ` via ${data.source === 'class' ? 'class route' : String(data.source).replace(/^tag:/, 'tag "') + '"'}`
+        : ''
+      return `Routed to ${parts.join(', ') || 'override'}${via}`
+    }
     // Ledger-suppression events fire exactly when the user is most confused —
     // explain the system behaved correctly instead of echoing the event name.
     case 'task.completion_suppressed':

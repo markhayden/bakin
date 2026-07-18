@@ -11,6 +11,7 @@ import { appendAudit } from './audit'
 import { isStale } from '../lib/format'
 import { getAppServices } from './app-services'
 import { meterAgentTurn } from './agent-cost'
+import { resolveSystemRoute, routeSendArgs } from './system-route'
 import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 import { getStatsByMs } from './usage'
@@ -140,8 +141,9 @@ async function sendWatchdogChannelMessage(channel: string, message: string): Pro
 async function sendMainAgentAlert(message: string): Promise<void> {
   const runtime = getAppServices().runtime
   const agentId = await getRuntimeMainAgentId(runtime)
-  const result = await runtime.messaging.send({ agentId, content: message, activityClass: 'system' })
-  await meterAgentTurn({ agent: agentId, activityClass: 'system', result, name: 'watchdog-alert' })
+  const route = await resolveSystemRoute('relay')
+  const result = await runtime.messaging.send({ agentId, content: message, activityClass: 'system', ...routeSendArgs(route) })
+  await meterAgentTurn({ agent: agentId, activityClass: 'system', result, workClass: 'relay', routeSource: route.source, resolvedModel: route.model, name: 'watchdog-alert' })
 }
 
 export function start(contentDir: string): void {

@@ -83,7 +83,7 @@ describe('listRunsByAgent', () => {
   it('joins runs with their cost rows, newest first, scoped to the agent', () => {
     expect(claim('j1', 1, 'joiner', T0 + 1000)).toEqual({ claimed: true })
     expect(settleRun('task:j1:d1', 'turn-ok', T0 + 5000)).toBe(true)
-    recordRunCost({
+    recordRunCost({ workClass: null,
       runId: 'task:j1:d1',
       taskId: 'j1',
       agent: 'joiner',
@@ -127,11 +127,11 @@ describe('listRunsByAgent', () => {
 
 describe('runTokensByAgentSince', () => {
   it('normalizes token components and excludes media from token coverage', () => {
-    recordRunCost({ runId: 'turn:r1', agent: 'meter', usageKind: 'tokens', totalTokens: 100, costUsdMicros: 5, occurredAt: T0 + 1 })
-    recordRunCost({ runId: 'turn:r2', agent: 'meter', usageKind: 'tokens', inputTokens: 30, outputTokens: 10, costUsdMicros: null, occurredAt: T0 + 2 })
-    recordRunCost({ runId: 'image:r3', agent: 'meter', usageKind: 'media', totalTokens: null, costUsdMicros: 7, occurredAt: T0 + 3 })
-    recordRunCost({ runId: 'turn:r4', agent: 'ghost', usageKind: 'tokens', totalTokens: null, costUsdMicros: null, occurredAt: T0 + 4 })
-    recordRunCost({ runId: 'image:r5', agent: 'media-only', usageKind: 'media', totalTokens: null, costUsdMicros: null, occurredAt: T0 + 5 })
+    recordRunCost({ workClass: null, runId: 'turn:r1', agent: 'meter', usageKind: 'tokens', totalTokens: 100, costUsdMicros: 5, occurredAt: T0 + 1 })
+    recordRunCost({ workClass: null, runId: 'turn:r2', agent: 'meter', usageKind: 'tokens', inputTokens: 30, outputTokens: 10, costUsdMicros: null, occurredAt: T0 + 2 })
+    recordRunCost({ workClass: null, runId: 'image:r3', agent: 'meter', usageKind: 'media', totalTokens: null, costUsdMicros: 7, occurredAt: T0 + 3 })
+    recordRunCost({ workClass: null, runId: 'turn:r4', agent: 'ghost', usageKind: 'tokens', totalTokens: null, costUsdMicros: null, occurredAt: T0 + 4 })
+    recordRunCost({ workClass: null, runId: 'image:r5', agent: 'media-only', usageKind: 'media', totalTokens: null, costUsdMicros: null, occurredAt: T0 + 5 })
 
     const rows = runTokensByAgentSince(T0)
     const meter = rows.find((r) => r.agent === 'meter')
@@ -166,7 +166,7 @@ describe('runTokensByAgentSince', () => {
   })
 
   it('rejects an invalid usage kind instead of dropping the row from both coverage buckets', () => {
-    expect(() => recordRunCost({
+    expect(() => recordRunCost({ workClass: null,
       runId: 'turn:bad-kind',
       agent: 'meter',
       usageKind: 'other' as 'tokens',
@@ -184,7 +184,7 @@ describe('runTokensByAgentSince', () => {
       { runId: 'turn:bad-component', inputTokens: -1, outputTokens: 2 },
     ]
     for (const [index, row] of rows.entries()) {
-      recordRunCost({
+      recordRunCost({ workClass: null,
         ...row,
         agent: 'invalid-evidence',
         usageKind: 'tokens',
@@ -205,7 +205,7 @@ describe('runTokensByAgentSince', () => {
   })
 
   it('withholds a contradictory explicit total instead of publishing a false zero', () => {
-    recordRunCost({
+    recordRunCost({ workClass: null,
       runId: 'turn:contradictory-total',
       agent: 'contradictory-total',
       usageKind: 'tokens',
@@ -227,7 +227,7 @@ describe('runTokensByAgentSince', () => {
 
   it('withholds unsafe token and cost aggregates while preserving honest coverage counts', () => {
     for (let index = 0; index < 2; index++) {
-      recordRunCost({
+      recordRunCost({ workClass: null,
         runId: `turn:unsafe-aggregate:${index}`,
         agent: 'unsafe-aggregate',
         usageKind: 'tokens',
@@ -250,7 +250,7 @@ describe('runTokensByAgentSince', () => {
   })
 
   it('stores malformed micro-dollar evidence as unpriced', () => {
-    recordRunCost({
+    recordRunCost({ workClass: null,
       runId: 'turn:bad-cost',
       agent: 'invalid-cost',
       usageKind: 'tokens',

@@ -33,7 +33,15 @@ mock.module('../../src/cli/http', () => ({
     if (path.startsWith('/api/plugins/models/budget/status')) return { paused: false, perAgent: {}, deferredProviders: [], openIncidents: [] }
     if (path.startsWith('/api/plugins/models/budget/incidents')) return { incidents: [] }
     if (path.startsWith('/api/plugins/models/budget')) return { rules }
-    if (path.startsWith('/api/plugins/models/spend')) return { window: '24h', totalUsdMicros: 0, byAgent: [], byModel: [] }
+    if (path.startsWith('/api/plugins/models/spend')) {
+      return {
+        window: '24h', totalUsdMicros: 0, byAgent: [], byModel: [],
+        byWorkClass: [
+          { workClass: 'auto-title', runs: 3, totalTokens: 900, costUsdMicros: 6000, subscriptionTokens: 0, avgCostUsdMicros: 2000 },
+          { workClass: 'unclassified', runs: 1, totalTokens: 10, costUsdMicros: null, subscriptionTokens: 0, avgCostUsdMicros: null },
+        ],
+      }
+    }
     return {}
   }),
   apiPost: (path: string, body?: unknown) => apiPostSpy(path, body),
@@ -113,5 +121,15 @@ describe('bakin spend', () => {
   it('renders without error and warns when no rules exist', async () => {
     await run(['spend'])
     expect(apiCalls.some((c) => c.path.startsWith('/api/plugins/models/spend'))).toBe(true)
+  })
+
+  it('renders the by-work-class block NULL-honestly', async () => {
+    await run(['spend'])
+    const tables = printTableSpy.mock.calls.map((c) => c[0] as Array<Record<string, unknown>>)
+    const wcTable = tables.find((rows) => rows.some((r) => 'class' in r))
+    expect(wcTable).toEqual([
+      { class: 'auto-title', runs: 3, tokens: expect.any(String), 'est. cost': '$0.01', 'sub tokens': '—', 'avg $/run': '$0.00' },
+      { class: 'unclassified (pre-migration)', runs: 1, tokens: expect.any(String), 'est. cost': '—', 'sub tokens': '—', 'avg $/run': '—' },
+    ])
   })
 })

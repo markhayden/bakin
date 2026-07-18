@@ -68,9 +68,6 @@ import {
   resolveExpiredBudgetIncidents,
   findOpenCapIncident,
   recentRunsByAgent,
-  spendTotal,
-  spendByAgent,
-  spendByModel,
   LedgerUnavailableError,
 } from '../../src/core/execution-ledger'
 import { closeDb } from '../../packages/core/src/storage/db'
@@ -384,49 +381,43 @@ describe('purge + durability', () => {
 describe('run costs', () => {
   const T0 = 1_700_000_000_000 // fixed base ms for deterministic windows
 
-  it('records a cost row and sums it by total/agent/model', () => {
-    recordRunCost({ runId: 'task:rc1:d1', taskId: 'rc1', agent: 'pixel', model: 'anthropic/claude-sonnet-4-6', inputTokens: 1000, outputTokens: 200, totalTokens: 1200, costUsdMicros: 6000, occurredAt: T0 })
-    recordRunCost({ runId: 'task:rc2:d1', taskId: 'rc2', agent: 'rolo', model: 'openai/gpt-5.4', inputTokens: 500, outputTokens: 100, totalTokens: 600, costUsdMicros: 4500, occurredAt: T0 + 1000 })
+  it('records cost rows and lists them for the spend engine (agent/model/cost intact)', () => {
+    recordRunCost({ workClass: null, runId: 'task:rc1:d1', taskId: 'rc1', agent: 'pixel', model: 'anthropic/claude-sonnet-4-6', inputTokens: 1000, outputTokens: 200, totalTokens: 1200, costUsdMicros: 6000, occurredAt: T0 })
+    recordRunCost({ workClass: null, runId: 'task:rc2:d1', taskId: 'rc2', agent: 'rolo', model: 'openai/gpt-5.4', inputTokens: 500, outputTokens: 100, totalTokens: 600, costUsdMicros: 4500, occurredAt: T0 + 1000 })
 
-    expect(spendTotal({ sinceMs: T0 - 1 })).toBe(10500)
-    expect(spendByAgent(T0 - 1)).toEqual(expect.arrayContaining([
-      { agent: 'pixel', costUsdMicros: 6000, runs: 1 },
-      { agent: 'rolo', costUsdMicros: 4500, runs: 1 },
-    ]))
-    expect(spendByModel(T0 - 1)).toEqual(expect.arrayContaining([
-      { model: 'anthropic/claude-sonnet-4-6', costUsdMicros: 6000, runs: 1 },
-      { model: 'openai/gpt-5.4', costUsdMicros: 4500, runs: 1 },
-    ]))
+    const rows = listRunCostsSince(T0 - 1)
+    expect(rows.find((r) => r.runId === 'task:rc1:d1')).toMatchObject({ agent: 'pixel', model: 'anthropic/claude-sonnet-4-6', costUsdMicros: 6000 })
+    expect(rows.find((r) => r.runId === 'task:rc2:d1')).toMatchObject({ agent: 'rolo', model: 'openai/gpt-5.4', costUsdMicros: 4500 })
   })
 
   it('is idempotent on run_id — a retry of the same run does not double-count', () => {
-    recordRunCost({ runId: 'task:rc-dup:d1', taskId: 'rc-dup', agent: 'pixel', model: 'm', inputTokens: 10, outputTokens: 5, totalTokens: 15, costUsdMicros: 100, occurredAt: T0 })
-    recordRunCost({ runId: 'task:rc-dup:d1', taskId: 'rc-dup', agent: 'pixel', model: 'm', inputTokens: 999, outputTokens: 999, totalTokens: 1998, costUsdMicros: 9999, occurredAt: T0 })
-    expect(spendTotal({ agent: 'pixel', sinceMs: T0 - 1, untilMs: T0 + 1 }))
-      .toBe(6000 + 100) // original rc1 (6000, occurredAt T0) + first rc-dup (100); the dup write is ignored
+    recordRunCost({ workClass: null, runId: 'task:rc-dup:d1', taskId: 'rc-dup', agent: 'pixel', model: 'm', inputTokens: 10, outputTokens: 5, totalTokens: 15, costUsdMicros: 100, occurredAt: T0 })
+    recordRunCost({ workClass: null, runId: 'task:rc-dup:d1', taskId: 'rc-dup', agent: 'pixel', model: 'm', inputTokens: 999, outputTokens: 999, totalTokens: 1998, costUsdMicros: 9999, occurredAt: T0 })
+    const dup = listRunCostsSince(T0 - 1).find((r) => r.runId === 'task:rc-dup:d1')
+    expect(dup).toMatchObject({ costUsdMicros: 100 }) // first write wins; the dup write is ignored
   })
 
-  it('filters the window by sinceMs and scopes by agent', () => {
-    recordRunCost({ runId: 'task:rc-old:d1', taskId: 'rc-old', agent: 'pixel', model: 'm', inputTokens: 1, outputTokens: 1, totalTokens: 2, costUsdMicros: 5000, occurredAt: T0 - 100_000 })
-    expect(spendTotal({ agent: 'pixel', sinceMs: T0 - 1 })).toBe(6100) // excludes the old row
-    expect(spendTotal({ agent: 'pixel', sinceMs: T0 - 200_000 })).toBe(11100) // includes it
+  it('filters the listing window by sinceMs', () => {
+    recordRunCost({ workClass: null, runId: 'task:rc-old:d1', taskId: 'rc-old', agent: 'pixel', model: 'm', inputTokens: 1, outputTokens: 1, totalTokens: 2, costUsdMicros: 5000, occurredAt: T0 - 100_000 })
+    expect(listRunCostsSince(T0 - 1).some((r) => r.runId === 'task:rc-old:d1')).toBe(false) // excludes the old row
+    expect(listRunCostsSince(T0 - 200_000).some((r) => r.runId === 'task:rc-old:d1')).toBe(true) // includes it
   })
 
-  it('records a non-dispatch row with no task_id and counts it in spend', () => {
-    recordRunCost({ runId: 'turn:nondispatch-1', agent: 'main', model: 'm', inputTokens: 10, outputTokens: 5, totalTokens: 15, costUsdMicros: 7000, occurredAt: T0 + 9000 })
-    const main = spendByAgent(T0 - 1).find(r => r.agent === 'main')
-    expect(main).toEqual({ agent: 'main', costUsdMicros: 7000, runs: 1 })
+  it('records a non-dispatch row with no task_id and lists it for the spend engine', () => {
+    recordRunCost({ workClass: null, runId: 'turn:nondispatch-1', agent: 'main', model: 'm', inputTokens: 10, outputTokens: 5, totalTokens: 15, costUsdMicros: 7000, occurredAt: T0 + 9000 })
+    const main = listRunCostsSince(T0 - 1).find((r) => r.runId === 'turn:nondispatch-1')
+    expect(main).toMatchObject({ agent: 'main', costUsdMicros: 7000 })
   })
 
-  it('counts a null-cost (unmetered) row as a run but adds zero dollars', () => {
-    recordRunCost({ runId: 'task:rc-unm:d1', taskId: 'rc-unm', agent: 'patch', model: 'mystery/x', inputTokens: 100, outputTokens: 50, totalTokens: 150, costUsdMicros: null, occurredAt: T0 + 5000 })
-    const patch = spendByAgent(T0 - 1).find(r => r.agent === 'patch')
-    expect(patch).toEqual({ agent: 'patch', costUsdMicros: 0, runs: 1 })
+  it('keeps a null-cost (unmetered) row honestly null — never a fabricated zero', () => {
+    recordRunCost({ workClass: null, runId: 'task:rc-unm:d1', taskId: 'rc-unm', agent: 'patch', model: 'mystery/x', inputTokens: 100, outputTokens: 50, totalTokens: 150, costUsdMicros: null, occurredAt: T0 + 5000 })
+    const patch = listRunCostsSince(T0 - 1).find((r) => r.runId === 'task:rc-unm:d1')
+    expect(patch).toMatchObject({ agent: 'patch', costUsdMicros: null })
   })
 
   it('persists provider and lane and lists raw rows for the spend engine', () => {
-    recordRunCost({ runId: 'task:rc-lane1:d1', taskId: 'rc-lane1', agent: 'lane-a', model: 'google/gemini-3-flash', provider: 'google', lane: 'metered', inputTokens: 100, outputTokens: 20, totalTokens: 120, costUsdMicros: 300, occurredAt: T0 + 50_000 })
-    recordRunCost({ runId: 'task:rc-lane2:d1', taskId: 'rc-lane2', agent: 'lane-a', model: 'openai-codex/gpt-5.5-codex', provider: 'openai-codex', lane: 'subscription', inputTokens: 900, outputTokens: 80, totalTokens: 980, costUsdMicros: null, occurredAt: T0 + 51_000 })
+    recordRunCost({ workClass: null, runId: 'task:rc-lane1:d1', taskId: 'rc-lane1', agent: 'lane-a', model: 'google/gemini-3-flash', provider: 'google', lane: 'metered', inputTokens: 100, outputTokens: 20, totalTokens: 120, costUsdMicros: 300, occurredAt: T0 + 50_000 })
+    recordRunCost({ workClass: null, runId: 'task:rc-lane2:d1', taskId: 'rc-lane2', agent: 'lane-a', model: 'openai-codex/gpt-5.5-codex', provider: 'openai-codex', lane: 'subscription', inputTokens: 900, outputTokens: 80, totalTokens: 980, costUsdMicros: null, occurredAt: T0 + 51_000 })
 
     const rows = listRunCostsSince(T0 + 49_000).filter((r) => r.agent === 'lane-a')
     expect(rows).toHaveLength(2)
@@ -441,34 +432,34 @@ describe('run costs', () => {
   })
 
   it('listRunCostsSince returns rows without provider/lane as NULLs (never fabricated)', () => {
-    recordRunCost({ runId: 'task:rc-nolane:d1', taskId: 'rc-nolane', agent: 'lane-b', model: 'm', inputTokens: 1, outputTokens: 1, totalTokens: 2, costUsdMicros: 10, occurredAt: T0 + 52_000 })
+    recordRunCost({ workClass: null, runId: 'task:rc-nolane:d1', taskId: 'rc-nolane', agent: 'lane-b', model: 'm', inputTokens: 1, outputTokens: 1, totalTokens: 2, costUsdMicros: 10, occurredAt: T0 + 52_000 })
     const row = listRunCostsSince(T0 + 51_500).find((r) => r.agent === 'lane-b')
     expect(row).toMatchObject({ provider: null, lane: null })
   })
 
   it('recentRunsByAgent returns dispatch runs newest-first with token detail', () => {
-    recordRunCost({ runId: 'task:rr1:d1', taskId: 'rr1', agent: 'nova', model: 'm', inputTokens: 100, outputTokens: 10, totalTokens: 110, costUsdMicros: 100, occurredAt: T0 })
-    recordRunCost({ runId: 'task:rr2:d1', taskId: 'rr2', agent: 'nova', model: 'm', inputTokens: 200, outputTokens: 20, totalTokens: 220, costUsdMicros: 200, occurredAt: T0 + 2000 })
+    recordRunCost({ workClass: null, runId: 'task:rr1:d1', taskId: 'rr1', agent: 'nova', model: 'm', inputTokens: 100, outputTokens: 10, totalTokens: 110, costUsdMicros: 100, occurredAt: T0 })
+    recordRunCost({ workClass: null, runId: 'task:rr2:d1', taskId: 'rr2', agent: 'nova', model: 'm', inputTokens: 200, outputTokens: 20, totalTokens: 220, costUsdMicros: 200, occurredAt: T0 + 2000 })
     const rows = recentRunsByAgent('nova')
     expect(rows.map((r) => r.runId)).toEqual(['task:rr2:d1', 'task:rr1:d1'])
     expect(rows[0]).toMatchObject({ taskId: 'rr2', inputTokens: 200, outputTokens: 20, totalTokens: 220, occurredAt: T0 + 2000 })
   })
 
   it('recentRunsByAgent excludes non-dispatch runs (turn:/image: ids)', () => {
-    recordRunCost({ runId: 'turn:rr-watchdog', agent: 'nova', model: 'm', inputTokens: 5000, outputTokens: 1, totalTokens: 5001, costUsdMicros: 1, occurredAt: T0 + 3000 })
-    recordRunCost({ runId: 'image:rr-img', agent: 'nova', model: 'img/x', costUsdMicros: 1, occurredAt: T0 + 4000 })
+    recordRunCost({ workClass: null, runId: 'turn:rr-watchdog', agent: 'nova', model: 'm', inputTokens: 5000, outputTokens: 1, totalTokens: 5001, costUsdMicros: 1, occurredAt: T0 + 3000 })
+    recordRunCost({ workClass: null, runId: 'image:rr-img', agent: 'nova', model: 'img/x', costUsdMicros: 1, occurredAt: T0 + 4000 })
     expect(recentRunsByAgent('nova').every((r) => r.runId.startsWith('task:'))).toBe(true)
   })
 
   it('persists cache token counts and returns them via recentRunsByAgent', () => {
-    recordRunCost({
+    recordRunCost({ workClass: null,
       runId: 'task:rr-cache:d1', taskId: 'rr-cache', agent: 'cachet', model: 'm',
       inputTokens: 1000, outputTokens: 50, totalTokens: 1050,
       cacheReadTokens: 900, cacheWriteTokens: 40,
       costUsdMicros: 10, occurredAt: T0,
     })
     // Rows written before the columns existed read back as null, never 0.
-    recordRunCost({ runId: 'task:rr-nocache:d1', taskId: 'rr-nocache', agent: 'cachet', model: 'm', inputTokens: 10, outputTokens: 5, totalTokens: 15, costUsdMicros: 1, occurredAt: T0 + 1000 })
+    recordRunCost({ workClass: null, runId: 'task:rr-nocache:d1', taskId: 'rr-nocache', agent: 'cachet', model: 'm', inputTokens: 10, outputTokens: 5, totalTokens: 15, costUsdMicros: 1, occurredAt: T0 + 1000 })
     const rows = recentRunsByAgent('cachet')
     expect(rows[1]).toMatchObject({ runId: 'task:rr-cache:d1', cacheReadTokens: 900, cacheWriteTokens: 40 })
     expect(rows[0]).toMatchObject({ runId: 'task:rr-nocache:d1', cacheReadTokens: null, cacheWriteTokens: null })

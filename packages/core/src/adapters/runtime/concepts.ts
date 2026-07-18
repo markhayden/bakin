@@ -220,8 +220,11 @@ export type ChatChunk =
   | { type: 'tool'; content?: string; data: RuntimeToolActivity }
   /** Turn lifecycle hint (e.g. 'thinking'). */
   | { type: 'status'; content?: string; data?: RuntimeMetadata }
-  /** Clean turn end (success or deliberate abort) — exactly once, always last. */
-  | { type: 'done'; content?: string; data?: RuntimeMetadata }
+  /** Clean turn end (success or deliberate abort) — exactly once, always last.
+   *  `usage` carries the turn's token accounting when the runtime reports it —
+   *  parity with `send()`: a runtime whose send results carry usage must
+   *  attach it here too (conformance-pinned), so streamed turns are meterable. */
+  | { type: 'done'; content?: string; data?: RuntimeMetadata; usage?: MessageUsage }
   /** Terminal failure — `data.kind` carries the RuntimeError kind when known. */
   | { type: 'error'; content?: string; data?: RuntimeMetadata }
 
@@ -599,6 +602,13 @@ export interface RuntimeRoutingSupport {
   aliases: boolean
   /** Per-agent subagentModel via agents.update. */
   perAgentSubagentModel: boolean
+  /**
+   * Per-turn thinking levels this runtime HONORS on messaging.send. Bakin's
+   * routing layer clamps requested levels to this set (with receipt + audit
+   * evidence) before the send — an adapter must honor every level it
+   * declares and declare every level it honors (conformance-pinned).
+   */
+  supportedThinkingLevels: readonly string[]
 }
 
 export interface RuntimeAvailableModel {

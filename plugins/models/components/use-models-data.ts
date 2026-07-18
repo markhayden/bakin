@@ -8,9 +8,9 @@ import { useRuntimeStatus } from "@makinbakin/sdk/hooks"
 // Relative
 import type { AgentModelConfig, AvailableModel, ModelsConfigResponse } from '../types'
 
-export interface RoutingPolicyRow { origin: string; model?: string; thinking?: string }
+export interface WorkClassRouteRow { workClass: string; model?: string; thinking?: string }
 export interface TagOverrideRow { tag: string; model?: string; thinking?: string }
-export interface RoutingConfigShape { policies: RoutingPolicyRow[]; tagOverrides: TagOverrideRow[] }
+export interface RoutingConfigShape { routes: WorkClassRouteRow[]; tagOverrides: TagOverrideRow[] }
 /** Wire shape of one budget cap rule (cost-control v2). */
 export interface BudgetRuleWire {
   scope: 'global' | 'agent' | 'provider' | 'model'
@@ -51,8 +51,16 @@ export interface BudgetStatusWire {
   openIncidents: BudgetIncidentWire[]
 }
 
-export interface SpendRowAgent { agent: string; costUsdMicros: number; runs: number }
-export interface SpendRowModel { model: string; costUsdMicros: number; runs: number }
+export interface SpendRowAgent { agent: string; costUsdMicros: number | null; runs: number }
+export interface SpendRowModel { model: string; costUsdMicros: number | null; runs: number }
+export interface SpendRowWorkClass {
+  workClass: string
+  runs: number
+  totalTokens: number | null
+  costUsdMicros: number | null
+  subscriptionTokens: number
+  avgCostUsdMicros: number | null
+}
 export interface LaneSumsWire {
   meteredUsdMicros: number
   meteredTokens: number
@@ -80,6 +88,7 @@ export interface SpendResponse {
   totalUsdMicros: number
   byAgent: SpendRowAgent[]
   byModel: SpendRowModel[]
+  byWorkClass?: SpendRowWorkClass[]
   facets?: {
     computedAt: number
     observedUsageEvidence?:
@@ -125,7 +134,8 @@ export function useModelsData() {
   const [spendWindow, setSpendWindow] = useQueryState('window', '24h')
   const [spend, setSpend] = useState<SpendResponse | null>(null)
   const [spendLoading, setSpendLoading] = useState(false)
-  const [routing, setRouting] = useState<RoutingConfigShape>({ policies: [], tagOverrides: [] })
+  const [routing, setRouting] = useState<RoutingConfigShape>({ routes: [], tagOverrides: [] })
+  const [routingSupport, setRoutingSupport] = useState<ModelsConfigResponse['support'] | null>(null)
   const [pendingRouting, setPendingRouting] = useState<RoutingConfigShape | null>(null)
   const [budgetRules, setBudgetRules] = useState<BudgetRuleWire[]>([])
   const [pendingRules, setPendingRules] = useState<BudgetRuleWire[] | null>(null)
@@ -146,6 +156,7 @@ export function useModelsData() {
       setDefaultModel(data.defaultModel)
       setDefaultSubagentModel(data.defaultSubagentModel)
       setFallbackModels(data.fallbackModels ?? [])
+      setRoutingSupport(data.support ?? null)
       setPendingDefaultModel(null)
       setPendingDefaultSubagentModel(undefined)
       setPendingFallbackModels(null)
@@ -372,7 +383,7 @@ export function useModelsData() {
       const res = await fetch('/api/plugins/models/routing')
       if (!res.ok) throw new Error(`Routing fetch failed (${res.status})`)
       const data = await res.json() as RoutingConfigShape
-      setRouting({ policies: data.policies ?? [], tagOverrides: data.tagOverrides ?? [] })
+      setRouting({ routes: data.routes ?? [], tagOverrides: data.tagOverrides ?? [] })
     } catch (err) {
       console.error('Failed to fetch routing:', err)
     }
@@ -533,31 +544,49 @@ export function useModelsData() {
   // -------------------------------------------------------------------------
   const displayRouting = pendingRouting ?? routing
 
-  const setOriginField = (origin: string, field: 'model' | 'thinking', value: string) => {
-    const base = pendingRouting ?? { policies: [...routing.policies], tagOverrides: [...routing.tagOverrides] }
-    const policies = base.policies.filter((p) => p.origin !== origin)
-    const existing = base.policies.find((p) => p.origin === origin) ?? { origin }
-    const next: RoutingPolicyRow = { ...existing, [field]: value || undefined }
+  const setRouteField = (workClass: string, field: 'model' | 'thinking', value: string) => {
+    const base = pendingRouting ?? { routes: [...routing.routes], tagOverrides: [...routing.tagOverrides] }
+    const routes = base.routes.filter((r) => r.workClass !== workClass)
+    const existing = base.routes.find((r) => r.workClass === workClass) ?? { workClass }
+    const next: WorkClassRouteRow = { ...existing, [field]: value || undefined }
     // Drop the row entirely when it carries no override (keeps storage clean).
-    if (next.model || (next.thinking && next.thinking !== 'inherit')) policies.push(next)
-    setPendingRouting({ ...base, policies })
+    if (next.model || (next.thinking && next.thinking !== 'inherit')) routes.push(next)
+    setPendingRouting({ ...base, routes })
   }
 
   const addTagOverride = () => {
-    const base = pendingRouting ?? { policies: [...routing.policies], tagOverrides: [...routing.tagOverrides] }
+    const base = pendingRouting ?? { routes: [...routing.routes], tagOverrides: [...routing.tagOverrides] }
     setPendingRouting({ ...base, tagOverrides: [...base.tagOverrides, { tag: '' }] })
   }
 
   const updateTagOverride = (index: number, field: 'tag' | 'model' | 'thinking', value: string) => {
-    const base = pendingRouting ?? { policies: [...routing.policies], tagOverrides: [...routing.tagOverrides] }
+    const base = pendingRouting ?? { routes: [...routing.routes], tagOverrides: [...routing.tagOverrides] }
     const tagOverrides = [...base.tagOverrides]
     tagOverrides[index] = { ...tagOverrides[index], [field]: field === 'tag' ? value : (value || undefined) }
     setPendingRouting({ ...base, tagOverrides })
   }
 
   const removeTagOverride = (index: number) => {
-    const base = pendingRouting ?? { policies: [...routing.policies], tagOverrides: [...routing.tagOverrides] }
+    const base = pendingRouting ?? { routes: [...routing.routes], tagOverrides: [...routing.tagOverrides] }
     setPendingRouting({ ...base, tagOverrides: base.tagOverrides.filter((_, i) => i !== index) })
+  }
+
+  /** Merge recommended routes in and persist (the Apply-recommended confirm). */
+  const applyRecommendedRoutes = async (proposals: Array<{ workClass: string; model: string }>) => {
+    const base = pendingRouting ?? routing
+    const merged: RoutingConfigShape = {
+      routes: [...base.routes, ...proposals.map((p) => ({ workClass: p.workClass, model: p.model }))],
+      tagOverrides: base.tagOverrides,
+    }
+    const res = await fetch('/api/plugins/models/routing', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(merged),
+    })
+    const data = await res.json()
+    if (!data.ok) throw new Error(data.error ?? 'Failed to apply recommended routes')
+    setRouting(merged)
+    setPendingRouting(null)
   }
 
   const saveRouting = async () => {
@@ -566,7 +595,7 @@ export function useModelsData() {
     try {
       // Drop blank tag rows; normalize 'inherit' thinking to unset.
       const clean: RoutingConfigShape = {
-        policies: pendingRouting.policies.map((p) => ({ origin: p.origin, ...(p.model ? { model: p.model } : {}), ...(p.thinking && p.thinking !== 'inherit' ? { thinking: p.thinking } : {}) })),
+        routes: pendingRouting.routes.map((r) => ({ workClass: r.workClass, ...(r.model ? { model: r.model } : {}), ...(r.thinking && r.thinking !== 'inherit' ? { thinking: r.thinking } : {}) })),
         tagOverrides: pendingRouting.tagOverrides.filter((t) => t.tag.trim()).map((t) => ({ tag: t.tag.trim(), ...(t.model ? { model: t.model } : {}), ...(t.thinking && t.thinking !== 'inherit' ? { thinking: t.thinking } : {}) })),
       }
       const res = await fetch('/api/plugins/models/routing', {
@@ -625,8 +654,8 @@ export function useModelsData() {
     hasPending, defaultsDirty,
     effectiveDefaultModel, effectiveDefaultSubagentModel, effectiveFallbackModels, fallbackCandidates,
     // routing
-    routing, pendingRouting, setPendingRouting, displayRouting,
-    setOriginField, addTagOverride, updateTagOverride, removeTagOverride, saveRouting,
+    routing, routingSupport, pendingRouting, setPendingRouting, displayRouting,
+    setRouteField, addTagOverride, updateTagOverride, removeTagOverride, saveRouting, applyRecommendedRoutes,
     // spend + budget
     spend, spendLoading,
     budgetRules, pendingRules, setPendingRules, saveBudgetRules, budgetError, budgetWarnings,

@@ -1,5 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, mock, setSystemTime } from 'bun:test'
+import { join } from 'path'
+import { tmpdir } from 'os'
 import type { HealthIncident, HealthReport } from '@makinbakin/sdk/types'
+
+// Isolation: escalation itself is fully mocked below, but the system-route
+// path (route resolution before the relay send) transits core modules that
+// must never see the real home dirs.
+const testDir = join(tmpdir(), `bakin-test-doctor-escalation-${Date.now()}`)
+const contentDirMock = () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({ root: testDir, db: join(testDir, 'bakin.db') }),
+})
+mock.module('../../src/core/content-dir', contentDirMock)
+mock.module('../../packages/core/src/content-dir', contentDirMock)
 
 let mode: 'off' | 'notify' | 'task' = 'task'
 let cooldownMs = 6 * 60 * 60_000
@@ -152,8 +165,9 @@ describe('canonical Health escalation', () => {
 
     const first = notifyActionRequiredIncidents(report([incident()]))
     const second = notifyActionRequiredIncidents(report([incident()]))
-    await Promise.resolve()
-    await Promise.resolve()
+    // Macrotask flush — the send now sits behind route resolution's async
+    // hops, so a fixed microtask count is too tight.
+    await new Promise((resolve) => setTimeout(resolve, 10))
     expect(send).toHaveBeenCalledTimes(1)
 
     releaseSend()

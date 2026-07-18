@@ -34,9 +34,6 @@ export {
   purgeTaskRows,
   recordRunCost,
   recentRunsByAgent,
-  spendTotal,
-  spendByAgent,
-  spendByModel,
   listRunCostsSince,
   openBudgetIncident,
   resolveBudgetIncident,
@@ -68,6 +65,4 @@ export type {
   BudgetIncidentResolution,
   RunWithCostRow,
   AgentTokenRollup,
-  SpendByAgentRow,
-  SpendByModelRow,
 } from '../../packages/core/src/execution/ledger'

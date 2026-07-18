@@ -286,6 +286,21 @@ const MIGRATIONS = [
       )
     },
   },
+  {
+    // Work-class attribution (the routing + spend dimension). The ONLY safe
+    // historical backfill is the unique `chat:%:title` prefix → auto-title.
+    // `turn:` was the shared synthetic id for relays AND generic operator
+    // sends with no stored discriminator — mapping it would mislabel history,
+    // so it stays honestly NULL ("unclassified (pre-migration)"), as do
+    // dispatch-era `task:` rows (their class was computed then discarded) and
+    // media rows (work classes are a token-turn concept).
+    version: 8,
+    up: (db: Db) => {
+      db.exec('ALTER TABLE run_costs ADD COLUMN work_class TEXT')
+      db.exec('ALTER TABLE run_costs ADD COLUMN route_source TEXT')
+      db.exec("UPDATE run_costs SET work_class = 'auto-title' WHERE run_id LIKE 'chat:%:title'")
+    },
+  },
 ]
 
 /** Open the db with this module's schema applied. Every verb goes through here. */
@@ -945,6 +960,14 @@ export interface RunCostInput {
   cacheWriteTokens?: number | null
   /** Estimated cost; null when the model has no catalog pricing (unmetered). */
   costUsdMicros?: number | null
+  /**
+   * The work performed (routing + spend dimension) — REQUIRED so every new
+   * writer names its class at the call site (compile-time forcing function).
+   * Null is reserved for work that has no class (media) — never a default.
+   */
+  workClass: string | null
+  /** How the turn's model was chosen: 'tag:<name>' | 'class' | 'inherit'. */
+  routeSource?: string | null
   occurredAt: number
 }
 
@@ -952,18 +975,6 @@ function usageKindFor(input: RunCostInput): RunUsageKind {
   if (input.usageKind === undefined) return input.runId.startsWith('image:') ? 'media' : 'tokens'
   if (input.usageKind === 'tokens' || input.usageKind === 'media') return input.usageKind
   throw new TypeError(`invalid run usage kind: ${String(input.usageKind)}`)
-}
-
-export interface SpendByAgentRow {
-  agent: string
-  costUsdMicros: number
-  runs: number
-}
-
-export interface SpendByModelRow {
-  model: string
-  costUsdMicros: number
-  runs: number
 }
 
 /**
@@ -986,8 +997,8 @@ export function recordRunCost(input: RunCostInput): void {
     ledger()
       .prepare(
         `INSERT OR IGNORE INTO run_costs
-           (run_id, task_id, agent, model, provider, lane, usage_kind, input_tokens, output_tokens, total_tokens, cache_read_tokens, cache_write_tokens, cost_usd_micros, occurred_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           (run_id, task_id, agent, model, provider, lane, usage_kind, input_tokens, output_tokens, total_tokens, cache_read_tokens, cache_write_tokens, cost_usd_micros, work_class, route_source, occurred_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         input.runId,
@@ -1003,52 +1014,13 @@ export function recordRunCost(input: RunCostInput): void {
         tokens.cacheRead,
         tokens.cacheWrite,
         normalizeRunCostUsdMicros(input.costUsdMicros),
+        input.workClass,
+        input.routeSource ?? null,
         input.occurredAt,
       )
   })
 }
 
-/** Total estimated spend (micro-dollars) in a window, optionally scoped to one agent. */
-export function spendTotal(opts: { agent?: string; sinceMs: number; untilMs?: number }): number {
-  return guard('spendTotal', () => {
-    const clauses = ['occurred_at >= ?']
-    const params: (string | number)[] = [opts.sinceMs]
-    if (opts.untilMs !== undefined) { clauses.push('occurred_at <= ?'); params.push(opts.untilMs) }
-    if (opts.agent !== undefined) { clauses.push('agent = ?'); params.push(opts.agent) }
-    const row = ledger()
-      .prepare<{ total: number }, (string | number)[]>(
-        `SELECT COALESCE(SUM(cost_usd_micros), 0) AS total FROM run_costs WHERE ${clauses.join(' AND ')}`,
-      )
-      .get(...params)
-    return row?.total ?? 0
-  })
-}
-
-/** Per-agent spend rollup since a timestamp (cost in micro-dollars, run count). */
-export function spendByAgent(sinceMs: number): SpendByAgentRow[] {
-  return guard('spendByAgent', () => {
-    return ledger()
-      .prepare<{ agent: string; micros: number; runs: number }, [number]>(
-        `SELECT agent, COALESCE(SUM(cost_usd_micros), 0) AS micros, COUNT(*) AS runs
-           FROM run_costs WHERE occurred_at >= ? GROUP BY agent`,
-      )
-      .all(sinceMs)
-      .map((r) => ({ agent: r.agent, costUsdMicros: r.micros, runs: r.runs }))
-  })
-}
-
-/** Per-model spend rollup since a timestamp. Rows with no model are grouped under ''. */
-export function spendByModel(sinceMs: number): SpendByModelRow[] {
-  return guard('spendByModel', () => {
-    return ledger()
-      .prepare<{ model: string | null; micros: number; runs: number }, [number]>(
-        `SELECT model, COALESCE(SUM(cost_usd_micros), 0) AS micros, COUNT(*) AS runs
-           FROM run_costs WHERE occurred_at >= ? GROUP BY model`,
-      )
-      .all(sinceMs)
-      .map((r) => ({ model: r.model ?? '', costUsdMicros: r.micros, runs: r.runs }))
-  })
-}
 
 export interface RunCostSpendRow {
   runId: string
@@ -1059,6 +1031,9 @@ export interface RunCostSpendRow {
   usageKind: RunUsageKind
   totalTokens: number | null
   costUsdMicros: number | null
+  /** Null = unclassified (pre-migration rows, or classless media work). */
+  workClass: string | null
+  routeSource: string | null
   occurredAt: number
 }
 
@@ -1073,9 +1048,10 @@ export function listRunCostsSince(sinceMs: number): RunCostSpendRow[] {
       .prepare<{
         run_id: string; agent: string; model: string | null; provider: string | null
         lane: string | null; usage_kind: string | null; total_tokens: number | null
-        cost_usd_micros: number | null; occurred_at: number
+        cost_usd_micros: number | null; work_class: string | null; route_source: string | null
+        occurred_at: number
       }, [number]>(
-        `SELECT run_id, agent, model, provider, lane, usage_kind, total_tokens, cost_usd_micros, occurred_at
+        `SELECT run_id, agent, model, provider, lane, usage_kind, total_tokens, cost_usd_micros, work_class, route_source, occurred_at
            FROM run_costs WHERE occurred_at >= ?`,
       )
       .all(sinceMs)
@@ -1088,6 +1064,8 @@ export function listRunCostsSince(sinceMs: number): RunCostSpendRow[] {
         usageKind: r.usage_kind === 'media' ? 'media' : 'tokens',
         totalTokens: r.total_tokens,
         costUsdMicros: r.cost_usd_micros,
+        workClass: r.work_class,
+        routeSource: r.route_source,
         occurredAt: r.occurred_at,
       }))
   })
@@ -1347,8 +1325,8 @@ export interface AgentTokenRollup {
 
 /**
  * Per-agent token/cost sums since a timestamp — the attributed side of the
- * effort-vs-outcome view (#385). Unlike spendByAgent this keeps token sums
- * and stays NULL-honest on cost.
+ * effort-vs-outcome view (#385). Keeps token sums and stays NULL-honest on
+ * cost (never a fabricated zero).
  */
 export function runTokensByAgentSince(sinceMs: number): AgentTokenRollup[] {
   return guard('runTokensByAgentSince', () => {
@@ -1401,6 +1379,9 @@ export interface RunWithCostRow extends RunRow {
   cacheReadTokens: number | null
   cacheWriteTokens: number | null
   costUsdMicros: number | null
+  /** Route receipt: work performed + how its model was chosen (null pre-migration). */
+  workClass: string | null
+  routeSource: string | null
 }
 
 /**
@@ -1424,9 +1405,12 @@ export function listRunsByAgent(agent: string, opts: { sinceMs?: number; limit?:
         cache_read_tokens: number | null
         cache_write_tokens: number | null
         cost_usd_micros: number | null
+        work_class: string | null
+        route_source: string | null
       }, (string | number)[]>(
         `SELECT r.*, c.model, c.input_tokens, c.output_tokens, c.total_tokens,
-                c.cache_read_tokens, c.cache_write_tokens, c.cost_usd_micros
+                c.cache_read_tokens, c.cache_write_tokens, c.cost_usd_micros,
+                c.work_class, c.route_source
            FROM runs r LEFT JOIN run_costs c ON c.run_id = r.run_id
           WHERE ${clauses.join(' AND ')}
           ORDER BY r.started_at DESC LIMIT ?`,
@@ -1441,6 +1425,8 @@ export function listRunsByAgent(agent: string, opts: { sinceMs?: number; limit?:
         cacheReadTokens: r.cache_read_tokens,
         cacheWriteTokens: r.cache_write_tokens,
         costUsdMicros: r.cost_usd_micros,
+        workClass: r.work_class,
+        routeSource: r.route_source,
       }))
   })
 }

@@ -869,7 +869,7 @@ describe('dispatch', () => {
     })
 
     it('records a run_costs row from the turn usage + priceTurn hook on settle', async () => {
-      const { spendTotal } = require('../../src/core/execution-ledger') as typeof import('../../src/core/execution-ledger')
+      const { listRunCostsSince } = require('../../src/core/execution-ledger') as typeof import('../../src/core/execution-ledger')
       setDispatchColumns({ todo: [{ id: 't-cost', title: 'Costed task', agent: 'pixel' }] })
       vi.mocked(getHookRegistry).mockReturnValue({
         invoke: mock(async (hook: string) => {
@@ -885,12 +885,15 @@ describe('dispatch', () => {
       await dispatchTasks(tempDir, 3737)
       await awaitDispatchIdle()
 
-      // run_id == threadId; scoped by t0 so prior tests' rows don't bleed in.
-      expect(spendTotal({ agent: 'pixel', sinceMs: t0 })).toBe(123_456)
+      // run_id == threadId — scope by the task's run id so a prior test's
+      // late-settling pixel row can never bleed in under load.
+      const costed = listRunCostsSince(t0).filter((r) => r.runId.startsWith('task:t-cost:'))
+      expect(costed).toHaveLength(1)
+      expect(costed[0]).toMatchObject({ costUsdMicros: 123_456 })
     })
 
     it('records an unmetered run_costs row (zero dollars) when the turn reports no usage', async () => {
-      const { spendByAgent } = require('../../src/core/execution-ledger') as typeof import('../../src/core/execution-ledger')
+      const { listRunCostsSince } = require('../../src/core/execution-ledger') as typeof import('../../src/core/execution-ledger')
       setDispatchColumns({ todo: [{ id: 't-unmetered', title: 'Unmetered task', agent: 'trainer' }] })
       vi.mocked(getHookRegistry).mockReturnValue({
         invoke: mock(async () => undefined), // no priceTurn handler → null model/cost
@@ -903,16 +906,17 @@ describe('dispatch', () => {
       await dispatchTasks(tempDir, 3737)
       await awaitDispatchIdle()
 
-      const trainer = spendByAgent(t0).find((r) => r.agent === 'trainer')
-      expect(trainer).toEqual({ agent: 'trainer', costUsdMicros: 0, runs: 1 })
+      const trainer = listRunCostsSince(t0).filter((r) => r.runId.startsWith('task:t-unmetered:'))
+      expect(trainer).toHaveLength(1)
+      expect(trainer[0]).toMatchObject({ costUsdMicros: null }) // honest null, never $0
     })
 
-    it('applies the resolved routing model/thinking to the turn (origin policy)', async () => {
+    it('applies the resolved routing model/thinking to the turn (work-class route)', async () => {
       setDispatchColumns({ todo: [{ id: 't-routed', title: 'Scheduled task', agent: 'pixel', scheduleJobId: 'job-1' }] })
       vi.mocked(getHookRegistry).mockReturnValue({
         invoke: mock(async (hook: string) => {
           if (hook === 'models.getRoutingConfig') {
-            return { policies: [{ origin: 'scheduled', model: 'anthropic/claude-haiku-4-5', thinking: 'low' }], tagOverrides: [] }
+            return { routes: [{ workClass: 'scheduled', model: 'anthropic/claude-haiku-4-5', thinking: 'low' }], tagOverrides: [] }
           }
           return undefined
         }),
@@ -926,14 +930,17 @@ describe('dispatch', () => {
       const args = mockRuntimeSend.mock.calls[0]?.[0] as Record<string, unknown>
       expect(args.model).toBe('anthropic/claude-haiku-4-5')
       expect(args.thinking).toBe('low')
+
+      // Route receipt on the cost row: class + source recorded at metering.
+      const { listRunCostsSince } = require('../../src/core/execution-ledger') as typeof import('../../src/core/execution-ledger')
+      const row = listRunCostsSince(0).find((r) => r.runId.startsWith('task:t-routed:'))
+      expect(row).toMatchObject({ workClass: 'scheduled', routeSource: 'class' })
     })
 
     it('defers dispatch when a budget cap is exceeded (task stays in todo, no send)', async () => {
-      const { spendTotal } = require('../../src/core/execution-ledger') as typeof import('../../src/core/execution-ledger')
       // Seed >$1 of spend "today" for the agent so a $1 daily cap is exceeded.
       const { recordRunCost } = require('../../src/core/execution-ledger') as typeof import('../../src/core/execution-ledger')
-      recordRunCost({ runId: 'seed:budget:d1', taskId: 'seed-b', agent: 'pixel', model: 'm', inputTokens: 1, outputTokens: 1, totalTokens: 2, costUsdMicros: 2_000_000, occurredAt: Date.now() })
-      void spendTotal
+      recordRunCost({ workClass: null, runId: 'seed:budget:d1', taskId: 'seed-b', agent: 'pixel', model: 'm', inputTokens: 1, outputTokens: 1, totalTokens: 2, costUsdMicros: 2_000_000, occurredAt: Date.now() })
       setDispatchColumns({ todo: [{ id: 't-budget', title: 'Over budget', agent: 'pixel' }] })
       vi.mocked(getHookRegistry).mockReturnValue({
         invoke: mock(async (hook: string) => {
@@ -984,7 +991,7 @@ describe('dispatch', () => {
       }))
       vi.mocked(getHookRegistry).mockReturnValue({
         invoke: mock(async (hook: string) => {
-          if (hook === 'models.getRoutingConfig') return { policies: [{ origin: 'recovery', model: 'anthropic/claude-opus-4-6' }], tagOverrides: [] }
+          if (hook === 'models.getRoutingConfig') return { routes: [{ workClass: 'recovery', model: 'anthropic/claude-opus-4-6' }], tagOverrides: [] }
           return undefined
         }),
         has: mock().mockReturnValue(false),
@@ -1001,7 +1008,7 @@ describe('dispatch', () => {
     it('regression: empty routing config leaves the turn with no model/thinking (inherit)', async () => {
       setDispatchColumns({ todo: [{ id: 't-inherit', title: 'Adhoc task', agent: 'pixel' }] })
       vi.mocked(getHookRegistry).mockReturnValue({
-        invoke: mock(async (hook: string) => (hook === 'models.getRoutingConfig' ? { policies: [], tagOverrides: [] } : undefined)),
+        invoke: mock(async (hook: string) => (hook === 'models.getRoutingConfig' ? { routes: [], tagOverrides: [] } : undefined)),
         has: mock().mockReturnValue(false),
         register: mock(),
       } as unknown as HookRegistry)

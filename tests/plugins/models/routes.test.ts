@@ -87,10 +87,10 @@ class FakeLedgerUnavailable extends Error {}
 let incidentsList: unknown[] = []
 const incidentResolves: Array<Record<string, unknown>> = []
 mock.module('../../../src/core/execution-ledger', () => ({
-  spendTotal: mock(() => 150_000),
-  spendByAgent: mock(() => [{ agent: 'pixel', costUsdMicros: 100_000, runs: 4 }, { agent: 'patch', costUsdMicros: 0, runs: 2 }]),
-  spendByModel: mock(() => [{ model: 'anthropic/claude-sonnet-4-6', costUsdMicros: 100_000, runs: 4 }, { model: '', costUsdMicros: 0, runs: 2 }]),
-  listRunCostsSince: mock(() => [{ runId: 'r1', agent: 'pixel', model: 'anthropic/claude-sonnet-4-6', provider: 'anthropic', lane: 'metered', totalTokens: 100, costUsdMicros: 150_000, occurredAt: Date.now() }]),
+  listRunCostsSince: mock(() => [
+    { runId: 'r1', agent: 'pixel', model: 'anthropic/claude-sonnet-4-6', provider: 'anthropic', lane: 'metered', usageKind: 'tokens', totalTokens: 100, costUsdMicros: 150_000, workClass: 'scheduled', routeSource: 'class', occurredAt: Date.now() },
+    { runId: 'r2', agent: 'patch', model: '', provider: null, lane: null, usageKind: 'tokens', totalTokens: 40, costUsdMicros: null, workClass: null, routeSource: null, occurredAt: Date.now() },
+  ]),
   listBudgetIncidents: mock(() => incidentsList),
   resolveBudgetIncident: mock((input: unknown) => { incidentResolves.push(input as Record<string, unknown>); return true }),
   resolveExpiredBudgetIncidents: mock(() => 0),
@@ -187,6 +187,7 @@ beforeAll(async () => {
     defaultSubagentModel: true,
     aliases: true,
     perAgentSubagentModel: true,
+    supportedThinkingLevels: ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'adaptive', 'max'],
   })
 })
 
@@ -217,6 +218,7 @@ describe('Models Plugin Activation', () => {
       'POST /config',
       'POST /defaults',
       'POST /refresh',
+      'POST /routing/recommend',
       'POST /runtime/restart',
       'PUT /billing/overrides',
       'PUT /budget',
@@ -233,8 +235,8 @@ describe('Models Plugin Activation', () => {
     ])
   })
 
-  it('registers 10 hooks', () => {
-    expect(activated.ctx.hooks.register).toHaveBeenCalledTimes(10)
+  it('registers 11 hooks', () => {
+    expect(activated.ctx.hooks.register).toHaveBeenCalledTimes(11)
     const hookNames = (activated.ctx.hooks.register as ReturnType<typeof mock>).mock.calls.map(
       (c: unknown[]) => c[0]
     )
@@ -249,6 +251,7 @@ describe('Models Plugin Activation', () => {
       'models.priceImage',
       'models.priceTurn',
       'models.resolveBilling',
+      'models.seedWorkClassRoute',
     ])
   })
 
@@ -672,13 +675,13 @@ describe('routing config', () => {
     const route = findRoute(activated.routes, 'GET', '/routing')!
     const { status, body } = await callRoute(route, activated.ctx)
     expect(status).toBe(200)
-    expect(body).toEqual({ policies: [], tagOverrides: [] })
+    expect(body).toEqual({ routes: [], tagOverrides: [] })
   })
 
-  it('PUT /routing validates and persists policies + tag overrides', async () => {
+  it('PUT /routing validates and persists routes + tag overrides', async () => {
     const route = findRoute(activated.routes, 'PUT', '/routing')!
     const config = {
-      policies: [{ origin: 'scheduled', model: 'anthropic/claude-haiku-4-5', thinking: 'low' }],
+      routes: [{ workClass: 'scheduled', model: 'anthropic/claude-haiku-4-5', thinking: 'low' }],
       tagOverrides: [{ tag: 'heavy', model: 'anthropic/claude-opus-4-6' }],
     }
     const { status, body } = await callRoute(route, activated.ctx, { body: config })
@@ -687,12 +690,42 @@ describe('routing config', () => {
     expect(activated.ctx.updateSettings).toHaveBeenCalledWith({ routing: config })
   })
 
-  it('PUT /routing rejects an unknown origin', async () => {
+  it('PUT /routing rejects an unknown work class', async () => {
     const route = findRoute(activated.routes, 'PUT', '/routing')!
     const { status } = await callRoute(route, activated.ctx, {
-      body: { policies: [{ origin: 'bogus', model: 'm' }], tagOverrides: [] },
+      body: { routes: [{ workClass: 'bogus', model: 'm' }], tagOverrides: [] },
     })
     expect(status).toBe(400)
+  })
+
+  it('models.seedWorkClassRoute seeds only unrouted classes', async () => {
+    // The harness ctx records registrations without dispatching invoke —
+    // grab the registered handler and call it directly.
+    const seedCall = (activated.ctx.hooks.register as ReturnType<typeof mock>).mock.calls
+      .find((c: unknown[]) => c[0] === 'models.seedWorkClassRoute')
+    expect(seedCall).toBeDefined()
+    const handler = seedCall![1] as (d: Record<string, unknown>) => { seeded: boolean; reason?: string }
+
+    const first = handler({ workClass: 'team-routing', model: 'anthropic/claude-haiku-4-5' })
+    expect(first).toEqual({ seeded: true })
+    expect(activated.ctx.updateSettings).toHaveBeenCalledWith({
+      routing: { routes: [{ workClass: 'team-routing', model: 'anthropic/claude-haiku-4-5' }], tagOverrides: [] },
+    })
+
+    // Existing route wins (harness getSettings is static — stub the stored shape).
+    const realGetSettings = activated.ctx.getSettings
+    activated.ctx.getSettings = (() => ({
+      routing: { routes: [{ workClass: 'team-routing', model: 'anthropic/claude-haiku-4-5' }], tagOverrides: [] },
+    })) as typeof activated.ctx.getSettings
+    try {
+      const second = handler({ workClass: 'team-routing', model: 'openai/gpt-x' })
+      expect(second).toEqual({ seeded: false, reason: 'route exists' })
+    } finally {
+      activated.ctx.getSettings = realGetSettings
+    }
+
+    const junk = handler({ workClass: 'chat', model: 'anthropic/claude-haiku-4-5' })
+    expect(junk).toEqual({ seeded: false, reason: 'invalid seed request' })
   })
 })
 
@@ -909,20 +942,25 @@ describe('GET /spend', () => {
     expect(body.pace).toHaveProperty('monthly')
   })
 
-  it('returns windowed spend rollups (total, byAgent, byModel)', async () => {
+  it('returns windowed spend rollups (total, byAgent, byModel, byWorkClass) — NULL-honest', async () => {
     const route = findRoute(activated.routes, 'GET', '/spend')!
     const { status, body } = await callRoute(route, activated.ctx, { searchParams: { window: '24h' } })
     expect(status).toBe(200)
     expect(body.window).toBe('24h')
     expect(body.totalUsdMicros).toBe(150_000)
     expect(body.byAgent).toEqual([
-      { agent: 'pixel', costUsdMicros: 100_000, runs: 4 },
-      { agent: 'patch', costUsdMicros: 0, runs: 2 },
+      { agent: 'pixel', costUsdMicros: 150_000, runs: 1 },
+      // Unpriced bucket reports null — never the legacy fabricated $0.
+      { agent: 'patch', costUsdMicros: null, runs: 1 },
     ])
     // Unmodeled '' model id surfaces as a recognizable "unknown" label.
     expect(body.byModel).toEqual(expect.arrayContaining([
-      { model: 'anthropic/claude-sonnet-4-6', costUsdMicros: 100_000, runs: 4 },
-      { model: 'unknown', costUsdMicros: 0, runs: 2 },
+      { model: 'anthropic/claude-sonnet-4-6', costUsdMicros: 150_000, runs: 1 },
+      { model: 'unknown', costUsdMicros: null, runs: 1 },
+    ]))
+    expect(body.byWorkClass).toEqual(expect.arrayContaining([
+      expect.objectContaining({ workClass: 'scheduled', runs: 1, costUsdMicros: 150_000, avgCostUsdMicros: 150_000 }),
+      expect.objectContaining({ workClass: 'unclassified', runs: 1, costUsdMicros: null }),
     ]))
   })
 

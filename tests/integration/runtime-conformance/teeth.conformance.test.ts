@@ -167,6 +167,34 @@ describe('conformance suite teeth (broken adapter must fail every check)', () =>
       .rejects.toThrow(/conformance violation: .*sessions\.list is missing the session a completed threaded turn just created/)
   })
 
+  it('fails usage parity when send reports usage but the stream done omits it', async () => {
+    const runtime = createMockRuntimeAdapter()
+    // Lie: send() bills tokens…
+    const realSend = runtime.messaging.send.bind(runtime.messaging)
+    runtime.messaging.send = async (args) => ({
+      ...(await realSend(args)),
+      usage: { input: 10, output: 5, total: 15 },
+    })
+    // …but the stream's done chunk carries none (Pi's pre-fix behavior).
+    const target = { ...honestTargetShell(runtime) }
+    await expect(runtimeConformanceChecks.streamDoneCarriesUsageWhereSendDoes(target))
+      .rejects.toThrow(/conformance violation: send\(\) reports usage but the stream done chunk carries none/)
+  })
+
+  it('fails thinking honesty when a declared level fails turns', async () => {
+    const runtime = createMockRuntimeAdapter()
+    // Lie: declares 'max' but a turn at that level blows up (a declared-but-
+    // broken level — the exact class the pin exists to ban).
+    const realSend = runtime.messaging.send.bind(runtime.messaging)
+    runtime.messaging.send = async (args) => {
+      if (args.thinking === 'max') throw new Error('unsupported thinking level')
+      return realSend(args)
+    }
+    const target = { ...honestTargetShell(runtime) }
+    await expect(runtimeConformanceChecks.thinkingLevelHonesty(target))
+      .rejects.toThrow(/conformance violation: declared thinking level 'max' failed a turn/)
+  })
+
   it('fails the ping check when an unserveable runtime reports true', async () => {
     const runtime = createMockRuntimeAdapter()
     const target = {

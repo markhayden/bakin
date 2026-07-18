@@ -15,6 +15,7 @@ import type { TaskLogEntry } from '@makinbakin/sdk/types'
 
 /** Audit kinds worth interleaving into the timeline. */
 export const TIMELINE_AUDIT_KINDS = [
+  'task.routed',
   'task.bypass_detected',
   'task.runtime_session_died',
   'task.runtime_failed_blocked',
@@ -54,6 +55,9 @@ export interface TimelineRunEvent {
   outputTokens: number | null
   totalTokens: number | null
   costUsdMicros: number | null
+  /** Route receipt: work performed + how the model was chosen (null = pre-migration). */
+  workClass: string | null
+  routeSource: string | null
   /** Progress-log lines written during this run (capped, oldest first). */
   logs: Array<{ ts: string; message: string }>
   logsTruncated: boolean
@@ -142,6 +146,8 @@ export function assembleTimeline(inputs: {
       outputTokens: run.outputTokens,
       totalTokens: run.totalTokens,
       costUsdMicros: run.costUsdMicros,
+      workClass: run.workClass,
+      routeSource: run.routeSource,
       logs: inRun.slice(0, MAX_LOGS_PER_RUN).map((e) => ({ ts: e.timestamp, message: e.message })),
       logsTruncated: inRun.length > MAX_LOGS_PER_RUN,
     }

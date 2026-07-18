@@ -20,7 +20,7 @@ import { getAppServices } from './app-services-store'
 import { RuntimeError, RuntimeTurnError, type ChatChunk, type MessageResult } from '@bakin/core/adapters/runtime'
 import { claimNextRun, loseRun, settleRun, openBudgetIncident, resolveExpiredBudgetIncidents, findOpenCapIncident, type ClaimNextRunResult } from './execution-ledger'
 import { meterAgentTurn } from './agent-cost'
-import { resolveTurnModel, type ResolvedTurn, type RoutingConfig } from './model-routing'
+import { classifyDispatchWorkClass, resolveTurnModel, type DispatchWorkClass, type ResolvedTurn, type RoutingConfig } from './model-routing'
 import { evaluateBudget, ruleMatchesTurn, dayStartMs, monthStartMs, type BudgetPolicy, type BudgetDecision, type TurnBillingContext } from './budget'
 import { assembleBudgetSpend, type BudgetSpendFacets } from './budget-spend'
 import { notifyBudgetIncidentOpened } from './budget-notify'
@@ -382,15 +382,17 @@ export async function deferForBudget(
 export async function resolveDispatchRouting(task: DispatchTask, isRecovery: boolean): Promise<ResolvedTurn> {
   try {
     const config = await hooks().invoke<RoutingConfig>('models.getRoutingConfig', {})
-    if (!config) return {}
-    return resolveTurnModel({
+    if (!config) return { source: 'inherit' }
+    const resolved = resolveTurnModel({
       task: { tags: task.tags, scheduleJobId: task.scheduleJobId, workflowId: task.workflowId, parentId: task.parentId },
       isRecovery,
       config,
     })
+    const { applyThinkingCapability } = await import('./system-route')
+    return await applyThinkingCapability(resolved, classifyDispatchWorkClass(task, isRecovery))
   } catch (err) {
     log.error('Routing resolve failed; using agent default', err, { id: task.id })
-    return {}
+    return { source: 'inherit' }
   }
 }
 
@@ -402,8 +404,8 @@ export async function resolveDispatchRouting(task: DispatchTask, isRecovery: boo
  * same data also feeds the live usage recorder. Never throws into the settle
  * path — a metering failure must not fail a successful turn.
  */
-function recordTurnCost(runId: string, taskId: string, agent: string, result: MessageResult, resolvedModel?: string): Promise<void> {
-  return meterAgentTurn({ runId, taskId, agent, activityClass: 'user', result, resolvedModel })
+function recordTurnCost(runId: string, taskId: string, agent: string, result: MessageResult, workClass: DispatchWorkClass, routeSource: string, resolvedModel?: string): Promise<void> {
+  return meterAgentTurn({ runId, taskId, agent, activityClass: 'user', result, resolvedModel, workClass, routeSource })
 }
 
 /**
@@ -549,8 +551,10 @@ export function fireDispatchTurn(opts: {
         abort.abort('task-deleted')
         throw new RuntimeError('Task deleted before dispatch turn fired', { kind: 'aborted' })
       }
-      if (routing.model || routing.thinking) {
+      if (routing.model || routing.thinking || routing.thinkingClamp) {
         appendAudit(opts.contentDir, 'task.routed', opts.targetAgent, {
+          source: routing.source,
+          ...(routing.thinkingClamp ? { requestedThinking: routing.thinkingClamp.requested, clamped: true } : {}),
           id: opts.task.id,
           ...(routing.model ? { model: routing.model } : {}),
           ...(routing.thinking ? { thinking: routing.thinking } : {}),
@@ -585,7 +589,8 @@ export function fireDispatchTurn(opts: {
       }
       // Attribute the turn's token/dollar cost (run_id == threadId). The
       // resolved routing model is what actually ran — price against it.
-      await recordTurnCost(opts.threadId, opts.task.id, opts.targetAgent, result, routing.model)
+      const workClass = classifyDispatchWorkClass(opts.task, opts.isRecovery ?? false)
+      await recordTurnCost(opts.threadId, opts.task.id, opts.targetAgent, result, workClass, routing.source ?? 'inherit', routing.model)
       let completedDecomposition = false
       await withStateLock(() => {
         const state = loadDispatchState(opts.contentDir)

@@ -692,8 +692,10 @@ export function createMessagingSurface(deps: PiMessagingDeps): AgentRuntimeAdapt
         threadId: args.threadId,
         operation: 'stream',
       })
+      let streamUsage: MessageUsage | undefined
       const turn = runTurn(args, async ({ session, record }, observer) => {
         const chunkState = { announcedThinking: false }
+        const before = session.getSessionStats()
         const observeToolActivity = createToolActivityObserver(args, deps, lifecycle.turnId)
         const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
           for (const chunk of sessionEventChunks(event, chunkState)) {
@@ -708,8 +710,17 @@ export function createMessagingSurface(deps: PiMessagingDeps): AgentRuntimeAdapt
           }
           persistThreadMapping(record.id, args.threadId, session)
           throwOnTerminalFailure(observer, session, args, record)
-          push({ type: 'done' })
+          // Usage parity with send() (conformance-pinned): the terminal done
+          // carries the turn's token accounting so streamed turns are meterable.
+          const usage = usageDelta(before, session.getSessionStats(), session)
+          streamUsage = usage
+          push({ type: 'done', ...(usage ? { usage } : {}) })
         } catch (err) {
+          // Whatever accounting accrued before the failure/abort — the clean
+          // abort done below attaches it so partial turns still meter.
+          try {
+            streamUsage = usageDelta(before, session.getSessionStats(), session)
+          } catch { /* stats unavailable mid-teardown — leave undefined */ }
           throw toRuntimeError(err, {
             aborted: args.signal?.aborted,
             sessionId: session.sessionId,
@@ -721,7 +732,7 @@ export function createMessagingSurface(deps: PiMessagingDeps): AgentRuntimeAdapt
       })
 
       turn.then(() => {
-        lifecycle.finish({ status: 'completed' })
+        lifecycle.finish({ status: 'completed', usage: streamUsage })
         finish()
       }, (rawErr) => {
         // Normalize BEFORE classifying so pre-prompt raw throws (e.g. from
@@ -731,7 +742,8 @@ export function createMessagingSurface(deps: PiMessagingDeps): AgentRuntimeAdapt
         if (err.kind === 'aborted') {
           // Contract: a deliberate abort ends the stream with a clean done —
           // matching the send path's kind:'aborted' settle. Never an error chunk.
-          push({ type: 'done' })
+          // Partial usage still rides it: aborted turns billed those tokens.
+          push({ type: 'done', ...(streamUsage ? { usage: streamUsage } : {}) })
         } else {
           // Contract: the terminal error chunk carries the typed kind so
           // consumers classify without parsing message text.

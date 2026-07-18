@@ -82,7 +82,7 @@ function fakeTransport(picks: Array<{ agentId: string; reason: string }>) {
 function deps(overrides: Partial<ResolverDeps> = {}): ResolverDeps {
   return {
     runtime: fakeRuntime(),
-    settings: {},
+    route: {},
     keySource: () => ({ apiKey: 'k', source: 'env' as const }),
     readTeams: () => [{ id: 'development', label: 'Development', reportsTo: null }],
     getTeamMembers: async () => ['dev', 'reviewer', 'architect'],
@@ -122,10 +122,10 @@ describe('happy path', () => {
     expect(prompt).toContain('online')
   })
 
-  it('uses configured provider/model from routing settings', async () => {
+  it('uses the team-routing matrix route for provider/model', async () => {
     const { impl, calls } = fakeTransport([{ agentId: 'dev', reason: 'r' }])
     const result = await resolveTeamAssignment(
-      deps({ transport: impl, settings: { routingProvider: 'google', routingModel: 'gemini-2.5-flash' } }),
+      deps({ transport: impl, route: { model: 'google/gemini-2.5-flash', source: 'class' } }),
       REQUEST,
     )
     expect(calls[0].provider).toBe('google')
@@ -154,6 +154,14 @@ describe('pool assembly', () => {
       REQUEST,
     )
     expect(calls[0].prompt).not.toContain('ghost-agent')
+  })
+
+  it('matrix route on an unsupported provider → structural (never silently re-routed)', async () => {
+    const result = await resolveTeamAssignment(
+      deps({ route: { model: 'openai-codex/gpt-5.5', source: 'class' } }),
+      REQUEST,
+    )
+    expect(result).toEqual({ ok: false, kind: 'structural', message: expect.stringContaining('openai-codex') })
   })
 
   it('unknown team → structural', async () => {

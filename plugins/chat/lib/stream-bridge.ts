@@ -17,6 +17,7 @@
 import { randomUUID } from 'crypto'
 
 import type { PluginContext } from '@bakin/core/plugin-types'
+import type { MessageUsage } from '@bakin/core/adapters/runtime'
 import { cleanupPreparedAttachment, prepareImageAttachment, type PreparedAttachment } from '@bakin/core/media/downscale'
 import { createTurnRecorder } from '@makinbakin/sdk/utils'
 
@@ -154,6 +155,25 @@ export async function startChatTurn(
   return 'accepted'
 }
 
+/**
+ * Attribute one chat turn's spend under work class 'chat' (metered-only —
+ * interactive chat is never routed). Never throws into the turn path.
+ */
+async function meterChatTurn(chatId: string, agentId: string, turnId: string, usage: MessageUsage | undefined): Promise<void> {
+  try {
+    const { meterAgentTurn } = await import('../../../src/core/agent-cost')
+    await meterAgentTurn({
+      runId: `chat:${chatId}:turn:${turnId}`,
+      agent: agentId,
+      activityClass: 'user',
+      workClass: 'chat',
+      result: { id: turnId, content: '', ...(usage ? { usage } : {}) },
+    })
+  } catch (err) {
+    log.error(`chat turn metering failed for ${chatId}`, err as Error)
+  }
+}
+
 async function runTurn(
   ctx: ChatTurnContext,
   chatId: string,
@@ -165,6 +185,7 @@ async function runTurn(
 ): Promise<{ aborted: boolean; errored: boolean }> {
   const recorder = createTurnRecorder({ turnId })
   let assistantText = ''
+  let doneUsage: MessageUsage | undefined
   // Oversized images downscale to temp JPEGs (the shared 2 MB inline-cap
   // shim); prepared temp files are cleaned after the turn settles.
   const prepared: PreparedAttachment[] = []
@@ -218,6 +239,7 @@ async function runTurn(
       }
 
       if (chunk.type === 'text') assistantText += chunk.content
+      if (chunk.type === 'done') doneUsage = chunk.usage
       recorder.ingest(chunk)
       // Persist rows as they settle so a crash keeps the partial turn.
       await persist(recorder.drain() as ChatTranscriptRow[])
@@ -228,6 +250,11 @@ async function runTurn(
     if (aborted) {
       await persist([{ kind: 'aborted', ts: new Date().toISOString(), turnId }])
     }
+    // Attribute the turn's spend (work class 'chat') — aborted turns billed
+    // whatever usage arrived. The runtime's stream done carries usage by
+    // conformance pin; a usage-less done still records the run (tokens
+    // unknown, never a fabricated zero). Lazy import mirrors auto-title.
+    await meterChatTurn(chatId, agentId, turnId, doneUsage)
     ctx.events.emit('chat.done', {
       chatId,
       agentId,

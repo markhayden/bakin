@@ -141,12 +141,12 @@ describe('buildAgentContextReport', () => {
   })
 
   it('grounds with observed dispatch-run tokens (cache detail included, non-dispatch excluded)', async () => {
-    recordRunCost({
+    recordRunCost({ workClass: null,
       runId: 'task:obs1:d1', taskId: 'obs1', agent: 'jessica', model: 'm',
       inputTokens: 9000, outputTokens: 100, totalTokens: 9100,
       cacheReadTokens: 8000, cacheWriteTokens: 500, costUsdMicros: 10, occurredAt: 1_700_000_000_000,
     })
-    recordRunCost({ runId: 'turn:obs-watchdog', agent: 'jessica', model: 'm', inputTokens: 50, outputTokens: 5, totalTokens: 55, costUsdMicros: 1, occurredAt: 1_700_000_001_000 })
+    recordRunCost({ workClass: null, runId: 'turn:obs-watchdog', agent: 'jessica', model: 'm', inputTokens: 50, outputTokens: 5, totalTokens: 55, costUsdMicros: 1, occurredAt: 1_700_000_001_000 })
 
     const report = await buildAgentContextReport('jessica', { ...DEPS, runtime: fakeRuntime([]) })
     expect(report.observed.label).toContain('observed turn input')

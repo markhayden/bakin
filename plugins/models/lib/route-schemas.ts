@@ -7,7 +7,7 @@
  */
 import { z } from 'zod'
 
-import { ORIGINS } from '../../../src/core/model-routing'
+import { ROUTABLE_WORK_CLASSES } from '../../../src/core/model-routing'
 
 // ---------------------------------------------------------------------------
 // Zod schemas for request validation
@@ -39,8 +39,10 @@ export const errorResponse = z.object({ error: z.string() }).passthrough()
 export const passthrough = z.object({}).passthrough()
 
 const ThinkingSettingSchema = z.enum(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'adaptive', 'max', 'inherit'])
-const RoutingPolicySchema = z.object({
-  origin: z.enum(ORIGINS as unknown as [string, ...string[]]),
+// Routes may target any routable work class ('chat' is metered-only and
+// rejected by construction).
+const WorkClassRouteSchema = z.object({
+  workClass: z.enum(ROUTABLE_WORK_CLASSES as unknown as [string, ...string[]]),
   model: z.string().optional(),
   thinking: ThinkingSettingSchema.optional(),
 })
@@ -50,7 +52,7 @@ const TagOverrideSchema = z.object({
   thinking: ThinkingSettingSchema.optional(),
 })
 export const RoutingConfigSchema = z.object({
-  policies: z.array(RoutingPolicySchema),
+  routes: z.array(WorkClassRouteSchema),
   tagOverrides: z.array(TagOverrideSchema),
 })
 
