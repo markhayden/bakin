@@ -16,6 +16,7 @@ import type { PluginContextLite } from '@bakin/core/routing'
 import { createLogger } from '@bakin/core/logger'
 import type { WorkflowDefinition } from '../../types'
 import { getContentDir } from '../content-dir'
+import { collectTeamTokenIds } from '@bakin/core/workflows/team-token'
 import { loadDefinition, listDefinitions, validateDefinition, validateWorkflowId } from '../parser'
 import {
   buildTemplateList,
@@ -131,7 +132,23 @@ const repairSkillHandler = async (_req: Request, _ctx: PluginContextLite, parsed
 }
 
 // POST /definitions — create a new user-owned workflow YAML
-const createDefinitionHandler = async (req: Request, _ctx: PluginContextLite) => {
+/** Existing team ids for a definition's `team:<id>` step targets. Undefined
+ * when the definition references none OR the team plugin is unreachable —
+ * validateDefinition then skips existence checks (tiered, like nested-
+ * workflow refs) and dispatch fails honestly instead. */
+async function knownTeamIdsFor(definition: WorkflowDefinition, ctx: PluginContextLite): Promise<Set<string> | undefined> {
+  const ids = collectTeamTokenIds(definition.steps ?? [])
+  if (ids.length === 0) return undefined
+  try {
+    const checks = await Promise.all(ids.map(async (teamId) =>
+      [teamId, await ctx.hooks.invoke<boolean>('team.exists', { teamId })] as const))
+    return new Set(checks.filter(([, exists]) => exists === true).map(([teamId]) => teamId))
+  } catch {
+    return undefined
+  }
+}
+
+const createDefinitionHandler = async (req: Request, ctx: PluginContextLite) => {
   let body: { id?: string; [k: string]: unknown }
   try {
     body = await req.json()
@@ -178,6 +195,7 @@ const createDefinitionHandler = async (req: Request, _ctx: PluginContextLite) =>
     source: 'user',
     knownWorkflowIds: new Set([...listDefinitions().map((entry) => entry.name), id]),
     allowEmptySteps: true,
+    knownTeamIds: await knownTeamIdsFor(definition, ctx),
   })
   if (semanticErrors.length > 0) {
     return Response.json(
@@ -191,7 +209,7 @@ const createDefinitionHandler = async (req: Request, _ctx: PluginContextLite) =>
 }
 
 // PUT /definitions/:name — update or create a user-owned workflow YAML
-const updateDefinitionHandler = async (req: Request, _ctx: PluginContextLite) => {
+const updateDefinitionHandler = async (req: Request, ctx: PluginContextLite) => {
   const url = new URL(req.url)
   const name = url.searchParams.get('name')
   if (!name) {
@@ -224,6 +242,7 @@ const updateDefinitionHandler = async (req: Request, _ctx: PluginContextLite) =>
     source: 'user',
     knownWorkflowIds: new Set([...listDefinitions().map((entry) => entry.name), name]),
     allowEmptySteps: true,
+    knownTeamIds: await knownTeamIdsFor(definition, ctx),
   })
   if (semanticErrors.length > 0) {
     return Response.json(

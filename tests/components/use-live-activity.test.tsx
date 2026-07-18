@@ -26,8 +26,9 @@ mock.module('../../packages/core/src/content-dir', () => ({
 mock.module('../../src/core/task-store', () => ({}))
 mock.module('@/core/task-store', () => ({}))
 
-import { render, waitFor } from '@testing-library/react'
+import { act, render, waitFor } from '@testing-library/react'
 import '../rtl-settle'
+import { settleReact } from '../rtl-settle'
 import { emitPluginEvent } from '@makinbakin/sdk/hooks'
 import { useLiveActivity, chipLabel, liveActivityTs, type LiveActivity } from '../../plugins/tasks/hooks/use-live-activity'
 
@@ -37,16 +38,21 @@ function Probe() {
   return null
 }
 
+// The emitter calls listeners synchronously → the hook's setState must run
+// inside act(), or under full-suite CPU load the update lands during
+// teardown and fails the run (the settleReact/act rule from tests/setup).
 function emitActivity(overrides: Record<string, unknown>): void {
-  emitPluginEvent({
-    event: 'turn-activity',
-    taskId: 't-1',
-    agentId: 'jessica',
-    runId: 'task:t-1:d1',
-    chunk: { type: 'status', content: 'thinking' },
-    ts: new Date().toISOString(),
-    ...overrides,
-  } as never)
+  act(() => {
+    emitPluginEvent({
+      event: 'turn-activity',
+      taskId: 't-1',
+      agentId: 'jessica',
+      runId: 'task:t-1:d1',
+      chunk: { type: 'status', content: 'thinking' },
+      ts: new Date().toISOString(),
+      ...overrides,
+    } as never)
+  })
 }
 
 beforeEach(() => {
@@ -107,5 +113,6 @@ describe('useLiveActivity', () => {
     await waitFor(() => expect(latest['wf-p']).toBeDefined())
     expect(latest['wf-p--sub']).toBeDefined()
     expect(latest['wf-p']!.label).toBe('thinking')
+    await settleReact()
   })
 })

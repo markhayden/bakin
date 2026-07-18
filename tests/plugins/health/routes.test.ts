@@ -254,8 +254,11 @@ const taskStoreMock = {
   addTaskLog: mock(async () => {}),
   blockTask: mock(async () => {}),
   moveTask: mock(async () => {}),
-  // context.startup-size check → context-report → dispatch-workflow graph.
+  // context.startup-size check → context-report → dispatch-workflow graph
+  // (which now reaches dispatch-team's task-store verbs, #611).
   updateTask: mock(async () => {}),
+  getTaskWithColumn: () => null,
+  recordTeamResolution: mock(async () => {}),
 }
 // Defensive stub — the test isolation hook scans for plugin refs in text
 // and flags any mention of plugins/tasks even though we never import the

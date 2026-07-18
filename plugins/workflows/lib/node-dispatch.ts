@@ -196,7 +196,7 @@ export function dispatchReopenedStep(instance: WorkflowInstance, def: WorkflowDe
   if (step.type === 'parallel') {
     for (const child of (step as ParallelStep).steps) {
       if (child.type === 'agent') {
-        notifyStepDispatched(instance, child.id, resolveAgent((child as AgentStep).agent, instance) || 'unknown', child.label)
+        notifyStepDispatched(instance, child.id, resolveAgent((child as AgentStep).agent, instance, child.id) || 'unknown', child.label)
       }
     }
   } else if (step.type === 'workflow') {
