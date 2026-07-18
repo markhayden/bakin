@@ -29,7 +29,7 @@ comparison, and deletion of replaced styling/allowances.
 - [x] T9 Add story accessibility and cross-browser behavior projects
 - [x] T10a Integrate UI CI gates and failure artifacts
 - [x] T10b Integrate the public catalog with docs deployment
-- [ ] Checkpoint 1B: workbench foundation green
+- [x] Checkpoint 1B: workbench foundation green
 
 ## Phase 2 — Tokens and visual direction
 
