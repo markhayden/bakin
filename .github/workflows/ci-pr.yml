@@ -42,6 +42,10 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Install official Bits dependencies
+        working-directory: ${{ runner.workspace }}/external/bakin-bits-official
+        run: bun install --frozen-lockfile
+
       - name: Official UI census
         env:
           BAKIN_DOCS_EXTERNAL_SOURCES: ${{ runner.workspace }}/external/bakin-bits-official/plugins
@@ -65,6 +69,18 @@ jobs:
         env:
           BAKIN_DOCS_EXTERNAL_SOURCES: ${{ runner.workspace }}/external/bakin-bits-official/plugins
         run: bun run docs:check
+
+      - name: Build production browser assets
+        run: |
+          bun run build:css
+          bun run build:vendors
+          bun run build:plugins
+          bun run build:host-shell
+
+      - name: Browser UI performance ratchet
+        env:
+          BAKIN_DOCS_EXTERNAL_SOURCES: ${{ runner.workspace }}/external/bakin-bits-official/plugins
+        run: bun run ui:performance
 
       # --timeout 15000: worker contention on the 4-core runner can push
       # render-heavy component tests past the 5s default (observed 5.4-7.2s).

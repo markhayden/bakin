@@ -67,6 +67,36 @@ Both commands resolve official Bits through the same
 `BAKIN_DOCS_EXTERNAL_SOURCES`/sibling-checkout contract used by the census and
 docs. Missing Bits input fails rather than silently weakening coverage.
 
+## Browser UI performance baseline
+
+`performance.json` records monotonic production-payload ceilings for the one
+canonical design-system stylesheet, initial host JavaScript, current and
+focused SDK UI entries (including their statically reachable chunks), every
+vendor chunk, every core plugin client, and every official Bits client. Existing
+payload is baselined; a reduction passes, while an increase or new artifact
+requires explicit review and regeneration. Stable vendor files are pinned
+individually; content-hashed `sdk-shared-*` chunks are pinned as an aggregate so
+a size-reducing rebuild is not mistaken for a new artifact.
+
+The same architecture gate rejects a transitive chart or conversation import
+from base `@makinbakin/sdk/ui` and rejects a plugin-bundled copy of the canonical
+stylesheet. Official Bits clients are built in a temporary directory, so these
+measurements never modify the Bits checkout. Bun's generated checkout-path
+module-label comments are excluded from Bits byte counts so the same pinned
+source measures identically locally and in CI; all executable code and bundled
+dependencies remain counted.
+
+```sh
+bun run build:css && bun run build:vendors && bun run build:plugins && bun run build:host-shell
+bun run ui:performance:generate  # intentionally refresh reviewed ceilings
+bun run ui:performance           # core + official Bits payload gate
+bun run size:report              # full artifact report including UI payloads
+```
+
+The checked-in baseline must satisfy `performance.schema.json`. The UI budget
+extends the existing size report and issue #423; it does not replace that
+issue's whole-binary and release-artifact ownership.
+
 ## Browser baseline
 
 See [`baseline/README.md`](baseline/README.md) for the versioned pre-revamp

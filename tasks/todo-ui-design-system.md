@@ -17,7 +17,7 @@ comparison, and deletion of replaced styling/allowances.
 - [x] T3 Include Bits and create the compatibility matrix
 - [x] Checkpoint 0A: census truth reviewed
 - [x] T4 Build the legacy-style ratchet
-- [ ] T5 Establish initial performance and dependency budgets
+- [x] T5 Establish initial performance and dependency budgets
 - [ ] Checkpoint 0B: foundation audit reviewed
 
 ## Phase 1 — Catalog and browser verification

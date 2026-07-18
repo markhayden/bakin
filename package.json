@@ -29,6 +29,8 @@
     "ui:census:check": "bun run scripts/ui/census.ts check",
     "ui:legacy-styles:generate": "bun run scripts/ui/check-legacy-styles.ts generate",
     "ui:legacy-styles:check": "bun run scripts/ui/check-legacy-styles.ts check",
+    "ui:performance:generate": "bun run scripts/ui/performance.ts generate",
+    "ui:performance": "bun run scripts/ui/performance.ts check",
     "prestart": "bun run build:css && bun run build:vendors && bun run build:plugins && bun run build:host-shell && bun run build:assets-manifest",
     "start": "bun run prestart && bun run server.ts serve",
     "server": "bun run server.ts serve",

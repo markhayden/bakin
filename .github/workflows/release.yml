@@ -138,6 +138,10 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Install official Bits dependencies
+        working-directory: ${{ runner.workspace }}/external/bakin-bits-official
+        run: bun install --frozen-lockfile
+
       - name: Official UI census
         env:
           BAKIN_DOCS_EXTERNAL_SOURCES: ${{ runner.workspace }}/external/bakin-bits-official/plugins
@@ -174,6 +178,11 @@ jobs:
 
       - name: Build host shell
         run: bun run build:host-shell
+
+      - name: Browser UI performance ratchet
+        env:
+          BAKIN_DOCS_EXTERNAL_SOURCES: ${{ runner.workspace }}/external/bakin-bits-official/plugins
+        run: bun run ui:performance
 
       - name: Regenerate embedded-asset manifest
         run: bun run build:assets-manifest

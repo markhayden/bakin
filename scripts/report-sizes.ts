@@ -18,6 +18,8 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } 
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
+import { collectUiPerformanceSnapshot, printUiPerformance } from './ui/performance'
+
 const REPO_ROOT = resolve(import.meta.dir, '..')
 
 export interface MetafileInput {
@@ -174,6 +176,7 @@ async function main(): Promise<void> {
   printSection('Browser CSS (host and plugins)', report.css, 'run: bun run build:css && bun run build:plugins')
   printSection('Host shell (packages/host/dist)', report.hostShell, 'run: bun run build:host-shell')
   printSection('Compiled binaries (dist/)', report.binaries, 'run: bun run build:binary')
+  printUiPerformance(await collectUiPerformanceSnapshot(REPO_ROOT))
   await reportServerGraph()
 }
 
