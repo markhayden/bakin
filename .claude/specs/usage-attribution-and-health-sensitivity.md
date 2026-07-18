@@ -56,10 +56,10 @@ After this initiative:
 
 **Parser** (`src/core/agent-usage.ts`): `parseSessionUsageMessages` reads `message.provider` alongside `message.model` and emits the qualified ID `provider/model` when provider is present; bare model kept only when provider is genuinely absent. Also parse per-message `role` counts (needed by Phase 2; do the schema work once).
 
-**Store** (`packages/core/src/usage-history/store.ts`): new table `session_usage_days_v3`:
+**Store** (`packages/core/src/usage-history/store.ts`): migration **version 4** on the existing `session_usage_days` table (as built — v3 already existed as the wipe-and-rescan precedent; scan state is the `session_scan_state` table inside usage.db, there is no offsets file):
 - `model` now holds the qualified ID (`openai-codex/gpt-5.5`), or bare/`''` only in the missing-provider edge case.
-- New columns (Phase 2 uses them; created here to avoid two migrations): `origin TEXT CHECK(origin IN ('bakin','external','unknown'))`, `user_messages INTEGER`, `assistant_messages INTEGER`.
-- Migration: on open, if `session_usage_days_v2` exists → drop it, create v3, and reset the scanner's byte offsets so the next scan performs a full re-scan (derived data; no back-compat shims — single-user machine). `origin` defaults `'unknown'` until Phase 2 lands adapter metadata.
+- New columns (Phase 2 uses them; created here to avoid two migrations): `origin TEXT NOT NULL DEFAULT 'unknown' CHECK(origin IN ('bakin','external','unknown'))`, `user_messages INTEGER` (each user message attributes to the next usage-bearing assistant message; trailing turns to the session's latest bucket). `message_count` already IS the token-bearing assistant-turn count, so no `assistant_messages` duplicate.
+- Migration: drop/recreate `session_usage_days` + `DELETE FROM session_scan_state` so the next timer sweep performs a full re-scan (derived data; no back-compat shims — single-user machine). `origin` defaults `'unknown'` until Phase 2 lands adapter metadata.
 
 **Budget spend** (`src/core/budget-spend.ts`): `resolveObservedLane` also reads `provider` from the `models.resolveBilling` result; `provider === 'other'` (unresolvable) → return `null` → existing `lane_unknown` evidence-gap path (no dollars, named model in the gap record). The `models.resolveBilling` hook contract is unchanged; the dispatch/`priceTurn` path is untouched (always qualified).
 
@@ -99,7 +99,9 @@ export type HealthIncidentClass =
   | 'cleanup_backlog' | 'policy_denial' | 'unsupported_surface'
 export type HealthSensitivity = 'developer' | 'standard' | 'quiet'
 ```
-Incident gains `class?: HealthIncidentClass` (producer-stamped; absent ⇒ treated as `service_failure`, never demoted — a missing stamp can never hide an outage) and projected `effectiveDisposition: HealthDisposition` (raw `disposition` preserved). *(Note: the interview approved 8 classes; `unattributed_usage` and `runaway_usage` were added as direct fallout of the D8/D9 decisions so each class has exactly one cap rule per mode.)*
+Incident gains `class?: HealthIncidentClass` (producer-stamped; absent ⇒ treated as `service_failure`, never demoted — a missing stamp can never hide an outage) and projected `effectiveDisposition: HealthDisposition` (raw `disposition` preserved). `HealthReport` gains `sensitivity` on the wire — the badge/CLI cannot apply the D10 quiet filter without it. *(Note: the interview approved 8 classes; `unattributed_usage` and `runaway_usage` were added as direct fallout of the D8/D9 decisions so each class has exactly one cap rule per mode.)*
+
+*(As-built corrections: `plugins/health/lib/route-schemas.ts` (.strict() incident/report schemas + the summary superRefine) and `src/core/health-contract.ts` (incident-input zod, which doubles as the invalid-class-string guard — stronger than a text-scan architecture test) must change in the same commit or `/doctor` breaks; `semanticProjectionKey` in `doctor-report-cache.ts` must include sensitivity + effective dispositions or mode flips are swallowed by the projection-dedupe cache; the D11 cron guard executes in the health-check/route layer with cron evidence passed INTO the pure engine — and since CronJob carries no agent attribution, the guard is runtime-wide by design.)*
 
 **Projection** (`src/core/health-report.ts`): one central table caps effective disposition per (class × sensitivity). Caps only ever lower, never raise; incidents with observation status `'error'` are never demoted (belt-and-braces on top of the uncapped classes):
 

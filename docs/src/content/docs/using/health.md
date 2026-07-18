@@ -74,7 +74,7 @@ Some incidents provide navigation, resolution steps, or a re-check instead of de
 Agents consolidates usage and outcomes around one 24-hour, 7-day, or 30-day window:
 
 - The trend chart includes an exact data table, so values do not depend on hover or color.
-- The comparison view distinguishes **observed transcript activity**, **Bakin-attributed work**, and **unattributed activity**. Those scopes are related, not interchangeable.
+- The comparison view distinguishes **observed transcript activity**, **Bakin-attributed work**, **interactive session usage** (direct chats/TUI — sessions Bakin never originated; normal use, labeled calmly), and **unexplained usage** (tokens no task, system send, or interactive session accounts for — worth a look). Those scopes are related, not interchangeable.
 - Latest-session token traffic is cumulative traffic in each agent's newest transcript, not current context-window occupancy.
 - Runtime-reported transcript cost is shown separately from Bakin's fixed 24-hour budget estimate. Missing cost remains unavailable; it is never displayed as `$0`.
 

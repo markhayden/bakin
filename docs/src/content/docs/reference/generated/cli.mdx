@@ -864,7 +864,7 @@ bakin agents context [agent-id] [--json]
     </tbody>
   </table>
 </CliCommandCard>
-<CliCommandCard id="agents-doctor" name="agents doctor" summary="Combined per-agent health report." description="One view of an agent's health: live drift scan findings, startup-context budget summary, token-burn flags (effort vs outcome, unattributed usage), and the recent activity timeline. A thin client over the same endpoints as the web Diagnostics tab; each section degrades independently when an endpoint is unavailable.">
+<CliCommandCard id="agents-doctor" name="agents doctor" summary="Combined per-agent health report." description="One view of an agent's health: live drift scan findings, startup-context budget summary, token-burn flags (effort vs outcome, interactive vs unexplained usage, runaway), and the recent activity timeline. A thin client over the same endpoints as the web Diagnostics tab; each section degrades independently when an endpoint is unavailable.">
 ```sh frame="terminal"
 bakin agents doctor <agent-id> [--json]
 ```
@@ -1003,5 +1003,5 @@ bakin brands remove <id> [--yes]
 </div>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Jul 17, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Jul 18, 2026 · Bakin 0.0.0-dev</span>
 </aside>

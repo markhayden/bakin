@@ -203,7 +203,16 @@ unsupported.
    (Pi computes a session-stats delta; OpenClaw threads its RPC result
    usage through the chunk machine) — chat metering depends on it;
    `thinkingLevelHonesty` — every level declared in
-   `routingSupport().supportedThinkingLevels` must serve a clean turn.
+   `routingSupport().supportedThinkingLevels` must serve a clean turn;
+   `sessionOriginLabelsAreHonest` (#691) — a runtime exposing a
+   `session_jsonl` memory tier must label session entries' `metadata.origin`
+   from `{bakin, external, unknown}`, and the transcript of a threaded Bakin
+   send — when listed — must be `bakin` (Pi labels via `bakin-threads.json`
+   membership with its OWN error channel: missing map = external, corrupt
+   map = unknown; OpenClaw via sessions.json key shapes + deterministic v5
+   uuids; subagent sessions are runtime-spawned child work = bakin).
+   Runtimes without the tier or without per-turn transcript persistence
+   conform vacuously — never mislabel.
    `teeth.conformance.test.ts` proves the checks
    reject violators (incl. per-lie adapters for the two routing pins) — a
    new runner is three target hooks, not new checks.

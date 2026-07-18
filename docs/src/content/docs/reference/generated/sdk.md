@@ -313,6 +313,9 @@ import type { BakinPlugin, PluginContext, ExecToolDefinition } from '@makinbakin
 | `HealthObservationStatus` | — |
 | `HealthDisposition` | — |
 | `HealthReportStatus` | — |
+| `HEALTH_INCIDENT_CLASSES` | Producer-stamped behavior class (#690) — what KIND of problem an incident |
+| `HealthIncidentClass` | — |
+| `HealthSensitivity` | Health sensitivity mode (#690): how loudly findings surface. `developer` |
 | `HealthOwnerKind` | — |
 | `HealthOwner` | Core-stamped owner of a registration or canonical finding. |
 | `HealthGroup` | Stable subsystem grouping supplied by a registration. |
@@ -462,5 +465,5 @@ Source: `packages/sdk/src/routing/index.ts`.
 | `DefinePluginInput` | — |
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Jul 17, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Jul 18, 2026 · Bakin 0.0.0-dev</span>
 </aside>

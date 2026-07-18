@@ -31,22 +31,45 @@ observed-minus-attributed delta they surface ALSO counts toward budget caps
 `.claude/knowledge/usage-recording.md` § Budget gating consumes usage.db).
 Burn = the explainable "why", budget = the enforced ceiling.
 
-Three explainable signals per agent, evaluated over a day-aligned window:
+Explainable signals per agent, evaluated over a day-aligned window (#691
+split the retired single `unattributed` delta into provenance buckets —
+session origin comes from the adapter labels in usage.db, see
+`usage-recording.md`):
 
 - **effort-no-outcome** — ≥ `minTokensFloor` Bakin-attributed tokens
   (run_costs) with zero task completions in the window.
 - **spike** — today's transcript-observed tokens > `spikeMultiplier` × the
   agent's own trailing `baselineDays` daily average AND above the floor.
-- **unattributed (D11)** — `max(0, observed − attributed)` where observed
-  comes from usage.db transcript scans and attributed from run_costs. This is
-  the direct "the runtime did things outside Bakin-managed tasks" signal.
-  Fires above `unattributedShare` of observed AND `unattributedFloorTokens`.
+- **interactive** (advisory, calm copy) — observed tokens from
+  external-origin sessions (operator TUI/direct chats — sessions Bakin never
+  originated). Fires above `unattributedShare` of observed AND
+  `unattributedFloorTokens`. "Normal if you were working with this agent
+  directly" — never scary.
+- **unexplained** (watch) — `max(0, observed(bakin ∪ unknown-origin) −
+  interactive − attributed)`: tokens no ledger row or interactive session
+  explains. Same thresholds; copy strengthens when a spike fires the same
+  day. Unknown-origin tokens count here, NEVER toward interactive — the calm
+  bucket must be provable.
+- **runaway** (action_required page; D9/D11) — only with real indicators: an
+  external-origin session accumulating ≥ `runawayAssistantTurns` (20)
+  token-bearing assistant turns AND ≥ `runawayFloorTokens` (1M) tokens with
+  ZERO user turns, OR unexplained ≥ the runaway floor coinciding with a
+  spike. Unknown-origin sessions never page ("cannot tell" is not evidence).
+  **Cron guard**: the health check and `/agent-effort` route pre-fetch the
+  runtime's enabled native scheduled jobs identically (the engine stays
+  pure — jobs arrive as input); jobs present downgrade the page to a watch
+  review prompt naming the jobs. CronJob carries no agent attribution, so
+  the guard is runtime-wide by design — under-paging beats a false page. No
+  cron surface / failed read = NO downgrade (fail loud).
 
-Data honesty: observed/unattributed are **null when the usage scanner has no
-coverage of the window** (fleet-wide judgment: any cell in the window =
-covered) — never fabricated zeros. Cost sums stay NULL-honest
-(`runTokensByAgentSince`). Settings are re-read each doctor run; all six knobs
-render in System & Alerts.
+Data honesty: observed/interactive/unexplained are **null when the usage
+scanner has no coverage of the window** (fleet-wide judgment: any cell in the
+window = covered) — never fabricated zeros. Cost sums stay NULL-honest
+(`runTokensByAgentSince`). Settings are re-read each doctor run; all eight
+knobs render in System & Alerts. The check emits one observation per
+(agent, bucket) with stable keys (`interactive:<agent>`, `unexplained:<agent>`,
+`runaway:<agent>`, legacy `agent:<agent>` for effort/spike) and structured
+evidence — flag copy is never parsed.
 
 Known false positive (accepted by design): a legitimately long-running task
 looks like effort-no-outcome until it completes. Messages say "check its
