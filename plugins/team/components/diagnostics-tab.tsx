@@ -157,7 +157,7 @@ function reportFlagsAgent(report: HealthReport, checkId: string, agentId: string
       .map(observation => observation.id),
   )
   return report.incidents.some(incident => (
-    incident.disposition !== 'advisory'
+    incident.effectiveDisposition !== 'advisory'
     && incident.resources.some(resource => resource.kind === 'agent' && resource.id === agentId)
     && incident.observationIds.some(observationId => observationIds.has(observationId))
   ))

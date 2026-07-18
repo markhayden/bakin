@@ -105,6 +105,7 @@ export async function checkBudget(): Promise<HealthCheckRunInput> {
       incident: {
         key: 'dispatch-paused',
         title: 'Global dispatch is paused',
+        class: 'budget_block',
         impact: 'No tasks dispatch and no billed media runs until an operator resumes dispatch.',
         disposition: 'action_required',
         resources: [{ kind: 'setting', id: 'dispatch.paused', label: 'Dispatch kill switch' }],
@@ -130,6 +131,7 @@ export async function checkBudget(): Promise<HealthCheckRunInput> {
       incident: {
         key: 'policy-unavailable',
         title: 'Spending policy is unavailable',
+        class: 'service_failure',
         impact: 'Health cannot confirm whether agent spend is capped.',
         disposition: 'watch',
         resources: [{ kind: 'system', id: 'budget-policy', label: 'Spending policy' }],
@@ -187,6 +189,7 @@ export async function checkBudget(): Promise<HealthCheckRunInput> {
       const incident = {
         key: 'open-incidents',
         title: 'Budget incidents need resolution',
+        class: 'budget_block' as const,
         impact: pausing.length > 0
           ? 'Pause-mode holds are blocking task dispatch until an operator resolves them.'
           : 'Unresolved budget alerts can hide continued spend pressure.',
@@ -225,6 +228,7 @@ export async function checkBudget(): Promise<HealthCheckRunInput> {
       incident: {
         key: 'incidents-unavailable',
         title: 'Budget incident status is unknown',
+        class: 'evidence_gap',
         impact: 'Health cannot confirm whether an unresolved budget hold is blocking dispatch.',
         disposition: 'watch',
         resources: [{ kind: 'system', id: 'budget-incidents', label: 'Budget incidents' }],
@@ -248,6 +252,7 @@ export async function checkBudget(): Promise<HealthCheckRunInput> {
       incident: {
         key: 'spend-ledger-unavailable',
         title: 'Spend ledger is unavailable',
+        class: 'service_failure',
         impact: 'Budget gating fails closed, so task dispatch defers until spend can be evaluated.',
         disposition: 'action_required',
         resources: [{ kind: 'system', id: 'spend-ledger', label: 'Spend ledger' }],
@@ -287,6 +292,7 @@ export async function checkBudget(): Promise<HealthCheckRunInput> {
       incident: {
         key: 'audit-unavailable',
         title: 'Budget deferral history is unknown',
+        class: 'evidence_gap',
         impact: 'Health cannot report how often budget gates deferred work in the last 24 hours.',
         disposition: 'watch',
         resources: [{ kind: 'file', id: 'audit-log', label: 'audit.jsonl' }],
@@ -408,6 +414,7 @@ export async function checkBudget(): Promise<HealthCheckRunInput> {
       incident: {
         key: 'cap-reached',
         title: 'Spending cap reached',
+        class: 'budget_block',
         impact: 'Task dispatch is deferring for work covered by the capped budget rules.',
         disposition: 'action_required',
         resources: capped.slice(0, 50).map((entry, index) => ({
@@ -437,6 +444,7 @@ export async function checkBudget(): Promise<HealthCheckRunInput> {
       incident: {
         key: 'spend-evidence-incomplete',
         title: 'Spend evidence is incomplete',
+        class: 'evidence_gap',
         impact: incompleteSpendRules.length > 0
           ? 'Matching budget caps fail closed until spend values and billing attribution can be verified.'
           : 'Health cannot confirm that agent spend outside Bakin-managed runs remains within budget.',
@@ -460,6 +468,7 @@ export async function checkBudget(): Promise<HealthCheckRunInput> {
       incident: {
         key: 'approaching-cap',
         title: 'Spend is approaching its cap',
+        class: 'budget_block',
         impact: 'Covered work may begin deferring if spend continues at the current pace.',
         disposition: 'watch',
         resources: [{ kind: 'budget_rule', id: 'active', label: 'Active spending rules' }],
@@ -480,6 +489,7 @@ export async function checkBudget(): Promise<HealthCheckRunInput> {
       incident: {
         key: 'approaching-cap',
         title: 'Spend is approaching its cap',
+        class: 'budget_block',
         impact: 'Covered work may begin deferring if spend continues at the current pace.',
         disposition: 'watch',
         resources: [{ kind: 'budget_rule', id: 'active', label: 'Active spending rules' }],

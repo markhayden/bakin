@@ -33,7 +33,7 @@ function incident(overrides: Partial<HealthIncident> & Pick<HealthIncident, 'id'
   const { id, ...rest } = overrides
   return {
     id,
-    status: 'warning', disposition: 'watch', effectiveDisposition: 'watch', title: id, impact: 'Operator impact.', resources: [],
+    status: 'warning', disposition: 'watch', effectiveDisposition: rest.disposition ?? 'watch', title: id, impact: 'Operator impact.', resources: [],
     resolution: { key: 'again', type: 'rerun', label: 'Check again' },
     observationIds: [`observation:${id}`], observedAt: OBSERVED_AT, staleAt: STALE_AT, stale: false,
     ...rest,

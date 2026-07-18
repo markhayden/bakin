@@ -216,6 +216,7 @@ async function checkSearchCanaryWithState(): Promise<HealthCheckRunInput> {
       incident: {
         key: 'search-dark',
         title: 'Search is dark despite passing engine probes',
+        class: 'service_failure',
         impact: 'Production searches return no indexed contribution from any table.',
         disposition: 'action_required',
         resources: [{ kind: 'service', id: 'search-engine', label: 'Search engine' }],
@@ -255,6 +256,7 @@ async function checkSearchCanaryWithState(): Promise<HealthCheckRunInput> {
       incident: {
         key: 'query-degraded',
         title: 'Search query coverage is degraded',
+        class: 'service_failure',
         impact: 'Search remains available, but results may omit tables or semantic matches under load.',
         disposition: 'watch',
         resources: [{ kind: 'service', id: 'search-engine', label: 'Search engine' }],
@@ -339,6 +341,7 @@ async function checkSearchEngineBurnWithState(): Promise<HealthCheckRunInput> {
       incident: {
         key: 'engine-wedged',
         title: 'Search engine has a zero-progress wedge',
+        class: 'service_failure',
         impact: 'The engine can consume sustained CPU while indexed queries remain starved.',
         disposition: 'action_required',
         resources: [{ kind: 'service', id: 'search-engine', label: 'Search engine' }],
@@ -376,6 +379,7 @@ async function checkSearchEngineBurnWithState(): Promise<HealthCheckRunInput> {
       incident: {
         key: 'sustained-cpu',
         title: 'Search engine load needs watching',
+        class: 'usage_anomaly',
         impact: 'Sustained engine load can slow queries, though active index work may explain it.',
         disposition: 'watch',
         resources: [{ kind: 'service', id: 'search-engine', label: 'Search engine' }],
@@ -493,6 +497,7 @@ function engineWatchStateUnknown(error: EngineWatchStateError) {
     incident: {
       key: 'engine-watch-state-unknown',
       title: 'Search engine watch history is unavailable',
+      class: 'evidence_gap',
       impact: 'Health cannot safely decide whether Search symptoms repeated across consecutive checks.',
       disposition: 'watch',
       resources: [{ kind: 'file', id: 'engine-watch-state', label: 'Search engine watch history' }],
@@ -517,6 +522,7 @@ function canaryUnknown(error: unknown) {
     incident: {
       key: 'canary-unknown',
       title: 'Search query canary is unknown',
+      class: 'evidence_gap',
       impact: 'Health cannot confirm that the engine serves real indexed queries.',
       disposition: 'watch',
       resources: [{ kind: 'service', id: 'search-engine', label: 'Search engine' }],
@@ -533,6 +539,7 @@ function engineBurnUnknown(error: unknown) {
     incident: {
       key: 'engine-burn-unknown',
       title: 'Search engine burn status is unknown',
+      class: 'evidence_gap',
       impact: 'Health cannot detect sustained CPU use or known zero-progress signatures.',
       disposition: 'watch',
       resources: [{ kind: 'service', id: 'search-engine', label: 'Search engine' }],

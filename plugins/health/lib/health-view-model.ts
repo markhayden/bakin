@@ -304,11 +304,11 @@ export function buildHealthOverviewViewModel({
 
   for (const incident of report?.incidents ?? []) {
     const row = incidentModel(incident, observationById, checkById, now)
-    if (incident.disposition === 'action_required') {
+    if (incident.effectiveDisposition === 'action_required') {
       needsAction.push(row)
     } else if (incident.status === 'unknown' || row.freshness === 'stale') {
       unableToVerify.push(row)
-    } else if (incident.disposition === 'watch' && incident.status === 'warning') {
+    } else if (incident.effectiveDisposition === 'watch' && incident.status === 'warning') {
       watching.push(row)
     }
   }

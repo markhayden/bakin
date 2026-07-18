@@ -51,6 +51,7 @@ function incompleteMeteringObservation(
     incident: {
       key: 'token-metering-incomplete',
       title: 'Agent token metering is incomplete',
+      class: 'evidence_gap',
       impact: 'Health cannot calculate agent burn, efficiency, or unattributed usage from partial token-bearing call totals.',
       disposition: 'watch',
       resources: [{ kind: 'system', id: 'execution-ledger', label: 'Execution ledger' }],
@@ -75,6 +76,7 @@ function unrepresentableCostObservation(
     incident: {
       key: 'cost-aggregate-unrepresentable',
       title: 'Agent cost aggregate is too large to report safely',
+      class: 'evidence_gap',
       impact: 'Health cannot publish a trustworthy combined agent cost until the selected window changes.',
       disposition: 'watch',
       resources: [{ kind: 'system', id: 'execution-ledger', label: 'Execution ledger' }],
@@ -117,6 +119,7 @@ export async function checkAgentBurnWith(
         incident: {
           key: 'ledger-unavailable',
           title: 'Usage ledger is unavailable',
+          class: 'service_failure',
           impact: 'Health cannot detect unusually expensive agent activity without usage records.',
           disposition: 'action_required',
           resources: [{ kind: 'system', id: 'execution-ledger', label: 'Execution ledger' }],
@@ -136,6 +139,7 @@ export async function checkAgentBurnWith(
       incident: {
         key: 'evaluation-failed',
         title: 'Agent token burn is unknown',
+        class: 'evidence_gap',
         impact: 'Health cannot determine whether agents are using tokens unusually quickly.',
         disposition: 'watch',
         resources: [{ kind: 'system', id: 'usage', label: 'Usage telemetry' }],
@@ -177,6 +181,7 @@ export async function checkAgentBurnWith(
         incident: {
           key: 'transcript-coverage-incomplete',
           title: 'Agent usage coverage is incomplete',
+          class: 'evidence_gap',
           impact: 'Health cannot confirm total or unattributed agent token use until runtime transcripts are fully scanned.',
           disposition: 'watch',
           resources: [{ kind: 'system', id: 'usage-history', label: 'Usage history' }],
@@ -231,6 +236,7 @@ export async function checkAgentBurnWith(
           incident: {
             key: `interactive-usage:${keyPart}`,
             title: 'Interactive agent chat usage',
+            class: 'usage_anomaly',
             impact: 'Direct chats and TUI sessions consume tokens outside the task ledger. This is normal use — review only if unexpected.',
             disposition: 'advisory',
             resources: [agentResource],
@@ -251,6 +257,7 @@ export async function checkAgentBurnWith(
           incident: {
             key: `unexplained-usage:${keyPart}`,
             title: 'Unexplained agent token usage',
+            class: 'unattributed_usage',
             impact: 'Tokens Bakin could not attribute to tasks, system sends, or interactive sessions may indicate untracked runtime activity.',
             disposition: 'watch',
             resources: [agentResource],
@@ -274,6 +281,7 @@ export async function checkAgentBurnWith(
               incident: {
                 key: `runaway-usage:${keyPart}`,
                 title: 'High autonomous usage (scheduled jobs present)',
+                class: 'runaway_usage',
                 impact: 'Autonomous token accumulation matched the runaway pattern, but this runtime has scheduled jobs that may explain it — review if unexpected.',
                 disposition: 'watch',
                 resources: [agentResource],
@@ -288,6 +296,7 @@ export async function checkAgentBurnWith(
               incident: {
                 key: `runaway-usage:${keyPart}`,
                 title: 'Possible runaway agent usage',
+                class: 'runaway_usage',
                 impact: 'Autonomous token accumulation with no user interaction is actively consuming quota — investigate immediately.',
                 disposition: 'action_required',
                 resources: [agentResource],
@@ -310,6 +319,7 @@ export async function checkAgentBurnWith(
         incident: {
           key: `unusual-burn:${keyPart}`,
           title: 'Agent token burn needs review',
+          class: 'usage_anomaly',
           impact: 'High or spiking usage may increase cost without corresponding completed work.',
           disposition: 'watch',
           resources: [agentResource],

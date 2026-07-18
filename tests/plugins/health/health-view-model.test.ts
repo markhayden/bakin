@@ -18,7 +18,8 @@ function incident(overrides: Partial<HealthIncident> & Pick<HealthIncident, 'id'
     id,
     status: 'warning',
     disposition: 'watch',
-    effectiveDisposition: 'watch',
+    // Effective mirrors the (possibly overridden) raw disposition (#690).
+    effectiveDisposition: rest.disposition ?? 'watch',
     title: id,
     impact: 'Operator impact.',
     resources: [],
