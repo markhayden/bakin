@@ -79,7 +79,7 @@ description: Generated catalog of official plugins supported by Bakin.
       <td>Models<br/><span>Agent model configuration — per-agent models, aliases, available models, per-turn model/thinking routing, and spend/budget tracking</span></td>
       <td><code>models</code></td>
       <td>Core</td>
-      <td><code>2.1.0</code></td>
+      <td><code>2.1.1</code></td>
       <td><code>team</code></td>
     </tr>
     <tr>
@@ -107,14 +107,14 @@ description: Generated catalog of official plugins supported by Bakin.
       <td>Team<br/><span>Agent team management — adapter layer over runtime agent workspaces</span></td>
       <td><code>team</code></td>
       <td>Core</td>
-      <td><code>1.1.0</code></td>
+      <td><code>1.2.0</code></td>
       <td>none</td>
     </tr>
     <tr>
       <td>Workflows<br/><span>Workflow runtime — enforces step-by-step agent execution with gated delivery, parallel steps, human gates, and output validation</span></td>
       <td><code>workflows</code></td>
       <td>Core</td>
-      <td><code>2.0.1</code></td>
+      <td><code>2.1.0</code></td>
       <td><code>tasks</code></td>
     </tr>
   </tbody>

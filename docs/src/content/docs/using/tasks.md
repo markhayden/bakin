@@ -32,7 +32,7 @@ Hit `+ New Task` in the top right of the board. Give it a title, pick an owner (
 
 The assignee picker also lists your teams (from the Team page). Assign a task to a team and Bakin picks the best-suited member at dispatch time: a small routing model reads the task against each member's role and profile and records its pick — and why — in the task's activity log. The card shows a team chip until the pick lands, then the chosen agent's avatar alongside it.
 
-Routing uses the provider and model configured under Team settings ("Task routing"), with the API key from your environment or secret store. If no key is configured, team tasks move to `Blocked` with a clear reason instead of guessing — the doctor's `team.routing` check will point at it. Re-assigning a resolved task to a different agent or team resets the routing; scheduled jobs can also target a team, and each occurrence is routed fresh.
+The routing call runs through your agent runtime — no separate API key needed. Pick its model with the `team-routing` row under Models → Routing; with no route set it uses your main agent's default model. If routing can't complete (the team no longer exists, has no members on the roster, or the runtime has no usable credentials), team tasks move to `Blocked` with a clear reason instead of guessing — the doctor's `team.routing` check will point at it. Re-assigning a resolved task to a different agent or team resets the routing; scheduled jobs can also target a team, and each occurrence is routed fresh. Workflow steps can target a team too — pick one in the step's agent dropdown and the step routes the same way at dispatch, keeping its pick across retries.
 
 ### Edit task details
 

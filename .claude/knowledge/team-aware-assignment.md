@@ -49,26 +49,35 @@ resolved tasks (`moveTaskToInProgress`):
   Consumers classify by `kind`, never message text (house rule).
 
 Config: the router model comes from the models routing matrix's
-`'team-routing'` work-class row — the call sites in `plugins/team/index.ts`
-resolve it via `resolveSystemRoute('team-routing')` and pass the route into
-the resolver's deps. The route's canonical `provider/model` id splits into
-the direct-call pair (`parseRoutedModel` — supported providers
-anthropic|openai|google; an unsupported provider is an HONEST structural
-error, never silently re-routed to a provider the operator didn't
-configure); no route = anthropic + `DEFAULT_ROUTING_MODEL`
-(`claude-haiku-4-5-20251001`). The old plugin settings
-`routingProvider`/`routingModel` are DELETED — an onReady seed migration
-folds them into the matrix row via the `models.seedWorkClassRoute` hook.
-Keys resolve env → secret store via `resolveProviderKeySource`.
+`'team-routing'` work-class row — the hook registration in
+`plugins/team/index.ts` resolves it via `resolveSystemRoute('team-routing')`
+and passes `{model, thinking, source}` into the resolver's deps. The full
+`provider/model` id passes through to the runtime as a per-turn override —
+ANY runtime-servable model routes; no route = **inherit** (the main agent's
+default), exactly like every other system class. There is no provider
+allowlist, no API-key lookup, and no default-model constant anymore.
 
-## LLM transport
+## LLM transport — the runtime (no keys)
 
-`packages/core/src/llm/direct-text-provider.ts` — text sibling of the
-vision transport: structured JSON out, one malformed-output retry, errors
-typed `DirectTextError{kind}` (401/4xx structural; 408/429/5xx/network
-transient). Shared key resolution in `packages/core/src/llm/provider-keys.ts`
-(extracted from the vision provider; assets enrichment imports it too).
-Fetch-injectable; NO live calls in tests.
+The routing call is an **ephemeral runtime turn** (the auto-title/enrichment
+pattern), NOT a direct provider call: `runtime.messaging.send({ agentId:
+mainAgentId, activityClass: 'system', ephemeral: true, threadId:
+'task:<id>:route', ...route })`. The runtime's own credentials serve every
+box — subscription-authenticated runtimes (Pi) need zero API keys. Every
+send is metered via `meterAgentTurn` under `workClass: 'team-routing'`
+(route receipts + `byWorkClass` spend intact). Reply handling: strip fences,
+zod-parse; ONE corrective re-ask on the same thread covers malformed JSON
+AND out-of-pool picks, then honest transient failure. Runtime failures map
+by `RuntimeError.kind`: `not_found` → structural; every other kind →
+transient (the dispatch ladder bounds retries). The old
+`direct-text-provider.ts` is DELETED; `provider-keys.ts` survives only for
+vision enrichment.
+
+Gating: the pause/budget gates for the ROUTING CALL live at the
+dispatch-team callers (`routingCallGated` — kill switch + `deferForBudget`
+against the main agent with the route's model), OUTSIDE the failure ladder:
+a paused system or budget freeze defers quietly and can never escalate a
+team task to blocked.
 
 ## Dispatch integration
 
@@ -103,9 +112,10 @@ then only skips still-unresolved team tasks.
   here — recording a resolution failure drops the stale sessionDeath
   context). Reason is task-logged ONCE (dedupe against the last log
   entry) + audited, including the throwing-hook path (post-review R8).
-- structural (no key / unknown team / empty pool / hook missing) → task
-  **blocked** with `Team routing failed: <reason>` + audit — never a
-  silent fallback pick (matches the ledger/search fail-closed style).
+- structural (unknown team / empty pool / hook missing / runtime
+  `not_found`) → task **blocked** with `Team routing failed: <reason>` +
+  audit — never a silent fallback pick (matches the ledger/search
+  fail-closed style).
 
 Un-resolving: clearing the agent (`assignTask(id, '')`) returns a resolved
 task to unresolved — the next dispatch re-resolves (one new LLM call).
@@ -160,28 +170,48 @@ clears (only ABSENT preserves the existing value).
 - **Team deletion** — `DELETE /teams/:teamId` refuses with 409 while
   ACTIVE tasks still reference the team (post-review R6).
 
-Workflow steps are explicitly deferred — the follow-up issue consumes the
-same `team.resolveAssignment` hook.
+- **Workflow steps (#611)** — a step's agent value may be `team:<teamId>`
+  (same string as the AgentSelect UI encoding; steps store it verbatim).
+  Token DSL: `@bakin/core/workflows/team-token`. Resolution is per-step at
+  dispatch (`resolveTeamAssignmentForStep` in `src/core/dispatch-team.ts`)
+  through the SAME hook: sticky pick persisted on the instance
+  (`teamResolutions[stepId]`, first-write-wins via the
+  `workflows.recordStepTeamResolution` hook — retries/revisions reuse it,
+  the router bills at most once per step), structural failures block the
+  PARENT task with the same sentinels, transient failures ride the
+  failedDispatches ladder keyed `<contextTaskId>:<stepId>`.
+  `resolveAgent(value, instance, stepId)` returns the sticky pick or passes
+  the token through; `getCurrentStep` treats the token as the step identity
+  pre-resolution (dispatch fetches step context with it), the member
+  post-resolution — lane scoping stays honest on both sides. Validation:
+  `validateDefinition` checks team existence via `knownTeamIds` (definition
+  save + workflow start ask `team.exists`; unreachable team plugin = tiered
+  pass, dispatch fails honestly) and bans hardcoded teams in plugin-shipped
+  workflows. Editor: node-config drawer + parallel-children editor pass
+  `includeTeams`; `AgentAssignmentLabel` renders `Team · <id>` chips.
 
 ## Doctor
 
 `team.routing` (warn-only, local-only): active **unresolved** team tasks
 (`team && !agent` — resolved tasks never re-invoke the router; post-review
-R7) exist but no key resolves for the routing provider (derived from the
-`'team-routing'` matrix route's model id; default anthropic) — they
-will all block at dispatch.
+R7) exist but the RUNTIME has no usable LLM credentials
+(`credentialStatus().llmProviders` empty) — they will all fail resolution
+at dispatch. Unreadable credential status reports Unknown, never healthy;
+the healthy summary names the effective route model (or inherit).
 `plugins/team/lib/health-checks.ts::checkTeamRouting`.
 
 ## Testing map
 
 - `tests/core/task-store.test.ts` — exclusion semantics (team describe)
-- `tests/core/direct-text-provider.test.ts` — transport shapes/retry/kinds
-- `tests/plugins/team/assignment-resolver.test.ts` — pool/prompt/failures (DI, mocked transport)
+- `tests/plugins/team/assignment-resolver.test.ts` — pool/prompt/failures + runtime-transport shape (scripted mock runtime, injected meter — NO live calls)
 - `tests/core/dispatch-team-resolution.test.ts` — helper + cycle wiring, sticky-resolution call-count
+- `tests/core/dispatch-team-step.test.ts` — step resolution (#611): sticky record, block/ladder/exhaustion, pause gate, in-flight join
+- `tests/plugins/workflows/team-step-token.test.ts` — token resolve/passthrough, instance lifecycle, validateDefinition team branch
+- `tests/plugins/workflows/agent-assignment-label.test.tsx` — team chip rendering
 - `tests/core/task-service.test.ts` — validateTeamRef fail-closed
 - `tests/plugins/tasks/routes-rest.test.ts` / `exec-tools.test.ts` — surface validation
 - `tests/plugins/schedule/routes-jobs.test.ts` / `blocked-fire-routing.test.ts` — schedule passthrough
-- `tests/plugins/team/health-checks.test.ts` — routing readiness check
+- `tests/plugins/team/health-checks.test.ts` — routing readiness check (runtime credentials)
 
 Gotcha for new tests: any module mock of `src/core/task-store` must export
 `assignTaskToTeam` + `recordTeamResolution`, and team-plugin test files

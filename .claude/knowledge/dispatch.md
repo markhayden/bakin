@@ -279,13 +279,23 @@ CONCURRENT across tasks, deduped by a per-task in-flight set, gated on
 dispatch eligibility (future availableAt / unmet dependsOn never bill),
 and stale-write-guarded before persisting (round-3 review). The pick is persisted immediately
 (`recordTeamResolution` — retains `team` for audit) so the routing LLM
-bills at most once per successful task lifetime. Transient failures
+bills at most once per successful task lifetime. The routing call itself is
+an EPHEMERAL RUNTIME TURN as the main agent (no API keys — the runtime's
+credentials serve it; metered under `workClass: 'team-routing'`), and its
+pause/budget gate (`routingCallGated`) sits at the callers OUTSIDE the
+ladder. Transient failures
 (including a throwing hook) are recorded in the SAME `failedDispatches`
 ladder as every other dispatch failure — transient cooldown between
 retries, escalation to blocked at `maxRetries` — with the reason
-task-logged once; structural failures (no key, empty pool, hook missing)
+task-logged once; structural failures (unknown team, empty pool, hook
+missing, runtime not_found)
 BLOCK the task with an honest reason — never a silent fallback pick.
-Audit: `task.team_resolved` / `task.team_resolution_failed`. Deep
+Workflow STEPS route the same way (#611): a `team:<id>` step agent resolves
+per-step at dispatch (`resolveTeamAssignmentForStep`, sticky on the
+instance via `workflows.recordStepTeamResolution`, ladder key
+`<contextTaskId>:<stepId>`, structural blocks hit the parent task).
+Audit: `task.team_resolved` / `task.team_resolution_failed` (with `stepId`
+for step resolutions). Deep
 reference: `.claude/knowledge/team-aware-assignment.md`.
 
 ## Prompt construction

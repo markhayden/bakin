@@ -1,6 +1,6 @@
 # Team Routing: Runtime Transport + Workflow-Step Team Assignment (#611)
 
-Status: DRAFT — pending approval
+Status: APPROVED 2026-07-17 — implemented on feat/team-routing-runtime-transport
 Date: 2026-07-17
 Issues: fixes the live team-resolution failure; closes #611
 
