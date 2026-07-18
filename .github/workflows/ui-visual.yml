@@ -39,6 +39,9 @@ jobs:
       - name: Verify canonical image
         run: node scripts/ui/canonical-playwright.mjs --check-render
 
+      - name: Verify design tokens
+        run: bun run ui:tokens:check
+
       - name: Verify deterministic public catalog
         run: bun run ui:build:public:verify
 

@@ -33,7 +33,7 @@ comparison, and deletion of replaced styling/allowances.
 
 ## Phase 2 — Tokens and visual direction
 
-- [ ] T11 Implement DTCG token validation and generation core
+- [x] T11 Implement DTCG token validation and generation core
 - [ ] T12 Emit CSS, Tailwind mappings, and TypeScript token metadata
 - [ ] T13 Generate token specimens and public reference docs
 - [ ] Checkpoint 2A: token pipeline deterministic

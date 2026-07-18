@@ -1,0 +1,125 @@
+{
+  "$description": "Internal candidate values. Plugin authors must not consume this layer.",
+  "$extensions": {
+    "dev.bakin.tokens": {
+      "layer": "reference",
+      "status": "candidate"
+    }
+  },
+  "reference": {
+    "color": {
+      "$type": "color",
+      "warm": {
+        "950": {
+          "$value": {
+            "colorSpace": "srgb",
+            "components": [0.058824, 0.054902, 0.054902],
+            "hex": "#0f0e0e"
+          }
+        },
+        "900": {
+          "$value": {
+            "colorSpace": "srgb",
+            "components": [0.082353, 0.07451, 0.07451],
+            "hex": "#151313"
+          }
+        },
+        "500": {
+          "$value": {
+            "colorSpace": "srgb",
+            "components": [0.290196, 0.278431, 0.278431],
+            "hex": "#4a4747"
+          }
+        },
+        "100": {
+          "$value": {
+            "colorSpace": "srgb",
+            "components": [0.682353, 0.666667, 0.666667],
+            "hex": "#aeaaaa"
+          }
+        },
+        "0": {
+          "$value": {
+            "colorSpace": "srgb",
+            "components": [1, 1, 1],
+            "hex": "#ffffff"
+          }
+        }
+      },
+      "green": {
+        "500": {
+          "$value": {
+            "colorSpace": "srgb",
+            "components": [0.133333, 0.772549, 0.368627],
+            "hex": "#22c55e"
+          }
+        },
+        "950": {
+          "$value": {
+            "colorSpace": "srgb",
+            "components": [0.019608, 0.180392, 0.086275],
+            "hex": "#052e16"
+          }
+        }
+      },
+      "pink": {
+        "500": {
+          "$value": {
+            "colorSpace": "srgb",
+            "components": [1, 0, 0.498039],
+            "hex": "#ff007f"
+          }
+        }
+      },
+      "yellow": {
+        "400": {
+          "$value": {
+            "colorSpace": "srgb",
+            "components": [0.917647, 0.917647, 0],
+            "hex": "#eaea00"
+          }
+        }
+      },
+      "red": {
+        "500": {
+          "$value": {
+            "colorSpace": "srgb",
+            "components": [0.937255, 0.266667, 0.266667],
+            "hex": "#ef4444"
+          }
+        }
+      }
+    },
+    "space": {
+      "$type": "dimension",
+      "0": { "$value": { "value": 0, "unit": "px" } },
+      "1": { "$value": { "value": 0.25, "unit": "rem" } },
+      "2": { "$value": { "value": 0.5, "unit": "rem" } },
+      "3": { "$value": { "value": 0.75, "unit": "rem" } },
+      "4": { "$value": { "value": 1, "unit": "rem" } },
+      "6": { "$value": { "value": 1.5, "unit": "rem" } },
+      "8": { "$value": { "value": 2, "unit": "rem" } }
+    },
+    "radius": {
+      "$type": "dimension",
+      "sm": { "$value": { "value": 0.25, "unit": "rem" } },
+      "md": { "$value": { "value": 0.5, "unit": "rem" } },
+      "lg": { "$value": { "value": 0.75, "unit": "rem" } },
+      "full": { "$value": { "value": 999, "unit": "px" } }
+    },
+    "duration": {
+      "$type": "duration",
+      "instant": { "$value": { "value": 0, "unit": "ms" } },
+      "fast": { "$value": { "value": 120, "unit": "ms" } },
+      "standard": { "$value": { "value": 180, "unit": "ms" } }
+    },
+    "easing": {
+      "$type": "cubicBezier",
+      "standard": { "$value": [0.2, 0, 0, 1] }
+    },
+    "opacity": {
+      "$type": "number",
+      "disabled": { "$value": 0.48 }
+    }
+  }
+}

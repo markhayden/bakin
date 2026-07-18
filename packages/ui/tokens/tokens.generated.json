@@ -1,0 +1,1064 @@
+{
+  "schemaVersion": 1,
+  "format": "DTCG 2025.10",
+  "generatedBy": "bun run ui:tokens:generate",
+  "sourceStatus": "candidate",
+  "layers": {
+    "reference": {
+      "visibility": "internal",
+      "tokens": 26
+    },
+    "semantic": {
+      "visibility": "public",
+      "tokens": 27
+    },
+    "component": {
+      "visibility": "internal",
+      "tokens": 15
+    }
+  },
+  "tokens": [
+    {
+      "path": "component.button.gap",
+      "layer": "component",
+      "visibility": "internal",
+      "type": "dimension",
+      "source": "packages/ui/tokens/component.tokens.json#/component/button/gap",
+      "references": [
+        "semantic.layout.space.2"
+      ],
+      "value": {
+        "unit": "rem",
+        "value": 0.5
+      }
+    },
+    {
+      "path": "component.button.primary.background",
+      "layer": "component",
+      "visibility": "internal",
+      "type": "color",
+      "source": "packages/ui/tokens/component.tokens.json#/component/button/primary/background",
+      "references": [
+        "semantic.color.action.primary.background"
+      ],
+      "value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.133333,
+          0.772549,
+          0.368627
+        ],
+        "hex": "#22c55e"
+      }
+    },
+    {
+      "path": "component.button.primary.foreground",
+      "layer": "component",
+      "visibility": "internal",
+      "type": "color",
+      "source": "packages/ui/tokens/component.tokens.json#/component/button/primary/foreground",
+      "references": [
+        "semantic.color.action.primary.foreground"
+      ],
+      "value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.019608,
+          0.180392,
+          0.086275
+        ],
+        "hex": "#052e16"
+      }
+    },
+    {
+      "path": "component.button.radius",
+      "layer": "component",
+      "visibility": "internal",
+      "type": "dimension",
+      "source": "packages/ui/tokens/component.tokens.json#/component/button/radius",
+      "references": [
+        "semantic.radius.control"
+      ],
+      "value": {
+        "unit": "rem",
+        "value": 0.25
+      }
+    },
+    {
+      "path": "component.button.transitionDuration",
+      "layer": "component",
+      "visibility": "internal",
+      "type": "duration",
+      "source": "packages/ui/tokens/component.tokens.json#/component/button/transitionDuration",
+      "references": [
+        "semantic.motion.duration.feedback"
+      ],
+      "value": {
+        "unit": "ms",
+        "value": 120
+      }
+    },
+    {
+      "path": "component.button.transitionEasing",
+      "layer": "component",
+      "visibility": "internal",
+      "type": "cubicBezier",
+      "source": "packages/ui/tokens/component.tokens.json#/component/button/transitionEasing",
+      "references": [
+        "semantic.motion.easing.standard"
+      ],
+      "value": [
+        0.2,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "path": "component.card.background",
+      "layer": "component",
+      "visibility": "internal",
+      "type": "color",
+      "source": "packages/ui/tokens/component.tokens.json#/component/card/background",
+      "references": [
+        "semantic.color.surface.default"
+      ],
+      "value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.082353,
+          0.07451,
+          0.07451
+        ],
+        "hex": "#151313"
+      }
+    },
+    {
+      "path": "component.card.border",
+      "layer": "component",
+      "visibility": "internal",
+      "type": "color",
+      "source": "packages/ui/tokens/component.tokens.json#/component/card/border",
+      "references": [
+        "semantic.color.border.subtle"
+      ],
+      "value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.290196,
+          0.278431,
+          0.278431
+        ],
+        "hex": "#4a4747"
+      }
+    },
+    {
+      "path": "component.card.padding",
+      "layer": "component",
+      "visibility": "internal",
+      "type": "dimension",
+      "source": "packages/ui/tokens/component.tokens.json#/component/card/padding",
+      "references": [
+        "semantic.layout.space.4"
+      ],
+      "value": {
+        "unit": "rem",
+        "value": 1
+      }
+    },
+    {
+      "path": "component.card.radius",
+      "layer": "component",
+      "visibility": "internal",
+      "type": "dimension",
+      "source": "packages/ui/tokens/component.tokens.json#/component/card/radius",
+      "references": [
+        "semantic.radius.surface"
+      ],
+      "value": {
+        "unit": "rem",
+        "value": 0.5
+      }
+    },
+    {
+      "path": "component.field.background",
+      "layer": "component",
+      "visibility": "internal",
+      "type": "color",
+      "source": "packages/ui/tokens/component.tokens.json#/component/field/background",
+      "references": [
+        "semantic.color.canvas.default"
+      ],
+      "value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.058824,
+          0.054902,
+          0.054902
+        ],
+        "hex": "#0f0e0e"
+      }
+    },
+    {
+      "path": "component.field.border",
+      "layer": "component",
+      "visibility": "internal",
+      "type": "color",
+      "source": "packages/ui/tokens/component.tokens.json#/component/field/border",
+      "references": [
+        "semantic.color.border.subtle"
+      ],
+      "value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.290196,
+          0.278431,
+          0.278431
+        ],
+        "hex": "#4a4747"
+      }
+    },
+    {
+      "path": "component.field.focusRing",
+      "layer": "component",
+      "visibility": "internal",
+      "type": "color",
+      "source": "packages/ui/tokens/component.tokens.json#/component/field/focusRing",
+      "references": [
+        "semantic.color.focus.ring"
+      ],
+      "value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.133333,
+          0.772549,
+          0.368627
+        ],
+        "hex": "#22c55e"
+      }
+    },
+    {
+      "path": "component.field.gap",
+      "layer": "component",
+      "visibility": "internal",
+      "type": "dimension",
+      "source": "packages/ui/tokens/component.tokens.json#/component/field/gap",
+      "references": [
+        "semantic.layout.space.2"
+      ],
+      "value": {
+        "unit": "rem",
+        "value": 0.5
+      }
+    },
+    {
+      "path": "component.field.radius",
+      "layer": "component",
+      "visibility": "internal",
+      "type": "dimension",
+      "source": "packages/ui/tokens/component.tokens.json#/component/field/radius",
+      "references": [
+        "semantic.radius.control"
+      ],
+      "value": {
+        "unit": "rem",
+        "value": 0.25
+      }
+    },
+    {
+      "path": "reference.color.green.500",
+      "layer": "reference",
+      "visibility": "internal",
+      "type": "color",
+      "source": "packages/ui/tokens/reference.tokens.json#/reference/color/green/500",
+      "references": [],
+      "value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.133333,
+          0.772549,
+          0.368627
+        ],
+        "hex": "#22c55e"
+      }
+    },
+    {
+      "path": "reference.color.green.950",
+      "layer": "reference",
+      "visibility": "internal",
+      "type": "color",
+      "source": "packages/ui/tokens/reference.tokens.json#/reference/color/green/950",
+      "references": [],
+      "value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.019608,
+          0.180392,
+          0.086275
+        ],
+        "hex": "#052e16"
+      }
+    },
+    {
+      "path": "reference.color.pink.500",
+      "layer": "reference",
+      "visibility": "internal",
+      "type": "color",
+      "source": "packages/ui/tokens/reference.tokens.json#/reference/color/pink/500",
+      "references": [],
+      "value": {
+        "colorSpace": "srgb",
+        "components": [
+          1,
+          0,
+          0.498039
+        ],
+        "hex": "#ff007f"
+      }
+    },
+    {
+      "path": "reference.color.red.500",
+      "layer": "reference",
+      "visibility": "internal",
+      "type": "color",
+      "source": "packages/ui/tokens/reference.tokens.json#/reference/color/red/500",
+      "references": [],
+      "value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.937255,
+          0.266667,
+          0.266667
+        ],
+        "hex": "#ef4444"
+      }
+    },
+    {
+      "path": "reference.color.warm.0",
+      "layer": "reference",
+      "visibility": "internal",
+      "type": "color",
+      "source": "packages/ui/tokens/reference.tokens.json#/reference/color/warm/0",
+      "references": [],
+      "value": {
+        "colorSpace": "srgb",
+        "components": [
+          1,
+          1,
+          1
+        ],
+        "hex": "#ffffff"
+      }
+    },
+    {
+      "path": "reference.color.warm.100",
+      "layer": "reference",
+      "visibility": "internal",
+      "type": "color",
+      "source": "packages/ui/tokens/reference.tokens.json#/reference/color/warm/100",
+      "references": [],
+      "value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.682353,
+          0.666667,
+          0.666667
+        ],
+        "hex": "#aeaaaa"
+      }
+    },
+    {
+      "path": "reference.color.warm.500",
+      "layer": "reference",
+      "visibility": "internal",
+      "type": "color",
+      "source": "packages/ui/tokens/reference.tokens.json#/reference/color/warm/500",
+      "references": [],
+      "value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.290196,
+          0.278431,
+          0.278431
+        ],
+        "hex": "#4a4747"
+      }
+    },
+    {
+      "path": "reference.color.warm.900",
+      "layer": "reference",
+      "visibility": "internal",
+      "type": "color",
+      "source": "packages/ui/tokens/reference.tokens.json#/reference/color/warm/900",
+      "references": [],
+      "value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.082353,
+          0.07451,
+          0.07451
+        ],
+        "hex": "#151313"
+      }
+    },
+    {
+      "path": "reference.color.warm.950",
+      "layer": "reference",
+      "visibility": "internal",
+      "type": "color",
+      "source": "packages/ui/tokens/reference.tokens.json#/reference/color/warm/950",
+      "references": [],
+      "value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.058824,
+          0.054902,
+          0.054902
+        ],
+        "hex": "#0f0e0e"
+      }
+    },
+    {
+      "path": "reference.color.yellow.400",
+      "layer": "reference",
+      "visibility": "internal",
+      "type": "color",
+      "source": "packages/ui/tokens/reference.tokens.json#/reference/color/yellow/400",
+      "references": [],
+      "value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.917647,
+          0.917647,
+          0
+        ],
+        "hex": "#eaea00"
+      }
+    },
+    {
+      "path": "reference.duration.fast",
+      "layer": "reference",
+      "visibility": "internal",
+      "type": "duration",
+      "source": "packages/ui/tokens/reference.tokens.json#/reference/duration/fast",
+      "references": [],
+      "value": {
+        "unit": "ms",
+        "value": 120
+      }
+    },
+    {
+      "path": "reference.duration.instant",
+      "layer": "reference",
+      "visibility": "internal",
+      "type": "duration",
+      "source": "packages/ui/tokens/reference.tokens.json#/reference/duration/instant",
+      "references": [],
+      "value": {
+        "unit": "ms",
+        "value": 0
+      }
+    },
+    {
+      "path": "reference.duration.standard",
+      "layer": "reference",
+      "visibility": "internal",
+      "type": "duration",
+      "source": "packages/ui/tokens/reference.tokens.json#/reference/duration/standard",
+      "references": [],
+      "value": {
+        "unit": "ms",
+        "value": 180
+      }
+    },
+    {
+      "path": "reference.easing.standard",
+      "layer": "reference",
+      "visibility": "internal",
+      "type": "cubicBezier",
+      "source": "packages/ui/tokens/reference.tokens.json#/reference/easing/standard",
+      "references": [],
+      "value": [
+        0.2,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "path": "reference.opacity.disabled",
+      "layer": "reference",
+      "visibility": "internal",
+      "type": "number",
+      "source": "packages/ui/tokens/reference.tokens.json#/reference/opacity/disabled",
+      "references": [],
+      "value": 0.48
+    },
+    {
+      "path": "reference.radius.full",
+      "layer": "reference",
+      "visibility": "internal",
+      "type": "dimension",
+      "source": "packages/ui/tokens/reference.tokens.json#/reference/radius/full",
+      "references": [],
+      "value": {
+        "unit": "px",
+        "value": 999
+      }
+    },
+    {
+      "path": "reference.radius.lg",
+      "layer": "reference",
+      "visibility": "internal",
+      "type": "dimension",
+      "source": "packages/ui/tokens/reference.tokens.json#/reference/radius/lg",
+      "references": [],
+      "value": {
+        "unit": "rem",
+        "value": 0.75
+      }
+    },
+    {
+      "path": "reference.radius.md",
+      "layer": "reference",
+      "visibility": "internal",
+      "type": "dimension",
+      "source": "packages/ui/tokens/reference.tokens.json#/reference/radius/md",
+      "references": [],
+      "value": {
+        "unit": "rem",
+        "value": 0.5
+      }
+    },
+    {
+      "path": "reference.radius.sm",
+      "layer": "reference",
+      "visibility": "internal",
+      "type": "dimension",
+      "source": "packages/ui/tokens/reference.tokens.json#/reference/radius/sm",
+      "references": [],
+      "value": {
+        "unit": "rem",
+        "value": 0.25
+      }
+    },
+    {
+      "path": "reference.space.0",
+      "layer": "reference",
+      "visibility": "internal",
+      "type": "dimension",
+      "source": "packages/ui/tokens/reference.tokens.json#/reference/space/0",
+      "references": [],
+      "value": {
+        "unit": "px",
+        "value": 0
+      }
+    },
+    {
+      "path": "reference.space.1",
+      "layer": "reference",
+      "visibility": "internal",
+      "type": "dimension",
+      "source": "packages/ui/tokens/reference.tokens.json#/reference/space/1",
+      "references": [],
+      "value": {
+        "unit": "rem",
+        "value": 0.25
+      }
+    },
+    {
+      "path": "reference.space.2",
+      "layer": "reference",
+      "visibility": "internal",
+      "type": "dimension",
+      "source": "packages/ui/tokens/reference.tokens.json#/reference/space/2",
+      "references": [],
+      "value": {
+        "unit": "rem",
+        "value": 0.5
+      }
+    },
+    {
+      "path": "reference.space.3",
+      "layer": "reference",
+      "visibility": "internal",
+      "type": "dimension",
+      "source": "packages/ui/tokens/reference.tokens.json#/reference/space/3",
+      "references": [],
+      "value": {
+        "unit": "rem",
+        "value": 0.75
+      }
+    },
+    {
+      "path": "reference.space.4",
+      "layer": "reference",
+      "visibility": "internal",
+      "type": "dimension",
+      "source": "packages/ui/tokens/reference.tokens.json#/reference/space/4",
+      "references": [],
+      "value": {
+        "unit": "rem",
+        "value": 1
+      }
+    },
+    {
+      "path": "reference.space.6",
+      "layer": "reference",
+      "visibility": "internal",
+      "type": "dimension",
+      "source": "packages/ui/tokens/reference.tokens.json#/reference/space/6",
+      "references": [],
+      "value": {
+        "unit": "rem",
+        "value": 1.5
+      }
+    },
+    {
+      "path": "reference.space.8",
+      "layer": "reference",
+      "visibility": "internal",
+      "type": "dimension",
+      "source": "packages/ui/tokens/reference.tokens.json#/reference/space/8",
+      "references": [],
+      "value": {
+        "unit": "rem",
+        "value": 2
+      }
+    },
+    {
+      "path": "semantic.color.action.primary.background",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "color",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/color/action/primary/background",
+      "references": [
+        "reference.color.green.500"
+      ],
+      "value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.133333,
+          0.772549,
+          0.368627
+        ],
+        "hex": "#22c55e"
+      }
+    },
+    {
+      "path": "semantic.color.action.primary.foreground",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "color",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/color/action/primary/foreground",
+      "references": [
+        "reference.color.green.950"
+      ],
+      "value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.019608,
+          0.180392,
+          0.086275
+        ],
+        "hex": "#052e16"
+      }
+    },
+    {
+      "path": "semantic.color.border.subtle",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "color",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/color/border/subtle",
+      "references": [
+        "reference.color.warm.500"
+      ],
+      "value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.290196,
+          0.278431,
+          0.278431
+        ],
+        "hex": "#4a4747"
+      }
+    },
+    {
+      "path": "semantic.color.canvas.default",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "color",
+      "description": "The application canvas.",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/color/canvas/default",
+      "references": [
+        "reference.color.warm.950"
+      ],
+      "value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.058824,
+          0.054902,
+          0.054902
+        ],
+        "hex": "#0f0e0e"
+      }
+    },
+    {
+      "path": "semantic.color.focus.ring",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "color",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/color/focus/ring",
+      "references": [
+        "reference.color.green.500"
+      ],
+      "value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.133333,
+          0.772549,
+          0.368627
+        ],
+        "hex": "#22c55e"
+      }
+    },
+    {
+      "path": "semantic.color.signal.accent",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "color",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/color/signal/accent",
+      "references": [
+        "reference.color.pink.500"
+      ],
+      "value": {
+        "colorSpace": "srgb",
+        "components": [
+          1,
+          0,
+          0.498039
+        ],
+        "hex": "#ff007f"
+      }
+    },
+    {
+      "path": "semantic.color.signal.danger",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "color",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/color/signal/danger",
+      "references": [
+        "reference.color.red.500"
+      ],
+      "value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.937255,
+          0.266667,
+          0.266667
+        ],
+        "hex": "#ef4444"
+      }
+    },
+    {
+      "path": "semantic.color.signal.highlight",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "color",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/color/signal/highlight",
+      "references": [
+        "reference.color.yellow.400"
+      ],
+      "value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.917647,
+          0.917647,
+          0
+        ],
+        "hex": "#eaea00"
+      }
+    },
+    {
+      "path": "semantic.color.surface.default",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "color",
+      "description": "The default bounded surface.",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/color/surface/default",
+      "references": [
+        "reference.color.warm.900"
+      ],
+      "value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.082353,
+          0.07451,
+          0.07451
+        ],
+        "hex": "#151313"
+      }
+    },
+    {
+      "path": "semantic.color.text.muted",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "color",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/color/text/muted",
+      "references": [
+        "reference.color.warm.100"
+      ],
+      "value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.682353,
+          0.666667,
+          0.666667
+        ],
+        "hex": "#aeaaaa"
+      }
+    },
+    {
+      "path": "semantic.color.text.primary",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "color",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/color/text/primary",
+      "references": [
+        "reference.color.warm.0"
+      ],
+      "value": {
+        "colorSpace": "srgb",
+        "components": [
+          1,
+          1,
+          1
+        ],
+        "hex": "#ffffff"
+      }
+    },
+    {
+      "path": "semantic.layout.space.0",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "dimension",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/layout/space/0",
+      "references": [
+        "reference.space.0"
+      ],
+      "value": {
+        "unit": "px",
+        "value": 0
+      }
+    },
+    {
+      "path": "semantic.layout.space.1",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "dimension",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/layout/space/1",
+      "references": [
+        "reference.space.1"
+      ],
+      "value": {
+        "unit": "rem",
+        "value": 0.25
+      }
+    },
+    {
+      "path": "semantic.layout.space.2",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "dimension",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/layout/space/2",
+      "references": [
+        "reference.space.2"
+      ],
+      "value": {
+        "unit": "rem",
+        "value": 0.5
+      }
+    },
+    {
+      "path": "semantic.layout.space.3",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "dimension",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/layout/space/3",
+      "references": [
+        "reference.space.3"
+      ],
+      "value": {
+        "unit": "rem",
+        "value": 0.75
+      }
+    },
+    {
+      "path": "semantic.layout.space.4",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "dimension",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/layout/space/4",
+      "references": [
+        "reference.space.4"
+      ],
+      "value": {
+        "unit": "rem",
+        "value": 1
+      }
+    },
+    {
+      "path": "semantic.layout.space.6",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "dimension",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/layout/space/6",
+      "references": [
+        "reference.space.6"
+      ],
+      "value": {
+        "unit": "rem",
+        "value": 1.5
+      }
+    },
+    {
+      "path": "semantic.layout.space.8",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "dimension",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/layout/space/8",
+      "references": [
+        "reference.space.8"
+      ],
+      "value": {
+        "unit": "rem",
+        "value": 2
+      }
+    },
+    {
+      "path": "semantic.motion.duration.feedback",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "duration",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/motion/duration/feedback",
+      "references": [
+        "reference.duration.fast"
+      ],
+      "value": {
+        "unit": "ms",
+        "value": 120
+      }
+    },
+    {
+      "path": "semantic.motion.duration.instant",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "duration",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/motion/duration/instant",
+      "references": [
+        "reference.duration.instant"
+      ],
+      "value": {
+        "unit": "ms",
+        "value": 0
+      }
+    },
+    {
+      "path": "semantic.motion.duration.transition",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "duration",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/motion/duration/transition",
+      "references": [
+        "reference.duration.standard"
+      ],
+      "value": {
+        "unit": "ms",
+        "value": 180
+      }
+    },
+    {
+      "path": "semantic.motion.easing.standard",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "cubicBezier",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/motion/easing/standard",
+      "references": [
+        "reference.easing.standard"
+      ],
+      "value": [
+        0.2,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "path": "semantic.radius.control",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "dimension",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/radius/control",
+      "references": [
+        "reference.radius.sm"
+      ],
+      "value": {
+        "unit": "rem",
+        "value": 0.25
+      }
+    },
+    {
+      "path": "semantic.radius.overlay",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "dimension",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/radius/overlay",
+      "references": [
+        "reference.radius.lg"
+      ],
+      "value": {
+        "unit": "rem",
+        "value": 0.75
+      }
+    },
+    {
+      "path": "semantic.radius.pill",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "dimension",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/radius/pill",
+      "references": [
+        "reference.radius.full"
+      ],
+      "value": {
+        "unit": "px",
+        "value": 999
+      }
+    },
+    {
+      "path": "semantic.radius.surface",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "dimension",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/radius/surface",
+      "references": [
+        "reference.radius.md"
+      ],
+      "value": {
+        "unit": "rem",
+        "value": 0.5
+      }
+    },
+    {
+      "path": "semantic.state.opacity.disabled",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "number",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/state/opacity/disabled",
+      "references": [
+        "reference.opacity.disabled"
+      ],
+      "value": 0.48
+    }
+  ]
+}

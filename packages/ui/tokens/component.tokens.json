@@ -1,0 +1,34 @@
+{
+  "$description": "Internal candidate aliases for component implementation. Plugin authors must not consume this layer.",
+  "$extensions": {
+    "dev.bakin.tokens": {
+      "layer": "component",
+      "status": "candidate"
+    }
+  },
+  "component": {
+    "button": {
+      "primary": {
+        "background": { "$value": "{semantic.color.action.primary.background}" },
+        "foreground": { "$value": "{semantic.color.action.primary.foreground}" }
+      },
+      "gap": { "$value": "{semantic.layout.space.2}" },
+      "radius": { "$value": "{semantic.radius.control}" },
+      "transitionDuration": { "$value": "{semantic.motion.duration.feedback}" },
+      "transitionEasing": { "$value": "{semantic.motion.easing.standard}" }
+    },
+    "card": {
+      "background": { "$value": "{semantic.color.surface.default}" },
+      "border": { "$value": "{semantic.color.border.subtle}" },
+      "padding": { "$value": "{semantic.layout.space.4}" },
+      "radius": { "$value": "{semantic.radius.surface}" }
+    },
+    "field": {
+      "background": { "$value": "{semantic.color.canvas.default}" },
+      "border": { "$value": "{semantic.color.border.subtle}" },
+      "focusRing": { "$value": "{semantic.color.focus.ring}" },
+      "gap": { "$value": "{semantic.layout.space.2}" },
+      "radius": { "$value": "{semantic.radius.control}" }
+    }
+  }
+}

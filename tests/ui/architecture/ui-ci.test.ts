@@ -59,6 +59,7 @@ describe('reusable UI workflow', () => {
     const workflow = readRepoFile('.github/workflows/ui-visual.yml')
 
     for (const command of [
+      'ui:tokens:check',
       'ui:build:public:verify',
       'ui:test:stories',
       'ui:test:visual',

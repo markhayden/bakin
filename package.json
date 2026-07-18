@@ -25,6 +25,8 @@
     "size:report": "bun run scripts/report-sizes.ts",
     "ui:baseline:capture": "bun run scripts/ui/baseline.ts capture",
     "ui:baseline:check": "bun run scripts/ui/baseline.ts check",
+    "ui:tokens:generate": "bun run scripts/ui/generate-tokens.ts generate",
+    "ui:tokens:check": "bun run scripts/ui/generate-tokens.ts check",
     "ui:census:generate": "bun run scripts/ui/census.ts generate",
     "ui:census:check": "bun run scripts/ui/census.ts check",
     "ui:legacy-styles:generate": "bun run scripts/ui/check-legacy-styles.ts generate",

@@ -1,0 +1,78 @@
+{
+  "$description": "Candidate public semantic contract. Values remain provisional until the visual-direction checkpoint.",
+  "$extensions": {
+    "dev.bakin.tokens": {
+      "layer": "semantic",
+      "status": "candidate"
+    }
+  },
+  "semantic": {
+    "color": {
+      "canvas": {
+        "default": {
+          "$description": "The application canvas.",
+          "$value": "{reference.color.warm.950}"
+        }
+      },
+      "surface": {
+        "default": {
+          "$description": "The default bounded surface.",
+          "$value": "{reference.color.warm.900}"
+        }
+      },
+      "text": {
+        "primary": { "$value": "{reference.color.warm.0}" },
+        "muted": { "$value": "{reference.color.warm.100}" }
+      },
+      "border": {
+        "subtle": { "$value": "{reference.color.warm.500}" }
+      },
+      "action": {
+        "primary": {
+          "background": { "$value": "{reference.color.green.500}" },
+          "foreground": { "$value": "{reference.color.green.950}" }
+        }
+      },
+      "signal": {
+        "accent": { "$value": "{reference.color.pink.500}" },
+        "highlight": { "$value": "{reference.color.yellow.400}" },
+        "danger": { "$value": "{reference.color.red.500}" }
+      },
+      "focus": {
+        "ring": { "$value": "{reference.color.green.500}" }
+      }
+    },
+    "layout": {
+      "space": {
+        "0": { "$ref": "#/reference/space/0" },
+        "1": { "$ref": "#/reference/space/1" },
+        "2": { "$ref": "#/reference/space/2" },
+        "3": { "$ref": "#/reference/space/3" },
+        "4": { "$ref": "#/reference/space/4" },
+        "6": { "$ref": "#/reference/space/6" },
+        "8": { "$ref": "#/reference/space/8" }
+      }
+    },
+    "radius": {
+      "control": { "$value": "{reference.radius.sm}" },
+      "surface": { "$value": "{reference.radius.md}" },
+      "overlay": { "$value": "{reference.radius.lg}" },
+      "pill": { "$value": "{reference.radius.full}" }
+    },
+    "motion": {
+      "duration": {
+        "instant": { "$value": "{reference.duration.instant}" },
+        "feedback": { "$value": "{reference.duration.fast}" },
+        "transition": { "$value": "{reference.duration.standard}" }
+      },
+      "easing": {
+        "standard": { "$value": "{reference.easing.standard}" }
+      }
+    },
+    "state": {
+      "opacity": {
+        "disabled": { "$value": "{reference.opacity.disabled}" }
+      }
+    }
+  }
+}
