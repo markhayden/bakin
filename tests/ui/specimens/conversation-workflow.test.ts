@@ -15,7 +15,7 @@ describe('conversation and workflow direction specimens', () => {
     const specimen = `${story}\n${graph}`
 
     expect(story).toContain("tags: ['internal']")
-    for (const exportName of ['SideBySide', 'KeyboardWorkflow', 'ReducedMotion', 'MobileOperation', 'TextAt200Percent']) {
+    for (const exportName of ['SideBySide', 'VerticalWorkflow', 'HorizontalWorkflow', 'VerticalAt200Percent', 'HorizontalAt200Percent', 'ReducedMotion', 'MobileOperation', 'TextAt200Percent']) {
       expect(story).toContain(`export const ${exportName}`)
     }
     for (const prototype of ['ConversationStream', 'Message', 'ToolActivity', 'Composer', 'InspectorDrawer', 'WorkflowCanvas', 'WorkflowNode']) {
@@ -26,6 +26,28 @@ describe('conversation and workflow direction specimens', () => {
     }
     expect(story).not.toMatch(/<(?:input|select|textarea)\b/)
     expect(specimen).not.toMatch(/#[0-9a-f]{3,8}\b|rgba?\(|hsla?\(/i)
+  })
+
+  it('defaults to a vertical workflow while keeping horizontal as an explicit option', () => {
+    const story = read('storybook/internal/specimens/conversation-workflow.stories.tsx')
+    const graph = read('storybook/internal/specimens/workflow-graph.tsx')
+
+    expect(graph).toContain("export type WorkflowOrientation = 'vertical' | 'horizontal'")
+    expect(graph).toContain("orientation = 'vertical'")
+    expect(graph).toContain('data-orientation={orientation}')
+    expect(graph).toContain("orientation === 'vertical' ? Position.Top : Position.Left")
+    expect(graph).toContain("orientation === 'vertical' ? Position.Bottom : Position.Right")
+    expect(graph).toContain("position={orientation === 'vertical' ? 'top-right' : 'bottom-right'}")
+    expect(graph).toContain(".bakin-workflow[data-orientation='vertical'] .react-flow__minimap")
+    for (const action of ['Move selected node up', 'Move selected node down', 'Move selected node left', 'Move selected node right']) {
+      expect(graph).toContain(action)
+    }
+    expect(story).toContain('<WorkflowStudy orientation="vertical" />')
+    expect(story).toContain('<WorkflowStudy orientation="horizontal" />')
+    expect(story).toContain('<WorkflowStudy orientation="vertical" text200 />')
+    expect(story).toContain('<WorkflowStudy orientation="horizontal" text200 />')
+    expect(story).toContain("'vertical-flow'")
+    expect(story).toContain("'horizontal-flow'")
   })
 
   it('uses the real React Flow interaction model instead of a CSS grid stand-in', () => {

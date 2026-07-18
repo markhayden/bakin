@@ -18,7 +18,7 @@ import {
   TextAreaField,
   type DirectionId,
 } from './candidate-ui'
-import { WorkflowCanvas, WORKFLOW_GRAPH_CSS } from './workflow-graph'
+import { WorkflowCanvas, WORKFLOW_GRAPH_CSS, type WorkflowOrientation } from './workflow-graph'
 
 const CONVERSATION_WORKFLOW_CSS = `
 .bakin-composite-header { display: grid; gap: var(--candidate-item-gap); }
@@ -179,8 +179,10 @@ function CompositeStudy({ text200 = false }: { text200?: boolean }) {
   )
 }
 
-function WorkflowStudy() {
-  return <main className="bakin-candidate-study"><CandidateStyles css={SPECIMEN_CSS} /><CandidateIntro title="Keyboard and non-drag workflow">Every workflow action is available through focusable nodes, arrow keys, inspector actions, and bounded scrolling.</CandidateIntro><div className="bakin-candidate-study__directions"><CandidateDirection direction="operational-neutral"><PageShell><WorkflowCanvas /></PageShell></CandidateDirection><CandidateDirection direction="product-character"><PageShell><WorkflowCanvas /></PageShell></CandidateDirection></div></main>
+function WorkflowStudy({ orientation, text200 = false }: { orientation: WorkflowOrientation; text200?: boolean }) {
+  const orientationLabel = orientation === 'vertical' ? 'Vertical' : 'Horizontal'
+  const title = text200 ? `${orientationLabel} workflow at 200% text` : `${orientationLabel} keyboard and non-drag workflow`
+  return <main className="bakin-candidate-study"><CandidateStyles css={SPECIMEN_CSS} />{text200 && <style>{'html { font-size: 200%; }'}</style>}<CandidateIntro title={title}>{orientationLabel} layout uses the same topology, selection, inspector, arrow-key movement, and named non-drag actions.</CandidateIntro><div className="bakin-candidate-study__directions"><CandidateDirection direction="operational-neutral"><PageShell><WorkflowCanvas orientation={orientation} /></PageShell></CandidateDirection><CandidateDirection direction="product-character"><PageShell><WorkflowCanvas orientation={orientation} /></PageShell></CandidateDirection></div></main>
 }
 
 function MotionStudy() {
@@ -194,7 +196,7 @@ function MobileStudy() {
 const meta = {
   title: 'Direction studies/Conversation and workflow',
   tags: ['internal'],
-  parameters: { layout: 'fullscreen', bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'streaming', 'tool-activity', 'bounded-2d', 'keyboard-non-drag', 'reduced-motion', 'drawer'] },
+  parameters: { layout: 'fullscreen', bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'streaming', 'tool-activity', 'bounded-2d', 'keyboard-non-drag', 'vertical-flow', 'horizontal-flow', 'reduced-motion', 'drawer'] },
 } satisfies Meta
 
 export default meta
@@ -210,8 +212,18 @@ export const SideBySide = {
   },
 } satisfies Story
 
-export const KeyboardWorkflow = {
-  render: () => <WorkflowStudy />,
+export const VerticalWorkflow = {
+  render: () => <WorkflowStudy orientation="vertical" />,
+  play: async ({ canvas, userEvent }) => {
+    const node = canvas.getAllByRole('button', { name: /Assemble social video/ })[0]
+    await userEvent.click(node)
+    await userEvent.keyboard('{ArrowDown}')
+    await expect(canvas.getAllByRole('status')[0]).toHaveTextContent('y 165')
+  },
+} satisfies Story
+
+export const HorizontalWorkflow = {
+  render: () => <WorkflowStudy orientation="horizontal" />,
   play: async ({ canvas, userEvent }) => {
     const node = canvas.getAllByRole('button', { name: /Assemble social video/ })[0]
     await userEvent.click(node)
@@ -219,6 +231,10 @@ export const KeyboardWorkflow = {
     await expect(canvas.getAllByRole('status')[0]).toHaveTextContent('x 275')
   },
 } satisfies Story
+
+export const VerticalAt200Percent = { render: () => <WorkflowStudy orientation="vertical" text200 /> } satisfies Story
+
+export const HorizontalAt200Percent = { render: () => <WorkflowStudy orientation="horizontal" text200 /> } satisfies Story
 
 export const ReducedMotion = { render: () => <MotionStudy /> } satisfies Story
 
