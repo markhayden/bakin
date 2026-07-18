@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "status": "candidate",
+  "selectedDirection": null,
+  "reviewRequired": true,
+  "directions": [
+    {
+      "id": "operational-neutral",
+      "label": "Operational neutral",
+      "typography": "operational-neutral",
+      "composition": "Compact, table-first, flat hierarchy with crisp dividers and restrained object boundaries.",
+      "tokens": {
+        "fontSans": "Inter, ui-sans-serif, system-ui, sans-serif",
+        "fontMono": "'JetBrains Mono', ui-monospace, monospace",
+        "pageGap": "var(--bakin-layout-space-6)",
+        "sectionGap": "var(--bakin-layout-space-4)",
+        "itemGap": "var(--bakin-layout-space-2)",
+        "surfaceRadius": "var(--bakin-radius-control)",
+        "controlRadius": "var(--bakin-radius-control)",
+        "pageTitleSize": "2rem",
+        "sectionTitleSize": "0.78rem",
+        "bodySize": "0.76rem",
+        "metaSize": "0.64rem",
+        "controlHeight": "2rem",
+        "rowMinHeight": "2.5rem",
+        "overlayShadow": "0 1rem 2.5rem color-mix(in srgb, var(--bakin-color-canvas-default) 72%, transparent)"
+      }
+    },
+    {
+      "id": "product-character",
+      "label": "Product character",
+      "typography": "product-character",
+      "composition": "Expressive hierarchy, roomier object rows, softer corners, and selective brand signal without card stacking.",
+      "tokens": {
+        "fontSans": "'Space Grotesk', ui-sans-serif, system-ui, sans-serif",
+        "fontMono": "'JetBrains Mono', ui-monospace, monospace",
+        "pageGap": "var(--bakin-layout-space-8)",
+        "sectionGap": "var(--bakin-layout-space-6)",
+        "itemGap": "var(--bakin-layout-space-3)",
+        "surfaceRadius": "var(--bakin-radius-surface)",
+        "controlRadius": "var(--bakin-radius-surface)",
+        "pageTitleSize": "2.25rem",
+        "sectionTitleSize": "0.86rem",
+        "bodySize": "0.8rem",
+        "metaSize": "0.68rem",
+        "controlHeight": "2.25rem",
+        "rowMinHeight": "3rem",
+        "overlayShadow": "0 1.5rem 3.5rem color-mix(in srgb, var(--bakin-color-canvas-default) 78%, transparent)"
+      }
+    }
+  ]
+}

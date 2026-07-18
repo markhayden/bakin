@@ -38,7 +38,7 @@ comparison, and deletion of replaced styling/allowances.
 - [x] T13 Generate token specimens and public reference docs
 - [x] Checkpoint 2A: token pipeline deterministic
 - [x] T14 Build and compare bundled typography specimens
-- [ ] T15 Build dense list/data direction alternatives
+- [x] T15 Build dense list/data direction alternatives
 - [ ] T16 Build detail/form direction alternatives
 - [ ] T17 Build conversation/workflow direction alternatives
 - [ ] T18 Approve and codify the visual direction
