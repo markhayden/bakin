@@ -11,6 +11,16 @@ export interface ProductionAssetAssertionOptions {
   rootDir: string
 }
 
+const DEVELOPMENT_ONLY_UI_TOOLING = [
+  '@storybook/',
+  'storybook/internal/',
+  '__STORYBOOK_',
+  'from "vite"',
+  "from 'vite'",
+  '/node_modules/vite/',
+  '/@vite/',
+] as const
+
 // Dirent-based (symlinks not followed) — fine here: these are build-output
 // trees (dist/vendor) that contain no symlinks.
 function walkFiles(dir: string): string[] {
@@ -29,7 +39,10 @@ export function assertProductionAssets(opts: ProductionAssetAssertionOptions): v
     ...walkFiles(pluginsDir).filter((file) => file.endsWith('/dist/client.js')),
   ]
   const sourceMaps = walkFiles(hostDist).filter((file) => file.endsWith('.map'))
-  const devRuntimeImports = scannedJs.filter((file) => readFileSync(file, 'utf-8').includes('react/jsx-dev-runtime'))
+  const browserSources = scannedJs.map((file) => ({ file, source: readFileSync(file, 'utf-8') }))
+  const devRuntimeImports = browserSources
+    .filter(({ source }) => source.includes('react/jsx-dev-runtime'))
+    .map(({ file }) => file)
 
   const failures: string[] = []
   for (const file of sourceMaps) {
@@ -37,6 +50,15 @@ export function assertProductionAssets(opts: ProductionAssetAssertionOptions): v
   }
   for (const file of devRuntimeImports) {
     failures.push(`${relative(rootDir, file)} imports react/jsx-dev-runtime`)
+  }
+  for (const { file, source } of browserSources) {
+    for (const dependency of DEVELOPMENT_ONLY_UI_TOOLING) {
+      if (source.includes(dependency)) {
+        failures.push(
+          `${relative(rootDir, file)} contains development-only UI workbench dependency ${dependency}`,
+        )
+      }
+    }
   }
 
   if (failures.length > 0) {
