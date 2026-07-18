@@ -2,9 +2,13 @@ import type {
   ButtonHTMLAttributes,
   CSSProperties,
   HTMLAttributes,
+  InputHTMLAttributes,
   ReactNode,
+  Ref,
+  SelectHTMLAttributes,
+  TextareaHTMLAttributes,
 } from 'react'
-import { useId } from 'react'
+import { useEffect, useId, useRef } from 'react'
 
 import '@fontsource/inter/latin-400.css'
 import '@fontsource/inter/latin-500.css'
@@ -144,6 +148,7 @@ export const CANDIDATE_UI_CSS = `
   background: var(--bakin-color-action-primary-background);
   color: var(--bakin-color-action-primary-foreground);
 }
+.bakin-action[data-tone='danger'] { border-color: var(--bakin-color-signal-danger); }
 .bakin-action[aria-pressed='true'] { border-color: var(--bakin-color-signal-accent); }
 .bakin-action:disabled { cursor: not-allowed; opacity: var(--bakin-state-opacity-disabled); }
 .bakin-status { display: inline-flex; align-items: center; gap: var(--bakin-layout-space-2); min-width: 0; }
@@ -182,6 +187,69 @@ export const CANDIDATE_UI_CSS = `
 .bakin-system-state[data-kind='permission-denied'] .bakin-system-state__signal { background: var(--bakin-color-signal-danger); }
 .bakin-system-state h3 { margin: var(--bakin-layout-space-0); font-size: var(--candidate-body-size); }
 .bakin-system-state p { margin: var(--bakin-layout-space-1) var(--bakin-layout-space-0) var(--bakin-layout-space-0); color: var(--bakin-color-text-muted); font-size: var(--candidate-meta-size); line-height: 1.5; }
+.bakin-field { display: grid; gap: var(--bakin-layout-space-2); min-width: 0; }
+.bakin-field__label-row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--bakin-layout-space-2); align-items: baseline; }
+.bakin-field__label-row label, .bakin-checkbox-field__label { font-size: var(--candidate-body-size); font-weight: 600; }
+.bakin-field__requirement { color: var(--bakin-color-text-muted); font-size: var(--candidate-meta-size); font-weight: 400; }
+.bakin-field__description, .bakin-field__message { margin: var(--bakin-layout-space-0); color: var(--bakin-color-text-muted); font-size: var(--candidate-meta-size); line-height: 1.5; }
+.bakin-field__message[data-error='true'] { border-left: 2px solid var(--bakin-color-signal-danger); padding-left: var(--bakin-layout-space-2); color: var(--bakin-color-text-primary); }
+.bakin-field__control {
+  width: 100%;
+  min-width: 0;
+  min-height: var(--candidate-control-height);
+  border: 1px solid var(--bakin-color-border-subtle);
+  border-radius: var(--candidate-control-radius);
+  padding: var(--bakin-layout-space-2) var(--bakin-layout-space-3);
+  background: var(--bakin-color-canvas-default);
+  color: var(--bakin-color-text-primary);
+  font: 400 var(--candidate-body-size)/1.35 var(--candidate-font-sans);
+}
+textarea.bakin-field__control { min-height: calc(var(--candidate-control-height) * 2.5); resize: vertical; }
+.bakin-field__control:focus-visible, .bakin-checkbox-field input:focus-visible {
+  outline: 2px solid var(--bakin-color-focus-ring);
+  outline-offset: 2px;
+}
+.bakin-field__control[aria-invalid='true'] { border-color: var(--bakin-color-signal-danger); }
+.bakin-field__control:disabled { opacity: var(--bakin-state-opacity-disabled); cursor: not-allowed; }
+.bakin-field__control:read-only { color: var(--bakin-color-text-muted); }
+.bakin-checkbox-field { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--candidate-item-gap); align-items: start; min-width: 0; }
+.bakin-checkbox-field input { width: var(--bakin-layout-space-4); height: var(--bakin-layout-space-4); margin: var(--bakin-layout-space-1) var(--bakin-layout-space-0) var(--bakin-layout-space-0); accent-color: var(--bakin-color-action-primary-background); }
+.bakin-checkbox-field__copy { display: grid; gap: var(--bakin-layout-space-1); }
+.bakin-checkbox-field__copy p { margin: var(--bakin-layout-space-0); color: var(--bakin-color-text-muted); font-size: var(--candidate-meta-size); line-height: 1.5; }
+.bakin-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--candidate-item-gap);
+  padding-top: var(--candidate-section-gap);
+  border-top: 1px solid var(--bakin-color-border-subtle);
+}
+.bakin-overlay {
+  position: fixed;
+  z-index: 100;
+  inset: var(--bakin-layout-space-0);
+  display: grid;
+  place-items: center;
+  overflow: auto;
+  padding: var(--bakin-layout-space-4);
+  background: color-mix(in srgb, var(--bakin-color-canvas-default) 78%, transparent);
+}
+.bakin-overlay__panel {
+  display: grid;
+  gap: var(--candidate-section-gap);
+  width: min(100%, 32rem);
+  max-height: calc(100vh - var(--bakin-layout-space-8));
+  overflow: auto;
+  border: 1px solid var(--bakin-color-border-subtle);
+  border-radius: var(--candidate-surface-radius);
+  padding: var(--candidate-section-gap);
+  background: var(--bakin-color-surface-default);
+  box-shadow: var(--candidate-overlay-shadow);
+}
+.bakin-overlay__header { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--candidate-item-gap); align-items: start; }
+.bakin-overlay__header h2 { margin: var(--bakin-layout-space-0); font-size: calc(var(--candidate-page-title-size) * 0.68); line-height: 1.1; }
+.bakin-overlay__header p { margin: var(--bakin-layout-space-2) var(--bakin-layout-space-0) var(--bakin-layout-space-0); color: var(--bakin-color-text-muted); line-height: 1.5; }
+.bakin-overlay__close { min-width: var(--candidate-control-height); padding-inline: var(--bakin-layout-space-2); }
 @media (max-width: 56rem) {
   .bakin-candidate-study { padding: var(--bakin-layout-space-4); }
   .bakin-candidate-study__directions { grid-template-columns: minmax(0, 1fr); }
@@ -192,6 +260,9 @@ export const CANDIDATE_UI_CSS = `
   .bakin-grid { grid-template-columns: minmax(0, 1fr); }
   .bakin-system-state { grid-template-columns: auto minmax(0, 1fr); align-items: start; }
   .bakin-system-state .bakin-action { grid-column: 2; justify-self: start; }
+  .bakin-form-actions { position: sticky; z-index: 2; bottom: var(--bakin-layout-space-0); padding-block: var(--bakin-layout-space-3); background: var(--bakin-color-surface-default); }
+  .bakin-form-actions .bakin-action { flex: 1 1 auto; }
+  .bakin-overlay { place-items: end center; padding: var(--bakin-layout-space-3); }
 }
 `.trim()
 
@@ -279,8 +350,8 @@ export function BoundedOverflow({ label, children, className, ...props }: HTMLAt
   return <div className={classes('bakin-bounded-overflow', className)} role="region" aria-label={label} tabIndex={0} {...props}>{children}</div>
 }
 
-export function Action({ tone = 'secondary', className, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { tone?: 'primary' | 'secondary' }) {
-  return <button className={classes('bakin-action', className)} data-tone={tone} type="button" {...props} />
+export function Action({ tone = 'secondary', className, buttonRef, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { tone?: 'primary' | 'secondary' | 'danger'; buttonRef?: Ref<HTMLButtonElement> }) {
+  return <button className={classes('bakin-action', className)} data-tone={tone} type="button" ref={buttonRef} {...props} />
 }
 
 export function Status({ tone = 'positive', children }: { tone?: 'positive' | 'attention' | 'danger' | 'accent' | 'muted'; children: ReactNode }) {
@@ -295,5 +366,128 @@ export function SystemState({ kind, title, description, action }: { kind: System
       <div><h3>{title}</h3><p>{description}</p></div>
       {action}
     </section>
+  )
+}
+
+interface FieldCopy {
+  label: string
+  description?: string
+  error?: string
+  optional?: boolean
+}
+
+function FieldFrame({ id, label, description, error, optional, required, children }: FieldCopy & { id: string; required?: boolean; children: ReactNode }) {
+  const descriptionId = description ? `${id}-description` : undefined
+  const errorId = error ? `${id}-error` : undefined
+  return (
+    <div className="bakin-field">
+      <div className="bakin-field__label-row">
+        <label htmlFor={id}>{label}</label>
+        {(required || optional) && <span className="bakin-field__requirement">{required ? 'Required' : 'Optional'}</span>}
+      </div>
+      {description && <p className="bakin-field__description" id={descriptionId}>{description}</p>}
+      {children}
+      {error && <p className="bakin-field__message" id={errorId} data-error="true">{error}</p>}
+    </div>
+  )
+}
+
+export function TextField({ label, description, error, optional, id: providedId, required, readOnly, disabled, className, 'aria-describedby': ariaDescribedBy, 'aria-invalid': ariaInvalid, ...props }: FieldCopy & InputHTMLAttributes<HTMLInputElement>) {
+  const generatedId = useId()
+  const id = providedId ?? generatedId
+  const describedBy = [description && `${id}-description`, error && `${id}-error`, ariaDescribedBy].filter(Boolean).join(' ') || undefined
+  return (
+    <FieldFrame id={id} label={label} description={description} error={error} optional={optional} required={required}>
+      <input className={classes('bakin-field__control', className)} id={id} required={required} readOnly={readOnly} disabled={disabled} aria-invalid={error ? 'true' : ariaInvalid} aria-describedby={describedBy} {...props} />
+    </FieldFrame>
+  )
+}
+
+export function TextAreaField({ label, description, error, optional, id: providedId, required, readOnly, disabled, className, 'aria-describedby': ariaDescribedBy, 'aria-invalid': ariaInvalid, ...props }: FieldCopy & TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  const generatedId = useId()
+  const id = providedId ?? generatedId
+  const describedBy = [description && `${id}-description`, error && `${id}-error`, ariaDescribedBy].filter(Boolean).join(' ') || undefined
+  return (
+    <FieldFrame id={id} label={label} description={description} error={error} optional={optional} required={required}>
+      <textarea className={classes('bakin-field__control', className)} id={id} required={required} readOnly={readOnly} disabled={disabled} aria-invalid={error ? 'true' : ariaInvalid} aria-describedby={describedBy} {...props} />
+    </FieldFrame>
+  )
+}
+
+export function SelectField({ label, description, error, optional, id: providedId, required, disabled, className, children, 'aria-describedby': ariaDescribedBy, 'aria-invalid': ariaInvalid, ...props }: FieldCopy & SelectHTMLAttributes<HTMLSelectElement>) {
+  const generatedId = useId()
+  const id = providedId ?? generatedId
+  const describedBy = [description && `${id}-description`, error && `${id}-error`, ariaDescribedBy].filter(Boolean).join(' ') || undefined
+  return (
+    <FieldFrame id={id} label={label} description={description} error={error} optional={optional} required={required}>
+      <select className={classes('bakin-field__control', className)} id={id} required={required} disabled={disabled} aria-invalid={error ? 'true' : ariaInvalid} aria-describedby={describedBy} {...props}>{children}</select>
+    </FieldFrame>
+  )
+}
+
+export function CheckboxField({ label, description, id: providedId, className, 'aria-describedby': ariaDescribedBy, ...props }: Omit<FieldCopy, 'error' | 'optional'> & InputHTMLAttributes<HTMLInputElement>) {
+  const generatedId = useId()
+  const id = providedId ?? generatedId
+  const descriptionId = description ? `${id}-description` : undefined
+  const describedBy = [descriptionId, ariaDescribedBy].filter(Boolean).join(' ') || undefined
+  return (
+    <div className="bakin-checkbox-field">
+      <input className={className} id={id} type="checkbox" aria-describedby={describedBy} {...props} />
+      <div className="bakin-checkbox-field__copy">
+        <label className="bakin-checkbox-field__label" htmlFor={id}>{label}</label>
+        {description && <p id={descriptionId}>{description}</p>}
+      </div>
+    </div>
+  )
+}
+
+export function FormActions({ children, className, ...props }: HTMLAttributes<HTMLDivElement>) {
+  return <div className={classes('bakin-form-actions', className)} {...props}>{children}</div>
+}
+
+export function Overlay({ open, title, description, onClose, children, footer }: { open: boolean; title: string; description: string; onClose: () => void; children?: ReactNode; footer?: ReactNode }) {
+  const titleId = useId()
+  const descriptionId = useId()
+  const closeRef = useRef<HTMLButtonElement>(null)
+  const panelRef = useRef<HTMLElement>(null)
+  useEffect(() => {
+    if (!open) return undefined
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    closeRef.current?.focus()
+    return () => previousFocus?.focus()
+  }, [open])
+  if (!open) return null
+  return (
+    <div
+      className="bakin-overlay"
+      onMouseDown={(event) => { if (event.currentTarget === event.target) onClose() }}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') {
+          onClose()
+          return
+        }
+        if (event.key !== 'Tab' || !panelRef.current) return
+        const focusable = [...panelRef.current.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])')]
+        if (focusable.length === 0) return
+        const first = focusable[0]
+        const last = focusable[focusable.length - 1]
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault()
+          last.focus()
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault()
+          first.focus()
+        }
+      }}
+    >
+      <section ref={panelRef} className="bakin-overlay__panel" role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={descriptionId}>
+        <header className="bakin-overlay__header">
+          <div><h2 id={titleId}>{title}</h2><p id={descriptionId}>{description}</p></div>
+          <Action className="bakin-overlay__close" aria-label="Close dialog" onClick={onClose} buttonRef={closeRef}>Close</Action>
+        </header>
+        {children}
+        {footer && <FormActions>{footer}</FormActions>}
+      </section>
+    </div>
   )
 }
