@@ -11,23 +11,49 @@ function read(path: string): string {
 describe('conversation and workflow direction specimens', () => {
   it('covers the complete conversation, workflow, and inspector pressure case', () => {
     const story = read('storybook/internal/specimens/conversation-workflow.stories.tsx')
+    const graph = read('storybook/internal/specimens/workflow-graph.tsx')
+    const specimen = `${story}\n${graph}`
 
     expect(story).toContain("tags: ['internal']")
     for (const exportName of ['SideBySide', 'KeyboardWorkflow', 'ReducedMotion', 'MobileOperation', 'TextAt200Percent']) {
       expect(story).toContain(`export const ${exportName}`)
     }
     for (const prototype of ['ConversationStream', 'Message', 'ToolActivity', 'Composer', 'InspectorDrawer', 'WorkflowCanvas', 'WorkflowNode']) {
-      expect(story).toContain(`function ${prototype}`)
+      expect(specimen).toContain(`function ${prototype}`)
     }
     for (const api of ['PageShell', 'Stack', 'Inline', 'Grid', 'Section', 'BoundedOverflow', 'Action', 'Status', 'TextAreaField', 'SystemState']) {
-      expect(story).toMatch(new RegExp(`<${api}(?:\\s|>)`))
+      expect(specimen).toMatch(new RegExp(`<${api}(?:\\s|>)`))
     }
     expect(story).not.toMatch(/<(?:input|select|textarea)\b/)
-    expect(story).not.toMatch(/#[0-9a-f]{3,8}\b|rgba?\(|hsla?\(/i)
+    expect(specimen).not.toMatch(/#[0-9a-f]{3,8}\b|rgba?\(|hsla?\(/i)
+  })
+
+  it('uses the real React Flow interaction model instead of a CSS grid stand-in', () => {
+    const story = read('storybook/internal/specimens/conversation-workflow.stories.tsx')
+    const graph = read('storybook/internal/specimens/workflow-graph.tsx')
+
+    expect(graph).toContain("from '@xyflow/react'")
+    expect(graph).toContain("import '@xyflow/react/dist/style.css'")
+    for (const primitive of ['ReactFlow', 'Handle', 'Background', 'Controls', 'MiniMap']) {
+      expect(graph).toMatch(new RegExp(`<${primitive}(?:\\s|>)`))
+    }
+    expect(graph).toContain('const workflowNodeTypes')
+    expect(graph).toContain('nodeTypes={workflowNodeTypes}')
+    expect(graph).toContain('onNodesChange={onNodesChange}')
+    expect(graph).toContain('disableKeyboardA11y={false}')
+    expect(graph).toContain('className="bakin-workflow-canvas-shell"')
+    expect(graph).toContain('container-type: inline-size')
+    expect(graph).toMatch(/@container \(max-width: [^)]+\)/)
+    expect(graph).toContain('getComputedStyle(document.documentElement).fontSize')
+    expect(graph).toContain('instance.fitView')
+    expect(story).not.toContain('grid-template-columns: repeat(4, 12rem)')
+    expect(story).not.toContain('style={{ gridColumn: column, gridRow: node.row }}')
   })
 
   it('makes keyboard, non-drag, reduced-motion, domain-color, overflow, and mobile operation explicit', () => {
     const story = read('storybook/internal/specimens/conversation-workflow.stories.tsx')
+    const graph = read('storybook/internal/specimens/workflow-graph.tsx')
+    const specimen = `${story}\n${graph}`
 
     for (const fixture of [
       'Draft a launch update for the spring campaign',
@@ -37,19 +63,19 @@ describe('conversation and workflow direction specimens', () => {
       'provider/openai/gpt-5.2',
       'Streaming response',
     ]) {
-      expect(story).toContain(fixture)
+      expect(specimen).toContain(fixture)
     }
-    expect(story).toContain("event.key === 'ArrowRight'")
+    expect(graph).toContain('disableKeyboardA11y={false}')
     expect(story).toContain("event.key === 'Enter' && !event.shiftKey")
-    expect(story).toContain('Move selected node left')
-    expect(story).toContain('Move selected node right')
-    expect(story).toContain('No dragging is required')
+    expect(graph).toContain('Move selected node left')
+    expect(graph).toContain('Move selected node right')
+    expect(graph).toContain('No dragging is required')
     expect(story).toContain('@media (prefers-reduced-motion: reduce)')
     expect(story).toContain('animation: none')
     for (const domain of ['trigger', 'agent', 'transform', 'output']) {
-      expect(story).toContain(`domain: '${domain}'`)
+      expect(graph).toContain(`domain: '${domain}'`)
     }
-    expect(story).toContain('label="Scrollable two-dimensional workflow canvas"')
+    expect(graph).toContain('label="Scrollable two-dimensional workflow canvas"')
     expect(story).toContain('aria-pressed={mobileView === view}')
     expect(story).toContain("<style>{'html { font-size: 200%; }'}</style>")
     for (const coverage of ['desktop', 'mobile-320', 'text-200', 'streaming', 'tool-activity', 'bounded-2d', 'keyboard-non-drag', 'reduced-motion', 'drawer']) {

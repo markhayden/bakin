@@ -5,7 +5,6 @@ import { expect } from 'storybook/test'
 
 import {
   Action,
-  BoundedOverflow,
   CandidateDirection,
   CandidateIntro,
   CandidateStyles,
@@ -19,6 +18,7 @@ import {
   TextAreaField,
   type DirectionId,
 } from './candidate-ui'
+import { WorkflowCanvas, WORKFLOW_GRAPH_CSS } from './workflow-graph'
 
 const CONVERSATION_WORKFLOW_CSS = `
 .bakin-composite-header { display: grid; gap: var(--candidate-item-gap); }
@@ -40,34 +40,11 @@ const CONVERSATION_WORKFLOW_CSS = `
 .bakin-streaming { position: relative; }
 .bakin-streaming .bakin-system-state__signal { animation: bakin-stream-pulse 1.2s var(--bakin-motion-easing-standard) infinite; }
 @keyframes bakin-stream-pulse { 0%, 100% { opacity: 0.42; } 50% { opacity: 1; } }
-.bakin-workflow { display: grid; gap: var(--candidate-section-gap); min-width: 0; }
-.bakin-workflow__layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(12rem, 0.42fr); gap: var(--candidate-item-gap); align-items: start; min-width: 0; }
-.bakin-workflow-canvas { position: relative; display: grid; grid-template-columns: repeat(4, 12rem); grid-template-rows: repeat(3, 7rem); gap: var(--bakin-layout-space-6); min-width: 57rem; min-height: 25rem; padding: var(--bakin-layout-space-6); background: color-mix(in srgb, var(--bakin-color-canvas-default) 88%, var(--bakin-color-surface-default)); }
-.bakin-workflow-node { align-self: stretch; display: grid; align-content: start; gap: var(--bakin-layout-space-2); min-width: 0; min-height: 6.5rem; border-top-width: 3px; padding: var(--bakin-layout-space-3); text-align: left; white-space: normal; }
-.bakin-workflow-node[data-domain='trigger'] { border-top-color: var(--bakin-color-signal-highlight); }
-.bakin-workflow-node[data-domain='agent'] { border-top-color: var(--bakin-color-signal-accent); }
-.bakin-workflow-node[data-domain='transform'] { border-top-color: var(--bakin-color-action-primary-background); }
-.bakin-workflow-node[data-domain='output'] { border-top-color: var(--bakin-color-signal-danger); }
-.bakin-workflow-node[aria-pressed='true'] { outline: 2px solid var(--bakin-color-focus-ring); outline-offset: 2px; }
-.bakin-workflow-node strong { overflow-wrap: anywhere; font-size: var(--candidate-body-size); }
-.bakin-workflow-node code { overflow-wrap: anywhere; color: var(--bakin-color-text-muted); font-family: var(--candidate-font-mono); font-size: var(--candidate-meta-size); }
-.bakin-inspector { display: grid; gap: var(--candidate-section-gap); min-width: 0; border-left: 1px solid var(--bakin-color-border-subtle); padding-left: var(--candidate-section-gap); }
-.bakin-inspector h3 { margin: var(--bakin-layout-space-0); overflow-wrap: anywhere; font-size: var(--candidate-section-title-size); }
-.bakin-inspector p { margin: var(--bakin-layout-space-0); color: var(--bakin-color-text-muted); line-height: 1.55; }
-.bakin-inspector dl { display: grid; gap: var(--candidate-item-gap); margin: var(--bakin-layout-space-0); }
-.bakin-inspector div { display: grid; gap: var(--bakin-layout-space-1); padding-top: var(--candidate-item-gap); border-top: 1px solid var(--bakin-color-border-subtle); }
-.bakin-inspector dt { color: var(--bakin-color-text-muted); font-size: var(--candidate-meta-size); }
-.bakin-inspector dd { min-width: 0; margin: var(--bakin-layout-space-0); overflow-wrap: anywhere; }
-.bakin-workflow-status { min-width: 0; margin: var(--bakin-layout-space-0); overflow-wrap: anywhere; color: var(--bakin-color-text-muted); font-family: var(--candidate-font-mono); font-size: var(--candidate-meta-size); }
 .bakin-mobile-switcher { display: grid; gap: var(--candidate-section-gap); }
 .bakin-mobile-switcher__views { min-width: 0; }
 .bakin-reduced-motion-note { display: grid; gap: var(--candidate-section-gap); padding: var(--candidate-page-gap); }
 .bakin-reduced-motion-note h2 { margin: var(--bakin-layout-space-0); font-size: var(--candidate-page-title-size); line-height: 1.05; }
 .bakin-reduced-motion-note p { margin: var(--bakin-layout-space-0); color: var(--bakin-color-text-muted); line-height: 1.55; }
-@media (max-width: 42rem) {
-  .bakin-workflow__layout { grid-template-columns: minmax(0, 1fr); }
-  .bakin-inspector { border-left: 0; border-top: 1px solid var(--bakin-color-border-subtle); padding: var(--candidate-section-gap) var(--bakin-layout-space-0) var(--bakin-layout-space-0); }
-}
 @media (max-width: 24rem) {
   .bakin-conversation__stream { max-height: 24rem; }
   .bakin-composer .bakin-inline .bakin-action { flex: 1 1 auto; }
@@ -77,6 +54,8 @@ const CONVERSATION_WORKFLOW_CSS = `
   .bakin-streaming .bakin-system-state__signal { animation: none; opacity: 1; }
 }
 `.trim()
+
+const SPECIMEN_CSS = `${CONVERSATION_WORKFLOW_CSS}\n${WORKFLOW_GRAPH_CSS}`
 
 interface ConversationMessage {
   id: string
@@ -153,66 +132,6 @@ function ConversationStream() {
   )
 }
 
-type NodeDomain = 'trigger' | 'agent' | 'transform' | 'output'
-type NodeId = 'schedule' | 'draft' | 'assemble' | 'publish'
-
-const workflowNodes: Array<{ id: NodeId; domain: NodeDomain; title: string; detail: string; row: number }> = [
-  { id: 'schedule', domain: 'trigger', title: 'Weekly campaign schedule', detail: 'Mon 09:00 America/Denver', row: 1 },
-  { id: 'draft', domain: 'agent', title: 'Draft launch copy', detail: 'provider/openai/gpt-5.2', row: 2 },
-  { id: 'assemble', domain: 'transform', title: 'Assemble social video', detail: 'asset:campaign/spring-hero-final-v18.webp', row: 1 },
-  { id: 'publish', domain: 'output', title: 'Queue publishing review', detail: 'team:marketing-operations', row: 2 },
-]
-
-function WorkflowNode({ node, column, selected, onSelect, onMove }: { node: (typeof workflowNodes)[number]; column: number; selected: boolean; onSelect: () => void; onMove: (delta: number) => void }) {
-  return (
-    <Action
-      className="bakin-workflow-node"
-      data-domain={node.domain}
-      aria-pressed={selected}
-      style={{ gridColumn: column, gridRow: node.row }}
-      onClick={onSelect}
-      onKeyDown={(event) => {
-        if (event.key === 'ArrowRight') { event.preventDefault(); onMove(1) }
-        if (event.key === 'ArrowLeft') { event.preventDefault(); onMove(-1) }
-      }}
-    >
-      <strong>{node.title}</strong><code>{node.detail}</code>
-    </Action>
-  )
-}
-
-function InspectorDrawer({ node, column, onClose, onMove }: { node: (typeof workflowNodes)[number]; column: number; onClose: () => void; onMove: (delta: number) => void }) {
-  return (
-    <aside className="bakin-inspector" aria-label={`${node.title} node inspector`}>
-      <Inline align="between"><h3>{node.title}</h3><Action aria-label="Close node inspector" onClick={onClose}>Close</Action></Inline>
-      <p>Node configuration stays usable beside the canvas and reflows below it on narrow screens.</p>
-      <dl><div><dt>Category</dt><dd>{node.domain}</dd></div><div><dt>Column</dt><dd>{column}</dd></div><div><dt>Route</dt><dd><code>workflow://video-social-post/assemble-video</code></dd></div></dl>
-      <Inline><Action aria-label="Move selected node left" disabled={column === 1} onClick={() => onMove(-1)}>Move left</Action><Action aria-label="Move selected node right" disabled={column === 4} onClick={() => onMove(1)}>Move right</Action></Inline>
-      <p>No dragging is required: select a node, use arrow keys, or use these named move actions.</p>
-    </aside>
-  )
-}
-
-function WorkflowCanvas() {
-  const [selected, setSelected] = useState<NodeId | null>('assemble')
-  const [columns, setColumns] = useState<Record<NodeId, number>>({ schedule: 1, draft: 2, assemble: 3, publish: 4 })
-  const move = (id: NodeId, delta: number) => setColumns((current) => ({ ...current, [id]: Math.max(1, Math.min(4, current[id] + delta)) }))
-  const selectedNode = workflowNodes.find((node) => node.id === selected)
-  return (
-    <div className="bakin-workflow">
-      <Inline align="between"><Status>Live workflow · last run 10:38</Status><span className="bakin-workflow-status" role="status">{selectedNode ? `${selectedNode.title} selected in column ${columns[selectedNode.id]}` : 'No node selected'}</span></Inline>
-      <div className="bakin-workflow__layout">
-        <BoundedOverflow label="Scrollable two-dimensional workflow canvas">
-          <div className="bakin-workflow-canvas">
-            {workflowNodes.map((node) => <WorkflowNode key={node.id} node={node} column={columns[node.id]} selected={selected === node.id} onSelect={() => setSelected(node.id)} onMove={(delta) => { setSelected(node.id); move(node.id, delta) }} />)}
-          </div>
-        </BoundedOverflow>
-        {selectedNode && <InspectorDrawer node={selectedNode} column={columns[selectedNode.id]} onClose={() => setSelected(null)} onMove={(delta) => move(selectedNode.id, delta)} />}
-      </div>
-    </div>
-  )
-}
-
 function CompositeDirection({ direction }: { direction: DirectionId }) {
   return (
     <CandidateDirection direction={direction}>
@@ -252,7 +171,7 @@ function MotionPanel({ direction }: { direction: DirectionId }) {
 function CompositeStudy({ text200 = false }: { text200?: boolean }) {
   return (
     <main className="bakin-candidate-study">
-      <CandidateStyles css={CONVERSATION_WORKFLOW_CSS} />
+      <CandidateStyles css={SPECIMEN_CSS} />
       {text200 && <style>{'html { font-size: 200%; }'}</style>}
       <CandidateIntro title={text200 ? 'Conversation and workflow at 200% text' : 'Conversation and workflow directions'}>Compare streaming, tools, composition, node selection, inspection, live status, and two-dimensional overflow. Neither direction is selected.</CandidateIntro>
       <div className="bakin-candidate-study__directions"><CompositeDirection direction="operational-neutral" /><CompositeDirection direction="product-character" /></div>
@@ -261,15 +180,15 @@ function CompositeStudy({ text200 = false }: { text200?: boolean }) {
 }
 
 function WorkflowStudy() {
-  return <main className="bakin-candidate-study"><CandidateStyles css={CONVERSATION_WORKFLOW_CSS} /><CandidateIntro title="Keyboard and non-drag workflow">Every workflow action is available through focusable nodes, arrow keys, inspector actions, and bounded scrolling.</CandidateIntro><div className="bakin-candidate-study__directions"><CandidateDirection direction="operational-neutral"><PageShell><WorkflowCanvas /></PageShell></CandidateDirection><CandidateDirection direction="product-character"><PageShell><WorkflowCanvas /></PageShell></CandidateDirection></div></main>
+  return <main className="bakin-candidate-study"><CandidateStyles css={SPECIMEN_CSS} /><CandidateIntro title="Keyboard and non-drag workflow">Every workflow action is available through focusable nodes, arrow keys, inspector actions, and bounded scrolling.</CandidateIntro><div className="bakin-candidate-study__directions"><CandidateDirection direction="operational-neutral"><PageShell><WorkflowCanvas /></PageShell></CandidateDirection><CandidateDirection direction="product-character"><PageShell><WorkflowCanvas /></PageShell></CandidateDirection></div></main>
 }
 
 function MotionStudy() {
-  return <main className="bakin-candidate-study"><CandidateStyles css={CONVERSATION_WORKFLOW_CSS} /><CandidateIntro title="Reduced-motion behavior">The live state remains explicit while nonessential repetition is removed by user preference.</CandidateIntro><div className="bakin-candidate-study__directions"><MotionPanel direction="operational-neutral" /><MotionPanel direction="product-character" /></div></main>
+  return <main className="bakin-candidate-study"><CandidateStyles css={SPECIMEN_CSS} /><CandidateIntro title="Reduced-motion behavior">The live state remains explicit while nonessential repetition is removed by user preference.</CandidateIntro><div className="bakin-candidate-study__directions"><MotionPanel direction="operational-neutral" /><MotionPanel direction="product-character" /></div></main>
 }
 
 function MobileStudy() {
-  return <main className="bakin-candidate-study"><CandidateStyles css={CONVERSATION_WORKFLOW_CSS} /><CandidateIntro title="Dense mobile operation">Conversation and workflow are explicit switchable modes at 320px, keeping the composer, canvas, inspector, and move actions usable.</CandidateIntro><div className="bakin-candidate-study__directions"><MobileSwitcher direction="operational-neutral" /><MobileSwitcher direction="product-character" /></div></main>
+  return <main className="bakin-candidate-study"><CandidateStyles css={SPECIMEN_CSS} /><CandidateIntro title="Dense mobile operation">Conversation and workflow are explicit switchable modes at 320px, keeping the composer, canvas, inspector, and move actions usable.</CandidateIntro><div className="bakin-candidate-study__directions"><MobileSwitcher direction="operational-neutral" /><MobileSwitcher direction="product-character" /></div></main>
 }
 
 const meta = {
@@ -297,7 +216,7 @@ export const KeyboardWorkflow = {
     const node = canvas.getAllByRole('button', { name: /Assemble social video/ })[0]
     await userEvent.click(node)
     await userEvent.keyboard('{ArrowRight}')
-    await expect(canvas.getAllByRole('status')[0]).toHaveTextContent('column 4')
+    await expect(canvas.getAllByRole('status')[0]).toHaveTextContent('x 275')
   },
 } satisfies Story
 
