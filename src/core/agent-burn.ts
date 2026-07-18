@@ -1,22 +1,32 @@
 /**
- * Agent token-burn heuristics (#385) — the ONE engine behind the
- * usage.agent-burn doctor check, the health /agent-effort endpoint, and the
- * effort card (same anti-drift pattern as context-report.ts / budget.ts).
+ * Agent token-burn heuristics (#385, buckets #691) — the ONE engine behind
+ * the usage.agent-burn doctor check, the health /agent-effort endpoint, and
+ * the effort card (same anti-drift pattern as context-report.ts / budget.ts).
  *
- * Three explainable, warn-only signals per agent:
+ * Explainable signals per agent:
  *  - effort-no-outcome: heavy Bakin-attributed burn with zero completed tasks
  *  - spike: today's observed usage far above the agent's own trailing average
- *  - unattributed: a large share of observed tokens happened OUTSIDE
- *    Bakin-managed tasks (transcript-observed minus Bakin-metered — the
- *    direct "is the runtime doing things unsupervised" signal, D11)
+ *  - interactive (advisory): observed tokens from sessions Bakin never
+ *    originated (operator TUI/direct chats) — normal use, labeled calmly
+ *  - unexplained (watch): observed tokens from Bakin-originated or
+ *    unknown-origin sessions that no ledger row accounts for
+ *  - runaway (loud): autonomous accumulation with real indicators — an
+ *    external session burning tokens across many assistant turns with ZERO
+ *    user turns, or unexplained + spike on the same day. Downgraded to a
+ *    review prompt when the runtime has native scheduled jobs (legitimate
+ *    autonomous work must never trigger a false page — D11).
  *
  * Data honesty rules: attributed numbers come from the run_costs ledger,
  * observed numbers from the usage.db transcript scans. When the scanner has
- * no coverage for the window, observed/unattributed are null. Likewise, a
- * ledger rollup with unmetered runs has a null attributed total. Unknown
- * values stay null — never a fabricated zero.
+ * no coverage for the window, observed/split totals are null. Unknown-origin
+ * tokens count toward unexplained, never toward interactive — the calm
+ * bucket must be provable. Unknown values stay null — never fabricated zero.
  */
-import { readUsageHistorySince, toLocalDayKey } from '@bakin/core/usage-history/store'
+import {
+  readUsageHistorySince,
+  readSessionUsageRollupsSince,
+  toLocalDayKey,
+} from '@bakin/core/usage-history/store'
 import { getSettings } from './settings'
 import { runTokensByAgentSince, completionsByAgentSince } from './execution-ledger'
 
@@ -27,6 +37,25 @@ export interface BurnConfig {
   baselineDays: number
   unattributedShare: number
   unattributedFloorTokens: number
+  /** Token-bearing assistant turns a zero-user-turn session needs to look runaway. */
+  runawayAssistantTurns: number
+  /** Minimum tokens a zero-user-turn session needs to look runaway. */
+  runawayFloorTokens: number
+}
+
+/** One runtime-native scheduled job, as cron-guard evidence (D11). */
+export interface ScheduledJobEvidence {
+  id: string
+  name: string
+}
+
+/** A session's window rollup, as runaway evidence. */
+export interface BurnSessionRollup {
+  sessionId: string
+  origin: 'bakin' | 'external' | 'unknown'
+  totalTokens: number
+  userMessages: number
+  assistantMessages: number
 }
 
 export interface AgentBurnInputs {
@@ -49,16 +78,41 @@ export interface AgentBurnInputs {
   completions: number
   /** Transcript-observed tokens in the window; null = scanner has no coverage. */
   observedTokens: number | null
+  /** Observed tokens from external-origin (interactive) sessions; null = no coverage. */
+  externalObservedTokens: number | null
   /** Observed tokens for today's local calendar day; null = no coverage. */
   todayObservedTokens: number | null
   /** Observed daily totals for trailing baseline days (excluding today). */
   baselineDailyTokens: number[]
+  /** Per-session window rollups for the runaway heuristic; empty = none/no coverage. */
+  sessions: BurnSessionRollup[]
+  /**
+   * Runtime-native scheduled jobs (cron guard, D11). null = the runtime has
+   * no cron surface or it could not be read — NO downgrade happens on null
+   * (fail loud, not silent); [] = surface read, no jobs.
+   */
+  scheduledJobs: ScheduledJobEvidence[] | null
 }
 
-export interface BurnFlag {
-  kind: 'effort-no-outcome' | 'spike' | 'unattributed'
-  message: string
-}
+export type BurnFlag =
+  | { kind: 'effort-no-outcome'; message: string }
+  | { kind: 'spike'; message: string }
+  /** Advisory: direct-chat/TUI usage — normal, labeled calmly. */
+  | { kind: 'interactive'; message: string; tokens: number }
+  /** Watch: tokens no ledger row or interactive session explains. */
+  | { kind: 'unexplained'; message: string; tokens: number; spikeConcurrent: boolean }
+  /**
+   * Loud: evidence-backed autonomous accumulation. `downgraded` = the
+   * runtime has native scheduled jobs, so this is a review prompt (watch),
+   * never a page — legitimate autonomous work must not cry wolf (D11).
+   */
+  | {
+      kind: 'runaway'
+      message: string
+      sessions: Array<{ sessionId: string; tokens: number; assistantTurns: number }>
+      scheduledJobs: string[]
+      downgraded: boolean
+    }
 
 export interface AgentBurnReport {
   agent: string
@@ -75,7 +129,10 @@ export interface AgentBurnReport {
   completions: number
   tokensPerCompletion: number | null
   totalObservedTokens: number | null
-  unattributedTokens: number | null
+  /** Observed tokens from interactive (external-origin) sessions; null = no coverage. */
+  interactiveTokens: number | null
+  /** Observed bakin/unknown-origin tokens minus attributed, clamped ≥ 0; null = incomplete evidence. */
+  unexplainedTokens: number | null
   flags: BurnFlag[]
 }
 
@@ -88,6 +145,7 @@ export interface AgentBurnCoverage {
 
 export interface AgentBurnSources {
   readUsageHistorySince: typeof readUsageHistorySince
+  readSessionUsageRollupsSince: typeof readSessionUsageRollupsSince
   runTokensByAgentSince: typeof runTokensByAgentSince
   completionsByAgentSince: typeof completionsByAgentSince
 }
@@ -100,6 +158,7 @@ export interface AgentBurnWindowScope {
 
 const DEFAULT_AGENT_BURN_SOURCES: AgentBurnSources = {
   readUsageHistorySince,
+  readSessionUsageRollupsSince,
   runTokensByAgentSince,
   completionsByAgentSince,
 }
@@ -171,22 +230,91 @@ export function evaluateAgentBurn(
     }
   }
 
-  const unattributedTokens =
-    inputs.observedTokens === null || attributedTokens === null
+  // ---- provenance buckets (#691) ----------------------------------------
+  // interactive = external-origin sessions (the operator's own chats — calm).
+  // unexplained = bakin/unknown-origin observed minus attributed (nobody can
+  // explain these tokens — worth a look). Unknown origin NEVER counts as
+  // interactive: the calm bucket must be provable.
+  const interactiveTokens = inputs.observedTokens === null || inputs.externalObservedTokens === null
+    ? null
+    : Math.min(inputs.externalObservedTokens, inputs.observedTokens)
+  const unexplainedTokens =
+    inputs.observedTokens === null || interactiveTokens === null || attributedTokens === null
       ? null
-      : Math.max(0, inputs.observedTokens - attributedTokens)
+      : Math.max(0, inputs.observedTokens - interactiveTokens - attributedTokens)
+
   if (
-    unattributedTokens !== null &&
+    interactiveTokens !== null &&
     inputs.observedTokens !== null &&
     inputs.observedTokens > 0 &&
-    unattributedTokens >= config.unattributedFloorTokens &&
-    unattributedTokens / inputs.observedTokens >= config.unattributedShare
+    interactiveTokens >= config.unattributedFloorTokens &&
+    interactiveTokens / inputs.observedTokens >= config.unattributedShare
   ) {
     flags.push({
-      kind: 'unattributed',
+      kind: 'interactive',
+      tokens: interactiveTokens,
       message:
-        `'${inputs.agent}' used ${formatTokens(unattributedTokens)} tokens outside ` +
-        `Bakin-managed tasks during ${windowLabel} — review its recent sessions`,
+        `'${inputs.agent}' used ${formatTokens(interactiveTokens)} tokens in interactive runtime ` +
+        `sessions (direct chats/TUI) not tied to board tasks during ${windowLabel} — ` +
+        `normal if you were working with this agent directly`,
+    })
+  }
+
+  const spikeConcurrent = flags.some((flag) => flag.kind === 'spike')
+  if (
+    unexplainedTokens !== null &&
+    inputs.observedTokens !== null &&
+    inputs.observedTokens > 0 &&
+    unexplainedTokens >= config.unattributedFloorTokens &&
+    unexplainedTokens / inputs.observedTokens >= config.unattributedShare
+  ) {
+    flags.push({
+      kind: 'unexplained',
+      tokens: unexplainedTokens,
+      spikeConcurrent,
+      message:
+        `'${inputs.agent}' used ${formatTokens(unexplainedTokens)} tokens Bakin could not attribute ` +
+        `to tasks, system sends, or interactive sessions during ${windowLabel} — review its recent sessions` +
+        (spikeConcurrent ? ' — and usage is well above its daily average, review soon' : ''),
+    })
+  }
+
+  // ---- runaway (#691, D9/D11) -------------------------------------------
+  // Only with real indicators: an external-origin session accumulating
+  // token-bearing autonomous turns with ZERO user interaction, or an
+  // unexplained bucket coinciding with a spike. Unknown-origin sessions
+  // never page — "cannot tell" is not evidence of runaway.
+  const runawaySessions = inputs.sessions
+    .filter((session) =>
+      session.origin === 'external' &&
+      session.userMessages === 0 &&
+      session.assistantMessages >= config.runawayAssistantTurns &&
+      session.totalTokens >= config.runawayFloorTokens,
+    )
+    .map((session) => ({
+      sessionId: session.sessionId,
+      tokens: session.totalTokens,
+      assistantTurns: session.assistantMessages,
+    }))
+  const unexplainedSpike = unexplainedTokens !== null
+    && unexplainedTokens >= config.runawayFloorTokens
+    && spikeConcurrent
+  if (runawaySessions.length > 0 || unexplainedSpike) {
+    const jobs = inputs.scheduledJobs ?? []
+    const downgraded = jobs.length > 0
+    const evidence = runawaySessions.length > 0
+      ? `${runawaySessions.reduce((sum, s) => sum + s.assistantTurns, 0)} autonomous turns / ` +
+        `${formatTokens(runawaySessions.reduce((sum, s) => sum + s.tokens, 0))} tokens with no user interaction`
+      : `${formatTokens(unexplainedTokens ?? 0)} unexplained tokens well above its daily average`
+    flags.push({
+      kind: 'runaway',
+      sessions: runawaySessions,
+      scheduledJobs: jobs.map((job) => job.name),
+      downgraded,
+      message: downgraded
+        ? `'${inputs.agent}' has high autonomous usage (${evidence}) and this runtime also has ` +
+          `${jobs.length} scheduled job(s) (${jobs.map((job) => job.name).join(', ')}) — review if unexpected`
+        : `'${inputs.agent}' shows possible runaway usage: ${evidence} — investigate now`,
     })
   }
 
@@ -206,7 +334,8 @@ export function evaluateAgentBurn(
         ? Math.round(attributedTokens / inputs.completions)
         : null,
     totalObservedTokens: inputs.observedTokens,
-    unattributedTokens,
+    interactiveTokens,
+    unexplainedTokens,
     flags,
   }
 }
@@ -240,6 +369,12 @@ export function buildAgentBurnReports(
     coverage?: AgentBurnCoverage
     config?: BurnConfig
     sources?: AgentBurnSources
+    /**
+     * Runtime-native scheduled jobs for the runaway cron guard (D11),
+     * pre-fetched by the caller (the engine stays sync/pure). null = no cron
+     * surface or the read failed — no downgrade on null.
+     */
+    scheduledJobs?: ScheduledJobEvidence[] | null
   } = {},
 ): AgentBurnReport[] {
   const config = { ...(opts.config ?? getSettings().burn), ...(opts.windowHours ? { windowHours: opts.windowHours } : {}) }
@@ -252,6 +387,7 @@ export function buildAgentBurnReports(
   const earliestDay = baselineSinceDay < windowSinceDay ? baselineSinceDay : windowSinceDay
 
   const cells = sources.readUsageHistorySince(earliestDay).byAgentDay
+  const sessionRollups = sources.readSessionUsageRollupsSince(windowSinceDay)
   const coverageByAgent = new Map(
     (opts.coverage?.agents ?? []).map((entry) => [entry.agent, entry.status]),
   )
@@ -289,10 +425,25 @@ export function buildAgentBurnReports(
           observedTokens: hasCompleteCoverage
             ? windowCells.reduce((sum, c) => sum + c.tokens.total, 0)
             : null,
+          externalObservedTokens: hasCompleteCoverage
+            ? windowCells.reduce((sum, c) => sum + c.originTokens.external, 0)
+            : null,
           todayObservedTokens: hasCompleteCoverage ? todayCell?.tokens.total ?? 0 : null,
           baselineDailyTokens: agentCells
             .filter((c) => c.day >= baselineSinceDay && c.day < today)
             .map((c) => c.tokens.total),
+          sessions: hasCompleteCoverage
+            ? sessionRollups
+                .filter((rollup) => rollup.agent === agent)
+                .map((rollup) => ({
+                  sessionId: rollup.sessionId,
+                  origin: rollup.origin,
+                  totalTokens: rollup.totalTokens,
+                  userMessages: rollup.userMessages,
+                  assistantMessages: rollup.assistantMessages,
+                }))
+            : [],
+          scheduledJobs: opts.scheduledJobs ?? null,
         },
         config,
         windowScope.scopeLabel,

@@ -73,6 +73,8 @@ function qualifyEffortRow(row: AgentEffortRow | null): AgentEffortRow | null {
     windowCostUsdMicros: null,
     tokensPerCompletion: null,
     unattributedTokens: null,
+    interactiveTokens: null,
+    unexplainedTokens: null,
     flags: [],
   }
 }

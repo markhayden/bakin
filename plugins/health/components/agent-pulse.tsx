@@ -89,15 +89,20 @@ function ReviewStatus({ row, checking }: { row: AgentPulseRow; checking: boolean
 function UsageMetric({ row, pending }: { row: AgentPulseRow; pending: AgentPulsePending }) {
   const observed = row.observedTokens
   const alignedObserved = row.effort?.totalObservedTokens ?? null
-  const outside = row.effort?.unattributedTokens ?? null
+  const interactive = row.effort?.interactiveTokens ?? null
+  const unexplained = row.effort?.unexplainedTokens ?? null
+  const outside = interactive !== null && unexplained !== null ? interactive + unexplained : null
   const attributed = alignedObserved !== null && outside !== null
     ? Math.max(0, alignedObserved - outside)
     : null
   const attributedPercent = alignedObserved && attributed !== null
     ? Math.min(100, (attributed / alignedObserved) * 100)
     : 0
-  const outsidePercent = alignedObserved && outside !== null
-    ? Math.min(100, (outside / alignedObserved) * 100)
+  const interactivePercent = alignedObserved && interactive !== null
+    ? Math.min(100, (interactive / alignedObserved) * 100)
+    : 0
+  const unexplainedPercent = alignedObserved && unexplained !== null
+    ? Math.min(100, (unexplained / alignedObserved) * 100)
     : 0
   const reportedCost = row.historyCostUsdMicros
   const trackedCost = row.effort?.windowCostUsdMicros ?? null
@@ -115,14 +120,15 @@ function UsageMetric({ row, pending }: { row: AgentPulseRow; pending: AgentPulse
             ? 'Usage unavailable'
             : `${formatTokenCount(observed)} tokens`}
       </p>
-      {alignedObserved !== null && alignedObserved > 0 && attributed !== null && outside !== null && (
+      {alignedObserved !== null && alignedObserved > 0 && attributed !== null && interactive !== null && unexplained !== null && (
         <div
           role="img"
-          aria-label={`${Math.round(attributedPercent)}% tracked work and ${Math.round(outsidePercent)}% outside tracked work`}
+          aria-label={`${Math.round(attributedPercent)}% tracked work, ${Math.round(interactivePercent)}% interactive sessions, and ${Math.round(unexplainedPercent)}% unexplained`}
           className="my-1.5 flex h-1.5 overflow-hidden rounded-full bg-muted"
         >
           <span className="bg-primary" style={{ width: `${attributedPercent}%` }} />
-          <span className="bg-warning" style={{ width: `${outsidePercent}%` }} />
+          <span className="bg-muted-foreground/50" style={{ width: `${interactivePercent}%` }} />
+          <span className="bg-warning" style={{ width: `${unexplainedPercent}%` }} />
         </div>
       )}
       <p className="text-xs text-muted-foreground">

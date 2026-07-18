@@ -204,10 +204,14 @@ export interface BakinSettings {
     spikeMultiplier: number
     /** Trailing days (excluding today) that form the spike baseline. */
     baselineDays: number
-    /** Unattributed fraction of observed tokens above which the flag fires. */
+    /** Interactive/unexplained fraction of observed tokens above which those flags fire. */
     unattributedShare: number
-    /** Minimum unattributed tokens before the unattributed flag fires. */
+    /** Minimum interactive/unexplained tokens before those flags fire. */
     unattributedFloorTokens: number
+    /** Token-bearing assistant turns a zero-user-turn external session needs to look runaway. */
+    runawayAssistantTurns: number
+    /** Minimum tokens a zero-user-turn external session needs to look runaway. */
+    runawayFloorTokens: number
   }
   doctor: {
     intervalMs: number
@@ -392,6 +396,8 @@ export const DEFAULT_SETTINGS: BakinSettings = {
     baselineDays: 7,
     unattributedShare: 0.5,
     unattributedFloorTokens: 100_000,
+    runawayAssistantTurns: 20,
+    runawayFloorTokens: 1_000_000,
   },
   doctor: {
     intervalMs: 30 * 60 * 1000, // 30 minutes

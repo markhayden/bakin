@@ -8,7 +8,7 @@
  * dashboard, and the CLI can never disagree. Settings (settings.burn) are
  * re-read every run; a flag is a prompt to look, never an enforcement action.
  */
-import { buildAgentBurnReports } from '../../../../src/core/agent-burn'
+import { buildAgentBurnReports, type BurnFlag, type ScheduledJobEvidence } from '../../../../src/core/agent-burn'
 import { LedgerUnavailableError } from '../../../../src/core/execution-ledger'
 import {
   getLastUsageScan,
@@ -89,6 +89,8 @@ export async function checkAgentBurnWith(
     lastUsageScan?: typeof getLastUsageScan
     scanStaleAfterMs?: () => number
     now?: () => number
+    /** Cron-guard evidence fetch (D11); null = no cron surface / read failed. */
+    scheduledJobs?: () => Promise<ScheduledJobEvidence[] | null>
   } = {},
 ): Promise<HealthCheckRunInput> {
   let reports
@@ -98,11 +100,13 @@ export async function checkAgentBurnWith(
   const scanAgeMs = lastScan ? Math.max(0, now - lastScan.at) : null
   const scanInFlight = isUsageHistoryScanInFlight()
   const scanFresh = !scanInFlight && scanAgeMs !== null && scanAgeMs <= staleAfterMs
+  const scheduledJobs = deps.scheduledJobs ? await deps.scheduledJobs() : null
   try {
     reports = (deps.buildReports ?? buildAgentBurnReports)(now, {
       // Stale transcript rows remain useful history, but cannot create a new
-      // spike/unattributed verdict or a fresh healthy observation.
+      // spike/unexplained verdict or a fresh healthy observation.
       coverage: scanFresh ? lastScan?.report.coverage : { agents: [] },
+      scheduledJobs,
     })
   } catch (err) {
     if (err instanceof LedgerUnavailableError) {
@@ -200,38 +204,127 @@ export async function checkAgentBurnWith(
     })])
   }
 
-  // One row per flagged agent keeps messages readable and lets the UI
-  // attribute each flag via data.agents.
-  const observations = flagged.map<HealthObservationInput>((report) => {
+  // One observation per (agent, bucket) so each signal carries its honest
+  // severity: interactive is calm, unexplained asks for a look, runaway is
+  // loud (or a scheduled-jobs review prompt when downgraded). Effort/spike
+  // keep their combined legacy observation. UIs attribute via evidence,
+  // never by parsing copy.
+  const observations: HealthObservationInput[] = []
+  for (const report of flagged) {
     const agentLabel = report.agent.slice(0, 120)
-    return healthWarning({
-      key: `agent:${stableKeyPart(report.agent)}`,
-      summary: `${agentLabel} has unusual token burn.`,
-      detail: report.flags.slice(0, 20).map((flag) => flag.message).join(' | ').slice(0, 4_000),
-      evidence: {
-        agents: [report.agent.slice(0, 500)],
-        kinds: report.flags.slice(0, 50).map((flag) => flag.kind.slice(0, 500)),
-      },
-      incident: {
-        key: `unusual-burn:${stableKeyPart(report.agent)}`,
-        title: 'Agent token burn needs review',
-        impact: 'High, spiking, or unattributed usage may increase cost without corresponding completed work.',
-        disposition: 'watch',
-        resources: [{ kind: 'agent', id: stableKeyPart(report.agent), label: agentLabel }],
-        resolution: {
-          key: 'open-agent-diagnostics',
-          type: 'navigate',
-          label: 'Review agent diagnostics',
-          href: `/team/${encodeURIComponent(report.agent.slice(0, 1_000))}?tab=diagnostics`,
+    const keyPart = stableKeyPart(report.agent)
+    const agentResource = { kind: 'agent' as const, id: keyPart, label: agentLabel }
+    const diagnosticsResolution = {
+      key: 'open-agent-diagnostics',
+      type: 'navigate' as const,
+      label: 'Review agent diagnostics',
+      href: `/team/${encodeURIComponent(report.agent.slice(0, 1_000))}?tab=diagnostics`,
+    }
+    const legacyFlags: BurnFlag[] = []
+    for (const flag of report.flags) {
+      if (flag.kind === 'interactive') {
+        observations.push(healthWarning({
+          key: `interactive:${keyPart}`,
+          summary: `${agentLabel} has interactive session usage.`,
+          detail: flag.message.slice(0, 4_000),
+          evidence: { agents: [report.agent.slice(0, 500)], kinds: ['interactive'], tokens: flag.tokens },
+          incident: {
+            key: `interactive-usage:${keyPart}`,
+            title: 'Interactive agent chat usage',
+            impact: 'Direct chats and TUI sessions consume tokens outside the task ledger. This is normal use — review only if unexpected.',
+            disposition: 'advisory',
+            resources: [agentResource],
+            resolution: diagnosticsResolution,
+          },
+        }))
+      } else if (flag.kind === 'unexplained') {
+        observations.push(healthWarning({
+          key: `unexplained:${keyPart}`,
+          summary: `${agentLabel} has unexplained token usage.`,
+          detail: flag.message.slice(0, 4_000),
+          evidence: {
+            agents: [report.agent.slice(0, 500)],
+            kinds: ['unexplained'],
+            tokens: flag.tokens,
+            spikeConcurrent: flag.spikeConcurrent,
+          },
+          incident: {
+            key: `unexplained-usage:${keyPart}`,
+            title: 'Unexplained agent token usage',
+            impact: 'Tokens Bakin could not attribute to tasks, system sends, or interactive sessions may indicate untracked runtime activity.',
+            disposition: 'watch',
+            resources: [agentResource],
+            resolution: diagnosticsResolution,
+          },
+        }))
+      } else if (flag.kind === 'runaway') {
+        const evidence = {
+          agents: [report.agent.slice(0, 500)],
+          kinds: ['runaway'],
+          sessions: flag.sessions.slice(0, 20),
+          scheduledJobs: flag.scheduledJobs.slice(0, 50),
+          downgraded: flag.downgraded,
+        }
+        observations.push(flag.downgraded
+          ? healthWarning({
+              key: `runaway:${keyPart}`,
+              summary: `${agentLabel} has high autonomous usage.`,
+              detail: flag.message.slice(0, 4_000),
+              evidence,
+              incident: {
+                key: `runaway-usage:${keyPart}`,
+                title: 'High autonomous usage (scheduled jobs present)',
+                impact: 'Autonomous token accumulation matched the runaway pattern, but this runtime has scheduled jobs that may explain it — review if unexpected.',
+                disposition: 'watch',
+                resources: [agentResource],
+                resolution: diagnosticsResolution,
+              },
+            })
+          : healthError({
+              key: `runaway:${keyPart}`,
+              summary: `${agentLabel} shows possible runaway usage.`,
+              detail: flag.message.slice(0, 4_000),
+              evidence,
+              incident: {
+                key: `runaway-usage:${keyPart}`,
+                title: 'Possible runaway agent usage',
+                impact: 'Autonomous token accumulation with no user interaction is actively consuming quota — investigate immediately.',
+                disposition: 'action_required',
+                resources: [agentResource],
+                resolution: diagnosticsResolution,
+              },
+            }))
+      } else {
+        legacyFlags.push(flag)
+      }
+    }
+    if (legacyFlags.length > 0) {
+      observations.push(healthWarning({
+        key: `agent:${keyPart}`,
+        summary: `${agentLabel} has unusual token burn.`,
+        detail: legacyFlags.slice(0, 20).map((flag) => flag.message).join(' | ').slice(0, 4_000),
+        evidence: {
+          agents: [report.agent.slice(0, 500)],
+          kinds: legacyFlags.slice(0, 50).map((flag) => flag.kind.slice(0, 500)),
         },
-      },
-    })
-  })
+        incident: {
+          key: `unusual-burn:${keyPart}`,
+          title: 'Agent token burn needs review',
+          impact: 'High or spiking usage may increase cost without corresponding completed work.',
+          disposition: 'watch',
+          resources: [agentResource],
+          resolution: diagnosticsResolution,
+        },
+      }))
+    }
+  }
   if (meteringUnknown) observations.push(meteringUnknown)
   if (costAggregationUnknown) observations.push(costAggregationUnknown)
   return healthObserved(observations as [HealthObservationInput, ...HealthObservationInput[]])
 }
 
-export async function checkAgentBurn(): Promise<HealthCheckRunInput> {
-  return checkAgentBurnWith()
+export async function checkAgentBurn(
+  scheduledJobs?: () => Promise<ScheduledJobEvidence[] | null>,
+): Promise<HealthCheckRunInput> {
+  return checkAgentBurnWith({ scheduledJobs })
 }
