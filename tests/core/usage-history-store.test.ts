@@ -66,6 +66,7 @@ function row(overrides: Partial<SessionDayUsage> = {}): SessionDayUsage {
     costUsdMicros: 1_500,
     costedMessages: 2,
     messageCount: 2,
+    userMessages: 0,
     firstTs: T1,
     lastTs: T1 + 60_000,
     ...overrides,
@@ -347,6 +348,100 @@ describe('usage-history evidence migration', () => {
     expect(byAgent.find((entry) => entry.agent === 'legacy-agent')).toBeUndefined()
     expect(byAgent.find((entry) => entry.agent === 'new-agent')?.tokens.total).toBe(47)
     expect(getScanState('legacy-shared', 'new-agent')).toEqual({ mtimeMs: 47, size: 470 })
+  })
+
+  it('v4 wipes bare-model rows and scan state so transcripts rescan with provenance (#689/#691)', () => {
+    closeAllDbs()
+    const storePath = join(testDir, 'usage.db')
+    for (const suffix of ['', '-wal', '-shm']) rmSync(`${storePath}${suffix}`, { force: true })
+
+    // A v3-shaped store: post-rename schema (agent-composite PKs), no origin /
+    // user_messages columns, holding a bare-model row and its scan state.
+    const legacy = openNamedDb('usage', () => storePath)
+    legacy.applyMigrations('usage-history', [{
+      version: 1,
+      up: (handle) => {
+        handle.exec(
+          `CREATE TABLE session_usage_days (
+             session_id TEXT NOT NULL,
+             day TEXT NOT NULL,
+             model TEXT NOT NULL DEFAULT '',
+             agent TEXT NOT NULL,
+             input_tokens INTEGER NOT NULL DEFAULT 0,
+             output_tokens INTEGER NOT NULL DEFAULT 0,
+             cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+             cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+             total_tokens INTEGER NOT NULL DEFAULT 0,
+             cost_usd_micros INTEGER,
+             costed_messages INTEGER NOT NULL DEFAULT 0,
+             message_count INTEGER NOT NULL DEFAULT 0,
+             first_ts INTEGER NOT NULL,
+             last_ts INTEGER NOT NULL,
+             PRIMARY KEY (agent, session_id, day, model)
+           )`,
+        )
+        handle.exec(
+          `CREATE TABLE session_scan_state (
+             session_id TEXT NOT NULL,
+             agent TEXT NOT NULL,
+             mtime_ms INTEGER NOT NULL,
+             size INTEGER NOT NULL,
+             scanned_at INTEGER NOT NULL,
+             PRIMARY KEY (agent, session_id)
+           )`,
+        )
+      },
+    }, {
+      version: 2,
+      up: () => {},
+    }, {
+      version: 3,
+      up: () => {},
+    }])
+    const legacyDb = legacy.db()
+    legacyDb.prepare(
+      `INSERT INTO session_usage_days
+         (session_id, day, model, agent, input_tokens, output_tokens, cache_read_tokens,
+          cache_write_tokens, total_tokens, cost_usd_micros, costed_messages, message_count,
+          first_ts, last_ts)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run('bare-session', DAY1, 'gpt-5.5', 'main', 31, 0, 0, 0, 31, 173_926, 1, 1, T1, T1)
+    legacyDb.prepare(
+      `INSERT INTO session_scan_state (session_id, agent, mtime_ms, size, scanned_at)
+       VALUES (?, ?, ?, ?, ?)`,
+    ).run('bare-session', 'main', 31, 310, T1)
+    closeAllDbs()
+
+    // First touch through the real store runs migration v4: bare-model rows and
+    // scan state are gone, so every transcript rescans into the new shape.
+    expect(usageByAgentSince(DAY1).find((entry) => entry.agent === 'main')).toBeUndefined()
+    expect(getScanState('bare-session', 'main')).toBeNull()
+
+    // The recreated table persists provenance columns.
+    replaceSessionUsage(
+      'bare-session', 'main',
+      [row({ model: 'openai-codex/gpt-5.5', userMessages: 3 })],
+      { mtimeMs: 32, size: 320 },
+      'external',
+    )
+    const stored = openNamedDb('usage', () => storePath)
+      .db()
+      .prepare<{ model: string; origin: string; user_messages: number }, []>(
+        'SELECT model, origin, user_messages FROM session_usage_days',
+      )
+      .all()
+    expect(stored).toEqual([{ model: 'openai-codex/gpt-5.5', origin: 'external', user_messages: 3 }])
+  })
+
+  it('replaceSessionUsage defaults origin to unknown, never a guess', () => {
+    replaceSessionUsage('s-default-origin', 'basil', [row()], { mtimeMs: 1, size: 1 })
+    const stored = openNamedDb('usage', () => join(testDir, 'usage.db'))
+      .db()
+      .prepare<{ origin: string }, [string]>(
+        'SELECT origin FROM session_usage_days WHERE session_id = ?',
+      )
+      .all('s-default-origin')
+    expect(stored).toEqual([{ origin: 'unknown' }])
   })
 })
 

@@ -127,11 +127,61 @@ const MIGRATIONS = [
       db.exec('DELETE FROM session_scan_state')
     },
   },
+  {
+    // v4 adds attribution provenance (#689/#691): models are stored
+    // provider-qualified from the transcript's own provider field, each
+    // session row carries an adapter-reported origin label, and user turns
+    // are counted per bucket. Old rows hold bare model ids the spend engine
+    // cannot lane-resolve honestly, so the derived table is rebuilt and scan
+    // state cleared — same wipe-and-rescan contract as v3.
+    version: 4,
+    up: (db: Db) => {
+      db.exec('DROP TABLE session_usage_days')
+      db.exec(
+        `CREATE TABLE session_usage_days (
+           session_id         TEXT NOT NULL,
+           day                TEXT NOT NULL,
+           model              TEXT NOT NULL DEFAULT '',
+           agent              TEXT NOT NULL,
+           origin             TEXT NOT NULL DEFAULT 'unknown'
+                              CHECK (origin IN ('bakin', 'external', 'unknown')),
+           input_tokens       INTEGER NOT NULL DEFAULT 0,
+           output_tokens      INTEGER NOT NULL DEFAULT 0,
+           cache_read_tokens  INTEGER NOT NULL DEFAULT 0,
+           cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+           total_tokens       INTEGER NOT NULL DEFAULT 0,
+           cost_usd_micros    INTEGER,
+           costed_messages    INTEGER NOT NULL DEFAULT 0,
+           message_count      INTEGER NOT NULL DEFAULT 0,
+           user_messages      INTEGER NOT NULL DEFAULT 0,
+           first_ts           INTEGER NOT NULL,
+           last_ts            INTEGER NOT NULL,
+           PRIMARY KEY (agent, session_id, day, model)
+         )`,
+      )
+      db.exec('CREATE INDEX session_usage_days_by_day ON session_usage_days(day)')
+      db.exec('CREATE INDEX session_usage_days_by_agent ON session_usage_days(agent, day)')
+      db.exec('DELETE FROM session_scan_state')
+    },
+  },
 ]
 
 function db(): Db {
   store.applyMigrations(MODULE, MIGRATIONS)
   return store.db()
+}
+
+/**
+ * Who started the runtime session a usage row came from, as labeled by the
+ * runtime adapter's session-tier entry metadata: `bakin` = a Bakin-dispatched
+ * thread, `external` = a session Bakin never mediated (operator TUI, external
+ * client), `unknown` = the adapter could not tell — never guessed.
+ */
+export type SessionOrigin = 'bakin' | 'external' | 'unknown'
+
+/** Coerce free-form adapter metadata into a SessionOrigin; anything else is `unknown`. */
+export function normalizeSessionOrigin(value: unknown): SessionOrigin {
+  return value === 'bakin' || value === 'external' ? value : 'unknown'
 }
 
 /** One (day, model) bucket of a session's recomputed usage. */
@@ -149,7 +199,10 @@ export interface SessionDayUsage {
   costUsdMicros: number | null
   /** Messages with complete runtime-reported cost evidence (coverage numerator). */
   costedMessages: number
+  /** Usage-bearing assistant messages — the token-bearing turn count. */
   messageCount: number
+  /** User turns attributed to this bucket (#691 interaction evidence). */
+  userMessages: number
   firstTs: number
   lastTs: number
 }
@@ -210,6 +263,7 @@ export function replaceSessionUsage(
   agent: string,
   rows: SessionDayUsage[],
   stat: { mtimeMs: number; size: number },
+  origin: SessionOrigin = 'unknown',
 ): boolean {
   try {
     const handle = db()
@@ -217,16 +271,16 @@ export function replaceSessionUsage(
       handle.prepare('DELETE FROM session_usage_days WHERE agent = ? AND session_id = ?').run(agent, sessionId)
       const insert = handle.prepare(
         `INSERT INTO session_usage_days
-           (session_id, day, model, agent, input_tokens, output_tokens, cache_read_tokens,
+           (session_id, day, model, agent, origin, input_tokens, output_tokens, cache_read_tokens,
             cache_write_tokens, total_tokens, cost_usd_micros, costed_messages, message_count,
-            first_ts, last_ts)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            user_messages, first_ts, last_ts)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       for (const r of rows) {
         insert.run(
-          sessionId, r.day, r.model, agent,
+          sessionId, r.day, r.model, agent, origin,
           r.inputTokens, r.outputTokens, r.cacheReadTokens, r.cacheWriteTokens, r.totalTokens,
-          r.costUsdMicros, r.costedMessages, r.messageCount, r.firstTs, r.lastTs,
+          r.costUsdMicros, r.costedMessages, r.messageCount, r.userMessages, r.firstTs, r.lastTs,
         )
       }
       handle.prepare(

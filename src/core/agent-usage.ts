@@ -59,8 +59,17 @@ interface SessionUsage {
 export interface ParsedSessionMessage {
   /** Epoch ms of the message's own timestamp; null when absent/unparseable. */
   tsMs: number | null
-  /** Model that produced the message; '' when the line had no model field. */
+  /**
+   * Model that produced the message, provider-qualified (`provider/model`)
+   * when the line carried the sibling `provider` field both runtimes write;
+   * bare only when the transcript itself had no provider, '' when no model.
+   */
   model: string
+  /**
+   * User messages attributed to this assistant message: the user turns since
+   * the previous usage-bearing assistant message (#691 interaction evidence).
+   */
+  userMessages: number
   tokens: { input: number; output: number; cacheRead: number; cacheWrite: number; total: number }
   /** Runtime-reported cost fields; null when the line carried none. */
   cost: SessionUsageCost | null
@@ -72,6 +81,8 @@ export interface ParsedSessionUsage {
   sessionId: string
   sessionStarted: string
   messages: ParsedSessionMessage[]
+  /** User turns after the last usage-bearing assistant message; bucket consumers attribute them to the session's latest bucket. */
+  trailingUserMessages: number
   /** JSONL integrity for this read; partial results must not be published as totals. */
   integrity:
     | { status: 'complete'; malformedLines: 0 }
@@ -92,6 +103,7 @@ export function parseSessionUsageMessages(content: string): ParsedSessionUsage {
   let sessionId = ''
   let sessionStarted = ''
   let malformedLines = 0
+  let pendingUserMessages = 0
   const messages: ParsedSessionMessage[] = []
 
   for (const line of lines) {
@@ -136,13 +148,18 @@ export function parseSessionUsageMessages(content: string): ParsedSessionUsage {
         const messageTimestampMs = normalizedMessageTimestamp === ''
           ? null
           : timestampMs(normalizedMessageTimestamp)
+        if (parsed.message.role === 'user') {
+          pendingUserMessages++
+          continue
+        }
         if (parsed.message.role !== 'assistant') continue
-        if (!isOptionalString(parsed.message.model)) {
+        if (!isOptionalString(parsed.message.model) || !isOptionalString(parsed.message.provider)) {
           malformedLines++
           continue
         }
         // Assistant messages without usage are valid transcript rows, but do
-        // not contribute metering evidence.
+        // not contribute metering evidence (and do not consume pending user
+        // turns — those attribute to the next usage-bearing assistant message).
         if (parsed.message.usage == null) continue
         const u = validatedSessionUsage(parsed.message.usage)
         if (!u) {
@@ -154,9 +171,14 @@ export function parseSessionUsageMessages(content: string): ParsedSessionUsage {
           malformedLines++
           continue
         }
+        const bareModel = parsed.message.model ?? ''
+        const provider = parsed.message.provider ?? ''
         messages.push({
           tsMs: messageTimestampMs,
-          model: parsed.message.model ?? '',
+          model: provider && bareModel && !bareModel.includes('/')
+            ? `${provider}/${bareModel}`
+            : bareModel,
+          userMessages: pendingUserMessages,
           tokens: {
             input: u.input,
             output: u.output,
@@ -167,6 +189,7 @@ export function parseSessionUsageMessages(content: string): ParsedSessionUsage {
           cost: u.cost ?? null,
           costComplete: u.costComplete,
         })
+        pendingUserMessages = 0
       }
     } catch {
       malformedLines++
@@ -177,6 +200,7 @@ export function parseSessionUsageMessages(content: string): ParsedSessionUsage {
     sessionId,
     sessionStarted,
     messages,
+    trailingUserMessages: pendingUserMessages,
     integrity: malformedLines === 0
       ? { status: 'complete', malformedLines: 0 }
       : { status: 'partial', malformedLines },

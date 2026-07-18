@@ -195,6 +195,7 @@ describe('GET /agent-effort', () => {
       costUsdMicros: null,
       costedMessages: 0,
       messageCount: 4,
+      userMessages: 0,
       firstTs: NOW - 3_000_000,
       lastTs: NOW - 60_000,
     }], { mtimeMs: 1, size: 1 })

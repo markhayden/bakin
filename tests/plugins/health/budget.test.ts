@@ -196,6 +196,7 @@ describe('budget health check', () => {
       costUsdMicros: 250_000,
       costedMessages: 1,
       messageCount: 3,
+      userMessages: 0,
       firstTs: now,
       lastTs: now,
     }], { mtimeMs: now, size: 1 })
@@ -347,6 +348,7 @@ describe('budget health check', () => {
       costUsdMicros: 1_000_000,
       costedMessages: 1,
       messageCount: 1,
+      userMessages: 0,
       firstTs: now,
       lastTs: now,
     }], { mtimeMs: now, size: 1 })

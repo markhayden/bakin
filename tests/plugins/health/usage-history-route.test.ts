@@ -106,6 +106,7 @@ function seed(sessionId: string, agent: string, day: string, total: number, tsMs
       costUsdMicros: null,
       costedMessages: 0,
       messageCount: 1,
+      userMessages: 0,
       firstTs: tsMs,
       lastTs: tsMs,
     }],
