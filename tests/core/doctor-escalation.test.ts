@@ -63,6 +63,8 @@ function incident(overrides: Partial<HealthIncident> = {}): HealthIncident {
     id: 'health:search:unavailable',
     status: 'error',
     disposition: 'action_required',
+    // Effective mirrors raw unless a test overrides it explicitly (#690).
+    effectiveDisposition: overrides.disposition ?? 'action_required',
     title: 'Search is unavailable',
     impact: 'Search requests fail.',
     resources: [],
@@ -81,6 +83,7 @@ function report(incidents: HealthIncident[]): HealthReport {
     revision: 1,
     generatedAt: '2026-07-13T12:00:00.000Z',
     overallStatus: 'needs_attention',
+    sensitivity: 'developer',
     lastFullSweep: null,
     checks: [],
     observations: [],
@@ -138,6 +141,13 @@ describe('canonical Health escalation', () => {
       incident({ id: 'stale', stale: true }),
       incident({ id: 'watch', disposition: 'watch', status: 'warning' }),
     ])).map((row) => row.id)).toEqual(['health:search:unavailable'])
+  })
+
+  it('a sensitivity-demoted incident never escalates (#690)', () => {
+    expect(freshActionRequiredIncidents(report([
+      // Raw action_required, but the projection demoted it.
+      incident({ id: 'demoted', effectiveDisposition: 'watch' }),
+    ]))).toEqual([])
   })
 
   it('deduplicates notifications by incident ID, not message copy', async () => {

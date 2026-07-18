@@ -27,6 +27,7 @@ function healthReport(): HealthReport {
     revision: 1,
     generatedAt: OBSERVED_AT,
     overallStatus: 'healthy',
+    sensitivity: 'developer',
     lastFullSweep: { id: 'sweep-1', startedAt: OBSERVED_AT, completedAt: OBSERVED_AT },
     checks: [],
     observations: [],

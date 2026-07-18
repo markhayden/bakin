@@ -64,6 +64,7 @@ function canonicalReport() {
     revision: 1,
     generatedAt: observedAt,
     overallStatus: 'degraded' as const,
+    sensitivity: 'standard' as const,
     lastFullSweep: { id: 'sweep-1', startedAt: observedAt, completedAt: observedAt },
     checks: [{
       checkId: 'health.search',
@@ -99,6 +100,7 @@ function canonicalReport() {
       id: 'health:search:degraded',
       status: 'warning' as const,
       disposition: 'watch' as const,
+      effectiveDisposition: 'watch' as const,
       title: incident.title,
       impact: incident.impact,
       resources: incident.resources,

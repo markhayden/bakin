@@ -85,7 +85,7 @@ function report(): HealthReport {
     },
   }
   return {
-    id: 'report-1', revision: 1, generatedAt: OBSERVED_AT, overallStatus: 'degraded',
+    id: 'report-1', revision: 1, generatedAt: OBSERVED_AT, overallStatus: 'degraded', sensitivity: 'developer' as const,
     lastFullSweep: { id: 'sweep-1', startedAt: OBSERVED_AT, completedAt: OBSERVED_AT },
     checks: [healthyCheck, notApplicable, failed], observations: [healthy], incidents: [],
     subsystems: {

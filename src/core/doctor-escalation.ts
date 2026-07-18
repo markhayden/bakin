@@ -28,9 +28,14 @@ export function clearNotifiedIssues(): void {
   notificationStates.clear()
 }
 
+/**
+ * Escalation acts on EFFECTIVE disposition (#690): a sensitivity-demoted
+ * incident never notifies or spawns a repair task — the report projection is
+ * the one place urgency is decided.
+ */
 export function freshActionRequiredIncidents(report: HealthReport): HealthIncident[] {
   return report.incidents.filter((incident) =>
-    incident.disposition === 'action_required' && !incident.stale,
+    incident.effectiveDisposition === 'action_required' && !incident.stale,
   )
 }
 

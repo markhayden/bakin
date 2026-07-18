@@ -18,6 +18,7 @@ function incident(overrides: Partial<HealthIncident> & Pick<HealthIncident, 'id'
     id,
     status: 'warning',
     disposition: 'watch',
+    effectiveDisposition: 'watch',
     title: id,
     impact: 'Operator impact.',
     resources: [],
@@ -109,6 +110,7 @@ function report(options: {
   return {
     id: 'report-1', revision: 1, generatedAt: '2026-07-13T12:00:00.000Z',
     overallStatus: options.status ?? (incidents.length > 0 ? 'degraded' : 'healthy'),
+    sensitivity: 'developer',
     lastFullSweep: { id: 'sweep-1', startedAt: '2026-07-13T11:59:00.000Z', completedAt: '2026-07-13T12:00:00.000Z' },
     checks, observations, incidents,
     subsystems: { search: options.search ?? search() },

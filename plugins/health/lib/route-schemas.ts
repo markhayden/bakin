@@ -1,5 +1,6 @@
 /** Exact HTTP schemas for the canonical Health report and repair boundaries. */
 import { z } from 'zod'
+import { HEALTH_INCIDENT_CLASSES } from '@makinbakin/sdk/types'
 import {
   actionIncidentInputSchema,
   healthIncidentInputSchema,
@@ -153,6 +154,8 @@ export const canonicalHealthIncidentSchema = z.object({
   id: nonEmptyString,
   status: z.enum(['warning', 'error', 'unknown']),
   disposition: z.enum(['advisory', 'watch', 'action_required']),
+  effectiveDisposition: z.enum(['advisory', 'watch', 'action_required']),
+  class: z.enum(HEALTH_INCIDENT_CLASSES).optional(),
   title: nonEmptyString,
   impact: nonEmptyString,
   resources: z.array(healthResourceSchema),
@@ -200,6 +203,7 @@ export const healthReportSchema = z.object({
   revision: z.number().int().nonnegative(),
   generatedAt: isoDateTime,
   overallStatus: z.enum(['healthy', 'needs_attention', 'degraded', 'unknown_stale']),
+  sensitivity: z.enum(['developer', 'standard', 'quiet']),
   lastFullSweep: z.object({
     id: nonEmptyString,
     startedAt: isoDateTime,
@@ -302,10 +306,12 @@ export const healthReportSchema = z.object({
   }
   reconcileSummary(report.summary.checks, expectedCheckSummary, 'checks', 'check executions', context)
 
+  // Summary counts reconcile against EFFECTIVE dispositions (#690) — the
+  // urgency consumers act on, not the producer's raw severity.
   const expectedIncidentSummary = {
-    actionRequired: report.incidents.filter((incident) => incident.disposition === 'action_required').length,
-    watching: report.incidents.filter((incident) => incident.disposition === 'watch').length,
-    advisory: report.incidents.filter((incident) => incident.disposition === 'advisory').length,
+    actionRequired: report.incidents.filter((incident) => incident.effectiveDisposition === 'action_required').length,
+    watching: report.incidents.filter((incident) => incident.effectiveDisposition === 'watch').length,
+    advisory: report.incidents.filter((incident) => incident.effectiveDisposition === 'advisory').length,
     unknown: report.incidents.filter((incident) => incident.status === 'unknown').length,
   }
   reconcileSummary(report.summary.incidents, expectedIncidentSummary, 'incidents', 'incidents', context)

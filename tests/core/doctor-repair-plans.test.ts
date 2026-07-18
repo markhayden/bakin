@@ -54,7 +54,7 @@ function report(overrides: Partial<HealthReport> = {}): HealthReport {
     },
   }
   return {
-    id: 'health-report-1', revision: 1, generatedAt: now.toISOString(), overallStatus: 'needs_attention', lastFullSweep: null,
+    id: 'health-report-1', revision: 1, generatedAt: now.toISOString(), overallStatus: 'needs_attention', sensitivity: 'developer' as const, lastFullSweep: null,
     checks: [{
       checkId: 'health.search', checkName: 'Search readiness', description: 'Checks Search.',
       owner: observation.owner, group: observation.group,
@@ -63,7 +63,7 @@ function report(overrides: Partial<HealthReport> = {}): HealthReport {
     }],
     observations: [observation],
     incidents: [{
-      id: observation.incidentId, status: 'error', disposition: 'action_required', title: 'Search is unavailable', impact: 'Search fails.',
+      id: observation.incidentId, status: 'error', disposition: 'action_required', effectiveDisposition: 'action_required', title: 'Search is unavailable', impact: 'Search fails.',
       resources: [], resolution: observation.incident.resolution, observationIds: [observation.id],
       observedAt: now.toISOString(), staleAt: observation.staleAt, stale: false,
     }],

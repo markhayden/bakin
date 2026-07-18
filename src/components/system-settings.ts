@@ -90,6 +90,19 @@ export const SYSTEM_SETTINGS_SCHEMA: PluginSettingsSchema = {
       description: 'Suppress duplicate MCP alerts within this window. Default 300000 (5 min).',
       default: 300000,
     },
+    // ── Health sensitivity (#690) ─────────────────────────────────────
+    {
+      key: 'doctor.sensitivity',
+      type: 'select',
+      label: 'Health sensitivity',
+      description: 'How loudly Health findings surface. Developer shows raw severities everywhere; Standard (default) calms expected noise (housekeeping, guardrail denials, usage anomalies, unsupported surfaces) to advisory; Quiet additionally notifies only for action-required findings — watch items stay visible on the Health page but silent. Takes effect on the next doctor cycle, no restart.',
+      options: [
+        { value: 'developer', label: 'Developer — show everything at raw severity' },
+        { value: 'standard', label: 'Standard — calm expected noise (default)' },
+        { value: 'quiet', label: 'Quiet — notify only for action-required' },
+      ],
+      default: 'standard',
+    },
     // ── Agent token burn (#385) ───────────────────────────────────────
     {
       key: 'burn.windowHours',

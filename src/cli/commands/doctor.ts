@@ -193,6 +193,8 @@ function canonicalIncidents(observations: readonly HealthObservation[], generate
       id: observation.incidentId,
       status: observation.status,
       disposition: observation.incident.disposition,
+      // Offline reports are unprojected: raw disposition IS effective.
+      effectiveDisposition: observation.incident.disposition,
       title: observation.incident.title,
       impact: observation.incident.impact,
       resources: observation.incident.resources ?? [],
@@ -319,6 +321,8 @@ async function runOfflineDoctor(): Promise<HealthReport> {
     revision: 0,
     generatedAt,
     overallStatus,
+    // No server projection ran — this offline report shows raw dispositions.
+    sensitivity: 'developer',
     lastFullSweep: null,
     checks,
     observations,

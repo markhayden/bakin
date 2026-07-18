@@ -39,6 +39,7 @@ function report(id: string, search: SearchReadiness): HealthReport {
     revision: id === 'report-1' ? 1 : 2,
     generatedAt: '2026-07-13T12:00:00.000Z',
     overallStatus: search.status === 'degraded' ? 'degraded' : 'healthy',
+    sensitivity: 'developer',
     lastFullSweep: { id: `sweep:${id}`, startedAt: OBSERVED_AT, completedAt: OBSERVED_AT },
     checks: [],
     observations: [],

@@ -8,9 +8,15 @@ import type {
   HealthReport,
 } from '../../packages/core/src/plugin-types'
 import type { DetailedHealthCheckRun } from './doctor-checks'
-import { buildHealthIncidents, deriveHealthReportStatus, sortHealthIncidents } from './health-report'
+import {
+  buildHealthIncidents,
+  deriveHealthReportStatus,
+  projectEffectiveDispositions,
+  sortHealthIncidents,
+} from './health-report'
 import { deriveSearchReadiness } from './health-search-readiness'
 import { listHealthChecks, onHealthRegistryChanged } from './health-check-registry'
+import { getSettings } from './settings'
 
 interface CachedCheck {
   state: HealthCheckState
@@ -291,9 +297,12 @@ function safeIncidentProjection(
  */
 function semanticProjectionKey(report: Pick<
   HealthReport,
-  'checks' | 'observations' | 'incidents' | 'overallStatus' | 'subsystems'
+  'checks' | 'observations' | 'incidents' | 'overallStatus' | 'subsystems' | 'sensitivity'
 >): string {
   return JSON.stringify({
+    // Sensitivity participates in identity: a mode flip must republish even
+    // when the underlying evidence is unchanged (no-restart flips, #690).
+    sensitivity: report.sensitivity,
     checks: report.checks.map((check) => [
       check.checkId,
       check.latestValidSnapshot?.observations.map((observation) => [observation.id, observation.snapshot]) ?? [],
@@ -308,6 +317,8 @@ function semanticProjectionKey(report: Pick<
       incident.id,
       incident.status,
       incident.disposition,
+      incident.effectiveDisposition,
+      incident.class ?? null,
       incident.stale,
       incident.observationIds,
     ]),
@@ -326,7 +337,11 @@ export function getHealthReport(generatedAt = new Date().toISOString()): HealthR
   const projected = definitions.map((def) => projectCheck(def, generatedAt))
   const checks = projected.map((entry) => entry.state)
   const candidateObservations = projected.flatMap((entry) => entry.observations)
-  const { observations, incidents } = safeIncidentProjection(candidateObservations, generatedAt, defById)
+  const { observations, incidents: rawIncidents } = safeIncidentProjection(candidateObservations, generatedAt, defById)
+  // Sensitivity is applied HERE, once, before status derivation — every
+  // consumer (UI, badge, escalation, CLI) reads the same effective story.
+  const sensitivity = getSettings().doctor.sensitivity
+  const incidents = sortHealthIncidents(projectEffectiveDispositions(rawIncidents, sensitivity))
   const search = deriveSearchReadiness({ observations, incidents, checks, generatedAt })
   const overallStatus = deriveHealthReportStatus({
     registeredChecks: definitions.length,
@@ -344,14 +359,15 @@ export function getHealthReport(generatedAt = new Date().toISOString()): HealthR
       notApplicable: checks.filter((check) => check.latestExecution.outcome === 'not_applicable').length,
     },
     incidents: {
-      actionRequired: incidents.filter((incident) => incident.disposition === 'action_required').length,
-      watching: incidents.filter((incident) => incident.disposition === 'watch').length,
-      advisory: incidents.filter((incident) => incident.disposition === 'advisory').length,
+      actionRequired: incidents.filter((incident) => incident.effectiveDisposition === 'action_required').length,
+      watching: incidents.filter((incident) => incident.effectiveDisposition === 'watch').length,
+      advisory: incidents.filter((incident) => incident.effectiveDisposition === 'advisory').length,
       unknown: incidents.filter((incident) => incident.status === 'unknown').length,
     },
   }
   const reportProjection = {
     overallStatus,
+    sensitivity,
     checks,
     observations,
     incidents,

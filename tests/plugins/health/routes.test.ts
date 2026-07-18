@@ -71,6 +71,7 @@ const cachedReport: HealthReport = {
   revision: 4,
   generatedAt,
   overallStatus: 'needs_attention',
+  sensitivity: 'developer' as const,
   lastFullSweep: { id: 'sweep-1', startedAt: generatedAt, completedAt: generatedAt },
   checks: [],
   observations: [{
@@ -87,7 +88,7 @@ const cachedReport: HealthReport = {
     },
   }],
   incidents: [{
-    id: 'tasks:taskboard:missing-columns', status: 'error', disposition: 'action_required',
+    id: 'tasks:taskboard:missing-columns', status: 'error', disposition: 'action_required', effectiveDisposition: 'action_required',
     title: 'Task board columns are missing', impact: 'Tasks cannot move through the full workflow.',
     resources: [{ kind: 'plugin', id: 'tasks', label: 'Tasks' }],
     resolution: { key: 'repair-board', type: 'repair', label: 'Repair board', actionId: 'tasks.repair-store' },

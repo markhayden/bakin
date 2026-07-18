@@ -37,6 +37,7 @@ function report(overrides: Partial<HealthReport> = {}): HealthReport {
     revision: 1,
     generatedAt,
     overallStatus: 'healthy',
+    sensitivity: 'developer',
     lastFullSweep: { id: 'sweep-1', startedAt: generatedAt, completedAt: generatedAt },
     checks: [],
     observations: [],
