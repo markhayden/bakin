@@ -40,7 +40,7 @@ comparison, and deletion of replaced styling/allowances.
 - [x] T14 Build and compare bundled typography specimens
 - [x] T15 Build dense list/data direction alternatives
 - [x] T16 Build detail/form direction alternatives
-- [ ] T17 Build conversation/workflow direction alternatives
+- [x] T17 Build conversation/workflow direction alternatives
 - [ ] T18 Approve and codify the visual direction
 - [ ] USER CHECKPOINT: visual direction approved
 

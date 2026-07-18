@@ -47,6 +47,7 @@ export const CANDIDATE_UI_CSS = `
 }
 .bakin-candidate-study__intro h1 {
   margin: var(--bakin-layout-space-0);
+  overflow-wrap: anywhere;
   font-size: clamp(1.75rem, 5vw, 3.25rem);
   font-weight: 600;
   line-height: 1.04;
@@ -152,6 +153,7 @@ export const CANDIDATE_UI_CSS = `
 .bakin-action[aria-pressed='true'] { border-color: var(--bakin-color-signal-accent); }
 .bakin-action:disabled { cursor: not-allowed; opacity: var(--bakin-state-opacity-disabled); }
 .bakin-status { display: inline-flex; align-items: center; gap: var(--bakin-layout-space-2); min-width: 0; }
+.bakin-status__label { min-width: 0; overflow-wrap: anywhere; }
 .bakin-status::before {
   flex: 0 0 auto;
   width: var(--bakin-layout-space-2);
@@ -355,7 +357,7 @@ export function Action({ tone = 'secondary', className, buttonRef, ...props }: B
 }
 
 export function Status({ tone = 'positive', children }: { tone?: 'positive' | 'attention' | 'danger' | 'accent' | 'muted'; children: ReactNode }) {
-  return <span className="bakin-status" data-tone={tone}>{children}</span>
+  return <span className="bakin-status" data-tone={tone}><span className="bakin-status__label">{children}</span></span>
 }
 
 export function SystemState({ kind, title, description, action }: { kind: SystemStateKind; title: string; description: string; action?: ReactNode }) {
