@@ -91,6 +91,10 @@ describe('combined docs and public UI catalog', () => {
 
     expect(packageJson.scripts['docs:check']).toContain('docs:validate:routes')
     expect(packageJson.scripts['docs:check']).toContain('docs:build:combined')
+    expect(packageJson.scripts['docs:generate']).toContain('ui:tokens:generate')
+    expect(readFileSync(join(REPO_ROOT, 'docs/astro.config.mjs'), 'utf-8')).toContain(
+      "{ label: 'UI Tokens', slug: 'reference/generated/ui-tokens' }",
+    )
     expect(checkout?.with?.ref).toBe('${{ inputs.version_ref || github.ref }}')
     expect(steps.some(step => step.run === 'bun run docs:check')).toBe(true)
     expect(upload?.with?.path).toBe('docs/dist')

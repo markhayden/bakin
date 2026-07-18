@@ -10,68 +10,161 @@
     "color": {
       "canvas": {
         "default": {
-          "$description": "The application canvas.",
-          "$value": "{reference.color.warm.950}"
+          "$description": "The application background behind default surfaces and page content.",
+          "$value": "{reference.color.warm.950}",
+          "$extensions": {
+            "dev.bakin.tokens": {
+              "contrastAgainst": "semantic.color.text.primary",
+              "contrastRole": "normal-text"
+            }
+          }
         }
       },
       "surface": {
         "default": {
-          "$description": "The default bounded surface.",
-          "$value": "{reference.color.warm.900}"
+          "$description": "The default bounded surface placed above the application canvas.",
+          "$value": "{reference.color.warm.900}",
+          "$extensions": {
+            "dev.bakin.tokens": {
+              "contrastAgainst": "semantic.color.text.primary",
+              "contrastRole": "normal-text"
+            }
+          }
         }
       },
       "text": {
-        "primary": { "$value": "{reference.color.warm.0}" },
-        "muted": { "$value": "{reference.color.warm.100}" }
+        "primary": {
+          "$description": "Primary copy, labels, and high-emphasis interface text on the application canvas.",
+          "$value": "{reference.color.warm.0}",
+          "$extensions": {
+            "dev.bakin.tokens": {
+              "contrastAgainst": "semantic.color.canvas.default",
+              "contrastRole": "normal-text"
+            }
+          }
+        },
+        "muted": {
+          "$description": "Secondary copy, metadata, and helper text on the application canvas.",
+          "$value": "{reference.color.warm.100}",
+          "$extensions": {
+            "dev.bakin.tokens": {
+              "contrastAgainst": "semantic.color.canvas.default",
+              "contrastRole": "normal-text"
+            }
+          }
+        }
       },
       "border": {
-        "subtle": { "$value": "{reference.color.warm.500}" }
+        "subtle": {
+          "$description": "Low-emphasis separators and nonessential boundaries; never the only state indicator.",
+          "$value": "{reference.color.warm.500}",
+          "$extensions": {
+            "dev.bakin.tokens": {
+              "contrastAgainst": "semantic.color.surface.default",
+              "contrastRole": "reference"
+            }
+          }
+        }
       },
       "action": {
         "primary": {
-          "background": { "$value": "{reference.color.green.500}" },
-          "foreground": { "$value": "{reference.color.green.950}" }
+          "background": {
+            "$description": "Fill for the primary action on a surface.",
+            "$value": "{reference.color.green.500}",
+            "$extensions": {
+              "dev.bakin.tokens": {
+                "contrastAgainst": "semantic.color.action.primary.foreground",
+                "contrastRole": "normal-text"
+              }
+            }
+          },
+          "foreground": {
+            "$description": "Text and icon color placed on the primary action fill.",
+            "$value": "{reference.color.green.950}",
+            "$extensions": {
+              "dev.bakin.tokens": {
+                "contrastAgainst": "semantic.color.action.primary.background",
+                "contrastRole": "normal-text"
+              }
+            }
+          }
         }
       },
       "signal": {
-        "accent": { "$value": "{reference.color.pink.500}" },
-        "highlight": { "$value": "{reference.color.yellow.400}" },
-        "danger": { "$value": "{reference.color.red.500}" }
+        "accent": {
+          "$description": "Brand accent for selected or emphasized non-text signal marks on the canvas.",
+          "$value": "{reference.color.pink.500}",
+          "$extensions": {
+            "dev.bakin.tokens": {
+              "contrastAgainst": "semantic.color.canvas.default",
+              "contrastRole": "non-text"
+            }
+          }
+        },
+        "highlight": {
+          "$description": "High-attention non-text highlight on the canvas.",
+          "$value": "{reference.color.yellow.400}",
+          "$extensions": {
+            "dev.bakin.tokens": {
+              "contrastAgainst": "semantic.color.canvas.default",
+              "contrastRole": "non-text"
+            }
+          }
+        },
+        "danger": {
+          "$description": "Destructive and error signal marks on the canvas.",
+          "$value": "{reference.color.red.500}",
+          "$extensions": {
+            "dev.bakin.tokens": {
+              "contrastAgainst": "semantic.color.canvas.default",
+              "contrastRole": "non-text"
+            }
+          }
+        }
       },
       "focus": {
-        "ring": { "$value": "{reference.color.green.500}" }
+        "ring": {
+          "$description": "Keyboard focus indicator on the application canvas.",
+          "$value": "{reference.color.green.500}",
+          "$extensions": {
+            "dev.bakin.tokens": {
+              "contrastAgainst": "semantic.color.canvas.default",
+              "contrastRole": "non-text"
+            }
+          }
+        }
       }
     },
     "layout": {
       "space": {
-        "0": { "$ref": "#/reference/space/0" },
-        "1": { "$ref": "#/reference/space/1" },
-        "2": { "$ref": "#/reference/space/2" },
-        "3": { "$ref": "#/reference/space/3" },
-        "4": { "$ref": "#/reference/space/4" },
-        "6": { "$ref": "#/reference/space/6" },
-        "8": { "$ref": "#/reference/space/8" }
+        "0": { "$description": "Removes structural separation without introducing a magic value.", "$ref": "#/reference/space/0" },
+        "1": { "$description": "Tight internal separation for compact details.", "$ref": "#/reference/space/1" },
+        "2": { "$description": "Compact separation between closely related controls or content.", "$ref": "#/reference/space/2" },
+        "3": { "$description": "Comfortable separation within a control group or content cluster.", "$ref": "#/reference/space/3" },
+        "4": { "$description": "Default separation between sibling interface regions.", "$ref": "#/reference/space/4" },
+        "6": { "$description": "Section-level separation between distinct content groups.", "$ref": "#/reference/space/6" },
+        "8": { "$description": "Strong page-level separation between major regions.", "$ref": "#/reference/space/8" }
       }
     },
     "radius": {
-      "control": { "$value": "{reference.radius.sm}" },
-      "surface": { "$value": "{reference.radius.md}" },
-      "overlay": { "$value": "{reference.radius.lg}" },
-      "pill": { "$value": "{reference.radius.full}" }
+      "control": { "$description": "Corner radius for compact controls and small interactive elements.", "$value": "{reference.radius.sm}" },
+      "surface": { "$description": "Corner radius for bounded content surfaces.", "$value": "{reference.radius.md}" },
+      "overlay": { "$description": "Corner radius for dialogs, popovers, and other elevated overlays.", "$value": "{reference.radius.lg}" },
+      "pill": { "$description": "Fully rounded shape for badges, chips, and pill controls.", "$value": "{reference.radius.full}" }
     },
     "motion": {
       "duration": {
-        "instant": { "$value": "{reference.duration.instant}" },
-        "feedback": { "$value": "{reference.duration.fast}" },
-        "transition": { "$value": "{reference.duration.standard}" }
+        "instant": { "$description": "No-transition response for reduced motion and immediate state changes.", "$value": "{reference.duration.instant}" },
+        "feedback": { "$description": "Short response for direct control feedback and micro-state changes.", "$value": "{reference.duration.fast}" },
+        "transition": { "$description": "Standard duration for functional spatial and hierarchy transitions.", "$value": "{reference.duration.standard}" }
       },
       "easing": {
-        "standard": { "$value": "{reference.easing.standard}" }
+        "standard": { "$description": "Default restrained easing for functional interface transitions.", "$value": "{reference.easing.standard}" }
       }
     },
     "state": {
       "opacity": {
-        "disabled": { "$value": "{reference.opacity.disabled}" }
+        "disabled": { "$description": "Opacity applied to a disabled control while preserving its semantic state.", "$value": "{reference.opacity.disabled}" }
       }
     }
   }

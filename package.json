@@ -56,7 +56,7 @@
     "test:components": "bun test --isolate tests/components",
     "test:watch": "bun test --watch --isolate --path-ignore-patterns \"dev/**\"",
     "test:coverage": "bun test --isolate --coverage --path-ignore-patterns \"dev/**\"",
-    "docs:generate": "bun run scripts/docs/generate.ts",
+    "docs:generate": "bun run ui:tokens:generate && bun run scripts/docs/generate.ts",
     "docs:dev": "bun run --cwd docs dev",
     "docs:validate": "bun run scripts/docs/check.ts",
     "docs:validate:routes": "bun run scripts/docs/route-contract-check.ts",

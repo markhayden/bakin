@@ -631,6 +631,7 @@
       "layer": "semantic",
       "visibility": "public",
       "type": "color",
+      "description": "Fill for the primary action on a surface.",
       "source": "packages/ui/tokens/semantic.tokens.json#/semantic/color/action/primary/background",
       "references": [
         "reference.color.green.500"
@@ -643,6 +644,14 @@
           0.368627
         ],
         "hex": "#22c55e"
+      },
+      "contrast": {
+        "against": "semantic.color.action.primary.foreground",
+        "role": "normal-text",
+        "ratio": 6.54,
+        "minimum": 4.5,
+        "standard": "WCAG AA normal text",
+        "status": "pass"
       }
     },
     {
@@ -650,6 +659,7 @@
       "layer": "semantic",
       "visibility": "public",
       "type": "color",
+      "description": "Text and icon color placed on the primary action fill.",
       "source": "packages/ui/tokens/semantic.tokens.json#/semantic/color/action/primary/foreground",
       "references": [
         "reference.color.green.950"
@@ -662,6 +672,14 @@
           0.086275
         ],
         "hex": "#052e16"
+      },
+      "contrast": {
+        "against": "semantic.color.action.primary.background",
+        "role": "normal-text",
+        "ratio": 6.54,
+        "minimum": 4.5,
+        "standard": "WCAG AA normal text",
+        "status": "pass"
       }
     },
     {
@@ -669,6 +687,7 @@
       "layer": "semantic",
       "visibility": "public",
       "type": "color",
+      "description": "Low-emphasis separators and nonessential boundaries; never the only state indicator.",
       "source": "packages/ui/tokens/semantic.tokens.json#/semantic/color/border/subtle",
       "references": [
         "reference.color.warm.500"
@@ -681,6 +700,14 @@
           0.278431
         ],
         "hex": "#4a4747"
+      },
+      "contrast": {
+        "against": "semantic.color.surface.default",
+        "role": "reference",
+        "ratio": 2.01,
+        "minimum": null,
+        "standard": "Reference comparison",
+        "status": "reference"
       }
     },
     {
@@ -688,7 +715,7 @@
       "layer": "semantic",
       "visibility": "public",
       "type": "color",
-      "description": "The application canvas.",
+      "description": "The application background behind default surfaces and page content.",
       "source": "packages/ui/tokens/semantic.tokens.json#/semantic/color/canvas/default",
       "references": [
         "reference.color.warm.950"
@@ -701,6 +728,14 @@
           0.054902
         ],
         "hex": "#0f0e0e"
+      },
+      "contrast": {
+        "against": "semantic.color.text.primary",
+        "role": "normal-text",
+        "ratio": 19.28,
+        "minimum": 4.5,
+        "standard": "WCAG AA normal text",
+        "status": "pass"
       }
     },
     {
@@ -708,6 +743,7 @@
       "layer": "semantic",
       "visibility": "public",
       "type": "color",
+      "description": "Keyboard focus indicator on the application canvas.",
       "source": "packages/ui/tokens/semantic.tokens.json#/semantic/color/focus/ring",
       "references": [
         "reference.color.green.500"
@@ -720,6 +756,14 @@
           0.368627
         ],
         "hex": "#22c55e"
+      },
+      "contrast": {
+        "against": "semantic.color.canvas.default",
+        "role": "non-text",
+        "ratio": 8.46,
+        "minimum": 3,
+        "standard": "WCAG AA non-text UI",
+        "status": "pass"
       }
     },
     {
@@ -727,6 +771,7 @@
       "layer": "semantic",
       "visibility": "public",
       "type": "color",
+      "description": "Brand accent for selected or emphasized non-text signal marks on the canvas.",
       "source": "packages/ui/tokens/semantic.tokens.json#/semantic/color/signal/accent",
       "references": [
         "reference.color.pink.500"
@@ -739,6 +784,14 @@
           0.498039
         ],
         "hex": "#ff007f"
+      },
+      "contrast": {
+        "against": "semantic.color.canvas.default",
+        "role": "non-text",
+        "ratio": 5.1,
+        "minimum": 3,
+        "standard": "WCAG AA non-text UI",
+        "status": "pass"
       }
     },
     {
@@ -746,6 +799,7 @@
       "layer": "semantic",
       "visibility": "public",
       "type": "color",
+      "description": "Destructive and error signal marks on the canvas.",
       "source": "packages/ui/tokens/semantic.tokens.json#/semantic/color/signal/danger",
       "references": [
         "reference.color.red.500"
@@ -758,6 +812,14 @@
           0.266667
         ],
         "hex": "#ef4444"
+      },
+      "contrast": {
+        "against": "semantic.color.canvas.default",
+        "role": "non-text",
+        "ratio": 5.12,
+        "minimum": 3,
+        "standard": "WCAG AA non-text UI",
+        "status": "pass"
       }
     },
     {
@@ -765,6 +827,7 @@
       "layer": "semantic",
       "visibility": "public",
       "type": "color",
+      "description": "High-attention non-text highlight on the canvas.",
       "source": "packages/ui/tokens/semantic.tokens.json#/semantic/color/signal/highlight",
       "references": [
         "reference.color.yellow.400"
@@ -777,6 +840,14 @@
           0
         ],
         "hex": "#eaea00"
+      },
+      "contrast": {
+        "against": "semantic.color.canvas.default",
+        "role": "non-text",
+        "ratio": 14.93,
+        "minimum": 3,
+        "standard": "WCAG AA non-text UI",
+        "status": "pass"
       }
     },
     {
@@ -784,7 +855,7 @@
       "layer": "semantic",
       "visibility": "public",
       "type": "color",
-      "description": "The default bounded surface.",
+      "description": "The default bounded surface placed above the application canvas.",
       "source": "packages/ui/tokens/semantic.tokens.json#/semantic/color/surface/default",
       "references": [
         "reference.color.warm.900"
@@ -797,6 +868,14 @@
           0.07451
         ],
         "hex": "#151313"
+      },
+      "contrast": {
+        "against": "semantic.color.text.primary",
+        "role": "normal-text",
+        "ratio": 18.51,
+        "minimum": 4.5,
+        "standard": "WCAG AA normal text",
+        "status": "pass"
       }
     },
     {
@@ -804,6 +883,7 @@
       "layer": "semantic",
       "visibility": "public",
       "type": "color",
+      "description": "Secondary copy, metadata, and helper text on the application canvas.",
       "source": "packages/ui/tokens/semantic.tokens.json#/semantic/color/text/muted",
       "references": [
         "reference.color.warm.100"
@@ -816,6 +896,14 @@
           0.666667
         ],
         "hex": "#aeaaaa"
+      },
+      "contrast": {
+        "against": "semantic.color.canvas.default",
+        "role": "normal-text",
+        "ratio": 8.38,
+        "minimum": 4.5,
+        "standard": "WCAG AA normal text",
+        "status": "pass"
       }
     },
     {
@@ -823,6 +911,7 @@
       "layer": "semantic",
       "visibility": "public",
       "type": "color",
+      "description": "Primary copy, labels, and high-emphasis interface text on the application canvas.",
       "source": "packages/ui/tokens/semantic.tokens.json#/semantic/color/text/primary",
       "references": [
         "reference.color.warm.0"
@@ -835,6 +924,14 @@
           1
         ],
         "hex": "#ffffff"
+      },
+      "contrast": {
+        "against": "semantic.color.canvas.default",
+        "role": "normal-text",
+        "ratio": 19.28,
+        "minimum": 4.5,
+        "standard": "WCAG AA normal text",
+        "status": "pass"
       }
     },
     {
@@ -842,6 +939,7 @@
       "layer": "semantic",
       "visibility": "public",
       "type": "dimension",
+      "description": "Removes structural separation without introducing a magic value.",
       "source": "packages/ui/tokens/semantic.tokens.json#/semantic/layout/space/0",
       "references": [
         "reference.space.0"
@@ -856,6 +954,7 @@
       "layer": "semantic",
       "visibility": "public",
       "type": "dimension",
+      "description": "Tight internal separation for compact details.",
       "source": "packages/ui/tokens/semantic.tokens.json#/semantic/layout/space/1",
       "references": [
         "reference.space.1"
@@ -870,6 +969,7 @@
       "layer": "semantic",
       "visibility": "public",
       "type": "dimension",
+      "description": "Compact separation between closely related controls or content.",
       "source": "packages/ui/tokens/semantic.tokens.json#/semantic/layout/space/2",
       "references": [
         "reference.space.2"
@@ -884,6 +984,7 @@
       "layer": "semantic",
       "visibility": "public",
       "type": "dimension",
+      "description": "Comfortable separation within a control group or content cluster.",
       "source": "packages/ui/tokens/semantic.tokens.json#/semantic/layout/space/3",
       "references": [
         "reference.space.3"
@@ -898,6 +999,7 @@
       "layer": "semantic",
       "visibility": "public",
       "type": "dimension",
+      "description": "Default separation between sibling interface regions.",
       "source": "packages/ui/tokens/semantic.tokens.json#/semantic/layout/space/4",
       "references": [
         "reference.space.4"
@@ -912,6 +1014,7 @@
       "layer": "semantic",
       "visibility": "public",
       "type": "dimension",
+      "description": "Section-level separation between distinct content groups.",
       "source": "packages/ui/tokens/semantic.tokens.json#/semantic/layout/space/6",
       "references": [
         "reference.space.6"
@@ -926,6 +1029,7 @@
       "layer": "semantic",
       "visibility": "public",
       "type": "dimension",
+      "description": "Strong page-level separation between major regions.",
       "source": "packages/ui/tokens/semantic.tokens.json#/semantic/layout/space/8",
       "references": [
         "reference.space.8"
@@ -940,6 +1044,7 @@
       "layer": "semantic",
       "visibility": "public",
       "type": "duration",
+      "description": "Short response for direct control feedback and micro-state changes.",
       "source": "packages/ui/tokens/semantic.tokens.json#/semantic/motion/duration/feedback",
       "references": [
         "reference.duration.fast"
@@ -954,6 +1059,7 @@
       "layer": "semantic",
       "visibility": "public",
       "type": "duration",
+      "description": "No-transition response for reduced motion and immediate state changes.",
       "source": "packages/ui/tokens/semantic.tokens.json#/semantic/motion/duration/instant",
       "references": [
         "reference.duration.instant"
@@ -968,6 +1074,7 @@
       "layer": "semantic",
       "visibility": "public",
       "type": "duration",
+      "description": "Standard duration for functional spatial and hierarchy transitions.",
       "source": "packages/ui/tokens/semantic.tokens.json#/semantic/motion/duration/transition",
       "references": [
         "reference.duration.standard"
@@ -982,6 +1089,7 @@
       "layer": "semantic",
       "visibility": "public",
       "type": "cubicBezier",
+      "description": "Default restrained easing for functional interface transitions.",
       "source": "packages/ui/tokens/semantic.tokens.json#/semantic/motion/easing/standard",
       "references": [
         "reference.easing.standard"
@@ -998,6 +1106,7 @@
       "layer": "semantic",
       "visibility": "public",
       "type": "dimension",
+      "description": "Corner radius for compact controls and small interactive elements.",
       "source": "packages/ui/tokens/semantic.tokens.json#/semantic/radius/control",
       "references": [
         "reference.radius.sm"
@@ -1012,6 +1121,7 @@
       "layer": "semantic",
       "visibility": "public",
       "type": "dimension",
+      "description": "Corner radius for dialogs, popovers, and other elevated overlays.",
       "source": "packages/ui/tokens/semantic.tokens.json#/semantic/radius/overlay",
       "references": [
         "reference.radius.lg"
@@ -1026,6 +1136,7 @@
       "layer": "semantic",
       "visibility": "public",
       "type": "dimension",
+      "description": "Fully rounded shape for badges, chips, and pill controls.",
       "source": "packages/ui/tokens/semantic.tokens.json#/semantic/radius/pill",
       "references": [
         "reference.radius.full"
@@ -1040,6 +1151,7 @@
       "layer": "semantic",
       "visibility": "public",
       "type": "dimension",
+      "description": "Corner radius for bounded content surfaces.",
       "source": "packages/ui/tokens/semantic.tokens.json#/semantic/radius/surface",
       "references": [
         "reference.radius.md"
@@ -1054,6 +1166,7 @@
       "layer": "semantic",
       "visibility": "public",
       "type": "number",
+      "description": "Opacity applied to a disabled control while preserving its semantic state.",
       "source": "packages/ui/tokens/semantic.tokens.json#/semantic/state/opacity/disabled",
       "references": [
         "reference.opacity.disabled"

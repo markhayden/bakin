@@ -1,23 +1,27 @@
 import { afterEach, describe, expect, it } from 'bun:test'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 
 import {
   checkTokenArtifacts,
   compileTokenSources,
   generateTokenArtifacts,
+  loadTokenSources,
   renderTokenManifest,
+  TOKEN_DOCS_OUTPUT_PATH,
   TOKEN_METADATA_OUTPUT_PATH,
   TOKEN_OUTPUT_PATH,
   TOKEN_RUNTIME_CSS_OUTPUT_PATH,
   TOKEN_SOURCE_FILES,
+  TOKEN_STORY_OUTPUT_PATH,
   TOKEN_TAILWIND_OUTPUT_PATH,
   type TokenLayer,
   type TokenSourceFile,
 } from '../../../scripts/ui/generate-tokens'
 
 const fixtureRoots: string[] = []
+const REPO_ROOT = resolve(import.meta.dir, '../../..')
 
 function source(layer: TokenLayer, document: Record<string, unknown>): TokenSourceFile {
   return { path: `${layer}.tokens.json`, layer, document }
@@ -334,6 +338,118 @@ describe('token artifact generation', () => {
     expect(metadata).toContain("export type BakinSemanticTokenName = typeof BAKIN_SEMANTIC_TOKENS[number]['name']")
   })
 
+  it('emits one source-linked public catalog row per semantic token and no internal author contracts', () => {
+    const root = mkdtempSync(join(tmpdir(), 'bakin-token-catalog-'))
+    fixtureRoots.push(root)
+    writeSourceTree(root)
+
+    generateTokenArtifacts(root)
+
+    const story = readFileSync(join(root, TOKEN_STORY_OUTPUT_PATH), 'utf-8')
+    const docs = readFileSync(join(root, TOKEN_DOCS_OUTPUT_PATH), 'utf-8')
+    const expectedNames = ['semantic.canvas', 'semantic.controlGap']
+    const storyNames = [...story.matchAll(/"name": "(semantic\.[^"]+)"/g)].map((match) => match[1])
+    const docsNames = docs.split('\n')
+      .filter((line) => line.startsWith('| `semantic.'))
+      .map((line) => line.match(/^\| `([^`]+)`/)?.[1])
+
+    expect(storyNames).toEqual(expectedNames)
+    expect(docsNames).toEqual(expectedNames)
+    expect(story).toContain("tags: ['public']")
+    expect(story).toContain('Public semantic')
+    expect(docs).toContain('Public semantic')
+    expect(docs).toContain('https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json')
+    expect(story).not.toContain('reference.color.ink')
+    expect(story).not.toContain('component.button.background')
+    expect(docs).not.toContain('reference.color.ink')
+    expect(docs).not.toContain('component.button.background')
+  })
+
+  it('updates every derived surface deterministically from one semantic source addition', () => {
+    const root = mkdtempSync(join(tmpdir(), 'bakin-token-propagation-'))
+    fixtureRoots.push(root)
+    writeSourceTree(root)
+    generateTokenArtifacts(root)
+    const derivedPaths = [
+      TOKEN_OUTPUT_PATH,
+      TOKEN_RUNTIME_CSS_OUTPUT_PATH,
+      TOKEN_TAILWIND_OUTPUT_PATH,
+      TOKEN_METADATA_OUTPUT_PATH,
+      TOKEN_STORY_OUTPUT_PATH,
+      TOKEN_DOCS_OUTPUT_PATH,
+    ]
+    const before = new Map(derivedPaths.map((path) => [path, readFileSync(join(root, path), 'utf-8')]))
+    const sources = validSources()
+    const semantic = sources[1].document.semantic as Record<string, unknown>
+    semantic.panel = {
+      $type: 'color',
+      $description: 'A newly added public panel surface.',
+      $value: '{reference.color.ink}',
+    }
+    writeSourceTree(root, sources)
+
+    generateTokenArtifacts(root)
+
+    for (const path of derivedPaths) {
+      const next = readFileSync(join(root, path), 'utf-8')
+      expect(next).not.toBe(before.get(path))
+      expect(next).toContain(path.endsWith('.css') ? 'bakin-panel' : 'semantic.panel')
+    }
+    expect(checkTokenArtifacts(root)).toEqual({ tokens: 7, publicTokens: 3 })
+  })
+
+  it('blocks generated specimens when an approved contrast role misses its WCAG threshold', () => {
+    const root = mkdtempSync(join(tmpdir(), 'bakin-token-contrast-'))
+    fixtureRoots.push(root)
+    const sources = [
+      source('reference', layerDocument('reference', {
+        color: {
+          $type: 'color',
+          dark: {
+            $value: { colorSpace: 'srgb', components: [0.058824, 0.054902, 0.054902], hex: '#0f0e0e' },
+          },
+          almostDark: {
+            $value: { colorSpace: 'srgb', components: [0.082353, 0.07451, 0.07451], hex: '#151313' },
+          },
+        },
+      })),
+      source('semantic', layerDocument('semantic', {
+        color: {
+          canvas: {
+            $description: 'Canvas color.',
+            $value: '{reference.color.dark}',
+            $extensions: {
+              'dev.bakin.tokens': {
+                contrastAgainst: 'semantic.color.text',
+                contrastRole: 'normal-text',
+              },
+            },
+          },
+          text: {
+            $description: 'Text color.',
+            $value: '{reference.color.almostDark}',
+          },
+        },
+      })),
+      source('component', layerDocument('component', {})),
+    ]
+    writeSourceTree(root, sources)
+
+    expect(() => generateTokenArtifacts(root)).toThrow(
+      'WCAG AA normal text minimum of 4.5:1',
+    )
+  })
+
+  it('keeps production public intent and color contrast data complete', () => {
+    const manifest = compileTokenSources(loadTokenSources(REPO_ROOT))
+    const publicTokens = manifest.tokens.filter((token) => token.visibility === 'public')
+    const publicColors = publicTokens.filter((token) => token.type === 'color')
+
+    expect(publicTokens.every((token) => Boolean(token.description?.trim()))).toBe(true)
+    expect(publicColors.every((token) => token.contrast !== undefined)).toBe(true)
+    expect(publicColors.every((token) => ['pass', 'reference'].includes(token.contrast?.status ?? ''))).toBe(true)
+  })
+
   it('rejects public token names that normalize to the same generated CSS variable', () => {
     const root = mkdtempSync(join(tmpdir(), 'bakin-token-collision-'))
     fixtureRoots.push(root)
@@ -364,6 +480,13 @@ describe('token artifact generation', () => {
     writeFileSync(output, generated.replace('DTCG 2025.10', 'stale'))
     expect(() => checkTokenArtifacts(root)).toThrow(
       `${TOKEN_OUTPUT_PATH} is stale; run bun run ui:tokens:generate`,
+    )
+
+    writeFileSync(output, generated)
+    const docsOutput = join(root, TOKEN_DOCS_OUTPUT_PATH)
+    writeFileSync(docsOutput, readFileSync(docsOutput, 'utf-8').replace('Semantic UI Tokens', 'Stale UI Tokens'))
+    expect(() => checkTokenArtifacts(root)).toThrow(
+      `${TOKEN_DOCS_OUTPUT_PATH} is stale; run bun run ui:tokens:generate`,
     )
   })
 })

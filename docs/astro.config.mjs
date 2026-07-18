@@ -158,6 +158,7 @@ export default defineConfig({
             { label: 'Defaults', slug: 'reference/generated/settings' },
             { label: 'Runtime Paths', slug: 'reference/generated/runtime-paths' },
             { label: 'SDK Reference', slug: 'reference/generated/sdk' },
+            { label: 'UI Tokens', slug: 'reference/generated/ui-tokens' },
           ],
         },
         {

@@ -35,8 +35,8 @@ comparison, and deletion of replaced styling/allowances.
 
 - [x] T11 Implement DTCG token validation and generation core
 - [x] T12 Emit CSS, Tailwind mappings, and TypeScript token metadata
-- [ ] T13 Generate token specimens and public reference docs
-- [ ] Checkpoint 2A: token pipeline deterministic
+- [x] T13 Generate token specimens and public reference docs
+- [x] Checkpoint 2A: token pipeline deterministic
 - [ ] T14 Build and compare bundled typography specimens
 - [ ] T15 Build dense list/data direction alternatives
 - [ ] T16 Build detail/form direction alternatives
