@@ -43,6 +43,30 @@ both core and official Bits as first-party consumers. CI and docs deployment
 checkout the recorded Bits ref rather than whatever happens to be at the tip
 of its default branch.
 
+## Legacy style ratchet
+
+`migrations.json` is the generated, path-pinned migration ledger for current
+browser styling debt across the host, shared SDK UI, core plugins, the Bakin
+reference plugin, and official Bits. Each path records exact per-rule ceilings,
+its owner, a valid census entry, intended migration task/archetype, target, and
+temporary `legacy-allowed` status. It covers raw palette values, arbitrary
+sizes, hand-built controls, inline styles, generic tokens, unscoped plugin CSS,
+and private plugin imports.
+
+The gate is monotonic: unchanged or reduced counts pass; a new path/rule or an
+increase fails. A completed migration slice deletes its replaced styling and
+then regenerates the ledger so the lower ceiling is reviewed and committed.
+The checked-in document must satisfy `migrations.schema.json`.
+
+```sh
+bun run ui:legacy-styles:generate  # intentionally refresh reviewed ceilings
+bun run ui:legacy-styles:check     # official core + Bits CI/release gate
+```
+
+Both commands resolve official Bits through the same
+`BAKIN_DOCS_EXTERNAL_SOURCES`/sibling-checkout contract used by the census and
+docs. Missing Bits input fails rather than silently weakening coverage.
+
 ## Browser baseline
 
 See [`baseline/README.md`](baseline/README.md) for the versioned pre-revamp

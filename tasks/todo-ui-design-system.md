@@ -16,7 +16,7 @@ comparison, and deletion of replaced styling/allowances.
 - [x] T2 Define and generate the core UI census
 - [x] T3 Include Bits and create the compatibility matrix
 - [x] Checkpoint 0A: census truth reviewed
-- [ ] T4 Build the legacy-style ratchet
+- [x] T4 Build the legacy-style ratchet
 - [ ] T5 Establish initial performance and dependency budgets
 - [ ] Checkpoint 0B: foundation audit reviewed
 

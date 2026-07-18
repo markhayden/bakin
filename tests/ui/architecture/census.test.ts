@@ -163,6 +163,10 @@ describe('the Bakin core census', () => {
 
     expect(byKind('host-route')).toHaveLength(26)
     expect(byKind('plugin-slot')).toHaveLength(28)
+    expect(byKind('plugin-template')).toContainEqual(expect.objectContaining({
+      id: 'plugin-template:reference-plugin',
+      owner: expect.objectContaining({ pluginId: 'reference-bookmarks' }),
+    }))
     expect(byKind('shared-component').length).toBeGreaterThan(80)
     expect(byKind('sdk-ui-export').length).toBeGreaterThan(80)
     expect(validateCensus(census)).toEqual([])

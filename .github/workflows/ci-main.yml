@@ -20,7 +20,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      # docs:check and ui:census:check share this official Bits source root.
+      # Docs and official UI architecture checks share this Bits source root.
       # Cloned ABOVE $GITHUB_WORKSPACE so `bun test` doesn't
       # recurse into it. actions/checkout rejects paths outside the
       # workspace, so use plain git clone (the repo is public).
@@ -43,6 +43,11 @@ jobs:
         env:
           BAKIN_DOCS_EXTERNAL_SOURCES: ${{ runner.workspace }}/external/bakin-bits-official/plugins
         run: bun run ui:census:check
+
+      - name: Legacy UI style ratchet
+        env:
+          BAKIN_DOCS_EXTERNAL_SOURCES: ${{ runner.workspace }}/external/bakin-bits-official/plugins
+        run: bun run ui:legacy-styles:check
 
       - name: Check for ~/.bakin and ~/.openclaw bypasses
         run: bun run lint:home-bypasses

@@ -416,6 +416,32 @@ function routeEntries(root: string): CensusEntry[] {
   })
 }
 
+function referencePluginTemplateEntries(root: string): CensusEntry[] {
+  const manifestFile = join(root, 'examples/reference-plugin/bakin-plugin.json')
+  if (!existsSync(manifestFile)) return []
+  const manifest = JSON.parse(readFileSync(manifestFile, 'utf-8')) as { id?: string }
+  const sourcePath = portablePath(root, manifestFile)
+  return [{
+    id: 'plugin-template:reference-plugin',
+    kind: 'plugin-template',
+    owner: {
+      repository: 'bakin',
+      area: 'plugin',
+      pluginId: manifest.id ?? 'reference-bookmarks',
+    },
+    identity: { component: 'reference-plugin' },
+    sourcePath,
+    symbols: [],
+    exportStatus: 'not-applicable',
+    classification: 'public-contract',
+    evidence: [{
+      type: 'manifest-template',
+      path: sourcePath,
+      detail: 'Bakin reference plugin author contract',
+    }],
+  }]
+}
+
 function pluginSlotEntries(root: string): CensusEntry[] {
   const pluginsRoot = join(root, 'plugins')
   if (!existsSync(pluginsRoot)) return []
@@ -700,6 +726,7 @@ export function scanCoreCensus(root = REPO_ROOT): CensusDocument {
   const publicExports = collectPublicExports(root)
   const entries = [
     ...routeEntries(root),
+    ...referencePluginTemplateEntries(root),
     ...pluginSlotEntries(root),
     ...componentEntries(root, publicExports),
     ...sdkExportEntries(publicExports),
@@ -713,6 +740,7 @@ export function scanCoreCensus(root = REPO_ROOT): CensusDocument {
       repositories: ['bakin'],
       includes: [
         'host routes',
+        'Bakin reference plugin author contract',
         'core plugin page and embedded slots',
         'shared TSX component units',
         'public @makinbakin/sdk/components exports',
@@ -799,8 +827,8 @@ export function validateCensus(census: CensusDocument): string[] {
       if (!evidenceTypes.has('client-registration')) errors.push(`${entry.id} is missing its client slot registration`)
     }
     if (entry.kind === 'shared-component' && !entry.identity.component) errors.push(`${entry.id} has no component identity`)
-    if (entry.kind === 'plugin-template' && entry.owner.repository !== 'bakin-bits-official') {
-      errors.push(`${entry.id} is not owned by official Bits`)
+    if (entry.kind === 'plugin-template' && entry.owner.area !== 'plugin') {
+      errors.push(`${entry.id} is not owned by a plugin contract`)
     }
     if (entry.kind === 'sdk-ui-export' && (!entry.identity.symbol || !entry.identity.entrypoint)) {
       errors.push(`${entry.id} has no public export identity`)

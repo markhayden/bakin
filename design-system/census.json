@@ -9,6 +9,7 @@
     ],
     "includes": [
       "host routes",
+      "Bakin reference plugin author contract",
       "core plugin page and embedded slots",
       "shared TSX component units",
       "public @makinbakin/sdk/components exports",
@@ -18,12 +19,12 @@
     ]
   },
   "summary": {
-    "total": 282,
+    "total": 283,
     "byKind": {
       "host-route": 26,
       "plugin-route": 9,
       "plugin-slot": 30,
-      "plugin-template": 1,
+      "plugin-template": 2,
       "shared-component": 93,
       "sdk-ui-export": 123
     },
@@ -1866,6 +1867,29 @@
           "type": "manifest-template",
           "path": "bakin-bits-official/plugins/_template/bakin-plugin.json",
           "detail": "official plugin author template manifest"
+        }
+      ]
+    },
+    {
+      "id": "plugin-template:reference-plugin",
+      "kind": "plugin-template",
+      "owner": {
+        "repository": "bakin",
+        "area": "plugin",
+        "pluginId": "reference-bookmarks"
+      },
+      "identity": {
+        "component": "reference-plugin"
+      },
+      "sourcePath": "examples/reference-plugin/bakin-plugin.json",
+      "symbols": [],
+      "exportStatus": "not-applicable",
+      "classification": "public-contract",
+      "evidence": [
+        {
+          "type": "manifest-template",
+          "path": "examples/reference-plugin/bakin-plugin.json",
+          "detail": "Bakin reference plugin author contract"
         }
       ]
     },
