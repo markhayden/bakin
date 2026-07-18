@@ -22,6 +22,7 @@ import type {
 } from '@bakin/core/adapters/runtime'
 import { getAgentSessionsDir, getAgentWorkspaceDir, getPiAgentsRoot, getPiHome } from './home'
 import { readRegistry } from './registry'
+import { readSessionOriginIndex } from './sessions'
 
 export const SESSION_TIER_ID = 'pi-session-jsonl'
 export const DURABLE_TIER_ID = 'pi-durable'
@@ -82,6 +83,24 @@ function agentIdsFor(agentId?: string): string[] {
   return readRegistry().agents.map((a) => a.id)
 }
 
+/**
+ * Origin metadata for one agent's session files (#691): a file recorded in
+ * bakin-threads.json was Bakin-dispatched; an unrecorded file is an
+ * interactive/external session (Pi TUI, other clients). A missing map means
+ * Bakin never dispatched here (all external); a corrupt map means we cannot
+ * tell (all unknown — never guessed).
+ */
+function sessionOriginMetadata(agentId: string): (absPath: string) => Record<string, unknown> {
+  const index = readSessionOriginIndex(agentId)
+  return (absPath: string) => {
+    if (index.status === 'corrupt') return { sourceKind: 'session_jsonl', origin: 'unknown' }
+    const originThreadId = index.status === 'ok' ? index.threadByFile.get(absPath) : undefined
+    return originThreadId
+      ? { sourceKind: 'session_jsonl', origin: 'bakin', originThreadId }
+      : { sourceKind: 'session_jsonl', origin: 'external' }
+  }
+}
+
 export function createMemorySurface(): AgentRuntimeAdapter['memory'] {
   return {
     async listTiers(): Promise<RuntimeMemoryTier[]> {
@@ -92,16 +111,19 @@ export function createMemorySurface(): AgentRuntimeAdapter['memory'] {
       const out: RuntimeMemoryEntry[] = []
       for (const agent of agentIdsFor(opts?.agentId)) {
         const root = tierRoot(tierId, agent)
+        const originFor = tierId === SESSION_TIER_ID ? sessionOriginMetadata(agent) : null
         for (const file of entryFiles(tierId, agent)) {
-          const stat = statSync(join(root, file))
+          const abs = join(root, file)
+          const stat = statSync(abs)
           out.push({
             id: file,
             tierId,
             agentId: agent,
-            path: join(root, file),
+            path: abs,
             // Light listing: content ships via getEntry/readEntryRange.
             content: '',
             updatedAt: stat.mtime.toISOString(),
+            ...(originFor ? { metadata: originFor(abs) } : {}),
           })
         }
       }
@@ -120,6 +142,7 @@ export function createMemorySurface(): AgentRuntimeAdapter['memory'] {
           path: abs,
           content: readFileSync(abs, 'utf-8'),
           updatedAt: stat.mtime.toISOString(),
+          ...(tierId === SESSION_TIER_ID ? { metadata: sessionOriginMetadata(agent)(abs) } : {}),
         }
       }
       return null

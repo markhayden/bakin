@@ -10,6 +10,7 @@ import type {
 import { readOpenClawConfig } from './config'
 import { getOpenClawHome, getOpenClawPath } from './home'
 import { tryGetMainAgentId } from './main-agent'
+import { readSessionStoreCached } from './session-store'
 
 const SESSION_JSONL_RE = /^([^/.]+)\.jsonl$/
 const SESSION_RESET_RE = /\.reset(?:\.|-)/
@@ -365,12 +366,13 @@ function listSessionJsonlRefs(agentId: string): SourceRef[] {
   if (!existsSync(dir)) return []
   try {
     const out: SourceRef[] = []
+    const originFor = sessionOriginResolver(agentId)
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       if (!entry.isFile() || !entry.name.endsWith('.jsonl')) continue
       if (CHECKPOINT_RE.test(entry.name)) continue
       const match = SESSION_JSONL_RE.exec(entry.name)
       if (!match) continue
-      out.push(sessionJsonlRef(agentId, match[1], entry.name))
+      out.push(sessionJsonlRef(agentId, match[1], entry.name, originFor))
     }
     return out
   } catch {
@@ -378,7 +380,39 @@ function listSessionJsonlRefs(agentId: string): SourceRef[] {
   }
 }
 
-function sessionJsonlRef(agentId: string, sessionId: string, filename = `${sessionId}.jsonl`): SourceRef {
+/**
+ * Session origin labeling (#691): the gateway's sessions.json keys carry the
+ * provenance. Bakin's threaded sends register under
+ * `agent:<id>:explicit:<uuid>` with a deterministic v5-shaped uuid
+ * (deterministicUuid stamps the version nibble); subagent sessions are
+ * runtime-spawned child work, never operator chat. Every other key shape
+ * (`:main`, channels, `:openai:*` external clients, v4-explicit) is an
+ * interactive/external session. A session missing from the store — or an
+ * unreadable store — is `unknown`, never guessed.
+ */
+function sessionOriginResolver(agentId: string): (sessionId: string) => 'bakin' | 'external' | 'unknown' {
+  const store = readSessionStoreCached(join(agentSessionsDir(agentId), 'sessions.json'))
+  if (!store) return () => 'unknown'
+  const keyBySessionId = new Map<string, string>()
+  for (const [key, entry] of Object.entries(store)) {
+    if (entry?.sessionId) keyBySessionId.set(entry.sessionId, key)
+  }
+  return (sessionId: string) => {
+    const key = keyBySessionId.get(sessionId)
+    if (!key) return 'unknown'
+    if (key === `agent:${agentId}:explicit:${sessionId}` && sessionId[14] === '5') return 'bakin'
+    if (key.startsWith(`agent:${agentId}:subagent:`)) return 'bakin'
+    return 'external'
+  }
+}
+
+function sessionJsonlRef(
+  agentId: string,
+  sessionId: string,
+  filename = `${sessionId}.jsonl`,
+  originFor?: (sessionId: string) => 'bakin' | 'external' | 'unknown',
+): SourceRef {
+  const resolve = originFor ?? sessionOriginResolver(agentId)
   return {
     tierId: OPENCLAW_MEMORY_TIERS.sessionJsonl,
     sourceKind: OPENCLAW_MEMORY_SOURCE_KINDS.sessionJsonl,
@@ -389,6 +423,7 @@ function sessionJsonlRef(agentId: string, sessionId: string, filename = `${sessi
       sourceKind: OPENCLAW_MEMORY_SOURCE_KINDS.sessionJsonl,
       sessionId,
       isReset: SESSION_RESET_RE.test(filename),
+      origin: resolve(sessionId),
     },
   }
 }

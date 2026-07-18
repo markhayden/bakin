@@ -230,6 +230,48 @@ export const runtimeConformanceChecks = {
     }
   },
 
+  /**
+   * Session-origin honesty (#691): a runtime that exposes a `session_jsonl`
+   * memory tier must label session entries' provenance truthfully. Any
+   * `origin` metadata must be `bakin | external | unknown`, and after a
+   * threaded Bakin send at least one labeled entry must be `bakin` —
+   * otherwise dispatch provenance is lost and interactive-vs-unexplained
+   * usage buckets cannot be trusted. Runtimes without the tier (the minimal
+   * mock) conform vacuously.
+   */
+  async sessionOriginLabelsAreHonest(target: RuntimeConformanceTarget): Promise<void> {
+    const { runtime, agentId } = target
+    const tiers = await runtime.memory.listTiers()
+    const sessionTier = tiers.find((t) => t.metadata?.sourceKind === 'session_jsonl')
+    if (!sessionTier) return
+    await target.prepareOkTurn?.()
+    const result = await runtime.messaging.send({
+      agentId,
+      content: 'conformance: origin labeling turn',
+      threadId: target.newThreadId(),
+    })
+    const entries = await runtime.memory.listEntries(sessionTier.id, { agentId })
+    // Every origin label the tier surfaces must come from the closed set.
+    for (const entry of entries) {
+      if (!entry.metadata || !('origin' in entry.metadata)) continue
+      const origin = entry.metadata.origin
+      if (origin !== 'bakin' && origin !== 'external' && origin !== 'unknown') {
+        fail(`session entry origin must be 'bakin' | 'external' | 'unknown'; got ${JSON.stringify(origin)} on ${entry.id}`)
+      }
+    }
+    // If the transcript of the Bakin send we just made is listed, it must be
+    // labeled bakin — anything else loses dispatch provenance. Runtimes that
+    // don't persist per-turn transcripts (the crab mock) conform vacuously.
+    const sid = result.metadata?.sessionId
+    if (typeof sid !== 'string' || sid.length === 0) return
+    const ownEntry = entries.find(
+      (e) => e.id === sid || e.metadata?.sessionId === sid || e.id.includes(sid),
+    )
+    if (ownEntry && ownEntry.metadata?.origin !== 'bakin') {
+      fail(`the session of a threaded Bakin send is labeled ${JSON.stringify(ownEntry.metadata?.origin)} — dispatch provenance is lost`)
+    }
+  },
+
   /** Caller aborts settle as kind 'aborted' — terminal, clean, never a recovery-ladder entry. */
   async abortSettlesAsAbortedKind(target: RuntimeConformanceTarget): Promise<void> {
     const { settled } = await target.startAbortableTurn()
@@ -631,6 +673,10 @@ export function runRuntimeConformanceSuite(
   describe(`runtime conformance: ${name}`, () => {
     it('threaded send returns metadata.sessionId', async () => {
       await runtimeConformanceChecks.threadedSendReturnsSessionId(getTarget())
+    })
+
+    it('session-origin labels are honest where a transcript tier exists', async () => {
+      await runtimeConformanceChecks.sessionOriginLabelsAreHonest(getTarget())
     })
 
     it("abort settles as kind 'aborted'", async () => {
