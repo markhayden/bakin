@@ -18,7 +18,7 @@ comparison, and deletion of replaced styling/allowances.
 - [x] Checkpoint 0A: census truth reviewed
 - [x] T4 Build the legacy-style ratchet
 - [x] T5 Establish initial performance and dependency budgets
-- [ ] Checkpoint 0B: foundation audit reviewed
+- [x] Checkpoint 0B: foundation audit reviewed
 
 ## Phase 1 — Catalog and browser verification
 
