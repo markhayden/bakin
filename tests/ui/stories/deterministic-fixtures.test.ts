@@ -24,7 +24,7 @@ describe('deterministic Storybook fixtures', () => {
       fixedNow: '2026-01-15T12:00:00.000Z',
       route: '/',
       fontFamilies: {
-        sans: 'Inter',
+        sans: 'Space Grotesk',
         mono: 'JetBrains Mono',
       },
       viewports: {

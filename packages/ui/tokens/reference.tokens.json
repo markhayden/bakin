@@ -1,9 +1,9 @@
 {
-  "$description": "Internal candidate values. Plugin authors must not consume this layer.",
+  "$description": "Approved internal foundation values. Plugin authors must not consume this layer.",
   "$extensions": {
     "dev.bakin.tokens": {
       "layer": "reference",
-      "status": "candidate"
+      "status": "approved"
     }
   },
   "reference": {
@@ -88,6 +88,13 @@
             "hex": "#ef4444"
           }
         }
+      },
+      "overlayShadow": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.058824, 0.054902, 0.054902],
+          "alpha": 0.78
+        }
       }
     },
     "space": {
@@ -99,6 +106,33 @@
       "4": { "$value": { "value": 1, "unit": "rem" } },
       "6": { "$value": { "value": 1.5, "unit": "rem" } },
       "8": { "$value": { "value": 2, "unit": "rem" } }
+    },
+    "font": {
+      "family": {
+        "$type": "fontFamily",
+        "ui": { "$value": ["Space Grotesk", "ui-sans-serif", "system-ui", "sans-serif"] },
+        "mono": { "$value": ["JetBrains Mono", "ui-monospace", "monospace"] }
+      },
+      "size": {
+        "$type": "dimension",
+        "pageTitle": { "$value": { "value": 2.25, "unit": "rem" } },
+        "sectionTitle": { "$value": { "value": 0.86, "unit": "rem" } },
+        "body": { "$value": { "value": 0.8, "unit": "rem" } },
+        "meta": { "$value": { "value": 0.68, "unit": "rem" } }
+      },
+      "weight": {
+        "$type": "fontWeight",
+        "regular": { "$value": 400 },
+        "medium": { "$value": 500 },
+        "semibold": { "$value": 600 },
+        "bold": { "$value": 700 }
+      }
+    },
+    "size": {
+      "$type": "dimension",
+      "control": { "$value": { "value": 2.25, "unit": "rem" } },
+      "row": { "$value": { "value": 3, "unit": "rem" } },
+      "rowDense": { "$value": { "value": 2.5, "unit": "rem" } }
     },
     "radius": {
       "$type": "dimension",
@@ -116,6 +150,19 @@
     "easing": {
       "$type": "cubicBezier",
       "standard": { "$value": [0.2, 0, 0, 1] }
+    },
+    "shadow": {
+      "$type": "shadow",
+      "overlay": {
+        "$value": {
+          "color": { "$ref": "#/reference/color/overlayShadow/$value" },
+          "offsetX": { "value": 0, "unit": "px" },
+          "offsetY": { "value": 1.5, "unit": "rem" },
+          "blur": { "value": 3.5, "unit": "rem" },
+          "spread": { "value": 0, "unit": "px" },
+          "inset": false
+        }
+      }
     },
     "opacity": {
       "$type": "number",

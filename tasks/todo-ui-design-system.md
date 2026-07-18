@@ -41,8 +41,8 @@ comparison, and deletion of replaced styling/allowances.
 - [x] T15 Build dense list/data direction alternatives
 - [x] T16 Build detail/form direction alternatives
 - [x] T17 Build conversation/workflow direction alternatives
-- [ ] T18 Approve and codify the visual direction
-- [ ] USER CHECKPOINT: visual direction approved
+- [x] T18 Approve and codify the visual direction
+- [x] USER CHECKPOINT: visual direction approved
 
 ## Phase 3 — Private UI and focused SDK
 

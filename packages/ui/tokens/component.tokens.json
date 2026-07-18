@@ -1,9 +1,9 @@
 {
-  "$description": "Internal candidate aliases for component implementation. Plugin authors must not consume this layer.",
+  "$description": "Approved internal aliases for component implementation. Plugin authors must not consume this layer.",
   "$extensions": {
     "dev.bakin.tokens": {
       "layer": "component",
-      "status": "candidate"
+      "status": "approved"
     }
   },
   "component": {

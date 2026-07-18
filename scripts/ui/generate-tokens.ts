@@ -699,7 +699,7 @@ const TOKEN_CATALOG_CSS = `
   background: var(--bakin-color-canvas-default);
   color: var(--bakin-color-text-primary);
   padding: var(--bakin-layout-space-8);
-  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  font-family: var(--bakin-typography-family-ui);
 }
 .bakin-token-catalog * { box-sizing: border-box; }
 .bakin-token-catalog__content { width: min(100%, 76rem); margin: 0 auto; }
@@ -764,7 +764,7 @@ const TOKEN_CATALOG_CSS = `
 }
 .bakin-token-row code,
 .bakin-token-row__value {
-  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-family: var(--bakin-typography-family-mono);
   font-size: .78rem;
   overflow-wrap: anywhere;
 }
@@ -808,7 +808,7 @@ const TOKEN_CATALOG_CSS = `
 .bakin-token-preview--space span { display: block; width: max(2px, var(--token-value)); height: .5rem; background: var(--bakin-color-signal-highlight); }
 .bakin-token-preview--radius span { width: 2rem; height: 2rem; border: 2px solid var(--bakin-color-signal-accent); border-radius: var(--token-value); }
 .bakin-token-preview--opacity span { width: 2rem; height: 2rem; border-radius: var(--bakin-radius-control); background: var(--bakin-color-action-primary-background); opacity: var(--token-value); }
-.bakin-token-preview--value { color: var(--bakin-color-text-muted); font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: .65rem; text-align: center; }
+.bakin-token-preview--value { color: var(--bakin-color-text-muted); font-family: var(--bakin-typography-family-mono); font-size: .65rem; text-align: center; }
 @media (max-width: 44rem) {
   .bakin-token-catalog { padding: var(--bakin-layout-space-4); }
   .bakin-token-row { grid-template-columns: 1fr; gap: var(--bakin-layout-space-3); }
@@ -921,6 +921,9 @@ function escapeMarkdownCell(value: string): string {
 function renderTokenDocs(manifest: TokenManifest): string {
   const metadata = publicTokenMetadata(manifest)
   const families = [...new Set(metadata.map((token) => token.family))]
+  const foundationStatus = manifest.sourceStatus === 'approved'
+    ? 'The approved foundation contains'
+    : 'The current candidate contains'
   const sections = families.flatMap((family) => {
     const rows = metadata.filter((token) => token.family === family).map((token) => {
       const contrast = token.contrast
@@ -946,7 +949,7 @@ function renderTokenDocs(manifest: TokenManifest): string {
     '',
     'This reference is generated from the DTCG token source. Use the namespaced CSS properties through [`@makinbakin/sdk/styles.css`](/docs/extending/ui/overview/); internal reference values, component aliases, and Tailwind mappings are not plugin-author contracts.',
     '',
-    `The current candidate contains **${metadata.length} public tokens** across **${families.length} semantic families**. Contrast ratios are calculated during generation. A declared WCAG role below its threshold fails generation and CI.`,
+    `${foundationStatus} **${metadata.length} public tokens** across **${families.length} semantic families**. Contrast ratios are calculated during generation. A declared WCAG role below its threshold fails generation and CI.`,
     '',
     ...sections,
   ].join('\n')

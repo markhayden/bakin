@@ -160,7 +160,7 @@ function DetailStudy({ text200 = false }: { text200?: boolean }) {
     <main className="bakin-candidate-study">
       <CandidateStyles css={DETAIL_FORM_CSS} />
       {text200 && <style>{'html { font-size: 200%; }'}</style>}
-      <CandidateIntro title={text200 ? 'Detail and form at 200% text' : 'Detail and form directions'}>Compare realistic Brand, Team, and Project detail pressure using the same candidate form and composition contract. Neither direction is selected.</CandidateIntro>
+      <CandidateIntro title={text200 ? 'Detail and form at 200% text' : 'Detail and form directions'}>Product Character is the approved form and detail direction. Operational Neutral remains comparison evidence, not an alternate product theme.</CandidateIntro>
       <div className="bakin-candidate-study__directions"><DetailForm direction="operational-neutral" /><DetailForm direction="product-character" /></div>
     </main>
   )

@@ -17,6 +17,25 @@ taxonomy rather than inventing a parallel navigation model.
 Rule zero: **assemble from the SDK first**. If a pattern below has a named
 component, hand-rolling it is a defect, not a preference.
 
+## Approved foundation
+
+Product Character is the approved default as of 2026-07-18. Product and
+plugin chrome use locally bundled **Space Grotesk**; identifiers, code,
+numerals, and technical data use locally bundled **JetBrains Mono**. The warm
+dark foundation, green primary action, pink signal, and yellow highlight keep
+their roles through namespaced semantic tokens.
+
+There is one compact-professional density. Product Character spacing governs
+pages, sections, controls, and normal content. Tables, repeated rows, and
+operational data use the approved tighter dense gap and row height. This is a
+contextual recipe inside the same system—not a selectable density mode, a
+second theme, or an Inter-based alternative.
+
+The side-by-side Storybook specimens remain internal decision evidence.
+Operational Neutral is not an implementation target. New component work uses
+the selected Product Character values generated from
+`packages/ui/tokens/*.tokens.json`.
+
 ## 1. Text hierarchy — four tiers, never adjacent at the same weight
 
 | Tier | Treatment | Examples |
@@ -49,12 +68,13 @@ never sit at rest in a card — surface on hover or behind the detail view.
 
 ## 3. Surfaces & elevation
 
-- Cards: `rounded-xl bg-card ring-1 ring-foreground/10` (no hard borders);
-  hover affordance = `hover:ring-foreground/25`, never a background flip.
-- Row tiles inside a card: `rounded-lg bg-foreground/[0.04] ring-1
-  ring-foreground/5` — list items must be individually distinguishable, not a
-  flat text block.
-- Nested containers (group tiles): `bg-surface` one step up.
+- Page hierarchy comes first from type, spacing, surface shifts, and subtle
+  dividers. Cards are reserved for genuinely bounded objects and coherent
+  grouped data; nested card stacks are a defect.
+- Approved radii and overlay elevation come from semantic tokens. Do not
+  choose `rounded-*` or shadow utilities ad hoc.
+- Repeated rows use separators or a restrained surface shift. Explicit dense
+  data rows use the canonical dense gap/height without changing typography.
 - `SectionCard` is THE titled section: icon + title, caption description,
   right-aligned header `action`. Every user-facing section explains itself in
   one caption line.

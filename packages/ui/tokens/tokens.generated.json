@@ -2,15 +2,15 @@
   "schemaVersion": 1,
   "format": "DTCG 2025.10",
   "generatedBy": "bun run ui:tokens:generate",
-  "sourceStatus": "candidate",
+  "sourceStatus": "approved",
   "layers": {
     "reference": {
       "visibility": "internal",
-      "tokens": 26
+      "tokens": 41
     },
     "semantic": {
       "visibility": "public",
-      "tokens": 27
+      "tokens": 45
     },
     "component": {
       "visibility": "internal",
@@ -81,7 +81,7 @@
       ],
       "value": {
         "unit": "rem",
-        "value": 0.25
+        "value": 0.5
       }
     },
     {
@@ -262,7 +262,7 @@
       ],
       "value": {
         "unit": "rem",
-        "value": 0.25
+        "value": 0.5
       }
     },
     {
@@ -297,6 +297,23 @@
           0.086275
         ],
         "hex": "#052e16"
+      }
+    },
+    {
+      "path": "reference.color.overlayShadow",
+      "layer": "reference",
+      "visibility": "internal",
+      "type": "color",
+      "source": "packages/ui/tokens/reference.tokens.json#/reference/color/overlayShadow",
+      "references": [],
+      "value": {
+        "alpha": 0.78,
+        "colorSpace": "srgb",
+        "components": [
+          0.058824,
+          0.054902,
+          0.054902
+        ]
       }
     },
     {
@@ -486,6 +503,117 @@
       ]
     },
     {
+      "path": "reference.font.family.mono",
+      "layer": "reference",
+      "visibility": "internal",
+      "type": "fontFamily",
+      "source": "packages/ui/tokens/reference.tokens.json#/reference/font/family/mono",
+      "references": [],
+      "value": [
+        "JetBrains Mono",
+        "ui-monospace",
+        "monospace"
+      ]
+    },
+    {
+      "path": "reference.font.family.ui",
+      "layer": "reference",
+      "visibility": "internal",
+      "type": "fontFamily",
+      "source": "packages/ui/tokens/reference.tokens.json#/reference/font/family/ui",
+      "references": [],
+      "value": [
+        "Space Grotesk",
+        "ui-sans-serif",
+        "system-ui",
+        "sans-serif"
+      ]
+    },
+    {
+      "path": "reference.font.size.body",
+      "layer": "reference",
+      "visibility": "internal",
+      "type": "dimension",
+      "source": "packages/ui/tokens/reference.tokens.json#/reference/font/size/body",
+      "references": [],
+      "value": {
+        "unit": "rem",
+        "value": 0.8
+      }
+    },
+    {
+      "path": "reference.font.size.meta",
+      "layer": "reference",
+      "visibility": "internal",
+      "type": "dimension",
+      "source": "packages/ui/tokens/reference.tokens.json#/reference/font/size/meta",
+      "references": [],
+      "value": {
+        "unit": "rem",
+        "value": 0.68
+      }
+    },
+    {
+      "path": "reference.font.size.pageTitle",
+      "layer": "reference",
+      "visibility": "internal",
+      "type": "dimension",
+      "source": "packages/ui/tokens/reference.tokens.json#/reference/font/size/pageTitle",
+      "references": [],
+      "value": {
+        "unit": "rem",
+        "value": 2.25
+      }
+    },
+    {
+      "path": "reference.font.size.sectionTitle",
+      "layer": "reference",
+      "visibility": "internal",
+      "type": "dimension",
+      "source": "packages/ui/tokens/reference.tokens.json#/reference/font/size/sectionTitle",
+      "references": [],
+      "value": {
+        "unit": "rem",
+        "value": 0.86
+      }
+    },
+    {
+      "path": "reference.font.weight.bold",
+      "layer": "reference",
+      "visibility": "internal",
+      "type": "fontWeight",
+      "source": "packages/ui/tokens/reference.tokens.json#/reference/font/weight/bold",
+      "references": [],
+      "value": 700
+    },
+    {
+      "path": "reference.font.weight.medium",
+      "layer": "reference",
+      "visibility": "internal",
+      "type": "fontWeight",
+      "source": "packages/ui/tokens/reference.tokens.json#/reference/font/weight/medium",
+      "references": [],
+      "value": 500
+    },
+    {
+      "path": "reference.font.weight.regular",
+      "layer": "reference",
+      "visibility": "internal",
+      "type": "fontWeight",
+      "source": "packages/ui/tokens/reference.tokens.json#/reference/font/weight/regular",
+      "references": [],
+      "value": 400
+    },
+    {
+      "path": "reference.font.weight.semibold",
+      "layer": "reference",
+      "visibility": "internal",
+      "type": "fontWeight",
+      "source": "packages/ui/tokens/reference.tokens.json#/reference/font/weight/semibold",
+      "references": [],
+      "value": 600
+    },
+    {
       "path": "reference.opacity.disabled",
       "layer": "reference",
       "visibility": "internal",
@@ -540,6 +668,80 @@
       "value": {
         "unit": "rem",
         "value": 0.25
+      }
+    },
+    {
+      "path": "reference.shadow.overlay",
+      "layer": "reference",
+      "visibility": "internal",
+      "type": "shadow",
+      "source": "packages/ui/tokens/reference.tokens.json#/reference/shadow/overlay",
+      "references": [
+        "reference.color.overlayShadow"
+      ],
+      "value": {
+        "blur": {
+          "unit": "rem",
+          "value": 3.5
+        },
+        "color": {
+          "alpha": 0.78,
+          "colorSpace": "srgb",
+          "components": [
+            0.058824,
+            0.054902,
+            0.054902
+          ]
+        },
+        "inset": false,
+        "offsetX": {
+          "unit": "px",
+          "value": 0
+        },
+        "offsetY": {
+          "unit": "rem",
+          "value": 1.5
+        },
+        "spread": {
+          "unit": "px",
+          "value": 0
+        }
+      }
+    },
+    {
+      "path": "reference.size.control",
+      "layer": "reference",
+      "visibility": "internal",
+      "type": "dimension",
+      "source": "packages/ui/tokens/reference.tokens.json#/reference/size/control",
+      "references": [],
+      "value": {
+        "unit": "rem",
+        "value": 2.25
+      }
+    },
+    {
+      "path": "reference.size.row",
+      "layer": "reference",
+      "visibility": "internal",
+      "type": "dimension",
+      "source": "packages/ui/tokens/reference.tokens.json#/reference/size/row",
+      "references": [],
+      "value": {
+        "unit": "rem",
+        "value": 3
+      }
+    },
+    {
+      "path": "reference.size.rowDense",
+      "layer": "reference",
+      "visibility": "internal",
+      "type": "dimension",
+      "source": "packages/ui/tokens/reference.tokens.json#/reference/size/rowDense",
+      "references": [],
+      "value": {
+        "unit": "rem",
+        "value": 2.5
       }
     },
     {
@@ -935,6 +1137,150 @@
       }
     },
     {
+      "path": "semantic.elevation.overlay",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "shadow",
+      "description": "Restrained depth for dialogs, popovers, and other top-layer overlays.",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/elevation/overlay",
+      "references": [
+        "reference.shadow.overlay"
+      ],
+      "value": {
+        "blur": {
+          "unit": "rem",
+          "value": 3.5
+        },
+        "color": {
+          "alpha": 0.78,
+          "colorSpace": "srgb",
+          "components": [
+            0.058824,
+            0.054902,
+            0.054902
+          ]
+        },
+        "inset": false,
+        "offsetX": {
+          "unit": "px",
+          "value": 0
+        },
+        "offsetY": {
+          "unit": "rem",
+          "value": 1.5
+        },
+        "spread": {
+          "unit": "px",
+          "value": 0
+        }
+      }
+    },
+    {
+      "path": "semantic.layout.gap.dense",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "dimension",
+      "description": "Contextual compact separation for tables, repeated rows, and operational data only.",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/layout/gap/dense",
+      "references": [
+        "reference.space.2"
+      ],
+      "value": {
+        "unit": "rem",
+        "value": 0.5
+      }
+    },
+    {
+      "path": "semantic.layout.gap.item",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "dimension",
+      "description": "Canonical separation within ordinary control groups and content clusters.",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/layout/gap/item",
+      "references": [
+        "reference.space.3"
+      ],
+      "value": {
+        "unit": "rem",
+        "value": 0.75
+      }
+    },
+    {
+      "path": "semantic.layout.gap.page",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "dimension",
+      "description": "Canonical separation and inset for major Product Character page regions.",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/layout/gap/page",
+      "references": [
+        "reference.space.8"
+      ],
+      "value": {
+        "unit": "rem",
+        "value": 2
+      }
+    },
+    {
+      "path": "semantic.layout.gap.section",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "dimension",
+      "description": "Canonical separation between distinct sections within a page.",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/layout/gap/section",
+      "references": [
+        "reference.space.6"
+      ],
+      "value": {
+        "unit": "rem",
+        "value": 1.5
+      }
+    },
+    {
+      "path": "semantic.layout.size.control",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "dimension",
+      "description": "Canonical minimum height for standard interactive controls.",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/layout/size/control",
+      "references": [
+        "reference.size.control"
+      ],
+      "value": {
+        "unit": "rem",
+        "value": 2.25
+      }
+    },
+    {
+      "path": "semantic.layout.size.row",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "dimension",
+      "description": "Canonical minimum height for ordinary repeated object rows.",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/layout/size/row",
+      "references": [
+        "reference.size.row"
+      ],
+      "value": {
+        "unit": "rem",
+        "value": 3
+      }
+    },
+    {
+      "path": "semantic.layout.size.rowDense",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "dimension",
+      "description": "Minimum height for explicitly dense tables and operational rows; not a global density mode.",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/layout/size/rowDense",
+      "references": [
+        "reference.size.rowDense"
+      ],
+      "value": {
+        "unit": "rem",
+        "value": 2.5
+      }
+    },
+    {
       "path": "semantic.layout.space.0",
       "layer": "semantic",
       "visibility": "public",
@@ -1106,14 +1452,14 @@
       "layer": "semantic",
       "visibility": "public",
       "type": "dimension",
-      "description": "Corner radius for compact controls and small interactive elements.",
+      "description": "Corner radius for controls and small interactive elements in the Product Character direction.",
       "source": "packages/ui/tokens/semantic.tokens.json#/semantic/radius/control",
       "references": [
-        "reference.radius.sm"
+        "reference.radius.md"
       ],
       "value": {
         "unit": "rem",
-        "value": 0.25
+        "value": 0.5
       }
     },
     {
@@ -1172,6 +1518,147 @@
         "reference.opacity.disabled"
       ],
       "value": 0.48
+    },
+    {
+      "path": "semantic.typography.family.mono",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "fontFamily",
+      "description": "Bundled technical family for identifiers, code, and tabular operational data.",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/typography/family/mono",
+      "references": [
+        "reference.font.family.mono"
+      ],
+      "value": [
+        "JetBrains Mono",
+        "ui-monospace",
+        "monospace"
+      ]
+    },
+    {
+      "path": "semantic.typography.family.ui",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "fontFamily",
+      "description": "Bundled Product Character family for product and plugin chrome.",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/typography/family/ui",
+      "references": [
+        "reference.font.family.ui"
+      ],
+      "value": [
+        "Space Grotesk",
+        "ui-sans-serif",
+        "system-ui",
+        "sans-serif"
+      ]
+    },
+    {
+      "path": "semantic.typography.size.body",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "dimension",
+      "description": "Canonical body and control-copy size.",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/typography/size/body",
+      "references": [
+        "reference.font.size.body"
+      ],
+      "value": {
+        "unit": "rem",
+        "value": 0.8
+      }
+    },
+    {
+      "path": "semantic.typography.size.meta",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "dimension",
+      "description": "Canonical metadata and technical-chrome size.",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/typography/size/meta",
+      "references": [
+        "reference.font.size.meta"
+      ],
+      "value": {
+        "unit": "rem",
+        "value": 0.68
+      }
+    },
+    {
+      "path": "semantic.typography.size.pageTitle",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "dimension",
+      "description": "Canonical page-title size before responsive clamping.",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/typography/size/pageTitle",
+      "references": [
+        "reference.font.size.pageTitle"
+      ],
+      "value": {
+        "unit": "rem",
+        "value": 2.25
+      }
+    },
+    {
+      "path": "semantic.typography.size.sectionTitle",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "dimension",
+      "description": "Canonical section-title size for content hierarchy.",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/typography/size/sectionTitle",
+      "references": [
+        "reference.font.size.sectionTitle"
+      ],
+      "value": {
+        "unit": "rem",
+        "value": 0.86
+      }
+    },
+    {
+      "path": "semantic.typography.weight.bold",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "fontWeight",
+      "description": "Bold weight for high-emphasis labels and signal text.",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/typography/weight/bold",
+      "references": [
+        "reference.font.weight.bold"
+      ],
+      "value": 700
+    },
+    {
+      "path": "semantic.typography.weight.medium",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "fontWeight",
+      "description": "Medium weight for restrained emphasis and table headings.",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/typography/weight/medium",
+      "references": [
+        "reference.font.weight.medium"
+      ],
+      "value": 500
+    },
+    {
+      "path": "semantic.typography.weight.regular",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "fontWeight",
+      "description": "Regular weight for body copy and input values.",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/typography/weight/regular",
+      "references": [
+        "reference.font.weight.regular"
+      ],
+      "value": 400
+    },
+    {
+      "path": "semantic.typography.weight.semibold",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "fontWeight",
+      "description": "Semibold weight for controls and hierarchy labels.",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/typography/weight/semibold",
+      "references": [
+        "reference.font.weight.semibold"
+      ],
+      "value": 600
     }
   ]
 }

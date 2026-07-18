@@ -251,7 +251,7 @@ function DirectionStudy({ text200 = false }: { text200?: boolean }) {
       <CandidateStyles css={DENSE_CSS} />
       {text200 && <style>{'html { font-size: 200%; }'}</style>}
       <CandidateIntro title={text200 ? 'Dense list and data at 200% text' : 'Dense list and data directions'}>
-        Compare identical Tasks, Assets, and Health pressure cases. Both alternatives use candidate tokens and the same proposed composition APIs; neither is selected.
+        Product Character is the approved default. Operational Neutral remains comparison evidence for the tighter row rhythm used only in tables, repeated rows, and operational data.
       </CandidateIntro>
       <div className="bakin-candidate-study__directions">
         <DenseDirection direction="operational-neutral" />

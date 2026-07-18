@@ -1,13 +1,32 @@
 {
   "schemaVersion": 1,
-  "status": "candidate",
-  "selectedDirection": null,
-  "reviewRequired": true,
+  "status": "approved",
+  "selectedDirection": "product-character",
+  "reviewRequired": false,
+  "approvedAt": "2026-07-18",
+  "decision": {
+    "rationale": "Product Character provides the strongest Bakin identity and hierarchy across every reviewed archetype while retaining clear operational behavior.",
+    "canonicalDensity": {
+      "id": "compact-professional",
+      "mode": "single-contextual",
+      "description": "Product Character spacing is canonical for pages, sections, controls, and ordinary content. Dense data contexts use the tighter reviewed row rhythm without changing theme or typography.",
+      "denseContexts": ["tables", "repeated-rows", "operational-data"],
+      "tokens": {
+        "itemGap": "var(--bakin-layout-gap-dense)",
+        "rowMinHeight": "var(--bakin-layout-size-row-dense)"
+      }
+    },
+    "rejectedDefault": {
+      "id": "operational-neutral",
+      "reason": "Operational Neutral was rejected as the global default because its familiar compact treatment has less product identity and weaker hierarchy; only its proven dense-row rhythm remains as contextual evidence."
+    }
+  },
   "directions": [
     {
       "id": "operational-neutral",
       "label": "Operational neutral",
       "typography": "operational-neutral",
+      "disposition": "density-reference",
       "composition": "Compact, table-first, flat hierarchy with crisp dividers and restrained object boundaries.",
       "tokens": {
         "fontSans": "Inter, ui-sans-serif, system-ui, sans-serif",
@@ -30,22 +49,23 @@
       "id": "product-character",
       "label": "Product character",
       "typography": "product-character",
+      "disposition": "selected-default",
       "composition": "Expressive hierarchy, roomier object rows, softer corners, and selective brand signal without card stacking.",
       "tokens": {
-        "fontSans": "'Space Grotesk', ui-sans-serif, system-ui, sans-serif",
-        "fontMono": "'JetBrains Mono', ui-monospace, monospace",
-        "pageGap": "var(--bakin-layout-space-8)",
-        "sectionGap": "var(--bakin-layout-space-6)",
-        "itemGap": "var(--bakin-layout-space-3)",
+        "fontSans": "var(--bakin-typography-family-ui)",
+        "fontMono": "var(--bakin-typography-family-mono)",
+        "pageGap": "var(--bakin-layout-gap-page)",
+        "sectionGap": "var(--bakin-layout-gap-section)",
+        "itemGap": "var(--bakin-layout-gap-item)",
         "surfaceRadius": "var(--bakin-radius-surface)",
-        "controlRadius": "var(--bakin-radius-surface)",
-        "pageTitleSize": "2.25rem",
-        "sectionTitleSize": "0.86rem",
-        "bodySize": "0.8rem",
-        "metaSize": "0.68rem",
-        "controlHeight": "2.25rem",
-        "rowMinHeight": "3rem",
-        "overlayShadow": "0 1.5rem 3.5rem color-mix(in srgb, var(--bakin-color-canvas-default) 78%, transparent)"
+        "controlRadius": "var(--bakin-radius-control)",
+        "pageTitleSize": "var(--bakin-typography-size-page-title)",
+        "sectionTitleSize": "var(--bakin-typography-size-section-title)",
+        "bodySize": "var(--bakin-typography-size-body)",
+        "metaSize": "var(--bakin-typography-size-meta)",
+        "controlHeight": "var(--bakin-layout-size-control)",
+        "rowMinHeight": "var(--bakin-layout-size-row)",
+        "overlayShadow": "var(--bakin-elevation-overlay)"
       }
     }
   ]

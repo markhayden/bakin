@@ -1,5 +1,11 @@
 # UI Patterns & Gotchas
 
+> **Visual-authoring status (2026-07-18):** Product Character is the approved
+> default. The token, typography, spacing, surface, and state guidance in
+> `design-system.md` and `style-guide.md` supersede visual class examples in
+> this historical lessons log. The behavioral and routing lessons remain
+> authoritative; do not copy legacy utility strings into new surfaces.
+
 Cross-cutting UI lessons distilled from the chat/conversation-kit overhaul (2026-07). Read before any UI work — most of these bit us live and each cost a round-trip to find.
 
 ## Bugs to never repeat (root cause → rule)

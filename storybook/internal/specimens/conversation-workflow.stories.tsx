@@ -173,7 +173,7 @@ function CompositeStudy({ text200 = false }: { text200?: boolean }) {
     <main className="bakin-candidate-study">
       <CandidateStyles css={SPECIMEN_CSS} />
       {text200 && <style>{'html { font-size: 200%; }'}</style>}
-      <CandidateIntro title={text200 ? 'Conversation and workflow at 200% text' : 'Conversation and workflow directions'}>Compare streaming, tools, composition, node selection, inspection, live status, and two-dimensional overflow. Neither direction is selected.</CandidateIntro>
+      <CandidateIntro title={text200 ? 'Conversation and workflow at 200% text' : 'Conversation and workflow directions'}>Product Character is the approved direction for streaming, tools, composition, inspection, live status, and workflow canvases. Operational Neutral remains comparison evidence.</CandidateIntro>
       <div className="bakin-candidate-study__directions"><CompositeDirection direction="operational-neutral" /><CompositeDirection direction="product-character" /></div>
     </main>
   )

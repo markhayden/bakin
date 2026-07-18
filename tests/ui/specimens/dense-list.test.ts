@@ -9,20 +9,46 @@ function read(path: string): string {
 }
 
 describe('dense list and data direction specimens', () => {
-  it('defines two provisional visual directions through candidate tokens', () => {
+  it('approves Product Character with one contextual compact-professional density', () => {
     const metadata = JSON.parse(read('design-system/specimens/visual-direction-candidates.json')) as {
       status: string
       selectedDirection: string | null
       reviewRequired: boolean
-      directions: Array<{ id: string; typography: string; tokens: Record<string, string> }>
+      approvedAt: string
+      decision: {
+        canonicalDensity: {
+          id: string
+          mode: string
+          denseContexts: string[]
+          tokens: Record<string, string>
+        }
+        rejectedDefault: { id: string; reason: string }
+      }
+      directions: Array<{ id: string; typography: string; disposition: string; tokens: Record<string, string> }>
     }
 
-    expect(metadata.status).toBe('candidate')
-    expect(metadata.selectedDirection).toBeNull()
-    expect(metadata.reviewRequired).toBe(true)
+    expect(metadata.status).toBe('approved')
+    expect(metadata.selectedDirection).toBe('product-character')
+    expect(metadata.reviewRequired).toBe(false)
+    expect(metadata.approvedAt).toBe('2026-07-18')
+    expect(metadata.decision.canonicalDensity).toMatchObject({
+      id: 'compact-professional',
+      mode: 'single-contextual',
+      denseContexts: ['tables', 'repeated-rows', 'operational-data'],
+      tokens: {
+        itemGap: 'var(--bakin-layout-gap-dense)',
+        rowMinHeight: 'var(--bakin-layout-size-row-dense)',
+      },
+    })
+    expect(metadata.decision.rejectedDefault.id).toBe('operational-neutral')
+    expect(metadata.decision.rejectedDefault.reason).toContain('global default')
     expect(metadata.directions.map((direction) => direction.id)).toEqual([
       'operational-neutral',
       'product-character',
+    ])
+    expect(metadata.directions.map((direction) => direction.disposition)).toEqual([
+      'density-reference',
+      'selected-default',
     ])
     for (const direction of metadata.directions) {
       expect(direction.typography).toBe(direction.id)
@@ -64,6 +90,30 @@ describe('dense list and data direction specimens', () => {
     expect(candidateUi).toContain('var(--bakin-color-canvas-default)')
     expect(candidateUi).toContain('var(--bakin-color-focus-ring)')
     expect(candidateUi).toContain('visual-direction-candidates.json')
+    expect(candidateUi).toContain('directionConfig.selectedDirection')
+    expect(candidateUi).toContain('Selected default.')
+    expect(candidateUi).toContain('Compact-density evidence only.')
+    expect(candidateUi).not.toContain('Candidate, not selected.')
+  })
+
+  it('records the approved direction and rejected global alternative in maintained knowledge', () => {
+    const knowledge = read('.claude/knowledge/design-system.md')
+    const styleGuide = read('.claude/knowledge/style-guide.md')
+    const sharedPatterns = read('.claude/knowledge/shared-ui-patterns.md')
+    const uiPatterns = read('.claude/knowledge/ui-patterns.md')
+
+    expect(knowledge).toContain('Approved visual direction (2026-07-18)')
+    expect(knowledge).toContain('Product Character')
+    expect(knowledge).toContain('Operational Neutral was rejected as the global default')
+    expect(knowledge).toMatch(/not a\s+user-selectable density mode/)
+    expect(styleGuide).toContain('Product Character is the approved default')
+    expect(styleGuide).toContain('Space Grotesk')
+    expect(styleGuide).toContain('JetBrains Mono')
+    for (const legacyGuidance of [sharedPatterns, uiPatterns]) {
+      expect(legacyGuidance).toContain('Visual-authoring status (2026-07-18)')
+      expect(legacyGuidance).toContain('Product Character')
+      expect(legacyGuidance).toContain('supersede')
+    }
   })
 
   it('covers realistic dense content, state recovery, interaction, and reflow', () => {

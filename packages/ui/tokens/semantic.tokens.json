@@ -1,9 +1,9 @@
 {
-  "$description": "Candidate public semantic contract. Values remain provisional until the visual-direction checkpoint.",
+  "$description": "Approved public semantic foundation for the Product Character direction.",
   "$extensions": {
     "dev.bakin.tokens": {
       "layer": "semantic",
-      "status": "candidate"
+      "status": "approved"
     }
   },
   "semantic": {
@@ -144,10 +144,39 @@
         "4": { "$description": "Default separation between sibling interface regions.", "$ref": "#/reference/space/4" },
         "6": { "$description": "Section-level separation between distinct content groups.", "$ref": "#/reference/space/6" },
         "8": { "$description": "Strong page-level separation between major regions.", "$ref": "#/reference/space/8" }
+      },
+      "gap": {
+        "page": { "$description": "Canonical separation and inset for major Product Character page regions.", "$value": "{reference.space.8}" },
+        "section": { "$description": "Canonical separation between distinct sections within a page.", "$value": "{reference.space.6}" },
+        "item": { "$description": "Canonical separation within ordinary control groups and content clusters.", "$value": "{reference.space.3}" },
+        "dense": { "$description": "Contextual compact separation for tables, repeated rows, and operational data only.", "$value": "{reference.space.2}" }
+      },
+      "size": {
+        "control": { "$description": "Canonical minimum height for standard interactive controls.", "$value": "{reference.size.control}" },
+        "row": { "$description": "Canonical minimum height for ordinary repeated object rows.", "$value": "{reference.size.row}" },
+        "rowDense": { "$description": "Minimum height for explicitly dense tables and operational rows; not a global density mode.", "$value": "{reference.size.rowDense}" }
+      }
+    },
+    "typography": {
+      "family": {
+        "ui": { "$description": "Bundled Product Character family for product and plugin chrome.", "$value": "{reference.font.family.ui}" },
+        "mono": { "$description": "Bundled technical family for identifiers, code, and tabular operational data.", "$value": "{reference.font.family.mono}" }
+      },
+      "size": {
+        "pageTitle": { "$description": "Canonical page-title size before responsive clamping.", "$value": "{reference.font.size.pageTitle}" },
+        "sectionTitle": { "$description": "Canonical section-title size for content hierarchy.", "$value": "{reference.font.size.sectionTitle}" },
+        "body": { "$description": "Canonical body and control-copy size.", "$value": "{reference.font.size.body}" },
+        "meta": { "$description": "Canonical metadata and technical-chrome size.", "$value": "{reference.font.size.meta}" }
+      },
+      "weight": {
+        "regular": { "$description": "Regular weight for body copy and input values.", "$value": "{reference.font.weight.regular}" },
+        "medium": { "$description": "Medium weight for restrained emphasis and table headings.", "$value": "{reference.font.weight.medium}" },
+        "semibold": { "$description": "Semibold weight for controls and hierarchy labels.", "$value": "{reference.font.weight.semibold}" },
+        "bold": { "$description": "Bold weight for high-emphasis labels and signal text.", "$value": "{reference.font.weight.bold}" }
       }
     },
     "radius": {
-      "control": { "$description": "Corner radius for compact controls and small interactive elements.", "$value": "{reference.radius.sm}" },
+      "control": { "$description": "Corner radius for controls and small interactive elements in the Product Character direction.", "$value": "{reference.radius.md}" },
       "surface": { "$description": "Corner radius for bounded content surfaces.", "$value": "{reference.radius.md}" },
       "overlay": { "$description": "Corner radius for dialogs, popovers, and other elevated overlays.", "$value": "{reference.radius.lg}" },
       "pill": { "$description": "Fully rounded shape for badges, chips, and pill controls.", "$value": "{reference.radius.full}" }
@@ -161,6 +190,9 @@
       "easing": {
         "standard": { "$description": "Default restrained easing for functional interface transitions.", "$value": "{reference.easing.standard}" }
       }
+    },
+    "elevation": {
+      "overlay": { "$description": "Restrained depth for dialogs, popovers, and other top-layer overlays.", "$value": "{reference.shadow.overlay}" }
     },
     "state": {
       "opacity": {

@@ -5,7 +5,7 @@ description: Generated public semantic token contract for Bakin product and plug
 
 This reference is generated from the DTCG token source. Use the namespaced CSS properties through [`@makinbakin/sdk/styles.css`](/docs/extending/ui/overview/); internal reference values, component aliases, and Tailwind mappings are not plugin-author contracts.
 
-The current candidate contains **27 public tokens** across **5 semantic families**. Contrast ratios are calculated during generation. A declared WCAG role below its threshold fails generation and CI.
+The approved foundation contains **45 public tokens** across **8 semantic families**. Contrast ratios are calculated during generation. A declared WCAG role below its threshold fails generation and CI.
 
 ## Color
 
@@ -22,6 +22,24 @@ The current candidate contains **27 public tokens** across **5 semantic families
 | `semantic.color.surface.default` | The default bounded surface placed above the application canvas. | `#151313` | `--bakin-color-surface-default` | Public semantic | 18.51:1 vs `--bakin-color-text-primary`; WCAG AA normal text ≥ 4.5:1; pass | [semantic.tokens.json](https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json) `#/semantic/color/surface/default` |
 | `semantic.color.text.muted` | Secondary copy, metadata, and helper text on the application canvas. | `#aeaaaa` | `--bakin-color-text-muted` | Public semantic | 8.38:1 vs `--bakin-color-canvas-default`; WCAG AA normal text ≥ 4.5:1; pass | [semantic.tokens.json](https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json) `#/semantic/color/text/muted` |
 | `semantic.color.text.primary` | Primary copy, labels, and high-emphasis interface text on the application canvas. | `#ffffff` | `--bakin-color-text-primary` | Public semantic | 19.28:1 vs `--bakin-color-canvas-default`; WCAG AA normal text ≥ 4.5:1; pass | [semantic.tokens.json](https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json) `#/semantic/color/text/primary` |
+
+## Elevation
+
+| Token | Intent | Value | CSS property | Status | Contrast | Source |
+| --- | --- | --- | --- | --- | --- | --- |
+| `semantic.elevation.overlay` | Restrained depth for dialogs, popovers, and other top-layer overlays. | `0px 1.5rem 3.5rem 0px color(srgb 0.058824 0.054902 0.054902 / 0.78)` | `--bakin-elevation-overlay` | Public semantic | Not applicable | [semantic.tokens.json](https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json) `#/semantic/elevation/overlay` |
+
+## Layout
+
+| Token | Intent | Value | CSS property | Status | Contrast | Source |
+| --- | --- | --- | --- | --- | --- | --- |
+| `semantic.layout.gap.dense` | Contextual compact separation for tables, repeated rows, and operational data only. | `0.5rem` | `--bakin-layout-gap-dense` | Public semantic | Not applicable | [semantic.tokens.json](https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json) `#/semantic/layout/gap/dense` |
+| `semantic.layout.gap.item` | Canonical separation within ordinary control groups and content clusters. | `0.75rem` | `--bakin-layout-gap-item` | Public semantic | Not applicable | [semantic.tokens.json](https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json) `#/semantic/layout/gap/item` |
+| `semantic.layout.gap.page` | Canonical separation and inset for major Product Character page regions. | `2rem` | `--bakin-layout-gap-page` | Public semantic | Not applicable | [semantic.tokens.json](https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json) `#/semantic/layout/gap/page` |
+| `semantic.layout.gap.section` | Canonical separation between distinct sections within a page. | `1.5rem` | `--bakin-layout-gap-section` | Public semantic | Not applicable | [semantic.tokens.json](https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json) `#/semantic/layout/gap/section` |
+| `semantic.layout.size.control` | Canonical minimum height for standard interactive controls. | `2.25rem` | `--bakin-layout-size-control` | Public semantic | Not applicable | [semantic.tokens.json](https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json) `#/semantic/layout/size/control` |
+| `semantic.layout.size.row` | Canonical minimum height for ordinary repeated object rows. | `3rem` | `--bakin-layout-size-row` | Public semantic | Not applicable | [semantic.tokens.json](https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json) `#/semantic/layout/size/row` |
+| `semantic.layout.size.rowDense` | Minimum height for explicitly dense tables and operational rows; not a global density mode. | `2.5rem` | `--bakin-layout-size-row-dense` | Public semantic | Not applicable | [semantic.tokens.json](https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json) `#/semantic/layout/size/rowDense` |
 
 ## Layout space
 
@@ -48,7 +66,7 @@ The current candidate contains **27 public tokens** across **5 semantic families
 
 | Token | Intent | Value | CSS property | Status | Contrast | Source |
 | --- | --- | --- | --- | --- | --- | --- |
-| `semantic.radius.control` | Corner radius for compact controls and small interactive elements. | `0.25rem` | `--bakin-radius-control` | Public semantic | Not applicable | [semantic.tokens.json](https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json) `#/semantic/radius/control` |
+| `semantic.radius.control` | Corner radius for controls and small interactive elements in the Product Character direction. | `0.5rem` | `--bakin-radius-control` | Public semantic | Not applicable | [semantic.tokens.json](https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json) `#/semantic/radius/control` |
 | `semantic.radius.overlay` | Corner radius for dialogs, popovers, and other elevated overlays. | `0.75rem` | `--bakin-radius-overlay` | Public semantic | Not applicable | [semantic.tokens.json](https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json) `#/semantic/radius/overlay` |
 | `semantic.radius.pill` | Fully rounded shape for badges, chips, and pill controls. | `999px` | `--bakin-radius-pill` | Public semantic | Not applicable | [semantic.tokens.json](https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json) `#/semantic/radius/pill` |
 | `semantic.radius.surface` | Corner radius for bounded content surfaces. | `0.5rem` | `--bakin-radius-surface` | Public semantic | Not applicable | [semantic.tokens.json](https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json) `#/semantic/radius/surface` |
@@ -58,3 +76,18 @@ The current candidate contains **27 public tokens** across **5 semantic families
 | Token | Intent | Value | CSS property | Status | Contrast | Source |
 | --- | --- | --- | --- | --- | --- | --- |
 | `semantic.state.opacity.disabled` | Opacity applied to a disabled control while preserving its semantic state. | `0.48` | `--bakin-state-opacity-disabled` | Public semantic | Not applicable | [semantic.tokens.json](https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json) `#/semantic/state/opacity/disabled` |
+
+## Typography
+
+| Token | Intent | Value | CSS property | Status | Contrast | Source |
+| --- | --- | --- | --- | --- | --- | --- |
+| `semantic.typography.family.mono` | Bundled technical family for identifiers, code, and tabular operational data. | `"JetBrains Mono", ui-monospace, monospace` | `--bakin-typography-family-mono` | Public semantic | Not applicable | [semantic.tokens.json](https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json) `#/semantic/typography/family/mono` |
+| `semantic.typography.family.ui` | Bundled Product Character family for product and plugin chrome. | `"Space Grotesk", ui-sans-serif, system-ui, sans-serif` | `--bakin-typography-family-ui` | Public semantic | Not applicable | [semantic.tokens.json](https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json) `#/semantic/typography/family/ui` |
+| `semantic.typography.size.body` | Canonical body and control-copy size. | `0.8rem` | `--bakin-typography-size-body` | Public semantic | Not applicable | [semantic.tokens.json](https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json) `#/semantic/typography/size/body` |
+| `semantic.typography.size.meta` | Canonical metadata and technical-chrome size. | `0.68rem` | `--bakin-typography-size-meta` | Public semantic | Not applicable | [semantic.tokens.json](https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json) `#/semantic/typography/size/meta` |
+| `semantic.typography.size.pageTitle` | Canonical page-title size before responsive clamping. | `2.25rem` | `--bakin-typography-size-page-title` | Public semantic | Not applicable | [semantic.tokens.json](https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json) `#/semantic/typography/size/pageTitle` |
+| `semantic.typography.size.sectionTitle` | Canonical section-title size for content hierarchy. | `0.86rem` | `--bakin-typography-size-section-title` | Public semantic | Not applicable | [semantic.tokens.json](https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json) `#/semantic/typography/size/sectionTitle` |
+| `semantic.typography.weight.bold` | Bold weight for high-emphasis labels and signal text. | `700` | `--bakin-typography-weight-bold` | Public semantic | Not applicable | [semantic.tokens.json](https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json) `#/semantic/typography/weight/bold` |
+| `semantic.typography.weight.medium` | Medium weight for restrained emphasis and table headings. | `500` | `--bakin-typography-weight-medium` | Public semantic | Not applicable | [semantic.tokens.json](https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json) `#/semantic/typography/weight/medium` |
+| `semantic.typography.weight.regular` | Regular weight for body copy and input values. | `400` | `--bakin-typography-weight-regular` | Public semantic | Not applicable | [semantic.tokens.json](https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json) `#/semantic/typography/weight/regular` |
+| `semantic.typography.weight.semibold` | Semibold weight for controls and hierarchy labels. | `600` | `--bakin-typography-weight-semibold` | Public semantic | Not applicable | [semantic.tokens.json](https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json) `#/semantic/typography/weight/semibold` |

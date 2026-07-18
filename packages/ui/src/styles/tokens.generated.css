@@ -11,6 +11,14 @@
   --bakin-color-surface-default: #151313;
   --bakin-color-text-muted: #aeaaaa;
   --bakin-color-text-primary: #ffffff;
+  --bakin-elevation-overlay: 0px 1.5rem 3.5rem 0px color(srgb 0.058824 0.054902 0.054902 / 0.78);
+  --bakin-layout-gap-dense: 0.5rem;
+  --bakin-layout-gap-item: 0.75rem;
+  --bakin-layout-gap-page: 2rem;
+  --bakin-layout-gap-section: 1.5rem;
+  --bakin-layout-size-control: 2.25rem;
+  --bakin-layout-size-row: 3rem;
+  --bakin-layout-size-row-dense: 2.5rem;
   --bakin-layout-space-0: 0px;
   --bakin-layout-space-1: 0.25rem;
   --bakin-layout-space-2: 0.5rem;
@@ -22,9 +30,19 @@
   --bakin-motion-duration-instant: 0ms;
   --bakin-motion-duration-transition: 180ms;
   --bakin-motion-easing-standard: cubic-bezier(0.2, 0, 0, 1);
-  --bakin-radius-control: 0.25rem;
+  --bakin-radius-control: 0.5rem;
   --bakin-radius-overlay: 0.75rem;
   --bakin-radius-pill: 999px;
   --bakin-radius-surface: 0.5rem;
   --bakin-state-opacity-disabled: 0.48;
+  --bakin-typography-family-mono: "JetBrains Mono", ui-monospace, monospace;
+  --bakin-typography-family-ui: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --bakin-typography-size-body: 0.8rem;
+  --bakin-typography-size-meta: 0.68rem;
+  --bakin-typography-size-page-title: 2.25rem;
+  --bakin-typography-size-section-title: 0.86rem;
+  --bakin-typography-weight-bold: 700;
+  --bakin-typography-weight-medium: 500;
+  --bakin-typography-weight-regular: 400;
+  --bakin-typography-weight-semibold: 600;
 }

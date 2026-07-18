@@ -45,7 +45,7 @@ export const STORY_FIXTURE_MANIFEST = {
   fixedNow: '2026-01-15T12:00:00.000Z',
   route: '/',
   fontFamilies: {
-    sans: 'Inter',
+    sans: 'Space Grotesk',
     mono: 'JetBrains Mono',
   },
   viewports: BAKIN_STORY_VIEWPORTS,
@@ -193,7 +193,7 @@ export function installDeterministicBrowserFixture(
     root.setAttribute('data-bakin-reduced-motion', String(fixture.reducedMotion))
     root.setAttribute('data-bakin-fixture-route', route)
   }
-  void target.document?.fonts?.load('400 16px Inter')
+  void target.document?.fonts?.load('400 16px Space Grotesk')
   void target.document?.fonts?.load('400 16px JetBrains Mono')
   if (nativeMatchMedia) {
     target.matchMedia = ((query: string): MediaQueryList => {

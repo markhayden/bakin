@@ -9,11 +9,12 @@ function read(path: string): string {
 }
 
 describe('typography direction specimens', () => {
-  it('keeps both locally bundled directions provisional until user review', () => {
+  it('records Product Character as the approved bundled typography pair', () => {
     const metadata = JSON.parse(read('design-system/specimens/typography-candidates.json')) as {
       status: string
       selectedPair: string | null
       reviewRequired: boolean
+      approvedAt: string
       fonts: Array<{
         id: string
         package: string
@@ -27,9 +28,10 @@ describe('typography direction specimens', () => {
       devDependencies: Record<string, string>
     }
 
-    expect(metadata.status).toBe('candidate')
-    expect(metadata.selectedPair).toBeNull()
-    expect(metadata.reviewRequired).toBe(true)
+    expect(metadata.status).toBe('approved')
+    expect(metadata.selectedPair).toBe('product-character')
+    expect(metadata.reviewRequired).toBe(false)
+    expect(metadata.approvedAt).toBe('2026-07-18')
     expect(metadata.directions.map((direction) => direction.id)).toEqual([
       'operational-neutral',
       'product-character',
@@ -69,5 +71,12 @@ describe('typography direction specimens', () => {
     expect(story).toContain("'Bakin Missing Sans'")
     expect(story).toContain("'Bakin Pending Sans'")
     expect(story).toContain("<style>{'html { font-size: 200%; }'}</style>")
+    expect(story).toContain('candidateConfig.selectedPair')
+    expect(story).toContain('Selected default.')
+    expect(story).toContain('Comparison evidence only.')
+    expect(story).toContain('font: 600 clamp(1.8rem, 5vw, 3.25rem)/1.04 var(--bakin-typography-family-ui)')
+    expect(story).toContain('font: 400 .9rem/1.6 var(--bakin-typography-family-ui)')
+    expect(story).not.toContain('candidate, not selected')
+    expect(story).not.toContain('remain provisional')
   })
 })

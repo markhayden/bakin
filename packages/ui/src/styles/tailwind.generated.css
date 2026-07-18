@@ -11,6 +11,7 @@
   --color-bakin-surface-default: var(--bakin-color-surface-default);
   --color-bakin-text-muted: var(--bakin-color-text-muted);
   --color-bakin-text-primary: var(--bakin-color-text-primary);
+  --shadow-bakin-elevation-overlay: var(--bakin-elevation-overlay);
   --spacing-bakin-0: var(--bakin-layout-space-0);
   --spacing-bakin-1: var(--bakin-layout-space-1);
   --spacing-bakin-2: var(--bakin-layout-space-2);
@@ -23,4 +24,10 @@
   --radius-bakin-overlay: var(--bakin-radius-overlay);
   --radius-bakin-pill: var(--bakin-radius-pill);
   --radius-bakin-surface: var(--bakin-radius-surface);
+  --font-bakin-typography-family-mono: var(--bakin-typography-family-mono);
+  --font-bakin-typography-family-ui: var(--bakin-typography-family-ui);
+  --font-weight-bakin-typography-weight-bold: var(--bakin-typography-weight-bold);
+  --font-weight-bakin-typography-weight-medium: var(--bakin-typography-weight-medium);
+  --font-weight-bakin-typography-weight-regular: var(--bakin-typography-weight-regular);
+  --font-weight-bakin-typography-weight-semibold: var(--bakin-typography-weight-semibold);
 }

@@ -28,14 +28,14 @@ const STUDY_CSS = `
 }
 .bakin-type-study__intro h1 {
   margin: 0;
-  font: 600 clamp(1.8rem, 5vw, 3.25rem)/1.04 Inter, ui-sans-serif, system-ui, sans-serif;
+  font: 600 clamp(1.8rem, 5vw, 3.25rem)/1.04 var(--bakin-typography-family-ui);
   letter-spacing: -.04em;
 }
 .bakin-type-study__intro p {
   max-width: 58rem;
   margin: var(--bakin-layout-space-2) 0 0;
   color: var(--bakin-color-text-muted);
-  font: 400 .9rem/1.6 Inter, ui-sans-serif, system-ui, sans-serif;
+  font: 400 .9rem/1.6 var(--bakin-typography-family-ui);
 }
 .bakin-type-study__directions {
   display: grid;
@@ -238,8 +238,8 @@ const directionFonts: Record<DirectionId, { sans: string; mono: string }> = {
     mono: "'JetBrains Mono', ui-monospace, monospace",
   },
   'product-character': {
-    sans: "'Space Grotesk', ui-sans-serif, system-ui, sans-serif",
-    mono: "'JetBrains Mono', ui-monospace, monospace",
+    sans: 'var(--bakin-typography-family-ui)',
+    mono: 'var(--bakin-typography-family-mono)',
   },
 }
 
@@ -284,12 +284,15 @@ function DirectionSpecimen({
   const fontNote = fallback === 'none'
     ? `${configuredSans?.family ?? configured.sans} + JetBrains Mono`
     : 'System UI + system monospace fallback'
+  const approvalNote = direction === candidateConfig.selectedPair
+    ? 'Selected default.'
+    : 'Comparison evidence only.'
 
   return (
     <article className="bakin-type-direction" style={directionStyle(direction, fallback)} aria-label={label}>
       <div className="bakin-type-direction__label">
         <strong>{label}</strong>
-        <span>{fontNote} · candidate, not selected</span>
+        <span>{fontNote} · {approvalNote}</span>
       </div>
       {fallback !== 'none' && (
         <div className="bakin-type-fallback-note">
@@ -355,7 +358,7 @@ function StudyIntro({ title, description }: { title: string; description: string
   return (
     <header className="bakin-type-study__intro">
       <h1>{title}</h1>
-      <p>{description} Both directions use locally bundled OFL-1.1 faces and remain provisional until the visual-direction checkpoint.</p>
+      <p>{description} Product Character is approved; the alternative remains as comparison evidence. All faces are locally bundled under OFL-1.1.</p>
     </header>
   )
 }

@@ -1,5 +1,12 @@
 # Shared UI Patterns
 
+> **Visual-authoring status (2026-07-18):** Product Character is the approved
+> default. The token, typography, spacing, surface, and state guidance in
+> `design-system.md` and `style-guide.md` supersede the hard-coded visual class
+> examples below. Keep using this document for component behavior, ownership,
+> and migration inventory; do not treat its legacy utility strings as a new
+> styling API.
+
 All shared UI primitives in this doc are re-exported from `@bakin/sdk/components` (plus `@bakin/sdk/ui` for shadcn primitives and `@bakin/sdk/hooks` for React hooks). Plugin authors should always import via the SDK, never directly from `packages/host/src/components/*` or the legacy `src/components/*` shims:
 
 ```tsx

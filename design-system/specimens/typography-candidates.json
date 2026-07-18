@@ -1,8 +1,9 @@
 {
   "schemaVersion": 1,
-  "status": "candidate",
-  "selectedPair": null,
-  "reviewRequired": true,
+  "status": "approved",
+  "selectedPair": "product-character",
+  "reviewRequired": false,
+  "approvedAt": "2026-07-18",
   "fonts": [
     {
       "id": "inter",
@@ -39,6 +40,7 @@
     {
       "id": "operational-neutral",
       "label": "Operational neutral",
+      "disposition": "comparison-evidence",
       "sans": "inter",
       "mono": "jetbrains-mono",
       "intent": "Maximize compact-data legibility and familiarity across operational surfaces."
@@ -46,6 +48,7 @@
     {
       "id": "product-character",
       "label": "Product character",
+      "disposition": "selected-default",
       "sans": "space-grotesk",
       "mono": "jetbrains-mono",
       "intent": "Add a more recognizable product voice while retaining a dedicated technical-data face."

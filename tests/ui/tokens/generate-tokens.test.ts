@@ -450,6 +450,33 @@ describe('token artifact generation', () => {
     expect(publicColors.every((token) => ['pass', 'reference'].includes(token.contrast?.status ?? ''))).toBe(true)
   })
 
+  it('codifies the approved Product Character foundation in generated semantic tokens', () => {
+    const manifest = compileTokenSources(loadTokenSources(REPO_ROOT))
+    const tokens = new Map(manifest.tokens.map((token) => [token.path, token]))
+    const docs = readFileSync(join(REPO_ROOT, TOKEN_DOCS_OUTPUT_PATH), 'utf-8')
+
+    expect(manifest.sourceStatus).toBe('approved')
+    expect(tokens.get('semantic.typography.family.ui')?.value).toEqual([
+      'Space Grotesk',
+      'ui-sans-serif',
+      'system-ui',
+      'sans-serif',
+    ])
+    expect(tokens.get('semantic.typography.family.mono')?.value).toEqual([
+      'JetBrains Mono',
+      'ui-monospace',
+      'monospace',
+    ])
+    expect(tokens.get('semantic.typography.size.pageTitle')?.value).toEqual({ value: 2.25, unit: 'rem' })
+    expect(tokens.get('semantic.layout.gap.page')?.value).toEqual({ value: 2, unit: 'rem' })
+    expect(tokens.get('semantic.layout.gap.dense')?.value).toEqual({ value: 0.5, unit: 'rem' })
+    expect(tokens.get('semantic.layout.size.rowDense')?.value).toEqual({ value: 2.5, unit: 'rem' })
+    expect(tokens.get('semantic.radius.control')?.value).toEqual({ value: 0.5, unit: 'rem' })
+    expect(tokens.get('semantic.elevation.overlay')?.type).toBe('shadow')
+    expect(docs).toContain('The approved foundation contains')
+    expect(docs).not.toContain('The current candidate contains')
+  })
+
   it('rejects public token names that normalize to the same generated CSS variable', () => {
     const root = mkdtempSync(join(tmpdir(), 'bakin-token-collision-'))
     fixtureRoots.push(root)

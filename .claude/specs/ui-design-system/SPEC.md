@@ -92,15 +92,19 @@ contracts change.
 2. **Design versus rebrand:** This is a comprehensive UX and design-system
    redesign, not a brand replacement. Preserve the recognizable Bakin logo
    and the roles of the warm dark foundation, green primary action, pink
-   signal/accent, and yellow highlight. Exact color values, typography,
-   spacing, density, surface hierarchy, radii, elevation, layout, motion, and
-   component treatments remain open to revision when usability, contrast,
-   hierarchy, or consistency improve.
+   signal/accent, and yellow highlight. The T14–T18 coded review approved
+   Product Character on 2026-07-18: bundled Space Grotesk for product chrome,
+   bundled JetBrains Mono for technical data, expressive hierarchy, restrained
+   elevation, and the generated semantic token values. Operational Neutral is
+   retained only as evidence for the tighter dense-row rhythm and is not an
+   alternate theme.
 3. **Density:** Use one canonical compact-professional density. Controls,
    repeated rows, tables, and operational data remain efficient to scan;
    pages and major sections retain enough separation to make hierarchy
-   obvious. Do not add user-selectable density modes or maintain parallel
-   density variants while establishing the system.
+   obvious. Product Character spacing governs ordinary composition; tables,
+   repeated rows, and operational data use the approved contextual dense gap
+   and row height. Do not add user-selectable density modes or maintain
+   parallel visual systems while establishing the system.
 4. **Responsive contract:** Optimize the product for desktop operation while
    keeping every primary workflow functional at 320px. Components respond to
    their available container, with required verification at 1024, 720, 480,
@@ -739,10 +743,10 @@ these UI rules:
 
 None blocking specification approval.
 
-Exact font faces, token values, final archetype membership, and numeric
-performance budgets are outputs of explicitly gated census, coded-specimen,
-and measurement tasks. They require evidence and approval at those checkpoints
-and cannot be chosen responsibly from the preliminary audit alone.
+Exact font faces and the initial token values were resolved by the approved
+T14–T18 coded-specimen checkpoint. Final archetype membership and numeric
+performance budgets remain outputs of their explicitly gated census and
+measurement tasks.
 
 ## Standards and Primary References
 

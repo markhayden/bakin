@@ -43,7 +43,7 @@ export const CANDIDATE_UI_CSS = `
 .bakin-candidate-study__intro {
   width: min(100%, 88rem);
   margin: var(--bakin-layout-space-0) auto var(--bakin-layout-space-6);
-  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  font-family: var(--bakin-typography-family-ui);
 }
 .bakin-candidate-study__intro h1 {
   margin: var(--bakin-layout-space-0);
@@ -308,11 +308,12 @@ export function CandidateIntro({ title, children }: { title: string; children: R
 export function CandidateDirection({ direction, children }: { direction: DirectionId; children: ReactNode }) {
   const configured = directionConfig.directions.find((candidate) => candidate.id === direction)
   if (!configured) throw new Error(`Unknown visual direction ${direction}`)
+  const isSelected = direction === directionConfig.selectedDirection
   return (
-    <article className="bakin-candidate-direction" data-direction={direction} style={directionStyle(direction)} aria-label={`${configured.label} direction`}>
+    <article className="bakin-candidate-direction" data-direction={direction} data-selected={isSelected ? 'true' : undefined} style={directionStyle(direction)} aria-label={`${configured.label} direction`}>
       <header className="bakin-candidate-direction__label">
         <strong>{configured.label}</strong>
-        <span>{configured.composition} Candidate, not selected.</span>
+        <span>{configured.composition} {isSelected ? 'Selected default.' : 'Compact-density evidence only.'}</span>
       </header>
       {children}
     </article>

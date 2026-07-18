@@ -1,14 +1,14 @@
 html,
 body,
 #storybook-root {
-  font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  font-family: var(--bakin-typography-family-ui);
 }
 
 code,
 kbd,
 pre,
 samp {
-  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-family: var(--bakin-typography-family-mono);
 }
 
 html[data-bakin-reduced-motion='true'] *,

@@ -550,6 +550,11 @@ fixtures, specimen notes.\
 
 ### T18 — Approve and codify the visual direction
 
+**Decision (2026-07-18):** Product Character is the approved default with
+Space Grotesk + JetBrains Mono. Operational Neutral is rejected as a global
+direction; its tighter gap and row height inform only the single contextual
+compact-professional recipe for tables, repeated rows, and operational data.
+
 **Description:** Compare T14–T17 evidence, choose one coherent direction,
 finalize initial token/font values and composition rules, and record rejected
 alternatives and reasons.
@@ -569,10 +574,10 @@ specimen story status.\
 
 ### 🔶 USER CHECKPOINT — Visual direction
 
-- [ ] Review all four specimen families at desktop and 320px.
-- [ ] Approve fonts, semantic color roles/values, spacing rhythm, radii,
+- [x] Review all four specimen families at desktop and 320px.
+- [x] Approve fonts, semantic color roles/values, spacing rhythm, radii,
   elevation, hierarchy, and interaction tone.
-- [ ] Production component styling does not begin before this approval.
+- [x] Production component styling does not begin before this approval.
 
 ---
 
@@ -1882,7 +1887,8 @@ no compatibility shim: the prerelease fleet advances as one coordinated set.
 These are not open scope decisions. Their tasks and approval gates are fixed,
 but the value cannot be known responsibly before evidence exists:
 
-- Exact typography faces and final token values: T14–T18.
+- Resolved at T18: Product Character, Space Grotesk + JetBrains Mono, and the
+  approved initial semantic token values.
 - Final page-archetype membership and low-level layout membership: T2–T3,
   T27–T30.
 - Numeric browser asset/runtime budgets: T1, T5, then ratcheted throughout.
