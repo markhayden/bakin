@@ -752,13 +752,16 @@ const teamPlugin: BakinPlugin = definePlugin({
     ctx.registerHealthCheck({
       id: 'routing',
       name: 'Task routing readiness (#189)',
-      description: 'Checks that unresolved team-assigned tasks have credentials for their routing provider.',
+      description: 'Checks that the runtime can serve the routing turn for unresolved team-assigned tasks.',
       group: { key: 'agents', label: 'Agents' },
       maxAgeMs: 60_000,
       run: async () => {
         const { resolveSystemRoute } = await import('../../src/core/system-route')
         const route = await resolveSystemRoute('team-routing')
-        return checkTeamRouting({ routingProvider: route.model?.split('/')[0] })
+        return checkTeamRouting({
+          credentialStatus: () => ctx.runtime.credentialStatus(),
+          routeModel: route.model,
+        })
       },
     })
   },
