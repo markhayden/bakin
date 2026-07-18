@@ -231,6 +231,32 @@ function resolveShared(task: DispatchTask, contentDir: string): Promise<TeamReso
   return promise
 }
 
+/** Pause/budget gate for the ROUTING CALL itself (the eventual dispatch turn
+ * has its own gates). Checked at the callers and NEVER recorded on the
+ * failure ladder: a kill-switch pause or budget freeze is not a routing
+ * failure, and counting it would eventually escalate innocent team tasks to
+ * blocked. The routing call is metered against the MAIN agent (it fires the
+ * ephemeral routing turn), so the budget prospect uses the main agent + the
+ * 'team-routing' route's model. Lazy imports keep this module out of the
+ * app-services import cycle (check:cycles). */
+async function routingCallGated(contentDir: string): Promise<boolean> {
+  const { dispatchPaused, deferForBudget } = await import('./dispatch-turns')
+  if (dispatchPaused(contentDir)) return true
+  try {
+    const { getAppServices } = await import('./app-services-store')
+    const { getRuntimeMainAgentId } = await import('@bakin/core/adapters/runtime')
+    const mainAgentId = await getRuntimeMainAgentId(getAppServices().runtime)
+    const { resolveSystemRoute } = await import('./system-route')
+    const route = await resolveSystemRoute('team-routing')
+    return await deferForBudget(mainAgentId, contentDir, undefined, route.model ? { model: route.model } : undefined)
+  } catch (err) {
+    // A broken gate must not strand routing forever — proceed; the resolver's
+    // own typed failure handling is the backstop.
+    log.debug('Routing budget gate unavailable; proceeding', { err: String(err) })
+    return false
+  }
+}
+
 interface ResolutionEligibilityContext {
   completedTaskIds: Set<string>
   /** Every task id on the board — a dependsOn pointing NOWHERE is treated
@@ -292,6 +318,11 @@ export async function resolveTeamAssignmentsPrePass(contentDir: string): Promise
       t.team && !t.agent && !resolvingTasks.has(t.id) && isResolutionEligible(t, ctx))
     if (candidates.length === 0) return
 
+    if (await routingCallGated(contentDir)) {
+      log.debug('Team resolution pre-pass deferred (dispatch paused or budget gate)')
+      return
+    }
+
     const settings = getSettings()
     // Lock-free advisory read — gating only; mutations happen under the lock.
     const state = loadDispatchState(contentDir)
@@ -340,6 +371,11 @@ export async function resolveTeamAssignmentForSingle(
     // Not dispatchable yet — dispatch's own eligibility check will report
     // the reason; billing the router now would freeze a stale pick.
     log.debug('Single-task team resolution deferred — task not dispatch-eligible yet', { taskId, source })
+    return false
+  }
+
+  if (await routingCallGated(contentDir)) {
+    log.debug('Single-task team resolution deferred (dispatch paused or budget gate)', { taskId })
     return false
   }
 

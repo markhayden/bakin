@@ -1,10 +1,11 @@
 /**
- * T3 (#189): team → agent assignment resolver.
+ * Team → agent assignment resolver (#189, runtime transport).
  *
  * The resolver assembles the candidate pool (team members ∩ runtime roster —
  * existence is the only hard filter), builds byte-budgeted member profiles,
- * asks the routing LLM for {agentId, reason}, and returns a typed result.
- * All collaborators are injected — the transport is NEVER live in tests.
+ * and asks the routing LLM via an EPHEMERAL RUNTIME TURN as the main agent
+ * (never a direct provider call — no API keys involved). All collaborators
+ * are injected; the runtime is a scripted fake — tests never make live calls.
  */
 import { describe, it, expect, mock } from 'bun:test'
 import { join } from 'path'
@@ -32,12 +33,10 @@ mock.module('../../../src/core/logger', () => ({
 
 import {
   resolveTeamAssignment,
-  DEFAULT_ROUTING_MODEL,
-  DEFAULT_ROUTING_PROVIDER,
   MEMBER_PROFILE_BYTE_BUDGET,
   type ResolverDeps,
 } from '../../../plugins/team/lib/assignment-resolver'
-import { DirectTextError } from '../../../packages/core/src/llm/direct-text-provider'
+import { RuntimeError } from '@bakin/core/adapters/runtime'
 import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
 
 // ---------------------------------------------------------------------------
@@ -50,8 +49,22 @@ const ROSTER = [
   { id: 'architect', name: 'Architect', role: 'architect', model: 'claude-opus-4-6' },
 ]
 
-function fakeRuntime(overrides: { soul?: Record<string, string> } = {}): AgentRuntimeAdapter {
-  return {
+type SendCall = {
+  agentId: string
+  content: string
+  threadId?: string
+  ephemeral?: boolean
+  model?: string
+  thinking?: string
+  activityClass?: string
+}
+
+/** Scripted runtime: each send pops the next reply (a content string or an
+ * Error to throw) and records the full send args. */
+function fakeRuntime(replies: Array<string | Error>, overrides: { soul?: Record<string, string> } = {}) {
+  const sends: SendCall[] = []
+  let i = 0
+  const runtime = {
     agents: {
       list: async () => ROSTER.map((a) => ({ ...a })),
       get: async (id: string) => ROSTER.find((a) => a.id === id) ?? null,
@@ -62,32 +75,37 @@ function fakeRuntime(overrides: { soul?: Record<string, string> } = {}): AgentRu
         return null
       },
     },
+    messaging: {
+      send: async (args: SendCall) => {
+        sends.push(args)
+        const reply = replies[Math.min(i++, replies.length - 1)]
+        if (reply instanceof Error) throw reply
+        return { content: reply, usage: { model: args.model ?? 'agent-default' } }
+      },
+    },
   } as unknown as AgentRuntimeAdapter
+  return { runtime, sends }
 }
 
-type TransportCall = { prompt: string; system?: string; model: string; provider: string }
+type MeterCall = Parameters<NonNullable<ResolverDeps['meter']>>[0]
 
-function fakeTransport(picks: Array<{ agentId: string; reason: string }>) {
-  const calls: TransportCall[] = []
-  let i = 0
-  const impl = async (req: { prompt: string; system?: string; model: string; provider: string }) => {
-    calls.push({ prompt: req.prompt, system: req.system, model: req.model, provider: req.provider })
-    const pick = picks[Math.min(i++, picks.length - 1)]
-    if (pick instanceof Error) throw pick
-    return pick
-  }
-  return { impl: impl as ResolverDeps['transport'], calls }
+function fakeMeter() {
+  const calls: MeterCall[] = []
+  const impl: NonNullable<ResolverDeps['meter']> = async (opts) => { calls.push(opts) }
+  return { impl, calls }
 }
 
-function deps(overrides: Partial<ResolverDeps> = {}): ResolverDeps {
+const PICK = JSON.stringify({ agentId: 'reviewer', reason: 'review task' })
+
+function deps(runtime: AgentRuntimeAdapter, overrides: Partial<ResolverDeps> = {}): ResolverDeps {
   return {
-    runtime: fakeRuntime(),
+    runtime,
     route: {},
-    keySource: () => ({ apiKey: 'k', source: 'env' as const }),
+    meter: fakeMeter().impl,
+    getMainAgentId: async () => 'main',
     readTeams: () => [{ id: 'development', label: 'Development', reportsTo: null }],
     getTeamMembers: async () => ['dev', 'reviewer', 'architect'],
     getStatus: () => 'online',
-    transport: fakeTransport([{ agentId: 'reviewer', reason: 'review task' }]).impl,
     ...overrides,
   }
 }
@@ -100,21 +118,61 @@ const REQUEST = {
 // ---------------------------------------------------------------------------
 
 describe('happy path', () => {
-  it('returns the picked in-pool agent with reason and model', async () => {
-    const result = await resolveTeamAssignment(deps(), REQUEST)
-    expect(result).toEqual({
-      ok: true,
-      agentId: 'reviewer',
-      reason: 'review task',
-      model: `${DEFAULT_ROUTING_PROVIDER}/${DEFAULT_ROUTING_MODEL}`,
-    })
+  it('returns the picked in-pool agent; no route = inherit', async () => {
+    const { runtime } = fakeRuntime([PICK])
+    const result = await resolveTeamAssignment(deps(runtime), REQUEST)
+    expect(result).toEqual({ ok: true, agentId: 'reviewer', reason: 'review task', model: 'inherit' })
+  })
+
+  it('sends ONE ephemeral system turn as the main agent on the task route thread', async () => {
+    const { runtime, sends } = fakeRuntime([PICK])
+    await resolveTeamAssignment(deps(runtime), REQUEST)
+    expect(sends).toHaveLength(1)
+    expect(sends[0].agentId).toBe('main')
+    expect(sends[0].ephemeral).toBe(true)
+    expect(sends[0].activityClass).toBe('system')
+    expect(sends[0].threadId).toBe('task:task-1:route')
+    expect(sends[0].model).toBeUndefined()
+  })
+
+  it('passes the team-routing route as a per-turn model/thinking override', async () => {
+    const { runtime, sends } = fakeRuntime([PICK])
+    const result = await resolveTeamAssignment(
+      deps(runtime, { route: { model: 'openai-codex/gpt-5.4-mini', thinking: 'low', source: 'class' } }),
+      REQUEST,
+    )
+    expect(sends[0].model).toBe('openai-codex/gpt-5.4-mini')
+    expect(sends[0].thinking).toBe('low')
+    expect(result.ok && result.model).toBe('openai-codex/gpt-5.4-mini')
+  })
+
+  it('meters every send under the team-routing work class on the route thread', async () => {
+    const meter = fakeMeter()
+    const { runtime } = fakeRuntime(['not json', PICK])
+    await resolveTeamAssignment(deps(runtime, {
+      meter: meter.impl,
+      route: { model: 'openai-codex/gpt-5.4-mini', source: 'class' },
+    }), REQUEST)
+    expect(meter.calls).toHaveLength(2)
+    for (const call of meter.calls) {
+      expect(call.workClass).toBe('team-routing')
+      expect(call.agent).toBe('main')
+      expect(call.runId).toBe('task:task-1:route')
+      expect(call.routeSource).toBe('class')
+      expect(call.resolvedModel).toBe('openai-codex/gpt-5.4-mini')
+    }
+  })
+
+  it('accepts a reply wrapped in a json fence', async () => {
+    const { runtime } = fakeRuntime(['```json\n' + PICK + '\n```'])
+    const result = await resolveTeamAssignment(deps(runtime), REQUEST)
+    expect(result.ok && result.agentId).toBe('reviewer')
   })
 
   it('prompt carries task fields and every pool member with role/status', async () => {
-    const { impl, calls } = fakeTransport([{ agentId: 'dev', reason: 'r' }])
-    await resolveTeamAssignment(deps({ transport: impl }), REQUEST)
-    expect(calls).toHaveLength(1)
-    const prompt = calls[0].prompt
+    const { runtime, sends } = fakeRuntime([PICK])
+    await resolveTeamAssignment(deps(runtime), REQUEST)
+    const prompt = sends[0].content
     expect(prompt).toContain('Review the auth PR')
     expect(prompt).toContain('Go through the diff')
     for (const member of ['dev', 'reviewer', 'architect']) expect(prompt).toContain(member)
@@ -122,97 +180,94 @@ describe('happy path', () => {
     expect(prompt).toContain('online')
   })
 
-  it('uses the team-routing matrix route for provider/model', async () => {
-    const { impl, calls } = fakeTransport([{ agentId: 'dev', reason: 'r' }])
-    const result = await resolveTeamAssignment(
-      deps({ transport: impl, route: { model: 'google/gemini-2.5-flash', source: 'class' } }),
-      REQUEST,
-    )
-    expect(calls[0].provider).toBe('google')
-    expect(calls[0].model).toBe('gemini-2.5-flash')
-    expect(result.ok && result.model).toBe('google/gemini-2.5-flash')
-  })
-
   it('truncates oversized SOUL prose to the member byte budget with a visible marker', async () => {
-    const { impl, calls } = fakeTransport([{ agentId: 'dev', reason: 'r' }])
     const huge = 'x'.repeat(MEMBER_PROFILE_BYTE_BUDGET * 4)
-    await resolveTeamAssignment(
-      deps({ runtime: fakeRuntime({ soul: { dev: huge } }), transport: impl }),
-      REQUEST,
-    )
-    const prompt = calls[0].prompt
+    const { runtime, sends } = fakeRuntime([PICK], { soul: { dev: huge } })
+    await resolveTeamAssignment(deps(runtime), REQUEST)
+    const prompt = sends[0].content
     expect(prompt).toContain('[truncated]')
-    expect(prompt.length).toBeLessThan(MEMBER_PROFILE_BYTE_BUDGET * 6) // budget held, not 4x blowup per member
+    expect(prompt.length).toBeLessThan(MEMBER_PROFILE_BYTE_BUDGET * 6)
   })
 })
 
 describe('pool assembly', () => {
   it('members missing from the runtime roster are dropped from the pool', async () => {
-    const { impl, calls } = fakeTransport([{ agentId: 'dev', reason: 'r' }])
-    await resolveTeamAssignment(
-      deps({ transport: impl, getTeamMembers: async () => ['dev', 'ghost-agent'] }),
-      REQUEST,
-    )
-    expect(calls[0].prompt).not.toContain('ghost-agent')
-  })
-
-  it('matrix route on an unsupported provider → structural (never silently re-routed)', async () => {
-    const result = await resolveTeamAssignment(
-      deps({ route: { model: 'openai-codex/gpt-5.5', source: 'class' } }),
-      REQUEST,
-    )
-    expect(result).toEqual({ ok: false, kind: 'structural', message: expect.stringContaining('openai-codex') })
+    const { runtime, sends } = fakeRuntime([JSON.stringify({ agentId: 'dev', reason: 'r' })])
+    await resolveTeamAssignment(deps(runtime, { getTeamMembers: async () => ['dev', 'ghost-agent'] }), REQUEST)
+    expect(sends[0].content).not.toContain('ghost-agent')
   })
 
   it('unknown team → structural', async () => {
-    const result = await resolveTeamAssignment(deps({ readTeams: () => [] }), REQUEST)
+    const { runtime } = fakeRuntime([PICK])
+    const result = await resolveTeamAssignment(deps(runtime, { readTeams: () => [] }), REQUEST)
     expect(result).toEqual({ ok: false, kind: 'structural', message: expect.stringContaining('development') })
   })
 
-  it('zero eligible members → structural', async () => {
-    const result = await resolveTeamAssignment(deps({ getTeamMembers: async () => [] }), REQUEST)
-    expect(result.ok).toBe(false)
+  it('zero eligible members → structural, no send fired', async () => {
+    const { runtime, sends } = fakeRuntime([PICK])
+    const result = await resolveTeamAssignment(deps(runtime, { getTeamMembers: async () => [] }), REQUEST)
     expect(!result.ok && result.kind).toBe('structural')
-  })
-
-  it('no API key for the routing provider → structural', async () => {
-    const result = await resolveTeamAssignment(deps({ keySource: () => null }), REQUEST)
-    expect(result.ok).toBe(false)
-    expect(!result.ok && result.kind).toBe('structural')
-    expect(!result.ok && result.message).toContain('anthropic')
+    expect(sends).toHaveLength(0)
   })
 })
 
-describe('LLM failure handling', () => {
-  it('transport transient error → transient result', async () => {
-    const transport = (async () => { throw new DirectTextError('transient', '429') }) as ResolverDeps['transport']
-    const result = await resolveTeamAssignment(deps({ transport }), REQUEST)
+describe('reply handling', () => {
+  it('malformed reply gets ONE corrective re-ask on the same thread, then succeeds', async () => {
+    const { runtime, sends } = fakeRuntime(['sorry, plain prose', PICK])
+    const result = await resolveTeamAssignment(deps(runtime), REQUEST)
+    expect(sends).toHaveLength(2)
+    expect(sends[1].threadId).toBe('task:task-1:route')
+    expect(sends[1].content).toContain('ONLY a JSON object')
+    expect(result.ok && result.agentId).toBe('reviewer')
+  })
+
+  it('malformed twice → transient', async () => {
+    const { runtime, sends } = fakeRuntime(['prose', 'more prose'])
+    const result = await resolveTeamAssignment(deps(runtime), REQUEST)
+    expect(sends).toHaveLength(2)
     expect(!result.ok && result.kind).toBe('transient')
   })
 
-  it('transport structural error → structural result', async () => {
-    const transport = (async () => { throw new DirectTextError('structural', '401') }) as ResolverDeps['transport']
-    const result = await resolveTeamAssignment(deps({ transport }), REQUEST)
-    expect(!result.ok && result.kind).toBe('structural')
-  })
-
-  it('out-of-pool pick retries once then succeeds', async () => {
-    const { impl, calls } = fakeTransport([
-      { agentId: 'someone-else', reason: 'bad pick' },
-      { agentId: 'architect', reason: 'good pick' },
+  it('out-of-pool pick re-asks once then succeeds', async () => {
+    const { runtime, sends } = fakeRuntime([
+      JSON.stringify({ agentId: 'someone-else', reason: 'bad pick' }),
+      JSON.stringify({ agentId: 'architect', reason: 'good pick' }),
     ])
-    const result = await resolveTeamAssignment(deps({ transport: impl }), REQUEST)
-    expect(calls).toHaveLength(2)
+    const result = await resolveTeamAssignment(deps(runtime), REQUEST)
+    expect(sends).toHaveLength(2)
     expect(result.ok && result.agentId).toBe('architect')
   })
 
-  it('out-of-pool twice → transient', async () => {
-    const { impl, calls } = fakeTransport([
-      { agentId: 'nope-1', reason: 'r' },
-      { agentId: 'nope-2', reason: 'r' },
+  it('out-of-pool twice → transient naming the bad pick', async () => {
+    const { runtime } = fakeRuntime([
+      JSON.stringify({ agentId: 'nope-1', reason: 'r' }),
+      JSON.stringify({ agentId: 'nope-2', reason: 'r' }),
     ])
-    const result = await resolveTeamAssignment(deps({ transport: impl }), REQUEST)
-    expect(calls).toHaveLength(2)
+    const result = await resolveTeamAssignment(deps(runtime), REQUEST)
+    expect(!result.ok && result.kind).toBe('transient')
+    expect(!result.ok && result.message).toContain('nope-2')
+  })
+})
+
+describe('runtime failure mapping', () => {
+  it('RuntimeError not_found → structural (send target missing)', async () => {
+    const { runtime } = fakeRuntime([new RuntimeError('unknown agent: main', { kind: 'not_found' })])
+    const result = await resolveTeamAssignment(deps(runtime), REQUEST)
+    expect(!result.ok && result.kind).toBe('structural')
+  })
+
+  it.each(['transport', 'timeout', 'provider_cooldown', 'runtime_failed', 'aborted'] as const)(
+    'RuntimeError %s → transient (ladder bounds retries)',
+    async (kind) => {
+      const { runtime } = fakeRuntime([new RuntimeError(`boom (${kind})`, { kind })])
+      const result = await resolveTeamAssignment(deps(runtime), REQUEST)
+      expect(!result.ok && result.kind).toBe('transient')
+    },
+  )
+
+  it('non-RuntimeError throw → transient', async () => {
+    const { runtime } = fakeRuntime([new Error('weird infra failure')])
+    const result = await resolveTeamAssignment(deps(runtime), REQUEST)
     expect(!result.ok && result.kind).toBe('transient')
   })
 })

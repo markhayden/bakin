@@ -61,7 +61,6 @@ import {
   getOrgStructure,
 } from './lib/agent-status'
 import {
-  DEFAULT_ROUTING_MODEL,
   resolveTeamAssignment,
   type ResolveAssignmentRequest,
 } from './lib/assignment-resolver'
@@ -302,17 +301,18 @@ const teamPlugin: BakinPlugin = definePlugin({
     }, { label: 'Check team exists.', summary: 'Returns true when the given teamId is a configured team. Use it for write-time validation of team assignments.', hookKind: 'rpc' })
     ctx.hooks.register('team.resolveAssignment', async (d: Record<string, unknown>) => {
       // The router's own model comes from the work-class matrix (models
-      // plugin) — the 'team-routing' row; no route = the default cheap model.
+      // plugin) — the 'team-routing' row; no route = inherit (the main
+      // agent's default model, since the call rides the runtime).
       const { resolveSystemRoute } = await import('../../src/core/system-route')
       const route = await resolveSystemRoute('team-routing')
       const heartbeats = readHeartbeats()
       const lastAuditActivity = getLastAuditActivity()
       return resolveTeamAssignment({
         runtime: ctx.runtime,
-        route: { model: route.model, source: route.source },
+        route: { model: route.model, thinking: route.thinking, source: route.source },
         getStatus: (agentId) => resolveAgentStatus(agentId, heartbeats, lastAuditActivity).status,
       }, d as unknown as ResolveAssignmentRequest)
-    }, { label: 'Resolve team assignment.', summary: 'Resolves a team-assigned task to the best-suited member via the routing LLM (#189). Returns {ok:true, agentId, reason, model} or {ok:false, kind: transient|structural, message} — dispatch classifies by kind. Use it from dispatch or any surface that must turn a teamId into a concrete agent.', hookKind: 'rpc' })
+    }, { label: 'Resolve team assignment.', summary: 'Resolves a team-assigned task to the best-suited member via an ephemeral runtime turn (#189). Returns {ok:true, agentId, reason, model} or {ok:false, kind: transient|structural, message} — dispatch classifies by kind. Use it from dispatch or any surface that must turn a teamId into a concrete agent.', hookKind: 'rpc' })
 
     // routes registered at module scope via the lib/routes/* populate functions (T20+).
 
@@ -764,25 +764,6 @@ const teamPlugin: BakinPlugin = definePlugin({
   },
 
   async onReady() {
-    // One-shot fold of the legacy routingProvider/routingModel settings into
-    // the work-class matrix ('team-routing' row). Runs in onReady so the
-    // models plugin's seed hook is guaranteed registered; seeding never
-    // overwrites an existing route; the legacy keys are deleted either way.
-    const ctx = pluginCtx
-    if (ctx) {
-      const legacy = ctx.getSettings<{ routingProvider?: string; routingModel?: string }>()
-      if (legacy.routingProvider !== undefined || legacy.routingModel !== undefined) {
-        const provider = legacy.routingProvider === 'openai' || legacy.routingProvider === 'google' ? legacy.routingProvider : 'anthropic'
-        const model = legacy.routingModel?.trim() || DEFAULT_ROUTING_MODEL
-        try {
-          await ctx.hooks.invoke('models.seedWorkClassRoute', { workClass: 'team-routing', model: `${provider}/${model}` })
-        } catch (err) {
-          log.warn('team-routing seed migration failed; matrix route not seeded', { error: err instanceof Error ? err.message : String(err) })
-        }
-        ctx.updateSettings({ routingProvider: undefined, routingModel: undefined })
-        log.info('Folded legacy team routing settings into the work-class matrix')
-      }
-    }
     await batchIndexAgents()
     log.info('Ready — team plugin using runtime agent adapter')
   },
