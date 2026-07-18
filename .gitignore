@@ -17,6 +17,7 @@
 dist/
 /build
 /out/
+/storybook-static/
 
 # misc
 .DS_Store
@@ -24,6 +25,7 @@ dist/
 
 # debug
 npm-debug.log*
+debug-storybook.log
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*

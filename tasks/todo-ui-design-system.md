@@ -22,7 +22,7 @@ comparison, and deletion of replaced styling/allowances.
 
 ## Phase 1 — Catalog and browser verification
 
-- [ ] T6 Scaffold the React/Vite Storybook workbench
+- [x] T6 Scaffold the React/Vite Storybook workbench
 - [ ] T7 Split public/internal audiences and deterministic fixtures
 - [ ] T8 Add canonical Playwright visual infrastructure
 - [ ] Checkpoint 1A: visual harness has teeth
