@@ -13,9 +13,32 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  impact:
+    name: UI impact
+    if: ${{ github.event.pull_request.draft == false }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      run_ui: ${{ steps.ui.outputs.run_ui }}
+      reason: ${{ steps.ui.outputs.reason }}
+    steps:
+      - name: Checkout full PR history
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Classify browser UI impact
+        id: ui
+        env:
+          BAKIN_UI_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BAKIN_UI_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node scripts/ui/ci-impact.mjs
+
   visual:
     name: UI visuals
-    if: ${{ github.event.pull_request.draft == false }}
+    needs: impact
+    if: ${{ github.event.pull_request.draft == false && needs.impact.outputs.run_ui == 'true' }}
     uses: ./.github/workflows/ui-visual.yml
     permissions:
       contents: read

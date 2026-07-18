@@ -2,8 +2,15 @@ name: UI Visual Checks
 
 on:
   workflow_call:
+    inputs:
+      checkout_ref:
+        description: Commit or ref whose UI is being verified
+        required: false
+        type: string
+        default: ''
 
 jobs:
+  # Keep this job id/name stable for existing required-check configuration.
   visual:
     name: Canonical Playwright visuals
     runs-on: ubuntu-24.04
@@ -18,6 +25,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -30,16 +39,28 @@ jobs:
       - name: Verify canonical image
         run: node scripts/ui/canonical-playwright.mjs --check-render
 
+      - name: Verify deterministic public catalog
+        run: bun run ui:build:public:verify
+
+      - name: Run story accessibility and interactions
+        run: bun run ui:test:stories
+
       - name: Run visual baselines
         run: bun run ui:test:visual
 
-      - name: Upload visual failure artifacts
+      - name: Run cross-browser behavior checks
+        run: bun run ui:test:browsers
+
+      - name: Upload UI failure artifacts
         if: failure()
         uses: actions/upload-artifact@v5
         with:
-          name: ui-visual-${{ github.run_id }}-${{ github.run_attempt }}
-          if-no-files-found: error
+          name: ui-browser-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: warn
           retention-days: 14
           path: |
+            test-results/ui-stories
             playwright-report/ui
             test-results/ui-visual
+            playwright-report/ui-browser
+            test-results/ui-browser

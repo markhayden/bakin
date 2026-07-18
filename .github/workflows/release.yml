@@ -107,6 +107,15 @@ jobs:
             echo "release_id=${tag}-${commit}"
           } >> "${GITHUB_OUTPUT}"
 
+  ui:
+    name: UI visuals
+    needs: gate
+    uses: ./.github/workflows/ui-visual.yml
+    with:
+      checkout_ref: ${{ needs.gate.outputs.commit }}
+    permissions:
+      contents: read
+
   build:
     name: Build and pre-publish gates
     runs-on: ubuntu-latest
@@ -267,6 +276,7 @@ jobs:
       - gate
       - build
       - sign-macos
+      - ui
     env:
       TAG: ${{ needs.gate.outputs.tag }}
       VERSION: ${{ needs.gate.outputs.version }}

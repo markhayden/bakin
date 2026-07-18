@@ -8,6 +8,11 @@ const repoRoot = import.meta.dirname
 
 export default defineConfig({
   test: {
+    reporters: [
+      'default',
+      ...(process.env.GITHUB_ACTIONS ? ['github-actions' as const] : []),
+      ['junit', { outputFile: 'test-results/ui-stories/junit.xml' }],
+    ],
     projects: [
       {
         plugins: [
@@ -27,6 +32,10 @@ export default defineConfig({
             provider: playwright({}),
             headless: true,
             instances: [{ browser: 'chromium' }],
+            trace: {
+              mode: 'retain-on-failure',
+              tracesDir: 'test-results/ui-stories/traces',
+            },
           },
         },
       },
