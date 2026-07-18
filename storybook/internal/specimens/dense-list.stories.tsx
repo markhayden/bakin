@@ -20,6 +20,8 @@ import {
 
 const DENSE_CSS = `
 .bakin-dense-header { display: grid; gap: var(--candidate-item-gap); }
+.bakin-dense-header__utility { align-items: center; }
+.bakin-dense-header__actions { margin-left: auto; }
 .bakin-dense-header__eyebrow {
   margin: var(--bakin-layout-space-0);
   color: var(--bakin-color-signal-accent);
@@ -29,7 +31,7 @@ const DENSE_CSS = `
   text-transform: uppercase;
 }
 .bakin-dense-header h2 {
-  max-width: 24ch;
+  max-width: 18ch;
   margin: var(--bakin-layout-space-0);
   overflow-wrap: anywhere;
   font-size: var(--candidate-page-title-size);
@@ -37,7 +39,15 @@ const DENSE_CSS = `
   line-height: 1.04;
   letter-spacing: -0.035em;
 }
-.bakin-dense-header__description { max-width: 62ch; margin: var(--bakin-layout-space-0); color: var(--bakin-color-text-muted); line-height: 1.55; }
+.bakin-dense-header__description { max-width: 58ch; margin: var(--bakin-layout-space-0); color: var(--bakin-color-text-muted); line-height: 1.55; }
+.bakin-dense-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--candidate-item-gap);
+  align-items: center;
+  padding-top: var(--candidate-item-gap);
+  border-top: 1px solid var(--bakin-color-border-subtle);
+}
 .bakin-dense-summary {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -82,6 +92,8 @@ const DENSE_CSS = `
   .bakin-dense-object .bakin-action { justify-self: start; }
 }
 @media (max-width: 24rem) {
+  .bakin-dense-header__actions { width: 100%; margin-left: var(--bakin-layout-space-0); }
+  .bakin-dense-filter-label { flex-basis: 100%; }
   .bakin-dense-summary { grid-template-columns: minmax(0, 1fr); }
   .bakin-dense-metric + .bakin-dense-metric { border-left: 0; border-top: 1px solid var(--bakin-color-border-subtle); padding-left: var(--bakin-layout-space-0); }
   .bakin-dense-health__row { grid-template-columns: minmax(0, 1fr); }
@@ -124,19 +136,21 @@ function DenseHeader({ activeFilter, onFilter }: { activeFilter: string; onFilte
   return (
     <Stack gap="item">
       <header className="bakin-dense-header">
-        <p className="bakin-dense-header__eyebrow">Tasks / live operations</p>
-        <Inline align="between">
-          <div><h2>Coordinate active work without losing operational context</h2></div>
-          <Inline><Action>Export view</Action><Action tone="primary">New task</Action></Inline>
+        <Inline className="bakin-dense-header__utility" align="between">
+          <p className="bakin-dense-header__eyebrow">Tasks / live operations</p>
+          <Inline className="bakin-dense-header__actions"><Action>Export view</Action><Action tone="primary">New task</Action></Inline>
         </Inline>
-        <p className="bakin-dense-header__description">42 active tasks across agents, assets, schedules, and workflows. Filters belong in the URL under the existing routing contract.</p>
+        <h2>Coordinate active work</h2>
+        <p className="bakin-dense-header__description">42 active tasks across agents, assets, schedules, and workflows. Filters persist in the URL under the existing routing contract.</p>
       </header>
-      <Inline aria-label="Task filters">
-        <span className="bakin-dense-filter-label">Search tasks and assets</span>
-        {filters.map((filter) => (
-          <Action key={filter} aria-pressed={activeFilter === filter} onClick={() => onFilter(filter)}>{filter}</Action>
-        ))}
-      </Inline>
+      <div className="bakin-dense-filter-bar">
+        <span className="bakin-dense-filter-label">View</span>
+        <Inline role="group" aria-label="Task filters">
+          {filters.map((filter) => (
+            <Action key={filter} aria-pressed={activeFilter === filter} onClick={() => onFilter(filter)}>{filter}</Action>
+          ))}
+        </Inline>
+      </div>
     </Stack>
   )
 }

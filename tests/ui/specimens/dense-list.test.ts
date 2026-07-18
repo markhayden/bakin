@@ -95,4 +95,17 @@ describe('dense list and data direction specimens', () => {
     }
     expect(story).not.toContain('NestedCard')
   })
+
+  it('keeps the operational header scannable when text is enlarged', () => {
+    const story = read('storybook/internal/specimens/dense-list.stories.tsx')
+
+    expect(story).toContain('bakin-dense-header__utility')
+    expect(story).toContain('<h2>Coordinate active work</h2>')
+    expect(story).toContain('Filters persist in the URL under the existing routing contract.')
+    expect(story).toContain('className="bakin-dense-filter-bar"')
+    expect(story).toContain('className="bakin-dense-filter-label">View</span>')
+    expect(story).toContain('<Inline role="group" aria-label="Task filters">')
+    expect(story).not.toContain('without losing operational context')
+    expect(story).not.toContain('Search tasks and assets')
+  })
 })
