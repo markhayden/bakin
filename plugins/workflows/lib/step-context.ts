@@ -14,6 +14,7 @@ import type {
   OutputStep,
   StepErrorCode,
 } from '../types'
+import { isTeamStepToken } from '@bakin/core/workflows/team-token'
 import { loadDefinition, parsePreferredAgentExpression, findStep } from './parser'
 import { loadSkill } from './skill-loader'
 import { getContentDir } from './content-dir'
@@ -21,9 +22,15 @@ import { loadInstance } from './instance-store'
 
 /**
  * Resolve a step's agent value, replacing `$assigned` with the instance's
- * snapshotted assignee (locked at workflow start to prevent mid-workflow drift).
+ * snapshotted assignee (locked at workflow start to prevent mid-workflow
+ * drift) and `team:<id>` with the step's sticky resolution when dispatch has
+ * recorded one (#611) — an unresolved team token passes through so dispatch
+ * can recognize and resolve it.
  */
-export function resolveAgent(agentValue: string | undefined, instance: WorkflowInstance): string | undefined {
+export function resolveAgent(agentValue: string | undefined, instance: WorkflowInstance, stepId?: string): string | undefined {
+  if (isTeamStepToken(agentValue)) {
+    return (stepId && instance.teamResolutions?.[stepId]?.agentId) || agentValue
+  }
   if (agentValue === '$assigned') return instance.resolvedAgent || agentValue
   const preferred = agentValue ? parsePreferredAgentExpression(agentValue) : null
   if (preferred) {
@@ -47,8 +54,8 @@ export function resolveAgent(agentValue: string | undefined, instance: WorkflowI
 }
 
 export function getStepOwner(step: WorkflowStep, instance: WorkflowInstance): string | undefined {
-  if (step.type === 'agent') return resolveAgent((step as AgentStep).agent, instance)
-  if (step.type === 'output') return resolveAgent((step as OutputStep).agent, instance)
+  if (step.type === 'agent') return resolveAgent((step as AgentStep).agent, instance, step.id)
+  if (step.type === 'output') return resolveAgent((step as OutputStep).agent, instance, step.id)
   return undefined
 }
 
@@ -153,7 +160,7 @@ export function getCurrentStep(
     const parallel = step as ParallelStep
     if (agentId) {
       const childStep = parallel.steps.find(
-        c => c.type === 'agent' && resolveAgent((c as AgentStep).agent, instance) === agentId
+        c => c.type === 'agent' && resolveAgent((c as AgentStep).agent, instance, c.id) === agentId
       )
       if (childStep && instance.stepStates[childStep.id]?.status === 'in_progress') {
         return buildStepContext(childStep, instance, dir)
@@ -372,15 +379,15 @@ export function getActiveAgents(
   } else if (currentStep.type === 'parallel') {
     for (const child of (currentStep as ParallelStep).steps) {
       if (child.type === 'agent' && instance.stepStates[child.id]?.status === 'in_progress') {
-        const resolved = resolveAgent((child as AgentStep).agent, instance)
+        const resolved = resolveAgent((child as AgentStep).agent, instance, child.id)
         if (resolved && resolved !== '$assigned') agents.push({ agent: resolved, stepId: child.id })
       }
     }
   } else if (currentStep.type === 'agent') {
-    const resolved = resolveAgent((currentStep as AgentStep).agent, instance)
+    const resolved = resolveAgent((currentStep as AgentStep).agent, instance, currentStep.id)
     if (resolved && resolved !== '$assigned') agents.push({ agent: resolved, stepId: currentStep.id })
   } else if (currentStep.type === 'output' && (currentStep as OutputStep).agent) {
-    const resolved = resolveAgent((currentStep as OutputStep).agent, instance)
+    const resolved = resolveAgent((currentStep as OutputStep).agent, instance, currentStep.id)
     if (resolved && resolved !== '$assigned') agents.push({ agent: resolved, stepId: currentStep.id })
   }
 

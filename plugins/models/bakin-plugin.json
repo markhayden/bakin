@@ -1,7 +1,7 @@
 {
   "id": "models",
   "name": "Models",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "bakin": ">=1.0.0",
   "description": "Agent model configuration — per-agent models, aliases, available models, per-turn model/thinking routing, and spend/budget tracking",
   "contentFiles": [],

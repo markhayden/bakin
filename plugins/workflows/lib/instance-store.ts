@@ -44,6 +44,27 @@ export function saveInstance(instance: WorkflowInstance, contentDir?: string): v
 }
 
 /** Delete a task's workflow instance file. Returns whether one existed. */
+/**
+ * Record a sticky per-step `team:<id>` resolution (#611). First write wins —
+ * a concurrent resolution (or a re-dispatch racing a slow router) reuses the
+ * recorded pick instead of overwriting it. Returns the EFFECTIVE resolution.
+ */
+export function recordStepTeamResolution(
+  taskId: string,
+  stepId: string,
+  resolution: { agentId: string; team: string; reason: string },
+  contentDir?: string,
+): { agentId: string; team: string; reason: string; at: string } | null {
+  const instance = loadInstance(taskId, contentDir)
+  if (!instance) return null
+  const existing = instance.teamResolutions?.[stepId]
+  if (existing) return existing
+  const recorded = { ...resolution, at: new Date().toISOString() }
+  instance.teamResolutions = { ...instance.teamResolutions, [stepId]: recorded }
+  saveInstance(instance, contentDir)
+  return recorded
+}
+
 export function deleteInstance(taskId: string, contentDir?: string): boolean {
   const dir = contentDir || getContentDir()
   const path = getInstancePath(dir, taskId)

@@ -151,7 +151,7 @@ const FIELD_LABELS: Record<string, string> = {
 }
 
 const FIELD_HELP_TEXT: Record<string, string> = {
-  agent: 'Choose who should run this step. Use Assigned agent to reuse the task assignee.',
+  agent: 'Choose who should run this step. Use Assigned agent to reuse the task assignee, or a team to route to the best-suited member at dispatch.',
   skill: 'Optional skill or instruction bundle to load before the agent works.',
   task: 'Short, concrete instruction for the agent. Use one or two sentences.',
   description: 'Longer context, constraints, or acceptance criteria for this step.',

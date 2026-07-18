@@ -16,8 +16,9 @@ import {
 } from '@/components/ui/select'
 
 /** Prefix marking a team selection in the select's string value (#189).
- * Purely a UI encoding — callers split it back into {agent} vs {team}
- * before talking to the API; the prefix is never stored. */
+ * Task surfaces split it back into {agent} vs {team} before talking to the
+ * API; workflow STEP definitions store the token verbatim (#611 — the step's
+ * team target, resolved sticky at dispatch). */
 export const TEAM_VALUE_PREFIX = 'team:'
 
 export function isTeamValue(value: string): boolean {

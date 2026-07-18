@@ -1,7 +1,7 @@
 {
   "id": "workflows",
   "name": "Workflows",
-  "version": "2.0.1",
+  "version": "2.1.0",
   "bakin": ">=1.0.0",
   "description": "Workflow runtime — enforces step-by-step agent execution with gated delivery, parallel steps, human gates, and output validation",
   "contentFiles": [

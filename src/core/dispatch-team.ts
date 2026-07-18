@@ -231,6 +231,179 @@ function resolveShared(task: DispatchTask, contentDir: string): Promise<TeamReso
   return promise
 }
 
+/** Pause/budget gate for the ROUTING CALL itself (the eventual dispatch turn
+ * has its own gates). Checked at the callers and NEVER recorded on the
+ * failure ladder: a kill-switch pause or budget freeze is not a routing
+ * failure, and counting it would eventually escalate innocent team tasks to
+ * blocked. The routing call is metered against the MAIN agent (it fires the
+ * ephemeral routing turn), so the budget prospect uses the main agent + the
+ * 'team-routing' route's model. Lazy imports keep this module out of the
+ * app-services import cycle (check:cycles). */
+async function routingCallGated(contentDir: string): Promise<boolean> {
+  const { dispatchPaused, deferForBudget } = await import('./dispatch-turns')
+  if (dispatchPaused(contentDir)) return true
+  try {
+    const { getAppServices } = await import('./app-services-store')
+    const { getRuntimeMainAgentId } = await import('@bakin/core/adapters/runtime')
+    const mainAgentId = await getRuntimeMainAgentId(getAppServices().runtime)
+    const { resolveSystemRoute } = await import('./system-route')
+    const route = await resolveSystemRoute('team-routing')
+    return await deferForBudget(mainAgentId, contentDir, undefined, route.model ? { model: route.model } : undefined)
+  } catch (err) {
+    // A broken gate must not strand routing forever — proceed; the resolver's
+    // own typed failure handling is the backstop.
+    log.debug('Routing budget gate unavailable; proceeding', { err: String(err) })
+    return false
+  }
+}
+
+export interface StepTeamResolutionArgs {
+  /** Parent BOARD task — the block target and audit subject. */
+  task: DispatchTask
+  /** Effective task id for the step (child task id for nested workflows). */
+  contextTaskId: string
+  stepId: string
+  stepLabel: string
+  teamId: string
+  /** Step instructions, forwarded (bounded) as router context. */
+  instructions?: string
+  contentDir: string
+}
+
+export type StepTeamResolutionOutcome =
+  | { status: 'resolved'; agentId: string }
+  | { status: 'skipped' }
+  | { status: 'blocked' }
+
+/** Router prompt context from step instructions is bounded — routing is a
+ * classification call; whole step bodies don't improve it. */
+const STEP_ROUTER_CONTEXT_BYTES = 1500
+
+/**
+ * Resolve a `team:<id>` workflow-step target to a concrete member (#611).
+ * Same policy as task-level resolution: pre-claim, structural failures block
+ * the PARENT task honestly, transient failures ride the failedDispatches
+ * ladder (keyed `<contextTaskId>:<stepId>` — additive, never collides with
+ * task-level records), pause/budget gates defer quietly outside the ladder.
+ * The pick is persisted STICKY on the workflow instance
+ * (workflows.recordStepTeamResolution, first write wins) — retries and
+ * revision cycles reuse it; the routing LLM bills at most once per step.
+ */
+export async function resolveTeamAssignmentForStep(args: StepTeamResolutionArgs): Promise<StepTeamResolutionOutcome> {
+  const ladderKey = `${args.contextTaskId}:${args.stepId}`
+  const inFlight = stepResolutions.get(ladderKey)
+  if (inFlight) return inFlight
+
+  const run = (async (): Promise<StepTeamResolutionOutcome> => {
+    const registry = getHookRegistry()
+    const { task, teamId, stepId, stepLabel, contentDir } = args
+
+    const blockWith = async (message: string): Promise<StepTeamResolutionOutcome> => {
+      log.warn('Step team resolution blocked task', { id: task.id, stepId, team: teamId, message })
+      appendAudit(contentDir, 'task.team_resolution_failed', 'system', {
+        id: task.id, title: task.title, team: teamId, stepId, kind: 'structural', message,
+      })
+      await blockTask(task.id, TEAM_ROUTING_BLOCK_REASON)
+      await addTaskLog(task.id, 'system', `Team routing failed for step "${stepLabel}": ${message}`).catch((err) => log.debug('Could not append step routing-failure detail', { id: task.id, err: String(err) }))
+      return { status: 'blocked' }
+    }
+
+    if (await routingCallGated(contentDir)) {
+      log.debug('Step team resolution deferred (dispatch paused or budget gate)', { id: task.id, stepId })
+      return { status: 'skipped' }
+    }
+
+    const settings = getSettings()
+    const state = loadDispatchState(contentDir)
+    const { gate, count } = ladderGate(state, ladderKey, settings)
+    if (gate === 'exhausted') {
+      // Exhaustion uses its OWN sentinel (same rule as task-level): repeated
+      // BILLED routing calls failed — outcome checks must count it.
+      appendAudit(contentDir, 'task.team_resolution_failed', 'system', {
+        id: task.id, title: task.title, team: teamId, stepId, kind: 'structural',
+        message: `exhausted after ${count} transient routing failures`,
+      })
+      await blockTask(task.id, TEAM_ROUTING_EXHAUSTED_REASON)
+      await addTaskLog(task.id, 'system', `Team routing for step "${stepLabel}" failed ${count} times — check the routing route/runtime, then re-assign or unblock to retry`).catch((err) => log.debug('Could not append step routing-exhaustion detail', { id: task.id, err: String(err) }))
+      log.warn('Team step blocked after exhausting routing retries', { id: task.id, stepId, team: teamId, count })
+      return { status: 'blocked' }
+    }
+    if (gate === 'cooldown') {
+      log.debug('Step team resolution gated by failure ladder cooldown', { id: task.id, stepId })
+      return { status: 'skipped' }
+    }
+
+    const recordTransient = async (message: string): Promise<StepTeamResolutionOutcome> => {
+      appendAudit(contentDir, 'task.team_resolution_failed', 'system', {
+        id: task.id, title: task.title, team: teamId, stepId, kind: 'transient', message,
+      })
+      await addTaskLogOnce(task, `Team routing deferred for step "${stepLabel}" (will retry): ${message}`).catch((err) => log.debug('Could not append step routing-deferral detail', { id: task.id, err: String(err) }))
+      await withStateLock(async () => {
+        const fresh = loadDispatchState(contentDir)
+        recordTeamResolutionFailure(fresh, ladderKey)
+        saveDispatchState(contentDir, fresh)
+      })
+      return { status: 'skipped' }
+    }
+
+    try {
+      if (!registry.has(TEAM_RESOLVE_HOOK)) {
+        return await blockWith(`${TEAM_RESOLVE_HOOK} hook is not registered (team plugin unavailable)`)
+      }
+
+      const result = await registry.invoke<ResolveAssignmentResult>(TEAM_RESOLVE_HOOK, {
+        teamId,
+        task: {
+          id: args.contextTaskId,
+          title: `${task.title} — step: ${stepLabel}`,
+          ...(args.instructions ? { description: args.instructions.slice(0, STEP_ROUTER_CONTEXT_BYTES) } : {}),
+        },
+      })
+      if (!result) {
+        return await blockWith(`${TEAM_RESOLVE_HOOK} returned no result`)
+      }
+
+      if (result.ok) {
+        // Sticky persistence: first write wins — a racing resolution's
+        // recorded pick takes precedence over this call's own result.
+        const recorded = await registry.invoke<{ agentId: string } | null>('workflows.recordStepTeamResolution', {
+          taskId: args.contextTaskId,
+          stepId,
+          resolution: { agentId: result.agentId, team: teamId, reason: result.reason },
+        })
+        if (!recorded) {
+          // Instance vanished while routing (task deleted/completed) —
+          // nothing to dispatch; treat as skipped, never record a pick.
+          log.warn('Step team resolution discarded — instance gone', { id: task.id, stepId, team: teamId })
+          return { status: 'skipped' }
+        }
+        await addTaskLog(task.id, 'system', `Routed step "${stepLabel}" to ${recorded.agentId} (team ${teamId}): ${result.reason}`).catch((err) => log.debug('Could not append step routing log', { id: task.id, err: String(err) }))
+        appendAudit(contentDir, 'task.team_resolved', 'system', {
+          id: task.id, title: task.title, team: teamId, stepId, agent: recorded.agentId, reason: result.reason, model: result.model,
+        })
+        log.info('Team step resolved', { id: task.id, stepId, team: teamId, agent: recorded.agentId })
+        return { status: 'resolved', agentId: recorded.agentId }
+      }
+
+      if (result.kind === 'structural') {
+        return await blockWith(result.message)
+      }
+      return await recordTransient(result.message)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      log.error('Step team resolution hook threw; skipping this cycle', err, { id: task.id, stepId, team: teamId })
+      return await recordTransient(message)
+    }
+  })().finally(() => stepResolutions.delete(ladderKey))
+  stepResolutions.set(ladderKey, run)
+  return run
+}
+
+/** Step resolutions in flight RIGHT NOW, keyed `<contextTaskId>:<stepId>` —
+ * same double-bill guard as resolvingTasks, separate map because outcomes
+ * are step-shaped. */
+const stepResolutions = new Map<string, Promise<StepTeamResolutionOutcome>>()
+
 interface ResolutionEligibilityContext {
   completedTaskIds: Set<string>
   /** Every task id on the board — a dependsOn pointing NOWHERE is treated
@@ -292,6 +465,11 @@ export async function resolveTeamAssignmentsPrePass(contentDir: string): Promise
       t.team && !t.agent && !resolvingTasks.has(t.id) && isResolutionEligible(t, ctx))
     if (candidates.length === 0) return
 
+    if (await routingCallGated(contentDir)) {
+      log.debug('Team resolution pre-pass deferred (dispatch paused or budget gate)')
+      return
+    }
+
     const settings = getSettings()
     // Lock-free advisory read — gating only; mutations happen under the lock.
     const state = loadDispatchState(contentDir)
@@ -340,6 +518,11 @@ export async function resolveTeamAssignmentForSingle(
     // Not dispatchable yet — dispatch's own eligibility check will report
     // the reason; billing the router now would freeze a stale pick.
     log.debug('Single-task team resolution deferred — task not dispatch-eligible yet', { taskId, source })
+    return false
+  }
+
+  if (await routingCallGated(contentDir)) {
+    log.debug('Single-task team resolution deferred (dispatch paused or budget gate)', { taskId })
     return false
   }
 

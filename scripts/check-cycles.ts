@@ -36,6 +36,9 @@ const KNOWN_CYCLES = new Set<string>([
   key(['src/core/dispatch-prepare.ts', 'src/core/dispatch-turns.ts', 'src/core/dispatch-session-death.ts', 'src/core/dispatch-single.ts']),
   key(['src/core/dispatch-turns.ts', 'src/core/dispatch-session-death.ts', 'src/core/dispatch-single.ts']),
   key(['src/core/dispatch-turns.ts', 'src/core/dispatch-session-death.ts', 'src/core/dispatch-single.ts', 'src/core/dispatch-workflow.ts']),
+  // dispatch-team's routing-call gate lazy-imports dispatchPaused/deferForBudget
+  // from dispatch-turns (call-time only — same fire-core pattern as above)
+  key(['src/core/dispatch-turns.ts', 'src/core/dispatch-session-death.ts', 'src/core/dispatch-single.ts', 'src/core/dispatch-team.ts']),
   key(['src/core/dispatch-turns.ts', 'src/core/dispatch-session-death.ts']),
   // Assets enrichment (post-#457): engine ↔ providers, runtime-lazy
   key(['plugins/assets/lib/enrichment/engine.ts', 'plugins/assets/lib/enrichment/direct.ts']),

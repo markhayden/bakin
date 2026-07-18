@@ -25,6 +25,7 @@ import {
   retryMapChild,
   cancelMapChild,
   listMapChildren,
+  recordStepTeamResolution,
   type WorkflowToolUseAction,
 } from './runtime'
 import { createValidatedInstance } from './start-validation'
@@ -40,6 +41,12 @@ export function registerWorkflowHooks(ctx: PluginContext): void {
   ctx.hooks.register('workflows.saveInstance', (d: Record<string, unknown>) => saveInstance(d.instance as Parameters<typeof saveInstance>[0], d.contentDir as string | undefined), { label: 'Save workflow instance.', summary: 'Persists a workflow instance after a plugin has changed its state. Use it to keep workflow updates routed through the workflow plugin storage layer.', hookKind: 'rpc' })
   ctx.hooks.register('workflows.createInstance', (d: Record<string, unknown>) => createValidatedInstance(ctx, d.taskId as string, d.workflowId as string, d.assignee as string | undefined, d.contentDir as string | undefined, d.parentContext as Record<string, unknown> | undefined), { label: 'Create workflow instance.', summary: 'Creates a workflow instance for a task and optional assignee context. Use it when task creation or routing should immediately attach a workflow.', hookKind: 'rpc' })
   ctx.hooks.register('workflows.deleteInstance', (d: Record<string, unknown>) => deleteInstance(d.taskId as string, d.contentDir as string | undefined), { label: 'Delete workflow instance.', summary: 'Removes the workflow instance file attached to a task. Use it when the task itself is deleted so no orphaned instance state is left behind.', hookKind: 'rpc' })
+  ctx.hooks.register('workflows.recordStepTeamResolution', (d: Record<string, unknown>) => recordStepTeamResolution(
+    d.taskId as string,
+    d.stepId as string,
+    d.resolution as { agentId: string; team: string; reason: string },
+    d.contentDir as string | undefined,
+  ), { label: 'Record step team resolution.', summary: 'Persists a sticky team:<id> step resolution on the workflow instance (#611); first write wins and the effective resolution is returned. Use it from dispatch after the team plugin picks a member for a team-targeted step.', hookKind: 'rpc' })
   ctx.hooks.register('workflows.approveGate', (d: Record<string, unknown>) => approveGate(d.taskId as string, d.stepId as string, {
     approver: d.approver as ApprovalActor | undefined,
     contentDir: d.contentDir as string | undefined,

@@ -632,6 +632,46 @@ describe('dispatch', () => {
       expect(typeof record.lastAttempt).toBe('number')
     })
 
+    it('team-token workflow step resolves to the member before fire; owner never the token (#611)', async () => {
+      setDispatchColumns({
+        todo: [{ id: 'wf-team', title: 'Team workflow task', workflowId: 'flow-x' }],
+        inProgress: [], done: [], archived: [],
+      })
+      const invoked: string[] = []
+      const invoke = mock(async (hook: string) => {
+        invoked.push(hook)
+        if (hook === 'workflows.loadInstance') return { instanceId: 'i-1' }
+        if (hook === 'workflows.getActiveAgents') return [{ agent: 'team:builders', stepId: 'step-1' }]
+        if (hook === 'workflows.getCurrentStep') {
+          return { stepId: 'step-1', label: 'Routed step', instructions: 'do the thing' }
+        }
+        if (hook === 'team.resolveAssignment') return { ok: true, agentId: 'pixel', reason: 'best fit', model: 'inherit' }
+        if (hook === 'workflows.recordStepTeamResolution') return { agentId: 'pixel', team: 'builders', reason: 'best fit', at: 'now' }
+        return undefined
+      })
+      vi.mocked(getHookRegistry).mockReturnValue({
+        invoke,
+        has: mock().mockReturnValue(true),
+        register: mock(),
+      } as unknown as HookRegistry)
+      mockRuntimeSend.mockClear()
+      mockRuntimeSend.mockResolvedValue({ id: 'runtime-msg' })
+
+      await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
+
+      // The fire went to the RESOLVED member — never the token.
+      const sends = mockRuntimeSend.mock.calls.map((c) => c[0] as { agentId?: string })
+      expect(sends.some((s) => s.agentId === 'pixel')).toBe(true)
+      expect(sends.some((s) => s.agentId === 'team:builders')).toBe(false)
+      // Sticky resolution persisted on the instance.
+      expect(invoked).toContain('workflows.recordStepTeamResolution')
+      // The owner move never elected the token (falls through to main).
+      const moved = mockStoreMoveTask.mock.calls.map((c) => c.join(' ')).join('\n')
+      expect(moved).not.toContain('team:builders')
+      expect(mockStoreBlockTask).not.toHaveBeenCalled()
+    })
+
     it('routes an idle-timeout turn death into the recovery ladder instead of blocking immediately', async () => {
       // Pre-P10 behavior blocked on the first idle-timeout death. The ladder
       // supersedes that: death 1 → corrective re-dispatch (deterministic

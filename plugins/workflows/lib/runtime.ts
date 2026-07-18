@@ -29,6 +29,7 @@ export {
   isGateNotified,
   markGateNotified,
   clearGateNotified,
+  recordStepTeamResolution,
 } from './instance-store'
 
 // ─── Board-task bridge ──────────────────────────────────────────────────────

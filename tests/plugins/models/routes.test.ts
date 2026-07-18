@@ -235,8 +235,8 @@ describe('Models Plugin Activation', () => {
     ])
   })
 
-  it('registers 11 hooks', () => {
-    expect(activated.ctx.hooks.register).toHaveBeenCalledTimes(11)
+  it('registers 10 hooks', () => {
+    expect(activated.ctx.hooks.register).toHaveBeenCalledTimes(10)
     const hookNames = (activated.ctx.hooks.register as ReturnType<typeof mock>).mock.calls.map(
       (c: unknown[]) => c[0]
     )
@@ -251,7 +251,6 @@ describe('Models Plugin Activation', () => {
       'models.priceImage',
       'models.priceTurn',
       'models.resolveBilling',
-      'models.seedWorkClassRoute',
     ])
   })
 
@@ -698,35 +697,6 @@ describe('routing config', () => {
     expect(status).toBe(400)
   })
 
-  it('models.seedWorkClassRoute seeds only unrouted classes', async () => {
-    // The harness ctx records registrations without dispatching invoke —
-    // grab the registered handler and call it directly.
-    const seedCall = (activated.ctx.hooks.register as ReturnType<typeof mock>).mock.calls
-      .find((c: unknown[]) => c[0] === 'models.seedWorkClassRoute')
-    expect(seedCall).toBeDefined()
-    const handler = seedCall![1] as (d: Record<string, unknown>) => { seeded: boolean; reason?: string }
-
-    const first = handler({ workClass: 'team-routing', model: 'anthropic/claude-haiku-4-5' })
-    expect(first).toEqual({ seeded: true })
-    expect(activated.ctx.updateSettings).toHaveBeenCalledWith({
-      routing: { routes: [{ workClass: 'team-routing', model: 'anthropic/claude-haiku-4-5' }], tagOverrides: [] },
-    })
-
-    // Existing route wins (harness getSettings is static — stub the stored shape).
-    const realGetSettings = activated.ctx.getSettings
-    activated.ctx.getSettings = (() => ({
-      routing: { routes: [{ workClass: 'team-routing', model: 'anthropic/claude-haiku-4-5' }], tagOverrides: [] },
-    })) as typeof activated.ctx.getSettings
-    try {
-      const second = handler({ workClass: 'team-routing', model: 'openai/gpt-x' })
-      expect(second).toEqual({ seeded: false, reason: 'route exists' })
-    } finally {
-      activated.ctx.getSettings = realGetSettings
-    }
-
-    const junk = handler({ workClass: 'chat', model: 'anthropic/claude-haiku-4-5' })
-    expect(junk).toEqual({ seeded: false, reason: 'invalid seed request' })
-  })
 })
 
 describe('budget policy', () => {

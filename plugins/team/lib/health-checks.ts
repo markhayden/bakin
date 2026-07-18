@@ -10,7 +10,6 @@ import {
   healthWarning,
 } from '@makinbakin/sdk/utils'
 
-import { resolveProviderKeySource, type DirectProviderId } from '@bakin/core/llm/provider-keys'
 import { readTaskboard } from '../../../src/core/task-store'
 import { scanAgentSync, type SyncScanReport } from '../../../src/core/agent-packages/sync-scanner'
 import { syncAllAgents } from '../../../src/core/agent-packages/sync'
@@ -37,16 +36,19 @@ function agentResources(agentIds: string[]) {
   return agentIds.slice(0, 50).map(id => ({ kind: 'agent' as const, id: stablePart(id), label: bounded(id, 120) }))
 }
 
-/** Verify routing credentials only when unresolved team-assigned tasks need them. */
+/** Verify routing readiness only when unresolved team-assigned tasks need
+ * it. The routing call rides the active runtime (an ephemeral main-agent
+ * turn) — readiness means the runtime has usable LLM credentials, not that
+ * Bakin holds an API key. */
 export async function checkTeamRouting(opts: {
-  routingProvider?: string
   readBoard?: () => { columns: Record<string, Array<{ team?: string; agent?: string }>> }
-  keySource?: (provider: DirectProviderId) => { apiKey: string; source: 'env' | 'store' } | null
+  /** The active runtime's credential surface (adapter-neutral). */
+  credentialStatus: () => Promise<{ llmProviders: string[] }>
+  /** Resolved 'team-routing' matrix route model; absent = inherit. */
+  routeModel?: string
 }): Promise<HealthCheckRunInput> {
   const readBoard = opts.readBoard ?? readTaskboard
-  const keySource = opts.keySource ?? resolveProviderKeySource
-  const provider: DirectProviderId =
-    opts.routingProvider === 'openai' || opts.routingProvider === 'google' ? opts.routingProvider : 'anthropic'
+  const model = opts.routeModel ?? 'inherit'
 
   let unresolvedCount = 0
   try {
@@ -74,25 +76,46 @@ export async function checkTeamRouting(opts: {
   if (unresolvedCount === 0) {
     return healthObserved([healthHealthy({ key: 'routing', summary: 'No unresolved team-assigned tasks require routing.' })])
   }
-  if (!keySource(provider)) {
-    return healthObserved([healthError({
-      key: 'routing-key',
-      summary: `${unresolvedCount} unresolved team task(s) have no API key for routing provider ${provider}.`,
-      evidence: { unresolvedTasks: unresolvedCount, provider },
+
+  let providers: string[]
+  try {
+    providers = (await opts.credentialStatus()).llmProviders
+  } catch (error) {
+    return healthObserved([healthUnknown({
+      key: 'runtime-credentials',
+      summary: `Runtime credential status could not be read: ${error instanceof Error ? error.message : String(error)}`,
+      evidence: { unresolvedTasks: unresolvedCount },
       incident: {
-        key: 'routing-key',
-        title: 'Team task routing is blocked',
-        impact: 'Unresolved team-assigned tasks will block when dispatch tries to choose an agent.',
-        disposition: 'action_required',
-        resources: [{ kind: 'setting', id: 'team.routing-provider', label: 'Team routing provider' }],
-        resolution: { key: 'configure-routing', type: 'navigate', label: 'Configure routing', href: '/settings' },
+        key: 'runtime-credentials',
+        title: 'Team routing readiness could not be verified',
+        impact: 'Bakin cannot confirm the runtime can serve the routing turn for unresolved team tasks.',
+        disposition: 'watch',
+        resources: [{ kind: 'runtime', id: 'credentials', label: 'Runtime credentials' }],
+        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun check' },
       },
     })])
   }
+
+  if (providers.length === 0) {
+    return healthObserved([healthError({
+      key: 'runtime-credentials',
+      summary: `${unresolvedCount} unresolved team task(s) cannot route — the runtime has no usable LLM credentials.`,
+      evidence: { unresolvedTasks: unresolvedCount, model },
+      incident: {
+        key: 'runtime-credentials',
+        title: 'Team task routing is blocked',
+        impact: 'Unresolved team-assigned tasks will fail resolution when dispatch tries to choose an agent.',
+        disposition: 'action_required',
+        resources: [{ kind: 'runtime', id: 'credentials', label: 'Runtime credentials' }],
+        resolution: { key: 'review-runtime', type: 'navigate', label: 'Review runtime', href: '/runtime' },
+      },
+    })])
+  }
+
   return healthObserved([healthHealthy({
     key: 'routing',
-    summary: `${unresolvedCount} unresolved team task(s) can route through ${provider}.`,
-    evidence: { unresolvedTasks: unresolvedCount, provider },
+    summary: `${unresolvedCount} unresolved team task(s) can route through the runtime (model: ${model}).`,
+    evidence: { unresolvedTasks: unresolvedCount, model, llmProviders: providers.length },
   })])
 }
 

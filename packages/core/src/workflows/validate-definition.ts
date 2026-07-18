@@ -10,6 +10,7 @@ import { join } from 'path'
 import type { WorkflowDefinition, WorkflowStep, ParallelStep, NestedWorkflowStep, MapWorkflowStep } from './definition-types'
 import { getContentDir } from '../content-dir'
 import { getDefinition as getRegistryDefinition, type DefinitionSource } from './source-registry'
+import { isTeamStepToken, teamIdFromToken } from './team-token'
 
 export interface ValidateDefinitionOptions {
   definitionId?: string
@@ -21,6 +22,10 @@ export interface ValidateDefinitionOptions {
   requireResolvedAgents?: boolean
   validateNestedWorkflowRefs?: boolean
   allowEmptySteps?: boolean
+  /** Existing team ids for `team:<id>` step targets (#611). Absent = team
+   * existence is not checked here (tiered like nested-workflow refs — the
+   * caller couldn't reach the team plugin); dispatch fails honestly then. */
+  knownTeamIds?: Iterable<string>
 }
 
 /**
@@ -104,6 +109,8 @@ export function validateDefinition(def: WorkflowDefinition, opts: ValidateDefini
     idSet.add(id)
   }
 
+  const knownTeamIds = opts.knownTeamIds ? new Set(opts.knownTeamIds) : undefined
+
   const validateAgent = (step: WorkflowStep, path: string): void => {
     const agent = 'agent' in step ? step.agent : undefined
     if (step.type === 'output' && !agent) {
@@ -111,6 +118,21 @@ export function validateDefinition(def: WorkflowDefinition, opts: ValidateDefini
       return
     }
     if (typeof agent !== 'string' || agent.length === 0) return
+
+    // Team target (#611) — resolved per-step at dispatch. Team ids are
+    // machine-specific like literal agents, so plugin-shipped workflows may
+    // not hardcode them.
+    if (isTeamStepToken(agent)) {
+      const teamId = teamIdFromToken(agent)
+      if (!teamId) {
+        errors.push(`Step "${step.id}": team target "${agent}" has no team id at ${path}.agent`)
+      } else if (opts.source === 'plugin') {
+        errors.push(`Step "${step.id}": plugin-shipped workflows must use symbolic agents; found team target "${agent}"`)
+      } else if (knownTeamIds && !knownTeamIds.has(teamId)) {
+        errors.push(`Step "${step.id}": references unknown team "${teamId}"`)
+      }
+      return
+    }
 
     if (isSymbolicAgent(agent)) {
       const preferred = parsePreferredAgentExpression(agent)

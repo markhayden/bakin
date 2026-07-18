@@ -17,6 +17,8 @@ import { findDispatchTaskSnapshot } from './dispatch-board'
 import { buildDispatchLessonBlock, buildDispatchAssetBlock, buildDispatchBrandBlock, BrandUnavailableError } from './dispatch-context-blocks'
 import { toolHelpers, sharedExecutionToolDocs, outputDisciplineSection, buildCorrectiveSection, type PromptSection } from './dispatch-prompts'
 import { concurrencyGate, deferForBudget, claimDispatchRun, auditDispatchSuppressed, fireDispatchTurn, resolveDispatchRouting } from './dispatch-turns'
+import { isTeamStepToken, teamIdFromToken } from '@bakin/core/workflows/team-token'
+import { resolveTeamAssignmentForStep } from './dispatch-team'
 
 const log = createLogger('dispatch-workflow')
 const hooks = () => getHookRegistry()
@@ -62,7 +64,8 @@ export async function dispatchWorkflowTask(
     const { columns: fresh } = readTaskboard() as unknown as { columns: Record<string, Array<{ id: string; agent?: string; title?: string; workflowId?: string }>> }
     const stillInTodo = fresh.todo.some(t => t.id === task.id)
     if (stillInTodo) {
-      const ownerAgent = task.agent || activeAgents[0]?.agent || mainAgentId
+      // An unresolved team token is not a real agent — never the task owner.
+      const ownerAgent = task.agent || activeAgents.find(a => !isTeamStepToken(a.agent))?.agent || mainAgentId
       await moveTaskToInProgress(task.id, ownerAgent)
       // No task.moved audit: the internal move is folded into the per-step
       // task.dispatched rows emitted below.
@@ -84,7 +87,26 @@ export async function dispatchWorkflowTask(
       previousOutput?: Record<string, unknown>; priorStepOutput?: Record<string, unknown>;
       stepOutputs?: Record<string, Record<string, unknown>>; deny_tools?: string[]
     }
-    const targetAgent = agent
+
+    // Team-targeted step (#611): resolve `team:<id>` to a concrete member
+    // BEFORE any gate/claim/fire. The step context above was fetched with
+    // the token as identity (owner == token pre-resolution); the pick is
+    // sticky on the instance, so later cycles see a plain agent here.
+    let targetAgent = agent
+    if (isTeamStepToken(agent)) {
+      const outcome = await resolveTeamAssignmentForStep({
+        task,
+        contextTaskId,
+        stepId,
+        stepLabel: ctx.label,
+        teamId: teamIdFromToken(agent),
+        ...(ctx.instructions ? { instructions: ctx.instructions } : {}),
+        contentDir,
+      })
+      if (outcome.status === 'blocked') return // parent task is blocked — stop dispatching
+      if (outcome.status !== 'resolved') continue
+      targetAgent = outcome.agentId
+    }
     const lessonBlock = await buildDispatchLessonBlock({
       contentDir,
       taskId: task.id,
@@ -109,7 +131,7 @@ export async function dispatchWorkflowTask(
     // branded workflow step never fires brandless.
     const wfBrandBlock = await buildDispatchBrandBlock(task)
     if (wfBrandBlock.status === 'missing') throw new BrandUnavailableError(wfBrandBlock.brandId)
-    const message = buildWorkflowDispatchMessage({ ...task, id: contextTaskId }, ctx, agent, lessonBlock, wfRecovery, wfAssetsBlock, {
+    const message = buildWorkflowDispatchMessage({ ...task, id: contextTaskId }, ctx, targetAgent, lessonBlock, wfRecovery, wfAssetsBlock, {
       maxWorkflowContextBytes: getSettings().dispatch.maxWorkflowContextBytes,
       ...(wfBrandBlock.status === 'ready' ? { brand: { brandId: wfBrandBlock.brandId, block: wfBrandBlock.block } } : {}),
     })

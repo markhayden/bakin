@@ -16,7 +16,6 @@ import { markConfigDirty, markRuntimeRestarted, resolveAgents } from './config-i
 import { resolveBilling } from './billing'
 import { isLegacyBudget, migrateLegacyBudget } from './budget-migration'
 import { isLegacyRouting, migrateLegacyRouting } from './routing-migration'
-import { ROUTABLE_WORK_CLASSES, type WorkClass } from '../../../src/core/model-routing'
 import { normalizeModelId } from './model-id'
 import { fetchAvailableModels } from './available-models'
 
@@ -124,23 +123,6 @@ export function registerModelsHooks(ctx: PluginContext): void {
     if (isLegacyRouting(routing)) return migrateLegacyRouting(routing)
     return routing ?? { routes: [], tagOverrides: [] }
   }, { label: 'Get routing config.', summary: 'Returns the per-turn model/thinking routing policy (work classes + tag overrides) applied before each routable agent turn. Use it to read the current routing rules.', hookKind: 'rpc' })
-
-  // Seed ONE work-class route if that class is unrouted — the sanctioned
-  // cross-plugin write for one-shot migrations (e.g. the team plugin folding
-  // its legacy routingProvider/routingModel into the matrix). Never
-  // overwrites an existing route.
-  ctx.hooks.register('models.seedWorkClassRoute', (d: Record<string, unknown>) => {
-    const workClass = typeof d.workClass === 'string' ? d.workClass : null
-    const model = typeof d.model === 'string' && d.model.trim() ? d.model.trim() : undefined
-    if (!workClass || !(ROUTABLE_WORK_CLASSES as readonly string[]).includes(workClass) || !model) {
-      return { seeded: false, reason: 'invalid seed request' }
-    }
-    const stored = ctx.getSettings<ModelsPluginSettings>().routing
-    const routing = isLegacyRouting(stored) ? migrateLegacyRouting(stored) : (stored ?? { routes: [], tagOverrides: [] })
-    if (routing.routes.some((r) => r.workClass === workClass)) return { seeded: false, reason: 'route exists' }
-    ctx.updateSettings({ routing: { ...routing, routes: [...routing.routes, { workClass: workClass as WorkClass, model }] } })
-    return { seeded: true }
-  }, { label: 'Seed work-class route.', summary: 'Adds a route for a work class ONLY when none exists — one-shot migration/seeding writes. Returns {seeded}. Use it to fold legacy per-plugin model settings into the routing matrix.', hookKind: 'rpc' })
 
   // Expose the budget policy to core dispatch, which consults it before
   // claiming a run. Empty when none is set → no gating. A legacy-shaped
