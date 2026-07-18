@@ -24,6 +24,7 @@ const SDK_DIR = join(REPO_ROOT, 'packages/sdk')
 const ROOT_PACKAGE_PATH = join(REPO_ROOT, 'package.json')
 const SDK_PACKAGE_PATH = join(SDK_DIR, 'package.json')
 export const PUBLIC_SDK_PACKAGE_NAME = '@makinbakin/sdk'
+export const SDK_STYLES_EXPORT = './styles.css'
 
 export interface SdkExportEntry {
   exportPath: string
@@ -248,6 +249,24 @@ function buildJsEntry(entry: SdkExportEntry, outDir: string): void {
   }
 }
 
+function buildStylesheet(outDir: string): void {
+  const output = join(outDir, 'styles.css')
+  const result = spawnSync('bun', [
+    join(REPO_ROOT, 'node_modules/.bin/tailwindcss'),
+    '-i', join(REPO_ROOT, 'packages/host/src/globals.css'),
+    '-o', output,
+  ], {
+    cwd: REPO_ROOT,
+    encoding: 'utf-8',
+  })
+  if (result.status !== 0) {
+    throw new Error(`Failed to build ${SDK_STYLES_EXPORT}:\n${result.stdout}${result.stderr}`)
+  }
+  if (!existsSync(output) || statSync(output).size === 0) {
+    throw new Error(`Expected ${SDK_STYLES_EXPORT} to be generated`)
+  }
+}
+
 function emitDeclarations(tempDtsDir: string): void {
   const result = spawnSync('bunx', [
     'tsc',
@@ -302,26 +321,28 @@ function buildDependencies(outDir: string, sourceSdkPkg: PackageJson): Record<st
 
 function writePackageJson(outDir: string, version: string): void {
   const sourcePkg = readJson<PackageJson>(SDK_PACKAGE_PATH)
-  const exportsMap = Object.fromEntries(SDK_EXPORTS.map((entry) => [
+  const exportsMap: Record<string, unknown> = Object.fromEntries(SDK_EXPORTS.map((entry) => [
     entry.exportPath,
     {
       import: entry.importPath,
       types: entry.typesPath,
     },
   ]))
+  exportsMap[SDK_STYLES_EXPORT] = SDK_STYLES_EXPORT
 
   const pkg = {
     name: PUBLIC_SDK_PACKAGE_NAME,
     version,
     description: sourcePkg.description,
     type: 'module',
-    sideEffects: false,
+    sideEffects: [SDK_STYLES_EXPORT],
     main: './index.js',
     types: './index.d.ts',
     exports: exportsMap,
     files: [
       '**/*.js',
       '**/*.d.ts',
+      'styles.css',
       'README.md',
     ],
     peerDependencies: sourcePkg.peerDependencies ?? {
@@ -382,6 +403,7 @@ export async function buildSdkPackage(opts: BuildSdkPackageOptions): Promise<voi
   mkdirSync(outDir, { recursive: true })
 
   for (const entry of SDK_EXPORTS) buildJsEntry(entry, outDir)
+  buildStylesheet(outDir)
 
   const tempDtsDir = mkdtempSync(join(tmpdir(), 'bakin-sdk-dts-'))
   try {

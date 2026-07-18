@@ -1,6 +1,8 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@import "../../ui/src/styles/tokens.generated.css";
+@import "../../ui/src/styles/tailwind.generated.css";
 
 /*
  * Tailwind v4 auto-detects source files from the CSS file's directory, but

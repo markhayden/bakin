@@ -423,9 +423,7 @@ export async function collectUiPerformanceSnapshot(
     throw new Error('Missing current SDK UI vendor entries; run bun run build:vendors')
   }
 
-  const canonicalPath = existsSync(join(root, 'packages/sdk/styles.css'))
-    ? join(root, 'packages/sdk/styles.css')
-    : join(root, 'packages/host/public/globals.css')
+  const canonicalPath = join(root, 'packages/sdk/styles.css')
   if (!existsSync(canonicalPath)) throw new Error('Missing design-system CSS; run bun run build:css')
   const canonical: CssSource = {
     path: portablePath(root, canonicalPath),

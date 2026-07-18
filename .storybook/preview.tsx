@@ -7,9 +7,8 @@ import '@fontsource/inter/latin-700.css'
 import '@fontsource/jetbrains-mono/latin-400.css'
 import '@fontsource/jetbrains-mono/latin-500.css'
 
-// This is the exact compiled stylesheet served by today's Bakin host. T12
-// replaces this bridge with the generated @makinbakin/sdk/styles.css artifact.
-import '../packages/host/public/globals.css'
+// The host, public package, and Storybook all load this one compiled artifact.
+import '../packages/sdk/styles.css'
 import '../storybook/fixtures/runtime.css'
 import {
   BAKIN_STORYBOOK_VIEWPORTS,

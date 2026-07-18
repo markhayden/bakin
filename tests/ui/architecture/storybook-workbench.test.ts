@@ -42,10 +42,13 @@ describe('Storybook workbench foundation', () => {
   })
 
   it('renders a real public SDK component under the canonical compiled stylesheet', () => {
+    const manifest = JSON.parse(readRepoFile('package.json')) as PackageManifest
     const preview = readRepoFile('.storybook/preview.tsx')
     const foundationStory = readRepoFile('storybook/public/foundation/button.stories.tsx')
 
-    expect(preview).toContain("import '../packages/host/public/globals.css'")
+    expect(manifest.scripts['build:css']).toContain('packages/sdk/styles.css')
+    expect(preview).toContain("import '../packages/sdk/styles.css'")
+    expect(preview).not.toContain('packages/host/public/globals.css')
     expect(foundationStory).toContain("from '@makinbakin/sdk/ui'")
     expect(foundationStory).not.toContain("from '@/components/")
     expect(foundationStory).not.toContain('packages/ui')

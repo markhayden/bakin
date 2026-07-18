@@ -16,10 +16,10 @@
  */
 
 import asset_app_main_js from '../../dist/main.js' with { type: 'file' }
+import asset_globals_css from '../../../sdk/styles.css' with { type: 'file' }
 import asset_index_html from '../../public/index.html' with { type: 'file' }
 import asset_bakin_logo_svg from '../../public/bakin-logo.svg' with { type: 'file' }
 import asset_bakin_hop_svg from '../../public/bakin-hop.svg' with { type: 'file' }
-import asset_globals_css from '../../public/globals.css' with { type: 'file' }
 import asset_vendor_sdk_ui_js from '../../public/vendor/sdk-ui.js' with { type: 'file' }
 import asset_vendor_sdk_shared_56e3endw_js from '../../public/vendor/sdk-shared-56e3endw.js' with { type: 'file' }
 import asset_vendor_sdk_routing_js from '../../public/vendor/sdk-routing.js' with { type: 'file' }
@@ -65,10 +65,10 @@ import asset_data_curated_catalog_json from '../data/curated-catalog.json' with 
  *  and core plugin dist outputs live in this single map. */
 export const EMBEDDED_ASSETS_STATIC: ReadonlyMap<string, string> = new Map([
   ['/_app/main.js', asset_app_main_js],
+  ['/globals.css', asset_globals_css],
   ['/index.html', asset_index_html],
   ['/bakin-logo.svg', asset_bakin_logo_svg],
   ['/bakin-hop.svg', asset_bakin_hop_svg],
-  ['/globals.css', asset_globals_css],
   ['/vendor/sdk-ui.js', asset_vendor_sdk_ui_js],
   ['/vendor/sdk-shared-56e3endw.js', asset_vendor_sdk_shared_56e3endw_js],
   ['/vendor/sdk-routing.js', asset_vendor_sdk_routing_js],

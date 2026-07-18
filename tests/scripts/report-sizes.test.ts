@@ -69,7 +69,7 @@ describe('collectArtifactSizes', () => {
     seed('packages/host/public/vendor/sdk-index.js', 100)
     seed('packages/host/public/vendor/sdk-shared-abc123.js', 250)
     seed('packages/host/public/vendor/react.js', 75)
-    seed('packages/host/public/globals.css', 60)
+    seed('packages/sdk/styles.css', 60)
     seed('packages/host/dist/main.js', 500)
     seed('plugins/tasks/dist/client.js', 40)
     seed('plugins/tasks/dist/client.css', 10)

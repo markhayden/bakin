@@ -1,0 +1,26 @@
+/* Generated internal Tailwind mappings. These utility names are not a public SDK contract. */
+@theme inline {
+  --color-bakin-action-primary-background: var(--bakin-color-action-primary-background);
+  --color-bakin-action-primary-foreground: var(--bakin-color-action-primary-foreground);
+  --color-bakin-border-subtle: var(--bakin-color-border-subtle);
+  --color-bakin-canvas-default: var(--bakin-color-canvas-default);
+  --color-bakin-focus-ring: var(--bakin-color-focus-ring);
+  --color-bakin-signal-accent: var(--bakin-color-signal-accent);
+  --color-bakin-signal-danger: var(--bakin-color-signal-danger);
+  --color-bakin-signal-highlight: var(--bakin-color-signal-highlight);
+  --color-bakin-surface-default: var(--bakin-color-surface-default);
+  --color-bakin-text-muted: var(--bakin-color-text-muted);
+  --color-bakin-text-primary: var(--bakin-color-text-primary);
+  --spacing-bakin-0: var(--bakin-layout-space-0);
+  --spacing-bakin-1: var(--bakin-layout-space-1);
+  --spacing-bakin-2: var(--bakin-layout-space-2);
+  --spacing-bakin-3: var(--bakin-layout-space-3);
+  --spacing-bakin-4: var(--bakin-layout-space-4);
+  --spacing-bakin-6: var(--bakin-layout-space-6);
+  --spacing-bakin-8: var(--bakin-layout-space-8);
+  --ease-bakin-standard: var(--bakin-motion-easing-standard);
+  --radius-bakin-control: var(--bakin-radius-control);
+  --radius-bakin-overlay: var(--bakin-radius-overlay);
+  --radius-bakin-pill: var(--bakin-radius-pill);
+  --radius-bakin-surface: var(--bakin-radius-surface);
+}

@@ -16,11 +16,16 @@
     "./metadata": "./src/metadata/index.ts",
     "./routing": "./src/routing/index.ts",
     "./testing": "./src/testing/index.ts",
-    "./internal": "./src/internal/index.ts"
+    "./internal": "./src/internal/index.ts",
+    "./styles.css": "./styles.css"
   },
   "files": [
     "src",
+    "styles.css",
     "README.md"
+  ],
+  "sideEffects": [
+    "./styles.css"
   ],
   "peerDependencies": {
     "react": "^19.0.0",

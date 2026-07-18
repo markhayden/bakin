@@ -38,7 +38,8 @@ describe('buildSdkPackage', () => {
       name: string
       version: string
       type: string
-      exports: Record<string, { import: string; types: string }>
+      exports: Record<string, { import: string; types: string } | string>
+      sideEffects: string[]
       peerDependencies: Record<string, string>
       dependencies: Record<string, string>
     }>(join(outDir, 'package.json'))
@@ -52,10 +53,15 @@ describe('buildSdkPackage', () => {
     })
     expect(pkg.dependencies.zod).toBeDefined()
     expect(pkg.dependencies['@base-ui/react']).toBeDefined()
+    expect(pkg.exports['./styles.css']).toBe('./styles.css')
+    expect(pkg.sideEffects).toEqual(['./styles.css'])
+    expect(existsSync(join(outDir, 'styles.css'))).toBe(true)
+    expect(readFileSync(join(outDir, 'styles.css'), 'utf-8')).toContain('--bakin-color-canvas-default')
 
     for (const entry of SDK_EXPORTS) {
       const exportConfig = pkg.exports[entry.exportPath]
       expect(exportConfig).toBeDefined()
+      if (typeof exportConfig === 'string') throw new Error(`${entry.exportPath} must be a JS/types export`)
       expect(existsSync(join(outDir, exportConfig.import))).toBe(true)
       expect(existsSync(join(outDir, exportConfig.types))).toBe(true)
       expect(statSync(join(outDir, exportConfig.import)).size).toBeGreaterThan(0)

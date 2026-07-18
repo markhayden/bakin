@@ -36,10 +36,10 @@ function snapshot(overrides: Partial<UiPerformanceSnapshot> = {}): UiPerformance
       compatibilityMatrix: 'design-system/compatibility.json',
     },
     css: {
-      canonicalPath: 'packages/host/public/globals.css',
+      canonicalPath: 'packages/sdk/styles.css',
       canonicalBytes: 100,
       copyCount: 1,
-      copyPaths: ['packages/host/public/globals.css'],
+      copyPaths: ['packages/sdk/styles.css'],
     },
     hostInitialJs: { path: 'packages/host/dist/main.js', bytes: 200 },
     sdkUiBundles: [{
@@ -88,7 +88,7 @@ describe('base UI dependency direction', () => {
 describe('design-system stylesheet ownership', () => {
   it('rejects a plugin-bundled copy while accepting unrelated scoped CSS', () => {
     const canonical = {
-      path: 'packages/host/public/globals.css',
+      path: 'packages/sdk/styles.css',
       source: ':root { --bakin-color-surface: white; } .button { padding: 4px; }',
     }
     expect(findDuplicateDesignSystemCss(canonical, [

@@ -14,6 +14,9 @@ export const TOKEN_SOURCE_FILES: Record<TokenLayer, string> = {
   component: 'packages/ui/tokens/component.tokens.json',
 }
 export const TOKEN_OUTPUT_PATH = 'packages/ui/tokens/tokens.generated.json'
+export const TOKEN_RUNTIME_CSS_OUTPUT_PATH = 'packages/ui/src/styles/tokens.generated.css'
+export const TOKEN_TAILWIND_OUTPUT_PATH = 'packages/ui/src/styles/tailwind.generated.css'
+export const TOKEN_METADATA_OUTPUT_PATH = 'packages/ui/src/tokens.generated.ts'
 
 const SUPPORTED_TYPES = [
   'color',
@@ -483,6 +486,164 @@ function sortJson(value: unknown): unknown {
   )
 }
 
+function cssSlug(segments: readonly string[]): string {
+  return segments.map((segment) => segment
+    .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+    .replace(/[^a-zA-Z0-9-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .toLowerCase()).join('-')
+}
+
+function semanticSlug(token: ResolvedToken): string {
+  return cssSlug(token.path.split('.').slice(1))
+}
+
+function semanticCssVariable(token: ResolvedToken): string {
+  return `--bakin-${semanticSlug(token)}`
+}
+
+function colorCssValue(value: unknown): string {
+  if (!isObject(value) || !Array.isArray(value.components)) throw new Error('resolved color is invalid')
+  const alpha = value.alpha === undefined ? 1 : value.alpha
+  if (
+    typeof value.hex === 'string'
+    && (value.hex.length === 9 || alpha === 1)
+  ) return value.hex.toLowerCase()
+  const alphaSuffix = alpha === 1 ? '' : ` / ${alpha}`
+  return `color(srgb ${value.components.join(' ')}${alphaSuffix})`
+}
+
+function dimensionCssValue(value: unknown): string {
+  if (!isObject(value)) throw new Error('resolved dimension is invalid')
+  return `${value.value}${value.unit}`
+}
+
+function fontFamilyCssValue(value: unknown): string {
+  const families = Array.isArray(value) ? value : [value]
+  return families.map((family) => {
+    if (typeof family !== 'string') throw new Error('resolved font family is invalid')
+    return /\s/.test(family) ? JSON.stringify(family) : family
+  }).join(', ')
+}
+
+function shadowCssValue(value: unknown): string {
+  const shadows = Array.isArray(value) ? value : [value]
+  return shadows.map((shadow) => {
+    if (!isObject(shadow)) throw new Error('resolved shadow is invalid')
+    return [
+      shadow.inset === true ? 'inset' : '',
+      dimensionCssValue(shadow.offsetX),
+      dimensionCssValue(shadow.offsetY),
+      dimensionCssValue(shadow.blur),
+      dimensionCssValue(shadow.spread),
+      colorCssValue(shadow.color),
+    ].filter(Boolean).join(' ')
+  }).join(', ')
+}
+
+function tokenCssValue(token: ResolvedToken): string {
+  switch (token.type) {
+    case 'color': return colorCssValue(token.value)
+    case 'dimension': return dimensionCssValue(token.value)
+    case 'duration': return dimensionCssValue(token.value)
+    case 'cubicBezier': return `cubic-bezier(${(token.value as number[]).join(', ')})`
+    case 'number': return String(token.value)
+    case 'fontFamily': return fontFamilyCssValue(token.value)
+    case 'fontWeight': return String(token.value)
+    case 'shadow': return shadowCssValue(token.value)
+    case 'typography':
+      throw new Error(`${token.source}: public typography composites must be expanded into property-specific semantic tokens`)
+  }
+}
+
+function tailwindVariable(token: ResolvedToken): string | undefined {
+  const segments = token.path.split('.').slice(1)
+  const withoutTypeGroup = segments[0] === 'color' ? segments.slice(1) : segments
+  if (token.type === 'color') return `--color-bakin-${cssSlug(withoutTypeGroup)}`
+  if (token.type === 'dimension' && segments[0] === 'layout' && segments[1] === 'space') {
+    return `--spacing-bakin-${cssSlug(segments.slice(2))}`
+  }
+  if (token.type === 'dimension' && segments[0] === 'radius') {
+    return `--radius-bakin-${cssSlug(segments.slice(1))}`
+  }
+  if (token.type === 'cubicBezier' && segments[0] === 'motion' && segments[1] === 'easing') {
+    return `--ease-bakin-${cssSlug(segments.slice(2))}`
+  }
+  if (token.type === 'fontFamily') return `--font-bakin-${cssSlug(segments)}`
+  if (token.type === 'fontWeight') return `--font-weight-bakin-${cssSlug(segments)}`
+  if (token.type === 'shadow') return `--shadow-bakin-${cssSlug(segments)}`
+  return undefined
+}
+
+function publicSemanticTokens(manifest: TokenManifest): ResolvedToken[] {
+  return manifest.tokens.filter((token) => token.visibility === 'public')
+}
+
+function assertNoGeneratedNameCollisions(manifest: TokenManifest): void {
+  const seen = new Map<string, ResolvedToken>()
+  const tokens = [...publicSemanticTokens(manifest)]
+    .sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0)
+  for (const token of tokens) {
+    const variables = [semanticCssVariable(token), tailwindVariable(token)].filter(Boolean) as string[]
+    for (const variable of variables) {
+      const existing = seen.get(variable)
+      if (existing) {
+        throw new Error(
+          `${token.source}: generated CSS variable "${variable}" collides with ${existing.path}`,
+        )
+      }
+      seen.set(variable, token)
+    }
+  }
+}
+
+function renderRuntimeCss(manifest: TokenManifest): string {
+  const declarations = publicSemanticTokens(manifest)
+    .map((token) => `  ${semanticCssVariable(token)}: ${tokenCssValue(token)};`)
+  return [
+    '/* Generated by bun run ui:tokens:generate. Do not edit. */',
+    ':root {',
+    ...declarations,
+    '}',
+    '',
+  ].join('\n')
+}
+
+function renderTailwindCss(manifest: TokenManifest): string {
+  const mappings = publicSemanticTokens(manifest)
+    .flatMap((token) => {
+      const variable = tailwindVariable(token)
+      return variable ? [`  ${variable}: var(${semanticCssVariable(token)});`] : []
+    })
+  return [
+    '/* Generated internal Tailwind mappings. These utility names are not a public SDK contract. */',
+    '@theme inline {',
+    ...mappings,
+    '}',
+    '',
+  ].join('\n')
+}
+
+function renderTokenMetadata(manifest: TokenManifest): string {
+  const metadata = publicSemanticTokens(manifest).map((token) => ({
+    name: token.path,
+    type: token.type,
+    cssVariable: semanticCssVariable(token),
+    cssValue: tokenCssValue(token),
+    ...(tailwindVariable(token) ? { tailwindVariable: tailwindVariable(token) } : {}),
+    ...(token.description ? { description: token.description } : {}),
+    source: token.source,
+  }))
+  return [
+    '// Generated by bun run ui:tokens:generate. Do not edit.',
+    `export const BAKIN_SEMANTIC_TOKENS = ${JSON.stringify(metadata, null, 2)} as const`,
+    '',
+    "export type BakinSemanticTokenName = typeof BAKIN_SEMANTIC_TOKENS[number]['name']",
+    "export type BakinSemanticCssVariable = typeof BAKIN_SEMANTIC_TOKENS[number]['cssVariable']",
+    '',
+  ].join('\n')
+}
+
 function resolveTokens(tokens: Map<string, RawToken>): ResolvedToken[] {
   const resolved = new Map<string, ResolvedToken>()
   const active: string[] = []
@@ -658,6 +819,25 @@ export function renderTokenManifest(sources: readonly TokenSourceFile[]): string
   return `${JSON.stringify(compileTokenSources(sources), null, 2)}\n`
 }
 
+interface RenderedTokenArtifacts {
+  manifest: TokenManifest
+  files: Array<{ path: string; content: string }>
+}
+
+function renderTokenArtifacts(sources: readonly TokenSourceFile[]): RenderedTokenArtifacts {
+  const manifest = compileTokenSources(sources)
+  assertNoGeneratedNameCollisions(manifest)
+  return {
+    manifest,
+    files: [
+      { path: TOKEN_OUTPUT_PATH, content: `${JSON.stringify(manifest, null, 2)}\n` },
+      { path: TOKEN_RUNTIME_CSS_OUTPUT_PATH, content: renderRuntimeCss(manifest) },
+      { path: TOKEN_TAILWIND_OUTPUT_PATH, content: renderTailwindCss(manifest) },
+      { path: TOKEN_METADATA_OUTPUT_PATH, content: renderTokenMetadata(manifest) },
+    ],
+  }
+}
+
 export function loadTokenSources(root = REPO_ROOT): TokenSourceFile[] {
   return TOKEN_LAYERS.map((layer) => {
     const relativePath = TOKEN_SOURCE_FILES[layer]
@@ -682,24 +862,32 @@ function summary(manifest: TokenManifest): { tokens: number; publicTokens: numbe
 
 export function generateTokenArtifacts(root = REPO_ROOT): { tokens: number; publicTokens: number } {
   const sources = loadTokenSources(root)
-  const rendered = renderTokenManifest(sources)
-  const output = join(root, TOKEN_OUTPUT_PATH)
-  mkdirSync(dirname(output), { recursive: true })
-  writeFileSync(output, rendered)
-  return summary(compileTokenSources(sources))
+  const rendered = renderTokenArtifacts(sources)
+  for (const file of rendered.files) {
+    const output = join(root, file.path)
+    mkdirSync(dirname(output), { recursive: true })
+    writeFileSync(output, file.content)
+  }
+  return summary(rendered.manifest)
 }
 
 export function checkTokenArtifacts(root = REPO_ROOT): { tokens: number; publicTokens: number } {
   const sources = loadTokenSources(root)
-  const expected = renderTokenManifest(sources)
-  const repeated = renderTokenManifest(sources)
-  if (expected !== repeated) throw new Error('token generation is nondeterministic for the current sources')
-  const output = join(root, TOKEN_OUTPUT_PATH)
-  if (!existsSync(output)) throw new Error(`missing ${TOKEN_OUTPUT_PATH}; run bun run ui:tokens:generate`)
-  if (readFileSync(output, 'utf-8') !== expected) {
-    throw new Error(`${TOKEN_OUTPUT_PATH} is stale; run bun run ui:tokens:generate`)
+  const expected = renderTokenArtifacts(sources)
+  const repeated = renderTokenArtifacts(sources)
+  for (let index = 0; index < expected.files.length; index++) {
+    const file = expected.files[index]
+    const repeatedFile = repeated.files[index]
+    if (file.path !== repeatedFile?.path || file.content !== repeatedFile.content) {
+      throw new Error('token generation is nondeterministic for the current sources')
+    }
+    const output = join(root, file.path)
+    if (!existsSync(output)) throw new Error(`missing ${file.path}; run bun run ui:tokens:generate`)
+    if (readFileSync(output, 'utf-8') !== file.content) {
+      throw new Error(`${file.path} is stale; run bun run ui:tokens:generate`)
+    }
   }
-  return summary(compileTokenSources(sources))
+  return summary(expected.manifest)
 }
 
 async function main(): Promise<void> {

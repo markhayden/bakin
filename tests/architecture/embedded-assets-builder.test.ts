@@ -34,7 +34,7 @@ describe('embedded-assets builder excludes agents/', () => {
 
 describe('embedded-assets builder required host assets', () => {
   it('guards against release binaries missing generated CSS', () => {
-    expect(script).toContain('packages/host/public/globals.css')
+    expect(script).toContain('packages/sdk/styles.css')
     expect(script).toContain('bun run build:css')
     expect(script).toContain('Cannot generate embedded assets because required host assets are missing')
   })

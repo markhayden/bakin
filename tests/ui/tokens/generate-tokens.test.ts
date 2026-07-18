@@ -8,8 +8,11 @@ import {
   compileTokenSources,
   generateTokenArtifacts,
   renderTokenManifest,
+  TOKEN_METADATA_OUTPUT_PATH,
   TOKEN_OUTPUT_PATH,
+  TOKEN_RUNTIME_CSS_OUTPUT_PATH,
   TOKEN_SOURCE_FILES,
+  TOKEN_TAILWIND_OUTPUT_PATH,
   type TokenLayer,
   type TokenSourceFile,
 } from '../../../scripts/ui/generate-tokens'
@@ -305,6 +308,48 @@ describe('compileTokenSources', () => {
 })
 
 describe('token artifact generation', () => {
+  it('emits aligned public CSS, internal Tailwind mappings, and typed metadata', () => {
+    const root = mkdtempSync(join(tmpdir(), 'bakin-token-artifacts-'))
+    fixtureRoots.push(root)
+    writeSourceTree(root)
+
+    generateTokenArtifacts(root)
+
+    const runtimeCss = readFileSync(join(root, TOKEN_RUNTIME_CSS_OUTPUT_PATH), 'utf-8')
+    const tailwindCss = readFileSync(join(root, TOKEN_TAILWIND_OUTPUT_PATH), 'utf-8')
+    const metadata = readFileSync(join(root, TOKEN_METADATA_OUTPUT_PATH), 'utf-8')
+
+    expect(runtimeCss).toContain('--bakin-canvas: #0f0e0e;')
+    expect(runtimeCss).toContain('--bakin-control-gap: 0.5rem;')
+    expect(runtimeCss).not.toMatch(/--(?:background|accent|radius)\s*:/)
+    expect(runtimeCss).not.toContain('reference.')
+    expect(runtimeCss).not.toContain('component.')
+
+    expect(tailwindCss).toContain('--color-bakin-canvas: var(--bakin-canvas);')
+    expect(tailwindCss).not.toContain('component')
+    expect(metadata).toContain('export const BAKIN_SEMANTIC_TOKENS = [')
+    expect(metadata).toContain('"cssVariable": "--bakin-canvas"')
+    expect(metadata).toContain('"cssValue": "#0f0e0e"')
+    expect(metadata).toContain('"tailwindVariable": "--color-bakin-canvas"')
+    expect(metadata).toContain("export type BakinSemanticTokenName = typeof BAKIN_SEMANTIC_TOKENS[number]['name']")
+  })
+
+  it('rejects public token names that normalize to the same generated CSS variable', () => {
+    const root = mkdtempSync(join(tmpdir(), 'bakin-token-collision-'))
+    fixtureRoots.push(root)
+    const sources = validSources()
+    sources[1] = source('semantic', layerDocument('semantic', {
+      controlGap: { $value: '{reference.space.compact}' },
+      'control-gap': { $value: '{reference.space.compact}' },
+    }))
+    sources[2] = source('component', layerDocument('component', {}))
+    writeSourceTree(root, sources)
+
+    expect(() => generateTokenArtifacts(root)).toThrow(
+      'packages/ui/tokens/semantic.tokens.json#/semantic/controlGap: generated CSS variable "--bakin-control-gap" collides with semantic.control-gap',
+    )
+  })
+
   it('detects missing and stale output without changing the working tree', () => {
     const root = mkdtempSync(join(tmpdir(), 'bakin-token-generator-'))
     fixtureRoots.push(root)

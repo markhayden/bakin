@@ -1,8 +1,8 @@
 /**
  * Generate the embedded-assets manifest module (#147 TG1).
  *
- * Walks the three directories that hold the host client bundle, vendor
- * bundles, and core plugin dist output, and writes a TypeScript module
+ * Collects the SDK stylesheet and walks the directories that hold the host
+ * client bundle, vendor bundles, and core plugin dist output, then writes
  * (packages/host/src/api/_embedded-assets-static.ts) that `import`s every
  * file with `{ type: 'file' }`. Bun's `--compile` resolves these imports at
  * build time and embeds the bytes in the binary; at dev time the same
@@ -29,7 +29,7 @@ import { walkFiles } from '../packages/core/src/storage/walk'
 const OUT_FILE_REL = 'packages/host/src/api/_embedded-assets-static.ts'
 const REQUIRED_ASSETS: Array<{ path: string; build: string }> = [
   {
-    path: 'packages/host/public/globals.css',
+    path: 'packages/sdk/styles.css',
     build: 'bun run build:css',
   },
   {
@@ -89,12 +89,22 @@ export function collectAssets(repoRoot: string): AssetSource[] {
   // of /assets/<assetId> 404 instead of reaching the SPA fallback).
   walk(join(repoRoot, 'packages/host/dist'), '/_app', assets)
 
+  // The host and SDK publish one canonical compiled design-system stylesheet.
+  const sdkStyles = join(repoRoot, 'packages/sdk/styles.css')
+  if (existsSync(sdkStyles)) {
+    assets.push({
+      absPath: sdkStyles,
+      urlPath: '/globals.css',
+      varName: makeVarName('/globals.css'),
+    })
+  }
+
   // Public static files — served at their path under / (minus /vendor, handled below)
   const publicDir = join(repoRoot, 'packages/host/public')
   if (existsSync(publicDir)) {
     for (const entry of readdirSync(publicDir, { withFileTypes: true })) {
       const full = join(publicDir, String(entry.name))
-      if (entry.isFile()) {
+      if (entry.isFile() && entry.name !== 'globals.css') {
         assets.push({
           absPath: full,
           urlPath: `/${entry.name}`,

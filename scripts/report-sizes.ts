@@ -93,8 +93,8 @@ export function collectArtifactSizes(rootDir: string): ArtifactReport {
 
   const pluginFiles: SizeRow[] = []
   const cssFiles: SizeRow[] = []
-  const hostCss = join(rootDir, 'packages/host/public/globals.css')
-  if (existsSync(hostCss)) cssFiles.push({ name: 'host/globals.css', bytes: statSync(hostCss).size })
+  const sdkCss = join(rootDir, 'packages/sdk/styles.css')
+  if (existsSync(sdkCss)) cssFiles.push({ name: 'sdk/styles.css', bytes: statSync(sdkCss).size })
   const pluginsDir = join(rootDir, 'plugins')
   if (existsSync(pluginsDir)) {
     for (const id of readdirSync(pluginsDir)) {
