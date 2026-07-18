@@ -54,10 +54,11 @@ mock.module('../../packages/core/src/usage-history/store', () => ({
 }))
 
 // Billing resolution for observed (usage.db) rows — the models plugin hook.
-let resolveBillingMode: 'normal' | 'undefined' | 'throw' = 'normal'
+let resolveBillingMode: 'normal' | 'undefined' | 'throw' | 'lane-only' = 'normal'
 const resolveBillingImpl: (data: Record<string, unknown>) => unknown = (d) => {
   if (resolveBillingMode === 'throw') throw new Error('billing hook unavailable')
   if (resolveBillingMode === 'undefined') return undefined
+  if (resolveBillingMode === 'lane-only') return { lane: 'metered' }
   const model = (d.model as string) ?? ''
   const provider = model.includes('/') ? model.split('/')[0] : model.startsWith('claude-') ? 'anthropic' : 'other'
   return { provider, lane: provider === 'openai-codex' ? 'subscription' : 'metered' }
@@ -169,6 +170,31 @@ describe('assembleBudgetSpend', () => {
     const s = await assembleBudgetSpend(NOW)
     expect(s.daily.byAgent.main?.unattributed.subscriptionTokens).toBe(8000)
     expect(s.daily.byAgent.main?.unattributed.meteredUsdMicros).toBe(0) // reported $ suppressed on the subscription lane
+  })
+
+  it('bare-model observed rows are an evidence gap, never confident metered dollars (#689)', async () => {
+    // A Codex subscription day exactly as usage.db stored it before provider
+    // qualification: bare id + runtime-reported theoretical cost. The billing
+    // hook resolves bare ids to provider 'other' (could-not-resolve) whose
+    // default lane is metered — that default must not book dollars.
+    usageCells.push(usage('main', TODAY, 'gpt-5.5', 157_286, 5_168_103))
+    const s = await assembleBudgetSpend(NOW)
+    expect(s.daily.global.meteredUsdMicros).toBe(0)
+    expect(s.daily.global.unattributed.meteredUsdMicros).toBe(0)
+    expect(s.daily.global.unattributed.meteredTokens).toBe(0)
+    expect(s.spendEvidence.daily.gaps).toEqual(expect.arrayContaining([
+      expect.objectContaining({ lane: null, model: 'gpt-5.5', reasons: ['lane_unknown'] }),
+    ]))
+  })
+
+  it('a lane without provider evidence is not trusted', async () => {
+    resolveBillingMode = 'lane-only'
+    usageCells.push(usage('main', TODAY, 'mystery-model', 500, 900_000))
+    const s = await assembleBudgetSpend(NOW)
+    expect(s.daily.global.meteredUsdMicros).toBe(0)
+    expect(s.spendEvidence.daily.gaps).toEqual(expect.arrayContaining([
+      expect.objectContaining({ lane: null, model: 'mystery-model', reasons: ['lane_unknown'] }),
+    ]))
   })
 
   it('NULL-cost observed metered rows contribute tokens but no dollars', async () => {

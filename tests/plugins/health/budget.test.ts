@@ -183,7 +183,8 @@ describe('budget health check', () => {
 
   it('is unknown for partial observed costs while retaining the reported subtotal', async () => {
     budgetPolicy = { rules: [{ scope: 'global', lane: 'metered', dailyCap: 100 }] }
-    resolveBilling = async () => ({ lane: 'metered' })
+    // Mirror the real hook shape — a lane is only trusted with a resolved provider (#689).
+    resolveBilling = async () => ({ provider: 'google', lane: 'metered' })
     const now = Date.now()
     replaceSessionUsage('partial-cost', 'main', [{
       day: toLocalDayKey(now),

@@ -299,9 +299,17 @@ async function resolveObservedLane(
   if (invoke) {
     try {
       const billing = (await invoke('models.resolveBilling', { agentId: agent, model: model || undefined })) as
-        | { lane?: string }
+        | { lane?: string; provider?: string }
         | undefined
-      if (billing?.lane === 'subscription' || billing?.lane === 'metered') lane = billing.lane
+      // A lane is only trustworthy when the hook actually resolved a provider.
+      // 'other' is the models plugin's could-not-resolve bucket, and its
+      // default-metered lane would book runtime-reported theoretical dollars
+      // as real spend (#689) — unresolvable stays an honest evidence gap.
+      const providerResolved = typeof billing?.provider === 'string'
+        && billing.provider !== '' && billing.provider !== 'other'
+      if (providerResolved && (billing.lane === 'subscription' || billing.lane === 'metered')) {
+        lane = billing.lane
+      }
     } catch (err) {
       log.warn('resolveBilling failed for observed usage; leaving its lane unresolved', {
         agent, model, err: err instanceof Error ? err.message : String(err),
