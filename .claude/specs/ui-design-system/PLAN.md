@@ -653,6 +653,17 @@ build/tests.\
 **Description:** Move/restyle Button, Badge, Alert, and Progress behind the
 private implementation and public UI entrypoint with semantic variants.
 
+**Status (2026-07-18):** Complete. Button, Badge, Alert, and Progress now have
+one token-backed implementation in `@bakin/ui`, direct supported exports from
+`@makinbakin/sdk/ui`, and a host-only compatibility bridge for existing app
+imports. Canonical semantic variants, tones, sizes, helpers, alert live-region
+behavior, and determinate/indeterminate progress are documented in public
+stories and the author guide; existing variant aliases remain available while
+owned consumers migrate. Component, package, Storybook a11y/interaction,
+desktop/mobile visual, and Chromium/Firefox/WebKit behavior gates pass. The
+single compiled stylesheet grows by 5,396 bytes for this first primitive set;
+the focused SDK UI bundle remains 84,729 bytes with no heavy-domain reach.
+
 **Acceptance:** canonical size/tone/state stories, keyboard/focus/a11y coverage,
 and current consumer compatibility within the approved breaking baseline.
 

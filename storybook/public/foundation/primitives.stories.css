@@ -1,0 +1,116 @@
+.bakin-primitive-story {
+  box-sizing: border-box;
+  display: grid;
+  gap: var(--bakin-layout-gap-page);
+  width: min(100%, 68rem);
+  min-height: 100%;
+  margin: 0 auto;
+  padding: var(--bakin-layout-space-8);
+  background: var(--bakin-color-canvas-default);
+  color: var(--bakin-color-text-primary);
+  font-family: var(--bakin-typography-family-ui);
+}
+
+.bakin-primitive-story *,
+.bakin-primitive-story *::before,
+.bakin-primitive-story *::after {
+  box-sizing: border-box;
+}
+
+.bakin-primitive-story__intro {
+  display: grid;
+  gap: var(--bakin-layout-space-2);
+  max-width: 48rem;
+}
+
+.bakin-primitive-story__eyebrow {
+  margin: 0;
+  color: var(--bakin-color-signal-accent);
+  font-size: var(--bakin-typography-size-meta);
+  font-weight: var(--bakin-typography-weight-bold);
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.bakin-primitive-story h1,
+.bakin-primitive-story h2,
+.bakin-primitive-story p {
+  margin: 0;
+}
+
+.bakin-primitive-story h1 {
+  font-size: clamp(1.75rem, 5vw, var(--bakin-typography-size-page-title));
+  line-height: 1.05;
+  letter-spacing: -.035em;
+}
+
+.bakin-primitive-story__intro > p:last-child,
+.bakin-primitive-story__section > header p {
+  color: var(--bakin-color-text-muted);
+  line-height: 1.55;
+}
+
+.bakin-primitive-story__section {
+  display: grid;
+  gap: var(--bakin-layout-gap-item);
+  min-width: 0;
+  padding-top: var(--bakin-layout-gap-section);
+  border-top: 1px solid var(--bakin-color-border-subtle);
+}
+
+.bakin-primitive-story__section > header {
+  display: grid;
+  gap: var(--bakin-layout-space-1);
+}
+
+.bakin-primitive-story__section h2 {
+  font-size: var(--bakin-typography-size-section-title);
+  letter-spacing: -.01em;
+}
+
+.bakin-primitive-story__cluster {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--bakin-layout-gap-item);
+  align-items: center;
+}
+
+.bakin-primitive-story__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--bakin-layout-gap-item);
+  min-width: 0;
+}
+
+.bakin-primitive-story__stack {
+  display: grid;
+  gap: var(--bakin-layout-gap-item);
+  min-width: 0;
+}
+
+.bakin-primitive-story__example {
+  display: grid;
+  gap: var(--bakin-layout-space-2);
+  min-width: 0;
+}
+
+.bakin-primitive-story__label {
+  color: var(--bakin-color-text-muted);
+  font-family: var(--bakin-typography-family-mono);
+  font-size: var(--bakin-typography-size-meta);
+}
+
+.bakin-primitive-story__status {
+  color: var(--bakin-color-text-muted);
+  font-size: var(--bakin-typography-size-body);
+}
+
+@media (max-width: 40rem) {
+  .bakin-primitive-story {
+    padding: var(--bakin-layout-space-4);
+  }
+
+  .bakin-primitive-story__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

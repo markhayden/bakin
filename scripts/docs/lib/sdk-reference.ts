@@ -587,9 +587,9 @@ function renderFocusedVisualEntrypoint(
 function renderUi(lines: string[], sp: SdkSubpath | undefined): void {
   if (!sp) return
   lines.push('## `@makinbakin/sdk/ui`', '')
-  lines.push(`Source: \`${sp.source}\`. Re-exports of [shadcn/ui](https://ui.shadcn.com) primitives bundled with Bakin's design tokens. For usage, see the upstream component docs.`, '')
+  lines.push(`Source: \`${sp.source}\`. Supported Bakin primitives backed by the canonical design-system stylesheet. Use semantic props and the [UI style guide](/docs/extending/ui/) rather than relying on upstream-library APIs or arbitrary utility classes.`, '')
   lines.push('```ts')
-  lines.push("import { Button, Card, Dialog, Input } from '@makinbakin/sdk/ui'")
+  lines.push("import { Alert, Badge, Button, Progress } from '@makinbakin/sdk/ui'")
   lines.push('```', '')
   if (sp.symbols.length > 0) {
     const names = sp.symbols.map((s) => `\`${s.name}\``).join(', ')

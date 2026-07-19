@@ -1,16 +1,37 @@
 /**
- * `@makinbakin/sdk/ui` — shadcn base UI primitives for plugin authors.
+ * `@makinbakin/sdk/ui` — supported Bakin UI primitives for plugin authors.
  *
- * These are re-exports from Bakin's `src/components/ui/*`. At Bakin build time
- * they resolve to source. At plugin build time (Phase 3) the plugin author
- * marks `@makinbakin/sdk` and `@makinbakin/sdk/ui` as externals so the plugin bundle
- * doesn't duplicate these. At runtime the browser's import map resolves the
- * externals to Bakin's bundled copy.
+ * Migrated components resolve to the private design-system implementation;
+ * compatibility exports continue to resolve to their legacy host components
+ * until each owned migration lands. Plugin builds externalize this entrypoint
+ * so the browser import map can provide the host's single shared copy.
  */
-export * from '@/components/ui/alert'
+export { Alert, AlertAction, AlertDescription, AlertTitle, alertVariants } from '@bakin/ui'
+export type {
+  AlertProps,
+  AlertTone,
+  AlertVariantOptions,
+  LegacyAlertVariant,
+} from '@bakin/ui'
 export * from '@/components/ui/avatar'
-export * from '@/components/ui/badge'
-export * from '@/components/ui/button'
+export { Badge, badgeVariants } from '@bakin/ui'
+export type {
+  BadgeProps,
+  BadgeSize,
+  BadgeTone,
+  BadgeVariant,
+  BadgeVariantOptions,
+  LegacyBadgeVariant,
+} from '@bakin/ui'
+export { Button, buttonVariants } from '@bakin/ui'
+export type {
+  ButtonProps,
+  ButtonSize,
+  ButtonVariant,
+  ButtonVariantOptions,
+  LegacyButtonSize,
+  LegacyButtonVariant,
+} from '@bakin/ui'
 export * from '@/components/ui/card'
 export * from '@/components/ui/checkbox'
 export * from '@/components/ui/collapsible'
@@ -22,7 +43,20 @@ export * from '@/components/ui/input'
 export * from '@/components/ui/input-group'
 export * from '@/components/ui/label'
 export * from '@/components/ui/popover'
-export * from '@/components/ui/progress'
+export {
+  Progress,
+  ProgressIndicator,
+  ProgressLabel,
+  ProgressTrack,
+  ProgressValue,
+} from '@bakin/ui'
+export type {
+  ProgressIndicatorProps,
+  ProgressProps,
+  ProgressSize,
+  ProgressTone,
+  ProgressTrackProps,
+} from '@bakin/ui'
 export * from '@/components/ui/select'
 export * from '@/components/ui/separator'
 export * from '@/components/ui/sheet'

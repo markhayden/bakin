@@ -27,6 +27,9 @@ export default defineConfig({
         ],
         test: {
           name: 'storybook',
+          // The Playwright provider keys retained traces by story title only;
+          // serial files prevent common names such as "Sizes" from colliding.
+          fileParallelism: false,
           browser: {
             enabled: true,
             provider: playwright({}),

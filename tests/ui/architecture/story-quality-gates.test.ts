@@ -41,6 +41,7 @@ describe('Storybook quality gates', () => {
     expect(manifest.devDependencies['@storybook/addon-vitest']).toBe('10.5.2')
     expect(manifest.scripts['ui:test:stories']).toContain('vitest')
     expect(readRepoFile('vitest.config.ts')).toContain("name: 'storybook'")
+    expect(readRepoFile('vitest.config.ts')).toContain('fileParallelism: false')
   })
 
   it('requires reason and evidence beside every public-story a11y suppression', () => {

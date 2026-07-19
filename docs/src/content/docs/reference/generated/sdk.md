@@ -275,11 +275,13 @@ import { PluginHeader, FacetFilter, AgentAvatar } from '@makinbakin/sdk/componen
 
 ## `@makinbakin/sdk/ui`
 
-Source: `packages/sdk/src/ui/index.ts`. Re-exports of [shadcn/ui](https://ui.shadcn.com) primitives bundled with Bakin's design tokens. For usage, see the upstream component docs.
+Source: `packages/sdk/src/ui/index.ts`. Supported Bakin primitives backed by the canonical design-system stylesheet. Use semantic props and the [UI style guide](/docs/extending/ui/) rather than relying on upstream-library APIs or arbitrary utility classes.
 
 ```ts
-import { Button, Card, Dialog, Input } from '@makinbakin/sdk/ui'
+import { Alert, Badge, Button, Progress } from '@makinbakin/sdk/ui'
 ```
+
+Available: `Alert`, `AlertAction`, `AlertDescription`, `AlertTitle`, `alertVariants`, `AlertProps`, `AlertTone`, `AlertVariantOptions`, `LegacyAlertVariant`, `Badge`, `badgeVariants`, `BadgeProps`, `BadgeSize`, `BadgeTone`, `BadgeVariant`, `BadgeVariantOptions`, `LegacyBadgeVariant`, `Button`, `buttonVariants`, `ButtonProps`, `ButtonSize`, `ButtonVariant`, `ButtonVariantOptions`, `LegacyButtonSize`, `LegacyButtonVariant`, `Progress`, `ProgressIndicator`, `ProgressLabel`, `ProgressTrack`, `ProgressValue`, `ProgressIndicatorProps`, `ProgressProps`, `ProgressSize`, `ProgressTone`, `ProgressTrackProps`.
 
 ## `@makinbakin/sdk/layout`
 

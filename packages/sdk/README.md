@@ -96,7 +96,7 @@ The public npm package exposes these sub-paths:
 | Import path              | What it exposes                              |
 | ------------------------ | -------------------------------------------- |
 | `@makinbakin/sdk` | Plugin registration, route helpers, top-level exports |
-| `@makinbakin/sdk/ui` | Base UI components |
+| `@makinbakin/sdk/ui` | Supported Bakin UI primitives and semantic style helpers |
 | `@makinbakin/sdk/layout` | Canonical page and responsive composition |
 | `@makinbakin/sdk/patterns` | Reusable application-aware UI patterns |
 | `@makinbakin/sdk/charts` | Isolated data-visualization components |
@@ -113,6 +113,12 @@ The public npm package exposes these sub-paths:
 Use the focused visual entrypoints for new plugin UI. Existing
 `@makinbakin/sdk/components` consumers migrate as their replacement exports
 land; do not add new dependencies on that legacy barrel.
+
+Action and status UI starts with `Button`, `Badge`, `Alert`, and `Progress`.
+Choose their semantic `variant`, `tone`, and `size` props instead of recreating
+colors or dimensions in plugin CSS. The `buttonVariants` and `badgeVariants`
+helpers are supported when a link or render integration needs the same visual
+treatment while preserving its native element semantics.
 
 ## Stylesheet
 

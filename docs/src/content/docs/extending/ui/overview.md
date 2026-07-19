@@ -22,6 +22,58 @@ Start with the focused visual SDK entrypoints: `@makinbakin/sdk/ui`, `@makinbaki
 
 Do not copy host components into a plugin. If the same need recurs across official or third-party plugins, propose it as an SDK contract with its public story, interaction test, accessibility coverage, and responsive states.
 
+## Action and Status Primitives
+
+The first supported primitive set covers actions, compact state, contextual messages, and measurable work:
+
+| Need | Component | Choose with |
+| --- | --- | --- |
+| Trigger an action | `Button` | semantic `variant` and `size` |
+| Label compact state or metadata | `Badge` | independent `tone`, `variant`, and `size` |
+| Explain a page- or section-level condition | `Alert` | semantic `tone` |
+| Show determinate or indeterminate work | `Progress` | `value`, accessible label, `tone`, and `size` |
+
+```tsx
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+  Badge,
+  Button,
+  Progress,
+  ProgressLabel,
+  ProgressValue,
+} from '@makinbakin/sdk/ui'
+
+export function ImportStatus() {
+  return (
+    <section aria-labelledby="import-status-heading">
+      <h2 id="import-status-heading">Import</h2>
+      <Badge tone="attention">Waiting for review</Badge>
+      <Progress value={64}>
+        <ProgressLabel>Importing assets</ProgressLabel>
+        <ProgressValue />
+      </Progress>
+      <Alert tone="danger">
+        <AlertTitle>Three assets need attention</AlertTitle>
+        <AlertDescription>Resolve the conflicts before publishing.</AlertDescription>
+      </Alert>
+      <Button variant="primary">Review conflicts</Button>
+    </section>
+  )
+}
+```
+
+Use one primary action per local decision area. `secondary`, `outline`, and `ghost` reduce emphasis; `danger` is reserved for destructive consequences. `warning`, `info`, and `accent` communicate specific context and should not replace clear action labels. Icon-only buttons need an accessible name.
+
+For badges, `tone` describes meaning (`neutral`, `primary`, `success`, `attention`, `danger`, or `accent`) while `variant` describes visual treatment (`soft`, `solid`, `outline`, `ghost`, or `link`). Do not encode status only with color: keep the text explicit. Badges label state; buttons change it.
+
+Routine alerts announce with `role="status"`. Danger alerts default to `role="alert"`, so reserve them for conditions that need immediate assistive-technology announcement. Progress accepts an exact `value` for determinate work or `null` for indeterminate work; always supply a visible `ProgressLabel` or an `aria-label`.
+
+`buttonVariants()` and `badgeVariants()` are supported escape hatches for links and render integrations that must share a primitive's visual treatment while preserving the correct native element. They do not make the generated class string, arbitrary Tailwind utilities, or internal DOM structure part of the SDK contract. Prefer the component whenever it has the right semantics.
+
+Existing `default` and `destructive` action variants and `default`, `secondary`, and `destructive` badge variants remain compatibility aliases while owned consumers migrate. New work uses the semantic names above.
+
 ## Stylesheet Contract
 
 `@makinbakin/sdk/styles.css` is the one supported compiled design-system stylesheet. The Bakin host loads it once for installed plugins, so plugin client entries must not import it or copy its contents into plugin-owned CSS.

@@ -63,6 +63,7 @@ const EXTERNAL_JS_PEERS = [
 
 const FORBIDDEN_BARE_PREFIXES = [
   '@/',
+  '@bakin/ui',
   '@bakin/core',
   '@bakin/team',
   '@bakin/workflows',
@@ -152,6 +153,12 @@ function mapOriginalModulePath(originalNoExt: string): string | null {
   if (normalized.startsWith('packages/sdk/src/')) {
     return mapSdkModule(normalized.slice('packages/sdk/src/'.length))
   }
+  if (normalized.startsWith('packages/ui/src/')) {
+    return `_internal/ui/${normalized.slice('packages/ui/src/'.length)}`
+  }
+  if (normalized.startsWith('packages/host/src/')) {
+    return `_internal/host/${normalized.slice('packages/host/src/'.length)}`
+  }
   if (normalized.startsWith('src/')) {
     return `_internal/app/${normalized.slice('src/'.length)}`
   }
@@ -174,6 +181,10 @@ function resolveOriginalRelativeSpecifier(originalFileRel: string, specifier: st
 function aliasTarget(specifier: string): string | null {
   if (specifier.startsWith('@/')) {
     return `_internal/app/${specifier.slice(2)}`
+  }
+  if (specifier === '@bakin/ui') return '_internal/ui/index'
+  if (specifier.startsWith('@bakin/ui/')) {
+    return `_internal/ui/${specifier.slice('@bakin/ui/'.length)}`
   }
   if (specifier === '@bakin/core') return '_internal/core/index'
   if (specifier.startsWith('@bakin/core/')) {

@@ -33,3 +33,23 @@ test('public Button visual baseline', async ({ page }, testInfo) => {
   expect(browserErrors).toEqual([])
   await expect(page).toHaveScreenshot('foundation-button.png')
 })
+
+test('public action and status family visual baseline', async ({ page }) => {
+  const browserErrors: string[] = []
+  page.on('console', (message) => {
+    if (message.type() === 'error') browserErrors.push(`console: ${message.text()}`)
+  })
+  page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
+  page.on('requestfailed', (request) => {
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+  })
+
+  await page.goto('/iframe.html?id=foundation-action-and-status--overview&viewMode=story', { waitUntil: 'networkidle' })
+  await expect(page.getByRole('heading', { name: 'Actions and status', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Create task', exact: true })).toBeVisible()
+  await expect(page.getByRole('progressbar', { name: 'Plugin migration', exact: true })).toHaveAttribute('aria-valuenow', '64')
+  await page.evaluate(async () => document.fonts.ready)
+
+  expect(browserErrors).toEqual([])
+  await expect(page).toHaveScreenshot('foundation-action-status.png')
+})

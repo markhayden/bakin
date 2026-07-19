@@ -1,0 +1,131 @@
+'use client'
+
+import { Progress as ProgressPrimitive } from '@base-ui/react/progress'
+
+import { cn } from '../utils'
+
+export type ProgressTone = 'primary' | 'accent' | 'attention' | 'danger'
+export type ProgressSize = 'sm' | 'md' | 'lg'
+
+export type ProgressProps = Omit<ProgressPrimitive.Root.Props, 'className'> & {
+  className?: ProgressPrimitive.Root.Props['className']
+  tone?: ProgressTone
+  size?: ProgressSize
+}
+
+export type ProgressTrackProps = ProgressPrimitive.Track.Props & {
+  size?: ProgressSize
+}
+
+export type ProgressIndicatorProps = ProgressPrimitive.Indicator.Props & {
+  tone?: ProgressTone
+}
+
+function progressStatus(value: number | null, max: number): 'indeterminate' | 'progressing' | 'complete' {
+  if (!Number.isFinite(value)) return 'indeterminate'
+  return value === max ? 'complete' : 'progressing'
+}
+
+export function Progress({
+  className,
+  children,
+  value,
+  max = 100,
+  tone = 'primary',
+  size = 'sm',
+  ...props
+}: ProgressProps) {
+  const status = progressStatus(value, max)
+  const rootClasses = 'group/progress flex min-w-0 flex-wrap items-center gap-bakin-3 font-bakin-typography-family-ui'
+  const resolvedClassName: ProgressPrimitive.Root.Props['className'] = typeof className === 'function'
+    ? (state) => cn(rootClasses, className(state))
+    : cn(rootClasses, className)
+
+  return (
+    <ProgressPrimitive.Root
+      value={value}
+      max={max}
+      data-slot="progress"
+      data-tone={tone}
+      data-size={size}
+      data-status={status}
+      className={resolvedClassName}
+      {...props}
+    >
+      {children}
+      <ProgressTrack size={size}>
+        <ProgressIndicator tone={tone} />
+      </ProgressTrack>
+    </ProgressPrimitive.Root>
+  )
+}
+
+export function ProgressTrack({
+  className,
+  size = 'sm',
+  ...props
+}: ProgressTrackProps) {
+  return (
+    <ProgressPrimitive.Track
+      className={cn(
+        'relative flex w-full items-center overflow-x-hidden rounded-bakin-pill bg-bakin-border-subtle/30',
+        size === 'sm' && 'h-bakin-1',
+        size === 'md' && 'h-bakin-2',
+        size === 'lg' && 'h-bakin-3',
+        className,
+      )}
+      data-slot="progress-track"
+      data-size={size}
+      {...props}
+    />
+  )
+}
+
+export function ProgressIndicator({
+  className,
+  tone = 'primary',
+  ...props
+}: ProgressIndicatorProps) {
+  return (
+    <ProgressPrimitive.Indicator
+      data-slot="progress-indicator"
+      data-tone={tone}
+      className={cn(
+        'h-full rounded-bakin-pill transition-[width] duration-[var(--bakin-motion-duration-transition)] ease-bakin-standard',
+        'data-[indeterminate]:w-1/3 data-[indeterminate]:animate-pulse',
+        tone === 'primary' && 'bg-bakin-action-primary-background',
+        tone === 'accent' && 'bg-bakin-signal-accent',
+        tone === 'attention' && 'bg-bakin-signal-highlight',
+        tone === 'danger' && 'bg-bakin-signal-danger',
+        className,
+      )}
+      {...props}
+    />
+  )
+}
+
+export function ProgressLabel({ className, ...props }: ProgressPrimitive.Label.Props) {
+  return (
+    <ProgressPrimitive.Label
+      className={cn(
+        'text-[length:var(--bakin-typography-size-body)] font-bakin-typography-weight-semibold text-bakin-text-primary',
+        className,
+      )}
+      data-slot="progress-label"
+      {...props}
+    />
+  )
+}
+
+export function ProgressValue({ className, ...props }: ProgressPrimitive.Value.Props) {
+  return (
+    <ProgressPrimitive.Value
+      className={cn(
+        'ml-auto font-bakin-typography-family-mono text-[length:var(--bakin-typography-size-meta)] text-bakin-text-muted tabular-nums',
+        className,
+      )}
+      data-slot="progress-value"
+      {...props}
+    />
+  )
+}

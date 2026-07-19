@@ -72,10 +72,12 @@ Health producer constructors are available from `@makinbakin/sdk/utils`: `health
 Prefer SDK UI components for plugin UI. Custom UI is allowed for domain-specific needs, but it should preserve Bakin's accessibility, spacing, contrast, density, loading behavior, and keyboard interactions.
 
 ```tsx
-import { Button, Input, Table } from '@makinbakin/sdk/ui'
+import { Alert, Badge, Button, Progress } from '@makinbakin/sdk/ui'
 ```
 
 Avoid copying host component files into a plugin. If a component is broadly useful, promote it to a focused SDK entrypoint instead. `@makinbakin/sdk/components` remains available only while existing consumers migrate.
+
+Use semantic props instead of rebuilding primitive styles: `Button` exposes action variants and sizes, `Badge` separates status `tone` from visual `variant`, `Alert` assigns announcement behavior from its tone, and `Progress` supports exact determinate or indeterminate state. The supported `buttonVariants()` and `badgeVariants()` helpers are reserved for links and render integrations that need the same treatment without changing native semantics. See the [UI style guide](/docs/extending/ui/) and [public component catalog](/docs/ui/) for the complete contracts and states.
 
 The Bakin host loads the design-system stylesheet once. Installed plugin clients must not import it. Standalone previews and browser test harnesses import the exact public artifact once at their root:
 

@@ -12,6 +12,7 @@
  * Paths are resolved relative to this file (packages/host/src/globals.css).
  */
 @source "./**/*.{ts,tsx}";
+@source "../../ui/src/**/*.{ts,tsx}";
 @source "../../sdk/src/**/*.{ts,tsx}";
 @source "../../../src/**/*.{ts,tsx}";
 @source "../../../plugins/**/*.{ts,tsx}";
