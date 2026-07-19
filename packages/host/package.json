@@ -3,6 +3,9 @@
   "version": "0.0.0-workspace",
   "private": true,
   "type": "module",
+  "dependencies": {
+    "@bakin/ui": "workspace:*"
+  },
   "scripts": {
     "build": "bun run build.ts"
   }

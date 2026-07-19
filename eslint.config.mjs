@@ -215,6 +215,10 @@ const eslintConfig = defineConfig([
             message: "Plugins cannot import from other plugins. Use @makinbakin/sdk/* instead.",
           },
           {
+            group: ["@bakin/ui", "@bakin/ui/*"],
+            message: "@bakin/ui is private implementation. Plugins must import through @makinbakin/sdk/*.",
+          },
+          {
             group: [
               "@/components/ui/*",
               "@/components/agent-*",

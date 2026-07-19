@@ -25,6 +25,8 @@
       "@bakin/adapter-antfly/*": ["./packages/adapter-antfly/src/*"],
       "@bakin/adapter-pi": ["./packages/adapter-pi/src/index.ts"],
       "@bakin/adapter-pi/*": ["./packages/adapter-pi/src/*"],
+      "@bakin/ui": ["./packages/ui/src/index.ts"],
+      "@bakin/ui/*": ["./packages/ui/src/*"],
       "@makinbakin/sdk": ["./packages/sdk/src/index.ts"],
       "@makinbakin/sdk/ui": ["./packages/sdk/src/ui/index.ts"],
       "@makinbakin/sdk/hooks": ["./packages/sdk/src/hooks/index.ts"],

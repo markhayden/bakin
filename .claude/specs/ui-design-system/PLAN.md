@@ -588,6 +588,13 @@ specimen story status.\
 **Description:** Create the private package, dependency rules, aliases, and
 host/SDK-only import allowlist without moving components yet.
 
+**Status (2026-07-18):** Complete. `@bakin/ui` is a private, source-only
+workspace with explicit exports, React peers, CSS-only side effects, and
+repository/editor/plugin gates that reserve direct imports for UI, host, SDK,
+and internal Storybook owners. Host and SDK boundary probes resolve to one
+CSS-free implementation in the browser bundle; no production component has
+been migrated yet.
+
 **Acceptance:** external/plugin imports fail architecture checks; package is
 side-effect controlled; host and SDK can consume a sample implementation
 without duplicate React or CSS.

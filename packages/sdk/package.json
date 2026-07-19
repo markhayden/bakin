@@ -32,6 +32,9 @@
     "react-dom": "^19.0.0"
   },
   "dependencies": {},
+  "devDependencies": {
+    "@bakin/ui": "workspace:*"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/markhayden/bakin.git",

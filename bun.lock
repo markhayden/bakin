@@ -124,9 +124,23 @@
     "packages/host": {
       "name": "@bakin/host",
       "version": "0.0.0-workspace",
+      "dependencies": {
+        "@bakin/ui": "workspace:*",
+      },
     },
     "packages/sdk": {
       "name": "@makinbakin/sdk",
+      "version": "0.0.0-workspace",
+      "devDependencies": {
+        "@bakin/ui": "workspace:*",
+      },
+      "peerDependencies": {
+        "react": "^19.0.0",
+        "react-dom": "^19.0.0",
+      },
+    },
+    "packages/ui": {
+      "name": "@bakin/ui",
       "version": "0.0.0-workspace",
       "peerDependencies": {
         "react": "^19.0.0",
@@ -282,6 +296,8 @@
     "@bakin/docs": ["@bakin/docs@workspace:docs"],
 
     "@bakin/host": ["@bakin/host@workspace:packages/host"],
+
+    "@bakin/ui": ["@bakin/ui@workspace:packages/ui"],
 
     "@base-ui/react": ["@base-ui/react@1.4.1", "", { "dependencies": { "@babel/runtime": "^7.29.2", "@base-ui/utils": "0.2.8", "@floating-ui/react-dom": "^2.1.8", "@floating-ui/utils": "^0.2.11", "use-sync-external-store": "^1.6.0" }, "peerDependencies": { "@date-fns/tz": "^1.2.0", "@types/react": "^17 || ^18 || ^19", "date-fns": "^4.0.0", "react": "^17 || ^18 || ^19", "react-dom": "^17 || ^18 || ^19" }, "optionalPeers": ["@date-fns/tz", "@types/react", "date-fns"] }, "sha512-Ab5/LIhcmL8BQcsBUYiOfkSDRdLpvgUBzMK30cu684JPcLclYlztharvCZyNNgzJtbAiREzI9q0pI5erHCMgCw=="],
 
