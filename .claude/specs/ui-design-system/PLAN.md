@@ -613,6 +613,19 @@ workspace/tsconfig, architecture test.\
 stylesheet export boundaries while retaining the legacy components barrel only
 under its migration allowance.
 
+**T20a status (2026-07-18):** Complete. The five focused browser UI paths now
+resolve consistently through source aliases, npm exports and declarations,
+host vendor/import-map artifacts, and the existing Whiskit build contract.
+`layout`, `patterns`, `charts`, and `conversation` are intentionally empty until
+their owning migration tasks; `components` remains a separate migration-only
+barrel. Public Storybook rejects that legacy barrel, a built-package consumer
+fixture compiles against every focused path, and dependency/size gates prove
+the new domain entries add no runtime bytes or cross-domain reachability. No
+component, page, plugin, or route migration is included in this slice.
+
+**T20b status:** Pending. Establish and prove the public stylesheet/package
+artifact without broadening the focused JavaScript entrypoint contract.
+
 **Acceptance:** export maps and package build publish the expected artifacts;
 each entrypoint has an independent dependency graph; public stories can import
 only these paths.

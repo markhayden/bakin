@@ -2,7 +2,7 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "noEmit": true,
-    "rootDir": "./src"
+    "rootDir": "../.."
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"]
 }

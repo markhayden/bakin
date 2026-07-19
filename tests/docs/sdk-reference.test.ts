@@ -21,4 +21,13 @@ describe('generated SDK Health reference', () => {
       expect(reference).not.toContain(retiredName)
     }
   })
+
+  it('documents the focused visual entrypoint foundation and legacy barrel status', () => {
+    const reference = renderSdkReference()
+
+    for (const subpath of ['ui', 'layout', 'patterns', 'charts', 'conversation']) {
+      expect(reference).toContain(`## \`@makinbakin/sdk/${subpath}\``)
+    }
+    expect(reference.toLowerCase()).toContain('migration-only')
+  })
 })

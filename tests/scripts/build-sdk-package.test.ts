@@ -1,6 +1,7 @@
 import { afterAll, describe, expect, it } from 'bun:test'
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs'
-import { join } from 'node:path'
+import { spawnSync } from 'node:child_process'
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
+import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 import {
   SDK_EXPORTS,
@@ -10,6 +11,7 @@ import {
 } from '../../scripts/build-sdk-package'
 
 const testRoot = join(tmpdir(), `bakin-test-build-sdk-package-${Date.now()}`)
+const repoRoot = resolve(import.meta.dir, '../..')
 
 afterAll(() => {
   rmSync(testRoot, { recursive: true, force: true })
@@ -66,6 +68,32 @@ describe('buildSdkPackage', () => {
       expect(existsSync(join(outDir, exportConfig.types))).toBe(true)
       expect(statSync(join(outDir, exportConfig.import)).size).toBeGreaterThan(0)
       expect(statSync(join(outDir, exportConfig.types)).size).toBeGreaterThan(0)
+    }
+
+    const consumerDir = join(repoRoot, `.tmp-sdk-focused-consumer-${Date.now()}`)
+    try {
+      mkdirSync(join(consumerDir, 'node_modules/@makinbakin'), { recursive: true })
+      symlinkSync(outDir, join(consumerDir, 'node_modules/@makinbakin/sdk'), 'dir')
+      cpSync(join(repoRoot, 'tests/fixtures/sdk-focused-consumer/index.ts'), join(consumerDir, 'index.ts'))
+      writeFileSync(join(consumerDir, 'tsconfig.json'), JSON.stringify({
+        compilerOptions: {
+          strict: true,
+          noEmit: true,
+          module: 'ESNext',
+          moduleResolution: 'Bundler',
+          skipLibCheck: true,
+          preserveSymlinks: true,
+        },
+        include: ['index.ts'],
+      }))
+      const result = spawnSync(join(repoRoot, 'node_modules/.bin/tsc'), ['-p', 'tsconfig.json'], {
+        cwd: consumerDir,
+        encoding: 'utf8',
+      })
+      expect(`${result.stdout}${result.stderr}`).toBe('')
+      expect(result.status).toBe(0)
+    } finally {
+      rmSync(consumerDir, { recursive: true, force: true })
     }
   }, 120_000)
 

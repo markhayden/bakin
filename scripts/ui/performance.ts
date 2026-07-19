@@ -78,6 +78,11 @@ function portablePath(root: string, path: string, prefix = ''): string {
 function resolveSourceImport(root: string, importer: string, specifier: string): string | undefined {
   let unresolved: string
   if (specifier.startsWith('@/')) unresolved = join(root, 'src', specifier.slice(2))
+  else if (specifier === '@bakin/ui') unresolved = join(root, 'packages/ui/src/index')
+  else if (specifier.startsWith('@bakin/ui/')) unresolved = join(root, 'packages/ui/src', specifier.slice('@bakin/ui/'.length))
+  else if (specifier.startsWith('@makinbakin/sdk/')) {
+    unresolved = join(root, 'packages/sdk/src', specifier.slice('@makinbakin/sdk/'.length), 'index')
+  }
   else if (specifier.startsWith('.')) unresolved = resolve(dirname(importer), specifier)
   else return undefined
 
@@ -132,10 +137,9 @@ function forbiddenUiDomain(path: string): boolean {
     || /\/packages\/sdk\/src\/(?:charts|conversation)\//.test(normalized)
 }
 
-/** Return the import chains by which base UI reaches a heavy UI domain. */
-export function findForbiddenBaseUiDependencies(root: string): string[] {
-  const entry = join(root, BASE_UI_ENTRY)
-  if (!existsSync(entry)) return [`missing base UI entrypoint: ${BASE_UI_ENTRY}`]
+function findForbiddenDependenciesFrom(root: string, entryPath: string): string[] {
+  const entry = join(root, entryPath)
+  if (!existsSync(entry)) return [`missing base UI entrypoint: ${entryPath}`]
   const findings = new Set<string>()
 
   const visit = (path: string, chain: string[], active: Set<string>): void => {
@@ -153,8 +157,20 @@ export function findForbiddenBaseUiDependencies(root: string): string[] {
     }
   }
 
-  visit(entry, [BASE_UI_ENTRY], new Set([entry]))
+  visit(entry, [entryPath], new Set([entry]))
   return [...findings].sort()
+}
+
+/** Return the import chains by which base UI reaches a heavy UI domain. */
+export function findForbiddenBaseUiDependencies(root: string): string[] {
+  return findForbiddenDependenciesFrom(root, BASE_UI_ENTRY)
+}
+
+/** Keep routine UI composition entrypoints independent from heavy domains. */
+export function findForbiddenFocusedSdkDependencies(root: string): string[] {
+  return ['ui', 'layout', 'patterns']
+    .flatMap((subpath) => findForbiddenDependenciesFrom(root, `packages/sdk/src/${subpath}/index.ts`))
+    .sort()
 }
 
 function normalizedCss(source: string): string {
@@ -419,8 +435,10 @@ export async function collectUiPerformanceSnapshot(
       reachableBytes: measureReachableJsBytes(path, vendorRoot),
     }]
   }).sort((left, right) => left.name.localeCompare(right.name))
-  if (!sdkUiBundles.some((entry) => entry.name === 'sdk-ui') || !sdkUiBundles.some((entry) => entry.name === 'sdk-components')) {
-    throw new Error('Missing current SDK UI vendor entries; run bun run build:vendors')
+  const missingUiBundles = [...UI_VENDOR_NAMES]
+    .filter((name) => !sdkUiBundles.some((entry) => entry.name === name))
+  if (missingUiBundles.length > 0) {
+    throw new Error(`Missing SDK UI vendor entries (${missingUiBundles.join(', ')}); run bun run build:vendors`)
   }
 
   const canonicalPath = join(root, 'packages/sdk/styles.css')
@@ -483,8 +501,8 @@ export function printUiPerformance(snapshot: UiPerformanceSnapshot): void {
 }
 
 async function generate(): Promise<void> {
-  const dependencies = findForbiddenBaseUiDependencies(REPO_ROOT)
-  if (dependencies.length > 0) throw new Error(`Base UI reaches forbidden heavy domains:\n- ${dependencies.join('\n- ')}`)
+  const dependencies = findForbiddenFocusedSdkDependencies(REPO_ROOT)
+  if (dependencies.length > 0) throw new Error(`Focused base UI reaches forbidden heavy domains:\n- ${dependencies.join('\n- ')}`)
   const snapshot = await collectUiPerformanceSnapshot()
   const errors = validateAgainstSchema(snapshot)
   if (errors.length > 0) throw new Error(`Invalid generated UI performance baseline:\n- ${errors.join('\n- ')}`)
@@ -497,11 +515,11 @@ async function check(): Promise<void> {
     throw new Error('Missing design-system/performance.json; run bun run ui:performance:generate')
   }
   const baseline = JSON.parse(readFileSync(PERFORMANCE_PATH, 'utf-8')) as UiPerformanceSnapshot
-  const dependencies = findForbiddenBaseUiDependencies(REPO_ROOT)
+  const dependencies = findForbiddenFocusedSdkDependencies(REPO_ROOT)
   const actual = await collectUiPerformanceSnapshot()
   const errors = [
     ...validateAgainstSchema(baseline),
-    ...dependencies.map((chain) => `base UI reaches forbidden heavy domain: ${chain}`),
+    ...dependencies.map((chain) => `focused base UI reaches forbidden heavy domain: ${chain}`),
     ...diffUiPerformance(baseline, actual),
   ]
   if (errors.length > 0) throw new Error(`UI performance ratchet failed:\n- ${errors.join('\n- ')}`)

@@ -4,16 +4,21 @@
  * The main entry re-exports types + the single-call `registerPlugin` helper
  * so plugin authors can write `import { registerPlugin } from '@makinbakin/sdk'`
  * without having to remember which sub-path it lives at. UI primitives,
- * hooks, and components stay on sub-paths (`/ui`, `/hooks`, `/components`,
- * `/slots`) to keep the top-level namespace from exploding.
+ * layout, patterns, charts, conversation UI, hooks, and slots stay on focused
+ * sub-paths to keep the top-level namespace from exploding. `/components` is
+ * migration-only and receives no new public API.
  *
  * This entry is AUTHOR API ONLY. The host shell's registry/lazy-loading
  * plumbing lives on `@makinbakin/sdk/internal` and is not a public contract.
  *
  * Sub-paths:
  *   - `@makinbakin/sdk/ui`         — shadcn UI primitives (Button, Card, Dialog, ...)
+ *   - `@makinbakin/sdk/layout`     — canonical page and responsive composition
+ *   - `@makinbakin/sdk/patterns`   — reusable application-aware UI patterns
+ *   - `@makinbakin/sdk/charts`     — isolated data visualization
+ *   - `@makinbakin/sdk/conversation` — isolated conversation UI and models
  *   - `@makinbakin/sdk/hooks`      — React hooks (useAgent, useSSE, useSearch, ...)
- *   - `@makinbakin/sdk/components` — shared components (PluginHeader, FacetFilter, ...)
+ *   - `@makinbakin/sdk/components` — migration-only legacy component barrel
  *   - `@makinbakin/sdk/slots`      — Slot + registerSlot primitive
  *   - `@makinbakin/sdk/types`      — full type re-exports
  *   - `@makinbakin/sdk/metadata`   — docs-aware contract helpers

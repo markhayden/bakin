@@ -25,6 +25,10 @@ export const REACT_EXTERNALS: string[] = [
 export const SDK_EXTERNALS: string[] = [
   '@makinbakin/sdk',
   '@makinbakin/sdk/ui',
+  '@makinbakin/sdk/layout',
+  '@makinbakin/sdk/patterns',
+  '@makinbakin/sdk/charts',
+  '@makinbakin/sdk/conversation',
   '@makinbakin/sdk/hooks',
   '@makinbakin/sdk/components',
   '@makinbakin/sdk/slots',

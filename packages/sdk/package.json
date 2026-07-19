@@ -8,6 +8,10 @@
   "exports": {
     ".": "./src/index.ts",
     "./ui": "./src/ui/index.ts",
+    "./layout": "./src/layout/index.ts",
+    "./patterns": "./src/patterns/index.ts",
+    "./charts": "./src/charts/index.ts",
+    "./conversation": "./src/conversation/index.ts",
     "./hooks": "./src/hooks/index.ts",
     "./components": "./src/components/index.ts",
     "./slots": "./src/slots/index.tsx",

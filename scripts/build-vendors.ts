@@ -12,7 +12,7 @@
  *
  * - React family + tanstack-router: one bundle per specifier, built from
  *   generated wrapper entries (see below).
- * - @makinbakin/sdk/*: all nine subpath entries built in a SINGLE
+ * - @makinbakin/sdk/*: all browser subpath entries built in a SINGLE
  *   `bun build --splitting` invocation, so code shared between subpaths
  *   (shadcn primitives, @bakin/core helpers, plugin hooks) lands once in
  *   `sdk-shared-<hash>.js` chunks instead of being inlined into every
@@ -51,10 +51,14 @@ import { jsxDevRuntimeEntrySource } from './vendor-entrypoints'
 const REPO_ROOT = resolve(import.meta.dir, '..')
 const VENDOR_DIR = join(REPO_ROOT, 'packages/host/public/vendor')
 
-/** The nine published SDK subpaths and their stable vendor bundle names. */
+/** The browser-resolvable SDK subpaths and their stable vendor bundle names. */
 export const SDK_VENDOR_TARGETS: ReadonlyArray<{ specifier: string; name: string; entrypoint: string }> = [
   { specifier: '@makinbakin/sdk', name: 'sdk-index', entrypoint: 'packages/sdk/src/index.ts' },
   { specifier: '@makinbakin/sdk/ui', name: 'sdk-ui', entrypoint: 'packages/sdk/src/ui/index.ts' },
+  { specifier: '@makinbakin/sdk/layout', name: 'sdk-layout', entrypoint: 'packages/sdk/src/layout/index.ts' },
+  { specifier: '@makinbakin/sdk/patterns', name: 'sdk-patterns', entrypoint: 'packages/sdk/src/patterns/index.ts' },
+  { specifier: '@makinbakin/sdk/charts', name: 'sdk-charts', entrypoint: 'packages/sdk/src/charts/index.ts' },
+  { specifier: '@makinbakin/sdk/conversation', name: 'sdk-conversation', entrypoint: 'packages/sdk/src/conversation/index.ts' },
   { specifier: '@makinbakin/sdk/hooks', name: 'sdk-hooks', entrypoint: 'packages/sdk/src/hooks/index.ts' },
   { specifier: '@makinbakin/sdk/components', name: 'sdk-components', entrypoint: 'packages/sdk/src/components/index.ts' },
   { specifier: '@makinbakin/sdk/slots', name: 'sdk-slots', entrypoint: 'packages/sdk/src/slots/index.tsx' },

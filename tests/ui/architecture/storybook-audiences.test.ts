@@ -88,6 +88,27 @@ describe('Storybook catalog audiences', () => {
     expect(() => assertPublicStoryBoundary(root)).toThrow('Public Storybook boundary failed')
   })
 
+  it('reserves public stories for focused visual SDK entrypoints', () => {
+    const root = makeFixtureRoot()
+    writeFileSync(join(root, 'storybook/public/focused.stories.tsx'), [
+      "import * as Layout from '@makinbakin/sdk/layout'",
+      "import * as Patterns from '@makinbakin/sdk/patterns'",
+      "import * as Charts from '@makinbakin/sdk/charts'",
+      "import * as Conversation from '@makinbakin/sdk/conversation'",
+      "export default { title: 'Focused', tags: ['public'] }",
+      'export const Default = { args: { Layout, Patterns, Charts, Conversation } }',
+    ].join('\n'))
+    expect(validatePublicStoryBoundary(root)).toEqual([])
+
+    writeFileSync(join(root, 'storybook/public/legacy.stories.tsx'), [
+      "import { PluginHeader } from '@makinbakin/sdk/components'",
+      "export default { title: 'Legacy', component: PluginHeader, tags: ['public'] }",
+    ].join('\n'))
+    expect(validatePublicStoryBoundary(root)).toEqual([
+      'storybook/public/legacy.stories.tsx:1 public catalog cannot import @makinbakin/sdk/components; use a focused visual SDK entrypoint',
+    ])
+  })
+
   it('does not mistake story args or nested objects for the meta public tag', () => {
     const root = makeFixtureRoot()
     writeFileSync(join(root, 'storybook/public/misleading.stories.tsx'), [

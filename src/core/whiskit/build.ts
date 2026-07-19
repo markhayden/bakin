@@ -33,7 +33,21 @@ import { WhiskitBuildError, type WhiskitBuildRequest, type WhiskitBuildResult } 
 const REPO_ROOT = resolve(import.meta.dir, '../../..')
 
 /** SDK sub-path names ('' is the package root). Mirrors the package exports. */
-const SDK_SUBPATHS = ['', 'ui', 'hooks', 'components', 'slots', 'types', 'utils', 'metadata', 'routing'] as const
+export const SDK_SUBPATHS = [
+  '',
+  'ui',
+  'layout',
+  'patterns',
+  'charts',
+  'conversation',
+  'hooks',
+  'components',
+  'slots',
+  'types',
+  'utils',
+  'metadata',
+  'routing',
+] as const
 
 export interface SdkResolution {
   /** Where the SDK came from — recorded in diagnostics. */
@@ -274,7 +288,7 @@ function assertServerBundleExternalsClean(plugin: ValidatedPlugin): void {
     `server bundle for "${plugin.pluginId}" retains host-provided browser externals: ` +
     retained.map((spec) => `"${spec}"`).join(', ') +
     `. These resolve only in the browser via the host import map — a binary install fails at activation. ` +
-    `Server entries must not import client-only SDK subpaths (slots/components/ui/hooks); ` +
+    `Server entries must not import client-only SDK subpaths (ui/layout/patterns/charts/conversation/components/slots/hooks); ` +
     `the SDK root, routing, types, utils, and metadata are server-safe.`,
   )
 }

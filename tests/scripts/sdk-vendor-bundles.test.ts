@@ -10,7 +10,7 @@
  *     multiple subpath bundles. Verified with a marker string from the
  *     shadcn form/label primitives, which the pre-splitting layout
  *     duplicated across sdk-ui.js and sdk-components.js.
- *  2. The published entry contract holds: all nine stable sdk-*.js entry
+ *  2. The published entry contract holds: every stable sdk-*.js entry
  *     files exist and expose their representative exports, so the import
  *     map in packages/host/public/index.html keeps resolving every
  *     @makinbakin/sdk/* specifier without changes.
@@ -60,7 +60,7 @@ beforeAll(async () => {
 afterAll(() => rmSync(outDir, { recursive: true, force: true }))
 
 describe('split SDK vendor build', () => {
-  it('emits all nine stable entry files plus shared chunks', () => {
+  it('emits every stable entry file plus shared chunks', () => {
     const files = readdirSync(outDir).filter((f) => f !== 'node_modules')
     for (const target of SDK_VENDOR_TARGETS) {
       expect(files).toContain(`${target.name}.js`)
@@ -96,6 +96,11 @@ describe('split SDK vendor build', () => {
 
     const ui = await import(join(outDir, 'sdk-ui.js'))
     expect(ui.Button).toBeDefined()
+
+    for (const name of ['layout', 'patterns', 'charts', 'conversation']) {
+      const focused = await import(join(outDir, `sdk-${name}.js`))
+      expect(Object.keys(focused)).toEqual([])
+    }
 
     const utils = await import(join(outDir, 'sdk-utils.js'))
     expect(typeof utils.cn).toBe('function')

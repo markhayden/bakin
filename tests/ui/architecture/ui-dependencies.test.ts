@@ -7,6 +7,7 @@ import {
   diffUiPerformance,
   findDuplicateDesignSystemCss,
   findForbiddenBaseUiDependencies,
+  findForbiddenFocusedSdkDependencies,
   measureReachableJsBytes,
   measureStableBuiltJsBytes,
   type UiPerformanceSnapshot,
@@ -82,6 +83,21 @@ describe('base UI dependency direction', () => {
     writeFixture(root, 'src/components/ui/button.tsx', "export * from './label'\n")
     writeFixture(root, 'src/components/ui/label.tsx', 'export const Label = 1\n')
     expect(findForbiddenBaseUiDependencies(root)).toEqual([])
+  })
+
+  it('keeps every base composition entrypoint out of chart and conversation domains', () => {
+    const root = fixtureRoot()
+    writeFixture(root, 'packages/sdk/src/ui/index.ts', 'export {}\n')
+    writeFixture(root, 'packages/sdk/src/layout/index.ts', "export * from '@makinbakin/sdk/charts'\n")
+    writeFixture(root, 'packages/sdk/src/patterns/index.ts', "export * from '../../../../src/components/conversation/fold'\n")
+    writeFixture(root, 'packages/sdk/src/charts/index.ts', 'export const Chart = 1\n')
+    writeFixture(root, 'packages/sdk/src/conversation/index.ts', 'export const Conversation = 1\n')
+    writeFixture(root, 'src/components/conversation/fold.ts', 'export const fold = 1\n')
+
+    expect(findForbiddenFocusedSdkDependencies(root)).toEqual([
+      'packages/sdk/src/layout/index.ts -> packages/sdk/src/charts/index.ts',
+      'packages/sdk/src/patterns/index.ts -> src/components/conversation/fold.ts',
+    ])
   })
 })
 

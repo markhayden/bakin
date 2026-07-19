@@ -8,7 +8,7 @@ The Bakin SDK is a single package with multiple subpaths. Plugin authors mark `@
 ```ts
 import { registerPlugin } from '@makinbakin/sdk'
 import { useSearch } from '@makinbakin/sdk/hooks'
-import { PluginHeader } from '@makinbakin/sdk/components'
+import { Button } from '@makinbakin/sdk/ui'
 import type { BakinPlugin, PluginContext } from '@makinbakin/sdk/types'
 ```
 
@@ -141,7 +141,7 @@ import { useSearch, useDebug } from '@makinbakin/sdk/hooks'
 
 ## `@makinbakin/sdk/components`
 
-Source: `packages/sdk/src/components/index.ts`.
+Migration-only legacy barrel. Existing owned consumers may use it until their scheduled migration; new public stories and integrations use the focused visual entrypoints. Source: `packages/sdk/src/components/index.ts`.
 
 ```ts
 import { PluginHeader, FacetFilter, AgentAvatar } from '@makinbakin/sdk/components'
@@ -280,6 +280,30 @@ Source: `packages/sdk/src/ui/index.ts`. Re-exports of [shadcn/ui](https://ui.sha
 ```ts
 import { Button, Card, Dialog, Input } from '@makinbakin/sdk/ui'
 ```
+
+## `@makinbakin/sdk/layout`
+
+Canonical page and responsive composition. Source: `packages/sdk/src/layout/index.ts`.
+
+The boundary is established; public exports arrive with its owned component migration.
+
+## `@makinbakin/sdk/patterns`
+
+Reusable application-aware presentation patterns. Source: `packages/sdk/src/patterns/index.ts`.
+
+The boundary is established; public exports arrive with its owned component migration.
+
+## `@makinbakin/sdk/charts`
+
+Isolated data-visualization components and contracts. Source: `packages/sdk/src/charts/index.ts`.
+
+The boundary is established; public exports arrive with its owned component migration.
+
+## `@makinbakin/sdk/conversation`
+
+Isolated conversation UI and models. Source: `packages/sdk/src/conversation/index.ts`.
+
+The boundary is established; public exports arrive with its owned component migration.
 
 ## `@makinbakin/sdk/slots`
 

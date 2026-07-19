@@ -454,7 +454,7 @@ export function renderSdkReference(): string {
     '```ts',
     "import { registerPlugin } from '@makinbakin/sdk'",
     "import { useSearch } from '@makinbakin/sdk/hooks'",
-    "import { PluginHeader } from '@makinbakin/sdk/components'",
+    "import { Button } from '@makinbakin/sdk/ui'",
     "import type { BakinPlugin, PluginContext } from '@makinbakin/sdk/types'",
     '```',
     '',
@@ -471,6 +471,11 @@ export function renderSdkReference(): string {
   renderComponents(lines, bySubpath.get('@makinbakin/sdk/components'))
   // UI
   renderUi(lines, bySubpath.get('@makinbakin/sdk/ui'))
+  // Focused visual boundaries (populated by their owned migration tasks)
+  renderFocusedVisualEntrypoint(lines, bySubpath.get('@makinbakin/sdk/layout'), 'Canonical page and responsive composition.')
+  renderFocusedVisualEntrypoint(lines, bySubpath.get('@makinbakin/sdk/patterns'), 'Reusable application-aware presentation patterns.')
+  renderFocusedVisualEntrypoint(lines, bySubpath.get('@makinbakin/sdk/charts'), 'Isolated data-visualization components and contracts.')
+  renderFocusedVisualEntrypoint(lines, bySubpath.get('@makinbakin/sdk/conversation'), 'Isolated conversation UI and models.')
   // Slots
   renderSimpleTable(lines, bySubpath.get('@makinbakin/sdk/slots'), 'Slot system')
   // Types (special case: core types + domain grouping)
@@ -549,7 +554,7 @@ function renderHooks(lines: string[], sp: SdkSubpath | undefined): void {
 function renderComponents(lines: string[], sp: SdkSubpath | undefined): void {
   if (!sp) return
   lines.push('## `@makinbakin/sdk/components`', '')
-  lines.push(`Source: \`${sp.source}\`.`, '')
+  lines.push(`Migration-only legacy barrel. Existing owned consumers may use it until their scheduled migration; new public stories and integrations use the focused visual entrypoints. Source: \`${sp.source}\`.`, '')
   lines.push('```ts')
   lines.push("import { PluginHeader, FacetFilter, AgentAvatar } from '@makinbakin/sdk/components'")
   lines.push('```', '')
@@ -558,6 +563,24 @@ function renderComponents(lines: string[], sp: SdkSubpath | undefined): void {
   for (const sym of sp.symbols) {
     lines.push(`| \`${sym.name}\` | ${escapeMd(sym.jsdoc || '—')} |`)
   }
+  lines.push('')
+}
+
+function renderFocusedVisualEntrypoint(
+  lines: string[],
+  sp: SdkSubpath | undefined,
+  description: string,
+): void {
+  if (!sp) return
+  lines.push(`## \`${sp.importPath}\``, '')
+  lines.push(`${description} Source: \`${sp.source}\`.`, '')
+  if (sp.symbols.length === 0) {
+    lines.push('The boundary is established; public exports arrive with its owned component migration.', '')
+    return
+  }
+  lines.push('| Export | Description |')
+  lines.push('| --- | --- |')
+  for (const sym of sp.symbols) lines.push(`| \`${sym.name}\` | ${escapeMd(sym.jsdoc || '—')} |`)
   lines.push('')
 }
 

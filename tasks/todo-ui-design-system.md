@@ -47,7 +47,7 @@ comparison, and deletion of replaced styling/allowances.
 ## Phase 3 — Private UI and focused SDK
 
 - [x] T19 Establish the private `packages/ui` boundary
-- [ ] T20a Establish focused SDK UI entrypoints
+- [x] T20a Establish focused SDK UI entrypoints
 - [ ] T20b Establish the stylesheet/package artifact
 - [ ] T21 Migrate action and status primitives
 - [ ] T22 Migrate surface and content primitives

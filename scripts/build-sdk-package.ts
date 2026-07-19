@@ -36,6 +36,10 @@ export interface SdkExportEntry {
 export const SDK_EXPORTS: SdkExportEntry[] = [
   { exportPath: '.', source: 'packages/sdk/src/index.ts', importPath: './index.js', typesPath: './index.d.ts' },
   { exportPath: './ui', source: 'packages/sdk/src/ui/index.ts', importPath: './ui/index.js', typesPath: './ui/index.d.ts' },
+  { exportPath: './layout', source: 'packages/sdk/src/layout/index.ts', importPath: './layout/index.js', typesPath: './layout/index.d.ts' },
+  { exportPath: './patterns', source: 'packages/sdk/src/patterns/index.ts', importPath: './patterns/index.js', typesPath: './patterns/index.d.ts' },
+  { exportPath: './charts', source: 'packages/sdk/src/charts/index.ts', importPath: './charts/index.js', typesPath: './charts/index.d.ts' },
+  { exportPath: './conversation', source: 'packages/sdk/src/conversation/index.ts', importPath: './conversation/index.js', typesPath: './conversation/index.d.ts' },
   { exportPath: './hooks', source: 'packages/sdk/src/hooks/index.ts', importPath: './hooks/index.js', typesPath: './hooks/index.d.ts' },
   { exportPath: './components', source: 'packages/sdk/src/components/index.ts', importPath: './components/index.js', typesPath: './components/index.d.ts' },
   { exportPath: './slots', source: 'packages/sdk/src/slots/index.tsx', importPath: './slots/index.js', typesPath: './slots/index.d.ts' },
@@ -135,7 +139,7 @@ function mapSdkModule(rest: string): string | null {
   if (rest === 'index') return 'index'
   if (rest === 'register') return 'register'
   if (rest.endsWith('/index')) return rest
-  if (rest === 'types' || rest === 'routing' || rest === 'ui' || rest === 'hooks' || rest === 'components' || rest === 'slots' || rest === 'utils' || rest === 'metadata' || rest === 'testing' || rest === 'internal') {
+  if (rest === 'types' || rest === 'routing' || rest === 'ui' || rest === 'layout' || rest === 'patterns' || rest === 'charts' || rest === 'conversation' || rest === 'hooks' || rest === 'components' || rest === 'slots' || rest === 'utils' || rest === 'metadata' || rest === 'testing' || rest === 'internal') {
     return `${rest}/index`
   }
   return rest === 'hooks/router' ? 'hooks/router' : null

@@ -23,6 +23,13 @@ const REPO_ROOT = resolve(import.meta.dir, '../..')
 const PUBLIC_ROOT = 'storybook/public'
 const FIXTURE_ROOT = 'storybook/fixtures'
 const SOURCE_EXTENSIONS = ['.ts', '.tsx', '.mts', '.js', '.jsx', '.mjs'] as const
+const PUBLIC_VISUAL_SDK_ENTRYPOINTS = new Set([
+  '@makinbakin/sdk/ui',
+  '@makinbakin/sdk/layout',
+  '@makinbakin/sdk/patterns',
+  '@makinbakin/sdk/charts',
+  '@makinbakin/sdk/conversation',
+])
 
 export interface PublicStoryViolation {
   path: string
@@ -312,6 +319,12 @@ export function validatePublicStoryA11yContract(rootDir = REPO_ROOT): string[] {
 function bannedBareImport(specifier: string): string | null {
   if (specifier === '@makinbakin/sdk/internal' || specifier.startsWith('@makinbakin/sdk/internal/')) {
     return `public catalog cannot import ${specifier}; use a supported @makinbakin/sdk/* entrypoint`
+  }
+  if (
+    (specifier === '@makinbakin/sdk' || specifier.startsWith('@makinbakin/sdk/'))
+    && !PUBLIC_VISUAL_SDK_ENTRYPOINTS.has(specifier)
+  ) {
+    return `public catalog cannot import ${specifier}; use a focused visual SDK entrypoint`
   }
   if (
     specifier.startsWith('@/')
