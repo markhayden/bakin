@@ -17,6 +17,7 @@ import {
   replaceSessionUsage,
   getScanState,
   toLocalDayKey,
+  normalizeSessionOrigin,
   type SessionDayUsage,
 } from '@bakin/core/usage-history/store'
 import { getSessionJsonlTierId, parseSessionUsageMessages, type SessionUsageCost } from './agent-usage'
@@ -98,6 +99,7 @@ export function bucketSessionUsage(content: string): SessionDayUsage[] {
   const sessionStartMs = sessionStarted ? Date.parse(sessionStarted) : NaN
 
   const buckets = new Map<string, SessionDayUsage>()
+  let latestBucket: SessionDayUsage | null = null
   for (const msg of messages) {
     const tsMs = msg.tsMs ?? (Number.isFinite(sessionStartMs) ? sessionStartMs : null)
     if (tsMs === null) {
@@ -115,11 +117,13 @@ export function bucketSessionUsage(content: string): SessionDayUsage[] {
         costUsdMicros: null,
         costedMessages: 0,
         messageCount: 0,
+        userMessages: 0,
         firstTs: tsMs,
         lastTs: tsMs,
       }
       buckets.set(key, bucket)
     }
+    if (latestBucket === null || tsMs >= latestBucket.lastTs) latestBucket = bucket
 
     bucket.inputTokens += msg.tokens.input
     bucket.outputTokens += msg.tokens.output
@@ -137,6 +141,7 @@ export function bucketSessionUsage(content: string): SessionDayUsage[] {
       throw new Error('session usage token total exceeded the safe integer range')
     }
     bucket.messageCount += 1
+    bucket.userMessages += msg.userMessages
     bucket.firstTs = Math.min(bucket.firstTs, tsMs)
     bucket.lastTs = Math.max(bucket.lastTs, tsMs)
 
@@ -149,6 +154,12 @@ export function bucketSessionUsage(content: string): SessionDayUsage[] {
       bucket.costUsdMicros = nextCostUsdMicros
       if (msg.costComplete) bucket.costedMessages += 1
     }
+  }
+
+  // User turns after the last usage-bearing assistant message still count as
+  // interaction evidence; they attribute to the session's latest bucket.
+  if (latestBucket && parsed.trailingUserMessages > 0) {
+    latestBucket.userMessages += parsed.trailingUserMessages
   }
 
   return [...buckets.values()]
@@ -236,7 +247,7 @@ export async function scanUsageHistory(runtime: AgentRuntimeAdapter): Promise<Us
         const ok = replaceSessionUsage(entry.id, agent.id, rows, {
           mtimeMs: statAfter?.mtimeMs ?? 0,
           size: contentSize,
-        })
+        }, normalizeSessionOrigin(entry.metadata?.origin))
         if (ok) report.scanned++
         else {
           report.failed++

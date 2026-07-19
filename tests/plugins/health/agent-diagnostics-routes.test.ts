@@ -195,6 +195,7 @@ describe('GET /agent-effort', () => {
       costUsdMicros: null,
       costedMessages: 0,
       messageCount: 4,
+      userMessages: 0,
       firstTs: NOW - 3_000_000,
       lastTs: NOW - 60_000,
     }], { mtimeMs: 1, size: 1 })
@@ -237,10 +238,11 @@ describe('GET /agent-effort', () => {
       completions: 1,
       tokensPerCompletion: 200_000,
       totalObservedTokens: 1_000_000,
-      unattributedTokens: 800_000,
+      interactiveTokens: 0,
+      unexplainedTokens: 800_000,
     })
     const flags = pixel.flags as Array<{ kind: string }>
-    expect(flags.map((f) => f.kind)).toEqual(['unattributed'])
+    expect(flags.map((f) => f.kind)).toEqual(['unexplained'])
   })
 
   it('rejects an unknown window with 400', async () => {

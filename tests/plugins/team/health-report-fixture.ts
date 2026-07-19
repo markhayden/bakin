@@ -37,6 +37,7 @@ export function makeTeamHealthReport(overrides: Partial<HealthReport> = {}): Hea
     revision: 4,
     generatedAt: OBSERVED_AT,
     overallStatus: 'healthy',
+    sensitivity: 'developer',
     lastFullSweep: {
       id: 'health-sweep-team',
       startedAt: OBSERVED_AT,
@@ -106,6 +107,7 @@ function makeFinding(input: FindingInput): {
       id: input.incidentId,
       status: 'error',
       disposition: incidentInput.disposition,
+      effectiveDisposition: incidentInput.disposition,
       title: incidentInput.title,
       impact: incidentInput.impact,
       resources: incidentInput.resources ?? [],
@@ -128,6 +130,7 @@ function makeFinding(input: FindingInput): {
       id: input.incidentId,
       status: 'warning',
       disposition: incidentInput.disposition,
+      effectiveDisposition: incidentInput.disposition,
       title: incidentInput.title,
       impact: incidentInput.impact,
       resources: incidentInput.resources ?? [],
@@ -200,6 +203,7 @@ export const HEALTHY_TEAM_HEALTH_REPORT = makeTeamHealthReport()
 
 export const TEAM_ATTENTION_HEALTH_REPORT = makeTeamHealthReport({
   overallStatus: 'needs_attention',
+  sensitivity: 'developer',
   checks: ATTENTION_FINDINGS.map((finding) => finding.check),
   observations: ATTENTION_FINDINGS.map((finding) => finding.observation),
   incidents: ATTENTION_FINDINGS.map((finding) => finding.incident),

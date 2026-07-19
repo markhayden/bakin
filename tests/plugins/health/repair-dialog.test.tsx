@@ -40,6 +40,7 @@ const healthyReport = {
   revision: 2,
   generatedAt: '2026-07-12T12:01:00.000Z',
   overallStatus: 'healthy',
+  sensitivity: 'standard',
   lastFullSweep: null,
   checks: [],
   observations: [],

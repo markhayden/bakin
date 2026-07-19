@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'bun:test'
-import type { HealthCheckState, HealthObservation } from '@makinbakin/sdk/types'
+import type { HealthCheckState, HealthIncident, HealthObservation } from '@makinbakin/sdk/types'
 import {
   buildHealthIncidents,
   deriveHealthReportStatus,
+  projectEffectiveDispositions,
   HealthIncidentConflictError,
 } from '../../src/core/health-report'
 
@@ -127,7 +128,113 @@ describe('overall health precedence', () => {
     expect(deriveHealthReportStatus({
       registeredChecks: 1,
       checks: [state()],
-      incidents: [{ ...watch[0], disposition: 'advisory' }],
+      incidents: [{ ...watch[0], disposition: 'advisory', effectiveDisposition: 'advisory' }],
     })).toBe('healthy')
+  })
+})
+
+describe('sensitivity projection (#690)', () => {
+  function incidentWith(overrides: Partial<HealthIncident>): HealthIncident {
+    const [built] = buildHealthIncidents([observation()], now)
+    return { ...built!, ...overrides }
+  }
+
+  const DEMOTABLE = ['usage_anomaly', 'cleanup_backlog', 'policy_denial', 'unsupported_surface'] as const
+  const NEVER_DEMOTED = [
+    'service_failure', 'data_integrity', 'budget_block',
+    'evidence_gap', 'unattributed_usage', 'runaway_usage',
+  ] as const
+
+  it('standard and quiet demote exactly the expected-noise classes to advisory', () => {
+    for (const sensitivity of ['standard', 'quiet'] as const) {
+      for (const cls of DEMOTABLE) {
+        const [projected] = projectEffectiveDispositions(
+          [incidentWith({ class: cls, disposition: 'watch', effectiveDisposition: 'watch' })],
+          sensitivity,
+        )
+        expect(projected!.effectiveDisposition).toBe('advisory')
+        expect(projected!.disposition).toBe('watch') // raw preserved
+      }
+      for (const cls of NEVER_DEMOTED) {
+        const [projected] = projectEffectiveDispositions(
+          [incidentWith({ class: cls, disposition: 'watch', effectiveDisposition: 'watch' })],
+          sensitivity,
+        )
+        expect(projected!.effectiveDisposition).toBe('watch')
+      }
+    }
+  })
+
+  it('developer never demotes anything', () => {
+    for (const cls of DEMOTABLE) {
+      const [projected] = projectEffectiveDispositions(
+        [incidentWith({ class: cls, disposition: 'watch', effectiveDisposition: 'watch' })],
+        'developer',
+      )
+      expect(projected!.effectiveDisposition).toBe('watch')
+    }
+  })
+
+  it('an unclassified incident is never demoted — a missing stamp cannot hide an outage', () => {
+    const [projected] = projectEffectiveDispositions(
+      [incidentWith({ disposition: 'watch', effectiveDisposition: 'watch' })],
+      'standard',
+    )
+    expect(projected!.class).toBeUndefined()
+    expect(projected!.effectiveDisposition).toBe('watch')
+  })
+
+  it('error-status incidents are never demoted regardless of class', () => {
+    const [projected] = projectEffectiveDispositions(
+      [incidentWith({
+        status: 'error',
+        class: 'usage_anomaly',
+        disposition: 'action_required',
+        effectiveDisposition: 'action_required',
+      })],
+      'standard',
+    )
+    expect(projected!.effectiveDisposition).toBe('action_required')
+  })
+
+  it('caps only lower — an advisory incident never gains urgency', () => {
+    const [projected] = projectEffectiveDispositions(
+      [incidentWith({ class: 'usage_anomaly', disposition: 'advisory', effectiveDisposition: 'advisory' })],
+      'developer',
+    )
+    expect(projected!.effectiveDisposition).toBe('advisory')
+  })
+
+  it('a demoted incident changes severity between developer and standard (issue acceptance)', () => {
+    const incident = incidentWith({ class: 'policy_denial', disposition: 'watch', effectiveDisposition: 'watch' })
+    const [dev] = projectEffectiveDispositions([incident], 'developer')
+    const [std] = projectEffectiveDispositions([incident], 'standard')
+    expect(dev!.effectiveDisposition).toBe('watch')
+    expect(std!.effectiveDisposition).toBe('advisory')
+    expect(deriveHealthReportStatus({ registeredChecks: 1, checks: [state()], incidents: [dev!] })).toBe('degraded')
+    expect(deriveHealthReportStatus({ registeredChecks: 1, checks: [state()], incidents: [std!] })).toBe('healthy')
+  })
+
+  it('evidence honesty is not demotable: unknown-status incidents keep raw urgency in every mode', () => {
+    const unknownIncident = incidentWith({
+      status: 'unknown',
+      class: 'usage_anomaly',
+      disposition: 'watch',
+      effectiveDisposition: 'watch',
+    })
+    for (const sensitivity of ['developer', 'standard', 'quiet'] as const) {
+      const [projected] = projectEffectiveDispositions([unknownIncident], sensitivity)
+      // Never demoted: the badge still counts it, the card still says Verify,
+      // and the overall status keeps saying "unverified" — one story.
+      expect(projected!.effectiveDisposition).toBe('watch')
+      expect(deriveHealthReportStatus({ registeredChecks: 1, checks: [state()], incidents: [projected!] })).toBe('unknown_stale')
+    }
+  })
+
+  it('conflicting class declarations on one incident id are a producer bug', () => {
+    expect(() => buildHealthIncidents([
+      observation({ incident: { ...observation().incident!, class: 'cleanup_backlog' } }),
+      observation({ id: 'other-observation', incident: { ...observation().incident!, class: 'policy_denial' } }),
+    ], now)).toThrow(HealthIncidentConflictError)
   })
 })

@@ -31,7 +31,8 @@ export interface AgentDoctorEffortData {
   completions: number
   tokensPerCompletion: number | null
   totalObservedTokens: number | null
-  unattributedTokens: number | null
+  interactiveTokens?: number | null
+  unexplainedTokens?: number | null
   flags: Array<{ kind: string; message: string }>
 }
 
@@ -172,7 +173,7 @@ export function AgentDoctorReport({ data, color = true }: { data: AgentDoctorDat
         ) : (
           <Box flexDirection="column">
             <Text>
-              {`${attributedText} · ${trackedCostText} · observed ${tokensText(data.effort.totalObservedTokens)} · unattributed ${tokensText(currentEffort?.unattributedTokens)} · ${tokensText(currentEffort?.tokensPerCompletion)} tok/completion`}
+              {`${attributedText} · ${trackedCostText} · observed ${tokensText(data.effort.totalObservedTokens)} · interactive ${tokensText(currentEffort?.interactiveTokens ?? null)} · unexplained ${tokensText(currentEffort?.unexplainedTokens ?? null)} · ${tokensText(currentEffort?.tokensPerCompletion)} tok/completion`}
             </Text>
             {!burnEvidenceComplete ? (
               <Text dimColor>Burn flags unavailable because token metering is incomplete.</Text>

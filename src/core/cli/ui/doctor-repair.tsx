@@ -147,9 +147,9 @@ function statusForApply(status: HealthRepairApplyResult['status']): TuiStatus {
 }
 
 function statusForIncident(incident: HealthIncident): TuiStatus {
-  if (incident.disposition === 'action_required' || incident.status === 'error') return 'fail'
+  if (incident.effectiveDisposition === 'action_required' || incident.status === 'error') return 'fail'
   if (incident.status === 'unknown' || incident.stale) return 'run'
-  if (incident.disposition === 'advisory') return 'ok'
+  if (incident.effectiveDisposition === 'advisory') return 'ok'
   return 'warn'
 }
 

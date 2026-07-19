@@ -18,13 +18,39 @@ function incidentStatus(incident: HealthIncident): {
   tone: OverviewTone
   icon: typeof AlertTriangle
 } {
+  // Cards render EFFECTIVE urgency (#690) — error and unknown are never
+  // demoted (evidence state is not a presentation choice), so Critical and
+  // Verify keep precedence; a demoted or advisory incident reads calm.
   if (incident.status === 'error') return { label: 'Critical', tone: 'destructive', icon: AlertTriangle }
   if (incident.status === 'unknown') return { label: 'Verify', tone: 'neutral', icon: CircleHelp }
+  if (incident.effectiveDisposition === 'advisory') {
+    return { label: 'Advisory', tone: 'neutral', icon: CircleHelp }
+  }
   return {
-    label: incident.disposition === 'action_required' ? 'Action' : 'Watch',
+    label: incident.effectiveDisposition === 'action_required' ? 'Action' : 'Watch',
     tone: 'warning',
     icon: AlertTriangle,
   }
+}
+
+/** Plain-language category chip per behavior class — the card says what KIND of thing this is. */
+const CLASS_LABEL: Record<NonNullable<HealthIncident['class']>, string> = {
+  service_failure: 'Service issue',
+  data_integrity: 'Data integrity',
+  budget_block: 'Budget cap',
+  evidence_gap: 'Cost accounting',
+  usage_anomaly: 'Usage',
+  unattributed_usage: 'Unattributed usage',
+  runaway_usage: 'Runaway usage',
+  cleanup_backlog: 'Housekeeping',
+  policy_denial: 'Guardrail worked',
+  unsupported_surface: 'Not supported here',
+}
+
+const DISPOSITION_LABEL: Record<HealthIncident['disposition'], string> = {
+  advisory: 'advisory',
+  watch: 'watch',
+  action_required: 'action',
 }
 
 const TONE_CLASS: Record<OverviewTone, string> = {
@@ -97,6 +123,14 @@ export function IncidentRow({ item, onRepair, onRerun }: IncidentRowProps) {
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <StatusBadge tone={status.tone}>{status.label}</StatusBadge>
+            {incident.class && (
+              <StatusBadge tone="neutral" variant="outline">{CLASS_LABEL[incident.class]}</StatusBadge>
+            )}
+            {incident.effectiveDisposition !== incident.disposition && (
+              <StatusBadge tone="neutral" variant="outline">
+                {`Calmed from ${DISPOSITION_LABEL[incident.disposition]}`}
+              </StatusBadge>
+            )}
             {item.freshness === 'stale' && <StatusBadge tone="neutral" variant="outline">Last known</StatusBadge>}
           </div>
           <h3 className="mt-2 font-semibold leading-snug text-foreground">{incident.title}</h3>

@@ -18,6 +18,8 @@ function incident(overrides: Partial<HealthIncident> & Pick<HealthIncident, 'id'
     id,
     status: 'warning',
     disposition: 'watch',
+    // Effective mirrors the (possibly overridden) raw disposition (#690).
+    effectiveDisposition: rest.disposition ?? 'watch',
     title: id,
     impact: 'Operator impact.',
     resources: [],
@@ -109,6 +111,7 @@ function report(options: {
   return {
     id: 'report-1', revision: 1, generatedAt: '2026-07-13T12:00:00.000Z',
     overallStatus: options.status ?? (incidents.length > 0 ? 'degraded' : 'healthy'),
+    sensitivity: 'developer',
     lastFullSweep: { id: 'sweep-1', startedAt: '2026-07-13T11:59:00.000Z', completedAt: '2026-07-13T12:00:00.000Z' },
     checks, observations, incidents,
     subsystems: { search: options.search ?? search() },
@@ -167,6 +170,26 @@ describe('buildHealthOverviewViewModel', () => {
       ...model.needsAction, ...model.unableToVerify, ...model.watching,
     ].some((row) => row.incident.id === advisory.id)).toBe(false)
     expect(model.needsAction[1]?.freshness).toBe('stale')
+  })
+
+  it('demoted and raw-advisory incidents land in the advisories bucket — quiet, never hidden (#690)', () => {
+    const demoted = incident({
+      id: 'demoted-housekeeping', status: 'warning', disposition: 'watch', title: 'Retired tables await deletion',
+      effectiveDisposition: 'advisory',
+    })
+    const rawAdvisory = incident({ id: 'plain-advisory', status: 'warning', disposition: 'advisory', title: 'Just a note' })
+    const observations = [demoted, rawAdvisory].map((row) => observation(row))
+    const checks = observations.map((row) => check(row, 'observed'))
+
+    const model = buildHealthOverviewViewModel({
+      report: report({ incidents: [demoted, rawAdvisory], observations, checks, status: 'healthy' }),
+      now: NOW,
+    })
+
+    expect(model.advisories.map((row) => row.incident.id).sort()).toEqual(['demoted-housekeeping', 'plain-advisory'])
+    expect(model.needsAction).toEqual([])
+    expect(model.watching).toEqual([])
+    expect(model.unableToVerify).toEqual([])
   })
 
   it('always returns the four labeled Search stages and explains missing or stale evidence', () => {

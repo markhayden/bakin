@@ -155,7 +155,7 @@ function hasUnknownEvidence(report: HealthReport): boolean {
 }
 
 function actionIncidents(report: HealthReport): HealthIncident[] {
-  return report.incidents.filter((incident) => incident.disposition === 'action_required')
+  return report.incidents.filter((incident) => incident.effectiveDisposition === 'action_required')
 }
 
 function nextActions(report: HealthReport, mode?: DoctorMode): string[] {

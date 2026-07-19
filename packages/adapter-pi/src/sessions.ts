@@ -59,6 +59,33 @@ export function getThreadSessionFile(agentId: string, threadId: string): string 
   return entry.file
 }
 
+/**
+ * Session-file → threadId reverse index for origin labeling (#691).
+ *
+ * Deliberately NOT built on readThreadMap: its silent-empty fallback is right
+ * for resume (corrupt map ⇒ new session) but would mislabel every session
+ * `external` here. Origin needs the distinction — "no map" honestly means
+ * Bakin never dispatched this agent (all sessions external), while "corrupt
+ * map" means we cannot tell (all sessions unknown, never guessed).
+ */
+export function readSessionOriginIndex(agentId: string):
+  | { status: 'ok'; threadByFile: Map<string, string> }
+  | { status: 'missing' }
+  | { status: 'corrupt' } {
+  const path = threadMapPath(agentId)
+  if (!existsSync(path)) return { status: 'missing' }
+  try {
+    const map = ThreadMapSchema.parse(JSON.parse(readFileSync(path, 'utf-8')))
+    const threadByFile = new Map<string, string>()
+    for (const [threadId, entry] of Object.entries(map.threads)) {
+      threadByFile.set(entry.file, threadId)
+    }
+    return { status: 'ok', threadByFile }
+  } catch {
+    return { status: 'corrupt' }
+  }
+}
+
 export function recordThreadSession(agentId: string, threadId: string, sessionId: string, file: string): void {
   const map = readThreadMap(agentId)
   const now = new Date().toISOString()

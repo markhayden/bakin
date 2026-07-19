@@ -127,11 +127,61 @@ const MIGRATIONS = [
       db.exec('DELETE FROM session_scan_state')
     },
   },
+  {
+    // v4 adds attribution provenance (#689/#691): models are stored
+    // provider-qualified from the transcript's own provider field, each
+    // session row carries an adapter-reported origin label, and user turns
+    // are counted per bucket. Old rows hold bare model ids the spend engine
+    // cannot lane-resolve honestly, so the derived table is rebuilt and scan
+    // state cleared — same wipe-and-rescan contract as v3.
+    version: 4,
+    up: (db: Db) => {
+      db.exec('DROP TABLE session_usage_days')
+      db.exec(
+        `CREATE TABLE session_usage_days (
+           session_id         TEXT NOT NULL,
+           day                TEXT NOT NULL,
+           model              TEXT NOT NULL DEFAULT '',
+           agent              TEXT NOT NULL,
+           origin             TEXT NOT NULL DEFAULT 'unknown'
+                              CHECK (origin IN ('bakin', 'external', 'unknown')),
+           input_tokens       INTEGER NOT NULL DEFAULT 0,
+           output_tokens      INTEGER NOT NULL DEFAULT 0,
+           cache_read_tokens  INTEGER NOT NULL DEFAULT 0,
+           cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+           total_tokens       INTEGER NOT NULL DEFAULT 0,
+           cost_usd_micros    INTEGER,
+           costed_messages    INTEGER NOT NULL DEFAULT 0,
+           message_count      INTEGER NOT NULL DEFAULT 0,
+           user_messages      INTEGER NOT NULL DEFAULT 0,
+           first_ts           INTEGER NOT NULL,
+           last_ts            INTEGER NOT NULL,
+           PRIMARY KEY (agent, session_id, day, model)
+         )`,
+      )
+      db.exec('CREATE INDEX session_usage_days_by_day ON session_usage_days(day)')
+      db.exec('CREATE INDEX session_usage_days_by_agent ON session_usage_days(agent, day)')
+      db.exec('DELETE FROM session_scan_state')
+    },
+  },
 ]
 
 function db(): Db {
   store.applyMigrations(MODULE, MIGRATIONS)
   return store.db()
+}
+
+/**
+ * Who started the runtime session a usage row came from, as labeled by the
+ * runtime adapter's session-tier entry metadata: `bakin` = a Bakin-dispatched
+ * thread, `external` = a session Bakin never mediated (operator TUI, external
+ * client), `unknown` = the adapter could not tell — never guessed.
+ */
+export type SessionOrigin = 'bakin' | 'external' | 'unknown'
+
+/** Coerce free-form adapter metadata into a SessionOrigin; anything else is `unknown`. */
+export function normalizeSessionOrigin(value: unknown): SessionOrigin {
+  return value === 'bakin' || value === 'external' ? value : 'unknown'
 }
 
 /** One (day, model) bucket of a session's recomputed usage. */
@@ -149,7 +199,10 @@ export interface SessionDayUsage {
   costUsdMicros: number | null
   /** Messages with complete runtime-reported cost evidence (coverage numerator). */
   costedMessages: number
+  /** Usage-bearing assistant messages — the token-bearing turn count. */
   messageCount: number
+  /** User turns attributed to this bucket (#691 interaction evidence). */
+  userMessages: number
   firstTs: number
   lastTs: number
 }
@@ -210,6 +263,7 @@ export function replaceSessionUsage(
   agent: string,
   rows: SessionDayUsage[],
   stat: { mtimeMs: number; size: number },
+  origin: SessionOrigin = 'unknown',
 ): boolean {
   try {
     const handle = db()
@@ -217,16 +271,16 @@ export function replaceSessionUsage(
       handle.prepare('DELETE FROM session_usage_days WHERE agent = ? AND session_id = ?').run(agent, sessionId)
       const insert = handle.prepare(
         `INSERT INTO session_usage_days
-           (session_id, day, model, agent, input_tokens, output_tokens, cache_read_tokens,
+           (session_id, day, model, agent, origin, input_tokens, output_tokens, cache_read_tokens,
             cache_write_tokens, total_tokens, cost_usd_micros, costed_messages, message_count,
-            first_ts, last_ts)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            user_messages, first_ts, last_ts)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       for (const r of rows) {
         insert.run(
-          sessionId, r.day, r.model, agent,
+          sessionId, r.day, r.model, agent, origin,
           r.inputTokens, r.outputTokens, r.cacheReadTokens, r.cacheWriteTokens, r.totalTokens,
-          r.costUsdMicros, r.costedMessages, r.messageCount, r.firstTs, r.lastTs,
+          r.costUsdMicros, r.costedMessages, r.messageCount, r.userMessages, r.firstTs, r.lastTs,
         )
       }
       handle.prepare(
@@ -281,6 +335,21 @@ const ROLLUP_SUMS = `
   COALESCE(SUM(costed_messages), 0)     AS costed,
   COALESCE(SUM(message_count), 0)       AS messages`
 
+const ORIGIN_SUMS = `
+  COALESCE(SUM(CASE WHEN origin = 'bakin' THEN total_tokens ELSE 0 END), 0)    AS bakin_total,
+  COALESCE(SUM(CASE WHEN origin = 'external' THEN total_tokens ELSE 0 END), 0) AS external_total,
+  COALESCE(SUM(CASE WHEN origin = 'unknown' THEN total_tokens ELSE 0 END), 0)  AS unknown_total`
+
+interface OriginSumRow {
+  bakin_total: number
+  external_total: number
+  unknown_total: number
+}
+
+function toOriginTokens(r: OriginSumRow): { bakin: number; external: number; unknown: number } {
+  return { bakin: r.bakin_total, external: r.external_total, unknown: r.unknown_total }
+}
+
 function toRollup(r: RollupRow): Omit<AgentUsageRollup, 'agent'> {
   return {
     tokens: { input: r.input, output: r.output, cacheRead: r.cache_read, cacheWrite: r.cache_write, total: r.total },
@@ -313,6 +382,8 @@ export interface AgentDayUsageRollup {
   agent: string
   day: string
   tokens: UsageTokenSums
+  /** Token totals split by session origin (#691) — sums to tokens.total. */
+  originTokens: { bakin: number; external: number; unknown: number }
   costUsdMicros: number | null
   costedMessages: number
   messageCount: number
@@ -348,12 +419,17 @@ export function readUsageHistorySince(sinceDay: string): UsageHistorySnapshot {
         .all(sinceDay)
         .map((r) => ({ day: r.key, ...toRollup(r) }))
       const byAgentDay = handle
-        .prepare<RollupRow & { agent: string }, [string]>(
-          `SELECT agent, day AS key, ${ROLLUP_SUMS}
+        .prepare<RollupRow & OriginSumRow & { agent: string }, [string]>(
+          `SELECT agent, day AS key, ${ROLLUP_SUMS}, ${ORIGIN_SUMS}
              FROM session_usage_days WHERE day >= ? GROUP BY agent, day ORDER BY day ASC, agent ASC`,
         )
         .all(sinceDay)
-        .map((r) => ({ agent: r.agent, day: r.key, ...toRollup(r) }))
+        .map((r) => ({
+          agent: r.agent,
+          day: r.key,
+          originTokens: toOriginTokens(r),
+          ...toRollup(r),
+        }))
       return { byAgent, byDay, byAgentDay }
     })
   } catch (err) {
@@ -370,12 +446,17 @@ export function readUsageHistorySince(sinceDay: string): UsageHistorySnapshot {
 export function usageByAgentDaySince(sinceDay: string): AgentDayUsageRollup[] {
   try {
     return db()
-      .prepare<RollupRow & { agent: string }, [string]>(
-        `SELECT agent, day AS key, ${ROLLUP_SUMS}
+      .prepare<RollupRow & OriginSumRow & { agent: string }, [string]>(
+        `SELECT agent, day AS key, ${ROLLUP_SUMS}, ${ORIGIN_SUMS}
            FROM session_usage_days WHERE day >= ? GROUP BY agent, day ORDER BY day ASC, agent ASC`,
       )
       .all(sinceDay)
-      .map((r) => ({ agent: r.agent, day: r.key, ...toRollup(r) }))
+      .map((r) => ({
+        agent: r.agent,
+        day: r.key,
+        originTokens: toOriginTokens(r),
+        ...toRollup(r),
+      }))
   } catch (err) {
     log.error('usageByAgentDaySince failed', err, { sinceDay })
     return []
@@ -428,6 +509,69 @@ export function usageByAgentModelDaySince(sinceDay: string): AgentModelDayUsageR
   } catch (err) {
     log.error('usageByAgentModelDaySince failed', err, { sinceDay })
     return []
+  }
+}
+
+/**
+ * One session's rollup — the runaway heuristic's evidence unit (#691).
+ * Token/turn sums are WINDOW-scoped (a session that went quiet before the
+ * burn window has zero window tokens and cannot look runaway again), while
+ * `userMessages` sums the WIDER span so a user turn just before the window
+ * boundary still proves interaction.
+ */
+export interface SessionUsageRollup {
+  agent: string
+  sessionId: string
+  origin: SessionOrigin
+  /** Tokens within the burn window only. */
+  totalTokens: number
+  /** User turns across the wider span (windowSinceDay may be > spanSinceDay). */
+  userMessages: number
+  /** Usage-bearing assistant messages within the burn window — the autonomous-turn count. */
+  assistantMessages: number
+  lastTs: number
+}
+
+/**
+ * Per-(agent, session) rollups: rows are read from `spanSinceDay`, token and
+ * assistant-turn sums count only days >= `windowSinceDay`. Strict boundary:
+ * a storage failure throws — the burn engine must never mistake an
+ * unreadable store for "no sessions".
+ */
+export function readSessionUsageRollupsSince(windowSinceDay: string, spanSinceDay = windowSinceDay): SessionUsageRollup[] {
+  try {
+    return db()
+      .prepare<{
+        agent: string
+        session_id: string
+        origin: string
+        total: number
+        users: number
+        assistants: number
+        last_ts: number
+      }, [string, string, string]>(
+        `SELECT agent, session_id, origin,
+                COALESCE(SUM(CASE WHEN day >= ? THEN total_tokens ELSE 0 END), 0)  AS total,
+                COALESCE(SUM(user_messages), 0)                                    AS users,
+                COALESCE(SUM(CASE WHEN day >= ? THEN message_count ELSE 0 END), 0) AS assistants,
+                MAX(last_ts)                                                       AS last_ts
+           FROM session_usage_days WHERE day >= ?
+          GROUP BY agent, session_id, origin
+          ORDER BY agent ASC, session_id ASC`,
+      )
+      .all(windowSinceDay, windowSinceDay, spanSinceDay)
+      .map((r) => ({
+        agent: r.agent,
+        sessionId: r.session_id,
+        origin: normalizeSessionOrigin(r.origin),
+        totalTokens: r.total,
+        userMessages: r.users,
+        assistantMessages: r.assistants,
+        lastTs: r.last_ts,
+      }))
+  } catch (err) {
+    log.error('readSessionUsageRollupsSince failed', err, { windowSinceDay, spanSinceDay })
+    throw new UsageHistoryStoreReadError('Usage history store could not be read.', err)
   }
 }
 

@@ -48,11 +48,11 @@ function deferred<T>() {
 
 describe('useHealthSummary', () => {
   it('counts unique non-advisory incidents and uses the urgent tone', async () => {
-    fetchMock.mockResolvedValue(summaryResponse({ incidents: [
-      { id: 'action', disposition: 'action_required' },
-      { id: 'action', disposition: 'action_required' },
-      { id: 'watch', disposition: 'watch' },
-      { id: 'advisory', disposition: 'advisory' },
+    fetchMock.mockResolvedValue(summaryResponse({ sensitivity: 'standard', incidents: [
+      { id: 'action', effectiveDisposition: 'action_required' },
+      { id: 'action', effectiveDisposition: 'action_required' },
+      { id: 'watch', effectiveDisposition: 'watch' },
+      { id: 'advisory', effectiveDisposition: 'advisory' },
     ] }))
     render(<Probe />)
     await waitFor(() => expect(screen.getByTestId('count').textContent).toBe('2:error'))
@@ -61,26 +61,26 @@ describe('useHealthSummary', () => {
   })
 
   it('uses attention when only watch incidents remain', async () => {
-    fetchMock.mockResolvedValue(summaryResponse({ incidents: [{ id: 'watch', disposition: 'watch' }] }))
+    fetchMock.mockResolvedValue(summaryResponse({ sensitivity: 'standard', incidents: [{ id: 'watch', effectiveDisposition: 'watch' }] }))
     render(<Probe />)
     await waitFor(() => expect(screen.getByTestId('count').textContent).toBe('1:attention'))
   })
 
   it('returns zero when only advisories exist', async () => {
-    fetchMock.mockResolvedValue(summaryResponse({ incidents: [{ id: 'info', disposition: 'advisory' }] }))
+    fetchMock.mockResolvedValue(summaryResponse({ sensitivity: 'standard', incidents: [{ id: 'info', effectiveDisposition: 'advisory' }] }))
     render(<Probe />)
     await waitFor(() => expect(screen.getByTestId('count').textContent).toBe('0:attention'))
   })
 
   it('refetches on a health.report.changed event', async () => {
-    fetchMock.mockResolvedValue(summaryResponse({ incidents: [{ id: 'watch', disposition: 'watch' }] }))
+    fetchMock.mockResolvedValue(summaryResponse({ sensitivity: 'standard', incidents: [{ id: 'watch', effectiveDisposition: 'watch' }] }))
     render(<Probe />)
     await waitFor(() => expect(screen.getByTestId('count').textContent).toBe('1:attention'))
 
     fetchMock.mockClear()
-    fetchMock.mockResolvedValue(summaryResponse({ incidents: [
-      { id: 'one', disposition: 'action_required' },
-      { id: 'two', disposition: 'watch' },
+    fetchMock.mockResolvedValue(summaryResponse({ sensitivity: 'standard', incidents: [
+      { id: 'one', effectiveDisposition: 'action_required' },
+      { id: 'two', effectiveDisposition: 'watch' },
     ] }))
     act(() => { emitPluginEvent({ event: 'health.report.changed' }) })
     await waitFor(() => expect(screen.getByTestId('count').textContent).toBe('2:error'))
@@ -88,7 +88,7 @@ describe('useHealthSummary', () => {
   })
 
   it('keeps the last good value on a failed fetch', async () => {
-    fetchMock.mockResolvedValue(summaryResponse({ incidents: [{ id: 'one', disposition: 'action_required' }] }))
+    fetchMock.mockResolvedValue(summaryResponse({ sensitivity: 'standard', incidents: [{ id: 'one', effectiveDisposition: 'action_required' }] }))
     render(<Probe />)
     await waitFor(() => expect(screen.getByTestId('count').textContent).toBe('1:error'))
 
@@ -99,13 +99,42 @@ describe('useHealthSummary', () => {
     expect(screen.getByTestId('count').textContent).toBe('1:error')
   })
 
+  it('a legacy payload (no sensitivity/effectiveDisposition) still badges via raw disposition', async () => {
+    // Client/server version skew must degrade to the raw story — a blanked
+    // badge would hide real action_required incidents.
+    fetchMock.mockResolvedValue(summaryResponse({ incidents: [
+      { id: 'action', disposition: 'action_required' },
+      { id: 'advisory', disposition: 'advisory' },
+    ] }))
+    render(<Probe />)
+    await waitFor(() => expect(screen.getByTestId('count').textContent).toBe('1:error'))
+  })
+
+  it('quiet mode badges only action_required — watch stays silent (D10)', async () => {
+    fetchMock.mockResolvedValue(summaryResponse({ sensitivity: 'quiet', incidents: [
+      { id: 'watch', effectiveDisposition: 'watch' },
+      { id: 'another-watch', effectiveDisposition: 'watch' },
+    ] }))
+    render(<Probe />)
+    await waitFor(() => expect(screen.getByTestId('count').textContent).toBe('0:attention'))
+  })
+
+  it('quiet mode still pages for action_required', async () => {
+    fetchMock.mockResolvedValue(summaryResponse({ sensitivity: 'quiet', incidents: [
+      { id: 'runaway', effectiveDisposition: 'action_required' },
+      { id: 'watch', effectiveDisposition: 'watch' },
+    ] }))
+    render(<Probe />)
+    await waitFor(() => expect(screen.getByTestId('count').textContent).toBe('1:error'))
+  })
+
   it('supersedes an older request when a newer report event arrives', async () => {
     const first = deferred<Response>()
     fetchMock
       .mockReturnValueOnce(first.promise)
-      .mockResolvedValueOnce(summaryResponse({ incidents: [
-        { id: 'action', disposition: 'action_required' },
-        { id: 'watch', disposition: 'watch' },
+      .mockResolvedValueOnce(summaryResponse({ sensitivity: 'standard', incidents: [
+        { id: 'action', effectiveDisposition: 'action_required' },
+        { id: 'watch', effectiveDisposition: 'watch' },
       ] }))
     render(<Probe />)
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
@@ -116,7 +145,7 @@ describe('useHealthSummary', () => {
     expect(firstSignal.aborted).toBe(true)
 
     await act(async () => {
-      first.resolve(summaryResponse({ incidents: [{ id: 'old', disposition: 'watch' }] }))
+      first.resolve(summaryResponse({ sensitivity: 'standard', incidents: [{ id: 'old', effectiveDisposition: 'watch' }] }))
       await first.promise
     })
     expect(screen.getByTestId('count').textContent).toBe('2:error')

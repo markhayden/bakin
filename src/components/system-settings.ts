@@ -90,6 +90,19 @@ export const SYSTEM_SETTINGS_SCHEMA: PluginSettingsSchema = {
       description: 'Suppress duplicate MCP alerts within this window. Default 300000 (5 min).',
       default: 300000,
     },
+    // ── Health sensitivity (#690) ─────────────────────────────────────
+    {
+      key: 'doctor.sensitivity',
+      type: 'select',
+      label: 'Health sensitivity',
+      description: 'How loudly Health findings surface. Developer shows raw severities everywhere; Standard (default) calms expected noise (housekeeping, guardrail denials, usage anomalies, unsupported surfaces) to advisory; Quiet additionally notifies only for action-required findings — watch items stay visible on the Health page but silent. Takes effect on the next doctor cycle, no restart.',
+      options: [
+        { value: 'developer', label: 'Developer — show everything at raw severity' },
+        { value: 'standard', label: 'Standard — calm expected noise (default)' },
+        { value: 'quiet', label: 'Quiet — notify only for action-required' },
+      ],
+      default: 'standard',
+    },
     // ── Agent token burn (#385) ───────────────────────────────────────
     {
       key: 'burn.windowHours',
@@ -122,16 +135,30 @@ export const SYSTEM_SETTINGS_SCHEMA: PluginSettingsSchema = {
     {
       key: 'burn.unattributedShare',
       type: 'number',
-      label: 'Unattributed share threshold',
-      description: 'Fraction of an agent\'s observed tokens that happened outside Bakin-managed tasks above which the unattributed flag fires. 0.5 = 50%. Default 0.5.',
+      label: 'Usage bucket share threshold',
+      description: 'Fraction of an agent\'s observed tokens a bucket (interactive sessions, or unexplained usage) must reach before its flag fires. 0.5 = 50%. Default 0.5.',
       default: 0.5,
     },
     {
       key: 'burn.unattributedFloorTokens',
       type: 'number',
-      label: 'Unattributed floor (tokens)',
-      description: 'Minimum unattributed tokens in the window before the unattributed flag fires. Default 100000.',
+      label: 'Usage bucket floor (tokens)',
+      description: 'Minimum tokens in a bucket (interactive sessions, or unexplained usage) before its flag fires. Default 100000.',
       default: 100000,
+    },
+    {
+      key: 'burn.runawayAssistantTurns',
+      type: 'number',
+      label: 'Runaway turn threshold',
+      description: 'Token-bearing assistant turns an external session must accumulate — with zero user turns — before the runaway signal fires. Default 20.',
+      default: 20,
+    },
+    {
+      key: 'burn.runawayFloorTokens',
+      type: 'number',
+      label: 'Runaway floor (tokens)',
+      description: 'Minimum tokens a zero-user-turn external session must accumulate before the runaway signal fires. Default 1000000.',
+      default: 1000000,
     },
     // ── Startup context (#357) ────────────────────────────────────────
     {

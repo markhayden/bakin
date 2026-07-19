@@ -24,7 +24,7 @@ function history(window: '24h' | '7d' | '30d' = '24h') {
     },
     byAgent: [{ agent: 'main', tokens, costUsdMicros: 500, costedMessages: 1, messageCount: 1 }],
     byDay: [{ day: '2026-07-14', tokens, costUsdMicros: 500, costedMessages: 1, messageCount: 1 }],
-    byAgentDay: [{ agent: 'main', day: '2026-07-14', tokens, costUsdMicros: 500, costedMessages: 1, messageCount: 1 }],
+    byAgentDay: [{ agent: 'main', day: '2026-07-14', tokens, originTokens: { bakin: 15, external: 0, unknown: 0 }, costUsdMicros: 500, costedMessages: 1, messageCount: 1 }],
   }
 }
 
@@ -53,7 +53,8 @@ function effort(window: '24h' | '7d' | '30d' = '24h') {
       completions: 1,
       tokensPerCompletion: 15,
       totalObservedTokens: 15,
-      unattributedTokens: 0,
+      interactiveTokens: 0,
+      unexplainedTokens: 0,
       flags: [],
     }],
   }
@@ -148,9 +149,12 @@ describe('Agents route schemas', () => {
           tokenAggregateRepresentable: _tokenAggregateRepresentable,
           costedRuns: _costedRuns,
           costAggregateRepresentable: _costAggregateRepresentable,
+          // Pre-#691 servers sent one unattributed delta, no bucket split.
+          interactiveTokens: _interactiveTokens,
+          unexplainedTokens: _unexplainedTokens,
           ...legacyAgent
         } = agent
-        return legacyAgent
+        return { ...legacyAgent, unattributedTokens: 0 }
       }),
     }
     const priorEffort = {
@@ -221,7 +225,7 @@ describe('Agents route schemas', () => {
       ...effort(),
       scannedAt: null,
       coverage: { status: 'partial', reason: 'agent_scan_failed', agents: [{ agent: 'main', status: 'partial' }] },
-      agents: effort().agents.map((agent) => ({ ...agent, totalObservedTokens: null, unattributedTokens: null })),
+      agents: effort().agents.map((agent) => ({ ...agent, totalObservedTokens: null, interactiveTokens: null, unexplainedTokens: null })),
     }
     const impossibleEffort = { ...partialEffort, agents: effort().agents }
     expect(usageHistoryResponseSchema.safeParse(impossibleHistory).success).toBe(false)
@@ -256,7 +260,8 @@ describe('Agents route schemas', () => {
         costedRuns: 1,
         completions: 1,
         tokensPerCompletion: null,
-        unattributedTokens: null,
+        interactiveTokens: null,
+        unexplainedTokens: null,
       })),
     }
     expect(agentEffortResponseSchema.safeParse(partialLedger).success).toBe(true)
@@ -301,7 +306,7 @@ describe('Agents route schemas', () => {
 
     const impossibleDelta = {
       ...effort(),
-      agents: effort().agents.map((agent) => ({ ...agent, unattributedTokens: 1 })),
+      agents: effort().agents.map((agent) => ({ ...agent, unexplainedTokens: 1 })),
     }
     expect(agentEffortResponseSchema.safeParse(impossibleDelta).success).toBe(false)
   })
@@ -320,7 +325,8 @@ describe('Agents route schemas', () => {
         completions: 0,
         tokensPerCompletion: null,
         totalObservedTokens: 0,
-        unattributedTokens: 0,
+        interactiveTokens: 0,
+        unexplainedTokens: 0,
       })),
     }
 
@@ -343,7 +349,8 @@ describe('Agents route schemas', () => {
         tokenAggregateRepresentable: false,
         costAggregateRepresentable: false,
         tokensPerCompletion: null,
-        unattributedTokens: null,
+        interactiveTokens: null,
+        unexplainedTokens: null,
         flags: [],
       })),
     }

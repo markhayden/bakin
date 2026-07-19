@@ -57,20 +57,32 @@ export function resolveProviderForModel(modelId: string | null | undefined): str
   return normalized.includes('/') ? providerFromId(normalized) : 'other'
 }
 
+/**
+ * How a lane was decided — `override` is operator truth (manual
+ * settings.billing.overrides), `detected` came from credential-shape
+ * detection, `default` is the conservative metered fallback. Consumers that
+ * refuse to trust guessed lanes (the spend engine's observed path, #689)
+ * may still trust an explicit override.
+ */
+export type BillingLaneSource = 'override' | 'detected' | 'default'
+
 /** Pure lane resolution: overrides (most specific first) → detection → metered. */
 export function resolveLaneFor(input: {
   provider: string
   agentId?: string
   overrides: BillingOverride[]
   detected: Partial<Record<string, BillingLane>>
-}): BillingLane {
+}): { lane: BillingLane; laneSource: BillingLaneSource } {
   const { provider, agentId, overrides, detected } = input
   const match = (pred: (o: BillingOverride) => boolean) => overrides.find(pred)?.lane
   const overridden =
     (agentId !== undefined ? match((o) => o.agentId === agentId && o.provider === provider) : undefined) ??
     (agentId !== undefined ? match((o) => o.agentId === agentId && o.provider === undefined) : undefined) ??
     match((o) => o.agentId === undefined && o.provider === provider)
-  return overridden ?? detected[provider] ?? 'metered'
+  if (overridden !== undefined) return { lane: overridden, laneSource: 'override' }
+  const detectedLane = detected[provider]
+  if (detectedLane !== undefined) return { lane: detectedLane, laneSource: 'detected' }
+  return { lane: 'metered', laneSource: 'default' }
 }
 
 // Per-agent profile detection cache. Lane flips require re-auth in the
@@ -102,9 +114,10 @@ async function detectedLanesForAgent(ctx: PluginContext, agentId: string): Promi
 export async function resolveBilling(
   ctx: PluginContext,
   opts: { agentId?: string; model?: string | null },
-): Promise<{ provider: string; lane: BillingLane }> {
+): Promise<{ provider: string; lane: BillingLane; laneSource: BillingLaneSource }> {
   const provider = resolveProviderForModel(opts.model)
   const overrides = ctx.getSettings<ModelsPluginSettings>().billing?.overrides ?? []
   const detected = opts.agentId ? await detectedLanesForAgent(ctx, opts.agentId) : {}
-  return { provider, lane: resolveLaneFor({ provider, agentId: opts.agentId, overrides, detected }) }
+  const { lane, laneSource } = resolveLaneFor({ provider, agentId: opts.agentId, overrides, detected })
+  return { provider, lane, laneSource }
 }

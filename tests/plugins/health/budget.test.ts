@@ -183,7 +183,8 @@ describe('budget health check', () => {
 
   it('is unknown for partial observed costs while retaining the reported subtotal', async () => {
     budgetPolicy = { rules: [{ scope: 'global', lane: 'metered', dailyCap: 100 }] }
-    resolveBilling = async () => ({ lane: 'metered' })
+    // Mirror the real hook shape — a lane is only trusted with a resolved provider (#689).
+    resolveBilling = async () => ({ provider: 'google', lane: 'metered' })
     const now = Date.now()
     replaceSessionUsage('partial-cost', 'main', [{
       day: toLocalDayKey(now),
@@ -196,6 +197,7 @@ describe('budget health check', () => {
       costUsdMicros: 250_000,
       costedMessages: 1,
       messageCount: 3,
+      userMessages: 0,
       firstTs: now,
       lastTs: now,
     }], { mtimeMs: now, size: 1 })
@@ -347,6 +349,7 @@ describe('budget health check', () => {
       costUsdMicros: 1_000_000,
       costedMessages: 1,
       messageCount: 1,
+      userMessages: 0,
       firstTs: now,
       lastTs: now,
     }], { mtimeMs: now, size: 1 })
@@ -469,6 +472,40 @@ describe('budget health check', () => {
     seedSpend(10_000_000)
     const rows = observed(await checkBudget())
     expect(rows.some((row) => row.status === 'error' && row.key === 'spend')).toBe(true)
+  })
+
+  it('stamps cap breaches budget_block — never demotable by sensitivity (#690)', async () => {
+    budgetPolicy = { rules: [{ scope: 'global', lane: 'metered', dailyCap: 10 }] }
+    seedSpend(10_000_000)
+    const rows = observed(await checkBudget())
+    const breach = rows.find((row) => row.status === 'error' && row.key === 'spend')!
+    expect(breach.incident?.class).toBe('budget_block')
+  })
+
+  it('a rule-affecting evidence gap is evidence_gap at watch — the tripwire never degrades silently (D12)', async () => {
+    budgetPolicy = { rules: [{ scope: 'global', lane: 'metered', dailyCap: 10 }] }
+    resolveBilling = async () => ({ provider: 'google', lane: 'metered' })
+    // A metered observed row with NULL cost gives the rule incomplete value evidence.
+    replaceSessionUsage('gap-session', 'main', [{
+      day: toLocalDayKey(Date.now()),
+      model: 'google/gemini-3-flash',
+      inputTokens: 500,
+      outputTokens: 100,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      totalTokens: 600,
+      costUsdMicros: null,
+      costedMessages: 0,
+      messageCount: 2,
+      userMessages: 0,
+      firstTs: Date.now(),
+      lastTs: Date.now(),
+    }], { mtimeMs: 5, size: 5 })
+    const rows = observed(await checkBudget())
+    const gap = rows.find((row) => row.incident?.key === 'spend-evidence-incomplete')
+    expect(gap).toBeDefined()
+    expect(gap!.incident?.class).toBe('evidence_gap')
+    expect(gap!.incident?.disposition).toBe('watch')
   })
 
   it('warns when runs were deferred even if utilization looks ok', async () => {

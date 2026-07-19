@@ -39,6 +39,7 @@ export async function checkChannelApprovals(
       incident: {
         key: 'render-only',
         title: 'Channel approvals require the Bakin UI',
+        class: 'unsupported_surface',
         impact: 'Operators cannot approve or reject workflow gates directly from runtime channels.',
         disposition: 'advisory',
         resources: channels.slice(0, 50).map((channel) => ({
@@ -62,6 +63,7 @@ export async function checkChannelApprovals(
       incident: {
         key: 'inspection-failed',
         title: 'Channel approval support is unknown',
+        class: 'evidence_gap',
         impact: 'Health cannot confirm whether approvals can be completed from runtime channels.',
         disposition: 'watch',
         resources: [{ kind: 'runtime', id: 'active', label: 'Active runtime' }],

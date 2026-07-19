@@ -59,7 +59,8 @@ const cleanReport = {
   completions: 2,
   tokensPerCompletion: 500,
   totalObservedTokens: 1200,
-  unattributedTokens: 200,
+  interactiveTokens: 0,
+  unexplainedTokens: 200,
   flags: [],
 }
 
@@ -134,7 +135,7 @@ describe('checkAgentBurn', () => {
         coverage: { status: 'unavailable', reason: 'missing_session_tier', agents: [] },
       },
     }
-    reports = [{ ...cleanReport, totalObservedTokens: null, unattributedTokens: null }]
+    reports = [{ ...cleanReport, totalObservedTokens: null, interactiveTokens: null, unexplainedTokens: null }]
 
     const results = observed(await checkAgentBurn())
 
@@ -166,7 +167,8 @@ describe('checkAgentBurn', () => {
       tokenMeteredRuns: 1,
       costedRuns: 0,
       tokensPerCompletion: null,
-      unattributedTokens: null,
+      interactiveTokens: null,
+      unexplainedTokens: null,
     }]
 
     const results = observed(await checkAgentBurn())
@@ -208,7 +210,8 @@ describe('checkAgentBurn', () => {
       costedRuns: 2,
       costAggregateRepresentable: false,
       tokensPerCompletion: null,
-      unattributedTokens: null,
+      interactiveTokens: null,
+      unexplainedTokens: null,
     }]
 
     const results = observed(await checkAgentBurn())
@@ -249,7 +252,8 @@ describe('checkAgentBurn', () => {
       completions: 0,
       tokensPerCompletion: null,
       totalObservedTokens: 0,
-      unattributedTokens: 0,
+      interactiveTokens: 0,
+      unexplainedTokens: 0,
     }]
 
     const results = observed(await checkAgentBurn())
@@ -287,7 +291,7 @@ describe('checkAgentBurn', () => {
 
     expect(results[0]!.status).toBe('unknown')
     expect(results[0]!.evidence).toMatchObject({ reason: 'scan_stale' })
-    expect(receivedOptions).toEqual({ coverage: { agents: [] } })
+    expect(receivedOptions).toEqual({ coverage: { agents: [] }, scheduledJobs: null })
   })
 
   it('does not mint a healthy verdict while the usage store is changing generations', async () => {
@@ -305,13 +309,13 @@ describe('checkAgentBurn', () => {
       },
     }
     usageScanGlobal.__bakinUsageHistoryScanPending = true
-    reports = [{ ...cleanReport, totalObservedTokens: null, unattributedTokens: null }]
+    reports = [{ ...cleanReport, totalObservedTokens: null, interactiveTokens: null, unexplainedTokens: null }]
 
     const results = observed(await checkAgentBurn())
 
     expect(results[0]!.status).toBe('unknown')
     expect(results[0]!.evidence).toMatchObject({ reason: 'scan_in_progress' })
-    expect(receivedOptions).toEqual({ coverage: { agents: [] } })
+    expect(receivedOptions).toEqual({ coverage: { agents: [] }, scheduledJobs: null })
     usageScanGlobal.__bakinUsageHistoryLastScan = null
   })
 
@@ -325,17 +329,128 @@ describe('checkAgentBurn', () => {
         tokensPerCompletion: null,
         flags: [
           { kind: 'effort-no-outcome', message: "'pixel' used 2.1M tokens across 14 run(s) in 24h but completed no tasks — check its timeline" },
-          { kind: 'unattributed', message: "'pixel' used 790k tokens outside Bakin-managed tasks in 24h — review its recent sessions" },
+          { kind: 'unexplained', tokens: 790_000, spikeConcurrent: false, message: "'pixel' used 790k tokens Bakin could not attribute to tasks, system sends, or interactive sessions in 24h — review its recent sessions" },
         ],
       },
     ]
     const results = observed(await checkAgentBurn())
+    expect(results).toHaveLength(2)
+    const unexplainedRow = results.find((r) => r.key === 'unexplained:pixel')!
+    expect(unexplainedRow.status).toBe('warning')
+    expect(unexplainedRow.incident?.disposition).toBe('watch')
+    expect(unexplainedRow.evidence).toMatchObject({ agents: ['pixel'], kinds: ['unexplained'], tokens: 790_000 })
+    const legacyRow = results.find((r) => r.key === 'agent:pixel')!
+    expect(legacyRow.summary).toContain('pixel')
+    expect(legacyRow.evidence).toEqual({ agents: ['pixel'], kinds: ['effort-no-outcome'] })
+  })
+
+  it('interactive usage is an advisory incident with calm copy', async () => {
+    reports = [{
+      ...cleanReport,
+      agent: 'main',
+      interactiveTokens: 10_000_000,
+      flags: [
+        { kind: 'interactive', tokens: 10_000_000, message: "'main' used 10M tokens in interactive runtime sessions (direct chats/TUI) not tied to board tasks — normal if you were working with this agent directly" },
+      ],
+    }]
+    const results = observed(await checkAgentBurn())
     expect(results).toHaveLength(1)
     const row = results[0]!
     expect(row.status).toBe('warning')
-    expect(row.summary).toContain('pixel')
-    expect(row.detail).toContain('outside Bakin-managed tasks')
-    expect(row.evidence).toEqual({ agents: ['pixel'], kinds: ['effort-no-outcome', 'unattributed'] })
+    expect(row.key).toBe('interactive:main')
+    expect(row.incident?.disposition).toBe('advisory')
+    expect(row.incident?.title).toBe('Interactive agent chat usage')
+    expect(row.incident?.impact).toContain('normal use')
+    expect(row.evidence).toMatchObject({ agents: ['main'], kinds: ['interactive'], tokens: 10_000_000 })
+  })
+
+  it('runaway pages as action_required with structured session evidence', async () => {
+    reports = [{
+      ...cleanReport,
+      agent: 'main',
+      flags: [
+        {
+          kind: 'runaway',
+          sessions: [{ sessionId: 's9', tokens: 2_000_000, assistantTurns: 34 }],
+          scheduledJobs: [],
+          downgraded: false,
+          message: "'main' shows possible runaway usage: 34 autonomous turns / 2M tokens with no user interaction — investigate now",
+        },
+      ],
+    }]
+    const results = observed(await checkAgentBurn())
+    const row = results[0]!
+    expect(row.status).toBe('error')
+    expect(row.key).toBe('runaway:main')
+    expect(row.incident?.disposition).toBe('action_required')
+    expect(row.incident?.title).toBe('Possible runaway agent usage')
+    expect(row.evidence).toMatchObject({
+      downgraded: false,
+      sessions: [{ sessionId: 's9', tokens: 2_000_000, assistantTurns: 34 }],
+    })
+  })
+
+  it('downgraded runaway (scheduled jobs) is a watch review prompt, never a page', async () => {
+    reports = [{
+      ...cleanReport,
+      agent: 'main',
+      flags: [
+        {
+          kind: 'runaway',
+          sessions: [{ sessionId: 's9', tokens: 2_000_000, assistantTurns: 34 }],
+          scheduledJobs: ['nightly-digest'],
+          downgraded: true,
+          message: "'main' has high autonomous usage and this runtime also has 1 scheduled job(s) (nightly-digest) — review if unexpected",
+        },
+      ],
+    }]
+    const results = observed(await checkAgentBurn())
+    const row = results[0]!
+    expect(row.status).toBe('warning')
+    expect(row.incident?.disposition).toBe('watch')
+    expect(row.incident?.title).toContain('scheduled jobs present')
+    expect(row.evidence).toMatchObject({ downgraded: true, scheduledJobs: ['nightly-digest'] })
+  })
+
+  it('fetches cron evidence when any agent has complete coverage — even a partial fleet (D11)', async () => {
+    usageScanGlobal.__bakinUsageHistoryLastScan = {
+      at: Date.now(),
+      report: {
+        scanned: 1, skipped: 0, failed: 1,
+        coverage: {
+          status: 'partial',
+          reason: 'agent_scan_failed',
+          agents: [
+            { agent: 'covered', status: 'complete' },
+            { agent: 'broken', status: 'partial' },
+          ],
+        },
+      },
+    }
+    reports = []
+    const scheduledJobs = mock(async () => [])
+    await checkAgentBurnWith({ buildReports, scheduledJobs })
+    // One broken transcript elsewhere must not strip the cron downgrade
+    // from a fully-covered agent's runaway page.
+    expect(scheduledJobs).toHaveBeenCalledTimes(1)
+    expect(receivedOptions).toMatchObject({ scheduledJobs: [] })
+    usageScanGlobal.__bakinUsageHistoryLastScan = null
+  })
+
+  it('skips cron evidence when no agent can produce a runaway flag', async () => {
+    usageScanGlobal.__bakinUsageHistoryLastScan = {
+      at: Date.now(),
+      report: {
+        scanned: 0, skipped: 0, failed: 0,
+        coverage: { status: 'unavailable', reason: 'missing_session_tier', agents: [] },
+      },
+    }
+    reports = []
+    const scheduledJobs = mock(async () => [])
+    await checkAgentBurnWith({ buildReports, scheduledJobs })
+    expect(scheduledJobs).not.toHaveBeenCalled()
+    expect(receivedOptions).toMatchObject({ scheduledJobs: null })
+    usageScanGlobal.__bakinUsageHistoryLastScan = null
   })
 
   it('fails loudly (error row) when the ledger is unavailable', async () => {

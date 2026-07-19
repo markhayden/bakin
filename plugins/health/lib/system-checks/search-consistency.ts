@@ -130,6 +130,7 @@ export async function checkSearchConsistency(): Promise<HealthCheckRunInput> {
       incident: {
         key: 'availability-unknown',
         title: 'Search index consistency is unknown',
+        class: 'evidence_gap',
         impact: 'Health cannot confirm that logical indexes point to available engine tables.',
         disposition: 'watch',
         resources: [{ kind: 'service', id: 'search-engine', label: 'Search engine' }],
@@ -161,6 +162,7 @@ export async function checkSearchConsistency(): Promise<HealthCheckRunInput> {
           incident: {
             key: `migration-parked:${tableId}`,
             title: 'Search index migration is parked',
+            class: 'service_failure',
             impact: 'The index cannot advance to its replacement table and may remain stale.',
             disposition: 'action_required',
             resources: [{ kind: 'search_table', id: tableId, label: table.logical.slice(0, 120) }],
@@ -202,6 +204,7 @@ export async function checkSearchConsistency(): Promise<HealthCheckRunInput> {
           incident: {
             key: `table-missing:${tableId}`,
             title: 'Active Search index is missing',
+            class: 'service_failure',
             impact: 'Queries against this logical index cannot return its source data.',
             disposition: 'action_required',
             resources: [{ kind: 'search_table', id: tableId, label: table.logical.slice(0, 120) }],
@@ -222,6 +225,7 @@ export async function checkSearchConsistency(): Promise<HealthCheckRunInput> {
         incident: {
           key: `table-unknown:${tableId}`,
           title: 'Search index status is unknown',
+          class: 'evidence_gap',
           impact: 'Health cannot confirm that this logical index has an active physical table.',
           disposition: 'watch',
           resources: [{ kind: 'search_table', id: tableId, label: table.logical.slice(0, 120) }],
@@ -255,6 +259,7 @@ export async function checkSearchConsistency(): Promise<HealthCheckRunInput> {
           incident: {
             key: 'engine-table-sweep-failed',
             title: 'Stale Search tables could not be verified',
+            class: 'cleanup_backlog',
             impact: 'Unused engine tables may continue consuming storage until the next successful sweep.',
             disposition: 'watch',
             resources: [{ kind: 'service', id: 'search-engine', label: 'Search engine' }],
@@ -295,6 +300,7 @@ export async function checkSearchConsistency(): Promise<HealthCheckRunInput> {
           incident: {
             key: 'unclaimed-tables',
             title: 'Unclaimed Search tables need review',
+            class: 'cleanup_backlog',
             impact: 'Stale unclaimed tables consume engine storage, but deleting tables owned by another instance would lose its index data.',
             disposition: 'advisory',
             resources: orphanTables.unclaimed.slice(0, 50).map((table) => ({ kind: 'search_table' as const, id: stableKeyPart(table), label: table.slice(0, 120) })),
@@ -316,6 +322,7 @@ export async function checkSearchConsistency(): Promise<HealthCheckRunInput> {
           incident: {
             key: 'tombstones-remain',
             title: 'Retired Search tables could not be dropped',
+            class: 'cleanup_backlog',
             impact: 'Old physical tables continue consuming engine storage.',
             disposition: 'watch',
             resources: [{ kind: 'service', id: 'search-engine', label: 'Search engine' }],
@@ -332,6 +339,7 @@ export async function checkSearchConsistency(): Promise<HealthCheckRunInput> {
         incident: {
           key: 'deep-sweep-failed',
           title: 'Search index maintenance status is unknown',
+          class: 'evidence_gap',
           impact: 'Orphaned rows and retired tables may remain until the next successful sweep.',
           disposition: 'watch',
           resources: [{ kind: 'system', id: 'search-index-maintenance', label: 'Search index maintenance' }],

@@ -217,6 +217,29 @@ describe('health repair-action validation', () => {
 })
 
 describe('health run-output validation', () => {
+  it('rejects an invalid incident class string at the producer boundary (#690)', () => {
+    const withBadClass = warningObservation({
+      incident: {
+        ...(warningObservation().incident as Record<string, unknown>),
+        class: 'totally-made-up',
+      },
+    })
+    expect(() => parseHealthCheckRunInput({ outcome: 'observed', observations: [withBadClass] })).toThrow()
+  })
+
+  it('accepts every declared incident class (#690)', () => {
+    for (const cls of ['service_failure', 'policy_denial', 'runaway_usage', 'unsupported_surface']) {
+      const observation = warningObservation({
+        incident: {
+          ...(warningObservation().incident as Record<string, unknown>),
+          class: cls,
+        },
+      })
+      const parsed = parseHealthCheckRunInput({ outcome: 'observed', observations: [observation] })
+      expect(parsed.outcome).toBe('observed')
+    }
+  })
+
   it('accepts every resolution variant and JSON-safe evidence', () => {
     const observations = [
       warningObservation(),

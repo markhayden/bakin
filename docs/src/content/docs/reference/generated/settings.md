@@ -57,6 +57,14 @@ description: Generated reference for Bakin core settings defaults.
       <td><code>500000</code></td>
     </tr>
     <tr>
+      <td><code>burn.runawayAssistantTurns</code></td>
+      <td><code>20</code></td>
+    </tr>
+    <tr>
+      <td><code>burn.runawayFloorTokens</code></td>
+      <td><code>1000000</code></td>
+    </tr>
+    <tr>
       <td><code>burn.spikeMultiplier</code></td>
       <td><code>3</code></td>
     </tr>
@@ -181,6 +189,10 @@ description: Generated reference for Bakin core settings defaults.
     <tr>
       <td><code>doctor.requireOnboard</code></td>
       <td><code>true</code></td>
+    </tr>
+    <tr>
+      <td><code>doctor.sensitivity</code></td>
+      <td><code>&quot;standard&quot;</code></td>
     </tr>
   </tbody>
 </table>
@@ -461,5 +473,5 @@ description: Generated reference for Bakin core settings defaults.
 
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Jul 17, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Jul 18, 2026 · Bakin 0.0.0-dev</span>
 </aside>

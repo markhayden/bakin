@@ -204,15 +204,27 @@ export interface BakinSettings {
     spikeMultiplier: number
     /** Trailing days (excluding today) that form the spike baseline. */
     baselineDays: number
-    /** Unattributed fraction of observed tokens above which the flag fires. */
+    /** Interactive/unexplained fraction of observed tokens above which those flags fire. */
     unattributedShare: number
-    /** Minimum unattributed tokens before the unattributed flag fires. */
+    /** Minimum interactive/unexplained tokens before those flags fire. */
     unattributedFloorTokens: number
+    /** Token-bearing assistant turns a zero-user-turn external session needs to look runaway. */
+    runawayAssistantTurns: number
+    /** Minimum tokens a zero-user-turn external session needs to look runaway. */
+    runawayFloorTokens: number
   }
   doctor: {
     intervalMs: number
     /** Maximum time a single diagnostic check may run before it becomes Unknown. */
     checkTimeoutMs?: number
+    /**
+     * Health sensitivity (#690): 'developer' shows raw dispositions
+     * everywhere; 'standard' (default) demotes expected-noise incident
+     * classes to advisory in the central report projection; 'quiet'
+     * additionally badges/escalates only action_required. Applied at
+     * projection time — flipping it needs no restart.
+     */
+    sensitivity: 'developer' | 'standard' | 'quiet'
     /**
      * When true, `runDiagnostics()` refuses to run its normal checks and
      * returns a single `onboarded: error` result until `~/.bakin/.onboarded`
@@ -392,10 +404,13 @@ export const DEFAULT_SETTINGS: BakinSettings = {
     baselineDays: 7,
     unattributedShare: 0.5,
     unattributedFloorTokens: 100_000,
+    runawayAssistantTurns: 20,
+    runawayFloorTokens: 1_000_000,
   },
   doctor: {
     intervalMs: 30 * 60 * 1000, // 30 minutes
     checkTimeoutMs: 30_000,
+    sensitivity: 'standard',
     requireOnboard: true,
     escalation: 'task',
     escalationCooldownMs: 6 * 60 * 60 * 1000, // 6 hours
@@ -477,10 +492,18 @@ function normalizeDiagnosticsSettings(input: unknown): BakinSettings['diagnostic
   }
 }
 
+function normalizeDoctorSettings(input: BakinSettings['doctor']): BakinSettings['doctor'] {
+  const sensitivity = input.sensitivity === 'developer' || input.sensitivity === 'standard' || input.sensitivity === 'quiet'
+    ? input.sensitivity
+    : DEFAULT_SETTINGS.doctor.sensitivity
+  return { ...input, sensitivity }
+}
+
 function normalizeSettings(settings: BakinSettings): BakinSettings {
   return {
     ...settings,
     diagnostics: normalizeDiagnosticsSettings(settings.diagnostics),
+    doctor: normalizeDoctorSettings(settings.doctor),
     plugins: normalizePluginSettings(settings.plugins),
   }
 }

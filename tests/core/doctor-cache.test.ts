@@ -1,6 +1,29 @@
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { join } from 'path'
+import { tmpdir } from 'os'
+import { mkdirSync, rmSync, writeFileSync } from 'fs'
+import { randomUUID } from 'crypto'
+
+// getHealthReport reads settings.doctor.sensitivity (#690) — the settings
+// import chain reaches content-dir, so point it at a temp dir.
+const testDir = join(tmpdir(), `bakin-test-doctor-cache-${Date.now()}-${randomUUID()}`)
+const contentDirMock = () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({
+    home: testDir,
+    audit: join(testDir, 'audit.jsonl'),
+    tasks: join(testDir, 'tasks'),
+    logs: join(testDir, 'logs'),
+    db: join(testDir, 'bakin.db'),
+  }),
+})
+mock.module('../../src/core/content-dir', contentDirMock)
+mock.module('../../packages/core/src/content-dir', contentDirMock)
+
+import { afterAll } from 'bun:test'
 import { healthHealthy, healthNotApplicable, healthObserved, healthWarning } from '@makinbakin/sdk/utils'
 import { runHealthCheck } from '../../src/core/doctor-checks'
+import { resetSettingsCache } from '../../packages/core/src/settings'
 import {
   applyHealthCheckRun,
   getHealthReport,
@@ -16,6 +39,7 @@ import {
 
 beforeEach(resetHealthReportCache)
 afterEach(() => unregisterPluginHealthChecks('cache-test'))
+afterAll(() => rmSync(testDir, { recursive: true, force: true }))
 
 function register(run: () => Promise<any>, localId = 'probe', name = 'Cache probe') {
   const id = registerPluginHealthCheck('cache-test', {
@@ -258,5 +282,51 @@ describe('per-check Health cache', () => {
       stale.incidents.map((incident) => [incident.id, incident.stale]),
     )
     expect(changedReportIds).toEqual([stale.id])
+  })
+})
+
+describe('sensitivity projection in the published report (#690)', () => {
+  it('a sensitivity flip republishes a new revision without new evidence — no restart needed', async () => {
+    mkdirSync(testDir, { recursive: true })
+    writeFileSync(join(testDir, 'settings.json'), JSON.stringify({ doctor: { sensitivity: 'developer' } }))
+    resetSettingsCache()
+
+    const def = register(async () => healthObserved([healthWarning({
+      key: 'denied',
+      summary: 'A guardrail denied a tool call.',
+      incident: {
+        key: 'policy-denied',
+        title: 'A guardrail denied a tool call',
+        impact: 'The system protected a boundary — review only if it repeats.',
+        class: 'policy_denial',
+        disposition: 'watch',
+        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
+      },
+    })]))
+    await apply(def, '2026-07-13T12:00:00.000Z')
+
+    const developerReport = getHealthReport('2026-07-13T12:00:10.000Z')
+    expect(developerReport.sensitivity).toBe('developer')
+    expect(developerReport.incidents[0]?.effectiveDisposition).toBe('watch')
+    expect(developerReport.summary.incidents.watching).toBe(1)
+    expect(developerReport.overallStatus).toBe('degraded')
+
+    // Flip the mode: SAME evidence, new projection — the semantic key must
+    // treat this as a new report (revision bump + demoted incident).
+    writeFileSync(join(testDir, 'settings.json'), JSON.stringify({ doctor: { sensitivity: 'standard' } }))
+    resetSettingsCache()
+
+    const standardReport = getHealthReport('2026-07-13T12:00:20.000Z')
+    expect(standardReport.sensitivity).toBe('standard')
+    expect(standardReport.revision).toBe(developerReport.revision + 1)
+    expect(standardReport.incidents[0]?.effectiveDisposition).toBe('advisory')
+    expect(standardReport.incidents[0]?.disposition).toBe('watch') // raw preserved
+    expect(standardReport.incidents[0]?.class).toBe('policy_denial')
+    expect(standardReport.summary.incidents.watching).toBe(0)
+    expect(standardReport.summary.incidents.advisory).toBe(1)
+    expect(standardReport.overallStatus).toBe('healthy')
+
+    writeFileSync(join(testDir, 'settings.json'), JSON.stringify({}))
+    resetSettingsCache()
   })
 })

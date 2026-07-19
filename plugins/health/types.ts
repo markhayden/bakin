@@ -187,10 +187,19 @@ export interface LiveNowData {
 
 export type AgentEffortWindow = '24h' | '7d' | '30d'
 
-export interface AgentEffortFlag {
-  kind: 'effort-no-outcome' | 'spike' | 'unattributed'
-  message: string
-}
+export type AgentEffortFlag =
+  | { kind: 'effort-no-outcome' | 'spike'; message: string }
+  /** Legacy server generations only (pre-#691). */
+  | { kind: 'unattributed'; message: string }
+  | { kind: 'interactive'; message: string; tokens: number }
+  | { kind: 'unexplained'; message: string; tokens: number; spikeConcurrent: boolean }
+  | {
+      kind: 'runaway'
+      message: string
+      sessions: Array<{ sessionId: string; tokens: number; assistantTurns: number }>
+      scheduledJobs: string[]
+      downgraded: boolean
+    }
 
 export interface AgentEffortRow {
   agent: string
@@ -213,7 +222,12 @@ export interface AgentEffortRow {
   tokensPerCompletion: number | null
   /** Transcript-observed tokens; null when the usage scanner has no coverage. */
   totalObservedTokens: number | null
-  unattributedTokens: number | null
+  /** Legacy server generations only (pre-#691 single delta). */
+  unattributedTokens?: number | null
+  /** Interactive (external-origin session) tokens; absent on legacy servers. */
+  interactiveTokens?: number | null
+  /** Unexplained (bakin/unknown-origin minus attributed) tokens; absent on legacy servers. */
+  unexplainedTokens?: number | null
   flags: AgentEffortFlag[]
 }
 

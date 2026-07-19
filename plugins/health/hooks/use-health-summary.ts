@@ -13,35 +13,48 @@ interface UseHealthSummaryResult {
 }
 
 interface HealthSummaryPayload {
+  sensitivity: 'developer' | 'standard' | 'quiet'
   incidents: Array<{
     id: string
-    disposition: 'advisory' | 'watch' | 'action_required'
+    effectiveDisposition: 'advisory' | 'watch' | 'action_required'
   }>
 }
 
-type HealthSummaryDisposition = HealthSummaryPayload['incidents'][number]['disposition']
+type HealthSummaryDisposition = HealthSummaryPayload['incidents'][number]['effectiveDisposition']
 
 function isHealthSummaryDisposition(value: unknown): value is HealthSummaryDisposition {
   return value === 'advisory' || value === 'watch' || value === 'action_required'
+}
+
+function isHealthSensitivity(value: unknown): value is HealthSummaryPayload['sensitivity'] {
+  return value === 'developer' || value === 'standard' || value === 'quiet'
 }
 
 function parseHealthSummary(value: unknown): HealthSummaryPayload {
   if (typeof value !== 'object' || value === null || !('incidents' in value) || !Array.isArray(value.incidents)) {
     throw new Error('Health summary response was invalid')
   }
+  // Missing #690 fields fall back to the raw disposition / standard mode
+  // instead of throwing: a hard parse failure here would silently blank the
+  // badge (count:null) during a client/server version skew — hiding real
+  // action_required incidents is the one failure this badge must never have.
+  const sensitivity = 'sensitivity' in value && isHealthSensitivity(value.sensitivity)
+    ? value.sensitivity
+    : 'standard'
   const incidents = value.incidents.map((incident) => {
     if (typeof incident !== 'object' || incident === null
-      || !('id' in incident) || typeof incident.id !== 'string'
-      || !('disposition' in incident)
-      || !isHealthSummaryDisposition(incident.disposition)) {
+      || !('id' in incident) || typeof incident.id !== 'string') {
       throw new Error('Health summary response was invalid')
     }
-    return {
-      id: incident.id,
-      disposition: incident.disposition,
-    }
+    const effective = 'effectiveDisposition' in incident && isHealthSummaryDisposition(incident.effectiveDisposition)
+      ? incident.effectiveDisposition
+      : 'disposition' in incident && isHealthSummaryDisposition(incident.disposition)
+        ? incident.disposition
+        : null
+    if (effective === null) throw new Error('Health summary response was invalid')
+    return { id: incident.id, effectiveDisposition: effective }
   })
-  return { incidents }
+  return { sensitivity, incidents }
 }
 
 async function requestHealthSummary(
@@ -65,13 +78,18 @@ export function useHealthSummary(): UseHealthSummaryResult {
   usePluginEvent('health.report.changed', () => { void resource.refresh('reconcile') })
 
   if (!resource.data) return { count: null, tone: 'attention' }
+  // D10: quiet mode notifies only for action_required — watch items stay
+  // visible on the Health page but never tap the user on the shoulder.
+  const badgeFloor = resource.data.sensitivity === 'quiet' ? 'action_required' : 'watch'
   const incidents = [...new Map(
     resource.data.incidents
-      .filter((incident) => incident.disposition !== 'advisory')
+      .filter((incident) => badgeFloor === 'action_required'
+        ? incident.effectiveDisposition === 'action_required'
+        : incident.effectiveDisposition !== 'advisory')
       .map((incident) => [incident.id, incident]),
   ).values()]
   return {
     count: incidents.length,
-    tone: incidents.some((incident) => incident.disposition === 'action_required') ? 'error' : 'attention',
+    tone: incidents.some((incident) => incident.effectiveDisposition === 'action_required') ? 'error' : 'attention',
   }
 }

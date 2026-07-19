@@ -105,11 +105,47 @@ Every report change increments its revision and emits `health.report.changed`; c
 - canonical observations and merged incidents
 - subsystem projections, currently Search readiness
 
-Overall precedence is operator-facing:
+## Sensitivity & incident classes (#690)
 
-1. action-required incident -> `needs_attention`
+Producers may stamp `class` on incident inputs (SDK `HealthIncidentClass`,
+10 values — service_failure, data_integrity, budget_block, evidence_gap,
+usage_anomaly, unattributed_usage, runaway_usage, cleanup_backlog,
+policy_denial, unsupported_surface). The ONE sensitivity policy
+(`projectEffectiveDispositions` in `src/core/health-report.ts`, applied once
+in `getHealthReport` under `settings.doctor.sensitivity`:
+`developer | standard | quiet`, default standard) computes every incident's
+`effectiveDisposition`:
+
+- standard/quiet cap usage_anomaly, cleanup_backlog, policy_denial, and
+  unsupported_surface at **advisory**; caps only ever LOWER urgency.
+- Unclassified incidents are treated service_failure (a missing stamp can
+  never hide an outage); error-status incidents are never demoted;
+  evidence_gap is deliberately uncapped — its producers split raw severity
+  (rule-affecting = watch, informational = advisory) per D12.
+- Raw `disposition` is preserved on the wire; the UI shows a "Calmed from
+  watch" badge + a plain-language class chip on cards, and demoted/advisory
+  incidents ride the Overview notices popover (the `advisories` view-model
+  bucket) — demotion means quiet, never hidden. A runtime that
+  intentionally lacks a surface should return `not_applicable`, not an
+  unsupported_surface failure. Repair delegation (`all_actionable`) and the
+  CLI act on effective disposition too — a calmed incident never spawns a
+  paid repair task.
+- **Quiet (D10)** additionally lives at the NOTIFICATION layer: the nav
+  badge and escalation act only on effective `action_required` — watch
+  stays visible on the Health page but silent.
+- The semantic projection key includes sensitivity + effective dispositions:
+  flipping the System & Alerts dropdown republishes on the next read, no
+  restart. Conflicting class stamps on one incident id are a producer bug
+  (`HealthIncidentConflictError`); invalid class strings are rejected at the
+  producer contract boundary (zod enum in health-contract).
+
+Overall precedence is operator-facing. Urgency is computed over EFFECTIVE
+dispositions, but evidence honesty is NOT demotable — unknown-status/stale
+incidents drive `unknown_stale` in every mode (unknown is never healthy):
+
+1. effective action-required incident -> `needs_attention`
 2. required evidence missing/failed/invalid/stale -> `unknown_stale`
-3. fresh watch incident -> `degraded`
+3. fresh effective-watch incident -> `degraded`
 4. otherwise -> `healthy`
 
 Advisories remain visible in detail but do not make the overall state unhealthy. Unknown is never collapsed into warning or healthy.

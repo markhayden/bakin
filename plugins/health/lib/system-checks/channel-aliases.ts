@@ -31,6 +31,7 @@ export async function checkChannelAliases(runtime: Pick<AgentRuntimeAdapter, 'ch
       incident: {
         key: 'inspection-failed',
         title: 'Channel alias status is unknown',
+        class: 'evidence_gap',
         impact: 'Health cannot confirm whether configured aliases resolve to available runtime channels.',
         disposition: 'watch',
         resources: [{ kind: 'runtime', id: 'active', label: 'Active runtime' }],
