@@ -13,7 +13,15 @@ export type {
   AlertVariantOptions,
   LegacyAlertVariant,
 } from '@bakin/ui'
-export * from '@/components/ui/avatar'
+export {
+  Avatar,
+  AvatarBadge,
+  AvatarFallback,
+  AvatarGroup,
+  AvatarGroupCount,
+  AvatarImage,
+} from '@bakin/ui'
+export type { AvatarProps, AvatarSize, LegacyAvatarSize } from '@bakin/ui'
 export { Badge, badgeVariants } from '@bakin/ui'
 export type {
   BadgeProps,
@@ -32,9 +40,19 @@ export type {
   LegacyButtonSize,
   LegacyButtonVariant,
 } from '@bakin/ui'
-export * from '@/components/ui/card'
+export {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '@bakin/ui'
+export type { CardProps, CardSize, LegacyCardSize } from '@bakin/ui'
 export * from '@/components/ui/checkbox'
-export * from '@/components/ui/collapsible'
+export { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@bakin/ui'
+export type { CollapsibleContentProps, CollapsibleProps, CollapsibleTriggerProps } from '@bakin/ui'
 export * from '@/components/ui/command'
 export * from '@/components/ui/dialog'
 export * from '@/components/ui/dropdown-menu'
@@ -58,9 +76,11 @@ export type {
   ProgressTrackProps,
 } from '@bakin/ui'
 export * from '@/components/ui/select'
-export * from '@/components/ui/separator'
+export { Separator } from '@bakin/ui'
+export type { SeparatorProps } from '@bakin/ui'
 export * from '@/components/ui/sheet'
-export * from '@/components/ui/skeleton'
+export { Skeleton } from '@bakin/ui'
+export type { SkeletonProps, SkeletonShape } from '@bakin/ui'
 export * from '@/components/ui/switch'
 export * from '@/components/ui/table'
 export * from '@/components/ui/tabs'

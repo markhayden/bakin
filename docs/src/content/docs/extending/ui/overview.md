@@ -74,6 +74,69 @@ Routine alerts announce with `role="status"`. Danger alerts default to `role="al
 
 Existing `default` and `destructive` action variants and `default`, `secondary`, and `destructive` badge variants remain compatibility aliases while owned consumers migrate. New work uses the semantic names above.
 
+## Surface and Content Primitives
+
+The surface/content set covers bounded objects, compact identity, content boundaries, loading presentation, and optional disclosure:
+
+| Need | Component | Contract |
+| --- | --- | --- |
+| Represent a coherent bounded object | `Card` and its subparts | Use for an entity, record, or grouped data—not page layout |
+| Show compact identity | `Avatar`, `AvatarFallback`, and group helpers | Pair the visual with a visible or accessible identity name |
+| Reinforce a real content boundary | `Separator` | Decorative by default; opt into separator semantics deliberately |
+| Approximate content while a labelled region loads | `Skeleton` | Silent by default and motion-reduced automatically |
+| Reveal optional supporting detail | `Collapsible` and its trigger/content | The trigger owns expanded state, focus, and panel association |
+
+```tsx
+import {
+  Avatar,
+  AvatarFallback,
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+  Skeleton,
+} from '@makinbakin/sdk/ui'
+
+export function WorkflowObject({ loading }: { loading: boolean }) {
+  if (loading) {
+    return (
+      <section aria-labelledby="workflow-loading" aria-busy="true">
+        <h2 id="workflow-loading">Loading workflow</h2>
+        <Skeleton shape="text" />
+      </section>
+    )
+  }
+
+  return (
+    <Card aria-labelledby="workflow-title">
+      <CardHeader>
+        <CardTitle id="workflow-title">Launch review</CardTitle>
+        <CardDescription>Coordinates final publishing approval.</CardDescription>
+        <CardAction><Avatar><AvatarFallback>AM</AvatarFallback></Avatar></CardAction>
+      </CardHeader>
+      <CardContent>Two approvals are waiting.</CardContent>
+      <Collapsible>
+        <CollapsibleTrigger>Advanced retry policy</CollapsibleTrigger>
+        <CollapsibleContent>Retry twice before blocking the run.</CollapsibleContent>
+      </Collapsible>
+      <CardFooter>Updated 8 minutes ago</CardFooter>
+    </Card>
+  )
+}
+```
+
+Card is intentionally not a layout primitive. Build page and section hierarchy from headings, semantic sections, whitespace, responsive layout primitives, surface shifts, and occasional dividers. A page made of bordered panels—or a Card nested inside another bordered Card—is a design-system failure, even if each individual component is valid. Reserve Card for an object whose boundary still makes sense when the object moves elsewhere.
+
+`Skeleton` does not announce itself. Put `aria-busy="true"` and a useful accessible name on the region being loaded. Use `shape="text"`, `"circle"`, or `"rectangle"` to approximate broad geometry, and keep the loading preview simpler than the final interface.
+
+Collapsible is for supporting detail that can safely start hidden. Required decisions, errors, and primary actions stay visible. Its trigger already supplies button behavior, `aria-expanded`, and the panel relationship; do not recreate that state with a clickable `div`.
+
 ## Stylesheet Contract
 
 `@makinbakin/sdk/styles.css` is the one supported compiled design-system stylesheet. The Bakin host loads it once for installed plugins, so plugin client entries must not import it or copy its contents into plugin-owned CSS.

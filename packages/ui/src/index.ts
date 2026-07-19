@@ -49,3 +49,37 @@ export type {
   ProgressTone,
   ProgressTrackProps,
 } from './primitives/progress'
+
+export {
+  Avatar,
+  AvatarBadge,
+  AvatarFallback,
+  AvatarGroup,
+  AvatarGroupCount,
+  AvatarImage,
+} from './primitives/avatar'
+export type { AvatarProps, AvatarSize, LegacyAvatarSize } from './primitives/avatar'
+
+export {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from './primitives/card'
+export type { CardProps, CardSize, LegacyCardSize } from './primitives/card'
+
+export { Separator } from './primitives/separator'
+export type { SeparatorProps } from './primitives/separator'
+
+export { Skeleton } from './primitives/skeleton'
+export type { SkeletonProps, SkeletonShape } from './primitives/skeleton'
+
+export { Collapsible, CollapsibleContent, CollapsibleTrigger } from './primitives/collapsible'
+export type {
+  CollapsibleContentProps,
+  CollapsibleProps,
+  CollapsibleTriggerProps,
+} from './primitives/collapsible'

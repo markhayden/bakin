@@ -53,3 +53,23 @@ test('public action and status family visual baseline', async ({ page }) => {
   expect(browserErrors).toEqual([])
   await expect(page).toHaveScreenshot('foundation-action-status.png')
 })
+
+test('public surface and content family visual baseline', async ({ page }) => {
+  const browserErrors: string[] = []
+  page.on('console', (message) => {
+    if (message.type() === 'error') browserErrors.push(`console: ${message.text()}`)
+  })
+  page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
+  page.on('requestfailed', (request) => {
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+  })
+
+  await page.goto('/iframe.html?id=foundation-surface-and-content--overview&viewMode=story', { waitUntil: 'networkidle' })
+  await expect(page.getByRole('heading', { name: 'Surface and content', exact: true })).toBeVisible()
+  await expect(page.getByText('Launch review workflow', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Advanced retry policy', exact: true })).toHaveAttribute('aria-expanded', 'false')
+  await page.evaluate(async () => document.fonts.ready)
+
+  expect(browserErrors).toEqual([])
+  await expect(page).toHaveScreenshot('foundation-surface-content.png')
+})

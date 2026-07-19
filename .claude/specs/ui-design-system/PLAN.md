@@ -683,6 +683,23 @@ document that Card is bounded-object-only rather than the page-layout default.
 **Acceptance:** content stress and loading stories exist; composition guidance
 rejects nested-card examples; avatar fallbacks and collapsible semantics pass.
 
+**Completed:** Avatar, Card, Separator, Skeleton, and Collapsible now resolve
+from the private presentation package through the supported SDK entrypoint and
+the host compatibility bridge. Canonical avatar/card sizes retain `default`
+as a migration alias; separators are decorative unless semantic structure is
+explicitly requested; skeletons are silent and reduced-motion-safe; and the
+Base UI disclosure owns focus, expanded state, and panel association. Public
+family and per-primitive stories cover bounded-object guidance, initial
+fallbacks, long technical content, loading geometry, narrow containers, and
+keyboard disclosure behavior. The author guide explicitly rejects page-shell
+cards and nested bordered cards. Component, package-boundary, Storybook axe and
+interaction, responsive Chromium/Firefox/WebKit, and desktop/mobile visual
+gates pass, as do the 7,880-test repository suite and the isolated 11-test
+drag-and-drop gate. The canonical stylesheet remains one runtime copy at
+294,714 bytes (+2,237); the focused SDK UI entry is 71,066 bytes and 423,075 bytes reachable
+(+7,893 reachable after shared-chunk redistribution), with no chart or
+conversation dependency.
+
 **Verification:** component/story/a11y/visual tests and card anti-pattern docs.
 
 **Dependencies:** T20.\
@@ -692,9 +709,9 @@ rejects nested-card examples; avatar fallbacks and collapsible semantics pass.
 
 ### Checkpoint 3A — Package boundary and first primitives
 
-- [ ] Host, SDK consumer fixture, and public Storybook use one implementation.
-- [ ] No plugin can import the private package.
-- [ ] Payload report proves base entrypoints do not pull heavy domains.
+- [x] Host, SDK consumer fixture, and public Storybook use one implementation.
+- [x] No plugin can import the private package.
+- [x] Payload report proves base entrypoints do not pull heavy domains.
 
 ### T23 — Migrate text-field primitives
 
