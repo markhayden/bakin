@@ -25,6 +25,8 @@ const ROOT_PACKAGE_PATH = join(REPO_ROOT, 'package.json')
 const SDK_PACKAGE_PATH = join(SDK_DIR, 'package.json')
 export const PUBLIC_SDK_PACKAGE_NAME = '@makinbakin/sdk'
 export const SDK_STYLES_EXPORT = './styles.css'
+export const SDK_STYLES_SPECIFIER = `${PUBLIC_SDK_PACKAGE_NAME}/styles.css`
+const CANONICAL_SDK_STYLES_PATH = join(SDK_DIR, 'styles.css')
 
 export interface SdkExportEntry {
   exportPath: string
@@ -268,6 +270,25 @@ function buildStylesheet(outDir: string): void {
   }
   if (!existsSync(output) || statSync(output).size === 0) {
     throw new Error(`Expected ${SDK_STYLES_EXPORT} to be generated`)
+  }
+  assertSdkStylesheetIdentity(output)
+}
+
+/** Refuse to publish CSS that differs from the host/Storybook artifact. */
+export function assertSdkStylesheetIdentity(
+  candidatePath: string,
+  canonicalPath = CANONICAL_SDK_STYLES_PATH,
+): void {
+  if (!existsSync(canonicalPath)) {
+    throw new Error(`Canonical SDK stylesheet is missing at ${canonicalPath}; run bun run build:css`)
+  }
+  if (!existsSync(candidatePath)) {
+    throw new Error(`Compiled SDK stylesheet is missing at ${candidatePath}`)
+  }
+  if (!readFileSync(candidatePath).equals(readFileSync(canonicalPath))) {
+    throw new Error(
+      'SDK stylesheet does not match the canonical artifact; run bun run build:css and commit packages/sdk/styles.css',
+    )
   }
 }
 

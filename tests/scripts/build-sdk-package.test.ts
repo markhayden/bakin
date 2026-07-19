@@ -5,7 +5,9 @@ import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 import {
   SDK_EXPORTS,
+  SDK_STYLES_SPECIFIER,
   PUBLIC_SDK_PACKAGE_NAME,
+  assertSdkStylesheetIdentity,
   buildSdkPackage,
   findForbiddenPackageImports,
 } from '../../scripts/build-sdk-package'
@@ -55,10 +57,14 @@ describe('buildSdkPackage', () => {
     })
     expect(pkg.dependencies.zod).toBeDefined()
     expect(pkg.dependencies['@base-ui/react']).toBeDefined()
+    expect(SDK_STYLES_SPECIFIER).toBe('@makinbakin/sdk/styles.css')
     expect(pkg.exports['./styles.css']).toBe('./styles.css')
     expect(pkg.sideEffects).toEqual(['./styles.css'])
     expect(existsSync(join(outDir, 'styles.css'))).toBe(true)
     expect(readFileSync(join(outDir, 'styles.css'), 'utf-8')).toContain('--bakin-color-canvas-default')
+    expect(readFileSync(join(outDir, 'styles.css'))).toEqual(
+      readFileSync(join(repoRoot, 'packages/sdk/styles.css')),
+    )
 
     for (const entry of SDK_EXPORTS) {
       const exportConfig = pkg.exports[entry.exportPath]
@@ -106,6 +112,22 @@ describe('buildSdkPackage', () => {
 
     expect(leaks).toEqual([])
   }, 120_000)
+
+  it('rejects a compiled package stylesheet that differs from the canonical artifact', () => {
+    const dir = join(testRoot, 'stylesheet-identity')
+    const canonicalPath = join(dir, 'canonical.css')
+    const candidatePath = join(dir, 'candidate.css')
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(canonicalPath, ':root { --bakin-test: canonical; }\n')
+    writeFileSync(candidatePath, ':root { --bakin-test: stale; }\n')
+
+    expect(() => assertSdkStylesheetIdentity(candidatePath, canonicalPath)).toThrow(
+      'SDK stylesheet does not match the canonical artifact',
+    )
+
+    writeFileSync(candidatePath, readFileSync(canonicalPath))
+    expect(() => assertSdkStylesheetIdentity(candidatePath, canonicalPath)).not.toThrow()
+  })
 
   it('copies the npm README with the public package name', async () => {
     const outDir = join(testRoot, 'package-readme')

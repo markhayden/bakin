@@ -13,13 +13,18 @@ description: Use @makinbakin/sdk to build plugins with supported registration, r
 | --- | --- |
 | `@makinbakin/sdk` | plugin registration, route helpers, top-level types, and core exports |
 | `@makinbakin/sdk/ui` | base UI primitives such as buttons, inputs, dialogs, tables, tabs, and badges |
+| `@makinbakin/sdk/layout` | canonical page and responsive composition |
+| `@makinbakin/sdk/patterns` | reusable application-aware UI patterns |
+| `@makinbakin/sdk/charts` | isolated data-visualization components |
+| `@makinbakin/sdk/conversation` | isolated conversation UI and models |
 | `@makinbakin/sdk/hooks` | shared React hooks |
-| `@makinbakin/sdk/components` | higher-level Bakin shell components |
+| `@makinbakin/sdk/components` | migration-only legacy component barrel |
 | `@makinbakin/sdk/slots` | slot registry and `<Slot>` primitive |
 | `@makinbakin/sdk/types` | public TypeScript contract types |
 | `@makinbakin/sdk/utils` | shared utilities |
 | `@makinbakin/sdk/metadata` | docs-aware contract helper types and compatibility exports |
 | `@makinbakin/sdk/routing` | typed declarative route helpers re-exported from the canonical routing package |
+| `@makinbakin/sdk/styles.css` | canonical compiled design-system stylesheet |
 
 </div>
 
@@ -68,10 +73,15 @@ Prefer SDK UI components for plugin UI. Custom UI is allowed for domain-specific
 
 ```tsx
 import { Button, Input, Table } from '@makinbakin/sdk/ui'
-import { PluginHeader } from '@makinbakin/sdk/components'
 ```
 
-Avoid copying host component files into a plugin. If a component is broadly useful, promote it to the SDK instead.
+Avoid copying host component files into a plugin. If a component is broadly useful, promote it to a focused SDK entrypoint instead. `@makinbakin/sdk/components` remains available only while existing consumers migrate.
+
+The Bakin host loads the design-system stylesheet once. Installed plugin clients must not import it. Standalone previews and browser test harnesses import the exact public artifact once at their root:
+
+```ts
+import '@makinbakin/sdk/styles.css'
+```
 
 ## Conversation Kit
 

@@ -44,6 +44,15 @@ bun test            # tests/ via @makinbakin/sdk/testing
 bun x tsc --noEmit
 ```
 
+The Bakin host supplies the design-system stylesheet, so do not import it from
+`client.tsx`. If you mount this plugin in a standalone Storybook, browser
+preview, or test harness, load the same public artifact once at that harness's
+root:
+
+```ts
+import '@makinbakin/sdk/styles.css'
+```
+
 ## Install into Bakin
 
 ```sh

@@ -8,7 +8,7 @@ import '@fontsource/jetbrains-mono/latin-400.css'
 import '@fontsource/jetbrains-mono/latin-500.css'
 
 // The host, public package, and Storybook all load this one compiled artifact.
-import '../packages/sdk/styles.css'
+import '@makinbakin/sdk/styles.css'
 import '../storybook/fixtures/runtime.css'
 import {
   BAKIN_STORYBOOK_VIEWPORTS,

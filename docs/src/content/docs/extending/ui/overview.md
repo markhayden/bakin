@@ -18,9 +18,21 @@ The catalog will grow component by component as primitives, layout recipes, syst
 
 ## Authoring Rule
 
-Start with `@makinbakin/sdk/ui` and `@makinbakin/sdk/components`. Use semantic component props and documented composition patterns. Add plugin-owned, root-scoped CSS only for domain-specific presentation that the SDK does not cover.
+Start with the focused visual SDK entrypoints: `@makinbakin/sdk/ui`, `@makinbakin/sdk/layout`, `@makinbakin/sdk/patterns`, `@makinbakin/sdk/charts`, and `@makinbakin/sdk/conversation`. Use semantic component props and documented composition patterns. The older `@makinbakin/sdk/components` barrel is migration-only and should not gain new consumers. Add plugin-owned, root-scoped CSS only for domain-specific presentation that the SDK does not cover.
 
 Do not copy host components into a plugin. If the same need recurs across official or third-party plugins, propose it as an SDK contract with its public story, interaction test, accessibility coverage, and responsive states.
+
+## Stylesheet Contract
+
+`@makinbakin/sdk/styles.css` is the one supported compiled design-system stylesheet. The Bakin host loads it once for installed plugins, so plugin client entries must not import it or copy its contents into plugin-owned CSS.
+
+Standalone Storybook instances, browser previews, and external test harnesses do not have the host stylesheet. Import the public artifact once at the preview or application root:
+
+```ts
+import '@makinbakin/sdk/styles.css'
+```
+
+This is the exact artifact used by Bakin and the public component catalog. It supplies the namespaced `--bakin-*` semantic tokens and supported component styling; it does not make the host's arbitrary Tailwind utility vocabulary public API.
 
 ## Navigation Stays Separate
 

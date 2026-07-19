@@ -48,7 +48,7 @@ comparison, and deletion of replaced styling/allowances.
 
 - [x] T19 Establish the private `packages/ui` boundary
 - [x] T20a Establish focused SDK UI entrypoints
-- [ ] T20b Establish the stylesheet/package artifact
+- [x] T20b Establish the stylesheet/package artifact
 - [ ] T21 Migrate action and status primitives
 - [ ] T22 Migrate surface and content primitives
 - [ ] Checkpoint 3A: package boundary and first primitives green

@@ -23,6 +23,7 @@
  *   - `@makinbakin/sdk/types`      — full type re-exports
  *   - `@makinbakin/sdk/metadata`   — docs-aware contract helpers
  *   - `@makinbakin/sdk/testing`    — plugin test harness (createTestContext, ...)
+ *   - `@makinbakin/sdk/styles.css` — canonical compiled design-system CSS
  *
  * Plugin authors: at build time, mark `@makinbakin/sdk`, `@makinbakin/sdk/*`, and
  * `react`/`react-dom` as externals. At runtime the browser's import map

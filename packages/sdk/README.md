@@ -108,10 +108,28 @@ The public npm package exposes these sub-paths:
 | `@makinbakin/sdk/utils` | Shared utilities |
 | `@makinbakin/sdk/metadata` | Docs-aware contract metadata helpers |
 | `@makinbakin/sdk/routing` | Typed declarative route helpers |
+| `@makinbakin/sdk/styles.css` | Canonical compiled design-system stylesheet |
 
 Use the focused visual entrypoints for new plugin UI. Existing
 `@makinbakin/sdk/components` consumers migrate as their replacement exports
 land; do not add new dependencies on that legacy barrel.
+
+## Stylesheet
+
+Bakin loads one shared copy of `@makinbakin/sdk/styles.css` for the host and all
+installed plugins. Do not import it from a plugin client entry or copy its
+contents into plugin-owned CSS.
+
+Standalone browser previews and test harnesses do not have the Bakin host, so
+they import the public artifact once at their application root:
+
+```ts
+import '@makinbakin/sdk/styles.css'
+```
+
+That package export is the exact compiled stylesheet used by the host and the
+public component catalog. Plugin-owned CSS remains for domain-specific styling
+and should be scoped to the plugin root.
 
 ## Repository
 

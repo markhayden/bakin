@@ -623,8 +623,16 @@ fixture compiles against every focused path, and dependency/size gates prove
 the new domain entries add no runtime bytes or cross-domain reachability. No
 component, page, plugin, or route migration is included in this slice.
 
-**T20b status:** Pending. Establish and prove the public stylesheet/package
-artifact without broadening the focused JavaScript entrypoint contract.
+**T20b status (2026-07-18):** Complete. `@makinbakin/sdk/styles.css` is the
+explicit side-effectful public artifact used by the host, npm package, and
+public Storybook. The SDK publisher recompiles CSS and refuses release unless
+its bytes match the checked-in canonical artifact; a dry-run package produced
+the same SHA-256. Storybook imports through the public package specifier, while
+the host continues to embed and serve that same file once at `/globals.css`.
+Browser verification proved the namespaced tokens and a real SDK component are
+styled with no console errors. Author docs and the mirrored reference-plugin
+guidance distinguish host-loaded plugin clients from standalone preview/test
+harness imports. No component, page, plugin, or route migration is included.
 
 **Acceptance:** export maps and package build publish the expected artifacts;
 each entrypoint has an independent dependency graph; public stories can import
@@ -638,6 +646,7 @@ production size report.
 build/tests.\
 **Size:** M.\
 **Commit:** `feat(sdk)!: focused browser UI entrypoint foundation`
+**T20b commit:** `feat(sdk)!: freeze canonical stylesheet artifact`
 
 ### T21 — Migrate action and status primitives
 
