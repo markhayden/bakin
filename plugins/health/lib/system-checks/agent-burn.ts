@@ -8,7 +8,12 @@
  * dashboard, and the CLI can never disagree. Settings (settings.burn) are
  * re-read every run; a flag is a prompt to look, never an enforcement action.
  */
-import { buildAgentBurnReports, type BurnFlag, type ScheduledJobEvidence } from '../../../../src/core/agent-burn'
+import {
+  buildAgentBurnReports,
+  coverageCanFlagSessions,
+  type BurnFlag,
+  type ScheduledJobEvidence,
+} from '../../../../src/core/agent-burn'
 import { LedgerUnavailableError } from '../../../../src/core/execution-ledger'
 import {
   getLastUsageScan,
@@ -102,15 +107,18 @@ export async function checkAgentBurnWith(
   const scanAgeMs = lastScan ? Math.max(0, now - lastScan.at) : null
   const scanInFlight = isUsageHistoryScanInFlight()
   const scanFresh = !scanInFlight && scanAgeMs !== null && scanAgeMs <= staleAfterMs
-  // Cron evidence only matters when session evidence can produce a runaway
-  // flag — skip the runtime round-trip when coverage is stale/incomplete.
-  const coverageComplete = scanFresh && lastScan?.report.coverage.status === 'complete'
-  const scheduledJobs = coverageComplete && deps.scheduledJobs ? await deps.scheduledJobs() : null
+  // Stale transcript rows remain useful history, but cannot create a new
+  // spike/unexplained verdict or a fresh healthy observation.
+  const coverage = scanFresh ? lastScan?.report.coverage : { agents: [] as const }
+  // Cron evidence is skipped only when NO agent can produce a runaway flag
+  // (per-agent predicate — a partial fleet must not strip the D11 downgrade
+  // from a fully-covered agent's page).
+  const scheduledJobs = coverageCanFlagSessions(coverage) && deps.scheduledJobs
+    ? await deps.scheduledJobs()
+    : null
   try {
     reports = (deps.buildReports ?? buildAgentBurnReports)(now, {
-      // Stale transcript rows remain useful history, but cannot create a new
-      // spike/unexplained verdict or a fresh healthy observation.
-      coverage: scanFresh ? lastScan?.report.coverage : { agents: [] },
+      coverage,
       scheduledJobs,
     })
   } catch (err) {

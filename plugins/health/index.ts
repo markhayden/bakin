@@ -12,7 +12,7 @@ import {
   UsageHistoryStoreReadError,
 } from '@bakin/core/usage-history/store'
 import { LedgerUnavailableError, listLiveRuns } from '../../src/core/execution-ledger'
-import { buildAgentBurnReports, getAgentBurnWindowScope, type ScheduledJobEvidence } from '../../src/core/agent-burn'
+import { buildAgentBurnReports, coverageCanFlagSessions, getAgentBurnWindowScope, type ScheduledJobEvidence } from '../../src/core/agent-burn'
 import { getLastReport, runDiagnostics } from '../../src/core/doctor'
 import { createLogger } from '../../src/core/logger'
 import { getAgentUsageSnapshot, getAllAgentUsage } from '../../src/core/agent-usage'
@@ -550,9 +550,9 @@ const routes = [
         const agents = buildAgentBurnReports(now, {
           windowHours,
           coverage: evidence.coverage,
-          // Cron evidence only matters when a runaway flag can fire — skip
-          // the runtime round-trip when coverage is incomplete.
-          scheduledJobs: evidence.coverage.status === 'complete'
+          // ONE cron-gate predicate shared with the doctor check (D11) —
+          // skipped only when no agent's coverage can produce a runaway flag.
+          scheduledJobs: coverageCanFlagSessions(evidence.coverage)
             ? await fetchScheduledJobsEvidence(routeCtx.runtime)
             : null,
         })

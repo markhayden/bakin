@@ -412,6 +412,47 @@ describe('checkAgentBurn', () => {
     expect(row.evidence).toMatchObject({ downgraded: true, scheduledJobs: ['nightly-digest'] })
   })
 
+  it('fetches cron evidence when any agent has complete coverage — even a partial fleet (D11)', async () => {
+    usageScanGlobal.__bakinUsageHistoryLastScan = {
+      at: Date.now(),
+      report: {
+        scanned: 1, skipped: 0, failed: 1,
+        coverage: {
+          status: 'partial',
+          reason: 'agent_scan_failed',
+          agents: [
+            { agent: 'covered', status: 'complete' },
+            { agent: 'broken', status: 'partial' },
+          ],
+        },
+      },
+    }
+    reports = []
+    const scheduledJobs = mock(async () => [])
+    await checkAgentBurnWith({ buildReports, scheduledJobs })
+    // One broken transcript elsewhere must not strip the cron downgrade
+    // from a fully-covered agent's runaway page.
+    expect(scheduledJobs).toHaveBeenCalledTimes(1)
+    expect(receivedOptions).toMatchObject({ scheduledJobs: [] })
+    usageScanGlobal.__bakinUsageHistoryLastScan = null
+  })
+
+  it('skips cron evidence when no agent can produce a runaway flag', async () => {
+    usageScanGlobal.__bakinUsageHistoryLastScan = {
+      at: Date.now(),
+      report: {
+        scanned: 0, skipped: 0, failed: 0,
+        coverage: { status: 'unavailable', reason: 'missing_session_tier', agents: [] },
+      },
+    }
+    reports = []
+    const scheduledJobs = mock(async () => [])
+    await checkAgentBurnWith({ buildReports, scheduledJobs })
+    expect(scheduledJobs).not.toHaveBeenCalled()
+    expect(receivedOptions).toMatchObject({ scheduledJobs: null })
+    usageScanGlobal.__bakinUsageHistoryLastScan = null
+  })
+
   it('fails loudly (error row) when the ledger is unavailable', async () => {
     throwLedger = true
     const results = observed(await checkAgentBurn())

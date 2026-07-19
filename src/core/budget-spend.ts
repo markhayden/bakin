@@ -298,16 +298,23 @@ async function resolveObservedLane(
   let lane: Lane | null = null
   if (invoke) {
     try {
-      const billing = (await invoke('models.resolveBilling', { agentId: agent, model: model || undefined })) as
+      // prospective:false = this is HISTORY: the hook must not substitute
+      // the agent's current effective model, so provider-scoped overrides
+      // can never match a guessed provider and no runtime round-trip runs
+      // on the budget hot path.
+      const billing = (await invoke('models.resolveBilling', {
+        agentId: agent,
+        model: model || undefined,
+        prospective: false,
+      })) as
         | { lane?: string; provider?: string; laneSource?: string }
         | undefined
       // A lane is trustworthy when the hook resolved a REAL provider from a
       // REAL model — 'other' is the could-not-resolve bucket whose
       // default-metered lane would book theoretical dollars as real spend
-      // (#689), and an empty model makes the hook substitute the agent's
-      // CURRENT effective model (a guess about the past), so its resolved
-      // provider proves nothing. An operator lane override is trusted in
-      // both cases: operator truth, not a guess.
+      // (#689). An operator lane override is trusted too (with
+      // prospective:false an override match is exact, never via a guessed
+      // provider): operator truth, not a guess.
       const providerResolved = model !== ''
         && typeof billing?.provider === 'string'
         && billing.provider !== '' && billing.provider !== 'other'

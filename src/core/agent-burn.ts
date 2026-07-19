@@ -145,6 +145,18 @@ export interface AgentBurnCoverage {
   }>
 }
 
+/**
+ * The ONE cron-gate predicate (D11): session evidence can produce a runaway
+ * flag for any agent with COMPLETE per-agent coverage — fleet status being
+ * 'partial' (one broken transcript elsewhere) must not strip the cron
+ * downgrade from a fully-covered agent's page. Both the doctor check and
+ * the /agent-effort route gate their cron fetch on this, so the two
+ * surfaces can never disagree.
+ */
+export function coverageCanFlagSessions(coverage: AgentBurnCoverage | undefined): boolean {
+  return (coverage?.agents ?? []).some((entry) => entry.status === 'complete')
+}
+
 export interface AgentBurnSources {
   readUsageHistorySince: typeof readUsageHistorySince
   readSessionUsageRollupsSince: typeof readSessionUsageRollupsSince

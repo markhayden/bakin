@@ -39,6 +39,7 @@ import {
   usageByAgentModelDaySince,
   readUsageByAgentModelDaySince,
   readUsageHistorySince,
+  readSessionUsageRollupsSince,
   UsageHistoryStoreReadError,
   type SessionDayUsage,
 } from '../../packages/core/src/usage-history/store'
@@ -442,6 +443,36 @@ describe('usage-history evidence migration', () => {
       )
       .all('s-default-origin')
     expect(stored).toEqual([{ origin: 'unknown' }])
+  })
+})
+
+describe('readSessionUsageRollupsSince (window sums, span user counts)', () => {
+  it('window-scopes token/turn sums while user counts span the wider read', () => {
+    // Day 1 (span-only): the user typed instructions; Day 2 (in-window):
+    // the session worked autonomously.
+    replaceSessionUsage('overnight', 'basil', [
+      row({ day: DAY1, model: 'm1', totalTokens: 100, messageCount: 2, userMessages: 3, firstTs: T1, lastTs: T1 + 1000 }),
+      row({ day: DAY2, model: 'm1', totalTokens: 2_000_000, messageCount: 25, userMessages: 0, firstTs: T2, lastTs: T2 + 1000 }),
+    ], { mtimeMs: 1, size: 1 }, 'external')
+
+    const [rollup] = readSessionUsageRollupsSince(DAY2, DAY1)
+    expect(rollup).toMatchObject({
+      agent: 'basil',
+      sessionId: 'overnight',
+      origin: 'external',
+      // Window (DAY2) sums only — the finished DAY1 activity contributes 0.
+      totalTokens: 2_000_000,
+      assistantMessages: 25,
+      // Span (DAY1+) user turns — yesterday's instructions still count.
+      userMessages: 3,
+    })
+
+    // A session with no in-window activity reports zero window evidence.
+    replaceSessionUsage('finished', 'basil', [
+      row({ day: DAY1, model: 'm1', totalTokens: 999, messageCount: 30, userMessages: 0, firstTs: T1, lastTs: T1 + 1000 }),
+    ], { mtimeMs: 1, size: 1 }, 'external')
+    const finished = readSessionUsageRollupsSince(DAY2, DAY1).find((r) => r.sessionId === 'finished')
+    expect(finished).toMatchObject({ totalTokens: 0, assistantMessages: 0, userMessages: 0 })
   })
 })
 

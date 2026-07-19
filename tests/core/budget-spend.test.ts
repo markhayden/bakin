@@ -228,7 +228,7 @@ describe('assembleBudgetSpend', () => {
     expect(s.daily.byAgent.main?.unattributed.subscriptionTokens).toBe(8_000)
     expect(s.daily.global.meteredUsdMicros).toBe(0)
     // The hook received NO model — no fabricated model reached resolution.
-    expect(resolveBillingCalls).toEqual([{ agentId: 'main', model: undefined }])
+    expect(resolveBillingCalls).toEqual([{ agentId: 'main', model: undefined, prospective: false }])
   })
 
   it('an explicit operator lane override is trusted even for an unresolvable model (#689 review)', async () => {

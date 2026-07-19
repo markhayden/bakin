@@ -103,14 +103,20 @@ export function registerModelsHooks(ctx: PluginContext): void {
     const agentId = data.agentId as string | undefined
     let model = typeof data.model === 'string' ? normalizeModelId(data.model) : undefined
     // No explicit model = the turn will run on the agent's effective model —
-    // resolve it so provider/model-scoped rules see the real target.
-    if (!model && agentId) {
+    // resolve it so provider/model-scoped rules see the real target. Callers
+    // attributing PAST usage (`prospective: false`, the spend engine's
+    // observed rows) skip this: substituting today's model into history
+    // would let provider-scoped overrides match a guessed provider, and it
+    // costs runtime round-trips on the budget hot path. Without a model,
+    // only agent-wide overrides can decide their lane.
+    const prospective = data.prospective !== false
+    if (!model && agentId && prospective) {
       const agents = await resolveAgents(ctx as unknown as PluginContext)
       model = agents.find((a) => a.agentId === agentId)?.effectiveModel ?? undefined
     }
     const billing = await resolveBilling(ctx as unknown as PluginContext, { agentId, model })
     return { ...billing, model: model ?? null }
-  }, { label: 'Resolve billing.', summary: 'Returns the provider, billing lane (metered vs subscription), and normalized model for an agent/model pair — falling back to the agent’s effective model when none is given. Use it to attribute or gate prospective spend before a turn or billed media call.', hookKind: 'rpc' })
+  }, { label: 'Resolve billing.', summary: 'Returns the provider, billing lane (metered vs subscription), lane source, and normalized model for an agent/model pair — falling back to the agent’s effective model when none is given, unless prospective:false marks the attribution as historical. Use it to attribute or gate spend before a turn or billed media call.', hookKind: 'rpc' })
 
   // Expose the per-turn routing policy to core dispatch, which resolves the
   // model/thinking for each turn before sending. Returns an empty config
