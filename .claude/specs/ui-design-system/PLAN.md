@@ -753,6 +753,23 @@ visual checks.
 **Description:** Move/restyle Checkbox, Switch, Select, and shared option/list
 presentation.
 
+**Completed:** Checkbox, Switch, and Select now resolve from the private
+presentation package through the supported SDK entrypoint and host
+compatibility bridge, while their shared option/list presentation remains a
+private implementation detail. Checked, unchecked, mixed, required, invalid,
+read-only, disabled, empty, grouped, open, long-value, and small-size states
+use one token contract; actual targets meet the 24 CSS-pixel minimum. Select
+preserves disabled-option navigation without activation, returns focus after
+commit, supports an empty value, and documents the required `items` mapping
+when submitted values differ from visible labels. Public family and
+per-primitive stories, 106 package-boundary/component assertions, ten
+desktop/mobile visual baselines, 15 Chromium/Firefox/WebKit behavior cases,
+and all 38 public Storybook axe/interaction stories pass. The legacy-style
+ratchet remains at 255 paths with no increased debt. The canonical stylesheet
+shrinks to 291,452 bytes (-416); the focused SDK UI entry shrinks to 65,487
+bytes (-5,579) and reaches 426,175 bytes (+2,124 after shared-chunk
+redistribution), with no chart or conversation dependency.
+
 **Acceptance:** selected/mixed/disabled/error/open states and full keyboard
 operation pass; touch targets meet the 24 CSS-pixel contract.
 

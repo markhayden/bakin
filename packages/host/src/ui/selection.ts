@@ -1,3 +1,7 @@
+/** Legacy host bridge for the canonical selection primitives. */
+export { Checkbox, Switch } from '@bakin/ui'
+export type { CheckboxProps, SwitchProps, SwitchSize } from '@bakin/ui'
+
 export {
   Select,
   SelectContent,
@@ -9,7 +13,7 @@ export {
   SelectSeparator,
   SelectTrigger,
   SelectValue,
-} from '../../../packages/host/src/ui/selection'
+} from '@bakin/ui'
 export type {
   SelectContentProps,
   SelectGroupProps,
@@ -22,4 +26,4 @@ export type {
   SelectTriggerProps,
   SelectTriggerSize,
   SelectValueProps,
-} from '../../../packages/host/src/ui/selection'
+} from '@bakin/ui'

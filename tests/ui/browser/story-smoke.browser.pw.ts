@@ -5,6 +5,7 @@ const behaviorStory = '/iframe.html?id=foundation-button--behavior-fixture&viewM
 const overviewStory = '/iframe.html?id=foundation-action-and-status--overview&viewMode=story'
 const surfaceOverviewStory = '/iframe.html?id=foundation-surface-and-content--overview&viewMode=story'
 const textFieldsOverviewStory = '/iframe.html?id=foundation-text-fields--overview&viewMode=story'
+const selectionOverviewStory = '/iframe.html?id=foundation-selection-controls--overview&viewMode=story'
 
 test('public story keeps keyboard, focus, console, and responsive contracts', async ({ page }) => {
   const browserErrors: string[] = []
@@ -182,6 +183,86 @@ test('text fields keep native state, focus, and mobile-mode contracts across bro
     await expect(page.getByLabel('Required email')).toHaveAttribute('inputmode', 'email')
     await expect(page.getByLabel('Numeric mobile mode')).toHaveAttribute('inputmode', 'numeric')
     await expect(page.getByLabel('Numeric mobile mode')).toHaveAttribute('autocomplete', 'one-time-code')
+  })
+
+  expect(browserErrors).toEqual([])
+})
+
+test('selection controls keep keyboard, state, target, and overflow contracts across browsers', async ({ page }) => {
+  const browserErrors: string[] = []
+  page.on('console', (message) => {
+    if (message.type() === 'error') browserErrors.push(`console: ${message.text()}`)
+  })
+  page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
+  page.on('requestfailed', (request) => {
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+  })
+
+  for (const width of responsiveWidths) {
+    await test.step(`${width}px selection overview has no document overflow`, async () => {
+      await page.setViewportSize({ width, height: 900 })
+      await page.goto(selectionOverviewStory, { waitUntil: 'networkidle' })
+      await expect(page.getByRole('heading', { name: 'Selection controls', exact: true })).toBeVisible()
+      const dimensions = await page.evaluate(() => ({
+        clientWidth: document.documentElement.clientWidth,
+        scrollWidth: document.documentElement.scrollWidth,
+      }))
+      expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth)
+    })
+  }
+
+  await test.step('long labels remain contained at 200% text sizing', async () => {
+    await page.setViewportSize({ width: 320, height: 900 })
+    await page.goto(selectionOverviewStory, { waitUntil: 'networkidle' })
+    await page.evaluate(() => { document.documentElement.style.fontSize = '200%' })
+    await expect(page.getByText('Mirror protected runtime metadata with its complete long-form policy label')).toBeVisible()
+    const dimensions = await page.evaluate(() => ({
+      clientWidth: document.documentElement.clientWidth,
+      scrollWidth: document.documentElement.scrollWidth,
+    }))
+    expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth)
+  })
+
+  await test.step('checkbox and switch retain labelled keyboard state', async () => {
+    await page.goto('/iframe.html?id=foundation-checkbox--behavior&viewMode=story', { waitUntil: 'networkidle' })
+    const checkbox = page.getByRole('checkbox', { name: 'Include archived tasks' })
+    await expect(checkbox).toBeFocused()
+    await expect(checkbox).toBeChecked()
+    await expect(page.getByRole('checkbox', { name: 'Partially selected workspaces' })).toHaveAttribute('aria-checked', 'mixed')
+    expect((await checkbox.boundingBox())?.height).toBeGreaterThanOrEqual(24)
+
+    await page.goto('/iframe.html?id=foundation-switch--behavior&viewMode=story', { waitUntil: 'networkidle' })
+    const control = page.getByRole('switch', { name: 'Automatic retry' })
+    await expect(control).toBeFocused()
+    await expect(control).toBeChecked()
+    await expect(page.getByRole('status')).toHaveText('Enabled')
+    expect((await control.boundingBox())?.height).toBeGreaterThanOrEqual(24)
+  })
+
+  await test.step('select opens, groups, blocks disabled activation, selects, and returns focus', async () => {
+    await page.goto('/iframe.html?id=foundation-select--behavior&viewMode=story', { waitUntil: 'networkidle' })
+    const trigger = page.getByRole('combobox', { name: 'Execution runtime' })
+    await expect(trigger).toBeFocused()
+    await expect(trigger).toContainText('Pi')
+    await expect(page.getByRole('listbox')).toBeHidden()
+    expect((await trigger.boundingBox())?.height).toBeGreaterThanOrEqual(24)
+
+    await trigger.press('Enter')
+    await expect(page.getByRole('listbox')).toBeVisible()
+    const unavailable = page.getByRole('option', { name: 'Unavailable runtime' })
+    await expect(unavailable).toHaveAttribute('aria-disabled', 'true')
+    await page.keyboard.press('End')
+    await expect(unavailable).toHaveAttribute('data-highlighted', '')
+    await page.keyboard.press('Enter')
+    await expect(page.getByRole('listbox')).toBeVisible()
+    await expect(trigger).toContainText('Pi')
+    await page.keyboard.press('ArrowUp')
+    const managed = page.getByRole('option', { name: /Managed production runtime/ })
+    await expect(managed).toHaveAttribute('data-highlighted', '')
+    await page.keyboard.press('Enter')
+    await expect(page.getByRole('listbox')).toBeHidden()
+    await expect(trigger).toContainText('Managed production runtime')
+    await expect(trigger).toBeFocused()
   })
 
   expect(browserErrors).toEqual([])

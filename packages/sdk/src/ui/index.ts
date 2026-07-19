@@ -50,7 +50,8 @@ export {
   CardTitle,
 } from '@bakin/ui'
 export type { CardProps, CardSize, LegacyCardSize } from '@bakin/ui'
-export * from '@/components/ui/checkbox'
+export { Checkbox } from '@bakin/ui'
+export type { CheckboxProps } from '@bakin/ui'
 export { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@bakin/ui'
 export type { CollapsibleContentProps, CollapsibleProps, CollapsibleTriggerProps } from '@bakin/ui'
 export * from '@/components/ui/command'
@@ -94,13 +95,38 @@ export type {
   ProgressTone,
   ProgressTrackProps,
 } from '@bakin/ui'
-export * from '@/components/ui/select'
+export {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectScrollDownButton,
+  SelectScrollUpButton,
+  SelectSeparator,
+  SelectTrigger,
+  SelectValue,
+} from '@bakin/ui'
+export type {
+  SelectContentProps,
+  SelectGroupProps,
+  SelectItemProps,
+  SelectLabelProps,
+  SelectProps,
+  SelectScrollDownButtonProps,
+  SelectScrollUpButtonProps,
+  SelectSeparatorProps,
+  SelectTriggerProps,
+  SelectTriggerSize,
+  SelectValueProps,
+} from '@bakin/ui'
 export { Separator } from '@bakin/ui'
 export type { SeparatorProps } from '@bakin/ui'
 export * from '@/components/ui/sheet'
 export { Skeleton } from '@bakin/ui'
 export type { SkeletonProps, SkeletonShape } from '@bakin/ui'
-export * from '@/components/ui/switch'
+export { Switch } from '@bakin/ui'
+export type { SwitchProps, SwitchSize } from '@bakin/ui'
 export * from '@/components/ui/table'
 export * from '@/components/ui/tabs'
 export { Textarea } from '@bakin/ui'

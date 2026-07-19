@@ -185,6 +185,73 @@ These are deliberately low-level controls. Preserve `required`, `readOnly`, `dis
 
 A raw native input or textarea is an exception path, not a styling shortcut. Use one only when an unusual domain interface cannot retain its behavior through the SDK primitive. The exception must record that reason in review, use semantic Bakin tokens, remain under the plugin's scoped root, preserve the same accessible names and states, and include focused story or browser coverage. Routine forms and cosmetic variations do not qualify.
 
+## Selection Primitives
+
+Choose the control by interaction model rather than appearance:
+
+| Need | Component | Contract |
+| --- | --- | --- |
+| Choose an independent yes/no value or several items | `Checkbox` | Mixed represents a parent with partially selected children; it is not a third saved value |
+| Change one binary setting immediately | `Switch` | The visible copy names the setting and nearby status copy can confirm the effect |
+| Choose one value from a bounded list | `Select` and its subparts | The field needs a visible label; groups organize options but do not label the field |
+
+```tsx
+import {
+  Checkbox,
+  Label,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Switch,
+} from '@makinbakin/sdk/ui'
+
+const runtimeLabels = {
+  '': 'No runtime',
+  pi: 'Pi',
+  openclaw: 'OpenClaw',
+}
+
+export function ExecutionSettings() {
+  return (
+    <section aria-labelledby="execution-settings-heading">
+      <h2 id="execution-settings-heading">Execution</h2>
+
+      <div>
+        <Checkbox id="include-archived" name="includeArchived" />
+        <Label htmlFor="include-archived">Include archived tasks</Label>
+      </div>
+
+      <div>
+        <Switch id="retry-failures" name="retryFailures" />
+        <Label htmlFor="retry-failures">Retry failures automatically</Label>
+      </div>
+
+      <div>
+        <Label htmlFor="execution-runtime">Execution runtime</Label>
+        <Select name="runtime" items={runtimeLabels} defaultValue="openclaw">
+          <SelectTrigger id="execution-runtime">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="">No runtime</SelectItem>
+            <SelectItem value="pi">Pi</SelectItem>
+            <SelectItem value="openclaw">OpenClaw</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+    </section>
+  )
+}
+```
+
+All selection controls preserve at least a 24 CSS-pixel interactive target, including `Switch size="sm"` and `SelectTrigger size="sm"`. Do not shrink them with plugin CSS. Keep long Checkbox and Switch labels wrapping beside the control, not underneath it.
+
+Pass `items` to Select when the submitted value and visible label differ; this lets `SelectValue` render the human label instead of the raw value. An item with `value=""` is an explicit “none” option. The unselected prompt describes the missing selection but never replaces the field label. Use `required`, `disabled`, and `aria-invalid` on the owning Select/trigger as shown in the catalog, and connect recovery copy with `aria-describedby`.
+
+Select's popup is the first consumer of the system-owned option/list presentation. Dropdown menus and Command reuse that private presentation contract as they graduate; generated class strings and popup DOM remain implementation details.
+
 ## Stylesheet Contract
 
 `@makinbakin/sdk/styles.css` is the one supported compiled design-system stylesheet. The Bakin host loads it once for installed plugins, so plugin client entries must not import it or copy its contents into plugin-owned CSS.

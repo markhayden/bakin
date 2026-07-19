@@ -94,3 +94,24 @@ test('public text fields family visual baseline', async ({ page }) => {
   expect(browserErrors).toEqual([])
   await expect(page).toHaveScreenshot('foundation-text-fields.png')
 })
+
+test('public selection controls family visual baseline', async ({ page }) => {
+  const browserErrors: string[] = []
+  page.on('console', (message) => {
+    if (message.type() === 'error') browserErrors.push(`console: ${message.text()}`)
+  })
+  page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
+  page.on('requestfailed', (request) => {
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+  })
+
+  await page.goto('/iframe.html?id=foundation-selection-controls--overview&viewMode=story', { waitUntil: 'networkidle' })
+  await expect(page.getByRole('heading', { name: 'Selection controls', exact: true })).toBeVisible()
+  await expect(page.getByRole('checkbox', { name: 'Apply to selected workspaces' })).toHaveAttribute('aria-checked', 'mixed')
+  await expect(page.getByRole('switch', { name: 'Daily approval digest' })).toHaveAttribute('aria-checked', 'true')
+  await expect(page.getByRole('combobox', { name: 'Fallback owner' })).toHaveAttribute('aria-invalid', 'true')
+  await page.evaluate(async () => document.fonts.ready)
+
+  expect(browserErrors).toEqual([])
+  await expect(page).toHaveScreenshot('foundation-selection-controls.png')
+})

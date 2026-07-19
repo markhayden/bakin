@@ -101,6 +101,38 @@ export {
   InputGroupText,
   InputGroupTextarea,
 } from './primitives/input-group'
+
+export { Checkbox } from './primitives/checkbox'
+export type { CheckboxProps } from './primitives/checkbox'
+
+export { Switch } from './primitives/switch'
+export type { SwitchProps, SwitchSize } from './primitives/switch'
+
+export {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectScrollDownButton,
+  SelectScrollUpButton,
+  SelectSeparator,
+  SelectTrigger,
+  SelectValue,
+} from './primitives/select'
+export type {
+  SelectContentProps,
+  SelectGroupProps,
+  SelectItemProps,
+  SelectLabelProps,
+  SelectProps,
+  SelectScrollDownButtonProps,
+  SelectScrollUpButtonProps,
+  SelectSeparatorProps,
+  SelectTriggerProps,
+  SelectTriggerSize,
+  SelectValueProps,
+} from './primitives/select'
 export type {
   InputGroupAddonAlign,
   InputGroupAddonProps,
