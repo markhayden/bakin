@@ -73,3 +73,24 @@ test('public surface and content family visual baseline', async ({ page }) => {
   expect(browserErrors).toEqual([])
   await expect(page).toHaveScreenshot('foundation-surface-content.png')
 })
+
+test('public text fields family visual baseline', async ({ page }) => {
+  const browserErrors: string[] = []
+  page.on('console', (message) => {
+    if (message.type() === 'error') browserErrors.push(`console: ${message.text()}`)
+  })
+  page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
+  page.on('requestfailed', (request) => {
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+  })
+
+  await page.goto('/iframe.html?id=foundation-text-fields--overview&viewMode=story', { waitUntil: 'networkidle' })
+  await expect(page.getByRole('heading', { name: 'Text fields', exact: true })).toBeVisible()
+  await expect(page.getByLabel('Owner email')).toHaveAttribute('inputmode', 'email')
+  await expect(page.getByLabel('Generated identifier')).toHaveAttribute('readonly', '')
+  await expect(page.getByLabel('Webhook URL')).toHaveAttribute('aria-invalid', 'true')
+  await page.evaluate(async () => document.fonts.ready)
+
+  expect(browserErrors).toEqual([])
+  await expect(page).toHaveScreenshot('foundation-text-fields.png')
+})

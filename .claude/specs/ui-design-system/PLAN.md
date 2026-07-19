@@ -718,6 +718,24 @@ conversation dependency.
 **Description:** Move/restyle Label, Input, Textarea, and InputGroup and expose
 the low-level semantics needed by the field contract.
 
+**Completed:** Label, Input, Textarea, and InputGroup now resolve from the
+private presentation package through the supported SDK entrypoint and host
+compatibility bridge. Native `required`, read-only, disabled, invalid,
+autocomplete, input type, and mobile input-mode semantics pass unchanged;
+single- and multiline controls use the approved focus, state, sizing, and
+overflow treatment; InputGroup owns inline/block context and safe addon focus
+without obscuring the editable control's label or button semantics. Public
+family and per-component stories cover autofill configuration, long technical
+values, validation recovery, narrow reflow, multiline composition, and mobile
+keyboard hints. The author guide defines raw native controls as a documented,
+scoped, accessible domain-interface exception rather than a styling shortcut.
+The 31-story axe/interaction suite, eight Chromium desktop/mobile visual
+baselines, 12 Chromium/Firefox/WebKit behavior cases, the 7,887-test repository
+suite, and the isolated 11-test drag-and-drop gate pass. Replacing the legacy
+field CSS shrinks the one canonical stylesheet to 291,868 bytes (-2,846); the
+focused SDK UI entry remains 71,066 bytes and grows only 976 reachable bytes to
+424,051, with no chart or conversation dependency.
+
 **Acceptance:** disabled, read-only, invalid, required, autofill, long value,
 and mobile keyboard/input modes are covered; raw input remains available only
 as the documented exception path.

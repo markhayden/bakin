@@ -57,9 +57,28 @@ export * from '@/components/ui/command'
 export * from '@/components/ui/dialog'
 export * from '@/components/ui/dropdown-menu'
 export * from '@/components/ui/form'
-export * from '@/components/ui/input'
-export * from '@/components/ui/input-group'
-export * from '@/components/ui/label'
+export { Input } from '@bakin/ui'
+export type { InputProps } from '@bakin/ui'
+export {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+  InputGroupText,
+  InputGroupTextarea,
+} from '@bakin/ui'
+export type {
+  InputGroupAddonAlign,
+  InputGroupAddonProps,
+  InputGroupButtonProps,
+  InputGroupButtonSize,
+  InputGroupInputProps,
+  InputGroupProps,
+  InputGroupTextProps,
+  InputGroupTextareaProps,
+} from '@bakin/ui'
+export { Label } from '@bakin/ui'
+export type { LabelProps } from '@bakin/ui'
 export * from '@/components/ui/popover'
 export {
   Progress,
@@ -84,5 +103,6 @@ export type { SkeletonProps, SkeletonShape } from '@bakin/ui'
 export * from '@/components/ui/switch'
 export * from '@/components/ui/table'
 export * from '@/components/ui/tabs'
-export * from '@/components/ui/textarea'
+export { Textarea } from '@bakin/ui'
+export type { TextareaProps } from '@bakin/ui'
 export * from '@/components/ui/tooltip'

@@ -137,6 +137,54 @@ Card is intentionally not a layout primitive. Build page and section hierarchy f
 
 Collapsible is for supporting detail that can safely start hidden. Required decisions, errors, and primary actions stay visible. Its trigger already supplies button behavior, `aria-expanded`, and the panel relationship; do not recreate that state with a clickable `div`.
 
+## Text-Field Primitives
+
+The text-field set standardizes the native entry controls and their composable adornments:
+
+| Need | Component | Contract |
+| --- | --- | --- |
+| Name a control | `Label` | Associate it with `htmlFor`; an in-control hint is never the label |
+| Capture one line | `Input` | Preserve the correct `type`, `inputMode`, `autoComplete`, and native state attributes |
+| Capture multiline content | `Textarea` | Retain vertical resizing and the same native state contract |
+| Join context or a local action to one control | `InputGroup` and its subparts | The editable control keeps its own accessible label |
+
+```tsx
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+  InputGroupText,
+  Label,
+} from '@makinbakin/sdk/ui'
+
+export function RepositoryField() {
+  return (
+    <div>
+      <Label htmlFor="repository-path">Repository path</Label>
+      <p id="repository-help">Enter the owner and repository name.</p>
+      <InputGroup aria-label="Repository address">
+        <InputGroupAddon>
+          <InputGroupText>github.com/</InputGroupText>
+        </InputGroupAddon>
+        <InputGroupInput
+          id="repository-path"
+          aria-describedby="repository-help"
+          autoComplete="off"
+        />
+        <InputGroupAddon align="inline-end">
+          <InputGroupButton>Paste</InputGroupButton>
+        </InputGroupAddon>
+      </InputGroup>
+    </div>
+  )
+}
+```
+
+These are deliberately low-level controls. Preserve `required`, `readOnly`, `disabled`, and `aria-invalid` as real attributes, and associate descriptions and error messages through `aria-describedby`. Use `type`, `inputMode`, and `autoComplete` deliberately so browsers can supply the correct validation, autofill, and mobile keyboard behavior. InputGroup adornments provide context; they do not replace a visible label or recovery message.
+
+A raw native input or textarea is an exception path, not a styling shortcut. Use one only when an unusual domain interface cannot retain its behavior through the SDK primitive. The exception must record that reason in review, use semantic Bakin tokens, remain under the plugin's scoped root, preserve the same accessible names and states, and include focused story or browser coverage. Routine forms and cosmetic variations do not qualify.
+
 ## Stylesheet Contract
 
 `@makinbakin/sdk/styles.css` is the one supported compiled design-system stylesheet. The Bakin host loads it once for installed plugins, so plugin client entries must not import it or copy its contents into plugin-owned CSS.

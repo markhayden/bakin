@@ -11,7 +11,7 @@
   },
   "css": {
     "canonicalPath": "packages/sdk/styles.css",
-    "canonicalBytes": 294714,
+    "canonicalBytes": 291868,
     "copyCount": 1,
     "copyPaths": [
       "packages/sdk/styles.css"
@@ -32,7 +32,7 @@
       "name": "sdk-components",
       "path": "packages/host/public/vendor/sdk-components.js",
       "bytes": 432610,
-      "reachableBytes": 1103583
+      "reachableBytes": 1104559
     },
     {
       "name": "sdk-conversation",
@@ -56,7 +56,7 @@
       "name": "sdk-ui",
       "path": "packages/host/public/vendor/sdk-ui.js",
       "bytes": 71066,
-      "reachableBytes": 423075
+      "reachableBytes": 424051
     }
   ],
   "vendorChunks": [
@@ -129,8 +129,8 @@
       "bytes": 3688
     },
     {
-      "path": "packages/host/public/vendor/sdk-shared-bf92xs7h.js",
-      "bytes": 324463
+      "path": "packages/host/public/vendor/sdk-shared-f0n18x45.js",
+      "bytes": 325439
     },
     {
       "path": "packages/host/public/vendor/sdk-shared-h21k78e5.js",

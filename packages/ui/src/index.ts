@@ -83,3 +83,31 @@ export type {
   CollapsibleProps,
   CollapsibleTriggerProps,
 } from './primitives/collapsible'
+
+export { Label } from './primitives/label'
+export type { LabelProps } from './primitives/label'
+
+export { Input } from './primitives/input'
+export type { InputProps } from './primitives/input'
+
+export { Textarea } from './primitives/textarea'
+export type { TextareaProps } from './primitives/textarea'
+
+export {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+  InputGroupText,
+  InputGroupTextarea,
+} from './primitives/input-group'
+export type {
+  InputGroupAddonAlign,
+  InputGroupAddonProps,
+  InputGroupButtonProps,
+  InputGroupButtonSize,
+  InputGroupInputProps,
+  InputGroupProps,
+  InputGroupTextProps,
+  InputGroupTextareaProps,
+} from './primitives/input-group'

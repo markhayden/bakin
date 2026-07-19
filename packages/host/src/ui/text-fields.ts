@@ -1,11 +1,15 @@
+/** Legacy host bridge for the canonical text-field primitives. */
 export {
+  Input,
   InputGroup,
   InputGroupAddon,
   InputGroupButton,
   InputGroupInput,
   InputGroupText,
   InputGroupTextarea,
-} from '../../../packages/host/src/ui/text-fields'
+  Label,
+  Textarea,
+} from '@bakin/ui'
 export type {
   InputGroupAddonAlign,
   InputGroupAddonProps,
@@ -15,4 +19,7 @@ export type {
   InputGroupProps,
   InputGroupTextProps,
   InputGroupTextareaProps,
-} from '../../../packages/host/src/ui/text-fields'
+  InputProps,
+  LabelProps,
+  TextareaProps,
+} from '@bakin/ui'
