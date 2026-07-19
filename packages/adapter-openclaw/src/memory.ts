@@ -397,6 +397,13 @@ function listSessionJsonlRefs(agentId: string): SourceRef[] {
  * activity" (a mislabel here fires a false unexplained-usage alarm about
  * the user's own chats after every /reset). Only an unreadable store — no
  * evidence at all — is `unknown`.
+ *
+ * Known residual: subagent sessions are also gateway-minted v4, so after a
+ * FULL store prune (rare — normal rotation replaces sessionIds under kept
+ * keys) old subagent transcripts classify external. That cannot mislead the
+ * burn surfaces: zero-user-turn external sessions never count toward the
+ * calm interactive bucket (they land in unexplained), and window-scoped
+ * session sums keep finished sessions from paging runaway.
  */
 function sessionOriginResolver(agentId: string): (sessionId: string) => 'bakin' | 'external' | 'unknown' {
   const store = readSessionStoreCached(join(agentSessionsDir(agentId), 'sessions.json'))

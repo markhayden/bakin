@@ -78,13 +78,15 @@ export interface AgentBurnInputs {
   completions: number
   /** Transcript-observed tokens in the window; null = scanner has no coverage. */
   observedTokens: number | null
-  /** Observed tokens from external-origin (interactive) sessions; null = no coverage. */
-  externalObservedTokens: number | null
   /** Observed tokens for today's local calendar day; null = no coverage. */
   todayObservedTokens: number | null
   /** Observed daily totals for trailing baseline days (excluding today). */
   baselineDailyTokens: number[]
-  /** Per-session window rollups for the runaway heuristic; empty = none/no coverage. */
+  /**
+   * Per-session rollups (window-scoped tokens/turns, span-scoped user
+   * counts) — the evidence unit behind the interactive bucket and the
+   * runaway heuristic; empty = none/no coverage.
+   */
   sessions: BurnSessionRollup[]
   /**
    * Runtime-native scheduled jobs (cron guard, D11). null = the runtime has
@@ -231,13 +233,20 @@ export function evaluateAgentBurn(
   }
 
   // ---- provenance buckets (#691) ----------------------------------------
-  // interactive = external-origin sessions (the operator's own chats — calm).
-  // unexplained = bakin/unknown-origin observed minus attributed (nobody can
-  // explain these tokens — worth a look). Unknown origin NEVER counts as
-  // interactive: the calm bucket must be provable.
-  const interactiveTokens = inputs.observedTokens === null || inputs.externalObservedTokens === null
+  // interactive = external-origin sessions WITH user turns (the operator's
+  // own chats — calm, and provably so: a zero-user-turn external session is
+  // autonomous accumulation, not a chat, and must never wear the calm
+  // label). Everything else observed lands in unexplained = observed minus
+  // interactive minus attributed (nobody can explain these tokens — worth a
+  // look). Unknown origin NEVER counts as interactive either.
+  const interactiveTokens = inputs.observedTokens === null
     ? null
-    : Math.min(inputs.externalObservedTokens, inputs.observedTokens)
+    : Math.min(
+        inputs.sessions
+          .filter((session) => session.origin === 'external' && session.userMessages > 0)
+          .reduce((sum, session) => sum + session.totalTokens, 0),
+        inputs.observedTokens,
+      )
   const unexplainedTokens =
     inputs.observedTokens === null || interactiveTokens === null || attributedTokens === null
       ? null
@@ -283,7 +292,11 @@ export function evaluateAgentBurn(
   // Only with real indicators: an external-origin session accumulating
   // token-bearing autonomous turns with ZERO user interaction, or an
   // unexplained bucket coinciding with a spike. Unknown-origin sessions
-  // never page — "cannot tell" is not evidence of runaway.
+  // never page — "cannot tell" is not evidence of runaway. Session token and
+  // turn sums are WINDOW-scoped (a session that went quiet before the window
+  // has zero window evidence and cannot re-page for days after the user
+  // already dealt with it), while user counts span the wider baseline so a
+  // pre-window user turn still proves interaction.
   const runawaySessions = inputs.sessions
     .filter((session) =>
       session.origin === 'external' &&
@@ -386,14 +399,26 @@ export function buildAgentBurnReports(
   const baselineSinceDay = toLocalDayKey(now - config.baselineDays * 86_400_000)
   const earliestDay = baselineSinceDay < windowSinceDay ? baselineSinceDay : windowSinceDay
 
-  // Session rollups deliberately read the WIDER baseline window: the runaway
-  // predicate requires zero user turns, and a user turn just before the burn
-  // window boundary (yesterday evening's instructions for overnight work) is
-  // still real interaction — truncating it would page on operator-initiated
-  // sessions. A session must be user-free across the whole baseline span
-  // before it can look runaway.
+  // Session rollups: token/turn sums are window-scoped, user counts span the
+  // WIDER baseline — the runaway predicate requires zero user turns, and a
+  // user turn just before the burn window boundary (yesterday evening's
+  // instructions for overnight work) is still real interaction, while a
+  // session that went quiet before the window has zero window evidence and
+  // cannot look runaway again after the user already dealt with it.
   const cells = sources.readUsageHistorySince(earliestDay).byAgentDay
-  const sessionRollups = sources.readSessionUsageRollupsSince(earliestDay)
+  const sessionRollups = sources.readSessionUsageRollupsSince(windowSinceDay, earliestDay)
+  const sessionsByAgent = new Map<string, BurnSessionRollup[]>()
+  for (const rollup of sessionRollups) {
+    const list = sessionsByAgent.get(rollup.agent) ?? []
+    list.push({
+      sessionId: rollup.sessionId,
+      origin: rollup.origin,
+      totalTokens: rollup.totalTokens,
+      userMessages: rollup.userMessages,
+      assistantMessages: rollup.assistantMessages,
+    })
+    sessionsByAgent.set(rollup.agent, list)
+  }
   const coverageByAgent = new Map(
     (opts.coverage?.agents ?? []).map((entry) => [entry.agent, entry.status]),
   )
@@ -431,24 +456,11 @@ export function buildAgentBurnReports(
           observedTokens: hasCompleteCoverage
             ? windowCells.reduce((sum, c) => sum + c.tokens.total, 0)
             : null,
-          externalObservedTokens: hasCompleteCoverage
-            ? windowCells.reduce((sum, c) => sum + c.originTokens.external, 0)
-            : null,
           todayObservedTokens: hasCompleteCoverage ? todayCell?.tokens.total ?? 0 : null,
           baselineDailyTokens: agentCells
             .filter((c) => c.day >= baselineSinceDay && c.day < today)
             .map((c) => c.tokens.total),
-          sessions: hasCompleteCoverage
-            ? sessionRollups
-                .filter((rollup) => rollup.agent === agent)
-                .map((rollup) => ({
-                  sessionId: rollup.sessionId,
-                  origin: rollup.origin,
-                  totalTokens: rollup.totalTokens,
-                  userMessages: rollup.userMessages,
-                  assistantMessages: rollup.assistantMessages,
-                }))
-            : [],
+          sessions: hasCompleteCoverage ? sessionsByAgent.get(agent) ?? [] : [],
           scheduledJobs: opts.scheduledJobs ?? null,
         },
         config,

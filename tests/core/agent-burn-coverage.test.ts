@@ -170,8 +170,8 @@ describe('buildAgentBurnReports coverage', () => {
     })
   })
 
-  it('session rollups read the wider baseline window so pre-window user turns kill runaway', () => {
-    const requestedSinceDays: string[] = []
+  it('session rollups window-scope sums but span-read user turns so pre-window interaction kills runaway', () => {
+    const requestedArgs: Array<[string, string | undefined]> = []
     usageCells.push({
       agent: 'basil', day: TODAY,
       tokens: { input: 2_000_000, output: 0, cacheRead: 0, cacheWrite: 0, total: 2_000_000 },
@@ -180,8 +180,8 @@ describe('buildAgentBurnReports coverage', () => {
     })
     const trackedSources: AgentBurnSources = {
       ...sources,
-      readSessionUsageRollupsSince: (sinceDay: string) => {
-        requestedSinceDays.push(sinceDay)
+      readSessionUsageRollupsSince: (windowSinceDay: string, spanSinceDay?: string) => {
+        requestedArgs.push([windowSinceDay, spanSinceDay])
         // The whole-window rollup carries yesterday's user turns; a
         // window-truncated read would have reported userMessages: 0.
         return [{
@@ -202,9 +202,10 @@ describe('buildAgentBurnReports coverage', () => {
       coverage: { agents: [{ agent: 'basil', status: 'complete' }] },
     }).find((report) => report.agent === 'basil')
 
-    // Baseline span (7 days) is wider than the 24h burn window.
+    // Window sums start at the burn window; user counts span the baseline.
+    const expectedWindow = localDayKey(NOW - config.windowHours * 3_600_000)
     const expectedEarliest = localDayKey(NOW - config.baselineDays * 86_400_000)
-    expect(requestedSinceDays).toEqual([expectedEarliest])
+    expect(requestedArgs).toEqual([[expectedWindow, expectedEarliest]])
     expect(basil?.flags.some((flag) => flag.kind === 'runaway')).toBe(false)
   })
 

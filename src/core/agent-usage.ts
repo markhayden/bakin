@@ -153,7 +153,7 @@ export function parseSessionUsageMessages(content: string): ParsedSessionUsage {
           continue
         }
         if (parsed.message.role !== 'assistant') continue
-        if (!isOptionalString(parsed.message.model) || !isOptionalString(parsed.message.provider)) {
+        if (!isOptionalString(parsed.message.model)) {
           malformedLines++
           continue
         }
@@ -172,7 +172,12 @@ export function parseSessionUsageMessages(content: string): ParsedSessionUsage {
           continue
         }
         const bareModel = parsed.message.model ?? ''
-        const provider = parsed.message.provider ?? ''
+        // Provider is qualification EVIDENCE, not a validity requirement:
+        // pre-#689 parsers never read it, so a null/odd-typed provider (some
+        // runtimes write `"provider": null`) must not flip a session that
+        // metered fine to partial — that would fail its rescan permanently.
+        // Non-string provider = no evidence = bare model.
+        const provider = typeof parsed.message.provider === 'string' ? parsed.message.provider : ''
         messages.push({
           tsMs: messageTimestampMs,
           model: provider && bareModel && !bareModel.includes('/')

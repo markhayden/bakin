@@ -102,7 +102,10 @@ export async function checkAgentBurnWith(
   const scanAgeMs = lastScan ? Math.max(0, now - lastScan.at) : null
   const scanInFlight = isUsageHistoryScanInFlight()
   const scanFresh = !scanInFlight && scanAgeMs !== null && scanAgeMs <= staleAfterMs
-  const scheduledJobs = deps.scheduledJobs ? await deps.scheduledJobs() : null
+  // Cron evidence only matters when session evidence can produce a runaway
+  // flag — skip the runtime round-trip when coverage is stale/incomplete.
+  const coverageComplete = scanFresh && lastScan?.report.coverage.status === 'complete'
+  const scheduledJobs = coverageComplete && deps.scheduledJobs ? await deps.scheduledJobs() : null
   try {
     reports = (deps.buildReports ?? buildAgentBurnReports)(now, {
       // Stale transcript rows remain useful history, but cannot create a new

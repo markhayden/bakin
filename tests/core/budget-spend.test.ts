@@ -206,16 +206,29 @@ describe('assembleBudgetSpend', () => {
     ]))
   })
 
-  it('an empty-model row never invokes the hook — no current-model guessing (#689 review)', async () => {
-    // The hook substitutes the agent's CURRENT effective model when given no
-    // model — a guess about the past. Empty-model rows must gap without it.
+  it('an empty-model row never trusts current-model guessing (#689 review)', async () => {
+    // With no model the hook substitutes the agent's CURRENT effective model
+    // — a guess about the past. Its resolved provider proves nothing; the
+    // row stays an honest gap unless an operator override decides the lane.
     usageCells.push(usage('main', TODAY, '', 500, 900_000))
     const s = await assembleBudgetSpend(NOW)
     expect(s.daily.global.meteredUsdMicros).toBe(0)
-    expect(resolveBillingCalls).toEqual([])
     expect(s.spendEvidence.daily.gaps).toEqual(expect.arrayContaining([
       expect.objectContaining({ lane: null, model: null, reasons: ['lane_unknown'] }),
     ]))
+  })
+
+  it('an operator override reaches empty-model rows too (#689 second pass)', async () => {
+    // Transcript rows with no model field must still honor an explicit
+    // agent-scoped billing override — otherwise their spend never counts
+    // against any cap the operator configured.
+    resolveBillingMode = 'agent-override'
+    usageCells.push(usage('main', TODAY, '', 8_000, 5_000_000))
+    const s = await assembleBudgetSpend(NOW)
+    expect(s.daily.byAgent.main?.unattributed.subscriptionTokens).toBe(8_000)
+    expect(s.daily.global.meteredUsdMicros).toBe(0)
+    // The hook received NO model — no fabricated model reached resolution.
+    expect(resolveBillingCalls).toEqual([{ agentId: 'main', model: undefined }])
   })
 
   it('an explicit operator lane override is trusted even for an unresolvable model (#689 review)', async () => {

@@ -335,6 +335,21 @@ const ROLLUP_SUMS = `
   COALESCE(SUM(costed_messages), 0)     AS costed,
   COALESCE(SUM(message_count), 0)       AS messages`
 
+const ORIGIN_SUMS = `
+  COALESCE(SUM(CASE WHEN origin = 'bakin' THEN total_tokens ELSE 0 END), 0)    AS bakin_total,
+  COALESCE(SUM(CASE WHEN origin = 'external' THEN total_tokens ELSE 0 END), 0) AS external_total,
+  COALESCE(SUM(CASE WHEN origin = 'unknown' THEN total_tokens ELSE 0 END), 0)  AS unknown_total`
+
+interface OriginSumRow {
+  bakin_total: number
+  external_total: number
+  unknown_total: number
+}
+
+function toOriginTokens(r: OriginSumRow): { bakin: number; external: number; unknown: number } {
+  return { bakin: r.bakin_total, external: r.external_total, unknown: r.unknown_total }
+}
+
 function toRollup(r: RollupRow): Omit<AgentUsageRollup, 'agent'> {
   return {
     tokens: { input: r.input, output: r.output, cacheRead: r.cache_read, cacheWrite: r.cache_write, total: r.total },
@@ -404,18 +419,15 @@ export function readUsageHistorySince(sinceDay: string): UsageHistorySnapshot {
         .all(sinceDay)
         .map((r) => ({ day: r.key, ...toRollup(r) }))
       const byAgentDay = handle
-        .prepare<RollupRow & { agent: string; bakin_total: number; external_total: number; unknown_total: number }, [string]>(
-          `SELECT agent, day AS key, ${ROLLUP_SUMS},
-                  COALESCE(SUM(CASE WHEN origin = 'bakin' THEN total_tokens ELSE 0 END), 0)    AS bakin_total,
-                  COALESCE(SUM(CASE WHEN origin = 'external' THEN total_tokens ELSE 0 END), 0) AS external_total,
-                  COALESCE(SUM(CASE WHEN origin = 'unknown' THEN total_tokens ELSE 0 END), 0)  AS unknown_total
+        .prepare<RollupRow & OriginSumRow & { agent: string }, [string]>(
+          `SELECT agent, day AS key, ${ROLLUP_SUMS}, ${ORIGIN_SUMS}
              FROM session_usage_days WHERE day >= ? GROUP BY agent, day ORDER BY day ASC, agent ASC`,
         )
         .all(sinceDay)
         .map((r) => ({
           agent: r.agent,
           day: r.key,
-          originTokens: { bakin: r.bakin_total, external: r.external_total, unknown: r.unknown_total },
+          originTokens: toOriginTokens(r),
           ...toRollup(r),
         }))
       return { byAgent, byDay, byAgentDay }
@@ -434,18 +446,15 @@ export function readUsageHistorySince(sinceDay: string): UsageHistorySnapshot {
 export function usageByAgentDaySince(sinceDay: string): AgentDayUsageRollup[] {
   try {
     return db()
-      .prepare<RollupRow & { agent: string; bakin_total: number; external_total: number; unknown_total: number }, [string]>(
-        `SELECT agent, day AS key, ${ROLLUP_SUMS},
-                COALESCE(SUM(CASE WHEN origin = 'bakin' THEN total_tokens ELSE 0 END), 0)    AS bakin_total,
-                COALESCE(SUM(CASE WHEN origin = 'external' THEN total_tokens ELSE 0 END), 0) AS external_total,
-                COALESCE(SUM(CASE WHEN origin = 'unknown' THEN total_tokens ELSE 0 END), 0)  AS unknown_total
+      .prepare<RollupRow & OriginSumRow & { agent: string }, [string]>(
+        `SELECT agent, day AS key, ${ROLLUP_SUMS}, ${ORIGIN_SUMS}
            FROM session_usage_days WHERE day >= ? GROUP BY agent, day ORDER BY day ASC, agent ASC`,
       )
       .all(sinceDay)
       .map((r) => ({
         agent: r.agent,
         day: r.key,
-        originTokens: { bakin: r.bakin_total, external: r.external_total, unknown: r.unknown_total },
+        originTokens: toOriginTokens(r),
         ...toRollup(r),
       }))
   } catch (err) {
@@ -503,24 +512,33 @@ export function usageByAgentModelDaySince(sinceDay: string): AgentModelDayUsageR
   }
 }
 
-/** One session's whole-window rollup — the runaway heuristic's evidence unit (#691). */
+/**
+ * One session's rollup — the runaway heuristic's evidence unit (#691).
+ * Token/turn sums are WINDOW-scoped (a session that went quiet before the
+ * burn window has zero window tokens and cannot look runaway again), while
+ * `userMessages` sums the WIDER span so a user turn just before the window
+ * boundary still proves interaction.
+ */
 export interface SessionUsageRollup {
   agent: string
   sessionId: string
   origin: SessionOrigin
+  /** Tokens within the burn window only. */
   totalTokens: number
+  /** User turns across the wider span (windowSinceDay may be > spanSinceDay). */
   userMessages: number
-  /** Usage-bearing assistant messages (message_count) — the autonomous-turn count. */
+  /** Usage-bearing assistant messages within the burn window — the autonomous-turn count. */
   assistantMessages: number
   lastTs: number
 }
 
 /**
- * Per-(agent, session) sums for calendar days >= sinceDay. Strict boundary:
+ * Per-(agent, session) rollups: rows are read from `spanSinceDay`, token and
+ * assistant-turn sums count only days >= `windowSinceDay`. Strict boundary:
  * a storage failure throws — the burn engine must never mistake an
  * unreadable store for "no sessions".
  */
-export function readSessionUsageRollupsSince(sinceDay: string): SessionUsageRollup[] {
+export function readSessionUsageRollupsSince(windowSinceDay: string, spanSinceDay = windowSinceDay): SessionUsageRollup[] {
   try {
     return db()
       .prepare<{
@@ -531,17 +549,17 @@ export function readSessionUsageRollupsSince(sinceDay: string): SessionUsageRoll
         users: number
         assistants: number
         last_ts: number
-      }, [string]>(
+      }, [string, string, string]>(
         `SELECT agent, session_id, origin,
-                COALESCE(SUM(total_tokens), 0)  AS total,
-                COALESCE(SUM(user_messages), 0) AS users,
-                COALESCE(SUM(message_count), 0) AS assistants,
-                MAX(last_ts)                    AS last_ts
+                COALESCE(SUM(CASE WHEN day >= ? THEN total_tokens ELSE 0 END), 0)  AS total,
+                COALESCE(SUM(user_messages), 0)                                    AS users,
+                COALESCE(SUM(CASE WHEN day >= ? THEN message_count ELSE 0 END), 0) AS assistants,
+                MAX(last_ts)                                                       AS last_ts
            FROM session_usage_days WHERE day >= ?
           GROUP BY agent, session_id, origin
           ORDER BY agent ASC, session_id ASC`,
       )
-      .all(sinceDay)
+      .all(windowSinceDay, windowSinceDay, spanSinceDay)
       .map((r) => ({
         agent: r.agent,
         sessionId: r.session_id,
@@ -552,7 +570,7 @@ export function readSessionUsageRollupsSince(sinceDay: string): SessionUsageRoll
         lastTs: r.last_ts,
       }))
   } catch (err) {
-    log.error('readSessionUsageRollupsSince failed', err, { sinceDay })
+    log.error('readSessionUsageRollupsSince failed', err, { windowSinceDay, spanSinceDay })
     throw new UsageHistoryStoreReadError('Usage history store could not be read.', err)
   }
 }

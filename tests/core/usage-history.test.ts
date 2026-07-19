@@ -790,6 +790,28 @@ describe('transcript provider qualification (#689)', () => {
     expect(bucketSessionUsage(content).map((b) => b.model)).toEqual(['openai-codex/gpt-5.5'])
   })
 
+  it('a null provider is missing evidence, not a malformed session', () => {
+    // Some runtimes write "provider": null. That line must meter with the
+    // bare model — invalidating the session would permanently fail its
+    // rescan and silently drop its usage from every surface.
+    const lines = [
+      JSON.stringify({ type: 'session', id: 's-null-provider', timestamp: START }),
+      JSON.stringify({
+        type: 'message',
+        timestamp: '2026-07-01T10:01:00Z',
+        message: {
+          role: 'assistant',
+          model: 'gpt-5.4',
+          provider: null,
+          usage: { input: 10, output: 5, cacheRead: 0, cacheWrite: 0, totalTokens: 15 },
+        },
+      }),
+    ].join('\n')
+    const buckets = bucketSessionUsage(lines)
+    expect(buckets.map((b) => b.model)).toEqual(['gpt-5.4'])
+    expect(buckets[0]!.totalTokens).toBe(15)
+  })
+
   it('provider without a model leaves the empty-model bucket alone', () => {
     const content = sessionLines('s-nomodel', START, [
       { ts: '2026-07-01T10:01:00Z', provider: 'openai-codex', input: 1, output: 1 },

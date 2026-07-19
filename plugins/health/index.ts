@@ -550,7 +550,11 @@ const routes = [
         const agents = buildAgentBurnReports(now, {
           windowHours,
           coverage: evidence.coverage,
-          scheduledJobs: await fetchScheduledJobsEvidence(routeCtx.runtime),
+          // Cron evidence only matters when a runaway flag can fire — skip
+          // the runtime round-trip when coverage is incomplete.
+          scheduledJobs: evidence.coverage.status === 'complete'
+            ? await fetchScheduledJobsEvidence(routeCtx.runtime)
+            : null,
         })
         return Response.json({
           window: query.window,

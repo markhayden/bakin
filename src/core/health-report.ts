@@ -155,8 +155,12 @@ export function projectEffectiveDispositions(
   sensitivity: HealthSensitivity,
 ): HealthIncident[] {
   return incidents.map((incident) => {
+    // Evidence state is not demotable: error means a real failure and
+    // unknown means unverified evidence — both keep their raw urgency in
+    // every mode so the badge, cards, and overall status tell one story.
     const demote = sensitivity !== 'developer'
       && incident.status !== 'error'
+      && incident.status !== 'unknown'
       && incident.class !== undefined
       && DEMOTABLE_TO_ADVISORY.has(incident.class)
       && dispositionRank[incident.disposition] > dispositionRank.advisory

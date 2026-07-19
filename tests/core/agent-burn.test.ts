@@ -59,7 +59,6 @@ function inputs(overrides: Partial<AgentBurnInputs> = {}): AgentBurnInputs {
     costAggregateRepresentable: true,
     completions: 0,
     observedTokens: null,
-    externalObservedTokens: null,
     todayObservedTokens: null,
     baselineDailyTokens: [],
     sessions: [],
@@ -74,11 +73,6 @@ function inputs(overrides: Partial<AgentBurnInputs> = {}): AgentBurnInputs {
   }
   if (overrides.costedRuns === undefined) {
     merged.costedRuns = merged.attributedCostUsdMicros === null ? 0 : merged.runs
-  }
-  // Coverage produces observed and its origin split together: when a test
-  // sets observedTokens without an explicit split, the external share is 0.
-  if (overrides.externalObservedTokens === undefined && merged.observedTokens !== null) {
-    merged.externalObservedTokens = 0
   }
   return merged
 }
@@ -163,12 +157,15 @@ describe('spike', () => {
 })
 
 describe('interactive bucket (#691)', () => {
+  const chatSession = (tokens: number, overrides: Partial<BurnSessionRollup> = {}) =>
+    session({ totalTokens: tokens, userMessages: 12, assistantMessages: 40, ...overrides })
+
   it('flags interactive-session usage as calm advisory copy — never scary', () => {
     const report = evaluateAgentBurn(
       inputs({
         attributedTokens: 200_000,
         observedTokens: 10_200_000,
-        externalObservedTokens: 10_000_000,
+        sessions: [chatSession(10_000_000)],
         runs: 3,
         completions: 1,
       }),
@@ -187,7 +184,7 @@ describe('interactive bucket (#691)', () => {
       inputs({
         attributedTokens: 200_000,
         observedTokens: 10_200_000,
-        externalObservedTokens: 10_000_000,
+        sessions: [chatSession(10_000_000)],
         runs: 3,
         completions: 1,
       }),
@@ -197,16 +194,31 @@ describe('interactive bucket (#691)', () => {
     expect(report.flags.some((f) => f.kind === 'unexplained')).toBe(false)
   })
 
+  it('a zero-user-turn external session is never calm — its tokens are unexplained, not interactive', () => {
+    // 800k autonomous tokens below the runaway thresholds must not hide
+    // behind "you were working with this agent directly".
+    const report = evaluateAgentBurn(
+      inputs({
+        observedTokens: 800_000,
+        sessions: [session({ totalTokens: 800_000, userMessages: 0, assistantMessages: 15 })],
+      }),
+      config,
+    )
+    expect(report.interactiveTokens).toBe(0)
+    expect(report.unexplainedTokens).toBe(800_000)
+    expect(report.flags.map((f) => f.kind)).toEqual(['unexplained'])
+  })
+
   it('below share or floor → no interactive flag', () => {
     expect(flagKinds(inputs({
       attributedTokens: 600_000,
       observedTokens: 1_000_000,
-      externalObservedTokens: 400_000,
+      sessions: [chatSession(400_000)],
       completions: 1,
     }))).toEqual([])
     expect(flagKinds(inputs({
       observedTokens: 60_000,
-      externalObservedTokens: 55_000,
+      sessions: [chatSession(55_000)],
     }))).toEqual([])
   })
 })
@@ -224,9 +236,9 @@ describe('unexplained bucket (#691)', () => {
   })
 
   it('unknown-origin tokens land in unexplained, never in interactive', () => {
-    // Observed 1M, none provably external, attributed 0 → all unexplained.
+    // Observed 1M, no user-proven external session, attributed 0 → all unexplained.
     const report = evaluateAgentBurn(
-      inputs({ observedTokens: 1_000_000, externalObservedTokens: 0 }),
+      inputs({ observedTokens: 1_000_000, sessions: [session({ origin: 'unknown', totalTokens: 1_000_000 })] }),
       config,
     )
     expect(report.interactiveTokens).toBe(0)
@@ -408,6 +420,14 @@ describe('runaway (#691 D9/D11)', () => {
     expect(flag!.kind === 'runaway' && flag!.sessions).toEqual([
       { sessionId: 'sess-1', tokens: 1_000_000, assistantTurns: 20 },
     ])
+  })
+
+  it('a session that went quiet before the window cannot re-page — window sums are the evidence', () => {
+    // The store window-scopes token/turn sums: a Monday runaway the user
+    // already killed reports zero window evidence on Tuesday.
+    expect(flagKinds(inputs({
+      sessions: [session({ totalTokens: 0, assistantMessages: 0, userMessages: 0 })],
+    }))).toEqual([])
   })
 
   it('boundary honesty: 19 turns, floor−1 tokens, or a single user turn kill it', () => {

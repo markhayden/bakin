@@ -18,12 +18,11 @@ function incidentStatus(incident: HealthIncident): {
   tone: OverviewTone
   icon: typeof AlertTriangle
 } {
-  // Cards render EFFECTIVE urgency (#690) — error is never demoted, so
-  // Critical keeps precedence; a demoted or advisory incident reads calm.
+  // Cards render EFFECTIVE urgency (#690) — error and unknown are never
+  // demoted (evidence state is not a presentation choice), so Critical and
+  // Verify keep precedence; a demoted or advisory incident reads calm.
   if (incident.status === 'error') return { label: 'Critical', tone: 'destructive', icon: AlertTriangle }
-  if (incident.status === 'unknown' && incident.effectiveDisposition !== 'advisory') {
-    return { label: 'Verify', tone: 'neutral', icon: CircleHelp }
-  }
+  if (incident.status === 'unknown') return { label: 'Verify', tone: 'neutral', icon: CircleHelp }
   if (incident.effectiveDisposition === 'advisory') {
     return { label: 'Advisory', tone: 'neutral', icon: CircleHelp }
   }
