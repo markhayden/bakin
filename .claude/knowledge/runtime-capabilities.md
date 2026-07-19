@@ -210,7 +210,10 @@ unsupported.
    send — when listed — must be `bakin` (Pi labels via `bakin-threads.json`
    membership with its OWN error channel: missing map = external, corrupt
    map = unknown; OpenClaw via sessions.json key shapes + deterministic v5
-   uuids; subagent sessions are runtime-spawned child work = bakin).
+   uuids — files predating a reset/rotation miss the store lookup and
+   classify by uuid version (v5 = bakin, v4 = rotated interactive), so a
+   /reset never converts the user's own chats into an unexplained-usage
+   alarm; subagent sessions are runtime-spawned child work = bakin).
    Runtimes without the tier or without per-turn transcript persistence
    conform vacuously — never mislabel.
    `teeth.conformance.test.ts` proves the checks

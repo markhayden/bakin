@@ -88,10 +88,10 @@ describe('resolveLaneFor (override precedence)', () => {
   const detected = { google: 'metered', 'openai-codex': 'subscription' } as const
 
   it('defaults to metered when nothing matches', () => {
-    expect(resolveLaneFor({ provider: 'unknown', agentId: 'a', overrides: [], detected: {} })).toBe('metered')
+    expect(resolveLaneFor({ provider: 'unknown', agentId: 'a', overrides: [], detected: {} })).toEqual({ lane: 'metered', laneSource: 'default' })
   })
   it('uses detection when no override matches', () => {
-    expect(resolveLaneFor({ provider: 'openai-codex', agentId: 'a', overrides: [], detected })).toBe('subscription')
+    expect(resolveLaneFor({ provider: 'openai-codex', agentId: 'a', overrides: [], detected })).toEqual({ lane: 'subscription', laneSource: 'detected' })
   })
   it('provider override beats detection; agent override beats provider; agent+provider beats all', () => {
     const overrides: BillingOverride[] = [
@@ -100,9 +100,9 @@ describe('resolveLaneFor (override precedence)', () => {
       { agentId: 'a', provider: 'openai-codex', lane: 'metered' },
     ]
     // agent+provider (metered) beats agent (subscription) beats provider (metered) beats detected (subscription)
-    expect(resolveLaneFor({ provider: 'openai-codex', agentId: 'a', overrides, detected })).toBe('metered')
-    expect(resolveLaneFor({ provider: 'google', agentId: 'a', overrides, detected })).toBe('subscription') // agent-wide override
-    expect(resolveLaneFor({ provider: 'openai-codex', agentId: 'b', overrides, detected })).toBe('metered') // provider override
+    expect(resolveLaneFor({ provider: 'openai-codex', agentId: 'a', overrides, detected })).toEqual({ lane: 'metered', laneSource: 'override' })
+    expect(resolveLaneFor({ provider: 'google', agentId: 'a', overrides, detected })).toEqual({ lane: 'subscription', laneSource: 'override' }) // agent-wide override
+    expect(resolveLaneFor({ provider: 'openai-codex', agentId: 'b', overrides, detected })).toEqual({ lane: 'metered', laneSource: 'override' }) // provider override
   })
 })
 
@@ -124,7 +124,7 @@ describe('resolveBilling (ctx-bound)', () => {
     _resetBillingCache()
     const ctx = makeCtx([{ provider: 'openai-codex', kind: 'oauth' }])
     const billing = await resolveBilling(ctx, { agentId: 'main', model: 'openai-codex/gpt-5.5-codex' })
-    expect(billing).toEqual({ provider: 'openai-codex', lane: 'subscription' })
+    expect(billing).toEqual({ provider: 'openai-codex', lane: 'subscription', laneSource: 'detected' })
   })
 
   it('defaults to metered when the credential report is unreadable', async () => {
@@ -134,13 +134,13 @@ describe('resolveBilling (ctx-bound)', () => {
       runtime: { credentialStatus: async () => { throw new Error('runtime down') } },
     } as never
     const billing = await resolveBilling(ctx, { agentId: 'main', model: 'google/gemini-3-flash' })
-    expect(billing).toEqual({ provider: 'google', lane: 'metered' })
+    expect(billing).toEqual({ provider: 'google', lane: 'metered', laneSource: 'default' })
   })
 
   it('applies overrides without an agentId (provider-wide)', async () => {
     _resetBillingCache()
     const ctx = makeCtx(undefined, [{ provider: 'google', lane: 'subscription' }])
     const billing = await resolveBilling(ctx, { model: 'google/gemini-3-flash' })
-    expect(billing).toEqual({ provider: 'google', lane: 'subscription' })
+    expect(billing).toEqual({ provider: 'google', lane: 'subscription', laneSource: 'override' })
   })
 })

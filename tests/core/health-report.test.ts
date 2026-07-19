@@ -215,7 +215,7 @@ describe('sensitivity projection (#690)', () => {
     expect(deriveHealthReportStatus({ registeredChecks: 1, checks: [state()], incidents: [std!] })).toBe('healthy')
   })
 
-  it('a demoted unknown-status incident does not drive unknown_stale', () => {
+  it('evidence honesty is not demotable: a demoted unknown-status incident still drives unknown_stale', () => {
     const unknownIncident = incidentWith({
       status: 'unknown',
       class: 'usage_anomaly',
@@ -224,7 +224,9 @@ describe('sensitivity projection (#690)', () => {
     })
     const [demoted] = projectEffectiveDispositions([unknownIncident], 'standard')
     expect(demoted!.effectiveDisposition).toBe('advisory')
-    expect(deriveHealthReportStatus({ registeredChecks: 1, checks: [state()], incidents: [demoted!] })).toBe('healthy')
+    // The card calms, the badge stops nagging — but the overall status must
+    // keep saying "unverified": unknown is never healthy in any mode.
+    expect(deriveHealthReportStatus({ registeredChecks: 1, checks: [state()], incidents: [demoted!] })).toBe('unknown_stale')
     const [raw] = projectEffectiveDispositions([unknownIncident], 'developer')
     expect(deriveHealthReportStatus({ registeredChecks: 1, checks: [state()], incidents: [raw!] })).toBe('unknown_stale')
   })

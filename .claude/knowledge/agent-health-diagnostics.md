@@ -54,7 +54,7 @@ session origin comes from the adapter labels in usage.db, see
   external-origin session accumulating ≥ `runawayAssistantTurns` (20)
   token-bearing assistant turns AND ≥ `runawayFloorTokens` (1M) tokens with
   ZERO user turns, OR unexplained ≥ the runaway floor coinciding with a
-  spike. Unknown-origin sessions never page ("cannot tell" is not evidence).
+  spike. Unknown-origin sessions never page ("cannot tell" is not evidence), and session rollups read the WIDER baseline span — a user turn yesterday evening still counts as interaction for overnight work, so window truncation cannot fabricate a zero-interaction session.
   **Cron guard**: the health check and `/agent-effort` route pre-fetch the
   runtime's enabled native scheduled jobs identically (the engine stays
   pure — jobs arrive as input); jobs present downgrade the page to a watch

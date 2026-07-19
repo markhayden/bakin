@@ -54,14 +54,22 @@ mock.module('../../packages/core/src/usage-history/store', () => ({
 }))
 
 // Billing resolution for observed (usage.db) rows — the models plugin hook.
-let resolveBillingMode: 'normal' | 'undefined' | 'throw' | 'lane-only' = 'normal'
+let resolveBillingMode: 'normal' | 'undefined' | 'throw' | 'lane-only' | 'agent-override' = 'normal'
+const resolveBillingCalls: Array<Record<string, unknown>> = []
 const resolveBillingImpl: (data: Record<string, unknown>) => unknown = (d) => {
+  resolveBillingCalls.push(d)
   if (resolveBillingMode === 'throw') throw new Error('billing hook unavailable')
   if (resolveBillingMode === 'undefined') return undefined
   if (resolveBillingMode === 'lane-only') return { lane: 'metered' }
+  // An operator override laning a model Bakin cannot resolve (provider 'other').
+  if (resolveBillingMode === 'agent-override') return { provider: 'other', lane: 'subscription', laneSource: 'override' }
   const model = (d.model as string) ?? ''
   const provider = model.includes('/') ? model.split('/')[0] : model.startsWith('claude-') ? 'anthropic' : 'other'
-  return { provider, lane: provider === 'openai-codex' ? 'subscription' : 'metered' }
+  return {
+    provider,
+    lane: provider === 'openai-codex' ? 'subscription' : 'metered',
+    laneSource: provider === 'other' ? 'default' : 'detected',
+  }
 }
 mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
   getHookRegistry: () => ({
@@ -91,6 +99,7 @@ beforeEach(() => {
   usageCells.length = 0
   usageReadFails = false
   resolveBillingMode = 'normal'
+  resolveBillingCalls.length = 0
 })
 
 describe('assembleBudgetSpend', () => {
@@ -195,6 +204,27 @@ describe('assembleBudgetSpend', () => {
     expect(s.spendEvidence.daily.gaps).toEqual(expect.arrayContaining([
       expect.objectContaining({ lane: null, model: 'mystery-model', reasons: ['lane_unknown'] }),
     ]))
+  })
+
+  it('an empty-model row never invokes the hook — no current-model guessing (#689 review)', async () => {
+    // The hook substitutes the agent's CURRENT effective model when given no
+    // model — a guess about the past. Empty-model rows must gap without it.
+    usageCells.push(usage('main', TODAY, '', 500, 900_000))
+    const s = await assembleBudgetSpend(NOW)
+    expect(s.daily.global.meteredUsdMicros).toBe(0)
+    expect(resolveBillingCalls).toEqual([])
+    expect(s.spendEvidence.daily.gaps).toEqual(expect.arrayContaining([
+      expect.objectContaining({ lane: null, model: null, reasons: ['lane_unknown'] }),
+    ]))
+  })
+
+  it('an explicit operator lane override is trusted even for an unresolvable model (#689 review)', async () => {
+    resolveBillingMode = 'agent-override'
+    usageCells.push(usage('main', TODAY, 'weird-local-model', 8_000, 5_000_000))
+    const s = await assembleBudgetSpend(NOW)
+    // Operator said subscription: tokens count, theoretical dollars stay suppressed.
+    expect(s.daily.byAgent.main?.unattributed.subscriptionTokens).toBe(8_000)
+    expect(s.daily.global.meteredUsdMicros).toBe(0)
   })
 
   it('NULL-cost observed metered rows contribute tokens but no dollars', async () => {

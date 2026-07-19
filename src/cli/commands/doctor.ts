@@ -580,7 +580,8 @@ async function cmdDoctorFix(options: { json: boolean; yes: boolean; isTTY: boole
 }
 
 function actionRequiredIncidents(report: HealthReport): HealthIncident[] {
-  return report.incidents.filter(incident => incident.disposition === 'action_required')
+  // Effective disposition (#690) — the CLI acts on the same story every other surface tells.
+  return report.incidents.filter(incident => incident.effectiveDisposition === 'action_required')
 }
 
 async function cmdDoctorDelegate(options: { json: boolean; yes: boolean; isTTY: boolean }): Promise<void> {

@@ -59,7 +59,8 @@ function targetObservationIds(report: HealthReport, target: HealthRepairTarget):
   if (target.type === 'observations') return [...new Set(target.ids)]
   const incidentIds = target.type === 'incidents'
     ? new Set(target.ids)
-    : new Set(report.incidents.filter((incident) => incident.disposition === 'action_required').map((incident) => incident.id))
+    // Effective disposition (#690): all_actionable follows what surfaces show.
+    : new Set(report.incidents.filter((incident) => incident.effectiveDisposition === 'action_required').map((incident) => incident.id))
   return [...new Set(report.incidents
     .filter((incident) => incidentIds.has(incident.id))
     .flatMap((incident) => incident.observationIds))]

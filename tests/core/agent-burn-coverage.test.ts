@@ -170,6 +170,44 @@ describe('buildAgentBurnReports coverage', () => {
     })
   })
 
+  it('session rollups read the wider baseline window so pre-window user turns kill runaway', () => {
+    const requestedSinceDays: string[] = []
+    usageCells.push({
+      agent: 'basil', day: TODAY,
+      tokens: { input: 2_000_000, output: 0, cacheRead: 0, cacheWrite: 0, total: 2_000_000 },
+      originTokens: { bakin: 0, external: 2_000_000, unknown: 0 },
+      costUsdMicros: null, costedMessages: 0, messageCount: 30,
+    })
+    const trackedSources: AgentBurnSources = {
+      ...sources,
+      readSessionUsageRollupsSince: (sinceDay: string) => {
+        requestedSinceDays.push(sinceDay)
+        // The whole-window rollup carries yesterday's user turns; a
+        // window-truncated read would have reported userMessages: 0.
+        return [{
+          agent: 'basil',
+          sessionId: 'overnight',
+          origin: 'external',
+          totalTokens: 2_000_000,
+          userMessages: 3,
+          assistantMessages: 30,
+          lastTs: NOW,
+        }]
+      },
+    }
+
+    const basil = buildAgentBurnReports(NOW, {
+      config,
+      sources: trackedSources,
+      coverage: { agents: [{ agent: 'basil', status: 'complete' }] },
+    }).find((report) => report.agent === 'basil')
+
+    // Baseline span (7 days) is wider than the 24h burn window.
+    const expectedEarliest = localDayKey(NOW - config.baselineDays * 86_400_000)
+    expect(requestedSinceDays).toEqual([expectedEarliest])
+    expect(basil?.flags.some((flag) => flag.kind === 'runaway')).toBe(false)
+  })
+
   it('threads origin splits and session rollups into the evaluator (#691)', () => {
     usageCells.push({
       agent: 'basil', day: TODAY,

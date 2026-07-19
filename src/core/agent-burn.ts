@@ -386,8 +386,14 @@ export function buildAgentBurnReports(
   const baselineSinceDay = toLocalDayKey(now - config.baselineDays * 86_400_000)
   const earliestDay = baselineSinceDay < windowSinceDay ? baselineSinceDay : windowSinceDay
 
+  // Session rollups deliberately read the WIDER baseline window: the runaway
+  // predicate requires zero user turns, and a user turn just before the burn
+  // window boundary (yesterday evening's instructions for overnight work) is
+  // still real interaction — truncating it would page on operator-initiated
+  // sessions. A session must be user-free across the whole baseline span
+  // before it can look runaway.
   const cells = sources.readUsageHistorySince(earliestDay).byAgentDay
-  const sessionRollups = sources.readSessionUsageRollupsSince(windowSinceDay)
+  const sessionRollups = sources.readSessionUsageRollupsSince(earliestDay)
   const coverageByAgent = new Map(
     (opts.coverage?.agents ?? []).map((entry) => [entry.agent, entry.status]),
   )

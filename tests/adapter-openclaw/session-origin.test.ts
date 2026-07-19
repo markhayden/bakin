@@ -92,11 +92,19 @@ describe('openclaw session origin metadata (#691)', () => {
     expect(originOf(subId)).toBe('bakin')
   })
 
-  it('a session missing from the store is unknown, never guessed', () => {
-    const orphanId = randomUUID()
-    writeSessionFile(orphanId)
+  it('orphaned pre-reset sessions classify by uuid version, not as unknown', () => {
+    // The store only holds each key's CURRENT sessionId — files predating a
+    // /reset miss the lookup. A v4 (randomUUID) orphan is a rotated
+    // interactive session; a v5 orphan is a rotated Bakin-dispatched one.
+    // Labeling them unknown would fire a false unexplained-usage alarm
+    // about the user's own chats after every reset.
+    const rotatedInteractive = randomUUID()
+    const rotatedDispatch = deterministicUuid(`bakin:${AGENT}:task:old:d1`)
+    writeSessionFile(rotatedInteractive)
+    writeSessionFile(rotatedDispatch)
     writeStore({})
-    expect(originOf(orphanId)).toBe('unknown')
+    expect(originOf(rotatedInteractive)).toBe('external')
+    expect(originOf(rotatedDispatch)).toBe('bakin')
   })
 
   it('an absent sessions.json makes every session unknown', () => {

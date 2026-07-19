@@ -296,18 +296,25 @@ async function resolveObservedLane(
   const key = `${agent}\0${model}`
   if (cache.has(key)) return cache.get(key) ?? null
   let lane: Lane | null = null
-  if (invoke) {
+  // An observed row with NO model can never be lane-resolved honestly. The
+  // hook is deliberately NOT invoked for it: with no model it substitutes
+  // the agent's CURRENT effective model — a guess about the past that would
+  // book runtime-reported theoretical dollars as real spend (#689).
+  if (invoke && model) {
     try {
-      const billing = (await invoke('models.resolveBilling', { agentId: agent, model: model || undefined })) as
-        | { lane?: string; provider?: string }
+      const billing = (await invoke('models.resolveBilling', { agentId: agent, model })) as
+        | { lane?: string; provider?: string; laneSource?: string }
         | undefined
-      // A lane is only trustworthy when the hook actually resolved a provider.
+      // A lane is trustworthy when the hook actually resolved a provider —
       // 'other' is the models plugin's could-not-resolve bucket, and its
-      // default-metered lane would book runtime-reported theoretical dollars
-      // as real spend (#689) — unresolvable stays an honest evidence gap.
+      // default-metered lane would book theoretical dollars as real spend —
+      // OR when an operator override decided it (operator truth, not a
+      // guess, even for models Bakin cannot resolve).
       const providerResolved = typeof billing?.provider === 'string'
         && billing.provider !== '' && billing.provider !== 'other'
-      if (providerResolved && (billing.lane === 'subscription' || billing.lane === 'metered')) {
+      const operatorOverride = billing?.laneSource === 'override'
+      if ((providerResolved || operatorOverride)
+        && (billing?.lane === 'subscription' || billing?.lane === 'metered')) {
         lane = billing.lane
       }
     } catch (err) {

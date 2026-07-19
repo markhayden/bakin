@@ -172,6 +172,26 @@ describe('buildHealthOverviewViewModel', () => {
     expect(model.needsAction[1]?.freshness).toBe('stale')
   })
 
+  it('demoted and raw-advisory incidents land in the advisories bucket — quiet, never hidden (#690)', () => {
+    const demoted = incident({
+      id: 'demoted-housekeeping', status: 'warning', disposition: 'watch', title: 'Retired tables await deletion',
+      effectiveDisposition: 'advisory',
+    })
+    const rawAdvisory = incident({ id: 'plain-advisory', status: 'warning', disposition: 'advisory', title: 'Just a note' })
+    const observations = [demoted, rawAdvisory].map((row) => observation(row))
+    const checks = observations.map((row) => check(row, 'observed'))
+
+    const model = buildHealthOverviewViewModel({
+      report: report({ incidents: [demoted, rawAdvisory], observations, checks, status: 'healthy' }),
+      now: NOW,
+    })
+
+    expect(model.advisories.map((row) => row.incident.id).sort()).toEqual(['demoted-housekeeping', 'plain-advisory'])
+    expect(model.needsAction).toEqual([])
+    expect(model.watching).toEqual([])
+    expect(model.unableToVerify).toEqual([])
+  })
+
   it('always returns the four labeled Search stages and explains missing or stale evidence', () => {
     const readiness = search({
       status: 'unknown',

@@ -65,6 +65,14 @@ function AlertGrid({
   )
 }
 
+function noticeBadge(item: OverviewIncident): { label: string; tone: 'neutral' | 'warning' } {
+  if (item.incident.status === 'unknown') return { label: 'Verify', tone: 'neutral' }
+  // Advisory here includes sensitivity-demoted findings (#690) — calm, but
+  // still listed: demotion means quiet, never hidden.
+  if (item.incident.effectiveDisposition === 'advisory') return { label: 'Advisory', tone: 'neutral' }
+  return { label: 'Watch', tone: 'warning' }
+}
+
 function Notices({ incidents }: { incidents: OverviewIncident[] }) {
   if (incidents.length === 0) return null
   return (
@@ -75,14 +83,15 @@ function Notices({ incidents }: { incidents: OverviewIncident[] }) {
       </PopoverTrigger>
       <PopoverContent align="end" className="w-[min(24rem,calc(100vw-2rem))] p-2">
         <ul className="max-h-72 space-y-1 overflow-auto">
-          {incidents.map((item) => (
-            <li key={item.incident.id} className="flex items-start gap-2 rounded-lg px-2 py-2 text-sm">
-              <StatusBadge tone={item.incident.status === 'unknown' ? 'neutral' : 'warning'} variant="outline">
-                {item.incident.status === 'unknown' ? 'Verify' : 'Watch'}
-              </StatusBadge>
-              <span className="min-w-0 leading-snug text-foreground">{item.incident.title}</span>
-            </li>
-          ))}
+          {incidents.map((item) => {
+            const badge = noticeBadge(item)
+            return (
+              <li key={item.incident.id} className="flex items-start gap-2 rounded-lg px-2 py-2 text-sm">
+                <StatusBadge tone={badge.tone} variant="outline">{badge.label}</StatusBadge>
+                <span className="min-w-0 leading-snug text-foreground">{item.incident.title}</span>
+              </li>
+            )
+          })}
         </ul>
         <PluginLink
           to="/health?tab=system"
@@ -107,7 +116,7 @@ export function OverviewAlerts({ model, onRepair, onRerun }: OverviewAlertsProps
       <section className="flex min-h-12 items-center gap-3 rounded-xl border border-success/20 bg-success/[0.035] px-4 py-3">
         <CheckCircle2 className="size-5 shrink-0 text-success" aria-hidden="true" />
         <h2 className="text-sm font-semibold text-success">No problems need attention</h2>
-        <div className="ml-auto"><Notices incidents={model.watching} /></div>
+        <div className="ml-auto"><Notices incidents={[...model.watching, ...model.advisories]} /></div>
       </section>
     )
   }
@@ -119,7 +128,7 @@ export function OverviewAlerts({ model, onRepair, onRerun }: OverviewAlertsProps
         <StatusBadge tone={model.needsAction.length > 0 ? 'destructive' : 'neutral'}>
           {actionLabel}
         </StatusBadge>
-        <div className="ml-auto"><Notices incidents={model.watching} /></div>
+        <div className="ml-auto"><Notices incidents={[...model.watching, ...model.advisories]} /></div>
       </div>
 
       <AlertGrid

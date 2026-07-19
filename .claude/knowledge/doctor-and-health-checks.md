@@ -123,9 +123,13 @@ in `getHealthReport` under `settings.doctor.sensitivity`:
   evidence_gap is deliberately uncapped — its producers split raw severity
   (rule-affecting = watch, informational = advisory) per D12.
 - Raw `disposition` is preserved on the wire; the UI shows a "Calmed from
-  watch" badge + a plain-language class chip on cards; a runtime that
+  watch" badge + a plain-language class chip on cards, and demoted/advisory
+  incidents ride the Overview notices popover (the `advisories` view-model
+  bucket) — demotion means quiet, never hidden. A runtime that
   intentionally lacks a surface should return `not_applicable`, not an
-  unsupported_surface failure.
+  unsupported_surface failure. Repair delegation (`all_actionable`) and the
+  CLI act on effective disposition too — a calmed incident never spawns a
+  paid repair task.
 - **Quiet (D10)** additionally lives at the NOTIFICATION layer: the nav
   badge and escalation act only on effective `action_required` — watch
   stays visible on the Health page but silent.
@@ -135,12 +139,12 @@ in `getHealthReport` under `settings.doctor.sensitivity`:
   (`HealthIncidentConflictError`); invalid class strings are rejected at the
   producer contract boundary (zod enum in health-contract).
 
-Overall precedence is operator-facing and computed over EFFECTIVE
-dispositions (a sensitivity-demoted incident cannot drive `unknown_stale` or
-`degraded`):
+Overall precedence is operator-facing. Urgency is computed over EFFECTIVE
+dispositions, but evidence honesty is NOT demotable — unknown-status/stale
+incidents drive `unknown_stale` in every mode (unknown is never healthy):
 
 1. effective action-required incident -> `needs_attention`
-2. required evidence missing/failed/invalid/stale (non-demoted) -> `unknown_stale`
+2. required evidence missing/failed/invalid/stale -> `unknown_stale`
 3. fresh effective-watch incident -> `degraded`
 4. otherwise -> `healthy`
 

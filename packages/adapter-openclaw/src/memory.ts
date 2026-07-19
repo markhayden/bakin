@@ -387,8 +387,16 @@ function listSessionJsonlRefs(agentId: string): SourceRef[] {
  * (deterministicUuid stamps the version nibble); subagent sessions are
  * runtime-spawned child work, never operator chat. Every other key shape
  * (`:main`, channels, `:openai:*` external clients, v4-explicit) is an
- * interactive/external session. A session missing from the store — or an
- * unreadable store — is `unknown`, never guessed.
+ * interactive/external session.
+ *
+ * The store only maps each key to its CURRENT sessionId, so files predating
+ * a reset/rotation miss the lookup. For those the uuid version nibble is
+ * still real evidence: Bakin mints v5-shaped ids deterministically, the
+ * gateway mints v4 (randomUUID) for main/channel sessions — so an orphaned
+ * v4 file is a rotated interactive session, not "untracked runtime
+ * activity" (a mislabel here fires a false unexplained-usage alarm about
+ * the user's own chats after every /reset). Only an unreadable store — no
+ * evidence at all — is `unknown`.
  */
 function sessionOriginResolver(agentId: string): (sessionId: string) => 'bakin' | 'external' | 'unknown' {
   const store = readSessionStoreCached(join(agentSessionsDir(agentId), 'sessions.json'))
@@ -399,7 +407,7 @@ function sessionOriginResolver(agentId: string): (sessionId: string) => 'bakin' 
   }
   return (sessionId: string) => {
     const key = keyBySessionId.get(sessionId)
-    if (!key) return 'unknown'
+    if (!key) return sessionId[14] === '5' ? 'bakin' : 'external'
     if (key === `agent:${agentId}:explicit:${sessionId}` && sessionId[14] === '5') return 'bakin'
     if (key.startsWith(`agent:${agentId}:subagent:`)) return 'bakin'
     return 'external'

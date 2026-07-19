@@ -379,7 +379,10 @@ async function checkSearchEngineBurnWithState(): Promise<HealthCheckRunInput> {
       incident: {
         key: 'sustained-cpu',
         title: 'Search engine load needs watching',
-        class: 'usage_anomaly',
+        // service_failure, not usage_anomaly: sustained engine CPU is the
+        // known precursor of the #319 zero-progress spin — demoting it to a
+        // silent advisory would hide real degradation until queries fail.
+        class: 'service_failure',
         impact: 'Sustained engine load can slow queries, though active index work may explain it.',
         disposition: 'watch',
         resources: [{ kind: 'service', id: 'search-engine', label: 'Search engine' }],

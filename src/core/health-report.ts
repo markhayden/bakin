@@ -171,11 +171,12 @@ export interface HealthStatusInput {
 }
 
 /**
- * Exact server-side overall-status precedence from the Health contract,
- * computed over EFFECTIVE dispositions (#690). A sensitivity-demoted
- * incident (raw ≠ effective) cannot drive unknown_stale — a collapsed
- * evidence signal must not badge the whole report; non-demoted incidents
- * keep the original precedence.
+ * Exact server-side overall-status precedence from the Health contract.
+ * Urgency (needs_attention/degraded) is computed over EFFECTIVE dispositions
+ * (#690), but evidence honesty is NOT demotable: unknown-status or stale
+ * incidents drive unknown_stale regardless of sensitivity — missing or
+ * unverified evidence must never read as an all-clear (the
+ * unknown-is-never-healthy contract).
  */
 export function deriveHealthReportStatus(input: HealthStatusInput): HealthReportStatus {
   if (input.incidents.some((incident) => incident.effectiveDisposition === 'action_required')) {
@@ -187,10 +188,8 @@ export function deriveHealthReportStatus(input: HealthStatusInput): HealthReport
       state.latestExecution.outcome === 'failed'
         || state.latestExecution.outcome === 'invalid',
     )
-  const notDemoted = (incident: HealthIncident) =>
-    incident.effectiveDisposition === incident.disposition
   const unknownOrStale = incomplete || input.incidents.some((incident) =>
-    notDemoted(incident) && (incident.status === 'unknown' || incident.stale),
+    incident.status === 'unknown' || incident.stale,
   )
   if (unknownOrStale) return 'unknown_stale'
   if (input.incidents.some((incident) => incident.effectiveDisposition === 'watch')) return 'degraded'

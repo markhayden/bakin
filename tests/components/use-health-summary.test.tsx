@@ -99,6 +99,17 @@ describe('useHealthSummary', () => {
     expect(screen.getByTestId('count').textContent).toBe('1:error')
   })
 
+  it('a legacy payload (no sensitivity/effectiveDisposition) still badges via raw disposition', async () => {
+    // Client/server version skew must degrade to the raw story — a blanked
+    // badge would hide real action_required incidents.
+    fetchMock.mockResolvedValue(summaryResponse({ incidents: [
+      { id: 'action', disposition: 'action_required' },
+      { id: 'advisory', disposition: 'advisory' },
+    ] }))
+    render(<Probe />)
+    await waitFor(() => expect(screen.getByTestId('count').textContent).toBe('1:error'))
+  })
+
   it('quiet mode badges only action_required — watch stays silent (D10)', async () => {
     fetchMock.mockResolvedValue(summaryResponse({ sensitivity: 'quiet', incidents: [
       { id: 'watch', effectiveDisposition: 'watch' },

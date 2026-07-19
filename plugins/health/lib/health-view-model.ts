@@ -56,6 +56,12 @@ export interface HealthOverviewViewModel {
   needsAction: OverviewIncident[]
   unableToVerify: OverviewIncident[]
   watching: OverviewIncident[]
+  /**
+   * Fresh advisory incidents — raw advisories AND sensitivity-demoted
+   * findings (#690). They ride the calm notices surface: demotion means
+   * "visible but quiet", never hidden.
+   */
+  advisories: OverviewIncident[]
   search: OverviewSearch
   rightNow: {
     runningDispatches: number | null
@@ -301,6 +307,7 @@ export function buildHealthOverviewViewModel({
   const needsAction: OverviewIncident[] = []
   const unableToVerify: OverviewIncident[] = []
   const watching: OverviewIncident[] = []
+  const advisories: OverviewIncident[] = []
 
   for (const incident of report?.incidents ?? []) {
     const row = incidentModel(incident, observationById, checkById, now)
@@ -310,11 +317,14 @@ export function buildHealthOverviewViewModel({
       unableToVerify.push(row)
     } else if (incident.effectiveDisposition === 'watch' && incident.status === 'warning') {
       watching.push(row)
+    } else if (incident.effectiveDisposition === 'advisory' && incident.status === 'warning') {
+      advisories.push(row)
     }
   }
   needsAction.sort(compareAction)
   unableToVerify.sort(compareUnable)
   watching.sort(compareWatching)
+  advisories.sort(compareWatching)
 
   const evidenceStale = report ? healthReportNeedsFreshSweep(report, now) : false
   const overallStatus = report === null
@@ -345,6 +355,7 @@ export function buildHealthOverviewViewModel({
     needsAction,
     unableToVerify,
     watching,
+    advisories,
     search,
     rightNow: {
       runningDispatches: liveNow?.runs.length ?? null,

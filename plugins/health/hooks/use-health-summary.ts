@@ -31,23 +31,30 @@ function isHealthSensitivity(value: unknown): value is HealthSummaryPayload['sen
 }
 
 function parseHealthSummary(value: unknown): HealthSummaryPayload {
-  if (typeof value !== 'object' || value === null || !('incidents' in value) || !Array.isArray(value.incidents)
-    || !('sensitivity' in value) || !isHealthSensitivity(value.sensitivity)) {
+  if (typeof value !== 'object' || value === null || !('incidents' in value) || !Array.isArray(value.incidents)) {
     throw new Error('Health summary response was invalid')
   }
+  // Missing #690 fields fall back to the raw disposition / standard mode
+  // instead of throwing: a hard parse failure here would silently blank the
+  // badge (count:null) during a client/server version skew — hiding real
+  // action_required incidents is the one failure this badge must never have.
+  const sensitivity = 'sensitivity' in value && isHealthSensitivity(value.sensitivity)
+    ? value.sensitivity
+    : 'standard'
   const incidents = value.incidents.map((incident) => {
     if (typeof incident !== 'object' || incident === null
-      || !('id' in incident) || typeof incident.id !== 'string'
-      || !('effectiveDisposition' in incident)
-      || !isHealthSummaryDisposition(incident.effectiveDisposition)) {
+      || !('id' in incident) || typeof incident.id !== 'string') {
       throw new Error('Health summary response was invalid')
     }
-    return {
-      id: incident.id,
-      effectiveDisposition: incident.effectiveDisposition,
-    }
+    const effective = 'effectiveDisposition' in incident && isHealthSummaryDisposition(incident.effectiveDisposition)
+      ? incident.effectiveDisposition
+      : 'disposition' in incident && isHealthSummaryDisposition(incident.disposition)
+        ? incident.disposition
+        : null
+    if (effective === null) throw new Error('Health summary response was invalid')
+    return { id: incident.id, effectiveDisposition: effective }
   })
-  return { sensitivity: value.sensitivity, incidents }
+  return { sensitivity, incidents }
 }
 
 async function requestHealthSummary(
