@@ -89,6 +89,71 @@
           }
         }
       },
+      "data": {
+        "blue": {
+          "$value": {
+            "colorSpace": "srgb",
+            "components": [0.223529, 0.529412, 0.898039],
+            "hex": "#3987e5"
+          }
+        },
+        "aqua": {
+          "$value": {
+            "colorSpace": "srgb",
+            "components": [0.098039, 0.619608, 0.439216],
+            "hex": "#199e70"
+          }
+        },
+        "yellow": {
+          "$value": {
+            "colorSpace": "srgb",
+            "components": [0.788235, 0.521569, 0],
+            "hex": "#c98500"
+          }
+        },
+        "green": {
+          "$value": {
+            "colorSpace": "srgb",
+            "components": [0, 0.513725, 0],
+            "hex": "#008300"
+          }
+        },
+        "violet": {
+          "$value": {
+            "colorSpace": "srgb",
+            "components": [0.564706, 0.521569, 0.913725],
+            "hex": "#9085e9"
+          }
+        },
+        "red": {
+          "$value": {
+            "colorSpace": "srgb",
+            "components": [0.901961, 0.403922, 0.403922],
+            "hex": "#e66767"
+          }
+        },
+        "magenta": {
+          "$value": {
+            "colorSpace": "srgb",
+            "components": [0.835294, 0.317647, 0.505882],
+            "hex": "#d55181"
+          }
+        },
+        "orange": {
+          "$value": {
+            "colorSpace": "srgb",
+            "components": [0.85098, 0.34902, 0.14902],
+            "hex": "#d95926"
+          }
+        },
+        "other": {
+          "$value": {
+            "colorSpace": "srgb",
+            "components": [0.419608, 0.411765, 0.388235],
+            "hex": "#6b6963"
+          }
+        }
+      },
       "overlayShadow": {
         "$value": {
           "colorSpace": "srgb",

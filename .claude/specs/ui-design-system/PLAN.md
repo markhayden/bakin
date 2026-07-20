@@ -1224,6 +1224,30 @@ time if the file limit is exceeded.\
 apply approved typography/tokens, and preserve exact accessible tables and
 keyboard-equivalent marks.
 
+**Status — T33a (2026-07-20):** Complete. `ChartDataTable`, `Sparkline`,
+`ChartExplainer`, the fixed eight-slot categorical palette, and deterministic
+full-set color assignment now live in the private chart package and focused
+`@makinbakin/sdk/charts` entrypoint. Existing chart imports remain thin
+compatibility adapters for the still-unmigrated visual chart types. Missing and
+non-finite values stay explicitly unreported, sparkline segments leave real
+gaps, flat trends remain centered, sparse trends retain an exact hidden table,
+and pointer detail is mirrored on keyboard focus. A ninth and later entity
+folds into a visibly labelled low-chroma Other group; labels and values carry
+meaning independently of color. Three public stories cover exact/empty/overflow
+tables, stable multi-series assignment, and compact trends at desktop, 320 px,
+200% text, long-label, keyboard, and non-color states. Thirty-four focused
+chart and architecture tests, all 97 public Storybook interaction/axe cases,
+all 76 exact desktop/mobile visual cases, and all 57
+Chromium/Firefox/WebKit behavior cases pass. The combined docs build validates
+48 pages and 268 typed routes, publishes all 97 stories, and consecutive public
+builds are deterministic. Canonical CSS is 298,462 bytes (+1,189 from T32b),
+the opt-in charts entrypoint is 446 bytes direct / 35,096 reachable, and the
+legacy components entry shrinks by 4,298 direct bytes. Bundle-graph assertions
+prove base UI/layout/patterns do not reach the chart package; build partitioning
+shifts initial host JS to 458,364 bytes (+1,358) without chart code entering the
+host artifact. No official page or plugin composition migration is included in
+T33a.
+
 **Acceptance:** importing base UI does not include charts; every chart has
 empty/overflow/multi-series/CVD/non-color stories and an exact table path.
 

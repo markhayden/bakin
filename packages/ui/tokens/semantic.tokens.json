@@ -122,6 +122,55 @@
           }
         }
       },
+      "data": {
+        "series": {
+          "1": {
+            "$description": "First categorical data-series slot in the fixed color-vision-deficiency-safe sequence.",
+            "$value": "{reference.color.data.blue}",
+            "$extensions": { "dev.bakin.tokens": { "contrastAgainst": "semantic.color.canvas.default", "contrastRole": "non-text" } }
+          },
+          "2": {
+            "$description": "Second categorical data-series slot in the fixed color-vision-deficiency-safe sequence.",
+            "$value": "{reference.color.data.aqua}",
+            "$extensions": { "dev.bakin.tokens": { "contrastAgainst": "semantic.color.canvas.default", "contrastRole": "non-text" } }
+          },
+          "3": {
+            "$description": "Third categorical data-series slot in the fixed color-vision-deficiency-safe sequence.",
+            "$value": "{reference.color.data.yellow}",
+            "$extensions": { "dev.bakin.tokens": { "contrastAgainst": "semantic.color.canvas.default", "contrastRole": "non-text" } }
+          },
+          "4": {
+            "$description": "Fourth categorical data-series slot in the fixed color-vision-deficiency-safe sequence.",
+            "$value": "{reference.color.data.green}",
+            "$extensions": { "dev.bakin.tokens": { "contrastAgainst": "semantic.color.canvas.default", "contrastRole": "non-text" } }
+          },
+          "5": {
+            "$description": "Fifth categorical data-series slot in the fixed color-vision-deficiency-safe sequence.",
+            "$value": "{reference.color.data.violet}",
+            "$extensions": { "dev.bakin.tokens": { "contrastAgainst": "semantic.color.canvas.default", "contrastRole": "non-text" } }
+          },
+          "6": {
+            "$description": "Sixth categorical data-series slot in the fixed color-vision-deficiency-safe sequence.",
+            "$value": "{reference.color.data.red}",
+            "$extensions": { "dev.bakin.tokens": { "contrastAgainst": "semantic.color.canvas.default", "contrastRole": "non-text" } }
+          },
+          "7": {
+            "$description": "Seventh categorical data-series slot in the fixed color-vision-deficiency-safe sequence.",
+            "$value": "{reference.color.data.magenta}",
+            "$extensions": { "dev.bakin.tokens": { "contrastAgainst": "semantic.color.canvas.default", "contrastRole": "non-text" } }
+          },
+          "8": {
+            "$description": "Eighth categorical data-series slot in the fixed color-vision-deficiency-safe sequence.",
+            "$value": "{reference.color.data.orange}",
+            "$extensions": { "dev.bakin.tokens": { "contrastAgainst": "semantic.color.canvas.default", "contrastRole": "non-text" } }
+          }
+        },
+        "other": {
+          "$description": "Low-chroma slot for categorical series folded into the visible Other group.",
+          "$value": "{reference.color.data.other}",
+          "$extensions": { "dev.bakin.tokens": { "contrastAgainst": "semantic.color.canvas.default", "contrastRole": "non-text" } }
+        }
+      },
       "focus": {
         "ring": {
           "$description": "Keyboard focus indicator on the application canvas.",

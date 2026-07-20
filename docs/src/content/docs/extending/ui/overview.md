@@ -858,6 +858,46 @@ Use `StatusBadge` for compact state language and `StatTile` for scan-friendly te
 
 `StatTile` uses the low-chrome Product Character treatment by default. Choose `variant="surface"` only when the metric is a genuinely bounded or actionable object, not to put a card around every number. When a tile has a meter, pass `progress.label` whenever the visible metric label is not a plain string. Consumers provide the exact value, denominator, and honest coverage copy; the component only clamps and presents the meter. An `onClick` tile becomes a native `type="button"` with the same visible focus contract as other actions.
 
+## Compact Data Visualization
+
+Import chart helpers from the opt-in `@makinbakin/sdk/charts` entrypoint so pages that do not visualize data do not pay for the chart kit. Every visual summary needs an exact data path: use `ChartDataTable` as the visible disclosure for a chart, while `Sparkline` includes its compact exact table for assistive technology automatically.
+
+```tsx
+import {
+  assignSeriesColors,
+  ChartDataTable,
+  ChartExplainer,
+  Sparkline,
+} from '@makinbakin/sdk/charts'
+
+const agents = ['patch', 'pixel', 'rolo']
+const colors = assignSeriesColors(agents)
+
+export function CompletionTrend() {
+  return (
+    <section aria-labelledby="completion-trend-heading">
+      <h2 id="completion-trend-heading">Completed tasks</h2>
+      <p>42 completed · up 8 from the prior window</p>
+      <Sparkline
+        label="Completed tasks across the last four runs"
+        labels={['Run 1', 'Run 2', 'Run 3', 'Run 4']}
+        values={[7, null, 11, 14]}
+      />
+      <ChartDataTable
+        caption="Completion trend data"
+        data={[{ x: 'run-4', xLabel: 'Run 4', values: { patch: 8, pixel: 6 } }]}
+        series={agents.map((key) => ({ key, label: key, color: colors.get(key) }))}
+      />
+      <ChartExplainer>A missing run means it was not reported; it is not zero.</ChartExplainer>
+    </section>
+  )
+}
+```
+
+Pass the full entity set to `assignSeriesColors` before filtering or changing time windows. The fixed order keeps a surviving entity stable; a ninth and later entity belongs in a visibly labelled “Other” group instead of receiving another hue. Never reorder or cycle the palette locally.
+
+Never use color alone to carry series, state, or trend meaning. Keep a visible legend or series label, pair a sparkline with visible current-value and direction copy, and make pointer detail available from keyboard focus. `null`, omitted, and non-finite values are missing data: label them honestly and leave a visual gap instead of drawing through them or coercing them to zero.
+
 ## Local Commands
 
 ```sh

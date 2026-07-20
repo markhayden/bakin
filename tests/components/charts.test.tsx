@@ -167,7 +167,7 @@ describe('LineChart', () => {
     )
 
     expect(screen.getByRole('group', { name: 'Agent throughput' })).toBeDefined()
-    expect(container.querySelector('[data-series="completed"]')?.getAttribute('stroke')).toBe('var(--chart-1)')
+    expect(container.querySelector('[data-series="completed"]')?.getAttribute('stroke')).toBe('var(--bakin-color-data-series-1)')
     const table = screen.getByRole('table', { name: 'Agent throughput data', hidden: true })
     expect(table.textContent).toContain('Jul 1')
     expect(table.textContent).toContain('4')
@@ -200,7 +200,7 @@ describe('BarChart', () => {
     )
 
     expect(screen.getByRole('group', { name: 'Run outcomes' })).toBeDefined()
-    expect(container.querySelector('[data-series="completed"]')?.getAttribute('fill')).toBe('var(--chart-1)')
+    expect(container.querySelector('[data-series="completed"]')?.getAttribute('fill')).toBe('var(--bakin-color-data-series-1)')
     const table = screen.getByRole('table', { name: 'Run outcomes data', hidden: true })
     expect(table.textContent).toContain('Jul 2')
     expect(table.textContent).toContain('7')
@@ -237,7 +237,7 @@ describe('Sparkline', () => {
       />,
     )
     expect(container.querySelector('svg[aria-label="Tokens over runs"]')).toBeDefined()
-    expect(container.querySelector('polyline')?.getAttribute('stroke')).toBe('var(--chart-1)')
+    expect(container.querySelector('polyline')?.getAttribute('stroke')).toBe('var(--bakin-color-data-series-1)')
     const mark = screen.getByRole('img', { name: 'Run 2: 5 tokens' })
     fireEvent.focus(mark)
     expect(screen.getByRole('tooltip').textContent).toBe('Run 2: 5 tokens')

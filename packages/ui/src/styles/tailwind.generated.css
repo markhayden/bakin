@@ -4,6 +4,15 @@
   --color-bakin-action-primary-foreground: var(--bakin-color-action-primary-foreground);
   --color-bakin-border-subtle: var(--bakin-color-border-subtle);
   --color-bakin-canvas-default: var(--bakin-color-canvas-default);
+  --color-bakin-data-other: var(--bakin-color-data-other);
+  --color-bakin-data-series-1: var(--bakin-color-data-series-1);
+  --color-bakin-data-series-2: var(--bakin-color-data-series-2);
+  --color-bakin-data-series-3: var(--bakin-color-data-series-3);
+  --color-bakin-data-series-4: var(--bakin-color-data-series-4);
+  --color-bakin-data-series-5: var(--bakin-color-data-series-5);
+  --color-bakin-data-series-6: var(--bakin-color-data-series-6);
+  --color-bakin-data-series-7: var(--bakin-color-data-series-7);
+  --color-bakin-data-series-8: var(--bakin-color-data-series-8);
   --color-bakin-focus-ring: var(--bakin-color-focus-ring);
   --color-bakin-signal-accent: var(--bakin-color-signal-accent);
   --color-bakin-signal-danger: var(--bakin-color-signal-danger);

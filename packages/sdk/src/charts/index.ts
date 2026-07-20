@@ -1,7 +1,19 @@
-/**
- * `@makinbakin/sdk/charts` — isolated data-visualization components.
- *
- * T33 owns the chart exports. Keeping this boundary empty until then prevents
- * base UI consumers from pulling chart code through a compatibility shortcut.
- */
-export {}
+/** `@makinbakin/sdk/charts` — opt-in, accessible data visualization. */
+export {
+  assignSeriesColors,
+  ChartDataTable,
+  ChartExplainer,
+  chartSeriesColor,
+  CHART_MAX_SERIES,
+  CHART_OTHER_COLOR,
+  CHART_SERIES_COLORS,
+  CHART_TOKEN_COLORS,
+  Sparkline,
+} from '@bakin/ui/charts'
+export type {
+  ChartDataTableProps,
+  ChartDatum,
+  ChartExplainerProps,
+  ChartSeries,
+  SparklineProps,
+} from '@bakin/ui/charts'

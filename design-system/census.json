@@ -19,14 +19,14 @@
     ]
   },
   "summary": {
-    "total": 284,
+    "total": 288,
     "byKind": {
       "host-route": 26,
       "plugin-route": 9,
       "plugin-slot": 30,
       "plugin-template": 2,
       "shared-component": 93,
-      "sdk-ui-export": 124
+      "sdk-ui-export": 128
     },
     "nonVisualAliases": 3
   },
@@ -1919,6 +1919,31 @@
       ]
     },
     {
+      "id": "sdk-ui-export:type:AgentFilterProps",
+      "kind": "sdk-ui-export",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "identity": {
+        "symbol": "AgentFilterProps",
+        "entrypoint": "@makinbakin/sdk/components"
+      },
+      "sourcePath": "src/components/agent-filter.tsx",
+      "symbols": [
+        "AgentFilterProps"
+      ],
+      "exportStatus": "public",
+      "classification": "public-contract",
+      "evidence": [
+        {
+          "type": "public-export",
+          "path": "packages/sdk/src/components/index.ts",
+          "detail": "type AgentFilterProps from @/components/agent-filter (AgentFilterProps)"
+        }
+      ]
+    },
+    {
       "id": "sdk-ui-export:type:AgentTurnProps",
       "kind": "sdk-ui-export",
       "owner": {
@@ -2494,6 +2519,31 @@
       ]
     },
     {
+      "id": "sdk-ui-export:type:FacetFilterProps",
+      "kind": "sdk-ui-export",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "identity": {
+        "symbol": "FacetFilterProps",
+        "entrypoint": "@makinbakin/sdk/components"
+      },
+      "sourcePath": "src/components/facet-filter.tsx",
+      "symbols": [
+        "FacetFilterProps"
+      ],
+      "exportStatus": "public",
+      "classification": "public-contract",
+      "evidence": [
+        {
+          "type": "public-export",
+          "path": "packages/sdk/src/components/index.ts",
+          "detail": "type FacetFilterProps from @/components/facet-filter (FacetFilterProps)"
+        }
+      ]
+    },
+    {
       "id": "sdk-ui-export:type:FacetOption",
       "kind": "sdk-ui-export",
       "owner": {
@@ -2815,6 +2865,31 @@
           "type": "public-export",
           "path": "packages/sdk/src/components/index.ts",
           "detail": "type SegmentedControlProps from @/components/segmented-control (SegmentedControlProps)"
+        }
+      ]
+    },
+    {
+      "id": "sdk-ui-export:type:SortableHeadProps",
+      "kind": "sdk-ui-export",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "identity": {
+        "symbol": "SortableHeadProps",
+        "entrypoint": "@makinbakin/sdk/components"
+      },
+      "sourcePath": "src/components/sortable-head.tsx",
+      "symbols": [
+        "SortableHeadProps"
+      ],
+      "exportStatus": "public",
+      "classification": "public-contract",
+      "evidence": [
+        {
+          "type": "public-export",
+          "path": "packages/sdk/src/components/index.ts",
+          "detail": "type SortableHeadProps from @/components/sortable-head (SortableHeadProps)"
         }
       ]
     },
@@ -3165,6 +3240,31 @@
           "type": "public-export",
           "path": "packages/sdk/src/components/index.ts",
           "detail": "type UnderlineTab from @/components/underline-tabs (UnderlineTab)"
+        }
+      ]
+    },
+    {
+      "id": "sdk-ui-export:type:UnderlineTabsProps",
+      "kind": "sdk-ui-export",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "identity": {
+        "symbol": "UnderlineTabsProps",
+        "entrypoint": "@makinbakin/sdk/components"
+      },
+      "sourcePath": "src/components/underline-tabs.tsx",
+      "symbols": [
+        "UnderlineTabsProps"
+      ],
+      "exportStatus": "public",
+      "classification": "public-contract",
+      "evidence": [
+        {
+          "type": "public-export",
+          "path": "packages/sdk/src/components/index.ts",
+          "detail": "type UnderlineTabsProps from @/components/underline-tabs (UnderlineTabsProps)"
         }
       ]
     },
@@ -5522,7 +5622,7 @@
         {
           "type": "public-export",
           "path": "packages/sdk/src/components/index.ts",
-          "detail": "AgentFilter"
+          "detail": "AgentFilter, AgentFilterProps"
         }
       ]
     },
@@ -6290,7 +6390,7 @@
         {
           "type": "public-export",
           "path": "packages/sdk/src/components/index.ts",
-          "detail": "FacetFilter, FacetOption"
+          "detail": "FacetFilter, FacetFilterProps, FacetOption"
         }
       ]
     },
@@ -6723,7 +6823,7 @@
         {
           "type": "public-export",
           "path": "packages/sdk/src/components/index.ts",
-          "detail": "SortDir, SortableHead"
+          "detail": "SortDir, SortableHead, SortableHeadProps"
         }
       ]
     },
@@ -7142,14 +7242,18 @@
       },
       "sourcePath": "src/components/ui/form.tsx",
       "symbols": [
+        "Field",
+        "FieldControl",
+        "FieldDescription",
+        "FieldError",
+        "FieldGroup",
+        "FieldLabel",
+        "Fieldset",
+        "FieldsetDescription",
+        "FieldsetLegend",
         "Form",
-        "FormControl",
-        "FormDescription",
-        "FormField",
-        "FormItem",
-        "FormLabel",
-        "FormMessage",
-        "useFormField"
+        "FormActions",
+        "SubmitButton"
       ],
       "exportStatus": "private",
       "classification": "shared-ui",
@@ -7570,7 +7674,7 @@
         {
           "type": "public-export",
           "path": "packages/sdk/src/components/index.ts",
-          "detail": "UnderlineTab, UnderlineTabs"
+          "detail": "UnderlineTab, UnderlineTabs, UnderlineTabsProps"
         }
       ]
     },

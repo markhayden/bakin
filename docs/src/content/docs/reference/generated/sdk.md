@@ -432,7 +432,22 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 
 Isolated data-visualization components and contracts. Source: `packages/sdk/src/charts/index.ts`.
 
-The boundary is established; public exports arrive with its owned component migration.
+| Export | Description |
+| --- | --- |
+| `assignSeriesColors` | `@makinbakin/sdk/charts` — opt-in, accessible data visualization. |
+| `ChartDataTable` | `@makinbakin/sdk/charts` — opt-in, accessible data visualization. |
+| `ChartExplainer` | `@makinbakin/sdk/charts` — opt-in, accessible data visualization. |
+| `chartSeriesColor` | `@makinbakin/sdk/charts` — opt-in, accessible data visualization. |
+| `CHART_MAX_SERIES` | `@makinbakin/sdk/charts` — opt-in, accessible data visualization. |
+| `CHART_OTHER_COLOR` | `@makinbakin/sdk/charts` — opt-in, accessible data visualization. |
+| `CHART_SERIES_COLORS` | `@makinbakin/sdk/charts` — opt-in, accessible data visualization. |
+| `CHART_TOKEN_COLORS` | `@makinbakin/sdk/charts` — opt-in, accessible data visualization. |
+| `Sparkline` | `@makinbakin/sdk/charts` — opt-in, accessible data visualization. |
+| `ChartDataTableProps` | — |
+| `ChartDatum` | — |
+| `ChartExplainerProps` | — |
+| `ChartSeries` | — |
+| `SparklineProps` | — |
 
 ## `@makinbakin/sdk/conversation`
 

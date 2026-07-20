@@ -42,6 +42,9 @@ const sortableTableStory = '/iframe.html?id=patterns-filters-and-navigation--sor
 const statusLanguageStory = '/iframe.html?id=patterns-status-and-metrics--status-language&viewMode=story'
 const denseMetricsStory = '/iframe.html?id=patterns-status-and-metrics--dense-metrics&viewMode=story'
 const actionableMetricsStory = '/iframe.html?id=patterns-status-and-metrics--actionable-metrics&viewMode=story'
+const chartExactDataStory = '/iframe.html?id=charts-exact-data-and-compact-trends--exact-data-table&viewMode=story'
+const chartPaletteStory = '/iframe.html?id=charts-exact-data-and-compact-trends--stable-palette&viewMode=story'
+const chartCompactTrendsStory = '/iframe.html?id=charts-exact-data-and-compact-trends--compact-trends&viewMode=story'
 
 test('public story keeps keyboard, focus, console, and responsive contracts', async ({ page }) => {
   const browserErrors: string[] = []
@@ -1227,6 +1230,93 @@ test('status and metric patterns preserve visible meaning, exact values, and nat
     await page.goto(denseMetricsStory, { waitUntil: 'networkidle' })
     await page.evaluate(() => { document.documentElement.style.fontSize = '200%' })
     await expect(page.getByText('Plugin migration coverage across official surfaces', { exact: true })).toBeVisible()
+    const dimensions = await page.evaluate(() => ({
+      clientWidth: document.documentElement.clientWidth,
+      scrollWidth: document.documentElement.scrollWidth,
+    }))
+    expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth)
+  })
+
+  expect(browserErrors).toEqual([])
+})
+
+test('chart foundation preserves exact data, stable labels, gaps, and bounded overflow', async ({ page }) => {
+  const browserErrors: string[] = []
+  page.on('console', (message) => {
+    if (message.type() === 'error') browserErrors.push(`console: ${message.text()}`)
+  })
+  page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
+  page.on('requestfailed', (request) => {
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+  })
+
+  for (const [story, heading] of [
+    [chartExactDataStory, 'A chart summary never hides the evidence'],
+    [chartPaletteStory, 'Color follows the entity, not the filter'],
+    [chartCompactTrendsStory, 'Shape supports the number; it does not replace it'],
+  ] as const) {
+    for (const width of responsiveWidths) {
+      await test.step(`${heading} remains contained at ${width}px`, async () => {
+        await page.setViewportSize({ width, height: 1000 })
+        await page.goto(story, { waitUntil: 'networkidle' })
+        await expect(page.getByRole('heading', { level: 1, name: heading })).toBeVisible()
+        const dimensions = await page.evaluate(() => ({
+          clientWidth: document.documentElement.clientWidth,
+          scrollWidth: document.documentElement.scrollWidth,
+        }))
+        expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth)
+      })
+    }
+  }
+
+  await test.step('exact table keeps missing values distinct and owns narrow overflow', async () => {
+    await page.setViewportSize({ width: 320, height: 1000 })
+    await page.goto(chartExactDataStory, { waitUntil: 'networkidle' })
+    await expect(page.getByRole('cell', { name: 'Still processing' })).toHaveAttribute('data-missing', 'true')
+    const region = page.getByRole('region', { name: 'Run outcomes exact data table' })
+    await expect(region).toHaveAttribute('tabindex', '0')
+    const dimensions = await region.evaluate((element) => ({
+      clientWidth: element.clientWidth,
+      scrollWidth: element.scrollWidth,
+    }))
+    expect(dimensions.scrollWidth).toBeGreaterThan(dimensions.clientWidth)
+    const disclosure = page.getByText('View Run outcomes exact data', { exact: true })
+    await disclosure.focus()
+    await disclosure.press('Enter')
+    await expect(disclosure.locator('..')).not.toHaveAttribute('open', '')
+    await disclosure.press('Enter')
+    await expect(disclosure.locator('..')).toHaveAttribute('open', '')
+    await region.focus()
+    await region.press('ArrowRight')
+    await expect.poll(
+      () => region.evaluate((element) => element.scrollLeft),
+      { message: 'the focused overflow region should respond to native arrow-key scrolling' },
+    ).toBeGreaterThan(0)
+  })
+
+  await test.step('palette meaning remains visible without reading swatch color', async () => {
+    await page.goto(chartPaletteStory, { waitUntil: 'networkidle' })
+    await expect(page.getByText('Series slot 2')).toBeVisible()
+    await expect(page.getByText('Other group', { exact: true })).toHaveCount(2)
+    await expect(page.getByText('basil', { exact: true })).toBeVisible()
+  })
+
+  await test.step('sparkline point detail works from focus and missing windows stay gaps', async () => {
+    await page.goto(chartCompactTrendsStory, { waitUntil: 'networkidle' })
+    const point = page.getByRole('img', { name: 'Window 2: 24' })
+    await point.focus()
+    await expect(point).toBeFocused()
+    await expect(page.getByRole('tooltip')).toHaveText('Window 2: 24')
+    const median = page.getByRole('group', { name: 'Median queue time across the last six reporting windows' })
+    await expect(median.locator('[role="img"]')).toHaveCount(5)
+    await expect(page.getByText('Down 38 seconds from the prior window')).toBeVisible()
+  })
+
+  await test.step('200% text preserves document containment', async () => {
+    await page.setViewportSize({ width: 320, height: 1000 })
+    await page.goto(chartCompactTrendsStory, { waitUntil: 'networkidle' })
+    await page.evaluate(() => { document.documentElement.style.fontSize = '200%' })
+    await expect(page.getByRole('heading', { name: 'Retry rate for scheduled workflows with delayed third-party acknowledgements' })).toBeVisible()
     const dimensions = await page.evaluate(() => ({
       clientWidth: document.documentElement.clientWidth,
       scrollWidth: document.documentElement.scrollWidth,

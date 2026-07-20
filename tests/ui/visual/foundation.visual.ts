@@ -510,3 +510,39 @@ test('public actionable metrics pattern visual baseline', async ({ page }) => {
     fullPage: true,
   })
 })
+
+test('public exact chart data visual baseline', async ({ page }) => {
+  await page.goto('/iframe.html?id=charts-exact-data-and-compact-trends--exact-data-table&viewMode=story')
+  await expect(page.getByRole('heading', { level: 1, name: 'A chart summary never hides the evidence' })).toBeVisible()
+  await expect(page.getByRole('table', { name: 'Run outcomes exact data' })).toBeVisible()
+  await page.evaluate(async () => document.fonts.ready)
+  await expect(page).toHaveScreenshot('foundation-chart-exact-data.png', {
+    animations: 'disabled',
+    caret: 'hide',
+    fullPage: true,
+  })
+})
+
+test('public chart palette visual baseline', async ({ page }) => {
+  await page.goto('/iframe.html?id=charts-exact-data-and-compact-trends--stable-palette&viewMode=story')
+  await expect(page.getByRole('heading', { level: 1, name: 'Color follows the entity, not the filter' })).toBeVisible()
+  await expect(page.getByText('Slot 1')).toBeVisible()
+  await page.evaluate(async () => document.fonts.ready)
+  await expect(page).toHaveScreenshot('foundation-chart-palette.png', {
+    animations: 'disabled',
+    caret: 'hide',
+    fullPage: true,
+  })
+})
+
+test('public compact chart trends visual baseline', async ({ page }) => {
+  await page.goto('/iframe.html?id=charts-exact-data-and-compact-trends--compact-trends&viewMode=story')
+  await expect(page.getByRole('heading', { level: 1, name: 'Shape supports the number; it does not replace it' })).toBeVisible()
+  await expect(page.getByRole('group', { name: 'Completed tasks across the last six reporting windows' })).toBeVisible()
+  await page.evaluate(async () => document.fonts.ready)
+  await expect(page).toHaveScreenshot('foundation-chart-compact-trends.png', {
+    animations: 'disabled',
+    caret: 'hide',
+    fullPage: true,
+  })
+})

@@ -4,6 +4,15 @@
   --bakin-color-action-primary-foreground: #052e16;
   --bakin-color-border-subtle: #4a4747;
   --bakin-color-canvas-default: #0f0e0e;
+  --bakin-color-data-other: #6b6963;
+  --bakin-color-data-series-1: #3987e5;
+  --bakin-color-data-series-2: #199e70;
+  --bakin-color-data-series-3: #c98500;
+  --bakin-color-data-series-4: #008300;
+  --bakin-color-data-series-5: #9085e9;
+  --bakin-color-data-series-6: #e66767;
+  --bakin-color-data-series-7: #d55181;
+  --bakin-color-data-series-8: #d95926;
   --bakin-color-focus-ring: #22c55e;
   --bakin-color-signal-accent: #ff007f;
   --bakin-color-signal-danger: #ef4444;

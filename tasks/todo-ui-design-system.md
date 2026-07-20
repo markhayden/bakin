@@ -69,7 +69,7 @@ comparison, and deletion of replaced styling/allowances.
 - [x] T31 Migrate destructive, dirty, and confirmation patterns
 - [x] T32a Migrate filters, segmented navigation, tabs, and sorting patterns
 - [x] T32b Migrate status and metric patterns
-- [ ] T33a Migrate chart data tables, palette, and sparkline
+- [x] T33a Migrate chart data tables, palette, and sparkline
 - [ ] T33b Migrate line, bar, and stacked charts
 - [ ] T34a Migrate conversation model, folding, and time utilities
 - [ ] T34b Migrate message, activity, and tool rendering

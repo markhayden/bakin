@@ -6,11 +6,11 @@
   "layers": {
     "reference": {
       "visibility": "internal",
-      "tokens": 41
+      "tokens": 50
     },
     "semantic": {
       "visibility": "public",
-      "tokens": 45
+      "tokens": 54
     },
     "component": {
       "visibility": "internal",
@@ -263,6 +263,159 @@
       "value": {
         "unit": "rem",
         "value": 0.5
+      }
+    },
+    {
+      "path": "reference.color.data.aqua",
+      "layer": "reference",
+      "visibility": "internal",
+      "type": "color",
+      "source": "packages/ui/tokens/reference.tokens.json#/reference/color/data/aqua",
+      "references": [],
+      "value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.098039,
+          0.619608,
+          0.439216
+        ],
+        "hex": "#199e70"
+      }
+    },
+    {
+      "path": "reference.color.data.blue",
+      "layer": "reference",
+      "visibility": "internal",
+      "type": "color",
+      "source": "packages/ui/tokens/reference.tokens.json#/reference/color/data/blue",
+      "references": [],
+      "value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.223529,
+          0.529412,
+          0.898039
+        ],
+        "hex": "#3987e5"
+      }
+    },
+    {
+      "path": "reference.color.data.green",
+      "layer": "reference",
+      "visibility": "internal",
+      "type": "color",
+      "source": "packages/ui/tokens/reference.tokens.json#/reference/color/data/green",
+      "references": [],
+      "value": {
+        "colorSpace": "srgb",
+        "components": [
+          0,
+          0.513725,
+          0
+        ],
+        "hex": "#008300"
+      }
+    },
+    {
+      "path": "reference.color.data.magenta",
+      "layer": "reference",
+      "visibility": "internal",
+      "type": "color",
+      "source": "packages/ui/tokens/reference.tokens.json#/reference/color/data/magenta",
+      "references": [],
+      "value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.835294,
+          0.317647,
+          0.505882
+        ],
+        "hex": "#d55181"
+      }
+    },
+    {
+      "path": "reference.color.data.orange",
+      "layer": "reference",
+      "visibility": "internal",
+      "type": "color",
+      "source": "packages/ui/tokens/reference.tokens.json#/reference/color/data/orange",
+      "references": [],
+      "value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.85098,
+          0.34902,
+          0.14902
+        ],
+        "hex": "#d95926"
+      }
+    },
+    {
+      "path": "reference.color.data.other",
+      "layer": "reference",
+      "visibility": "internal",
+      "type": "color",
+      "source": "packages/ui/tokens/reference.tokens.json#/reference/color/data/other",
+      "references": [],
+      "value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.419608,
+          0.411765,
+          0.388235
+        ],
+        "hex": "#6b6963"
+      }
+    },
+    {
+      "path": "reference.color.data.red",
+      "layer": "reference",
+      "visibility": "internal",
+      "type": "color",
+      "source": "packages/ui/tokens/reference.tokens.json#/reference/color/data/red",
+      "references": [],
+      "value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.901961,
+          0.403922,
+          0.403922
+        ],
+        "hex": "#e66767"
+      }
+    },
+    {
+      "path": "reference.color.data.violet",
+      "layer": "reference",
+      "visibility": "internal",
+      "type": "color",
+      "source": "packages/ui/tokens/reference.tokens.json#/reference/color/data/violet",
+      "references": [],
+      "value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.564706,
+          0.521569,
+          0.913725
+        ],
+        "hex": "#9085e9"
+      }
+    },
+    {
+      "path": "reference.color.data.yellow",
+      "layer": "reference",
+      "visibility": "internal",
+      "type": "color",
+      "source": "packages/ui/tokens/reference.tokens.json#/reference/color/data/yellow",
+      "references": [],
+      "value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.788235,
+          0.521569,
+          0
+        ],
+        "hex": "#c98500"
       }
     },
     {
@@ -937,6 +1090,258 @@
         "ratio": 19.28,
         "minimum": 4.5,
         "standard": "WCAG AA normal text",
+        "status": "pass"
+      }
+    },
+    {
+      "path": "semantic.color.data.other",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "color",
+      "description": "Low-chroma slot for categorical series folded into the visible Other group.",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/color/data/other",
+      "references": [
+        "reference.color.data.other"
+      ],
+      "value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.419608,
+          0.411765,
+          0.388235
+        ],
+        "hex": "#6b6963"
+      },
+      "contrast": {
+        "against": "semantic.color.canvas.default",
+        "role": "non-text",
+        "ratio": 3.51,
+        "minimum": 3,
+        "standard": "WCAG AA non-text UI",
+        "status": "pass"
+      }
+    },
+    {
+      "path": "semantic.color.data.series.1",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "color",
+      "description": "First categorical data-series slot in the fixed color-vision-deficiency-safe sequence.",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/color/data/series/1",
+      "references": [
+        "reference.color.data.blue"
+      ],
+      "value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.223529,
+          0.529412,
+          0.898039
+        ],
+        "hex": "#3987e5"
+      },
+      "contrast": {
+        "against": "semantic.color.canvas.default",
+        "role": "non-text",
+        "ratio": 5.3,
+        "minimum": 3,
+        "standard": "WCAG AA non-text UI",
+        "status": "pass"
+      }
+    },
+    {
+      "path": "semantic.color.data.series.2",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "color",
+      "description": "Second categorical data-series slot in the fixed color-vision-deficiency-safe sequence.",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/color/data/series/2",
+      "references": [
+        "reference.color.data.aqua"
+      ],
+      "value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.098039,
+          0.619608,
+          0.439216
+        ],
+        "hex": "#199e70"
+      },
+      "contrast": {
+        "against": "semantic.color.canvas.default",
+        "role": "non-text",
+        "ratio": 5.66,
+        "minimum": 3,
+        "standard": "WCAG AA non-text UI",
+        "status": "pass"
+      }
+    },
+    {
+      "path": "semantic.color.data.series.3",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "color",
+      "description": "Third categorical data-series slot in the fixed color-vision-deficiency-safe sequence.",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/color/data/series/3",
+      "references": [
+        "reference.color.data.yellow"
+      ],
+      "value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.788235,
+          0.521569,
+          0
+        ],
+        "hex": "#c98500"
+      },
+      "contrast": {
+        "against": "semantic.color.canvas.default",
+        "role": "non-text",
+        "ratio": 6.28,
+        "minimum": 3,
+        "standard": "WCAG AA non-text UI",
+        "status": "pass"
+      }
+    },
+    {
+      "path": "semantic.color.data.series.4",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "color",
+      "description": "Fourth categorical data-series slot in the fixed color-vision-deficiency-safe sequence.",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/color/data/series/4",
+      "references": [
+        "reference.color.data.green"
+      ],
+      "value": {
+        "colorSpace": "srgb",
+        "components": [
+          0,
+          0.513725,
+          0
+        ],
+        "hex": "#008300"
+      },
+      "contrast": {
+        "against": "semantic.color.canvas.default",
+        "role": "non-text",
+        "ratio": 3.9,
+        "minimum": 3,
+        "standard": "WCAG AA non-text UI",
+        "status": "pass"
+      }
+    },
+    {
+      "path": "semantic.color.data.series.5",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "color",
+      "description": "Fifth categorical data-series slot in the fixed color-vision-deficiency-safe sequence.",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/color/data/series/5",
+      "references": [
+        "reference.color.data.violet"
+      ],
+      "value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.564706,
+          0.521569,
+          0.913725
+        ],
+        "hex": "#9085e9"
+      },
+      "contrast": {
+        "against": "semantic.color.canvas.default",
+        "role": "non-text",
+        "ratio": 6.17,
+        "minimum": 3,
+        "standard": "WCAG AA non-text UI",
+        "status": "pass"
+      }
+    },
+    {
+      "path": "semantic.color.data.series.6",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "color",
+      "description": "Sixth categorical data-series slot in the fixed color-vision-deficiency-safe sequence.",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/color/data/series/6",
+      "references": [
+        "reference.color.data.red"
+      ],
+      "value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.901961,
+          0.403922,
+          0.403922
+        ],
+        "hex": "#e66767"
+      },
+      "contrast": {
+        "against": "semantic.color.canvas.default",
+        "role": "non-text",
+        "ratio": 5.97,
+        "minimum": 3,
+        "standard": "WCAG AA non-text UI",
+        "status": "pass"
+      }
+    },
+    {
+      "path": "semantic.color.data.series.7",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "color",
+      "description": "Seventh categorical data-series slot in the fixed color-vision-deficiency-safe sequence.",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/color/data/series/7",
+      "references": [
+        "reference.color.data.magenta"
+      ],
+      "value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.835294,
+          0.317647,
+          0.505882
+        ],
+        "hex": "#d55181"
+      },
+      "contrast": {
+        "against": "semantic.color.canvas.default",
+        "role": "non-text",
+        "ratio": 4.89,
+        "minimum": 3,
+        "standard": "WCAG AA non-text UI",
+        "status": "pass"
+      }
+    },
+    {
+      "path": "semantic.color.data.series.8",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "color",
+      "description": "Eighth categorical data-series slot in the fixed color-vision-deficiency-safe sequence.",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/color/data/series/8",
+      "references": [
+        "reference.color.data.orange"
+      ],
+      "value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.85098,
+          0.34902,
+          0.14902
+        ],
+        "hex": "#d95926"
+      },
+      "contrast": {
+        "against": "semantic.color.canvas.default",
+        "role": "non-text",
+        "ratio": 4.96,
+        "minimum": 3,
+        "standard": "WCAG AA non-text UI",
         "status": "pass"
       }
     },
