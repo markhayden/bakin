@@ -48,6 +48,7 @@ const report: CapabilityReport = {
     memory: { mode: 'native' },
     sessions: { mode: 'native' },
     workspaceFiles: { mode: 'native' },
+    concurrency: { sameAgentTurns: 'serialized' },
     input: { imageInput: true, audioInput: false },
   },
   toolAccess: { style: 'in-process', ok: true, issues: [] },

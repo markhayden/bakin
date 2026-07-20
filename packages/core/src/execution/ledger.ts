@@ -544,6 +544,21 @@ export function bumpHeartbeatByTask(taskId: string, now?: number): void {
   })
 }
 
+/**
+ * Status of ONE run by its id (== dispatch threadId). Backs the asset
+ * staleness gate (same-agent-concurrency D2): a save whose origin run is no
+ * longer `running` must not advance currentVersion. Null = row missing
+ * (task deleted purges runs) — callers treat missing as not-live.
+ */
+export function getRunStatus(runId: string): 'running' | 'settled' | 'superseded' | 'lost' | null {
+  return guard(`getRunStatus(${runId})`, () => {
+    const row = ledger()
+      .prepare<{ status: string }, [string]>('SELECT status FROM runs WHERE run_id = ?')
+      .get(runId)
+    return (row?.status as 'running' | 'settled' | 'superseded' | 'lost' | undefined) ?? null
+  })
+}
+
 /** First live run for the task (regular tasks have at most one). */
 export function getLiveRun(taskId: string): RunRow | null {
   return guard(`getLiveRun(${taskId})`, () => {

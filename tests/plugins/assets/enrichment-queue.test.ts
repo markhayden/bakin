@@ -196,6 +196,7 @@ describe('enrichment activity notifications', () => {
         memory: { mode: 'native' as const },
         sessions: { mode: 'native' as const },
         workspaceFiles: { mode: 'native' as const },
+        concurrency: { sameAgentTurns: 'serialized' as const },
         input: { imageInput: true, audioInput: false },
       }),
       messaging: {

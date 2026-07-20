@@ -167,6 +167,38 @@ describe('conformance suite teeth (broken adapter must fail every check)', () =>
       .rejects.toThrow(/conformance violation: .*sessions\.list is missing the session a completed threaded turn just created/)
   })
 
+  it("fails isolation honesty when 'isolated' is declared but runWorkspace is ignored", async () => {
+    // Lie: declares isolated, but the underlying send never touches the
+    // handed directory — the probe finds no trace.
+    const runtime = createMockRuntimeAdapter({
+      capabilities: async () => ({
+        ...(await createMockRuntimeAdapter().capabilities()),
+        concurrency: { sameAgentTurns: 'isolated' as const },
+      }),
+    })
+    const target = {
+      ...honestTargetShell(runtime),
+      prepareIsolatedTurnProbe: () => ({
+        content: 'teeth: isolation probe',
+        verify: () => false,
+      }),
+    }
+    await expect(runtimeConformanceChecks.sameAgentIsolationHonesty(target))
+      .rejects.toThrow(/left no trace in concurrent turn A's handed runWorkspace/)
+  })
+
+  it("fails isolation honesty when 'isolated' is declared with no probe at all", async () => {
+    const runtime = createMockRuntimeAdapter({
+      capabilities: async () => ({
+        ...(await createMockRuntimeAdapter().capabilities()),
+        concurrency: { sameAgentTurns: 'isolated' as const },
+      }),
+    })
+    const target = { ...honestTargetShell(runtime) }
+    await expect(runtimeConformanceChecks.sameAgentIsolationHonesty(target))
+      .rejects.toThrow(/provides no isolation probe — isolation claims must be provable/)
+  })
+
   it('fails usage parity when send reports usage but the stream done omits it', async () => {
     const runtime = createMockRuntimeAdapter()
     // Lie: send() bills tokens…

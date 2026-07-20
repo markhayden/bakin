@@ -15,12 +15,12 @@ import McpToolCard from '../../../../components/McpToolCard.astro'
 <p class="mcp-section-description">Asset tools let agents list, inspect, save, link, restore, and clean up files managed by Bakin.</p>
 
 <div class="mcp-tool-list">
-<McpToolCard id="assets-audit" name="bakin_exec_assets_audit" label="Audited assets" description="Audit versioned-asset health: manifest integrity, current-pointer resolution, and missing version files." source="plugins/assets/lib/exec-tools.ts:333">
+<McpToolCard id="assets-audit" name="bakin_exec_assets_audit" label="Audited assets" description="Audit versioned-asset health: manifest integrity, current-pointer resolution, and missing version files." source="plugins/assets/lib/exec-tools.ts:349">
 ```sh frame="terminal"
 bakin_exec_assets_audit
 ```
 </McpToolCard>
-<McpToolCard id="assets-consolidate" name="bakin_exec_assets_consolidate" label="Consolidated variant assets" description="Absorb variant assets as versions of a winner asset (select-best flows): each loser's current file becomes a new version of the winner with consolidatedFrom provenance, the winner's pre-call current version stays promoted, and the losers move to trash. End state: ONE asset, every variant preserved as version history. Safe to re-call — already-absorbed losers are skipped and the version pointer is never moved by a retry." source="plugins/assets/lib/exec-tools.ts:196" parameters={[{"name":"winnerAssetId","type":"string","required":true,"description":"The selected (winning) asset id — absorbs the others"},{"name":"loserAssetIds","type":"array","required":true,"description":"The variant asset ids to absorb, in display order"},{"name":"taskId","type":"string","required":true,"description":"Task ID this consolidation belongs to"}]}>
+<McpToolCard id="assets-consolidate" name="bakin_exec_assets_consolidate" label="Consolidated variant assets" description="Absorb variant assets as versions of a winner asset (select-best flows): each loser's current file becomes a new version of the winner with consolidatedFrom provenance, the winner's pre-call current version stays promoted, and the losers move to trash. End state: ONE asset, every variant preserved as version history. Safe to re-call — already-absorbed losers are skipped and the version pointer is never moved by a retry." source="plugins/assets/lib/exec-tools.ts:212" parameters={[{"name":"winnerAssetId","type":"string","required":true,"description":"The selected (winning) asset id — absorbs the others"},{"name":"loserAssetIds","type":"array","required":true,"description":"The variant asset ids to absorb, in display order"},{"name":"taskId","type":"string","required":true,"description":"Task ID this consolidation belongs to"}]}>
 ```sh frame="terminal"
 bakin_exec_assets_consolidate {
   "winnerAssetId": "value",
@@ -31,14 +31,14 @@ bakin_exec_assets_consolidate {
 }
 ```
 </McpToolCard>
-<McpToolCard id="assets-delete" name="bakin_exec_assets_delete" label="Deleted an asset" description="Soft-delete a whole asset (all versions) to trash, restorable until trash is emptied." source="plugins/assets/lib/exec-tools.ts:177" parameters={[{"name":"assetId","type":"string","required":true,"description":"Asset id"}]}>
+<McpToolCard id="assets-delete" name="bakin_exec_assets_delete" label="Deleted an asset" description="Soft-delete a whole asset (all versions) to trash, restorable until trash is emptied." source="plugins/assets/lib/exec-tools.ts:193" parameters={[{"name":"assetId","type":"string","required":true,"description":"Asset id"}]}>
 ```sh frame="terminal"
 bakin_exec_assets_delete {
   "assetId": "value"
 }
 ```
 </McpToolCard>
-<McpToolCard id="assets-empty-trash" name="bakin_exec_assets_empty_trash" label="Emptied asset trash" description="Permanently delete all trashed assets. This cannot be undone." source="plugins/assets/lib/exec-tools.ts:306">
+<McpToolCard id="assets-empty-trash" name="bakin_exec_assets_empty_trash" label="Emptied asset trash" description="Permanently delete all trashed assets. This cannot be undone." source="plugins/assets/lib/exec-tools.ts:322">
 ```sh frame="terminal"
 bakin_exec_assets_empty_trash
 ```
@@ -60,7 +60,7 @@ bakin_exec_assets_import {
 }
 ```
 </McpToolCard>
-<McpToolCard id="assets-link" name="bakin_exec_assets_link" label="Linked an asset" description="Link an asset to a different task, or unlink it (set taskId to null)." source="plugins/assets/lib/exec-tools.ts:235" parameters={[{"name":"assetId","type":"string","required":true,"description":"Asset id"},{"name":"taskId","type":"string","required":true,"description":"Target task ID, or null to unlink"}]}>
+<McpToolCard id="assets-link" name="bakin_exec_assets_link" label="Linked an asset" description="Link an asset to a different task, or unlink it (set taskId to null)." source="plugins/assets/lib/exec-tools.ts:251" parameters={[{"name":"assetId","type":"string","required":true,"description":"Asset id"},{"name":"taskId","type":"string","required":true,"description":"Target task ID, or null to unlink"}]}>
 ```sh frame="terminal"
 bakin_exec_assets_link {
   "assetId": "value",
@@ -79,7 +79,7 @@ bakin_exec_assets_list {
 }
 ```
 </McpToolCard>
-<McpToolCard id="assets-list-trash" name="bakin_exec_assets_list_trash" label="Listed trashed assets" description="List trashed assets (whole-asset deletions) with deletion time and version count." source="plugins/assets/lib/exec-tools.ts:279">
+<McpToolCard id="assets-list-trash" name="bakin_exec_assets_list_trash" label="Listed trashed assets" description="List trashed assets (whole-asset deletions) with deletion time and version count." source="plugins/assets/lib/exec-tools.ts:295">
 ```sh frame="terminal"
 bakin_exec_assets_list_trash
 ```
@@ -91,21 +91,21 @@ bakin_exec_assets_open {
 }
 ```
 </McpToolCard>
-<McpToolCard id="assets-permanent-delete" name="bakin_exec_assets_permanent_delete" label="Permanently deleted an asset" description="Permanently delete a specific trashed asset. This cannot be undone." source="plugins/assets/lib/exec-tools.ts:319" parameters={[{"name":"trashName","type":"string","required":true,"description":"Trash name (includes __deleted- suffix)"}]}>
+<McpToolCard id="assets-permanent-delete" name="bakin_exec_assets_permanent_delete" label="Permanently deleted an asset" description="Permanently delete a specific trashed asset. This cannot be undone." source="plugins/assets/lib/exec-tools.ts:335" parameters={[{"name":"trashName","type":"string","required":true,"description":"Trash name (includes __deleted- suffix)"}]}>
 ```sh frame="terminal"
 bakin_exec_assets_permanent_delete {
   "trashName": "value"
 }
 ```
 </McpToolCard>
-<McpToolCard id="assets-restore" name="bakin_exec_assets_restore" label="Restored an asset" description="Restore a trashed asset by its trash name (from bakin_exec_assets_list_trash)." source="plugins/assets/lib/exec-tools.ts:290" parameters={[{"name":"trashName","type":"string","required":true,"description":"Trash name (includes __deleted- suffix)"}]}>
+<McpToolCard id="assets-restore" name="bakin_exec_assets_restore" label="Restored an asset" description="Restore a trashed asset by its trash name (from bakin_exec_assets_list_trash)." source="plugins/assets/lib/exec-tools.ts:306" parameters={[{"name":"trashName","type":"string","required":true,"description":"Trash name (includes __deleted- suffix)"}]}>
 ```sh frame="terminal"
 bakin_exec_assets_restore {
   "trashName": "value"
 }
 ```
 </McpToolCard>
-<McpToolCard id="assets-retype" name="bakin_exec_assets_retype" label="Retyped an asset" description="Change an asset type classification." source="plugins/assets/lib/exec-tools.ts:257" parameters={[{"name":"assetId","type":"string","required":true,"description":"Asset id"},{"name":"type","type":"choice","required":true}]}>
+<McpToolCard id="assets-retype" name="bakin_exec_assets_retype" label="Retyped an asset" description="Change an asset type classification." source="plugins/assets/lib/exec-tools.ts:273" parameters={[{"name":"assetId","type":"string","required":true,"description":"Asset id"},{"name":"type","type":"choice","required":true}]}>
 ```sh frame="terminal"
 bakin_exec_assets_retype {
   "assetId": "value",
@@ -240,17 +240,17 @@ bakin_exec_get_step {
 <p class="mcp-section-description">MCP tools discovered from registered exec tool definitions.</p>
 
 <div class="mcp-tool-list">
-<McpToolCard id="git-prepare-worktree" name="bakin_exec_git_prepare_worktree" label="Prepared git worktree" description="Create or reuse an isolated git worktree for a task. Call this before editing code for a Bakin task." source="plugins/git/index.ts:645">
+<McpToolCard id="git-prepare-worktree" name="bakin_exec_git_prepare_worktree" label="Prepared git worktree" description="Create or reuse an isolated git worktree for a task. Call this before editing code for a Bakin task." source="plugins/git/index.ts:649">
 ```sh frame="terminal"
 bakin_exec_git_prepare_worktree
 ```
 </McpToolCard>
-<McpToolCard id="git-release-worktree" name="bakin_exec_git_release_worktree" label="Released git worktree" description="Release a tracked git worktree. Refuses dirty removal unless force=true." source="plugins/git/index.ts:660">
+<McpToolCard id="git-release-worktree" name="bakin_exec_git_release_worktree" label="Released git worktree" description="Release a tracked git worktree. Refuses dirty removal unless force=true." source="plugins/git/index.ts:664">
 ```sh frame="terminal"
 bakin_exec_git_release_worktree
 ```
 </McpToolCard>
-<McpToolCard id="git-status" name="bakin_exec_git_status" label="Checked git worktrees" description="List Bakin-tracked git worktrees and their dirty state." source="plugins/git/index.ts:653">
+<McpToolCard id="git-status" name="bakin_exec_git_status" label="Checked git worktrees" description="List Bakin-tracked git worktrees and their dirty state." source="plugins/git/index.ts:657">
 ```sh frame="terminal"
 bakin_exec_git_status
 ```
@@ -262,14 +262,14 @@ bakin_exec_git_status
 <p class="mcp-section-description">Health tools let agents check whether Bakin is running correctly before or during work.</p>
 
 <div class="mcp-tool-list">
-<McpToolCard id="health-doctor" name="bakin_exec_health_doctor" label="Ran diagnostics" description="Return the canonical Health report. Use fresh=true to join or start a full diagnostic sweep first." source="plugins/health/index.ts:828" parameters={[{"name":"fresh","type":"boolean","required":false,"description":"Force fresh diagnostics instead of cached results"}]}>
+<McpToolCard id="health-doctor" name="bakin_exec_health_doctor" label="Ran diagnostics" description="Return the canonical Health report. Use fresh=true to join or start a full diagnostic sweep first." source="plugins/health/index.ts:833" parameters={[{"name":"fresh","type":"boolean","required":false,"description":"Force fresh diagnostics instead of cached results"}]}>
 ```sh frame="terminal"
 bakin_exec_health_doctor {
   "fresh": true
 }
 ```
 </McpToolCard>
-<McpToolCard id="health-status" name="bakin_exec_health_status" label="Checked system health" description="Get a quick canonical system health summary with uptime, memory, connected session count, activity failures, and incident counts." source="plugins/health/index.ts:798">
+<McpToolCard id="health-status" name="bakin_exec_health_status" label="Checked system health" description="Get a quick canonical system health summary with uptime, memory, connected session count, activity failures, and incident counts." source="plugins/health/index.ts:803">
 ```sh frame="terminal"
 bakin_exec_health_status
 ```
@@ -1311,5 +1311,5 @@ bakin_exec_workflows_start {
 </div>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Jul 18, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Jul 20, 2026 · Bakin 0.0.0-dev</span>
 </aside>

@@ -163,7 +163,7 @@ Health hooks expose registered readiness and diagnostic checks so other surfaces
 Label: Get a health check.
 Purpose: Returns canonical metadata for one registered Health check by stable id without executing it.
 Kind: rpc
-Source: plugins/health/index.ts:790
+Source: plugins/health/index.ts:795
 
 Example:
 
@@ -181,7 +181,7 @@ const result = await ctx.hooks.invoke(
 Label: List health checks.
 Purpose: Returns canonical metadata for registered Health checks without executing them.
 Kind: rpc
-Source: plugins/health/index.ts:789
+Source: plugins/health/index.ts:794
 
 Example:
 
@@ -237,7 +237,7 @@ const result = await ctx.hooks.invoke(
 Label: Get budget policy.
 Purpose: Returns the spend-cap rule list that dispatch consults before each turn (legacy shapes migrate on read). Use it to read the current budget limits.
 Kind: rpc
-Source: plugins/models/lib/register-hooks.ts:132
+Source: plugins/models/lib/register-hooks.ts:138
 
 Example:
 
@@ -271,7 +271,7 @@ const result = await ctx.hooks.invoke(
 Label: Get routing config.
 Purpose: Returns the per-turn model/thinking routing policy (work classes + tag overrides) applied before each routable agent turn. Use it to read the current routing rules.
 Kind: rpc
-Source: plugins/models/lib/register-hooks.ts:118
+Source: plugins/models/lib/register-hooks.ts:124
 
 Example:
 
@@ -349,7 +349,7 @@ const result = await ctx.hooks.invoke(
 ### models.resolveBilling
 
 Label: Resolve billing.
-Purpose: Returns the provider, billing lane (metered vs subscription), and normalized model for an agent/model pair — falling back to the agent’s effective model when none is given. Use it to attribute or gate prospective spend before a turn or billed media call.
+Purpose: Returns the provider, billing lane (metered vs subscription), lane source, and normalized model for an agent/model pair — falling back to the agent’s effective model when none is given, unless prospective:false marks the attribution as historical. Use it to attribute or gate spend before a turn or billed media call.
 Kind: rpc
 Source: plugins/models/lib/register-hooks.ts:102
 

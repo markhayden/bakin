@@ -45,6 +45,7 @@ export interface Task {
   projectId?: string
   /** Brand link (#419) — resolved lazily at dispatch, mirrors projectId. */
   brandId?: string
+  repoPath?: string
   availableAt?: string
   dueAt?: string
   source?: TaskSource
@@ -148,6 +149,7 @@ function taskToView(task: BakinTask): Task {
     scheduleJobId: task.scheduleJobId,
     projectId: task.projectId,
     brandId: task.brandId,
+    repoPath: task.repoPath,
     availableAt: task.availableAt,
     dueAt: task.dueAt,
     source: task.source,
@@ -276,6 +278,8 @@ export function createTask(
     team?: string
     /** Brand link (#419). */
     brandId?: string
+    /** Repo binding override (same-agent-concurrency D6). */
+    repoPath?: string
   },
 ): Promise<Task> {
   try {
@@ -295,6 +299,7 @@ export function createTask(
       workflowId,
       projectId,
       brandId: options?.brandId,
+      repoPath: options?.repoPath,
       scheduleJobId: options?.scheduleJobId,
       dependsOn: options?.dependsOn,
       availableAt: options?.availableAt,

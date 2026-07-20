@@ -138,7 +138,7 @@ description: Generated reference for Bakin core settings defaults.
     </tr>
     <tr>
       <td><code>dispatch.maxTurnsPerAgent</code></td>
-      <td><code>1</code></td>
+      <td><code>2</code></td>
     </tr>
     <tr>
       <td><code>dispatch.maxWorkflowContextBytes</code></td>
@@ -151,6 +151,14 @@ description: Generated reference for Bakin core settings defaults.
     <tr>
       <td><code>dispatch.paused</code></td>
       <td><code>false</code></td>
+    </tr>
+    <tr>
+      <td><code>dispatch.runDirMaxTotalGb</code></td>
+      <td><code>4</code></td>
+    </tr>
+    <tr>
+      <td><code>dispatch.runDirRetentionDays</code></td>
+      <td><code>7</code></td>
     </tr>
     <tr>
       <td><code>dispatch.transientCooldownMs</code></td>
@@ -473,5 +481,5 @@ description: Generated reference for Bakin core settings defaults.
 
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Jul 18, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Jul 20, 2026 · Bakin 0.0.0-dev</span>
 </aside>

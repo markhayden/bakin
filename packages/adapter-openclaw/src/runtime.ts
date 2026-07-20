@@ -1196,6 +1196,9 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     sessions: { mode: 'native' },
     workspaceFiles: { mode: 'native' },
     input: await this.inputModality(opts?.agentId),
+    // The gateway protocol cannot express per-run cwd (discovery §2) —
+    // honest 'serialized' until the upstream asks land.
+    concurrency: { sameAgentTurns: 'serialized' },
   })
 
   private inputModality = async (agentId?: string): Promise<RuntimeCapabilities> => {

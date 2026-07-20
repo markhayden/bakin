@@ -12,12 +12,24 @@ const testDir = join(tmpdir(), `bakin-asset-svc-${Date.now()}-${randomUUID()}`)
 process.env.BAKIN_HOME = testDir
 process.env.OPENCLAW_HOME = join(testDir, 'openclaw')
 
-import { describe, it, expect, beforeAll, afterAll } from 'bun:test'
+import { describe, it, expect, beforeAll, afterAll, mock } from 'bun:test'
+
+// Belt-and-braces alongside the BAKIN_HOME env isolation above (the env var
+// is set before imports; these mocks make the isolation explicit).
+const contentDirMock = () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({ home: testDir, root: testDir, db: join(testDir, 'bakin.db') }),
+})
+mock.module('../../../src/core/content-dir', contentDirMock)
+mock.module('../../../packages/core/src/content-dir', contentDirMock)
 import sharp from 'sharp'
 import { generateAssetId, yearMonthFromAssetId, isValidAssetId, assetDirRelPath } from '../../../plugins/assets/lib/asset-id'
 import { withAssetLock } from '../../../plugins/assets/lib/asset-lock'
 import { readManifest, writeManifestAtomic, type AssetManifest } from '../../../plugins/assets/lib/manifest'
 import { createAsset, getAsset, resolveFile, assetExists, listAssets, resolveStoreFile, upsertFromSource } from '../../../plugins/assets/lib/asset-service'
+import { allocateRunWorkspace } from '../../../src/core/run-workspace'
+import { claimRun, settleRun } from '../../../src/core/execution-ledger'
+import { closeDb } from '../../../packages/core/src/storage/db'
 
 const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 const srcDir = join(testDir, 'src')
@@ -30,7 +42,10 @@ beforeAll(async () => {
     .toFile(join(srcDir, 'pic.png'))
 })
 
-afterAll(() => rmSync(testDir, { recursive: true, force: true }))
+afterAll(() => {
+  closeDb()
+  rmSync(testDir, { recursive: true, force: true })
+})
 
 describe('asset-id', () => {
   it('generates YYYYMMDD-slug-id8 and derives the shard', () => {
@@ -147,6 +162,79 @@ describe('asset-service create + read', () => {
     // AND: must carry every requested tag.
     expect(listAssets({ tags: ['brand', 'hero'] }).length).toBe(1)
     expect(listAssets({ tags: ['brand', 'missing'] }).length).toBe(0)
+  })
+})
+
+describe('run-workspace saves: task-stable identity + staleness gate (same-agent-concurrency D2)', () => {
+  const boot = 'boot-asset-test'
+
+  function liveRun(taskId: string, seq: number): string {
+    const runId = `task:${taskId}:d${seq}`
+    claimRun({ runId, taskId, seq, agent: 'jessica', bootId: boot, now: Date.now() })
+    return runId
+  }
+
+  it('re-save across attempts versions ONE asset (virtual dedup key), live runs advance current', async () => {
+    const d1 = liveRun('rw-task', 1)
+    const dirA = allocateRunWorkspace({ threadId: d1, taskId: 'rw-task', agentId: 'jessica' })
+    writeFileSync(join(dirA, 'report.md'), 'draft one', 'utf-8')
+    const first = await upsertFromSource(join(dirA, 'report.md'), {
+      sourceFilePath: join(dirA, 'report.md'), type: 'text', agent: 'jessica', taskId: 'rw-task', op: 'upload', tool: null,
+    })
+    expect(first.changed).toBe(true)
+    settleRun(d1, 'failed: died')
+
+    // Corrective attempt d2: DIFFERENT run dir, same relative path.
+    const d2 = liveRun('rw-task', 2)
+    const dirB = allocateRunWorkspace({ threadId: d2, taskId: 'rw-task', agentId: 'jessica' })
+    expect(dirB).not.toBe(dirA)
+    writeFileSync(join(dirB, 'report.md'), 'draft two — corrected', 'utf-8')
+    const second = await upsertFromSource(join(dirB, 'report.md'), {
+      sourceFilePath: join(dirB, 'report.md'), type: 'text', agent: 'jessica', taskId: 'rw-task', op: 'upload', tool: null,
+    })
+
+    // One asset, two versions — never a duplicate per attempt.
+    expect(second.assetId).toBe(first.assetId)
+    expect(second.version).toBe(2)
+    expect(second.staleSuppressed).toBeUndefined()
+    const manifest = getAsset(first.assetId)
+    expect(manifest?.currentVersion).toBe(2)
+    expect(manifest?.source?.path).toBe('run:task:rw-task/report.md')
+    settleRun(d2, 'ok')
+  })
+
+  it('a save from a NO-LONGER-LIVE run records its version but never advances currentVersion', async () => {
+    const d1 = liveRun('rw-stale', 1)
+    const dir = allocateRunWorkspace({ threadId: d1, taskId: 'rw-stale', agentId: 'jessica' })
+    writeFileSync(join(dir, 'out.md'), 'good output', 'utf-8')
+    const first = await upsertFromSource(join(dir, 'out.md'), {
+      sourceFilePath: join(dir, 'out.md'), type: 'text', agent: 'jessica', taskId: 'rw-stale', op: 'upload', tool: null,
+    })
+    // The run settles (zombie territory) — then its late save arrives.
+    settleRun(d1, 'ok')
+    writeFileSync(join(dir, 'out.md'), 'ZOMBIE overwrite', 'utf-8')
+    const late = await upsertFromSource(join(dir, 'out.md'), {
+      sourceFilePath: join(dir, 'out.md'), type: 'text', agent: 'jessica', taskId: 'rw-stale', op: 'upload', tool: null,
+    })
+
+    expect(late.assetId).toBe(first.assetId)
+    expect(late.changed).toBe(true)
+    expect(late.staleSuppressed).toBe(true)
+    const manifest = getAsset(first.assetId)
+    // Bytes recorded as v2, pointer still v1.
+    expect(manifest?.versions.length).toBe(2)
+    expect(manifest?.currentVersion).toBe(1)
+  })
+
+  it('a run path with NO sidecar degrades to real-path identity (never guesses linkage)', async () => {
+    const orphanDir = join(testDir, 'run-workspaces', 'jessica', 'orphan-nolink')
+    mkdirSync(orphanDir, { recursive: true })
+    writeFileSync(join(orphanDir, 'thing.md'), 'orphan bytes', 'utf-8')
+    const r = await upsertFromSource(join(orphanDir, 'thing.md'), {
+      sourceFilePath: join(orphanDir, 'thing.md'), type: 'text', agent: 'jessica', taskId: 'rw-orphan', op: 'upload', tool: null,
+    })
+    expect(r.changed).toBe(true)
+    expect(getAsset(r.assetId)?.source?.path).toBe(join(orphanDir, 'thing.md'))
   })
 })
 

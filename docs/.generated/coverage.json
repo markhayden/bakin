@@ -44,7 +44,7 @@
     },
     "settings": {
       "status": "active",
-      "count": 81,
+      "count": 83,
       "source": "packages/core/src/settings.ts"
     },
     "sdkSubpaths": {

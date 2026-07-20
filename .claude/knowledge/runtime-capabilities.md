@@ -295,3 +295,13 @@ allowlist — see the contract doc, born of the P5.3 conflation below).
   no-inline-actions rule; dry-run preview results render on the page,
   live SSE steps, grouped result cards). Unknown ?tab= values fall back
   to Overview.
+
+## concurrency.sameAgentTurns (same-agent concurrency)
+
+REQUIRED `CapabilitySet` member: `'isolated'` (adapter honors `MessageArgs.runWorkspace` per-turn
+cwd — Pi) or `'serialized'` (cannot isolate — OpenClaw, default mock; dispatch clamps that agent
+to 1 turn with an audit receipt). Conformance: `sameAgentIsolationHonesty` requires a
+declared-isolated target to prove it via `prepareIsolatedTurnProbe` (two CONCURRENT turns leave
+traces in the two handed dirs; probeless isolated declarations FAIL) + teeth. Mock opt-in:
+`withMockIsolation(createMockRuntimeAdapter())`. Deep reference:
+`.claude/knowledge/same-agent-concurrency.md`.

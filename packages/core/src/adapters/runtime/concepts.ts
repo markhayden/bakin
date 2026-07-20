@@ -117,6 +117,17 @@ export interface MessageArgs extends RuntimeMessageToolPolicy {
    */
   threadId?: string
   /**
+   * Absolute path of a per-run working directory for this turn. Set ONLY by
+   * dispatch, only for runtimes declaring `concurrency.sameAgentTurns:
+   * 'isolated'` — core allocates the dir (under Bakin territory, never the
+   * runtime's home) and the adapter uses it as the session cwd, seeding its
+   * own context conventions (project context, skills, memory write paths) so
+   * the isolated turn loses nothing. Chat and ephemeral/system sends never
+   * carry it: the agent's shared workspace stays their cwd. Adapters that
+   * declare 'serialized' never receive the field.
+   */
+  runWorkspace?: string
+  /**
    * Per-turn model override (`provider/model` id). Omit to use the agent's
    * configured model. The caller (Bakin's routing policy) resolves it.
    */
@@ -542,6 +553,19 @@ export interface CapabilitySet {
   sessions: { mode: 'native' | 'unavailable' }
   workspaceFiles: { mode: 'native' | 'unavailable' }
   input: RuntimeCapabilities
+  /**
+   * Can two turns for ONE agent run simultaneously without colliding?
+   * - 'isolated'   — the adapter honors `MessageArgs.runWorkspace` (per-turn
+   *                  cwd), so concurrent same-agent turns each work in their
+   *                  own directory; parallel-safe.
+   * - 'serialized' — the adapter/provider cannot isolate runs (one shared
+   *                  workspace per agent); dispatch clamps that agent to one
+   *                  turn at a time regardless of settings, with a visible
+   *                  receipt — never a silent drop.
+   * Conformance-pinned: declaring 'isolated' without actually honoring
+   * runWorkspace fails the runtime conformance suite.
+   */
+  concurrency: { sameAgentTurns: 'isolated' | 'serialized' }
 }
 
 /**

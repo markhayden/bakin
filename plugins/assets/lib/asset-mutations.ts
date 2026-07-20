@@ -61,6 +61,13 @@ export interface AssetVersionInput {
   generation?: AssetGeneration | null
   /** Provenance when this version was absorbed from another asset (consolidate). */
   consolidatedFrom?: { assetId: string; version: number }
+  /**
+   * false ⇒ record the version WITHOUT moving currentVersion — the asset
+   * staleness gate's suppression mode (a superseded/lost run's late save
+   * must never displace the corrective attempt's current deliverable).
+   * Default true (normal advance).
+   */
+  advanceCurrent?: boolean
 }
 
 /** Append a new version derived from the current version; advances the pointer. */
@@ -95,7 +102,7 @@ export async function addVersion(assetId: string, input: AssetVersionInput): Pro
       ...(input.consolidatedFrom ? { consolidatedFrom: input.consolidatedFrom } : {}),
     }
     manifest.versions.push(version)
-    manifest.currentVersion = nextVersion
+    if (input.advanceCurrent !== false) manifest.currentVersion = nextVersion
     manifest.updated = created
     mirrorDisplay(manifest)
     writeManifestAtomic(dirAbs, manifest)

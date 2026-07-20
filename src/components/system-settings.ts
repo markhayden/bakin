@@ -21,6 +21,35 @@ export const SYSTEM_SETTINGS_SCHEMA: PluginSettingsSchema = {
       description: 'Break-glass control: pauses ALL task dispatch and billed media calls until turned off. In-flight turns finish. Also: the header banner Resume button or `bakin budget pause|resume`.',
       default: false,
     },
+    // ── Dispatch concurrency (#447) ───────────────────────────────────
+    {
+      key: 'dispatch.maxConcurrentTurns',
+      type: 'number',
+      label: 'Max concurrent dispatch turns (global)',
+      description: 'Dispatch turns in flight across ALL agents. Both gates apply together: a turn fires only when it is under this AND the per-agent cap. Default 3.',
+      default: 3,
+    },
+    {
+      key: 'dispatch.maxTurnsPerAgent',
+      type: 'number',
+      label: 'Max dispatch turns per agent',
+      description: 'Turns in flight for ONE agent. Honored only on runtimes that declare per-run isolation (see the Runtime page for what the active runtime supports); others clamp to 1 with an audit receipt regardless of this value — raising only the global cap adds no parallelism while work queues behind one agent. Default 2.',
+      default: 2,
+    },
+    {
+      key: 'dispatch.runDirRetentionDays',
+      type: 'number',
+      label: 'Run scratch retention (days)',
+      description: 'Days a SUCCESSFUL run\'s scratch dir is kept under ~/.bakin/run-workspaces before the sweep removes it. Failed runs keep a fixed 30-day salvage window. Default 7.',
+      default: 7,
+    },
+    {
+      key: 'dispatch.runDirMaxTotalGb',
+      type: 'number',
+      label: 'Run workspaces disk budget (GB)',
+      description: 'Hard ceiling on run-workspace scratch usage — the sweep evicts oldest settled dirs first when exceeded (never live turns; repo checkouts are governed by their own time windows). Retention days are ceilings, never floors that outrank the disk. 0 disables. Default 4.',
+      default: 4,
+    },
     // ── Alert delivery ────────────────────────────────────────────────
     {
       key: 'notifications.channel',

@@ -8,7 +8,12 @@ steps:
     type: agent
     label: Generate Voiceover
     agent: $assigned
-    description: Generate voiceover audio from the approved script via TTS
+    description: >
+      Generate voiceover audio from the approved script via TTS. Save the
+      audio file as a managed asset (bakin_exec_assets_save, type: 'audio')
+      and submit the returned assetId as voiceoverAssetId in your output —
+      later steps run in their OWN working directories, so raw file paths do
+      not survive across steps; asset ids do.
 
   - id: voiceover-gate
     type: gate
@@ -23,7 +28,13 @@ steps:
     type: agent
     label: Stitch Video
     agent: $assigned
-    description: Concatenate clips, overlay voiceover and music via ffmpeg
+    description: >
+      Concatenate clips, overlay voiceover and music via ffmpeg. Fetch input
+      clips and the voiceover by their assetIds from prior step outputs
+      (download via /api/assets/<assetId> or bakin_exec_get_paths) — never
+      expect prior steps' raw file paths to exist. Save the assembled video
+      as a managed asset (bakin_exec_assets_save, type: 'video') and submit
+      the returned assetId as videoAssetId in your output.
 
   - id: final-gate
     type: gate

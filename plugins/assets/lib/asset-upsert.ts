@@ -13,6 +13,8 @@ import { existsSync, readdirSync, statSync, readFileSync } from 'node:fs'
 import { join, resolve, sep } from 'node:path'
 import { createHash } from 'node:crypto'
 import { getContentDir } from '../../../src/core/content-dir'
+import { getRunStatus } from '../../../src/core/execution-ledger'
+import { readRunSidecar } from '../../../src/core/run-workspace'
 import { type AssetType } from './constants'
 import { assetDirRelPath, yearMonthFromAssetId, isValidAssetId } from './asset-id'
 import { withAssetLock } from './asset-lock'
@@ -55,11 +57,61 @@ export function findBySourcePath(sourcePath: string): string | null {
  * if no asset tracks this path, append a version if its content changed, or
  * no-op if identical. The markdown twin of the image edit→version fix — an
  * agent re-saving an evolving file versions ONE asset instead of minting N.
+ *
+ * Run-workspace saves (same-agent-concurrency D2) get two extra rules:
+ * 1. IDENTITY — paths under run-workspaces/ dedup on a task-stable virtual
+ *    key (`run:task:<taskId>/<relpath>`, derived by READING the run dir's
+ *    sidecar, never by parsing path segments), so attempt d2's re-save of
+ *    `report.md` versions d1's asset instead of minting a duplicate. Bytes
+ *    still read from the real path; the virtual key is stored as
+ *    source.path (the translateAgentPath precedent — source.path is the
+ *    stable dedup identity, not necessarily a live filesystem path).
+ * 2. STALENESS — a save whose origin run is no longer `running` in the
+ *    ledger (superseded/lost/settled/purged, or ledger unreadable —
+ *    fail-closed) records its version WITHOUT advancing currentVersion: a
+ *    zombie's late output must never displace the corrective attempt's
+ *    deliverable. `staleSuppressed` reports it so callers audit.
  */
-export async function upsertFromSource(sourcePath: string, input: AssetCreateInput): Promise<{ assetId: string; version: number; changed: boolean }> {
-  // Serialize on the source path so concurrent saves of the same source can't
-  // both miss findBySourcePath and mint duplicate assets (the dedup invariant).
-  return withAssetLock(`source:${sourcePath}`, () => upsertFromSourceInner(sourcePath, input))
+export async function upsertFromSource(sourcePath: string, input: AssetCreateInput): Promise<{ assetId: string; version: number; changed: boolean; staleSuppressed?: boolean }> {
+  const origin = runWorkspaceOrigin(sourcePath)
+  const dedupPath = origin ? `run:task:${origin.taskId}/${origin.relPath}` : sourcePath
+  // Serialize on the DEDUP key so concurrent saves of the same source can't
+  // both miss findBySourcePath and mint duplicate assets (the dedup invariant
+  // — for run saves that means across attempts, not just within one).
+  return withAssetLock(`source:${dedupPath}`, () => upsertFromSourceInner(sourcePath, dedupPath, origin, input))
+}
+
+interface RunSaveOrigin {
+  taskId: string
+  threadId: string
+  relPath: string
+}
+
+/**
+ * Resolve a source path under run-workspaces/ to its run origin by reading
+ * the run dir's sidecar. A missing/torn sidecar returns null — honest
+ * degradation to real-path identity (dedup lost for that save, linkage
+ * never guessed).
+ */
+function runWorkspaceOrigin(sourcePath: string): RunSaveOrigin | null {
+  const root = resolve(getContentDir(), 'run-workspaces')
+  const resolved = resolve(sourcePath)
+  if (!resolved.startsWith(root + sep)) return null
+  const segments = resolved.slice(root.length + 1).split(sep)
+  if (segments.length < 3) return null
+  const [agentId, encodedRunId, ...rest] = segments
+  const sidecar = readRunSidecar(join(root, agentId, encodedRunId))
+  if (!sidecar) return null
+  return { taskId: sidecar.taskId, threadId: sidecar.threadId, relPath: rest.join('/') }
+}
+
+/** Fail-closed liveness: any ledger error counts as NOT live (suppress). */
+function originRunIsLive(threadId: string): boolean {
+  try {
+    return getRunStatus(threadId) === 'running'
+  } catch {
+    return false
+  }
 }
 
 /**
@@ -108,15 +160,15 @@ function findSameTaskContentMatch(sourcePath: string, taskId: string, type: Asse
   return null
 }
 
-async function upsertFromSourceInner(sourcePath: string, input: AssetCreateInput): Promise<{ assetId: string; version: number; changed: boolean }> {
+async function upsertFromSourceInner(sourcePath: string, dedupPath: string, origin: RunSaveOrigin | null, input: AssetCreateInput): Promise<{ assetId: string; version: number; changed: boolean; staleSuppressed?: boolean }> {
   // Reflection: a path INSIDE the asset store is already managed — return its
   // identity instead of cloning it (live incident: a reference passed as
   // .../store/<id>/v1.png minted a duplicate asset pointing into the store).
   const managed = resolveStoreFile(sourcePath)
   if (managed) return { assetId: managed.assetId, version: managed.version, changed: false }
 
-  const source = input.source ?? { kind: 'workspace-file' as const, path: sourcePath }
-  const existingId = findBySourcePath(sourcePath)
+  const source = input.source ?? { kind: 'workspace-file' as const, path: dedupPath }
+  const existingId = findBySourcePath(dedupPath)
   if (!existingId) {
     // Same-task content dedupe: the same bytes under a fresh path (an agent
     // copying its finished render to workspace/tmp and re-saving) is the SAME
@@ -141,11 +193,15 @@ async function upsertFromSourceInner(sourcePath: string, input: AssetCreateInput
   if (newHash && curHash && newHash === curHash) {
     return { assetId: existingId, version: manifest.currentVersion, changed: false }
   }
+  // Staleness gate: a run-workspace save whose origin run is no longer live
+  // records its bytes but never displaces the current deliverable.
+  const staleSuppressed = origin !== null && !originRunIsLive(origin.threadId)
   const next = await addVersion(existingId, {
     sourceFilePath: sourcePath,
     op: 'upload',
     tool: input.tool ?? null,
     description: input.description,
+    ...(staleSuppressed ? { advanceCurrent: false } : {}),
   })
   // Union caller-provided tags into the asset-level namespace — agents add
   // organization, never wipe the user's. (Separate locked write; the watcher
@@ -153,5 +209,5 @@ async function upsertFromSourceInner(sourcePath: string, input: AssetCreateInput
   if (input.tags && input.tags.length > 0) {
     await updateMetadata(existingId, { tags: [...(next.manifest.tags ?? []), ...input.tags] })
   }
-  return { assetId: next.assetId, version: next.version, changed: true }
+  return { assetId: next.assetId, version: next.version, changed: true, ...(staleSuppressed ? { staleSuppressed: true } : {}) }
 }

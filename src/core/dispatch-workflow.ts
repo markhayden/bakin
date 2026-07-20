@@ -16,7 +16,7 @@ import { getFailureRecord } from './dispatch-state'
 import { findDispatchTaskSnapshot } from './dispatch-board'
 import { buildDispatchLessonBlock, buildDispatchAssetBlock, buildDispatchBrandBlock, BrandUnavailableError } from './dispatch-context-blocks'
 import { toolHelpers, sharedExecutionToolDocs, outputDisciplineSection, buildCorrectiveSection, type PromptSection } from './dispatch-prompts'
-import { concurrencyGate, deferForBudget, claimDispatchRun, auditDispatchSuppressed, fireDispatchTurn, resolveDispatchRouting } from './dispatch-turns'
+import { concurrencyGate, deferForBudget, claimDispatchRun, auditDispatchSuppressed, fireDispatchTurn, getSameAgentTurnsMode, resolveDispatchRouting } from './dispatch-turns'
 import { isTeamStepToken, teamIdFromToken } from '@bakin/core/workflows/team-token'
 import { resolveTeamAssignmentForStep } from './dispatch-team'
 
@@ -36,6 +36,11 @@ export async function dispatchWorkflowTask(
   moveTaskToInProgress: (id: string, agent: string) => Promise<void>,
   addTaskLog: (id: string, author: string, message: string) => Promise<void>,
   mainAgentId: string,
+  /** The cycle's collected-but-unfired turns (phase-1 intents are invisible
+   *  to the registry until phase 2 fires them). Workflow steps fire
+   *  immediately, so without these reserved counts a step encountered
+   *  mid-cycle breaches both caps (same-agent-concurrency D3 live bug). */
+  reserved?: { total: number; forAgent: Map<string, number> },
 ): Promise<void> {
   // Load or create workflow instance.
   // Pass the task assignee so $assigned steps resolve to whoever owns the task at start time.
@@ -137,7 +142,12 @@ export async function dispatchWorkflowTask(
     })
     const initialLogCount = findDispatchTaskSnapshot(task.id)?.task.log?.length ?? 0
 
-    const gate = concurrencyGate(targetAgent, getSettings())
+    const gate = concurrencyGate(
+      targetAgent,
+      getSettings(),
+      reserved ? { total: reserved.total, forAgent: reserved.forAgent.get(targetAgent) ?? 0 } : undefined,
+      await getSameAgentTurnsMode(),
+    )
     if (gate) {
       log.debug('Workflow step dispatch deferred by concurrency gate', { taskId: task.id, stepId, agent: targetAgent, gate })
       continue
@@ -183,6 +193,7 @@ export async function dispatchWorkflowTask(
       task,
       targetAgent,
       threadId,
+      stepId,
       message,
       contentDir,
       port,

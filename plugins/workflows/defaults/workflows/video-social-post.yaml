@@ -42,16 +42,13 @@ steps:
       Post the caption and final video using bakin_exec_post_channel.
 
       From stepOutputs, extract the caption from the write-copy step and the
-      assembled video file path from the assemble-video step.
+      videoAssetId from the assemble-video step (steps run in their own
+      working directories — file paths never cross steps, asset ids do).
 
-      First save the video as a managed asset:
-        bakin_exec_assets_save { filePath: <assembled video path>, taskId: <your task ID>, type: 'video' }
-      which returns { assetId }.
-
-      Then call bakin_exec_post_channel with:
+      Call bakin_exec_post_channel with:
         - channel: the appropriate runtime channel
         - content: the caption text
-        - videoAssetId: the assetId from the save above
+        - videoAssetId: the assetId from the assemble-video step output
         - taskId: your task ID
 
       After posting, submit output with the returned messageId and channel.

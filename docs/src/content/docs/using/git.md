@@ -25,7 +25,7 @@ Release refuses to remove a dirty worktree unless `force=true` is supplied. That
 
 | Setting | Type | Default | What it does |
 | --- | --- | --- | --- |
-| Allowed repo roots | `list` | `[{ path: DEFAULT_ALLOWED_ROOT` | Directories agents may prepare git worktrees from. |
+| Allowed repo roots | `list` | `[]` | Directories agents may prepare git worktrees from (also gates dispatch repo binding). Empty = disabled until configured. |
 | Worktree root | `string` | `~/.bakin/${DEFAULT_WORKTREE_DIR}` | Directory where Bakin-created worktrees are stored. |
 
 </div>

@@ -10,6 +10,7 @@ export {
   bumpHeartbeatByTask,
   getLiveRun,
   getLiveRunByKey,
+  getRunStatus,
   listRunsByTask,
   listLiveRuns,
   listRunsByAgent,

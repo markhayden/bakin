@@ -86,6 +86,14 @@ export function readSessionOriginIndex(agentId: string):
   }
 }
 
+/**
+ * INVARIANT: this read-modify-write MUST stay fully synchronous. Concurrent
+ * same-agent turns on different threads settle through here (cap 2+), and
+ * only single-event-loop atomicity keeps last-writer-wins from DROPPING a
+ * sibling thread's mapping (silent loss of session continuity). If an await
+ * ever needs to enter this path, wrap the whole RMW in a per-agent write
+ * queue first (registry.ts `serialized()` is the in-tree pattern).
+ */
 export function recordThreadSession(agentId: string, threadId: string, sessionId: string, file: string): void {
   const map = readThreadMap(agentId)
   const now = new Date().toISOString()
@@ -100,9 +108,10 @@ export function recordThreadSession(agentId: string, threadId: string, sessionId
 }
 
 /**
- * Open (resume) or create the Pi SessionManager for a turn. cwd is ALWAYS
- * the agent workspace so Pi's project-context discovery (AGENTS.md) and
- * project-local skills resolve to the agent's world.
+ * Open (resume) or create the Pi SessionManager for a turn. The session
+ * STORE cwd is ALWAYS the agent workspace — session identity/listing is
+ * per-agent even when the turn's tool-execution cwd is a per-run dir
+ * (MessageArgs.runWorkspace); see openTurnSession.
  */
 export function sessionManagerForThread(agentId: string, threadId?: string): SessionManager {
   const workspace = getAgentWorkspaceDir(agentId)

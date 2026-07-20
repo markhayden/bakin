@@ -116,10 +116,26 @@ export interface BakinSettings {
     /** Max dispatch turns in flight across all agents. */
     maxConcurrentTurns: number
     /**
-     * Max dispatch turns in flight per agent. Default 1 until the rig
-     * validates provider-gateway per-agent concurrency.
+     * Max dispatch turns in flight per agent. Honored only on runtimes
+     * declaring `concurrency.sameAgentTurns: 'isolated'` (per-run working
+     * directories); serialized runtimes clamp to 1 with an audit receipt —
+     * both gates (global + per-agent) apply together.
      */
     maxTurnsPerAgent: number
+    /**
+     * Days a SUCCESSFUL run's scratch dir is retained under
+     * ~/.bakin/run-workspaces before the sweep removes it. Failed/aborted
+     * scratch keeps a fixed 30-day salvage window (not configurable).
+     */
+    runDirRetentionDays: number
+    /**
+     * Hard ceiling (in GB) on total run-workspaces SCRATCH usage (worktree
+     * checkouts are excluded — they're governed by their own time windows).
+     * When exceeded the sweep evicts oldest settled dirs first (never live
+     * or just-allocated dirs); retention days are ceilings, never floors
+     * that outrank the disk. 0 disables the budget.
+     */
+    runDirMaxTotalGb: number
     /**
      * Byte budget for the WORKFLOW CONTEXT block (prior step outputs) in
      * workflow-step dispatch prompts (#357). Newest outputs are kept whole;
@@ -360,7 +376,9 @@ export const DEFAULT_SETTINGS: BakinSettings = {
     maxRetries: 5,
     oversizedOutputBytes: DEFAULT_OVERSIZED_OUTPUT_BYTES,
     maxConcurrentTurns: 3,
-    maxTurnsPerAgent: 1,
+    maxTurnsPerAgent: 2,
+    runDirRetentionDays: 7,
+    runDirMaxTotalGb: 4,
     maxWorkflowContextBytes: 16 * 1024,
     maxBrandContextBytes: 12 * 1024,
     contextBudgetBytes: 64 * 1024,

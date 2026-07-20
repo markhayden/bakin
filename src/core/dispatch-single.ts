@@ -21,7 +21,7 @@ import {
 } from './dispatch-state'
 import { readDispatchColumns, isTaskDispatchEligible, addTaskLog, moveTaskToInProgress, tryAddTaskLog } from './dispatch-board'
 import { formatDispatchError } from './dispatch-failures'
-import { concurrencyGate, deferForBudget, fireDispatchTurn, resolveDispatchRouting } from './dispatch-turns'
+import { concurrencyGate, deferForBudget, fireDispatchTurn, getSameAgentTurnsMode, resolveDispatchRouting } from './dispatch-turns'
 import { prepareRegularDispatch } from './dispatch-prepare'
 import { deferForMissingBrand } from './dispatch-context-blocks'
 import { dispatchWorkflowTask } from './dispatch-workflow'
@@ -168,7 +168,7 @@ export async function dispatchSingleTask(
     // Regular task dispatch
     const targetAgent = task.agent ?? mainAgentId
 
-    const gate = concurrencyGate(targetAgent, settings)
+    const gate = concurrencyGate(targetAgent, settings, undefined, await getSameAgentTurnsMode())
     if (gate) {
       if (source === 'recovery') {
         // The "immediate" ladder re-dispatch degrades to next-cycle pickup —

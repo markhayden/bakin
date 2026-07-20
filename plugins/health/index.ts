@@ -60,6 +60,7 @@ import { checkChannelApprovals } from './lib/system-checks/channel-approvals'
 import { checkChannelAliases } from './lib/system-checks/channel-aliases'
 import { checkRestartRecovery } from './lib/system-checks/restart-recovery'
 import { checkExecutionSafety } from './lib/system-checks/execution-safety'
+import { checkRunDirs, runDirsSweepRepair } from './lib/system-checks/run-dirs'
 import { checkStartupContextSize } from './lib/system-checks/context-report'
 import { checkBudget } from './lib/system-checks/budget'
 import { checkAgentBurn } from './lib/system-checks/agent-burn'
@@ -936,6 +937,15 @@ const healthPlugin: BakinPlugin = definePlugin({
       group: systemGroup,
       maxAgeMs: 300_000,
       run: () => checkExecutionSafety(),
+    })
+    ctx.registerHealthRepairAction(runDirsSweepRepair())
+    ctx.registerHealthCheck({
+      id: 'dispatch.run-dirs',
+      name: 'Per-run workspace disk usage',
+      description: 'Watches run-workspace scratch dirs against retention windows and the disk budget (sweep aggregate — never a live walk).',
+      group: workGroup,
+      maxAgeMs: 600_000,
+      run: () => checkRunDirs(),
     })
     ctx.registerHealthCheck({
       id: 'context.startup-size',

@@ -7,7 +7,7 @@
 import { beforeAll, afterAll, mock } from 'bun:test'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { mkdirSync, rmSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'fs'
 import { randomUUID } from 'crypto'
 
 // The Pi SDK calls global fetch; the happy-dom preload replaces it with a
@@ -142,6 +142,23 @@ const target: RuntimeConformanceTarget = {
       content: 'conformance: failing stream',
       threadId: `conf:pi:fail-stream:${++threadSeq}`,
     })
+  },
+  // Isolation probe (same-agent-concurrency D1): each concurrent turn's
+  // scripted model calls the SDK's REAL bash tool to write a probe file via
+  // relative path — landing wherever the session's tool cwd actually is.
+  // `when` phase-matching keeps concurrent script consumption deterministic
+  // (each turn gets [toolCall, then reply] under any interleaving).
+  prepareIsolatedTurnProbe: () => {
+    seedProvider([
+      { when: 'initial', steps: [{ toolCall: { name: 'bash', args: { command: 'pwd > cwd-probe.txt' } } }] },
+      { when: 'initial', steps: [{ toolCall: { name: 'bash', args: { command: 'pwd > cwd-probe.txt' } } }] },
+      { when: 'after-tool', steps: [{ text: 'probed' }], usage: { prompt: 4, completion: 2 } },
+      { when: 'after-tool', steps: [{ text: 'probed' }], usage: { prompt: 4, completion: 2 } },
+    ])
+    return {
+      content: 'conformance: write your cwd probe',
+      verify: (dir: string) => existsSync(join(dir, 'cwd-probe.txt')),
+    }
   },
   // Pi provisions in-process (no durable writes) — nothing to snapshot.
   observeProvisionedState: () => null,
