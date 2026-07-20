@@ -286,3 +286,26 @@ test('public banner and toast feedback visual baseline', async ({ page }) => {
     fullPage: true,
   })
 })
+
+test('public list/index page recipe visual baseline', async ({ page }) => {
+  await page.goto('/iframe.html?id=patterns-list-and-detail-pages--list-index&viewMode=story')
+  await expect(page.getByRole('heading', { level: 1, name: 'Coordinate active work' })).toBeVisible()
+  await page.evaluate(async () => document.fonts.ready)
+  await expect(page).toHaveScreenshot('foundation-list-page.png', {
+    animations: 'disabled',
+    caret: 'hide',
+    fullPage: true,
+  })
+})
+
+test('public detail page recipe visual baseline', async ({ page }) => {
+  await page.goto('/iframe.html?id=patterns-list-and-detail-pages--detail&viewMode=story')
+  await expect(page.getByRole('heading', { level: 1, name: 'Launch approval' })).toBeVisible()
+  await expect(page.getByRole('complementary', { name: 'Workflow context' })).toBeVisible()
+  await page.evaluate(async () => document.fonts.ready)
+  await expect(page).toHaveScreenshot('foundation-detail-page.png', {
+    animations: 'disabled',
+    caret: 'hide',
+    fullPage: true,
+  })
+})

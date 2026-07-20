@@ -320,7 +320,27 @@ Canonical page and responsive composition. Source: `packages/sdk/src/layout/inde
 
 Reusable application-aware presentation patterns. Source: `packages/sdk/src/patterns/index.ts`.
 
-The boundary is established; public exports arrive with its owned component migration.
+| Export | Description |
+| --- | --- |
+| `DetailPage` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `DetailPageAside` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `DetailPageBody` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `DetailPageMain` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `ListPage` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `ListPageContent` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `ListPageControls` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `PageHeader` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `DetailPageAsideProps` | — |
+| `DetailPageBodyProps` | — |
+| `DetailPageLayout` | — |
+| `DetailPageMainProps` | — |
+| `DetailPageProps` | — |
+| `DetailPageWidth` | — |
+| `ListPageContentProps` | — |
+| `ListPageControlsProps` | — |
+| `ListPageProps` | — |
+| `ListPageWidth` | — |
+| `PageHeaderProps` | — |
 
 ## `@makinbakin/sdk/charts`
 

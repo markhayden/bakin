@@ -8,6 +8,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./layout": "./src/layout/index.ts",
+    "./patterns": "./src/patterns/index.ts",
     "./tokens": "./src/tokens.generated.ts"
   },
   "sideEffects": [

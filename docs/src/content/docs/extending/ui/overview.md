@@ -92,6 +92,96 @@ Grid recipes respond to their own available container, not the browser viewport.
 
 `BoundedOverflow` is intentionally horizontal. The child owns its intrinsic width, while the boundary prevents that width from escaping the page and provides keyboard focus for scrolling. It is not a general-purpose nested page scroller and does not set arbitrary heights.
 
+## List and Detail Page Recipes
+
+Use `@makinbakin/sdk/patterns` once a page is more specific than a general layout. The list and detail recipes standardize page identity, actions, responsive flow, named state boundaries, and scroll ownership without taking over application state:
+
+| Need | Component | Contract |
+| --- | --- | --- |
+| Identify any routed page | `PageHeader` | Renders the page's single `h1`; optional navigation, eyebrow, description, metadata, and actions keep one order at every width |
+| Build a searchable or filterable index | `ListPage` | Uses the routine wide canvas; `full` is reserved for genuinely intrinsic-width domain content |
+| Keep query controls available | `ListPageControls` | Requires an accessible region name and reflows search, filters, sorting, and peer actions without owning their values |
+| Bound list results and replacement states | `ListPageContent` | Requires an accessible region name; `state` replaces only the results, while `feedback` can remain beside stale usable content |
+| Build one resource or record page | `DetailPage` | Uses `wide` by default or `content` for a focused single-column record |
+| Compose detail content | `DetailPageBody`, `DetailPageMain`, and `DetailPageAside` | Choose `single` or `aside`; a named aside moves below the primary content when its container is narrow |
+
+```tsx
+import { useQueryState } from '@makinbakin/sdk/hooks'
+import {
+  ListPage,
+  ListPageContent,
+  ListPageControls,
+  PageHeader,
+} from '@makinbakin/sdk/patterns'
+import { Button, SystemState } from '@makinbakin/sdk/ui'
+
+export function TasksPage({ matchingTasks }: { matchingTasks: Array<{ id: string; title: string }> }) {
+  const [status, setStatus] = useQueryState('status', 'all')
+
+  return (
+    <ListPage>
+      <PageHeader
+        eyebrow="Tasks / live operations"
+        title="Coordinate active work"
+        description="Keep owners, timing, and operational context visible."
+        actions={<Button>New task</Button>}
+      />
+      <ListPageControls label="Task list controls">
+        <Button aria-pressed={status === 'blocked'} onClick={() => setStatus('blocked')}>
+          Blocked
+        </Button>
+      </ListPageControls>
+      <ListPageContent
+        label="Task results"
+        state={matchingTasks.length === 0 ? (
+          <SystemState
+            kind="no-results"
+            title="No tasks match"
+            action={<Button onClick={() => setStatus('all')}>Clear filters</Button>}
+          />
+        ) : undefined}
+      >
+        <ul>{matchingTasks.map((task) => <li key={task.id}>{task.title}</li>)}</ul>
+      </ListPageContent>
+    </ListPage>
+  )
+}
+```
+
+Production filters, search, sorting, pagination, selected tabs, and open overlays continue to use the existing query-state hooks. `useQueryState` uses replace semantics for routine view changes and batches multiple setters from one interaction; do not add local history wrappers or rebuild query strings in the recipe. Paths still identify pages. Use the existing `PluginLink` for back links and cross-page navigation:
+
+```tsx
+import { PluginLink } from '@makinbakin/sdk/components'
+import {
+  DetailPage,
+  DetailPageAside,
+  DetailPageBody,
+  DetailPageMain,
+  PageHeader,
+} from '@makinbakin/sdk/patterns'
+
+export function WorkflowDetail() {
+  return (
+    <DetailPage>
+      <PageHeader
+        navigation={<PluginLink to="/workflows">Back to workflows</PluginLink>}
+        title="Launch approval"
+      />
+      <DetailPageBody layout="aside">
+        <DetailPageMain>{/* Semantic detail sections */}</DetailPageMain>
+        <DetailPageAside label="Workflow context">{/* Owner, schedule, related objects */}</DetailPageAside>
+      </DetailPageBody>
+    </DetailPage>
+  )
+}
+```
+
+`state` is for initial loading, empty, unavailable, permission, or fatal error content that replaces the owning region. During a refresh, retain usable rows or detail sections, set `busy`, and use `feedback` for a `Banner` or inline status instead. Page header, navigation, and controls should not disappear merely because a result request failed.
+
+The host owns the page's `main` landmark and vertical scroll. These recipes therefore render no nested `main`, fixed-height page pane, or vertical scroller. Put a truly wide table or canvas inside `BoundedOverflow`; do not make the entire list or detail body horizontally scrollable.
+
+These are compositional recipes, not page controllers. Do not pass them fetchers, route definitions, filter schemas, resource arrays, or plugin-specific callbacks. Do not use `PageHeader` inside a dialog, drawer, or embedded slot, and do not add a second `h1` inside the page body. Domain CSS may style the actual rows or record content under the plugin's ownership root; it should not recreate the recipe's insets, heading scale, action placement, breakpoints, or state spacing.
+
 ## Action and Status Primitives
 
 The first supported primitive set covers actions, compact state, contextual messages, and measurable work:

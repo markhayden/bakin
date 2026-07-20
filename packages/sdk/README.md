@@ -134,6 +134,15 @@ recovery action. Use `Banner` for persistent page context. Plugins call
 `toast()` from `@makinbakin/sdk/hooks` for transient outcomes and leave the
 shell-owned `ToastRegion` to Bakin.
 
+Routed indexes and record pages compose from `@makinbakin/sdk/patterns`.
+`PageHeader` owns the single page heading and responsive action order.
+`ListPageControls` and `ListPageContent` keep query controls separate from the
+named result/state boundary. `DetailPageBody` composes a primary flow with an
+optional named `DetailPageAside` that reflows below it. The recipes do not own
+data or routing: keep filters, search, tabs, pagination, and overlays in the
+existing `useQueryState` contract, and use `PluginLink` for client-routed page
+navigation. The host retains the `main` landmark and vertical page scroll.
+
 ## Stylesheet
 
 Bakin loads one shared copy of `@makinbakin/sdk/styles.css` for the host and all

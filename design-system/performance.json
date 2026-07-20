@@ -11,7 +11,7 @@
   },
   "css": {
     "canonicalPath": "packages/sdk/styles.css",
-    "canonicalBytes": 289952,
+    "canonicalBytes": 293121,
     "copyCount": 1,
     "copyPaths": [
       "packages/sdk/styles.css"
@@ -31,8 +31,8 @@
     {
       "name": "sdk-components",
       "path": "packages/host/public/vendor/sdk-components.js",
-      "bytes": 435404,
-      "reachableBytes": 1163183
+      "bytes": 435471,
+      "reachableBytes": 1163472
     },
     {
       "name": "sdk-conversation",
@@ -43,20 +43,20 @@
     {
       "name": "sdk-layout",
       "path": "packages/host/public/vendor/sdk-layout.js",
-      "bytes": 3601,
-      "reachableBytes": 4355
+      "bytes": 1905,
+      "reachableBytes": 4440
     },
     {
       "name": "sdk-patterns",
       "path": "packages/host/public/vendor/sdk-patterns.js",
-      "bytes": 0,
-      "reachableBytes": 0
+      "bytes": 5220,
+      "reachableBytes": 34691
     },
     {
       "name": "sdk-ui",
       "path": "packages/host/public/vendor/sdk-ui.js",
-      "bytes": 21358,
-      "reachableBytes": 430173
+      "bytes": 21427,
+      "reachableBytes": 430464
     }
   ],
   "vendorChunks": [
@@ -82,7 +82,7 @@
     },
     {
       "path": "packages/host/public/vendor/sdk-components.js",
-      "bytes": 435404
+      "bytes": 435471
     },
     {
       "path": "packages/host/public/vendor/sdk-conversation.js",
@@ -102,7 +102,7 @@
     },
     {
       "path": "packages/host/public/vendor/sdk-layout.js",
-      "bytes": 3601
+      "bytes": 1905
     },
     {
       "path": "packages/host/public/vendor/sdk-metadata.js",
@@ -110,47 +110,59 @@
     },
     {
       "path": "packages/host/public/vendor/sdk-patterns.js",
-      "bytes": 0
+      "bytes": 5220
     },
     {
       "path": "packages/host/public/vendor/sdk-routing.js",
       "bytes": 160
     },
     {
-      "path": "packages/host/public/vendor/sdk-shared-2b79wwt3.js",
-      "bytes": 754
+      "path": "packages/host/public/vendor/sdk-shared-1a00jvfd.js",
+      "bytes": 29447
     },
     {
-      "path": "packages/host/public/vendor/sdk-shared-37ata764.js",
-      "bytes": 381269
-    },
-    {
-      "path": "packages/host/public/vendor/sdk-shared-adwgbkn0.js",
+      "path": "packages/host/public/vendor/sdk-shared-7d0jb9qx.js",
       "bytes": 3688
     },
     {
-      "path": "packages/host/public/vendor/sdk-shared-dnerpfgw.js",
-      "bytes": 1577
+      "path": "packages/host/public/vendor/sdk-shared-c1b2c457.js",
+      "bytes": 381243
     },
     {
-      "path": "packages/host/public/vendor/sdk-shared-h2rvjtky.js",
+      "path": "packages/host/public/vendor/sdk-shared-c7vya7wg.js",
       "bytes": 5243
     },
     {
-      "path": "packages/host/public/vendor/sdk-shared-hmk5ptqs.js",
-      "bytes": 280586
+      "path": "packages/host/public/vendor/sdk-shared-cfny04vw.js",
+      "bytes": 26748
     },
     {
-      "path": "packages/host/public/vendor/sdk-shared-ndvy70ew.js",
-      "bytes": 29447
+      "path": "packages/host/public/vendor/sdk-shared-db2jbew6.js",
+      "bytes": 754
+    },
+    {
+      "path": "packages/host/public/vendor/sdk-shared-dwqh40te.js",
+      "bytes": 104
+    },
+    {
+      "path": "packages/host/public/vendor/sdk-shared-gc5nyvqf.js",
+      "bytes": 1781
+    },
+    {
+      "path": "packages/host/public/vendor/sdk-shared-m56wf0f4.js",
+      "bytes": 188
     },
     {
       "path": "packages/host/public/vendor/sdk-shared-nqwbjtr4.js",
       "bytes": 0
     },
     {
-      "path": "packages/host/public/vendor/sdk-shared-p5q89bge.js",
-      "bytes": 26792
+      "path": "packages/host/public/vendor/sdk-shared-r739xfna.js",
+      "bytes": 280586
+    },
+    {
+      "path": "packages/host/public/vendor/sdk-shared-zbdbh7p1.js",
+      "bytes": 1577
     },
     {
       "path": "packages/host/public/vendor/sdk-slots.js",
@@ -162,11 +174,11 @@
     },
     {
       "path": "packages/host/public/vendor/sdk-ui.js",
-      "bytes": 21358
+      "bytes": 21427
     },
     {
       "path": "packages/host/public/vendor/sdk-utils.js",
-      "bytes": 3767
+      "bytes": 3800
     },
     {
       "path": "packages/host/public/vendor/tanstack-router.js",

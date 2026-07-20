@@ -994,6 +994,27 @@ stories/tests/docs.\
 conversation, inspector, and workflow/action recipes from the approved
 specimens and census.
 
+**Status — T30a (2026-07-19):** Complete. `PageHeader`, `ListPage`,
+`ListPageControls`, `ListPageContent`, `DetailPage`, `DetailPageBody`,
+`DetailPageMain`, and `DetailPageAside` now publish through the focused
+`@makinbakin/sdk/patterns` entrypoint. The recipes own only page hierarchy,
+responsive composition, action placement, named regions, and retained versus
+replacement state slots; consumers continue to own data and the existing
+`useQueryState`/`PluginLink` routing contract. Four Product Character stories
+cover ready, no-results, detail-with-aside, and unavailable states at desktop
+and 320px. The page title precedes actions in DOM and mobile reading order,
+wide content delegates overflow to `BoundedOverflow`, and no recipe creates a
+nested `main`, page scroller, or fixed-height pane. Fourteen focused render,
+architecture, SDK-entrypoint, and generated-reference tests, all 69 public
+Storybook interaction/axe cases, 38 desktop/mobile visual cases, and 36
+Chromium/Firefox/WebKit behavior cases pass. The combined docs build publishes
+the catalog at `docs/dist/ui/`; deterministic Storybook builds, 48-page docs
+validation, and typed route-contract checks pass. Canonical CSS is 293,121
+bytes (+3,169 from T29), initial host JS remains 457,006 bytes, and the newly
+populated SDK patterns entrypoint is 5,220 bytes direct / 34,691 reachable.
+One shared CSS copy remains. No official page or plugin migration is included
+in T30a.
+
 **Acceptance:** each recipe defines header/actions, state slots, responsive
 behavior, scroll ownership, URL-state guidance, and misuse boundaries without
 hard-coding plugin data.

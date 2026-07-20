@@ -15,6 +15,10 @@ const asyncValidationStory = '/iframe.html?id=forms-field-and-form-composition--
 const submissionWorkflowStory = '/iframe.html?id=forms-field-and-form-composition--submission-workflow&viewMode=story'
 const systemStateStory = '/iframe.html?id=states-system-state-and-feedback--state-matrix&viewMode=story'
 const feedbackStory = '/iframe.html?id=states-system-state-and-feedback--feedback&viewMode=story'
+const listPageStory = '/iframe.html?id=patterns-list-and-detail-pages--list-index&viewMode=story'
+const listNoResultsStory = '/iframe.html?id=patterns-list-and-detail-pages--list-no-results&viewMode=story'
+const detailPageStory = '/iframe.html?id=patterns-list-and-detail-pages--detail&viewMode=story'
+const detailUnavailableStory = '/iframe.html?id=patterns-list-and-detail-pages--detail-unavailable&viewMode=story'
 
 test('public story keeps keyboard, focus, console, and responsive contracts', async ({ page }) => {
   const browserErrors: string[] = []
@@ -645,6 +649,73 @@ test('system states keep recovery, announcement, motion, and responsive contract
     await expect(errorToast).toBeVisible()
     await page.getByRole('button', { name: 'Dismiss notification' }).click()
     await expect(errorToast).toBeHidden()
+    const dimensions = await page.evaluate(() => ({ clientWidth: document.documentElement.clientWidth, scrollWidth: document.documentElement.scrollWidth }))
+    expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth)
+  })
+
+  expect(browserErrors).toEqual([])
+})
+
+test('list and detail recipes preserve page identity, state slots, and responsive scroll ownership', async ({ page }) => {
+  const browserErrors: string[] = []
+  page.on('console', (message) => {
+    if (message.type() === 'error') browserErrors.push(`console: ${message.text()}`)
+  })
+  page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
+  page.on('requestfailed', (request) => {
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+  })
+
+  for (const [story, heading] of [[listPageStory, 'Coordinate active work'], [detailPageStory, 'Launch approval']] as const) {
+    for (const width of responsiveWidths) {
+      await test.step(`${heading} remains contained at ${width}px`, async () => {
+        await page.setViewportSize({ width, height: 1000 })
+        await page.goto(story, { waitUntil: 'networkidle' })
+        await expect(page.getByRole('heading', { level: 1, name: heading })).toBeVisible()
+        const dimensions = await page.evaluate(() => ({
+          clientWidth: document.documentElement.clientWidth,
+          scrollWidth: document.documentElement.scrollWidth,
+        }))
+        expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth)
+      })
+    }
+  }
+
+  await test.step('list controls filter the named result region without replacing page chrome', async () => {
+    await page.setViewportSize({ width: 720, height: 900 })
+    await page.goto(listPageStory, { waitUntil: 'networkidle' })
+    const filter = page.getByRole('button', { name: 'Needs attention' })
+    await filter.click()
+    await expect(filter).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.getByRole('region', { name: 'Task results' }).getByRole('listitem')).toHaveCount(1)
+    await expect(page.getByRole('heading', { level: 1, name: 'Coordinate active work' })).toBeVisible()
+  })
+
+  await test.step('replacement states retain identity and their controlling region', async () => {
+    await page.goto(listNoResultsStory, { waitUntil: 'networkidle' })
+    await expect(page.getByRole('region', { name: 'Task list controls' })).toBeVisible()
+    await expect(page.getByRole('region', { name: 'Task results' })).toHaveAttribute('data-content-state', 'replaced')
+    await expect(page.getByRole('status', { name: 'No tasks match this view' })).toBeVisible()
+
+    await page.goto(detailUnavailableStory, { waitUntil: 'networkidle' })
+    await expect(page.getByRole('heading', { level: 1, name: 'Archived campaign approval' })).toBeVisible()
+    await expect(page.getByText('Workflow definition is restricted')).toBeVisible()
+  })
+
+  await test.step('detail aside reflows without creating a nested page scroller', async () => {
+    await page.setViewportSize({ width: 1024, height: 900 })
+    await page.goto(detailPageStory, { waitUntil: 'networkidle' })
+    const grid = page.locator('[data-slot="detail-page-grid"] [data-slot="grid"]')
+    expect((await grid.evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length))).toBe(2)
+    await page.setViewportSize({ width: 320, height: 900 })
+    expect((await grid.evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length))).toBe(1)
+    expect(await page.evaluate(() => getComputedStyle(document.documentElement).overflowY)).not.toBe('scroll')
+  })
+
+  await test.step('200% text remains contained at the minimum supported width', async () => {
+    await page.setViewportSize({ width: 320, height: 1000 })
+    await page.goto(listPageStory, { waitUntil: 'networkidle' })
+    await page.evaluate(() => { document.documentElement.style.fontSize = '200%' })
     const dimensions = await page.evaluate(() => ({ clientWidth: document.documentElement.clientWidth, scrollWidth: document.documentElement.scrollWidth }))
     expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth)
   })

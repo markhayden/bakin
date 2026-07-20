@@ -1,9 +1,3 @@
-/**
- * `@makinbakin/sdk/patterns` — reusable application-aware UI patterns.
- *
- * Recipes own page hierarchy, responsive composition, and state slots while
- * consumers retain domain data, URL state, and routing behavior.
- */
 export {
   DetailPage,
   DetailPageAside,
