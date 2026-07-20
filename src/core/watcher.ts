@@ -49,7 +49,8 @@
  */
 import { watch, type FSWatcher } from 'chokidar'
 import { readFileSync, readdirSync, statSync } from 'fs'
-import { join, relative } from 'path'
+import { homedir } from 'os'
+import { join, relative, resolve } from 'path'
 import { createLogger } from './logger'
 import { broadcast } from './sse'
 import { appendAudit } from './audit'
@@ -128,6 +129,35 @@ interface WatcherDeps {
   onInboxFile: (fullPath: string) => void
 }
 
+/**
+ * The git plugin's worktree root is settings-configurable — a user-custom
+ * root elsewhere under ~/.bakin must be excluded too, not just the literal
+ * `git-worktrees/` default. Read once per process (the ignore callback is
+ * hot-path; a watcher restart requires a server restart anyway).
+ * `undefined` = not yet resolved; `null` = default/outside-contentDir.
+ */
+let customWorktreeRelCache: string | null | undefined
+export function resetCustomWorktreeRelCache(): void {
+  customWorktreeRelCache = undefined
+}
+function customGitWorktreeRel(contentDir: string): string | null {
+  if (customWorktreeRelCache !== undefined) return customWorktreeRelCache
+  try {
+    const raw = JSON.parse(readFileSync(join(contentDir, 'plugin-settings', 'git.json'), 'utf-8')) as { worktreeRoot?: unknown }
+    const configured = typeof raw.worktreeRoot === 'string' ? raw.worktreeRoot.trim() : ''
+    if (!configured) {
+      customWorktreeRelCache = null
+    } else {
+      const abs = resolve(configured.startsWith('~/') ? join(homedir(), configured.slice(2)) : configured)
+      const rel = relative(contentDir, abs).replace(/\\/g, '/')
+      customWorktreeRelCache = rel && !rel.startsWith('..') && rel !== '' ? rel : null
+    }
+  } catch {
+    customWorktreeRelCache = null
+  }
+  return customWorktreeRelCache
+}
+
 export function shouldIgnoreContentWatcherPath(contentDir: string, path: string): boolean {
   if (path === contentDir) return false
   const rel = relative(contentDir, path).replace(/\\/g, '/')
@@ -152,6 +182,16 @@ export function shouldIgnoreContentWatcherPath(contentDir: string, path: string)
   // Bun's file-watcher thread against the main thread (every thread parked
   // on os_unfair_lock), wedging the entire HTTP server seconds after boot.
   if (rel === 'antfly' || rel.startsWith('antfly/')) return true
+
+  // Per-run agent working directories (same-agent-concurrency D2) and the
+  // git plugin's worktree root: agent scratch + full repo checkouts. One
+  // worktree of a real repo is thousands of kqueue fds (a `bun install`
+  // inside it is ~150k — macOS supervised processes get 256), plus the
+  // antfly-style event-storm class above. Never watched, never SSE'd.
+  if (rel === 'run-workspaces' || rel.startsWith('run-workspaces/')) return true
+  if (rel === 'git-worktrees' || rel.startsWith('git-worktrees/')) return true
+  const customWorktreeRel = customGitWorktreeRel(contentDir)
+  if (customWorktreeRel && (rel === customWorktreeRel || rel.startsWith(`${customWorktreeRel}/`))) return true
 
   // Backup/snapshot siblings of ANY content root (assets.pre-pivot-*,
   // tasks.bak, workflows.old-2026) are dead copies, never live content.
