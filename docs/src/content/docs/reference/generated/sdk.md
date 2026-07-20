@@ -322,6 +322,8 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 
 | Export | Description |
 | --- | --- |
+| `DashboardPage` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `DashboardPageContent` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `DetailPage` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `DetailPageAside` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `DetailPageBody` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
@@ -330,6 +332,13 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 | `ListPageContent` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `ListPageControls` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `PageHeader` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `SettingsPage` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `SettingsPageBody` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `SettingsPageContent` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `SettingsPageNavigation` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `DashboardPageContentProps` | — |
+| `DashboardPageProps` | — |
+| `DashboardPageWidth` | — |
 | `DetailPageAsideProps` | — |
 | `DetailPageBodyProps` | — |
 | `DetailPageLayout` | — |
@@ -341,6 +350,12 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 | `ListPageProps` | — |
 | `ListPageWidth` | — |
 | `PageHeaderProps` | — |
+| `SettingsPageBodyProps` | — |
+| `SettingsPageContentProps` | — |
+| `SettingsPageLayout` | — |
+| `SettingsPageNavigationProps` | — |
+| `SettingsPageProps` | — |
+| `SettingsPageWidth` | — |
 
 ## `@makinbakin/sdk/charts`
 
@@ -535,5 +550,5 @@ Source: `packages/sdk/src/routing/index.ts`.
 | `DefinePluginInput` | — |
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Jul 19, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Jul 20, 2026 · Bakin 0.0.0-dev</span>
 </aside>

@@ -1015,6 +1015,28 @@ populated SDK patterns entrypoint is 5,220 bytes direct / 34,691 reachable.
 One shared CSS copy remains. No official page or plugin migration is included
 in T30a.
 
+**Status — T30b (2026-07-19):** Complete. `SettingsPage`,
+`SettingsPageBody`, `SettingsPageNavigation`, `SettingsPageContent`,
+`DashboardPage`, and `DashboardPageContent` now extend the focused patterns
+entrypoint. Settings supports either a focused form or a responsive named
+category rail without absorbing schema discovery, values, validation, dirty
+state, saves, navigation guards, or query state. Dashboard provides a named,
+state-aware overview canvas without absorbing telemetry, metrics, refresh
+logic, or domain actions; its Product Character example leads with the
+condition and decision, then uses a compact metric summary, unequal primary/
+context composition, and dense operational rows instead of an equal-weight
+card wall. Four public stories cover ready and unavailable settings and
+dashboard states. Seven focused render/architecture tests, all 73 public
+Storybook interaction/axe cases, 42 exact desktop/mobile visual cases, and the
+new canonical Chromium/Firefox/WebKit behavior case pass. The desktop and
+320px baselines were reviewed after correcting the settings rail's container-
+query ownership. Deterministic Storybook, combined docs, 48-page validation,
+typed route-contract, type, lint, and performance gates pass. Canonical CSS is
+294,344 bytes (+1,223 from T30a), initial host JS remains 457,006 bytes, and
+the SDK patterns entrypoint is 7,460 bytes direct / 36,931 reachable (+2,240
+each). One shared CSS copy remains. No official settings, runtime, Health, or
+plugin surface migration is included in T30b.
+
 **Acceptance:** each recipe defines header/actions, state slots, responsive
 behavior, scroll ownership, URL-state guidance, and misuse boundaries without
 hard-coding plugin data.

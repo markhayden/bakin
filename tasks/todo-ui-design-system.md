@@ -62,7 +62,7 @@ comparison, and deletion of replaced styling/allowances.
 - [x] T28 Implement the canonical field/form composition
 - [x] T29 Implement standardized system states and feedback
 - [x] T30a Implement list and detail archetype recipes
-- [ ] T30b Implement settings and dashboard archetype recipes
+- [x] T30b Implement settings and dashboard archetype recipes
 - [ ] T30c Implement conversation and inspector archetype recipes
 - [ ] T30d Implement workflow and action archetype recipes
 - [ ] Checkpoint 3C: layout/forms/states/archetypes reviewed

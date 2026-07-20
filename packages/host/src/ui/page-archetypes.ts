@@ -1,4 +1,6 @@
 export {
+  DashboardPage,
+  DashboardPageContent,
   DetailPage,
   DetailPageAside,
   DetailPageBody,
@@ -7,8 +9,15 @@ export {
   ListPageContent,
   ListPageControls,
   PageHeader,
+  SettingsPage,
+  SettingsPageBody,
+  SettingsPageContent,
+  SettingsPageNavigation,
 } from '@bakin/ui/patterns'
 export type {
+  DashboardPageContentProps,
+  DashboardPageProps,
+  DashboardPageWidth,
   DetailPageAsideProps,
   DetailPageBodyProps,
   DetailPageLayout,
@@ -20,4 +29,10 @@ export type {
   ListPageProps,
   ListPageWidth,
   PageHeaderProps,
+  SettingsPageBodyProps,
+  SettingsPageContentProps,
+  SettingsPageLayout,
+  SettingsPageNavigationProps,
+  SettingsPageProps,
+  SettingsPageWidth,
 } from '@bakin/ui/patterns'

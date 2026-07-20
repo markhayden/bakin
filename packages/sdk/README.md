@@ -143,6 +143,15 @@ data or routing: keep filters, search, tabs, pagination, and overlays in the
 existing `useQueryState` contract, and use `PluginLink` for client-routed page
 navigation. The host retains the `main` landmark and vertical page scroll.
 
+Settings and overview pages also compose from the focused patterns entrypoint.
+`SettingsPageBody` supports a single form or responsive category navigation;
+the named `SettingsPageContent` owns only the active form's feedback and
+replacement-state boundary. `DashboardPageContent` names a prioritized
+overview canvas that consumers compose with `Section`, `Stack`, and `Grid`.
+Keep settings categories and dashboard view state in the existing query-state
+contract. Values, validation, dirty state, saves, telemetry, and domain actions
+remain consumer owned; avoid equal-weight card walls and nested page scrollers.
+
 ## Stylesheet
 
 Bakin loads one shared copy of `@makinbakin/sdk/styles.css` for the host and all

@@ -309,3 +309,27 @@ test('public detail page recipe visual baseline', async ({ page }) => {
     fullPage: true,
   })
 })
+
+test('public settings page recipe visual baseline', async ({ page }) => {
+  await page.goto('/iframe.html?id=patterns-settings-and-dashboard-pages--settings-categories&viewMode=story')
+  await expect(page.getByRole('heading', { level: 1, name: 'Settings' })).toBeVisible()
+  await expect(page.getByRole('navigation', { name: 'Settings categories' })).toBeVisible()
+  await page.evaluate(async () => document.fonts.ready)
+  await expect(page).toHaveScreenshot('foundation-settings-page.png', {
+    animations: 'disabled',
+    caret: 'hide',
+    fullPage: true,
+  })
+})
+
+test('public dashboard page recipe visual baseline', async ({ page }) => {
+  await page.goto('/iframe.html?id=patterns-settings-and-dashboard-pages--dashboard-overview&viewMode=story')
+  await expect(page.getByRole('heading', { level: 1, name: 'Keep Bakin ready to work' })).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Health overview' })).toBeVisible()
+  await page.evaluate(async () => document.fonts.ready)
+  await expect(page).toHaveScreenshot('foundation-dashboard-page.png', {
+    animations: 'disabled',
+    caret: 'hide',
+    fullPage: true,
+  })
+})

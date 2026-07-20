@@ -19,6 +19,10 @@ const listPageStory = '/iframe.html?id=patterns-list-and-detail-pages--list-inde
 const listNoResultsStory = '/iframe.html?id=patterns-list-and-detail-pages--list-no-results&viewMode=story'
 const detailPageStory = '/iframe.html?id=patterns-list-and-detail-pages--detail&viewMode=story'
 const detailUnavailableStory = '/iframe.html?id=patterns-list-and-detail-pages--detail-unavailable&viewMode=story'
+const settingsPageStory = '/iframe.html?id=patterns-settings-and-dashboard-pages--settings-categories&viewMode=story'
+const settingsUnavailableStory = '/iframe.html?id=patterns-settings-and-dashboard-pages--settings-unavailable&viewMode=story'
+const dashboardPageStory = '/iframe.html?id=patterns-settings-and-dashboard-pages--dashboard-overview&viewMode=story'
+const dashboardUnavailableStory = '/iframe.html?id=patterns-settings-and-dashboard-pages--dashboard-unavailable&viewMode=story'
 
 test('public story keeps keyboard, focus, console, and responsive contracts', async ({ page }) => {
   const browserErrors: string[] = []
@@ -715,6 +719,79 @@ test('list and detail recipes preserve page identity, state slots, and responsiv
   await test.step('200% text remains contained at the minimum supported width', async () => {
     await page.setViewportSize({ width: 320, height: 1000 })
     await page.goto(listPageStory, { waitUntil: 'networkidle' })
+    await page.evaluate(() => { document.documentElement.style.fontSize = '200%' })
+    const dimensions = await page.evaluate(() => ({ clientWidth: document.documentElement.clientWidth, scrollWidth: document.documentElement.scrollWidth }))
+    expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth)
+  })
+
+  expect(browserErrors).toEqual([])
+})
+
+test('settings and dashboard recipes preserve priority, named regions, and responsive ownership', async ({ page }) => {
+  const browserErrors: string[] = []
+  page.on('console', (message) => {
+    if (message.type() === 'error') browserErrors.push(`console: ${message.text()}`)
+  })
+  page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
+  page.on('requestfailed', (request) => {
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+  })
+
+  for (const [story, heading] of [[settingsPageStory, 'Settings'], [dashboardPageStory, 'Keep Bakin ready to work']] as const) {
+    for (const width of responsiveWidths) {
+      await test.step(`${heading} remains contained at ${width}px`, async () => {
+        await page.setViewportSize({ width, height: 1000 })
+        await page.goto(story, { waitUntil: 'networkidle' })
+        await expect(page.getByRole('heading', { level: 1, name: heading })).toBeVisible()
+        const dimensions = await page.evaluate(() => ({
+          clientWidth: document.documentElement.clientWidth,
+          scrollWidth: document.documentElement.scrollWidth,
+        }))
+        expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth)
+      })
+    }
+  }
+
+  await test.step('settings categories preserve the named active form region', async () => {
+    await page.setViewportSize({ width: 720, height: 1000 })
+    await page.goto(settingsPageStory, { waitUntil: 'networkidle' })
+    const navigation = page.getByRole('navigation', { name: 'Settings categories' })
+    await expect(navigation).toBeVisible()
+    await page.getByRole('button', { name: 'Extensions' }).click()
+    await expect(page.getByRole('region', { name: 'Extensions', exact: true })).toHaveAttribute('data-content-state', 'ready')
+    await expect(page.getByRole('heading', { level: 1, name: 'Settings' })).toBeVisible()
+
+    await page.goto(settingsUnavailableStory, { waitUntil: 'networkidle' })
+    await expect(page.getByRole('navigation', { name: 'Settings categories' })).toBeVisible()
+    await expect(page.getByRole('region', { name: 'Integrations and keys settings' })).toHaveAttribute('data-content-state', 'replaced')
+    await expect(page.getByRole('alert', { name: 'Integration settings could not be loaded' })).toBeVisible()
+  })
+
+  await test.step('settings navigation and dashboard metrics reflow without nested page scrolling', async () => {
+    await page.setViewportSize({ width: 1024, height: 1000 })
+    await page.goto(settingsPageStory, { waitUntil: 'networkidle' })
+    const navigation = page.getByRole('navigation', { name: 'Settings categories' })
+    expect(await navigation.evaluate((element) => getComputedStyle(element).flexDirection)).toBe('column')
+    await page.setViewportSize({ width: 320, height: 1000 })
+    expect(await navigation.evaluate((element) => getComputedStyle(element).flexDirection)).toBe('row')
+
+    await page.goto(dashboardPageStory, { waitUntil: 'networkidle' })
+    await expect(page.getByRole('region', { name: 'Health overview' })).toHaveAttribute('data-content-state', 'ready')
+    await expect(page.locator('dt').filter({ hasText: /^Active agents$/ })).toBeVisible()
+    expect(await page.evaluate(() => getComputedStyle(document.documentElement).overflowY)).not.toBe('scroll')
+  })
+
+  await test.step('dashboard replacement state keeps page actions and identity', async () => {
+    await page.goto(dashboardUnavailableStory, { waitUntil: 'networkidle' })
+    await expect(page.getByRole('heading', { level: 1, name: 'Runtime capabilities' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Refresh' })).toBeVisible()
+    await expect(page.getByRole('region', { name: 'Runtime capability overview' })).toHaveAttribute('data-content-state', 'replaced')
+    await expect(page.getByRole('alert', { name: 'Runtime capabilities are unavailable' })).toBeVisible()
+  })
+
+  await test.step('200% dashboard text remains contained at the minimum supported width', async () => {
+    await page.setViewportSize({ width: 320, height: 1000 })
+    await page.goto(dashboardPageStory, { waitUntil: 'networkidle' })
     await page.evaluate(() => { document.documentElement.style.fontSize = '200%' })
     const dimensions = await page.evaluate(() => ({ clientWidth: document.documentElement.clientWidth, scrollWidth: document.documentElement.scrollWidth }))
     expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth)

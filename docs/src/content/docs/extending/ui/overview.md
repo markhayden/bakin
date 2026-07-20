@@ -182,6 +182,77 @@ The host owns the page's `main` landmark and vertical scroll. These recipes ther
 
 These are compositional recipes, not page controllers. Do not pass them fetchers, route definitions, filter schemas, resource arrays, or plugin-specific callbacks. Do not use `PageHeader` inside a dialog, drawer, or embedded slot, and do not add a second `h1` inside the page body. Domain CSS may style the actual rows or record content under the plugin's ownership root; it should not recreate the recipe's insets, heading scale, action placement, breakpoints, or state spacing.
 
+## Settings and Dashboard Page Recipes
+
+Settings and dashboards share the same `PageHeader`, state selection, and host-owned scroll contract, but they solve different hierarchy problems:
+
+| Need | Component | Contract |
+| --- | --- | --- |
+| Build a focused form or multi-category configuration page | `SettingsPage` | Uses `wide` by default for category navigation; choose `content` for one focused form |
+| Arrange categories and the active form | `SettingsPageBody` | Choose `single` or `navigation`; category navigation moves above content when the container narrows |
+| Name the settings category chooser | `SettingsPageNavigation` | Requires `label` or `labelledBy`; selected category and routing remain consumer owned |
+| Bound the active settings category | `SettingsPageContent` | Requires an accessible name; `state` replaces only the active form, while `feedback` retains dirty, validation, save, or provider context |
+| Build an operational or diagnostic overview | `DashboardPage` | Uses `wide` by default; `full` is reserved for evidence-backed overview breadth |
+| Bound overview data and states | `DashboardPageContent` | Requires an accessible name; compose priority inside with `Section`, `Stack`, and `Grid` |
+
+```tsx
+import { Grid, Section } from '@makinbakin/sdk/layout'
+import {
+  DashboardPage,
+  DashboardPageContent,
+  PageHeader,
+  SettingsPage,
+  SettingsPageBody,
+  SettingsPageContent,
+  SettingsPageNavigation,
+} from '@makinbakin/sdk/patterns'
+import { Button, Form, FormActions, SubmitButton } from '@makinbakin/sdk/ui'
+
+export function PluginSettings() {
+  return (
+    <SettingsPage>
+      <PageHeader title="Settings" />
+      <SettingsPageBody layout="navigation">
+        <SettingsPageNavigation label="Settings categories">
+          {/* Client-routed category controls */}
+        </SettingsPageNavigation>
+        <SettingsPageContent labelledBy="plugin-settings-heading">
+          <h2 id="plugin-settings-heading">Official plugins</h2>
+          <Form>
+            {/* Canonical fields and semantic sections */}
+            <FormActions><SubmitButton>Save settings</SubmitButton></FormActions>
+          </Form>
+        </SettingsPageContent>
+      </SettingsPageBody>
+    </SettingsPage>
+  )
+}
+
+export function HealthOverview() {
+  return (
+    <DashboardPage>
+      <PageHeader title="Health" actions={<Button>Run checks</Button>} />
+      <DashboardPageContent label="Health overview">
+        <Section aria-labelledby="platform-pulse-heading">
+          <h2 id="platform-pulse-heading">Platform pulse</h2>
+          {/* Lead condition and its action */}
+        </Section>
+        <Grid layout="main-aside" gap="section">
+          <Section>{/* Actionable incidents */}</Section>
+          <Section>{/* Supporting context */}</Section>
+        </Grid>
+      </DashboardPageContent>
+    </DashboardPage>
+  )
+}
+```
+
+Keep a settings category in query parameters when selecting it changes a meaningful, linkable view. Values, schema discovery, validation, dirty state, submission, and navigation guards stay with the consuming form and the existing router. Place category-local actions in `FormActions`; do not put routine save buttons in `PageHeader`. During submit or refresh, retain usable fields, set `busy`, and use `feedback` for durable validation or save context. Replace only `SettingsPageContent` when the active provider cannot load so other categories remain available.
+
+Keep dashboard view state such as tabs, time ranges, expanded evidence, and selected agents in the same existing query-parameter contract. The recipe does not fetch telemetry, calculate metrics, refresh checks, or prescribe one metric component. Start with the condition and action that matter most, follow with a short summary, then group supporting operational sections. Use cards only for true bounded objects; do not make every metric and section an equal-weight card.
+
+Neither recipe owns a `main` landmark, vertical page scroller, fixed height, sticky save behavior, or URL parsing. Wide charts and tables still go inside `BoundedOverflow`. If usable stale dashboard data survives a refresh failure, retain it with `busy` and a `Banner` in `feedback`; use `state` only when the overview has no usable content.
+
 ## Action and Status Primitives
 
 The first supported primitive set covers actions, compact state, contextual messages, and measurable work:
