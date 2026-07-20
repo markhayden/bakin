@@ -63,8 +63,8 @@ comparison, and deletion of replaced styling/allowances.
 - [x] T29 Implement standardized system states and feedback
 - [x] T30a Implement list and detail archetype recipes
 - [x] T30b Implement settings and dashboard archetype recipes
-- [ ] T30c Implement conversation and inspector archetype recipes
-- [ ] T30d Implement workflow and action archetype recipes
+- [x] T30c Implement conversation and inspector archetype recipes
+- [x] T30d Implement workflow and action archetype recipes
 - [ ] Checkpoint 3C: layout/forms/states/archetypes reviewed
 - [ ] T31 Migrate destructive, dirty, and confirmation patterns
 - [ ] T32a Migrate filters, segmented navigation, tabs, and sorting patterns

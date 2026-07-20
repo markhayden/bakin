@@ -272,6 +272,26 @@ An inspector is contextual, not a second detail page. Use `InspectorPanel` insid
 
 `state` on `ConversationPageBody` replaces the whole conversation work area but preserves the page header. `state` on `InspectorPanelContent` preserves inspector identity, close controls, and valid footer actions. During reconnects or refreshes, retain usable history or inspector fields with `busy` and `feedback` instead.
 
+## Workflow and Action Recipe
+
+`WorkflowPage` defines the page hierarchy around a consumer-owned graph, board, or action workspace without adding a graph library to the base patterns bundle:
+
+| Need | Component | Contract |
+| --- | --- | --- |
+| Bound a workflow workspace | `WorkflowPage` | Uses the full page canvas by default; `wide` is available for smaller action flows |
+| Choose layout and scroll ownership | `WorkflowPageBody` | `canvas` or responsive `inspector` composition; `document` host scroll by default or explicitly bounded `contained` mode |
+| Separate graph commands | `WorkflowPageToolbar` | Required accessible name for orientation, layout, zoom, palette, or other consumer-owned commands |
+| Bound the interactive graph | `WorkflowPageCanvas` | Required accessible name, keyboard-scrollable overflow boundary, and `vertical` or `horizontal` orientation metadata |
+| Keep page decisions stable | `WorkflowPageActions` | Named commit, recovery, approval, or rejection actions outside the canvas interaction model |
+
+Vertical is the Product Character default because most Bakin workflows progress top to bottom. Horizontal remains an explicit supported option for topologies that read better left to right. `orientation` describes the canvas to CSS, tests, and assistive tooling; the consumer must pass the same value to its node positions, handles, edge layout, minimap placement, and named movement actions. The public catalog demonstrates both options with real React Flow. `@makinbakin/sdk/patterns` does not import React Flow, calculate nodes or edges, or own graph selection, pan, zoom, connection, keyboard movement, persistence, dirty state, or auto-layout.
+
+Use `WorkflowPageToolbar` for commands that change how the graph is operated. Keep route-level actions such as save, approve, reject, retry, or delete in `WorkflowPageActions`, and keep global page actions in `PageHeader`. Pointer dragging can be supported, but every required operation needs a keyboard or named non-drag action. Put a selected-node `InspectorPanel` beside the canvas with `layout="inspector"`; use the existing `BakinDrawer` when narrow or task-specific behavior needs an overlay. The drawer continues to own focus, dismissal, resizing, and dirty confirmation.
+
+The existing routing contract remains authoritative. Paths identify workflow pages; query parameters may identify a selected node, drawer, tab, orientation, or other meaningful linkable view state. Keep defaults clean and do not encode transient pan/zoom coordinates unless the product explicitly makes them shareable. The recipe never parses or changes URLs.
+
+Use `state` when no usable workspace can be rendered; it replaces the body while preserving `PageHeader`. Keep a usable graph visible during saves, refreshes, review outcomes, or partial failures with `busy` and `feedback`. `contained` mode is only for a parent that supplies a deliberate available block size; it does not create a second document scroller.
+
 ## Action and Status Primitives
 
 The first supported primitive set covers actions, compact state, contextual messages, and measurable work:

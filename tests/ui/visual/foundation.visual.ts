@@ -357,3 +357,29 @@ test('public inspector recipe visual baseline', async ({ page }) => {
     fullPage: true,
   })
 })
+
+test('public vertical workflow recipe visual baseline', async ({ page }) => {
+  await page.goto('/iframe.html?id=patterns-workflow-and-action-pages--vertical-workflow&viewMode=story')
+  await expect(page.getByRole('heading', { level: 1, name: 'Launch publishing workflow' })).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Vertical launch publishing workflow canvas' })).toHaveAttribute('data-orientation', 'vertical')
+  await expect(page.locator('.react-flow')).toBeVisible()
+  await page.evaluate(async () => document.fonts.ready)
+  await expect(page).toHaveScreenshot('foundation-workflow-vertical.png', {
+    animations: 'disabled',
+    caret: 'hide',
+    fullPage: true,
+  })
+})
+
+test('public horizontal workflow recipe visual baseline', async ({ page }) => {
+  await page.goto('/iframe.html?id=patterns-workflow-and-action-pages--horizontal-workflow&viewMode=story')
+  await expect(page.getByRole('heading', { level: 1, name: 'Launch publishing workflow' })).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Horizontal launch publishing workflow canvas' })).toHaveAttribute('data-orientation', 'horizontal')
+  await expect(page.locator('.react-flow')).toBeVisible()
+  await page.evaluate(async () => document.fonts.ready)
+  await expect(page).toHaveScreenshot('foundation-workflow-horizontal.png', {
+    animations: 'disabled',
+    caret: 'hide',
+    fullPage: true,
+  })
+})

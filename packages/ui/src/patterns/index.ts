@@ -68,3 +68,22 @@ export type {
   InspectorPanelHeaderProps,
   InspectorPanelProps,
 } from './inspector-panel'
+
+export {
+  WorkflowPage,
+  WorkflowPageActions,
+  WorkflowPageBody,
+  WorkflowPageCanvas,
+  WorkflowPageToolbar,
+} from './workflow-page'
+export type {
+  WorkflowOrientation,
+  WorkflowPageActionsProps,
+  WorkflowPageBodyProps,
+  WorkflowPageCanvasProps,
+  WorkflowPageLayout,
+  WorkflowPageMode,
+  WorkflowPageProps,
+  WorkflowPageToolbarProps,
+  WorkflowPageWidth,
+} from './workflow-page'

@@ -27,6 +27,11 @@ export {
   SettingsPageBody,
   SettingsPageContent,
   SettingsPageNavigation,
+  WorkflowPage,
+  WorkflowPageActions,
+  WorkflowPageBody,
+  WorkflowPageCanvas,
+  WorkflowPageToolbar,
 } from '@bakin/ui/patterns'
 export type {
   ConversationPageBodyProps,
@@ -59,4 +64,13 @@ export type {
   SettingsPageNavigationProps,
   SettingsPageProps,
   SettingsPageWidth,
+  WorkflowOrientation,
+  WorkflowPageActionsProps,
+  WorkflowPageBodyProps,
+  WorkflowPageCanvasProps,
+  WorkflowPageLayout,
+  WorkflowPageMode,
+  WorkflowPageProps,
+  WorkflowPageToolbarProps,
+  WorkflowPageWidth,
 } from '@bakin/ui/patterns'

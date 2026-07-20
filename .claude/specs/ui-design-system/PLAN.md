@@ -1062,6 +1062,29 @@ initial host JS remains 457,006 bytes, and the SDK patterns entrypoint is
 remains. No official conversation, workflow, or plugin surface migration is
 included in T30c.
 
+**Status — T30d (2026-07-20):** Complete. `WorkflowPage`,
+`WorkflowPageBody`, `WorkflowPageToolbar`, `WorkflowPageCanvas`, and
+`WorkflowPageActions` now complete the focused patterns entrypoint. The recipe
+owns page hierarchy, a required named toolbar and action group, responsive
+canvas/inspector composition, state replacement, and bounded overflow while
+leaving React Flow, nodes, edges, layout math, selection, persistence, drawers,
+and routing to focused consumers. Vertical is the Product Character default;
+horizontal remains an explicit finite option. Four public stories cover real
+React Flow vertical and horizontal graphs, a review action, and an unavailable
+graph. Required graph operations have native keyboard and named non-drag paths.
+Six focused render/architecture tests, all 81 public Storybook interaction/axe
+cases, 50 exact desktop/mobile visual cases, and the new canonical
+Chromium/Firefox/WebKit behavior case pass. The four new baselines were
+reviewed at desktop and 320px; 200% text retains document containment and gives
+wide graph content one named horizontal overflow owner. The combined docs
+build publishes all 81 stories, 48-page validation and typed route-contract
+checks pass, and workflow query-state guidance explicitly retains the existing
+routing contract. Canonical CSS is 295,015 bytes (+603 from T30c), initial host
+JS remains 457,006 bytes, and the SDK patterns entrypoint is 12,961 bytes direct
+/ 42,890 reachable (+2,133 / +2,591). One shared CSS copy remains, and React
+Flow is present only in the public evidence chunk. No official workflow,
+action, or plugin surface migration is included in T30d.
+
 **Acceptance:** each recipe defines header/actions, state slots, responsive
 behavior, scroll ownership, URL-state guidance, and misuse boundaries without
 hard-coding plugin data.

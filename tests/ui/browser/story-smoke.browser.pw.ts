@@ -27,6 +27,10 @@ const conversationPageStory = '/iframe.html?id=patterns-conversation-and-inspect
 const conversationUnavailableStory = '/iframe.html?id=patterns-conversation-and-inspector--conversation-unavailable&viewMode=story'
 const inspectorStory = '/iframe.html?id=patterns-conversation-and-inspector--inspector&viewMode=story'
 const inspectorUnavailableStory = '/iframe.html?id=patterns-conversation-and-inspector--inspector-unavailable&viewMode=story'
+const verticalWorkflowStory = '/iframe.html?id=patterns-workflow-and-action-pages--vertical-workflow&viewMode=story'
+const horizontalWorkflowStory = '/iframe.html?id=patterns-workflow-and-action-pages--horizontal-workflow&viewMode=story'
+const reviewActionStory = '/iframe.html?id=patterns-workflow-and-action-pages--review-action&viewMode=story'
+const workflowUnavailableStory = '/iframe.html?id=patterns-workflow-and-action-pages--workflow-unavailable&viewMode=story'
 
 test('public story keeps keyboard, focus, console, and responsive contracts', async ({ page }) => {
   const browserErrors: string[] = []
@@ -876,6 +880,98 @@ test('conversation and inspector recipes preserve explicit scroll, state, and ac
     await page.evaluate(() => { document.documentElement.style.fontSize = '200%' })
     const dimensions = await page.evaluate(() => ({ clientWidth: document.documentElement.clientWidth, scrollWidth: document.documentElement.scrollWidth }))
     expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth)
+  })
+
+  expect(browserErrors).toEqual([])
+})
+
+test('workflow and action recipes preserve real graph interaction, bounded overflow, and page decisions', async ({ page, browserName }) => {
+  const browserErrors: string[] = []
+  page.on('console', (message) => {
+    if (message.type() === 'error') browserErrors.push(`console: ${message.text()}`)
+  })
+  page.on('pageerror', (error) => {
+    // WebKit reports React Flow's internal observer delivery as a page error even
+    // though the observer settles and the graph remains fully operable.
+    if (browserName === 'webkit' && error.message === 'ResizeObserver loop completed with undelivered notifications.') return
+    browserErrors.push(`pageerror: ${error.message}`)
+  })
+  page.on('requestfailed', (request) => {
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+  })
+
+  for (const [story, heading] of [[verticalWorkflowStory, 'Launch publishing workflow'], [horizontalWorkflowStory, 'Launch publishing workflow'], [reviewActionStory, 'Review launch publishing workflow']] as const) {
+    for (const width of responsiveWidths) {
+      await test.step(`${heading} remains contained at ${width}px`, async () => {
+        await page.setViewportSize({ width, height: 1000 })
+        await page.goto(story, { waitUntil: 'networkidle' })
+        await expect(page.getByRole('heading', { level: 1, name: heading })).toBeVisible()
+        await expect(page.locator('.react-flow')).toBeVisible()
+        const dimensions = await page.evaluate(() => ({
+          clientWidth: document.documentElement.clientWidth,
+          scrollWidth: document.documentElement.scrollWidth,
+        }))
+        expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth)
+      })
+    }
+  }
+
+  await test.step('vertical is the default and graph controls stay in named regions', async () => {
+    await page.setViewportSize({ width: 1024, height: 1000 })
+    await page.goto(verticalWorkflowStory, { waitUntil: 'networkidle' })
+    await expect(page.getByRole('toolbar', { name: 'Workflow canvas tools' })).toBeVisible()
+    const canvas = page.getByRole('region', { name: 'Vertical launch publishing workflow canvas' })
+    await expect(canvas).toHaveAttribute('data-orientation', 'vertical')
+    await expect(canvas.locator('.react-flow')).toBeVisible()
+    await expect(page.getByRole('region', { name: 'Selected workflow node inspector' })).toBeVisible()
+    await expect(page.getByRole('group', { name: 'Workflow changes' })).toBeVisible()
+
+    const status = page.locator('p.bakin-workflow-story__selection')
+    const before = Number((await status.textContent())?.match(/y (\d+)/)?.[1])
+    await page.getByRole('button', { name: 'Move down' }).click()
+    await expect.poll(async () => Number((await status.textContent())?.match(/y (\d+)/)?.[1])).toBeGreaterThan(before)
+
+    await page.getByRole('button', { name: 'Horizontal', exact: true }).click()
+    const horizontalCanvas = page.getByRole('region', { name: 'Horizontal launch publishing workflow canvas' })
+    await expect(horizontalCanvas).toHaveAttribute('data-orientation', 'horizontal')
+    await expect(page.getByRole('button', { name: 'Move right' })).toBeVisible()
+  })
+
+  await test.step('horizontal topology supports native keyboard movement and explicit non-drag actions', async () => {
+    await page.goto(horizontalWorkflowStory, { waitUntil: 'networkidle' })
+    const node = page.getByRole('button', { name: /Assemble social video, transform node/ })
+    await node.click()
+    const status = page.locator('p.bakin-workflow-story__selection')
+    const before = Number((await status.textContent())?.match(/x (\d+)/)?.[1])
+    await node.press('ArrowRight')
+    await expect.poll(async () => Number((await status.textContent())?.match(/x (\d+)/)?.[1])).toBeGreaterThan(before)
+    const keyboardPosition = Number((await status.textContent())?.match(/x (\d+)/)?.[1])
+    await page.getByRole('button', { name: 'Move right' }).click()
+    await expect.poll(async () => Number((await status.textContent())?.match(/x (\d+)/)?.[1])).toBeGreaterThan(keyboardPosition)
+  })
+
+  await test.step('page-level review and unavailable decisions remain outside the graph', async () => {
+    await page.goto(reviewActionStory, { waitUntil: 'networkidle' })
+    const actions = page.getByRole('group', { name: 'Publishing review actions' })
+    await expect(actions.getByRole('button', { name: 'Approve publishing' })).toBeVisible()
+    await expect(page.getByText('Publishing review approved')).toBeVisible()
+
+    await page.goto(workflowUnavailableStory, { waitUntil: 'networkidle' })
+    await expect(page.getByRole('heading', { level: 1, name: 'Legacy publishing workflow' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Back to workflows' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Delete preserved workflow' })).toBeVisible()
+    await expect(page.getByRole('alert', { name: 'Workflow graph is unavailable' })).toBeVisible()
+  })
+
+  await test.step('200% workflow text stays document-contained with canvas-owned horizontal fallback', async () => {
+    await page.setViewportSize({ width: 320, height: 1000 })
+    await page.goto(verticalWorkflowStory, { waitUntil: 'networkidle' })
+    await page.evaluate(() => { document.documentElement.style.fontSize = '200%' })
+    const dimensions = await page.evaluate(() => ({ clientWidth: document.documentElement.clientWidth, scrollWidth: document.documentElement.scrollWidth }))
+    expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth)
+    const canvas = page.getByRole('region', { name: 'Vertical launch publishing workflow canvas' })
+    const canvasDimensions = await canvas.evaluate((element) => ({ clientWidth: element.clientWidth, scrollWidth: element.scrollWidth }))
+    expect(canvasDimensions.scrollWidth).toBeGreaterThan(canvasDimensions.clientWidth)
   })
 
   expect(browserErrors).toEqual([])

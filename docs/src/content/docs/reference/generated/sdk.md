@@ -344,6 +344,11 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 | `SettingsPageBody` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `SettingsPageContent` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `SettingsPageNavigation` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `WorkflowPage` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `WorkflowPageActions` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `WorkflowPageBody` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `WorkflowPageCanvas` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `WorkflowPageToolbar` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `ConversationPageBodyProps` | — |
 | `ConversationPageComposerProps` | — |
 | `ConversationPageMode` | — |
@@ -374,6 +379,15 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 | `SettingsPageNavigationProps` | — |
 | `SettingsPageProps` | — |
 | `SettingsPageWidth` | — |
+| `WorkflowOrientation` | — |
+| `WorkflowPageActionsProps` | — |
+| `WorkflowPageBodyProps` | — |
+| `WorkflowPageCanvasProps` | — |
+| `WorkflowPageLayout` | — |
+| `WorkflowPageMode` | — |
+| `WorkflowPageProps` | — |
+| `WorkflowPageToolbarProps` | — |
+| `WorkflowPageWidth` | — |
 
 ## `@makinbakin/sdk/charts`
 

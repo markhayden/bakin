@@ -160,6 +160,15 @@ hierarchy beside a canvas or inside `BakinDrawer`. Message rendering,
 streaming, composer behavior, selection, drawer focus, and URL state remain
 owned by their focused kits and consumers.
 
+Workflow and action workspaces use `WorkflowPage` with a named
+`WorkflowPageToolbar`, `WorkflowPageCanvas`, and `WorkflowPageActions`.
+Vertical is the default graph orientation; horizontal is an explicit option.
+The recipe supplies hierarchy and a bounded overflow region without importing
+React Flow or owning nodes, edges, selection, graph commands, persistence,
+drawers, or URL state. Use the existing routing contract for linkable selected
+nodes and view modes, and provide named non-drag actions for required graph
+operations.
+
 ## Stylesheet
 
 Bakin loads one shared copy of `@makinbakin/sdk/styles.css` for the host and all
