@@ -44,6 +44,14 @@ export interface FakeTurnScript {
   /** Return this HTTP status + body instead of streaming. */
   status?: number
   errorBody?: Record<string, unknown>
+  /**
+   * Phase matcher for CONCURRENT turns, where FIFO consumption is racy: an
+   * 'initial' script only serves requests whose messages carry no tool
+   * result yet; 'after-tool' only serves follow-ups that do. Unset keeps
+   * plain FIFO. Lets two concurrent tool turns each deterministically get
+   * [toolCall, then reply] regardless of request interleaving.
+   */
+  when?: 'initial' | 'after-tool'
 }
 
 export interface FakeProvider {
@@ -76,7 +84,10 @@ export function startFakeProvider(scripts: FakeTurnScript[]): FakeProvider {
       }
       const body = (await req.json()) as Record<string, unknown>
       requests.push(body)
-      const script = queue.shift()
+      const messages = (body.messages ?? []) as Array<{ role?: string }>
+      const phase = messages.some((m) => m.role === 'tool') ? 'after-tool' : 'initial'
+      const index = queue.findIndex((s) => !s.when || s.when === phase)
+      const script = index === -1 ? undefined : queue.splice(index, 1)[0]
       if (!script) {
         return nativeJson({ error: { message: 'fake provider: script queue empty' } }, 500)
       }

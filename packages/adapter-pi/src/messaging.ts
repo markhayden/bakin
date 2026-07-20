@@ -41,6 +41,7 @@ import { getAgentWorkspaceDir, getPiAgentDir } from './home'
 import { findPiModel, getModelRegistry, qualifiedModelId } from './models'
 import { readRoutingDefaultModel } from './config'
 import { readRegistry, scaffoldAgentDirs, type PiAgentRecord } from './registry'
+import { recoverSeededLinks, seedRunWorkspace } from './run-workspace'
 import { recordThreadSession, sessionManagerForThread, withThreadLock } from './sessions'
 import { buildAppendSystemPrompt } from './system-prompt'
 import { bridgeExecTools, filterExecToolDescriptors } from './tool-bridge'
@@ -312,6 +313,17 @@ async function openTurnSession(args: MessageArgs, deps: PiMessagingDeps): Promis
   const agentDir = getPiAgentDir()
   const { auth, registry: modelRegistry } = getModelRegistry()
 
+  // Per-run isolation (same-agent-concurrency D2): ONLY the session's
+  // tool-execution cwd moves to the handed run dir. The settings manager,
+  // resource loader (project context/skills/extensions discovery), session
+  // store, and prompt assembly below all stay pinned to the agent
+  // WORKSPACE, so an isolated turn's prompt is byte-identical to a
+  // workspace turn's. Seeding symlinks the workspace-root *.md files in so
+  // the agent's cwd-relative reads/writes of its own identity/memory files
+  // keep flowing to the real workspace.
+  if (args.runWorkspace) seedRunWorkspace(record.id, args.runWorkspace)
+  const executionCwd = args.runWorkspace ?? workspace
+
   const settingsManager = hardenSettingsManager(createTurnSettingsManager(workspace, agentDir), { stripPackages: true })
   const adapterSettings = deps.getSettings?.()
   const extPolicy = extensionsPolicy(adapterSettings)
@@ -366,7 +378,7 @@ async function openTurnSession(args: MessageArgs, deps: PiMessagingDeps): Promis
   const thinking = args.thinking && THINKING_LEVELS.has(args.thinking) ? args.thinking : undefined
 
   const { session } = await createAgentSession({
-    cwd: workspace,
+    cwd: executionCwd,
     agentDir,
     authStorage: auth,
     modelRegistry,
@@ -607,6 +619,16 @@ export function createMessagingSurface(deps: PiMessagingDeps): AgentRuntimeAdapt
         args.signal?.removeEventListener('abort', onAbort)
         unsubscribe()
         handle.dispose()
+        if (args.runWorkspace) {
+          // Severed-symlink recovery (D2): rename-style writes replace a
+          // seeded link with a regular file — copy those back to the
+          // workspace (LWW) so memory writes are never silently stranded.
+          try {
+            recoverSeededLinks(args.agentId, args.runWorkspace, (msg, data) => deps.getLogger?.()?.warn(msg, data))
+          } catch (err) {
+            deps.getLogger?.()?.warn('adapter-pi: run-workspace link recovery failed', { error: String(err) })
+          }
+        }
       }
     })
   }

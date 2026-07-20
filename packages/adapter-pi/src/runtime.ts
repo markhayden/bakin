@@ -135,8 +135,10 @@ export class PiRuntimeAdapter implements AgentRuntimeAdapter {
     sessions: { mode: 'native' },
     workspaceFiles: { mode: 'native' },
     input: await this.inputModality(opts?.agentId),
-    // Flips to 'isolated' when runWorkspace honoring lands (concurrency T3.1).
-    concurrency: { sameAgentTurns: 'serialized' },
+    // Honored in openTurnSession: runWorkspace moves ONLY the session's
+    // tool-execution cwd; loader/settings/sessions stay workspace-pinned.
+    // Conformance-pinned by the isolation probe (pi.conformance.test.ts).
+    concurrency: { sameAgentTurns: 'isolated' },
   })
 
   /**
