@@ -132,6 +132,11 @@ export interface DispatchRosterAgent {
 }
 
 export interface InFlightTurn {
+  /** Task marker (`taskId` or `taskId:stepId`) — a lookup FIELD, not the
+   *  registry key: the key is threadId, so a superseded-then-refired marker
+   *  yields two independent entries and a zombie settle can only ever
+   *  release itself (same-agent-concurrency D3). */
+  marker: string
   agentId: string
   taskId: string
   /** Nested-workflow child board task the step actually serves (differs from
@@ -149,7 +154,7 @@ export interface InFlightTurn {
   abortReason?: TurnAbortReason
 }
 
-export type TurnAbortReason = 'task-deleted' | 'orphan-sweep'
+export type TurnAbortReason = 'task-deleted' | 'orphan-sweep' | 'superseded'
 
 /** Advisory registry view for the watchdog sweep and tests — no handles. */
 export interface InFlightTurnSnapshot {

@@ -562,13 +562,12 @@ export function fireDispatchTurn(opts: {
       }
       // Drop-after-settle guard: the tap can rarely fire after the turn
       // settles (late gateway frames) — once the registry entry is gone,
-      // nothing broadcasts. The gate matches the EXACT entry (threadId, not
-      // mere marker presence) so a future retry reusing the marker can't
-      // broadcast a zombie chunk under a stale runId.
+      // nothing broadcasts. The registry is threadId-keyed, so this lookup
+      // is structurally this attempt's own entry: a retry under the same
+      // marker can never broadcast a zombie chunk under a stale runId.
       const onActivity = (chunk: ChatChunk): void => {
         if (chunk.type === 'done' || chunk.type === 'error') return
-        const inFlight = getInFlightTurn(opts.marker)
-        if (!inFlight || inFlight.threadId !== opts.threadId) return
+        if (!getInFlightTurn(opts.threadId)) return
         broadcastTurnActivity({
           type: 'turn-activity',
           taskId: opts.task.id,
@@ -676,10 +675,23 @@ export function fireDispatchTurn(opts: {
       opts.onSettled?.('error', err)
     })
     .finally(() => {
-      unregisterTurn(opts.marker)
+      unregisterTurn(opts.threadId)
     })
 
-  registerTurn(opts.marker, {
+  // A live entry under this threadId is a bug: the ledger mints seq
+  // atomically, so two fires can only share a threadId if a dispatch path
+  // double-fired one claim. Register-over audits loudly and proceeds (the
+  // newer settle chain wins the entry; both settles are idempotent).
+  if (getInFlightTurn(opts.threadId)) {
+    appendAudit(opts.contentDir, 'dispatch.registry_clobber', opts.targetAgent, {
+      id: opts.task.id,
+      runId: opts.threadId,
+      marker: opts.marker,
+    })
+    log.error('Registry clobber: threadId already live at register', { threadId: opts.threadId, marker: opts.marker })
+  }
+  registerTurn({
+    marker: opts.marker,
     agentId: opts.targetAgent,
     taskId: opts.task.id,
     ...(opts.childTaskId ? { childTaskId: opts.childTaskId } : {}),

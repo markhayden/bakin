@@ -282,6 +282,87 @@ describe('abortTurnsForTask', () => {
   })
 })
 
+describe('registry threadId keying — supersede-refire (same-agent-concurrency D3)', () => {
+  const fireAttempt = (threadId: string): void => {
+    fireDispatchTurn({
+      marker: 't-super',
+      task: { id: 't-super', title: 'Supersede me' } as never,
+      targetAgent: 'jessica',
+      threadId,
+      message: 'attempt',
+      contentDir: tempDir,
+      port: 3737,
+      initialLogCount: 0,
+      logPrefix: 'test',
+      dispatchKind: 'regular',
+    })
+  }
+
+  it('a superseded-then-refired marker holds two entries; the zombie settle releases only its own', async () => {
+    setColumns({ todo: [{ id: 't-super', title: 'Supersede me', agent: 'jessica' }] })
+
+    // d1 fires and hangs (the zombie-to-be).
+    fireAttempt('task:t-super:d1')
+    await tick()
+    expect(getInFlightTurnCount('jessica')).toBe(1)
+
+    // Watchdog supersedes: d1 aborted, task refires as d2 under the SAME marker
+    // while d1's abort rejection is still in flight.
+    expect(abortTurnsForTask('t-super', 'superseded')).toBe(1)
+    fireAttempt('task:t-super:d2')
+    await tick()
+
+    // d1's abort has settled by now; d2 must survive it — the old marker-keyed
+    // registry let d1's finally DELETE d2's live entry (uncounted, unabortable).
+    expect(getInFlightTurnCount('jessica')).toBe(1)
+    const snap = getInFlightTurnsSnapshot()
+    expect(snap.length).toBe(1)
+    expect(snap[0].threadId).toBe('task:t-super:d2')
+    expect(snap[0].marker).toBe('t-super')
+
+    // d2 is still abortable through its task id.
+    expect(abortTurnsForTask('t-super', 'task-deleted')).toBe(1)
+    await awaitDispatchIdle()
+    expect(getInFlightTurnCount()).toBe(0)
+  })
+
+  it('the aborted zombie still counts against the gate until it settles (documented transient)', async () => {
+    setColumns({ todo: [{ id: 't-super', title: 'Supersede me', agent: 'jessica' }] })
+    fireAttempt('task:t-super:d1')
+    await tick()
+
+    // Abort d1 and refire d2 in the same synchronous window: the abort
+    // rejection hasn't run its finally yet, so BOTH attempts are counted —
+    // the documented transient double-count (safe choice: an early-freed
+    // slot on a serialized runtime would mean shared-workspace overlap).
+    abortTurnsForTask('t-super', 'superseded')
+    fireAttempt('task:t-super:d2')
+    expect(getInFlightTurnCount('jessica')).toBe(2)
+
+    // The zombie's rejection settles on its own; only its entry drops.
+    await tick()
+    expect(getInFlightTurnCount('jessica')).toBe(1)
+
+    abortTurnsForTask('t-super', 'task-deleted')
+    await awaitDispatchIdle()
+    expect(getInFlightTurnCount()).toBe(0)
+  })
+
+  it('re-registering a live threadId audits dispatch.registry_clobber', async () => {
+    setColumns({ todo: [{ id: 't-super', title: 'Supersede me', agent: 'jessica' }] })
+    fireAttempt('task:t-super:d1')
+    await tick()
+    fireAttempt('task:t-super:d1')
+    await tick()
+
+    expect(auditEvents.some((e) => e.event === 'dispatch.registry_clobber')).toBe(true)
+    abortTurnsForTask('t-super', 'task-deleted')
+    await awaitDispatchIdle()
+    // Release any stragglers so afterEach drains cleanly.
+    releaseSend('jessica')
+  })
+})
+
 describe('registry snapshot + force release', () => {
   it('snapshot exposes advisory turn facts; forceReleaseTurn frees the slot', async () => {
     setColumns({ todo: [{ id: 't-snap', title: 'Snapshot me', agent: 'jessica' }] })
@@ -299,8 +380,9 @@ describe('registry snapshot + force release', () => {
     // The abort settles asynchronously; abortedAt is stamped synchronously.
     if (after.length > 0) expect(after[0].abortedAt).toBeGreaterThan(0)
 
-    // Simulate a hung turn that never settles: force-release clears the slot.
-    expect(forceReleaseTurn('t-snap')).toBe(after.length > 0)
+    // Simulate a hung turn that never settles: force-release clears the slot
+    // (keyed by threadId — the run identity — not the task marker).
+    expect(forceReleaseTurn(after[0]?.threadId ?? 'missing')).toBe(after.length > 0)
     expect(getInFlightTurnCount()).toBe(0)
     // Force-release detaches the settle chain from awaitDispatchIdle — give
     // the zombie's catch handler a tick to run its bookkeeping.

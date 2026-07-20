@@ -17,6 +17,16 @@ import type { InFlightTurn, InFlightTurnSnapshot, TurnAbortReason } from './disp
 
 const log = createLogger('dispatch-registry')
 
+/**
+ * Keyed by threadId (== the ledger run id), NOT the task marker: a
+ * superseded-then-refired task briefly holds TWO live attempts under one
+ * marker, and marker keying let the zombie's settle delete the live turn's
+ * entry — uncounted, unabortable, untapped (same-agent-concurrency D3).
+ * Aborted-but-unsettled entries still count toward the concurrency gate: a
+ * transient double-count that self-resolves at settle, and the safe choice
+ * on serialized runtimes where an early-freed slot would mean two turns in
+ * one shared workspace.
+ */
 const inFlightTurns = new Map<string, InFlightTurn>()
 
 /**
@@ -26,12 +36,13 @@ const inFlightTurns = new Map<string, InFlightTurn>()
 export const ORPHAN_TURN_FORCE_RELEASE_GRACE_MS = 60_000
 
 /** Registration is owned by fireDispatchTurn (dispatch-turns). */
-export function registerTurn(marker: string, turn: InFlightTurn): void {
-  inFlightTurns.set(marker, turn)
+export function registerTurn(turn: InFlightTurn): void {
+  inFlightTurns.set(turn.threadId, turn)
 }
 
-export function unregisterTurn(marker: string): void {
-  inFlightTurns.delete(marker)
+/** Deletes only the caller's own attempt — threadIds are per-attempt unique. */
+export function unregisterTurn(threadId: string): void {
+  inFlightTurns.delete(threadId)
 }
 
 export function getInFlightTurnCount(agentId?: string): number {
@@ -48,9 +59,9 @@ export function getInFlightSettledPromises(): Promise<void>[] {
   return [...inFlightTurns.values()].map((turn) => turn.settled)
 }
 
-/** The entry for a marker, if still registered (settle-branch lookups). */
-export function getInFlightTurn(marker: string): InFlightTurn | undefined {
-  return inFlightTurns.get(marker)
+/** The entry for a threadId, if still registered (tap + clobber lookups). */
+export function getInFlightTurn(threadId: string): InFlightTurn | undefined {
+  return inFlightTurns.get(threadId)
 }
 
 /**
@@ -77,8 +88,8 @@ export function abortTurnsForTask(taskId: string, reason: TurnAbortReason): numb
 
 /** Advisory view of the registry for the watchdog orphan sweep and tests. */
 export function getInFlightTurnsSnapshot(): InFlightTurnSnapshot[] {
-  return [...inFlightTurns.entries()].map(([marker, turn]) => ({
-    marker,
+  return [...inFlightTurns.values()].map((turn) => ({
+    marker: turn.marker,
     agentId: turn.agentId,
     taskId: turn.taskId,
     ...(turn.childTaskId ? { childTaskId: turn.childTaskId } : {}),
@@ -95,6 +106,6 @@ export function getInFlightTurnsSnapshot(): InFlightTurnSnapshot[] {
  * not hold the slot forever. If the zombie send ever settles, its handlers
  * run normally (settleRun/audit are idempotent; unregister is a no-op).
  */
-export function forceReleaseTurn(marker: string): boolean {
-  return inFlightTurns.delete(marker)
+export function forceReleaseTurn(threadId: string): boolean {
+  return inFlightTurns.delete(threadId)
 }

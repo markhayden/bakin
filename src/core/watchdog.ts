@@ -22,7 +22,7 @@ import {
   moveTask,
   readTaskboard,
 } from './task-store'
-import { getLiveRun, supersedeStaleRun } from './execution-ledger'
+import { getLiveRun, loseRun, supersedeStaleRun } from './execution-ledger'
 import {
   abortTurnsForTask,
   forceReleaseTurn,
@@ -240,6 +240,12 @@ export function start(contentDir: string): void {
                 runIds: supersede.runIds,
                 minutesStuck,
               })
+              // Abort the superseded attempt's in-flight turn NOW instead of
+              // leaving a zombie running: its late settle would otherwise
+              // race the refired attempt (stale asset saves, ladder re-entry
+              // for an already-recovered task). Clean 'aborted' exit — no
+              // recovery ladder (same-agent-concurrency D3).
+              abortTurnsForTask(task.id, 'superseded')
             }
           } catch (err) {
             log.error('Ledger supersede failed — skipping auto-recovery this tick (fail closed)', err, { id: task.id })
@@ -473,7 +479,17 @@ function sweepOrphanedTurns(contentDir: string): void {
       continue
     }
     if (now - turn.abortedAt < ORPHAN_TURN_FORCE_RELEASE_GRACE_MS) continue
-    if (forceReleaseTurn(turn.marker)) {
+    if (forceReleaseTurn(turn.threadId)) {
+      // Settle the ledger row too — a force-released zombie may never settle
+      // on its own, and a row stuck at 'running' would let its late asset
+      // saves pass the staleness gate and hide the dir from GC forever
+      // (same-agent-concurrency D3). First-write-wins: a no-op if the run
+      // already settled some other way.
+      try {
+        loseRun(turn.threadId, 'force-released')
+      } catch (err) {
+        log.error('Failed to settle force-released run in ledger', err, { runId: turn.threadId })
+      }
       appendAudit(contentDir, 'task.turn_force_released', 'watchdog', {
         id: turn.taskId,
         agent: turn.agentId,
