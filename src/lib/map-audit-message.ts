@@ -40,6 +40,24 @@ export function mapAuditMessage(event: string, data: Record<string, unknown>): s
     case 'brand.created': return `Created brand '${data.brandId}'`
     case 'brand.updated': return `Updated brand '${data.brandId}'`
     case 'brand.deleted': return `Deleted brand '${data.brandId}'`
+    // Same-agent concurrency: these fire exactly when behavior looks odd —
+    // explain what the system did instead of echoing raw event keys.
+    case 'task.worktree_materialized':
+      return `Working in an isolated worktree of ${typeof data.repoPath === 'string' ? data.repoPath.split('/').pop() : 'the bound repo'} on branch ${data.branch} — the branch survives after the task settles`
+    case 'task.turn_aborted':
+      return data.reason === 'superseded'
+        ? `Stopped a stale attempt on "${data.title || data.id}" — a fresh attempt takes over`
+        : `Stopped the in-flight attempt on "${data.title || data.id}"${data.reason ? ` (${data.reason})` : ''}`
+    case 'task.turn_force_released':
+      return `Released a hung attempt on task ${data.id} — its dispatch slot is free again`
+    case 'task.run_superseded':
+      return `Superseded a stalled attempt on "${data.title || data.id}" — it will be re-dispatched`
+    case 'task.repo_binding_blocked':
+      return typeof data.error === 'string' ? `Task blocked: ${data.error}` : `Task blocked: repo binding failed`
+    case 'dispatch.concurrency_clamped':
+      return `Per-agent parallelism clamped to 1: the active runtime cannot isolate same-agent turns (requested ${data.requested})`
+    case 'asset.stale_run_write_suppressed':
+      return `Recorded a late save from a superseded run as version ${data.version} of ${data.assetId} WITHOUT promoting it — the current deliverable is unchanged`
     case 'system.init': return 'Bakin started'
     case 'system.dispatch_error': return `Dispatch failed: ${data.error || 'unknown error'}`
     case 'workflow.step_dispatched': return `Step "${data.label || 'unknown'}" dispatched to ${data.agent || 'agent'}`
@@ -77,6 +95,9 @@ export function humanizeExecName(name: string): string {
 export function isNoisyEvent(evt: ActivityEvent): boolean {
   if (evt.agent === 'system' && evt.message.startsWith('Dispatch failed')) return true
   if (evt.eventName && isReadOnlyExecOk(evt.eventName)) return true
+  // Internal invariant-violation breadcrumb (dispatch debugging) — belongs in
+  // audit.jsonl and logs, not the user-facing feed.
+  if (evt.eventName === 'dispatch.registry_clobber') return true
   return false
 }
 

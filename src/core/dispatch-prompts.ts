@@ -128,7 +128,7 @@ export function buildCorrectiveSection(taskId: string, recovery: SessionDeathSta
   // re-dispatch there. Deterministic text: flattened runId prefix + glob,
   // never an absolute machine path (byte-fixture discipline).
   const priorDirLine = recovery.lastRunId
-    ? `\nThe failed attempt's scratch dir is retained (READ-ONLY — copy, don't edit): look under ~/.bakin/run-workspaces/<your-agent-id>/${recovery.lastRunId.replace(/[^a-zA-Z0-9_-]+/g, '-')}-*/ for unsaved files worth reusing.`
+    ? `\nThe failed attempt's scratch dir is retained (READ-ONLY): look under ~/.bakin/run-workspaces/<your-agent-id>/${recovery.lastRunId.replace(/[^a-zA-Z0-9_-]+/g, '-')}-*/ for unsaved files worth reusing. COPY anything useful into your CURRENT working directory before saving it as an asset — saves pointing at the dead attempt's path are recorded but not promoted.`
     : ''
   return `## PREVIOUS ATTEMPT FAILED — READ FIRST
 Your previous attempt on this task died before completion: ${d.detail ?? `the runtime session ended (${d.sessionStatus ?? d.reason})`}. The session was killed because ${sizeLabel} of output was emitted as chat text instead of being written to files — the runtime cannot deliver responses that large.${salvageLine}${priorDirLine}

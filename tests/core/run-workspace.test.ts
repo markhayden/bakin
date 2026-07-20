@@ -4,7 +4,7 @@
  * settle stamping with one-time size, eager removal.
  */
 import { describe, it, expect, afterAll, mock } from 'bun:test'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
@@ -196,5 +196,53 @@ describe('sweep classifier + budget (D5 matrix)', () => {
     expect(stats?.count ?? 0).toBeGreaterThanOrEqual(1)
     expect(stats?.sizeBytes ?? 0).toBeGreaterThanOrEqual(2048)
     removeRunWorkspace(dir)
+  })
+})
+
+describe('worktree-aware accounting (review F5/F6/F7 fixes)', () => {
+  it('sidecar sizes are SCRATCH-only: the top-level repo/ checkout never counts', () => {
+    const dir = allocateRunWorkspace({ threadId: 'task:acct:d1', taskId: 'acct', agentId: 'jessica' })
+    writeFileSync(join(dir, 'notes.txt'), 'x'.repeat(500))
+    mkdirSync(join(dir, 'repo', 'src'), { recursive: true })
+    writeFileSync(join(dir, 'repo', 'src', 'huge.bin'), 'y'.repeat(100_000))
+    settleRunWorkspace('jessica', 'task:acct:d1', 'ok')
+    const size = readRunSidecar(dir)?.sizeBytes ?? -1
+    expect(size).toBeGreaterThanOrEqual(500)
+    expect(size).toBeLessThan(100_000) // checkout excluded
+    removeRunWorkspace(dir)
+  })
+
+  it('settle stamping is first-write-wins: a late force-release cannot re-stamp a settled sidecar', () => {
+    const dir = allocateRunWorkspace({ threadId: 'task:fww:d1', taskId: 'fww', agentId: 'jessica' })
+    settleRunWorkspace('jessica', 'task:fww:d1', 'ok')
+    settleRunWorkspace('jessica', 'task:fww:d1', 'lost: force-released')
+    expect(readRunSidecar(dir)?.outcome).toBe('ok')
+    removeRunWorkspace(dir)
+  })
+
+  it('budget eviction skips checkout-bearing dirs (plain rm would strand git worktree metadata)', async () => {
+    resetRunWorkspaceStats()
+    const bare = allocateRunWorkspace({ threadId: 'task:ev-a:d1', taskId: 'ev-a', agentId: 'jessica' })
+    const withRepo = allocateRunWorkspace({ threadId: 'task:ev-b:d1', taskId: 'ev-b', agentId: 'jessica' })
+    const DAY = 24 * 60 * 60 * 1000
+    // withRepo settled 1 day ago: inside the 48h checkout window, so its
+    // repoPath survives this pass and the budget must skip it.
+    for (const [dir, ago, extra] of [[bare, 6 * DAY, {}], [withRepo, 1 * DAY, { repoPath: '/no/such/repo' }]] as const) {
+      const sidecar = readRunSidecar(dir)!
+      writeFileSync(join(dir, '.bakin-run.json'), JSON.stringify({
+        ...sidecar, ...extra, status: 'settled', outcome: 'failed: x',
+        settledAt: new Date(Date.now() - ago).toISOString(), sizeBytes: 600,
+      }))
+    }
+    await sweepRunWorkspaces({
+      isTurnLive: () => false, taskExists: () => true,
+      retentionDays: 7, maxTotalBytes: 700, graceMs: 10 * 60 * 1000,
+    })
+    // The bare dir was evicted to satisfy the budget; the checkout-bearing
+    // one survives — a dir still carrying repoPath is never budget-evicted
+    // (its worktree detaches through the 48h sweep first).
+    expect(existsSync(bare)).toBe(false)
+    expect(existsSync(withRepo)).toBe(true)
+    removeRunWorkspace(withRepo)
   })
 })

@@ -79,6 +79,6 @@ describe('dispatch settings defaults', () => {
     // turns per agent in per-run dirs; serialized runtimes clamp to 1.
     expect(DEFAULT_SETTINGS.dispatch.maxTurnsPerAgent).toBe(2)
     expect(DEFAULT_SETTINGS.dispatch.runDirRetentionDays).toBe(7)
-    expect(DEFAULT_SETTINGS.dispatch.runDirMaxTotalBytes).toBe(4 * 1024 * 1024 * 1024)
+    expect(DEFAULT_SETTINGS.dispatch.runDirMaxTotalGb).toBe(4)
   })
 })

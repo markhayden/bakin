@@ -24,13 +24,14 @@ import {
 } from './task-store'
 import { getLiveRun, loseRun, supersedeStaleRun } from './execution-ledger'
 import {
+  abortTurnsByRunIds,
   abortTurnsForTask,
   forceReleaseTurn,
   getInFlightTurn,
   getInFlightTurnsSnapshot,
   ORPHAN_TURN_FORCE_RELEASE_GRACE_MS,
 } from './dispatch-registry'
-import { sweepRunWorkspaces } from './run-workspace'
+import { settleRunWorkspace, sweepRunWorkspaces } from './run-workspace'
 
 const log = createLogger('watchdog')
 const hooks = () => getHookRegistry()
@@ -162,7 +163,7 @@ export function start(contentDir: string): void {
     // try/catch: a sweep failure must never break the stuck-task scan.
     try {
       sweepOrphanedTurns(contentDir)
-      sweepRunWorkspacesTick(settings)
+      await sweepRunWorkspacesTick(settings)
     } catch (err) {
       log.error('Orphan turn sweep failed', err)
     }
@@ -243,12 +244,13 @@ export function start(contentDir: string): void {
                 runIds: supersede.runIds,
                 minutesStuck,
               })
-              // Abort the superseded attempt's in-flight turn NOW instead of
-              // leaving a zombie running: its late settle would otherwise
-              // race the refired attempt (stale asset saves, ladder re-entry
-              // for an already-recovered task). Clean 'aborted' exit — no
-              // recovery ladder (same-agent-concurrency D3).
-              abortTurnsForTask(task.id, 'superseded')
+              // Abort the SUPERSEDED runs' turns NOW instead of leaving
+              // zombies running: their late settles would otherwise race the
+              // refired attempt (stale asset saves, ladder re-entry for an
+              // already-recovered task). By runId, NEVER by taskId — parallel
+              // workflow-step siblings share a taskId and a healthy working
+              // step must not be killed for its stale sibling (review F2).
+              abortTurnsByRunIds(supersede.runIds, 'superseded')
             }
           } catch (err) {
             log.error('Ledger supersede failed — skipping auto-recovery this tick (fail closed)', err, { id: task.id })
@@ -493,6 +495,14 @@ function sweepOrphanedTurns(contentDir: string): void {
       } catch (err) {
         log.error('Failed to settle force-released run in ledger', err, { runId: turn.threadId })
       }
+      // Settle the run-workspace sidecar too — a force-released zombie may
+      // never settle it itself, and a forever-'running' sidecar is invisible
+      // to the size aggregate and unevictable by the disk budget (review F6).
+      try {
+        settleRunWorkspace(turn.agentId, turn.threadId, 'lost: force-released')
+      } catch (err) {
+        log.warn('Failed to settle force-released run workspace sidecar', { runId: turn.threadId, error: String(err) })
+      }
       appendAudit(contentDir, 'task.turn_force_released', 'watchdog', {
         id: turn.taskId,
         agent: turn.agentId,
@@ -512,13 +522,15 @@ function sweepOrphanedTurns(contentDir: string): void {
  * settle-or-force-release — the #604 grace this rides). Failures never
  * break the tick.
  */
-function sweepRunWorkspacesTick(settings: ReturnType<typeof getSettings>): void {
+async function sweepRunWorkspacesTick(settings: ReturnType<typeof getSettings>): Promise<void> {
   try {
-    sweepRunWorkspaces({
+    // Awaited: an unawaited async call would let rejections escape both this
+    // catch and the tick-level catch as unhandled rejections (review F8).
+    await sweepRunWorkspaces({
       isTurnLive: (threadId) => getInFlightTurn(threadId) !== undefined,
       taskExists: (taskId) => Boolean(getTask(taskId)),
       retentionDays: settings.dispatch.runDirRetentionDays,
-      maxTotalBytes: settings.dispatch.runDirMaxTotalBytes,
+      maxTotalBytes: settings.dispatch.runDirMaxTotalGb * 1024 * 1024 * 1024,
       graceMs: settings.watchdog.intervalMs * 2,
     })
   } catch (err) {

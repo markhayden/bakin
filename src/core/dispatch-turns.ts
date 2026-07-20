@@ -645,6 +645,10 @@ export function fireDispatchTurn(opts: {
               branch,
               source: binding.source,
             })
+            // The BRANCH is the deliverable and the checkout dies at settle —
+            // the task log is where the user learns which branch holds the
+            // work (UI review #2).
+            await tryAddTaskLog(opts.task.id, 'system', `Working in an isolated worktree of ${binding.repoPath} on branch ${branch}. The checkout is removed when the task settles; the branch (and its commits) survive for your review.`)
           }
         } catch (err) {
           removeRunWorkspace(runWorkspace)
@@ -770,6 +774,9 @@ export function fireDispatchTurn(opts: {
       // Failed/lost runs KEEP their dir (salvage window — sweep owns aging).
       if (runWorkspace) {
         settleRunWorkspace(opts.targetAgent, opts.threadId, err instanceof RuntimeTurnError ? 'lost: session-death' : `failed: ${formatDispatchError(err).slice(0, 80)}`)
+        // Tell the USER where the attempt's scratch lives — files that used
+        // to be findable in the agent workspace now live here (UI review #7).
+        await tryAddTaskLog(opts.task.id, 'system', `The failed attempt's working files are retained for review at ${runWorkspace} (kept up to 30 days${executionWorkspace ? '; its repo checkout is kept 48 hours' : ''}).`)
       }
       try {
         await withStateLock(async () => {

@@ -86,6 +86,27 @@ export function abortTurnsForTask(taskId: string, reason: TurnAbortReason): numb
   return count
 }
 
+/**
+ * Abort exactly the turns whose threadIds (== ledger runIds) are listed —
+ * the watchdog supersede path's surface: supersedeStaleRun supersedes only
+ * STALE runs, and parallel workflow-step siblings share a taskId, so a
+ * taskId-wide abort would kill healthy working steps (review F2). Idempotent
+ * per turn; returns the number newly aborted.
+ */
+export function abortTurnsByRunIds(runIds: string[], reason: TurnAbortReason): number {
+  let count = 0
+  for (const runId of runIds) {
+    const turn = inFlightTurns.get(runId)
+    if (!turn || turn.abortedAt) continue
+    turn.abortedAt = Date.now()
+    turn.abortReason = reason
+    turn.abort.abort(reason)
+    count += 1
+  }
+  if (count > 0) log.info('Aborted in-flight turn(s) by runId', { runIds, reason, count })
+  return count
+}
+
 /** Advisory view of the registry for the watchdog orphan sweep and tests. */
 export function getInFlightTurnsSnapshot(): InFlightTurnSnapshot[] {
   return [...inFlightTurns.values()].map((turn) => ({

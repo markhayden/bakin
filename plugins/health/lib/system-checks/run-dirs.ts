@@ -23,7 +23,7 @@ function fmtBytes(n: number): string {
 
 export async function checkRunDirs(): Promise<HealthCheckRunInput> {
   const stats = getRunWorkspaceStats()
-  const budget = getSettings().dispatch.runDirMaxTotalBytes
+  const budget = getSettings().dispatch.runDirMaxTotalGb * 1024 * 1024 * 1024
 
   if (!stats) {
     return healthObserved([healthUnknown({
@@ -43,7 +43,7 @@ export async function checkRunDirs(): Promise<HealthCheckRunInput> {
   }
 
   const overBudget = budget > 0 && stats.sizeBytes > budget
-  const detail = `${stats.count} run dir(s), ${fmtBytes(stats.sizeBytes)} (settled sizes; in-flight growth stamps at settle). Last sweep removed ${stats.sweptLastTick}.`
+  const detail = `${stats.count} run dir(s), ${fmtBytes(stats.sizeBytes)} scratch (repo checkouts excluded — they follow their own time windows; in-flight growth stamps at settle). Last sweep removed ${stats.sweptLastTick} dir(s).`
   if (overBudget) {
     return healthObserved([healthWarning({
       key: 'aggregate',
@@ -52,7 +52,7 @@ export async function checkRunDirs(): Promise<HealthCheckRunInput> {
       incident: {
         key: 'over-budget',
         title: 'Run-workspace disk budget exceeded',
-        impact: 'Evictable dirs are already drained — live turns or salvage-window dirs hold the remainder. Disk pressure can cascade into the ledger and search databases on the same volume.',
+        impact: 'Evictable dirs are already drained — live turns or salvage-window dirs hold the remainder, so another sweep will not free it. Raise the disk budget in Settings → System & Alerts, or wait for live turns to settle and salvage windows to expire. Disk pressure can cascade into the ledger and search databases on the same volume.',
         disposition: 'action_required',
         class: 'cleanup_backlog',
         resources: [{ kind: 'system', id: 'run-workspaces', label: '~/.bakin/run-workspaces' }],
@@ -94,7 +94,7 @@ export function runDirsSweepRepair(): HealthRepairActionDefinition {
           isTurnLive: (threadId) => getInFlightTurn(threadId) !== undefined,
           taskExists: (taskId) => Boolean(getTask(taskId)),
           retentionDays: settings.dispatch.runDirRetentionDays,
-          maxTotalBytes: settings.dispatch.runDirMaxTotalBytes,
+          maxTotalBytes: settings.dispatch.runDirMaxTotalGb * 1024 * 1024 * 1024,
           graceMs: settings.watchdog.intervalMs * 2,
         })
         return items.map((item) => ({

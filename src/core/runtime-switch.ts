@@ -35,6 +35,7 @@ import { createRuntimeAdapter, getSupportedRuntimeAdapterNames } from './runtime
 import { syncBakinRuntimeSkill } from './bakin-skill'
 import { getContentDir } from './content-dir'
 import { getInFlightTurnCount } from './dispatch-registry'
+import { resetSameAgentTurnsModeCache } from './dispatch-turns'
 import { createLogger } from './logger'
 import { reconcileRoster, type RosterCarryReport } from './roster-reconcile'
 import { getSettings, updateSettings } from './settings'
@@ -399,6 +400,11 @@ export async function switchRuntime(
     // ── flip ─────────────────────────────────────────────────────────────
     emit({ phase: 'flip', status: 'start' })
     updateSettings({ runtime: { adapter: target } })
+    // The dispatch gate's per-process concurrency-mode cache belongs to the
+    // OLD adapter — without this reset, a Pi→OpenClaw switch would keep
+    // firing two same-agent turns at a serialized runtime until the restart
+    // (review F1: the exact shared-workspace collision the gate prevents).
+    resetSameAgentTurnsModeCache()
     emit({ phase: 'flip', status: 'ok' })
 
     // ── initialize target (fresh app services off the flipped settings) ──

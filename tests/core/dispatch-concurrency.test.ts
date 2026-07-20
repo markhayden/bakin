@@ -270,7 +270,7 @@ describe('concurrent dispatch', () => {
     expect(branches).toContain('bakin/run/task-bound-1-d')
   })
 
-  it('a bound task with an EMPTY allowlist fails the turn (never fires repo-less) and cleans its dir', async () => {
+  it('a bound task with an EMPTY allowlist blocks FAST with the real reason (never a generic retry grind)', async () => {
     mockSameAgentTurns = 'isolated'
     const repo = join(sentinelContentDir, 'code', 'proj') // exists from prior test
     writeFileSync(join(sentinelContentDir, 'plugin-settings', 'git.json'), JSON.stringify({ allowedRepoRoots: [] }))
@@ -279,11 +279,17 @@ describe('concurrent dispatch', () => {
     await dispatchTasks(tempDir, 3737)
     await awaitDispatchIdle()
 
-    // No send fired; the failure took the ladder (dispatch_failed recorded).
+    // No send fired; the dir was cleaned eagerly.
     expect(sendCalls.some((c) => c.agentId === 'pixel')).toBe(false)
     expect(existsSync(join(sentinelContentDir, 'run-workspaces', 'pixel'))
       ? readdirSync(join(sentinelContentDir, 'run-workspaces', 'pixel')).length
       : 0).toBe(0)
+    // Configuration problems are deterministic: blocked IMMEDIATELY with the
+    // binding error's own remediation text — never 5x30-min generic retries
+    // ending in a false "agent may be unavailable" (UI review #1).
+    expect(taskStoreMock.blockTask).toHaveBeenCalledWith('bound-2', expect.stringContaining('allowedRepoRoots is not configured'))
+    expect(auditEvents.some((e) => e.event === 'task.repo_binding_blocked')).toBe(true)
+    expect(auditEvents.some((e) => e.event === 'task.dispatch_failed' && e.data.id === 'bound-2')).toBe(false)
   })
 
   it('serialized runtime clamps the per-agent cap to 1 with a once-per-boot audit; sends carry NO runWorkspace', async () => {

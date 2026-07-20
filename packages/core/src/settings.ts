@@ -129,12 +129,13 @@ export interface BakinSettings {
      */
     runDirRetentionDays: number
     /**
-     * Hard ceiling on total run-workspaces disk usage. When exceeded the
-     * sweep evicts oldest settled dirs first (never live or just-allocated
-     * dirs); retention days are ceilings, never floors that outrank the
-     * disk. 0 disables the budget.
+     * Hard ceiling (in GB) on total run-workspaces SCRATCH usage (worktree
+     * checkouts are excluded — they're governed by their own time windows).
+     * When exceeded the sweep evicts oldest settled dirs first (never live
+     * or just-allocated dirs); retention days are ceilings, never floors
+     * that outrank the disk. 0 disables the budget.
      */
-    runDirMaxTotalBytes: number
+    runDirMaxTotalGb: number
     /**
      * Byte budget for the WORKFLOW CONTEXT block (prior step outputs) in
      * workflow-step dispatch prompts (#357). Newest outputs are kept whole;
@@ -377,7 +378,7 @@ export const DEFAULT_SETTINGS: BakinSettings = {
     maxConcurrentTurns: 3,
     maxTurnsPerAgent: 2,
     runDirRetentionDays: 7,
-    runDirMaxTotalBytes: 4 * 1024 * 1024 * 1024,
+    runDirMaxTotalGb: 4,
     maxWorkflowContextBytes: 16 * 1024,
     maxBrandContextBytes: 12 * 1024,
     contextBudgetBytes: 64 * 1024,

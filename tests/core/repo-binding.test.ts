@@ -61,6 +61,13 @@ describe('resolveRepoBinding', () => {
     expect(await resolveRepoBinding({ id: 't2', projectId: 'p1' })).toBeNull() // hook absent
   })
 
+  it("accepts the git plugin's persisted { path } object shape for allowlist entries", async () => {
+    mkdirSync(join(testDir, 'plugin-settings'), { recursive: true })
+    writeFileSync(join(testDir, 'plugin-settings', 'git.json'), JSON.stringify({ allowedRepoRoots: [{ path: allowedRoot }] }))
+    const binding = await resolveRepoBinding({ id: 't-obj', repoPath: repo })
+    expect(binding?.repoPath).toBe(repo)
+  })
+
   it('task-level repoPath binds when valid', async () => {
     setAllowedRoots([allowedRoot])
     const binding = await resolveRepoBinding({ id: 't3', repoPath: repo })

@@ -167,11 +167,21 @@ export function registerAssetsExecTools(ctx: PluginContext): void {
         })
         if (r.staleSuppressed) {
           // The origin run is no longer live (superseded/lost/settled) — the
-          // bytes were recorded but currentVersion did NOT move. Loud trail.
+          // bytes were recorded but currentVersion did NOT move. Loud trail
+          // AND an honest tool response: the agent must know its save was
+          // not promoted so it can copy the file into its CURRENT working
+          // directory and re-save (review F3/F4 — never a silent ok).
           ctx.activity.audit('asset.stale_run_write_suppressed', agent, { assetId: r.assetId, version: r.version })
-        } else {
-          ctx.activity.audit(r.changed ? 'asset.saved' : 'asset.unchanged', agent, { assetId: r.assetId, version: r.version })
+          return {
+            ok: true,
+            assetId: r.assetId,
+            version: r.version,
+            changed: r.changed,
+            staleSuppressed: true,
+            warning: `Version ${r.version} was RECORDED but NOT promoted to current: the file's origin run is no longer live. If this is your deliverable, copy the file into your current working directory and re-save it from there.`,
+          }
         }
+        ctx.activity.audit(r.changed ? 'asset.saved' : 'asset.unchanged', agent, { assetId: r.assetId, version: r.version })
         return { ok: true, assetId: r.assetId, version: r.version, changed: r.changed }
       } catch (err) {
         return { ok: false, error: err instanceof Error ? err.message : String(err) }

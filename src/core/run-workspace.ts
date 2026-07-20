@@ -112,21 +112,51 @@ function writeSidecar(dir: string, sidecar: RunSidecar): void {
 }
 
 /**
- * Stamp the settle outcome + a ONE-TIME recursive size. The size feeds the
- * doctor's aggregate (which must never walk the tree at check time) and the
- * sweep's budget accounting.
+ * Stamp the settle outcome + a ONE-TIME SCRATCH size (top-level `repo/`
+ * checkout excluded — see scratchSizeBytes). First-write-wins: an already
+ * settled sidecar is never re-stamped (the force-release path can race a
+ * late natural settle). The size feeds the doctor's aggregate (which must
+ * never walk the tree at check time) and the sweep's budget accounting.
  */
 export function settleRunWorkspace(agentId: string, threadId: string, outcome: string, contentDir?: string): void {
   const dir = runWorkspacePathFor(agentId, threadId, contentDir)
   const sidecar = readRunSidecar(dir)
-  if (!sidecar) return // dir already cleaned up (or never allocated) — settle is best-effort
-  writeSidecar(dir, {
-    ...sidecar,
-    status: 'settled',
-    outcome,
-    settledAt: new Date().toISOString(),
-    sizeBytes: dirSizeBytes(dir),
-  })
+  if (!sidecar || sidecar.status === 'settled') return // gone or already settled — best-effort
+  try {
+    writeSidecar(dir, {
+      ...sidecar,
+      status: 'settled',
+      outcome,
+      settledAt: new Date().toISOString(),
+      sizeBytes: scratchSizeBytes(dir),
+    })
+  } catch (err) {
+    log.warn('Failed to stamp run-workspace settle (sweep grace covers it)', { dir, error: String(err) })
+  }
+}
+
+/**
+ * SCRATCH size only: the top-level `repo/` worktree checkout is deliberately
+ * excluded from budget accounting. Checkouts are governed by their own TIME
+ * windows (removed at successful settle; 48h on failure) — counting their
+ * gigabytes would (a) permanently inflate the aggregate once the checkout is
+ * removed (the stamp is one-time), and (b) make the settle-chain walk
+ * node_modules-scale trees synchronously on the server event loop
+ * (review F5/F7). The budget governs exactly what eviction can delete.
+ */
+export function scratchSizeBytes(dir: string): number {
+  let total = 0
+  try {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name === 'repo' && entry.isDirectory()) continue
+      const abs = join(dir, entry.name)
+      try {
+        if (entry.isDirectory()) total += dirSizeBytes(abs)
+        else if (entry.isFile()) total += statSync(abs).size
+      } catch { /* vanished mid-walk */ }
+    }
+  } catch { /* dir vanished */ }
+  return total
 }
 
 /** Record/clear the bound repo on a run's sidecar (worktree lifecycle). */
@@ -135,7 +165,13 @@ export function setRunWorkspaceRepo(agentId: string, threadId: string, repoPath:
   const sidecar = readRunSidecar(dir)
   if (!sidecar) return
   const { repoPath: _prev, ...rest } = sidecar
-  writeSidecar(dir, repoPath ? { ...rest, repoPath } : rest)
+  try {
+    writeSidecar(dir, repoPath ? { ...rest, repoPath } : rest)
+  } catch (err) {
+    // Dir removed between read and write (eager cleanup racing the sweep) —
+    // never let this escape into the tick (review F8).
+    log.warn('Failed to update run-workspace repo marker', { dir, error: String(err) })
+  }
 }
 
 /** Eager removal for post-claim failure paths (prep failure, suppressed
@@ -298,7 +334,7 @@ export async function sweepRunWorkspaces(deps: RunWorkspaceSweepDeps): Promise<R
         // Lazy size stamp: settled sidecars missing sizeBytes (pre-crash
         // settles, older allocations) get one walk here, bounded per tick.
         if (sidecar && sidecar.status === 'settled' && sidecar.sizeBytes === undefined && stamps < MAX_SIZE_STAMPS_PER_SWEEP) {
-          sidecar = { ...sidecar, sizeBytes: dirSizeBytes(dir) }
+          sidecar = { ...sidecar, sizeBytes: scratchSizeBytes(dir) }
           try {
             const path = join(dir, '.bakin-run.json')
             writeFileSync(`${path}.tmp`, JSON.stringify(sidecar, null, 2))
@@ -321,7 +357,11 @@ export async function sweepRunWorkspaces(deps: RunWorkspaceSweepDeps): Promise<R
           dir,
           sidecar,
           ageAnchor,
-          evictable: !live && sidecar?.status === 'settled',
+          // Checkout-bearing dirs are NEVER budget-evicted: a plain rm of a
+          // live worktree strands .git/worktrees metadata — the 48h checkout
+          // sweep above detaches first and clears repoPath, THEN the dir
+          // becomes evictable. Budget bytes are scratch-only to match.
+          evictable: !live && sidecar?.status === 'settled' && !sidecar.repoPath,
         })
       }
     }

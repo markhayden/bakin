@@ -26,7 +26,7 @@ mock.module('../../../src/core/run-workspace', () => ({
 }))
 mock.module('../../../src/core/settings', () => ({
   getSettings: () => ({
-    dispatch: { runDirMaxTotalBytes: 1000, runDirRetentionDays: 7 },
+    dispatch: { runDirMaxTotalGb: 1000 / (1024 * 1024 * 1024), runDirRetentionDays: 7 },
     watchdog: { intervalMs: 60_000 },
   }),
 }))

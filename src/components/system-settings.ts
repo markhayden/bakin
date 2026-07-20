@@ -33,7 +33,7 @@ export const SYSTEM_SETTINGS_SCHEMA: PluginSettingsSchema = {
       key: 'dispatch.maxTurnsPerAgent',
       type: 'number',
       label: 'Max dispatch turns per agent',
-      description: 'Turns in flight for ONE agent. Honored only on runtimes that declare per-run isolation (Pi); other runtimes clamp to 1 with an audit receipt regardless of this value — raising only the global cap adds no parallelism while work queues behind one agent. Default 2.',
+      description: 'Turns in flight for ONE agent. Honored only on runtimes that declare per-run isolation (see the Runtime page for what the active runtime supports); others clamp to 1 with an audit receipt regardless of this value — raising only the global cap adds no parallelism while work queues behind one agent. Default 2.',
       default: 2,
     },
     {
@@ -44,11 +44,11 @@ export const SYSTEM_SETTINGS_SCHEMA: PluginSettingsSchema = {
       default: 7,
     },
     {
-      key: 'dispatch.runDirMaxTotalBytes',
+      key: 'dispatch.runDirMaxTotalGb',
       type: 'number',
-      label: 'Run workspaces disk budget (bytes)',
-      description: 'Hard ceiling on total run-workspace disk usage — the sweep evicts oldest settled dirs first when exceeded (never live turns). Retention days are ceilings, never floors that outrank the disk. 0 disables. Default 4294967296 (4 GB).',
-      default: 4 * 1024 * 1024 * 1024,
+      label: 'Run workspaces disk budget (GB)',
+      description: 'Hard ceiling on run-workspace scratch usage — the sweep evicts oldest settled dirs first when exceeded (never live turns; repo checkouts are governed by their own time windows). Retention days are ceilings, never floors that outrank the disk. 0 disables. Default 4.',
+      default: 4,
     },
     // ── Alert delivery ────────────────────────────────────────────────
     {

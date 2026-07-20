@@ -33,7 +33,13 @@ function allowedRepoRoots(): string[] {
   try {
     const raw = JSON.parse(readFileSync(join(getContentDir(), 'plugin-settings', 'git.json'), 'utf-8')) as { allowedRepoRoots?: unknown }
     if (Array.isArray(raw.allowedRepoRoots)) {
-      return raw.allowedRepoRoots.filter((r): r is string => typeof r === 'string' && r.trim().length > 0).map(expandRepoPath)
+      // The git plugin's list-field persists entries as `{ path }` objects
+      // (its own reader accepts both shapes) — accept both here too, or a
+      // UI-configured allowlist would read as empty from core.
+      return raw.allowedRepoRoots
+        .map((entry) => typeof entry === 'string' ? entry : (entry as { path?: unknown } | null)?.path)
+        .filter((p): p is string => typeof p === 'string' && p.trim().length > 0)
+        .map(expandRepoPath)
     }
   } catch {
     // No settings file / unparseable — treated as unconfigured below.

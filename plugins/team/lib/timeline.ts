@@ -22,6 +22,8 @@ export const TIMELINE_AUDIT_KINDS = [
   'task.corrective_redispatch',
   'task.decomposition_dispatched',
   'task.blocked',
+  'task.worktree_materialized',
+  'task.repo_binding_blocked',
   'agent_pkg.lessons_retrieved',
   'agent_pkg.lessons_retrieval_failed',
 ] as const

@@ -149,6 +149,7 @@ type TurnSnapshot = { marker: string; agentId: string; taskId: string; threadId:
 let turnsSnapshot: TurnSnapshot[] = []
 let snapshotThrows = false
 const abortTurnsSpy = mock((_taskId: string, _reason: string) => 1)
+const abortByRunIdsSpy = mock((_runIds: string[], _reason: string) => 1)
 const forceReleaseSpy = mock((_marker: string) => true)
 mock.module('../../src/core/dispatch-registry', () => ({
   getInFlightTurnsSnapshot: () => {
@@ -156,6 +157,7 @@ mock.module('../../src/core/dispatch-registry', () => ({
     return turnsSnapshot
   },
   abortTurnsForTask: (...args: unknown[]) => abortTurnsSpy(...(args as [string, string])),
+  abortTurnsByRunIds: (...args: unknown[]) => abortByRunIdsSpy(...(args as [string[], string])),
   forceReleaseTurn: (...args: unknown[]) => forceReleaseSpy(...(args as [string])),
   ORPHAN_TURN_FORCE_RELEASE_GRACE_MS: 60_000,
 }))
@@ -539,9 +541,11 @@ describe('watchdog', () => {
       )
       expect(mockStoreMoveTask).toHaveBeenCalledWith('hb-stale', 'todo')
       expect(getLiveRun('hb-stale')).toBeNull()
-      // The superseded attempt's in-flight turn is aborted at supersede time
-      // — no zombie racing the refire (same-agent-concurrency D3).
-      expect(abortTurnsSpy).toHaveBeenCalledWith('hb-stale', 'superseded')
+      // ONLY the superseded runs' turns are aborted (by runId) — a healthy
+      // parallel workflow-step sibling sharing the taskId must survive
+      // (same-agent-concurrency D3 + review F2).
+      expect(abortByRunIdsSpy).toHaveBeenCalledWith(['task:hb-stale:d1'], 'superseded')
+      expect(abortTurnsSpy).not.toHaveBeenCalledWith('hb-stale', 'superseded')
 
       // The slot is freed exactly once — a racing second supersede loses.
       expect(supersedeStaleRun('hb-stale', Date.now())).toEqual({ superseded: false })
