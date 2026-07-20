@@ -11,7 +11,7 @@
   },
   "css": {
     "canonicalPath": "packages/sdk/styles.css",
-    "canonicalBytes": 294344,
+    "canonicalBytes": 294412,
     "copyCount": 1,
     "copyPaths": [
       "packages/sdk/styles.css"
@@ -49,8 +49,8 @@
     {
       "name": "sdk-patterns",
       "path": "packages/host/public/vendor/sdk-patterns.js",
-      "bytes": 7460,
-      "reachableBytes": 36931
+      "bytes": 10828,
+      "reachableBytes": 40299
     },
     {
       "name": "sdk-ui",
@@ -110,7 +110,7 @@
     },
     {
       "path": "packages/host/public/vendor/sdk-patterns.js",
-      "bytes": 7460
+      "bytes": 10828
     },
     {
       "path": "packages/host/public/vendor/sdk-routing.js",

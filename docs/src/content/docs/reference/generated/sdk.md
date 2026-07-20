@@ -322,12 +322,20 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 
 | Export | Description |
 | --- | --- |
+| `ConversationPage` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `ConversationPageBody` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `ConversationPageComposer` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `ConversationPageTimeline` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `DashboardPage` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `DashboardPageContent` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `DetailPage` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `DetailPageAside` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `DetailPageBody` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `DetailPageMain` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `InspectorPanel` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `InspectorPanelContent` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `InspectorPanelFooter` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `InspectorPanelHeader` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `ListPage` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `ListPageContent` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `ListPageControls` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
@@ -336,6 +344,12 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 | `SettingsPageBody` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `SettingsPageContent` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `SettingsPageNavigation` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `ConversationPageBodyProps` | — |
+| `ConversationPageComposerProps` | — |
+| `ConversationPageMode` | — |
+| `ConversationPageProps` | — |
+| `ConversationPageTimelineProps` | — |
+| `ConversationPageWidth` | — |
 | `DashboardPageContentProps` | — |
 | `DashboardPageProps` | — |
 | `DashboardPageWidth` | — |
@@ -345,6 +359,10 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 | `DetailPageMainProps` | — |
 | `DetailPageProps` | — |
 | `DetailPageWidth` | — |
+| `InspectorPanelContentProps` | — |
+| `InspectorPanelFooterProps` | — |
+| `InspectorPanelHeaderProps` | — |
+| `InspectorPanelProps` | — |
 | `ListPageContentProps` | — |
 | `ListPageControlsProps` | — |
 | `ListPageProps` | — |

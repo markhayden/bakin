@@ -152,6 +152,14 @@ Keep settings categories and dashboard view state in the existing query-state
 contract. Values, validation, dirty state, saves, telemetry, and domain actions
 remain consumer owned; avoid equal-weight card walls and nested page scrollers.
 
+Conversation pages use `ConversationPageBody mode="document"` with host scroll
+by default. Choose `contained` only inside an explicitly bounded parent; then
+`ConversationPageTimeline` is the single named log scroller and the composer
+remains outside it. `InspectorPanel` supplies named header/content/footer
+hierarchy beside a canvas or inside `BakinDrawer`. Message rendering,
+streaming, composer behavior, selection, drawer focus, and URL state remain
+owned by their focused kits and consumers.
+
 ## Stylesheet
 
 Bakin loads one shared copy of `@makinbakin/sdk/styles.css` for the host and all

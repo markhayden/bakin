@@ -23,6 +23,10 @@ const settingsPageStory = '/iframe.html?id=patterns-settings-and-dashboard-pages
 const settingsUnavailableStory = '/iframe.html?id=patterns-settings-and-dashboard-pages--settings-unavailable&viewMode=story'
 const dashboardPageStory = '/iframe.html?id=patterns-settings-and-dashboard-pages--dashboard-overview&viewMode=story'
 const dashboardUnavailableStory = '/iframe.html?id=patterns-settings-and-dashboard-pages--dashboard-unavailable&viewMode=story'
+const conversationPageStory = '/iframe.html?id=patterns-conversation-and-inspector--conversation&viewMode=story'
+const conversationUnavailableStory = '/iframe.html?id=patterns-conversation-and-inspector--conversation-unavailable&viewMode=story'
+const inspectorStory = '/iframe.html?id=patterns-conversation-and-inspector--inspector&viewMode=story'
+const inspectorUnavailableStory = '/iframe.html?id=patterns-conversation-and-inspector--inspector-unavailable&viewMode=story'
 
 test('public story keeps keyboard, focus, console, and responsive contracts', async ({ page }) => {
   const browserErrors: string[] = []
@@ -792,6 +796,83 @@ test('settings and dashboard recipes preserve priority, named regions, and respo
   await test.step('200% dashboard text remains contained at the minimum supported width', async () => {
     await page.setViewportSize({ width: 320, height: 1000 })
     await page.goto(dashboardPageStory, { waitUntil: 'networkidle' })
+    await page.evaluate(() => { document.documentElement.style.fontSize = '200%' })
+    const dimensions = await page.evaluate(() => ({ clientWidth: document.documentElement.clientWidth, scrollWidth: document.documentElement.scrollWidth }))
+    expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth)
+  })
+
+  expect(browserErrors).toEqual([])
+})
+
+test('conversation and inspector recipes preserve explicit scroll, state, and action ownership', async ({ page }) => {
+  const browserErrors: string[] = []
+  page.on('console', (message) => {
+    if (message.type() === 'error') browserErrors.push(`console: ${message.text()}`)
+  })
+  page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
+  page.on('requestfailed', (request) => {
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+  })
+
+  for (const [story, heading] of [[conversationPageStory, 'Conversation with Patch'], [inspectorStory, 'Launch publishing workflow']] as const) {
+    for (const width of responsiveWidths) {
+      await test.step(`${heading} remains contained at ${width}px`, async () => {
+        await page.setViewportSize({ width, height: 1000 })
+        await page.goto(story, { waitUntil: 'networkidle' })
+        await expect(page.getByRole('heading', { level: 1, name: heading })).toBeVisible()
+        const dimensions = await page.evaluate(() => ({
+          clientWidth: document.documentElement.clientWidth,
+          scrollWidth: document.documentElement.scrollWidth,
+        }))
+        expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth)
+      })
+    }
+  }
+
+  await test.step('contained conversation gives only the named log an internal scroller', async () => {
+    await page.setViewportSize({ width: 720, height: 900 })
+    await page.goto(conversationPageStory, { waitUntil: 'networkidle' })
+    const body = page.locator('[data-slot="conversation-page-body"]')
+    const timeline = page.getByRole('log', { name: 'Conversation with Patch' })
+    const composer = page.locator('[data-slot="conversation-page-composer"]')
+    await expect(body).toHaveAttribute('data-mode', 'contained')
+    expect(await timeline.evaluate((element) => getComputedStyle(element).overflowY)).toBe('auto')
+    expect(await body.evaluate((element) => getComputedStyle(element).overflowY)).toBe('hidden')
+    expect(await composer.evaluate((element, log) => element.contains(log as Node), await timeline.elementHandle())).toBe(false)
+
+    const input = page.getByRole('textbox', { name: 'Message Patch' })
+    await input.fill('Keep the handoff explicit.')
+    await input.press('Enter')
+    await expect(timeline).toContainText('Keep the handoff explicit.')
+    await expect(input).toHaveValue('')
+  })
+
+  await test.step('document conversation and unavailable inspector replace content but preserve identity and actions', async () => {
+    await page.goto(conversationUnavailableStory, { waitUntil: 'networkidle' })
+    await expect(page.locator('[data-slot="conversation-page-body"]')).toHaveAttribute('data-mode', 'document')
+    await expect(page.getByRole('heading', { level: 1, name: 'Conversation with Patch' })).toBeVisible()
+    await expect(page.getByText('Conversation history is restricted', { exact: true })).toBeVisible()
+
+    await page.goto(inspectorUnavailableStory, { waitUntil: 'networkidle' })
+    const inspector = page.getByRole('region', { name: 'Unknown node inspector' })
+    await expect(inspector.getByRole('heading', { level: 2, name: 'Unsupported node' })).toBeVisible()
+    await expect(inspector.getByRole('button', { name: 'Close' })).toBeVisible()
+    await expect(inspector.getByRole('button', { name: 'Delete preserved step' })).toBeVisible()
+    await expect(inspector.getByRole('alert', { name: 'This node cannot be inspected' })).toBeVisible()
+  })
+
+  await test.step('inspector keeps contextual editing inside one named region', async () => {
+    await page.goto(inspectorStory, { waitUntil: 'networkidle' })
+    const inspector = page.getByRole('region', { name: 'Assemble social video node inspector' })
+    await expect(inspector.getByRole('heading', { level: 2, name: 'Assemble social video' })).toBeVisible()
+    await inspector.getByLabel('Display name').fill('Assemble final social video')
+    await inspector.getByRole('button', { name: 'Apply changes' }).click()
+    await expect(inspector.getByText('Node updated')).toBeVisible()
+  })
+
+  await test.step('200% conversation text remains contained at the minimum supported width', async () => {
+    await page.setViewportSize({ width: 320, height: 1000 })
+    await page.goto(conversationPageStory, { waitUntil: 'networkidle' })
     await page.evaluate(() => { document.documentElement.style.fontSize = '200%' })
     const dimensions = await page.evaluate(() => ({ clientWidth: document.documentElement.clientWidth, scrollWidth: document.documentElement.scrollWidth }))
     expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth)

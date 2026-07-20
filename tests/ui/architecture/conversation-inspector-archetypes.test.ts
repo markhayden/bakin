@@ -1,0 +1,44 @@
+import { describe, expect, it } from 'bun:test'
+import { existsSync, readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+import * as PrivatePatterns from '@bakin/ui/patterns'
+import * as Patterns from '@makinbakin/sdk/patterns'
+import * as HostPatterns from '../../../packages/host/src/ui/page-archetypes'
+
+const ROOT = resolve(import.meta.dir, '../../..')
+const read = (path: string) => readFileSync(resolve(ROOT, path), 'utf8')
+
+describe('canonical conversation and inspector archetypes', () => {
+  it('publishes one presentation-only implementation', () => {
+    for (const file of ['packages/ui/src/patterns/conversation-page.tsx', 'packages/ui/src/patterns/inspector-panel.tsx']) {
+      expect(existsSync(resolve(ROOT, file))).toBe(true)
+    }
+    const source = [read('packages/ui/src/patterns/conversation-page.tsx'), read('packages/ui/src/patterns/inspector-panel.tsx')].join('\n')
+    expect(source).not.toMatch(/from ['"]@\//)
+    expect(source).not.toContain('@makinbakin/sdk')
+    expect(source).not.toMatch(/fetch|EventSource|useRouter|useSearchParams|PluginLink/)
+    expect(Patterns.ConversationPage).toBe(PrivatePatterns.ConversationPage)
+    expect(Patterns.InspectorPanel).toBe(PrivatePatterns.InspectorPanel)
+    expect(HostPatterns.ConversationPage).toBe(PrivatePatterns.ConversationPage)
+    expect(HostPatterns.InspectorPanel).toBe(PrivatePatterns.InspectorPanel)
+  })
+
+  it('makes exceptional nested scrolling explicit and finite', () => {
+    const conversation = read('packages/ui/src/patterns/conversation-page.tsx')
+    const inspector = read('packages/ui/src/patterns/inspector-panel.tsx')
+    expect(conversation).toContain("'document' | 'contained'")
+    expect(conversation).toContain("'content' | 'wide'")
+    expect(conversation).toContain("mode === 'contained'")
+    expect(conversation).toContain('overflow-y-auto')
+    expect(inspector).not.toMatch(/overflow-y-(?:auto|scroll)|h-screen|max-h-/)
+    expect(`${conversation}\n${inspector}`).not.toMatch(/(?:messages|thread|streamUrl|selected|node|resource|data)\??:/i)
+  })
+
+  it('documents the T30/T34 boundary and existing routing contract', () => {
+    const guide = read('docs/src/content/docs/extending/ui/overview.md')
+    expect(guide).toContain('Conversation and Inspector Recipes')
+    expect(guide).toContain('message rendering')
+    expect(guide).toContain('query parameters')
+    expect(guide).toContain('BakinDrawer')
+  })
+})

@@ -1037,6 +1037,31 @@ the SDK patterns entrypoint is 7,460 bytes direct / 36,931 reachable (+2,240
 each). One shared CSS copy remains. No official settings, runtime, Health, or
 plugin surface migration is included in T30b.
 
+**Status — T30c (2026-07-20):** Complete. `ConversationPage`,
+`ConversationPageBody`, `ConversationPageTimeline`,
+`ConversationPageComposer`, `InspectorPanel`, `InspectorPanelHeader`,
+`InspectorPanelContent`, and `InspectorPanelFooter` now extend the focused
+patterns entrypoint. Conversation defines document versus deliberately
+contained scroll ownership, keeps its required named log separate from a
+stable composer boundary, and leaves message models, folding, activity/tool
+rendering, attachments, streaming transport, send behavior, and
+scroll-to-latest policy to T34. Inspector defines a named contextual
+header/content/footer region usable beside a canvas or inside the existing
+`BakinDrawer`; selection, focus/dismissal, dirty state, data, and actions stay
+with its consumer. Four Product Character stories cover ready and unavailable
+conversation and inspector states. Seven focused render/architecture tests,
+all 77 public Storybook interaction/axe cases, 46 exact desktop/mobile visual
+cases, and the new canonical Chromium/Firefox/WebKit behavior case pass. The
+desktop and 320px baselines were reviewed; 200% text, replacement-state
+identity, single-scroller ownership, and inspector actions remain contained.
+The combined docs build publishes all 77 stories, 48-page validation and typed
+route-contract checks pass, and the routing guidance continues to use the
+existing query-state contract. Canonical CSS is 294,412 bytes (+68 from T30b),
+initial host JS remains 457,006 bytes, and the SDK patterns entrypoint is
+10,828 bytes direct / 40,299 reachable (+3,368 each). One shared CSS copy
+remains. No official conversation, workflow, or plugin surface migration is
+included in T30c.
+
 **Acceptance:** each recipe defines header/actions, state slots, responsive
 behavior, scroll ownership, URL-state guidance, and misuse boundaries without
 hard-coding plugin data.

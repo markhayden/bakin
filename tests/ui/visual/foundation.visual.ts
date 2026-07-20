@@ -333,3 +333,27 @@ test('public dashboard page recipe visual baseline', async ({ page }) => {
     fullPage: true,
   })
 })
+
+test('public conversation page recipe visual baseline', async ({ page }) => {
+  await page.goto('/iframe.html?id=patterns-conversation-and-inspector--conversation&viewMode=story')
+  await expect(page.getByRole('heading', { level: 1, name: 'Conversation with Patch' })).toBeVisible()
+  await expect(page.getByRole('log', { name: 'Conversation with Patch' })).toBeVisible()
+  await page.evaluate(async () => document.fonts.ready)
+  await expect(page).toHaveScreenshot('foundation-conversation-page.png', {
+    animations: 'disabled',
+    caret: 'hide',
+    fullPage: true,
+  })
+})
+
+test('public inspector recipe visual baseline', async ({ page }) => {
+  await page.goto('/iframe.html?id=patterns-conversation-and-inspector--inspector&viewMode=story')
+  await expect(page.getByRole('heading', { level: 1, name: 'Launch publishing workflow' })).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Assemble social video node inspector' })).toBeVisible()
+  await page.evaluate(async () => document.fonts.ready)
+  await expect(page).toHaveScreenshot('foundation-inspector-panel.png', {
+    animations: 'disabled',
+    caret: 'hide',
+    fullPage: true,
+  })
+})

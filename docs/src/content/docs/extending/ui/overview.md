@@ -253,6 +253,25 @@ Keep dashboard view state such as tabs, time ranges, expanded evidence, and sele
 
 Neither recipe owns a `main` landmark, vertical page scroller, fixed height, sticky save behavior, or URL parsing. Wide charts and tables still go inside `BoundedOverflow`. If usable stale dashboard data survives a refresh failure, retain it with `busy` and a `Banner` in `feedback`; use `state` only when the overview has no usable content.
 
+## Conversation and Inspector Recipes
+
+`ConversationPage` and `InspectorPanel` establish interaction geometry before the focused conversation kit and domain-specific inspectors add behavior:
+
+| Need | Component | Contract |
+| --- | --- | --- |
+| Bound a routed conversation | `ConversationPage` | Uses a focused content canvas by default; `wide` supports evidence-backed adjacent context |
+| Choose scroll ownership | `ConversationPageBody` | `document` keeps host page scrolling; `contained` gives only the named timeline an internal vertical scroller |
+| Name new message announcements | `ConversationPageTimeline` | Renders a polite `log`; supply `label` or `labelledBy` and place message rendering inside |
+| Keep composition outside the log | `ConversationPageComposer` | Stable boundary for the focused conversation kit's composer and attachments |
+| Compose contextual inspection | `InspectorPanel` | A named region usable beside a canvas or inside `BakinDrawer` |
+| Preserve inspector hierarchy | `InspectorPanelHeader`, `InspectorPanelContent`, `InspectorPanelFooter` | Identity and close actions remain while only content changes state; local commit/destructive actions stay in the footer |
+
+Use `mode="document"` for ordinary chat history where the host page owns vertical scroll. Use `contained` only when a parent surface supplies a deliberate available block size and the composer must remain available; the timeline then becomes the single nested scroller. Do not add a second scrolling message wrapper. The T30 recipe does not own message rendering, folding, tool activity, streaming transport, attachments, send behavior, or scroll-to-latest policy—those land in the isolated conversation entrypoint in T34.
+
+An inspector is contextual, not a second detail page. Use `InspectorPanel` inside the existing responsive `Grid layout="main-aside"` for persistent context, or as the content hierarchy inside the existing `BakinDrawer` when selection opens an overlay. The drawer continues to own focus, dismissal, resizing, and dirty-state confirmation. Inspector selection, open state, tabs, and expanded evidence belong in query parameters when they are meaningful linkable view state; the recipe never parses URLs.
+
+`state` on `ConversationPageBody` replaces the whole conversation work area but preserves the page header. `state` on `InspectorPanelContent` preserves inspector identity, close controls, and valid footer actions. During reconnects or refreshes, retain usable history or inspector fields with `busy` and `feedback` instead.
+
 ## Action and Status Primitives
 
 The first supported primitive set covers actions, compact state, contextual messages, and measurable work:

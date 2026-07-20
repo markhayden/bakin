@@ -40,3 +40,31 @@ export type {
   DashboardPageProps,
   DashboardPageWidth,
 } from './dashboard-page'
+
+export {
+  ConversationPage,
+  ConversationPageBody,
+  ConversationPageComposer,
+  ConversationPageTimeline,
+} from './conversation-page'
+export type {
+  ConversationPageBodyProps,
+  ConversationPageComposerProps,
+  ConversationPageMode,
+  ConversationPageProps,
+  ConversationPageTimelineProps,
+  ConversationPageWidth,
+} from './conversation-page'
+
+export {
+  InspectorPanel,
+  InspectorPanelContent,
+  InspectorPanelFooter,
+  InspectorPanelHeader,
+} from './inspector-panel'
+export type {
+  InspectorPanelContentProps,
+  InspectorPanelFooterProps,
+  InspectorPanelHeaderProps,
+  InspectorPanelProps,
+} from './inspector-panel'
