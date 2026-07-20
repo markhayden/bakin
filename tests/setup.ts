@@ -49,9 +49,11 @@ GlobalRegistrator.register()
 // assertions racing the response re-render) call settleReact() themselves —
 // see that module for the full fact chain.
 // tests/components/kanban-dnd.test.tsx was quarantined to a serial gating
-// step for a while (issue #650): its settleBoard drain made it pass alone,
-// but folding it into the parallel pool destabilized a neighbor under 2-vCPU
-// contention. Un-quarantined 2026-07-20 after that flake stopped reproducing.
+// step for a while (issue #650). Root cause turned out to be timing-gated,
+// not scheduler-exotic: its search-filter test let useSearch's debounced
+// /search? GET hit a stub that returned the board payload, poisoning
+// results with undefined — only runners slow enough for the 300ms debounce
+// to elapse mid-test ever saw it. Un-quarantined 2026-07-20.
 // ---------------------------------------------------------------------------
 
 // NOTE: we don't register a global main-agent stub here — bun:test has no

@@ -1,12 +1,15 @@
 /**
- * Formerly quarantined to a serial CI step (#650) — un-quarantined 2026-07-20
- * after the neighbor contention flake stopped reproducing (likely fixed by the
- * closeDb() test hardening in #698/#699). settleBoard (this describe's
- * afterEach) drains the post-persist refetch to FETCH-QUIESCENCE before
- * rtl-settle unmounts — that drain is what makes this file safe in the
- * --parallel pool; do not remove it. Prior rounds: cross-file pollution
- * (#638), leaked roots (#640), inner-hook cleanup preemption (#643),
- * neighbor destabilization (#650).
+ * Formerly quarantined to a serial CI step (#650) — un-quarantined 2026-07-20.
+ * The CI-only flake's ROOT CAUSE was mundane: the search-filter test starts
+ * useSearch's 300ms debounce, and the fetch stub answered the /search? GET
+ * with the board payload → setResults(undefined) → .length crash. Fast
+ * machines finished before the debounce elapsed (why it "never reproduced
+ * locally"); 2-vCPU CI didn't. Fixed by a results-shape guard in useSearch +
+ * a real SearchResponse handler in the stub below. settleBoard (this
+ * describe's afterEach) drains the post-persist refetch to FETCH-QUIESCENCE
+ * before rtl-settle unmounts — still required; do not remove it. Prior
+ * rounds: cross-file pollution (#638), leaked roots (#640), inner-hook
+ * cleanup preemption (#643).
  */
 // @vitest-environment jsdom
 
