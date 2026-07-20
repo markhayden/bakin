@@ -139,3 +139,16 @@ Flip: `~/.bakin/settings.json` → `"runtime": { "adapter": "pi" }` → restart 
 - Contract: `extensions?: RuntimeExtensionsAccess` (optional, feature-
   detected; `.extensions!.` is arch-banned). Discovery NEVER executes
   extension code.
+
+## Per-run workspace isolation (same-agent concurrency)
+
+Pi declares `concurrency.sameAgentTurns: 'isolated'`: `MessageArgs.runWorkspace` moves ONLY the
+session's tool-execution cwd (`createAgentSession({cwd})`). The resource loader, settings
+manager, session store, and prompt assembly stay workspace-pinned — an isolated turn's prompt is
+byte-identical to a workspace turn's (SDK-verified: context/skills discovery rides the LOADER's
+cwd). Seeding (`src/run-workspace.ts`): workspace-root `*.md` symlinks into the run dir (memory
+writes flow home; settle-time recovery copies back rename-severed links); git checkouts are
+NEVER seeded (`.git` guard). `recordThreadSession`'s RMW must stay fully synchronous
+(comment-pinned) — concurrent same-agent settles rely on single-event-loop atomicity.
+Conformance: the isolation probe (`pi.conformance.test.ts`) runs two concurrent bash-tool turns
+in handed dirs. Deep reference: `.claude/knowledge/same-agent-concurrency.md`.

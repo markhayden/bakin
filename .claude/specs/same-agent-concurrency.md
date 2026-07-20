@@ -1,7 +1,7 @@
 # Spec: Same-Agent Concurrency — Per-Run Workspace Isolation + Worktrees
 
-Status: DRAFT r4 — CONVERGED (round 4 removed mechanisms rather than adding; pending plan
-approval). Discovery: `same-agent-concurrency-discovery.md` (§5 first audit, §6 silo audit,
+Status: FINAL (built on feat/same-agent-concurrency; as-built deviations recorded in
+tasks/todo-same-agent-concurrency.md). Discovery: `same-agent-concurrency-discovery.md` (§5 first audit, §6 silo audit,
 §7 final round). Closes #447 (folded in). Single-user machine; no backwards compat, no shims.
 
 ## Objective

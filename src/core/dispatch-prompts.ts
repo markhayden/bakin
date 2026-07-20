@@ -123,8 +123,15 @@ export function buildCorrectiveSection(taskId: string, recovery: SessionDeathSta
   const salvageLine = recovery.salvagedAssetIds.length > 0
     ? `\nA partial copy of that output was salvaged as asset ${recovery.salvagedAssetIds.join(', ')} — open it with bakin_exec_assets_open and REUSE it instead of regenerating from scratch.`
     : ''
+  // Per-run isolation strands unsaved prior work in the dead attempt's
+  // RETAINED run dir (a shared cwd used to make it re-findable) — point the
+  // re-dispatch there. Deterministic text: flattened runId prefix + glob,
+  // never an absolute machine path (byte-fixture discipline).
+  const priorDirLine = recovery.lastRunId
+    ? `\nThe failed attempt's scratch dir is retained (READ-ONLY — copy, don't edit): look under ~/.bakin/run-workspaces/<your-agent-id>/${recovery.lastRunId.replace(/[^a-zA-Z0-9_-]+/g, '-')}-*/ for unsaved files worth reusing.`
+    : ''
   return `## PREVIOUS ATTEMPT FAILED — READ FIRST
-Your previous attempt on this task died before completion: ${d.detail ?? `the runtime session ended (${d.sessionStatus ?? d.reason})`}. The session was killed because ${sizeLabel} of output was emitted as chat text instead of being written to files — the runtime cannot deliver responses that large.${salvageLine}
+Your previous attempt on this task died before completion: ${d.detail ?? `the runtime session ended (${d.sessionStatus ?? d.reason})`}. The session was killed because ${sizeLabel} of output was emitted as chat text instead of being written to files — the runtime cannot deliver responses that large.${salvageLine}${priorDirLine}
 
 Do this attempt differently:
 - Produce deliverables ONE AT A TIME: write each to a workspace file, then immediately save it: bakin_exec_assets_save taskId=${taskId} type=<type> filePath="<path>" description="<what it is>"

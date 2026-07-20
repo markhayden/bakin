@@ -99,6 +99,10 @@ export interface SessionDeathState {
   deaths: number
   lastDiagnosis: SessionDeathDiagnosisLite
   salvagedAssetIds: string[]
+  /** The dead attempt's runId (threadId) — the corrective prompt points the
+   *  re-dispatch at that attempt's RETAINED run dir, which may hold unsaved
+   *  work a shared cwd used to make re-findable (same-agent-concurrency). */
+  lastRunId?: string
 }
 
 export interface FailureRecord {

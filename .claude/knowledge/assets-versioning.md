@@ -209,6 +209,17 @@ first); no `savePromptPacket` (the prompt lives per-version in the manifest).
 
 ## save-by-source upsert
 
+**Run-workspace saves (same-agent concurrency):** paths under
+`~/.bakin/run-workspaces/` dedup on a task-stable virtual key
+(`run:task:<taskId>/<relpath>`, derived by READING the run dir's
+`.bakin-run.json` sidecar — never path parsing; missing/torn sidecar degrades
+to real-path identity). The virtual key stores as `source.path`. **Staleness
+gate:** a save whose origin run is not `running` in the ledger
+(superseded/lost/settled/purged/unreadable — fail-closed) records its version
+WITHOUT advancing `currentVersion` + audits `asset.stale_run_write_suppressed`
+(`addVersion` `advanceCurrent:false`) — a zombie's late output never displaces
+the corrective attempt's deliverable.
+
 `bakin_exec_assets_save` → `upsertFromSource`: a re-save of the same source path
 versions the existing asset (content-hash → no-op if unchanged), instead of
 minting duplicates. The retired `bakin_exec_assets_update_content` tool is

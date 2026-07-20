@@ -74,8 +74,13 @@ the whole board behind one slow agent). Mechanics in
   dropped via `forceReleaseTurn` + `task.turn_force_released` audit so a
   hung provider turn can never hold the agent's slot until restart.
 - **Caps:** `settings.dispatch.maxConcurrentTurns` (global, default 3) and
-  `maxTurnsPerAgent` (default 1 pending rig validation of gateway per-agent
-  concurrency). A capped task is deferred with no failure recorded.
+  `maxTurnsPerAgent` (default 2 — honored only on runtimes declaring
+  `concurrency.sameAgentTurns: 'isolated'`; serialized runtimes clamp to 1
+  with a once-per-boot `dispatch.concurrency_clamped` audit). Workflow-step
+  gates fold in the cycle's reserved (collected-but-unfired) counts. A capped
+  task is deferred with no failure recorded. Isolated turns run in per-run
+  dirs; repo-bound tasks add a worktree — deep reference:
+  `.claude/knowledge/same-agent-concurrency.md`.
 - The state lock spans only the scan/fire phase, so manual kicks
   (`dispatchSingleTask`) interleave with in-flight cycles.
 - **Two-phase cycle (#434):** the regular loop *collects* dispatch intents

@@ -110,6 +110,7 @@ async function handleSessionDeath(input: {
   err: RuntimeTurnError
   dispatchKind: 'regular' | 'workflow'
   snapshotColumn: keyof DispatchColumns | null
+  threadId?: string
 }): Promise<void> {
   const diagnosis = input.err.diagnosis
   if (!input.state.failedDispatches) input.state.failedDispatches = {}
@@ -166,7 +167,7 @@ async function handleSessionDeath(input: {
     lastAttempt: Date.now(),
     count: existing?.count ?? 0, // session deaths don't burn generic retries
     kind: 'structural',
-    sessionDeath: { stage, deaths, lastDiagnosis: stripSalvage(diagnosis), salvagedAssetIds },
+    sessionDeath: { stage, deaths, lastDiagnosis: stripSalvage(diagnosis), salvagedAssetIds, ...(input.threadId ? { lastRunId: input.threadId } : {}) },
   }
 
   await tryAddTaskLog(
@@ -232,6 +233,9 @@ export async function reconcileRejectedDispatch(input: {
   initialLogCount: number
   logPrefix: string
   dispatchKind: 'regular' | 'workflow'
+  /** The failed attempt's runId — recorded on the sessionDeath state so the
+   *  corrective prompt can point at its retained run dir. */
+  threadId?: string
 }): Promise<void> {
   const snapshot = findDispatchTaskSnapshot(input.task.id)
   removeDispatchMarkersForTask(input.state, input.dispatchedSet, input.task.id)
@@ -259,6 +263,7 @@ export async function reconcileRejectedDispatch(input: {
       err: input.err,
       dispatchKind: input.dispatchKind,
       snapshotColumn: snapshot?.column ?? null,
+      ...(input.threadId ? { threadId: input.threadId } : {}),
     })
     return
   }

@@ -785,6 +785,7 @@ export function fireDispatchTurn(opts: {
             initialLogCount: opts.initialLogCount,
             logPrefix: opts.logPrefix,
             dispatchKind: opts.dispatchKind,
+            threadId: opts.threadId,
           })
           saveDispatchState(opts.contentDir, state)
         })
