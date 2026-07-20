@@ -50,16 +50,16 @@ comparison, and deletion of replaced styling/allowances.
 - [x] T20a Establish focused SDK UI entrypoints
 - [x] T20b Establish the stylesheet/package artifact
 - [x] T21 Migrate action and status primitives
-- [ ] T22 Migrate surface and content primitives
-- [ ] Checkpoint 3A: package boundary and first primitives green
-- [ ] T23 Migrate text-field primitives
-- [ ] T24 Migrate selection primitives
-- [ ] T25 Migrate modal and side-overlay primitives
-- [ ] T26 Migrate anchored overlays and command primitives
-- [ ] Checkpoint 3B: form and overlay primitive set green
-- [ ] T27a Build PageShell, Stack, and Inline
-- [ ] T27b Build Grid, Section, and BoundedOverflow
-- [ ] T28 Implement the canonical field/form composition
+- [x] T22 Migrate surface and content primitives
+- [x] Checkpoint 3A: package boundary and first primitives green
+- [x] T23 Migrate text-field primitives
+- [x] T24 Migrate selection primitives
+- [x] T25 Migrate modal and side-overlay primitives
+- [x] T26 Migrate anchored overlays and command primitives
+- [x] Checkpoint 3B: form and overlay primitive set green
+- [x] T27a Build PageShell, Stack, and Inline
+- [x] T27b Build Grid, Section, and BoundedOverflow
+- [x] T28 Implement the canonical field/form composition
 - [ ] T29 Implement standardized system states and feedback
 - [ ] T30a Implement list and detail archetype recipes
 - [ ] T30b Implement settings and dashboard archetype recipes

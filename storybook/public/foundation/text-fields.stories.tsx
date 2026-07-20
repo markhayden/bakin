@@ -20,7 +20,7 @@ const meta = {
     layout: 'fullscreen',
     docs: {
       description: {
-        component: 'Low-level text-field controls retain native browser semantics while standardizing Product Character presentation. Routine forms should compose them through the field patterns published in the patterns entrypoint; raw native controls are an explicit domain-interface exception.',
+        component: 'Low-level text-field controls retain native browser semantics while standardizing Product Character presentation. Routine forms compose them through Field and Form from the UI entrypoint; raw native controls are an explicit domain-interface exception.',
       },
     },
   },

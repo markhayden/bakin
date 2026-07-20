@@ -137,7 +137,37 @@ export type {
   DropdownMenuSubTriggerProps,
   DropdownMenuTriggerProps,
 } from '@bakin/ui'
-export * from '@/components/ui/form'
+export {
+  Field,
+  FieldControl,
+  FieldDescription,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+  Fieldset,
+  FieldsetDescription,
+  FieldsetLegend,
+  Form,
+  FormActions,
+  SubmitButton,
+} from '@bakin/ui'
+export type {
+  FieldControlProps,
+  FieldDescriptionProps,
+  FieldErrorProps,
+  FieldGroupProps,
+  FieldLabelProps,
+  FieldOrientation,
+  FieldProps,
+  FieldRequirement,
+  FieldsetDescriptionProps,
+  FieldsetLegendProps,
+  FieldsetProps,
+  FormActionsAlign,
+  FormActionsProps,
+  FormProps,
+  SubmitButtonProps,
+} from '@bakin/ui'
 export { Input } from '@bakin/ui'
 export type { InputProps } from '@bakin/ui'
 export {

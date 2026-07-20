@@ -253,3 +253,14 @@ test('public responsive layout recipes visual baseline', async ({ page }) => {
     fullPage: true,
   })
 })
+
+test('public canonical form composition visual baseline', async ({ page }) => {
+  await page.goto('/iframe.html?id=forms-field-and-form-composition--overview&viewMode=story')
+  await expect(page.getByRole('heading', { name: 'One form language for every builder' })).toBeVisible()
+  await page.evaluate(async () => document.fonts.ready)
+  await expect(page).toHaveScreenshot('foundation-form-composition.png', {
+    animations: 'disabled',
+    caret: 'hide',
+    fullPage: true,
+  })
+})

@@ -917,6 +917,27 @@ fixtures, overflow checks.
 FormActions, description/error association, and submit/busy composition using
 the migrated primitives.
 
+**Status (2026-07-19):** Complete. `Field`, `FieldLabel`,
+`FieldDescription`, and `FieldError` now register accessible names and every
+mounted message on the actual SDK control. `FieldControl` covers native
+controls such as Textarea; SDK Base UI controls join the field directly.
+`Fieldset` mechanically associates its legend and description and propagates
+disabled state. `Form`, responsive `FormActions`, and `SubmitButton` provide a
+single busy/submission contract. The former React Hook Form presentation layer
+has been replaced by a compatibility bridge to the canonical implementation;
+its now-unused runtime packages were removed, and form-state adapters may no
+longer own field markup or styling. Public stories
+cover required, optional, disabled, read-only, invalid, async validation,
+server error, success, and busy submission states. Eight focused ownership and
+render tests, all 61 public Storybook interaction/axe cases, 30 desktop/mobile
+visual baselines, and 30 Chromium/Firefox/WebKit behavior cases pass. Desktop
+and mobile canonical images were reviewed before API freeze. The canonical CSS
+is 287,941 bytes (+3,242 for the complete form contract), initial host JS
+remains 457,006 bytes, and removing the React Hook Form presentation export
+reduces the focused SDK UI entry from 29,306 to 21,226 bytes and its reachable
+payload from 423,149 to 421,896 bytes. One shared CSS copy remains. No official
+surface migration is included in T28.
+
 **Acceptance:** labels/descriptions/errors are mechanically associated; required,
 optional, disabled, read-only, async validation, submission error, and success
 examples pass; React Hook Form adapters do not own presentation.

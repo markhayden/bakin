@@ -7,6 +7,13 @@ import { defineConfig } from 'vitest/config'
 const repoRoot = import.meta.dirname
 
 export default defineConfig({
+  optimizeDeps: {
+    include: [
+      '@base-ui/react/field',
+      '@base-ui/react/fieldset',
+      '@base-ui/react/form',
+    ],
+  },
   test: {
     reporters: [
       'default',

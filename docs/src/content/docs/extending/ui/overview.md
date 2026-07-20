@@ -255,6 +255,72 @@ These are deliberately low-level controls. Preserve `required`, `readOnly`, `dis
 
 A raw native input or textarea is an exception path, not a styling shortcut. Use one only when an unusual domain interface cannot retain its behavior through the SDK primitive. The exception must record that reason in review, use semantic Bakin tokens, remain under the plugin's scoped root, preserve the same accessible names and states, and include focused story or browser coverage. Routine forms and cosmetic variations do not qualify.
 
+## Field and Form Composition
+
+Routine forms use the canonical composition from `@makinbakin/sdk/ui`. It owns the relationships and presentation that low-level controls cannot establish by themselves:
+
+| Need | Component | Contract |
+| --- | --- | --- |
+| Label and explain one value | `Field`, `FieldLabel`, and `FieldDescription` | The visible label and every mounted message are registered on the real control automatically |
+| Show field validation | `FieldError` | Native, async, external, and server errors share one associated recovery location |
+| Associate a native control | `FieldControl` | Renders a styled input by default; use its `render` prop for `Textarea` and other native controls |
+| Group related choices | `Fieldset`, `FieldsetLegend`, `FieldsetDescription`, and `FieldGroup` | Legend and description are associated with the group; `disabled` propagates to its fields |
+| Finish and submit a form | `Form`, `FormActions`, and `SubmitButton` | Actions stack at narrow widths; one `busy` value marks the form and disables duplicate submission |
+
+```tsx
+import {
+  Button,
+  Field,
+  FieldControl,
+  FieldDescription,
+  FieldError,
+  FieldLabel,
+  Form,
+  FormActions,
+  Input,
+  SubmitButton,
+  Textarea,
+} from '@makinbakin/sdk/ui'
+
+type Settings = { workspaceName: string; summary: string }
+
+export function WorkspaceSettings({ busy }: { busy: boolean }) {
+  return (
+    <Form<Settings>
+      busy={busy}
+      errors={{ workspaceName: 'This workspace name is already registered.' }}
+      onFormSubmit={(values) => saveSettings(values)}
+    >
+      <Field name="workspaceName">
+        <FieldLabel requirement="required">Workspace name</FieldLabel>
+        <FieldDescription>Shown in page chrome and plugin contributions.</FieldDescription>
+        <Input required autoComplete="organization" />
+        <FieldError />
+      </Field>
+
+      <Field name="summary">
+        <FieldLabel requirement="optional">Operational summary</FieldLabel>
+        <FieldControl render={<Textarea rows={4} />} />
+        <FieldDescription>Markdown is supported.</FieldDescription>
+      </Field>
+
+      <FormActions>
+        <Button type="button" variant="outline">Cancel</Button>
+        <SubmitButton busyLabel="Saving settings">Save settings</SubmitButton>
+      </FormActions>
+    </Form>
+  )
+}
+```
+
+Put `name` on `Field` so `Form` can collect its value and return external `errors` to it. `Field` recognizes SDK `Input`, `Checkbox`, `Switch`, and `Select` controls directly. Use `FieldControl render={<Textarea />}` when a native control needs to join the same association and validation context.
+
+The `requirement` label prop standardizes visible “Required” or “Optional” copy; it does not replace native behavior. A required value must also set `required` on its control. Likewise, `readOnly`, `disabled`, `type`, `inputMode`, and `autoComplete` remain real control attributes.
+
+Use `validate` on `Field` for domain validation, including asynchronous checks, and use the `errors` object on `Form` for server-returned errors keyed by field name. Prefer `onFormSubmit` to manual `preventDefault` handling. On a failed submission, keep a page- or form-level explanation near the form and put the actionable message in the affected `FieldError`; on success, announce concise confirmation without replacing the page.
+
+Form-state libraries may own values, dirty state, and orchestration. Their adapters must pass that state into these SDK components instead of rendering their own labels, descriptions, error wrappers, spacing, or submit buttons. In particular, apply a library's `register` or controller props to the actual SDK control and map its invalid state to `Field invalid` plus `FieldError match`; do not wrap the control in a second presentation system.
+
 ## Selection Primitives
 
 Choose the control by interaction model rather than appearance:

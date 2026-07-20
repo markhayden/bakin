@@ -4,7 +4,8 @@ import { mergeClassName } from '../utils'
 
 export type InputProps = InputPrimitive.Props
 
-const inputClasses = [
+/** Shared internally by FieldControl when it renders its default input. */
+export const inputClasses = [
   'h-[var(--bakin-layout-size-control)] w-full min-w-0 rounded-bakin-control border border-bakin-border-subtle',
   'bg-bakin-canvas-default px-bakin-3 py-bakin-2 font-bakin-typography-family-ui text-base leading-tight text-bakin-text-primary md:text-[length:var(--bakin-typography-size-body)]',
   'transition-[background-color,border-color,color] duration-[var(--bakin-motion-duration-feedback)] ease-bakin-standard outline-none',

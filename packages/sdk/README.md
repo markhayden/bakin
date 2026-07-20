@@ -120,6 +120,13 @@ colors or dimensions in plugin CSS. The `buttonVariants` and `badgeVariants`
 helpers are supported when a link or render integration needs the same visual
 treatment while preserving its native element semantics.
 
+Routine forms compose `Field`, `FieldLabel`, `FieldDescription`, `FieldError`,
+and SDK controls inside `Form`. Use `Fieldset` for related choices and finish
+with `FormActions` plus `SubmitButton`; the form's `busy` prop marks submission
+and prevents duplicate saves. Form-state libraries may manage values and dirty
+state, but the SDK components continue to own labels, errors, spacing, and
+actions.
+
 ## Stylesheet
 
 Bakin loads one shared copy of `@makinbakin/sdk/styles.css` for the host and all

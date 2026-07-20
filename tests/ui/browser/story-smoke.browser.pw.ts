@@ -10,6 +10,9 @@ const modalOverviewStory = '/iframe.html?id=foundation-modal-and-side-overlays--
 const anchoredOverviewStory = '/iframe.html?id=foundation-anchored-overlays--overview&viewMode=story'
 const layoutFlowStory = '/iframe.html?id=layout-pageshell-and-flow--responsive-page&viewMode=story'
 const layoutRecipesStory = '/iframe.html?id=layout-grid-section-and-overflow--responsive-composition&viewMode=story'
+const formOverviewStory = '/iframe.html?id=forms-field-and-form-composition--overview&viewMode=story'
+const asyncValidationStory = '/iframe.html?id=forms-field-and-form-composition--async-validation&viewMode=story'
+const submissionWorkflowStory = '/iframe.html?id=forms-field-and-form-composition--submission-workflow&viewMode=story'
 
 test('public story keeps keyboard, focus, console, and responsive contracts', async ({ page }) => {
   const browserErrors: string[] = []
@@ -507,6 +510,88 @@ test('grid recipes reflow by container and bound intrinsic overflow', async ({ p
     expect(measurements.scrollWidth).toBeGreaterThan(measurements.clientWidth)
     await page.keyboard.press('ArrowRight')
     await expect.poll(() => overflow.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0)
+  })
+
+  expect(browserErrors).toEqual([])
+})
+
+test('canonical forms keep association, validation, submission, and mobile action contracts', async ({ page }) => {
+  const browserErrors: string[] = []
+  page.on('console', (message) => {
+    if (message.type() === 'error') browserErrors.push(`console: ${message.text()}`)
+  })
+  page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
+  page.on('requestfailed', (request) => {
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+  })
+
+  for (const width of responsiveWidths) {
+    await test.step(`${width}px form composition remains contained`, async () => {
+      await page.setViewportSize({ width, height: 1000 })
+      await page.goto(formOverviewStory, { waitUntil: 'networkidle' })
+      await expect(page.getByRole('heading', { name: 'One form language for every builder' })).toBeVisible()
+      const dimensions = await page.evaluate(() => ({
+        clientWidth: document.documentElement.clientWidth,
+        scrollWidth: document.documentElement.scrollWidth,
+      }))
+      expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth)
+    })
+  }
+
+  await test.step('real controls own their mechanical label and message associations', async () => {
+    await page.setViewportSize({ width: 1024, height: 1000 })
+    await page.goto(formOverviewStory, { waitUntil: 'networkidle' })
+    const workspaceName = page.getByRole('textbox', { name: 'Workspace name' })
+    await page.getByText('Workspace name', { exact: true }).click()
+    await expect(workspaceName).toBeFocused()
+    await expect(workspaceName).toHaveAttribute('required', '')
+
+    const descriptionId = await page.getByText('Shown in page chrome and plugin-contributed sections.').getAttribute('id')
+    expect((await workspaceName.getAttribute('aria-describedby'))?.split(' ')).toContain(descriptionId)
+
+    const domain = page.getByRole('textbox', { name: 'Public asset domain' })
+    const domainErrorId = await page.getByText('Enter a valid hostname without spaces.').getAttribute('id')
+    await expect(domain).toHaveAttribute('aria-invalid', 'true')
+    expect((await domain.getAttribute('aria-describedby'))?.split(' ')).toContain(domainErrorId)
+    await expect(page.getByRole('group', { name: 'Contribution settings' })).toHaveAttribute('aria-describedby', /.+/)
+  })
+
+  await test.step('mobile actions stack into full-width controls', async () => {
+    await page.setViewportSize({ width: 320, height: 900 })
+    await page.goto(formOverviewStory, { waitUntil: 'networkidle' })
+    const actions = page.getByRole('form', { name: 'Workspace settings specimen' }).locator('[data-slot="form-actions"]')
+    const cancel = actions.getByRole('button', { name: 'Cancel' })
+    const save = actions.getByRole('button', { name: 'Save settings' })
+    expect(await actions.evaluate((element) => getComputedStyle(element).flexDirection)).toBe('column')
+    expect(Math.round((await cancel.boundingBox())?.width ?? 0)).toBe(Math.round((await actions.boundingBox())?.width ?? -1))
+    expect(Math.round((await save.boundingBox())?.width ?? 0)).toBe(Math.round((await actions.boundingBox())?.width ?? -1))
+  })
+
+  await test.step('async validation announces and clears its field-level error', async () => {
+    await page.setViewportSize({ width: 720, height: 900 })
+    await page.goto(asyncValidationStory, { waitUntil: 'networkidle' })
+    const slug = page.getByRole('textbox', { name: 'Plugin slug' })
+    await slug.fill('workflow-tools')
+    await slug.press('Tab')
+    await expect(page.getByRole('alert')).toHaveText('Use a plugin- prefix.')
+    await expect(slug).toHaveAttribute('aria-invalid', 'true')
+    await slug.fill('plugin-workflow-tools')
+    await slug.press('Tab')
+    await expect(page.getByText('Use a plugin- prefix.')).toBeHidden()
+  })
+
+  await test.step('server failure returns to the field and a later submission succeeds', async () => {
+    await page.goto(submissionWorkflowStory, { waitUntil: 'networkidle' })
+    const slug = page.getByRole('textbox', { name: 'Plugin slug' })
+    await slug.fill('plugin-existing')
+    await page.getByRole('button', { name: 'Register plugin' }).click()
+    await expect(page.getByRole('button', { name: 'Registering plugin' })).toBeDisabled()
+    await expect(page.getByText('This plugin slug is already registered.')).toBeVisible()
+    await expect(slug).toHaveAttribute('aria-invalid', 'true')
+
+    await slug.fill('plugin-routing-tools')
+    await page.getByRole('button', { name: 'Register plugin' }).click()
+    await expect(page.getByRole('status')).toContainText('Plugin registered')
   })
 
   expect(browserErrors).toEqual([])

@@ -11,7 +11,7 @@ export {
   Form,
   FormActions,
   SubmitButton,
-} from '../../../packages/host/src/ui/forms'
+} from '@bakin/ui'
 export type {
   FieldControlProps,
   FieldDescriptionProps,
@@ -28,4 +28,4 @@ export type {
   FormActionsProps,
   FormProps,
   SubmitButtonProps,
-} from '../../../packages/host/src/ui/forms'
+} from '@bakin/ui'
