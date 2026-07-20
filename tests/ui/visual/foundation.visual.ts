@@ -383,3 +383,33 @@ test('public horizontal workflow recipe visual baseline', async ({ page }) => {
     fullPage: true,
   })
 })
+
+test('public retryable save pattern visual baseline', async ({ page }) => {
+  await page.goto('/iframe.html?id=patterns-destructive-and-dirty-state--save-failure&viewMode=story')
+  await expect(page.getByRole('heading', { level: 1, name: 'Keep a failed draft actionable' })).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Unsaved changes' })).toHaveAttribute('data-savebar-state', 'error')
+  await expect(page.getByRole('button', { name: 'Retry save' })).toBeVisible()
+  await page.evaluate(async () => document.fonts.ready)
+  await expect(page).toHaveScreenshot('foundation-save-failure.png', {
+    animations: 'disabled',
+    caret: 'hide',
+    fullPage: true,
+  })
+})
+
+test('public typed confirmation pattern visual baseline', async ({ page }) => {
+  await page.goto('/iframe.html?id=patterns-destructive-and-dirty-state--typed-confirmation&viewMode=story')
+  const dialog = page.getByRole('dialog', { name: 'Delete archived workflow?' })
+  if (!await dialog.isVisible()) {
+    await page.getByRole('button', { name: 'Delete archived workflow' }).click()
+  }
+  await expect(dialog).toBeVisible()
+  await page.getByLabel(/Type launch-publishing to confirm/).fill('launch')
+  await expect(dialog.getByRole('button', { name: 'Delete workflow' })).toBeDisabled()
+  await page.evaluate(async () => document.fonts.ready)
+  await expect(page).toHaveScreenshot('foundation-typed-confirmation.png', {
+    animations: 'disabled',
+    caret: 'hide',
+    fullPage: true,
+  })
+})

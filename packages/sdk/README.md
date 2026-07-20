@@ -169,6 +169,13 @@ drawers, or URL state. Use the existing routing contract for linkable selected
 nodes and view modes, and provide named non-drag actions for required graph
 operations.
 
+Consequential actions and staged drafts use `ConfirmDialog`, `DangerZone`,
+`SaveBar`, and `UnsavedChangesDialog` from `@makinbakin/sdk/patterns`.
+Consumers retain mutation, dirty, persistence, retry, and routing behavior;
+the patterns provide typed confirmation, busy/error presentation, responsive
+action placement, and the save/discard/stay decision. Keep normal links and
+query-only state changes on the existing SDK router contract.
+
 ## Stylesheet
 
 Bakin loads one shared copy of `@makinbakin/sdk/styles.css` for the host and all

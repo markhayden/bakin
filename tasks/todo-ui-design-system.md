@@ -66,7 +66,7 @@ comparison, and deletion of replaced styling/allowances.
 - [x] T30c Implement conversation and inspector archetype recipes
 - [x] T30d Implement workflow and action archetype recipes
 - [ ] Checkpoint 3C: layout/forms/states/archetypes reviewed
-- [ ] T31 Migrate destructive, dirty, and confirmation patterns
+- [x] T31 Migrate destructive, dirty, and confirmation patterns
 - [ ] T32a Migrate filters, segmented navigation, tabs, and sorting patterns
 - [ ] T32b Migrate status and metric patterns
 - [ ] T33a Migrate chart data tables, palette, and sparkline

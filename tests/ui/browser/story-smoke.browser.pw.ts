@@ -31,6 +31,9 @@ const verticalWorkflowStory = '/iframe.html?id=patterns-workflow-and-action-page
 const horizontalWorkflowStory = '/iframe.html?id=patterns-workflow-and-action-pages--horizontal-workflow&viewMode=story'
 const reviewActionStory = '/iframe.html?id=patterns-workflow-and-action-pages--review-action&viewMode=story'
 const workflowUnavailableStory = '/iframe.html?id=patterns-workflow-and-action-pages--workflow-unavailable&viewMode=story'
+const saveFailureStory = '/iframe.html?id=patterns-destructive-and-dirty-state--save-failure&viewMode=story'
+const typedConfirmationStory = '/iframe.html?id=patterns-destructive-and-dirty-state--typed-confirmation&viewMode=story'
+const unsavedExitStory = '/iframe.html?id=patterns-destructive-and-dirty-state--unsaved-exit-decision&viewMode=story'
 
 test('public story keeps keyboard, focus, console, and responsive contracts', async ({ page }) => {
   const browserErrors: string[] = []
@@ -972,6 +975,87 @@ test('workflow and action recipes preserve real graph interaction, bounded overf
     const canvas = page.getByRole('region', { name: 'Vertical launch publishing workflow canvas' })
     const canvasDimensions = await canvas.evaluate((element) => ({ clientWidth: element.clientWidth, scrollWidth: element.scrollWidth }))
     expect(canvasDimensions.scrollWidth).toBeGreaterThan(canvasDimensions.clientWidth)
+  })
+
+  expect(browserErrors).toEqual([])
+})
+
+test('destructive and dirty-state patterns preserve focus, exact intent, and mobile action order', async ({ page }) => {
+  const browserErrors: string[] = []
+  page.on('console', (message) => {
+    if (message.type() === 'error') browserErrors.push(`console: ${message.text()}`)
+  })
+  page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
+  page.on('requestfailed', (request) => {
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+  })
+
+  for (const width of responsiveWidths) {
+    await test.step(`retryable save remains contained at ${width}px`, async () => {
+      await page.setViewportSize({ width, height: 900 })
+      await page.goto(saveFailureStory, { waitUntil: 'networkidle' })
+      const saveBar = page.getByRole('region', { name: 'Unsaved changes' })
+      await expect(saveBar).toHaveAttribute('data-savebar-state', 'error')
+      await expect(saveBar.getByRole('alert')).toContainText('last published definition is still active')
+      const dimensions = await page.evaluate(() => ({
+        clientWidth: document.documentElement.clientWidth,
+        scrollWidth: document.documentElement.scrollWidth,
+      }))
+      expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth)
+    })
+  }
+
+  await test.step('narrow save actions stack full width without changing keyboard order', async () => {
+    await page.setViewportSize({ width: 320, height: 900 })
+    await page.goto(saveFailureStory, { waitUntil: 'networkidle' })
+    const actions = page.getByRole('group', { name: 'Draft actions' })
+    const discard = actions.getByRole('button', { name: 'Discard' })
+    const retry = actions.getByRole('button', { name: 'Retry save' })
+    await expect(discard).toBeVisible()
+    await expect(retry).toBeVisible()
+    expect((await discard.boundingBox())?.width).toBe((await retry.boundingBox())?.width)
+    expect(await actions.getByRole('button').allTextContents()).toEqual(['Discard', 'Retry save'])
+  })
+
+  await test.step('typed confirmation requires an exact value and returns focus on cancel', async () => {
+    await page.setViewportSize({ width: 1024, height: 800 })
+    await page.goto(typedConfirmationStory, { waitUntil: 'networkidle' })
+    const trigger = page.getByRole('button', { name: 'Delete archived workflow' })
+    let dialog = page.getByRole('dialog', { name: 'Delete archived workflow?' })
+    if (await dialog.isVisible()) {
+      await page.keyboard.press('Escape')
+      await expect(dialog).toBeHidden()
+    }
+    await trigger.click()
+    dialog = page.getByRole('dialog', { name: 'Delete archived workflow?' })
+    const input = dialog.getByLabel(/Type launch-publishing to confirm/)
+    await expect(input).toBeFocused()
+    await input.fill('Launch-publishing')
+    await expect(dialog.getByRole('button', { name: 'Delete workflow' })).toBeDisabled()
+    await input.fill('launch-publishing')
+    await expect(dialog.getByRole('button', { name: 'Delete workflow' })).toBeEnabled()
+    await page.keyboard.press('Escape')
+    await expect(dialog).toBeHidden()
+    await expect(trigger).toBeFocused()
+  })
+
+  await test.step('unsaved exit keeps save, cancel, and discard as distinct decisions', async () => {
+    await page.setViewportSize({ width: 320, height: 800 })
+    await page.goto(unsavedExitStory, { waitUntil: 'networkidle' })
+    const trigger = page.getByRole('button', { name: 'Leave settings' })
+    let dialog = page.getByRole('dialog', { name: 'Unsaved changes' })
+    if (await dialog.isVisible()) {
+      await page.keyboard.press('Escape')
+      await expect(dialog).toBeHidden()
+    }
+    await trigger.click()
+    dialog = page.getByRole('dialog', { name: 'Unsaved changes' })
+    await expect(dialog.getByRole('button', { name: 'Save and exit' })).toBeVisible()
+    await expect(dialog.getByRole('button', { name: 'Cancel' })).toBeVisible()
+    await expect(dialog.getByRole('button', { name: 'Discard changes' })).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(dialog).toBeHidden()
+    await expect(trigger).toBeFocused()
   })
 
   expect(browserErrors).toEqual([])

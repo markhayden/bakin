@@ -2,15 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from 'react'
 import { useRouter as useTanStackRouter, type HistoryLocation } from '@tanstack/react-router'
-import { Button } from '@/components/ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { UnsavedChangesDialog, type UnsavedChangesDialogProps } from '@bakin/ui/patterns'
 
 type RouteNavigationBlocker =
   | { status: 'idle' }
@@ -34,7 +26,11 @@ export interface UnsavedChangesGuardOptions {
   /** Dialog copy overrides — defaults are surface-neutral. */
   title?: ReactNode
   description?: ReactNode
+  /** Retryable save error retained inside the exit decision. */
+  error?: ReactNode
   saveLabel?: string
+  /** Focus destination after an explicit controlled exit prompt closes. */
+  finalFocus?: UnsavedChangesDialogProps['finalFocus']
 }
 
 /**
@@ -55,7 +51,9 @@ export function useUnsavedChangesGuard({
   onDiscardAndExit,
   title = 'Unsaved changes',
   description = 'You have unsaved changes. Save them before leaving, discard them, or stay here.',
+  error,
   saveLabel = 'Save and exit',
+  finalFocus,
 }: UnsavedChangesGuardOptions): { requestExit: () => void; reset: () => void; dialog: ReactNode } {
   const [routeBlocker, setRouteBlocker] = useState<RouteNavigationBlocker>({ status: 'idle' })
   const [confirmingExit, setConfirmingExit] = useState(false)
@@ -152,6 +150,8 @@ export function useUnsavedChangesGuard({
   }
 
   function reset() {
+    if (routeBlocker.status === 'blocked') routeBlocker.reset()
+    setRouteBlocker({ status: 'idle' })
     setConfirmingExit(false)
     setPendingNavigationHref(null)
   }
@@ -170,45 +170,20 @@ export function useUnsavedChangesGuard({
   }
 
   const dialog = (
-    <Dialog
+    <UnsavedChangesDialog
       open={confirmingExit || routeBlocker.status === 'blocked'}
-      onOpenChange={(open) => {
-        if (!open && !saving) cancelExitPrompt()
-      }}
-    >
-      <DialogContent className="bg-card border-border sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>{description}</DialogDescription>
-        </DialogHeader>
-        <DialogFooter className="gap-2 sm:justify-between">
-          <Button
-            variant="destructive"
-            onClick={handleDiscardAndExit}
-            disabled={saving}
-          >
-            Discard changes
-          </Button>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              onClick={cancelExitPrompt}
-              disabled={saving}
-            >
-              Cancel
-            </Button>
-            {canSaveInPlace && (
-              <Button
-                onClick={handleSaveAndExit}
-                disabled={saving || saveDisabled}
-              >
-                {saving ? 'Saving...' : saveLabel}
-              </Button>
-            )}
-          </div>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      busy={saving}
+      canSaveInPlace={canSaveInPlace}
+      saveDisabled={saveDisabled}
+      title={title}
+      description={description}
+      error={error}
+      saveLabel={saveLabel}
+      finalFocus={finalFocus}
+      onSave={() => { void handleSaveAndExit() }}
+      onDiscard={handleDiscardAndExit}
+      onCancel={cancelExitPrompt}
+    />
   )
 
   return { requestExit, reset, dialog }

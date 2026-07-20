@@ -32,6 +32,10 @@ export {
   WorkflowPageBody,
   WorkflowPageCanvas,
   WorkflowPageToolbar,
+  ConfirmDialog,
+  DangerZone,
+  SaveBar,
+  UnsavedChangesDialog,
 } from '@bakin/ui/patterns'
 export type {
   ConversationPageBodyProps,
@@ -73,4 +77,11 @@ export type {
   WorkflowPageProps,
   WorkflowPageToolbarProps,
   WorkflowPageWidth,
+  ConfirmDialogCancelVariant,
+  ConfirmDialogProps,
+  ConfirmDialogTone,
+  DangerZoneHeadingLevel,
+  DangerZoneProps,
+  SaveBarProps,
+  UnsavedChangesDialogProps,
 } from '@bakin/ui/patterns'

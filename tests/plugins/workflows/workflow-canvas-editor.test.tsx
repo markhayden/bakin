@@ -943,6 +943,46 @@ describe('WorkflowCanvasEditor', () => {
     expect(shouldBlockRoute).toBe(true)
   })
 
+  it('resolves a pending route blocker when a newly seeded workflow resets the guard', async () => {
+    const { rerender } = render(
+      <WorkflowCanvasEditor
+        mode="edit"
+        initialId="video-script"
+        initialDefinition={sampleDefinition}
+        source="user"
+      />,
+    )
+
+    fireEvent.click(screen.getByTestId('insert-review-__append'))
+    await waitFor(() => expect(latestHistoryBlock).not.toBeNull())
+
+    let routeDecision!: Promise<boolean>
+    await act(async () => {
+      routeDecision = latestHistoryBlock!.blockerFn({
+        action: 'PUSH',
+        currentLocation: { pathname: '/workflows/video-script/edit' },
+        nextLocation: { pathname: '/workflows' },
+      })
+    })
+    expect(await screen.findByRole('dialog')).toBeDefined()
+
+    rerender(
+      <WorkflowCanvasEditor
+        mode="edit"
+        initialId="video-script-copy"
+        initialDefinition={{ ...sampleDefinition, id: 'video-script-copy', name: 'Video Script Copy' }}
+        source="user"
+      />,
+    )
+
+    let shouldBlockRoute = false
+    await act(async () => {
+      shouldBlockRoute = await routeDecision
+    })
+    expect(shouldBlockRoute).toBe(true)
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+  })
+
   it('shows a managed-workflow modal when editing a plugin-owned workflow', () => {
     const onCancel = mock()
     render(

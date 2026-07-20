@@ -87,3 +87,22 @@ export type {
   WorkflowPageToolbarProps,
   WorkflowPageWidth,
 } from './workflow-page'
+
+export { ConfirmDialog } from './confirm-dialog'
+export type {
+  ConfirmDialogCancelVariant,
+  ConfirmDialogProps,
+  ConfirmDialogTone,
+} from './confirm-dialog'
+
+export { SaveBar } from './save-bar'
+export type { SaveBarProps } from './save-bar'
+
+export { DangerZone } from './danger-zone'
+export type {
+  DangerZoneHeadingLevel,
+  DangerZoneProps,
+} from './danger-zone'
+
+export { UnsavedChangesDialog } from './unsaved-changes-dialog'
+export type { UnsavedChangesDialogProps } from './unsaved-changes-dialog'

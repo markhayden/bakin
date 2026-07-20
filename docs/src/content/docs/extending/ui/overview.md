@@ -292,6 +292,55 @@ The existing routing contract remains authoritative. Paths identify workflow pag
 
 Use `state` when no usable workspace can be rendered; it replaces the body while preserving `PageHeader`. Keep a usable graph visible during saves, refreshes, review outcomes, or partial failures with `busy` and `feedback`. `contained` mode is only for a parent that supplies a deliberate available block size; it does not create a second document scroller.
 
+## Destructive and Dirty-State Recipe
+
+Use the focused patterns entrypoint for consequential actions and staged drafts:
+
+| Need | Component | Contract |
+| --- | --- | --- |
+| Confirm one consequential action | `ConfirmDialog` | Caller owns open, busy, error, retry, and mutation state; use `confirmValue` only when an exact typed value is warranted |
+| Keep a staged draft actionable | `SaveBar` | Caller owns dirty comparison, persistence, and discard; the pattern supplies dirty, saving, retryable error, and brief saved presentation |
+| Separate irreversible settings | `DangerZone` | Place after routine settings, state the consequence in words, and route through the same typed `ConfirmDialog` engine |
+| Resolve navigation with a dirty draft | `UnsavedChangesDialog` | Presentation-only save, discard, and stay decision; a router-aware consumer decides when it opens and what continuation means |
+
+```tsx
+import { ConfirmDialog, SaveBar } from '@makinbakin/sdk/patterns'
+
+export function WorkflowDraft({ dirty, saving, error, save, discard }) {
+  return (
+    <>
+      {/* Consumer-owned workflow fields */}
+      <SaveBar
+        dirty={dirty}
+        saving={saving}
+        error={error}
+        onSave={save}
+        onDiscard={discard}
+      >
+        3 fields changed
+      </SaveBar>
+      <ConfirmDialog
+        open={false}
+        title="Delete archived workflow?"
+        description="This permanently deletes the definition and run history."
+        confirmLabel="Delete workflow"
+        confirmValue="launch-publishing"
+        onConfirm={() => {}}
+        onCancel={() => {}}
+      />
+    </>
+  )
+}
+```
+
+SaveBar is the one page-level save/discard boundary for a staged draft. Do not repeat the same save action in `PageHeader`, `FormActions`, or a sticky footer. Its DOM keeps the secondary action before the primary action; its responsive layout stacks full-width actions at narrow container widths without changing keyboard order. Keep a failed draft dirty, pass the durable error back to `error`, and let the same primary action become **Retry save**. Set `saving` while the request is in flight, then clear `dirty` only after persistence succeeds so the saved acknowledgement is truthful.
+
+ConfirmDialog and DangerZone do not call APIs, remove records, close after success, or invent rollback. The consumer keeps the dialog open with `busy`, retains retryable failures in `error`, and closes it when the operation actually succeeds. Typed confirmation is exact and case-sensitive. Use it for genuinely difficult-to-recover actions, not routine archive, disable, or remove-from-view operations. DangerZone adds a visible non-color warning signal and supports heading levels 2–4 so it can preserve the surrounding page hierarchy. When an external button controls `ConfirmDialog` or `UnsavedChangesDialog`, pass that button's ref to `finalFocus`; DangerZone wires its own trigger automatically.
+
+The recent routing work remains authoritative; these presentation patterns do not recreate it. Paths identify pages. Query parameters hold overlay, tab, filter, selection, and other meaningful view state. `useUnsavedChangesGuard` remains the compatibility behavior layer for browser unload, TanStack history, and raw same-origin anchors. It deliberately allows query-only changes on the current pathname and must keep those changes inside the SPA router.
+
+There is one pinned exception to the no-hard-navigation rule: after the user explicitly confirms an intercepted raw same-origin anchor, the guard may continue that exact href with `window.location.assign`. Do not widen that exception or use it for ordinary links. Use `PluginLink`, `useRouter()`, and the existing query-state hooks for normal navigation. `useUnsavedGuard(dirty)` covers only browser close/reload; it is not a replacement for the router-aware guard.
+
 ## Action and Status Primitives
 
 The first supported primitive set covers actions, compact state, contextual messages, and measurable work:

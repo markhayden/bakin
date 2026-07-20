@@ -349,6 +349,10 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 | `WorkflowPageBody` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `WorkflowPageCanvas` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `WorkflowPageToolbar` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `ConfirmDialog` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `DangerZone` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `SaveBar` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `UnsavedChangesDialog` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `ConversationPageBodyProps` | — |
 | `ConversationPageComposerProps` | — |
 | `ConversationPageMode` | — |
@@ -388,6 +392,13 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 | `WorkflowPageProps` | — |
 | `WorkflowPageToolbarProps` | — |
 | `WorkflowPageWidth` | — |
+| `ConfirmDialogCancelVariant` | — |
+| `ConfirmDialogProps` | — |
+| `ConfirmDialogTone` | — |
+| `DangerZoneHeadingLevel` | — |
+| `DangerZoneProps` | — |
+| `SaveBarProps` | — |
+| `UnsavedChangesDialogProps` | — |
 
 ## `@makinbakin/sdk/charts`
 

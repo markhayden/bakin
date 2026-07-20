@@ -1110,6 +1110,31 @@ archetypes share a task.\
 **Description:** Rebuild ConfirmDialog, SaveBar/unsaved guards, and DangerZone
 on the canonical primitives while preserving the shipped router behavior.
 
+**Status — T31 (2026-07-20):** Complete. `ConfirmDialog`, `SaveBar`,
+`DangerZone`, and the presentation-only `UnsavedChangesDialog` now live in the
+focused patterns entrypoint; the existing host imports remain compatibility
+re-exports. Exact typed intent, busy/error/retry feedback, saved announcements,
+consequence-first danger content, non-color signals, responsive action order,
+and controlled-dialog focus return are canonical. The host guard still owns
+browser and TanStack Router integration: same-path query changes remain
+unblocked, ordinary internal transitions remain SPA navigation, and the recent
+routing work's explicitly confirmed raw-anchor continuation remains the one
+pinned hard-navigation exception. A newly seeded workflow now resolves any
+pending blocker before clearing the guard. Five public stories cover typed
+confirmation, save failure/retry, consequence-first danger, and the three-way
+unsaved-exit decision. Seventy-five focused pattern, architecture, routing,
+compatibility, Brand, and Workflow tests pass in isolated Bun processes; all 86
+public Storybook interaction/axe cases, 54 exact desktop/mobile visual cases,
+and all 48 Chromium/Firefox/WebKit browser cases pass. The combined docs build
+publishes all 86 stories, 48-page validation and typed route-contract checks
+pass, deterministic Storybook output passes, and typecheck/lint are clean of
+errors. Canonical CSS is 295,728 bytes (+713 from T30d), initial host JS remains
+457,006 bytes, and one shared CSS copy remains. Adding the dialog stack changes
+the split patterns artifact to 1,110 bytes direct / 201,800 reachable and raises
+all shared SDK chunks by 22,511 bytes raw; the measured ratchet is updated with
+no chart or conversation dependency entering the focused UI paths. No official
+page or plugin migration is included in T31.
+
 **Acceptance:** typed confirmation, busy/error/retry, browser/router navigation
 guards, and mobile action placement pass; no hard navigation is introduced.
 

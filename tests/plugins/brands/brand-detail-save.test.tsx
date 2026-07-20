@@ -173,7 +173,7 @@ describe('BrandDetail staged save model', () => {
     await waitFor(() => expect(screen.getByText(/changed while you were editing/)).toBeDefined())
     expect(putCalls.length).toBe(0) // held — never a silent overwrite
 
-    fireEvent.click(screen.getByRole('button', { name: 'Save brand' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Retry save' }))
     await waitFor(() => expect(putCalls.length).toBe(1)) // deliberate overwrite
     await settleReact()
   })
