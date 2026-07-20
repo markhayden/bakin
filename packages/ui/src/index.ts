@@ -7,6 +7,20 @@
 export { PrivateUiBoundaryProbe } from './private-ui-boundary-probe'
 export type { PrivateUiBoundaryProbeProps } from './private-ui-boundary-probe'
 
+export { PageShell } from './layout/page-shell'
+export type { PageShellGap, PageShellPadding, PageShellProps, PageShellWidth } from './layout/page-shell'
+
+export { Inline, Stack } from './layout/flow'
+export type {
+  InlineAlign,
+  InlineJustify,
+  InlineProps,
+  LayoutElement,
+  LayoutGap,
+  StackAlign,
+  StackProps,
+} from './layout/flow'
+
 export { Button, buttonVariants } from './primitives/button'
 export type {
   ButtonProps,

@@ -233,3 +233,13 @@ test('public Command visual baseline', async ({ page }) => {
   expect(browserErrors).toEqual([])
   await expect(page).toHaveScreenshot('foundation-command.png')
 })
+
+test('public PageShell and flow visual baseline', async ({ page }) => {
+  await page.goto('/iframe.html?id=layout-pageshell-and-flow--responsive-page&viewMode=story')
+  await expect(page.getByRole('heading', { name: 'Coordinate active work' })).toBeVisible()
+  await expect(page).toHaveScreenshot('foundation-layout-flow.png', {
+    animations: 'disabled',
+    caret: 'hide',
+    fullPage: true,
+  })
+})

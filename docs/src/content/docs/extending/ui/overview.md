@@ -22,6 +22,48 @@ Start with the focused visual SDK entrypoints: `@makinbakin/sdk/ui`, `@makinbaki
 
 Do not copy host components into a plugin. If the same need recurs across official or third-party plugins, propose it as an SDK contract with its public story, interaction test, accessibility coverage, and responsive states.
 
+## Page and Flow Layout
+
+Use `PageShell`, `Stack`, and `Inline` from `@makinbakin/sdk/layout` for routine page composition. They expose finite semantic choices instead of host Tailwind classes:
+
+| Need | Component | Contract |
+| --- | --- | --- |
+| Bound a routable page inside Bakin's existing main landmark | `PageShell` | Choose `width="content"`, `"wide"`, or `"full"`; insets respond to the available container |
+| Establish vertical rhythm | `Stack` | Choose a named `gap` and optional cross-axis `align` |
+| Arrange peer content or actions | `Inline` | Wraps by default; choose named `gap`, `align`, and `justify` values |
+
+```tsx
+import { Inline, PageShell, Stack } from '@makinbakin/sdk/layout'
+import { Button } from '@makinbakin/sdk/ui'
+
+export function TasksPage() {
+  return (
+    <PageShell width="wide">
+      <Inline as="header" align="start" justify="between" gap="section">
+        <Stack gap="dense">
+          <p>Tasks / live operations</p>
+          <h1>Coordinate active work</h1>
+          <p>Keep owners, timing, and operational context visible.</p>
+        </Stack>
+        <Inline as="nav" aria-label="Page actions" gap="dense">
+          <Button variant="outline">Export view</Button>
+          <Button>New task</Button>
+        </Inline>
+      </Inline>
+
+      <Stack as="section" gap="section" aria-labelledby="active-tasks-title">
+        <h2 id="active-tasks-title">Active tasks</h2>
+        {/* Domain content */}
+      </Stack>
+    </PageShell>
+  )
+}
+```
+
+`PageShell` renders a `div` because the host already owns the page's `main` landmark. Its default `wide` width, `default` padding, and `page` gap suit most index and overview pages. Use `content` for reading and form flows, `full` for a bounded internal canvas, `compact` padding for evidence-backed dense work, and `none` only when another supported recipe owns every inset.
+
+The shared gap vocabulary is `none`, `dense`, `item`, `section`, and `page`. Prefer the default `Inline` wrapping behavior so actions and metadata remain available at 320px. Set `wrap={false}` only inside a deliberately bounded region whose owning recipe supplies reflow or internal scrolling. The `as` prop changes semantics among the supported wrappers; it does not alter layout styling.
+
 ## Action and Status Primitives
 
 The first supported primitive set covers actions, compact state, contextual messages, and measurable work:

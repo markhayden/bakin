@@ -1,8 +1,21 @@
 /**
  * `@makinbakin/sdk/layout` — canonical page and responsive composition.
  *
- * The entrypoint is public now so its package and runtime identity are stable;
- * T27 adds the first owned layout exports. Do not add compatibility re-exports
- * from the legacy components barrel.
+ * This focused entrypoint contains finite, semantic layout choices. Generated
+ * implementation classes are private and the legacy components barrel does
+ * not receive compatibility re-exports.
  */
-export {}
+export { Inline, PageShell, Stack } from '@bakin/ui/layout'
+export type {
+  InlineAlign,
+  InlineJustify,
+  InlineProps,
+  LayoutElement,
+  LayoutGap,
+  PageShellGap,
+  PageShellPadding,
+  PageShellProps,
+  PageShellWidth,
+  StackAlign,
+  StackProps,
+} from '@bakin/ui/layout'

@@ -11,7 +11,7 @@
   },
   "css": {
     "canonicalPath": "packages/sdk/styles.css",
-    "canonicalBytes": 282530,
+    "canonicalBytes": 283522,
     "copyCount": 1,
     "copyPaths": [
       "packages/sdk/styles.css"
@@ -43,8 +43,8 @@
     {
       "name": "sdk-layout",
       "path": "packages/host/public/vendor/sdk-layout.js",
-      "bytes": 0,
-      "reachableBytes": 0
+      "bytes": 1685,
+      "reachableBytes": 2439
     },
     {
       "name": "sdk-patterns",
@@ -102,7 +102,7 @@
     },
     {
       "path": "packages/host/public/vendor/sdk-layout.js",
-      "bytes": 0
+      "bytes": 1685
     },
     {
       "path": "packages/host/public/vendor/sdk-metadata.js",
@@ -123,10 +123,6 @@
     {
       "path": "packages/host/public/vendor/sdk-shared-535693s3.js",
       "bytes": 754
-    },
-    {
-      "path": "packages/host/public/vendor/sdk-shared-a4zx5n0r.js",
-      "bytes": 366297
     },
     {
       "path": "packages/host/public/vendor/sdk-shared-adwgbkn0.js",
@@ -151,6 +147,10 @@
     {
       "path": "packages/host/public/vendor/sdk-shared-qpt1qr5v.js",
       "bytes": 29447
+    },
+    {
+      "path": "packages/host/public/vendor/sdk-shared-rz231ppk.js",
+      "bytes": 366297
     },
     {
       "path": "packages/host/public/vendor/sdk-slots.js",

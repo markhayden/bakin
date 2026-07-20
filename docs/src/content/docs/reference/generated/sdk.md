@@ -288,7 +288,22 @@ Available: `Alert`, `AlertAction`, `AlertDescription`, `AlertTitle`, `alertVaria
 
 Canonical page and responsive composition. Source: `packages/sdk/src/layout/index.ts`.
 
-The boundary is established; public exports arrive with its owned component migration.
+| Export | Description |
+| --- | --- |
+| `Inline` | `@makinbakin/sdk/layout` — canonical page and responsive composition. |
+| `PageShell` | `@makinbakin/sdk/layout` — canonical page and responsive composition. |
+| `Stack` | `@makinbakin/sdk/layout` — canonical page and responsive composition. |
+| `InlineAlign` | — |
+| `InlineJustify` | — |
+| `InlineProps` | — |
+| `LayoutElement` | — |
+| `LayoutGap` | — |
+| `PageShellGap` | — |
+| `PageShellPadding` | — |
+| `PageShellProps` | — |
+| `PageShellWidth` | — |
+| `StackAlign` | — |
+| `StackProps` | — |
 
 ## `@makinbakin/sdk/patterns`
 

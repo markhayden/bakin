@@ -864,6 +864,23 @@ containment preflight.
 **Description:** Implement PageShell, Stack, Inline, responsive Grid, Section,
 and BoundedOverflow from census evidence.
 
+**T27a status (2026-07-19):** Complete. `PageShell`, `Stack`, and `Inline` now
+ship through the focused `@makinbakin/sdk/layout` contract with finite content
+width, inset, rhythm, alignment, justification, wrapping, and semantic-element
+choices. PageShell is explicitly nested inside the host-owned `main` landmark,
+uses its own container for responsive insets, and defaults to wide Product
+Character page rhythm. Inline wraps by default so peer actions and metadata
+remain available at 320px. The private `@bakin/ui/layout` implementation
+subpath keeps layout isolated from the primitive barrel: its built entry is
+1,685 bytes and only 2,439 bytes reachable. Nine focused API/render tests, all
+57 public Storybook axe cases, 26 desktop/mobile visual baselines, and 24
+Chromium/Firefox/WebKit behavior cases pass, including exact 1024/720/480/320
+container padding and document-overflow checks. The canonical stylesheet grows
+by 992 bytes to 283,522; initial host JS remains 457,006 bytes and the focused
+SDK UI entry remains 29,306 bytes / 423,149 reachable. The author guide now
+defines the page/flow composition contract. No official surface migration is
+included in this slice.
+
 **Acceptance:** typed semantic props cover common official layouts without raw
 Tailwind; container behavior passes 1024/720/480/320; no generic layout DSL or
 arbitrary value prop is exposed.

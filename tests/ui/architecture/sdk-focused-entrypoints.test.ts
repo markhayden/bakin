@@ -9,7 +9,7 @@ import { SDK_EXTERNALS } from '../../../src/core/whiskit/externals'
 
 const REPO_ROOT = resolve(import.meta.dir, '../../..')
 const FOCUSED_SUBPATHS = ['ui', 'layout', 'patterns', 'charts', 'conversation'] as const
-const NEW_SUBPATHS = FOCUSED_SUBPATHS.filter((subpath) => subpath !== 'ui')
+const PENDING_SUBPATHS = ['patterns', 'charts', 'conversation'] as const
 
 function readJson(path: string): Record<string, any> {
   return JSON.parse(readFileSync(join(REPO_ROOT, path), 'utf8')) as Record<string, any>
@@ -49,7 +49,7 @@ describe('focused public SDK entrypoint contract', () => {
   })
 
   it('keeps new domain entrypoints empty until their owned migration tasks land', () => {
-    for (const subpath of NEW_SUBPATHS) {
+    for (const subpath of PENDING_SUBPATHS) {
       const source = readFileSync(join(REPO_ROOT, `packages/sdk/src/${subpath}/index.ts`), 'utf8')
       expect(source).toContain('export {}')
       expect(source).not.toMatch(/export\s+(?:\*|\{)[^}]*\bfrom\b/)

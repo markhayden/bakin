@@ -8,6 +8,7 @@ const textFieldsOverviewStory = '/iframe.html?id=foundation-text-fields--overvie
 const selectionOverviewStory = '/iframe.html?id=foundation-selection-controls--overview&viewMode=story'
 const modalOverviewStory = '/iframe.html?id=foundation-modal-and-side-overlays--overview&viewMode=story'
 const anchoredOverviewStory = '/iframe.html?id=foundation-anchored-overlays--overview&viewMode=story'
+const layoutFlowStory = '/iframe.html?id=layout-pageshell-and-flow--responsive-page&viewMode=story'
 
 test('public story keeps keyboard, focus, console, and responsive contracts', async ({ page }) => {
   const browserErrors: string[] = []
@@ -426,5 +427,44 @@ test('anchored overlays keep collision, keyboard, focus, and labelling contracts
     await expect(trigger).toBeFocused()
   })
 
+  expect(browserErrors).toEqual([])
+})
+
+test('page and flow layout follows its container without document overflow', async ({ page }) => {
+  const browserErrors: string[] = []
+  page.on('console', (message) => {
+    if (message.type() === 'error') browserErrors.push(`console: ${message.text()}`)
+  })
+  page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
+  page.on('requestfailed', (request) => {
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+  })
+
+  const expectedInlinePadding = new Map([[1024, 32], [720, 32], [480, 24], [320, 16]])
+  for (const width of responsiveWidths) {
+    await test.step(`${width}px page rhythm remains contained`, async () => {
+      await page.setViewportSize({ width, height: 900 })
+      await page.goto(layoutFlowStory, { waitUntil: 'networkidle' })
+      const shell = page.locator('[data-slot="page-shell"]')
+      const content = page.locator('[data-slot="page-shell-content"]')
+      await expect(page.getByRole('heading', { name: 'Coordinate active work' })).toBeVisible()
+      await expect(shell).toHaveAttribute('data-width', 'wide')
+
+      const measurements = await content.evaluate((element) => {
+        const styles = getComputedStyle(element)
+        return {
+          clientWidth: document.documentElement.clientWidth,
+          paddingInlineStart: Number.parseFloat(styles.paddingInlineStart),
+          right: element.getBoundingClientRect().right,
+          scrollWidth: document.documentElement.scrollWidth,
+        }
+      })
+      expect(measurements.scrollWidth).toBeLessThanOrEqual(measurements.clientWidth)
+      expect(measurements.right).toBeLessThanOrEqual(width)
+      expect(measurements.paddingInlineStart).toBe(expectedInlinePadding.get(width))
+    })
+  }
+
+  await expect(page.getByRole('navigation', { name: 'Page actions' })).toBeVisible()
   expect(browserErrors).toEqual([])
 })
