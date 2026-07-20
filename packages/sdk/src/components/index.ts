@@ -11,6 +11,7 @@
 export { AgentAvatar } from '@/components/agent-avatar'
 /** Multi-select facet filter scoped to agents. */
 export { AgentFilter } from '@/components/agent-filter'
+export type { AgentFilterProps } from '@/components/agent-filter'
 /** Single-agent (or team, #189) picker dropdown for form fields. */
 export { AgentSelect, TEAM_VALUE_PREFIX, isTeamValue, teamIdFromValue } from '@/components/agent-select'
 /** Small status dot showing an agent's online/offline state. */
@@ -65,7 +66,7 @@ export { ErrorBanner } from '@/components/error-banner'
 export { ErrorState } from '@/components/error-state'
 /** Popover multi-select facet filter (column, owner, tag, etc.). */
 export { FacetFilter } from '@/components/facet-filter'
-export type { FacetOption } from '@/components/facet-filter'
+export type { FacetFilterProps, FacetOption } from '@/components/facet-filter'
 /** Chat + plan-proposal review panel for brainstorm sessions. */
 // IntegratedBrainstorm was DELETED (2026-07): embedded conversation
 // surfaces compose ConversationPanel + useConversationStream instead
@@ -93,10 +94,10 @@ export type { PluginSettingsSchema } from '@/components/plugin-settings-renderer
 // client SSR bundling when re-exported through this barrel.
 /** Sortable table column header with ascending/descending indicator. */
 export { SortableHead } from '@/components/sortable-head'
-export type { SortDir } from '@/components/sortable-head'
+export type { SortableHeadProps, SortDir } from '@/components/sortable-head'
 /** Tab list with animated underline indicator. */
 export { UnderlineTabs } from '@/components/underline-tabs'
-export type { UnderlineTab } from '@/components/underline-tabs'
+export type { UnderlineTab, UnderlineTabsProps } from '@/components/underline-tabs'
 /** THE single renderer for normalized turn chunks (text/tool/status/error) — turn-output surfaces consume this, never hand-rolled format heuristics. */
 export { TurnOutputView, TurnToolChip, foldTurnChunks } from '@/components/turn-output-view'
 export type { TurnOutputViewProps, TurnToolChipState, TurnTextSegment, FoldedTurnOutput } from '@/components/turn-output-view'

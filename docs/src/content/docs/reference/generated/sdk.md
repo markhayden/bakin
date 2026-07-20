@@ -151,6 +151,7 @@ import { PluginHeader, FacetFilter, AgentAvatar } from '@makinbakin/sdk/componen
 | --- | --- |
 | `AgentAvatar` | Round avatar image for an agent, falls back to initials. |
 | `AgentFilter` | Multi-select facet filter scoped to agents. |
+| `AgentFilterProps` | — |
 | `AgentSelect` | Single-agent (or team, #189) picker dropdown for form fields. |
 | `TEAM_VALUE_PREFIX` | Single-agent (or team, #189) picker dropdown for form fields. |
 | `isTeamValue` | Single-agent (or team, #189) picker dropdown for form fields. |
@@ -193,6 +194,7 @@ import { PluginHeader, FacetFilter, AgentAvatar } from '@makinbakin/sdk/componen
 | `ErrorBanner` | Inline error banner with dismiss + retry actions. |
 | `ErrorState` | Full-page error state with title, description, and retry button. |
 | `FacetFilter` | Popover multi-select facet filter (column, owner, tag, etc.). |
+| `FacetFilterProps` | — |
 | `FacetOption` | — |
 | `MarkdownContent` | Render markdown content with syntax highlighting and link handling. |
 | `MarkdownEditor` | Editable markdown text area with preview toggle. |
@@ -205,9 +207,11 @@ import { PluginHeader, FacetFilter, AgentAvatar } from '@makinbakin/sdk/componen
 | `PluginSettingsRenderer` | Render a settings form from a PluginSettingsSchema definition. |
 | `PluginSettingsSchema` | — |
 | `SortableHead` | Sortable table column header with ascending/descending indicator. |
+| `SortableHeadProps` | — |
 | `SortDir` | — |
 | `UnderlineTabs` | Tab list with animated underline indicator. |
 | `UnderlineTab` | — |
+| `UnderlineTabsProps` | — |
 | `TurnOutputView` | THE single renderer for normalized turn chunks (text/tool/status/error) — turn-output surfaces consume this, never hand-rolled format heuristics. |
 | `TurnToolChip` | THE single renderer for normalized turn chunks (text/tool/status/error) — turn-output surfaces consume this, never hand-rolled format heuristics. |
 | `foldTurnChunks` | THE single renderer for normalized turn chunks (text/tool/status/error) — turn-output surfaces consume this, never hand-rolled format heuristics. |
@@ -351,7 +355,12 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 | `WorkflowPageToolbar` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `ConfirmDialog` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `DangerZone` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `FacetFilter` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `AgentFilter` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `SaveBar` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `SegmentedControl` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `SortableHead` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `UnderlineTabs` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `UnsavedChangesDialog` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `ConversationPageBodyProps` | — |
 | `ConversationPageComposerProps` | — |
@@ -397,7 +406,17 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 | `ConfirmDialogTone` | — |
 | `DangerZoneHeadingLevel` | — |
 | `DangerZoneProps` | — |
+| `FacetFilterProps` | — |
+| `FacetOption` | — |
+| `AgentFilterOption` | — |
+| `AgentFilterProps` | — |
 | `SaveBarProps` | — |
+| `SegmentedControlOption` | — |
+| `SegmentedControlProps` | — |
+| `SortableHeadProps` | — |
+| `SortDir` | — |
+| `UnderlineTab` | — |
+| `UnderlineTabsProps` | — |
 | `UnsavedChangesDialogProps` | — |
 
 ## `@makinbakin/sdk/charts`

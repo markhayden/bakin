@@ -97,7 +97,14 @@ describe('split SDK vendor build', () => {
     const ui = await import(join(outDir, 'sdk-ui.js'))
     expect(ui.Button).toBeDefined()
 
-    for (const name of ['layout', 'patterns', 'charts', 'conversation']) {
+    const layout = await import(join(outDir, 'sdk-layout.js'))
+    expect(layout.PageShell).toBeDefined()
+
+    const patterns = await import(join(outDir, 'sdk-patterns.js'))
+    expect(patterns.FacetFilter).toBeDefined()
+    expect(patterns.SegmentedControl).toBeDefined()
+
+    for (const name of ['charts', 'conversation']) {
       const focused = await import(join(outDir, `sdk-${name}.js`))
       expect(Object.keys(focused)).toEqual([])
     }

@@ -1,0 +1,40 @@
+import { describe, expect, it } from 'bun:test'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+
+const ROOT = resolve(import.meta.dir, '../../..')
+const read = (path: string) => readFileSync(resolve(ROOT, path), 'utf8')
+
+describe('canonical filter and navigation patterns', () => {
+  it('keeps generic presentation in the private UI package', () => {
+    const sources = [
+      'packages/ui/src/patterns/agent-filter.tsx',
+      'packages/ui/src/patterns/facet-filter.tsx',
+      'packages/ui/src/patterns/segmented-control.tsx',
+      'packages/ui/src/patterns/selection-navigation.ts',
+      'packages/ui/src/patterns/sortable-head.tsx',
+      'packages/ui/src/patterns/underline-tabs.tsx',
+    ].map(read).join('\n')
+    expect(sources).not.toMatch(/@\/|@makinbakin\/sdk|lucide-react|useQueryState|window\.|document\./)
+    expect(sources).not.toMatch(/(?:bg|text|border)-(?:red|yellow|green|blue|gray|zinc|slate)-/)
+  })
+
+  it('retains app-aware agent lookup only in the compatibility adapter', () => {
+    const adapter = read('src/components/agent-filter.tsx')
+    expect(adapter).toContain("from '@bakin/ui/patterns'")
+    expect(adapter).toContain('useAgentStore')
+    expect(adapter).toContain('AgentAvatar')
+  })
+
+  it('keeps URL ownership in consumers and examples on the shipped hooks', () => {
+    const sources = [
+      read('packages/ui/src/patterns/facet-filter.tsx'),
+      read('packages/ui/src/patterns/segmented-control.tsx'),
+      read('packages/ui/src/patterns/underline-tabs.tsx'),
+    ].join('\n')
+    const guide = read('docs/src/content/docs/extending/ui/overview.md')
+    expect(sources).not.toMatch(/URLSearchParams|history\.|location\.|useQuery/)
+    expect(guide).toContain("useQueryArrayState('status')")
+    expect(guide).toContain("useQueryState('view', 'board')")
+  })
+})

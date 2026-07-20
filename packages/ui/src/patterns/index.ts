@@ -106,3 +106,24 @@ export type {
 
 export { UnsavedChangesDialog } from './unsaved-changes-dialog'
 export type { UnsavedChangesDialogProps } from './unsaved-changes-dialog'
+
+export { FacetFilter } from './facet-filter'
+export type { FacetFilterProps, FacetOption } from './facet-filter'
+
+export { AgentFilter } from './agent-filter'
+export type { AgentFilterOption, AgentFilterProps } from './agent-filter'
+
+export { SegmentedControl } from './segmented-control'
+export type {
+  SegmentedControlOption,
+  SegmentedControlProps,
+} from './segmented-control'
+
+export { UnderlineTabs } from './underline-tabs'
+export type {
+  UnderlineTab,
+  UnderlineTabsProps,
+} from './underline-tabs'
+
+export { SortableHead } from './sortable-head'
+export type { SortableHeadProps, SortDir } from './sortable-head'

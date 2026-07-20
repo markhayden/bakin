@@ -34,6 +34,11 @@ const workflowUnavailableStory = '/iframe.html?id=patterns-workflow-and-action-p
 const saveFailureStory = '/iframe.html?id=patterns-destructive-and-dirty-state--save-failure&viewMode=story'
 const typedConfirmationStory = '/iframe.html?id=patterns-destructive-and-dirty-state--typed-confirmation&viewMode=story'
 const unsavedExitStory = '/iframe.html?id=patterns-destructive-and-dirty-state--unsaved-exit-decision&viewMode=story'
+const facetFilterStory = '/iframe.html?id=patterns-filters-and-navigation--facet-filtering&viewMode=story'
+const agentFilterStory = '/iframe.html?id=patterns-filters-and-navigation--agent-filtering&viewMode=story'
+const segmentedNavigationStory = '/iframe.html?id=patterns-filters-and-navigation--segmented-navigation&viewMode=story'
+const underlineNavigationStory = '/iframe.html?id=patterns-filters-and-navigation--underline-navigation&viewMode=story'
+const sortableTableStory = '/iframe.html?id=patterns-filters-and-navigation--sortable-table&viewMode=story'
 
 test('public story keeps keyboard, focus, console, and responsive contracts', async ({ page }) => {
   const browserErrors: string[] = []
@@ -1056,6 +1061,92 @@ test('destructive and dirty-state patterns preserve focus, exact intent, and mob
     await page.keyboard.press('Escape')
     await expect(dialog).toBeHidden()
     await expect(trigger).toBeFocused()
+  })
+
+  expect(browserErrors).toEqual([])
+})
+
+test('filter and navigation patterns preserve keyboard selection, meaning, and bounded overflow', async ({ page }) => {
+  const browserErrors: string[] = []
+  page.on('console', (message) => {
+    if (message.type() === 'error') browserErrors.push(`console: ${message.text()}`)
+  })
+  page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
+  page.on('requestfailed', (request) => {
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+  })
+
+  for (const width of responsiveWidths) {
+    await test.step(`facet filtering remains contained at ${width}px`, async () => {
+      await page.setViewportSize({ width, height: 900 })
+      await page.goto(facetFilterStory, { waitUntil: 'networkidle' })
+      await expect(page.getByRole('heading', { level: 1, name: 'Keep filter state visible and reversible' })).toBeVisible()
+      const dimensions = await page.evaluate(() => ({
+        clientWidth: document.documentElement.clientWidth,
+        scrollWidth: document.documentElement.scrollWidth,
+      }))
+      expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth)
+    })
+  }
+
+  await test.step('facet search exposes counts and clearing without taking URL ownership', async () => {
+    const dialog = page.getByRole('dialog', { name: 'Filter by State' })
+    await expect(dialog).toBeVisible()
+    const search = dialog.getByRole('combobox', { name: 'Search State' })
+    await search.fill('Running')
+    await dialog.getByRole('option', { name: 'Running 12' }).click()
+    await expect(page.getByRole('button', { name: 'State, 2 selected' })).toBeVisible()
+    await dialog.getByRole('button', { name: 'Clear State filters' }).click()
+    await expect(page.getByRole('status')).toHaveText('Showing every task state')
+  })
+
+  await test.step('agent and compact view groups activate with arrow keys and skip disabled choices', async () => {
+    await page.setViewportSize({ width: 1024, height: 900 })
+    await page.goto(agentFilterStory, { waitUntil: 'networkidle' })
+    const allAgents = page.getByRole('radio', { name: 'All agents' })
+    await allAgents.focus()
+    await allAgents.press('ArrowRight')
+    await expect(page.getByRole('radio', { name: 'Patch' })).toHaveAttribute('aria-checked', 'true')
+
+    await page.goto(segmentedNavigationStory, { waitUntil: 'networkidle' })
+    const taskView = page.getByRole('tablist', { name: 'Task view' })
+    const sizing = await taskView.evaluate((element) => ({
+      outer: element.clientWidth,
+      visual: element.querySelector<HTMLElement>('[data-slot="segmented-control-list"]')?.getBoundingClientRect().width ?? 0,
+    }))
+    expect(Math.abs(sizing.outer - sizing.visual)).toBeLessThanOrEqual(1)
+    const board = page.getByRole('tab', { name: 'Board' })
+    await board.focus()
+    await board.press('ArrowRight')
+    await expect(page.getByRole('tab', { name: 'Operational log with preserved context' })).toHaveAttribute('aria-selected', 'true')
+    await expect(page.getByRole('tabpanel')).toContainText('Operational log')
+  })
+
+  await test.step('page tabs link panels and sorting announces its direction', async () => {
+    await page.goto(underlineNavigationStory, { waitUntil: 'networkidle' })
+    const overview = page.getByRole('tab', { name: 'Overview' })
+    await overview.focus()
+    await overview.press('End')
+    const activity = page.getByRole('tab', { name: 'Activity and recent operational history' })
+    await expect(activity).toHaveAttribute('aria-controls', 'runtime-panel-activity')
+    await expect(page.getByRole('tabpanel')).toContainText('Activity and recent operational history')
+
+    await page.goto(sortableTableStory, { waitUntil: 'networkidle' })
+    const updated = page.getByRole('columnheader', { name: 'Updated' })
+    await expect(updated).toHaveAttribute('aria-sort', 'descending')
+    await updated.getByRole('button').click()
+    await expect(updated).toHaveAttribute('aria-sort', 'ascending')
+  })
+
+  await test.step('200% text preserves document containment and local horizontal fallbacks', async () => {
+    await page.setViewportSize({ width: 320, height: 1000 })
+    await page.goto(segmentedNavigationStory, { waitUntil: 'networkidle' })
+    await page.evaluate(() => { document.documentElement.style.fontSize = '200%' })
+    const dimensions = await page.evaluate(() => ({ clientWidth: document.documentElement.clientWidth, scrollWidth: document.documentElement.scrollWidth }))
+    expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth)
+    const tablist = page.getByRole('tablist', { name: 'Task view' })
+    const tabDimensions = await tablist.evaluate((element) => ({ clientWidth: element.clientWidth, scrollWidth: element.scrollWidth }))
+    expect(tabDimensions.scrollWidth).toBeGreaterThan(tabDimensions.clientWidth)
   })
 
   expect(browserErrors).toEqual([])

@@ -11,7 +11,7 @@
   },
   "css": {
     "canonicalPath": "packages/sdk/styles.css",
-    "canonicalBytes": 295728,
+    "canonicalBytes": 297098,
     "copyCount": 1,
     "copyPaths": [
       "packages/sdk/styles.css"
@@ -31,8 +31,8 @@
     {
       "name": "sdk-components",
       "path": "packages/host/public/vendor/sdk-components.js",
-      "bytes": 431450,
-      "reachableBytes": 1184202
+      "bytes": 425345,
+      "reachableBytes": 1188131
     },
     {
       "name": "sdk-conversation",
@@ -49,14 +49,14 @@
     {
       "name": "sdk-patterns",
       "path": "packages/host/public/vendor/sdk-patterns.js",
-      "bytes": 1110,
-      "reachableBytes": 201800
+      "bytes": 1243,
+      "reachableBytes": 303181
     },
     {
       "name": "sdk-ui",
       "path": "packages/host/public/vendor/sdk-ui.js",
-      "bytes": 21428,
-      "reachableBytes": 432788
+      "bytes": 22695,
+      "reachableBytes": 432455
     }
   ],
   "vendorChunks": [
@@ -82,7 +82,7 @@
     },
     {
       "path": "packages/host/public/vendor/sdk-components.js",
-      "bytes": 431450
+      "bytes": 425345
     },
     {
       "path": "packages/host/public/vendor/sdk-conversation.js",
@@ -110,63 +110,63 @@
     },
     {
       "path": "packages/host/public/vendor/sdk-patterns.js",
-      "bytes": 1110
+      "bytes": 1243
     },
     {
       "path": "packages/host/public/vendor/sdk-routing.js",
       "bytes": 160
     },
     {
-      "path": "packages/host/public/vendor/sdk-shared-7jhxgrrw.js",
-      "bytes": 232994
+      "path": "packages/host/public/vendor/sdk-shared-1xk48q63.js",
+      "bytes": 29447
+    },
+    {
+      "path": "packages/host/public/vendor/sdk-shared-8nxdffkf.js",
+      "bytes": 754
     },
     {
       "path": "packages/host/public/vendor/sdk-shared-adwgbkn0.js",
       "bytes": 3688
     },
     {
-      "path": "packages/host/public/vendor/sdk-shared-ft87dr9x.js",
-      "bytes": 1577
-    },
-    {
-      "path": "packages/host/public/vendor/sdk-shared-g71vqmmk.js",
-      "bytes": 754
-    },
-    {
-      "path": "packages/host/public/vendor/sdk-shared-ghsc86rm.js",
-      "bytes": 2243
-    },
-    {
-      "path": "packages/host/public/vendor/sdk-shared-hcz60nq6.js",
-      "bytes": 5243
-    },
-    {
-      "path": "packages/host/public/vendor/sdk-shared-jvqq77m3.js",
-      "bytes": 20185
-    },
-    {
-      "path": "packages/host/public/vendor/sdk-shared-k7g8x24w.js",
+      "path": "packages/host/public/vendor/sdk-shared-ahyt83gx.js",
       "bytes": 104
     },
     {
-      "path": "packages/host/public/vendor/sdk-shared-m96bq3b0.js",
+      "path": "packages/host/public/vendor/sdk-shared-aj4gerzy.js",
+      "bytes": 1577
+    },
+    {
+      "path": "packages/host/public/vendor/sdk-shared-ctsm55sd.js",
+      "bytes": 31819
+    },
+    {
+      "path": "packages/host/public/vendor/sdk-shared-gch1y989.js",
       "bytes": 280586
     },
     {
-      "path": "packages/host/public/vendor/sdk-shared-n9fdfher.js",
-      "bytes": 150760
+      "path": "packages/host/public/vendor/sdk-shared-h40430gq.js",
+      "bytes": 141780
+    },
+    {
+      "path": "packages/host/public/vendor/sdk-shared-k2tjz0x9.js",
+      "bytes": 240374
+    },
+    {
+      "path": "packages/host/public/vendor/sdk-shared-mh4801t2.js",
+      "bytes": 26748
     },
     {
       "path": "packages/host/public/vendor/sdk-shared-nqwbjtr4.js",
       "bytes": 0
     },
     {
-      "path": "packages/host/public/vendor/sdk-shared-xczb4jjx.js",
-      "bytes": 26748
+      "path": "packages/host/public/vendor/sdk-shared-sbgh2pr4.js",
+      "bytes": 5243
     },
     {
-      "path": "packages/host/public/vendor/sdk-shared-yhsy8cr6.js",
-      "bytes": 29447
+      "path": "packages/host/public/vendor/sdk-shared-wxkjs4bc.js",
+      "bytes": 2243
     },
     {
       "path": "packages/host/public/vendor/sdk-slots.js",
@@ -178,7 +178,7 @@
     },
     {
       "path": "packages/host/public/vendor/sdk-ui.js",
-      "bytes": 21428
+      "bytes": 22695
     },
     {
       "path": "packages/host/public/vendor/sdk-utils.js",

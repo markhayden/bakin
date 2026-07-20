@@ -176,6 +176,15 @@ the patterns provide typed confirmation, busy/error presentation, responsive
 action placement, and the save/discard/stay decision. Keep normal links and
 query-only state changes on the existing SDK router contract.
 
+Filtering and view navigation use `FacetFilter`, `AgentFilter`,
+`SegmentedControl`, `UnderlineTabs`, and `SortableHead` from the same focused
+patterns entrypoint. These components own searchable counts, clearing,
+keyboard selection, linked-tab semantics, long-label overflow, and table sort
+semantics. Consumers still own values and routing: connect linkable filters and
+views to `useQueryArrayState` or `useQueryState` from
+`@makinbakin/sdk/hooks`. The public `AgentFilter` accepts presentation-ready
+options; host adapters may add app-owned agent metadata and avatars.
+
 ## Stylesheet
 
 Bakin loads one shared copy of `@makinbakin/sdk/styles.css` for the host and all

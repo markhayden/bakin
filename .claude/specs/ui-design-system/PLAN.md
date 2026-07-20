@@ -1151,6 +1151,33 @@ interactions, three-browser focus checks.
 **Description:** Rebuild FacetFilter, AgentFilter, SegmentedControl,
 UnderlineTabs, SortableHead, StatusBadge, and StatTile as coherent families.
 
+**Status — T32a (2026-07-20):** Complete. `FacetFilter`, the
+presentation-only `AgentFilter`, `SegmentedControl`, `UnderlineTabs`, and
+`SortableHead` now live in the focused patterns entrypoint. Existing component
+imports remain compatibility re-exports; the app-aware agent adapter continues
+to supply registered names and avatars for Bakin and Bakin Bits consumers while
+plugin authors can pass presentation-ready options through the focused API.
+The controlled patterns leave route ownership with consumers, and the public
+guide uses the shipped `useQueryArrayState('status')` and
+`useQueryState('view', 'board')` contracts instead of introducing another URL
+abstraction. Search thresholds, result counts, individual removal and clearing,
+disabled-option skipping, automatic arrow/Home/End activation, linked panels,
+native `aria-sort`, long labels, local overflow, and 200% text containment are
+covered. Five public stories add the complete family to the catalog. Eighty-five
+focused pattern, architecture, dependency, vendor, and existing core-consumer
+tests pass; all 91 public Storybook interaction/axe cases, all 64 exact
+desktop/mobile visual cases, and all 51 Chromium/Firefox/WebKit browser cases
+pass. After the final compact-sizing refinement, the affected browser contract
+re-passed in all three engines and both exact visual baselines re-passed. The
+combined docs build validates 48 pages, 268 typed static routes, and publishes
+all 91 stories; consecutive public builds are deterministic. Canonical CSS is
+297,098 bytes (+1,370 from T31), initial host JS remains 457,006 bytes, and one
+shared CSS copy remains. The patterns entrypoint is 1,243 bytes direct / 303,181
+reachable (+133 / +101,381); shared SDK chunks increase by 10,034 bytes while
+the legacy components entry shrinks by 6,105 bytes. Chart and conversation
+entrypoints remain empty and no page composition or routing migration is
+included in T32a.
+
 **Acceptance:** URL-state examples use existing hooks; keyboard semantics,
 counts, clearing, long labels, status non-color meaning, and dense metric
 layouts pass.

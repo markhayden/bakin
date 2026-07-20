@@ -413,3 +413,64 @@ test('public typed confirmation pattern visual baseline', async ({ page }) => {
     fullPage: true,
   })
 })
+
+test('public facet filter pattern visual baseline', async ({ page }) => {
+  await page.goto('/iframe.html?id=patterns-filters-and-navigation--facet-filtering&viewMode=story')
+  await expect(page.getByRole('heading', { level: 1, name: 'Keep filter state visible and reversible' })).toBeVisible()
+  await expect(page.getByRole('dialog', { name: 'Filter by State' })).toBeVisible()
+  await expect(page.getByRole('option', { name: 'Needs attention because a dependency is unavailable Selected 3' })).toBeVisible()
+  await page.evaluate(async () => document.fonts.ready)
+  await expect(page).toHaveScreenshot('foundation-facet-filter.png', {
+    animations: 'disabled',
+    caret: 'hide',
+    fullPage: true,
+  })
+})
+
+test('public agent filter pattern visual baseline', async ({ page }) => {
+  await page.goto('/iframe.html?id=patterns-filters-and-navigation--agent-filtering&viewMode=story')
+  await expect(page.getByRole('heading', { level: 1, name: 'Filter by an agent without losing names' })).toBeVisible()
+  await expect(page.getByRole('radiogroup', { name: 'Filter by agent' })).toBeVisible()
+  await page.evaluate(async () => document.fonts.ready)
+  await expect(page).toHaveScreenshot('foundation-agent-filter.png', {
+    animations: 'disabled',
+    caret: 'hide',
+    fullPage: true,
+  })
+})
+
+test('public segmented navigation pattern visual baseline', async ({ page }) => {
+  await page.goto('/iframe.html?id=patterns-filters-and-navigation--segmented-navigation&viewMode=story')
+  await expect(page.getByRole('heading', { level: 1, name: 'Switch modes with one compact control' })).toBeVisible()
+  await expect(page.getByRole('tablist', { name: 'Task view' })).toBeVisible()
+  await page.evaluate(async () => document.fonts.ready)
+  await expect(page).toHaveScreenshot('foundation-segmented-navigation.png', {
+    animations: 'disabled',
+    caret: 'hide',
+    fullPage: true,
+  })
+})
+
+test('public underline navigation pattern visual baseline', async ({ page }) => {
+  await page.goto('/iframe.html?id=patterns-filters-and-navigation--underline-navigation&viewMode=story')
+  await expect(page.getByRole('heading', { level: 1, name: 'Keep page sections anchored to their content' })).toBeVisible()
+  await expect(page.getByRole('tablist', { name: 'Runtime sections' })).toBeVisible()
+  await page.evaluate(async () => document.fonts.ready)
+  await expect(page).toHaveScreenshot('foundation-underline-navigation.png', {
+    animations: 'disabled',
+    caret: 'hide',
+    fullPage: true,
+  })
+})
+
+test('public sortable table pattern visual baseline', async ({ page }) => {
+  await page.goto('/iframe.html?id=patterns-filters-and-navigation--sortable-table&viewMode=story')
+  await expect(page.getByRole('heading', { level: 1, name: 'Put sort meaning on the column header' })).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: 'Updated' })).toHaveAttribute('aria-sort', 'descending')
+  await page.evaluate(async () => document.fonts.ready)
+  await expect(page).toHaveScreenshot('foundation-sortable-table.png', {
+    animations: 'disabled',
+    caret: 'hide',
+    fullPage: true,
+  })
+})

@@ -823,6 +823,37 @@ This is the exact artifact used by Bakin and the public component catalog. It su
 
 UI composition does not redefine routing. Follow the existing presentation-based routing contract: paths identify pages, while query parameters represent overlays, tabs, filters, and other composable view state. Use `PluginLink` or `useRouter()` for client-side navigation and the SDK query-state hooks for URL-backed view state.
 
+`FacetFilter`, `SegmentedControl`, and `UnderlineTabs` are controlled presentation patterns. Connect them to the shipped query-state hooks when their state should survive refreshes, participate in history, or be linkable:
+
+```tsx
+import { FacetFilter, SegmentedControl } from '@makinbakin/sdk/patterns'
+import { useQueryArrayState, useQueryState } from '@makinbakin/sdk/hooks'
+
+export function TaskControls() {
+  const [statuses, setStatuses] = useQueryArrayState('status')
+  const [view, setView] = useQueryState('view', 'board')
+
+  return (
+    <div>
+      <FacetFilter
+        label="Status"
+        options={statusOptions}
+        selected={statuses}
+        onChange={setStatuses}
+      />
+      <SegmentedControl
+        ariaLabel="Task view"
+        options={viewOptions}
+        value={view}
+        onValueChange={setView}
+      />
+    </div>
+  )
+}
+```
+
+Keep the owning page path stable while these values change. The patterns intentionally do not read or write the URL themselves, so the same controls also work for local, non-linkable state. `AgentFilter` follows the same controlled contract; official Bakin surfaces may use the compatibility adapter that supplies registered agent metadata, while plugin UI supplies its own public option labels and visuals.
+
 ## Local Commands
 
 ```sh
