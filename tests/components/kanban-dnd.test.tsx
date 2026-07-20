@@ -1,13 +1,12 @@
 /**
- * ⚠ QUARANTINED to a serial gating step (package.json + both CI workflows).
- * settleBoard (this describe's afterEach) drains the post-persist refetch to
- * FETCH-QUIESCENCE before rtl-settle unmounts — the file passes reliably in
- * isolation AND in CI's own serial step. But folding it back into the
- * --parallel pool (#650 attempt) destabilized a NEIGHBOR under 2-vCPU
- * contention (an intermittent file-level error elsewhere), so it stays
- * serial. Prior rounds: cross-file pollution (#638), leaked roots (#640),
- * inner-hook cleanup preemption (#643). Do not re-add to the parallel run
- * without resolving the contention flake; tracking #650.
+ * Formerly quarantined to a serial CI step (#650) — un-quarantined 2026-07-20
+ * after the neighbor contention flake stopped reproducing (likely fixed by the
+ * closeDb() test hardening in #698/#699). settleBoard (this describe's
+ * afterEach) drains the post-persist refetch to FETCH-QUIESCENCE before
+ * rtl-settle unmounts — that drain is what makes this file safe in the
+ * --parallel pool; do not remove it. Prior rounds: cross-file pollution
+ * (#638), leaked roots (#640), inner-hook cleanup preemption (#643),
+ * neighbor destabilization (#650).
  */
 // @vitest-environment jsdom
 

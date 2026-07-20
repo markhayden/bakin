@@ -48,10 +48,10 @@ GlobalRegistrator.register()
 // act(). Tests that end with work deliberately in flight (fetch-call
 // assertions racing the response re-render) call settleReact() themselves —
 // see that module for the full fact chain.
-// One file stays QUARANTINED to a serial gating step (issue #650):
-// tests/components/kanban-dnd.test.tsx. Its own drain (settleBoard) makes it
-// pass in isolation, but folding it into the parallel pool destabilizes a
-// neighbor under 2-vCPU contention — kept serial until that's resolved.
+// tests/components/kanban-dnd.test.tsx was quarantined to a serial gating
+// step for a while (issue #650): its settleBoard drain made it pass alone,
+// but folding it into the parallel pool destabilized a neighbor under 2-vCPU
+// contention. Un-quarantined 2026-07-20 after that flake stopped reproducing.
 // ---------------------------------------------------------------------------
 
 // NOTE: we don't register a global main-agent stub here — bun:test has no
