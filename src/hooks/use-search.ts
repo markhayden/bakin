@@ -183,7 +183,9 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
 
       if (!mountedRef.current) return
 
-      setResults(data.results)
+      // A 200 with a malformed body must not poison every consumer with
+      // `results: undefined` — .length crashes take down whole boards.
+      setResults(Array.isArray(data.results) ? data.results : [])
       setAggregations(data.aggregations || {})
       setMeta(data.meta || null)
       setStatus('ok')

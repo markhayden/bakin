@@ -298,6 +298,15 @@ describe('KanbanBoard drag and drop', () => {
         return { ok: true, json: async () => ({}) } as Response
       }
 
+      // useTaskFilters' debounced useSearch GET fires mid-test only when the
+      // runner is slow enough (2-vCPU CI) for the 300ms debounce to elapse —
+      // answer it with a real SearchResponse shape, never the board payload
+      // (an empty results array keeps the client-side matchesSearch fallback
+      // path these tests exercise).
+      if (String(url).includes('/search?')) {
+        return { ok: true, json: async () => ({ results: [] }) } as Response
+      }
+
       return { ok: true, json: async () => boardResponse } as Response
     }))
 
