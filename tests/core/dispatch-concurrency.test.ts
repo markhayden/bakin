@@ -151,6 +151,19 @@ function readState() {
 
 const tick = (ms = 20) => new Promise((r) => setTimeout(r, ms))
 
+// Bounded poll for conditions with genuinely async lead time (worktree
+// subprocesses, post-settle state writes). Fixed ticks lose the race under
+// CPU contention: a starved 50ms tick fires before dispatch prep finishes,
+// the assertion fails, and the still-preparing turn wedges the file (its
+// send lands after afterEach's drain and nothing ever releases it).
+async function waitUntil(cond: () => boolean, what: string, timeoutMs = 10_000) {
+  const deadline = Date.now() + timeoutMs
+  while (!cond()) {
+    if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`)
+    await tick(10)
+  }
+}
+
 beforeEach(() => {
   tempDir = mkdtempSync(join(tmpdir(), 'bakin-dispatch-conc-'))
   pendingSends.clear()
@@ -166,8 +179,17 @@ beforeEach(() => {
 
 afterEach(async () => {
   // Drain anything left in flight so settle handlers can't leak across tests.
-  for (const [agent, queue] of pendingSends) {
-    while (queue.length) releaseSend(agent)
+  // Re-drain until idle: a send can land AFTER a drain pass (async prep —
+  // worktree materialization — finishing late under load); a single pass
+  // would leave that turn unreleased forever, and its registry entry wedges
+  // every later test with agent_busy deferrals. Deadline keeps a genuine
+  // wedge visible as this test's hook timeout instead of a cascade.
+  const deadline = Date.now() + 10_000
+  while (getInFlightTurnCount() > 0 && Date.now() < deadline) {
+    for (const [agent, queue] of pendingSends) {
+      while (queue.length) releaseSend(agent)
+    }
+    await tick(10)
   }
   await awaitDispatchIdle()
   rmSync(tempDir, { recursive: true, force: true })
@@ -251,7 +273,9 @@ describe('concurrent dispatch', () => {
 
     setColumns({ todo: [{ id: 'bound-1', title: 'Repo work', agent: 'jessica', repoPath: repo }] })
     await dispatchTasks(tempDir, 3737)
-    await tick(50)
+    // Worktree materialization is a real git subprocess — wait for the send,
+    // don't guess its duration.
+    await waitUntil(() => sendCalls.some((c) => c.agentId === 'jessica'), 'repo-bound send')
 
     const send = sendCalls.find((c) => c.agentId === 'jessica')
     expect(send?.runWorkspace?.endsWith('/repo')).toBe(true)
@@ -262,7 +286,8 @@ describe('concurrent dispatch', () => {
 
     releaseSend('jessica')
     await awaitDispatchIdle()
-    await tick(100) // async worktree removal after settle
+    // Worktree removal after settle is async — bounded wait, not a fixed tick.
+    await waitUntil(() => !existsSync(send!.runWorkspace!), 'post-settle worktree removal')
 
     // Worktree died at settle; the branch (the deliverable) survives.
     expect(existsSync(send!.runWorkspace!)).toBe(false)
@@ -574,7 +599,11 @@ describe('concurrent dispatch', () => {
     await dispatchTasks(tempDir, 3737)
 
     releaseSend('jessica', 'error')
-    await tick(50)
+    // The settle handler writes .dispatch-state.json asynchronously — wait
+    // for the write, don't guess its duration.
+    await waitUntil(() => {
+      try { return readState().failedDispatches['t-fail'] !== undefined } catch { return false }
+    }, 'failed-dispatch reconciliation write')
     // jessica's failure is reconciled while pixel is still mid-turn.
     expect(readState().failedDispatches['t-fail']).toBeDefined()
     expect(getInFlightTurnCount('pixel')).toBe(1)
