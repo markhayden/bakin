@@ -165,7 +165,13 @@ export function registerAssetsExecTools(ctx: PluginContext): void {
           op: 'upload', tool: (params.tool as string) ?? null,
           description: params.description as string | undefined, tags: params.tags as string[] | undefined,
         })
-        ctx.activity.audit(r.changed ? 'asset.saved' : 'asset.unchanged', agent, { assetId: r.assetId, version: r.version })
+        if (r.staleSuppressed) {
+          // The origin run is no longer live (superseded/lost/settled) — the
+          // bytes were recorded but currentVersion did NOT move. Loud trail.
+          ctx.activity.audit('asset.stale_run_write_suppressed', agent, { assetId: r.assetId, version: r.version })
+        } else {
+          ctx.activity.audit(r.changed ? 'asset.saved' : 'asset.unchanged', agent, { assetId: r.assetId, version: r.version })
+        }
         return { ok: true, assetId: r.assetId, version: r.version, changed: r.changed }
       } catch (err) {
         return { ok: false, error: err instanceof Error ? err.message : String(err) }
