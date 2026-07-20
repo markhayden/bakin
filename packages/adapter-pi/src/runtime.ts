@@ -135,6 +135,8 @@ export class PiRuntimeAdapter implements AgentRuntimeAdapter {
     sessions: { mode: 'native' },
     workspaceFiles: { mode: 'native' },
     input: await this.inputModality(opts?.agentId),
+    // Flips to 'isolated' when runWorkspace honoring lands (concurrency T3.1).
+    concurrency: { sameAgentTurns: 'serialized' },
   })
 
   /**

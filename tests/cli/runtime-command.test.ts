@@ -38,6 +38,7 @@ const CAPABILITIES = {
   memory: { mode: 'native' },
   sessions: { mode: 'native' },
   workspaceFiles: { mode: 'native' },
+  concurrency: { sameAgentTurns: 'serialized' },
   input: { imageInput: false, audioInput: false },
 }
 

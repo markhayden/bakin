@@ -24,6 +24,7 @@ const PI_CAPS = {
   memory: { mode: 'native' },
   sessions: { mode: 'native' },
   workspaceFiles: { mode: 'native' },
+  concurrency: { sameAgentTurns: 'serialized' },
   input: { imageInput: true, audioInput: false },
 }
 

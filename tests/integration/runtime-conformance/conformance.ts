@@ -23,8 +23,9 @@
  */
 import { describe, it } from 'bun:test'
 import { createHash } from 'crypto'
-import { existsSync, readdirSync, readFileSync } from 'fs'
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'fs'
 import { join } from 'path'
+import { tmpdir } from 'os'
 import type { AgentRuntimeAdapter, ChatChunk, MessageResult } from '../../../packages/core/src/adapters/runtime'
 import { RuntimeError } from '../../../packages/core/src/adapters/runtime'
 
@@ -88,6 +89,18 @@ export interface RuntimeConformanceTarget {
    * state the scenario re-pointed; always invoked.
    */
   makeFreshInitScenario?(): Promise<FreshInitScenario> | FreshInitScenario
+  /**
+   * REQUIRED for runtimes declaring `concurrency.sameAgentTurns: 'isolated'`
+   * (same-agent-concurrency D1): a turn recipe whose execution leaves a
+   * target-verifiable trace in the working directory it actually ran in.
+   * `content` is sent (concurrently, twice, with two distinct
+   * `runWorkspace` dirs); `verify(dir)` must return true iff a turn ran in
+   * `dir`. A declared-isolated target without this probe FAILS the suite —
+   * isolation claims must be provable, never asserted.
+   */
+  prepareIsolatedTurnProbe?():
+    | { content: string; verify(dir: string): boolean | Promise<boolean> }
+    | Promise<{ content: string; verify(dir: string): boolean | Promise<boolean> }>
 }
 
 export interface FreshInitScenario {
@@ -528,6 +541,52 @@ export const runtimeConformanceChecks = {
   },
 
   /**
+   * A runtime declaring `concurrency.sameAgentTurns: 'isolated'` must HONOR
+   * `MessageArgs.runWorkspace`: two concurrent turns for ONE agent, each
+   * handed its own directory, must each leave the target's probe trace in
+   * exactly the dir it was handed. 'serialized' declarations have nothing
+   * to prove (dispatch clamps them) — the check is a no-op there. A
+   * declared-isolated target that provides no probe fails outright:
+   * unprovable isolation is a lie waiting to ship
+   * (same-agent-concurrency D1).
+   */
+  async sameAgentIsolationHonesty(target: RuntimeConformanceTarget): Promise<void> {
+    const caps = await target.runtime.capabilities()
+    if (caps.concurrency.sameAgentTurns !== 'isolated') return
+    const probe = await target.prepareIsolatedTurnProbe?.()
+    if (!probe) {
+      fail("capabilities() declares concurrency.sameAgentTurns 'isolated' but the conformance target provides no isolation probe — isolation claims must be provable")
+    }
+    const dirA = mkdtempSync(join(tmpdir(), 'bakin-conf-iso-a-'))
+    const dirB = mkdtempSync(join(tmpdir(), 'bakin-conf-iso-b-'))
+    try {
+      await Promise.all([
+        target.runtime.messaging.send({
+          agentId: target.agentId,
+          content: probe.content,
+          threadId: target.newThreadId(),
+          runWorkspace: dirA,
+        }),
+        target.runtime.messaging.send({
+          agentId: target.agentId,
+          content: probe.content,
+          threadId: target.newThreadId(),
+          runWorkspace: dirB,
+        }),
+      ])
+      if (!(await probe.verify(dirA))) {
+        fail("declared-isolated runtime left no trace in concurrent turn A's handed runWorkspace — runWorkspace is not honored")
+      }
+      if (!(await probe.verify(dirB))) {
+        fail("declared-isolated runtime left no trace in concurrent turn B's handed runWorkspace — runWorkspace is not honored")
+      }
+    } finally {
+      rmSync(dirA, { recursive: true, force: true })
+      rmSync(dirB, { recursive: true, force: true })
+    }
+  },
+
+  /**
    * provisionToolAccess is idempotent: after a successful provision,
    * verifyToolAccess reports ok and a second provision changes nothing
    * durable (snapshot deep-equal via the target's observation hook).
@@ -717,6 +776,10 @@ export function runRuntimeConformanceSuite(
 
     it('capabilities() is honest about its surfaces', async () => {
       await runtimeConformanceChecks.capabilitiesAreHonest(getTarget(), options)
+    })
+
+    it('same-agent isolation declaration is honored (runWorkspace)', async () => {
+      await runtimeConformanceChecks.sameAgentIsolationHonesty(getTarget())
     })
 
     it('provisionToolAccess is idempotent', async () => {
