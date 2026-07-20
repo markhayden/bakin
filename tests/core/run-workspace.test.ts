@@ -131,7 +131,7 @@ describe('sweep classifier + budget (D5 matrix)', () => {
     return dir
   }
 
-  it('runs the full state matrix: live kept, aged-ok expired, failed windows, deleted-task immediate, grace honored', () => {
+  it('runs the full state matrix: live kept, aged-ok expired, failed windows, deleted-task immediate, grace honored', async () => {
     resetRunWorkspaceStats()
     liveThreads.clear(); deadTasks.clear()
 
@@ -146,7 +146,7 @@ describe('sweep classifier + budget (D5 matrix)', () => {
     deadTasks.add('m-del')
     const young = allocateRunWorkspace({ threadId: 'task:m-young:d1', taskId: 'm-young', agentId: 'sweep-agent' }) // running, unregistered, young
 
-    sweepRunWorkspaces(deps())
+    await sweepRunWorkspaces(deps())
 
     expect(existsSync(liveDir)).toBe(true)      // live registry → kept
     expect(existsSync(freshOk)).toBe(true)      // ok within 7d → kept
@@ -159,7 +159,7 @@ describe('sweep classifier + budget (D5 matrix)', () => {
     for (const d of [liveDir, freshOk, freshFail, young]) removeRunWorkspace(d)
   })
 
-  it('size budget evicts oldest SETTLED dirs first and never touches live or in-grace dirs', () => {
+  it('size budget evicts oldest SETTLED dirs first and never touches live or in-grace dirs', async () => {
     resetRunWorkspaceStats()
     liveThreads.clear(); deadTasks.clear()
 
@@ -170,7 +170,7 @@ describe('sweep classifier + budget (D5 matrix)', () => {
     const inGrace = allocateRunWorkspace({ threadId: 'task:b-grace:d1', taskId: 'b-grace', agentId: 'sweep-agent' })
 
     // Budget forces eviction: total settled+live sizes exceed 1000.
-    sweepRunWorkspaces(deps({ maxTotalBytes: 1000 }))
+    await sweepRunWorkspaces(deps({ maxTotalBytes: 1000 }))
 
     expect(existsSync(oldest)).toBe(false)  // oldest evictable went first
     expect(existsSync(liveBig)).toBe(true)  // live NEVER evicted, even over budget
@@ -179,7 +179,7 @@ describe('sweep classifier + budget (D5 matrix)', () => {
     for (const d of [newer, liveBig, inGrace]) removeRunWorkspace(d)
   })
 
-  it('lazy-stamps sizeBytes onto settled sidecars that lack it, and reports aggregate stats', () => {
+  it('lazy-stamps sizeBytes onto settled sidecars that lack it, and reports aggregate stats', async () => {
     resetRunWorkspaceStats()
     liveThreads.clear(); deadTasks.clear()
 
@@ -191,7 +191,7 @@ describe('sweep classifier + budget (D5 matrix)', () => {
       ...sidecar, status: 'settled', outcome: 'ok', settledAt: new Date().toISOString(),
     }))
 
-    const stats = sweepRunWorkspaces(deps())
+    const stats = await sweepRunWorkspaces(deps())
     expect(readRunSidecar(dir)?.sizeBytes ?? 0).toBeGreaterThanOrEqual(2048)
     expect(stats?.count ?? 0).toBeGreaterThanOrEqual(1)
     expect(stats?.sizeBytes ?? 0).toBeGreaterThanOrEqual(2048)

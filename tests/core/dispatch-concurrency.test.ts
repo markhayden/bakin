@@ -7,7 +7,8 @@
  * mid-send). Caps bound the parallelism; settle handlers reconcile.
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll, mock } from 'bun:test'
-import { mkdtempSync, readFileSync, rmSync } from 'fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { execFileSync } from 'child_process'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
@@ -231,6 +232,58 @@ describe('concurrent dispatch', () => {
     expect(readRunSidecar(wsA!)?.status).toBe('settled')
     expect(readRunSidecar(wsA!)?.outcome).toBe('ok')
     expect(readRunSidecar(wsB!)?.status).toBe('settled')
+  })
+
+  it('repo-BOUND task on an isolated runtime: worktree materialized, cwd = checkout, branch survives successful settle, worktree removed', async () => {
+    mockSameAgentTurns = 'isolated'
+    // Real bound repo inside an allowlisted root under the mocked content dir.
+    const allowedRoot = join(sentinelContentDir, 'code')
+    const repo = join(allowedRoot, 'proj')
+    mkdirSync(repo, { recursive: true })
+    execFileSync('git', ['init', '-q', repo])
+    execFileSync('git', ['-C', repo, 'config', 'user.email', 't@bakin.local'])
+    execFileSync('git', ['-C', repo, 'config', 'user.name', 'T'])
+    writeFileSync(join(repo, 'README.md'), 'x')
+    execFileSync('git', ['-C', repo, 'add', '-A'])
+    execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init'])
+    mkdirSync(join(sentinelContentDir, 'plugin-settings'), { recursive: true })
+    writeFileSync(join(sentinelContentDir, 'plugin-settings', 'git.json'), JSON.stringify({ allowedRepoRoots: [allowedRoot] }))
+
+    setColumns({ todo: [{ id: 'bound-1', title: 'Repo work', agent: 'jessica', repoPath: repo }] })
+    await dispatchTasks(tempDir, 3737)
+    await tick(50)
+
+    const send = sendCalls.find((c) => c.agentId === 'jessica')
+    expect(send?.runWorkspace?.endsWith('/repo')).toBe(true)
+    expect(existsSync(join(send!.runWorkspace!, 'README.md'))).toBe(true)
+    const branch = execFileSync('git', ['-C', send!.runWorkspace!, 'branch', '--show-current'], { encoding: 'utf-8' }).trim()
+    expect(branch.startsWith('bakin/run/task-bound-1-d')).toBe(true)
+    expect(auditEvents.some((e) => e.event === 'task.worktree_materialized')).toBe(true)
+
+    releaseSend('jessica')
+    await awaitDispatchIdle()
+    await tick(100) // async worktree removal after settle
+
+    // Worktree died at settle; the branch (the deliverable) survives.
+    expect(existsSync(send!.runWorkspace!)).toBe(false)
+    const branches = execFileSync('git', ['-C', repo, 'branch', '--list', 'bakin/run/*'], { encoding: 'utf-8' })
+    expect(branches).toContain('bakin/run/task-bound-1-d')
+  })
+
+  it('a bound task with an EMPTY allowlist fails the turn (never fires repo-less) and cleans its dir', async () => {
+    mockSameAgentTurns = 'isolated'
+    const repo = join(sentinelContentDir, 'code', 'proj') // exists from prior test
+    writeFileSync(join(sentinelContentDir, 'plugin-settings', 'git.json'), JSON.stringify({ allowedRepoRoots: [] }))
+
+    setColumns({ todo: [{ id: 'bound-2', title: 'Refused repo work', agent: 'pixel', repoPath: repo }] })
+    await dispatchTasks(tempDir, 3737)
+    await awaitDispatchIdle()
+
+    // No send fired; the failure took the ladder (dispatch_failed recorded).
+    expect(sendCalls.some((c) => c.agentId === 'pixel')).toBe(false)
+    expect(existsSync(join(sentinelContentDir, 'run-workspaces', 'pixel'))
+      ? readdirSync(join(sentinelContentDir, 'run-workspaces', 'pixel')).length
+      : 0).toBe(0)
   })
 
   it('serialized runtime clamps the per-agent cap to 1 with a once-per-boot audit; sends carry NO runWorkspace', async () => {

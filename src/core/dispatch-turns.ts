@@ -32,7 +32,9 @@ import type { DispatchTask, ConcurrencyGate } from './dispatch-types'
 import { withStateLock, loadDispatchState, saveDispatchState } from './dispatch-state'
 import { findDispatchTaskSnapshot, tryAddTaskLog } from './dispatch-board'
 import { reconcileRejectedDispatch } from './dispatch-session-death'
-import { allocateRunWorkspace, settleRunWorkspace } from './run-workspace'
+import { allocateRunWorkspace, readRunSidecar, removeRunWorkspace, setRunWorkspaceRepo, settleRunWorkspace } from './run-workspace'
+import { addRunWorktree, removeRunWorktree } from './git-worktree'
+import { resolveRepoBinding } from './repo-binding'
 
 const log = createLogger('dispatch-turns')
 const hooks = () => getHookRegistry()
@@ -598,8 +600,10 @@ export function fireDispatchTurn(opts: {
   // turn's slot shouldn't free until its outcome has been recorded.
   const abort = new AbortController()
   // Allocated inside the settle chain (isolated runtimes only); shared with
-  // the catch branches so every settle path stamps the sidecar.
+  // the catch branches so every settle path stamps the sidecar. For bound
+  // tasks the execution cwd is the worktree CHECKOUT inside the run dir.
   let runWorkspace: string | undefined
+  let executionWorkspace: string | undefined
   const settled = (opts.routing ? Promise.resolve(opts.routing) : resolveDispatchRouting(opts.task, opts.isRecovery ?? false))
     .then(async (routing) => {
       // Fire-time existence check: a delete can interleave between the
@@ -621,6 +625,32 @@ export function fireDispatchTurn(opts: {
           ...(opts.stepId ? { stepId: opts.stepId } : {}),
           agentId: opts.targetAgent,
         })
+        // Repo-bound task (D6): materialize the worktree at <runDir>/repo on
+        // branch-per-run and make the CHECKOUT the turn's cwd (the agent
+        // starts where the code is; scratch is one level up; the adapter's
+        // .git guard keeps seeding out of the checkout). Multi-second git
+        // adds run here in the settle chain — this turn waits, dispatch
+        // doesn't. Failure removes the dir and takes the failure ladder —
+        // a bound task never fires without its checkout.
+        try {
+          const binding = await resolveRepoBinding(opts.task as { id: string; repoPath?: unknown; projectId?: unknown })
+          if (binding) {
+            const { checkoutDir, branch } = await addRunWorktree(binding.repoPath, runWorkspace, opts.threadId)
+            setRunWorkspaceRepo(opts.targetAgent, opts.threadId, binding.repoPath)
+            executionWorkspace = checkoutDir
+            appendAudit(opts.contentDir, 'task.worktree_materialized', opts.targetAgent, {
+              id: opts.task.id,
+              runId: opts.threadId,
+              repoPath: binding.repoPath,
+              branch,
+              source: binding.source,
+            })
+          }
+        } catch (err) {
+          removeRunWorkspace(runWorkspace)
+          runWorkspace = undefined
+          throw err
+        }
       }
       if (routing.model || routing.thinking || routing.thinkingClamp) {
         appendAudit(opts.contentDir, 'task.routed', opts.targetAgent, {
@@ -649,7 +679,7 @@ export function fireDispatchTurn(opts: {
           ts: new Date().toISOString(),
         })
       }
-      const result = await sendDispatchMessage(opts.targetAgent, opts.message, opts.threadId, routing, abort.signal, onActivity, runWorkspace)
+      const result = await sendDispatchMessage(opts.targetAgent, opts.message, opts.threadId, routing, abort.signal, onActivity, executionWorkspace ?? runWorkspace)
       // Free the live-run slot FIRST — the settle reconciliation below (and
       // any ladder re-dispatch it schedules) must be able to claim anew.
       try {
@@ -657,7 +687,19 @@ export function fireDispatchTurn(opts: {
       } catch (err) {
         log.error('Failed to settle run in ledger', err, { threadId: opts.threadId })
       }
-      if (runWorkspace) settleRunWorkspace(opts.targetAgent, opts.threadId, 'ok')
+      if (runWorkspace) {
+        settleRunWorkspace(opts.targetAgent, opts.threadId, 'ok')
+        // Worktrees die at successful settle — the BRANCH is the deliverable,
+        // the checkout is reproducible scratch (spec r4; unbounded retained
+        // checkouts were the audited machine-killer). Failed/aborted runs
+        // keep theirs for the 48h salvage window (sweep-owned).
+        if (executionWorkspace) {
+          const sidecar = readRunSidecar(runWorkspace)
+          if (sidecar?.repoPath && (await removeRunWorktree(sidecar.repoPath, executionWorkspace))) {
+            setRunWorkspaceRepo(opts.targetAgent, opts.threadId, null)
+          }
+        }
+      }
       // Attribute the turn's token/dollar cost (run_id == threadId). The
       // resolved routing model is what actually ran — price against it.
       const workClass = classifyDispatchWorkClass(opts.task, opts.isRecovery ?? false)

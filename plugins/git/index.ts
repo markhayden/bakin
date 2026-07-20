@@ -23,7 +23,9 @@ const execFileAsync = promisify(execFile)
 
 const REGISTRY_PATH = 'worktrees.json'
 const DEFAULT_WORKTREE_DIR = 'git-worktrees'
-const DEFAULT_ALLOWED_ROOT = '~/go/src/github.com/markhayden'
+// No default allowed root: repo access is an explicit operator decision.
+// (The old hardcoded personal path silently confined fresh installs to a
+// stranger's directory convention — same-agent-concurrency audit F7.)
 
 const okResponse = z.object({ ok: z.boolean() }).passthrough()
 const errorResponse = z.object({ error: z.string() }).passthrough()
@@ -170,10 +172,6 @@ function isWithin(candidate: string, root: string): boolean {
   return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))
 }
 
-function defaultAllowedRoots(): string[] {
-  return [DEFAULT_ALLOWED_ROOT]
-}
-
 function readSettings(ctx: PluginContextLite): { allowedRepoRoots: string[]; worktreeRoot: string } {
   const raw = ctx.getSettings<GitSettings>()
   const settingsRoots = Array.isArray(raw.allowedRepoRoots)
@@ -182,7 +180,8 @@ function readSettings(ctx: PluginContextLite): { allowedRepoRoots: string[]; wor
         .filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
     : []
 
-  const allowedRepoRoots = settingsRoots.length > 0 ? settingsRoots : defaultAllowedRoots()
+  // Empty = nothing bindable/preparable until the operator configures roots.
+  const allowedRepoRoots = settingsRoots
   return {
     allowedRepoRoots,
     worktreeRoot: raw.worktreeRoot && raw.worktreeRoot.trim()
@@ -266,6 +265,12 @@ async function resolveRepoRoot(ctx: PluginContextLite, repoPath: string): Promis
 }
 
 function buildBranch(input: PrepareInput, agent: string): string {
+  // `bakin/run/*` is the DISPATCH-managed worktree namespace (branch-per-run,
+  // doctor-advisory-counted) — agent-driven prepares must not mint names
+  // there or the two systems' bookkeeping cross-matches.
+  if (input.branch?.startsWith('bakin/run/')) {
+    throw new Error("Branch names under 'bakin/run/' are reserved for dispatch-managed run worktrees")
+  }
   if (input.branch) return input.branch
   const task = slug(input.taskId) || 'task'
   return `bakin/${task}-${normalizeAgent(agent)}`
@@ -616,9 +621,9 @@ const gitPlugin = definePlugin({
       {
         key: 'allowedRepoRoots',
         label: 'Allowed repo roots',
-        description: 'Directories agents may prepare git worktrees from.',
+        description: 'Directories agents may prepare git worktrees from (also gates dispatch repo binding). Empty = disabled until configured.',
         type: 'list',
-        default: [{ path: DEFAULT_ALLOWED_ROOT }],
+        default: [],
         addLabel: 'Add repo root',
         uniqueField: 'path',
         itemShape: {
@@ -627,7 +632,6 @@ const gitPlugin = definePlugin({
             label: 'Path',
             type: 'string',
             required: true,
-            default: DEFAULT_ALLOWED_ROOT,
           },
         },
       },

@@ -146,7 +146,7 @@ bakin_exec_schedule_create name="daily-recipe" schedule="every day at 11am" agen
 
 For coding tasks against a git repository:
 
-1. **Isolate in a worktree.** Start with \`bakin_exec_git_prepare_worktree taskId=<id>\` and work there; check state with \`bakin_exec_git_status\` and release with \`bakin_exec_git_release_worktree\` when done. Never commit from a shared checkout — branches flip under you.
+1. **Isolate in a worktree.** FIRST check where you are: if your working directory is already a git checkout on a \`bakin/run/*\` branch (\`git branch --show-current\`), you are in a dispatch-managed isolated worktree — commit your work THERE and do NOT call \`bakin_exec_git_prepare_worktree\` (a second checkout would strand your commits on the wrong branch). Otherwise, start with \`bakin_exec_git_prepare_worktree taskId=<id>\` and work there; check state with \`bakin_exec_git_status\` and release with \`bakin_exec_git_release_worktree\` when done. Never commit from a shared checkout — branches flip under you.
 2. **GitHub operations use the \`gh\` CLI** (issues, PRs, releases, CI status) when it is installed and authenticated — the doctor's github readiness check tells you.
 3. **Ask before irreversible pushes.** Pushing to or merging into a repo's default branch, force-pushing, or publishing a release needs explicit instruction in the task brief; otherwise stop and ask via \`bakin_exec_log\` + \`bakin_exec_tasks_block\`. Opening a PR from a feature branch is fine without asking.
 

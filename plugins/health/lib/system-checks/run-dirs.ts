@@ -90,7 +90,7 @@ export function runDirsSweepRepair(): HealthRepairActionDefinition {
       if (items.length === 0) return []
       try {
         const settings = getSettings()
-        const stats = sweepRunWorkspaces({
+        const stats = await sweepRunWorkspaces({
           isTurnLive: (threadId) => getInFlightTurn(threadId) !== undefined,
           taskExists: (taskId) => Boolean(getTask(taskId)),
           retentionDays: settings.dispatch.runDirRetentionDays,

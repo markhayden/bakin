@@ -18,6 +18,7 @@ import { join } from 'path'
 import { z } from 'zod'
 
 import { getContentDir } from '../../packages/core/src/content-dir'
+import { removeRunWorktree } from './git-worktree'
 import { createLogger } from './logger'
 
 const log = createLogger('run-workspace')
@@ -36,6 +37,9 @@ const RunSidecarSchema = z.object({
   outcome: z.string().optional(),
   settledAt: z.string().optional(),
   sizeBytes: z.number().optional(),
+  /** Bound repo whose worktree lives at `<dir>/repo` — the sweep needs it
+   *  for `git worktree remove`; cleared once the checkout is gone. */
+  repoPath: z.string().optional(),
 })
 
 export type RunSidecar = z.infer<typeof RunSidecarSchema>
@@ -125,6 +129,15 @@ export function settleRunWorkspace(agentId: string, threadId: string, outcome: s
   })
 }
 
+/** Record/clear the bound repo on a run's sidecar (worktree lifecycle). */
+export function setRunWorkspaceRepo(agentId: string, threadId: string, repoPath: string | null, contentDir?: string): void {
+  const dir = runWorkspacePathFor(agentId, threadId, contentDir)
+  const sidecar = readRunSidecar(dir)
+  if (!sidecar) return
+  const { repoPath: _prev, ...rest } = sidecar
+  writeSidecar(dir, repoPath ? { ...rest, repoPath } : rest)
+}
+
 /** Eager removal for post-claim failure paths (prep failure, suppressed
  *  claim, task-deleted-mid-allocation, send throw) — the common cases never
  *  wait for aged GC. */
@@ -141,6 +154,9 @@ export function removeRunWorkspace(dir: string): void {
 /** Failed/aborted scratch keeps a flat 30-day window (fixed — post
  *  worktree-death this bounds kilobytes; spec r4 removed the knob). */
 const FAILED_RETENTION_MS = 30 * 24 * 60 * 60 * 1000
+/** A FAILED run's worktree checkout (gigabyte-class) keeps only 48h —
+ *  salvage happens at diagnosis time, not weeks later. */
+const FAILED_WORKTREE_RETENTION_MS = 48 * 60 * 60 * 1000
 /** Bounded work per tick: the sweep must never turn one watchdog tick into
  *  a multi-second IO storm; backlogs drain across ticks. */
 const MAX_REMOVALS_PER_SWEEP = 25
@@ -224,7 +240,7 @@ let sweepInFlight = false
  * doctor's to escalate, not ours to fix by killing live work). Single-flight:
  * a pass still running when the next tick fires is skipped, never overlapped.
  */
-export function sweepRunWorkspaces(deps: RunWorkspaceSweepDeps): RunWorkspaceStats | null {
+export async function sweepRunWorkspaces(deps: RunWorkspaceSweepDeps): Promise<RunWorkspaceStats | null> {
   if (sweepInFlight) return lastStats
   sweepInFlight = true
   try {
@@ -254,9 +270,30 @@ export function sweepRunWorkspaces(deps: RunWorkspaceSweepDeps): RunWorkspaceSta
         let sidecar = readRunSidecar(dir)
         const cls = classifyRunDir(dir, sidecar, deps, now)
         if (cls === 'expired' && removed < MAX_REMOVALS_PER_SWEEP) {
+          // Worktree-bearing dirs detach from the bound repo first (`git
+          // worktree remove --force` + prune, via the global git mutex); a
+          // failed removal (zombie writes, ENOTEMPTY) retries next tick —
+          // never "done".
+          if (sidecar?.repoPath) {
+            const detached = await removeRunWorktree(sidecar.repoPath, join(dir, 'repo'))
+            if (!detached) continue
+          }
           removeRunWorkspace(dir)
           removed += 1
           continue
+        }
+        // Worktrees die long before scratch: successful settles remove the
+        // checkout at settle-time (this catches crash strays); failed runs
+        // keep the checkout a 48h salvage window, scratch+sidecar the 30d.
+        if (sidecar?.repoPath && sidecar.status === 'settled') {
+          const settledAt = Date.parse(sidecar.settledAt ?? sidecar.createdAt)
+          const failedWindowOver = sidecar.outcome !== 'ok' && now - settledAt > FAILED_WORKTREE_RETENTION_MS
+          if (sidecar.outcome === 'ok' || failedWindowOver) {
+            if (await removeRunWorktree(sidecar.repoPath, join(dir, 'repo'))) {
+              setRunWorkspaceRepo(sidecar.agentId, sidecar.threadId, null)
+              sidecar = readRunSidecar(dir)
+            }
+          }
         }
         // Lazy size stamp: settled sidecars missing sizeBytes (pre-crash
         // settles, older allocations) get one walk here, bounded per tick.
