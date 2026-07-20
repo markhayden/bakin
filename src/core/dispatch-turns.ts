@@ -32,6 +32,7 @@ import type { DispatchTask, ConcurrencyGate } from './dispatch-types'
 import { withStateLock, loadDispatchState, saveDispatchState } from './dispatch-state'
 import { findDispatchTaskSnapshot, tryAddTaskLog } from './dispatch-board'
 import { reconcileRejectedDispatch } from './dispatch-session-death'
+import { allocateRunWorkspace, settleRunWorkspace } from './run-workspace'
 
 const log = createLogger('dispatch-turns')
 const hooks = () => getHookRegistry()
@@ -44,7 +45,7 @@ const hooks = () => getHookRegistry()
  * sends (orchestrator/watchdog/doctor) deliberately stay in the agent's
  * default session and don't go through here.
  */
-async function sendDispatchMessage(agentId: string, content: string, threadId: string, routing?: ResolvedTurn, signal?: AbortSignal, onActivity?: (chunk: ChatChunk) => void): Promise<MessageResult> {
+async function sendDispatchMessage(agentId: string, content: string, threadId: string, routing?: ResolvedTurn, signal?: AbortSignal, onActivity?: (chunk: ChatChunk) => void, runWorkspace?: string): Promise<MessageResult> {
   return getAppServices().runtime.messaging.send({
     agentId,
     content,
@@ -53,8 +54,55 @@ async function sendDispatchMessage(agentId: string, content: string, threadId: s
     ...(routing?.thinking ? { thinking: routing.thinking } : {}),
     ...(signal ? { signal } : {}),
     ...(onActivity ? { onActivity } : {}),
+    // Per-run isolation cwd — set ONLY here, only for dispatch turns on
+    // isolated runtimes (same-agent-concurrency D2). Chat and system sends
+    // never carry it.
+    ...(runWorkspace ? { runWorkspace } : {}),
     // Typed contract field (T29) — core policy never rides the metadata bag.
     oversizedOutputBytes: getSettings().dispatch.oversizedOutputBytes,
+  })
+}
+
+/**
+ * The active runtime's same-agent concurrency mode, cached per process:
+ * capability declarations are static per adapter, and a completed runtime
+ * switch requires a server restart anyway. Unreachable/undeclared reads
+ * fail SAFE to 'serialized' (per-agent cap clamps to 1) without caching,
+ * so a late-initializing runtime is re-probed next dispatch.
+ */
+let sameAgentTurnsModeCache: 'isolated' | 'serialized' | undefined
+export function resetSameAgentTurnsModeCache(): void {
+  sameAgentTurnsModeCache = undefined
+  concurrencyClampAudited = false
+}
+export async function getSameAgentTurnsMode(): Promise<'isolated' | 'serialized'> {
+  if (sameAgentTurnsModeCache) return sameAgentTurnsModeCache
+  try {
+    sameAgentTurnsModeCache = (await getAppServices().runtime.capabilities()).concurrency.sameAgentTurns
+    return sameAgentTurnsModeCache
+  } catch {
+    return 'serialized'
+  }
+}
+
+/**
+ * Clamp-and-warn (thinking-level precedent, never a silent drop): when
+ * settings ask for per-agent parallelism a serialized runtime can't isolate,
+ * audit it — once per boot, not per turn (the clamp is a standing condition,
+ * not an event stream).
+ */
+let concurrencyClampAudited = false
+export function auditConcurrencyClampIfNeeded(contentDir: string, mode: 'isolated' | 'serialized'): void {
+  if (concurrencyClampAudited || mode === 'isolated') return
+  if (getSettings().dispatch.maxTurnsPerAgent <= 1) return
+  concurrencyClampAudited = true
+  appendAudit(contentDir, 'dispatch.concurrency_clamped', 'dispatch', {
+    requested: getSettings().dispatch.maxTurnsPerAgent,
+    effective: 1,
+    reason: 'runtime declares concurrency.sameAgentTurns: serialized — per-run isolation unavailable',
+  })
+  log.warn('Per-agent concurrency clamped to 1: active runtime cannot isolate same-agent turns', {
+    requested: getSettings().dispatch.maxTurnsPerAgent,
   })
 }
 
@@ -464,9 +512,14 @@ export function concurrencyGate(
   // Slots reserved by collected-but-not-yet-fired turns in the current
   // two-phase cycle — invisible to the in-flight registry until phase 2.
   reserved?: { total: number; forAgent: number },
+  // The active runtime's concurrency declaration (getSameAgentTurnsMode).
+  // Omitted/serialized ⇒ per-agent cap clamps to 1 regardless of settings:
+  // without per-run isolation, two same-agent turns share one workspace.
+  sameAgentTurns: 'isolated' | 'serialized' = 'serialized',
 ): ConcurrencyGate {
+  const perAgentCap = sameAgentTurns === 'isolated' ? settings.dispatch.maxTurnsPerAgent : Math.min(settings.dispatch.maxTurnsPerAgent, 1)
   if (getInFlightTurnCount() + (reserved?.total ?? 0) >= settings.dispatch.maxConcurrentTurns) return 'concurrency_cap'
-  if (getInFlightTurnCount(agentId) + (reserved?.forAgent ?? 0) >= settings.dispatch.maxTurnsPerAgent) return 'agent_busy'
+  if (getInFlightTurnCount(agentId) + (reserved?.forAgent ?? 0) >= perAgentCap) return 'agent_busy'
   return null
 }
 
@@ -528,6 +581,9 @@ export function fireDispatchTurn(opts: {
   /** Nested-workflow child board task this step turn serves — deleting it
    *  must abort the turn even though `task` is the parent (#604 review). */
   childTaskId?: string
+  /** Workflow step id (recorded on the run-workspace sidecar so the sweep's
+   *  failed-retention and salvage can attribute per step). */
+  stepId?: string
   /** True when this is a recovery-ladder re-dispatch (routes to the
    *  'recovery' origin policy regardless of the task's shape). */
   isRecovery?: boolean
@@ -541,6 +597,9 @@ export function fireDispatchTurn(opts: {
   // completes — awaitDispatchIdle() must mean "all bookkeeping done", and a
   // turn's slot shouldn't free until its outcome has been recorded.
   const abort = new AbortController()
+  // Allocated inside the settle chain (isolated runtimes only); shared with
+  // the catch branches so every settle path stamps the sidecar.
+  let runWorkspace: string | undefined
   const settled = (opts.routing ? Promise.resolve(opts.routing) : resolveDispatchRouting(opts.task, opts.isRecovery ?? false))
     .then(async (routing) => {
       // Fire-time existence check: a delete can interleave between the
@@ -550,6 +609,18 @@ export function fireDispatchTurn(opts: {
       if (!findDispatchTaskSnapshot(opts.task.id) || (opts.childTaskId && !findDispatchTaskSnapshot(opts.childTaskId))) {
         abort.abort('task-deleted')
         throw new RuntimeError('Task deleted before dispatch turn fired', { kind: 'aborted' })
+      }
+      // Per-run isolation (same-agent-concurrency D2/D4): allocate AFTER the
+      // existence check (a deleted task never mints a dir) and inside the
+      // settle chain — post-claim, outside withStateLock (the chain runs
+      // after the lock releases). Serialized runtimes never get a dir.
+      if ((await getSameAgentTurnsMode()) === 'isolated') {
+        runWorkspace = allocateRunWorkspace({
+          threadId: opts.threadId,
+          taskId: opts.task.id,
+          ...(opts.stepId ? { stepId: opts.stepId } : {}),
+          agentId: opts.targetAgent,
+        })
       }
       if (routing.model || routing.thinking || routing.thinkingClamp) {
         appendAudit(opts.contentDir, 'task.routed', opts.targetAgent, {
@@ -578,7 +649,7 @@ export function fireDispatchTurn(opts: {
           ts: new Date().toISOString(),
         })
       }
-      const result = await sendDispatchMessage(opts.targetAgent, opts.message, opts.threadId, routing, abort.signal, onActivity)
+      const result = await sendDispatchMessage(opts.targetAgent, opts.message, opts.threadId, routing, abort.signal, onActivity, runWorkspace)
       // Free the live-run slot FIRST — the settle reconciliation below (and
       // any ladder re-dispatch it schedules) must be able to claim anew.
       try {
@@ -586,6 +657,7 @@ export function fireDispatchTurn(opts: {
       } catch (err) {
         log.error('Failed to settle run in ledger', err, { threadId: opts.threadId })
       }
+      if (runWorkspace) settleRunWorkspace(opts.targetAgent, opts.threadId, 'ok')
       // Attribute the turn's token/dollar cost (run_id == threadId). The
       // resolved routing model is what actually ran — price against it.
       const workClass = classifyDispatchWorkClass(opts.task, opts.isRecovery ?? false)
@@ -632,6 +704,7 @@ export function fireDispatchTurn(opts: {
         } catch (ledgerErr) {
           log.debug('Ledger settle after abort was a no-op', { threadId: opts.threadId, err: ledgerErr instanceof Error ? ledgerErr.message : String(ledgerErr) })
         }
+        if (runWorkspace) settleRunWorkspace(opts.targetAgent, opts.threadId, `aborted: ${reason}`)
         appendAudit(opts.contentDir, 'task.turn_aborted', opts.targetAgent, {
           id: opts.task.id,
           title: opts.task.title,
@@ -651,6 +724,10 @@ export function fireDispatchTurn(opts: {
         else settleRun(opts.threadId, `failed: ${formatDispatchError(err).slice(0, 120)}`)
       } catch (ledgerErr) {
         log.error('Failed to settle failed run in ledger', ledgerErr, { threadId: opts.threadId })
+      }
+      // Failed/lost runs KEEP their dir (salvage window — sweep owns aging).
+      if (runWorkspace) {
+        settleRunWorkspace(opts.targetAgent, opts.threadId, err instanceof RuntimeTurnError ? 'lost: session-death' : `failed: ${formatDispatchError(err).slice(0, 80)}`)
       }
       try {
         await withStateLock(async () => {

@@ -23,7 +23,7 @@ import {
   trimDispatched,
 } from './dispatch-state'
 import { readDispatchColumns, isTaskDispatchEligible, addTaskLog, moveTaskToInProgress, tryAddTaskLog } from './dispatch-board'
-import { concurrencyGate, deferForBudget, fireDispatchTurn, resolveDispatchRouting, type BudgetSpendMemo } from './dispatch-turns'
+import { auditConcurrencyClampIfNeeded, concurrencyGate, deferForBudget, fireDispatchTurn, getSameAgentTurnsMode, resolveDispatchRouting, type BudgetSpendMemo } from './dispatch-turns'
 import { prepareRegularDispatch } from './dispatch-prepare'
 import { deferForMissingBrand } from './dispatch-context-blocks'
 import { dispatchWorkflowTask } from './dispatch-workflow'
@@ -61,6 +61,10 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
     await withStateLock(async () => {
     const state = loadDispatchState(contentDir)
     const runtime = getAppServices().runtime
+    // Per-agent parallelism is capability-gated: serialized runtimes clamp
+    // to 1 (with a once-per-boot audit), isolated runtimes honor settings.
+    const sameAgentTurns = await getSameAgentTurnsMode()
+    auditConcurrencyClampIfNeeded(contentDir, sameAgentTurns)
     const runtimeAgents = await runtime.agents.list()
     const runtimeAgentIds = new Set(runtimeAgents.map((agent) => agent.id))
     const runtimeRoster: DispatchRosterAgent[] = runtimeAgents.map((agent) => ({
@@ -217,7 +221,7 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
       const gate = concurrencyGate(targetAgent, settings, {
         total: pendingTurns.length,
         forAgent: pendingByAgent.get(targetAgent) ?? 0,
-      })
+      }, sameAgentTurns)
       if (gate) {
         log.debug('Dispatch deferred by concurrency gate', { id: task.id, agent: targetAgent, gate })
         continue

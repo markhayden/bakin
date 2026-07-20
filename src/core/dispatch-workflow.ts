@@ -16,7 +16,7 @@ import { getFailureRecord } from './dispatch-state'
 import { findDispatchTaskSnapshot } from './dispatch-board'
 import { buildDispatchLessonBlock, buildDispatchAssetBlock, buildDispatchBrandBlock, BrandUnavailableError } from './dispatch-context-blocks'
 import { toolHelpers, sharedExecutionToolDocs, outputDisciplineSection, buildCorrectiveSection, type PromptSection } from './dispatch-prompts'
-import { concurrencyGate, deferForBudget, claimDispatchRun, auditDispatchSuppressed, fireDispatchTurn, resolveDispatchRouting } from './dispatch-turns'
+import { concurrencyGate, deferForBudget, claimDispatchRun, auditDispatchSuppressed, fireDispatchTurn, getSameAgentTurnsMode, resolveDispatchRouting } from './dispatch-turns'
 import { isTeamStepToken, teamIdFromToken } from '@bakin/core/workflows/team-token'
 import { resolveTeamAssignmentForStep } from './dispatch-team'
 
@@ -146,6 +146,7 @@ export async function dispatchWorkflowTask(
       targetAgent,
       getSettings(),
       reserved ? { total: reserved.total, forAgent: reserved.forAgent.get(targetAgent) ?? 0 } : undefined,
+      await getSameAgentTurnsMode(),
     )
     if (gate) {
       log.debug('Workflow step dispatch deferred by concurrency gate', { taskId: task.id, stepId, agent: targetAgent, gate })
@@ -192,6 +193,7 @@ export async function dispatchWorkflowTask(
       task,
       targetAgent,
       threadId,
+      stepId,
       message,
       contentDir,
       port,

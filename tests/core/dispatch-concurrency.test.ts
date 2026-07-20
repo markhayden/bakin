@@ -54,10 +54,12 @@ mock.module('../../src/core/usage', () => ({ recordUsage: mock() }))
 // Per-agent controllable send: resolves when the test releases it.
 type Pending = { resolve: () => void; reject: (err: unknown) => void }
 const pendingSends = new Map<string, Pending[]>()
-const sendCalls: Array<{ agentId: string; threadId: string; startedAt: number }> = []
+const sendCalls: Array<{ agentId: string; threadId: string; startedAt: number; runWorkspace?: string }> = []
+// Capability-declared concurrency mode for the mock runtime (settable per test).
+let mockSameAgentTurns: 'isolated' | 'serialized' = 'serialized'
 
-const mockRuntimeSend = mock((args: { agentId: string; threadId: string }) => {
-  sendCalls.push({ agentId: args.agentId, threadId: args.threadId, startedAt: Date.now() })
+const mockRuntimeSend = mock((args: { agentId: string; threadId: string; runWorkspace?: string }) => {
+  sendCalls.push({ agentId: args.agentId, threadId: args.threadId, startedAt: Date.now(), ...(args.runWorkspace ? { runWorkspace: args.runWorkspace } : {}) })
   return new Promise((resolve, reject) => {
     const queue = pendingSends.get(args.agentId) ?? []
     queue.push({ resolve: () => resolve({ id: 'msg' }), reject })
@@ -83,6 +85,7 @@ const mockAppServices = {
       ],
     },
     messaging: { send: (...args: unknown[]) => mockRuntimeSend(...(args as [never])) },
+    capabilities: async () => ({ concurrency: { sameAgentTurns: mockSameAgentTurns } }),
   },
 }
 mock.module('../../src/core/app-services', () => ({ getAppServices: () => mockAppServices }))
@@ -134,6 +137,8 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
 }))
 
 import { dispatchTasks, dispatchSingleTask, awaitDispatchIdle, getInFlightTurnCount } from '../../src/core/dispatch'
+import { resetSameAgentTurnsModeCache } from '../../src/core/dispatch-turns'
+import { readRunSidecar } from '../../src/core/run-workspace'
 import { getLiveRun } from '../../src/core/execution-ledger'
 import { closeDb } from '../../packages/core/src/storage/db'
 
@@ -152,6 +157,8 @@ beforeEach(() => {
   auditEvents.length = 0
   hookResponses.clear()
   mockRuntimeSend.mockClear()
+  mockSameAgentTurns = 'serialized'
+  resetSameAgentTurnsModeCache()
   settingsValue.dispatch.maxConcurrentTurns = 3
   settingsValue.dispatch.maxTurnsPerAgent = 1
 })
@@ -197,6 +204,58 @@ describe('concurrent dispatch', () => {
     releaseSend('jessica')
     await awaitDispatchIdle()
     expect(getInFlightTurnCount()).toBe(0)
+  })
+
+  it('isolated runtime + cap 2: two same-agent tasks fire concurrently with DISTINCT run workspaces', async () => {
+    mockSameAgentTurns = 'isolated'
+    settingsValue.dispatch.maxTurnsPerAgent = 2
+    setColumns({ todo: [
+      { id: 'iso-a', title: 'First', agent: 'jessica' },
+      { id: 'iso-b', title: 'Second', agent: 'jessica' },
+    ] })
+
+    await dispatchTasks(tempDir, 3737)
+    await tick()
+
+    const jessicaSends = sendCalls.filter((c) => c.agentId === 'jessica')
+    expect(jessicaSends.length).toBe(2)
+    const [wsA, wsB] = jessicaSends.map((c) => c.runWorkspace)
+    expect(wsA).toContain('run-workspaces/jessica/')
+    expect(wsB).toContain('run-workspaces/jessica/')
+    expect(wsA).not.toBe(wsB)
+    // Sidecars are born 'running' and settle 'ok' with the turn.
+    expect(readRunSidecar(wsA!)?.status).toBe('running')
+    releaseSend('jessica')
+    releaseSend('jessica')
+    await awaitDispatchIdle()
+    expect(readRunSidecar(wsA!)?.status).toBe('settled')
+    expect(readRunSidecar(wsA!)?.outcome).toBe('ok')
+    expect(readRunSidecar(wsB!)?.status).toBe('settled')
+  })
+
+  it('serialized runtime clamps the per-agent cap to 1 with a once-per-boot audit; sends carry NO runWorkspace', async () => {
+    settingsValue.dispatch.maxTurnsPerAgent = 3
+    setColumns({ todo: [
+      { id: 'ser-a', title: 'First', agent: 'jessica' },
+      { id: 'ser-b', title: 'Second', agent: 'jessica' },
+    ] })
+
+    await dispatchTasks(tempDir, 3737)
+    await tick()
+
+    const jessicaSends = sendCalls.filter((c) => c.agentId === 'jessica')
+    expect(jessicaSends.length).toBe(1)
+    expect(jessicaSends[0].runWorkspace).toBeUndefined()
+    expect(auditEvents.filter((e) => e.event === 'dispatch.concurrency_clamped').length).toBe(1)
+
+    // A second cycle does not re-audit the standing clamp.
+    releaseSend('jessica')
+    await awaitDispatchIdle()
+    await dispatchTasks(tempDir, 3737)
+    await tick()
+    expect(auditEvents.filter((e) => e.event === 'dispatch.concurrency_clamped').length).toBe(1)
+    releaseSend('jessica')
+    await awaitDispatchIdle()
   })
 
   it('respects the per-agent cap: a second task for a busy agent waits for a later cycle', async () => {
