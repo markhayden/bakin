@@ -243,3 +243,13 @@ test('public PageShell and flow visual baseline', async ({ page }) => {
     fullPage: true,
   })
 })
+
+test('public responsive layout recipes visual baseline', async ({ page }) => {
+  await page.goto('/iframe.html?id=layout-grid-section-and-overflow--responsive-composition&viewMode=story')
+  await expect(page.getByRole('heading', { name: 'Structure changes with available space' })).toBeVisible()
+  await expect(page).toHaveScreenshot('foundation-layout-recipes.png', {
+    animations: 'disabled',
+    caret: 'hide',
+    fullPage: true,
+  })
+})

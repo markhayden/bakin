@@ -64,6 +64,34 @@ export function TasksPage() {
 
 The shared gap vocabulary is `none`, `dense`, `item`, `section`, and `page`. Prefer the default `Inline` wrapping behavior so actions and metadata remain available at 320px. Set `wrap={false}` only inside a deliberately bounded region whose owning recipe supplies reflow or internal scrolling. The `as` prop changes semantics among the supported wrappers; it does not alter layout styling.
 
+Use the remaining layout helpers when content needs two-dimensional reflow, section separation, or intrinsic width:
+
+| Need | Contract |
+| --- | --- |
+| Equal responsive columns | `Grid layout="split"`, `"thirds"`, or `"quarters"` |
+| Repeating object cards | `Grid layout="cards"`; the recipe adds columns when the container can hold them |
+| Primary content with supporting context | `Grid layout="main-aside"`; the aside moves below the main content when space is limited |
+| A named page region | `Section`; use `spacing="compact"`, `"default"`, or `"generous"`, and `divider="top"` only when peer sections need a visible boundary |
+| A wide table, chart, or canvas | `BoundedOverflow`; supply `label` or `labelledBy` so its keyboard-scrollable region has an accessible name |
+
+```tsx
+import { BoundedOverflow, Grid, Section } from '@makinbakin/sdk/layout'
+
+<Section aria-labelledby="operations-title">
+  <h2 id="operations-title">Active operations</h2>
+  <Grid layout="main-aside" gap="section">
+    <BoundedOverflow label="Active operation details">
+      <table>{/* Intrinsically wide data */}</table>
+    </BoundedOverflow>
+    <aside>{/* Supporting context */}</aside>
+  </Grid>
+</Section>
+```
+
+Grid recipes respond to their own available container, not the browser viewport. Do not recreate their internal breakpoints in plugin code. `single`, `split`, `thirds`, and `quarters` describe equal-column intent; `cards` and `main-aside` cover the two recurring unequal cases found across official surfaces. If a layout does not fit one of these recipes, compose `Stack` and `Inline` first and bring repeated evidence to the design-system review before adding another public option.
+
+`BoundedOverflow` is intentionally horizontal. The child owns its intrinsic width, while the boundary prevents that width from escaping the page and provides keyboard focus for scrolling. It is not a general-purpose nested page scroller and does not set arbitrary heights.
+
 ## Action and Status Primitives
 
 The first supported primitive set covers actions, compact state, contextual messages, and measurable work:

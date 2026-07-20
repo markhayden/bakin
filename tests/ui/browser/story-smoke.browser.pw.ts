@@ -9,6 +9,7 @@ const selectionOverviewStory = '/iframe.html?id=foundation-selection-controls--o
 const modalOverviewStory = '/iframe.html?id=foundation-modal-and-side-overlays--overview&viewMode=story'
 const anchoredOverviewStory = '/iframe.html?id=foundation-anchored-overlays--overview&viewMode=story'
 const layoutFlowStory = '/iframe.html?id=layout-pageshell-and-flow--responsive-page&viewMode=story'
+const layoutRecipesStory = '/iframe.html?id=layout-grid-section-and-overflow--responsive-composition&viewMode=story'
 
 test('public story keeps keyboard, focus, console, and responsive contracts', async ({ page }) => {
   const browserErrors: string[] = []
@@ -466,5 +467,47 @@ test('page and flow layout follows its container without document overflow', asy
   }
 
   await expect(page.getByRole('navigation', { name: 'Page actions' })).toBeVisible()
+  expect(browserErrors).toEqual([])
+})
+
+test('grid recipes reflow by container and bound intrinsic overflow', async ({ page }) => {
+  const browserErrors: string[] = []
+  page.on('console', (message) => {
+    if (message.type() === 'error') browserErrors.push(`console: ${message.text()}`)
+  })
+  page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
+  page.on('requestfailed', (request) => {
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+  })
+
+  const expectedColumns = new Map([[1024, 4], [720, 3], [480, 2], [320, 1]])
+  for (const width of responsiveWidths) {
+    await test.step(`${width}px grid selects its named responsive recipe`, async () => {
+      await page.setViewportSize({ width, height: 900 })
+      await page.goto(layoutRecipesStory, { waitUntil: 'networkidle' })
+      const grid = page.getByTestId('responsive-grid')
+      await expect(grid).toHaveAttribute('data-layout', 'quarters')
+      const measurements = await grid.evaluate((element) => ({
+        columns: getComputedStyle(element).gridTemplateColumns.split(' ').length,
+        documentClientWidth: document.documentElement.clientWidth,
+        documentScrollWidth: document.documentElement.scrollWidth,
+      }))
+      expect(measurements.columns).toBe(expectedColumns.get(width))
+      expect(measurements.documentScrollWidth).toBeLessThanOrEqual(measurements.documentClientWidth)
+    })
+  }
+
+  await test.step('wide content remains keyboard reachable inside its labelled boundary', async () => {
+    await page.setViewportSize({ width: 320, height: 900 })
+    await page.goto(layoutRecipesStory, { waitUntil: 'networkidle' })
+    const overflow = page.getByRole('region', { name: 'Active operation details' })
+    await overflow.focus()
+    await expect(overflow).toBeFocused()
+    const measurements = await overflow.evaluate((element) => ({ clientWidth: element.clientWidth, scrollWidth: element.scrollWidth }))
+    expect(measurements.scrollWidth).toBeGreaterThan(measurements.clientWidth)
+    await page.keyboard.press('ArrowRight')
+    await expect.poll(() => overflow.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0)
+  })
+
   expect(browserErrors).toEqual([])
 })

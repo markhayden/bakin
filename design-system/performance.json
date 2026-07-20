@@ -11,7 +11,7 @@
   },
   "css": {
     "canonicalPath": "packages/sdk/styles.css",
-    "canonicalBytes": 283522,
+    "canonicalBytes": 284699,
     "copyCount": 1,
     "copyPaths": [
       "packages/sdk/styles.css"
@@ -43,8 +43,8 @@
     {
       "name": "sdk-layout",
       "path": "packages/host/public/vendor/sdk-layout.js",
-      "bytes": 1685,
-      "reachableBytes": 2439
+      "bytes": 3601,
+      "reachableBytes": 4355
     },
     {
       "name": "sdk-patterns",
@@ -102,7 +102,7 @@
     },
     {
       "path": "packages/host/public/vendor/sdk-layout.js",
-      "bytes": 1685
+      "bytes": 3601
     },
     {
       "path": "packages/host/public/vendor/sdk-metadata.js",
@@ -149,7 +149,7 @@
       "bytes": 29447
     },
     {
-      "path": "packages/host/public/vendor/sdk-shared-rz231ppk.js",
+      "path": "packages/host/public/vendor/sdk-shared-t7cjgkx8.js",
       "bytes": 366297
     },
     {

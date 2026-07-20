@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from 'bun:test'
 import { cleanup, render } from '@testing-library/react'
 import '../../rtl-settle'
 
-import { Inline, PageShell, Stack } from '@makinbakin/sdk/layout'
+import { BoundedOverflow, Grid, Inline, PageShell, Section, Stack } from '@makinbakin/sdk/layout'
 
 afterEach(() => cleanup())
 
@@ -57,5 +57,57 @@ describe('public layout primitives', () => {
     inline = container.querySelector('[data-slot="inline"]')
     expect(inline?.getAttribute('data-wrap')).toBe('false')
     expect(inline?.className).toContain('flex-nowrap')
+  })
+
+  it('maps responsive Grid recipes without accepting arbitrary column values', () => {
+    const { container, rerender } = render(
+      <Grid as="ul" layout="quarters" gap="section" align="start" aria-label="Runtime signals">
+        <li>Healthy</li>
+        <li>Delayed</li>
+      </Grid>,
+    )
+
+    let grid = container.querySelector('ul')
+    expect(grid?.getAttribute('data-slot')).toBe('grid')
+    expect(grid?.getAttribute('data-layout')).toBe('quarters')
+    expect(container.querySelector('[data-slot="grid-container"]')?.className).toContain('@container/layout-grid')
+    expect(grid?.className).toContain('@4xl/layout-grid:grid-cols-4')
+    expect(grid?.className).toContain('items-start')
+
+    rerender(<Grid layout="main-aside"><div>Main</div><aside>Aside</aside></Grid>)
+    grid = container.querySelector('[data-slot="grid"]')
+    expect(grid?.className).toContain('@3xl/layout-grid:grid-cols-[minmax(0,1.6fr)_minmax(16rem,.8fr)]')
+  })
+
+  it('gives Section consistent rhythm and an optional semantic divider', () => {
+    const { container } = render(
+      <Section spacing="compact" divider="top" aria-labelledby="activity-title">
+        <h2 id="activity-title">Activity</h2>
+        <p>Latest runtime events</p>
+      </Section>,
+    )
+
+    const section = container.querySelector('section')
+    expect(section?.getAttribute('data-slot')).toBe('section')
+    expect(section?.getAttribute('data-spacing')).toBe('compact')
+    expect(section?.getAttribute('data-divider')).toBe('top')
+    expect(section?.className).toContain('gap-bakin-4')
+    expect(section?.className).toContain('border-t')
+  })
+
+  it('contains wide content in a labelled keyboard-scrollable region', () => {
+    const { container } = render(
+      <BoundedOverflow label="Task run history" data-testid="history-scroll">
+        <table><tbody><tr><td>Task</td></tr></tbody></table>
+      </BoundedOverflow>,
+    )
+
+    const overflow = container.querySelector('[data-slot="bounded-overflow"]')
+    expect(overflow?.getAttribute('role')).toBe('region')
+    expect(overflow?.getAttribute('aria-label')).toBe('Task run history')
+    expect(overflow?.getAttribute('tabindex')).toBe('0')
+    expect(overflow?.getAttribute('data-testid')).toBe('history-scroll')
+    expect(overflow?.className).toContain('overflow-x-auto')
+    expect(overflow?.className).toContain('overscroll-x-contain')
   })
 })

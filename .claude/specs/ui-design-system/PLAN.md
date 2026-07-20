@@ -881,6 +881,24 @@ SDK UI entry remains 29,306 bytes / 423,149 reachable. The author guide now
 defines the page/flow composition contract. No official surface migration is
 included in this slice.
 
+**T27b status (2026-07-19):** Complete. `Grid`, `Section`, and
+`BoundedOverflow` finish the focused layout contract. Grid exposes six named,
+census-backed recipes (`single`, `split`, `thirds`, `quarters`, `cards`, and
+`main-aside`) with fixed container-query behavior rather than public breakpoint,
+column-width, or minimum-item-size values. Its owning container is deliberately
+separate from the semantic grid element because CSS containers cannot query
+themselves; the cross-browser 4/3/2/1 assertion caught and now guards that
+boundary. Section owns compact/default/generous rhythm and optional top
+separation. BoundedOverflow is a labelled, focusable horizontal region for wide
+tables, charts, and canvases, not a generic nested page scroller. Twelve focused
+API/render/ownership tests, all 58 public Storybook axe cases, 28 desktop/mobile
+visual baselines, and 27 Chromium/Firefox/WebKit behavior cases pass. The
+complete focused layout entry is 3,601 bytes and 4,355 bytes reachable; the
+canonical stylesheet is 284,699 bytes, initial host JS remains 457,006 bytes,
+and the focused SDK UI payload remains 29,306 bytes / 423,149 reachable. The
+author guide documents selection and misuse boundaries. No official surface
+migration is included in T27.
+
 **Acceptance:** typed semantic props cover common official layouts without raw
 Tailwind; container behavior passes 1024/720/480/320; no generic layout DSL or
 arbitrary value prop is exposed.

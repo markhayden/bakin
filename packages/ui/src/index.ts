@@ -21,6 +21,15 @@ export type {
   StackProps,
 } from './layout/flow'
 
+export { Grid } from './layout/grid'
+export type { GridAlign, GridLayout, GridProps } from './layout/grid'
+
+export { Section } from './layout/section'
+export type { SectionDivider, SectionElement, SectionProps, SectionSpacing } from './layout/section'
+
+export { BoundedOverflow } from './layout/bounded-overflow'
+export type { BoundedOverflowProps } from './layout/bounded-overflow'
+
 export { Button, buttonVariants } from './primitives/button'
 export type {
   ButtonProps,

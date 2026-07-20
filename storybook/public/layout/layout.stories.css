@@ -70,3 +70,59 @@
   color: var(--bakin-color-text-muted);
   font-size: var(--bakin-typography-size-meta);
 }
+
+.bakin-layout-recipes-story [data-slot='page-shell-content'] h2 {
+  margin: 0;
+  color: var(--bakin-color-text-primary);
+  font-size: var(--bakin-typography-size-title);
+}
+
+.bakin-layout-recipes-story__signals {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bakin-layout-recipes-story__signals [data-slot='card-title'] {
+  font-family: var(--bakin-typography-family-mono);
+  font-size: 1.75rem;
+}
+
+.bakin-layout-recipes-story__signals [data-slot='badge'] {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: start;
+}
+
+.bakin-layout-recipes-story__meta,
+.bakin-layout-recipes-story__queue {
+  color: var(--bakin-color-text-muted);
+  font-size: var(--bakin-typography-size-meta);
+}
+
+.bakin-layout-recipes-story__table {
+  min-inline-size: 44rem;
+  inline-size: 100%;
+  border-collapse: collapse;
+  color: var(--bakin-color-text-primary);
+  font-size: var(--bakin-typography-size-meta);
+  text-align: left;
+}
+
+.bakin-layout-recipes-story__table th,
+.bakin-layout-recipes-story__table td {
+  border-block-end: 1px solid var(--bakin-color-border-subtle);
+  padding: var(--bakin-layout-space-3) var(--bakin-layout-space-4);
+  white-space: nowrap;
+}
+
+.bakin-layout-recipes-story__table th {
+  color: var(--bakin-color-text-muted);
+  font-weight: var(--bakin-typography-weight-semibold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.bakin-layout-recipes-story__table tbody tr:last-child td {
+  border-block-end: 0;
+}

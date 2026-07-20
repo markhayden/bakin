@@ -290,9 +290,16 @@ Canonical page and responsive composition. Source: `packages/sdk/src/layout/inde
 
 | Export | Description |
 | --- | --- |
+| `BoundedOverflow` | `@makinbakin/sdk/layout` — canonical page and responsive composition. |
+| `Grid` | `@makinbakin/sdk/layout` — canonical page and responsive composition. |
 | `Inline` | `@makinbakin/sdk/layout` — canonical page and responsive composition. |
 | `PageShell` | `@makinbakin/sdk/layout` — canonical page and responsive composition. |
+| `Section` | `@makinbakin/sdk/layout` — canonical page and responsive composition. |
 | `Stack` | `@makinbakin/sdk/layout` — canonical page and responsive composition. |
+| `BoundedOverflowProps` | — |
+| `GridAlign` | — |
+| `GridLayout` | — |
+| `GridProps` | — |
 | `InlineAlign` | — |
 | `InlineJustify` | — |
 | `InlineProps` | — |
@@ -302,6 +309,10 @@ Canonical page and responsive composition. Source: `packages/sdk/src/layout/inde
 | `PageShellPadding` | — |
 | `PageShellProps` | — |
 | `PageShellWidth` | — |
+| `SectionDivider` | — |
+| `SectionElement` | — |
+| `SectionProps` | — |
+| `SectionSpacing` | — |
 | `StackAlign` | — |
 | `StackProps` | — |
 

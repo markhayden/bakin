@@ -9,10 +9,13 @@ const REPO_ROOT = resolve(import.meta.dir, '../../..')
 const read = (path: string) => readFileSync(resolve(REPO_ROOT, path), 'utf8')
 
 describe('public layout ownership', () => {
-  it('owns PageShell, Stack, and Inline in the private presentation package', () => {
+  it('owns the complete minimal layout vocabulary in the private presentation package', () => {
     const files = [
       'packages/ui/src/layout/page-shell.tsx',
       'packages/ui/src/layout/flow.tsx',
+      'packages/ui/src/layout/grid.tsx',
+      'packages/ui/src/layout/section.tsx',
+      'packages/ui/src/layout/bounded-overflow.tsx',
     ]
     for (const file of files) expect(existsSync(resolve(REPO_ROOT, file))).toBe(true)
 
@@ -29,25 +32,33 @@ describe('public layout ownership', () => {
     expect(Layout.PageShell).toBe(PrivateUi.PageShell)
     expect(Layout.Stack).toBe(PrivateUi.Stack)
     expect(Layout.Inline).toBe(PrivateUi.Inline)
+    expect(Layout.Grid).toBe(PrivateUi.Grid)
+    expect(Layout.Section).toBe(PrivateUi.Section)
+    expect(Layout.BoundedOverflow).toBe(PrivateUi.BoundedOverflow)
 
     const layoutIndex = read('packages/sdk/src/layout/index.ts')
     expect(layoutIndex).not.toContain('export *')
     expect(layoutIndex).toContain("from '@bakin/ui/layout'")
     expect(layoutIndex).not.toMatch(/from '@bakin\/ui'/)
     expect(read('packages/ui/package.json')).toContain('"./layout": "./src/layout/index.ts"')
-    expect(read('packages/sdk/src/components/index.ts')).not.toMatch(/export\s+\{[^}]*\b(?:PageShell|Stack|Inline)\b/)
+    expect(read('packages/sdk/src/components/index.ts')).not.toMatch(/export\s+\{[^}]*\b(?:PageShell|Stack|Inline|Grid|Section|BoundedOverflow)\b/)
   })
 
   it('keeps layout choices finite instead of exposing arbitrary style values', () => {
     const source = [
       read('packages/ui/src/layout/page-shell.tsx'),
       read('packages/ui/src/layout/flow.tsx'),
+      read('packages/ui/src/layout/grid.tsx'),
+      read('packages/ui/src/layout/section.tsx'),
+      read('packages/ui/src/layout/bounded-overflow.tsx'),
     ].join('\n')
 
     expect(source).toContain("'dense' | 'item' | 'section' | 'page'")
     expect(source).toContain("'content' | 'wide' | 'full'")
+    expect(source).toContain("'single' | 'split' | 'thirds' | 'quarters' | 'cards' | 'main-aside'")
     expect(source).not.toMatch(/gap\??:\s*(?:string|number)/)
     expect(source).not.toMatch(/width\??:\s*(?:string|number)/)
+    expect(source).not.toMatch(/(?:columns|breakpoint|minItemWidth)\??:\s*(?:string|number)/)
     expect(source).not.toMatch(/style=\{\{[^}]+(?:gap|width|padding)/)
   })
 })
