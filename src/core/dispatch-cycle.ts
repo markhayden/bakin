@@ -196,7 +196,13 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
       const taskWithWorkflow = task as typeof task & { workflowId?: string }
       if (taskWithWorkflow.workflowId) {
         try {
-          await dispatchWorkflowTask({ ...taskWithWorkflow, workflowId: taskWithWorkflow.workflowId }, contentDir, port, dispatchedSet, state, moveTaskToInProgress, addTaskLog, mainAgentId)
+          // Workflow steps fire immediately — their gate must see the slots
+          // this cycle's collected-but-unfired regular turns already hold.
+          await dispatchWorkflowTask(
+            { ...taskWithWorkflow, workflowId: taskWithWorkflow.workflowId },
+            contentDir, port, dispatchedSet, state, moveTaskToInProgress, addTaskLog, mainAgentId,
+            { total: pendingTurns.length, forAgent: pendingByAgent },
+          )
         } catch (err) {
           log.error(`Failed to dispatch workflow task "${task.title}"`, err)
         }

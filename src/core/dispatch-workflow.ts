@@ -36,6 +36,11 @@ export async function dispatchWorkflowTask(
   moveTaskToInProgress: (id: string, agent: string) => Promise<void>,
   addTaskLog: (id: string, author: string, message: string) => Promise<void>,
   mainAgentId: string,
+  /** The cycle's collected-but-unfired turns (phase-1 intents are invisible
+   *  to the registry until phase 2 fires them). Workflow steps fire
+   *  immediately, so without these reserved counts a step encountered
+   *  mid-cycle breaches both caps (same-agent-concurrency D3 live bug). */
+  reserved?: { total: number; forAgent: Map<string, number> },
 ): Promise<void> {
   // Load or create workflow instance.
   // Pass the task assignee so $assigned steps resolve to whoever owns the task at start time.
@@ -137,7 +142,11 @@ export async function dispatchWorkflowTask(
     })
     const initialLogCount = findDispatchTaskSnapshot(task.id)?.task.log?.length ?? 0
 
-    const gate = concurrencyGate(targetAgent, getSettings())
+    const gate = concurrencyGate(
+      targetAgent,
+      getSettings(),
+      reserved ? { total: reserved.total, forAgent: reserved.forAgent.get(targetAgent) ?? 0 } : undefined,
+    )
     if (gate) {
       log.debug('Workflow step dispatch deferred by concurrency gate', { taskId: task.id, stepId, agent: targetAgent, gate })
       continue
