@@ -360,6 +360,8 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 | `SaveBar` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `SegmentedControl` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `SortableHead` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `StatTile` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `StatusBadge` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `UnderlineTabs` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `UnsavedChangesDialog` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `ConversationPageBodyProps` | — |
@@ -415,6 +417,13 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 | `SegmentedControlProps` | — |
 | `SortableHeadProps` | — |
 | `SortDir` | — |
+| `StatTileProgress` | — |
+| `StatTileProgressTone` | — |
+| `StatTileProps` | — |
+| `StatTileVariant` | — |
+| `StatusBadgeProps` | — |
+| `StatusBadgeVariant` | — |
+| `StatusTone` | — |
 | `UnderlineTab` | — |
 | `UnderlineTabsProps` | — |
 | `UnsavedChangesDialogProps` | — |

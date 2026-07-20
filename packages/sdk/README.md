@@ -185,6 +185,13 @@ views to `useQueryArrayState` or `useQueryState` from
 `@makinbakin/sdk/hooks`. The public `AgentFilter` accepts presentation-ready
 options; host adapters may add app-owned agent metadata and avatars.
 
+Compact display patterns use `StatusBadge` and `StatTile`. Status labels carry
+meaning without color, while optional icons remain decorative. Focused status
+tones use `attention` and `danger`; the legacy components adapter maps the old
+`warning` and `destructive` names during migration. `StatTile` is low-chrome by
+default, offers an explicit bounded `surface` variant, and exposes labelled
+progress values to assistive technology.
+
 ## Stylesheet
 
 Bakin loads one shared copy of `@makinbakin/sdk/styles.css` for the host and all

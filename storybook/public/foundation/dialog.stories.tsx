@@ -68,7 +68,11 @@ export const NestedBehavior = {
       </Dialog>
     </main>
   ),
-  play: async ({ canvas, userEvent }) => {
+  play: async ({ canvas, canvasElement, userEvent }) => {
+    if (new URLSearchParams(window.location.search).get('bakin-browser-fixture') === '1') {
+      canvasElement.dataset.storyReady = 'true'
+      return
+    }
     const outerTrigger = canvas.getByRole('button', { name: 'Open workflow settings' })
     await userEvent.click(outerTrigger)
     const page = within(document.body)
@@ -80,6 +84,7 @@ export const NestedBehavior = {
     await waitFor(() => expect(nestedTrigger).toHaveFocus())
     await userEvent.keyboard('{Escape}')
     await waitFor(() => expect(outerTrigger).toHaveFocus())
+    canvasElement.dataset.storyReady = 'true'
   },
 } satisfies Story
 

@@ -39,6 +39,9 @@ const agentFilterStory = '/iframe.html?id=patterns-filters-and-navigation--agent
 const segmentedNavigationStory = '/iframe.html?id=patterns-filters-and-navigation--segmented-navigation&viewMode=story'
 const underlineNavigationStory = '/iframe.html?id=patterns-filters-and-navigation--underline-navigation&viewMode=story'
 const sortableTableStory = '/iframe.html?id=patterns-filters-and-navigation--sortable-table&viewMode=story'
+const statusLanguageStory = '/iframe.html?id=patterns-status-and-metrics--status-language&viewMode=story'
+const denseMetricsStory = '/iframe.html?id=patterns-status-and-metrics--dense-metrics&viewMode=story'
+const actionableMetricsStory = '/iframe.html?id=patterns-status-and-metrics--actionable-metrics&viewMode=story'
 
 test('public story keeps keyboard, focus, console, and responsive contracts', async ({ page }) => {
   const browserErrors: string[] = []
@@ -327,8 +330,10 @@ test('modal and side overlays keep focus, dismissal, motion, and viewport contra
 
   await test.step('nested dialog escape closes one layer at a time and returns focus', async () => {
     await page.setViewportSize({ width: 1024, height: 900 })
-    await page.goto('/iframe.html?id=foundation-dialog--nested-behavior&viewMode=story', { waitUntil: 'networkidle' })
+    await page.goto('/iframe.html?id=foundation-dialog--nested-behavior&viewMode=story&bakin-browser-fixture=1', { waitUntil: 'networkidle' })
+    await expect(page.locator('#storybook-root')).toHaveAttribute('data-story-ready', 'true')
     const outerTrigger = page.getByRole('button', { name: 'Open workflow settings' })
+    await page.keyboard.press('Tab')
     await expect(outerTrigger).toBeFocused()
     await outerTrigger.click()
     const outerDialog = page.getByRole('dialog', { name: 'Workflow settings' })
@@ -1147,6 +1152,86 @@ test('filter and navigation patterns preserve keyboard selection, meaning, and b
     const tablist = page.getByRole('tablist', { name: 'Task view' })
     const tabDimensions = await tablist.evaluate((element) => ({ clientWidth: element.clientWidth, scrollWidth: element.scrollWidth }))
     expect(tabDimensions.scrollWidth).toBeGreaterThan(tabDimensions.clientWidth)
+  })
+
+  expect(browserErrors).toEqual([])
+})
+
+test('status and metric patterns preserve visible meaning, exact values, and native actions', async ({ page }) => {
+  const browserErrors: string[] = []
+  page.on('console', (message) => {
+    if (message.type() === 'error') browserErrors.push(`console: ${message.text()}`)
+  })
+  page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
+  page.on('requestfailed', (request) => {
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+  })
+
+  for (const [story, heading] of [
+    [statusLanguageStory, 'Say what changed, even without color'],
+    [denseMetricsStory, 'Keep technical metrics dense and honest'],
+    [actionableMetricsStory, 'Use a surface only when the metric is an object'],
+  ] as const) {
+    for (const width of responsiveWidths) {
+      await test.step(`${heading} remains contained at ${width}px`, async () => {
+        await page.setViewportSize({ width, height: 1000 })
+        await page.goto(story, { waitUntil: 'networkidle' })
+        await expect(page.getByRole('heading', { level: 1, name: heading })).toBeVisible()
+        const dimensions = await page.evaluate(() => ({
+          clientWidth: document.documentElement.clientWidth,
+          scrollWidth: document.documentElement.scrollWidth,
+        }))
+        expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth)
+      })
+    }
+  }
+
+  await test.step('every status keeps a visible label and canonical tone', async () => {
+    await page.setViewportSize({ width: 1024, height: 900 })
+    await page.goto(statusLanguageStory, { waitUntil: 'networkidle' })
+    for (const [label, tone] of [
+      ['Draft', 'neutral'],
+      ['Published', 'success'],
+      ['Needs review', 'attention'],
+      ['Blocked', 'danger'],
+      ['Working now', 'accent'],
+    ] as const) {
+      const badge = page.locator('[data-status-badge]').filter({ hasText: label })
+      await expect(badge).toBeVisible()
+      await expect(badge).toHaveAttribute('data-tone', tone)
+    }
+    await expect(page.locator('[data-status-badge]').filter({ hasText: 'Published' }).locator('[aria-hidden="true"]')).toBeVisible()
+  })
+
+  await test.step('plain metrics retain exact accessible progress values', async () => {
+    await page.goto(denseMetricsStory, { waitUntil: 'networkidle' })
+    await expect(page.getByRole('progressbar', { name: 'Success rate' })).toHaveAttribute('aria-valuenow', '91.4')
+    await expect(page.getByRole('progressbar', { name: 'Plugin migration coverage' })).toHaveAttribute('aria-valuenow', '91.428')
+    await expect(page.locator('[data-stat-tile][data-variant="plain"]')).toHaveCount(4)
+    const longLabel = page.getByText('Plugin migration coverage across official surfaces', { exact: true })
+    expect(await longLabel.evaluate((element) => getComputedStyle(element).textOverflow)).not.toBe('ellipsis')
+  })
+
+  await test.step('surface metrics are native keyboard actions with retained focus', async () => {
+    await page.goto(actionableMetricsStory, { waitUntil: 'networkidle' })
+    const blocked = page.getByRole('button', { name: /Blocked tasks 3/ })
+    await blocked.focus()
+    await expect(blocked).toBeFocused()
+    await blocked.press('Enter')
+    await expect(page.getByRole('status')).toHaveText('Blocked tasks selected')
+    await expect(blocked).toBeFocused()
+  })
+
+  await test.step('200% text remains document-contained', async () => {
+    await page.setViewportSize({ width: 320, height: 1000 })
+    await page.goto(denseMetricsStory, { waitUntil: 'networkidle' })
+    await page.evaluate(() => { document.documentElement.style.fontSize = '200%' })
+    await expect(page.getByText('Plugin migration coverage across official surfaces', { exact: true })).toBeVisible()
+    const dimensions = await page.evaluate(() => ({
+      clientWidth: document.documentElement.clientWidth,
+      scrollWidth: document.documentElement.scrollWidth,
+    }))
+    expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth)
   })
 
   expect(browserErrors).toEqual([])

@@ -854,6 +854,10 @@ export function TaskControls() {
 
 Keep the owning page path stable while these values change. The patterns intentionally do not read or write the URL themselves, so the same controls also work for local, non-linkable state. `AgentFilter` follows the same controlled contract; official Bakin surfaces may use the compatibility adapter that supplies registered agent metadata, while plugin UI supplies its own public option labels and visuals.
 
+Use `StatusBadge` for compact state language and `StatTile` for scan-friendly technical metrics. A status always needs a visible label such as “Published,” “Needs review,” or “Blocked”; never use a bare colored dot or icon as the only meaning. Status icons are decorative reinforcement. Focused status tones follow the shared semantic vocabulary: `neutral`, `success`, `attention`, `danger`, and `accent`.
+
+`StatTile` uses the low-chrome Product Character treatment by default. Choose `variant="surface"` only when the metric is a genuinely bounded or actionable object, not to put a card around every number. When a tile has a meter, pass `progress.label` whenever the visible metric label is not a plain string. Consumers provide the exact value, denominator, and honest coverage copy; the component only clamps and presents the meter. An `onClick` tile becomes a native `type="button"` with the same visible focus contract as other actions.
+
 ## Local Commands
 
 ```sh

@@ -68,7 +68,7 @@ comparison, and deletion of replaced styling/allowances.
 - [ ] Checkpoint 3C: layout/forms/states/archetypes reviewed
 - [x] T31 Migrate destructive, dirty, and confirmation patterns
 - [x] T32a Migrate filters, segmented navigation, tabs, and sorting patterns
-- [ ] T32b Migrate status and metric patterns
+- [x] T32b Migrate status and metric patterns
 - [ ] T33a Migrate chart data tables, palette, and sparkline
 - [ ] T33b Migrate line, bar, and stacked charts
 - [ ] T34a Migrate conversation model, folding, and time utilities

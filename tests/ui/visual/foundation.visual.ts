@@ -474,3 +474,39 @@ test('public sortable table pattern visual baseline', async ({ page }) => {
     fullPage: true,
   })
 })
+
+test('public status language pattern visual baseline', async ({ page }) => {
+  await page.goto('/iframe.html?id=patterns-status-and-metrics--status-language&viewMode=story')
+  await expect(page.getByRole('heading', { level: 1, name: 'Say what changed, even without color' })).toBeVisible()
+  await expect(page.locator('[data-status-badge]').filter({ hasText: 'Published' })).toHaveAttribute('data-tone', 'success')
+  await page.evaluate(async () => document.fonts.ready)
+  await expect(page).toHaveScreenshot('foundation-status-language.png', {
+    animations: 'disabled',
+    caret: 'hide',
+    fullPage: true,
+  })
+})
+
+test('public dense metrics pattern visual baseline', async ({ page }) => {
+  await page.goto('/iframe.html?id=patterns-status-and-metrics--dense-metrics&viewMode=story')
+  await expect(page.getByRole('heading', { level: 1, name: 'Keep technical metrics dense and honest' })).toBeVisible()
+  await expect(page.getByRole('progressbar', { name: 'Plugin migration coverage' })).toHaveAttribute('aria-valuenow', '91.428')
+  await page.evaluate(async () => document.fonts.ready)
+  await expect(page).toHaveScreenshot('foundation-dense-metrics.png', {
+    animations: 'disabled',
+    caret: 'hide',
+    fullPage: true,
+  })
+})
+
+test('public actionable metrics pattern visual baseline', async ({ page }) => {
+  await page.goto('/iframe.html?id=patterns-status-and-metrics--actionable-metrics&viewMode=story')
+  await expect(page.getByRole('heading', { level: 1, name: 'Use a surface only when the metric is an object' })).toBeVisible()
+  await expect(page.getByRole('button', { name: /Needs review 8/ })).toBeVisible()
+  await page.evaluate(async () => document.fonts.ready)
+  await expect(page).toHaveScreenshot('foundation-actionable-metrics.png', {
+    animations: 'disabled',
+    caret: 'hide',
+    fullPage: true,
+  })
+})

@@ -1178,6 +1178,33 @@ the legacy components entry shrinks by 6,105 bytes. Chart and conversation
 entrypoints remain empty and no page composition or routing migration is
 included in T32a.
 
+**Status — T32b (2026-07-20):** Complete. `StatusBadge` and `StatTile`
+now live in the focused patterns entrypoint with a single semantic
+`neutral`/`success`/`attention`/`danger`/`accent` status vocabulary. Status
+meaning remains visible without color and optional icons are supplemental.
+Metrics use the approved low-chrome divider treatment by default, preserve
+long labels without ellipsis, expose exact labelled and clamped progress, and
+use an explicit `surface` variant only for bounded or native-button actions.
+Migration-only adapters retain the legacy `warning`/`destructive` names and
+card default so no official surface composition is migrated early. Three
+public stories cover status language, dense metrics, and actionable metrics at
+desktop, 320 px, long-label, 200%-text, non-color, progress, and keyboard
+states. Two hundred twenty-three targeted pattern, architecture, packaging,
+and representative host/plugin consumer tests pass; all 94 public Storybook
+interaction/axe cases, all 70 exact desktop/mobile visual cases, and all 54
+Chromium/Firefox/WebKit browser cases pass. The final long-label refinement
+also re-passed its two exact baselines and all three affected browser projects.
+The combined docs build validates 48 pages and 268 typed routes, publishes all
+94 stories beside the docs, and consecutive public builds are deterministic.
+Typecheck and lint pass with zero errors (six pre-existing warnings). Canonical
+CSS is 297,273 bytes (+175 from T32a), initial host JS remains 457,006 bytes,
+and one shared CSS copy remains. The patterns entrypoint is 1,290 bytes direct
+/ 306,583 reachable (+47 / +3,402); shared SDK chunks increase by 3,355 bytes
+while the legacy components entry shrinks by 1,256 direct bytes. Chart and
+conversation entrypoints remain empty. A pre-existing WebKit nested-dialog
+race was made deterministic by giving the Storybook play test and independent
+browser fixture separate interaction ownership.
+
 **Acceptance:** URL-state examples use existing hooks; keyboard semantics,
 counts, clearing, long labels, status non-color meaning, and dense metric
 layouts pass.

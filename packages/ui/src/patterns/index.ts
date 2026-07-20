@@ -127,3 +127,18 @@ export type {
 
 export { SortableHead } from './sortable-head'
 export type { SortableHeadProps, SortDir } from './sortable-head'
+
+export { StatusBadge } from './status-badge'
+export type {
+  StatusBadgeProps,
+  StatusBadgeVariant,
+  StatusTone,
+} from './status-badge'
+
+export { StatTile } from './stat-tile'
+export type {
+  StatTileProgress,
+  StatTileProgressTone,
+  StatTileProps,
+  StatTileVariant,
+} from './stat-tile'
