@@ -136,6 +136,187 @@ export function removeRunWorkspace(dir: string): void {
   }
 }
 
+// ─── Sweep (GC) ─────────────────────────────────────────────────────────────
+
+/** Failed/aborted scratch keeps a flat 30-day window (fixed — post
+ *  worktree-death this bounds kilobytes; spec r4 removed the knob). */
+const FAILED_RETENTION_MS = 30 * 24 * 60 * 60 * 1000
+/** Bounded work per tick: the sweep must never turn one watchdog tick into
+ *  a multi-second IO storm; backlogs drain across ticks. */
+const MAX_REMOVALS_PER_SWEEP = 25
+const MAX_SIZE_STAMPS_PER_SWEEP = 10
+
+export interface RunWorkspaceSweepDeps {
+  /** Live in-flight registry membership by threadId (dispatch-registry). */
+  isTurnLive: (threadId: string) => boolean
+  /** Store lookup — a deleted task's dirs sweep immediately (post settle/
+   *  force-release: the live-registry check above orders this correctly). */
+  taskExists: (taskId: string) => boolean
+  /** settings.dispatch.runDirRetentionDays (success window). */
+  retentionDays: number
+  /** settings.dispatch.runDirMaxTotalBytes — hard ceiling; 0/absent = off. */
+  maxTotalBytes: number
+  /** 2× the watchdog interval: the young-dir grace window. */
+  graceMs: number
+  now?: number
+}
+
+export interface RunWorkspaceStats {
+  count: number
+  sizeBytes: number
+  sweptLastTick: number
+  updatedAt: number
+}
+
+let lastStats: RunWorkspaceStats | null = null
+/** Doctor evidence source — NEVER walks the tree; null until a sweep ran. */
+export function getRunWorkspaceStats(): RunWorkspaceStats | null {
+  return lastStats
+}
+export function resetRunWorkspaceStats(): void {
+  lastStats = null
+  sweepInFlight = false
+}
+
+type RunDirClass = 'keep' | 'expired'
+
+/**
+ * The collapsed classifier (spec r4 D5): live registry → keep; sidecar
+ * `settled` → outcome window (success = retentionDays, anything else = flat
+ * 30d); everything else — running-but-unregistered, missing/torn sidecar —
+ * keeps a grace window (mtime) then ages out on the failed window. A crash
+ * can therefore never strand an unclassifiable dir, and the sweep never
+ * deletes a just-allocated dir racing its first send.
+ */
+function classifyRunDir(
+  dir: string,
+  sidecar: RunSidecar | null,
+  deps: RunWorkspaceSweepDeps,
+  now: number,
+): RunDirClass {
+  if (sidecar && deps.isTurnLive(sidecar.threadId)) return 'keep'
+  if (sidecar && !deps.taskExists(sidecar.taskId)) return 'expired'
+  if (sidecar?.status === 'settled') {
+    const settledAt = Date.parse(sidecar.settledAt ?? sidecar.createdAt)
+    const windowMs = sidecar.outcome === 'ok' ? deps.retentionDays * 24 * 60 * 60 * 1000 : FAILED_RETENTION_MS
+    return now - settledAt > windowMs ? 'expired' : 'keep'
+  }
+  // running-unregistered / missing sidecar: grace by mtime, then the failed
+  // window from mtime (they were never settled — treat as aborted).
+  let mtime = now
+  try {
+    mtime = statSync(dir).mtimeMs
+  } catch {
+    return 'expired' // vanished mid-scan
+  }
+  if (now - mtime <= deps.graceMs) return 'keep'
+  return now - mtime > FAILED_RETENTION_MS ? 'expired' : 'keep'
+}
+
+let sweepInFlight = false
+
+/**
+ * One bounded sweep pass: classify every run dir, remove expired (≤25/tick),
+ * lazy-stamp missing sizes on settled sidecars (≤10/tick — crashed dirs must
+ * join the aggregate the budget polices), then enforce the size budget by
+ * oldest-first eviction over EVICTABLE dirs only (settled/aged — live and
+ * within-grace dirs are NEVER evicted; a still-over-budget state is the
+ * doctor's to escalate, not ours to fix by killing live work). Single-flight:
+ * a pass still running when the next tick fires is skipped, never overlapped.
+ */
+export function sweepRunWorkspaces(deps: RunWorkspaceSweepDeps): RunWorkspaceStats | null {
+  if (sweepInFlight) return lastStats
+  sweepInFlight = true
+  try {
+    const now = deps.now ?? Date.now()
+    const root = runWorkspacesRoot()
+    let removed = 0
+    let stamps = 0
+    const survivors: Array<{ dir: string; sidecar: RunSidecar | null; ageAnchor: number; evictable: boolean }> = []
+
+    let agentDirs: string[] = []
+    try {
+      agentDirs = readdirSync(root, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name)
+    } catch {
+      lastStats = { count: 0, sizeBytes: 0, sweptLastTick: 0, updatedAt: now }
+      return lastStats // no root yet — nothing allocated
+    }
+
+    for (const agent of agentDirs) {
+      let runDirs: string[] = []
+      try {
+        runDirs = readdirSync(join(root, agent), { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name)
+      } catch {
+        continue
+      }
+      for (const name of runDirs) {
+        const dir = join(root, agent, name)
+        let sidecar = readRunSidecar(dir)
+        const cls = classifyRunDir(dir, sidecar, deps, now)
+        if (cls === 'expired' && removed < MAX_REMOVALS_PER_SWEEP) {
+          removeRunWorkspace(dir)
+          removed += 1
+          continue
+        }
+        // Lazy size stamp: settled sidecars missing sizeBytes (pre-crash
+        // settles, older allocations) get one walk here, bounded per tick.
+        if (sidecar && sidecar.status === 'settled' && sidecar.sizeBytes === undefined && stamps < MAX_SIZE_STAMPS_PER_SWEEP) {
+          sidecar = { ...sidecar, sizeBytes: dirSizeBytes(dir) }
+          try {
+            const path = join(dir, '.bakin-run.json')
+            writeFileSync(`${path}.tmp`, JSON.stringify(sidecar, null, 2))
+            renameSync(`${path}.tmp`, path)
+            stamps += 1
+          } catch {
+            // Best-effort — next tick retries.
+          }
+        }
+        const live = sidecar ? deps.isTurnLive(sidecar.threadId) : false
+        let ageAnchor = now
+        if (sidecar?.settledAt) ageAnchor = Date.parse(sidecar.settledAt)
+        else if (sidecar?.createdAt) ageAnchor = Date.parse(sidecar.createdAt)
+        else {
+          try {
+            ageAnchor = statSync(dir).mtimeMs
+          } catch { /* keep now */ }
+        }
+        survivors.push({
+          dir,
+          sidecar,
+          ageAnchor,
+          evictable: !live && sidecar?.status === 'settled',
+        })
+      }
+    }
+
+    // Size budget: oldest-first eviction over evictable dirs only.
+    if (deps.maxTotalBytes > 0) {
+      let total = survivors.reduce((sum, s) => sum + (s.sidecar?.sizeBytes ?? 0), 0)
+      if (total > deps.maxTotalBytes) {
+        const evictable = survivors.filter((s) => s.evictable).sort((a, b) => a.ageAnchor - b.ageAnchor)
+        for (const victim of evictable) {
+          if (total <= deps.maxTotalBytes || removed >= MAX_REMOVALS_PER_SWEEP) break
+          removeRunWorkspace(victim.dir)
+          total -= victim.sidecar?.sizeBytes ?? 0
+          removed += 1
+          const idx = survivors.indexOf(victim)
+          if (idx >= 0) survivors.splice(idx, 1)
+        }
+      }
+    }
+
+    lastStats = {
+      count: survivors.length,
+      sizeBytes: survivors.reduce((sum, s) => sum + (s.sidecar?.sizeBytes ?? 0), 0),
+      sweptLastTick: removed,
+      updatedAt: now,
+    }
+    return lastStats
+  } finally {
+    sweepInFlight = false
+  }
+}
+
 export function dirSizeBytes(dir: string): number {
   let total = 0
   try {

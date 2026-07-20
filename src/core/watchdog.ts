@@ -26,9 +26,11 @@ import { getLiveRun, loseRun, supersedeStaleRun } from './execution-ledger'
 import {
   abortTurnsForTask,
   forceReleaseTurn,
+  getInFlightTurn,
   getInFlightTurnsSnapshot,
   ORPHAN_TURN_FORCE_RELEASE_GRACE_MS,
 } from './dispatch-registry'
+import { sweepRunWorkspaces } from './run-workspace'
 
 const log = createLogger('watchdog')
 const hooks = () => getHookRegistry()
@@ -160,6 +162,7 @@ export function start(contentDir: string): void {
     // try/catch: a sweep failure must never break the stuck-task scan.
     try {
       sweepOrphanedTurns(contentDir)
+      sweepRunWorkspacesTick(settings)
     } catch (err) {
       log.error('Orphan turn sweep failed', err)
     }
@@ -499,6 +502,27 @@ function sweepOrphanedTurns(contentDir: string): void {
       })
       log.warn('Force-released hung orphan turn', { taskId: turn.taskId, agent: turn.agentId, runId: turn.threadId })
     }
+  }
+}
+
+/**
+ * Run-workspace GC (same-agent-concurrency D5): classify + bounded removal +
+ * size budget, dependencies injected so the run-workspace module stays a
+ * policy engine (registry liveness orders task-deletion sweeps AFTER
+ * settle-or-force-release — the #604 grace this rides). Failures never
+ * break the tick.
+ */
+function sweepRunWorkspacesTick(settings: ReturnType<typeof getSettings>): void {
+  try {
+    sweepRunWorkspaces({
+      isTurnLive: (threadId) => getInFlightTurn(threadId) !== undefined,
+      taskExists: (taskId) => Boolean(getTask(taskId)),
+      retentionDays: settings.dispatch.runDirRetentionDays,
+      maxTotalBytes: settings.dispatch.runDirMaxTotalBytes,
+      graceMs: settings.watchdog.intervalMs * 2,
+    })
+  } catch (err) {
+    log.error('Run-workspace sweep failed (next tick retries)', err)
   }
 }
 
