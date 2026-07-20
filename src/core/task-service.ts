@@ -441,6 +441,7 @@ export async function createTaskWithEffects(opts: {
   parentId?: string
   projectId?: string
   brandId?: string
+  repoPath?: string
   availableAt?: string
   dueAt?: string
   source?: TaskSource
@@ -498,6 +499,7 @@ export async function createTaskWithEffects(opts: {
       dependsOn: opts.dependsOn,
       team: opts.team,
       brandId: opts.brandId,
+      repoPath: opts.repoPath,
     },
   )
 
