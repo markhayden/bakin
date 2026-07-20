@@ -34,6 +34,7 @@ import { createAppServices, maybeGetAppServices } from './app-services'
 import { createRuntimeAdapter, getSupportedRuntimeAdapterNames } from './runtime-adapter-factory'
 import { syncBakinRuntimeSkill } from './bakin-skill'
 import { getContentDir } from './content-dir'
+import { getInFlightTurnCount } from './dispatch-registry'
 import { createLogger } from './logger'
 import { reconcileRoster, type RosterCarryReport } from './roster-reconcile'
 import { getSettings, updateSettings } from './settings'
@@ -253,6 +254,16 @@ export async function switchRuntime(
   }
   if (target === from) {
     result.error = `Runtime '${target}' is already active`
+    emit({ phase: 'validate', status: 'error', detail: result.error })
+    return result
+  }
+  // In-flight dispatch turns hold live sessions on the OLD adapter — a
+  // switch would shutdown() under them (exposure doubles at per-agent cap
+  // 2). Refuse honestly; the operator retries when the board is quiet.
+  // Dry runs are read-only against a secondary adapter and stay allowed.
+  const inFlight = getInFlightTurnCount()
+  if (!opts.dryRun && inFlight > 0) {
+    result.error = `${inFlight} dispatch turn(s) are in flight — wait for them to settle (or abort their tasks) before switching runtimes`
     emit({ phase: 'validate', status: 'error', detail: result.error })
     return result
   }

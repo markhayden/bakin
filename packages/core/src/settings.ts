@@ -375,7 +375,7 @@ export const DEFAULT_SETTINGS: BakinSettings = {
     maxRetries: 5,
     oversizedOutputBytes: DEFAULT_OVERSIZED_OUTPUT_BYTES,
     maxConcurrentTurns: 3,
-    maxTurnsPerAgent: 1,
+    maxTurnsPerAgent: 2,
     runDirRetentionDays: 7,
     runDirMaxTotalBytes: 4 * 1024 * 1024 * 1024,
     maxWorkflowContextBytes: 16 * 1024,

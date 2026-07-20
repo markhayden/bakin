@@ -75,6 +75,10 @@ describe('dispatch settings defaults', () => {
   it('declares oversized-output and concurrency defaults', () => {
     expect(DEFAULT_SETTINGS.dispatch.oversizedOutputBytes).toBe(131072)
     expect(DEFAULT_SETTINGS.dispatch.maxConcurrentTurns).toBe(3)
-    expect(DEFAULT_SETTINGS.dispatch.maxTurnsPerAgent).toBe(1)
+    // 2 since same-agent-concurrency shipped: isolated runtimes (Pi) run two
+    // turns per agent in per-run dirs; serialized runtimes clamp to 1.
+    expect(DEFAULT_SETTINGS.dispatch.maxTurnsPerAgent).toBe(2)
+    expect(DEFAULT_SETTINGS.dispatch.runDirRetentionDays).toBe(7)
+    expect(DEFAULT_SETTINGS.dispatch.runDirMaxTotalBytes).toBe(4 * 1024 * 1024 * 1024)
   })
 })

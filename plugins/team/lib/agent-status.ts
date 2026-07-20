@@ -15,6 +15,7 @@ import type { PluginContext } from '@bakin/core/plugin-types'
 import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
 
 import { getContentDir } from '../../../packages/core/src/content-dir'
+import { getInFlightTurnCount } from '../../../src/core/dispatch-registry'
 import { createLogger } from '../../../src/core/logger'
 import type { HeartbeatData } from '../types'
 import { mergeDisplayDefaults, readDisplaySettings, readTeams } from './team-settings'
@@ -118,7 +119,16 @@ export function resolveAgentStatus(
     return { status: 'offline', heartbeat, heartbeatAge: effectiveAge }
   }
 
-  // Within threshold — determine working vs online
+  // Working-state is GROUND TRUTH from the in-flight dispatch registry, not
+  // the single-slot heartbeat file: at per-agent cap 2, turn A's settle
+  // writes `idle` while turn B still runs — the chip must not lie
+  // (same-agent-concurrency D7). Heartbeat demotes to liveness + task label.
+  if (getInFlightTurnCount(bakinId) > 0) {
+    return { status: 'working', heartbeat, heartbeatAge: effectiveAge }
+  }
+
+  // Within threshold — heartbeat still marks non-dispatch work (chat-driven
+  // tool use) the registry can't see.
   if (hb?.status === 'working' || hb?.currentTask) {
     return { status: 'working', heartbeat, heartbeatAge: effectiveAge }
   }
