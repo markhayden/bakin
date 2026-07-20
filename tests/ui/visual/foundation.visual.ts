@@ -264,3 +264,25 @@ test('public canonical form composition visual baseline', async ({ page }) => {
     fullPage: true,
   })
 })
+
+test('public system-state matrix visual baseline', async ({ page }) => {
+  await page.goto('/iframe.html?id=states-system-state-and-feedback--state-matrix&viewMode=story')
+  await expect(page.getByRole('heading', { name: 'Every data surface tells the truth' })).toBeVisible()
+  await page.evaluate(async () => document.fonts.ready)
+  await expect(page).toHaveScreenshot('foundation-system-states.png', {
+    animations: 'disabled',
+    caret: 'hide',
+    fullPage: true,
+  })
+})
+
+test('public banner and toast feedback visual baseline', async ({ page }) => {
+  await page.goto('/iframe.html?id=states-system-state-and-feedback--feedback&viewMode=story')
+  await expect(page.getByRole('heading', { name: 'Persistent context and transient outcomes' })).toBeVisible()
+  await page.evaluate(async () => document.fonts.ready)
+  await expect(page).toHaveScreenshot('foundation-system-feedback.png', {
+    animations: 'disabled',
+    caret: 'hide',
+    fullPage: true,
+  })
+})

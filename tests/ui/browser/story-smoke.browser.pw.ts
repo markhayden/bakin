@@ -13,6 +13,8 @@ const layoutRecipesStory = '/iframe.html?id=layout-grid-section-and-overflow--re
 const formOverviewStory = '/iframe.html?id=forms-field-and-form-composition--overview&viewMode=story'
 const asyncValidationStory = '/iframe.html?id=forms-field-and-form-composition--async-validation&viewMode=story'
 const submissionWorkflowStory = '/iframe.html?id=forms-field-and-form-composition--submission-workflow&viewMode=story'
+const systemStateStory = '/iframe.html?id=states-system-state-and-feedback--state-matrix&viewMode=story'
+const feedbackStory = '/iframe.html?id=states-system-state-and-feedback--feedback&viewMode=story'
 
 test('public story keeps keyboard, focus, console, and responsive contracts', async ({ page }) => {
   const browserErrors: string[] = []
@@ -592,6 +594,59 @@ test('canonical forms keep association, validation, submission, and mobile actio
     await slug.fill('plugin-routing-tools')
     await page.getByRole('button', { name: 'Register plugin' }).click()
     await expect(page.getByRole('status')).toContainText('Plugin registered')
+  })
+
+  expect(browserErrors).toEqual([])
+})
+
+test('system states keep recovery, announcement, motion, and responsive contracts', async ({ page }) => {
+  const browserErrors: string[] = []
+  page.on('console', (message) => {
+    if (message.type() === 'error') browserErrors.push(`console: ${message.text()}`)
+  })
+  page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
+  page.on('requestfailed', (request) => {
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+  })
+
+  for (const width of responsiveWidths) {
+    await test.step(`${width}px state matrix remains contained`, async () => {
+      await page.setViewportSize({ width, height: 1000 })
+      await page.goto(systemStateStory, { waitUntil: 'networkidle' })
+      await expect(page.getByRole('heading', { name: 'Every data surface tells the truth' })).toBeVisible()
+      const dimensions = await page.evaluate(() => ({
+        clientWidth: document.documentElement.clientWidth,
+        scrollWidth: document.documentElement.scrollWidth,
+      }))
+      expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth)
+    })
+  }
+
+  await test.step('state cause controls semantics and recovery', async () => {
+    await expect(page.getByRole('status', { name: 'No workflows match' })).toHaveAttribute('aria-live', 'polite')
+    await expect(page.getByRole('status', { name: 'Loading workflows' })).toHaveAttribute('aria-busy', 'true')
+    await expect(page.getByRole('alert', { name: 'Workflows could not be refreshed' })).toHaveAttribute('data-recovery', 'available')
+    await expect(page.getByRole('alert', { name: 'Run history expired' })).toHaveAttribute('data-recovery', 'unavailable')
+    await expect(page.getByText('Workflow details are restricted').locator('..').locator('..')).not.toHaveAttribute('role')
+  })
+
+  await test.step('loading motion has a stable reduced-motion presentation', async () => {
+    const signal = page.getByRole('status', { name: 'Loading workflows' }).locator('[data-slot="system-state-signal"]')
+    const animations = await signal.evaluate((element) => element.getAnimations({ subtree: true }).map((animation) => animation.effect?.getTiming().duration ?? 0))
+    expect(animations.every((duration) => duration === 0)).toBe(true)
+  })
+
+  await test.step('feedback roles and dismissal stay operable', async () => {
+    await page.setViewportSize({ width: 320, height: 900 })
+    await page.goto(feedbackStory, { waitUntil: 'networkidle' })
+    await expect(page.getByRole('region', { name: 'Example notifications' })).toBeVisible()
+    await expect(page.getByRole('status', { name: 'Runtime reconnected' })).toHaveAttribute('aria-live', 'polite')
+    const errorToast = page.getByRole('alert', { name: 'Action failed' })
+    await expect(errorToast).toBeVisible()
+    await page.getByRole('button', { name: 'Dismiss notification' }).click()
+    await expect(errorToast).toBeHidden()
+    const dimensions = await page.evaluate(() => ({ clientWidth: document.documentElement.clientWidth, scrollWidth: document.documentElement.scrollWidth }))
+    expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth)
   })
 
   expect(browserErrors).toEqual([])

@@ -60,7 +60,7 @@ comparison, and deletion of replaced styling/allowances.
 - [x] T27a Build PageShell, Stack, and Inline
 - [x] T27b Build Grid, Section, and BoundedOverflow
 - [x] T28 Implement the canonical field/form composition
-- [ ] T29 Implement standardized system states and feedback
+- [x] T29 Implement standardized system states and feedback
 - [ ] T30a Implement list and detail archetype recipes
 - [ ] T30b Implement settings and dashboard archetype recipes
 - [ ] T30c Implement conversation and inspector archetype recipes

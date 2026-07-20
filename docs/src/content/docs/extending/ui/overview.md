@@ -487,6 +487,77 @@ Popover, DropdownMenu, and Tooltip content accept `portalProps={{ container }}` 
 
 These components do not redefine navigation. If an overlay, selected result, filter, or tab belongs in browser history, keep it in the existing URL query-state contract described below.
 
+## System States and Feedback
+
+Choose the state from what happened, not from the amount of blank space:
+
+| Situation | Component | Required behavior |
+| --- | --- | --- |
+| The product has no items yet | `SystemState kind="initial-empty"` | Explain the value of creating or connecting the first item; offer that next action when it exists |
+| Data exists but the current query hides it | `SystemState kind="no-results"` | Keep the search and filters intact and provide the required clear or adjust action |
+| A bounded region is waiting for data | `SystemState kind="loading"` with optional `Skeleton` preview | Name what is loading, mark the region busy, and keep the preview simpler than the final content |
+| A request failed and can be repeated | `SystemState kind="error"` with an action | Explain what remains usable and provide recovery; the error is announced assertively |
+| An error has no valid recovery | `SystemState kind="error" recovery="unavailable"` | State the consequence honestly without rendering a dead retry action |
+| Policy prevents access | `SystemState kind="permission-denied"` | Explain the boundary without presenting missing permission as a technical failure |
+| Context must remain visible with the page | `Banner` | Keep persistent notices quiet by default; opt into `announce="polite"` or `"assertive"` only when the mounted change is new information |
+| A background action needs brief confirmation | `toast()` from `@makinbakin/sdk/hooks` | Let the Bakin shell own placement and dismissal; never put the only copy of a durable error or required action in a toast |
+
+```tsx
+import { Button, Skeleton, SystemState } from '@makinbakin/sdk/ui'
+
+export function WorkflowResults({ status }: { status: 'loading' | 'empty' | 'none' | 'error' }) {
+  if (status === 'loading') {
+    return (
+      <SystemState
+        kind="loading"
+        title="Loading workflows"
+        description="Current workflow definitions will appear here."
+        preview={<Skeleton shape="text" />}
+      />
+    )
+  }
+
+  if (status === 'empty') {
+    return (
+      <SystemState
+        kind="initial-empty"
+        title="No workflows yet"
+        description="Create the first workflow or install one from a plugin."
+        action={<Button>Create workflow</Button>}
+      />
+    )
+  }
+
+  if (status === 'none') {
+    return (
+      <SystemState
+        kind="no-results"
+        title="No workflows match"
+        description="The current owner and status filters hide every workflow."
+        action={<Button variant="outline">Clear filters</Button>}
+      />
+    )
+  }
+
+  return (
+    <SystemState
+      kind="error"
+      title="Workflows could not be refreshed"
+      description="The last usable snapshot remains visible."
+      action={<Button variant="outline">Try again</Button>}
+    />
+  )
+}
+```
+
+Use `scope="inline"` when nearby content remains useful, the default `section` scope when one bounded region is unavailable, and `scope="page"` only when the page's primary content has no usable state. Page scope does not remove shell navigation or working page actions. Choose `headingLevel` to preserve the page's existing hierarchy.
+
+`SystemState` supplies adaptable fallback copy, but product UI should name the actual object and cause whenever known. Loading and no-results changes announce politely. Recoverable and terminal errors announce assertively. Initial-empty and permission-denied states are quiet because they are normally present when the region first renders; use `announce` only when one of those states appears as a new in-place update.
+
+Skeletons are visual stand-ins and remain hidden from assistive technology. Use them for recognizable content geometry, use indeterminate `Progress` for measurable work whose completion is not yet known, and always retain visible loading copy. Preserve stale, usable content during a refresh when possible instead of replacing the whole page with a skeleton.
+
+`Banner` is persistent surface context, while `Alert` is compact inline feedback and a toast is transient shell feedback. Banner tone does not imply announcement urgency. Plugins call `toast()` rather than mounting `ToastRegion`; the public `Toast` and `ToastRegion` presentation contract exists for the Bakin shell and deterministic previews. Toast actions use client-side SDK routing and must remain optional—required recovery belongs in the affected page region.
+
 ## Stylesheet Contract
 
 `@makinbakin/sdk/styles.css` is the one supported compiled design-system stylesheet. The Bakin host loads it once for installed plugins, so plugin client entries must not import it or copy its contents into plugin-owned CSS.

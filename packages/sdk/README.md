@@ -127,6 +127,13 @@ and prevents duplicate saves. Form-state libraries may manage values and dirty
 state, but the SDK components continue to own labels, errors, spacing, and
 actions.
 
+Data-driven surfaces use `SystemState` for initial-empty, filtered no-results,
+loading, recoverable or terminal error, and permission-denied states. A
+no-results state requires a clear/adjust action; a recoverable error requires a
+recovery action. Use `Banner` for persistent page context. Plugins call
+`toast()` from `@makinbakin/sdk/hooks` for transient outcomes and leave the
+shell-owned `ToastRegion` to Bakin.
+
 ## Stylesheet
 
 Bakin loads one shared copy of `@makinbakin/sdk/styles.css` for the host and all

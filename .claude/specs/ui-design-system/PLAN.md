@@ -955,6 +955,27 @@ axe, mobile form workflow.
 **Description:** Build initial-empty, no-results, loading/skeleton, inline/full
 error, permission-denied, banner, and toast guidance/components.
 
+**Status (2026-07-19):** Complete. `SystemState` now distinguishes
+initial-empty, filtered no-results, loading, recoverable or terminal error, and
+permission-denied causes across inline, section, and page scopes. The type
+contract requires a reset action for no-results and either a recovery action or
+an explicit `recovery="unavailable"` decision for errors. Useful fallback copy,
+heading-level control, skeleton previews, `aria-busy`, and deliberate
+polite/assertive/off announcement defaults are built in; controlled semantics
+cannot be bypassed by untyped attribute overrides. `Banner` separates
+persistent tone from opt-in announcement urgency. Structured `Toast` and
+`ToastRegion` cover status/error urgency, region ownership, actions, reduced
+motion, and accessible dismissal while leaving store, timers, portal placement,
+and the shipped shell migration to T45. Public guidance defines the selection
+boundary among Skeleton, Progress, SystemState, Alert, Banner, and `toast()`.
+Eight focused ownership/render tests, all 65 public Storybook interaction/axe
+cases, 34 desktop/mobile visual cases, and 33 Chromium/Firefox/WebKit behavior
+cases pass. The desktop and mobile state/feedback matrices were reviewed after
+capturing every state and feedback tone. Canonical CSS is 289,952 bytes (+2,011),
+initial host JS remains 457,006 bytes, and the focused SDK UI entry is 21,358
+bytes direct (+132) / 430,173 reachable (+8,277). One shared CSS copy remains.
+No official surface or shell-toaster migration is included in T29.
+
 **Acceptance:** every state has semantic/live-region behavior, recovery action
 rules, content defaults, responsive stories, and clear selection guidance.
 
