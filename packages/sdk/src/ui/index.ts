@@ -56,7 +56,28 @@ export { Checkbox } from '@bakin/ui'
 export type { CheckboxProps } from '@bakin/ui'
 export { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@bakin/ui'
 export type { CollapsibleContentProps, CollapsibleProps, CollapsibleTriggerProps } from '@bakin/ui'
-export * from '@/components/ui/command'
+export {
+  Command,
+  CommandDialog,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+  CommandSeparator,
+  CommandShortcut,
+} from '@bakin/ui'
+export type {
+  CommandDialogProps,
+  CommandEmptyProps,
+  CommandGroupProps,
+  CommandInputProps,
+  CommandItemProps,
+  CommandListProps,
+  CommandProps,
+  CommandSeparatorProps,
+  CommandShortcutProps,
+} from '@bakin/ui'
 export {
   Dialog,
   DialogClose,
@@ -81,7 +102,41 @@ export type {
   DialogTitleProps,
   DialogTriggerProps,
 } from '@bakin/ui'
-export * from '@/components/ui/dropdown-menu'
+export {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuPortal,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuShortcut,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from '@bakin/ui'
+export type {
+  DropdownMenuCheckboxItemProps,
+  DropdownMenuContentProps,
+  DropdownMenuGroupProps,
+  DropdownMenuItemProps,
+  DropdownMenuItemVariant,
+  DropdownMenuLabelProps,
+  DropdownMenuPortalProps,
+  DropdownMenuProps,
+  DropdownMenuRadioGroupProps,
+  DropdownMenuRadioItemProps,
+  DropdownMenuSeparatorProps,
+  DropdownMenuShortcutProps,
+  DropdownMenuSubContentProps,
+  DropdownMenuSubProps,
+  DropdownMenuSubTriggerProps,
+  DropdownMenuTriggerProps,
+} from '@bakin/ui'
 export * from '@/components/ui/form'
 export { Input } from '@bakin/ui'
 export type { InputProps } from '@bakin/ui'
@@ -105,7 +160,24 @@ export type {
 } from '@bakin/ui'
 export { Label } from '@bakin/ui'
 export type { LabelProps } from '@bakin/ui'
-export * from '@/components/ui/popover'
+export {
+  Popover,
+  PopoverContent,
+  PopoverDescription,
+  PopoverHeader,
+  PopoverPortal,
+  PopoverTitle,
+  PopoverTrigger,
+} from '@bakin/ui'
+export type {
+  PopoverContentProps,
+  PopoverDescriptionProps,
+  PopoverHeaderProps,
+  PopoverPortalProps,
+  PopoverProps,
+  PopoverTitleProps,
+  PopoverTriggerProps,
+} from '@bakin/ui'
 export {
   Progress,
   ProgressIndicator,
@@ -180,4 +252,11 @@ export * from '@/components/ui/table'
 export * from '@/components/ui/tabs'
 export { Textarea } from '@bakin/ui'
 export type { TextareaProps } from '@bakin/ui'
-export * from '@/components/ui/tooltip'
+export { Tooltip, TooltipContent, TooltipPortal, TooltipProvider, TooltipTrigger } from '@bakin/ui'
+export type {
+  TooltipContentProps,
+  TooltipPortalProps,
+  TooltipProps,
+  TooltipProviderProps,
+  TooltipTriggerProps,
+} from '@bakin/ui'

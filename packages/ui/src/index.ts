@@ -184,6 +184,93 @@ export type {
   SheetTitleProps,
   SheetTriggerProps,
 } from './primitives/sheet'
+
+export {
+  Popover,
+  PopoverContent,
+  PopoverDescription,
+  PopoverHeader,
+  PopoverPortal,
+  PopoverTitle,
+  PopoverTrigger,
+} from './primitives/popover'
+export type {
+  PopoverContentProps,
+  PopoverDescriptionProps,
+  PopoverHeaderProps,
+  PopoverPortalProps,
+  PopoverProps,
+  PopoverTitleProps,
+  PopoverTriggerProps,
+} from './primitives/popover'
+
+export {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuPortal,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuShortcut,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from './primitives/dropdown-menu'
+export type {
+  DropdownMenuCheckboxItemProps,
+  DropdownMenuContentProps,
+  DropdownMenuGroupProps,
+  DropdownMenuItemProps,
+  DropdownMenuItemVariant,
+  DropdownMenuLabelProps,
+  DropdownMenuPortalProps,
+  DropdownMenuProps,
+  DropdownMenuRadioGroupProps,
+  DropdownMenuRadioItemProps,
+  DropdownMenuSeparatorProps,
+  DropdownMenuShortcutProps,
+  DropdownMenuSubContentProps,
+  DropdownMenuSubProps,
+  DropdownMenuSubTriggerProps,
+  DropdownMenuTriggerProps,
+} from './primitives/dropdown-menu'
+
+export { Tooltip, TooltipContent, TooltipPortal, TooltipProvider, TooltipTrigger } from './primitives/tooltip'
+export type {
+  TooltipContentProps,
+  TooltipPortalProps,
+  TooltipProps,
+  TooltipProviderProps,
+  TooltipTriggerProps,
+} from './primitives/tooltip'
+
+export {
+  Command,
+  CommandDialog,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+  CommandSeparator,
+  CommandShortcut,
+} from './primitives/command'
+export type {
+  CommandDialogProps,
+  CommandEmptyProps,
+  CommandGroupProps,
+  CommandInputProps,
+  CommandItemProps,
+  CommandListProps,
+  CommandProps,
+  CommandSeparatorProps,
+  CommandShortcutProps,
+} from './primitives/command'
 export type {
   InputGroupAddonAlign,
   InputGroupAddonProps,

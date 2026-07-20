@@ -821,6 +821,27 @@ stories/tests.\
 **Description:** Move/restyle Popover, DropdownMenu, Tooltip, and Command with
 one layering, collision, focus, shortcut-hint, and portal contract.
 
+**Completed:** Popover, DropdownMenu, Tooltip, and Command now resolve from the
+private presentation package through the focused SDK entrypoint and host
+compatibility bridge. Anchored content shares tokenized elevation, bounded
+collision geometry, explicit portal-container support, minimum item targets,
+semantic danger treatment, silent shortcut hints, and reduced-motion behavior.
+Command supplies an accessible search label, valid listbox structure, grouped
+selection, and an explicit final-focus contract for externally controlled
+dialogs. Public family and component stories, 17 focused primitive and
+existing-consumer tests, 24 desktop/mobile visual baselines, all 56 public
+Storybook axe/interaction stories, and 21 Chromium/Firefox/WebKit behavior
+cases pass. Documentation distinguishes contextual content, action menus,
+supplemental help, and searchable command sets while retaining the existing
+URL query-state routing contract. The legacy-style ratchet remains at 255
+paths. Consolidation reduces the canonical stylesheet from 292,279 to 282,530
+bytes, initial host JS from 457,237 to 457,006 bytes, and the focused SDK UI
+entry from 65,569 to 29,306 bytes / 432,491 to 423,149 reachable bytes. The
+legacy components barrel grows by 5,979 bytes direct and 32,900 reachable while
+it temporarily bridges the canonical implementations; the complete SDK vendor
+graph still decreases by 3,363 bytes and the legacy barrel remains scheduled
+for removal at API freeze.
+
 **Acceptance:** keyboard navigation, escape/return focus, viewport collision,
 long content, nested menu, and labelled icon-only control cases pass.
 
@@ -834,9 +855,9 @@ containment preflight.
 
 ### Checkpoint 3B — Form and overlay primitive set
 
-- [ ] Standard controls no longer require custom plugin markup.
-- [ ] Keyboard/focus/open-layer tests pass in all three engines.
-- [ ] Portal strategy is ready for plugin-containment enforcement.
+- [x] Standard controls no longer require custom plugin markup.
+- [x] Keyboard/focus/open-layer tests pass in all three engines.
+- [x] Portal strategy is ready for plugin-containment enforcement.
 
 ### Workstream T27 — Build the minimal public layout vocabulary
 

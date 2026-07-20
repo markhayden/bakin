@@ -1,11 +1,18 @@
 /** Private presentation shared by Select now and anchored option surfaces later. */
-export const optionPopupClasses = [
-  'relative isolate max-h-(--available-height) w-(--anchor-width) min-w-48 max-w-[min(var(--available-width),28rem)]',
-  'origin-(--transform-origin) overflow-x-hidden overflow-y-auto rounded-bakin-overlay border border-bakin-border-subtle',
+export const anchoredPositionerClasses = 'isolate z-50 outline-none'
+
+export const anchoredPopupClasses = [
+  'relative isolate max-h-(--available-height) max-w-[min(var(--available-width),28rem)] origin-(--transform-origin)',
+  'overflow-x-hidden overflow-y-auto rounded-bakin-overlay border border-bakin-border-subtle',
   'bg-bakin-surface-default text-bakin-text-primary shadow-bakin-elevation-overlay outline-none',
   'transition-[opacity,transform] duration-[var(--bakin-motion-duration-feedback)] ease-bakin-standard',
   'data-starting-style:scale-95 data-starting-style:opacity-0 data-ending-style:scale-95 data-ending-style:opacity-0',
   'motion-reduce:transform-none motion-reduce:transition-none',
+].join(' ')
+
+export const optionPopupClasses = [
+  anchoredPopupClasses,
+  'w-(--anchor-width) min-w-48',
 ].join(' ')
 
 export const optionListClasses = 'grid min-w-0 p-bakin-1'

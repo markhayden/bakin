@@ -7,6 +7,7 @@ const surfaceOverviewStory = '/iframe.html?id=foundation-surface-and-content--ov
 const textFieldsOverviewStory = '/iframe.html?id=foundation-text-fields--overview&viewMode=story'
 const selectionOverviewStory = '/iframe.html?id=foundation-selection-controls--overview&viewMode=story'
 const modalOverviewStory = '/iframe.html?id=foundation-modal-and-side-overlays--overview&viewMode=story'
+const anchoredOverviewStory = '/iframe.html?id=foundation-anchored-overlays--overview&viewMode=story'
 
 test('public story keeps keyboard, focus, console, and responsive contracts', async ({ page }) => {
   const browserErrors: string[] = []
@@ -346,6 +347,83 @@ test('modal and side overlays keep focus, dismissal, motion, and viewport contra
     await expect(dirtyDialog).toBeVisible()
     await page.getByRole('button', { name: 'Keep editing' }).click()
     await expect(page.getByRole('dialog', { name: 'Edit task' })).toBeVisible()
+  })
+
+  expect(browserErrors).toEqual([])
+})
+
+test('anchored overlays keep collision, keyboard, focus, and labelling contracts across browsers', async ({ page }) => {
+  test.setTimeout(60_000)
+  const browserErrors: string[] = []
+  page.on('console', (message) => {
+    if (message.type() === 'error') browserErrors.push(`console: ${message.text()}`)
+  })
+  page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
+  page.on('requestfailed', (request) => {
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+  })
+
+  for (const width of responsiveWidths) {
+    await test.step(`${width}px anchored overview has no document overflow`, async () => {
+      await page.setViewportSize({ width, height: 900 })
+      await page.goto(anchoredOverviewStory, { waitUntil: 'networkidle' })
+      await expect(page.getByRole('heading', { name: 'Context without disorientation', exact: true })).toBeVisible()
+      const dimensions = await page.evaluate(() => ({ clientWidth: document.documentElement.clientWidth, scrollWidth: document.documentElement.scrollWidth }))
+      expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth)
+    })
+  }
+
+  await test.step('popover remains viewport-bounded and returns focus on Escape', async () => {
+    await page.setViewportSize({ width: 320, height: 800 })
+    await page.goto('/iframe.html?id=foundation-popover--behavior&viewMode=story', { waitUntil: 'networkidle' })
+    const trigger = page.getByRole('button', { name: 'Open route context' })
+    await trigger.click()
+    const content = page.locator('[data-slot="popover-content"]')
+    await expect(content).toBeVisible()
+    const bounds = await content.boundingBox()
+    expect((bounds?.x ?? -1) >= 0).toBe(true)
+    expect((bounds?.x ?? 0) + (bounds?.width ?? 321)).toBeLessThanOrEqual(320)
+    await page.keyboard.press('Escape')
+    await expect(trigger).toBeFocused()
+  })
+
+  await test.step('menu subnavigation and shortcut naming remain semantic', async () => {
+    await page.setViewportSize({ width: 1024, height: 900 })
+    await page.goto('/iframe.html?id=foundation-dropdownmenu--behavior&viewMode=story', { waitUntil: 'networkidle' })
+    const trigger = page.getByRole('button', { name: 'Task actions' })
+    await trigger.click()
+    await expect(page.getByRole('menuitem', { name: 'Duplicate' })).toBeVisible()
+    await page.keyboard.press('ArrowDown')
+    await page.keyboard.press('ArrowDown')
+    await page.keyboard.press('ArrowDown')
+    await page.keyboard.press('ArrowDown')
+    await page.keyboard.press('ArrowRight')
+    await expect(page.getByRole('menuitem', { name: 'Needs attention' })).toBeVisible()
+    await page.keyboard.press('Escape')
+    await page.keyboard.press('Escape')
+    await expect(trigger).toBeFocused()
+  })
+
+  await test.step('tooltip opens from keyboard focus and dismisses without moving focus', async () => {
+    await page.goto('/iframe.html?id=foundation-tooltip--behavior&viewMode=story&bakinCrossBrowser=1', { waitUntil: 'networkidle' })
+    const trigger = page.getByRole('button', { name: 'Show retry guidance' })
+    await trigger.focus()
+    await expect(trigger).toBeFocused()
+    await expect(page.getByRole('tooltip')).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(page.getByRole('tooltip')).toBeHidden()
+    await expect(trigger).toBeFocused()
+  })
+
+  await test.step('command filtering and dialog focus restoration remain keyboard operable', async () => {
+    await page.goto('/iframe.html?id=foundation-command--dialog-behavior&viewMode=story', { waitUntil: 'networkidle' })
+    const trigger = page.getByRole('button', { name: 'Open command palette' })
+    await trigger.click()
+    const input = page.getByRole('combobox', { name: 'Find a task action' })
+    await input.fill('blocked')
+    await expect(page.getByRole('option', { name: 'Mark blocked' })).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(trigger).toBeFocused()
   })
 
   expect(browserErrors).toEqual([])

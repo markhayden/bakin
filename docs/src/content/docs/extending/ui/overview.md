@@ -306,6 +306,51 @@ Sheets use the right side by default and become full-viewport panels on narrow s
 
 The overlay portal is system-owned by default. In a standalone or contained host, pass the supported `portalProps={{ container }}` contract to `DialogContent` or `SheetContent`; do not relocate generated popup DOM or copy overlay z-index classes. URL-backed overlay state continues to follow the existing routing contract described below.
 
+## Anchored Overlays and Command
+
+Choose the layer by interaction rather than visual size:
+
+| Need | Component | Contract |
+| --- | --- | --- |
+| Show contextual content or lightweight controls | `Popover` | Provide a title and description when the content needs an accessible name |
+| Offer actions for the current object | `DropdownMenu` | Use semantic items, nested menus sparingly, and `variant="danger"` for destructive actions |
+| Add concise supplemental help | `Tooltip` | Keep required instructions and errors visible without it; icon-only triggers still need their own accessible name |
+| Search and invoke a larger action set | `Command` or `CommandDialog` | Supply a meaningful `label`; group related results and preserve keyboard selection |
+
+```tsx
+import {
+  Button,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuShortcut,
+  DropdownMenuTrigger,
+} from '@makinbakin/sdk/ui'
+
+export function TaskActions() {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger render={<Button variant="outline" />}>
+        Task actions
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem>
+          Duplicate
+          <DropdownMenuShortcut>⌘D</DropdownMenuShortcut>
+        </DropdownMenuItem>
+        <DropdownMenuItem variant="danger">Delete task</DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+```
+
+Shortcut hints are visual affordances and are hidden from accessible names by default. `variant="destructive"` remains a compatibility alias, but new code uses the shared semantic `danger` vocabulary. Anchored layers share bounded collision behavior and a minimum interactive-item target; do not copy their generated popup or option-list classes.
+
+Popover, DropdownMenu, and Tooltip content accept `portalProps={{ container }}` for contained hosts. `CommandDialog` accepts the same setting through `contentProps={{ portalProps: { container } }}`. When application state controls a CommandDialog from outside its trigger tree, also pass `contentProps={{ finalFocus: triggerRef }}` so closing returns keyboard focus intentionally.
+
+These components do not redefine navigation. If an overlay, selected result, filter, or tab belongs in browser history, keep it in the existing URL query-state contract described below.
+
 ## Stylesheet Contract
 
 `@makinbakin/sdk/styles.css` is the one supported compiled design-system stylesheet. The Bakin host loads it once for installed plugins, so plugin client entries must not import it or copy its contents into plugin-owned CSS.

@@ -177,3 +177,59 @@ test('public BakinDrawer visual baseline', async ({ page }, testInfo) => {
   expect(browserErrors).toEqual([])
   await expect(page).toHaveScreenshot('foundation-bakin-drawer.png')
 })
+
+test('public Popover visual baseline', async ({ page }) => {
+  const browserErrors: string[] = []
+  page.on('console', (message) => { if (message.type() === 'error') browserErrors.push(`console: ${message.text()}`) })
+  page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
+  page.on('requestfailed', (request) => browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`))
+
+  await page.goto('/iframe.html?id=foundation-popover--context&viewMode=story', { waitUntil: 'networkidle' })
+  await expect(page.locator('[data-slot="popover-content"]')).toBeVisible()
+  await expect(page.getByText('Active filters', { exact: true })).toBeVisible()
+  await page.evaluate(async () => document.fonts.ready)
+  expect(browserErrors).toEqual([])
+  await expect(page).toHaveScreenshot('foundation-popover.png')
+})
+
+test('public DropdownMenu visual baseline', async ({ page }) => {
+  const browserErrors: string[] = []
+  page.on('console', (message) => { if (message.type() === 'error') browserErrors.push(`console: ${message.text()}`) })
+  page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
+  page.on('requestfailed', (request) => browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`))
+
+  await page.goto('/iframe.html?id=foundation-dropdownmenu--actions&viewMode=story', { waitUntil: 'networkidle' })
+  await expect(page.getByRole('menu', { name: 'Task actions' })).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: 'Delete task' })).toHaveAttribute('data-variant', 'danger')
+  await page.evaluate(async () => document.fonts.ready)
+  expect(browserErrors).toEqual([])
+  await expect(page).toHaveScreenshot('foundation-dropdown-menu.png')
+})
+
+test('public Tooltip visual baseline', async ({ page }) => {
+  const browserErrors: string[] = []
+  page.on('console', (message) => { if (message.type() === 'error') browserErrors.push(`console: ${message.text()}`) })
+  page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
+  page.on('requestfailed', (request) => browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`))
+
+  await page.goto('/iframe.html?id=foundation-tooltip--supplemental-help&viewMode=story', { waitUntil: 'networkidle' })
+  await expect(page.getByRole('tooltip')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Explain blocked state' })).toBeVisible()
+  await page.evaluate(async () => document.fonts.ready)
+  expect(browserErrors).toEqual([])
+  await expect(page).toHaveScreenshot('foundation-tooltip.png')
+})
+
+test('public Command visual baseline', async ({ page }) => {
+  const browserErrors: string[] = []
+  page.on('console', (message) => { if (message.type() === 'error') browserErrors.push(`console: ${message.text()}`) })
+  page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
+  page.on('requestfailed', (request) => browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`))
+
+  await page.goto('/iframe.html?id=foundation-command--search&viewMode=story', { waitUntil: 'networkidle' })
+  await expect(page.getByRole('combobox', { name: 'Find a task action' })).toBeVisible()
+  await expect(page.getByRole('option', { name: 'Open task' })).toBeVisible()
+  await page.evaluate(async () => document.fonts.ready)
+  expect(browserErrors).toEqual([])
+  await expect(page).toHaveScreenshot('foundation-command.png')
+})
