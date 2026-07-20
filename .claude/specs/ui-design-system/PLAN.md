@@ -786,6 +786,24 @@ visuals.
 **Description:** Move/restyle Dialog and Sheet, reconcile BakinDrawer behavior,
 and centralize focus trap, labelling, close, busy, and portal treatment.
 
+**Completed:** Dialog and Sheet now resolve from the private presentation
+package through the supported SDK entrypoint and host compatibility bridge,
+with one shared backdrop, focus, labelled-close, busy-dismissal, reduced-motion,
+and explicit portal-container contract. Sheet uses an intentional full-viewport
+mobile treatment. BakinDrawer is now a typed `@makinbakin/sdk/ui` composition
+with accessible untitled use, mouse and keyboard resizing, clamped per-context
+width persistence, back/actions, busy protection, and a nested dirty-confirm
+path. Public family and per-component stories, 71 focused primitive and
+existing-consumer tests, 16 desktop/mobile visual baselines, all 47 public
+Storybook axe/interaction stories, and 18 Chromium/Firefox/WebKit behavior
+cases pass. Docs distinguish blocking decisions, contextual side panels, and
+long product drawers while retaining the existing URL-backed overlay routing
+contract. The legacy-style ratchet remains at 255 paths. The canonical
+stylesheet reaches 292,279 bytes (+827), initial host JS reaches 457,237 bytes
+(+8,021), and the focused SDK UI entry reaches 65,569 bytes (+82) / 432,491
+reachable bytes (+6,316) for the public modal and drawer behavior, with one
+stylesheet copy and no chart or conversation dependency.
+
 **Acceptance:** nested/open/escape/outside-click/return-focus/scroll-lock states
 pass; mobile full-height behavior and reduced motion are intentional.
 

@@ -13,6 +13,8 @@ export type {
   AlertVariantOptions,
   LegacyAlertVariant,
 } from '@bakin/ui'
+export { BakinDrawer } from '@/components/bakin-drawer'
+export type { BakinDrawerProps } from '@/components/bakin-drawer'
 export {
   Avatar,
   AvatarBadge,
@@ -55,7 +57,30 @@ export type { CheckboxProps } from '@bakin/ui'
 export { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@bakin/ui'
 export type { CollapsibleContentProps, CollapsibleProps, CollapsibleTriggerProps } from '@bakin/ui'
 export * from '@/components/ui/command'
-export * from '@/components/ui/dialog'
+export {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogOverlay,
+  DialogPortal,
+  DialogTitle,
+  DialogTrigger,
+} from '@bakin/ui'
+export type {
+  DialogCloseProps,
+  DialogContentProps,
+  DialogDescriptionProps,
+  DialogFooterProps,
+  DialogHeaderProps,
+  DialogOverlayProps,
+  DialogPortalProps,
+  DialogProps,
+  DialogTitleProps,
+  DialogTriggerProps,
+} from '@bakin/ui'
 export * from '@/components/ui/dropdown-menu'
 export * from '@/components/ui/form'
 export { Input } from '@bakin/ui'
@@ -122,7 +147,31 @@ export type {
 } from '@bakin/ui'
 export { Separator } from '@bakin/ui'
 export type { SeparatorProps } from '@bakin/ui'
-export * from '@/components/ui/sheet'
+export {
+  Sheet,
+  SheetClose,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetOverlay,
+  SheetPortal,
+  SheetTitle,
+  SheetTrigger,
+} from '@bakin/ui'
+export type {
+  SheetCloseProps,
+  SheetContentProps,
+  SheetDescriptionProps,
+  SheetFooterProps,
+  SheetHeaderProps,
+  SheetOverlayProps,
+  SheetPortalProps,
+  SheetProps,
+  SheetSide,
+  SheetTitleProps,
+  SheetTriggerProps,
+} from '@bakin/ui'
 export { Skeleton } from '@bakin/ui'
 export type { SkeletonProps, SkeletonShape } from '@bakin/ui'
 export { Switch } from '@bakin/ui'

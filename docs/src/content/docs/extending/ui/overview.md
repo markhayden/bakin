@@ -252,6 +252,60 @@ Pass `items` to Select when the submitted value and visible label differ; this l
 
 Select's popup is the first consumer of the system-owned option/list presentation. Dropdown menus and Command reuse that private presentation contract as they graduate; generated class strings and popup DOM remain implementation details.
 
+## Modal and Side-Overlay Primitives
+
+Choose the overlay by the work it contains:
+
+| Need | Component | Contract |
+| --- | --- | --- |
+| Resolve a short, blocking decision | `Dialog` and its subparts | Keep the decision focused, label it with `DialogTitle`, and return focus to the trigger on close |
+| Inspect or edit contextual detail | `Sheet` and its subparts | Use the right side by default; top, bottom, and left are deliberate spatial choices |
+| Compose a long, product-level detail experience | `BakinDrawer` | Use the supported resizable right panel with optional back, actions, dirty-state, and width persistence |
+
+```tsx
+import {
+  Button,
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@makinbakin/sdk/ui'
+
+export function DeleteConnection() {
+  return (
+    <Dialog>
+      <DialogTrigger render={<Button variant="danger" />}>
+        Delete connection
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Delete runtime connection?</DialogTitle>
+          <DialogDescription>
+            Agents using this connection will stop dispatching until another runtime is assigned.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <DialogClose render={<Button variant="outline" />}>Keep connection</DialogClose>
+          <Button variant="danger">Delete connection</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+```
+
+Every Dialog, Sheet, and BakinDrawer needs an accessible title. Use the matching visible title component whenever possible; when a BakinDrawer intentionally omits visible heading copy, supply `ariaLabel`. Default close controls are already labelled. Set `showCloseButton={false}` only when the composition supplies an equally discoverable close action.
+
+Set `busy` on the owning Dialog, Sheet, or BakinDrawer while irreversible work is in flight. Busy overlays expose `aria-busy` and block Escape, outside-click, close-button, and programmatic dismissal until the operation resolves. They do not disable application controls automatically, so disable or otherwise guard conflicting actions in the content too.
+
+Sheets use the right side by default and become full-viewport panels on narrow screens. A BakinDrawer adds mouse and keyboard resizing on wider screens: Arrow keys adjust its width, Shift increases the step, and Home or End chooses the minimum or maximum. Pass `storageKey` when separate drawer contexts should remember independent widths. Use `dirty` to require confirmation before discarding local edits.
+
+The overlay portal is system-owned by default. In a standalone or contained host, pass the supported `portalProps={{ container }}` contract to `DialogContent` or `SheetContent`; do not relocate generated popup DOM or copy overlay z-index classes. URL-backed overlay state continues to follow the existing routing contract described below.
+
 ## Stylesheet Contract
 
 `@makinbakin/sdk/styles.css` is the one supported compiled design-system stylesheet. The Bakin host loads it once for installed plugins, so plugin client entries must not import it or copy its contents into plugin-owned CSS.

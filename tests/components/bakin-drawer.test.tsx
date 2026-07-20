@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import '../rtl-settle'
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 
@@ -21,17 +21,17 @@ mock.module('@bakin/core/main-agent', () => ({
 }))
 
 mock.module('@/components/ui/sheet', () => ({
-  Sheet: ({ children }: { children: React.ReactNode }) => <div data-testid="sheet">{children}</div>,
+  Sheet: ({ children, busy }: { children: React.ReactNode; busy?: boolean }) => <div data-testid="sheet" data-busy={busy || undefined}>{children}</div>,
   SheetContent: ({ children, style, className }: { children: React.ReactNode; style?: React.CSSProperties; className?: string }) => (
     <div data-testid="sheet-content" style={style} className={className}>{children}</div>
   ),
   SheetHeader: ({ children, className }: { children: React.ReactNode; className?: string }) => <div className={className}>{children}</div>,
-  SheetTitle: ({ children, className }: { children: React.ReactNode; className?: string }) => <div className={className}>{children}</div>,
+  SheetTitle: ({ children, className }: { children: React.ReactNode; className?: string }) => <h2 className={className}>{children}</h2>,
   SheetDescription: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }))
 
 mock.module('@/components/ui/dialog', () => ({
-  Dialog: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  Dialog: ({ children, open }: { children: React.ReactNode; open?: boolean }) => open ? <div role="dialog">{children}</div> : null,
   DialogContent: ({ children, className }: { children: React.ReactNode; className?: string }) => <div className={className}>{children}</div>,
   DialogHeader: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   DialogTitle: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
@@ -39,7 +39,7 @@ mock.module('@/components/ui/dialog', () => ({
 }))
 
 mock.module('@/components/ui/button', () => ({
-  Button: ({ children, onClick }: { children: React.ReactNode; onClick?: () => void }) => <button onClick={onClick}>{children}</button>,
+  Button: ({ children, variant: _variant, size: _size, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: string; size?: string }) => <button {...props}>{children}</button>,
 }))
 
 describe('BakinDrawer', () => {
@@ -76,7 +76,7 @@ describe('BakinDrawer', () => {
       </BakinDrawer>,
     )
 
-    expect(getByTestId('sheet-content').style.width).toBe('640px')
+    expect(getByTestId('sheet-content').style.getPropertyValue('--bakin-drawer-width')).toBe('640px')
   })
 
   it('persists the resized width on drag end', async () => {
@@ -86,7 +86,7 @@ describe('BakinDrawer', () => {
       </BakinDrawer>,
     )
 
-    const handle = container.querySelector('.cursor-col-resize')
+    const handle = container.querySelector('[role="separator"]')
     expect(handle).toBeTruthy()
 
     fireEvent.mouseDown(handle as Element, { clientX: 1000 })
@@ -95,8 +95,48 @@ describe('BakinDrawer', () => {
 
     await waitFor(() => {
       expect(window.localStorage.getItem(DRAWER_WIDTH_STORAGE_KEY)).toBe('910')
-      expect(getByTestId('sheet-content').style.width).toBe('910px')
+      expect(getByTestId('sheet-content').style.getPropertyValue('--bakin-drawer-width')).toBe('910px')
     })
+  })
+
+  it('supports keyboard resizing and persists each committed width', () => {
+    render(
+      <BakinDrawer open onOpenChange={() => {}} defaultWidth={480}>
+        <div>Body</div>
+      </BakinDrawer>,
+    )
+
+    const separator = screen.getByRole('separator', { name: 'Resize panel' })
+    expect(separator.getAttribute('aria-valuenow')).toBe('480')
+    fireEvent.keyDown(separator, { key: 'ArrowLeft' })
+    expect(separator.getAttribute('aria-valuenow')).toBe('496')
+    expect(window.localStorage.getItem(DRAWER_WIDTH_STORAGE_KEY)).toBe('496')
+    fireEvent.keyDown(separator, { key: 'End' })
+    expect(separator.getAttribute('aria-valuenow')).toBe(String(MAX_WIDTH))
+  })
+
+  it('always provides a labelled close action and blocks it while busy', () => {
+    const onOpenChange = mock()
+    const { rerender } = render(
+      <BakinDrawer open onOpenChange={onOpenChange}>
+        <div>Body</div>
+      </BakinDrawer>,
+    )
+
+    expect(screen.getByText('Details').className).toContain('sr-only')
+    fireEvent.click(screen.getByRole('button', { name: 'Close panel' }))
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+
+    onOpenChange.mockClear()
+    rerender(
+      <BakinDrawer open busy onOpenChange={onOpenChange}>
+        <div>Body</div>
+      </BakinDrawer>,
+    )
+    expect(screen.getByTestId('sheet').getAttribute('data-busy')).toBe('true')
+    expect(screen.getByRole('button', { name: 'Close panel' })).toHaveProperty('disabled', true)
+    fireEvent.click(screen.getByRole('button', { name: 'Close panel' }))
+    expect(onOpenChange).not.toHaveBeenCalled()
   })
 
   it('supports per-context storage keys and clamps invalid stored widths', () => {

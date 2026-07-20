@@ -115,3 +115,65 @@ test('public selection controls family visual baseline', async ({ page }) => {
   expect(browserErrors).toEqual([])
   await expect(page).toHaveScreenshot('foundation-selection-controls.png')
 })
+
+test('public dialog decision visual baseline', async ({ page }) => {
+  const browserErrors: string[] = []
+  page.on('console', (message) => {
+    if (message.type() === 'error') browserErrors.push(`console: ${message.text()}`)
+  })
+  page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
+  page.on('requestfailed', (request) => {
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+  })
+
+  await page.goto('/iframe.html?id=foundation-dialog--decision&viewMode=story', { waitUntil: 'networkidle' })
+  await expect(page.getByRole('dialog', { name: 'Delete runtime connection?' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Close dialog' })).toBeVisible()
+  await page.evaluate(async () => document.fonts.ready)
+
+  expect(browserErrors).toEqual([])
+  await expect(page).toHaveScreenshot('foundation-dialog.png')
+})
+
+test('public right sheet visual baseline', async ({ page }) => {
+  const browserErrors: string[] = []
+  page.on('console', (message) => {
+    if (message.type() === 'error') browserErrors.push(`console: ${message.text()}`)
+  })
+  page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
+  page.on('requestfailed', (request) => {
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+  })
+
+  await page.goto('/iframe.html?id=foundation-sheet--right-panel&viewMode=story', { waitUntil: 'networkidle' })
+  await expect(page.getByRole('dialog', { name: 'Edit task' })).toBeVisible()
+  await expect(page.getByLabel('Title')).toHaveValue('Review routing migration evidence')
+  await page.evaluate(async () => document.fonts.ready)
+
+  expect(browserErrors).toEqual([])
+  await expect(page).toHaveScreenshot('foundation-sheet.png')
+})
+
+test('public BakinDrawer visual baseline', async ({ page }, testInfo) => {
+  const browserErrors: string[] = []
+  page.on('console', (message) => {
+    if (message.type() === 'error') browserErrors.push(`console: ${message.text()}`)
+  })
+  page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
+  page.on('requestfailed', (request) => {
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+  })
+
+  await page.goto('/iframe.html?id=foundation-bakindrawer--default&viewMode=story', { waitUntil: 'networkidle' })
+  await expect(page.getByRole('dialog', { name: 'Task detail' })).toBeVisible()
+  const resizer = page.locator('[role="separator"][aria-label="Resize panel"]')
+  if (testInfo.project.name === 'chromium-desktop') {
+    await expect(resizer).toHaveAttribute('aria-valuenow', '810')
+  } else {
+    await expect(resizer).toBeHidden()
+  }
+  await page.evaluate(async () => document.fonts.ready)
+
+  expect(browserErrors).toEqual([])
+  await expect(page).toHaveScreenshot('foundation-bakin-drawer.png')
+})

@@ -6,6 +6,7 @@ const overviewStory = '/iframe.html?id=foundation-action-and-status--overview&vi
 const surfaceOverviewStory = '/iframe.html?id=foundation-surface-and-content--overview&viewMode=story'
 const textFieldsOverviewStory = '/iframe.html?id=foundation-text-fields--overview&viewMode=story'
 const selectionOverviewStory = '/iframe.html?id=foundation-selection-controls--overview&viewMode=story'
+const modalOverviewStory = '/iframe.html?id=foundation-modal-and-side-overlays--overview&viewMode=story'
 
 test('public story keeps keyboard, focus, console, and responsive contracts', async ({ page }) => {
   const browserErrors: string[] = []
@@ -263,6 +264,88 @@ test('selection controls keep keyboard, state, target, and overflow contracts ac
     await expect(page.getByRole('listbox')).toBeHidden()
     await expect(trigger).toContainText('Managed production runtime')
     await expect(trigger).toBeFocused()
+  })
+
+  expect(browserErrors).toEqual([])
+})
+
+test('modal and side overlays keep focus, dismissal, motion, and viewport contracts across browsers', async ({ page }) => {
+  test.setTimeout(60_000)
+  const browserErrors: string[] = []
+  page.on('console', (message) => {
+    if (message.type() === 'error') browserErrors.push(`console: ${message.text()}`)
+  })
+  page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
+  page.on('requestfailed', (request) => {
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+  })
+
+  for (const width of responsiveWidths) {
+    await test.step(`${width}px overlay overview has no document overflow`, async () => {
+      await page.setViewportSize({ width, height: 900 })
+      await page.goto(modalOverviewStory, { waitUntil: 'networkidle' })
+      await expect(page.getByRole('heading', { name: 'Modal and side overlays', exact: true })).toBeVisible()
+      const dimensions = await page.evaluate(() => ({
+        clientWidth: document.documentElement.clientWidth,
+        scrollWidth: document.documentElement.scrollWidth,
+      }))
+      expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth)
+    })
+  }
+
+  await test.step('nested dialog escape closes one layer at a time and returns focus', async () => {
+    await page.setViewportSize({ width: 1024, height: 900 })
+    await page.goto('/iframe.html?id=foundation-dialog--nested-behavior&viewMode=story', { waitUntil: 'networkidle' })
+    const outerTrigger = page.getByRole('button', { name: 'Open workflow settings' })
+    await expect(outerTrigger).toBeFocused()
+    await outerTrigger.click()
+    const outerDialog = page.getByRole('dialog', { name: 'Workflow settings' })
+    await expect(outerDialog).toBeVisible()
+    const nestedTrigger = outerDialog.getByRole('button', { name: 'Reset workflow', exact: true })
+    await nestedTrigger.click()
+    await expect(page.getByRole('dialog', { name: 'Reset this workflow?' })).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(nestedTrigger).toBeFocused()
+    await expect(outerDialog).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(outerTrigger).toBeFocused()
+  })
+
+  await test.step('busy dialogs block every dismissal path and expose state', async () => {
+    await page.goto('/iframe.html?id=foundation-dialog--busy&viewMode=story', { waitUntil: 'networkidle' })
+    const dialog = page.getByRole('dialog', { name: 'Publishing workflow' })
+    await expect(dialog).toHaveAttribute('aria-busy', 'true')
+    await expect(page.getByRole('button', { name: 'Close dialog' })).toBeDisabled()
+    await expect(page.getByRole('button', { name: 'Cancel' })).toBeDisabled()
+    await page.keyboard.press('Escape')
+    await expect(dialog).toBeVisible()
+    expect(await page.evaluate(() => getComputedStyle(document.body).overflow)).toBe('hidden')
+  })
+
+  await test.step('mobile side sheets fill the viewport and disable motion', async () => {
+    await page.setViewportSize({ width: 320, height: 800 })
+    await page.goto('/iframe.html?id=foundation-sheet--right-panel&viewMode=story', { waitUntil: 'networkidle' })
+    const sheet = page.getByRole('dialog', { name: 'Edit task' })
+    const bounds = await sheet.boundingBox()
+    expect(bounds?.width).toBe(320)
+    expect(bounds?.height).toBe(800)
+    const animations = await sheet.evaluate((element) => element.getAnimations({ subtree: true }).map((animation) => animation.effect?.getTiming().duration ?? 0))
+    expect(animations.every((duration) => duration === 0)).toBe(true)
+  })
+
+  await test.step('BakinDrawer resize and dirty confirmation remain keyboard operable', async () => {
+    await page.setViewportSize({ width: 1024, height: 900 })
+    await page.goto('/iframe.html?id=foundation-bakindrawer--dirty-behavior&viewMode=story', { waitUntil: 'networkidle' })
+    const resizer = page.getByRole('separator', { name: 'Resize panel' })
+    const initialWidth = Number(await resizer.getAttribute('aria-valuenow'))
+    await resizer.focus()
+    await page.keyboard.press('ArrowRight')
+    await expect(resizer).toHaveAttribute('aria-valuenow', String(Math.max(initialWidth - 16, 320)))
+    await page.getByRole('button', { name: 'Close panel' }).click()
+    const dirtyDialog = page.getByRole('dialog', { name: 'Unsaved changes' })
+    await expect(dirtyDialog).toBeVisible()
+    await page.getByRole('button', { name: 'Keep editing' }).click()
+    await expect(page.getByRole('dialog', { name: 'Edit task' })).toBeVisible()
   })
 
   expect(browserErrors).toEqual([])

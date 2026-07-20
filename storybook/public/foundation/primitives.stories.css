@@ -224,6 +224,87 @@
   width: 100%;
 }
 
+.bakin-primitive-story__overlay-choice {
+  display: flex;
+  min-width: 0;
+  min-height: 12rem;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--bakin-layout-gap-item);
+  padding: var(--bakin-layout-space-6);
+  border: 1px solid var(--bakin-color-border-subtle);
+  border-radius: var(--bakin-shape-radius-card);
+  background: var(--bakin-color-surface-default);
+}
+
+.bakin-primitive-story__overlay-choice > div {
+  display: grid;
+  gap: var(--bakin-layout-space-2);
+}
+
+.bakin-primitive-story__overlay-choice h3,
+.bakin-primitive-story__overlay-choice p {
+  margin: 0;
+}
+
+.bakin-primitive-story__overlay-choice h3 {
+  font-size: var(--bakin-typography-size-section-title);
+}
+
+.bakin-primitive-story__overlay-choice p:last-child {
+  color: var(--bakin-color-text-muted);
+  line-height: 1.5;
+}
+
+.bakin-primitive-story__overlay-stage {
+  min-height: 100dvh;
+  background: var(--bakin-color-canvas-default);
+  color: var(--bakin-color-text-primary);
+  font-family: var(--bakin-typography-family-ui);
+}
+
+.bakin-primitive-story__overlay-workspace {
+  display: grid;
+  width: min(100%, 68rem);
+  margin: 0 auto;
+  padding: var(--bakin-layout-space-8);
+  grid-template-columns: 14rem minmax(0, 1fr);
+  grid-template-rows: 5rem minmax(28rem, 1fr);
+  gap: var(--bakin-layout-gap-item);
+  opacity: .72;
+}
+
+.bakin-primitive-story__overlay-workspace > div {
+  border: 1px solid var(--bakin-color-border-subtle);
+  border-radius: var(--bakin-shape-radius-card);
+  background: var(--bakin-color-surface-default);
+}
+
+.bakin-primitive-story__overlay-workspace > div:first-child {
+  grid-row: 1 / span 2;
+}
+
+.bakin-primitive-story__overlay-body {
+  display: grid;
+  min-width: 0;
+  gap: var(--bakin-layout-gap-item);
+  padding: 0 var(--bakin-layout-space-6) var(--bakin-layout-space-6);
+  overflow-y: auto;
+}
+
+.bakin-primitive-story__overlay-body--flush {
+  padding: 0;
+}
+
+.bakin-primitive-story__overlay-callout {
+  padding: var(--bakin-layout-space-3);
+  border-left: 2px solid var(--bakin-color-signal-highlight);
+  background: color-mix(in srgb, var(--bakin-color-signal-highlight) 8%, transparent);
+  color: var(--bakin-color-text-muted);
+  line-height: 1.5;
+}
+
 @media (max-width: 40rem) {
   .bakin-primitive-story {
     padding: var(--bakin-layout-space-4);
@@ -235,5 +316,14 @@
 
   .bakin-primitive-story__form-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .bakin-primitive-story__overlay-workspace {
+    padding: var(--bakin-layout-space-4);
+    grid-template-columns: 1fr;
+  }
+
+  .bakin-primitive-story__overlay-workspace > div:first-child {
+    display: none;
   }
 }

@@ -1,10 +1,9 @@
 'use client'
 
-import { useRef, useState, useCallback, useEffect } from 'react'
+import { useRef, useState, useCallback, useEffect, type CSSProperties, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft, X } from 'lucide-react'
 
 const MIN_WIDTH = 320
 const MAX_WIDTH = 960
@@ -39,10 +38,31 @@ function getStoredDrawerWidth(defaultWidth: number, storageKey?: string) {
   }
 }
 
+export interface BakinDrawerProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  title?: ReactNode
+  /** Accessible title used when the visible title is intentionally omitted. */
+  ariaLabel?: string
+  description?: ReactNode
+  actions?: ReactNode
+  children: ReactNode
+  defaultWidth?: number
+  /** Optional suffix for per-context drawer width persistence. */
+  storageKey?: string
+  /** When provided, a back action appears left of the title. */
+  onBack?: () => void
+  /** When true, closing the drawer shows an unsaved-changes confirmation. */
+  dirty?: boolean
+  /** Prevents escape, outside, close-button, and dirty-confirm dismissal while work is in flight. */
+  busy?: boolean
+}
+
 export function BakinDrawer({
   open,
   onOpenChange,
   title,
+  ariaLabel = 'Details',
   description,
   actions,
   children,
@@ -50,21 +70,8 @@ export function BakinDrawer({
   storageKey,
   onBack,
   dirty = false,
-}: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  title?: React.ReactNode
-  description?: React.ReactNode
-  actions?: React.ReactNode
-  children: React.ReactNode
-  defaultWidth?: number
-  /** Optional suffix for per-context drawer width persistence */
-  storageKey?: string
-  /** When provided, a back arrow appears left of the title */
-  onBack?: () => void
-  /** When true, closing the drawer shows an "unsaved changes" confirmation */
-  dirty?: boolean
-}) {
+  busy = false,
+}: BakinDrawerProps) {
   const [width, setWidth] = useState(() => getStoredDrawerWidth(defaultWidth, storageKey))
   const [showDirtyConfirm, setShowDirtyConfirm] = useState(false)
   const dragging = useRef(false)
@@ -80,6 +87,10 @@ export function BakinDrawer({
     widthRef.current = width
   }, [width])
 
+  useEffect(() => {
+    if (!open) setShowDirtyConfirm(false)
+  }, [open])
+
   const persistWidth = useCallback((nextWidth: number) => {
     if (typeof window === 'undefined') return
 
@@ -90,7 +101,14 @@ export function BakinDrawer({
     }
   }, [storageKey])
 
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+  const setAndPersistWidth = useCallback((nextWidth: number) => {
+    const clampedWidth = clampDrawerWidth(nextWidth)
+    widthRef.current = clampedWidth
+    setWidth(clampedWidth)
+    persistWidth(clampedWidth)
+  }, [persistWidth])
+
+  const handleMouseDown = useCallback((e: ReactMouseEvent) => {
     e.preventDefault()
     dragging.current = true
     startX.current = e.clientX
@@ -119,13 +137,29 @@ export function BakinDrawer({
     document.body.style.userSelect = 'none'
   }, [persistWidth])
 
+  const handleResizeKeyDown = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
+    const step = event.shiftKey ? 64 : 16
+    let nextWidth: number | undefined
+
+    if (event.key === 'ArrowLeft') nextWidth = widthRef.current + step
+    if (event.key === 'ArrowRight') nextWidth = widthRef.current - step
+    if (event.key === 'Home') nextWidth = MIN_WIDTH
+    if (event.key === 'End') nextWidth = MAX_WIDTH
+
+    if (nextWidth !== undefined) {
+      event.preventDefault()
+      setAndPersistWidth(nextWidth)
+    }
+  }, [setAndPersistWidth])
+
   const requestClose = useCallback(() => {
+    if (busy) return
     if (dirty) {
       setShowDirtyConfirm(true)
     } else {
       onOpenChange(false)
     }
-  }, [dirty, onOpenChange])
+  }, [busy, dirty, onOpenChange])
 
   const confirmDiscard = useCallback(() => {
     setShowDirtyConfirm(false)
@@ -136,6 +170,7 @@ export function BakinDrawer({
     <>
       <Sheet
         open={open}
+        busy={busy}
         onOpenChange={(nextOpen) => {
           if (!nextOpen) {
             requestClose()
@@ -146,53 +181,53 @@ export function BakinDrawer({
       >
         <SheetContent
           side="right"
-          className="overflow-y-auto p-0"
+          className="overflow-y-auto p-0 data-[side=right]:sm:w-[var(--bakin-drawer-width)] data-[side=right]:sm:max-w-[min(var(--bakin-drawer-width),calc(100vw-var(--bakin-layout-space-4)))]"
           showCloseButton={false}
-          style={{ width: `${width}px`, maxWidth: `min(${MAX_WIDTH}px, 100vw)` }}
+          style={{ '--bakin-drawer-width': `${width}px` } as CSSProperties}
         >
-          {/* Drag handle — left edge */}
           <div
-            className="absolute inset-y-0 left-0 w-1.5 cursor-col-resize hover:bg-accent/50 active:bg-accent transition-colors z-10"
+            aria-label="Resize panel"
+            aria-orientation="vertical"
+            aria-valuemax={MAX_WIDTH}
+            aria-valuemin={MIN_WIDTH}
+            aria-valuenow={width}
+            className="absolute inset-y-0 left-0 z-10 hidden w-bakin-2 cursor-col-resize outline-none transition-colors hover:bg-bakin-signal-accent/20 focus-visible:bg-bakin-signal-accent/25 motion-reduce:transition-none sm:block"
             onMouseDown={handleMouseDown}
+            onKeyDown={handleResizeKeyDown}
+            role="separator"
+            tabIndex={0}
           />
 
-          <div className="px-7 py-6 flex flex-col gap-4 h-full">
-            {(title || description || actions) && (
-              <SheetHeader className="p-0">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 min-w-0">
-                    {onBack && (
-                      <button
-                        onClick={onBack}
-                        className="p-1.5 rounded-md hover:bg-accent transition-colors text-muted-foreground hover:text-foreground shrink-0"
-                      >
-                        <ArrowLeft className="size-4" />
-                        <span className="sr-only">Back</span>
-                      </button>
-                    )}
-                    {title && <SheetTitle className="truncate">{title}</SheetTitle>}
-                  </div>
-                  <div className="flex items-center gap-1 shrink-0">
-                    {actions}
-                    <button
-                      onClick={requestClose}
-                      className="p-1.5 rounded-md hover:bg-accent transition-colors text-muted-foreground hover:text-foreground"
-                    >
-                      <X className="size-4" />
-                      <span className="sr-only">Close</span>
-                    </button>
-                  </div>
+          <div className="flex min-h-full flex-col gap-bakin-4 px-bakin-7 py-bakin-6">
+            <SheetHeader className="p-0 pr-0">
+              <div className="flex min-w-0 items-center justify-between gap-bakin-2">
+                <div className="flex min-w-0 items-center gap-bakin-2">
+                  {onBack ? (
+                    <Button variant="ghost" size="icon-sm" onClick={onBack} aria-label="Back" disabled={busy}>
+                      <svg aria-hidden="true" viewBox="0 0 16 16" className="size-bakin-4 fill-none stroke-current stroke-[1.75]">
+                        <path d="m10.5 3-5 5 5 5" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </Button>
+                  ) : null}
+                  <SheetTitle className={title ? 'truncate' : 'sr-only'}>{title ?? ariaLabel}</SheetTitle>
                 </div>
-                {description && <SheetDescription>{description}</SheetDescription>}
-              </SheetHeader>
-            )}
-            <div className="flex-1 min-h-0">{children}</div>
+                <div className="flex shrink-0 items-center gap-bakin-1">
+                  {actions}
+                  <Button variant="ghost" size="icon-sm" onClick={requestClose} aria-label="Close panel" disabled={busy}>
+                    <svg aria-hidden="true" viewBox="0 0 16 16" className="size-bakin-4 fill-none stroke-current stroke-[1.75]">
+                      <path d="m4 4 8 8M12 4l-8 8" strokeLinecap="round" />
+                    </svg>
+                  </Button>
+                </div>
+              </div>
+              {description ? <SheetDescription>{description}</SheetDescription> : null}
+            </SheetHeader>
+            <div className="min-h-0 min-w-0 flex-1">{children}</div>
           </div>
         </SheetContent>
       </Sheet>
 
-      {/* Unsaved changes confirmation */}
-      <Dialog open={showDirtyConfirm} onOpenChange={setShowDirtyConfirm}>
+      <Dialog open={showDirtyConfirm} busy={busy} onOpenChange={setShowDirtyConfirm}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>Unsaved changes</DialogTitle>
@@ -201,10 +236,10 @@ export function BakinDrawer({
             </DialogDescription>
           </DialogHeader>
           <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" onClick={() => setShowDirtyConfirm(false)}>
+            <Button variant="outline" onClick={() => setShowDirtyConfirm(false)} disabled={busy}>
               Keep editing
             </Button>
-            <Button variant="destructive" onClick={confirmDiscard}>
+            <Button variant="danger" onClick={confirmDiscard} disabled={busy}>
               Discard changes
             </Button>
           </div>

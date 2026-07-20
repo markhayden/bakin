@@ -97,6 +97,7 @@ export function ConfirmDialog({
   return (
     <Dialog
       open={open}
+      busy={busy}
       onOpenChange={(next) => {
         if (!next && !busy) onCancel()
       }}
