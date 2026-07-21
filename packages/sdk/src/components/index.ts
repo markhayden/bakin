@@ -128,8 +128,6 @@ export { Composer } from '@/components/conversation/composer'
 export type { ComposerProps, ComposerAttachments, ComposerAttachmentItem } from '@/components/conversation/composer'
 export { ConversationPanel } from '@/components/conversation/conversation-panel'
 export type { ConversationPanelProps } from '@/components/conversation/conversation-panel'
-export { useConversationStream } from '@/components/conversation/use-conversation-stream'
-export type { ConversationStream, ConversationStreamOptions } from '@/components/conversation/use-conversation-stream'
 export { useConversationThread } from '@/components/conversation/use-conversation-thread'
 export type {
   ConversationThread,
@@ -148,13 +146,12 @@ export type {
   ConversationDonePayload,
 } from '@/components/conversation/attention'
 export { playReplyChime } from '@/components/conversation/notification-sound'
+export { ConversationReplyToast } from '@/components/conversation/reply-toast'
 export { useConversationAttention } from '@/components/conversation/use-conversation-attention'
 export type {
   ConversationAttentionConfig,
   ConversationAttentionTotals,
 } from '@/components/conversation/use-conversation-attention'
-export { readConversationSseStream } from '@/components/conversation/sse'
-export type { ConversationSseHandlers } from '@/components/conversation/sse'
 export { ConversationEmptyState } from '@/components/conversation/conversation-empty-state'
 export type { ConversationEmptyStateProps } from '@/components/conversation/conversation-empty-state'
 export { formatRelativeTime, formatAbsoluteTime } from '@/components/conversation/relative-time'

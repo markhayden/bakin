@@ -8,8 +8,7 @@
  * totals from GET /chats, the reply toast, plugin-settings toggles.
  */
 import { useEffect, useRef } from 'react'
-import { AgentAvatar, useConversationAttention } from '@makinbakin/sdk/components'
-import { useAgent, useRouter } from '@makinbakin/sdk/hooks'
+import { ConversationReplyToast, useConversationAttention } from '@makinbakin/sdk/components'
 import { pluginFetch } from '@makinbakin/sdk/utils'
 
 import { visibleChatIdFromLocation } from './attention'
@@ -21,28 +20,6 @@ interface ChatAttentionSettings {
 }
 
 const DEFAULT_ATTENTION_SETTINGS: ChatAttentionSettings = { sound: true, toasts: true }
-
-function ReplyToast({ chatId, agentId, preview, onNavigate }: { chatId: string; agentId: string; preview?: string; onNavigate?: () => void }) {
-  const agent = useAgent(agentId)
-  const router = useRouter()
-  return (
-    <button
-      type="button"
-      data-chat-toast={chatId}
-      onClick={() => {
-        onNavigate?.()
-        router.push(`/chat/${encodeURIComponent(chatId)}`)
-      }}
-      className="flex max-w-sm items-start gap-2 text-left"
-    >
-      <AgentAvatar agentId={agentId} size="xs" />
-      <span className="min-w-0">
-        <span className="block text-sm font-medium">{agent?.name ?? agentId} replied</span>
-        {preview ? <span className="block truncate text-xs text-muted-foreground">{preview}</span> : null}
-      </span>
-    </button>
-  )
-}
 
 export function ChatBadgeProvider() {
   const settingsRef = useRef<ChatAttentionSettings>(DEFAULT_ATTENTION_SETTINGS)
@@ -82,7 +59,14 @@ export function ChatBadgeProvider() {
     },
     settings: () => settingsRef.current,
     renderToast: (done, dismiss) => (
-      <ReplyToast chatId={done.key} agentId={done.agentId} preview={done.preview} onNavigate={dismiss} />
+      <ConversationReplyToast
+        agentId={done.agentId}
+        title="replied"
+        preview={done.preview}
+        to={`/chat/${encodeURIComponent(done.key)}`}
+        onNavigate={dismiss}
+        testId={{ attr: 'data-chat-toast', value: done.key }}
+      />
     ),
     osNotification: (done) => ({
       title: `${done.agentId} replied`,

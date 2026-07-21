@@ -196,8 +196,7 @@ export function useChatStream(chatId: string): ChatStreamState {
   // The kit hook owns the shared client core (optimistic echo, bus
   // streaming + coalescing, active-thread guards, settle-by-refetch);
   // chat keeps its own policy here: seen tracking, retry with
-  // attachments, attachment URL mapping, and NO streaming pre-light from
-  // the server flag (the transcript + next chunk carry the state).
+  // attachments, and attachment URL mapping.
   const thread = useConversationThread<ChatSummaryDto, { name: string; mimeType: string; path: string }>({
     threadKey: chatId,
     events: { chunk: 'chat.chunk', done: 'chat.done', error: 'chat.error' },
@@ -205,12 +204,20 @@ export function useChatStream(chatId: string): ChatStreamState {
     load: async (key) => {
       const res = await pluginFetch('chat', `chats/${key}`)
       if (!res.ok) return null
-      const body = (await res.json()) as { chat: ChatSummaryDto; messages: TranscriptRowDto[] }
+      const body = (await res.json()) as { chat: ChatSummaryDto; messages: TranscriptRowDto[]; streamingText?: string }
       if (key === chatIdRef.current) {
         const lastUser = [...body.messages].reverse().find((r) => r.kind === 'user')
         if (lastUser?.kind === 'user') lastUserRef.current = { content: lastUser.content, attachments: lastUser.attachments }
       }
-      return { messages: body.messages.map((row) => rowToMessage(key, row)), meta: body.chat }
+      return {
+        messages: body.messages.map((row) => rowToMessage(key, row)),
+        meta: body.chat,
+        // Chat now pre-lights like every other surface (#706 decision):
+        // reopening a chat mid-turn shows the live indicator + the text
+        // streamed so far instead of looking idle until the next chunk.
+        streaming: body.chat.streaming === true,
+        ...(body.streamingText ? { streamingText: body.streamingText } : {}),
+      }
     },
     post: async (key, content, attachments) => {
       const res = await pluginFetch('chat', `chats/${key}/messages`, {

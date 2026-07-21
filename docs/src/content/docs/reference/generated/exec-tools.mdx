@@ -408,14 +408,14 @@ bakin_exec_memory_status
 <p class="mcp-section-description">Messaging tools let agents create, update, approve, reject, and inspect human-facing messages and sessions.</p>
 
 <div class="mcp-tool-list">
-<McpToolCard id="messaging-deliverable-approve" name="bakin_exec_messaging_deliverable_approve" label="Approved content deliverable" description="Approve a Deliverable after review." source="bakin-bits-official/plugins/messaging/index.ts:2008" parameters={[{"name":"deliverableId","type":"string","required":true,"description":"Deliverable ID (required)"}]}>
+<McpToolCard id="messaging-deliverable-approve" name="bakin_exec_messaging_deliverable_approve" label="Approved content deliverable" description="Approve a Deliverable after review." source="bakin-bits-official/plugins/messaging/index.ts:2063" parameters={[{"name":"deliverableId","type":"string","required":true,"description":"Deliverable ID (required)"}]}>
 ```sh frame="terminal"
 bakin_exec_messaging_deliverable_approve {
   "deliverableId": "value"
 }
 ```
 </McpToolCard>
-<McpToolCard id="messaging-deliverable-create" name="bakin_exec_messaging_deliverable_create" label="Created content deliverable" description="Create a Quick Post Deliverable. Plan Deliverables are created only by Plan activation." source="bakin-bits-official/plugins/messaging/index.ts:1877" parameters={[{"name":"planId","type":"union","required":false,"description":"Optional Plan ID; null creates a Quick Post"},{"name":"channel","type":"string","required":true,"description":"Runtime channel ID"},{"name":"contentType","type":"string","required":true,"description":"Messaging content type ID"},{"name":"tone","type":"string","required":true,"description":"Tone"},{"name":"agent","type":"string","required":true,"description":"Prep agent"},{"name":"title","type":"string","required":true,"description":"Deliverable title"},{"name":"brief","type":"string","required":true,"description":"Deliverable brief"},{"name":"publishAt","type":"string","required":true,"description":"Publish datetime"},{"name":"prepStartAt","type":"string","required":false,"description":"Optional explicit prep start datetime"},{"name":"prepStartAtOverride","type":"string","required":false,"description":"Optional prep start override datetime"},{"name":"status","type":"string","required":false,"description":"Optional initial status; defaults to planned"},{"name":"draft","type":"object","required":false,"description":"Optional draft fields"}]}>
+<McpToolCard id="messaging-deliverable-create" name="bakin_exec_messaging_deliverable_create" label="Created content deliverable" description="Create a Quick Post Deliverable. Plan Deliverables are created only by Plan activation." source="bakin-bits-official/plugins/messaging/index.ts:1932" parameters={[{"name":"planId","type":"union","required":false,"description":"Optional Plan ID; null creates a Quick Post"},{"name":"channel","type":"string","required":true,"description":"Runtime channel ID"},{"name":"contentType","type":"string","required":true,"description":"Messaging content type ID"},{"name":"tone","type":"string","required":true,"description":"Tone"},{"name":"agent","type":"string","required":true,"description":"Prep agent"},{"name":"title","type":"string","required":true,"description":"Deliverable title"},{"name":"brief","type":"string","required":true,"description":"Deliverable brief"},{"name":"publishAt","type":"string","required":true,"description":"Publish datetime"},{"name":"prepStartAt","type":"string","required":false,"description":"Optional explicit prep start datetime"},{"name":"prepStartAtOverride","type":"string","required":false,"description":"Optional prep start override datetime"},{"name":"status","type":"string","required":false,"description":"Optional initial status; defaults to planned"},{"name":"draft","type":"object","required":false,"description":"Optional draft fields"}]}>
 ```sh frame="terminal"
 bakin_exec_messaging_deliverable_create {
   "planId": "value",
@@ -435,14 +435,14 @@ bakin_exec_messaging_deliverable_create {
 }
 ```
 </McpToolCard>
-<McpToolCard id="messaging-deliverable-get" name="bakin_exec_messaging_deliverable_get" label="Read content deliverable" description="Get a content Deliverable" source="bakin-bits-official/plugins/messaging/index.ts:1862" parameters={[{"name":"deliverableId","type":"string","required":true,"description":"Deliverable ID (required)"}]}>
+<McpToolCard id="messaging-deliverable-get" name="bakin_exec_messaging_deliverable_get" label="Read content deliverable" description="Get a content Deliverable" source="bakin-bits-official/plugins/messaging/index.ts:1917" parameters={[{"name":"deliverableId","type":"string","required":true,"description":"Deliverable ID (required)"}]}>
 ```sh frame="terminal"
 bakin_exec_messaging_deliverable_get {
   "deliverableId": "value"
 }
 ```
 </McpToolCard>
-<McpToolCard id="messaging-deliverable-list" name="bakin_exec_messaging_deliverable_list" label="Listed content deliverables" description="List content Deliverables with optional filters" source="bakin-bits-official/plugins/messaging/index.ts:1839" parameters={[{"name":"planId","type":"union","required":false,"description":"Filter by Plan ID; null returns Quick Posts"},{"name":"status","type":"string","required":false,"description":"Filter by Deliverable status"},{"name":"channel","type":"string","required":false,"description":"Filter by channel"},{"name":"publishAfter","type":"string","required":false,"description":"Filter by publishAt at or after this date"},{"name":"publishBefore","type":"string","required":false,"description":"Filter by publishAt at or before this date"}]}>
+<McpToolCard id="messaging-deliverable-list" name="bakin_exec_messaging_deliverable_list" label="Listed content deliverables" description="List content Deliverables with optional filters" source="bakin-bits-official/plugins/messaging/index.ts:1894" parameters={[{"name":"planId","type":"union","required":false,"description":"Filter by Plan ID; null returns Quick Posts"},{"name":"status","type":"string","required":false,"description":"Filter by Deliverable status"},{"name":"channel","type":"string","required":false,"description":"Filter by channel"},{"name":"publishAfter","type":"string","required":false,"description":"Filter by publishAt at or after this date"},{"name":"publishBefore","type":"string","required":false,"description":"Filter by publishAt at or before this date"}]}>
 ```sh frame="terminal"
 bakin_exec_messaging_deliverable_list {
   "planId": "value",
@@ -453,14 +453,14 @@ bakin_exec_messaging_deliverable_list {
 }
 ```
 </McpToolCard>
-<McpToolCard id="messaging-deliverable-ready-for-review" name="bakin_exec_messaging_deliverable_ready_for_review" label="Marked content deliverable ready for review" description="Signal that a bare-task Deliverable draft is ready for user review or auto-approval." source="bakin-bits-official/plugins/messaging/index.ts:1993" parameters={[{"name":"deliverableId","type":"string","required":true,"description":"Deliverable ID (required)"}]}>
+<McpToolCard id="messaging-deliverable-ready-for-review" name="bakin_exec_messaging_deliverable_ready_for_review" label="Marked content deliverable ready for review" description="Signal that a bare-task Deliverable draft is ready for user review or auto-approval." source="bakin-bits-official/plugins/messaging/index.ts:2048" parameters={[{"name":"deliverableId","type":"string","required":true,"description":"Deliverable ID (required)"}]}>
 ```sh frame="terminal"
 bakin_exec_messaging_deliverable_ready_for_review {
   "deliverableId": "value"
 }
 ```
 </McpToolCard>
-<McpToolCard id="messaging-deliverable-reject" name="bakin_exec_messaging_deliverable_reject" label="Rejected content deliverable" description="Request changes for a Deliverable after review." source="bakin-bits-official/plugins/messaging/index.ts:2027" parameters={[{"name":"deliverableId","type":"string","required":true,"description":"Deliverable ID (required)"},{"name":"note","type":"string","required":false,"description":"Review note for the prep agent"}]}>
+<McpToolCard id="messaging-deliverable-reject" name="bakin_exec_messaging_deliverable_reject" label="Rejected content deliverable" description="Request changes for a Deliverable after review." source="bakin-bits-official/plugins/messaging/index.ts:2082" parameters={[{"name":"deliverableId","type":"string","required":true,"description":"Deliverable ID (required)"},{"name":"note","type":"string","required":false,"description":"Review note for the prep agent"}]}>
 ```sh frame="terminal"
 bakin_exec_messaging_deliverable_reject {
   "deliverableId": "value",
@@ -468,7 +468,7 @@ bakin_exec_messaging_deliverable_reject {
 }
 ```
 </McpToolCard>
-<McpToolCard id="messaging-deliverable-update" name="bakin_exec_messaging_deliverable_update" label="Updated content deliverable" description="Update a content Deliverable. Draft fields are deep-merged." source="bakin-bits-official/plugins/messaging/index.ts:1933" parameters={[{"name":"deliverableId","type":"string","required":true,"description":"Deliverable ID (required)"},{"name":"planId","type":"union","required":false,"description":"Optional Plan ID; null makes it a Quick Post"},{"name":"channel","type":"string","required":false,"description":"Runtime channel ID"},{"name":"contentType","type":"string","required":false,"description":"Messaging content type ID"},{"name":"tone","type":"string","required":false,"description":"Tone"},{"name":"agent","type":"string","required":false,"description":"Prep agent"},{"name":"title","type":"string","required":false,"description":"Deliverable title"},{"name":"brief","type":"string","required":false,"description":"Deliverable brief"},{"name":"publishAt","type":"string","required":false,"description":"Publish datetime"},{"name":"prepStartAt","type":"string","required":false,"description":"Optional explicit prep start datetime"},{"name":"prepStartAtOverride","type":"string","required":false,"description":"Optional prep start override datetime"},{"name":"status","type":"string","required":false,"description":"Deliverable status"},{"name":"rejectionNote","type":"string","required":false,"description":"Optional rejection note"},{"name":"draft","type":"object","required":false,"description":"Draft fields to deep-merge"}]}>
+<McpToolCard id="messaging-deliverable-update" name="bakin_exec_messaging_deliverable_update" label="Updated content deliverable" description="Update a content Deliverable. Draft fields are deep-merged." source="bakin-bits-official/plugins/messaging/index.ts:1988" parameters={[{"name":"deliverableId","type":"string","required":true,"description":"Deliverable ID (required)"},{"name":"planId","type":"union","required":false,"description":"Optional Plan ID; null makes it a Quick Post"},{"name":"channel","type":"string","required":false,"description":"Runtime channel ID"},{"name":"contentType","type":"string","required":false,"description":"Messaging content type ID"},{"name":"tone","type":"string","required":false,"description":"Tone"},{"name":"agent","type":"string","required":false,"description":"Prep agent"},{"name":"title","type":"string","required":false,"description":"Deliverable title"},{"name":"brief","type":"string","required":false,"description":"Deliverable brief"},{"name":"publishAt","type":"string","required":false,"description":"Publish datetime"},{"name":"prepStartAt","type":"string","required":false,"description":"Optional explicit prep start datetime"},{"name":"prepStartAtOverride","type":"string","required":false,"description":"Optional prep start override datetime"},{"name":"status","type":"string","required":false,"description":"Deliverable status"},{"name":"rejectionNote","type":"string","required":false,"description":"Optional rejection note"},{"name":"draft","type":"object","required":false,"description":"Draft fields to deep-merge"}]}>
 ```sh frame="terminal"
 bakin_exec_messaging_deliverable_update {
   "deliverableId": "value",
@@ -490,14 +490,14 @@ bakin_exec_messaging_deliverable_update {
 }
 ```
 </McpToolCard>
-<McpToolCard id="messaging-plan-activate" name="bakin_exec_messaging_plan_activate" label="Activated content plan" description="Activate a content Plan and create scheduled kickoff tasks for its configured channels." source="bakin-bits-official/plugins/messaging/index.ts:1819" parameters={[{"name":"planId","type":"string","required":true,"description":"Plan ID (required)"}]}>
+<McpToolCard id="messaging-plan-activate" name="bakin_exec_messaging_plan_activate" label="Activated content plan" description="Activate a content Plan and create scheduled kickoff tasks for its configured channels." source="bakin-bits-official/plugins/messaging/index.ts:1874" parameters={[{"name":"planId","type":"string","required":true,"description":"Plan ID (required)"}]}>
 ```sh frame="terminal"
 bakin_exec_messaging_plan_activate {
   "planId": "value"
 }
 ```
 </McpToolCard>
-<McpToolCard id="messaging-plan-channel-delete" name="bakin_exec_messaging_plan_channel_delete" label="Deleted content plan channel" description="Delete one configured Plan channel, its Deliverables, and linked board tasks." source="bakin-bits-official/plugins/messaging/index.ts:1792" parameters={[{"name":"planId","type":"string","required":true,"description":"Plan ID (required)"},{"name":"channelId","type":"string","required":true,"description":"Plan channel ID (required)"},{"name":"deleteLinkedTasks","type":"boolean","required":false,"description":"Delete linked board tasks; defaults to true"}]}>
+<McpToolCard id="messaging-plan-channel-delete" name="bakin_exec_messaging_plan_channel_delete" label="Deleted content plan channel" description="Delete one configured Plan channel, its Deliverables, and linked board tasks." source="bakin-bits-official/plugins/messaging/index.ts:1847" parameters={[{"name":"planId","type":"string","required":true,"description":"Plan ID (required)"},{"name":"channelId","type":"string","required":true,"description":"Plan channel ID (required)"},{"name":"deleteLinkedTasks","type":"boolean","required":false,"description":"Delete linked board tasks; defaults to true"}]}>
 ```sh frame="terminal"
 bakin_exec_messaging_plan_channel_delete {
   "planId": "value",
@@ -506,7 +506,7 @@ bakin_exec_messaging_plan_channel_delete {
 }
 ```
 </McpToolCard>
-<McpToolCard id="messaging-plan-create" name="bakin_exec_messaging_plan_create" label="Created content plan" description="Create a content Plan" source="bakin-bits-official/plugins/messaging/index.ts:1727" parameters={[{"name":"title","type":"string","required":true,"description":"Plan title"},{"name":"targetDate","type":"string","required":true,"description":"Target ISO date"},{"name":"agent","type":"string","required":true,"description":"Lead agent"},{"name":"brief","type":"string","required":false,"description":"Plan brief"},{"name":"campaign","type":"string","required":false,"description":"Campaign tag"},{"name":"channels","type":"array","required":true},{"name":"id","type":"string","required":false},{"name":"channel","type":"string","required":true},{"name":"contentType","type":"string","required":true},{"name":"publishAt","type":"string","required":true},{"name":"prepStartAt","type":"string","required":false},{"name":"workflowId","type":"string","required":false},{"name":"agent","type":"string","required":false},{"name":"tone","type":"string","required":false},{"name":"title","type":"string","required":false},{"name":"brief","type":"string","required":false,"description":"Concrete channel deliverables to create when the Plan is activated"}]}>
+<McpToolCard id="messaging-plan-create" name="bakin_exec_messaging_plan_create" label="Created content plan" description="Create a content Plan" source="bakin-bits-official/plugins/messaging/index.ts:1782" parameters={[{"name":"title","type":"string","required":true,"description":"Plan title"},{"name":"targetDate","type":"string","required":true,"description":"Target ISO date"},{"name":"agent","type":"string","required":true,"description":"Lead agent"},{"name":"brief","type":"string","required":false,"description":"Plan brief"},{"name":"campaign","type":"string","required":false,"description":"Campaign tag"},{"name":"channels","type":"array","required":true},{"name":"id","type":"string","required":false},{"name":"channel","type":"string","required":true},{"name":"contentType","type":"string","required":true},{"name":"publishAt","type":"string","required":true},{"name":"prepStartAt","type":"string","required":false},{"name":"workflowId","type":"string","required":false},{"name":"agent","type":"string","required":false},{"name":"tone","type":"string","required":false},{"name":"title","type":"string","required":false},{"name":"brief","type":"string","required":false,"description":"Concrete channel deliverables to create when the Plan is activated"}]}>
 ```sh frame="terminal"
 bakin_exec_messaging_plan_create {
   "title": "value",
@@ -527,7 +527,7 @@ bakin_exec_messaging_plan_create {
 }
 ```
 </McpToolCard>
-<McpToolCard id="messaging-plan-delete" name="bakin_exec_messaging_plan_delete" label="Deleted content plan" description="Delete a content Plan, its content pieces, and linked board tasks." source="bakin-bits-official/plugins/messaging/index.ts:1768" parameters={[{"name":"planId","type":"string","required":true,"description":"Plan ID (required)"},{"name":"deleteLinkedTasks","type":"boolean","required":false,"description":"Delete linked board tasks; defaults to true"}]}>
+<McpToolCard id="messaging-plan-delete" name="bakin_exec_messaging_plan_delete" label="Deleted content plan" description="Delete a content Plan, its content pieces, and linked board tasks." source="bakin-bits-official/plugins/messaging/index.ts:1823" parameters={[{"name":"planId","type":"string","required":true,"description":"Plan ID (required)"},{"name":"deleteLinkedTasks","type":"boolean","required":false,"description":"Delete linked board tasks; defaults to true"}]}>
 ```sh frame="terminal"
 bakin_exec_messaging_plan_delete {
   "planId": "value",
@@ -535,14 +535,14 @@ bakin_exec_messaging_plan_delete {
 }
 ```
 </McpToolCard>
-<McpToolCard id="messaging-plan-get" name="bakin_exec_messaging_plan_get" label="Read content plan" description="Get a content Plan and its Deliverables" source="bakin-bits-official/plugins/messaging/index.ts:1712" parameters={[{"name":"planId","type":"string","required":true,"description":"Plan ID (required)"}]}>
+<McpToolCard id="messaging-plan-get" name="bakin_exec_messaging_plan_get" label="Read content plan" description="Get a content Plan and its Deliverables" source="bakin-bits-official/plugins/messaging/index.ts:1767" parameters={[{"name":"planId","type":"string","required":true,"description":"Plan ID (required)"}]}>
 ```sh frame="terminal"
 bakin_exec_messaging_plan_get {
   "planId": "value"
 }
 ```
 </McpToolCard>
-<McpToolCard id="messaging-plan-list" name="bakin_exec_messaging_plan_list" label="Listed content plans" description="List content Plans with optional filters" source="bakin-bits-official/plugins/messaging/index.ts:1694" parameters={[{"name":"status","type":"string","required":false,"description":"Filter by Plan status"},{"name":"agent","type":"string","required":false,"description":"Filter by lead agent"},{"name":"campaign","type":"string","required":false,"description":"Filter by campaign"}]}>
+<McpToolCard id="messaging-plan-list" name="bakin_exec_messaging_plan_list" label="Listed content plans" description="List content Plans with optional filters" source="bakin-bits-official/plugins/messaging/index.ts:1749" parameters={[{"name":"status","type":"string","required":false,"description":"Filter by Plan status"},{"name":"agent","type":"string","required":false,"description":"Filter by lead agent"},{"name":"campaign","type":"string","required":false,"description":"Filter by campaign"}]}>
 ```sh frame="terminal"
 bakin_exec_messaging_plan_list {
   "status": "value",
@@ -551,7 +551,7 @@ bakin_exec_messaging_plan_list {
 }
 ```
 </McpToolCard>
-<McpToolCard id="messaging-proposal-update" name="bakin_exec_messaging_proposal_update" label="Updated brainstorm proposal" description="Update a proposal status or fields (approve, reject, edit)" source="bakin-bits-official/plugins/messaging/index.ts:2212" parameters={[{"name":"sessionId","type":"string","required":true,"description":"Session ID (required)"},{"name":"proposalId","type":"string","required":true,"description":"Proposal ID (required)"},{"name":"status","type":"string","required":false,"description":"New status (proposed, approved, rejected, revised)"},{"name":"title","type":"string","required":false,"description":"Updated title"},{"name":"brief","type":"string","required":false,"description":"Updated brief"},{"name":"targetDate","type":"string","required":false,"description":"Updated Plan target date"},{"name":"suggestedChannels","type":"array","required":false,"description":"Updated suggested channels"},{"name":"rejectionNote","type":"string","required":false,"description":"Note explaining rejection"}]}>
+<McpToolCard id="messaging-proposal-update" name="bakin_exec_messaging_proposal_update" label="Updated brainstorm proposal" description="Update a proposal status or fields (approve, reject, edit)" source="bakin-bits-official/plugins/messaging/index.ts:2268" parameters={[{"name":"sessionId","type":"string","required":true,"description":"Session ID (required)"},{"name":"proposalId","type":"string","required":true,"description":"Proposal ID (required)"},{"name":"status","type":"string","required":false,"description":"New status (proposed, approved, rejected, revised)"},{"name":"title","type":"string","required":false,"description":"Updated title"},{"name":"brief","type":"string","required":false,"description":"Updated brief"},{"name":"targetDate","type":"string","required":false,"description":"Updated Plan target date"},{"name":"suggestedChannels","type":"array","required":false,"description":"Updated suggested channels"},{"name":"rejectionNote","type":"string","required":false,"description":"Note explaining rejection"}]}>
 ```sh frame="terminal"
 bakin_exec_messaging_proposal_update {
   "sessionId": "value",
@@ -567,7 +567,7 @@ bakin_exec_messaging_proposal_update {
 }
 ```
 </McpToolCard>
-<McpToolCard id="messaging-session-create" name="bakin_exec_messaging_session_create" label="Created brainstorm session" description="Create a new planning session for an agent" source="bakin-bits-official/plugins/messaging/index.ts:2081" parameters={[{"name":"agentId","type":"string","required":true,"description":"Agent ID (required)"},{"name":"title","type":"string","required":false,"description":"Session title"},{"name":"scope","type":"string","required":false,"description":"Optional brainstorm scope"}]}>
+<McpToolCard id="messaging-session-create" name="bakin_exec_messaging_session_create" label="Created brainstorm session" description="Create a new planning session for an agent" source="bakin-bits-official/plugins/messaging/index.ts:2136" parameters={[{"name":"agentId","type":"string","required":true,"description":"Agent ID (required)"},{"name":"title","type":"string","required":false,"description":"Session title"},{"name":"scope","type":"string","required":false,"description":"Optional brainstorm scope"}]}>
 ```sh frame="terminal"
 bakin_exec_messaging_session_create {
   "agentId": "value",
@@ -576,21 +576,21 @@ bakin_exec_messaging_session_create {
 }
 ```
 </McpToolCard>
-<McpToolCard id="messaging-session-delete" name="bakin_exec_messaging_session_delete" label="Deleted brainstorm session" description="Delete a planning session without deleting Plans prepared from it." source="bakin-bits-official/plugins/messaging/index.ts:2127" parameters={[{"name":"sessionId","type":"string","required":true,"description":"Session ID (required)"}]}>
+<McpToolCard id="messaging-session-delete" name="bakin_exec_messaging_session_delete" label="Deleted brainstorm session" description="Delete a planning session without deleting Plans prepared from it." source="bakin-bits-official/plugins/messaging/index.ts:2182" parameters={[{"name":"sessionId","type":"string","required":true,"description":"Session ID (required)"}]}>
 ```sh frame="terminal"
 bakin_exec_messaging_session_delete {
   "sessionId": "value"
 }
 ```
 </McpToolCard>
-<McpToolCard id="messaging-session-get" name="bakin_exec_messaging_session_get" label="Read brainstorm session" description="Get a planning session with full message history and proposals" source="bakin-bits-official/plugins/messaging/index.ts:2066" parameters={[{"name":"sessionId","type":"string","required":true,"description":"Session ID (required)"}]}>
+<McpToolCard id="messaging-session-get" name="bakin_exec_messaging_session_get" label="Read brainstorm session" description="Get a planning session with full message history and proposals" source="bakin-bits-official/plugins/messaging/index.ts:2121" parameters={[{"name":"sessionId","type":"string","required":true,"description":"Session ID (required)"}]}>
 ```sh frame="terminal"
 bakin_exec_messaging_session_get {
   "sessionId": "value"
 }
 ```
 </McpToolCard>
-<McpToolCard id="messaging-session-list" name="bakin_exec_messaging_session_list" label="Listed brainstorm sessions" description="List planning sessions with optional filters" source="bakin-bits-official/plugins/messaging/index.ts:2049" parameters={[{"name":"status","type":"string","required":false,"description":"Filter by status (active, archived)"},{"name":"agentId","type":"string","required":false,"description":"Filter by agent ID"}]}>
+<McpToolCard id="messaging-session-list" name="bakin_exec_messaging_session_list" label="Listed brainstorm sessions" description="List planning sessions with optional filters" source="bakin-bits-official/plugins/messaging/index.ts:2104" parameters={[{"name":"status","type":"string","required":false,"description":"Filter by status (active, archived)"},{"name":"agentId","type":"string","required":false,"description":"Filter by agent ID"}]}>
 ```sh frame="terminal"
 bakin_exec_messaging_session_list {
   "status": "value",
@@ -598,14 +598,14 @@ bakin_exec_messaging_session_list {
 }
 ```
 </McpToolCard>
-<McpToolCard id="messaging-session-materialize" name="bakin_exec_messaging_session_materialize" label="Prepared Plans from brainstorm proposals" description="Prepare Plans from accepted brainstorm proposals" source="bakin-bits-official/plugins/messaging/index.ts:2244" parameters={[{"name":"sessionId","type":"string","required":true,"description":"Session ID (required)"}]}>
+<McpToolCard id="messaging-session-materialize" name="bakin_exec_messaging_session_materialize" label="Prepared Plans from brainstorm proposals" description="Prepare Plans from accepted brainstorm proposals" source="bakin-bits-official/plugins/messaging/index.ts:2300" parameters={[{"name":"sessionId","type":"string","required":true,"description":"Session ID (required)"}]}>
 ```sh frame="terminal"
 bakin_exec_messaging_session_materialize {
   "sessionId": "value"
 }
 ```
 </McpToolCard>
-<McpToolCard id="messaging-session-message" name="bakin_exec_messaging_session_message" label="Sent brainstorm message" description="Send a message in a planning session (non-streaming, returns full response)" source="bakin-bits-official/plugins/messaging/index.ts:2145" parameters={[{"name":"sessionId","type":"string","required":true,"description":"Session ID (required)"},{"name":"message","type":"string","required":true,"description":"User message content (required)"}]}>
+<McpToolCard id="messaging-session-message" name="bakin_exec_messaging_session_message" label="Sent brainstorm message" description="Send a message in a planning session (non-streaming, returns full response)" source="bakin-bits-official/plugins/messaging/index.ts:2201" parameters={[{"name":"sessionId","type":"string","required":true,"description":"Session ID (required)"},{"name":"message","type":"string","required":true,"description":"User message content (required)"}]}>
 ```sh frame="terminal"
 bakin_exec_messaging_session_message {
   "sessionId": "value",
@@ -613,7 +613,7 @@ bakin_exec_messaging_session_message {
 }
 ```
 </McpToolCard>
-<McpToolCard id="messaging-session-update" name="bakin_exec_messaging_session_update" label="Updated brainstorm session" description="Update a planning session title or status" source="bakin-bits-official/plugins/messaging/index.ts:2104" parameters={[{"name":"sessionId","type":"string","required":true,"description":"Session ID (required)"},{"name":"title","type":"string","required":false,"description":"New title"},{"name":"status","type":"string","required":false,"description":"New status (active, archived)"}]}>
+<McpToolCard id="messaging-session-update" name="bakin_exec_messaging_session_update" label="Updated brainstorm session" description="Update a planning session title or status" source="bakin-bits-official/plugins/messaging/index.ts:2159" parameters={[{"name":"sessionId","type":"string","required":true,"description":"Session ID (required)"},{"name":"title","type":"string","required":false,"description":"New title"},{"name":"status","type":"string","required":false,"description":"New status (active, archived)"}]}>
 ```sh frame="terminal"
 bakin_exec_messaging_session_update {
   "sessionId": "value",
@@ -672,7 +672,7 @@ bakin_exec_post_channel {
 <p class="mcp-section-description">MCP tools discovered from registered exec tool definitions.</p>
 
 <div class="mcp-tool-list">
-<McpToolCard id="projects-add-item" name="bakin_exec_projects_add_item" label="Added project item" description="Add a new checklist item to a project." source="bakin-bits-official/plugins/projects/index.ts:777" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"title","type":"string","required":true,"description":"Checklist item title"}]}>
+<McpToolCard id="projects-add-item" name="bakin_exec_projects_add_item" label="Added project item" description="Add a new checklist item to a project." source="bakin-bits-official/plugins/projects/index.ts:844" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"title","type":"string","required":true,"description":"Checklist item title"}]}>
 ```sh frame="terminal"
 bakin_exec_projects_add_item {
   "projectId": "value",
@@ -680,7 +680,7 @@ bakin_exec_projects_add_item {
 }
 ```
 </McpToolCard>
-<McpToolCard id="projects-apply-plan" name="bakin_exec_projects_apply_plan" label="Applied a project plan" description="Apply a confirmed project plan update in one operation. Use this after the user confirms exact body/checklist changes so agents do not need shell scripts or multiple low-level calls." source="bakin-bits-official/plugins/projects/index.ts:728" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"title","type":"string","required":false,"description":"Optional new project title"},{"name":"status","type":"choice","required":false,"description":"Optional new status"},{"name":"body","type":"string","required":false,"description":"Replacement markdown body for the project plan"},{"name":"appendBody","type":"string","required":false,"description":"Markdown to append to the existing project body; cannot be combined with body"},{"name":"owner","type":"string","required":false,"description":"Optional new owner"},{"name":"checklistItems","type":"array","required":false,"description":"New unchecked checklist item titles to append"}]}>
+<McpToolCard id="projects-apply-plan" name="bakin_exec_projects_apply_plan" label="Applied a project plan" description="Apply a confirmed project plan update in one operation. Use this after the user confirms exact body/checklist changes so agents do not need shell scripts or multiple low-level calls." source="bakin-bits-official/plugins/projects/index.ts:795" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"title","type":"string","required":false,"description":"Optional new project title"},{"name":"status","type":"choice","required":false,"description":"Optional new status"},{"name":"body","type":"string","required":false,"description":"Replacement markdown body for the project plan"},{"name":"appendBody","type":"string","required":false,"description":"Markdown to append to the existing project body; cannot be combined with body"},{"name":"owner","type":"string","required":false,"description":"Optional new owner"},{"name":"checklistItems","type":"array","required":false,"description":"New unchecked checklist item titles to append"}]}>
 ```sh frame="terminal"
 bakin_exec_projects_apply_plan {
   "projectId": "value",
@@ -695,7 +695,7 @@ bakin_exec_projects_apply_plan {
 }
 ```
 </McpToolCard>
-<McpToolCard id="projects-ask" name="bakin_exec_projects_ask" label="Asked project question" description="Ask an agent a question about a project. Sends the project context (spec, checklist, assets) along with the message to the agent for brainstorming." source="bakin-bits-official/plugins/projects/index.ts:993" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"message","type":"string","required":true,"description":"Question or prompt for the agent"},{"name":"agent","type":"string","required":false,"description":"Agent ID to ask (defaults to main)"}]}>
+<McpToolCard id="projects-ask" name="bakin_exec_projects_ask" label="Asked project question" description="Ask an agent a question about a project. Sends the project context (spec, checklist, assets) along with the message to the agent for brainstorming." source="bakin-bits-official/plugins/projects/index.ts:1060" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"message","type":"string","required":true,"description":"Question or prompt for the agent"},{"name":"agent","type":"string","required":false,"description":"Agent ID to ask (defaults to main)"}]}>
 ```sh frame="terminal"
 bakin_exec_projects_ask {
   "projectId": "value",
@@ -704,7 +704,7 @@ bakin_exec_projects_ask {
 }
 ```
 </McpToolCard>
-<McpToolCard id="projects-attach-asset" name="bakin_exec_projects_attach_asset" label="Attached asset to project" description="Attach an existing asset to a project by assetId. Assets provide additional context (specs, designs, docs) that agents can reference. Only summaries are included in projects_get — use asset tools to read full content when needed." source="bakin-bits-official/plugins/projects/index.ts:879" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"assetId","type":"string","required":true,"description":"Asset id (e.g., \"20260327-hero-a1b2c3d4\") — stable across versions"},{"name":"label","type":"string","required":false,"description":"Human-readable label or summary of what this asset contains"}]}>
+<McpToolCard id="projects-attach-asset" name="bakin_exec_projects_attach_asset" label="Attached asset to project" description="Attach an existing asset to a project by assetId. Assets provide additional context (specs, designs, docs) that agents can reference. Only summaries are included in projects_get — use asset tools to read full content when needed." source="bakin-bits-official/plugins/projects/index.ts:946" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"assetId","type":"string","required":true,"description":"Asset id (e.g., \"20260327-hero-a1b2c3d4\") — stable across versions"},{"name":"label","type":"string","required":false,"description":"Human-readable label or summary of what this asset contains"}]}>
 ```sh frame="terminal"
 bakin_exec_projects_attach_asset {
   "projectId": "value",
@@ -713,7 +713,7 @@ bakin_exec_projects_attach_asset {
 }
 ```
 </McpToolCard>
-<McpToolCard id="projects-create" name="bakin_exec_projects_create" label="Created a project" description="Create a new project with title, markdown body, and optional initial checklist items. Returns project ID and generated task item IDs." source="bakin-bits-official/plugins/projects/index.ts:679" parameters={[{"name":"title","type":"string","required":true,"description":"Project title"},{"name":"body","type":"string","required":false,"description":"Markdown body (spec/plan)"},{"name":"owner","type":"string","required":false,"description":"Project owner"},{"name":"tasks","type":"array","required":false,"description":"Initial checklist item titles"}]}>
+<McpToolCard id="projects-create" name="bakin_exec_projects_create" label="Created a project" description="Create a new project with title, markdown body, and optional initial checklist items. Returns project ID and generated task item IDs." source="bakin-bits-official/plugins/projects/index.ts:746" parameters={[{"name":"title","type":"string","required":true,"description":"Project title"},{"name":"body","type":"string","required":false,"description":"Markdown body (spec/plan)"},{"name":"owner","type":"string","required":false,"description":"Project owner"},{"name":"tasks","type":"array","required":false,"description":"Initial checklist item titles"}]}>
 ```sh frame="terminal"
 bakin_exec_projects_create {
   "title": "value",
@@ -725,14 +725,14 @@ bakin_exec_projects_create {
 }
 ```
 </McpToolCard>
-<McpToolCard id="projects-delete" name="bakin_exec_projects_delete" label="Deleted a project" description="Delete a project by ID." source="bakin-bits-official/plugins/projects/index.ts:759" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"}]}>
+<McpToolCard id="projects-delete" name="bakin_exec_projects_delete" label="Deleted a project" description="Delete a project by ID." source="bakin-bits-official/plugins/projects/index.ts:826" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"}]}>
 ```sh frame="terminal"
 bakin_exec_projects_delete {
   "projectId": "value"
 }
 ```
 </McpToolCard>
-<McpToolCard id="projects-detach-asset" name="bakin_exec_projects_detach_asset" label="Detached asset from project" description="Remove an asset reference from a project by assetId. Does not delete the asset itself." source="bakin-bits-official/plugins/projects/index.ts:899" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"assetId","type":"string","required":true,"description":"Asset id to detach"}]}>
+<McpToolCard id="projects-detach-asset" name="bakin_exec_projects_detach_asset" label="Detached asset from project" description="Remove an asset reference from a project by assetId. Does not delete the asset itself." source="bakin-bits-official/plugins/projects/index.ts:966" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"assetId","type":"string","required":true,"description":"Asset id to detach"}]}>
 ```sh frame="terminal"
 bakin_exec_projects_detach_asset {
   "projectId": "value",
@@ -740,14 +740,14 @@ bakin_exec_projects_detach_asset {
 }
 ```
 </McpToolCard>
-<McpToolCard id="projects-get" name="bakin_exec_projects_get" label="Read project details" description="Get a project by ID including full spec, checklist, progress, and linked board task statuses." source="bakin-bits-official/plugins/projects/index.ts:665" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"}]}>
+<McpToolCard id="projects-get" name="bakin_exec_projects_get" label="Read project details" description="Get a project by ID including full spec, checklist, progress, and linked board task statuses." source="bakin-bits-official/plugins/projects/index.ts:732" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"}]}>
 ```sh frame="terminal"
 bakin_exec_projects_get {
   "projectId": "value"
 }
 ```
 </McpToolCard>
-<McpToolCard id="projects-link-item" name="bakin_exec_projects_link_item" label="Linked project item" description="Link an existing board task to a project checklist item. Use this when a task was created separately and should be associated with a project." source="bakin-bits-official/plugins/projects/index.ts:831" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"taskItemId","type":"string","required":true,"description":"Checklist item ID"},{"name":"taskId","type":"string","required":true,"description":"Board task ID to link"}]}>
+<McpToolCard id="projects-link-item" name="bakin_exec_projects_link_item" label="Linked project item" description="Link an existing board task to a project checklist item. Use this when a task was created separately and should be associated with a project." source="bakin-bits-official/plugins/projects/index.ts:898" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"taskItemId","type":"string","required":true,"description":"Checklist item ID"},{"name":"taskId","type":"string","required":true,"description":"Board task ID to link"}]}>
 ```sh frame="terminal"
 bakin_exec_projects_link_item {
   "projectId": "value",
@@ -756,14 +756,14 @@ bakin_exec_projects_link_item {
 }
 ```
 </McpToolCard>
-<McpToolCard id="projects-list" name="bakin_exec_projects_list" label="Listed projects" description="List all projects with optional status filter. Returns summaries with id, title, status, progress, taskCount." source="bakin-bits-official/plugins/projects/index.ts:649" parameters={[{"name":"status","type":"choice","required":false,"description":"Filter by status"}]}>
+<McpToolCard id="projects-list" name="bakin_exec_projects_list" label="Listed projects" description="List all projects with optional status filter. Returns summaries with id, title, status, progress, taskCount." source="bakin-bits-official/plugins/projects/index.ts:716" parameters={[{"name":"status","type":"choice","required":false,"description":"Filter by status"}]}>
 ```sh frame="terminal"
 bakin_exec_projects_list {
   "status": "value"
 }
 ```
 </McpToolCard>
-<McpToolCard id="projects-mark-item" name="bakin_exec_projects_mark_item" label="Marked project item" description="Mark a checklist item as checked (done) or unchecked. Returns updated progress percentage." source="bakin-bits-official/plugins/projects/index.ts:792" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"taskItemId","type":"string","required":true,"description":"Checklist item ID (e.g., t001)"},{"name":"checked","type":"boolean","required":true,"description":"true to mark as done, false to uncheck"}]}>
+<McpToolCard id="projects-mark-item" name="bakin_exec_projects_mark_item" label="Marked project item" description="Mark a checklist item as checked (done) or unchecked. Returns updated progress percentage." source="bakin-bits-official/plugins/projects/index.ts:859" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"taskItemId","type":"string","required":true,"description":"Checklist item ID (e.g., t001)"},{"name":"checked","type":"boolean","required":true,"description":"true to mark as done, false to uncheck"}]}>
 ```sh frame="terminal"
 bakin_exec_projects_mark_item {
   "projectId": "value",
@@ -772,7 +772,7 @@ bakin_exec_projects_mark_item {
 }
 ```
 </McpToolCard>
-<McpToolCard id="projects-promote-item" name="bakin_exec_projects_promote_item" label="Promoted project item" description="Create a NEW board task from a project checklist item and automatically link it. The task appears on the task board with the item title and projectId set." source="bakin-bits-official/plugins/projects/index.ts:855" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"taskItemId","type":"string","required":true,"description":"Checklist item ID to promote to a board task"},{"name":"assignee","type":"string","required":false,"description":"Agent to assign the task to"}]}>
+<McpToolCard id="projects-promote-item" name="bakin_exec_projects_promote_item" label="Promoted project item" description="Create a NEW board task from a project checklist item and automatically link it. The task appears on the task board with the item title and projectId set." source="bakin-bits-official/plugins/projects/index.ts:922" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"taskItemId","type":"string","required":true,"description":"Checklist item ID to promote to a board task"},{"name":"assignee","type":"string","required":false,"description":"Agent to assign the task to"}]}>
 ```sh frame="terminal"
 bakin_exec_projects_promote_item {
   "projectId": "value",
@@ -781,7 +781,7 @@ bakin_exec_projects_promote_item {
 }
 ```
 </McpToolCard>
-<McpToolCard id="projects-relink-asset" name="bakin_exec_projects_relink_asset" label="Relinked project asset" description="Replace an attached project asset reference with another existing asset. Use this to repair missing or deleted asset references without removing the project context." source="bakin-bits-official/plugins/projects/index.ts:918" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"assetId","type":"string","required":true,"description":"Current asset id attached to the project"},{"name":"newAssetId","type":"string","required":true,"description":"Replacement asset id to attach in its place"},{"name":"label","type":"string","required":false,"description":"Optional replacement label. If omitted, the existing project label is preserved."}]}>
+<McpToolCard id="projects-relink-asset" name="bakin_exec_projects_relink_asset" label="Relinked project asset" description="Replace an attached project asset reference with another existing asset. Use this to repair missing or deleted asset references without removing the project context." source="bakin-bits-official/plugins/projects/index.ts:985" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"assetId","type":"string","required":true,"description":"Current asset id attached to the project"},{"name":"newAssetId","type":"string","required":true,"description":"Replacement asset id to attach in its place"},{"name":"label","type":"string","required":false,"description":"Optional replacement label. If omitted, the existing project label is preserved."}]}>
 ```sh frame="terminal"
 bakin_exec_projects_relink_asset {
   "projectId": "value",
@@ -791,7 +791,7 @@ bakin_exec_projects_relink_asset {
 }
 ```
 </McpToolCard>
-<McpToolCard id="projects-remove-item" name="bakin_exec_projects_remove_item" label="Removed project item" description="Remove a checklist item from a project." source="bakin-bits-official/plugins/projects/index.ts:812" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"taskItemId","type":"string","required":true,"description":"Checklist item ID to remove"}]}>
+<McpToolCard id="projects-remove-item" name="bakin_exec_projects_remove_item" label="Removed project item" description="Remove a checklist item from a project." source="bakin-bits-official/plugins/projects/index.ts:879" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"taskItemId","type":"string","required":true,"description":"Checklist item ID to remove"}]}>
 ```sh frame="terminal"
 bakin_exec_projects_remove_item {
   "projectId": "value",
@@ -799,7 +799,7 @@ bakin_exec_projects_remove_item {
 }
 ```
 </McpToolCard>
-<McpToolCard id="projects-toggle-item" name="bakin_exec_projects_toggle_item" label="Toggled project item" description="Toggle a checklist item checked/unchecked by item ID. Returns updated progress percentage." source="bakin-bits-official/plugins/projects/index.ts:944" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"itemId","type":"string","required":true,"description":"Checklist item ID (e.g., t001)"},{"name":"checked","type":"boolean","required":true,"description":"true to mark as done, false to uncheck"}]}>
+<McpToolCard id="projects-toggle-item" name="bakin_exec_projects_toggle_item" label="Toggled project item" description="Toggle a checklist item checked/unchecked by item ID. Returns updated progress percentage." source="bakin-bits-official/plugins/projects/index.ts:1011" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"itemId","type":"string","required":true,"description":"Checklist item ID (e.g., t001)"},{"name":"checked","type":"boolean","required":true,"description":"true to mark as done, false to uncheck"}]}>
 ```sh frame="terminal"
 bakin_exec_projects_toggle_item {
   "projectId": "value",
@@ -808,7 +808,7 @@ bakin_exec_projects_toggle_item {
 }
 ```
 </McpToolCard>
-<McpToolCard id="projects-update" name="bakin_exec_projects_update" label="Updated a project" description="Update a project's title, status, body, or owner. Cannot set status to &quot;completed&quot; if unchecked items remain." source="bakin-bits-official/plugins/projects/index.ts:701" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"title","type":"string","required":false,"description":"New title"},{"name":"status","type":"choice","required":false,"description":"New status"},{"name":"body","type":"string","required":false,"description":"New markdown body"},{"name":"owner","type":"string","required":false,"description":"New owner"}]}>
+<McpToolCard id="projects-update" name="bakin_exec_projects_update" label="Updated a project" description="Update a project's title, status, body, or owner. Cannot set status to &quot;completed&quot; if unchecked items remain." source="bakin-bits-official/plugins/projects/index.ts:768" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"title","type":"string","required":false,"description":"New title"},{"name":"status","type":"choice","required":false,"description":"New status"},{"name":"body","type":"string","required":false,"description":"New markdown body"},{"name":"owner","type":"string","required":false,"description":"New owner"}]}>
 ```sh frame="terminal"
 bakin_exec_projects_update {
   "projectId": "value",
@@ -819,7 +819,7 @@ bakin_exec_projects_update {
 }
 ```
 </McpToolCard>
-<McpToolCard id="projects-update-item" name="bakin_exec_projects_update_item" label="Updated project item" description="Update a checklist item's title and/or description." source="bakin-bits-official/plugins/projects/index.ts:965" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"itemId","type":"string","required":true,"description":"Checklist item ID (e.g., t001)"},{"name":"title","type":"string","required":false,"description":"New title for the checklist item"},{"name":"description","type":"string","required":false,"description":"New description for the checklist item"}]}>
+<McpToolCard id="projects-update-item" name="bakin_exec_projects_update_item" label="Updated project item" description="Update a checklist item's title and/or description." source="bakin-bits-official/plugins/projects/index.ts:1032" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"itemId","type":"string","required":true,"description":"Checklist item ID (e.g., t001)"},{"name":"title","type":"string","required":false,"description":"New title for the checklist item"},{"name":"description","type":"string","required":false,"description":"New description for the checklist item"}]}>
 ```sh frame="terminal"
 bakin_exec_projects_update_item {
   "projectId": "value",

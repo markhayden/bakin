@@ -36,9 +36,14 @@ export interface ConversationThreadLoad<Meta> {
   /**
    * Server-seeded in-flight flag: true seeds the streaming indicator on
    * mount so a turn started before this mount shows as live immediately.
-   * Omit to leave indicators to the next bus chunk (chat's behavior).
    */
   streaming?: boolean
+  /**
+   * Assistant text the in-flight turn streamed BEFORE this mount (the
+   * engine's inflightPreview) — seeds liveChunks so mid-turn rehydration
+   * doesn't show a reply missing its beginning.
+   */
+  streamingText?: string
   /** Consumer payload fetched alongside the transcript (e.g. chat summary). */
   meta?: Meta
 }
@@ -120,7 +125,8 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
     setMessages(body.messages)
     if (body.streaming) {
       setStreaming(true)
-      setLiveChunks((prev) => prev ?? [])
+      const seed = body.streamingText
+      setLiveChunks((prev) => prev ?? (seed ? [{ type: 'text', content: seed }] : []))
     }
   }, [threadKey])
 

@@ -722,9 +722,11 @@ export const brandRoutes = [
       }
       try {
         const key = docBrainstormKey(parsed.params.brandId, kind, parsed.params.name)
+        const preview = brandBrainstormTurns.inflightPreview(key)
         return Response.json({
           messages: readDocBrainstorm(parsed.params.brandId, kind, parsed.params.name),
           streaming: brandBrainstormTurns.isInFlight(key),
+          ...(preview !== null ? { streamingText: preview } : {}),
         })
       } catch (err) {
         // Invalid doc names throw BrandStoreError from the path guard — 400,

@@ -14,12 +14,12 @@
  */
 import { randomUUID } from 'crypto'
 
-import type { MessageUsage } from '@bakin/core/adapters/runtime'
 
 import { conversationThreadId } from '../../../src/components/conversation/thread-id'
 import { createConversationTurnService } from '../../../src/core/conversation-turns'
+import { createChatMeterHook } from '../../../src/core/conversation-metering'
 import { createLogger } from '../../../src/core/logger'
-import { appendDocBrainstormRow, getBrand, type BrandDocKind } from './store'
+import { appendDocBrainstormRow, getBrand, listDocBrainstormKeys, readDocBrainstorm, type BrandDocKind } from './store'
 
 const log = createLogger('brands-brainstorm')
 
@@ -31,21 +31,6 @@ export function docBrainstormKey(brandId: string, kind: BrandDocKind, name: stri
 function parseKey(key: string): { brandId: string; kind: BrandDocKind; name: string } {
   const [brandId, kind, name] = key.split('/')
   return { brandId, kind: kind as BrandDocKind, name }
-}
-
-async function meterBrainstormTurn(key: string, agentId: string, turnId: string, usage: MessageUsage | undefined): Promise<void> {
-  try {
-    const { meterAgentTurn } = await import('../../../src/core/agent-cost')
-    await meterAgentTurn({
-      runId: `brainstorm:brands:${key}:turn:${turnId}`,
-      agent: agentId,
-      activityClass: 'user',
-      workClass: 'chat',
-      result: { id: turnId, content: '', ...(usage ? { usage } : {}) },
-    })
-  } catch (err) {
-    log.error(`brainstorm metering failed for ${key}`, err as Error)
-  }
 }
 
 export const brandBrainstormTurns = createConversationTurnService({
@@ -75,6 +60,27 @@ export const brandBrainstormTurns = createConversationTurnService({
   threadId: (key, agentId) => conversationThreadId('brand-doc', `${key}/${randomUUID()}`, agentId),
   ephemeral: true,
   hooks: {
-    meter: ({ key, agentId, turnId, usage }) => meterBrainstormTurn(key, agentId, turnId, usage),
+    meter: createChatMeterHook((key, turnId) => `brainstorm:brands:${key}:turn:${turnId}`),
   },
 })
+
+/**
+ * Boot sweep (#706): doc brainstorms whose transcript ends on a user row
+ * lost their turn to a process death — stamp an honest error row.
+ */
+export function sweepInterruptedDocBrainstorms(): void {
+  for (const { brandId, kind, name } of listDocBrainstormKeys()) {
+    try {
+      const rows = readDocBrainstorm(brandId, kind, name)
+      const last = rows[rows.length - 1]
+      if (last?.kind !== 'user') continue
+      appendDocBrainstormRow(brandId, kind, name, {
+        kind: 'error',
+        ts: new Date().toISOString(),
+        message: 'Interrupted by a server restart before the reply finished.',
+      })
+    } catch (err) {
+      log.error(`interrupted-turn sweep failed for ${brandId}/${kind}/${name}`, err as Error)
+    }
+  }
+}

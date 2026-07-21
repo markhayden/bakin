@@ -40,15 +40,12 @@ Client side: `useConversationThread` (below) is the matching hook; `useConversat
 | `useConversationThread` | THE client hook for engine consumers (#703): synchronous optimistic user echo, bus-event streaming with text-delta coalescing, active-thread guards, settle-by-refetch, optional server-seeded `streaming` rehydration (chat deliberately opts out — no pre-light), chat's failed-send semantics (state rollback, optimistic row stays, `sendError`) |
 | `useConversationAttention` | Provider building block for `nav-badge-providers` slots: inflight set from chunk/done/error events, `badgeFor` nav badge, optional `(N)` title prefix, toast/chime/OS fanout via the pure rules |
 | `attentionForDone` / `badgeFor` / `withUnreadPrefix` / `visibleIdFromLocation` / `playReplyChime` | Pure attention rules + the reply chime (generalized from chat's S6 matrix; chat's `attention.ts` is a facade over these) |
-| `useConversationStream` | LEGACY per-request SSE state machine — dies when the component unmounts (the #703 bug class). Kept only until the bits projects/messaging migrate (PR 2); deleted in PR 3. New surfaces use `useConversationThread` |
-| `readConversationSseStream` | LEGACY SSE frame reader for the per-request path — same PR 3 deletion |
 
 Server helpers (`@makinbakin/sdk/utils`): `conversationThreadId(scope, entityId, agentId)` and `createTurnRecorder({turnId, agentId?})` — chunks → persistable rows (`ingest`/`drain`/`finish`; drain enables crash-safe incremental persistence; previews clipped at 2000/500 chars with `metadata.truncated`). Chat's stream bridge and the bits plugins' routes share these — ONE implementation of "what survives a turn".
 
 ## Transports
 
-- **Plugin-event bus (the #703 standard, every consumer):** the turn engine emits consumer-named chunk/done/error plugin-events → global SSE bus → `useConversationThread`. Turns survive navigation because nothing is bound to the component or request; remounts refetch the durable transcript (incl. partial rows) and resume from the next chunk. Custom server-side events (messaging proposals) are emitted from the engine's `onChunk` hook.
-- **Per-request SSE (LEGACY, PR 3 deletion):** plugin route streams `event: chunk` frames; client uses `useConversationStream`. Still consumed only by the unmigrated bits projects/messaging brainstorms.
+- **Plugin-event bus — the ONLY transport:** the turn engine emits consumer-named chunk/done/error plugin-events → global SSE bus → `useConversationThread`. Turns survive navigation because nothing is bound to the component or request; remounts refetch the durable transcript (incl. partial rows) and resume from the next chunk. Custom server-side events (messaging proposals) are emitted from the engine's `onChunk` hook. The per-request SSE path (`useConversationStream`/`readConversationSseStream`) was DELETED in #703 PR 3 — never reintroduce component-bound conversation streaming.
 
 ## Related
 

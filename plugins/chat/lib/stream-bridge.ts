@@ -12,23 +12,19 @@
  * ambiguity-is-null active-turn resolution for mid-turn tool binding.
  */
 import type { PluginContext } from '@bakin/core/plugin-types'
-import type { MessageUsage } from '@bakin/core/adapters/runtime'
 
 import {
   createConversationTurnService,
   type StartTurnResult,
   type TurnContext,
 } from '../../../src/core/conversation-turns'
-import { createLogger } from '../../../src/core/logger'
+import { createChatMeterHook } from '../../../src/core/conversation-metering'
 
 /** The bridge needs only messaging + the event bus — accept any context that has them. */
 type ChatTurnContext = Pick<PluginContext, 'runtime' | 'events'>
 import type { ChatAttachment, ChatTranscriptRow } from '../types'
 import { maybeAutoTitle } from './auto-title'
 import { appendTranscriptRow, getChatSummary } from './store'
-
-const log = createLogger('chat-stream')
-
 
 /**
  * Per-turn delivery framing — the chat counterpart of dispatch's OUTPUT
@@ -44,25 +40,6 @@ export const CHAT_TURN_FRAMING =
   '![desc](/api/assets/<assetId>) in your reply. Files: bakin_exec_assets_save, then embed. ' +
   'Never claim delivery without the embedded asset. See the bakin skill for details.]'
 
-/**
- * Attribute one chat turn's spend under work class 'chat' (metered-only —
- * interactive chat is never routed). Never throws into the turn path.
- */
-async function meterChatTurn(chatId: string, agentId: string, turnId: string, usage: MessageUsage | undefined): Promise<void> {
-  try {
-    const { meterAgentTurn } = await import('../../../src/core/agent-cost')
-    await meterAgentTurn({
-      runId: `chat:${chatId}:turn:${turnId}`,
-      agent: agentId,
-      activityClass: 'user',
-      workClass: 'chat',
-      result: { id: turnId, content: '', ...(usage ? { usage } : {}) },
-    })
-  } catch (err) {
-    log.error(`chat turn metering failed for ${chatId}`, err as Error)
-  }
-}
-
 const service = createConversationTurnService({
   name: 'chat',
   events: { chunk: 'chat.chunk', done: 'chat.done', error: 'chat.error' },
@@ -75,7 +52,9 @@ const service = createConversationTurnService({
   threadId: (chatId) => `chat:${chatId}`,
   framing: CHAT_TURN_FRAMING,
   hooks: {
-    meter: ({ key, agentId, turnId, usage }) => meterChatTurn(key, agentId, turnId, usage),
+    // Spend attribution under work class 'chat' — the shared host meter
+    // hook; chat keeps its historical runId scheme.
+    meter: createChatMeterHook((chatId, turnId) => `chat:${chatId}:turn:${turnId}`),
     // Failed/aborted turns still get a title shot on the next success; the
     // slot has already released when this runs (quick follow-ups never 409
     // on titling).
@@ -86,6 +65,11 @@ const service = createConversationTurnService({
 
 export function isTurnInFlight(chatId: string): boolean {
   return service.isInFlight(chatId)
+}
+
+/** Assistant text streamed so far for the in-flight turn (null when idle). */
+export function inflightTurnPreview(chatId: string): string | null {
+  return service.inflightPreview(chatId)
 }
 
 /**

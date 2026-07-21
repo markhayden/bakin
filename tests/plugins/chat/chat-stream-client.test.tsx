@@ -242,18 +242,21 @@ describe('useChatStream characterization (frozen chat client behavior)', () => {
     expect(result.current.liveChunks).toBeNull()
   })
 
-  it("the server's streaming flag does NOT pre-light the view indicator — it waits for the first chunk (current chat behavior, pinned)", async () => {
+  it("the server's streaming flag pre-lights the indicator and seeds the streamed-so-far text (#706 parity decision)", async () => {
     const stub = stubFetch()
-    transcriptRoute(stub, CHAT_A, summary(CHAT_A, { streaming: true }), [
-      { kind: 'user', ts: '2026-07-20T09:00:00Z', content: 'long job' },
-    ])
+    stub.routes.set(`GET chats/${CHAT_A}`, {
+      chat: summary(CHAT_A, { streaming: true }),
+      messages: [{ kind: 'user', ts: '2026-07-20T09:00:00Z', content: 'long job' }],
+      streamingText: 'the reply so far',
+    })
     const { result } = renderHook(() => useChatStream(CHAT_A))
     await waitFor(() => expect(result.current.messages).toHaveLength(1))
-    expect(result.current.streaming).toBe(false)
-    expect(result.current.liveChunks).toBeNull()
-    act(() => {
-      emitPluginEvent({ event: 'chat.chunk', chatId: CHAT_A, chunk: { type: 'text', content: 'now' } })
-    })
     expect(result.current.streaming).toBe(true)
+    expect(result.current.liveChunks).toEqual([{ type: 'text', content: 'the reply so far' }])
+    // The still-running turn's next chunk appends to the seeded text.
+    act(() => {
+      emitPluginEvent({ event: 'chat.chunk', chatId: CHAT_A, chunk: { type: 'text', content: ' and more' } })
+    })
+    expect(result.current.liveChunks).toEqual([{ type: 'text', content: 'the reply so far and more' }])
   })
 })

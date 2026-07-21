@@ -241,7 +241,7 @@ const result = await ctx.hooks.invoke(
 <p class="hook-section-description">Task hooks let plugins enrich task details and react to task lifecycle changes.</p>
 
 <div class="hook-card-list">
-<HookCard id="tasks-enrichdetails" name="tasks.enrichDetails" label="Add project task context." summary="Adds project title, status, progress, and excerpt data to task detail payloads. Use it when a task surface wants project context without depending on project storage." source="bakin-bits-official/plugins/projects/index.ts:241" badges={["waterfall"]}>
+<HookCard id="tasks-enrichdetails" name="tasks.enrichDetails" label="Add project task context." summary="Adds project title, status, progress, and excerpt data to task detail payloads. Use it when a task surface wants project context without depending on project storage." source="bakin-bits-official/plugins/projects/index.ts:313" badges={["waterfall"]}>
 ```ts frame="terminal"
 const next = await ctx.hooks.call(
   'tasks.enrichDetails',
@@ -254,7 +254,7 @@ const next = await ctx.hooks.call(
 )
 ```
 </HookCard>
-<HookCard id="tasks-statuschanged" name="tasks.statusChanged" label="Sync project task state." summary="Updates linked project checklist items when a task moves into a completed state. Use it to keep project progress in sync with task lifecycle events." source="bakin-bits-official/plugins/projects/index.ts:230" badges={["event"]}>
+<HookCard id="tasks-statuschanged" name="tasks.statusChanged" label="Sync project task state." summary="Updates linked project checklist items when a task moves into a completed state. Use it to keep project progress in sync with task lifecycle events." source="bakin-bits-official/plugins/projects/index.ts:302" badges={["event"]}>
 ```ts frame="terminal"
 await ctx.hooks.callAll(
   'tasks.statusChanged',

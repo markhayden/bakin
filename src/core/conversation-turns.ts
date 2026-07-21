@@ -145,6 +145,9 @@ export interface ConversationTurnService {
   /** Abort the in-flight turn; false when the thread is idle. */
   abort(key: string): boolean
   isInFlight(key: string): boolean
+  /** Assistant text streamed so far for the in-flight turn (null when idle) —
+   *  lets GET responses seed mid-turn rehydration without the missing-start gap. */
+  inflightPreview(key: string): string | null
   /**
    * Await the current turn; when called while the turn is in flight this
    * also covers its onSettled tail. Resolves immediately when idle
@@ -171,6 +174,9 @@ interface InflightTurn {
   agentId: string
   startedAt: number
   turnId: string
+  /** Assistant text streamed so far — the recorder buffers unflushed text,
+   *  so this is what a mid-turn rehydration would otherwise miss. */
+  livePreview: string
 }
 
 export function createConversationTurnService(config: ConversationTurnServiceConfig): ConversationTurnService {
@@ -204,6 +210,7 @@ export function createConversationTurnService(config: ConversationTurnServiceCon
       agentId,
       startedAt: Date.now(),
       turnId,
+      livePreview: '',
     }
     inflight.set(key, entry)
 
@@ -228,7 +235,7 @@ export function createConversationTurnService(config: ConversationTurnServiceCon
     // chat auto-titling) chains after release so it never holds the slot
     // through an LLM round-trip — but stays on the retained promise so
     // waitFor() covers it.
-    entry.promise = runTurn(config, ctx, key, agentId, content, controller, turnId, attachments, opts?.runtimeContent)
+    entry.promise = runTurn(config, ctx, key, agentId, content, controller, turnId, inflight, attachments, opts?.runtimeContent)
       .finally(() => {
         inflight.delete(key)
       })
@@ -254,6 +261,7 @@ export function createConversationTurnService(config: ConversationTurnServiceCon
       return true
     },
     isInFlight: (key) => inflight.has(key),
+    inflightPreview: (key) => inflight.get(key)?.livePreview ?? null,
     waitFor: async (key) => {
       await (inflight.get(key)?.promise ?? Promise.resolve())
     },
@@ -275,6 +283,7 @@ async function runTurn(
   content: string,
   controller: AbortController,
   turnId: string,
+  inflightRef: Map<string, InflightTurn>,
   attachments?: TurnAttachment[],
   runtimeContent?: string,
 ): Promise<TurnOutcome> {
@@ -346,7 +355,11 @@ async function runTurn(
         throw new StreamTurnError(chunk.content || 'runtime stream error', kind)
       }
 
-      if (chunk.type === 'text') assistantText += chunk.content
+      if (chunk.type === 'text') {
+        assistantText += chunk.content
+        const entry = inflightRef.get(key)
+        if (entry) entry.livePreview = assistantText
+      }
       if (chunk.type === 'done') doneUsage = chunk.usage
       recorder.ingest(chunk)
       // Persist rows as they settle so a crash keeps the partial turn.
@@ -405,3 +418,4 @@ async function runTurn(
 function firstLine(text: string): string {
   return text.trim().split('\n')[0]?.slice(0, PREVIEW_MAX) ?? ''
 }
+

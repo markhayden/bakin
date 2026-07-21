@@ -37,7 +37,7 @@ export function DocBrainstormPanel({
     load: async () => {
       const res = await pluginFetch('brands', `${docPath}/brainstorm`)
       if (!res.ok) return null
-      return (await res.json()) as { messages: ConversationMessage[]; streaming?: boolean }
+      return (await res.json()) as { messages: ConversationMessage[]; streaming?: boolean; streamingText?: string }
     },
     post: async (_key, content) => {
       const res = await pluginFetch('brands', `${docPath}/brainstorm`, {
