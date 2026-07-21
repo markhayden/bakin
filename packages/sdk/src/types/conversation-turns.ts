@@ -12,7 +12,7 @@
  * turn. Pair with `useConversationThread` on the client.
  */
 import type { RuntimeChatChunk, RuntimeMessageUsage, AgentRuntimeAdapter } from './runtime'
-import type { EventBus } from './context'
+import type { EventBus } from './events'
 
 export interface ConversationTurnAttachment {
   name: string
