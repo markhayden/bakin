@@ -35,7 +35,7 @@ export interface ConversationAttentionConfig {
    * events — AT MOST TWO (hook-count constraints; extras would be
    * silently dropped, so the type forbids them).
    */
-  events: { chunk: string; done: string; error: string; refresh?: [string] | [string, string] }
+  events: { chunk: string; done: string; error: string; started?: string; refresh?: [string] | [string, string] }
   keyOf: (payload: PluginEventPayload) => string
   /** The thread key currently on screen ('' = none) — read at event time. */
   visibleKey: () => string
@@ -83,6 +83,14 @@ export function useConversationAttention(config: ConversationAttentionConfig): v
   useEffect(() => {
     void refreshTotals()
   }, [refreshTotals])
+
+  // `started` fires at turn-accept (before any runtime chunk) — the working
+  // dot lights instantly; the chunk listener stays as the fallback for
+  // consumers without a started event and for mid-turn mounts.
+  usePluginEvent(config.events.started ?? `${config.pluginId}.__attention_noop_started`, (payload) => {
+    const key = configRef.current.keyOf(payload)
+    setInflight((prev) => (prev.has(key) ? prev : new Set(prev).add(key)))
+  })
 
   usePluginEvent(config.events.chunk, (payload) => {
     const key = configRef.current.keyOf(payload)

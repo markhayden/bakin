@@ -96,6 +96,36 @@ function makeService(
 }
 
 describe('conversation turn service', () => {
+  test('started event fires at accept, before any runtime chunk (#707)', async () => {
+    const h = makeHarness()
+    let releaseStream!: () => void
+    const gate = new Promise<void>((resolve) => { releaseStream = resolve })
+    h.setStream(async function* () {
+      await gate
+      yield { type: 'text', content: 'hi' } as ChatChunk
+      yield { type: 'done' } as ChatChunk
+    })
+    const service = makeService(h, {
+      events: { chunk: 'test.chunk', done: 'test.done', error: 'test.error', started: 'test.started' },
+    })
+
+    expect(await service.start(h.ctx, 't1', 'hello')).toBe('accepted')
+    // The stream is gated — no chunk has been produced, yet started is out.
+    expect(h.events).toEqual([{ event: 'test.started', data: { threadKey: 't1', agentId: 'main' } }])
+
+    releaseStream()
+    await service.waitFor('t1')
+    expect(h.events.map((e) => e.event)).toEqual(['test.started', 'test.chunk', 'test.done'])
+  })
+
+  test('no started event configured → none emitted (optional wire contract)', async () => {
+    const h = makeHarness()
+    const service = makeService(h)
+    expect(await service.start(h.ctx, 't1', 'hello')).toBe('accepted')
+    await service.waitFor('t1')
+    expect(h.events.some((e) => e.event.endsWith('.started'))).toBe(false)
+  })
+
   test('happy path: liveness chunks ride the chunk event, rows persist incrementally, done carries preview', async () => {
     const h = makeHarness()
     const service = makeService(h, {

@@ -38,6 +38,7 @@ export function ChatBadgeProvider() {
     pluginId: 'chat',
     navItemId: 'chat',
     events: {
+      started: 'chat.started',
       chunk: 'chat.chunk',
       done: 'chat.done',
       error: 'chat.error',

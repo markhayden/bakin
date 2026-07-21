@@ -29,7 +29,10 @@ export function Toaster() {
             className={`flex items-start gap-2.5 rounded-lg border px-3 py-2.5 text-sm shadow-lg animate-in fade-in slide-in-from-bottom-2 ${COLORS[t.type]}`}
           >
             <Icon className="size-4 shrink-0 mt-0.5" />
-            <div className="flex-1">{t.message}</div>
+            {/* min-w-0: without it the automatic flex minimum inherits the
+                width of nowrap content (e.g. the reply toast's truncated
+                preview line) and the row paints past the toast's box. */}
+            <div className="flex-1 min-w-0">{t.message}</div>
             <button
               onClick={() => dismiss(t.id)}
               className="shrink-0 opacity-60 hover:opacity-100 transition-opacity"

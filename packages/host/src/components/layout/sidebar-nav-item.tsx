@@ -36,6 +36,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { NavBadge, NavBadgeDot, navBadgeAriaSuffix } from './nav-badge'
 import {
   badgeIsActive,
+  closedGroupRollupBadge,
   collapsedParentAriaSuffix,
   collapsedParentRollupTone,
   isNavActive,
@@ -179,6 +180,10 @@ export function SidebarNavItem({
 
   if (hasChildren && !collapsed) {
     const parentBadge = badgeFor(item)
+    // Closed group → the children (and their badges) are hidden, so roll
+    // their badges up into the header; open group → the children show their
+    // own badges, the header keeps only its own.
+    const headerBadge = expanded ? parentBadge : closedGroupRollupBadge(item, parentBadge, badges)
     const groupId = `sidebar-group-${item.id}`
     return (
       <div className="flex flex-col">
@@ -188,11 +193,11 @@ export function SidebarNavItem({
           className={navRowClass(active, false)}
           aria-expanded={expanded}
           aria-controls={groupId}
-          aria-label={`${item.label}${navBadgeAriaSuffix(parentBadge)}`}
+          aria-label={`${item.label}${navBadgeAriaSuffix(headerBadge)}`}
         >
           <Icon className="size-4 shrink-0" />
           <span className="min-w-0 flex-1 truncate text-left">{item.label}</span>
-          <NavBadge badge={parentBadge} />
+          <NavBadge badge={headerBadge} />
           <ChevronRight
             className={`size-3.5 shrink-0 transition-transform duration-150 ${expanded ? 'rotate-90' : ''}`}
             aria-hidden="true"
