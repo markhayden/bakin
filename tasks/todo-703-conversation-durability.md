@@ -1,16 +1,16 @@
 # TODO — Issue #703 (see tasks/plan-703-conversation-durability.md for detail)
 
 ## PR 1 — bakin (`feat/703-conversation-turn-engine`)
-- [ ] E1: kit turn service (engine) + lifecycle tests
-- [ ] E2: useConversationThread hook + tests
-- [ ] E3: attention rules + badge provider kit + tests
-- [ ] C1: chat server on engine — chat tests byte-identical + green
-- [ ] C2a: NEW characterization tests for current useChatStream (pass pre-swap)
-- [ ] C2b: chat client wrapper — characterization + frozen tests green
-- [ ] C3: chat attention facade — attention tests byte-identical + green
-- [ ] B1: brands durable brainstorm (server + client) + tests
-- [ ] D1: knowledge docs (conversation-kit, chat-plugin, brands-plugin)
-- [ ] GATE: full suite green; chat-test diff empty (incl. tests/integration/pi/chat-on-pi.test.ts); Mark live-approves chat parity + brands on 3737
+- [x] E1: kit turn service (engine) + lifecycle tests — src/core/conversation-turns.ts, commit 0344240a8
+- [x] E2: useConversationThread hook + tests — commit 3213684a6
+- [x] E3: attention rules + badge provider kit + tests — commit 384d9ec41
+- [x] C1: chat server on engine — chat tests byte-identical + green (60+1 tests, 0 edits)
+- [x] C2a: characterization tests — commit 380801284
+- [x] C2b: chat client wrapper — commit 10e761874
+- [x] C3: chat attention facade + provider — attention tests byte-identical
+- [x] B1: brands durable brainstorm — commits 71df0319d + ce50077c2
+- [x] D1: knowledge docs — commit c1ba95aa4
+- [ ] GATE: suite green ✓ (8032/0 fail), freeze diff = additions only ✓ — AWAITING Mark live-approval on 3737
 
 ## PR 2 — bakin-bits-official (`feat/703-brainstorm-durability`)
 - [ ] P1: projects /ask on engine (202/409/abort, metering, streaming flag) + route tests
