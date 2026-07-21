@@ -27,12 +27,17 @@ plugins/chat/
   lib/store.ts                   index.json + JSONL v2 store; markSeen/setTitle/setPinned; attachmentsDir
   lib/routes.ts                  CRUD, messages (202/404/409), PATCH rename/pin, seen, abort,
                                  attachments upload/serve (multipart, image/*, 25 MB), GET /capabilities
-  lib/stream-bridge.ts           in-flight registry + AbortControllers; kit turn-recorder persistence;
-                                 per-turn metering (work class 'chat', usage from the done chunk);
-                                 attachment downscale (@bakin/core/media/downscale); waitForTurn() for tests
+  lib/stream-bridge.ts           chat's consumer config over the shared conversation turn engine
+                                 (src/core/conversation-turns.ts, extracted FROM this module in #703 —
+                                 wire contract unchanged); chat-side policy: CHAT_TURN_FRAMING,
+                                 per-turn metering (work class 'chat'), post-release auto-title,
+                                 ambiguity-null resolveActiveTurnForAgent; waitForTurn() for tests
   lib/auto-title.ts              budget-gated, 'auto-title'-routed + metered first-exchange titling
   lib/search.ts                  file-backed 'chats' search content type
-  components/use-chat-data.ts    useChats/useChatStream (kit rows + live chunks), requests, useAgentImageInput
+  components/use-chat-data.ts    useChats + useChatStream (thin wrapper over the kit's
+                                 useConversationThread since #703 — chat keeps seen tracking,
+                                 retry-with-attachments, URL mapping, no streaming pre-light),
+                                 requests, useAgentImageInput
   components/chat-page.tsx       header (search + Start a chat) + rail + view/draft/launcher; shortcuts
                                  (⌘⇧O new, ⌥↑/⌥↓ switch, ⇧Esc focus); paths /chat, /chat/$chatId, /chat/new?agent=
   components/chat-rail.tsx       Pinned/Today/Yesterday/This week/Older groups, unread pills, working
@@ -41,10 +46,12 @@ plugins/chat/
                                  staged attachments (capability-gated); DraftChatView (create on first send)
   components/launcher.tsx        empty-pane launcher: agent cards + recents + skeletons
   components/agent-picker.tsx    'Start a chat' popover (Command list of agents)
-  components/chat-badge-provider.tsx  global attention brain (renders null)
-  components/attention.ts        pure suppression/badge/title-prefix rules
-  components/notification-sound.ts    generated two-tone chime (no asset)
+  components/chat-badge-provider.tsx  chat wiring over the kit's useConversationAttention (renders null)
+  components/attention.ts        facade over the kit's shared attention rules (chatId-shaped signatures)
 tests/plugins/chat/              store/stream/attachments/auto-title/search/attention/chat-page suites
+                                 + chat-stream-client (the #703 client characterization gate); this
+                                 directory + tests/integration/pi/chat-on-pi.test.ts are the FROZEN
+                                 behavior gate for any engine/kit refactor — edit means regression
 ```
 
 ## Gotchas
