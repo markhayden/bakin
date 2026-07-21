@@ -137,12 +137,15 @@ if (!binary) {
       expect(withBody.status).toBe(200)
     })
 
-    it('PIN antfly#319: mixed-corpus media leg — raw flags stuck building, health() overrides to ready', async () => {
-      // WHEN THE CANARY HALF FAILS (raw backfill_state becomes 'ready'):
-      // upstream fixed the skip accounting → delete the idle-detection
-      // override in mapIndexStatuses + this pin.
+    it('GUARD (was antfly#319): mixed-corpus media leg completes its backfill and reports ready', async () => {
+      // Upstream fixed the empty-template skip accounting at rc.21; the
+      // idle-detection override in mapIndexStatuses was retired with the
+      // old pin. This guard keeps the mixed-corpus case honest: a media
+      // leg over a corpus with non-media docs must go ready NATURALLY.
+      // WHEN THIS FAILS: the #319 class regressed — restore the override
+      // (see git history of translate.ts mapIndexStatuses) or hold the pin.
       if (!instance.modelsAvailable || !existsSync(join(homedir(), '.antfly', 'inference', 'models', 'antflydb', 'clipclap'))) {
-        console.warn('⚠ antfly#319 pin skipped — clipclap model not present')
+        console.warn('⚠ antfly#319 guard skipped — clipclap model not present')
         return
       }
       const T2 = 'pins_mixed'
@@ -177,11 +180,10 @@ if (!binary) {
         await sleep(1000)
       }
       expect(raw).not.toBeNull()
-      // CANARY: raw flags still lie (building forever) — when this flips,
-      // delete the workaround.
-      expect(raw!.backfill_state).toBe('running')
-      expect(raw!.rebuilding === true || raw!.backfill_active === true).toBe(true)
-      // WORKAROUND GUARD: our health mapping overrides to ready.
+      // Raw flags clear once the pipeline is idle (the pre-rc.21 bug left
+      // them raised forever on mixed corpora).
+      expect(raw!.rebuilding === true || raw!.backfill_active === true).toBe(false)
+      // And the health mapping agrees with no override in play.
       const { AntflySearchClient } = await import('../../../packages/adapter-antfly/src/client')
       const { DEFAULT_SETTINGS } = await import('../../../packages/adapter-antfly/src/defaults')
       const client = new AntflySearchClient({ ...DEFAULT_SETTINGS, url: instance.url }, { fetchImpl: nativeFetch })
