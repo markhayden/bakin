@@ -1,4 +1,9 @@
-# Shared UI Patterns
+# Shared UI Patterns (legacy migration reference)
+
+> New browser UI must use public Storybook and the focused SDK entrypoints.
+> This document explains existing compatibility adapters and historical
+> product behavior; it is not an authoring API. Follow
+> `.claude/skills/bakin-ui-conformance/SKILL.md` before using any example here.
 
 > **Visual-authoring status (2026-07-18):** Product Character is the approved
 > default. The token, typography, spacing, surface, and state guidance in
@@ -7,18 +12,31 @@
 > and migration inventory; do not treat its legacy utility strings as a new
 > styling API.
 
-All shared UI primitives in this doc are re-exported from `@bakin/sdk/components` (plus `@bakin/sdk/ui` for shadcn primitives and `@bakin/sdk/hooks` for React hooks). Plugin authors should always import via the SDK, never directly from `packages/host/src/components/*` or the legacy `src/components/*` shims:
+Promoted patterns in this document now resolve from focused
+`@makinbakin/sdk/*` entrypoints. `PluginHeader` remains a migration-only
+compatibility adapter; use `PageHeader` for new work. Plugins never import
+directly from `packages/host/src/components/*`, `packages/ui/*`, or the legacy
+`src/components/*` shims:
 
 ```tsx
-import { BakinDrawer, PluginHeader, FacetFilter, AgentAvatar } from '@bakin/sdk/components'
-import { useSearch, useRuntimeStatus } from '@bakin/sdk/hooks'
+import { AgentAvatar, FacetFilter } from '@makinbakin/sdk/patterns'
+import { BakinDrawer } from '@makinbakin/sdk/ui'
+import { useSearch, useRuntimeStatus } from '@makinbakin/sdk/hooks'
+
+// Existing consumers only; frozen migration barrel.
+import { PluginHeader } from '@makinbakin/sdk/components'
 ```
 
-Core plugins use the same imports. The path-style `src/components/*.tsx` entries in the tables below are the source-of-truth locations inside the repo — plugins never reach them directly.
+Core plugins use the same public imports. Path-style `src/components/*.tsx`
+entries in the historical tables below describe compatibility implementations,
+not an authoring contract; verify every current owner in public Storybook and
+`design-system/public-api.json`.
 
 ## BakinDrawer
 
-`src/components/bakin-drawer.tsx` — Resizable right-side drawer used by all detail views. Exposed to plugins as `BakinDrawer` from `@bakin/sdk/components`.
+`src/components/bakin-drawer.tsx` — Historical compatibility implementation of
+the resizable right-side detail drawer. The supported public contract is
+`BakinDrawer` from `@makinbakin/sdk/ui`.
 
 ### Props
 
@@ -210,7 +228,7 @@ Create mode is derived: `isCreate = editing && !existingItem`
 | `taskId` | `string` | Task to show assets for |
 | `readOnly` | `boolean` | Hides "Add" button when true (use in detail view) |
 
-## PluginHeader Actions
+## PluginHeader Actions (legacy consumers)
 
 `PluginHeader` has an `actions` slot for controls that sit to the right of the search bar.
 

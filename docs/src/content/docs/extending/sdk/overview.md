@@ -95,7 +95,7 @@ import {
   ConversationPanel,
   useConversationStream,
   type ConversationMessage,
-} from '@makinbakin/sdk/components'
+} from '@makinbakin/sdk/conversation'
 ```
 
 Server routes and exec tools should use the matching utilities from `@makinbakin/sdk/utils`:

@@ -20,6 +20,16 @@ The catalog will grow component by component as primitives, layout recipes, syst
 
 Start with the focused visual SDK entrypoints: `@makinbakin/sdk/ui`, `@makinbakin/sdk/layout`, `@makinbakin/sdk/patterns`, `@makinbakin/sdk/charts`, `@makinbakin/sdk/conversation`, and `@makinbakin/sdk/content`. Use semantic component props and documented composition patterns. The older `@makinbakin/sdk/components` barrel is migration-only and should not gain new consumers. Add plugin-owned, root-scoped CSS only for domain-specific presentation that the SDK does not cover.
 
+:::caution[Known prerelease routing UI gaps]
+The routing overhaul's `PluginLink`, `useUnsavedChangesGuard`, and
+`useUnsavedGuard` still exist only in the frozen migration barrel. Public
+examples below retain the link/guard behavior to preserve real-anchor SPA
+navigation and dirty-draft safety, but these are explicit component/API
+checkpoint findings—not permission to add new legacy consumers or invent
+another router. Resolve their focused public locations before external plugin
+migration begins.
+:::
+
 Do not copy host components into a plugin. If the same need recurs across official or third-party plugins, propose it as an SDK contract with its public story, interaction test, accessibility coverage, and responsive states.
 
 ## Page and Flow Layout

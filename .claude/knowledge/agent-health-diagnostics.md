@@ -116,13 +116,13 @@ capped 20/run), and summarizes `RuntimeTurnDiagnosis` audit payloads into
 plain language server-side. Caps: 100 runs / 200 events. Reads Bakin-owned
 stores only — no adapter surface, no transcript parsing.
 
-## Chart kit (`@makinbakin/sdk/components`)
+## Chart kit (`@makinbakin/sdk/charts`)
 
 `StackedColumnChart`, `BarChart`, `LineChart`, `Sparkline`,
 `ChartDataTable`, `ChartTooltip`, `ChartExplainer` +
-`CHART_SERIES_COLORS`/`assignSeriesColors` in `src/components/charts/`
-(re-exported via the SDK barrel; rides the existing `sdk-components` vendor
-bundle). Hand-rolled, no chart library (spec D9). The palette is the
+`CHART_SERIES_COLORS`/`assignSeriesColors` in `packages/ui/src/charts/`,
+published through the isolated `@makinbakin/sdk/charts` entrypoint. Hand-rolled,
+no chart library (spec D9). The palette is the
 dataviz-validated dark-surface categorical set — the slot ORDER is the
 colorblind-safety mechanism (never reorder/cycle); a 9th series folds into a
 gray "Other", never a new hue; color follows the entity, not its rank.

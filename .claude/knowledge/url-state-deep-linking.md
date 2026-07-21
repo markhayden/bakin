@@ -9,6 +9,12 @@ Internal navigation ALWAYS goes through the SPA router; a hard navigation re-boo
 - **Outside React (OS notification clicks):** `navigateToUrl()` in `src/lib/browser-notify.ts` routes through the `globalThis.__bakinNavigate` bridge the host registers at boot (`packages/host/src/main.tsx`); falls back to a hard load only when the shell isn't booted. globalThis because plugin bundles inline their own copy of that module.
 - **Toast click-throughs** navigate via `useRouter().push` and dismiss themselves with the id `toast()` returns (see chat's `ReplyToast` / workflows' `GateToast`).
 
+`PluginLink` is the one unresolved prerelease UI API gap: the routing behavior
+is authoritative, but the component is still available only through the frozen
+migration barrel. Do not copy it, replace it with a raw anchor, or add another
+router abstraction. Resolve its focused public location at the component/API
+checkpoint before external plugin migration.
+
 Enforced twice: `tests/architecture/no-hard-navigation.test.ts` (CI gate — scanner with teeth + path-pinned allowlist with reasons) and mirrored `no-restricted-syntax` rules in `eslint.config.mjs` (editor feedback). Keep the two allowlists in sync. Legitimate full reloads (unsaved-changes guard, `router.refresh()`, dev loop, update recovery, plugin-failure banner, manifest-change reload) are allowlisted there — new entries must be recovery/dev-tooling paths, never user-facing links.
 
 ## Rule

@@ -1,8 +1,16 @@
 # Conversation Kit
 
-THE shared conversation UI for every surface that talks to an agent. Lives in `src/components/conversation/`, exported via `@makinbakin/sdk/components` (+ two server helpers via `@makinbakin/sdk/utils`). Replaced `IntegratedBrainstorm` and the three duplicated chunk-folding implementations (2026-07 overhaul; spec `.claude/specs/chat-conversation-kit.md`).
+THE shared conversation UI for every surface that talks to an agent. The
+private implementation lives in `packages/ui/src/conversation/` and is
+published through `@makinbakin/sdk/conversation` (+ two server helpers via
+`@makinbakin/sdk/utils`). Existing `/components` imports are migration-only.
+The kit replaced `IntegratedBrainstorm` and the three duplicated chunk-folding
+implementations (2026-07 overhaul; spec
+`.claude/specs/chat-conversation-kit.md`).
 
-**The rule:** new chat-like surfaces COMPOSE these components; never hand-roll message/tool rendering or chunk folding. `TurnOutputView` remains only as a thin legacy wrapper for single-turn embeds (task step viewer, workflow step drawer).
+**The rule:** new chat-like surfaces COMPOSE these components; never hand-roll
+message/tool rendering or chunk folding. `TurnOutputView` is the supported
+compact single-turn composition for task and workflow embeds.
 
 ## Two consumption modes
 

@@ -3,7 +3,7 @@ title: Client UI
 description: Register plugin navigation, pages, routes, slots, and shell-integrated UI through @makinbakin/sdk.
 ---
 
-Client entries use `registerPlugin()` from `@makinbakin/sdk`. Beyond `navItems`/`routes`/`slots`, a plugin can register `search: { hitRenderers }` — plain data-mapping functions (`(hit) => { title, subtitle?, href, thumbnailUrl?, icon?, meta? }`; `meta` is the small type · agent · date line under the subtitle) that render its content type in the global ⌘K search overlay; unknown types get a default renderer (see [Search](/docs/extending/plugins/search/)). For live UI updates when server-side data changes, subscribe with `usePluginEvent` — see [Realtime Events](/docs/extending/plugins/realtime/). Keep UI contributions predictable and built from SDK components where practical (`pluginFetch`/`usePluginJsonFetch` for your own routes, `PluginHeader`, `EmptyState`, `ConfirmDialog`, `TurnOutputView` for agent turn output). The reference plugin's [`client.tsx`](https://github.com/markhayden/bakin/tree/main/examples/reference-plugin) is the worked example. Plugin UI should feel like part of Bakin: dense enough for repeated work, accessible, and clear about loading, empty, error, and permission states.
+Client entries use `registerPlugin()` from `@makinbakin/sdk`. Beyond `navItems`/`routes`/`slots`, a plugin can register `search: { hitRenderers }` — plain data-mapping functions (`(hit) => { title, subtitle?, href, thumbnailUrl?, icon?, meta? }`; `meta` is the small type · agent · date line under the subtitle) that render its content type in the global ⌘K search overlay; unknown types get a default renderer (see [Search](/docs/extending/plugins/search/)). For live UI updates when server-side data changes, subscribe with `usePluginEvent` — see [Realtime Events](/docs/extending/plugins/realtime/). Keep UI contributions predictable and compose them from the focused SDK contracts: `PageShell`/`PageHeader`, `SystemState`, `ConfirmDialog`, and `TurnOutputView` cover the common examples. The reference plugin's [`client.tsx`](https://github.com/markhayden/bakin/tree/main/examples/reference-plugin) is the worked example. Plugin UI should feel like part of Bakin: dense enough for repeated work, accessible, and clear about loading, empty, error, and permission states.
 
 The tested minimal client entry lives at `docs/snippets/plugin-basic/client.tsx`.
 
@@ -149,6 +149,14 @@ router.push(url, { scroll: false })            // keep scroll position
 router.replace(`/docs-basic?view=grid`)        // no history entry; keeps scroll
 ```
 
+:::caution[Prerelease API checkpoint]
+`PluginLink` is still available only through the frozen migration barrel even
+though it is required for real-anchor client navigation. Do not copy its
+implementation or silently add another navigation abstraction. Raise this as
+a public-API gap before shipping a new consumer; the component/layout contract
+checkpoint must either publish a focused path or record a deliberate decision.
+:::
+
 Query values are always plain strings (`?id=123` reads back as `'123'`), and multiple `useQueryState` setter calls in one handler compose into a single navigation.
 
 ## Calling your API routes
@@ -208,11 +216,15 @@ Register with `registerSlot()` directly when you need a custom order. Lower orde
 
 ## UI Primitives
 
-Import common UI from `@makinbakin/sdk/ui` and shared app components from `@makinbakin/sdk/components`.
+Import primitives from `@makinbakin/sdk/ui`, layout from
+`@makinbakin/sdk/layout`, and application patterns from
+`@makinbakin/sdk/patterns`. New UI must not consume the frozen
+`@makinbakin/sdk/components` barrel.
 
 ```tsx
 import { Button } from '@makinbakin/sdk/ui'
-import { PluginHeader } from '@makinbakin/sdk/components'
+import { PageShell } from '@makinbakin/sdk/layout'
+import { PageHeader } from '@makinbakin/sdk/patterns'
 ```
 
 Custom UI is fine when the domain needs it, but keep Bakin conventions: small radii, clear tables and filters, keyboard-friendly controls, visible empty states, and no layout shift when data loads.
@@ -231,7 +243,7 @@ example, a content planning plugin can strip proposal JSON from an assistant
 message and render a review badge inline:
 
 ```tsx
-import { ConversationPanel, useConversationStream } from '@makinbakin/sdk/components'
+import { ConversationPanel, useConversationStream } from '@makinbakin/sdk/conversation'
 import { pluginFetch } from '@makinbakin/sdk/utils'
 
 function PlanningChat({ sessionId, agentId, messages, refresh }) {
