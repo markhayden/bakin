@@ -388,20 +388,9 @@ export function mapIndexStatuses(entries: WireIndexStatusEntry[]): TableLegHealt
       || (runtime?.fatal_error_count ?? 0) > 0
       || status?.backfill_state === 'failed'
     let building = status?.rebuilding === true || status?.backfill_active === true
-    // Upstream accounting bug (antflydb/antfly#319): docs whose
-    // embed template renders EMPTY (e.g. non-media assets against a media
-    // leg) never complete the backfill, so a mixed corpus reports
-    // rebuilding/backfill_active FOREVER while nothing is in flight
-    // (pending_sequence_count 0, no active batch, not retrying). Without this
-    // override every assets-table migration would park. When upstream fixes
-    // the accounting, the canary pin in workaround-regressions fails → delete
-    // this block.
-    if (building && runtime
-      && runtime.pending_sequence_count === 0
-      && runtime.retrying !== true
-      && (runtime.active_embed_batch_items ?? 0) === 0) {
-      building = false
-    }
+    // (The antfly#319 idle-detection override that lived here — mixed-corpus
+    // media legs stuck rebuilding forever — was retired at the rc.21 pin:
+    // upstream fixed the backfill accounting for empty-template docs.)
     // rc.18 WORKAROUND — runtime-less legs (full_text) report
     // rebuilding/backfill_active FOREVER once caught up, including on
     // freshly created EMPTY tables (observed live 2026-07-11: every empty

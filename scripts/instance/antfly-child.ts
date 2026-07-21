@@ -30,7 +30,7 @@ export function antflyModelsDir(env: Record<string, string | undefined>, homeDir
 
 export function antflyChildArgs(binary: string, port: number, dataDir: string, modelsDir: string): string[] {
   return [
-    binary, 'swarm',
+    binary, 'standalone',
     '--host', '127.0.0.1',
     '--port', String(port),
     '--health-port', String(port + 1),

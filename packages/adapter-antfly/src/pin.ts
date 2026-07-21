@@ -18,20 +18,22 @@ export interface AntflyPin {
 }
 
 export const ANTFLY_PIN: AntflyPin = {
-  // rc.18 (tagged 2026-07-09), adopted 2026-07-11 for the search trust &
-  // speed initiative (.claude/specs/search-trust-and-speed.md). Fixes #317
-  // (batch double-free on internal write failure — our proposed patch
-  // landed verbatim; the local copy in tasks/ was deleted). Known-open
-  // upstream at this pin: #319 (mixed-corpus backfill accounting —
-  // idle-detection workaround + canary pin in
-  // tests/integration/antfly/workaround-regressions.test.ts). Empirical
-  // rc.18 verdicts per shim live in tasks/evidence-search-trust-and-speed.md.
-  version: '0.2.0-rc.18',
+  // rc.21 (tagged 2026-07-21), adopted 2026-07-21. Fixes the #319
+  // mixed-corpus backfill accounting (media legs no longer report
+  // building forever — that idle-detection override in translate.ts was
+  // retired with its pin); adds query-embedding caching with singleflight
+  // (upstream #346, multi-table fan-out). BREAKING absorbed here: the
+  // single-process server subcommand renamed swarm → standalone (rc.19).
+  // Still-open upstream at this pin (workarounds + pins retained):
+  // empty/runtime-less legs report backfill running forever, filter_query
+  // rejects match_phrase (composeFtsWithFilters stays), no order_by on
+  // inferred fields. Pins: tests/integration/antfly/workaround-regressions.test.ts.
+  version: '0.2.0-rc.21',
   baseUrl: 'https://releases.antfly.io/antfly',
   checksums: {
-    'darwin-arm64': 'e2b0df4461d78782d11a4e2740f299844a9a6cfed4df1a167c632a5b9ecdafe1',
-    'linux-arm64': 'c74b3ea59b3e99f46cb8d3bbc723b9fd672b8a62779ca050ce11de1f5044a1ad',
-    'linux-x64': 'e3d606d153f7713f389e414b40b855850347c4f67aec8827217e6076cc31a0be',
+    'darwin-arm64': '6937dd2dfec93b8147c65b4d63f45840e3f63417947db77d5eef43dce414236e',
+    'linux-arm64': '4f09411aeccd1ad3ffbf403a28a08ef0fe3297f91314573fbd62717cd4e2989e',
+    'linux-x64': 'de5bec9ced4868412ca0cfe013a3bfbcb8123ac31db6092ddebf8848dc758ffa',
   },
 }
 
