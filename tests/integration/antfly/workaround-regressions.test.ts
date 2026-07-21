@@ -286,6 +286,21 @@ if (!binary) {
         await sleep(500)
       }
       expect(status).toBe(500)
+      // rc.20+: the failed batch flips the engine's read path to
+      // ReadUnavailable for EVERY table until a successful write lands
+      // (reported upstream 2026-07; see read-unavailable-storm in
+      // engine-status.ts). Heal it here so later tests query a healthy
+      // engine — and pin the healing behavior itself while we're at it.
+      const heal = await api('POST', `/db/v1/tables/${T}/batch`, {
+        inserts: { heal1: { title: 'healing write' } },
+        sync_level: 'full_index',
+      })
+      expect(heal.status).toBeLessThan(300)
+      const probe = await api('POST', `/db/v1/tables/${T}/query`, {
+        full_text_search: { match_all: {} },
+        limit: 1,
+      })
+      expect(probe.status).toBe(200)
     }, 120_000)
 
     it('PIN: filter_query rejects match_phrase nodes (the eq-filter shape) with 400', async () => {

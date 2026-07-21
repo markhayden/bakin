@@ -55,6 +55,11 @@ const WEDGE_PATTERNS: ReadonlyArray<{ signal: string; pattern: RegExp; minOccurr
   // Same incident: route handlers repeatedly failing with TableReadChurn
   // while the engine still answered health probes.
   { signal: 'table-read-churn', pattern: /error\.TableReadChurn/g, minOccurrences: 10 },
+  // rc.20/rc.21: a failed media batch can flip the public read path to
+  // ReadUnavailable for every table until the next successful write lands
+  // (verified 2026-07-21; reported upstream). A sustained storm means no
+  // healing write arrived — the engine-restart repair clears it.
+  { signal: 'read-unavailable-storm', pattern: /error\.ReadUnavailable/g, minOccurrences: 10 },
 ]
 
 interface ProbeState {
