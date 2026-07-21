@@ -202,6 +202,18 @@ team API. Status remains visible in text, and consumers keep assignment state,
 heartbeat timing, URL state, and persistence. Existing official surfaces may
 continue through the migration-only components adapters until fleet migration.
 
+Asset, model, and color choices use `AssetPicker`, `ModelSelect`, and
+`ColorPicker` from the focused patterns entrypoint. `AssetPicker` supports a
+controlled library dialog plus inline grid or list composition with exact
+loading, error, empty, and filtered states. Consumers own asset endpoints,
+uploads, eligibility, attachment mutations, and route state. `ModelSelect`
+groups presentation-ready catalog options by provider and exports the stable
+`DEFAULT_MODEL_VALUE` sentinel; consumers own catalog loading and persistence.
+`ColorPicker` provides labelled radio semantics and enabled-option keyboard
+movement while consumers own palette values and saving. Existing official
+surfaces may remain on the migration-only components adapters until their
+incremental migration.
+
 Compact display patterns use `StatusBadge` and `StatTile`. Status labels carry
 meaning without color, while optional icons remain decorative. Focused status
 tones use `attention` and `danger`; the legacy components adapter maps the old

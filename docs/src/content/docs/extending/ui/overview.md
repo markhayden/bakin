@@ -895,6 +895,54 @@ export function OwnerField({
 
 Presence is always named in visible copy by `AgentStatus`; avatar badges add compact reinforcement and an accessible name. Use `decorative` on an avatar only when the same option, row, or control already names that agent. Team selections use the exported `team:` value helpers for compatibility, but consumers still translate that UI value into their own API contract before saving.
 
+## Asset, Model, and Color Pickers
+
+Import `AssetPicker`, `ModelSelect`, and `ColorPicker` from `@makinbakin/sdk/patterns`. They are controlled presentation patterns: the consumer supplies presentation-ready options and exact state, then owns requests, persistence, and domain mutations.
+
+`AssetPicker` supports a managed-library dialog and an embedded `inline` composition. Dialog is the default for choosing from a library; inline list mode supports attach, relink, and quick-post flows without creating a second overlay. The picker supplies search presentation, grid or list choices, thumbnails, disabled items, and exact loading, recoverable error, initial-empty, and filtered no-results states. It does not fetch an asset endpoint, upload files, decide which assets are eligible, mutate attachments, or own route/query state:
+
+```tsx
+import {
+  AssetPicker,
+  type AssetPickerCollection,
+} from '@makinbakin/sdk/patterns'
+
+export function AttachmentPicker({
+  collection,
+  query,
+  setQuery,
+  attach,
+  retry,
+}: {
+  collection: AssetPickerCollection
+  query: string
+  setQuery: (query: string) => void
+  attach: (assetId: string) => void
+  retry: () => void
+}) {
+  return (
+    <AssetPicker
+      variant="inline"
+      view="list"
+      title="Attach an existing asset"
+      collection={collection}
+      query={query}
+      onQueryChange={setQuery}
+      onPick={attach}
+      onRetry={retry}
+    />
+  )
+}
+```
+
+For dialog composition, pass controlled `open` and `onOpenChange`. The picker does not close after selection by itself; close it in `onPick` when that matches the owning workflow. Supply upload or other library actions through `toolbarAction`, but keep the file input, validation, request, progress, and result handling in the consumer. Filter unavailable or already-attached records before building the ready collection. Pass a presentation-safe `thumbnailSrc`; authorization and URL lifecycle remain outside the pattern.
+
+`ModelSelect` groups controlled options by provider and can expose a default choice with the stable `DEFAULT_MODEL_VALUE` sentinel. Consumers fetch the catalog, decide availability, translate the sentinel into their API value, and save the result. Associate the trigger with a visible `<label>` through `id`, or supply `ariaLabel` when no visible label exists.
+
+`ColorPicker` is a keyboard-complete radio group. Supply stable option `value` identifiers separately from their presentation `color`, and keep palette definition and persistence in the consumer. Use semantic CSS colors or validated color strings; do not encode meaning in a swatch alone. Each option needs a plain-language `label`, selected state remains available through radio semantics, and arrow, Home, and End keys move among enabled choices.
+
+The migration-only `AssetPicker`, `ModelSelect`, and `ColorPicker` adapters in `@makinbakin/sdk/components` preserve existing official consumers while the fleet migration proceeds. New plugin UI should use the focused controlled contracts above. These patterns do not replace the established routing work: keep linkable library queries, overlay state, and selected records in the existing query-state contract when the product requires them.
+
 Use `StatusBadge` for compact state language and `StatTile` for scan-friendly technical metrics. A status always needs a visible label such as “Published,” “Needs review,” or “Blocked”; never use a bare colored dot or icon as the only meaning. Status icons are decorative reinforcement. Focused status tones follow the shared semantic vocabulary: `neutral`, `success`, `attention`, `danger`, and `accent`.
 
 `StatTile` uses the low-chrome Product Character treatment by default. Choose `variant="surface"` only when the metric is a genuinely bounded or actionable object, not to put a card around every number. When a tile has a meter, pass `progress.label` whenever the visible metric label is not a plain string. Consumers provide the exact value, denominator, and honest coverage copy; the component only clamps and presents the meter. An `onClick` tile becomes a native `type="button"` with the same visible focus contract as other actions.

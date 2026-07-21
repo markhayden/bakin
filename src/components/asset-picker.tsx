@@ -1,15 +1,13 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ImageIcon, Loader2, Upload } from 'lucide-react'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
+import { Loader2, Upload } from 'lucide-react'
+import {
+  AssetPicker as AssetPickerPresentation,
+  type AssetPickerCollection,
+} from '@makinbakin/sdk/patterns'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Skeleton } from '@/components/ui/skeleton'
-import { EmptyState } from '@/components/empty-state'
-import { ErrorState } from '@/components/error-state'
 import { useFileDrop } from '@/hooks/use-file-drop'
-import { cn } from '@/lib/utils'
 
 export interface AssetPickerAsset {
   assetId: string
@@ -36,13 +34,29 @@ type LoadState =
   | { status: 'error' }
   | { status: 'ready'; assets: AssetPickerAsset[] }
 
-/**
- * Modal asset chooser over the assets plugin's library: search, thumbnail
- * grid, and drag/drop or button upload-new (which picks the fresh asset).
- * THE way any surface references a managed asset — never a raw id `<select>`.
- * Engine-unreachable renders an honest error state, never a blank grid.
- */
-export function AssetPicker({ open, onOpenChange, onPick, title = 'Choose an asset', description, filter }: AssetPickerProps) {
+function assetRecord(value: unknown): value is {
+  assetId: string
+  description?: string
+  type?: string
+  hasThumb?: boolean
+} {
+  if (!value || typeof value !== 'object') return false
+  const asset = value as Record<string, unknown>
+  return typeof asset.assetId === 'string'
+    && (asset.description == null || typeof asset.description === 'string')
+    && (asset.type == null || typeof asset.type === 'string')
+    && (asset.hasThumb == null || typeof asset.hasThumb === 'boolean')
+}
+
+/** App-aware compatibility adapter for the assets plugin endpoints and upload mechanics. */
+export function AssetPicker({
+  open,
+  onOpenChange,
+  onPick,
+  title = 'Choose an asset',
+  description,
+  filter,
+}: AssetPickerProps) {
   const [state, setState] = useState<LoadState>({ status: 'loading' })
   const [query, setQuery] = useState('')
   const [uploading, setUploading] = useState(false)
@@ -52,18 +66,17 @@ export function AssetPicker({ open, onOpenChange, onPick, title = 'Choose an ass
   const load = useCallback(async () => {
     setState({ status: 'loading' })
     try {
-      const res = await fetch('/api/plugins/assets/versioned')
-      if (!res.ok) throw new Error(`assets listing failed (${res.status})`)
-      const body = (await res.json()) as {
-        assets?: Array<{ assetId: string; description?: string; type?: string; hasThumb?: boolean }>
-      }
+      const response = await fetch('/api/plugins/assets/versioned')
+      if (!response.ok) throw new Error(`assets listing failed (${response.status})`)
+      const body = await response.json() as { assets?: unknown }
+      const assets = Array.isArray(body.assets) ? body.assets.filter(assetRecord) : []
       setState({
         status: 'ready',
-        assets: (body.assets ?? []).map((a) => ({
-          assetId: a.assetId,
-          description: a.description ?? '',
-          type: a.type ?? 'other',
-          hasThumb: !!a.hasThumb,
+        assets: assets.map((asset) => ({
+          assetId: asset.assetId,
+          description: asset.description ?? '',
+          type: asset.type ?? 'other',
+          hasThumb: Boolean(asset.hasThumb),
         })),
       })
     } catch {
@@ -72,146 +85,105 @@ export function AssetPicker({ open, onOpenChange, onPick, title = 'Choose an ass
   }, [])
 
   useEffect(() => {
-    if (open) {
-      setQuery('')
-      setUploadError(null)
-      void load()
-    }
+    if (!open) return
+    setQuery('')
+    setUploadError(null)
+    void load()
   }, [open, load])
 
-  const pick = useCallback(
-    (assetId: string) => {
-      onPick(assetId)
-      onOpenChange(false)
-    },
-    [onPick, onOpenChange],
-  )
+  const pick = useCallback((assetId: string) => {
+    onPick(assetId)
+    onOpenChange(false)
+  }, [onPick, onOpenChange])
 
-  const upload = useCallback(
-    async (file: File) => {
-      setUploading(true)
-      setUploadError(null)
-      try {
-        const form = new FormData()
-        form.append('file', file)
-        const res = await fetch('/api/plugins/assets/upload', { method: 'POST', body: form })
-        const body = (await res.json().catch(() => ({}))) as { assetId?: string; error?: string }
-        if (!res.ok || !body.assetId) throw new Error(body.error ?? 'Upload failed')
-        pick(body.assetId)
-      } catch (err) {
-        setUploadError(err instanceof Error ? err.message : String(err))
-      } finally {
-        setUploading(false)
+  const upload = useCallback(async (file: File) => {
+    setUploading(true)
+    setUploadError(null)
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      const response = await fetch('/api/plugins/assets/upload', { method: 'POST', body: form })
+      const body = await response.json().catch(() => ({})) as { assetId?: unknown; error?: unknown }
+      if (!response.ok || typeof body.assetId !== 'string') {
+        throw new Error(typeof body.error === 'string' ? body.error : 'Upload failed')
       }
-    },
-    [pick],
-  )
+      pick(body.assetId)
+    } catch (error) {
+      setUploadError(error instanceof Error ? error.message : String(error))
+    } finally {
+      setUploading(false)
+    }
+  }, [pick])
 
   const { dragOver, dropProps } = useFileDrop({
     accept: ['image/'],
-    onFiles: ([f]) => void upload(f),
-    // Match the browse input's accept="image/*" — a dropped file shouldn't
-    // sneak past the same restriction.
+    onFiles: ([file]) => void upload(file),
     onRejected: () => setUploadError('Only images can be uploaded here.'),
   })
 
-  const visible = useMemo(() => {
-    if (state.status !== 'ready') return []
-    const base = filter ? state.assets.filter(filter) : state.assets
-    const q = query.trim().toLowerCase()
-    if (!q) return base
-    return base.filter((a) => a.description.toLowerCase().includes(q) || a.assetId.toLowerCase().includes(q))
-  }, [state, filter, query])
+  const collection = useMemo<AssetPickerCollection>(() => {
+    if (state.status === 'loading') return { status: 'loading' }
+    if (state.status === 'error') {
+      return { status: 'error', message: "The asset library isn't reachable right now. You can still upload a new file." }
+    }
+    const assets = filter ? state.assets.filter(filter) : state.assets
+    return {
+      status: 'ready',
+      assets: assets.map((asset) => ({
+        id: asset.assetId,
+        label: asset.description || asset.assetId,
+        description: asset.description ? asset.assetId : undefined,
+        type: asset.type,
+        thumbnailSrc: asset.hasThumb ? `/api/assets/${encodeURIComponent(asset.assetId)}/thumb` : undefined,
+      })),
+    }
+  }, [filter, state])
+
+  const uploadAction = (
+    <>
+      <Button
+        type="button"
+        variant="secondary"
+        size="sm"
+        disabled={uploading}
+        onClick={() => fileRef.current?.click()}
+        data-asset-picker-upload=""
+      >
+        {uploading ? <Loader2 aria-hidden="true" className="size-bakin-4 animate-spin motion-reduce:animate-none" /> : <Upload aria-hidden="true" className="size-bakin-4" />}
+        {uploading ? 'Uploading…' : 'Upload new'}
+      </Button>
+      <span className="text-[length:var(--bakin-typography-size-meta)] text-bakin-text-muted">or drag an image here</span>
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(event) => {
+          const file = event.target.files?.[0]
+          if (file) void upload(file)
+          event.target.value = ''
+        }}
+      />
+    </>
+  )
 
   return (
-    <Dialog open={open} onOpenChange={(next) => !uploading && onOpenChange(next)}>
-      <DialogContent className="bg-card border-border sm:max-w-2xl" data-asset-picker>
-        <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-          {description && <DialogDescription>{description}</DialogDescription>}
-        </DialogHeader>
-
-        <div
-          className={cn(
-            'flex items-center gap-2 rounded-lg p-1.5 transition-colors',
-            dragOver ? 'ring-2 ring-foreground/25' : 'ring-1 ring-inset ring-foreground/10',
-          )}
-          {...dropProps}
-        >
-          <Button variant="secondary" size="sm" disabled={uploading} onClick={() => fileRef.current?.click()} data-asset-picker-upload>
-            {uploading ? <Loader2 className="size-3.5 animate-spin" /> : <Upload className="size-3.5" />}
-            {uploading ? 'Uploading...' : 'Upload new'}
-          </Button>
-          <span className="text-xs text-muted-foreground">or drag a file here</span>
-          <Input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search your assets..."
-            className="ml-auto h-8 max-w-56"
-            data-asset-picker-search
-          />
-        </div>
-        <input
-          ref={fileRef}
-          type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={(e) => {
-            const f = e.target.files?.[0]
-            if (f) void upload(f)
-            e.target.value = ''
-          }}
-        />
-        {uploadError && <p className="text-sm text-destructive">{uploadError}</p>}
-
-        <div className="max-h-96 overflow-y-auto" data-asset-picker-grid>
-          {state.status === 'loading' && (
-            <div className="grid grid-cols-4 gap-2 sm:grid-cols-5">
-              {Array.from({ length: 10 }, (_, i) => (
-                <Skeleton key={i} className="aspect-square rounded-lg" />
-              ))}
-            </div>
-          )}
-          {state.status === 'error' && (
-            <ErrorState
-              title="Couldn't load your assets"
-              message="The asset library isn't reachable right now. You can still upload a new file above."
-              retry={() => void load()}
-            />
-          )}
-          {state.status === 'ready' && visible.length === 0 && (
-            <EmptyState
-              icon={ImageIcon}
-              title={query ? 'No assets match your search' : 'No assets yet'}
-              description={query ? 'Try a different word, or upload a new file above.' : 'Upload a file above to get started.'}
-            />
-          )}
-          {state.status === 'ready' && visible.length > 0 && (
-            <ul className="grid grid-cols-4 gap-2 sm:grid-cols-5">
-              {visible.map((a) => (
-                <li key={a.assetId}>
-                  <button
-                    className="group flex w-full flex-col gap-1 rounded-lg p-1 text-left transition-colors hover:bg-foreground/5"
-                    onClick={() => pick(a.assetId)}
-                    data-asset-picker-item={a.assetId}
-                  >
-                    <span className="block aspect-square w-full overflow-hidden rounded-lg bg-background/50 ring-1 ring-foreground/10 transition-shadow group-hover:ring-foreground/25">
-                      {a.hasThumb ? (
-                        <img src={`/api/assets/${a.assetId}/thumb`} alt="" className="size-full object-cover" loading="lazy" />
-                      ) : (
-                        <span className="flex size-full items-center justify-center text-muted-foreground">
-                          <ImageIcon className="size-5" />
-                        </span>
-                      )}
-                    </span>
-                    <span className="truncate text-[11px] text-muted-foreground">{a.description || a.assetId}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </DialogContent>
-    </Dialog>
+    <AssetPickerPresentation
+      variant="dialog"
+      open={open}
+      onOpenChange={onOpenChange}
+      title={title}
+      description={description}
+      collection={collection}
+      query={query}
+      onQueryChange={setQuery}
+      onPick={pick}
+      onRetry={() => void load()}
+      toolbarAction={uploadAction}
+      dropActive={dragOver}
+      dropZoneProps={dropProps}
+      notice={uploadError}
+      busy={uploading}
+    />
   )
 }

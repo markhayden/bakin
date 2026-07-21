@@ -1414,6 +1414,37 @@ reachable delta were explicitly user-approved before the baseline was
 recorded; CSS decreased by 117 bytes and no dependency, entrypoint, or chunk
 was added.
 
+**Status — T35c (2026-07-21):** Complete. The controlled `AssetPicker`,
+provider-grouped `ModelSelect`, stable `DEFAULT_MODEL_VALUE`, and accessible
+`ColorPicker` now publish from `@makinbakin/sdk/patterns`. Asset choice supports
+dialog or inline composition, grid or list presentation, consumer-supplied
+search, thumbnails and actions, disabled choices, and exact loading,
+recoverable-error, initial-empty, and filtered-no-results states. Model and
+color choice preserve associated labels, disabled options, and complete
+keyboard semantics; color paint values reject URL-based SVG sources and retain
+an enabled roving tab stop. Public presentation owns no endpoint, upload,
+catalog, palette, persistence, mutation, store, or URL state. The recent
+routing work remains authoritative. Legacy root modules remain app-aware,
+source-compatible adapters for the Assets endpoints and image upload, the
+established model catalog type, and the historical agent-color palette; no
+official product or Bits composition was migrated. Three public stories cover
+managed-library dialog selection, Bits-driven inline attach/relink composition,
+all async states, grouped and disabled model choices, semantic colors, long
+content, 320 px, 200%-text, reduced motion, and keyboard operation. All 117
+public Storybook interaction/accessibility cases and all 84 Chromium, Firefox,
+and WebKit browser contracts pass without a final-run retry. Forty-one focused
+behavior, architecture, and representative official-consumer tests pass, the
+published SDK package passes all six build/declaration/leak checks, and the
+full UI architecture suite passes all 139 cases. Docs validate across 48 pages
+and the official census remains 299 core-and-Bits entries. Canonical CSS is
+235,950 bytes with one runtime copy; `sdk-patterns` is 1,876 bytes direct /
+463,933 bytes reachable, `sdk-components` is 31,498 bytes direct / 1,228,159
+bytes reachable, and shared SDK chunks total 1,198,238 bytes. The final +114
+direct / +8,413 reachable patterns delta, +6,459 reachable components delta,
+and +8,299 shared delta were explicitly user-approved before the performance
+baseline was recorded; components direct bytes decreased by 1,840, CSS
+decreased by 432 bytes, and no dependency, entrypoint, or chunk was added.
+
 **Acceptance:** each export has one justified entrypoint/owner and an official
 consumer; private host behavior is not accidentally public; stories cover the
 stable public set.

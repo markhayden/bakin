@@ -402,6 +402,19 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 | `AgentSelectProps` | — |
 | `AgentStatusProps` | — |
 | `AgentTeamOption` | — |
+| `AssetPicker` | Controlled asset, model, and color choices without app data ownership. |
+| `ColorPicker` | Controlled asset, model, and color choices without app data ownership. |
+| `DEFAULT_MODEL_VALUE` | Controlled asset, model, and color choices without app data ownership. |
+| `ModelSelect` | Controlled asset, model, and color choices without app data ownership. |
+| `AssetPickerAsset` | — |
+| `AssetPickerCollection` | — |
+| `AssetPickerProps` | — |
+| `AssetPickerVariant` | — |
+| `AssetPickerView` | — |
+| `ColorPickerOption` | — |
+| `ColorPickerProps` | — |
+| `ModelSelectOption` | — |
+| `ModelSelectProps` | — |
 | `ConversationPageBodyProps` | — |
 | `ConversationPageComposerProps` | — |
 | `ConversationPageMode` | — |

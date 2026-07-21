@@ -84,6 +84,20 @@ export type {
   AgentTeamOption,
 } from './agent-patterns'
 
+/** Controlled asset, model, and color choices without app data ownership. */
+export { AssetPicker, ColorPicker, DEFAULT_MODEL_VALUE, ModelSelect } from './picker-patterns'
+export type {
+  AssetPickerAsset,
+  AssetPickerCollection,
+  AssetPickerProps,
+  AssetPickerVariant,
+  AssetPickerView,
+  ColorPickerOption,
+  ColorPickerProps,
+  ModelSelectOption,
+  ModelSelectProps,
+} from './picker-patterns'
+
 export type {
   ConversationPageBodyProps,
   ConversationPageComposerProps,

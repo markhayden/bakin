@@ -62,6 +62,9 @@ const markdownEditorStory = '/iframe.html?id=content-markdown--controlled-editor
 const searchTrustStory = '/iframe.html?id=search-trust-states--availability-and-evidence&viewMode=story'
 const agentIdentityStory = '/iframe.html?id=agents-identity-and-assignment--identity-and-presence&viewMode=story'
 const agentAssignmentStory = '/iframe.html?id=agents-identity-and-assignment--assignment-and-filtering&viewMode=story'
+const assetDialogStory = '/iframe.html?id=choices-asset-model-and-color-pickers--dialog-library&viewMode=story'
+const assetInlineStory = '/iframe.html?id=choices-asset-model-and-color-pickers--inline-attach-relink-and-states&viewMode=story'
+const modelColorStory = '/iframe.html?id=choices-asset-model-and-color-pickers--model-and-color-choices&viewMode=story'
 
 test('public story keeps keyboard, focus, console, and responsive contracts', async ({ page }) => {
   const browserErrors: string[] = []
@@ -1889,6 +1892,81 @@ test('agent identity and assignment preserve exact status, keyboard, and narrow-
   await test.step('200% text remains horizontally contained', async () => {
     await page.setViewportSize({ width: 320, height: 1100 })
     await page.goto(agentIdentityStory, { waitUntil: 'networkidle' })
+    await page.evaluate(() => { document.documentElement.style.fontSize = '200%' })
+    const dimensions = await page.evaluate(() => ({
+      clientWidth: document.documentElement.clientWidth,
+      scrollWidth: document.documentElement.scrollWidth,
+    }))
+    expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth)
+  })
+
+  expect(browserErrors).toEqual([])
+})
+
+test('asset, model, and color pickers preserve controlled state, keyboard, and narrow-width contracts', async ({ page }) => {
+  const browserErrors: string[] = []
+  page.on('console', (message) => {
+    if (message.type() === 'error') browserErrors.push(`console: ${message.text()}`)
+  })
+  page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
+  page.on('requestfailed', (request) => {
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+  })
+
+  for (const story of [assetDialogStory, assetInlineStory, modelColorStory]) {
+    for (const width of responsiveWidths) {
+      await test.step(`${story} remains contained at ${width}px`, async () => {
+        await page.setViewportSize({ width, height: 1100 })
+        await page.goto(story, { waitUntil: 'networkidle' })
+        await expect(page.getByRole('main')).toBeVisible()
+        const dimensions = await page.evaluate(() => ({
+          clientWidth: document.documentElement.clientWidth,
+          scrollWidth: document.documentElement.scrollWidth,
+        }))
+        expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth)
+      })
+    }
+  }
+
+  await test.step('dialog search commits an exact asset id and restores trigger focus', async () => {
+    await page.setViewportSize({ width: 1024, height: 900 })
+    await page.goto(assetDialogStory, { waitUntil: 'networkidle' })
+    const trigger = page.getByRole('button', { name: 'Open asset library' })
+    await trigger.click()
+    const dialog = page.getByRole('dialog', { name: 'Choose campaign artwork' })
+    await expect(dialog).toBeVisible()
+    await dialog.getByRole('searchbox', { name: 'Search assets' }).fill('brief')
+    await dialog.getByRole('button', { name: 'Select Launch brief' }).click()
+    await expect(page.getByRole('status')).toHaveText('Selected asset: brief-1')
+    await expect(dialog).toHaveCount(0)
+    await expect(trigger).toBeFocused()
+  })
+
+  await test.step('inline attach keeps exact empty, loading, and selection state visible', async () => {
+    await page.goto(assetInlineStory, { waitUntil: 'networkidle' })
+    await expect(page.getByText('No assets yet')).toBeVisible()
+    await expect(page.getByText('Loading assets')).toBeVisible()
+    await page.getByRole('button', { name: 'Select Campaign hero' }).click()
+    await expect(page.getByText('Attachment candidate: hero-1', { exact: true })).toBeVisible()
+  })
+
+  await test.step('model and color choices remain keyboard complete and block disabled options', async () => {
+    await page.goto(modelColorStory, { waitUntil: 'networkidle' })
+    const model = page.getByRole('combobox', { name: 'Model' })
+    await model.focus()
+    await page.keyboard.press('Enter')
+    await expect(page.getByRole('option', { name: 'Retired preview' })).toHaveAttribute('aria-disabled', 'true')
+    await page.getByRole('option', { name: 'Acme Fast' }).click()
+    const violet = page.getByRole('radio', { name: 'Violet' })
+    await violet.focus()
+    await page.keyboard.press('ArrowRight')
+    await expect(page.getByRole('radio', { name: 'Teal' })).toHaveAttribute('aria-checked', 'true')
+    await expect(page.getByRole('status')).toHaveText('Model: acme-fast. Color: series-3.')
+  })
+
+  await test.step('200% text remains horizontally contained', async () => {
+    await page.setViewportSize({ width: 320, height: 1100 })
+    await page.goto(modelColorStory, { waitUntil: 'networkidle' })
     await page.evaluate(() => { document.documentElement.style.fontSize = '200%' })
     const dimensions = await page.evaluate(() => ({
       clientWidth: document.documentElement.clientWidth,

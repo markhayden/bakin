@@ -1,0 +1,97 @@
+.bakin-picker-story,
+.bakin-picker-story *,
+.bakin-picker-story *::before,
+.bakin-picker-story *::after {
+  box-sizing: border-box;
+}
+
+.bakin-picker-story {
+  min-height: 100vh;
+  background: var(--bakin-color-canvas-default);
+  color: var(--bakin-color-text-primary);
+}
+
+.bakin-picker-story :where(h1, h2, p) {
+  margin: 0;
+}
+
+.bakin-picker-story__intro {
+  display: grid;
+  min-width: 0;
+  max-width: 54rem;
+  gap: var(--bakin-layout-space-2);
+  overflow-wrap: anywhere;
+}
+
+.bakin-picker-story__intro > p:first-child {
+  color: var(--bakin-color-signal-accent);
+  font-size: var(--bakin-typography-size-meta);
+  font-weight: var(--bakin-typography-weight-semibold);
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.bakin-picker-story__intro h1 {
+  max-width: 21ch;
+  font-size: clamp(2rem, 6vw, var(--bakin-typography-size-page-title));
+  font-weight: var(--bakin-typography-weight-bold);
+  letter-spacing: -.035em;
+  line-height: 1.05;
+  text-wrap: balance;
+}
+
+.bakin-picker-story__intro > p:last-child,
+.bakin-picker-story__surface > p {
+  color: var(--bakin-color-text-muted);
+  line-height: 1.6;
+}
+
+.bakin-picker-story__surface {
+  display: grid;
+  min-width: 0;
+  gap: var(--bakin-layout-space-4);
+  padding: var(--bakin-layout-space-5);
+  border: 1px solid var(--bakin-color-border-subtle);
+  border-radius: var(--bakin-radius-surface);
+  background: var(--bakin-color-surface-default);
+}
+
+.bakin-picker-story__surface h2 {
+  overflow-wrap: anywhere;
+  font-size: var(--bakin-typography-size-section-title);
+  font-weight: var(--bakin-typography-weight-semibold);
+}
+
+.bakin-picker-story__state-grid {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, .8fr);
+  gap: var(--bakin-layout-gap-section);
+  align-items: start;
+}
+
+.bakin-picker-story__state-stack {
+  display: grid;
+  min-width: 0;
+  gap: var(--bakin-layout-gap-section);
+}
+
+.bakin-picker-story__field {
+  display: grid;
+  width: min(100%, 34rem);
+  gap: var(--bakin-layout-space-2);
+}
+
+.bakin-picker-story__field > :first-child {
+  font-weight: var(--bakin-typography-weight-semibold);
+}
+
+@media (max-width: 48rem) {
+  .bakin-picker-story__state-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .bakin-picker-story__surface {
+    padding: var(--bakin-layout-space-4);
+  }
+}
