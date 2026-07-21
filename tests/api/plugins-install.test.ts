@@ -79,7 +79,7 @@ function writeSourceManifest(manifest: Record<string, unknown> = {}) {
       id: 'hello',
       name: 'Hello',
       version: '1.0.0',
-      bakin: '>=1.0.0',
+      bakin: '*',
       description: 'Test plugin',
             permissions: [],
       ...manifest,

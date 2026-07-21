@@ -43,6 +43,12 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
 mock.module('../../src/core/plugin-registry', () => ({
   isCorePlugin: (id: string) => id === 'tasks' || id === 'schedule',
 }))
+// Pin the host to a dev build: the range-gate tests below assert dev-host
+// skip semantics, which release CI would otherwise break — stamp-version
+// runs before `bun test` there, so APP_VERSION is a real rc version.
+mock.module('../../packages/core/src/generated-version', () => ({
+  APP_VERSION: '0.0.0-dev',
+}))
 // Record whether dist/ still exists at the moment the builder runs.
 // (Object property, not a bare `let` — TS would narrow a module-level
 // binding to `undefined` across the awaited call below.)
@@ -254,8 +260,8 @@ describe('validateStagedManifest — bakin range gate (T15/R13)', () => {
   })
 
   it('accepts a release-floor range on a dev host (0.0.0-dev skips satisfaction)', () => {
-    // The repo's unstamped APP_VERSION is 0.0.0-dev — a well-formed range
-    // that no real host could fail on THIS build must pass (dev-host skip).
+    // APP_VERSION is pinned to 0.0.0-dev by the module mock above — a
+    // well-formed range no real host could satisfy must pass (dev-host skip).
     const { stagingDir, body } = stageManifest('future-range', '>=999.0.0')
     const result = validateStagedManifest(body as never, stagingDir, stagingDir)
     expect(result.ok).toBe(true)
