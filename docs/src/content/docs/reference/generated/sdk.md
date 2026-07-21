@@ -229,12 +229,12 @@ import { PluginHeader, FacetFilter, AgentAvatar } from '@makinbakin/sdk/componen
 | `FoldOptions` | — |
 | `Conversation` | — |
 | `ConversationProps` | — |
-| `AgentTurn` | — |
-| `ThinkingIndicator` | — |
-| `CopyButton` | — |
-| `TurnTimestamp` | — |
+| `AgentTurn` | Legacy turn presentation; use `@makinbakin/sdk/conversation` for new consumers. |
+| `ThinkingIndicator` | Legacy turn presentation; use `@makinbakin/sdk/conversation` for new consumers. |
+| `CopyButton` | Legacy turn presentation; use `@makinbakin/sdk/conversation` for new consumers. |
+| `TurnTimestamp` | Legacy turn presentation; use `@makinbakin/sdk/conversation` for new consumers. |
 | `AgentTurnProps` | — |
-| `UserMessage` | — |
+| `UserMessage` | Legacy user-message presentation; use `@makinbakin/sdk/conversation` for new consumers. |
 | `UserMessageProps` | — |
 | `ActivityGroup` | Legacy tool-activity presentation; use `@makinbakin/sdk/conversation` for new consumers. |
 | `ToolCallRow` | Legacy tool-activity presentation; use `@makinbakin/sdk/conversation` for new consumers. |
@@ -483,6 +483,21 @@ Isolated conversation UI and models. Source: `packages/sdk/src/conversation/inde
 | `ToolCallRow` | Collapsible exact tool-activity presentation and compact formatters. |
 | `ActivityGroupProps` | — |
 | `ToolCallRowProps` | — |
+| `AgentTurn` | Agent and user turn presentation with consumer-owned identity and rich text. |
+| `CopyButton` | Agent and user turn presentation with consumer-owned identity and rich text. |
+| `ThinkingIndicator` | Agent and user turn presentation with consumer-owned identity and rich text. |
+| `TurnTimestamp` | Agent and user turn presentation with consumer-owned identity and rich text. |
+| `UserMessage` | Agent and user turn presentation with consumer-owned identity and rich text. |
+| `AgentTurnProps` | — |
+| `ConversationAgent` | — |
+| `ConversationAttachmentRenderer` | — |
+| `ConversationAvatarRenderer` | — |
+| `ConversationTextRenderer` | — |
+| `ConversationTextTransform` | — |
+| `CopyButtonProps` | — |
+| `ThinkingIndicatorProps` | — |
+| `TurnTimestampProps` | — |
+| `UserMessageProps` | — |
 
 ## `@makinbakin/sdk/slots`
 

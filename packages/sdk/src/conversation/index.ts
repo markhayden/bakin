@@ -35,3 +35,24 @@ export {
   ToolCallRow,
 } from '@bakin/ui/conversation'
 export type { ActivityGroupProps, ToolCallRowProps } from '@bakin/ui/conversation'
+
+/** Agent and user turn presentation with consumer-owned identity and rich text. */
+export {
+  AgentTurn,
+  CopyButton,
+  ThinkingIndicator,
+  TurnTimestamp,
+  UserMessage,
+} from '@bakin/ui/conversation'
+export type {
+  AgentTurnProps,
+  ConversationAgent,
+  ConversationAttachmentRenderer,
+  ConversationAvatarRenderer,
+  ConversationTextRenderer,
+  ConversationTextTransform,
+  CopyButtonProps,
+  ThinkingIndicatorProps,
+  TurnTimestampProps,
+  UserMessageProps,
+} from '@bakin/ui/conversation'

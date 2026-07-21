@@ -26,3 +26,25 @@ export {
   ToolCallRow,
 } from './activity-group'
 export type { ActivityGroupProps, ToolCallRowProps } from './activity-group'
+
+export {
+  AgentTurn,
+  ThinkingIndicator,
+} from './agent-turn'
+export type {
+  AgentTurnProps,
+  ConversationAgent,
+  ConversationAvatarRenderer,
+  ConversationTextRenderer,
+  ConversationTextTransform,
+  ThinkingIndicatorProps,
+} from './agent-turn'
+
+export { CopyButton, TurnTimestamp } from './turn-controls'
+export type { CopyButtonProps, TurnTimestampProps } from './turn-controls'
+
+export { UserMessage } from './user-message'
+export type {
+  ConversationAttachmentRenderer,
+  UserMessageProps,
+} from './user-message'

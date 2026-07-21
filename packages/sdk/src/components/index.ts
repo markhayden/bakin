@@ -119,8 +119,10 @@ export type {
 } from '@makinbakin/sdk/conversation'
 export { Conversation } from '@/components/conversation/conversation'
 export type { ConversationProps } from '@/components/conversation/conversation'
+/** Legacy turn presentation; use `@makinbakin/sdk/conversation` for new consumers. */
 export { AgentTurn, ThinkingIndicator, CopyButton, TurnTimestamp } from '@/components/conversation/agent-turn'
 export type { AgentTurnProps } from '@/components/conversation/agent-turn'
+/** Legacy user-message presentation; use `@makinbakin/sdk/conversation` for new consumers. */
 export { UserMessage } from '@/components/conversation/user-message'
 export type { UserMessageProps } from '@/components/conversation/user-message'
 /** Legacy tool-activity presentation; use `@makinbakin/sdk/conversation` for new consumers. */

@@ -972,6 +972,32 @@ export function TurnActivity({ calls }: { calls: ConversationToolCall[] }) {
 
 The consumer owns any exact-detail drawer and receives the original call object through `onOpenCall`; the activity component does not own URL or selection state. Supply presentation-ready summaries. `formatSummary` exists for compatibility adapters that must unwrap an established runtime envelope, not as a general domain-formatting hook. Status remains visible text when color or motion is unavailable, and the disclosure uses native button semantics. New consumers should not import the legacy `@makinbakin/sdk/components` barrel.
 
+## Conversation Turns and Messages
+
+Use `AgentTurn` and `UserMessage` for the two sides of a conversation. Pass a presentation-ready `ConversationAgent` to every agent turn: its name remains visible beside the avatar in complete, streaming, stopped, and failed states. `ThinkingIndicator` provides the same identity-first treatment when a surface needs a standalone live indicator.
+
+```tsx
+import {
+  AgentTurn,
+  UserMessage,
+  type ConversationAgent,
+  type ConversationTurn,
+} from '@makinbakin/sdk/conversation'
+
+export function Turn({ turn, agent }: {
+  turn: ConversationTurn
+  agent: ConversationAgent
+}) {
+  return turn.kind === 'user'
+    ? <UserMessage turn={turn} />
+    : <AgentTurn turn={turn} agent={agent} onRetry={retryLastMessage} />
+}
+```
+
+The focused component does not look up agents or import a Markdown engine. Its default renderer preserves markdown text safely as wrapped text; supply `renderText` when the consumer already owns a supported rich-text renderer. `transformText` runs before that renderer for established domain extraction such as proposals. Use `renderAvatar` and `renderAttachment` only for presentation integrations; callbacks receive the original presentation models.
+
+Image attachments render as lazy images and other MIME types render as named file links instead of broken image thumbnails. Relative timestamps remain visible with the exact local time available as supplemental context. Copy and retry are native buttons, and retry remains a consumer-owned mutation. Streaming, stopped, failure, and error-kind meaning stays textual when motion and color are unavailable.
+
 ## Local Commands
 
 ```sh

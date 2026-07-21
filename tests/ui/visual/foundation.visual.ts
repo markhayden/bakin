@@ -599,3 +599,16 @@ test('public conversation tool activity visual baseline', async ({ page }) => {
     fullPage: true,
   })
 })
+
+test('public conversation turns visual baseline', async ({ page }) => {
+  await page.goto('/iframe.html?id=conversation-turns-and-messages--complete-and-lifecycle-states&viewMode=story')
+  await expect(page.getByRole('heading', { level: 1, name: 'Keep the speaker and state unmistakable' })).toBeVisible()
+  await expect(page.getByRole('article', { name: 'Your message' })).toBeVisible()
+  await expect(page.getByText('Stopped', { exact: true })).toBeVisible()
+  await page.evaluate(async () => document.fonts.ready)
+  await expect(page).toHaveScreenshot('foundation-conversation-turns.png', {
+    animations: 'disabled',
+    caret: 'hide',
+    fullPage: true,
+  })
+})

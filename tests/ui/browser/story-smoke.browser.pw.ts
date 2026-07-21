@@ -49,6 +49,7 @@ const lineChartsStory = '/iframe.html?id=charts-line-bar-and-stacked-charts--lin
 const barChartsStory = '/iframe.html?id=charts-line-bar-and-stacked-charts--bar-charts&viewMode=story'
 const stackedColumnsStory = '/iframe.html?id=charts-line-bar-and-stacked-charts--stacked-columns&viewMode=story'
 const conversationToolActivityStory = '/iframe.html?id=conversation-tool-activity--states-and-disclosure&viewMode=story'
+const conversationTurnsStory = '/iframe.html?id=conversation-turns-and-messages--complete-and-lifecycle-states&viewMode=story'
 
 test('public story keeps keyboard, focus, console, and responsive contracts', async ({ page }) => {
   const browserErrors: string[] = []
@@ -1472,6 +1473,65 @@ test('conversation tool activity preserves disclosure, exact status, motion, and
     await page.goto(conversationToolActivityStory, { waitUntil: 'networkidle' })
     await page.evaluate(() => { document.documentElement.style.fontSize = '200%' })
     await expect(page.getByText('No tool activity')).toBeVisible()
+    const dimensions = await page.evaluate(() => ({
+      clientWidth: document.documentElement.clientWidth,
+      scrollWidth: document.documentElement.scrollWidth,
+    }))
+    expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth)
+  })
+
+  expect(browserErrors).toEqual([])
+})
+
+test('conversation turns preserve identity, lifecycle, attachments, and containment', async ({ page }) => {
+  const browserErrors: string[] = []
+  page.on('console', (message) => {
+    if (message.type() === 'error') browserErrors.push(`console: ${message.text()}`)
+  })
+  page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
+  page.on('requestfailed', (request) => {
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+  })
+
+  for (const width of responsiveWidths) {
+    await test.step(`turns remain document-contained at ${width}px`, async () => {
+      await page.setViewportSize({ width, height: 1100 })
+      await page.goto(conversationTurnsStory, { waitUntil: 'networkidle' })
+      await expect(page.getByRole('heading', { name: 'Keep the speaker and state unmistakable' })).toBeVisible()
+      const dimensions = await page.evaluate(() => ({
+        clientWidth: document.documentElement.clientWidth,
+        scrollWidth: document.documentElement.scrollWidth,
+      }))
+      expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth)
+    })
+  }
+
+  await test.step('identity, attachment type, and lifecycle are explicit', async () => {
+    await page.setViewportSize({ width: 1024, height: 1100 })
+    await page.goto(conversationTurnsStory, { waitUntil: 'networkidle' })
+    await expect(page.getByText('Main operations agent', { exact: true }).first()).toBeVisible()
+    await expect(page.getByRole('img', { name: 'route-map.png' })).toBeVisible()
+    await expect(page.getByRole('link', { name: 'routing-compatibility-appendix.pdf' })).toBeVisible()
+    await expect(page.getByText('Stopped', { exact: true })).toBeVisible()
+    await expect(page.getByText('archive_unavailable')).toBeVisible()
+    const spinner = page.locator('[aria-live="polite"] [aria-hidden="true"]')
+    await expect(spinner).toBeVisible()
+    expect(await spinner.evaluate((element) => getComputedStyle(element).animationName)).toBe('none')
+  })
+
+  await test.step('retry remains keyboard owned by the consumer', async () => {
+    const retry = page.getByRole('button', { name: 'Try again' })
+    await retry.focus()
+    await expect(retry).toBeFocused()
+    await retry.press('Enter')
+    await expect(page.getByRole('status')).toHaveText('Retry requested')
+  })
+
+  await test.step('200% text remains document-contained', async () => {
+    await page.setViewportSize({ width: 320, height: 1100 })
+    await page.goto(conversationTurnsStory, { waitUntil: 'networkidle' })
+    await page.evaluate(() => { document.documentElement.style.fontSize = '200%' })
+    await expect(page.getByText('archive_unavailable')).toBeVisible()
     const dimensions = await page.evaluate(() => ({
       clientWidth: document.documentElement.clientWidth,
       scrollWidth: document.documentElement.scrollWidth,

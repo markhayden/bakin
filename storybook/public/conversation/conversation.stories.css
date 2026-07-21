@@ -51,6 +51,16 @@
   line-height: 1.6;
 }
 
+.bakin-conversation-story__transcript {
+  display: grid;
+  min-width: 0;
+  gap: var(--bakin-layout-space-5);
+  padding: var(--bakin-layout-space-4);
+  border: 1px solid var(--bakin-color-border-subtle);
+  border-radius: var(--bakin-radius-surface);
+  background: color-mix(in srgb, var(--bakin-color-surface-default) 35%, transparent);
+}
+
 .bakin-conversation-story__section {
   padding-top: var(--bakin-layout-space-4);
   border-top: 1px solid var(--bakin-color-border-subtle);

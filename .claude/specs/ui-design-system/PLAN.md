@@ -1317,6 +1317,24 @@ entrypoint is 398 bytes direct / 38,467 bytes reachable, canonical CSS is
 299,090 bytes with one runtime copy, the legacy components entry falls to
 401,851 direct bytes, and the legacy-style ledger drops from 214 to 213 paths.
 
+**Status — T34b turn slice (2026-07-20):** In progress. `AgentTurn`,
+`UserMessage`, `ThinkingIndicator`, `TurnTimestamp`, and `CopyButton` now publish
+from the focused conversation entrypoint. Their public contract accepts
+presentation-ready agent identity plus explicit rich-text, avatar, and
+attachment render hooks; it does not import the host agent store, Markdown
+engine, or core structured formatter. Legacy adapters retain those established
+integrations and the existing JSON-reply treatment. The public story covers
+complete exchanges, image and file attachments, long content, streaming,
+stopped, failed, retry, reduced motion, mobile, and 200%-text behavior.
+Timeline and empty-state rendering remain in the final T34b slice. All 102
+public story interaction/axe cases and 86 canonical desktop/mobile visual
+cases pass, together with all 22 canonical Chromium behavior scenarios. The
+focused browser contract passes at all supported widths and at 200% text. The
+focused conversation entrypoint is 594 bytes direct / 73,679
+bytes reachable, canonical CSS is 298,974 bytes with one runtime copy, the
+legacy components entry falls to 398,796 direct bytes, and the legacy-style
+ledger drops from 213 to 212 paths.
+
 **Acceptance:** base UI does not include conversation code; streamed, thinking,
 tool, error, attachment, empty, long-content, and reduced-motion states pass;
 behavior/folding contracts remain unchanged.
