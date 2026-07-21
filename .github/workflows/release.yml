@@ -143,8 +143,13 @@ jobs:
       - name: Typecheck
         run: bun run typecheck
 
+      # Identical invocation to PR CI: same parallelism means the same file
+      # partitioning and execution order, so a suite that's green on the PR
+      # can't fail here from ordering-dependent leaks (rc.21 attempt 2: a TZ
+      # env leak only surfaced under this job's previously-serial run). Also
+      # ~7 min faster (#634).
       - name: Test
-        run: bun test --isolate
+        run: bun test --parallel --isolate --timeout 15000
 
       - name: Build CSS
         run: bun run build:css
