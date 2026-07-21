@@ -2,7 +2,7 @@
 
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import '../../rtl-settle'
+import { settleReact } from '../../rtl-settle'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
@@ -104,6 +104,11 @@ describe('workflow action components', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: /^delete$/i }))
 
     expect(onDelete).toHaveBeenCalled()
+    // Drain the scheduler before polling: the close re-render resumes via
+    // the scheduler's MessageChannel, which waitFor's timers can't join —
+    // under CI worker contention this wedged past the 15s harness timeout
+    // (rc.21 release attempt 3).
+    await settleReact()
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
   })
 
@@ -121,6 +126,7 @@ describe('workflow action components', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: /^delete$/i }))
 
     expect(onDelete).toHaveBeenCalled()
+    await settleReact()
     await waitFor(() => expect(screen.getByRole('dialog')).toBeDefined())
   })
 })
