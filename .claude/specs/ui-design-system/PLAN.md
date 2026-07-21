@@ -1490,6 +1490,27 @@ turn output.\
 comparisons, and official representative consumers; update the spec if any
 public API changed during implementation.
 
+**Status (2026-07-21):** Complete. A TypeScript-resolved, schema-validated
+inventory now freezes seven public visual entrypoints: six supported
+prerelease focused paths and the migration-only components barrel. It records
+311 runtime values and 378 types, rejects unreviewed entrypoint or symbol
+changes, rejects new legacy-barrel exports, and requires every focused value
+and type to have exactly one owner. The inventory also records the existing
+`@makinbakin/sdk/routing` and query-state work as authoritative, the one
+published `@makinbakin/sdk/styles.css` artifact, and `@bakin/ui` as private
+implementation. Source-graph checks keep routine UI out of chart and
+conversation code and keep those two opt-in domains out of each other. The
+published SDK package, integration reference plugin, and example reference
+plugin pass all 18 build, declaration, and private-leak checks; 134
+representative official-consumer and contract tests, all 148 architecture
+tests, and the deterministic public Storybook build pass. The production
+vendor audit exposed ReactDOM bundled inside an SDK shared chunk while the host
+also provided it; `react-dom` is now external to the split SDK build, and the
+vendor contract proves one React/ReactDOM runtime, one Base UI implementation,
+stable focused entry files, shared chunks, and no emitted CSS. No dependency,
+public entrypoint, or vendor chunk was added, and no official core or Bits page
+composition was migrated.
+
 **Acceptance:** public API inventory is reviewed; legacy barrel is frozen and
 fails on new exports; charts/conversation remain isolated; no duplicate React,
 Base UI, SDK, or stylesheet runtime exists.

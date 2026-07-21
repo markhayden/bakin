@@ -60,6 +60,7 @@ describe('reusable UI workflow', () => {
 
     for (const command of [
       'ui:tokens:check',
+      'ui:public-api:check',
       'ui:build:public:verify',
       'ui:test:stories',
       'ui:test:visual',

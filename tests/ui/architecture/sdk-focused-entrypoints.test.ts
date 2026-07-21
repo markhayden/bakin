@@ -5,7 +5,11 @@ import { join, resolve } from 'node:path'
 import { SDK_EXPORTS } from '../../../scripts/build-sdk-package'
 import { SDK_VENDOR_TARGETS } from '../../../scripts/build-vendors'
 import { SDK_SUBPATHS } from '../../../src/core/whiskit/build'
-import { SDK_EXTERNALS } from '../../../src/core/whiskit/externals'
+import {
+  PLUGIN_CLIENT_EXTERNALS,
+  REACT_EXTERNALS,
+  SDK_EXTERNALS,
+} from '../../../src/core/whiskit/externals'
 
 const REPO_ROOT = resolve(import.meta.dir, '../../..')
 const FOCUSED_SUBPATHS = ['ui', 'layout', 'patterns', 'charts', 'conversation', 'content'] as const
@@ -61,5 +65,25 @@ describe('focused public SDK entrypoint contract', () => {
     expect(SDK_EXTERNALS).toContain('@makinbakin/sdk/components')
     expect(importMap['@makinbakin/sdk/components']).toBe('/vendor/sdk-components.js')
     expect(FOCUSED_SUBPATHS).not.toContain('components' as never)
+  })
+
+  it('keeps React, SDK modules, and the canonical stylesheet single at host runtime', () => {
+    const html = readFileSync(join(REPO_ROOT, 'packages/host/public/index.html'), 'utf8')
+    const sdk = readJson('packages/sdk/package.json')
+    const ui = readJson('packages/ui/package.json')
+    const importMap = browserImportMap()
+
+    expect(PLUGIN_CLIENT_EXTERNALS).toEqual([...REACT_EXTERNALS, ...SDK_EXTERNALS])
+    expect(new Set(PLUGIN_CLIENT_EXTERNALS).size).toBe(PLUGIN_CLIENT_EXTERNALS.length)
+    expect(importMap['react-dom']).toBe('/vendor/react-dom.js')
+    expect(importMap['react-dom/client']).toBe('/vendor/react-dom.js')
+    expect(sdk.peerDependencies).toMatchObject({ react: '^19.0.0', 'react-dom': '^19.0.0' })
+    expect(sdk.dependencies?.react).toBeUndefined()
+    expect(sdk.dependencies?.['react-dom']).toBeUndefined()
+    expect(ui.peerDependencies).toMatchObject({ react: '^19.0.0', 'react-dom': '^19.0.0' })
+    expect(ui.dependencies?.react).toBeUndefined()
+    expect(ui.dependencies?.['react-dom']).toBeUndefined()
+    expect(html.match(/<link rel="stylesheet" href="\/globals\.css"/g)).toHaveLength(1)
+    expect(Object.keys(importMap).filter((specifier) => specifier.endsWith('.css'))).toEqual([])
   })
 })

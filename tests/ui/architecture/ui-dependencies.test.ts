@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path'
 
 import {
   diffUiPerformance,
+  findCrossDomainSdkDependencies,
   findDuplicateDesignSystemCss,
   findForbiddenBaseUiDependencies,
   findForbiddenFocusedSdkDependencies,
@@ -106,6 +107,25 @@ describe('base UI dependency direction', () => {
       'packages/sdk/src/layout/index.ts -> packages/sdk/src/charts/index.ts',
       'packages/sdk/src/patterns/index.ts -> packages/ui/src/conversation/index.ts',
     ])
+  })
+
+  it('keeps chart and conversation entrypoints out of each other\'s dependency graph', () => {
+    const root = fixtureRoot()
+    writeFixture(root, 'packages/sdk/src/charts/index.ts', "export * from '@bakin/ui/charts'\n")
+    writeFixture(root, 'packages/ui/src/charts/index.ts', "export * from '../conversation/private-turn'\n")
+    writeFixture(root, 'packages/ui/src/conversation/private-turn.ts', 'export const turn = 1\n')
+    writeFixture(root, 'packages/sdk/src/conversation/index.ts', "export * from '@bakin/ui/conversation'\n")
+    writeFixture(root, 'packages/ui/src/conversation/index.ts', "export * from '../charts/private-chart'\n")
+    writeFixture(root, 'packages/ui/src/charts/private-chart.ts', 'export const chart = 1\n')
+
+    expect(findCrossDomainSdkDependencies(root)).toEqual([
+      'packages/sdk/src/charts/index.ts -> packages/ui/src/charts/index.ts -> packages/ui/src/conversation/private-turn.ts',
+      'packages/sdk/src/conversation/index.ts -> packages/ui/src/conversation/index.ts -> packages/ui/src/charts/private-chart.ts',
+    ])
+
+    writeFixture(root, 'packages/ui/src/charts/index.ts', 'export const chart = 1\n')
+    writeFixture(root, 'packages/ui/src/conversation/index.ts', 'export const turn = 1\n')
+    expect(findCrossDomainSdkDependencies(root)).toEqual([])
   })
 })
 

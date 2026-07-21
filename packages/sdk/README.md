@@ -115,6 +115,12 @@ Use the focused visual entrypoints for new plugin UI. Existing
 `@makinbakin/sdk/components` consumers migrate as their replacement exports
 land; do not add new dependencies on that legacy barrel.
 
+The prerelease migration surface is machine-inventoried in
+[`design-system/public-api.json`](https://github.com/markhayden/bakin/blob/main/design-system/public-api.json).
+Any value or type addition, removal, or entrypoint ownership change requires an
+explicit inventory review. The legacy components symbol set is frozen: it may
+shrink during migration but must not receive new exports.
+
 Action and status UI starts with `Button`, `Badge`, `Alert`, and `Progress`.
 Choose their semantic `variant`, `tone`, and `size` props instead of recreating
 colors or dimensions in plugin CSS. The `buttonVariants` and `badgeVariants`

@@ -69,8 +69,11 @@ contracts change.
 
 - React 19, Tailwind CSS 4, Base UI, shadcn-derived primitives, CVA, and CSS
   custom properties.
-- `@makinbakin/sdk/ui` exposes base primitives.
-- `@makinbakin/sdk/components` exposes Bakin-specific compound patterns.
+- `@makinbakin/sdk/ui`, `/layout`, `/patterns`, `/charts`, `/conversation`,
+  and `/content` are the supported focused browser UI surfaces.
+- `@makinbakin/sdk/components` is a frozen, migration-only compatibility
+  barrel; new consumers use the focused entrypoints and its exact symbol set
+  is ratcheted in `design-system/public-api.json`.
 - `.claude/knowledge/style-guide.md` contains a preliminary system and a
   first migration census.
 - `.claude/knowledge/design-system.md`, `shared-ui-patterns.md`,
@@ -219,11 +222,12 @@ contracts change.
 18. **Focused SDK entrypoints:** Replace the overloaded public
     `@makinbakin/sdk/components` barrel with focused subpaths whose dependency
     directions and stability can be understood independently. Expected
-    categories include base UI, layout, reusable application patterns,
-    charts/data visualization, and conversation UI; the final names and
-    membership come from the full component census. Remove the legacy barrel
-    after owned consumers migrate instead of preserving a compatibility
-    re-export.
+    categories are base UI, layout, reusable application patterns,
+    charts/data visualization, conversation UI, and opt-in rich content. The
+    exact reviewed names and membership live in
+    `design-system/public-api.json`. Remove the frozen legacy barrel after
+    owned consumers migrate instead of preserving a permanent compatibility
+    tier.
 19. **Published stylesheet:** Publish the exact compiled design-system CSS as
     an explicit SDK artifact such as `@makinbakin/sdk/styles.css`. The Bakin
     host loads one runtime copy; public Storybook, plugin-starter development,

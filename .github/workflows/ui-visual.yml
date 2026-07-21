@@ -42,6 +42,9 @@ jobs:
       - name: Verify design tokens
         run: bun run ui:tokens:check
 
+      - name: Verify focused SDK public API freeze
+        run: bun run ui:public-api:check
+
       - name: Verify deterministic public catalog
         run: bun run ui:build:public:verify
 

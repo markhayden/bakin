@@ -139,7 +139,11 @@ function forbiddenUiDomain(path: string): boolean {
     || /\/packages\/sdk\/src\/(?:charts|conversation)\//.test(normalized)
 }
 
-function findForbiddenDependenciesFrom(root: string, entryPath: string): string[] {
+function findForbiddenDependenciesFrom(
+  root: string,
+  entryPath: string,
+  forbidden: (path: string) => boolean = forbiddenUiDomain,
+): string[] {
   const entry = join(root, entryPath)
   if (!existsSync(entry)) return [`missing base UI entrypoint: ${entryPath}`]
   const findings = new Set<string>()
@@ -150,7 +154,7 @@ function findForbiddenDependenciesFrom(root: string, entryPath: string): string[
       if (!imported) continue
       const importedPath = portablePath(root, imported)
       const nextChain = [...chain, importedPath]
-      if (forbiddenUiDomain(imported)) {
+      if (forbidden(imported)) {
         findings.add(nextChain.join(' -> '))
         continue
       }
@@ -173,6 +177,29 @@ export function findForbiddenFocusedSdkDependencies(root: string): string[] {
   return ['ui', 'layout', 'patterns']
     .flatMap((subpath) => findForbiddenDependenciesFrom(root, `packages/sdk/src/${subpath}/index.ts`))
     .sort()
+}
+
+function belongsToUiDomain(path: string, domain: 'charts' | 'conversation'): boolean {
+  const normalized = path.split('\\').join('/')
+  return normalized.includes(`/packages/ui/src/${domain}/`)
+    || normalized.includes(`/packages/sdk/src/${domain}/`)
+    || normalized.includes(`/src/components/${domain}/`)
+}
+
+/** Keep the two opt-in heavy UI domains out of each other's source graph. */
+export function findCrossDomainSdkDependencies(root: string): string[] {
+  return [
+    ...findForbiddenDependenciesFrom(
+      root,
+      'packages/sdk/src/charts/index.ts',
+      (path) => belongsToUiDomain(path, 'conversation'),
+    ),
+    ...findForbiddenDependenciesFrom(
+      root,
+      'packages/sdk/src/conversation/index.ts',
+      (path) => belongsToUiDomain(path, 'charts'),
+    ),
+  ].sort()
 }
 
 function normalizedCss(source: string): string {
@@ -505,6 +532,8 @@ export function printUiPerformance(snapshot: UiPerformanceSnapshot): void {
 async function generate(): Promise<void> {
   const dependencies = findForbiddenFocusedSdkDependencies(REPO_ROOT)
   if (dependencies.length > 0) throw new Error(`Focused base UI reaches forbidden heavy domains:\n- ${dependencies.join('\n- ')}`)
+  const crossDomainDependencies = findCrossDomainSdkDependencies(REPO_ROOT)
+  if (crossDomainDependencies.length > 0) throw new Error(`Focused heavy UI domains reach each other:\n- ${crossDomainDependencies.join('\n- ')}`)
   const snapshot = await collectUiPerformanceSnapshot()
   const errors = validateUiPerformanceSnapshot(snapshot)
   if (errors.length > 0) throw new Error(`Invalid generated UI performance baseline:\n- ${errors.join('\n- ')}`)
@@ -518,10 +547,12 @@ async function check(): Promise<void> {
   }
   const baseline = JSON.parse(readFileSync(PERFORMANCE_PATH, 'utf-8')) as UiPerformanceSnapshot
   const dependencies = findForbiddenFocusedSdkDependencies(REPO_ROOT)
+  const crossDomainDependencies = findCrossDomainSdkDependencies(REPO_ROOT)
   const actual = await collectUiPerformanceSnapshot()
   const errors = [
     ...validateUiPerformanceSnapshot(baseline),
     ...dependencies.map((chain) => `focused base UI reaches forbidden heavy domain: ${chain}`),
+    ...crossDomainDependencies.map((chain) => `focused heavy UI domains reach each other: ${chain}`),
     ...diffUiPerformance(baseline, actual),
   ]
   if (errors.length > 0) throw new Error(`UI performance ratchet failed:\n- ${errors.join('\n- ')}`)
