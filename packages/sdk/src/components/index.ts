@@ -136,6 +136,23 @@ export type {
   ConversationThreadLoad,
   ConversationThreadOptions,
 } from '@/components/conversation/use-conversation-thread'
+export {
+  attentionForDone,
+  badgeFor,
+  visibleIdFromLocation,
+  withUnreadPrefix,
+} from '@/components/conversation/attention'
+export type {
+  AttentionActions,
+  ConversationAttentionContext,
+  ConversationDonePayload,
+} from '@/components/conversation/attention'
+export { playReplyChime } from '@/components/conversation/notification-sound'
+export { useConversationAttention } from '@/components/conversation/use-conversation-attention'
+export type {
+  ConversationAttentionConfig,
+  ConversationAttentionTotals,
+} from '@/components/conversation/use-conversation-attention'
 export { readConversationSseStream } from '@/components/conversation/sse'
 export type { ConversationSseHandlers } from '@/components/conversation/sse'
 export { ConversationEmptyState } from '@/components/conversation/conversation-empty-state'
