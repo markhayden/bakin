@@ -3,22 +3,16 @@
  * host's `nav-badge-providers` slot (outside the router), so it runs on
  * every page: it keeps the Chat nav badge (unread count / working dot),
  * the `(N)` tab-title prefix, and fires toast + chime + OS notification
- * when a reply lands while the user is elsewhere (rules in attention.ts).
+ * when a reply lands while the user is elsewhere. The mechanics live in
+ * the kit's useConversationAttention (#703); chat supplies its wiring —
+ * totals from GET /chats, the reply toast, plugin-settings toggles.
  */
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { AgentAvatar } from '@makinbakin/sdk/components'
-import { useAgent, useNavBadge, usePluginEvent, useRouter, toast, useToastStore } from '@makinbakin/sdk/hooks'
+import { useEffect, useRef } from 'react'
+import { AgentAvatar, useConversationAttention } from '@makinbakin/sdk/components'
+import { useAgent, useRouter } from '@makinbakin/sdk/hooks'
 import { pluginFetch } from '@makinbakin/sdk/utils'
 
-import { sendBrowserNotification } from '../../../src/lib/browser-notify'
-import {
-  attentionForDone,
-  badgeFor,
-  visibleChatIdFromLocation,
-  withUnreadPrefix,
-  type ChatDonePayload,
-} from './attention'
-import { playReplyChime } from './notification-sound'
+import { visibleChatIdFromLocation } from './attention'
 import type { ChatSummaryDto } from './use-chat-data'
 
 interface ChatAttentionSettings {
@@ -51,25 +45,9 @@ function ReplyToast({ chatId, agentId, preview, onNavigate }: { chatId: string; 
 }
 
 export function ChatBadgeProvider() {
-  const [unreadTotal, setUnreadTotal] = useState(0)
-  const [inflight, setInflight] = useState<ReadonlySet<string>>(new Set())
   const settingsRef = useRef<ChatAttentionSettings>(DEFAULT_ATTENTION_SETTINGS)
-  const baseTitleRef = useRef<string | null>(null)
-
-  const refreshUnread = useCallback(async () => {
-    try {
-      const res = await pluginFetch('chat', 'chats')
-      if (!res.ok) return
-      const { chats } = (await res.json()) as { chats: ChatSummaryDto[] }
-      setUnreadTotal(chats.reduce((acc, c) => acc + (c.unreadCount ?? 0), 0))
-      setInflight(new Set(chats.filter((c) => c.streaming).map((c) => c.id)))
-    } catch {
-      // Server hiccups never break the shell; the next event refreshes.
-    }
-  }, [])
 
   useEffect(() => {
-    void refreshUnread()
     void fetch('/api/plugin-settings/chat')
       .then(async (res) => {
         if (!res.ok) return
@@ -77,72 +55,43 @@ export function ChatBadgeProvider() {
         settingsRef.current = { ...DEFAULT_ATTENTION_SETTINGS, ...values }
       })
       .catch(() => {})
-  }, [refreshUnread])
+  }, [])
 
-  usePluginEvent('chat.chunk', (payload) => {
-    const id = payload.chatId as string
-    setInflight((prev) => (prev.has(id) ? prev : new Set(prev).add(id)))
+  useConversationAttention({
+    pluginId: 'chat',
+    navItemId: 'chat',
+    events: {
+      chunk: 'chat.chunk',
+      done: 'chat.done',
+      error: 'chat.error',
+      // chat.titled bumps list titles; chat.seen fires after a seen write
+      // lands (view opened / reply seen in place) — the authoritative
+      // moment to drop the unread count.
+      refresh: ['chat.titled', 'chat.seen'],
+    },
+    keyOf: (payload) => String(payload.chatId ?? ''),
+    visibleKey: () => visibleChatIdFromLocation(window.location.pathname),
+    refreshTotals: async () => {
+      const res = await pluginFetch('chat', 'chats')
+      if (!res.ok) return null
+      const { chats } = (await res.json()) as { chats: ChatSummaryDto[] }
+      return {
+        unreadTotal: chats.reduce((acc, c) => acc + (c.unreadCount ?? 0), 0),
+        inflightKeys: chats.filter((c) => c.streaming).map((c) => c.id),
+      }
+    },
+    settings: () => settingsRef.current,
+    renderToast: (done, dismiss) => (
+      <ReplyToast chatId={done.key} agentId={done.agentId} preview={done.preview} onNavigate={dismiss} />
+    ),
+    osNotification: (done) => ({
+      title: `${done.agentId} replied`,
+      body: done.preview ?? '',
+      href: `/chat/${encodeURIComponent(done.key)}`,
+    }),
+    errorToast: (payload) => `Chat reply failed: ${String(payload.message ?? 'unknown error')}`,
+    titlePrefix: true,
   })
-
-  usePluginEvent('chat.done', (payload) => {
-    const done = payload as unknown as ChatDonePayload
-    setInflight((prev) => {
-      const next = new Set(prev)
-      next.delete(done.chatId)
-      return next
-    })
-    const actions = attentionForDone(done, {
-      visibleChatId: visibleChatIdFromLocation(window.location.pathname),
-      settings: settingsRef.current,
-    })
-    if (actions.toast) {
-      // The closure reads `id` only on click, after toast() has returned it —
-      // navigating in-app dismisses the toast instead of leaving it to expire.
-      const id: string = toast(
-        <ReplyToast
-          chatId={done.chatId}
-          agentId={done.agentId}
-          preview={done.preview}
-          onNavigate={() => useToastStore.getState().dismiss(id)}
-        />,
-        'info',
-      )
-    }
-    if (actions.sound) playReplyChime()
-    if (actions.browserNotification && done.preview) {
-      // browser-notify self-suppresses while the tab is focused.
-      sendBrowserNotification(`${done.agentId} replied`, done.preview, `/chat/${encodeURIComponent(done.chatId)}`)
-    }
-    void refreshUnread()
-  })
-
-  usePluginEvent('chat.error', (payload) => {
-    const id = payload.chatId as string
-    setInflight((prev) => {
-      const next = new Set(prev)
-      next.delete(id)
-      return next
-    })
-    const visible = visibleChatIdFromLocation(window.location.pathname)
-    if (visible !== id && settingsRef.current.toasts) {
-      toast(`Chat reply failed: ${String(payload.message ?? 'unknown error')}`, 'error')
-    }
-    void refreshUnread()
-  })
-
-  usePluginEvent('chat.titled', () => { void refreshUnread() })
-  // Fires after a seen write lands (view opened / reply seen in place) —
-  // the authoritative moment to drop the unread count.
-  usePluginEvent('chat.seen', () => { void refreshUnread() })
-
-  // Nav badge: unread count (attention) or a working dot (info).
-  useNavBadge('chat', 'chat', badgeFor(unreadTotal, inflight.size))
-
-  // `(N)` tab-title prefix.
-  useEffect(() => {
-    baseTitleRef.current ??= document.title
-    document.title = withUnreadPrefix(baseTitleRef.current, unreadTotal)
-  }, [unreadTotal])
 
   return null
 }
