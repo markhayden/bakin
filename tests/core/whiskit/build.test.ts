@@ -88,13 +88,14 @@ describe('resolveSdkEntrypoints', () => {
     expect(sdk.entrypoints['@makinbakin/sdk/patterns']).toContain('patterns/index.ts')
     expect(sdk.entrypoints['@makinbakin/sdk/charts']).toContain('charts/index.ts')
     expect(sdk.entrypoints['@makinbakin/sdk/conversation']).toContain('conversation/index.ts')
+    expect(sdk.entrypoints['@makinbakin/sdk/content']).toContain('content/index.ts')
   })
 
   it('honors BAKIN_SDK_PATH and rejects incomplete roots', () => {
     const fake = freshDir('fakesdk')
     // Complete fake package layout
     writeFileSync(join(fake, 'index.js'), 'export const x = 1\n')
-    for (const sub of ['ui', 'layout', 'patterns', 'charts', 'conversation', 'hooks', 'components', 'slots', 'types', 'utils', 'metadata', 'routing']) {
+    for (const sub of ['ui', 'layout', 'patterns', 'charts', 'conversation', 'content', 'hooks', 'components', 'slots', 'types', 'utils', 'metadata', 'routing']) {
       mkdirSync(join(fake, sub), { recursive: true })
       writeFileSync(join(fake, sub, 'index.js'), 'export const x = 1\n')
     }

@@ -17,6 +17,7 @@ description: Use @makinbakin/sdk to build plugins with supported registration, r
 | `@makinbakin/sdk/patterns` | reusable application-aware UI patterns |
 | `@makinbakin/sdk/charts` | isolated data-visualization components |
 | `@makinbakin/sdk/conversation` | isolated conversation UI and models |
+| `@makinbakin/sdk/content` | opt-in rich content rendering and editing |
 | `@makinbakin/sdk/hooks` | shared React hooks |
 | `@makinbakin/sdk/components` | migration-only legacy component barrel |
 | `@makinbakin/sdk/slots` | slot registry and `<Slot>` primitive |

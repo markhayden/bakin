@@ -33,6 +33,7 @@
       "@makinbakin/sdk/patterns": ["./packages/sdk/src/patterns/index.ts"],
       "@makinbakin/sdk/charts": ["./packages/sdk/src/charts/index.ts"],
       "@makinbakin/sdk/conversation": ["./packages/sdk/src/conversation/index.ts"],
+      "@makinbakin/sdk/content": ["./packages/sdk/src/content/index.ts"],
       "@makinbakin/sdk/hooks": ["./packages/sdk/src/hooks/index.ts"],
       "@makinbakin/sdk/components": ["./packages/sdk/src/components/index.ts"],
       "@makinbakin/sdk/slots": ["./packages/sdk/src/slots/index.tsx"],

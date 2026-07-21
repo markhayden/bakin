@@ -4,7 +4,7 @@
  * The main entry re-exports types + the single-call `registerPlugin` helper
  * so plugin authors can write `import { registerPlugin } from '@makinbakin/sdk'`
  * without having to remember which sub-path it lives at. UI primitives,
- * layout, patterns, charts, conversation UI, hooks, and slots stay on focused
+ * layout, patterns, charts, conversation UI, rich content, hooks, and slots stay on focused
  * sub-paths to keep the top-level namespace from exploding. `/components` is
  * migration-only and receives no new public API.
  *
@@ -17,6 +17,7 @@
  *   - `@makinbakin/sdk/patterns`   — reusable application-aware UI patterns
  *   - `@makinbakin/sdk/charts`     — isolated data visualization
  *   - `@makinbakin/sdk/conversation` — isolated conversation UI and models
+ *   - `@makinbakin/sdk/content`    — opt-in rich content rendering and editing
  *   - `@makinbakin/sdk/hooks`      — React hooks (useAgent, useSSE, useSearch, ...)
  *   - `@makinbakin/sdk/components` — migration-only legacy component barrel
  *   - `@makinbakin/sdk/slots`      — Slot + registerSlot primitive

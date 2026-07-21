@@ -57,6 +57,9 @@ const conversationComposerStatesStory = '/iframe.html?id=conversation-composer-a
 const conversationProductPanelStory = '/iframe.html?id=conversation-panel-and-tool-detail--product-panel&viewMode=story'
 const conversationReadOnlyPanelStory = '/iframe.html?id=conversation-panel-and-tool-detail--read-only-states&viewMode=story'
 const conversationToolDetailStory = '/iframe.html?id=conversation-panel-and-tool-detail--exact-tool-detail&viewMode=story'
+const markdownReadingStory = '/iframe.html?id=content-markdown--reading-and-code&viewMode=story'
+const markdownEditorStory = '/iframe.html?id=content-markdown--controlled-editor&viewMode=story'
+const searchTrustStory = '/iframe.html?id=search-trust-states--availability-and-evidence&viewMode=story'
 
 test('public story keeps keyboard, focus, console, and responsive contracts', async ({ page }) => {
   const browserErrors: string[] = []
@@ -1764,6 +1767,72 @@ test('conversation panel preserves bounded history, resize, read-only, and exact
     await expect(page.getByText('This conversation is read-only.')).toBeVisible()
     await expect(page.getByText(/Archived after release/)).toBeVisible()
     await expect(page.getByRole('textbox')).toHaveCount(0)
+  })
+
+  expect(browserErrors).toEqual([])
+})
+
+test('markdown and search patterns preserve overflow, keyboard, and trust contracts', async ({ page }) => {
+  const browserErrors: string[] = []
+  page.on('console', (message) => {
+    if (message.type() === 'error') browserErrors.push(`console: ${message.text()}`)
+  })
+  page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
+  page.on('requestfailed', (request) => {
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+  })
+
+  for (const story of [markdownReadingStory, markdownEditorStory, searchTrustStory]) {
+    for (const width of responsiveWidths) {
+      await test.step(`${story} remains contained at ${width}px`, async () => {
+        await page.setViewportSize({ width, height: 1100 })
+        await page.goto(story, { waitUntil: 'networkidle' })
+        const dimensions = await page.evaluate(() => ({
+          clientWidth: document.documentElement.clientWidth,
+          scrollWidth: document.documentElement.scrollWidth,
+        }))
+        expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth)
+      })
+    }
+  }
+
+  await test.step('wide Markdown evidence owns its internal horizontal overflow', async () => {
+    await page.setViewportSize({ width: 320, height: 1100 })
+    await page.goto(markdownReadingStory, { waitUntil: 'networkidle' })
+    const tableRegion = page.locator('[data-md-table]')
+    await expect(tableRegion).toBeVisible()
+    expect(await tableRegion.evaluate((element) => getComputedStyle(element).overflowX)).toBe('auto')
+  })
+
+  await test.step('editor mode is host-controlled and remains keyboard operable', async () => {
+    await page.setViewportSize({ width: 1024, height: 900 })
+    await page.goto(markdownEditorStory, { waitUntil: 'networkidle' })
+    const preview = page.getByRole('tab', { name: 'Preview' })
+    await preview.focus()
+    await page.keyboard.press('Enter')
+    await expect(page.getByRole('region', { name: 'Release handoff content preview' })).toBeVisible()
+    await expect(page.getByRole('checkbox', { name: 'Completed checklist item' })).toBeDisabled()
+  })
+
+  await test.step('partial search disclosure names exact sources from keyboard focus', async () => {
+    await page.goto(searchTrustStory, { waitUntil: 'networkidle' })
+    const partial = page.getByRole('button', { name: /Partial results/ })
+    await partial.focus()
+    await expect(page.getByRole('tooltip')).toContainText('assets: keyword-only (230ms)')
+    await expect(page.getByRole('tooltip')).toContainText('memory: no answer in time (500ms)')
+    await expect(page.getByRole('alert')).toContainText('Browsing and filters still work')
+    await expect(page.getByRole('note', { name: 'Search relevance details' })).toContainText('matched: title, caption')
+  })
+
+  await test.step('200% text remains horizontally contained', async () => {
+    await page.setViewportSize({ width: 320, height: 1100 })
+    await page.goto(markdownReadingStory, { waitUntil: 'networkidle' })
+    await page.evaluate(() => { document.documentElement.style.fontSize = '200%' })
+    const dimensions = await page.evaluate(() => ({
+      clientWidth: document.documentElement.clientWidth,
+      scrollWidth: document.documentElement.scrollWidth,
+    }))
+    expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth)
   })
 
   expect(browserErrors).toEqual([])

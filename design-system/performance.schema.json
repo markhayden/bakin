@@ -81,7 +81,7 @@
       "additionalProperties": false,
       "required": ["name", "path", "bytes", "reachableBytes"],
       "properties": {
-        "name": { "type": "string", "pattern": "^sdk-(?:ui|components|layout|patterns|charts|conversation)$" },
+        "name": { "type": "string", "pattern": "^sdk-(?:ui|components|layout|patterns|charts|conversation|content)$" },
         "path": { "$ref": "#/definitions/path" },
         "bytes": { "$ref": "#/definitions/bytes" },
         "reachableBytes": { "$ref": "#/definitions/bytes" }

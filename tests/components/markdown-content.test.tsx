@@ -22,7 +22,7 @@ mock.module('../../packages/core/src/content-dir', () => ({
   getBakinPaths: () => ({ root: testDir }),
 }))
 
-import { cleanup, fireEvent, render } from '@testing-library/react'
+import { cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 import '../rtl-settle'
 
 import { MarkdownContent } from '@makinbakin/sdk/components'
@@ -41,7 +41,7 @@ describe('MarkdownContent code blocks', () => {
     expect(container.textContent).toContain('typescript')
   })
 
-  it('copy button writes the code text to the clipboard', () => {
+  it('copy button writes the code text to the clipboard', async () => {
     const writes: string[] = []
     Object.defineProperty(globalThis.navigator, 'clipboard', {
       value: { writeText: (t: string) => (writes.push(t), Promise.resolve()) },
@@ -52,6 +52,7 @@ describe('MarkdownContent code blocks', () => {
     expect(copy).not.toBeNull()
     fireEvent.click(copy!)
     expect(writes).toEqual(['const x: number = 1'])
+    await waitFor(() => expect(copy!.textContent).toContain('Copied'))
   })
 
   it('inline code gets no header chrome or copy button', () => {
@@ -62,7 +63,7 @@ describe('MarkdownContent code blocks', () => {
 })
 
 describe('MarkdownContent media', () => {
-  it('renders images lazy and opens a lightbox on click', () => {
+  it('renders images lazy and opens a lightbox on click', async () => {
     const { container } = render(
       <MarkdownContent content={'![a chart](/api/assets/a1/thumb)'} />,
     )
@@ -77,8 +78,8 @@ describe('MarkdownContent media', () => {
     // full-size image inside the overlay
     expect(lightbox!.querySelector('img')?.getAttribute('src')).toBe('/api/assets/a1/thumb')
 
-    fireEvent.click(lightbox!)
-    expect(document.querySelector('[data-md-lightbox]')).toBeNull()
+    fireEvent.click(document.querySelector('button[aria-label="Close image preview"]')!)
+    await waitFor(() => expect(document.querySelector('[data-md-lightbox]')).toBeNull())
   })
 
   it('renders video-extension image URLs as a video element', () => {

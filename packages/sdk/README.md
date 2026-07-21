@@ -101,6 +101,7 @@ The public npm package exposes these sub-paths:
 | `@makinbakin/sdk/patterns` | Reusable application-aware UI patterns |
 | `@makinbakin/sdk/charts` | Isolated data-visualization components |
 | `@makinbakin/sdk/conversation` | Isolated conversation UI and models |
+| `@makinbakin/sdk/content` | Opt-in rich content rendering and editing |
 | `@makinbakin/sdk/hooks` | Shared React hooks |
 | `@makinbakin/sdk/components` | Migration-only legacy component barrel |
 | `@makinbakin/sdk/slots` | Slot runtime and provider |

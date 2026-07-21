@@ -223,6 +223,7 @@ function startTailwindWatch(): void {
       TAILWIND_BIN,
       '-i', './packages/host/src/globals.css',
       '-o', './packages/sdk/styles.css',
+      '--minify',
       '--watch=always',
     ],
     { stdio: ['ignore', DEV_VERBOSE ? 'inherit' : 'pipe', DEV_VERBOSE ? 'inherit' : 'pipe'], cwd: REPO_ROOT },

@@ -476,6 +476,7 @@ export function renderSdkReference(): string {
   renderFocusedVisualEntrypoint(lines, bySubpath.get('@makinbakin/sdk/patterns'), 'Reusable application-aware presentation patterns.')
   renderFocusedVisualEntrypoint(lines, bySubpath.get('@makinbakin/sdk/charts'), 'Isolated data-visualization components and contracts.')
   renderFocusedVisualEntrypoint(lines, bySubpath.get('@makinbakin/sdk/conversation'), 'Isolated conversation UI and models.')
+  renderFocusedVisualEntrypoint(lines, bySubpath.get('@makinbakin/sdk/content'), 'Opt-in rich content rendering and editing.')
   // Slots
   renderSimpleTable(lines, bySubpath.get('@makinbakin/sdk/slots'), 'Slot system')
   // Types (special case: core types + domain grouping)

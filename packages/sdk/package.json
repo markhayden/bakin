@@ -12,6 +12,7 @@
     "./patterns": "./src/patterns/index.ts",
     "./charts": "./src/charts/index.ts",
     "./conversation": "./src/conversation/index.ts",
+    "./content": "./src/content/index.ts",
     "./hooks": "./src/hooks/index.ts",
     "./components": "./src/components/index.ts",
     "./slots": "./src/slots/index.tsx",

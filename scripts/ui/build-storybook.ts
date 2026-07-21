@@ -29,6 +29,7 @@ const PUBLIC_VISUAL_SDK_ENTRYPOINTS = new Set([
   '@makinbakin/sdk/patterns',
   '@makinbakin/sdk/charts',
   '@makinbakin/sdk/conversation',
+  '@makinbakin/sdk/content',
 ])
 
 export interface PublicStoryViolation {

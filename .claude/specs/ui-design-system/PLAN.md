@@ -1370,6 +1370,25 @@ panel/drawer.\
 search degradation/score UI, PluginSettingsRenderer, and TurnOutputView into
 presentation-only versus app-aware SDK ownership.
 
+**Status — T35a (2026-07-21):** Complete. Rich GFM presentation and the
+controlled semantic-height editor now publish from the user-approved,
+opt-in `@makinbakin/sdk/content` entrypoint so routine UI consumers do not
+implicitly import the Markdown parser. Search unavailable, degraded, partial,
+and exact score-evidence patterns publish from `@makinbakin/sdk/patterns` and
+use the canonical accessible state, button, badge, and tooltip contracts.
+Internal Markdown navigation delegates to the existing routing link rather
+than introducing another history or route model. Legacy root modules and the
+migration-only components barrel remain source-compatible adapters; no
+official product or Bits surface was migrated. Public Storybook now passes all
+112 interaction/accessibility cases, while the focused browser contract passes
+all 78 Chromium, Firefox, and WebKit cases across supported widths, keyboard,
+200%-text, overflow, and trust-disclosure states. The official census contains
+299 entries across core and Bits, canonical CSS is 236,499 bytes with one
+runtime copy, `sdk-content` is 269 bytes direct / 753,951 bytes reachable, and
+`sdk-patterns` is 1,546 bytes direct / 450,029 bytes reachable. The new content
+entrypoint and measured parser/tooltip budget were explicitly approved before
+the performance baseline was recorded.
+
 **Acceptance:** each export has one justified entrypoint/owner and an official
 consumer; private host behavior is not accidentally public; stories cover the
 stable public set.

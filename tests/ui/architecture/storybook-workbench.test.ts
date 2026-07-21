@@ -47,6 +47,7 @@ describe('Storybook workbench foundation', () => {
     const foundationStory = readRepoFile('storybook/public/foundation/button.stories.tsx')
 
     expect(manifest.scripts['build:css']).toContain('packages/sdk/styles.css')
+    expect(manifest.scripts['build:css']).toContain('--minify')
     expect(preview).toContain("import '@makinbakin/sdk/styles.css'")
     expect(preview).not.toContain("import '../packages/sdk/styles.css'")
     expect(preview).not.toContain('packages/host/public/globals.css')

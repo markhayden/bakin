@@ -37,11 +37,6 @@ mock.module('@/hooks/use-query-state', () => ({
 mock.module('@/components/markdown-content', () => ({
   MarkdownContent: ({ content }: { content: string }) => <pre>{content}</pre>,
 }))
-mock.module('@/components/markdown-editor', () => ({
-  MarkdownEditor: ({ content, onChange }: { content: string; onChange: (v: string) => void }) => (
-    <textarea aria-label="doc content" value={content} onChange={(e) => onChange(e.target.value)} />
-  ),
-}))
 // The brainstorm panel pulls the conversation kit + agent store — its own concern.
 mock.module('../../../plugins/brands/components/brand-doc-brainstorm', () => ({
   DocBrainstormPanel: () => <div data-testid="brainstorm-panel" />,
@@ -181,11 +176,11 @@ describe('doc lists', () => {
 describe('BrandDocEditorPage', () => {
   it('loads the doc, edits raise the SaveBar, Save PUTs the content', async () => {
     render(<BrandDocEditorPage />)
-    await waitFor(() => expect(screen.getByLabelText('doc content')).toBeDefined())
-    expect((screen.getByLabelText('doc content') as HTMLTextAreaElement).value).toContain('Sharp and warm')
+    await waitFor(() => expect(screen.getByLabelText('Markdown content')).toBeDefined())
+    expect((screen.getByLabelText('Markdown content') as HTMLTextAreaElement).value).toContain('Sharp and warm')
     expect(document.querySelector('[data-savebar]')).toBeNull()
 
-    fireEvent.change(screen.getByLabelText('doc content'), { target: { value: '# Voice\n\nSharper.' } })
+    fireEvent.change(screen.getByLabelText('Markdown content'), { target: { value: '# Voice\n\nSharper.' } })
     await waitFor(() => expect(document.querySelector('[data-savebar]')).not.toBeNull())
     fireEvent.click(screen.getByRole('button', { name: 'Save doc' }))
     await waitFor(() =>
@@ -200,7 +195,7 @@ describe('BrandDocEditorPage', () => {
 
   it('brainstorm toggle opens the side panel', async () => {
     render(<BrandDocEditorPage />)
-    await waitFor(() => expect(screen.getByLabelText('doc content')).toBeDefined())
+    await waitFor(() => expect(screen.getByLabelText('Markdown content')).toBeDefined())
     expect(screen.queryByTestId('brainstorm-panel')).toBeNull()
     fireEvent.click(document.querySelector('[data-brainstorm-toggle]')!)
     await waitFor(() => expect(screen.getByTestId('brainstorm-panel')).toBeDefined())
@@ -213,8 +208,8 @@ describe('BrandDocEditorPage', () => {
     // This pin broke live before the String() coercion — keep it a number.
     routeSearch = { create: 1 as unknown as string }
     render(<BrandDocEditorPage />)
-    await waitFor(() => expect(screen.getByLabelText('doc content')).toBeDefined())
-    expect((screen.getByLabelText('doc content') as HTMLTextAreaElement).value).toContain('description:')
+    await waitFor(() => expect(screen.getByLabelText('Markdown content')).toBeDefined())
+    expect((screen.getByLabelText('Markdown content') as HTMLTextAreaElement).value).toContain('description:')
     expect(document.querySelector('[data-savebar]')).not.toBeNull() // unsaved new doc
     await settleReact()
   })
@@ -230,8 +225,8 @@ describe('BrandDocEditorPage', () => {
     routeParams = { brandId: 'acme', kind: 'guidelines', name: 'existing.md' }
     routeSearch = { create: 1 as unknown as string }
     render(<BrandDocEditorPage />)
-    await waitFor(() => expect(screen.getByLabelText('doc content')).toBeDefined())
-    expect((screen.getByLabelText('doc content') as HTMLTextAreaElement).value).toContain('Already authored')
+    await waitFor(() => expect(screen.getByLabelText('Markdown content')).toBeDefined())
+    expect((screen.getByLabelText('Markdown content') as HTMLTextAreaElement).value).toContain('Already authored')
     expect(document.querySelector('[data-savebar]')).toBeNull() // it exists; nothing unsaved
     await settleReact()
   })

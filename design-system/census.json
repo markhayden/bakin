@@ -19,14 +19,14 @@
     ]
   },
   "summary": {
-    "total": 288,
+    "total": 299,
     "byKind": {
       "host-route": 26,
       "plugin-route": 9,
       "plugin-slot": 30,
       "plugin-template": 2,
-      "shared-component": 92,
-      "sdk-ui-export": 129
+      "shared-component": 93,
+      "sdk-ui-export": 139
     },
     "nonVisualAliases": 3
   },
@@ -2669,6 +2669,156 @@
       ]
     },
     {
+      "id": "sdk-ui-export:type:MarkdownContentProps",
+      "kind": "sdk-ui-export",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "identity": {
+        "symbol": "MarkdownContentProps",
+        "entrypoint": "@makinbakin/sdk/components"
+      },
+      "sourcePath": "packages/sdk/src/content/index.ts",
+      "symbols": [
+        "MarkdownContentProps"
+      ],
+      "exportStatus": "public",
+      "classification": "public-contract",
+      "evidence": [
+        {
+          "type": "public-export",
+          "path": "packages/sdk/src/components/index.ts",
+          "detail": "type MarkdownContentProps from @makinbakin/sdk/content (MarkdownContentProps)"
+        }
+      ]
+    },
+    {
+      "id": "sdk-ui-export:type:MarkdownEditorFormat",
+      "kind": "sdk-ui-export",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "identity": {
+        "symbol": "MarkdownEditorFormat",
+        "entrypoint": "@makinbakin/sdk/components"
+      },
+      "sourcePath": "packages/sdk/src/content/index.ts",
+      "symbols": [
+        "MarkdownEditorFormat"
+      ],
+      "exportStatus": "public",
+      "classification": "public-contract",
+      "evidence": [
+        {
+          "type": "public-export",
+          "path": "packages/sdk/src/components/index.ts",
+          "detail": "type MarkdownEditorFormat from @makinbakin/sdk/content (MarkdownEditorFormat)"
+        }
+      ]
+    },
+    {
+      "id": "sdk-ui-export:type:MarkdownEditorHeight",
+      "kind": "sdk-ui-export",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "identity": {
+        "symbol": "MarkdownEditorHeight",
+        "entrypoint": "@makinbakin/sdk/components"
+      },
+      "sourcePath": "packages/sdk/src/content/index.ts",
+      "symbols": [
+        "MarkdownEditorHeight"
+      ],
+      "exportStatus": "public",
+      "classification": "public-contract",
+      "evidence": [
+        {
+          "type": "public-export",
+          "path": "packages/sdk/src/components/index.ts",
+          "detail": "type MarkdownEditorHeight from @makinbakin/sdk/content (MarkdownEditorHeight)"
+        }
+      ]
+    },
+    {
+      "id": "sdk-ui-export:type:MarkdownEditorMode",
+      "kind": "sdk-ui-export",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "identity": {
+        "symbol": "MarkdownEditorMode",
+        "entrypoint": "@makinbakin/sdk/components"
+      },
+      "sourcePath": "packages/sdk/src/content/index.ts",
+      "symbols": [
+        "MarkdownEditorMode"
+      ],
+      "exportStatus": "public",
+      "classification": "public-contract",
+      "evidence": [
+        {
+          "type": "public-export",
+          "path": "packages/sdk/src/components/index.ts",
+          "detail": "type MarkdownEditorMode from @makinbakin/sdk/content (MarkdownEditorMode)"
+        }
+      ]
+    },
+    {
+      "id": "sdk-ui-export:type:MarkdownEditorProps",
+      "kind": "sdk-ui-export",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "identity": {
+        "symbol": "MarkdownEditorProps",
+        "entrypoint": "@makinbakin/sdk/components"
+      },
+      "sourcePath": "packages/sdk/src/content/index.ts",
+      "symbols": [
+        "MarkdownEditorProps"
+      ],
+      "exportStatus": "public",
+      "classification": "public-contract",
+      "evidence": [
+        {
+          "type": "public-export",
+          "path": "packages/sdk/src/components/index.ts",
+          "detail": "type MarkdownEditorProps from @makinbakin/sdk/content (MarkdownEditorProps)"
+        }
+      ]
+    },
+    {
+      "id": "sdk-ui-export:type:MarkdownInternalLinkProps",
+      "kind": "sdk-ui-export",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "identity": {
+        "symbol": "MarkdownInternalLinkProps",
+        "entrypoint": "@makinbakin/sdk/components"
+      },
+      "sourcePath": "packages/sdk/src/content/index.ts",
+      "symbols": [
+        "MarkdownInternalLinkProps"
+      ],
+      "exportStatus": "public",
+      "classification": "public-contract",
+      "evidence": [
+        {
+          "type": "public-export",
+          "path": "packages/sdk/src/components/index.ts",
+          "detail": "type MarkdownInternalLinkProps from @makinbakin/sdk/content (MarkdownInternalLinkProps)"
+        }
+      ]
+    },
+    {
       "id": "sdk-ui-export:type:PluginHeaderProps",
       "kind": "sdk-ui-export",
       "owner": {
@@ -2779,7 +2929,7 @@
         "symbol": "ScoreOverlayInfo",
         "entrypoint": "@makinbakin/sdk/components"
       },
-      "sourcePath": "src/components/score-overlay.tsx",
+      "sourcePath": "packages/sdk/src/patterns/search-patterns.tsx",
       "symbols": [
         "ScoreOverlayInfo"
       ],
@@ -2789,7 +2939,82 @@
         {
           "type": "public-export",
           "path": "packages/sdk/src/components/index.ts",
-          "detail": "type ScoreOverlayInfo from @/components/score-overlay (ScoreOverlayInfo)"
+          "detail": "type ScoreOverlayInfo from ../patterns/search-patterns (ScoreOverlayInfo)"
+        }
+      ]
+    },
+    {
+      "id": "sdk-ui-export:type:ScoreOverlayProps",
+      "kind": "sdk-ui-export",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "identity": {
+        "symbol": "ScoreOverlayProps",
+        "entrypoint": "@makinbakin/sdk/components"
+      },
+      "sourcePath": "packages/sdk/src/patterns/search-patterns.tsx",
+      "symbols": [
+        "ScoreOverlayProps"
+      ],
+      "exportStatus": "public",
+      "classification": "public-contract",
+      "evidence": [
+        {
+          "type": "public-export",
+          "path": "packages/sdk/src/components/index.ts",
+          "detail": "type ScoreOverlayProps from ../patterns/search-patterns (ScoreOverlayProps)"
+        }
+      ]
+    },
+    {
+      "id": "sdk-ui-export:type:SearchDegradedChipProps",
+      "kind": "sdk-ui-export",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "identity": {
+        "symbol": "SearchDegradedChipProps",
+        "entrypoint": "@makinbakin/sdk/components"
+      },
+      "sourcePath": "packages/sdk/src/patterns/search-patterns.tsx",
+      "symbols": [
+        "SearchDegradedChipProps"
+      ],
+      "exportStatus": "public",
+      "classification": "public-contract",
+      "evidence": [
+        {
+          "type": "public-export",
+          "path": "packages/sdk/src/components/index.ts",
+          "detail": "type SearchDegradedChipProps from ../patterns/search-patterns (SearchDegradedChipProps)"
+        }
+      ]
+    },
+    {
+      "id": "sdk-ui-export:type:SearchPartialChipProps",
+      "kind": "sdk-ui-export",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "identity": {
+        "symbol": "SearchPartialChipProps",
+        "entrypoint": "@makinbakin/sdk/components"
+      },
+      "sourcePath": "packages/sdk/src/patterns/search-patterns.tsx",
+      "symbols": [
+        "SearchPartialChipProps"
+      ],
+      "exportStatus": "public",
+      "classification": "public-contract",
+      "evidence": [
+        {
+          "type": "public-export",
+          "path": "packages/sdk/src/components/index.ts",
+          "detail": "type SearchPartialChipProps from ../patterns/search-patterns (SearchPartialChipProps)"
         }
       ]
     },
@@ -2804,7 +3029,7 @@
         "symbol": "SearchPartialMeta",
         "entrypoint": "@makinbakin/sdk/components"
       },
-      "sourcePath": "src/components/search-partial-chip.tsx",
+      "sourcePath": "packages/sdk/src/patterns/search-patterns.tsx",
       "symbols": [
         "SearchPartialMeta"
       ],
@@ -2814,7 +3039,32 @@
         {
           "type": "public-export",
           "path": "packages/sdk/src/components/index.ts",
-          "detail": "type SearchPartialMeta from @/components/search-partial-chip (SearchPartialMeta)"
+          "detail": "type SearchPartialMeta from ../patterns/search-patterns (SearchPartialMeta)"
+        }
+      ]
+    },
+    {
+      "id": "sdk-ui-export:type:SearchUnavailableProps",
+      "kind": "sdk-ui-export",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "identity": {
+        "symbol": "SearchUnavailableProps",
+        "entrypoint": "@makinbakin/sdk/components"
+      },
+      "sourcePath": "packages/sdk/src/patterns/search-patterns.tsx",
+      "symbols": [
+        "SearchUnavailableProps"
+      ],
+      "exportStatus": "public",
+      "classification": "public-contract",
+      "evidence": [
+        {
+          "type": "public-export",
+          "path": "packages/sdk/src/components/index.ts",
+          "detail": "type SearchUnavailableProps from ../patterns/search-patterns (SearchUnavailableProps)"
         }
       ]
     },
@@ -3829,7 +4079,7 @@
         "symbol": "computeMatchedFields",
         "entrypoint": "@makinbakin/sdk/components"
       },
-      "sourcePath": "src/components/score-overlay.tsx",
+      "sourcePath": "packages/sdk/src/patterns/search-patterns.tsx",
       "symbols": [
         "computeMatchedFields"
       ],
@@ -3839,7 +4089,7 @@
         {
           "type": "public-export",
           "path": "packages/sdk/src/components/index.ts",
-          "detail": "value computeMatchedFields from @/components/score-overlay (computeMatchedFields)"
+          "detail": "value computeMatchedFields from ../patterns/search-patterns (computeMatchedFields)"
         }
       ]
     },
@@ -4304,7 +4554,7 @@
         "symbol": "MarkdownContent",
         "entrypoint": "@makinbakin/sdk/components"
       },
-      "sourcePath": "src/components/markdown-content.tsx",
+      "sourcePath": "packages/sdk/src/content/index.ts",
       "symbols": [
         "MarkdownContent"
       ],
@@ -4314,7 +4564,7 @@
         {
           "type": "public-export",
           "path": "packages/sdk/src/components/index.ts",
-          "detail": "value MarkdownContent from @/components/markdown-content (MarkdownContent)"
+          "detail": "value MarkdownContent from @makinbakin/sdk/content (MarkdownContent)"
         }
       ]
     },
@@ -4329,7 +4579,7 @@
         "symbol": "MarkdownEditor",
         "entrypoint": "@makinbakin/sdk/components"
       },
-      "sourcePath": "src/components/markdown-editor.tsx",
+      "sourcePath": "packages/sdk/src/content/index.ts",
       "symbols": [
         "MarkdownEditor"
       ],
@@ -4339,7 +4589,7 @@
         {
           "type": "public-export",
           "path": "packages/sdk/src/components/index.ts",
-          "detail": "value MarkdownEditor from @/components/markdown-editor (MarkdownEditor)"
+          "detail": "value MarkdownEditor from @makinbakin/sdk/content (MarkdownEditor)"
         }
       ]
     },
@@ -4529,7 +4779,7 @@
         "symbol": "ScoreOverlay",
         "entrypoint": "@makinbakin/sdk/components"
       },
-      "sourcePath": "src/components/score-overlay.tsx",
+      "sourcePath": "packages/sdk/src/patterns/search-patterns.tsx",
       "symbols": [
         "ScoreOverlay"
       ],
@@ -4539,7 +4789,7 @@
         {
           "type": "public-export",
           "path": "packages/sdk/src/components/index.ts",
-          "detail": "value ScoreOverlay from @/components/score-overlay (ScoreOverlay)"
+          "detail": "value ScoreOverlay from ../patterns/search-patterns (ScoreOverlay)"
         }
       ]
     },
@@ -4554,7 +4804,7 @@
         "symbol": "SearchDegradedChip",
         "entrypoint": "@makinbakin/sdk/components"
       },
-      "sourcePath": "src/components/search-degraded-chip.tsx",
+      "sourcePath": "packages/sdk/src/patterns/search-patterns.tsx",
       "symbols": [
         "SearchDegradedChip"
       ],
@@ -4564,7 +4814,7 @@
         {
           "type": "public-export",
           "path": "packages/sdk/src/components/index.ts",
-          "detail": "value SearchDegradedChip from @/components/search-degraded-chip (SearchDegradedChip)"
+          "detail": "value SearchDegradedChip from ../patterns/search-patterns (SearchDegradedChip)"
         }
       ]
     },
@@ -4579,7 +4829,7 @@
         "symbol": "SearchPartialChip",
         "entrypoint": "@makinbakin/sdk/components"
       },
-      "sourcePath": "src/components/search-partial-chip.tsx",
+      "sourcePath": "packages/sdk/src/patterns/search-patterns.tsx",
       "symbols": [
         "SearchPartialChip"
       ],
@@ -4589,7 +4839,7 @@
         {
           "type": "public-export",
           "path": "packages/sdk/src/components/index.ts",
-          "detail": "value SearchPartialChip from @/components/search-partial-chip (SearchPartialChip)"
+          "detail": "value SearchPartialChip from ../patterns/search-patterns (SearchPartialChip)"
         }
       ]
     },
@@ -4604,7 +4854,7 @@
         "symbol": "SearchUnavailable",
         "entrypoint": "@makinbakin/sdk/components"
       },
-      "sourcePath": "src/components/search-unavailable.tsx",
+      "sourcePath": "packages/sdk/src/patterns/search-patterns.tsx",
       "symbols": [
         "SearchUnavailable"
       ],
@@ -4614,7 +4864,7 @@
         {
           "type": "public-export",
           "path": "packages/sdk/src/components/index.ts",
-          "detail": "value SearchUnavailable from @/components/search-unavailable (SearchUnavailable)"
+          "detail": "value SearchUnavailable from ../patterns/search-patterns (SearchUnavailable)"
         }
       ]
     },
@@ -5564,6 +5814,39 @@
       ]
     },
     {
+      "id": "shared-component:packages/sdk/src/patterns/search-patterns",
+      "kind": "shared-component",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "identity": {
+        "component": "packages/sdk/src/patterns/search-patterns"
+      },
+      "sourcePath": "packages/sdk/src/patterns/search-patterns.tsx",
+      "symbols": [
+        "ScoreOverlay",
+        "SearchDegradedChip",
+        "SearchPartialChip",
+        "SearchUnavailable",
+        "computeMatchedFields"
+      ],
+      "exportStatus": "public",
+      "classification": "shared-ui",
+      "evidence": [
+        {
+          "type": "source-export",
+          "path": "packages/sdk/src/patterns/search-patterns.tsx",
+          "detail": "exported values discovered from TSX source"
+        },
+        {
+          "type": "public-export",
+          "path": "packages/sdk/src/components/index.ts",
+          "detail": "ScoreOverlay, ScoreOverlayInfo, ScoreOverlayProps, SearchDegradedChip, SearchDegradedChipProps, SearchPartialChip, SearchPartialChipProps, SearchPartialMeta, SearchUnavailable, SearchUnavailableProps, computeMatchedFields"
+        }
+      ]
+    },
+    {
       "id": "shared-component:plugins/workflows/hooks/channel-icon",
       "kind": "shared-component",
       "owner": {
@@ -6412,18 +6695,13 @@
       "symbols": [
         "MarkdownContent"
       ],
-      "exportStatus": "public",
+      "exportStatus": "private",
       "classification": "shared-ui",
       "evidence": [
         {
           "type": "source-export",
           "path": "src/components/markdown-content.tsx",
           "detail": "exported values discovered from TSX source"
-        },
-        {
-          "type": "public-export",
-          "path": "packages/sdk/src/components/index.ts",
-          "detail": "MarkdownContent"
         }
       ]
     },
@@ -6441,18 +6719,13 @@
       "symbols": [
         "MarkdownEditor"
       ],
-      "exportStatus": "public",
+      "exportStatus": "private",
       "classification": "shared-ui",
       "evidence": [
         {
           "type": "source-export",
           "path": "src/components/markdown-editor.tsx",
           "detail": "exported values discovered from TSX source"
-        },
-        {
-          "type": "public-export",
-          "path": "packages/sdk/src/components/index.ts",
-          "detail": "MarkdownEditor"
         }
       ]
     },
@@ -6642,18 +6915,13 @@
         "ScoreOverlay",
         "computeMatchedFields"
       ],
-      "exportStatus": "public",
+      "exportStatus": "private",
       "classification": "shared-ui",
       "evidence": [
         {
           "type": "source-export",
           "path": "src/components/score-overlay.tsx",
           "detail": "exported values discovered from TSX source"
-        },
-        {
-          "type": "public-export",
-          "path": "packages/sdk/src/components/index.ts",
-          "detail": "ScoreOverlay, ScoreOverlayInfo, computeMatchedFields"
         }
       ]
     },
@@ -6671,18 +6939,13 @@
       "symbols": [
         "SearchDegradedChip"
       ],
-      "exportStatus": "public",
+      "exportStatus": "private",
       "classification": "shared-ui",
       "evidence": [
         {
           "type": "source-export",
           "path": "src/components/search-degraded-chip.tsx",
           "detail": "exported values discovered from TSX source"
-        },
-        {
-          "type": "public-export",
-          "path": "packages/sdk/src/components/index.ts",
-          "detail": "SearchDegradedChip"
         }
       ]
     },
@@ -6700,18 +6963,13 @@
       "symbols": [
         "SearchPartialChip"
       ],
-      "exportStatus": "public",
+      "exportStatus": "private",
       "classification": "shared-ui",
       "evidence": [
         {
           "type": "source-export",
           "path": "src/components/search-partial-chip.tsx",
           "detail": "exported values discovered from TSX source"
-        },
-        {
-          "type": "public-export",
-          "path": "packages/sdk/src/components/index.ts",
-          "detail": "SearchPartialChip, SearchPartialMeta"
         }
       ]
     },
@@ -6729,18 +6987,13 @@
       "symbols": [
         "SearchUnavailable"
       ],
-      "exportStatus": "public",
+      "exportStatus": "private",
       "classification": "shared-ui",
       "evidence": [
         {
           "type": "source-export",
           "path": "src/components/search-unavailable.tsx",
           "detail": "exported values discovered from TSX source"
-        },
-        {
-          "type": "public-export",
-          "path": "packages/sdk/src/components/index.ts",
-          "detail": "SearchUnavailable"
         }
       ]
     },

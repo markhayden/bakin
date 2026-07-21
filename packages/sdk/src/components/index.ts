@@ -53,13 +53,24 @@ export type { StatTileProps } from '@/components/stat-tile'
 export { StatusBadge } from '@/components/status-badge'
 export type { StatusBadgeProps, StatusTone } from '@/components/status-badge'
 
-export { SearchUnavailable } from '@/components/search-unavailable'
-export { ScoreOverlay, computeMatchedFields } from '@/components/score-overlay'
-export { SearchPartialChip } from '@/components/search-partial-chip'
-export type { SearchPartialMeta } from '@/components/search-partial-chip'
-/** Amber "search down — basic text matching" chip for surfaces with a substring fallback. */
-export { SearchDegradedChip } from '@/components/search-degraded-chip'
-export type { ScoreOverlayInfo } from '@/components/score-overlay'
+/** Replace an affected result region when search returns no trustworthy result. */
+export { SearchUnavailable } from '../patterns/search-patterns'
+/** Show fused and per-leg search relevance as exact, non-color-dependent evidence. */
+export { ScoreOverlay } from '../patterns/search-patterns'
+/** Approximate matched fields when the adapter has no exact metadata. */
+export { computeMatchedFields } from '../patterns/search-patterns'
+/** Disclose the exact sources that degraded or exceeded the search budget. */
+export { SearchPartialChip } from '../patterns/search-patterns'
+/** Disclose that usable results came from a named lower-quality fallback. */
+export { SearchDegradedChip } from '../patterns/search-patterns'
+export type {
+  ScoreOverlayInfo,
+  ScoreOverlayProps,
+  SearchDegradedChipProps,
+  SearchPartialChipProps,
+  SearchPartialMeta,
+  SearchUnavailableProps,
+} from '../patterns/search-patterns'
 /** Inline error banner with dismiss + retry actions. */
 export { ErrorBanner } from '@/components/error-banner'
 /** Full-page error state with title, description, and retry button. */
@@ -71,10 +82,17 @@ export type { FacetFilterProps, FacetOption } from '@/components/facet-filter'
 // IntegratedBrainstorm was DELETED (2026-07): embedded conversation
 // surfaces compose ConversationPanel + useConversationStream instead
 // (see the conversation-kit exports below).
-/** Render markdown content with syntax highlighting and link handling. */
-export { MarkdownContent } from '@/components/markdown-content'
-/** Editable markdown text area with preview toggle. */
-export { MarkdownEditor } from '@/components/markdown-editor'
+/** Render safe GFM, code, media, and visibly identified Bakin-managed sections. */
+export { MarkdownContent } from '@makinbakin/sdk/content'
+export type { MarkdownContentProps, MarkdownInternalLinkProps } from '@makinbakin/sdk/content'
+/** Controlled edit or preview surface with semantic format and height options. */
+export { MarkdownEditor } from '@makinbakin/sdk/content'
+export type {
+  MarkdownEditorFormat,
+  MarkdownEditorHeight,
+  MarkdownEditorMode,
+  MarkdownEditorProps,
+} from '@makinbakin/sdk/content'
 /** Model picker dropdown listing available models from the catalog. */
 export { ModelSelect } from '@/components/model-select'
 /** Standard plugin page wrapper with header, content area, and toaster. */

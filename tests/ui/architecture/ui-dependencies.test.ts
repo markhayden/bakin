@@ -11,6 +11,7 @@ import {
   measureReachableJsBytes,
   measureStableBuiltJsBytes,
   type UiPerformanceSnapshot,
+  validateUiPerformanceSnapshot,
 } from '../../../scripts/ui/performance'
 
 const fixtureRoots: string[] = []
@@ -133,6 +134,21 @@ describe('design-system stylesheet ownership', () => {
 })
 
 describe('UI performance ratchet', () => {
+  it('accepts the focused content entrypoint in the checked performance schema', () => {
+    const baseline = snapshot()
+    expect(validateUiPerformanceSnapshot(snapshot({
+      sdkUiBundles: [
+        ...baseline.sdkUiBundles,
+        {
+          name: 'sdk-content',
+          path: 'packages/host/public/vendor/sdk-content.js',
+          bytes: 1,
+          reachableBytes: 1,
+        },
+      ],
+    }))).toEqual([])
+  })
+
   it('excludes Bun checkout-path module labels from otherwise identical client bytes', () => {
     const local = '// ../bakin-bits-official/plugins/example/client.tsx\nconst value = 1;\n'
     const ci = '// ../../../../runner/external/bakin-bits-official/plugins/example/client.tsx\nconst value = 1;\n'

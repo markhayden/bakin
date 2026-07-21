@@ -184,20 +184,30 @@ import { PluginHeader, FacetFilter, AgentAvatar } from '@makinbakin/sdk/componen
 | `StatusBadge` | THE status chip — one tone scale (neutral/success/warning/destructive/accent) for every state badge. |
 | `StatusBadgeProps` | — |
 | `StatusTone` | — |
-| `SearchUnavailable` | — |
-| `ScoreOverlay` | — |
-| `computeMatchedFields` | — |
-| `SearchPartialChip` | — |
-| `SearchPartialMeta` | — |
-| `SearchDegradedChip` | Amber "search down — basic text matching" chip for surfaces with a substring fallback. |
+| `SearchUnavailable` | Replace an affected result region when search returns no trustworthy result. |
+| `ScoreOverlay` | Show fused and per-leg search relevance as exact, non-color-dependent evidence. |
+| `computeMatchedFields` | Approximate matched fields when the adapter has no exact metadata. |
+| `SearchPartialChip` | Disclose the exact sources that degraded or exceeded the search budget. |
+| `SearchDegradedChip` | Disclose that usable results came from a named lower-quality fallback. |
 | `ScoreOverlayInfo` | — |
+| `ScoreOverlayProps` | — |
+| `SearchDegradedChipProps` | — |
+| `SearchPartialChipProps` | — |
+| `SearchPartialMeta` | — |
+| `SearchUnavailableProps` | — |
 | `ErrorBanner` | Inline error banner with dismiss + retry actions. |
 | `ErrorState` | Full-page error state with title, description, and retry button. |
 | `FacetFilter` | Popover multi-select facet filter (column, owner, tag, etc.). |
 | `FacetFilterProps` | — |
 | `FacetOption` | — |
-| `MarkdownContent` | Render markdown content with syntax highlighting and link handling. |
-| `MarkdownEditor` | Editable markdown text area with preview toggle. |
+| `MarkdownContent` | Render safe GFM, code, media, and visibly identified Bakin-managed sections. |
+| `MarkdownContentProps` | — |
+| `MarkdownInternalLinkProps` | — |
+| `MarkdownEditor` | Controlled edit or preview surface with semantic format and height options. |
+| `MarkdownEditorFormat` | — |
+| `MarkdownEditorHeight` | — |
+| `MarkdownEditorMode` | — |
+| `MarkdownEditorProps` | — |
 | `ModelSelect` | Model picker dropdown listing available models from the catalog. |
 | `PageLayout` | Standard plugin page wrapper with header, content area, and toaster. |
 | `PluginLink` | Client-side link for runtime-registered plugin and cross-plugin routes. |
@@ -365,6 +375,17 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 | `StatusBadge` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `UnderlineTabs` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `UnsavedChangesDialog` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `SearchUnavailable` | Replace an affected result region when search returns no trustworthy result. |
+| `ScoreOverlay` | Show fused and per-leg search relevance as exact, non-color-dependent evidence. |
+| `computeMatchedFields` | Approximate matched fields when the adapter has no exact metadata. |
+| `SearchPartialChip` | Disclose the exact sources that degraded or exceeded the search budget. |
+| `SearchDegradedChip` | Disclose that usable results came from a named lower-quality fallback. |
+| `ScoreOverlayInfo` | — |
+| `ScoreOverlayProps` | — |
+| `SearchDegradedChipProps` | — |
+| `SearchPartialChipProps` | — |
+| `SearchPartialMeta` | — |
+| `SearchUnavailableProps` | — |
 | `ConversationPageBodyProps` | — |
 | `ConversationPageComposerProps` | — |
 | `ConversationPageMode` | — |
@@ -518,6 +539,21 @@ Isolated conversation UI and models. Source: `packages/sdk/src/conversation/inde
 | `ComposerAttachments` | — |
 | `ComposerAttachmentStatus` | — |
 | `ComposerProps` | — |
+
+## `@makinbakin/sdk/content`
+
+Opt-in rich content rendering and editing. Source: `packages/sdk/src/content/index.ts`.
+
+| Export | Description |
+| --- | --- |
+| `MarkdownContent` | Render safe GFM, code, media, and visibly identified Bakin-managed sections. |
+| `MarkdownContentProps` | — |
+| `MarkdownInternalLinkProps` | — |
+| `MarkdownEditor` | Controlled edit or preview surface with semantic format and height options. |
+| `MarkdownEditorFormat` | — |
+| `MarkdownEditorHeight` | — |
+| `MarkdownEditorMode` | — |
+| `MarkdownEditorProps` | — |
 
 ## `@makinbakin/sdk/slots`
 
@@ -700,5 +736,5 @@ Source: `packages/sdk/src/routing/index.ts`.
 | `DefinePluginInput` | — |
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Jul 20, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Jul 21, 2026 · Bakin 0.0.0-dev</span>
 </aside>

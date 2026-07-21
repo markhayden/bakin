@@ -28,6 +28,7 @@ const UI_VENDOR_NAMES = new Set([
   'sdk-patterns',
   'sdk-charts',
   'sdk-conversation',
+  'sdk-content',
 ])
 
 export interface ByteArtifact {
@@ -481,7 +482,7 @@ export async function collectUiPerformanceSnapshot(
   }
 }
 
-function validateAgainstSchema(value: unknown): string[] {
+export function validateUiPerformanceSnapshot(value: unknown): string[] {
   const schema = JSON.parse(readFileSync(PERFORMANCE_SCHEMA_PATH, 'utf-8'))
   const validate = new Ajv({ allErrors: true }).compile(schema)
   if (validate(value)) return []
@@ -505,7 +506,7 @@ async function generate(): Promise<void> {
   const dependencies = findForbiddenFocusedSdkDependencies(REPO_ROOT)
   if (dependencies.length > 0) throw new Error(`Focused base UI reaches forbidden heavy domains:\n- ${dependencies.join('\n- ')}`)
   const snapshot = await collectUiPerformanceSnapshot()
-  const errors = validateAgainstSchema(snapshot)
+  const errors = validateUiPerformanceSnapshot(snapshot)
   if (errors.length > 0) throw new Error(`Invalid generated UI performance baseline:\n- ${errors.join('\n- ')}`)
   writeFileSync(PERFORMANCE_PATH, `${JSON.stringify(snapshot, null, 2)}\n`)
   console.log(`Generated ${portablePath(REPO_ROOT, PERFORMANCE_PATH)} with ${snapshot.pluginClients.length} plugin clients`)
@@ -519,7 +520,7 @@ async function check(): Promise<void> {
   const dependencies = findForbiddenFocusedSdkDependencies(REPO_ROOT)
   const actual = await collectUiPerformanceSnapshot()
   const errors = [
-    ...validateAgainstSchema(baseline),
+    ...validateUiPerformanceSnapshot(baseline),
     ...dependencies.map((chain) => `focused base UI reaches forbidden heavy domain: ${chain}`),
     ...diffUiPerformance(baseline, actual),
   ]

@@ -141,6 +141,28 @@ describe('scanCoreCensus', () => {
     }))
   })
 
+  it('follows legacy component exports delegated through a relative sibling entrypoint', () => {
+    const root = createFixture()
+    writeFixture(root, 'packages/sdk/src/patterns/search-patterns.tsx', [
+      'export function SearchUnavailable() { return null }',
+      'export interface SearchUnavailableProps {}',
+    ].join('\n'))
+    writeFixture(root, 'packages/sdk/src/components/index.ts', [
+      "export { SearchUnavailable } from '../patterns/search-patterns'",
+      "export type { SearchUnavailableProps } from '../patterns/search-patterns'",
+    ].join('\n'))
+
+    const entries = scanCoreCensus(root).entries
+    expect(entries).toContainEqual(expect.objectContaining({
+      id: 'sdk-ui-export:value:SearchUnavailable',
+      sourcePath: 'packages/sdk/src/patterns/search-patterns.tsx',
+    }))
+    expect(entries).toContainEqual(expect.objectContaining({
+      id: 'sdk-ui-export:type:SearchUnavailableProps',
+      sourcePath: 'packages/sdk/src/patterns/search-patterns.tsx',
+    }))
+  })
+
   it('surfaces a client slot that has no mirrored manifest declaration', () => {
     const root = createFixture()
     writeFixture(root, 'plugins/orphan/client.tsx', [

@@ -15,7 +15,7 @@
     "build": "bun run build:css && bun run build:vendors && bun run build:plugins && bun run build:host-shell && bun run build:assets-manifest && bun run build:assert-production-assets && bun run build:binary",
     "release": "bun run scripts/prep-release.ts",
     "build:host": "bun run build:css && bun run build:vendors && bun run build:host-shell",
-    "build:css": "tailwindcss -i ./packages/host/src/globals.css -o ./packages/sdk/styles.css",
+    "build:css": "tailwindcss -i ./packages/host/src/globals.css -o ./packages/sdk/styles.css --minify",
     "build:host-shell": "bun run packages/host/build.ts",
     "build:vendors": "bun run scripts/build-vendors.ts",
     "build:plugins": "bun run scripts/build-plugins.ts",

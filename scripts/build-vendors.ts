@@ -59,6 +59,7 @@ export const SDK_VENDOR_TARGETS: ReadonlyArray<{ specifier: string; name: string
   { specifier: '@makinbakin/sdk/patterns', name: 'sdk-patterns', entrypoint: 'packages/sdk/src/patterns/index.ts' },
   { specifier: '@makinbakin/sdk/charts', name: 'sdk-charts', entrypoint: 'packages/sdk/src/charts/index.ts' },
   { specifier: '@makinbakin/sdk/conversation', name: 'sdk-conversation', entrypoint: 'packages/sdk/src/conversation/index.ts' },
+  { specifier: '@makinbakin/sdk/content', name: 'sdk-content', entrypoint: 'packages/sdk/src/content/index.ts' },
   { specifier: '@makinbakin/sdk/hooks', name: 'sdk-hooks', entrypoint: 'packages/sdk/src/hooks/index.ts' },
   { specifier: '@makinbakin/sdk/components', name: 'sdk-components', entrypoint: 'packages/sdk/src/components/index.ts' },
   { specifier: '@makinbakin/sdk/slots', name: 'sdk-slots', entrypoint: 'packages/sdk/src/slots/index.tsx' },

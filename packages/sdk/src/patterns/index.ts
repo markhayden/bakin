@@ -44,6 +44,26 @@ export {
   UnderlineTabs,
   UnsavedChangesDialog,
 } from '@bakin/ui/patterns'
+
+/** Replace an affected result region when search returns no trustworthy result. */
+export { SearchUnavailable } from './search-patterns'
+/** Show fused and per-leg search relevance as exact, non-color-dependent evidence. */
+export { ScoreOverlay } from './search-patterns'
+/** Approximate matched fields when the adapter has no exact metadata. */
+export { computeMatchedFields } from './search-patterns'
+/** Disclose the exact sources that degraded or exceeded the search budget. */
+export { SearchPartialChip } from './search-patterns'
+/** Disclose that usable results came from a named lower-quality fallback. */
+export { SearchDegradedChip } from './search-patterns'
+export type {
+  ScoreOverlayInfo,
+  ScoreOverlayProps,
+  SearchDegradedChipProps,
+  SearchPartialChipProps,
+  SearchPartialMeta,
+  SearchUnavailableProps,
+} from './search-patterns'
+
 export type {
   ConversationPageBodyProps,
   ConversationPageComposerProps,

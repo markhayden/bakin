@@ -75,7 +75,7 @@ comparison, and deletion of replaced styling/allowances.
 - [x] T34b Migrate message, activity, and tool rendering
 - [x] T34c Migrate composer and attachments
 - [x] T34d Migrate conversation panel, stream, and drawer
-- [ ] T35a Classify and migrate markdown and search patterns
+- [x] T35a Classify and migrate markdown and search patterns
 - [ ] T35b Classify and migrate agent identity, filter, select, and status patterns
 - [ ] T35c Classify and migrate asset, model, and color picker patterns
 - [ ] T35d Classify and migrate settings and turn-output patterns

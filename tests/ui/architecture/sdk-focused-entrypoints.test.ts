@@ -8,7 +8,7 @@ import { SDK_SUBPATHS } from '../../../src/core/whiskit/build'
 import { SDK_EXTERNALS } from '../../../src/core/whiskit/externals'
 
 const REPO_ROOT = resolve(import.meta.dir, '../../..')
-const FOCUSED_SUBPATHS = ['ui', 'layout', 'patterns', 'charts', 'conversation'] as const
+const FOCUSED_SUBPATHS = ['ui', 'layout', 'patterns', 'charts', 'conversation', 'content'] as const
 
 function readJson(path: string): Record<string, any> {
   return JSON.parse(readFileSync(join(REPO_ROOT, path), 'utf8')) as Record<string, any>

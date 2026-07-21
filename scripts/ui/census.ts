@@ -191,7 +191,7 @@ function resolveModuleSource(root: string, moduleSpecifier: string): string | nu
   let base: string
   if (moduleSpecifier.startsWith('@/')) {
     base = join(root, 'src', moduleSpecifier.slice(2))
-  } else if (moduleSpecifier.startsWith('./')) {
+  } else if (moduleSpecifier.startsWith('.')) {
     base = join(root, dirname(SDK_COMPONENT_BARREL), moduleSpecifier)
   } else if (moduleSpecifier.startsWith('@makinbakin/sdk/')) {
     base = join(root, 'packages/sdk/src', moduleSpecifier.slice('@makinbakin/sdk/'.length))

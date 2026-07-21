@@ -40,6 +40,7 @@ export const SDK_SUBPATHS = [
   'patterns',
   'charts',
   'conversation',
+  'content',
   'hooks',
   'components',
   'slots',

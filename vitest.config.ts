@@ -12,6 +12,10 @@ export default defineConfig({
       '@base-ui/react/field',
       '@base-ui/react/fieldset',
       '@base-ui/react/form',
+      '@tanstack/react-router',
+      'react-markdown',
+      'rehype-highlight',
+      'remark-gfm',
     ],
   },
   test: {

@@ -29,6 +29,7 @@ export const SDK_EXTERNALS: string[] = [
   '@makinbakin/sdk/patterns',
   '@makinbakin/sdk/charts',
   '@makinbakin/sdk/conversation',
+  '@makinbakin/sdk/content',
   '@makinbakin/sdk/hooks',
   '@makinbakin/sdk/components',
   '@makinbakin/sdk/slots',

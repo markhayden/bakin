@@ -49,7 +49,7 @@
     },
     "sdkSubpaths": {
       "status": "active",
-      "count": 15,
+      "count": 16,
       "source": "packages/sdk/package.json"
     },
     "agentPackageKinds": {

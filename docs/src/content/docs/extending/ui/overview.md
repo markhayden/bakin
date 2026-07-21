@@ -18,7 +18,7 @@ The catalog will grow component by component as primitives, layout recipes, syst
 
 ## Authoring Rule
 
-Start with the focused visual SDK entrypoints: `@makinbakin/sdk/ui`, `@makinbakin/sdk/layout`, `@makinbakin/sdk/patterns`, `@makinbakin/sdk/charts`, and `@makinbakin/sdk/conversation`. Use semantic component props and documented composition patterns. The older `@makinbakin/sdk/components` barrel is migration-only and should not gain new consumers. Add plugin-owned, root-scoped CSS only for domain-specific presentation that the SDK does not cover.
+Start with the focused visual SDK entrypoints: `@makinbakin/sdk/ui`, `@makinbakin/sdk/layout`, `@makinbakin/sdk/patterns`, `@makinbakin/sdk/charts`, `@makinbakin/sdk/conversation`, and `@makinbakin/sdk/content`. Use semantic component props and documented composition patterns. The older `@makinbakin/sdk/components` barrel is migration-only and should not gain new consumers. Add plugin-owned, root-scoped CSS only for domain-specific presentation that the SDK does not cover.
 
 Do not copy host components into a plugin. If the same need recurs across official or third-party plugins, propose it as an SDK contract with its public story, interaction test, accessibility coverage, and responsive states.
 
@@ -857,6 +857,64 @@ Keep the owning page path stable while these values change. The patterns intenti
 Use `StatusBadge` for compact state language and `StatTile` for scan-friendly technical metrics. A status always needs a visible label such as “Published,” “Needs review,” or “Blocked”; never use a bare colored dot or icon as the only meaning. Status icons are decorative reinforcement. Focused status tones follow the shared semantic vocabulary: `neutral`, `success`, `attention`, `danger`, and `accent`.
 
 `StatTile` uses the low-chrome Product Character treatment by default. Choose `variant="surface"` only when the metric is a genuinely bounded or actionable object, not to put a card around every number. When a tile has a meter, pass `progress.label` whenever the visible metric label is not a plain string. Consumers provide the exact value, denominator, and honest coverage copy; the component only clamps and presents the meter. An `onClick` tile becomes a native `type="button"` with the same visible focus contract as other actions.
+
+## Markdown and Search Trust Patterns
+
+Import `MarkdownContent` and `MarkdownEditor` from `@makinbakin/sdk/content`. The focused content entrypoint isolates its intentionally heavier parser from routine UI and application-pattern consumers. The renderer supports GFM tables and task lists, highlighted copyable code, bounded media previews, and visibly identified `bakin:*` managed sections. Raw HTML is not rendered. Wide tables and code own horizontal overflow inside the content boundary instead of widening the page.
+
+Internal links must keep using the shipped routing contract. Supply `renderInternalLink` with `PluginLink`; do not rebuild history or route parsing inside a Markdown renderer:
+
+```tsx
+import { MarkdownContent } from '@makinbakin/sdk/content'
+import { PluginLink } from '@makinbakin/sdk/components'
+
+export function ReleaseNotes({ content }: { content: string }) {
+  return (
+    <MarkdownContent
+      content={content}
+      renderInternalLink={({ href, children }) => (
+        <PluginLink to={href}>{children}</PluginLink>
+      )}
+    />
+  )
+}
+```
+
+`MarkdownEditor` is controlled: the host owns edit/preview mode, content, persistence, and save actions. Use `height="compact"`, `"document"`, `"viewport"`, or `"fill"` instead of arbitrary minimum heights. Its `format` may be `markdown`, `yaml`, `json`, or `text`; JSON preview formats valid input and preserves invalid in-progress input exactly. The earlier `editing` and `minHeight` props remain source-compatible while official consumers migrate; supplied `minHeight` values normalize to the named viewport treatment. New code uses the labeled `mode` and semantic `height` contract.
+
+Search feedback lives on `@makinbakin/sdk/patterns` and must distinguish three materially different states:
+
+| State | Pattern | Meaning |
+| --- | --- | --- |
+| The search engine returned no trustworthy query result | `SearchUnavailable` | Replace the owning results region, preserve surrounding browse/filter controls when useful, and provide `retry` or a host-owned `healthAction` only when that recovery exists |
+| A lower-quality local matcher produced usable results | `SearchDegradedChip` | Keep results visible and name the fallback in plain language |
+| Some sources exceeded their query budget | `SearchPartialChip` | Keep results visible and pass exact table metadata so keyboard and pointer users can inspect which sources degraded or were omitted |
+
+`ScoreOverlay` is diagnostic evidence, not a status color. It labels the fused score, each reported search leg, and matched fields in text. Pass adapter-reported `matchedFields` when available; use `computeMatchedFields` only for the documented client-side approximation.
+
+```tsx
+import {
+  SearchPartialChip,
+  SearchUnavailable,
+} from '@makinbakin/sdk/patterns'
+import { PluginLink } from '@makinbakin/sdk/components'
+import { buttonVariants } from '@makinbakin/sdk/ui'
+
+const unavailable = (
+  <SearchUnavailable
+    retry={retrySearch}
+    healthAction={(
+      <PluginLink to="/health" className={buttonVariants({ variant: 'outline', size: 'sm' })}>
+        Open health
+      </PluginLink>
+    )}
+  />
+)
+
+const partial = <SearchPartialChip meta={response.meta} />
+```
+
+`SearchUnavailable` preserves the established `/health` action by default. Pass another `healthAction` when the host has a more relevant recovery destination, or pass `null` when no health route is valid. Search and filter values remain in the existing query-state hooks. These patterns report result quality; they do not own the query, URL, request lifecycle, or navigation.
 
 ## Compact Data Visualization
 
