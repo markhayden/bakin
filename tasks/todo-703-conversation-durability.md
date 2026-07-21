@@ -13,16 +13,16 @@
 - [ ] GATE: suite green ✓ (8032/0 fail), freeze diff = additions only ✓ — AWAITING Mark live-approval on 3737
 
 ## PR 2 — bakin-bits-official (`feat/703-brainstorm-durability`)
-- [ ] P1: projects /ask on engine (202/409/abort, metering, streaming flag) + route tests
-- [ ] P2: projects client (optimistic echo, rehydration) + component tests
-- [ ] P3: projects nav badge/attention provider + seen tracking
-- [ ] P4: plan history sidecar + restore endpoints + unit tests
-- [ ] P5: plan diff toggle + history list + restore UI + tests
-- [ ] P6: plan-first prompt (shared constant, both call sites pinned)
-- [ ] M1: messaging sessions on engine (proposals via onChunk, incremental persistence) + tests
-- [ ] M2: messaging client + attention provider
-- [ ] V1: bump projects + messaging manifest versions
-- [ ] GATE: bits suite green; Mark live-approves full #703 walk on 3737
+- [x] P1: projects /ask on engine — commit 7933fdf (bits)
+- [x] P2: projects client — commits 7933fdf + b6d241b
+- [x] P3: projects attention — commit f2ba8c7
+- [x] P4: plan history — commit 7ebf1f3
+- [x] P5: Changes view — commit 665ffd2
+- [x] P6: plan-first prompt — commit d56c00a
+- [x] M1: messaging engine turns — commit b1270a0 (+ engine onTurnComplete hook, bakin 9c06b377f)
+- [x] M2: messaging client + attention (incl. plan-workspace) — commit 827d359
+- [x] V1: projects 0.8.0, messaging 0.9.0 — commit 43ded14
+- [ ] GATE: bits suite green ✓ (433/0 ×4) — AWAITING Mark live-approval; PR https://github.com/markhayden/bakin-bits-official/pull/89
 
 ## PR 3 — bakin (`chore/703-remove-per-request-stream`)
 - [ ] Z1: delete useConversationStream + sse reader + exports + tests; zero-import grep
