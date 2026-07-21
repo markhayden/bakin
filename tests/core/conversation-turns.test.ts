@@ -393,6 +393,46 @@ describe('conversation turn service', () => {
     expect(done?.data.agentId).toBe('pixel')
   })
 
+  test('onTurnComplete runs after final persistence and BEFORE the done event; skipped on error turns', async () => {
+    const h = makeHarness()
+    const order: string[] = []
+    const service = makeService(h, {
+      appendRow: (key, row) => {
+        order.push(`row:${row.kind}`)
+        const list = h.rows.get(key) ?? []
+        list.push(row)
+        h.rows.set(key, list)
+      },
+      hooks: {
+        onTurnComplete: ({ aborted }) => {
+          order.push(`complete:${aborted}`)
+        },
+      },
+    })
+    h.setStream(async function* () {
+      yield { type: 'text', content: 'reply' } as ChatChunk
+      yield { type: 'done' } as ChatChunk
+    })
+    h.ctx.events.emit = ((event: string, data?: Record<string, unknown>) => {
+      order.push(`event:${event}`)
+      h.events.push({ event, data: data ?? {} })
+    }) as typeof h.ctx.events.emit
+
+    expect(await service.start(h.ctx, 't14', 'go')).toBe('accepted')
+    await service.waitFor('t14')
+    expect(order).toEqual(['row:user', 'event:test.chunk', 'row:assistant', 'complete:false', 'event:test.done'])
+
+    // Error turns never run onTurnComplete.
+    const completions: boolean[] = []
+    const failing = makeService(h, { hooks: { onTurnComplete: ({ aborted }) => { completions.push(aborted) } } })
+    h.setStream(async function* () {
+      yield { type: 'error', content: 'boom' } as ChatChunk
+    })
+    expect(await failing.start(h.ctx, 't15', 'go')).toBe('accepted')
+    await failing.waitFor('t15')
+    expect(completions).toEqual([])
+  })
+
   test('listInFlight exposes key/agent/turnId during the turn and empties after settle', async () => {
     const h = makeHarness()
     const service = makeService(h)

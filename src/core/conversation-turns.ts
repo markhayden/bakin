@@ -116,6 +116,13 @@ export interface ConversationTurnServiceConfig {
     onChunk?: (key: string, chunk: ChatChunk) => void
     /** Spend attribution, once per turn — success and abort, never error. */
     meter?: (info: { key: string; agentId: string; turnId: string; usage?: MessageUsage }) => Promise<void> | void
+    /**
+     * Success/abort path only, AFTER final row persistence but BEFORE the
+     * done event — finalize derived state (e.g. messaging's proposal
+     * linking) so it is durable when clients react to done. Errors are
+     * logged, never thrown into the turn.
+     */
+    onTurnComplete?: (info: { key: string; aborted: boolean }) => Promise<void> | void
     /** Runs after the slot releases; waitFor() resolves after it completes. */
     onSettled?: (info: { ctx: TurnContext; key: string; outcome: TurnOutcome }) => Promise<unknown> | unknown
   }
@@ -334,6 +341,11 @@ async function runTurn(
     const aborted = controller.signal.aborted
     if (aborted) {
       await persist([{ kind: 'aborted', ts: new Date().toISOString(), turnId }])
+    }
+    try {
+      await config.hooks?.onTurnComplete?.({ key, aborted })
+    } catch (err) {
+      log.error(`[${config.name}] onTurnComplete hook failed for ${key}`, err as Error)
     }
     // Attribute the turn's spend — aborted turns billed whatever usage
     // arrived. A usage-less done still records the run (tokens unknown,

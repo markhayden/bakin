@@ -111,6 +111,12 @@ export interface ConversationTurnServiceConfig {
       turnId: string
       usage?: RuntimeMessageUsage
     }) => Promise<void> | void
+    /**
+     * Success/abort path only, AFTER final row persistence but BEFORE the
+     * done event — finalize derived state so it is durable when clients
+     * react to done. Errors are logged, never thrown into the turn.
+     */
+    onTurnComplete?: (info: { key: string; aborted: boolean }) => Promise<void> | void
     /** Runs after the slot releases; waitFor() resolves after it completes. */
     onSettled?: (info: {
       ctx: ConversationTurnContext
