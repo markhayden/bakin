@@ -765,13 +765,28 @@ curl -sS \
 ```
 </OpenApiReference>
 
+<OpenApiReference operationId="brands.get.brand-id-docs-kind-name-brainstorm">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/brands/<brandId>/docs/<kind>/<name>/brainstorm'
+```
+</OpenApiReference>
+
 <OpenApiReference operationId="brands.post.brand-id-docs-kind-name-brainstorm">
 ```sh frame="terminal" showLineNumbers
 curl -sS \
   -X POST \
   'http://localhost:3737/api/plugins/brands/<brandId>/docs/<kind>/<name>/brainstorm' \
   -H 'Content-Type: application/json' \
-  --data '{"agent":"value","message":"value","history":[{"role":"user","content":"value"}],"docContent":"value"}'
+  --data '{"agent":"value","message":"value","docContent":"value"}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="brands.post.brand-id-docs-kind-name-brainstorm-abort">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/brands/<brandId>/docs/<kind>/<name>/brainstorm/abort'
 ```
 </OpenApiReference>
 
@@ -1657,7 +1672,7 @@ curl -sS \
   -X POST \
   'http://localhost:3737/api/plugins/tasks/' \
   -H 'Content-Type: application/json' \
-  --data '{"id":"value","title":"value","description":"value","column":"backlog","assignee":"value","team":"value","workflowId":"value","skipWorkflowReason":"value","createdBy":"value","parentId":"value","projectId":"value","brandId":"value","availableAt":"value","dueAt":"value","source":{"pluginId":"value","entityType":"value","entityId":"value","purpose":"value"}}'
+  --data '{"id":"value","title":"value","description":"value","column":"backlog","assignee":"value","team":"value","workflowId":"value","skipWorkflowReason":"value","createdBy":"value","parentId":"value","projectId":"value","brandId":"value","repoPath":"value","availableAt":"value","dueAt":"value","source":{"pluginId":"value","entityType":"value","entityId":"value","purpose":"value"}}'
 ```
 </OpenApiReference>
 
@@ -1674,7 +1689,7 @@ curl -sS \
   -X PUT \
   'http://localhost:3737/api/plugins/tasks/<taskId>' \
   -H 'Content-Type: application/json' \
-  --data '{"id":"value","originalTitle":"value","title":"value","description":"value","agent":"value","team":"value","column":"value","workflowId":"value","brandId":"value","availableAt":"value","dueAt":"value","source":"value","expectedVersion":1}'
+  --data '{"id":"value","originalTitle":"value","title":"value","description":"value","agent":"value","team":"value","column":"value","workflowId":"value","brandId":"value","repoPath":"value","availableAt":"value","dueAt":"value","source":"value","expectedVersion":1}'
 ```
 </OpenApiReference>
 
