@@ -8,7 +8,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { emitPluginEvent, usePluginEvent } from '@makinbakin/sdk/hooks'
-import type { ConversationMessage } from '@makinbakin/sdk/components'
+import { useConversationThread, type ConversationMessage } from '@makinbakin/sdk/components'
 import type { RuntimeChatChunk } from '@makinbakin/sdk/types'
 import { pluginFetch } from '@makinbakin/sdk/utils'
 
@@ -186,108 +186,65 @@ export interface ChatStreamState {
 }
 
 export function useChatStream(chatId: string): ChatStreamState {
-  const [chat, setChat] = useState<ChatSummaryDto | null>(null)
-  const [messages, setMessages] = useState<ConversationMessage[]>([])
-  const [liveChunks, setLiveChunks] = useState<RuntimeChatChunk[] | null>(null)
-  const [streaming, setStreaming] = useState(false)
-  const [sendError, setSendError] = useState<string | null>(null)
-  // Guard against SSE events for other chats / stale fetches after switching.
-  const activeChatRef = useRef(chatId)
-  activeChatRef.current = chatId
   const lastUserRef = useRef<{ content: string; attachments?: Array<{ name: string; mimeType: string; path: string }> }>({ content: '' })
 
-  const loadTranscript = useCallback(async () => {
-    if (!chatId) { setChat(null); setMessages([]); return }
-    const res = await pluginFetch('chat', `chats/${chatId}`)
-    if (!res.ok || activeChatRef.current !== chatId) return
-    const body = (await res.json()) as { chat: ChatSummaryDto; messages: TranscriptRowDto[] }
-    // Re-check AFTER the body read too — a slow response for the previous
-    // chat could land post-switch and render the wrong transcript.
-    if (activeChatRef.current !== chatId) return
-    setChat(body.chat)
-    setMessages(body.messages.map((row) => rowToMessage(chatId, row)))
-    const lastUser = [...body.messages].reverse().find((r) => r.kind === 'user')
-    if (lastUser?.kind === 'user') lastUserRef.current = { content: lastUser.content, attachments: lastUser.attachments }
+  // The kit hook owns the shared client core (optimistic echo, bus
+  // streaming + coalescing, active-thread guards, settle-by-refetch);
+  // chat keeps its own policy here: seen tracking, retry with
+  // attachments, attachment URL mapping, and NO streaming pre-light from
+  // the server flag (the transcript + next chunk carry the state).
+  const thread = useConversationThread<ChatSummaryDto, { name: string; mimeType: string; path: string }>({
+    threadKey: chatId,
+    events: { chunk: 'chat.chunk', done: 'chat.done', error: 'chat.error' },
+    keyOf: (payload) => payload.chatId,
+    load: async (key) => {
+      const res = await pluginFetch('chat', `chats/${key}`)
+      if (!res.ok) return null
+      const body = (await res.json()) as { chat: ChatSummaryDto; messages: TranscriptRowDto[] }
+      const lastUser = [...body.messages].reverse().find((r) => r.kind === 'user')
+      if (lastUser?.kind === 'user') lastUserRef.current = { content: lastUser.content, attachments: lastUser.attachments }
+      return { messages: body.messages.map((row) => rowToMessage(key, row)), meta: body.chat }
+    },
+    post: async (key, content, attachments) => {
+      const res = await pluginFetch('chat', `chats/${key}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content, ...(attachments?.length ? { attachments } : {}) }),
+      })
+      if (res.ok) return { ok: true }
+      const body = (await res.json().catch(() => ({}))) as { error?: string }
+      return { ok: false, status: res.status, ...(body.error ? { error: body.error } : {}) }
+    },
+    // Optimistic user row — WITH its attachments (they lagged to the
+    // post-turn refetch otherwise); the durable copy replaces it on the
+    // next refetch.
+    optimisticRow: (content, attachments) => ({
+      kind: 'user',
+      ts: new Date().toISOString(),
+      content,
+      ...(attachments?.length
+        ? { attachments: attachments.map((a) => ({ name: a.name, mimeType: a.mimeType, url: attachmentUrl(chatId, a.name) })) }
+        : {}),
+    }),
+    // The reply landed while the user is looking at this chat.
+    onSettled: () => {
+      if (chatId) void markSeenRequest(chatId)
+    },
+  })
+
+  // Opening a chat marks it seen.
+  useEffect(() => {
+    if (chatId) void markSeenRequest(chatId)
   }, [chatId])
 
-  useEffect(() => {
-    setLiveChunks(null)
-    setStreaming(false)
-    setSendError(null)
-    void loadTranscript()
-    // Opening a chat marks it seen.
-    if (chatId) void markSeenRequest(chatId)
-  }, [loadTranscript, chatId])
-
-  usePluginEvent('chat.chunk', (payload) => {
-    if (payload.chatId !== activeChatRef.current) return
-    const chunk = payload.chunk as RuntimeChatChunk | undefined
-    if (!chunk?.type) return
-    setStreaming(true)
-    setLiveChunks((prev) => {
-      const chunks = prev ?? []
-      // Coalesce consecutive same-format text deltas so a long turn stays a
-      // handful of chunks instead of hundreds; folding/rendering policy
-      // itself lives in the kit's foldConversation.
-      const last = chunks[chunks.length - 1]
-      if (
-        chunk.type === 'text' && chunk.content &&
-        last?.type === 'text' && (last.format ?? 'markdown') === (chunk.format ?? 'markdown')
-      ) {
-        return [...chunks.slice(0, -1), { ...last, content: (last.content ?? '') + chunk.content }]
-      }
-      return [...chunks, chunk]
-    })
-  })
-
-  const settle = useCallback(() => {
-    setStreaming(false)
-    setLiveChunks(null)
-    void loadTranscript()
-    // The reply landed while the user is looking at this chat.
-    if (activeChatRef.current) void markSeenRequest(activeChatRef.current)
-  }, [loadTranscript])
-
-  usePluginEvent('chat.done', (payload) => {
-    if (payload.chatId === activeChatRef.current) settle()
-  })
-  usePluginEvent('chat.error', (payload) => {
-    if (payload.chatId === activeChatRef.current) settle()
-  })
-
+  const threadSend = thread.send
   const send = useCallback(async (
     content: string,
     attachments?: Array<{ name: string; mimeType: string; path: string }>,
   ) => {
-    setSendError(null)
     lastUserRef.current = { content, attachments }
-    // Optimistic user row — WITH its attachments (they lagged to the post-turn
-    // refetch otherwise); the durable copy replaces it on the next refetch.
-    setMessages((prev) => [
-      ...prev,
-      {
-        kind: 'user',
-        ts: new Date().toISOString(),
-        content,
-        ...(attachments?.length
-          ? { attachments: attachments.map((a) => ({ name: a.name, mimeType: a.mimeType, url: attachmentUrl(chatId, a.name) })) }
-          : {}),
-      },
-    ])
-    setStreaming(true)
-    setLiveChunks([])
-    const res = await pluginFetch('chat', `chats/${chatId}/messages`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content, ...(attachments?.length ? { attachments } : {}) }),
-    })
-    if (!res.ok) {
-      setStreaming(false)
-      setLiveChunks(null)
-      const body = (await res.json().catch(() => ({}))) as { error?: string }
-      setSendError(body.error ?? `send failed (${res.status})`)
-    }
-  }, [chatId])
+    await threadSend(content, attachments)
+  }, [threadSend])
 
   const abort = useCallback(() => {
     if (chatId) void abortTurnRequest(chatId)
@@ -299,5 +256,15 @@ export function useChatStream(chatId: string): ChatStreamState {
     if (last.content || last.attachments?.length) void send(last.content, last.attachments)
   }, [send])
 
-  return { chat, messages, liveChunks, streaming, sendError, send, abort, retry, refreshChat: loadTranscript }
+  return {
+    chat: thread.meta,
+    messages: thread.messages,
+    liveChunks: thread.liveChunks,
+    streaming: thread.streaming,
+    sendError: thread.sendError,
+    send,
+    abort,
+    retry,
+    refreshChat: thread.refresh,
+  }
 }
