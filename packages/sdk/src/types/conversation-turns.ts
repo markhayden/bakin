@@ -76,7 +76,7 @@ export interface ConversationTurnServiceConfig {
   /** Consumer label for log lines (e.g. 'projects.brainstorm'). */
   name: string
   /** Bus event names — the consumer's wire contract. */
-  events: { chunk: string; done: string; error: string }
+  events: { chunk: string; done: string; error: string; started?: string }
   /** Base payload identifying the thread on every event (e.g. key => ({ projectId: key })). */
   payload: (key: string) => Record<string, unknown>
   /** Resolve the thread's agent; null → start() returns 'not_found'. */

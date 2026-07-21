@@ -127,6 +127,24 @@ describe('useConversationAttention (provider hook)', () => {
     await waitFor(() => expect(getNavBadge('probe2-nav')).toEqual({ tone: 'info' }))
   })
 
+  it('started events light the working dot before any chunk arrives (#707)', async () => {
+    const { config } = makeConfig({ events: { ...EVENTS, started: 'probe2.started' } })
+    renderHook(() => useConversationAttention(config))
+    await act(async () => {})
+    expect(getNavBadge('probe2-nav')).toBeUndefined()
+
+    act(() => {
+      emitPluginEvent({ event: 'probe2.started', threadKey: 't1', agentId: 'main' })
+    })
+    await waitFor(() => expect(getNavBadge('probe2-nav')).toEqual({ tone: 'info' }))
+
+    // The done clears the started-seeded key even when no chunk ever fired.
+    await act(async () => {
+      emitPluginEvent({ event: EVENTS.done, threadKey: 't1', agentId: 'main' })
+    })
+    await waitFor(() => expect(getNavBadge('probe2-nav')).toBeUndefined())
+  })
+
   it('done while elsewhere: toast + chime + refresh; done while viewing: silent', async () => {
     const { config, calls } = makeConfig()
     renderHook(() => useConversationAttention(config))

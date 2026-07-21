@@ -93,8 +93,11 @@ export interface InflightTurnInfo {
 export interface ConversationTurnServiceConfig {
   /** Consumer label for log lines (e.g. 'chat', 'projects.brainstorm'). */
   name: string
-  /** Bus event names — the consumer's wire contract (e.g. chat.chunk/done/error). */
-  events: { chunk: string; done: string; error: string }
+  /** Bus event names — the consumer's wire contract (e.g. chat.chunk/done/error).
+   *  `started` (optional) fires at turn-accept, BEFORE any runtime chunk —
+   *  attention providers light the working dot instantly instead of waiting
+   *  out model latency for the first chunk (#707). */
+  events: { chunk: string; done: string; error: string; started?: string }
   /** Base payload identifying the thread on every event (e.g. key => ({ chatId: key })). */
   payload: (key: string) => Record<string, unknown>
   /** Resolve the thread's agent; null → start() returns 'not_found'. */
@@ -229,6 +232,12 @@ export function createConversationTurnService(config: ConversationTurnServiceCon
       inflight.delete(key)
       log.error(`[${config.name}] user row append failed for ${key}`, err as Error)
       return 'not_found'
+    }
+
+    // Accept signal for attention surfaces — the first runtime chunk can be
+    // seconds away (model latency), and the working dot must not wait it out.
+    if (config.events.started) {
+      ctx.events.emit(config.events.started, { ...config.payload(key), agentId })
     }
 
     // The busy slot releases when the TURN settles; onSettled work (e.g.

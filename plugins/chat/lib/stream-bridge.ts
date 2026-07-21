@@ -42,7 +42,7 @@ export const CHAT_TURN_FRAMING =
 
 const service = createConversationTurnService({
   name: 'chat',
-  events: { chunk: 'chat.chunk', done: 'chat.done', error: 'chat.error' },
+  events: { chunk: 'chat.chunk', done: 'chat.done', error: 'chat.error', started: 'chat.started' },
   payload: (chatId) => ({ chatId }),
   resolveThread: (chatId) => {
     const chat = getChatSummary(chatId)
