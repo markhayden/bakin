@@ -17,7 +17,6 @@ mock.module('../../src/core/content-dir', contentDirMock)
 mock.module('../../packages/core/src/content-dir', contentDirMock)
 
 import type { RuntimeChatChunk } from '@makinbakin/sdk/types'
-import { readConversationSseStream } from '../../src/components/conversation/sse'
 import { createTurnRecorder } from '../../src/components/conversation/turn-recorder'
 import { conversationThreadId } from '../../src/components/conversation/thread-id'
 
@@ -39,57 +38,6 @@ function sseResponse(frames: string[], chunkSize?: number): Response {
   })
   return new Response(stream, { status: 200, headers: { 'content-type': 'text/event-stream' } })
 }
-
-describe('readConversationSseStream', () => {
-  it('dispatches chunk frames, forwards custom events, and resolves on done', async () => {
-    const chunks: RuntimeChatChunk[] = []
-    const custom: Array<[string, unknown]> = []
-    const res = sseResponse([
-      `event: chunk\ndata: ${JSON.stringify({ type: 'text', content: 'hel' })}\n\n`,
-      `event: chunk\ndata: ${JSON.stringify({ type: 'text', content: 'lo' })}\n\n`,
-      `event: proposal\ndata: {"id":"p1"}\n\n`,
-      `event: done\ndata: {"content":"hello"}\n\n`,
-    ])
-    const result = await readConversationSseStream(res, {
-      signal: new AbortController().signal,
-      onChunk: (c) => chunks.push(c),
-      onCustom: (name, data) => custom.push([name, data]),
-    })
-    expect(chunks).toEqual([
-      { type: 'text', content: 'hel' },
-      { type: 'text', content: 'lo' },
-    ])
-    expect(custom).toEqual([['proposal', { id: 'p1' }]])
-    expect(result.content).toBe('hello')
-  })
-
-  it('reassembles frames split across reads (byte-level buffering)', async () => {
-    const chunks: RuntimeChatChunk[] = []
-    const res = sseResponse(
-      [`event: chunk\ndata: ${JSON.stringify({ type: 'text', content: 'split across reads' })}\n\n`],
-      5,
-    )
-    await readConversationSseStream(res, {
-      signal: new AbortController().signal,
-      onChunk: (c) => chunks.push(c),
-    })
-    expect(chunks).toEqual([{ type: 'text', content: 'split across reads' }])
-  })
-
-  it('throws on error frames with the server message', async () => {
-    const res = sseResponse([`event: error\ndata: {"message":"agent unavailable"}\n\n`])
-    await expect(
-      readConversationSseStream(res, { signal: new AbortController().signal, onChunk: () => {} }),
-    ).rejects.toThrow('agent unavailable')
-  })
-
-  it('throws on a non-OK response with the body text', async () => {
-    const res = new Response('busy', { status: 409 })
-    await expect(
-      readConversationSseStream(res, { signal: new AbortController().signal, onChunk: () => {} }),
-    ).rejects.toThrow('busy')
-  })
-})
 
 describe('createTurnRecorder', () => {
   it('records text, result-phase tools, and errors into ConversationMessage rows', () => {

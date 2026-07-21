@@ -10,7 +10,7 @@
 - [x] C3: chat attention facade + provider — attention tests byte-identical
 - [x] B1: brands durable brainstorm — commits 71df0319d + ce50077c2
 - [x] D1: knowledge docs — commit c1ba95aa4
-- [ ] GATE: suite green ✓ (8032/0 fail), freeze diff = additions only ✓ — AWAITING Mark live-approval on 3737
+- [x] GATE: Mark live-approved; PR #704 MERGED 2026-07-21
 
 ## PR 2 — bakin-bits-official (`feat/703-brainstorm-durability`)
 - [x] P1: projects /ask on engine — commit 7933fdf (bits)
@@ -22,9 +22,9 @@
 - [x] M1: messaging engine turns — commit b1270a0 (+ engine onTurnComplete hook, bakin 9c06b377f)
 - [x] M2: messaging client + attention (incl. plan-workspace) — commit 827d359
 - [x] V1: projects 0.8.0, messaging 0.9.0 — commit 43ded14
-- [ ] GATE: bits suite green ✓ (433/0 ×4) — AWAITING Mark live-approval; PR https://github.com/markhayden/bakin-bits-official/pull/89
+- [x] GATE: Mark live-approved; bits PR #89 MERGED 2026-07-21
 
 ## PR 3 — bakin (`chore/703-remove-per-request-stream`)
-- [ ] Z1: delete useConversationStream + sse reader + exports + tests; zero-import grep
-- [ ] Z2: final docs (messaging-plugin.md, CLAUDE.md bullet); dispose SPEC.md/tasks per Mark
-- [ ] GATE: suite green; live smoke; ports free
+- [x] Z1: legacy per-request path deleted; zero-import grep clean
+- [x] Z2: docs final pass (messaging-plugin.md, CLAUDE.md, conversation-kit.md); spec/plan/todo kept in tasks/ per repo convention
+- [ ] GATE: PR 3 suite green + Mark smoke on 3737
