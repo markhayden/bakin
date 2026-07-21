@@ -19,6 +19,15 @@ export type {
   TurnStatus,
 } from '@bakin/ui/conversation'
 
+/** Compact single-turn output for task and workflow embeds. */
+export { TurnOutputView, TurnToolChip, foldTurnChunks } from '@bakin/ui/conversation'
+export type {
+  FoldedTurnOutput,
+  TurnOutputViewProps,
+  TurnTextSegment,
+  TurnToolChipState,
+} from '@bakin/ui/conversation'
+
 /** Bounded, resizable single-session composition for embedded reviews. */
 export { ConversationPanel } from '@bakin/ui/conversation'
 /** Exact, resizable detail for one conversation tool call. */

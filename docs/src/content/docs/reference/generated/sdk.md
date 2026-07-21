@@ -415,6 +415,16 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 | `ColorPickerProps` | — |
 | `ModelSelectOption` | — |
 | `ModelSelectProps` | — |
+| `PluginSettingsRenderer` | Schema-driven settings form with consumer-owned persistence and feedback. |
+| `PluginSettingsFeedback` | — |
+| `PluginSettingsRendererProps` | — |
+| `BooleanSettingsField` | — |
+| `ListSettingsField` | — |
+| `NumberSettingsField` | — |
+| `PluginSettingsSchema` | — |
+| `SelectSettingsField` | — |
+| `SettingsField` | — |
+| `StringSettingsField` | — |
 | `ConversationPageBodyProps` | — |
 | `ConversationPageComposerProps` | — |
 | `ConversationPageMode` | — |
@@ -524,6 +534,13 @@ Isolated conversation UI and models. Source: `packages/sdk/src/conversation/inde
 | `FoldOptions` | — |
 | `TurnItem` | — |
 | `TurnStatus` | — |
+| `TurnOutputView` | Compact single-turn output for task and workflow embeds. |
+| `TurnToolChip` | Compact single-turn output for task and workflow embeds. |
+| `foldTurnChunks` | Compact single-turn output for task and workflow embeds. |
+| `FoldedTurnOutput` | — |
+| `TurnOutputViewProps` | — |
+| `TurnTextSegment` | — |
+| `TurnToolChipState` | — |
 | `ConversationPanel` | Bounded, resizable single-session composition for embedded reviews. |
 | `ToolCallDrawer` | Exact, resizable detail for one conversation tool call. |
 | `ConversationPanelProps` | — |

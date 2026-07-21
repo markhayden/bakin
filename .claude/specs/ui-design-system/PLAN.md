@@ -1445,6 +1445,31 @@ and +8,299 shared delta were explicitly user-approved before the performance
 baseline was recorded; components direct bytes decreased by 1,840, CSS
 decreased by 432 bytes, and no dependency, entrypoint, or chunk was added.
 
+**Status — T35d (2026-07-21):** Complete. The schema-driven
+`PluginSettingsRenderer` and its settings field types now publish from
+`@makinbakin/sdk/patterns`; consumers retain persistence, retry, routing,
+busy state, durable save feedback, and notifications. `TurnOutputView`,
+`TurnToolChip`, and `foldTurnChunks` now publish from
+`@makinbakin/sdk/conversation`, reuse the canonical conversation fold and tool
+rows, keep wide code locally scrollable, and leave rich Markdown to an opt-in
+consumer renderer. Legacy root adapters preserve host toasts, async saves,
+plugin labels, and existing rich-Markdown behavior. No official core or Bits
+page composition was migrated. Public Storybook passes all 120 interaction
+and accessibility cases, while all 87 canonical Chromium, Firefox, and WebKit
+behavior contracts pass across supported widths, 200%-text, keyboard,
+overflow, reduced-motion, live, error, busy, and disabled states. Thirty-three
+focused and compatibility tests, all 148 UI architecture tests, and all 18 SDK
+package and reference-plugin checks pass. Docs validate across 48 pages and the
+official census remains 299 core-and-Bits entries. Canonical CSS is 236,377
+bytes with one runtime copy; `sdk-components` is 25,970 bytes direct /
+1,229,157 bytes reachable, `sdk-conversation` is 860 bytes direct / 218,446
+bytes reachable, `sdk-patterns` is 1,914 bytes direct / 466,882 bytes
+reachable, shared SDK chunks total 1,204,764 bytes, and initial host JS is
+391,265 bytes. The final +427 CSS, +998 reachable components, +82 direct
+conversation, +38 direct / +2,949 reachable patterns, and +6,526 shared-byte
+deltas were explicitly user-approved before the performance baseline was
+recorded; initial host JS decreased by 67,099 bytes.
+
 **Acceptance:** each export has one justified entrypoint/owner and an official
 consumer; private host behavior is not accidentally public; stories cover the
 stable public set.

@@ -65,6 +65,8 @@ const agentAssignmentStory = '/iframe.html?id=agents-identity-and-assignment--as
 const assetDialogStory = '/iframe.html?id=choices-asset-model-and-color-pickers--dialog-library&viewMode=story'
 const assetInlineStory = '/iframe.html?id=choices-asset-model-and-color-pickers--inline-attach-relink-and-states&viewMode=story'
 const modelColorStory = '/iframe.html?id=choices-asset-model-and-color-pickers--model-and-color-choices&viewMode=story'
+const pluginSettingsStory = '/iframe.html?id=forms-plugin-settings-renderer--messaging-schema-workflow&viewMode=story'
+const turnOutputStory = '/iframe.html?id=conversation-single-turn-output--embedded-output-states&viewMode=story'
 
 test('public story keeps keyboard, focus, console, and responsive contracts', async ({ page }) => {
   const browserErrors: string[] = []
@@ -1967,6 +1969,65 @@ test('asset, model, and color pickers preserve controlled state, keyboard, and n
   await test.step('200% text remains horizontally contained', async () => {
     await page.setViewportSize({ width: 320, height: 1100 })
     await page.goto(modelColorStory, { waitUntil: 'networkidle' })
+    await page.evaluate(() => { document.documentElement.style.fontSize = '200%' })
+    const dimensions = await page.evaluate(() => ({
+      clientWidth: document.documentElement.clientWidth,
+      scrollWidth: document.documentElement.scrollWidth,
+    }))
+    expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth)
+  })
+
+  expect(browserErrors).toEqual([])
+})
+
+test('plugin settings and single-turn output preserve validation, evidence, and narrow-width contracts', async ({ page }) => {
+  const browserErrors: string[] = []
+  page.on('console', (message) => {
+    if (message.type() === 'error') browserErrors.push(`console: ${message.text()}`)
+  })
+  page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
+  page.on('requestfailed', (request) => {
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+  })
+
+  for (const story of [pluginSettingsStory, turnOutputStory]) {
+    for (const width of responsiveWidths) {
+      await test.step(`${story} remains contained at ${width}px`, async () => {
+        await page.setViewportSize({ width, height: 1400 })
+        await page.goto(story, { waitUntil: 'networkidle' })
+        await expect(page.getByRole('main').or(page.getByRole('form')).first()).toBeVisible()
+        const dimensions = await page.evaluate(() => ({
+          clientWidth: document.documentElement.clientWidth,
+          scrollWidth: document.documentElement.scrollWidth,
+        }))
+        expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth)
+      })
+    }
+  }
+
+  await test.step('Messaging schema keeps exact labels, list grouping, and durable save feedback', async () => {
+    await page.setViewportSize({ width: 720, height: 1400 })
+    await page.goto(pluginSettingsStory, { waitUntil: 'networkidle' })
+    await expect(page.getByRole('textbox', { name: 'Messaging workspace name' })).toHaveValue('Publishing operations')
+    await expect(page.getByRole('group', { name: 'Content types row 2' })).toBeVisible()
+    await expect(page.getByRole('status')).toContainText('Messaging settings saved')
+    await expect(page.getByRole('button', { name: 'Save settings' })).toBeDisabled()
+  })
+
+  await test.step('turn output keeps tool status, live status, typed failure, and keyboard-scrollable code', async () => {
+    await page.goto(turnOutputStory, { waitUntil: 'networkidle' })
+    await expect(page.getByText('failed', { exact: true })).toBeVisible()
+    await expect(page.getByRole('status')).toContainText('waiting for the publishing agent')
+    await expect(page.getByRole('alert')).toContainText('session_died')
+    const code = page.getByRole('region', { name: 'Code output' })
+    await code.focus()
+    await expect(code).toBeFocused()
+    expect(await code.evaluate((element) => getComputedStyle(element).overflowX)).toBe('auto')
+  })
+
+  await test.step('200% text remains horizontally contained at the minimum supported width', async () => {
+    await page.setViewportSize({ width: 320, height: 1400 })
+    await page.goto(pluginSettingsStory, { waitUntil: 'networkidle' })
     await page.evaluate(() => { document.documentElement.style.fontSize = '200%' })
     const dimensions = await page.evaluate(() => ({
       clientWidth: document.documentElement.clientWidth,

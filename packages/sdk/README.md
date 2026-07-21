@@ -214,6 +214,23 @@ movement while consumers own palette values and saving. Existing official
 surfaces may remain on the migration-only components adapters until their
 incremental migration.
 
+Schema-driven plugin forms use `PluginSettingsRenderer` from
+`@makinbakin/sdk/patterns`; the settings schema and field types are co-exported
+from that entrypoint. The renderer owns defaults, draft editing, validation,
+list-row controls, and accessible feedback placement. Consumers own loading,
+persistence, retry, route state, and the durable `busy`/`feedback` values that
+describe a save result. Official surfaces may continue through the app-aware
+components adapter until fleet migration.
+
+Compact task and workflow output uses `TurnOutputView`, `TurnToolChip`, and
+`foldTurnChunks` from `@makinbakin/sdk/conversation`. They share the canonical
+conversation fold and tool-row semantics, keep wide code output locally
+scrollable, and expose typed live, terminal, and error evidence. Markdown is
+plain safe text by default; consumers that need rich content provide
+`renderText`, normally with `MarkdownContent` from the opt-in
+`@makinbakin/sdk/content` entrypoint. The compatibility adapter retains the
+host's existing rich-Markdown behavior during migration.
+
 Compact display patterns use `StatusBadge` and `StatTile`. Status labels carry
 meaning without color, while optional icons remain decorative. Focused status
 tones use `attention` and `danger`; the legacy components adapter maps the old

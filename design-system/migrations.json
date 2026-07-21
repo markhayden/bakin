@@ -19,13 +19,13 @@
     "private-import"
   ],
   "summary": {
-    "paths": 209,
+    "paths": 198,
     "totals": {
-      "raw-palette": 1384,
-      "arbitrary-size": 537,
-      "raw-control": 198,
-      "inline-style": 62,
-      "generic-token": 2457,
+      "raw-palette": 1345,
+      "arbitrary-size": 530,
+      "raw-control": 195,
+      "inline-style": 56,
+      "generic-token": 2387,
       "unscoped-css": 0,
       "private-import": 6
     }
@@ -615,8 +615,8 @@
       "target": "canonical shell layout and namespaced semantic tokens",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-palette": 73,
-        "generic-token": 123
+        "raw-palette": 65,
+        "generic-token": 122
       }
     },
     {
@@ -3218,56 +3218,6 @@
       }
     },
     {
-      "path": "src/components/agent-avatar.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "sdk"
-      },
-      "censusEntryId": "shared-component:src/components/agent-avatar",
-      "migrationTask": "T21-T35",
-      "archetype": "shared-ui",
-      "target": "focused SDK primitive/pattern and namespaced semantic tokens",
-      "status": "legacy-allowed",
-      "allowances": {
-        "raw-palette": 5,
-        "arbitrary-size": 1,
-        "inline-style": 1,
-        "generic-token": 3
-      }
-    },
-    {
-      "path": "src/components/agent-select.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "sdk"
-      },
-      "censusEntryId": "shared-component:src/components/agent-select",
-      "migrationTask": "T21-T35",
-      "archetype": "shared-ui",
-      "target": "focused SDK primitive/pattern and namespaced semantic tokens",
-      "status": "legacy-allowed",
-      "allowances": {
-        "raw-palette": 2,
-        "inline-style": 1,
-        "generic-token": 1
-      }
-    },
-    {
-      "path": "src/components/agent-status.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "sdk"
-      },
-      "censusEntryId": "shared-component:src/components/agent-status",
-      "migrationTask": "T21-T35",
-      "archetype": "shared-ui",
-      "target": "focused SDK primitive/pattern and namespaced semantic tokens",
-      "status": "legacy-allowed",
-      "allowances": {
-        "generic-token": 6
-      }
-    },
-    {
       "path": "src/components/asset-picker.tsx",
       "owner": {
         "repository": "bakin",
@@ -3280,8 +3230,7 @@
       "status": "legacy-allowed",
       "allowances": {
         "arbitrary-size": 1,
-        "raw-control": 2,
-        "generic-token": 12
+        "raw-control": 1
       }
     },
     {
@@ -3311,10 +3260,7 @@
       "target": "focused SDK primitive/pattern and namespaced semantic tokens",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-palette": 13,
-        "raw-control": 1,
-        "inline-style": 1,
-        "generic-token": 2
+        "raw-palette": 12
       }
     },
     {
@@ -3345,25 +3291,7 @@
       "target": "canonical conversation patterns and focused SDK entrypoint",
       "status": "legacy-allowed",
       "allowances": {
-        "arbitrary-size": 1,
-        "inline-style": 1,
-        "generic-token": 6
-      }
-    },
-    {
-      "path": "src/components/conversation/tool-call-drawer.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "sdk"
-      },
-      "censusEntryId": "shared-component:src/components/conversation/tool-call-drawer",
-      "migrationTask": "T34",
-      "archetype": "conversation",
-      "target": "canonical conversation patterns and focused SDK entrypoint",
-      "status": "legacy-allowed",
-      "allowances": {
-        "arbitrary-size": 2,
-        "generic-token": 6
+        "arbitrary-size": 1
       }
     },
     {
@@ -3412,40 +3340,6 @@
       }
     },
     {
-      "path": "src/components/markdown-content.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "sdk"
-      },
-      "censusEntryId": "shared-component:src/components/markdown-content",
-      "migrationTask": "T21-T35",
-      "archetype": "shared-ui",
-      "target": "focused SDK primitive/pattern and namespaced semantic tokens",
-      "status": "legacy-allowed",
-      "allowances": {
-        "raw-palette": 4,
-        "arbitrary-size": 3,
-        "raw-control": 1,
-        "generic-token": 8
-      }
-    },
-    {
-      "path": "src/components/markdown-editor.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "sdk"
-      },
-      "censusEntryId": "shared-component:src/components/markdown-editor",
-      "migrationTask": "T21-T35",
-      "archetype": "shared-ui",
-      "target": "focused SDK primitive/pattern and namespaced semantic tokens",
-      "status": "legacy-allowed",
-      "allowances": {
-        "inline-style": 1,
-        "generic-token": 8
-      }
-    },
-    {
       "path": "src/components/page-layout.tsx",
       "owner": {
         "repository": "bakin",
@@ -3477,22 +3371,6 @@
       }
     },
     {
-      "path": "src/components/plugin-settings-renderer.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "sdk"
-      },
-      "censusEntryId": "shared-component:src/components/plugin-settings-renderer",
-      "migrationTask": "T21-T35",
-      "archetype": "shared-ui",
-      "target": "focused SDK primitive/pattern and namespaced semantic tokens",
-      "status": "legacy-allowed",
-      "allowances": {
-        "inline-style": 1,
-        "generic-token": 9
-      }
-    },
-    {
       "path": "src/components/provider-keys-tab.tsx",
       "owner": {
         "repository": "bakin",
@@ -3506,70 +3384,6 @@
       "allowances": {
         "raw-control": 1,
         "generic-token": 9
-      }
-    },
-    {
-      "path": "src/components/score-overlay.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "sdk"
-      },
-      "censusEntryId": "shared-component:src/components/score-overlay",
-      "migrationTask": "T21-T35",
-      "archetype": "shared-ui",
-      "target": "focused SDK primitive/pattern and namespaced semantic tokens",
-      "status": "legacy-allowed",
-      "allowances": {
-        "raw-palette": 9,
-        "arbitrary-size": 1
-      }
-    },
-    {
-      "path": "src/components/search-degraded-chip.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "sdk"
-      },
-      "censusEntryId": "shared-component:src/components/search-degraded-chip",
-      "migrationTask": "T21-T35",
-      "archetype": "shared-ui",
-      "target": "focused SDK primitive/pattern and namespaced semantic tokens",
-      "status": "legacy-allowed",
-      "allowances": {
-        "raw-palette": 4,
-        "arbitrary-size": 1
-      }
-    },
-    {
-      "path": "src/components/search-partial-chip.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "sdk"
-      },
-      "censusEntryId": "shared-component:src/components/search-partial-chip",
-      "migrationTask": "T21-T35",
-      "archetype": "shared-ui",
-      "target": "focused SDK primitive/pattern and namespaced semantic tokens",
-      "status": "legacy-allowed",
-      "allowances": {
-        "raw-palette": 4,
-        "arbitrary-size": 1
-      }
-    },
-    {
-      "path": "src/components/search-unavailable.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "sdk"
-      },
-      "censusEntryId": "shared-component:src/components/search-unavailable",
-      "migrationTask": "T21-T35",
-      "archetype": "shared-ui",
-      "target": "focused SDK primitive/pattern and namespaced semantic tokens",
-      "status": "legacy-allowed",
-      "allowances": {
-        "raw-palette": 2,
-        "generic-token": 5
       }
     },
     {
@@ -3618,7 +3432,7 @@
       "target": "focused SDK primitive/pattern and namespaced semantic tokens",
       "status": "legacy-allowed",
       "allowances": {
-        "generic-token": 3
+        "arbitrary-size": 2
       }
     },
     {

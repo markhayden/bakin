@@ -98,6 +98,22 @@ export type {
   ModelSelectProps,
 } from './picker-patterns'
 
+/** Schema-driven settings form with consumer-owned persistence and feedback. */
+export { PluginSettingsRenderer } from './plugin-settings-renderer'
+export type {
+  PluginSettingsFeedback,
+  PluginSettingsRendererProps,
+} from './plugin-settings-renderer'
+export type {
+  BooleanSettingsField,
+  ListSettingsField,
+  NumberSettingsField,
+  PluginSettingsSchema,
+  SelectSettingsField,
+  SettingsField,
+  StringSettingsField,
+} from '../types'
+
 export type {
   ConversationPageBodyProps,
   ConversationPageComposerProps,

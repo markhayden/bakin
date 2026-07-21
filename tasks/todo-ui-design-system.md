@@ -78,7 +78,7 @@ comparison, and deletion of replaced styling/allowances.
 - [x] T35a Classify and migrate markdown and search patterns
 - [x] T35b Classify and migrate agent identity, filter, select, and status patterns
 - [x] T35c Classify and migrate asset, model, and color picker patterns
-- [ ] T35d Classify and migrate settings and turn-output patterns
+- [x] T35d Classify and migrate settings and turn-output patterns
 - [ ] T36 Prove focused entrypoints and freeze the migration API
 - [ ] USER CHECKPOINT: public component and layout contract approved
 

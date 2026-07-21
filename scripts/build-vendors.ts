@@ -16,7 +16,7 @@
  *   `bun build --splitting` invocation, so code shared between subpaths
  *   (shadcn primitives, @bakin/core helpers, plugin hooks) lands once in
  *   `sdk-shared-<hash>.js` chunks instead of being inlined into every
- *   subpath bundle (#422). The nine entry filenames are stable
+ *   subpath bundle (#422). The entry filenames are stable
  *   (`sdk-index.js`, `sdk-ui.js`, ...) and the import map is unchanged;
  *   only the chunk filenames are content-hashed. Chunk names CANNOT be
  *   deterministic: Bun rejects non-unique chunk output paths.
@@ -120,6 +120,7 @@ export async function buildSdkVendorBundles(opts: { outDir: string; production: 
       '--chunk-naming', 'sdk-shared-[hash].[ext]',
       ...(opts.production ? ['--production'] : []),
       '--external', 'react',
+      '--external', 'react-dom',
       '--external', '@tanstack/react-router',
     ], { cwd: REPO_ROOT, stdout: 'pipe', stderr: 'pipe' })
 
