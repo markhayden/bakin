@@ -19,10 +19,12 @@ import {
   listBrands,
   listDocs,
   readDoc,
+  readDocBrainstorm,
   saveManifest,
   writeDoc,
   type BrandDocKind,
 } from './store'
+import { brandBrainstormTurns, docBrainstormKey } from './brainstorm-bridge'
 import { brandIdSchema, brandManifestSchema } from './schemas'
 import { computeBrandFingerprint } from './fingerprint'
 import { scaffoldBrand } from './scaffold'
@@ -691,6 +693,11 @@ export const brandRoutes = [
     body: { contentType: 'none' as const },
     responses: { 200: passthrough, 404: errorResponse },
     handler: async (_req, ctx, parsed) => {
+      // Abort any in-flight doc brainstorms first — a live turn would keep
+      // billing and its persistence would resurrect the deleted directory.
+      for (const turn of brandBrainstormTurns.listInFlight()) {
+        if (turn.key.startsWith(`${parsed.params.brandId}/`)) brandBrainstormTurns.abort(turn.key)
+      }
       if (!deleteBrand(parsed.params.brandId)) {
         return Response.json({ error: 'brand not found' }, { status: 404 })
       }
@@ -701,21 +708,47 @@ export const brandRoutes = [
 
   defineRoute({
     path: '/:brandId/docs/:kind/:name/brainstorm',
-    method: 'POST',
-    summary: 'Stream one brainstorm turn about a brand doc',
+    method: 'GET',
+    summary: 'Read a brand doc brainstorm transcript',
     description:
-      'Embedded editing help (conversation kit): the operator asks an agent for feedback while editing a guideline/lesson doc. Streams the turn as per-request SSE frames (event: chunk/done/error — the readConversationSseStream contract). Ephemeral, session-only; the agent replies in chat and never writes files.',
+      'The durable per-doc conversation (#703): kit rows plus the server-seeded in-flight flag so a remount mid-turn rehydrates the streaming indicator.',
+    params: docParams,
+    responses: { 200: passthrough, 404: errorResponse },
+    handler: async (_req, _ctx, parsed) => {
+      const kind = parseKind(parsed.params.kind)
+      if (!kind) return Response.json({ error: 'kind must be guidelines or lessons' }, { status: 404 })
+      if (getBrand(parsed.params.brandId).status === 'missing') {
+        return Response.json({ error: 'brand not found' }, { status: 404 })
+      }
+      try {
+        const key = docBrainstormKey(parsed.params.brandId, kind, parsed.params.name)
+        return Response.json({
+          messages: readDocBrainstorm(parsed.params.brandId, kind, parsed.params.name),
+          streaming: brandBrainstormTurns.isInFlight(key),
+        })
+      } catch (err) {
+        // Invalid doc names throw BrandStoreError from the path guard — 400,
+        // not a 500.
+        return storeError(err)
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/:brandId/docs/:kind/:name/brainstorm',
+    method: 'POST',
+    summary: 'Start one brainstorm turn about a brand doc',
+    description:
+      'Embedded editing help (conversation kit): the operator asks an agent for feedback while editing a guideline/lesson doc. The turn runs server-side on the conversation turn engine (#703) — 202 immediately, chunks stream as brands.brainstorm.* plugin-events over the shared SSE bus, the transcript persists per doc, and navigation never kills the turn. One turn per doc (busy → 409). The agent replies in chat and never writes files.',
     params: docParams,
     body: z.object({
       agent: z.string().min(1),
       message: z.string().min(1).max(20_000),
-      /** Session-only transcript so far (the client owns it; nothing persists). */
-      history: z.array(z.object({ role: z.enum(['user', 'agent']), content: z.string().max(50_000) })).max(30).default([]),
       /** The editor's CURRENT (possibly unsaved) content — fresher than disk. */
       docContent: z.string().max(200_000).optional(),
     }),
-    responses: { 200: { contentType: 'text/event-stream' as const }, 404: errorResponse, 422: errorResponse },
-    handler: async (req, ctx, parsed) => {
+    responses: { 202: passthrough, 404: errorResponse, 409: errorResponse, 422: errorResponse },
+    handler: async (_req, ctx, parsed) => {
       const kind = parseKind(parsed.params.kind)
       if (!kind) return Response.json({ error: 'kind must be guidelines or lessons' }, { status: 404 })
       const read = getBrand(parsed.params.brandId)
@@ -723,17 +756,22 @@ export const brandRoutes = [
       if (read.status === 'invalid') return Response.json({ error: read.error }, { status: 422 })
       const b = parsed.body
       const docName = parsed.params.name
+      try {
       const doc = b.docContent ?? readDoc(read.manifest.id, kind, docName) ?? ''
 
       // Cost caps: the prompt carries the doc + history EVERY turn, so bound
       // both (last 8 exchanges, 4KB each; doc at 48KB with an honest marker) —
-      // and the thread is PER-TURN below, so the runtime session never
-      // re-accumulates these prompts on top (that combination was quadratic).
+      // and the engine's thread scheme is PER-TURN, so the runtime session
+      // never re-accumulates these prompts on top (that combination was
+      // quadratic). History now comes from the durable transcript.
       const cappedDoc = doc.length > 48_000 ? `${doc.slice(0, 48_000)}\n\n[... doc truncated for the brainstorm prompt ...]` : doc
-      const cappedHistory = b.history.slice(-8).map((m) => ({
-        role: m.role,
-        content: m.content.length > 4_000 ? `${m.content.slice(0, 4_000)} [...]` : m.content,
-      }))
+      const cappedHistory = readDocBrainstorm(read.manifest.id, kind, docName)
+        .filter((row): row is Extract<typeof row, { kind: 'user' | 'assistant' }> => row.kind === 'user' || row.kind === 'assistant')
+        .slice(-8)
+        .map((row) => ({
+          role: row.kind === 'user' ? ('user' as const) : ('agent' as const),
+          content: row.content.length > 4_000 ? `${row.content.slice(0, 4_000)} [...]` : row.content,
+        }))
 
       const prompt = [
         `You are brainstorming edits to the brand ${kind === 'guidelines' ? 'guideline' : 'lesson'} doc "${docName}" for the brand "${read.manifest.name}" (${read.manifest.id}).`,
@@ -750,60 +788,35 @@ export const brandRoutes = [
         `Operator: ${b.message}`,
       ].join('\n')
 
-      const { conversationThreadId } = await import('../../../src/components/conversation/thread-id')
-      const { randomUUID } = await import('crypto')
-      // Per-TURN thread: the prompt already carries the full (capped) context,
-      // so session reuse would double-pay it; and a zombie turn from an abort
-      // can never interleave with the next turn's session.
-      const threadId = conversationThreadId('brand-doc', `${read.manifest.id}/${kind}/${docName}/${randomUUID()}`, b.agent)
-      const encoder = new TextEncoder()
-      const frame = (event: string, data: unknown) => encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
-
-      // One abort authority: the client's disconnect (req.signal, wired by the
-      // node adapter) OR the stream consumer cancelling — either must stop the
-      // runtime turn, not just the response.
-      const turnAbort = new AbortController()
-      if (req.signal?.aborted) turnAbort.abort()
-      req.signal?.addEventListener('abort', () => turnAbort.abort(), { once: true })
-
-      const stream = new ReadableStream<Uint8Array>({
-        async start(controller) {
-          let final = ''
-          try {
-            const turn = ctx.runtime.messaging.stream({
-              agentId: b.agent,
-              content: prompt,
-              threadId,
-              ephemeral: true,
-              signal: turnAbort.signal,
-            })
-            for await (const chunk of turn) {
-              if (turnAbort.signal.aborted) break
-              if (chunk.type === 'text' && typeof chunk.content === 'string') final += chunk.content
-              controller.enqueue(frame('chunk', chunk))
-            }
-            if (!turnAbort.signal.aborted) controller.enqueue(frame('done', { content: final }))
-          } catch (err) {
-            const aborted = turnAbort.signal.aborted || (err instanceof Error && err.name === 'AbortError')
-            if (!aborted) {
-              log.error('brand-doc brainstorm turn failed', err instanceof Error ? err : new Error(String(err)), {
-                brandId: read.manifest.id, doc: docName, agent: b.agent,
-              })
-              try {
-                controller.enqueue(frame('error', { message: err instanceof Error ? err.message : String(err) }))
-              } catch { /* client already gone */ }
-            }
-          } finally {
-            try { controller.close() } catch { /* already closed */ }
-          }
-        },
-        cancel() {
-          turnAbort.abort()
-        },
+      const key = docBrainstormKey(read.manifest.id, kind, docName)
+      const result = await brandBrainstormTurns.start(ctx, key, b.message, {
+        agentId: b.agent,
+        runtimeContent: prompt,
       })
-      return new Response(stream, {
-        headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' },
-      })
+      if (result === 'not_found') return Response.json({ error: 'brand not found' }, { status: 404 })
+      if (result === 'busy') return Response.json({ error: 'A brainstorm turn is already running for this doc' }, { status: 409 })
+      return Response.json({ ok: true, streaming: true }, { status: 202 })
+      } catch (err) {
+        return storeError(err)
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/:brandId/docs/:kind/:name/brainstorm/abort',
+    method: 'POST',
+    summary: 'Abort the in-flight brainstorm turn for a doc',
+    params: docParams,
+    body: { contentType: 'none' as const },
+    responses: { 200: passthrough, 404: errorResponse, 409: errorResponse },
+    handler: async (_req, _ctx, parsed) => {
+      const kind = parseKind(parsed.params.kind)
+      if (!kind) return Response.json({ error: 'kind must be guidelines or lessons' }, { status: 404 })
+      const key = docBrainstormKey(parsed.params.brandId, kind, parsed.params.name)
+      if (!brandBrainstormTurns.abort(key)) {
+        return Response.json({ error: 'no brainstorm turn in flight' }, { status: 409 })
+      }
+      return Response.json({ ok: true })
     },
   }),
 
@@ -882,6 +895,8 @@ export const brandRoutes = [
       const kind = parseKind(parsed.params.kind)
       if (!kind) return Response.json({ error: `invalid doc kind: ${parsed.params.kind}` }, { status: 400 })
       try {
+        // Abort a live brainstorm before the doc (and its transcript) go away.
+        brandBrainstormTurns.abort(docBrainstormKey(parsed.params.brandId, kind, parsed.params.name))
         if (!deleteDoc(parsed.params.brandId, kind, parsed.params.name)) {
           return Response.json({ error: 'doc not found' }, { status: 404 })
         }

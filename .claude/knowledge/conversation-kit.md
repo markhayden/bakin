@@ -1,6 +1,14 @@
 # Conversation Kit
 
-THE shared conversation UI for every surface that talks to an agent. Lives in `src/components/conversation/`, exported via `@makinbakin/sdk/components` (+ two server helpers via `@makinbakin/sdk/utils`). Replaced `IntegratedBrainstorm` and the three duplicated chunk-folding implementations (2026-07 overhaul; spec `.claude/specs/chat-conversation-kit.md`).
+THE shared conversation UI **and turn engine** for every surface that talks to an agent. UI lives in `src/components/conversation/`, exported via `@makinbakin/sdk/components` (+ two server helpers via `@makinbakin/sdk/utils`); the server-side turn engine lives in `src/core/conversation-turns.ts` (see below). Replaced `IntegratedBrainstorm` and the three duplicated chunk-folding implementations (2026-07 overhaul; spec `.claude/specs/chat-conversation-kit.md`), then absorbed chat's turn machinery as the ONE engine for all conversational surfaces (#703; spec `tasks/spec-703-conversation-durability.md`).
+
+## The turn engine (#703)
+
+`createConversationTurnService(config)` in `src/core/conversation-turns.ts` — the generalization of chat's stream bridge, consumed by chat, brands, and the bits projects/messaging brainstorms. Server-owned background turns, detached from HTTP requests: send routes return **202** (busy → **409**), chunks stream as consumer-named plugin-events over the shared SSE bus, rows persist incrementally through `createTurnRecorder` (a crash or navigation keeps the partial turn). Delivered as `ctx.conversations` on the plugin context (SDK-typed contract with declarative `metering` — workClass pinned to 'chat', runIds force-namespaced `brainstorm:<pluginId>:`, event names must live in the plugin's namespace for user-source plugins); core plugins may import the module directly. Never an SDK code export — the engine needs crypto/media/logger.
+
+Consumer config: `events` {chunk,done,error} names + `payload(key)` base, `resolveThread(key)` (null → `not_found`), `appendRow(key,row)` (failures logged, never thrown), `threadId(key, agentId)` (per-turn schemes legal), `framing?`, `ephemeral?`, hooks `onChunk` (server-side tap — messaging proposal parsing), `meter` (success+abort, never error), `onSettled` (runs AFTER the slot releases; `waitFor()` covers it). `start(ctx, key, content, opts?)` takes per-turn `agentId` override (agent pickers), `runtimeContent` (embedded prompt assembly — the transcript keeps clean user text), `attachments` (downscale shim in-engine). Load-bearing semantics (synchronous slot reservation/TOCTOU, drain-per-chunk persistence, typed error kinds, abort → clean done + `aborted` row, attachment placeholder) are pinned by `tests/core/conversation-turns.test.ts` AND chat's frozen suite — see the preserved-verbatim list in `tasks/plan-703-conversation-durability.md`.
+
+Client side: `useConversationThread` (below) is the matching hook; `useConversationAttention` + the pure attention rules give every consumer chat-parity badges/notifications.
 
 **The rule:** new chat-like surfaces COMPOSE these components; never hand-roll message/tool rendering or chunk folding. `TurnOutputView` remains only as a thin legacy wrapper for single-turn embeds (task step viewer, workflow step drawer).
 
@@ -29,15 +37,18 @@ THE shared conversation UI for every surface that talks to an agent. Lives in `s
 | `Composer` | Auto-grow + drag-resize (handle raises min height), Enter/Shift+Enter/Esc, IME guard, typing NEVER blocked while busy (send waits + stop button), autofocus, per-thread drafts + ↑/↓ history (localStorage via `storageKey`), attachment affordance (paperclip/paste/drop, capability-gated with honest disabled tooltip), char counter, `leadingSlot` |
 | `ConversationPanel` | The embedded mode (above) |
 | `ThinkingIndicator` / `ConversationEmptyState` | Standalone avatar+shimmer; designed empty state with suggestion chips |
-| `useConversationStream` | Per-request SSE state machine (embedded surfaces): send/abort, liveChunks, errors stay visible as a trailing error item |
-| `readConversationSseStream` | SSE frame reader — `chunk` (RuntimeChatChunk JSON) / `done` / `error`, everything else → `onCustom` (the messaging `proposal` bridge) |
+| `useConversationThread` | THE client hook for engine consumers (#703): synchronous optimistic user echo, bus-event streaming with text-delta coalescing, active-thread guards, settle-by-refetch, optional server-seeded `streaming` rehydration (chat deliberately opts out — no pre-light), chat's failed-send semantics (state rollback, optimistic row stays, `sendError`) |
+| `useConversationAttention` | Provider building block for `nav-badge-providers` slots: inflight set from chunk/done/error events, `badgeFor` nav badge, optional `(N)` title prefix, toast/chime/OS fanout via the pure rules |
+| `attentionForDone` / `badgeFor` / `withUnreadPrefix` / `visibleIdFromLocation` / `playReplyChime` | Pure attention rules + the reply chime (generalized from chat's S6 matrix; chat's `attention.ts` is a facade over these) |
+| `useConversationStream` | LEGACY per-request SSE state machine — dies when the component unmounts (the #703 bug class). Kept only until the bits projects/messaging migrate (PR 2); deleted in PR 3. New surfaces use `useConversationThread` |
+| `readConversationSseStream` | LEGACY SSE frame reader for the per-request path — same PR 3 deletion |
 
 Server helpers (`@makinbakin/sdk/utils`): `conversationThreadId(scope, entityId, agentId)` and `createTurnRecorder({turnId, agentId?})` — chunks → persistable rows (`ingest`/`drain`/`finish`; drain enables crash-safe incremental persistence; previews clipped at 2000/500 chars with `metadata.truncated`). Chat's stream bridge and the bits plugins' routes share these — ONE implementation of "what survives a turn".
 
 ## Transports
 
-- **Plugin-event bus** (chat): server re-emits chunks as plugin-events; client accumulates and passes `liveChunks` to `foldConversation`. No kit transport involved.
-- **Per-request SSE** (embedded): plugin route streams `event: chunk` frames; client uses `useConversationStream`. Custom events (e.g. `proposal`) dispatch through `onCustom`.
+- **Plugin-event bus (the #703 standard, every consumer):** the turn engine emits consumer-named chunk/done/error plugin-events → global SSE bus → `useConversationThread`. Turns survive navigation because nothing is bound to the component or request; remounts refetch the durable transcript (incl. partial rows) and resume from the next chunk. Custom server-side events (messaging proposals) are emitted from the engine's `onChunk` hook.
+- **Per-request SSE (LEGACY, PR 3 deletion):** plugin route streams `event: chunk` frames; client uses `useConversationStream`. Still consumed only by the unmigrated bits projects/messaging brainstorms.
 
 ## Related
 

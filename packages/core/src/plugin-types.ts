@@ -22,6 +22,7 @@ import type { z, ZodRawShape, ZodType } from 'zod'
 import type {
   ActivityAPI,
   ActivityClass,
+  ConversationTurnsAPI,
   EventBus,
   ExecToolResult,
   HealthCheckRegistrationInput,
@@ -457,6 +458,8 @@ export interface PluginContext {
   hooks: HookAPI
   /** Adapter-backed search — register content types, index, query */
   search: SearchAPI
+  /** Shared conversation turn engine — background turns for chat-like surfaces (#703) */
+  conversations: ConversationTurnsAPI
 }
 
 // ---------------------------------------------------------------------------

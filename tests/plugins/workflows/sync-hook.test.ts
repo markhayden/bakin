@@ -75,6 +75,7 @@ mock.module('@/core/task-store', () => ({
 import workflowsPlugin from '../../../plugins/workflows'
 import { clearSourceRegistry, registerPluginDefinition } from '@bakin/core/workflows/source-registry'
 import { resetWorkflowAvailabilityCache, setWorkflowDisabled } from '../../../plugins/workflows/lib/availability'
+import { createConversationTurnService } from '../../../src/core/conversation-turns'
 
 afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })
@@ -104,6 +105,9 @@ function makeCtx(): CapturedCtx {
     pluginId: 'workflows',
     runtime: createMockRuntimeAdapter(),
     tasks: createMockBakinTaskStore() as unknown as PluginContext['tasks'],
+    conversations: {
+      createTurnService: (config) => createConversationTurnService(config as unknown as Parameters<typeof createConversationTurnService>[0]) as unknown as ReturnType<PluginContext['conversations']['createTurnService']>,
+    },
     assets: {
       createAsset: mock(async () => ({ assetId: 'test-asset', version: 1 })),
       getAsset: mock(async () => null),

@@ -27,7 +27,7 @@ const PANEL_MAX_HEIGHT = 800
 export interface ConversationPanelProps {
   /** Persisted rows (the caller owns storage; map local shapes onto ConversationMessage). */
   messages: ConversationMessage[]
-  /** In-flight turn chunks (from useConversationStream); null/undefined when idle. */
+  /** In-flight turn chunks (from useConversationThread); null/undefined when idle. */
   liveChunks?: RuntimeChatChunk[] | null
   streaming?: boolean
   agentId?: string
@@ -142,9 +142,11 @@ export function ConversationPanel({
           maxLength={maxLength}
           attachments={attachments}
           leadingSlot={
-            onAgentChange && agentId ? (
+            // Picker renders whenever switching is possible — an empty
+            // agentId (no main agent resolved) must still offer a way to pick.
+            onAgentChange ? (
               <span data-conv-agent-select className="shrink-0 self-end">
-                <AgentSelect value={agentId} onValueChange={onAgentChange} className="h-8 w-auto min-w-[130px] text-xs" />
+                <AgentSelect value={agentId ?? ''} onValueChange={onAgentChange} className="h-8 w-auto min-w-[130px] text-xs" />
               </span>
             ) : undefined
           }

@@ -94,6 +94,7 @@ import type { PluginContext, BakinPlugin } from '@bakin/core/plugin-types'
 
 import workflowsPlugin from '../../plugins/workflows'
 import assetsPlugin from '../../plugins/assets'
+import { createConversationTurnService } from '../../src/core/conversation-turns'
 
 interface ChokidarHandlers {
   add: (path: string) => void
@@ -123,6 +124,9 @@ function makeCtx(plugin: BakinPlugin): PluginContext {
     pluginId: plugin.id,
     runtime: createMockRuntimeAdapter(),
     tasks: createMockBakinTaskStore() as unknown as PluginContext['tasks'],
+    conversations: {
+      createTurnService: (config) => createConversationTurnService(config as unknown as Parameters<typeof createConversationTurnService>[0]) as unknown as ReturnType<PluginContext['conversations']['createTurnService']>,
+    },
     assets: {
       createAsset: mock(async () => ({ assetId: 'test-asset', version: 1 })),
       getAsset: mock(async () => null),

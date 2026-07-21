@@ -92,6 +92,7 @@ import type { PluginContext, BakinPlugin, RegisteredAPIRoute, NavItem } from '@b
 import { BakinEventBus } from '../../src/lib/events/event-bus'
 import { MarkdownStorageAdapter } from '../../src/lib/storage/markdown-adapter'
 import fs from 'fs'
+import { createConversationTurnService } from '../../src/core/conversation-turns'
 
 // Import all plugins via require — ES imports are hoisted above the IIFE
 // that seeds BAKIN_HOME / OPENCLAW_HOME, so plugin modules that call
@@ -146,6 +147,9 @@ function createMockContext(pluginId: string): {
     pluginId,
     runtime: createMockRuntimeAdapter(),
     tasks: createMockBakinTaskStore() as unknown as PluginContext['tasks'],
+    conversations: {
+      createTurnService: (config) => createConversationTurnService(config as unknown as Parameters<typeof createConversationTurnService>[0]) as unknown as ReturnType<PluginContext['conversations']['createTurnService']>,
+    },
     assets: {
       createAsset: async () => ({ assetId: 'test-asset', version: 1 }),
       getAsset: async () => null,

@@ -67,7 +67,7 @@ export { FacetFilter } from '@/components/facet-filter'
 export type { FacetOption } from '@/components/facet-filter'
 /** Chat + plan-proposal review panel for brainstorm sessions. */
 // IntegratedBrainstorm was DELETED (2026-07): embedded conversation
-// surfaces compose ConversationPanel + useConversationStream instead
+// surfaces compose ConversationPanel + useConversationThread instead
 // (see the conversation-kit exports below).
 /** Render markdown content with syntax highlighting and link handling. */
 export { MarkdownContent } from '@/components/markdown-content'
@@ -130,6 +130,29 @@ export { ConversationPanel } from '@/components/conversation/conversation-panel'
 export type { ConversationPanelProps } from '@/components/conversation/conversation-panel'
 export { useConversationStream } from '@/components/conversation/use-conversation-stream'
 export type { ConversationStream, ConversationStreamOptions } from '@/components/conversation/use-conversation-stream'
+export { useConversationThread } from '@/components/conversation/use-conversation-thread'
+export type {
+  ConversationThread,
+  ConversationThreadLoad,
+  ConversationThreadOptions,
+} from '@/components/conversation/use-conversation-thread'
+export {
+  attentionForDone,
+  badgeFor,
+  visibleIdFromLocation,
+  withUnreadPrefix,
+} from '@/components/conversation/attention'
+export type {
+  AttentionActions,
+  ConversationAttentionContext,
+  ConversationDonePayload,
+} from '@/components/conversation/attention'
+export { playReplyChime } from '@/components/conversation/notification-sound'
+export { useConversationAttention } from '@/components/conversation/use-conversation-attention'
+export type {
+  ConversationAttentionConfig,
+  ConversationAttentionTotals,
+} from '@/components/conversation/use-conversation-attention'
 export { readConversationSseStream } from '@/components/conversation/sse'
 export type { ConversationSseHandlers } from '@/components/conversation/sse'
 export { ConversationEmptyState } from '@/components/conversation/conversation-empty-state'

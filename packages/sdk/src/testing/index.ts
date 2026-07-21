@@ -34,6 +34,7 @@ import { z } from 'zod'
 import { BakinEventBus } from '@bakin/core/events'
 import { MarkdownStorageAdapter } from '@bakin/core/storage'
 import { dispatchRoute } from '@bakin/core/routing'
+import { createConversationTurnService } from '../../../../src/core/conversation-turns'
 import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
 import { createMockBakinTaskStore } from '@bakin/core/tasks/testing'
 import type {
@@ -206,6 +207,15 @@ export function createTestContext(
     // desync the mocks.
     runtime: createMockRuntimeAdapter() as unknown as PluginContext['runtime'],
     tasks: createMockBakinTaskStore() as unknown as PluginContext['tasks'],
+    // The REAL turn engine (host implementation) — external-author tests
+    // exercise genuine turn lifecycle against the mock runtime. Same
+    // documented cross-tier cast as runtime/tasks above.
+    conversations: {
+      createTurnService: (config) =>
+        createConversationTurnService(
+          config as unknown as Parameters<typeof createConversationTurnService>[0],
+        ) as unknown as ReturnType<PluginContext['conversations']['createTurnService']>,
+    },
     assets: {
       createAsset: async () => ({ assetId: 'test-asset', version: 1 }),
       getAsset: async () => null,

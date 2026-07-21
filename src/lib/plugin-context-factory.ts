@@ -27,6 +27,7 @@ import { getContentDir } from '../core/content-dir'
 import { readPluginSettings, mergePluginSettings } from '@bakin/core/plugins/settings-store'
 import { appendAudit } from '../core/audit'
 import { buildSearchAPI } from '../core/search-registry'
+import { createConversationTurnService, type ConversationTurnServiceConfig } from '../core/conversation-turns'
 import { wrapPluginContextPermissions } from './plugin-permissions'
 import {
   createPluginAssetsAPI,
@@ -137,6 +138,60 @@ export function buildPluginContext(opts: BuildPluginContextOptions): PluginConte
       registerRoute: registrars.registerRoute,
       ...(opts.skipFileBackedWiring ? { skipFileBackedWiring: true } : {}),
     }),
+    // The SDK contract mirrors the engine's types with SDK runtime flavors
+    // (the AgentRuntimeAdapter parallel-flavor pattern) — one structural
+    // bridge here, engine types stay single-homed in src/core. Declarative
+    // `metering` resolves HERE (host-side): external plugins can't reach the
+    // metering engine, so the factory injects the meter hook for them.
+    conversations: {
+      createTurnService: (sdkConfig) => {
+        const { metering, ...rest } = sdkConfig
+        const config = rest as unknown as ConversationTurnServiceConfig
+        // Event names are a spoofing surface (a plugin emitting chat.chunk
+        // could inject content into every open chat) — user-source plugins
+        // must stay in their own namespace. Loud activation-time failure.
+        if (source === 'user') {
+          for (const eventName of Object.values(config.events)) {
+            if (!eventName.startsWith(`${pluginId}.`)) {
+              throw new Error(
+                `conversation turn events must be namespaced "${pluginId}.*" — got "${eventName}"`,
+              )
+            }
+          }
+        }
+        if (metering && !config.hooks?.meter) {
+          // Interactive conversational turns bill under the metered-only
+          // 'chat' work class — the spend dimension is enum-pinned, so an
+          // arbitrary plugin string never reaches run_costs.
+          if (metering.workClass !== 'chat') {
+            throw new Error(
+              `conversation turn metering.workClass must be 'chat' — got "${metering.workClass}"`,
+            )
+          }
+          // Run ids are collision-namespaced per plugin so fabricated ids
+          // can never land in the task:/chat: run-id spaces.
+          const runIdPrefix = `brainstorm:${pluginId}:`
+          config.hooks = {
+            ...config.hooks,
+            meter: async ({ key, agentId, turnId, usage }) => {
+              const rawRunId = metering.runId(key, turnId)
+              const runId = rawRunId.startsWith(runIdPrefix) ? rawRunId : `${runIdPrefix}${rawRunId}`
+              const { meterAgentTurn } = await import('../core/agent-cost')
+              await meterAgentTurn({
+                runId,
+                agent: agentId,
+                activityClass: 'user',
+                workClass: 'chat',
+                result: { id: turnId, content: '', ...(usage ? { usage } : {}) },
+              })
+            },
+          }
+        }
+        return createConversationTurnService(config) as unknown as ReturnType<
+          PluginContext['conversations']['createTurnService']
+        >
+      },
+    },
     hooks: {
       register: (name, handler, metadata) =>
         getHookRegistry().register(name, handler as (data: unknown) => unknown, { pluginId, metadata }),
