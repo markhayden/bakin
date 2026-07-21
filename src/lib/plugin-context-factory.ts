@@ -27,6 +27,7 @@ import { getContentDir } from '../core/content-dir'
 import { readPluginSettings, mergePluginSettings } from '@bakin/core/plugins/settings-store'
 import { appendAudit } from '../core/audit'
 import { buildSearchAPI } from '../core/search-registry'
+import { createConversationTurnService, type ConversationTurnServiceConfig } from '../core/conversation-turns'
 import { wrapPluginContextPermissions } from './plugin-permissions'
 import {
   createPluginAssetsAPI,
@@ -137,6 +138,15 @@ export function buildPluginContext(opts: BuildPluginContextOptions): PluginConte
       registerRoute: registrars.registerRoute,
       ...(opts.skipFileBackedWiring ? { skipFileBackedWiring: true } : {}),
     }),
+    // The SDK contract mirrors the engine's types with SDK runtime flavors
+    // (the AgentRuntimeAdapter parallel-flavor pattern) — one structural
+    // bridge here, engine types stay single-homed in src/core.
+    conversations: {
+      createTurnService: (config) =>
+        createConversationTurnService(config as unknown as ConversationTurnServiceConfig) as unknown as ReturnType<
+          PluginContext['conversations']['createTurnService']
+        >,
+    },
     hooks: {
       register: (name, handler, metadata) =>
         getHookRegistry().register(name, handler as (data: unknown) => unknown, { pluginId, metadata }),

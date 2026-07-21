@@ -78,6 +78,7 @@ import {
   createInstance,
   loadInstance,
 } from '@bakin/workflows/lib/runtime'
+import { createConversationTurnService } from '../../../src/core/conversation-turns'
 
 const gateWorkflow = `name: Gate Hook Test
 description: Workflow used by gate hook tests
@@ -116,6 +117,9 @@ function makeCtx() {
     pluginId: 'workflows',
     runtime: createMockRuntimeAdapter(),
     tasks: createMockBakinTaskStore() as unknown as PluginContext['tasks'],
+    conversations: {
+      createTurnService: (config) => createConversationTurnService(config as unknown as Parameters<typeof createConversationTurnService>[0]) as unknown as ReturnType<PluginContext['conversations']['createTurnService']>,
+    },
     assets: {
       createAsset: mock(async () => ({ assetId: 'test-asset', version: 1 })),
       getAsset: mock(async () => null),

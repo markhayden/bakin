@@ -30,11 +30,11 @@ import { randomUUID } from 'crypto'
 
 import type { PluginContext } from '@bakin/core/plugin-types'
 import type { ChatChunk, MessageUsage } from '@bakin/core/adapters/runtime'
-import {
-  cleanupPreparedAttachment,
-  prepareImageAttachment,
-  type PreparedAttachment,
-} from '@bakin/core/media/downscale'
+// Media downscale is imported LAZILY at attachment-prepare time: this module
+// rides into the published SDK testing bundle (harness ctx.conversations),
+// and a static import would pull the sharp loader's module graph into the
+// npm package's declaration dependency graph.
+import type { PreparedAttachment } from '@bakin/core/media/downscale'
 
 import { createTurnRecorder } from '../components/conversation/turn-recorder'
 import { createLogger } from './logger'
@@ -261,6 +261,7 @@ async function runTurn(
   // Oversized images downscale to temp JPEGs (the shared 2 MB inline-cap
   // shim); prepared temp files are cleaned after the turn settles.
   const prepared: PreparedAttachment[] = []
+  let cleanupPrepared: ((p: PreparedAttachment) => void) | undefined
 
   const persist = async (rows: ConversationTurnRow[]) => {
     for (const row of rows) {
@@ -284,8 +285,10 @@ async function runTurn(
 
   try {
     if (attachments?.length) {
+      const media = await import('@bakin/core/media/downscale')
+      cleanupPrepared = media.cleanupPreparedAttachment
       for (const a of attachments) {
-        prepared.push(await prepareImageAttachment(a.path, a.mimeType))
+        prepared.push(await media.prepareImageAttachment(a.path, a.mimeType))
       }
     }
     for await (const chunk of ctx.runtime.messaging.stream({
@@ -362,7 +365,7 @@ async function runTurn(
     ctx.events.emit(config.events.error, { ...config.payload(key), agentId, message, ...(kind ? { kind } : {}) })
     return { aborted: false, errored: true }
   } finally {
-    for (const p of prepared) cleanupPreparedAttachment(p)
+    for (const p of prepared) cleanupPrepared?.(p)
   }
 }
 
