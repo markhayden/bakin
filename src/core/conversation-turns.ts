@@ -111,7 +111,7 @@ export interface ConversationTurnServiceConfig {
     /** Spend attribution, once per turn — success and abort, never error. */
     meter?: (info: { key: string; agentId: string; turnId: string; usage?: MessageUsage }) => Promise<void> | void
     /** Runs after the slot releases; waitFor() resolves after it completes. */
-    onSettled?: (info: { key: string; outcome: TurnOutcome }) => Promise<unknown> | unknown
+    onSettled?: (info: { ctx: TurnContext; key: string; outcome: TurnOutcome }) => Promise<unknown> | unknown
   }
 }
 
@@ -197,7 +197,7 @@ export function createConversationTurnService(config: ConversationTurnServiceCon
       .finally(() => {
         inflight.delete(key)
       })
-      .then((outcome) => config.hooks?.onSettled?.({ key, outcome }))
+      .then((outcome) => config.hooks?.onSettled?.({ ctx, key, outcome }))
     return 'accepted'
   }
 
