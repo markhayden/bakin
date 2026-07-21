@@ -612,3 +612,29 @@ test('public conversation turns visual baseline', async ({ page }) => {
     fullPage: true,
   })
 })
+
+test('public document-first conversation timeline visual baseline', async ({ page }) => {
+  await page.goto('/iframe.html?id=conversation-timeline-and-empty-state--document-timeline&viewMode=story')
+  await expect(page.getByRole('heading', { level: 1, name: 'Review the release plan' })).toBeVisible()
+  await expect(page.getByRole('log', { name: 'Release plan review' })).toBeVisible()
+  await expect(page.locator('[data-conv-timeline]')).toHaveAttribute('data-mode', 'document')
+  await page.evaluate(async () => document.fonts.ready)
+  await expect(page).toHaveScreenshot('foundation-conversation-timeline.png', {
+    animations: 'disabled',
+    caret: 'hide',
+    fullPage: true,
+  })
+})
+
+test('public contained conversation and empty state visual baseline', async ({ page }) => {
+  await page.goto('/iframe.html?id=conversation-timeline-and-empty-state--contained-and-empty-states&viewMode=story')
+  await expect(page.getByRole('heading', { level: 1, name: 'Bounded history and a useful starting point' })).toBeVisible()
+  await expect(page.locator('[data-conv-scroller]').first()).toHaveClass(/overflow-y-auto/)
+  await expect(page.getByRole('button', { name: 'Check blocked routes' })).toBeVisible()
+  await page.evaluate(async () => document.fonts.ready)
+  await expect(page).toHaveScreenshot('foundation-conversation-empty.png', {
+    animations: 'disabled',
+    caret: 'hide',
+    fullPage: true,
+  })
+})

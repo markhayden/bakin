@@ -19,13 +19,13 @@
     "private-import"
   ],
   "summary": {
-    "paths": 212,
+    "paths": 210,
     "totals": {
       "raw-palette": 1384,
-      "arbitrary-size": 541,
-      "raw-control": 206,
+      "arbitrary-size": 540,
+      "raw-control": 204,
       "inline-style": 62,
-      "generic-token": 2502,
+      "generic-token": 2488,
       "unscoped-css": 0,
       "private-import": 6
     }
@@ -3351,22 +3351,6 @@
       }
     },
     {
-      "path": "src/components/conversation/conversation-empty-state.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "sdk"
-      },
-      "censusEntryId": "shared-component:src/components/conversation/conversation-empty-state",
-      "migrationTask": "T34",
-      "archetype": "conversation",
-      "target": "canonical conversation patterns and focused SDK entrypoint",
-      "status": "legacy-allowed",
-      "allowances": {
-        "raw-control": 1,
-        "generic-token": 8
-      }
-    },
-    {
       "path": "src/components/conversation/conversation-panel.tsx",
       "owner": {
         "repository": "bakin",
@@ -3380,23 +3364,6 @@
       "allowances": {
         "arbitrary-size": 1,
         "inline-style": 1,
-        "generic-token": 6
-      }
-    },
-    {
-      "path": "src/components/conversation/conversation.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "sdk"
-      },
-      "censusEntryId": "shared-component:src/components/conversation/conversation",
-      "migrationTask": "T34",
-      "archetype": "conversation",
-      "target": "canonical conversation patterns and focused SDK entrypoint",
-      "status": "legacy-allowed",
-      "allowances": {
-        "arbitrary-size": 1,
-        "raw-control": 1,
         "generic-token": 6
       }
     },

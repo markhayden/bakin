@@ -48,4 +48,25 @@ describe('focused conversation renderers', () => {
     expect(agentAdapter).toContain("from '../markdown-content'")
     expect(userAdapter).toContain("from '@makinbakin/sdk/conversation'")
   })
+
+  it('publishes a document-first timeline and empty state without duplicating routing', () => {
+    const implementation = read('packages/ui/src/conversation/conversation.tsx')
+    const empty = read('packages/ui/src/conversation/conversation-empty-state.tsx')
+    const focused = read('packages/sdk/src/conversation/index.ts')
+    expect(focused).toContain('Conversation')
+    expect(focused).toContain('ConversationEmptyState')
+    expect(implementation).toContain("mode = 'document'")
+    expect(implementation).toContain("mode === 'contained'")
+    expect(implementation).not.toMatch(/@\/|@makinbakin\/sdk|@bakin\/core|lucide-react|useQueryState|router/)
+    expect(empty).not.toMatch(/@\/|@makinbakin\/sdk|@bakin\/core|lucide-react/)
+  })
+
+  it('keeps the legacy conversation timeline as a contained compatibility adapter', () => {
+    const adapter = read('src/components/conversation/conversation.tsx')
+    const emptyAdapter = read('src/components/conversation/conversation-empty-state.tsx')
+    expect(adapter).toContain("from '@makinbakin/sdk/conversation'")
+    expect(adapter).toContain('mode="contained"')
+    expect(adapter).toContain('flex-1')
+    expect(emptyAdapter).toContain("from '@makinbakin/sdk/conversation'")
+  })
 })

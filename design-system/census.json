@@ -6033,8 +6033,11 @@
       "symbols": [
         "AgentTurn",
         "CopyButton",
+        "LegacyAvatar",
         "ThinkingIndicator",
-        "TurnTimestamp"
+        "TurnTimestamp",
+        "formatLegacySummary",
+        "renderLegacyText"
       ],
       "exportStatus": "public",
       "classification": "shared-ui",

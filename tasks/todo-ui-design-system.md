@@ -72,7 +72,7 @@ comparison, and deletion of replaced styling/allowances.
 - [x] T33a Migrate chart data tables, palette, and sparkline
 - [x] T33b Migrate line, bar, and stacked charts
 - [x] T34a Migrate conversation model, folding, and time utilities
-- [ ] T34b Migrate message, activity, and tool rendering
+- [x] T34b Migrate message, activity, and tool rendering
 - [ ] T34c Migrate composer and attachments
 - [ ] T34d Migrate conversation panel, stream, and drawer
 - [ ] T35a Classify and migrate markdown and search patterns

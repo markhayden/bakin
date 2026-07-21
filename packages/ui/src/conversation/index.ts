@@ -48,3 +48,9 @@ export type {
   ConversationAttachmentRenderer,
   UserMessageProps,
 } from './user-message'
+
+export { Conversation } from './conversation'
+export type { ConversationMode, ConversationProps } from './conversation'
+
+export { ConversationEmptyState } from './conversation-empty-state'
+export type { ConversationEmptyStateProps } from './conversation-empty-state'

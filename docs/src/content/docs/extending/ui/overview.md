@@ -266,7 +266,7 @@ Neither recipe owns a `main` landmark, vertical page scroller, fixed height, sti
 | Compose contextual inspection | `InspectorPanel` | A named region usable beside a canvas or inside `BakinDrawer` |
 | Preserve inspector hierarchy | `InspectorPanelHeader`, `InspectorPanelContent`, `InspectorPanelFooter` | Identity and close actions remain while only content changes state; local commit/destructive actions stay in the footer |
 
-Use `mode="document"` for ordinary chat history where the host page owns vertical scroll. Use `contained` only when a parent surface supplies a deliberate available block size and the composer must remain available; the timeline then becomes the single nested scroller. Do not add a second scrolling message wrapper. The T30 recipe does not own message rendering, folding, tool activity, streaming transport, attachments, send behavior, or scroll-to-latest policy—those land in the isolated conversation entrypoint in T34.
+Use `mode="document"` for ordinary chat history where the host page owns vertical scroll. Use `contained` only when a parent surface supplies a deliberate available block size and the composer must remain available; the timeline then becomes the single nested scroller. Do not add a second scrolling message wrapper. The recipe does not own message rendering, folding, tool activity, streaming transport, attachments, send behavior, or scroll-to-latest policy; compose those from the isolated conversation entrypoint described below.
 
 An inspector is contextual, not a second detail page. Use `InspectorPanel` inside the existing responsive `Grid layout="main-aside"` for persistent context, or as the content hierarchy inside the existing `BakinDrawer` when selection opens an overlay. The drawer continues to own focus, dismissal, resizing, and dirty-state confirmation. Inspector selection, open state, tabs, and expanded evidence belong in query parameters when they are meaningful linkable view state; the recipe never parses URLs.
 
@@ -997,6 +997,56 @@ export function Turn({ turn, agent }: {
 The focused component does not look up agents or import a Markdown engine. Its default renderer preserves markdown text safely as wrapped text; supply `renderText` when the consumer already owns a supported rich-text renderer. `transformText` runs before that renderer for established domain extraction such as proposals. Use `renderAvatar` and `renderAttachment` only for presentation integrations; callbacks receive the original presentation models.
 
 Image attachments render as lazy images and other MIME types render as named file links instead of broken image thumbnails. Relative timestamps remain visible with the exact local time available as supplemental context. Copy and retry are native buttons, and retry remains a consumer-owned mutation. Streaming, stopped, failure, and error-kind meaning stays textual when motion and color are unavailable.
+
+## Conversation Timeline and Empty State
+
+Use `Conversation` to render ordered `ConversationTurn` objects with consistent day boundaries, identity resolution, attachments, activity, and lifecycle treatment. Its default `mode="document"` is the product default and does not create an internal vertical scroller. In a routed conversation, put it inside the one named `ConversationPageTimeline`:
+
+```tsx
+import {
+  Conversation,
+  ConversationEmptyState,
+  type ConversationAgent,
+  type ConversationTurn,
+} from '@makinbakin/sdk/conversation'
+import {
+  ConversationPageBody,
+  ConversationPageTimeline,
+} from '@makinbakin/sdk/patterns'
+
+export function ReleaseConversation({
+  turns,
+  resolveAgent,
+  startWith,
+}: {
+  turns: readonly ConversationTurn[]
+  resolveAgent: (agentId?: string) => ConversationAgent | undefined
+  startWith: (prompt: string) => void
+}) {
+  return (
+    <ConversationPageBody mode="document">
+      <ConversationPageTimeline label="Release review">
+        <Conversation
+          turns={turns}
+          resolveAgent={resolveAgent}
+          emptyState={(
+            <ConversationEmptyState
+              title="Start a release review"
+              description="Ask about readiness or blocked work."
+              suggestions={['Check blocked routes']}
+              onSuggestion={startWith}
+            />
+          )}
+        />
+      </ConversationPageTimeline>
+    </ConversationPageBody>
+  )
+}
+```
+
+Use `Conversation mode="contained"` only for a standalone embedded transcript whose parent supplies a real block-size boundary. That mode owns pin-to-latest behavior and shows a keyboard-operable “New messages” action after the operator scrolls away from the bottom. Do not nest it inside a contained `ConversationPageTimeline`; in that composition the page timeline is already the single scroller, so leave `Conversation` in document mode.
+
+Pass presentation-ready identity through `agent` or `resolveAgent`. The focused timeline does not read the host agent store, parse URLs, own storage, fetch history, or import a Markdown engine. Supply the existing `renderText`, `renderAvatar`, `renderAttachment`, and `formatToolSummary` integrations when needed. Suggestions render only when `onSuggestion` is present, so an empty state never presents inert controls.
 
 ## Local Commands
 

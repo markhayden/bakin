@@ -65,7 +65,7 @@ function JsonReply({ parsed }: { parsed: unknown }) {
   )
 }
 
-function renderLegacyText(content: string, format: ConversationTextFormat) {
+export function renderLegacyText(content: string, format: ConversationTextFormat) {
   if (format !== 'markdown') {
     return <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed">{content}</pre>
   }
@@ -73,11 +73,11 @@ function renderLegacyText(content: string, format: ConversationTextFormat) {
   return json !== undefined ? <JsonReply parsed={json} /> : <MarkdownContent content={content} />
 }
 
-function formatLegacySummary(summary: string): string {
+export function formatLegacySummary(summary: string): string {
   return summarizeStructured(unwrapToolResult(summary))
 }
 
-function LegacyAvatar(agent: ConversationAgent) {
+export function LegacyAvatar(agent: ConversationAgent) {
   return <AgentAvatar agentId={agent.id ?? ''} size="sm" />
 }
 

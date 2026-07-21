@@ -227,7 +227,7 @@ import { PluginHeader, FacetFilter, AgentAvatar } from '@makinbakin/sdk/componen
 | `TurnStatus` | — |
 | `DisplayAttachment` | — |
 | `FoldOptions` | — |
-| `Conversation` | — |
+| `Conversation` | Legacy contained adapter; use `@makinbakin/sdk/conversation` for new consumers. |
 | `ConversationProps` | — |
 | `AgentTurn` | Legacy turn presentation; use `@makinbakin/sdk/conversation` for new consumers. |
 | `ThinkingIndicator` | Legacy turn presentation; use `@makinbakin/sdk/conversation` for new consumers. |
@@ -254,7 +254,7 @@ import { PluginHeader, FacetFilter, AgentAvatar } from '@makinbakin/sdk/componen
 | `ConversationStreamOptions` | — |
 | `readConversationSseStream` | — |
 | `ConversationSseHandlers` | — |
-| `ConversationEmptyState` | — |
+| `ConversationEmptyState` | Legacy empty-state adapter; use `@makinbakin/sdk/conversation` for new consumers. |
 | `ConversationEmptyStateProps` | — |
 | `formatRelativeTime` | Compact and absolute timestamp helpers retained for legacy consumers. |
 | `formatAbsoluteTime` | Compact and absolute timestamp helpers retained for legacy consumers. |
@@ -498,6 +498,11 @@ Isolated conversation UI and models. Source: `packages/sdk/src/conversation/inde
 | `ThinkingIndicatorProps` | — |
 | `TurnTimestampProps` | — |
 | `UserMessageProps` | — |
+| `Conversation` | Document-first conversation timeline and honest zero-message state. |
+| `ConversationEmptyState` | Document-first conversation timeline and honest zero-message state. |
+| `ConversationEmptyStateProps` | — |
+| `ConversationMode` | — |
+| `ConversationProps` | — |
 
 ## `@makinbakin/sdk/slots`
 

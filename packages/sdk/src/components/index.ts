@@ -117,6 +117,7 @@ export type {
   DisplayAttachment,
   FoldOptions,
 } from '@makinbakin/sdk/conversation'
+/** Legacy contained adapter; use `@makinbakin/sdk/conversation` for new consumers. */
 export { Conversation } from '@/components/conversation/conversation'
 export type { ConversationProps } from '@/components/conversation/conversation'
 /** Legacy turn presentation; use `@makinbakin/sdk/conversation` for new consumers. */
@@ -138,6 +139,7 @@ export { useConversationStream } from '@/components/conversation/use-conversatio
 export type { ConversationStream, ConversationStreamOptions } from '@/components/conversation/use-conversation-stream'
 export { readConversationSseStream } from '@/components/conversation/sse'
 export type { ConversationSseHandlers } from '@/components/conversation/sse'
+/** Legacy empty-state adapter; use `@makinbakin/sdk/conversation` for new consumers. */
 export { ConversationEmptyState } from '@/components/conversation/conversation-empty-state'
 export type { ConversationEmptyStateProps } from '@/components/conversation/conversation-empty-state'
 /** Compact and absolute timestamp helpers retained for legacy consumers. */

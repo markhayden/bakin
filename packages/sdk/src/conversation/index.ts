@@ -56,3 +56,14 @@ export type {
   TurnTimestampProps,
   UserMessageProps,
 } from '@bakin/ui/conversation'
+
+/** Document-first conversation timeline and honest zero-message state. */
+export {
+  Conversation,
+  ConversationEmptyState,
+} from '@bakin/ui/conversation'
+export type {
+  ConversationEmptyStateProps,
+  ConversationMode,
+  ConversationProps,
+} from '@bakin/ui/conversation'

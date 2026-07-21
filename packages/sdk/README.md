@@ -155,10 +155,14 @@ remain consumer owned; avoid equal-weight card walls and nested page scrollers.
 Conversation pages use `ConversationPageBody mode="document"` with host scroll
 by default. Choose `contained` only inside an explicitly bounded parent; then
 `ConversationPageTimeline` is the single named log scroller and the composer
-remains outside it. `InspectorPanel` supplies named header/content/footer
-hierarchy beside a canvas or inside `BakinDrawer`. Message rendering,
-streaming, composer behavior, selection, drawer focus, and URL state remain
-owned by their focused kits and consumers.
+remains outside it. Render folded turns with `Conversation` from
+`@makinbakin/sdk/conversation`; its default `document` mode avoids creating a
+second scroller inside the page recipe. `mode="contained"` is reserved for a
+standalone conversation with an explicit height boundary. `ConversationEmptyState`
+renders starter suggestions only when their callback is supplied.
+`InspectorPanel` supplies named header/content/footer hierarchy beside a canvas
+or inside `BakinDrawer`. Transport, storage, rich text, routing, selection,
+drawer focus, and domain mutations remain consumer owned.
 
 Workflow and action workspaces use `WorkflowPage` with a named
 `WorkflowPageToolbar`, `WorkflowPageCanvas`, and `WorkflowPageActions`.

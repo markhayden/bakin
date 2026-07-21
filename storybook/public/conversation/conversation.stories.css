@@ -80,8 +80,44 @@
   font-size: var(--bakin-typography-size-meta);
 }
 
+.bakin-conversation-story__examples {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--bakin-layout-space-6);
+  align-items: start;
+}
+
+.bakin-conversation-story__contained,
+.bakin-conversation-story__empty {
+  min-width: 0;
+  border: 1px solid var(--bakin-color-border-subtle);
+  border-radius: var(--bakin-radius-surface);
+  background: color-mix(in srgb, var(--bakin-color-surface-default) 35%, transparent);
+}
+
+.bakin-conversation-story__contained {
+  height: 25rem;
+  overflow: hidden;
+}
+
+.bakin-conversation-story__empty {
+  min-height: 25rem;
+  display: grid;
+  place-items: center;
+}
+
 @media (max-width: 30rem) {
   .bakin-conversation-story__intro h1 {
     font-size: 2.25rem;
+  }
+
+  .bakin-conversation-story__examples {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .bakin-conversation-story__contained,
+  .bakin-conversation-story__empty {
+    height: 22rem;
+    min-height: 22rem;
   }
 }

@@ -50,6 +50,8 @@ const barChartsStory = '/iframe.html?id=charts-line-bar-and-stacked-charts--bar-
 const stackedColumnsStory = '/iframe.html?id=charts-line-bar-and-stacked-charts--stacked-columns&viewMode=story'
 const conversationToolActivityStory = '/iframe.html?id=conversation-tool-activity--states-and-disclosure&viewMode=story'
 const conversationTurnsStory = '/iframe.html?id=conversation-turns-and-messages--complete-and-lifecycle-states&viewMode=story'
+const conversationDocumentTimelineStory = '/iframe.html?id=conversation-timeline-and-empty-state--document-timeline&viewMode=story'
+const conversationContainedStory = '/iframe.html?id=conversation-timeline-and-empty-state--contained-and-empty-states&viewMode=story'
 
 test('public story keeps keyboard, focus, console, and responsive contracts', async ({ page }) => {
   const browserErrors: string[] = []
@@ -1532,6 +1534,77 @@ test('conversation turns preserve identity, lifecycle, attachments, and containm
     await page.goto(conversationTurnsStory, { waitUntil: 'networkidle' })
     await page.evaluate(() => { document.documentElement.style.fontSize = '200%' })
     await expect(page.getByText('archive_unavailable')).toBeVisible()
+    const dimensions = await page.evaluate(() => ({
+      clientWidth: document.documentElement.clientWidth,
+      scrollWidth: document.documentElement.scrollWidth,
+    }))
+    expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth)
+  })
+
+  expect(browserErrors).toEqual([])
+})
+
+test('conversation timeline preserves page scroll ownership, bounded history, and honest empty actions', async ({ page }) => {
+  const browserErrors: string[] = []
+  page.on('console', (message) => {
+    if (message.type() === 'error') browserErrors.push(`console: ${message.text()}`)
+  })
+  page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
+  page.on('requestfailed', (request) => {
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+  })
+
+  for (const [story, heading] of [
+    [conversationDocumentTimelineStory, 'Review the release plan'],
+    [conversationContainedStory, 'Bounded history and a useful starting point'],
+  ] as const) {
+    for (const width of responsiveWidths) {
+      await test.step(`${heading} remains document-contained at ${width}px`, async () => {
+        await page.setViewportSize({ width, height: 1100 })
+        await page.goto(story, { waitUntil: 'networkidle' })
+        await expect(page.getByRole('heading', { level: 1, name: heading })).toBeVisible()
+        const dimensions = await page.evaluate(() => ({
+          clientWidth: document.documentElement.clientWidth,
+          scrollWidth: document.documentElement.scrollWidth,
+        }))
+        expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth)
+      })
+    }
+  }
+
+  await test.step('the product default delegates scrolling to the named page log', async () => {
+    await page.setViewportSize({ width: 1024, height: 900 })
+    await page.goto(conversationDocumentTimelineStory, { waitUntil: 'networkidle' })
+    const log = page.getByRole('log', { name: 'Release plan review' })
+    const conversation = page.locator('[data-conv-timeline]')
+    const scroller = conversation.locator('[data-conv-scroller]')
+    await expect(log).toHaveCount(1)
+    await expect(conversation).toHaveAttribute('data-mode', 'document')
+    expect(await scroller.evaluate((element) => getComputedStyle(element).overflowY)).toBe('visible')
+  })
+
+  await test.step('the explicit contained mode owns local history and its jump action', async () => {
+    await page.goto(conversationContainedStory, { waitUntil: 'networkidle' })
+    const scroller = page.locator('[data-mode="contained"] [data-conv-scroller]')
+    expect(await scroller.evaluate((element) => getComputedStyle(element).overflowY)).toBe('auto')
+    const dimensions = await scroller.evaluate((element) => ({
+      clientHeight: element.clientHeight,
+      scrollHeight: element.scrollHeight,
+    }))
+    expect(dimensions.scrollHeight).toBeGreaterThan(dimensions.clientHeight)
+    const jump = page.getByRole('button', { name: 'Jump to latest' })
+    await expect(jump).toBeVisible()
+    await jump.click()
+    await expect(jump).toHaveCount(0)
+  })
+
+  await test.step('empty prompts remain actionable and 200% text stays contained', async () => {
+    await page.setViewportSize({ width: 320, height: 1100 })
+    await page.goto(conversationContainedStory, { waitUntil: 'networkidle' })
+    await page.getByRole('button', { name: 'Summarize release evidence' }).click()
+    await expect(page.getByRole('status')).toHaveText('Summarize release evidence')
+    await page.evaluate(() => { document.documentElement.style.fontSize = '200%' })
+    await expect(page.getByRole('region', { name: 'Start a release review' })).toBeVisible()
     const dimensions = await page.evaluate(() => ({
       clientWidth: document.documentElement.clientWidth,
       scrollWidth: document.documentElement.scrollWidth,
