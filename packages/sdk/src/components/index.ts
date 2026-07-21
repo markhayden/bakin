@@ -130,6 +130,12 @@ export { ConversationPanel } from '@/components/conversation/conversation-panel'
 export type { ConversationPanelProps } from '@/components/conversation/conversation-panel'
 export { useConversationStream } from '@/components/conversation/use-conversation-stream'
 export type { ConversationStream, ConversationStreamOptions } from '@/components/conversation/use-conversation-stream'
+export { useConversationThread } from '@/components/conversation/use-conversation-thread'
+export type {
+  ConversationThread,
+  ConversationThreadLoad,
+  ConversationThreadOptions,
+} from '@/components/conversation/use-conversation-thread'
 export { readConversationSseStream } from '@/components/conversation/sse'
 export type { ConversationSseHandlers } from '@/components/conversation/sse'
 export { ConversationEmptyState } from '@/components/conversation/conversation-empty-state'
