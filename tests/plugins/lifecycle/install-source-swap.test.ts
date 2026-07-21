@@ -58,7 +58,7 @@ function writeFixture(dir: string, opts: { id: string; version: string; permissi
       id: opts.id,
       name: opts.id,
       version: opts.version,
-      bakin: '>=1.0.0',
+      bakin: '*',
       description: `${opts.id} test plugin`,
             permissions: opts.permissions,
     }, null, 2),

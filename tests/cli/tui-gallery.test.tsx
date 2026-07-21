@@ -38,10 +38,14 @@ describe('CLI TUI style gallery', () => {
       const output = renderGalleryScreen(screen, { columns: 100 })
       const lines = output.split('\n')
       expect(lines[0]).toBe('')
-      expect(lines[1]).toBe('┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓')
+      // The box widens past its 38-char minimum when APP_VERSION is long
+      // (describe-stamped self-builds) — assert shape, not a fixed width.
+      expect(lines[1]).toMatch(/^┏━{38,}┓$/)
       expect(lines[2]).toContain("┃ 🐷 Bakin'")
       expect(lines[2]).toContain('(v')
-      expect(lines[3]).toBe('┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛')
+      expect(lines[3]).toMatch(/^┗━{38,}┛$/)
+      expect(lines[2].length).toBe(lines[1].length)
+      expect(lines[3].length).toBe(lines[1].length)
       expect(lines[4]).toBe('')
     }
   })
