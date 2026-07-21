@@ -242,7 +242,7 @@ describe('review-hardening guards (#703)', () => {
         threadKey: 'a',
         events: EVENTS,
         keyOf: (p) => p.threadKey,
-        load: () => new Promise((resolve) => {
+        load: () => new Promise<{ messages: ConversationMessage[] } | null>((resolve) => {
           resolveLoad = () => resolve({ messages: [] }) // stale pre-send snapshot
         }),
         post: async () => ({ ok: true }),
