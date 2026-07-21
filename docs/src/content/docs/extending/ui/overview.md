@@ -951,7 +951,26 @@ const sent = formatRelativeTime(messages[0].ts)
 
 `ConversationChunk` is structurally compatible with `RuntimeChatChunk`, so runtime output passes directly into the folder without conversion or a dependency on host internals. Missing tool previews, metadata, durations, status labels, and attachments stay missing data; consumers should not invent values. Error and aborted rows remain distinct terminal states, while an empty `liveChunks` array intentionally creates a streaming turn so the UI can show an honest waiting state.
 
-Use `formatRelativeTime` for compact visible timestamps, `formatAbsoluteTime` for full supplemental context, and `formatDayLabel` with `dayKey` for local-calendar separators. These helpers return an empty string for an invalid timestamp. Conversation rendering components will graduate through this same focused entrypoint in the next foundation slices; new consumers should not import the legacy `@makinbakin/sdk/components` barrel.
+Use `formatRelativeTime` for compact visible timestamps, `formatAbsoluteTime` for full supplemental context, and `formatDayLabel` with `dayKey` for local-calendar separators. These helpers return an empty string for an invalid timestamp.
+
+## Conversation Tool Activity
+
+Render consecutive tool calls with `ActivityGroup` from the same focused entrypoint. It starts collapsed by default so evidence stays subordinate to the conversation, while its summary retains running and failure meaning. Expanding it exposes each exact tool name, display-ready summary, duration when reported, and visible status. An empty call list renders an honest empty state rather than implying success.
+
+```tsx
+import { ActivityGroup, type ConversationToolCall } from '@makinbakin/sdk/conversation'
+
+export function TurnActivity({ calls }: { calls: ConversationToolCall[] }) {
+  return (
+    <ActivityGroup
+      calls={calls}
+      onOpenCall={(call) => openToolDetail(call.callId)}
+    />
+  )
+}
+```
+
+The consumer owns any exact-detail drawer and receives the original call object through `onOpenCall`; the activity component does not own URL or selection state. Supply presentation-ready summaries. `formatSummary` exists for compatibility adapters that must unwrap an established runtime envelope, not as a general domain-formatting hook. Status remains visible text when color or motion is unavailable, and the disclosure uses native button semantics. New consumers should not import the legacy `@makinbakin/sdk/components` barrel.
 
 ## Local Commands
 

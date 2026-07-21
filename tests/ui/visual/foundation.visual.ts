@@ -586,3 +586,16 @@ test('public stacked column chart visual baseline', async ({ page }) => {
     fullPage: true,
   })
 })
+
+test('public conversation tool activity visual baseline', async ({ page }) => {
+  await page.goto('/iframe.html?id=conversation-tool-activity--states-and-disclosure&viewMode=story')
+  await expect(page.getByRole('heading', { level: 1, name: 'Keep activity compact without hiding what happened' })).toBeVisible()
+  await expect(page.getByRole('button', { name: /Searched the web.*3 calls.*1 failed/i })).toHaveAttribute('aria-expanded', 'true')
+  await expect(page.getByText('No tool activity')).toBeVisible()
+  await page.evaluate(async () => document.fonts.ready)
+  await expect(page).toHaveScreenshot('foundation-conversation-tool-activity.png', {
+    animations: 'disabled',
+    caret: 'hide',
+    fullPage: true,
+  })
+})

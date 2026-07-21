@@ -1303,6 +1303,20 @@ runtime copy, and the legacy components entry drops from 419,791 to 404,833
 direct bytes. T34a changes no rendered UI, Storybook story, or official page or
 plugin composition; browser visual baselines therefore remain unchanged.
 
+**Status — T34b activity slice (2026-07-20):** In progress. `ActivityGroup`
+and `ToolCallRow` now live in the private conversation package and publish from
+the focused conversation entrypoint. The legacy root module is a compatibility
+adapter that supplies existing runtime-envelope formatting without making core
+formatting a public UI dependency. The public story covers settled, failed,
+running, long-summary, empty, keyboard, reduced-motion, narrow-width, and
+200%-text behavior; exact-detail selection remains consumer owned. Agent and
+user turn rendering remain in the next T34b slice, so T34b is not yet complete.
+All 101 public story interaction/axe cases, 84 canonical desktop/mobile visual
+cases, and 21 canonical Chromium behavior cases pass. The focused conversation
+entrypoint is 398 bytes direct / 38,467 bytes reachable, canonical CSS is
+299,090 bytes with one runtime copy, the legacy components entry falls to
+401,851 direct bytes, and the legacy-style ledger drops from 214 to 213 paths.
+
 **Acceptance:** base UI does not include conversation code; streamed, thinking,
 tool, error, attachment, empty, long-content, and reduced-motion states pass;
 behavior/folding contracts remain unchanged.

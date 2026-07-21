@@ -26,3 +26,12 @@ export {
   formatDayLabel,
   formatRelativeTime,
 } from '@bakin/ui/conversation'
+
+/** Collapsible exact tool-activity presentation and compact formatters. */
+export {
+  ActivityGroup,
+  formatDuration,
+  humanizeActivity,
+  ToolCallRow,
+} from '@bakin/ui/conversation'
+export type { ActivityGroupProps, ToolCallRowProps } from '@bakin/ui/conversation'

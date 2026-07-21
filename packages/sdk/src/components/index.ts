@@ -123,6 +123,7 @@ export { AgentTurn, ThinkingIndicator, CopyButton, TurnTimestamp } from '@/compo
 export type { AgentTurnProps } from '@/components/conversation/agent-turn'
 export { UserMessage } from '@/components/conversation/user-message'
 export type { UserMessageProps } from '@/components/conversation/user-message'
+/** Legacy tool-activity presentation; use `@makinbakin/sdk/conversation` for new consumers. */
 export { ActivityGroup, ToolCallRow, formatDuration, humanizeActivity } from '@/components/conversation/activity-group'
 export type { ActivityGroupProps } from '@/components/conversation/activity-group'
 export { ToolCallDrawer } from '@/components/conversation/tool-call-drawer'

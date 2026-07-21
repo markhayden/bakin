@@ -1,0 +1,77 @@
+.bakin-conversation-story,
+.bakin-conversation-story *,
+.bakin-conversation-story *::before,
+.bakin-conversation-story *::after {
+  box-sizing: border-box;
+}
+
+.bakin-conversation-story {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 85% 10%, color-mix(in srgb, var(--bakin-color-signal-accent) 9%, transparent), transparent 28rem),
+    var(--bakin-color-canvas-default);
+  color: var(--bakin-color-text-primary);
+}
+
+.bakin-conversation-story p,
+.bakin-conversation-story h1,
+.bakin-conversation-story h2 {
+  margin: 0;
+}
+
+.bakin-conversation-story__intro,
+.bakin-conversation-story__section,
+.bakin-conversation-story__section > header {
+  display: grid;
+  gap: var(--bakin-layout-space-2);
+}
+
+.bakin-conversation-story__intro > p:first-child {
+  color: var(--bakin-color-signal-accent);
+  font-family: var(--bakin-typography-family-mono);
+  font-size: var(--bakin-typography-size-meta);
+  font-weight: var(--bakin-typography-weight-semibold);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.bakin-conversation-story__intro h1 {
+  max-width: 18ch;
+  font-size: clamp(2rem, 7vw, 4rem);
+  line-height: 1.02;
+  letter-spacing: -0.045em;
+  overflow-wrap: anywhere;
+}
+
+.bakin-conversation-story__intro > p:last-child,
+.bakin-conversation-story__section > header p,
+.bakin-conversation-story__selection {
+  max-width: 64ch;
+  color: var(--bakin-color-text-muted);
+  line-height: 1.6;
+}
+
+.bakin-conversation-story__section {
+  padding-top: var(--bakin-layout-space-4);
+  border-top: 1px solid var(--bakin-color-border-subtle);
+}
+
+.bakin-conversation-story__section h2 {
+  font-size: var(--bakin-typography-size-heading-3);
+}
+
+.bakin-conversation-story__section--quiet {
+  padding-bottom: var(--bakin-layout-space-4);
+}
+
+.bakin-conversation-story__selection {
+  min-height: 1.5em;
+  font-family: var(--bakin-typography-family-mono);
+  font-size: var(--bakin-typography-size-meta);
+}
+
+@media (max-width: 30rem) {
+  .bakin-conversation-story__intro h1 {
+    font-size: 2.25rem;
+  }
+}

@@ -19,13 +19,13 @@
     "private-import"
   ],
   "summary": {
-    "paths": 214,
+    "paths": 213,
     "totals": {
       "raw-palette": 1384,
-      "arbitrary-size": 544,
-      "raw-control": 210,
+      "arbitrary-size": 543,
+      "raw-control": 208,
       "inline-style": 62,
-      "generic-token": 2532,
+      "generic-token": 2517,
       "unscoped-css": 0,
       "private-import": 6
     }
@@ -3315,23 +3315,6 @@
         "raw-control": 1,
         "inline-style": 1,
         "generic-token": 2
-      }
-    },
-    {
-      "path": "src/components/conversation/activity-group.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "sdk"
-      },
-      "censusEntryId": "shared-component:src/components/conversation/activity-group",
-      "migrationTask": "T34",
-      "archetype": "conversation",
-      "target": "canonical conversation patterns and focused SDK entrypoint",
-      "status": "legacy-allowed",
-      "allowances": {
-        "arbitrary-size": 1,
-        "raw-control": 2,
-        "generic-token": 15
       }
     },
     {

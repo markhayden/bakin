@@ -18,3 +18,11 @@ export {
   formatDayLabel,
   formatRelativeTime,
 } from './relative-time'
+
+export {
+  ActivityGroup,
+  formatDuration,
+  humanizeActivity,
+  ToolCallRow,
+} from './activity-group'
+export type { ActivityGroupProps, ToolCallRowProps } from './activity-group'

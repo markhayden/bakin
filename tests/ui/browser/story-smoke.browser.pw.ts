@@ -48,6 +48,7 @@ const chartCompactTrendsStory = '/iframe.html?id=charts-exact-data-and-compact-t
 const lineChartsStory = '/iframe.html?id=charts-line-bar-and-stacked-charts--line-charts&viewMode=story'
 const barChartsStory = '/iframe.html?id=charts-line-bar-and-stacked-charts--bar-charts&viewMode=story'
 const stackedColumnsStory = '/iframe.html?id=charts-line-bar-and-stacked-charts--stacked-columns&viewMode=story'
+const conversationToolActivityStory = '/iframe.html?id=conversation-tool-activity--states-and-disclosure&viewMode=story'
 
 test('public story keeps keyboard, focus, console, and responsive contracts', async ({ page }) => {
   const browserErrors: string[] = []
@@ -1413,6 +1414,69 @@ test('visual charts preserve honest marks, exact data, and local plot overflow',
     }))
     expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth)
     await expect(page.getByRole('region', { name: 'Agent activity by day plot' })).toBeVisible()
+  })
+
+  expect(browserErrors).toEqual([])
+})
+
+test('conversation tool activity preserves disclosure, exact status, motion, and containment', async ({ page }) => {
+  const browserErrors: string[] = []
+  page.on('console', (message) => {
+    if (message.type() === 'error') browserErrors.push(`console: ${message.text()}`)
+  })
+  page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
+  page.on('requestfailed', (request) => {
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+  })
+
+  for (const width of responsiveWidths) {
+    await test.step(`tool activity remains document-contained at ${width}px`, async () => {
+      await page.setViewportSize({ width, height: 1000 })
+      await page.goto(conversationToolActivityStory, { waitUntil: 'networkidle' })
+      await expect(page.getByRole('heading', { level: 1, name: 'Keep activity compact without hiding what happened' })).toBeVisible()
+      const dimensions = await page.evaluate(() => ({
+        clientWidth: document.documentElement.clientWidth,
+        scrollWidth: document.documentElement.scrollWidth,
+      }))
+      expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth)
+    })
+  }
+
+  await test.step('native disclosure retains focus and exact expanded state', async () => {
+    await page.setViewportSize({ width: 1024, height: 1000 })
+    await page.goto(conversationToolActivityStory, { waitUntil: 'networkidle' })
+    const trigger = page.getByRole('button', { name: /Searched the web.*3 calls.*1 failed/i })
+    await trigger.focus()
+    await expect(trigger).toBeFocused()
+    await expect(trigger).toHaveAttribute('aria-expanded', 'true')
+    await trigger.press('Enter')
+    await expect(trigger).toHaveAttribute('aria-expanded', 'false')
+    await trigger.press('Enter')
+    await expect(trigger).toHaveAttribute('aria-expanded', 'true')
+    const call = page.getByRole('button', { name: /web_search.*Found seven release notes.*completed/i })
+    expect((await call.boundingBox())?.height).toBeGreaterThanOrEqual(24)
+    await call.click()
+    await expect(page.getByRole('status')).toHaveText('Opened web_search: search-1')
+  })
+
+  await test.step('status meaning survives reduced motion', async () => {
+    await expect(page.getByText('failed', { exact: true })).toBeVisible()
+    await expect(page.getByText('running', { exact: true })).toBeVisible()
+    const spinner = page.locator('[data-call-status="running"] [aria-hidden="true"]')
+    await expect(spinner).toBeVisible()
+    expect(await spinner.evaluate((element) => getComputedStyle(element).animationName)).toBe('none')
+  })
+
+  await test.step('200% text remains document-contained', async () => {
+    await page.setViewportSize({ width: 320, height: 1000 })
+    await page.goto(conversationToolActivityStory, { waitUntil: 'networkidle' })
+    await page.evaluate(() => { document.documentElement.style.fontSize = '200%' })
+    await expect(page.getByText('No tool activity')).toBeVisible()
+    const dimensions = await page.evaluate(() => ({
+      clientWidth: document.documentElement.clientWidth,
+      scrollWidth: document.documentElement.scrollWidth,
+    }))
+    expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth)
   })
 
   expect(browserErrors).toEqual([])

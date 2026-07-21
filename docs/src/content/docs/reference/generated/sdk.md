@@ -236,10 +236,10 @@ import { PluginHeader, FacetFilter, AgentAvatar } from '@makinbakin/sdk/componen
 | `AgentTurnProps` | — |
 | `UserMessage` | — |
 | `UserMessageProps` | — |
-| `ActivityGroup` | — |
-| `ToolCallRow` | — |
-| `formatDuration` | — |
-| `humanizeActivity` | — |
+| `ActivityGroup` | Legacy tool-activity presentation; use `@makinbakin/sdk/conversation` for new consumers. |
+| `ToolCallRow` | Legacy tool-activity presentation; use `@makinbakin/sdk/conversation` for new consumers. |
+| `formatDuration` | Legacy tool-activity presentation; use `@makinbakin/sdk/conversation` for new consumers. |
+| `humanizeActivity` | Legacy tool-activity presentation; use `@makinbakin/sdk/conversation` for new consumers. |
 | `ActivityGroupProps` | — |
 | `ToolCallDrawer` | — |
 | `ToolCallDrawerProps` | — |
@@ -477,6 +477,12 @@ Isolated conversation UI and models. Source: `packages/sdk/src/conversation/inde
 | `formatAbsoluteTime` | Stable compact, absolute, and calendar-day timestamp helpers. |
 | `formatDayLabel` | Stable compact, absolute, and calendar-day timestamp helpers. |
 | `formatRelativeTime` | Stable compact, absolute, and calendar-day timestamp helpers. |
+| `ActivityGroup` | Collapsible exact tool-activity presentation and compact formatters. |
+| `formatDuration` | Collapsible exact tool-activity presentation and compact formatters. |
+| `humanizeActivity` | Collapsible exact tool-activity presentation and compact formatters. |
+| `ToolCallRow` | Collapsible exact tool-activity presentation and compact formatters. |
+| `ActivityGroupProps` | — |
+| `ToolCallRowProps` | — |
 
 ## `@makinbakin/sdk/slots`
 
