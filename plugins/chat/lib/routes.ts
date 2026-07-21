@@ -97,9 +97,12 @@ export const chatRoutes = [
     handler: async (_req, _ctx, { params }) => {
       const chat = getChatSummary(params.chatId)
       if (!chat) return Response.json({ error: 'chat not found' }, { status: 404 })
-      const preview = inflightTurnPreview(params.chatId)
+      // Flag first: if the turn settles between the two reads we return
+      // streaming:false with no text (honest), never text without the flag.
+      const streaming = isTurnInFlight(params.chatId)
+      const preview = streaming ? inflightTurnPreview(params.chatId) : null
       return Response.json({
-        chat: { ...chat, streaming: isTurnInFlight(params.chatId) },
+        chat: { ...chat, streaming },
         messages: readTranscript(params.chatId),
         // Mid-turn rehydration: what the running turn streamed so far, so a
         // remount doesn't show the reply missing its beginning (#706).
