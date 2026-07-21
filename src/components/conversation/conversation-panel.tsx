@@ -1,62 +1,53 @@
 'use client'
 
-/**
- * ConversationPanel — the embedded single-session conversation surface:
- * one thread inside a host page (brainstorms, plan reviews), no session
- * navigation. Composes Conversation + Composer + an internal
- * ToolCallDrawer; `fitParent` fills the host, otherwise the panel is a
- * drag-resizable fixed-height block. Read-only surfaces swap the composer
- * for an honest notice.
- */
-import { useMemo, useState } from 'react'
+import type { ReactNode } from 'react'
 import type { ChatChunk as RuntimeChatChunk } from '@bakin/core/adapters/runtime'
+import {
+  ConversationPanel as FocusedConversationPanel,
+  type AgentTurnProps,
+  type ComposerAttachments,
+  type ConversationAgent,
+  type ConversationMessage,
+  type ConversationPanelProps as FocusedConversationPanelProps,
+} from '@makinbakin/sdk/conversation'
+import { useAgentStore } from '@makinbakin/sdk/hooks'
 
-import { useVerticalResize } from '@/hooks/use-vertical-resize'
-import { AgentAvatar } from '../agent-avatar'
 import { AgentSelect } from '../agent-select'
-import { Conversation } from './conversation'
-import { Composer, type ComposerAttachments } from './composer'
-import { ToolCallDrawer } from './tool-call-drawer'
-import { foldConversation, type ConversationMessage, type ConversationToolCall } from './fold'
-import type { AgentTurnProps } from './agent-turn'
+import { formatLegacySummary, LegacyAvatar, renderLegacyText } from './agent-turn'
 
-const PANEL_DEFAULT_HEIGHT = 420
-const PANEL_MIN_HEIGHT = 240
-const PANEL_MAX_HEIGHT = 800
-
+/** Compatibility props for product and existing plugin consumers. */
 export interface ConversationPanelProps {
-  /** Persisted rows (the caller owns storage; map local shapes onto ConversationMessage). */
-  messages: ConversationMessage[]
-  /** In-flight turn chunks (from useConversationStream); null/undefined when idle. */
-  liveChunks?: RuntimeChatChunk[] | null
+  messages: readonly ConversationMessage[]
+  liveChunks?: readonly RuntimeChatChunk[] | null
   streaming?: boolean
   agentId?: string
-  /** Renders an agent switcher next to the composer. */
   onAgentChange?: (agentId: string) => void
   onSend: (content: string) => void | Promise<void>
   onAbort?: () => void
-  onRetry?: AgentTurnProps['onRetry']
+  onRetry?: FocusedConversationPanelProps['onRetry']
   transformText?: AgentTurnProps['transformText']
-  /** Keys drafts/history/resize persistence. */
   storageKey: string
-  title?: React.ReactNode
-  /** Default true; embedded surfaces with their own chrome pass false. */
+  title?: ReactNode
   showHeader?: boolean
-  /** Fill the host container instead of a fixed resizable height. */
   fitParent?: boolean
   readOnly?: boolean
-  readOnlyNotice?: React.ReactNode
+  readOnlyNotice?: ReactNode
   placeholder?: string
-  emptyState?: React.ReactNode
+  inputLabel?: string
+  emptyState?: ReactNode
   maxLength?: number
   attachments?: ComposerAttachments
+  defaultHeight?: number
+  minHeight?: number
+  maxHeight?: number
   className?: string
 }
 
+/** @deprecated Import `ConversationPanel` from `@makinbakin/sdk/conversation`. */
 export function ConversationPanel({
   messages,
   liveChunks,
-  streaming = false,
+  streaming,
   agentId,
   onAgentChange,
   onSend,
@@ -65,93 +56,72 @@ export function ConversationPanel({
   transformText,
   storageKey,
   title,
-  showHeader = true,
-  fitParent = false,
-  readOnly = false,
+  showHeader,
+  fitParent,
+  readOnly,
   readOnlyNotice,
-  placeholder = 'Send a message…',
+  placeholder,
+  inputLabel,
   emptyState,
   maxLength,
   attachments,
+  defaultHeight,
+  minHeight,
+  maxHeight,
   className,
 }: ConversationPanelProps) {
-  const [openCall, setOpenCall] = useState<ConversationToolCall | null>(null)
-  const { height, handleProps } = useVerticalResize({
-    defaultHeight: PANEL_DEFAULT_HEIGHT,
-    minHeight: PANEL_MIN_HEIGHT,
-    maxHeight: PANEL_MAX_HEIGHT,
-    storageKey: `conv-panel:${storageKey}`,
-  })
+  const agentMap = useAgentStore((state) => state.agentMap)
+  const displaySettings = useAgentStore((state) => state.displaySettings)
 
-  const turns = useMemo(
-    () =>
-      foldConversation(
-        messages,
-        liveChunks != null ? { liveChunks, liveAgentId: agentId } : undefined,
-      ),
-    [messages, liveChunks, agentId],
-  )
+  const resolveAgent = (turnAgentId?: string): ConversationAgent | undefined => {
+    const id = turnAgentId ?? agentId
+    if (!id) return undefined
+    const resolved = agentMap[id]
+    return {
+      id,
+      name: displaySettings[id]?.displayName ?? resolved?.name ?? id,
+      ...(resolved?.headshot ? { avatarUrl: resolved.headshot } : {}),
+    }
+  }
 
   return (
-    <div
-      data-conv-panel
-      className={`flex min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-background ${
-        fitParent ? 'h-full' : ''
-      } ${className ?? ''}`}
-      style={fitParent ? undefined : { height }}
-    >
-      {!fitParent ? (
-        <div
-          {...handleProps}
-          aria-label="Resize conversation panel"
-          className="group/handle flex h-2 w-full shrink-0 cursor-row-resize items-center justify-center"
-        >
-          <div className="h-0.5 w-10 rounded-full bg-border opacity-0 transition-opacity group-hover/handle:opacity-100" />
-        </div>
-      ) : null}
-
-      {showHeader ? (
-        <div data-conv-panel-header className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
-          {agentId ? <AgentAvatar agentId={agentId} size="xs" /> : null}
-          <div className="min-w-0 truncate text-sm font-medium">{title ?? 'Conversation'}</div>
-        </div>
-      ) : null}
-
-      <Conversation
-        turns={turns}
-        agentId={agentId}
-        emptyState={emptyState}
-        onRetry={onRetry}
-        onOpenCall={setOpenCall}
-        transformText={transformText}
-      />
-
-      {readOnly ? (
-        readOnlyNotice ? (
-          <div data-conv-readonly className="shrink-0 border-t border-border px-3 py-2 text-xs text-muted-foreground">
-            {readOnlyNotice}
-          </div>
-        ) : null
-      ) : (
-        <Composer
-          storageKey={storageKey}
-          onSend={onSend}
-          busy={streaming}
-          onAbort={onAbort}
-          placeholder={placeholder}
-          maxLength={maxLength}
-          attachments={attachments}
-          leadingSlot={
-            onAgentChange && agentId ? (
-              <span data-conv-agent-select className="shrink-0 self-end">
-                <AgentSelect value={agentId} onValueChange={onAgentChange} className="h-8 w-auto min-w-[130px] text-xs" />
-              </span>
-            ) : undefined
-          }
-        />
-      )}
-
-      <ToolCallDrawer call={openCall} open={openCall !== null} onOpenChange={(open) => !open && setOpenCall(null)} />
-    </div>
+    <FocusedConversationPanel
+      messages={messages}
+      liveChunks={liveChunks}
+      streaming={streaming}
+      agent={resolveAgent(agentId)}
+      resolveAgent={resolveAgent}
+      agentControl={onAgentChange && agentId ? (
+        <span data-conv-agent-select="">
+          <AgentSelect
+            value={agentId}
+            onValueChange={onAgentChange}
+            className="h-8 w-auto min-w-[130px] text-xs"
+          />
+        </span>
+      ) : undefined}
+      onSend={onSend}
+      onAbort={onAbort}
+      onRetry={onRetry}
+      transformText={transformText}
+      renderText={renderLegacyText}
+      renderAvatar={LegacyAvatar}
+      formatToolSummary={formatLegacySummary}
+      storageKey={storageKey}
+      title={title}
+      showHeader={showHeader}
+      fitParent={fitParent}
+      readOnly={readOnly}
+      readOnlyNotice={readOnlyNotice}
+      placeholder={placeholder}
+      inputLabel={inputLabel}
+      emptyState={emptyState}
+      maxLength={maxLength}
+      attachments={attachments}
+      defaultHeight={defaultHeight}
+      minHeight={minHeight}
+      maxHeight={maxHeight}
+      className={className}
+    />
   )
 }

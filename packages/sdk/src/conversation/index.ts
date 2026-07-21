@@ -19,6 +19,25 @@ export type {
   TurnStatus,
 } from '@bakin/ui/conversation'
 
+/** Bounded, resizable single-session composition for embedded reviews. */
+export { ConversationPanel } from '@bakin/ui/conversation'
+/** Exact, resizable detail for one conversation tool call. */
+export { ToolCallDrawer } from '@bakin/ui/conversation'
+export type {
+  ConversationPanelProps,
+  ToolCallDrawerProps,
+} from '@bakin/ui/conversation'
+
+/** Response-scoped SSE reader and state machine for streamed turns. */
+export { readConversationSseStream } from './sse'
+export type { ConversationSseHandlers } from './sse'
+/** One-at-a-time streamed-turn state for focused conversation surfaces. */
+export { useConversationStream } from './use-conversation-stream'
+export type {
+  ConversationStream,
+  ConversationStreamOptions,
+} from './use-conversation-stream'
+
 /** Stable compact, absolute, and calendar-day timestamp helpers. */
 export {
   dayKey,

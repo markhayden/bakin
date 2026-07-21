@@ -9,23 +9,17 @@ import {
   useState,
   type ClipboardEvent,
   type KeyboardEvent,
-  type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from 'react'
 
 import { Button } from '../primitives/button'
 import { cn } from '../utils'
+import { usePersistedLeadingEdgeResize } from './use-persisted-leading-edge-resize'
 
 const HISTORY_LIMIT = 50
 const DEFAULT_MIN_HEIGHT = 88
 const DEFAULT_MAX_HEIGHT = 480
-const RESIZE_STEP = 16
-const RESIZE_STEP_LARGE = 64
 const DEFAULT_ACCEPTED_TYPES = ['image/*'] as const
-
-function clamp(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, value))
-}
 
 function draftKey(storageKey: string) {
   return `bakin-composer-draft:${storageKey}`
@@ -78,12 +72,6 @@ function appendHistory(storageKey: string, entry: string) {
   const history = readHistory(storageKey)
   if (history.at(-1) !== entry) history.push(entry)
   writeStorage(historyKey(storageKey), JSON.stringify(history.slice(-HISTORY_LIMIT)))
-}
-
-function readResize(storageKey: string, minHeight: number, maxHeight: number) {
-  const raw = readStorage(resizeKey(storageKey))
-  const parsed = raw ? Number.parseInt(raw, 10) : minHeight
-  return clamp(Number.isFinite(parsed) ? parsed : minHeight, minHeight, maxHeight)
 }
 
 function matchesAcceptedType(file: File, acceptedTypes: readonly string[]) {
@@ -212,32 +200,32 @@ export function Composer({
   className,
 }: ComposerProps) {
   const [value, setValue] = useState(() => readDraft(storageKey))
-  const [dragMinimum, setDragMinimum] = useState(() => readResize(storageKey, minHeight, maxHeight))
   const [dropActive, setDropActive] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const composingRef = useRef(false)
   const fileRef = useRef<HTMLInputElement | null>(null)
   const historyPositionRef = useRef<number | null>(null)
   const pendingDraftRef = useRef('')
-  const resizeValueRef = useRef(dragMinimum)
-  const resizeStartRef = useRef({ clientY: 0, height: dragMinimum })
-  const resizePointerRef = useRef<number | null>(null)
-  const resizeBodyStyleRef = useRef({ cursor: '', userSelect: '' })
   const descriptionId = useId()
   const attachmentReasonId = useId()
   const acceptedTypes = attachments?.acceptedTypes?.length
     ? attachments.acceptedTypes
     : DEFAULT_ACCEPTED_TYPES
   const addLabel = attachmentLabel(acceptedTypes)
+  const { size: dragMinimum, handleProps: resizeHandleProps } = usePersistedLeadingEdgeResize({
+    axis: 'y',
+    defaultSize: minHeight,
+    minSize: minHeight,
+    maxSize: maxHeight,
+    storageKey: resizeKey(storageKey),
+    disabled,
+  })
 
   useEffect(() => {
     setValue(readDraft(storageKey))
     historyPositionRef.current = null
-    const nextHeight = readResize(storageKey, minHeight, maxHeight)
-    resizeValueRef.current = nextHeight
-    setDragMinimum(nextHeight)
     if (autoFocus) textareaRef.current?.focus()
-  }, [storageKey, autoFocus, minHeight, maxHeight])
+  }, [storageKey, autoFocus])
 
   useLayoutEffect(() => {
     const element = textareaRef.current
@@ -253,61 +241,6 @@ export function Composer({
     setValue(next)
     writeStorage(draftKey(storageKey), next)
   }, [storageKey])
-
-  const setResize = useCallback((next: number) => {
-    const resolved = clamp(next, minHeight, maxHeight)
-    resizeValueRef.current = resolved
-    setDragMinimum(resolved)
-    writeStorage(resizeKey(storageKey), String(resolved))
-  }, [maxHeight, minHeight, storageKey])
-
-  const beginResize = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (disabled) return
-    event.preventDefault()
-    event.currentTarget.setPointerCapture?.(event.pointerId)
-    resizePointerRef.current = event.pointerId
-    resizeStartRef.current = { clientY: event.clientY, height: resizeValueRef.current }
-    resizeBodyStyleRef.current = {
-      cursor: document.body.style.cursor,
-      userSelect: document.body.style.userSelect,
-    }
-    document.body.style.cursor = 'row-resize'
-    document.body.style.userSelect = 'none'
-  }
-
-  const continueResize = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (resizePointerRef.current !== event.pointerId) return
-    const delta = resizeStartRef.current.clientY - event.clientY
-    const next = clamp(resizeStartRef.current.height + delta, minHeight, maxHeight)
-    resizeValueRef.current = next
-    setDragMinimum(next)
-  }
-
-  const finishResize = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (resizePointerRef.current !== event.pointerId) return
-    resizePointerRef.current = null
-    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId)
-    }
-    writeStorage(resizeKey(storageKey), String(resizeValueRef.current))
-    document.body.style.cursor = resizeBodyStyleRef.current.cursor
-    document.body.style.userSelect = resizeBodyStyleRef.current.userSelect
-  }
-
-  useEffect(() => () => {
-    if (resizePointerRef.current === null) return
-    document.body.style.cursor = resizeBodyStyleRef.current.cursor
-    document.body.style.userSelect = resizeBodyStyleRef.current.userSelect
-  }, [])
-
-  const resizeWithKeyboard = (event: KeyboardEvent<HTMLDivElement>) => {
-    let direction = 0
-    if (event.key === 'ArrowUp') direction = 1
-    if (event.key === 'ArrowDown') direction = -1
-    if (!direction) return
-    event.preventDefault()
-    setResize(resizeValueRef.current + direction * (event.shiftKey ? RESIZE_STEP_LARGE : RESIZE_STEP))
-  }
 
   const readyAttachments = attachments?.items.filter((item) => !item.status || item.status === 'ready') ?? []
   const uploadsPending = attachments?.items.some((item) => item.status === 'uploading') ?? false
@@ -410,20 +343,10 @@ export function Composer({
       )}
     >
       <div
-        role="separator"
-        tabIndex={disabled ? -1 : 0}
+        {...resizeHandleProps}
         aria-label="Resize message input"
-        aria-orientation="horizontal"
-        aria-valuemin={minHeight}
-        aria-valuemax={maxHeight}
-        aria-valuenow={dragMinimum}
-        onPointerDown={beginResize}
-        onPointerMove={continueResize}
-        onPointerUp={finishResize}
-        onPointerCancel={finishResize}
-        onKeyDown={resizeWithKeyboard}
         className={cn(
-          'group/handle flex h-bakin-2 w-full items-center justify-center outline-none',
+          'group/handle flex h-bakin-2 w-full touch-none items-center justify-center outline-none',
           disabled ? 'cursor-not-allowed' : 'cursor-row-resize',
           'focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-bakin-focus-ring',
         )}

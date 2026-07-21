@@ -54,6 +54,9 @@ const conversationDocumentTimelineStory = '/iframe.html?id=conversation-timeline
 const conversationContainedStory = '/iframe.html?id=conversation-timeline-and-empty-state--contained-and-empty-states&viewMode=story'
 const conversationProductComposerStory = '/iframe.html?id=conversation-composer-and-attachments--product-composer&viewMode=story'
 const conversationComposerStatesStory = '/iframe.html?id=conversation-composer-and-attachments--attachment-and-availability-states&viewMode=story'
+const conversationProductPanelStory = '/iframe.html?id=conversation-panel-and-tool-detail--product-panel&viewMode=story'
+const conversationReadOnlyPanelStory = '/iframe.html?id=conversation-panel-and-tool-detail--read-only-states&viewMode=story'
+const conversationToolDetailStory = '/iframe.html?id=conversation-panel-and-tool-detail--exact-tool-detail&viewMode=story'
 
 test('public story keeps keyboard, focus, console, and responsive contracts', async ({ page }) => {
   const browserErrors: string[] = []
@@ -1684,6 +1687,83 @@ test('conversation composer preserves keyboard, persistence, attachment, and bus
       scrollWidth: document.documentElement.scrollWidth,
     }))
     expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth)
+  })
+
+  expect(browserErrors).toEqual([])
+})
+
+test('conversation panel preserves bounded history, resize, read-only, and exact-detail contracts', async ({ page }) => {
+  const browserErrors: string[] = []
+  page.on('console', (message) => {
+    if (message.type() === 'error') browserErrors.push(`console: ${message.text()}`)
+  })
+  page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
+  page.on('requestfailed', (request) => {
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+  })
+
+  for (const [story, heading] of [
+    [conversationProductPanelStory, 'Coordinate an embedded release review'],
+    [conversationReadOnlyPanelStory, 'Say why a conversation cannot change'],
+  ] as const) {
+    for (const width of responsiveWidths) {
+      await test.step(`${heading} remains contained at ${width}px`, async () => {
+        await page.setViewportSize({ width, height: 1100 })
+        await page.goto(story, { waitUntil: 'networkidle' })
+        await expect(page.getByRole('heading', { level: 1, name: heading })).toBeVisible()
+        const dimensions = await page.evaluate(() => ({
+          clientWidth: document.documentElement.clientWidth,
+          scrollWidth: document.documentElement.scrollWidth,
+        }))
+        expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth)
+      })
+    }
+  }
+
+  for (const width of responsiveWidths) {
+    await test.step(`exact tool detail remains contained at ${width}px`, async () => {
+      await page.setViewportSize({ width, height: 1100 })
+      await page.goto(conversationToolDetailStory, { waitUntil: 'networkidle' })
+      await expect(page.getByRole('dialog', { name: 'route_audit' })).toBeVisible()
+      const dimensions = await page.evaluate(() => ({
+        clientWidth: document.documentElement.clientWidth,
+        scrollWidth: document.documentElement.scrollWidth,
+      }))
+      expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth)
+    })
+  }
+
+  await test.step('panel and composer resize preferences survive reload independently', async () => {
+    await page.setViewportSize({ width: 1024, height: 900 })
+    await page.goto(conversationProductPanelStory, { waitUntil: 'networkidle' })
+    await page.evaluate(() => localStorage.removeItem('bakin-vresize:conv-panel:storybook-product-panel'))
+    await page.reload({ waitUntil: 'networkidle' })
+    const panelResize = page.getByRole('separator', { name: 'Resize conversation panel' })
+    await expect(panelResize).toHaveAttribute('aria-valuenow', '420')
+    await panelResize.focus()
+    await page.keyboard.press('ArrowUp')
+    await expect(panelResize).toHaveAttribute('aria-valuenow', '436')
+    await page.reload({ waitUntil: 'networkidle' })
+    await expect(page.getByRole('separator', { name: 'Resize conversation panel' })).toHaveAttribute('aria-valuenow', '436')
+  })
+
+  await test.step('timeline evidence opens the canonical exact-detail drawer', async () => {
+    await page.goto(conversationProductPanelStory, { waitUntil: 'networkidle' })
+    await page.locator('button[data-conv-activity-header]').click()
+    await page.locator('button[data-conv-call]').click()
+    const dialog = page.getByRole('dialog', { name: 'route_audit' })
+    await expect(dialog).toBeVisible()
+    await expect(dialog.getByText(/Captured output was truncated/)).toBeVisible()
+    await expect(dialog.getByRole('button', { name: 'Copy input' })).toBeVisible()
+    await dialog.getByRole('button', { name: 'Close panel' }).click()
+    await expect(dialog).toHaveCount(0)
+  })
+
+  await test.step('read-only mode always replaces the composer with an explanation', async () => {
+    await page.goto(conversationReadOnlyPanelStory, { waitUntil: 'networkidle' })
+    await expect(page.getByText('This conversation is read-only.')).toBeVisible()
+    await expect(page.getByText(/Archived after release/)).toBeVisible()
+    await expect(page.getByRole('textbox')).toHaveCount(0)
   })
 
   expect(browserErrors).toEqual([])

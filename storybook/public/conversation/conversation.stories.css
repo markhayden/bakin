@@ -59,6 +59,20 @@
   background: var(--bakin-color-canvas-default);
 }
 
+.bakin-conversation-story__panel-frame {
+  min-width: 0;
+  overflow: hidden;
+  border-radius: var(--bakin-radius-overlay);
+  box-shadow: var(--bakin-elevation-raised);
+}
+
+.bakin-conversation-story__panel-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--bakin-layout-space-6);
+  align-items: start;
+}
+
 .bakin-conversation-story__composer-frame [data-slot='conversation-page-composer'] {
   padding-top: 0;
   border-top: 0;
@@ -136,6 +150,10 @@
   }
 
   .bakin-conversation-story__composer-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .bakin-conversation-story__panel-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 

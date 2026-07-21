@@ -1335,6 +1335,22 @@ bytes reachable, canonical CSS is 298,974 bytes with one runtime copy, the
 legacy components entry falls to 398,796 direct bytes, and the legacy-style
 ledger drops from 213 to 212 paths.
 
+**Status — T34c–d (2026-07-20):** Complete. `Composer`, attachment states,
+`ConversationPanel`, `ToolCallDrawer`, the SSE reader, and the one-at-a-time
+stream hook now publish through `@makinbakin/sdk/conversation`. The focused
+panel accepts presentation-ready identity and consumer-owned controls without
+importing host stores, routing, Markdown, or runtime packages. The legacy root
+modules are compatibility adapters for those host integrations. Panel and
+drawer resizing share accessible pointer/keyboard mechanics and persistent
+preference keys; read-only panels always explain why the composer is absent;
+exact tool detail keeps payloads copyable and discloses truncated capture. The
+SSE boundary rejects malformed chunks and preserves abort as a distinct
+terminal state. Public Storybook now contains 109 interaction/accessibility
+checked stories, including desktop/mobile canonical panel and tool-detail
+visuals; the focused browser contract passes in Chromium, Firefox, and WebKit.
+Official product and Bits consumers remain unmigrated until the public-contract
+checkpoint after T36.
+
 **Acceptance:** base UI does not include conversation code; streamed, thinking,
 tool, error, attachment, empty, long-content, and reduced-motion states pass;
 behavior/folding contracts remain unchanged.

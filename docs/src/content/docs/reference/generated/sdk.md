@@ -474,6 +474,15 @@ Isolated conversation UI and models. Source: `packages/sdk/src/conversation/inde
 | `FoldOptions` | — |
 | `TurnItem` | — |
 | `TurnStatus` | — |
+| `ConversationPanel` | Bounded, resizable single-session composition for embedded reviews. |
+| `ToolCallDrawer` | Exact, resizable detail for one conversation tool call. |
+| `ConversationPanelProps` | — |
+| `ToolCallDrawerProps` | — |
+| `readConversationSseStream` | Response-scoped SSE reader and state machine for streamed turns. |
+| `ConversationSseHandlers` | — |
+| `useConversationStream` | One-at-a-time streamed-turn state for focused conversation surfaces. |
+| `ConversationStream` | — |
+| `ConversationStreamOptions` | — |
 | `dayKey` | Stable compact, absolute, and calendar-day timestamp helpers. |
 | `formatAbsoluteTime` | Stable compact, absolute, and calendar-day timestamp helpers. |
 | `formatDayLabel` | Stable compact, absolute, and calendar-day timestamp helpers. |

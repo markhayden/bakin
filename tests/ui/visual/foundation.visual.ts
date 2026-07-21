@@ -664,3 +664,29 @@ test('public conversation composer attachment states visual baseline', async ({ 
     fullPage: true,
   })
 })
+
+test('public embedded conversation panel visual baseline', async ({ page }) => {
+  await page.goto('/iframe.html?id=conversation-panel-and-tool-detail--product-panel&viewMode=story')
+  await expect(page.getByRole('heading', { level: 1, name: 'Coordinate an embedded release review' })).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Release review' })).toBeVisible()
+  await expect(page.getByRole('separator', { name: 'Resize conversation panel' })).toBeVisible()
+  await page.evaluate(async () => document.fonts.ready)
+  await expect(page).toHaveScreenshot('foundation-conversation-panel.png', {
+    animations: 'disabled',
+    caret: 'hide',
+    fullPage: true,
+  })
+})
+
+test('public exact tool detail visual baseline', async ({ page }) => {
+  await page.goto('/iframe.html?id=conversation-panel-and-tool-detail--exact-tool-detail&viewMode=story')
+  await expect(page.getByRole('dialog', { name: 'route_audit' })).toBeVisible()
+  await expect(page.getByText(/Captured output was truncated/)).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Copy output' })).toBeVisible()
+  await page.evaluate(async () => document.fonts.ready)
+  await expect(page).toHaveScreenshot('foundation-conversation-tool-detail.png', {
+    animations: 'disabled',
+    caret: 'hide',
+    fullPage: true,
+  })
+})

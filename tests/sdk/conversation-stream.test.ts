@@ -16,8 +16,10 @@ const contentDirMock = () => ({
 mock.module('../../src/core/content-dir', contentDirMock)
 mock.module('../../packages/core/src/content-dir', contentDirMock)
 
-import type { RuntimeChatChunk } from '@makinbakin/sdk/types'
-import { readConversationSseStream } from '../../src/components/conversation/sse'
+import {
+  readConversationSseStream,
+  type ConversationChunk,
+} from '@makinbakin/sdk/conversation'
 import { createTurnRecorder } from '../../src/components/conversation/turn-recorder'
 import { conversationThreadId } from '../../src/components/conversation/thread-id'
 
@@ -42,7 +44,7 @@ function sseResponse(frames: string[], chunkSize?: number): Response {
 
 describe('readConversationSseStream', () => {
   it('dispatches chunk frames, forwards custom events, and resolves on done', async () => {
-    const chunks: RuntimeChatChunk[] = []
+    const chunks: ConversationChunk[] = []
     const custom: Array<[string, unknown]> = []
     const res = sseResponse([
       `event: chunk\ndata: ${JSON.stringify({ type: 'text', content: 'hel' })}\n\n`,
@@ -64,7 +66,7 @@ describe('readConversationSseStream', () => {
   })
 
   it('reassembles frames split across reads (byte-level buffering)', async () => {
-    const chunks: RuntimeChatChunk[] = []
+    const chunks: ConversationChunk[] = []
     const res = sseResponse(
       [`event: chunk\ndata: ${JSON.stringify({ type: 'text', content: 'split across reads' })}\n\n`],
       5,
@@ -74,6 +76,23 @@ describe('readConversationSseStream', () => {
       onChunk: (c) => chunks.push(c),
     })
     expect(chunks).toEqual([{ type: 'text', content: 'split across reads' }])
+  })
+
+  it('ignores malformed chunk payloads at the transport boundary', async () => {
+    const chunks: ConversationChunk[] = []
+    const res = sseResponse([
+      'event: chunk\ndata: {"type":"text"}\n\n',
+      'event: chunk\ndata: {"type":"tool","data":{}}\n\n',
+      'event: chunk\ndata: {"type":"status","content":42}\n\n',
+      'event: chunk\ndata: {"type":"status","content":"working"}\n\n',
+    ])
+
+    await readConversationSseStream(res, {
+      signal: new AbortController().signal,
+      onChunk: (chunk) => chunks.push(chunk),
+    })
+
+    expect(chunks).toEqual([{ type: 'status', content: 'working' }])
   })
 
   it('throws on error frames with the server message', async () => {
@@ -88,6 +107,25 @@ describe('readConversationSseStream', () => {
     await expect(
       readConversationSseStream(res, { signal: new AbortController().signal, onChunk: () => {} }),
     ).rejects.toThrow('busy')
+  })
+
+  it('rejects with AbortError when cancellation settles a pending read', async () => {
+    let markPull!: () => void
+    const pulled = new Promise<void>((resolve) => { markPull = resolve })
+    const stream = new ReadableStream<Uint8Array>({
+      pull() {
+        markPull()
+      },
+    })
+    const controller = new AbortController()
+    const reading = readConversationSseStream(
+      new Response(stream, { status: 200 }),
+      { signal: controller.signal, onChunk: () => {} },
+    )
+
+    await pulled
+    controller.abort()
+    await expect(reading).rejects.toMatchObject({ name: 'AbortError' })
   })
 })
 

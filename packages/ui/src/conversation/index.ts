@@ -62,3 +62,9 @@ export type {
   ComposerAttachmentStatus,
   ComposerProps,
 } from './composer'
+
+export { ToolCallDrawer } from './tool-call-drawer'
+export type { ToolCallDrawerProps } from './tool-call-drawer'
+
+export { ConversationPanel } from './conversation-panel'
+export type { ConversationPanelProps } from './conversation-panel'
