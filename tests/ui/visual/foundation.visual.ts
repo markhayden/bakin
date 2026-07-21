@@ -638,3 +638,29 @@ test('public contained conversation and empty state visual baseline', async ({ p
     fullPage: true,
   })
 })
+
+test('public product conversation composer visual baseline', async ({ page }) => {
+  await page.goto('/iframe.html?id=conversation-composer-and-attachments--product-composer&viewMode=story')
+  await expect(page.getByRole('heading', { level: 1, name: 'Ask a focused follow-up' })).toBeVisible()
+  await expect(page.getByRole('textbox', { name: 'Message the release agent' })).toBeVisible()
+  await expect(page.getByRole('separator', { name: 'Resize message input' })).toBeVisible()
+  await page.evaluate(async () => document.fonts.ready)
+  await expect(page).toHaveScreenshot('foundation-conversation-composer.png', {
+    animations: 'disabled',
+    caret: 'hide',
+    fullPage: true,
+  })
+})
+
+test('public conversation composer attachment states visual baseline', async ({ page }) => {
+  await page.goto('/iframe.html?id=conversation-composer-and-attachments--attachment-and-availability-states&viewMode=story')
+  await expect(page.getByRole('heading', { level: 1, name: 'Keep attachment and reply state unambiguous' })).toBeVisible()
+  await expect(page.getByRole('status', { name: 'Uploading release-evidence.png' })).toBeVisible()
+  await expect(page.getByRole('alert')).toContainText('Upload failed')
+  await page.evaluate(async () => document.fonts.ready)
+  await expect(page).toHaveScreenshot('foundation-conversation-composer-states.png', {
+    animations: 'disabled',
+    caret: 'hide',
+    fullPage: true,
+  })
+})

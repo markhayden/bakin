@@ -1048,6 +1048,59 @@ Use `Conversation mode="contained"` only for a standalone embedded transcript wh
 
 Pass presentation-ready identity through `agent` or `resolveAgent`. The focused timeline does not read the host agent store, parse URLs, own storage, fetch history, or import a Markdown engine. Supply the existing `renderText`, `renderAvatar`, `renderAttachment`, and `formatToolSummary` integrations when needed. Suggestions render only when `onSuggestion` is present, so an empty state never presents inert controls.
 
+## Conversation Composer and Attachments
+
+Put `Composer` inside `ConversationPageComposer`, outside the named message log. Give it a stable, opaque `storageKey` for the current thread; the component uses that key only for browser-local draft, input-history, and resize preferences. Do not put secrets in the key, and do not use it as routed or server-side conversation identity.
+
+```tsx
+import {
+  Composer,
+  type ComposerAttachmentItem,
+} from '@makinbakin/sdk/conversation'
+import { ConversationPageComposer } from '@makinbakin/sdk/patterns'
+
+export function ReleaseComposer({
+  threadId,
+  busy,
+  stagedImages,
+  addImages,
+  removeImage,
+  send,
+  abort,
+}: {
+  threadId: string
+  busy: boolean
+  stagedImages: readonly ComposerAttachmentItem[]
+  addImages: (files: File[]) => void
+  removeImage: (id: string) => void
+  send: (content: string) => void
+  abort: () => void
+}) {
+  return (
+    <ConversationPageComposer>
+      <Composer
+        storageKey={`release:${threadId}`}
+        inputLabel="Message the release agent"
+        onSend={send}
+        busy={busy}
+        onAbort={abort}
+        attachments={{
+          enabled: true,
+          acceptedTypes: ['image/*'],
+          items: stagedImages,
+          onAdd: addImages,
+          onRemove: removeImage,
+        }}
+      />
+    </ConversationPageComposer>
+  )
+}
+```
+
+The consumer owns file validation beyond the declared picker types, upload requests, object-URL cleanup, attachment persistence, and the eventual send mutation. Feed the resulting presentation state back as `uploading`, `ready`, or `error`; pending uploads hold send, and errors remain visible text. Set `enabled: false` with a concrete `disabledReason` when the selected agent or model cannot accept the declared files. The visible affordance and native picker are both disabled.
+
+`busy` never disables typing. It holds send and shows a stop action only when `onAbort` exists; without that callback the composer renders non-interactive progress instead. Enter sends, Shift+Enter inserts a line, Escape aborts when available, IME composition is protected, and the resize separator supports pointer and keyboard input. Use `inputLabel` when the visible input hint alone does not provide a durable accessible name.
+
 ## Local Commands
 
 ```sh

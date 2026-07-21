@@ -131,8 +131,14 @@ export { ActivityGroup, ToolCallRow, formatDuration, humanizeActivity } from '@/
 export type { ActivityGroupProps } from '@/components/conversation/activity-group'
 export { ToolCallDrawer } from '@/components/conversation/tool-call-drawer'
 export type { ToolCallDrawerProps } from '@/components/conversation/tool-call-drawer'
+/** Legacy composer adapter; use `@makinbakin/sdk/conversation` for new consumers. */
 export { Composer } from '@/components/conversation/composer'
-export type { ComposerProps, ComposerAttachments, ComposerAttachmentItem } from '@/components/conversation/composer'
+export type {
+  ComposerProps,
+  ComposerAttachments,
+  ComposerAttachmentItem,
+  ComposerAttachmentStatus,
+} from '@/components/conversation/composer'
 export { ConversationPanel } from '@/components/conversation/conversation-panel'
 export type { ConversationPanelProps } from '@/components/conversation/conversation-panel'
 export { useConversationStream } from '@/components/conversation/use-conversation-stream'

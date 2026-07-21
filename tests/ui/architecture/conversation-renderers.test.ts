@@ -69,4 +69,18 @@ describe('focused conversation renderers', () => {
     expect(adapter).toContain('flex-1')
     expect(emptyAdapter).toContain("from '@makinbakin/sdk/conversation'")
   })
+
+  it('publishes the composer without host routing, agent stores, or upload behavior', () => {
+    const implementation = read('packages/ui/src/conversation/composer.tsx')
+    const focused = read('packages/sdk/src/conversation/index.ts')
+    expect(focused).toContain('Composer')
+    expect(implementation).not.toMatch(/@\/|@makinbakin\/sdk|@bakin\/core|lucide-react|useQueryState|router|fetch\(/)
+    expect(implementation).toContain('acceptedTypes')
+    expect(implementation).toContain('onAdd')
+  })
+
+  it('keeps the legacy composer as a focused compatibility adapter', () => {
+    const adapter = read('src/components/conversation/composer.tsx')
+    expect(adapter).toContain("from '@makinbakin/sdk/conversation'")
+  })
 })

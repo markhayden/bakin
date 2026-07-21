@@ -159,9 +159,14 @@ remains outside it. Render folded turns with `Conversation` from
 `@makinbakin/sdk/conversation`; its default `document` mode avoids creating a
 second scroller inside the page recipe. `mode="contained"` is reserved for a
 standalone conversation with an explicit height boundary. `ConversationEmptyState`
-renders starter suggestions only when their callback is supplied.
+renders starter suggestions only when their callback is supplied. Put `Composer`
+inside `ConversationPageComposer`; its stable `storageKey` scopes browser-local
+draft/history/resize preferences, while the consumer owns routing, upload requests,
+object-URL cleanup, persistence, and send mutations. Attachment `acceptedTypes`
+apply consistently to picker, paste, and drop. Pending uploads hold send, `busy`
+keeps typing live, and a stop control appears only when `onAbort` exists.
 `InspectorPanel` supplies named header/content/footer hierarchy beside a canvas
-or inside `BakinDrawer`. Transport, storage, rich text, routing, selection,
+or inside `BakinDrawer`. Transport, server persistence, rich text, routing, selection,
 drawer focus, and domain mutations remain consumer owned.
 
 Workflow and action workspaces use `WorkflowPage` with a named

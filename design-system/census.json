@@ -19,14 +19,14 @@
     ]
   },
   "summary": {
-    "total": 287,
+    "total": 288,
     "byKind": {
       "host-route": 26,
       "plugin-route": 9,
       "plugin-slot": 30,
       "plugin-template": 2,
       "shared-component": 92,
-      "sdk-ui-export": 128
+      "sdk-ui-export": 129
     },
     "nonVisualAliases": 3
   },
@@ -2190,6 +2190,31 @@
           "type": "public-export",
           "path": "packages/sdk/src/components/index.ts",
           "detail": "type ComposerAttachments from @/components/conversation/composer (ComposerAttachments)"
+        }
+      ]
+    },
+    {
+      "id": "sdk-ui-export:type:ComposerAttachmentStatus",
+      "kind": "sdk-ui-export",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "identity": {
+        "symbol": "ComposerAttachmentStatus",
+        "entrypoint": "@makinbakin/sdk/components"
+      },
+      "sourcePath": "src/components/conversation/composer.tsx",
+      "symbols": [
+        "ComposerAttachmentStatus"
+      ],
+      "exportStatus": "public",
+      "classification": "public-contract",
+      "evidence": [
+        {
+          "type": "public-export",
+          "path": "packages/sdk/src/components/index.ts",
+          "detail": "type ComposerAttachmentStatus from @/components/conversation/composer (ComposerAttachmentStatus)"
         }
       ]
     },
@@ -6079,7 +6104,7 @@
         {
           "type": "public-export",
           "path": "packages/sdk/src/components/index.ts",
-          "detail": "Composer, ComposerAttachmentItem, ComposerAttachments, ComposerProps"
+          "detail": "Composer, ComposerAttachmentItem, ComposerAttachmentStatus, ComposerAttachments, ComposerProps"
         }
       ]
     },

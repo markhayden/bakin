@@ -19,13 +19,13 @@
     "private-import"
   ],
   "summary": {
-    "paths": 210,
+    "paths": 209,
     "totals": {
       "raw-palette": 1384,
-      "arbitrary-size": 540,
-      "raw-control": 204,
+      "arbitrary-size": 537,
+      "raw-control": 198,
       "inline-style": 62,
-      "generic-token": 2488,
+      "generic-token": 2457,
       "unscoped-css": 0,
       "private-import": 6
     }
@@ -3331,23 +3331,6 @@
       "allowances": {
         "arbitrary-size": 1,
         "generic-token": 7
-      }
-    },
-    {
-      "path": "src/components/conversation/composer.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "sdk"
-      },
-      "censusEntryId": "shared-component:src/components/conversation/composer",
-      "migrationTask": "T34",
-      "archetype": "conversation",
-      "target": "canonical conversation patterns and focused SDK entrypoint",
-      "status": "legacy-allowed",
-      "allowances": {
-        "arbitrary-size": 3,
-        "raw-control": 6,
-        "generic-token": 31
       }
     },
     {

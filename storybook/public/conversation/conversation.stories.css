@@ -51,6 +51,26 @@
   line-height: 1.6;
 }
 
+.bakin-conversation-story__composer-frame {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--bakin-color-border-subtle);
+  border-radius: var(--bakin-radius-surface);
+  background: var(--bakin-color-canvas-default);
+}
+
+.bakin-conversation-story__composer-frame [data-slot='conversation-page-composer'] {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.bakin-conversation-story__composer-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--bakin-layout-space-6);
+  align-items: start;
+}
+
 .bakin-conversation-story__transcript {
   display: grid;
   min-width: 0;
@@ -112,6 +132,10 @@
   }
 
   .bakin-conversation-story__examples {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .bakin-conversation-story__composer-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 

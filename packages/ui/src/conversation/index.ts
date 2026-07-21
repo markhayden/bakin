@@ -54,3 +54,11 @@ export type { ConversationMode, ConversationProps } from './conversation'
 
 export { ConversationEmptyState } from './conversation-empty-state'
 export type { ConversationEmptyStateProps } from './conversation-empty-state'
+
+export { Composer } from './composer'
+export type {
+  ComposerAttachmentItem,
+  ComposerAttachments,
+  ComposerAttachmentStatus,
+  ComposerProps,
+} from './composer'

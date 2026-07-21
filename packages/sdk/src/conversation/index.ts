@@ -67,3 +67,12 @@ export type {
   ConversationMode,
   ConversationProps,
 } from '@bakin/ui/conversation'
+
+/** Persistent, IME-safe composer with consumer-owned attachment mutations. */
+export { Composer } from '@bakin/ui/conversation'
+export type {
+  ComposerAttachmentItem,
+  ComposerAttachments,
+  ComposerAttachmentStatus,
+  ComposerProps,
+} from '@bakin/ui/conversation'

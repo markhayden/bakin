@@ -243,10 +243,11 @@ import { PluginHeader, FacetFilter, AgentAvatar } from '@makinbakin/sdk/componen
 | `ActivityGroupProps` | — |
 | `ToolCallDrawer` | — |
 | `ToolCallDrawerProps` | — |
-| `Composer` | — |
+| `Composer` | Legacy composer adapter; use `@makinbakin/sdk/conversation` for new consumers. |
 | `ComposerProps` | — |
 | `ComposerAttachments` | — |
 | `ComposerAttachmentItem` | — |
+| `ComposerAttachmentStatus` | — |
 | `ConversationPanel` | — |
 | `ConversationPanelProps` | — |
 | `useConversationStream` | — |
@@ -503,6 +504,11 @@ Isolated conversation UI and models. Source: `packages/sdk/src/conversation/inde
 | `ConversationEmptyStateProps` | — |
 | `ConversationMode` | — |
 | `ConversationProps` | — |
+| `Composer` | Persistent, IME-safe composer with consumer-owned attachment mutations. |
+| `ComposerAttachmentItem` | — |
+| `ComposerAttachments` | — |
+| `ComposerAttachmentStatus` | — |
+| `ComposerProps` | — |
 
 ## `@makinbakin/sdk/slots`
 

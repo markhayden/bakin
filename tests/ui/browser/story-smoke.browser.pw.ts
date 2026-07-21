@@ -52,6 +52,8 @@ const conversationToolActivityStory = '/iframe.html?id=conversation-tool-activit
 const conversationTurnsStory = '/iframe.html?id=conversation-turns-and-messages--complete-and-lifecycle-states&viewMode=story'
 const conversationDocumentTimelineStory = '/iframe.html?id=conversation-timeline-and-empty-state--document-timeline&viewMode=story'
 const conversationContainedStory = '/iframe.html?id=conversation-timeline-and-empty-state--contained-and-empty-states&viewMode=story'
+const conversationProductComposerStory = '/iframe.html?id=conversation-composer-and-attachments--product-composer&viewMode=story'
+const conversationComposerStatesStory = '/iframe.html?id=conversation-composer-and-attachments--attachment-and-availability-states&viewMode=story'
 
 test('public story keeps keyboard, focus, console, and responsive contracts', async ({ page }) => {
   const browserErrors: string[] = []
@@ -1605,6 +1607,78 @@ test('conversation timeline preserves page scroll ownership, bounded history, an
     await expect(page.getByRole('status')).toHaveText('Summarize release evidence')
     await page.evaluate(() => { document.documentElement.style.fontSize = '200%' })
     await expect(page.getByRole('region', { name: 'Start a release review' })).toBeVisible()
+    const dimensions = await page.evaluate(() => ({
+      clientWidth: document.documentElement.clientWidth,
+      scrollWidth: document.documentElement.scrollWidth,
+    }))
+    expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth)
+  })
+
+  expect(browserErrors).toEqual([])
+})
+
+test('conversation composer preserves keyboard, persistence, attachment, and busy-state contracts', async ({ page }) => {
+  const browserErrors: string[] = []
+  page.on('console', (message) => {
+    if (message.type() === 'error') browserErrors.push(`console: ${message.text()}`)
+  })
+  page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
+  page.on('requestfailed', (request) => {
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+  })
+
+  for (const [story, heading] of [
+    [conversationProductComposerStory, 'Ask a focused follow-up'],
+    [conversationComposerStatesStory, 'Keep attachment and reply state unambiguous'],
+  ] as const) {
+    for (const width of responsiveWidths) {
+      await test.step(`${heading} remains contained at ${width}px`, async () => {
+        await page.setViewportSize({ width, height: 1100 })
+        await page.goto(story, { waitUntil: 'networkidle' })
+        await expect(page.getByRole('heading', { level: 1, name: heading })).toBeVisible()
+        const dimensions = await page.evaluate(() => ({
+          clientWidth: document.documentElement.clientWidth,
+          scrollWidth: document.documentElement.scrollWidth,
+        }))
+        expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth)
+      })
+    }
+  }
+
+  await test.step('draft and keyboard resize preferences survive a reload', async () => {
+    await page.setViewportSize({ width: 1024, height: 900 })
+    await page.goto(conversationComposerStatesStory, { waitUntil: 'networkidle' })
+    const input = page.getByRole('textbox', { name: 'Queue a follow-up' })
+    await input.fill('Keep this draft')
+    const separator = page.getByRole('separator', { name: 'Resize message input' }).first()
+    await separator.focus()
+    await page.keyboard.press('ArrowUp')
+    await expect(separator).toHaveAttribute('aria-valuenow', '104')
+    await page.reload({ waitUntil: 'networkidle' })
+    await expect(page.getByRole('textbox', { name: 'Queue a follow-up' })).toHaveValue('Keep this draft')
+    await expect(page.getByRole('separator', { name: 'Resize message input' }).first()).toHaveAttribute('aria-valuenow', '104')
+  })
+
+  await test.step('busy and attachment state remains textual and actionable', async () => {
+    await page.goto(conversationComposerStatesStory, { waitUntil: 'networkidle' })
+    await expect(page.getByRole('status', { name: 'Uploading release-evidence.png' })).toBeVisible()
+    await expect(page.getByRole('alert')).toContainText('Upload failed')
+    const unavailable = page.locator('[data-composer-attach]').last()
+    await expect(unavailable).toBeDisabled()
+    await expect(unavailable).toHaveAttribute('title', 'This agent model cannot inspect images.')
+    const busyInput = page.getByRole('textbox', { name: 'Queue a follow-up' })
+    await busyInput.fill('Queued while the reply is active')
+    await busyInput.press('Enter')
+    await expect(busyInput).toHaveValue('Queued while the reply is active')
+    await page.getByRole('button', { name: 'Stop the reply' }).click()
+    await expect(page.getByText('Stop requested')).toBeVisible()
+  })
+
+  await test.step('200% text preserves horizontal containment', async () => {
+    await page.setViewportSize({ width: 320, height: 1100 })
+    await page.goto(conversationComposerStatesStory, { waitUntil: 'networkidle' })
+    await page.evaluate(() => { document.documentElement.style.fontSize = '200%' })
+    await expect(page.getByRole('textbox', { name: 'Message a text-only agent' })).toBeVisible()
     const dimensions = await page.evaluate(() => ({
       clientWidth: document.documentElement.clientWidth,
       scrollWidth: document.documentElement.scrollWidth,
