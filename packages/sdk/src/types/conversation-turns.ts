@@ -89,6 +89,18 @@ export interface ConversationTurnServiceConfig {
   framing?: string
   /** Run turns as ephemeral runtime sessions (no provider-side accumulation). */
   ephemeral?: boolean
+  /**
+   * Declarative spend attribution — the host meters every turn (success and
+   * abort, never error) through its ONE metering engine. External plugins
+   * use this; the `hooks.meter` escape hatch exists for host-side consumers
+   * with bespoke needs. Ignored by the standalone test harness (no host).
+   */
+  metering?: {
+    /** Work class the spend reports under (interactive surfaces: 'chat'). */
+    workClass: string
+    /** Durable run id, e.g. key => `brainstorm:projects:${key}:turn:${turnId}`. */
+    runId: (key: string, turnId: string) => string
+  }
   hooks?: {
     /** Read-only tap on EVERY runtime chunk (e.g. proposal parsing). */
     onChunk?: (key: string, chunk: RuntimeChatChunk) => void

@@ -140,12 +140,32 @@ export function buildPluginContext(opts: BuildPluginContextOptions): PluginConte
     }),
     // The SDK contract mirrors the engine's types with SDK runtime flavors
     // (the AgentRuntimeAdapter parallel-flavor pattern) — one structural
-    // bridge here, engine types stay single-homed in src/core.
+    // bridge here, engine types stay single-homed in src/core. Declarative
+    // `metering` resolves HERE (host-side): external plugins can't reach the
+    // metering engine, so the factory injects the meter hook for them.
     conversations: {
-      createTurnService: (config) =>
-        createConversationTurnService(config as unknown as ConversationTurnServiceConfig) as unknown as ReturnType<
+      createTurnService: (sdkConfig) => {
+        const { metering, ...rest } = sdkConfig
+        const config = rest as unknown as ConversationTurnServiceConfig
+        if (metering && !config.hooks?.meter) {
+          config.hooks = {
+            ...config.hooks,
+            meter: async ({ key, agentId, turnId, usage }) => {
+              const { meterAgentTurn } = await import('../core/agent-cost')
+              await meterAgentTurn({
+                runId: metering.runId(key, turnId),
+                agent: agentId,
+                activityClass: 'user',
+                workClass: metering.workClass as Parameters<typeof meterAgentTurn>[0]['workClass'],
+                result: { id: turnId, content: '', ...(usage ? { usage } : {}) },
+              })
+            },
+          }
+        }
+        return createConversationTurnService(config) as unknown as ReturnType<
           PluginContext['conversations']['createTurnService']
-        >,
+        >
+      },
     },
     hooks: {
       register: (name, handler, metadata) =>
