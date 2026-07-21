@@ -386,6 +386,22 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 | `SearchPartialChipProps` | — |
 | `SearchPartialMeta` | — |
 | `SearchUnavailableProps` | — |
+| `AgentAvatar` | Present agent identity without importing a registry or host store. |
+| `AgentDot` | Present agent identity without importing a registry or host store. |
+| `AgentStatus` | Present agent identity without importing a registry or host store. |
+| `AgentSelect` | Present agent identity without importing a registry or host store. |
+| `ASSIGNED_AGENT_VALUE` | Stable assignment-value helpers shared by forms and workflow configuration. |
+| `TEAM_VALUE_PREFIX` | Stable assignment-value helpers shared by forms and workflow configuration. |
+| `isTeamValue` | Stable assignment-value helpers shared by forms and workflow configuration. |
+| `teamIdFromValue` | Stable assignment-value helpers shared by forms and workflow configuration. |
+| `AgentAvatarProps` | — |
+| `AgentDotProps` | — |
+| `AgentIdentity` | — |
+| `AgentPresenceStatus` | — |
+| `AgentSelectOption` | — |
+| `AgentSelectProps` | — |
+| `AgentStatusProps` | — |
+| `AgentTeamOption` | — |
 | `ConversationPageBodyProps` | — |
 | `ConversationPageComposerProps` | — |
 | `ConversationPageMode` | — |

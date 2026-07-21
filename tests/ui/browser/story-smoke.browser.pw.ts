@@ -60,6 +60,8 @@ const conversationToolDetailStory = '/iframe.html?id=conversation-panel-and-tool
 const markdownReadingStory = '/iframe.html?id=content-markdown--reading-and-code&viewMode=story'
 const markdownEditorStory = '/iframe.html?id=content-markdown--controlled-editor&viewMode=story'
 const searchTrustStory = '/iframe.html?id=search-trust-states--availability-and-evidence&viewMode=story'
+const agentIdentityStory = '/iframe.html?id=agents-identity-and-assignment--identity-and-presence&viewMode=story'
+const agentAssignmentStory = '/iframe.html?id=agents-identity-and-assignment--assignment-and-filtering&viewMode=story'
 
 test('public story keeps keyboard, focus, console, and responsive contracts', async ({ page }) => {
   const browserErrors: string[] = []
@@ -1827,6 +1829,66 @@ test('markdown and search patterns preserve overflow, keyboard, and trust contra
   await test.step('200% text remains horizontally contained', async () => {
     await page.setViewportSize({ width: 320, height: 1100 })
     await page.goto(markdownReadingStory, { waitUntil: 'networkidle' })
+    await page.evaluate(() => { document.documentElement.style.fontSize = '200%' })
+    const dimensions = await page.evaluate(() => ({
+      clientWidth: document.documentElement.clientWidth,
+      scrollWidth: document.documentElement.scrollWidth,
+    }))
+    expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth)
+  })
+
+  expect(browserErrors).toEqual([])
+})
+
+test('agent identity and assignment preserve exact status, keyboard, and narrow-width contracts', async ({ page }) => {
+  const browserErrors: string[] = []
+  page.on('console', (message) => {
+    if (message.type() === 'error') browserErrors.push(`console: ${message.text()}`)
+  })
+  page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
+  page.on('requestfailed', (request) => {
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+  })
+
+  for (const story of [agentIdentityStory, agentAssignmentStory]) {
+    for (const width of responsiveWidths) {
+      await test.step(`${story} remains contained at ${width}px`, async () => {
+        await page.setViewportSize({ width, height: 1100 })
+        await page.goto(story, { waitUntil: 'networkidle' })
+        const dimensions = await page.evaluate(() => ({
+          clientWidth: document.documentElement.clientWidth,
+          scrollWidth: document.documentElement.scrollWidth,
+        }))
+        expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth)
+      })
+    }
+  }
+
+  await test.step('presence remains named without relying on color', async () => {
+    await page.setViewportSize({ width: 1024, height: 900 })
+    await page.goto(agentIdentityStory, { waitUntil: 'networkidle' })
+    await expect(page.getByRole('status', { name: 'Release Operations With A Deliberately Long Name status' })).toContainText('Working')
+    await expect(page.getByRole('status', { name: 'Maya Chen status' }).filter({ hasText: 'Needs attention' })).toBeVisible()
+  })
+
+  await test.step('assignment and filtering work from the keyboard', async () => {
+    await page.goto(agentAssignmentStory, { waitUntil: 'networkidle' })
+    const owner = page.locator('#agent-pattern-owner')
+    await owner.focus()
+    await page.keyboard.press('Enter')
+    await expect(page.getByRole('listbox')).toBeVisible()
+    await page.getByRole('option', { name: 'Release team' }).click()
+    await expect(page.getByRole('status')).toContainText('Selected owner: Release team')
+
+    const allAgents = page.getByRole('radio', { name: 'All agents' })
+    await allAgents.focus()
+    await page.keyboard.press('ArrowRight')
+    await expect(page.getByRole('radio', { name: 'Maya Chen' })).toHaveAttribute('aria-checked', 'true')
+  })
+
+  await test.step('200% text remains horizontally contained', async () => {
+    await page.setViewportSize({ width: 320, height: 1100 })
+    await page.goto(agentIdentityStory, { waitUntil: 'networkidle' })
     await page.evaluate(() => { document.documentElement.style.fontSize = '200%' })
     const dimensions = await page.evaluate(() => ({
       clientWidth: document.documentElement.clientWidth,

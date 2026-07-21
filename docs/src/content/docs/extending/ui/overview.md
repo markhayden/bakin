@@ -854,6 +854,47 @@ export function TaskControls() {
 
 Keep the owning page path stable while these values change. The patterns intentionally do not read or write the URL themselves, so the same controls also work for local, non-linkable state. `AgentFilter` follows the same controlled contract; official Bakin surfaces may use the compatibility adapter that supplies registered agent metadata, while plugin UI supplies its own public option labels and visuals.
 
+Agent identity and assignment also live in `@makinbakin/sdk/patterns`. `AgentAvatar`, `AgentStatus`, and `AgentSelect` accept presentation-ready identities, exact presence values, and controlled agent/team options. They do not read the agent registry, calculate heartbeat freshness, fetch teams, persist assignment, or own URL state. Existing official surfaces may keep using the migration adapter from `@makinbakin/sdk/components` until the fleet migration; new plugin UI supplies supported focused props:
+
+```tsx
+import {
+  AgentAvatar,
+  AgentSelect,
+  AgentStatus,
+  type AgentSelectOption,
+} from '@makinbakin/sdk/patterns'
+
+const agents: AgentSelectOption[] = [
+  { id: 'maya', name: 'Maya Chen', color: '#8b5cf6' },
+  { id: 'release', name: 'Release Operations', color: '#14b8a6' },
+]
+
+export function OwnerField({
+  owner,
+  onOwnerChange,
+}: {
+  owner: string
+  onOwnerChange: (owner: string) => void
+}) {
+  return (
+    <div>
+      <AgentAvatar agent={agents[0]} showStatus status="working" />
+      <AgentStatus name="Maya Chen" status="working" detail="Validating release 42" />
+      <AgentSelect
+        ariaLabel="Owner"
+        agents={agents}
+        teams={[{ id: 'release', label: 'Release team', color: '#f59e0b' }]}
+        value={owner}
+        onValueChange={onOwnerChange}
+        allowNone
+      />
+    </div>
+  )
+}
+```
+
+Presence is always named in visible copy by `AgentStatus`; avatar badges add compact reinforcement and an accessible name. Use `decorative` on an avatar only when the same option, row, or control already names that agent. Team selections use the exported `team:` value helpers for compatibility, but consumers still translate that UI value into their own API contract before saving.
+
 Use `StatusBadge` for compact state language and `StatTile` for scan-friendly technical metrics. A status always needs a visible label such as “Published,” “Needs review,” or “Blocked”; never use a bare colored dot or icon as the only meaning. Status icons are decorative reinforcement. Focused status tones follow the shared semantic vocabulary: `neutral`, `success`, `attention`, `danger`, and `accent`.
 
 `StatTile` uses the low-chrome Product Character treatment by default. Choose `variant="surface"` only when the metric is a genuinely bounded or actionable object, not to put a card around every number. When a tile has a meter, pass `progress.label` whenever the visible metric label is not a plain string. Consumers provide the exact value, denominator, and honest coverage copy; the component only clamps and presents the meter. An `onClick` tile becomes a native `type="button"` with the same visible focus contract as other actions.

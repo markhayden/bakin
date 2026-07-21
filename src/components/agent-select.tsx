@@ -1,32 +1,13 @@
 'use client'
 
 import type { AriaAttributes } from 'react'
-import { useEffect, useState } from 'react'
-import { User, Users } from 'lucide-react'
-import { AgentAvatar } from '@/components/agent-avatar'
-import { useAgentList } from '@makinbakin/sdk/hooks'
+import { useEffect, useMemo, useState } from 'react'
 import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectLabel,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+  AgentSelect as AgentSelectPresentation,
+} from '@makinbakin/sdk/patterns'
+import { useAgentList, useAgentStore } from '@makinbakin/sdk/hooks'
 
-/** Prefix marking a team selection in the select's string value (#189).
- * Purely a UI encoding — callers split it back into {agent} vs {team}
- * before talking to the API; the prefix is never stored. */
-export const TEAM_VALUE_PREFIX = 'team:'
-
-export function isTeamValue(value: string): boolean {
-  return value.startsWith(TEAM_VALUE_PREFIX)
-}
-
-export function teamIdFromValue(value: string): string {
-  return isTeamValue(value) ? value.slice(TEAM_VALUE_PREFIX.length) : ''
-}
+export { TEAM_VALUE_PREFIX, isTeamValue, teamIdFromValue } from '@makinbakin/sdk/patterns'
 
 interface SelectableTeam {
   id: string
@@ -34,32 +15,21 @@ interface SelectableTeam {
   color?: string
 }
 
-function TeamDot({ color }: { color?: string }) {
-  return color
-    ? <span className="size-2.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
-    : <Users className="size-3.5 text-muted-foreground" />
-}
-
 interface AgentSelectProps extends Pick<AriaAttributes, 'aria-describedby' | 'aria-invalid'> {
   id?: string
   value: string
   onValueChange: (value: string) => void
-  /** Include the workflow/task runtime assignee token (`$assigned`) */
   includeAssigned?: boolean
   assignedLabel?: string
-  /** Show a "None" / "Unassigned" option at the top (default: false) */
   allowNone?: boolean
-  /** Label for the none option (default: "Unassigned") */
   noneLabel?: string
-  /** Placeholder when nothing selected */
   placeholder?: string
-  /** Restrict to a subset of agent IDs */
   agentIds?: string[]
-  /** Offer teams as assignment targets (`team:<id>` values, #189) */
   includeTeams?: boolean
   className?: string
 }
 
+/** Compatibility adapter that supplies registered agents and existing team-route data. */
 export function AgentSelect({
   value,
   onValueChange,
@@ -76,95 +46,46 @@ export function AgentSelect({
   'aria-invalid': ariaInvalid,
 }: AgentSelectProps) {
   const allAgents = useAgentList()
-  const agents = agentIds ? allAgents.filter(a => agentIds.includes(a.id)) : allAgents
-  const isAssignedToken = value === '$assigned'
+  const displaySettings = useAgentStore((state) => state.displaySettings)
+  const agents = useMemo(() => allAgents
+    .filter((agent) => !agentIds || agentIds.includes(agent.id))
+    .map((agent) => ({
+      id: agent.id,
+      name: displaySettings[agent.id]?.displayName ?? agent.name,
+      imageSrc: agent.headshot || undefined,
+      color: displaySettings[agent.id]?.accentColor,
+    })), [agentIds, allAgents, displaySettings])
 
   const [teams, setTeams] = useState<SelectableTeam[]>([])
   useEffect(() => {
     if (!includeTeams) return
+    let active = true
     fetch('/api/plugins/team/teams')
-      .then((r) => r.json())
+      .then((response) => response.json())
       .then((data) => {
-        // Route responds { teams: [...] }; accept a bare array defensively.
         const list = Array.isArray(data) ? data : (data as { teams?: SelectableTeam[] })?.teams
-        if (Array.isArray(list)) setTeams(list)
+        if (active && Array.isArray(list)) setTeams(list)
       })
       .catch(() => {})
+    return () => { active = false }
   }, [includeTeams])
 
-  const selectedTeam = isTeamValue(value)
-    ? teams.find(t => t.id === teamIdFromValue(value))
-    : undefined
-
   return (
-    <Select value={value} onValueChange={(v) => onValueChange(v ?? '')}>
-      <SelectTrigger
-        id={id}
-        className={className}
-        aria-describedby={ariaDescribedBy}
-        aria-invalid={ariaInvalid}
-      >
-        <SelectValue placeholder={placeholder}>
-          {isAssignedToken ? (
-            <span className="flex items-center gap-2">
-              <User className="size-3.5 text-blue-400" />
-              {assignedLabel}
-            </span>
-          ) : isTeamValue(value) ? (
-            <span className="flex items-center gap-2">
-              <TeamDot color={selectedTeam?.color} />
-              {selectedTeam?.label || teamIdFromValue(value)}
-            </span>
-          ) : value ? (
-            <span className="flex items-center gap-2">
-              <AgentAvatar agentId={value} size="xs" />
-              {agents.find(a => a.id === value)?.name || value}
-            </span>
-          ) : allowNone ? (
-            noneLabel
-          ) : undefined}
-        </SelectValue>
-      </SelectTrigger>
-      <SelectContent>
-        {allowNone && (
-          <SelectItem value="">{noneLabel}</SelectItem>
-        )}
-        {includeAssigned && (
-          <SelectItem value="$assigned">
-            <User className="size-3.5 text-blue-400" />
-            {assignedLabel}
-          </SelectItem>
-        )}
-        {includeTeams && teams.length > 0 && (
-          <SelectGroup>
-            <SelectLabel>Teams</SelectLabel>
-            {teams.map(t => (
-              <SelectItem key={t.id} value={`${TEAM_VALUE_PREFIX}${t.id}`}>
-                <TeamDot color={t.color} />
-                {t.label}
-              </SelectItem>
-            ))}
-          </SelectGroup>
-        )}
-        {includeTeams && teams.length > 0 ? (
-          <SelectGroup>
-            <SelectLabel>Agents</SelectLabel>
-            {agents.map(a => (
-              <SelectItem key={a.id} value={a.id}>
-                <AgentAvatar agentId={a.id} size="xs" />
-                {a.name}
-              </SelectItem>
-            ))}
-          </SelectGroup>
-        ) : (
-          agents.map(a => (
-            <SelectItem key={a.id} value={a.id}>
-              <AgentAvatar agentId={a.id} size="xs" />
-              {a.name}
-            </SelectItem>
-          ))
-        )}
-      </SelectContent>
-    </Select>
+    <AgentSelectPresentation
+      id={id}
+      value={value}
+      onValueChange={onValueChange}
+      agents={agents}
+      teams={includeTeams ? teams : []}
+      includeAssigned={includeAssigned}
+      assignedLabel={assignedLabel}
+      allowNone={allowNone}
+      noneLabel={noneLabel}
+      placeholder={placeholder}
+      ariaLabel={id ? undefined : 'Select agent'}
+      className={className}
+      aria-describedby={ariaDescribedBy}
+      aria-invalid={ariaInvalid}
+    />
   )
 }

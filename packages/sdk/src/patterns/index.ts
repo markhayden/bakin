@@ -64,6 +64,26 @@ export type {
   SearchUnavailableProps,
 } from './search-patterns'
 
+/** Present agent identity without importing a registry or host store. */
+export { AgentAvatar, AgentDot, AgentStatus, AgentSelect } from './agent-patterns'
+/** Stable assignment-value helpers shared by forms and workflow configuration. */
+export {
+  ASSIGNED_AGENT_VALUE,
+  TEAM_VALUE_PREFIX,
+  isTeamValue,
+  teamIdFromValue,
+} from './agent-patterns'
+export type {
+  AgentAvatarProps,
+  AgentDotProps,
+  AgentIdentity,
+  AgentPresenceStatus,
+  AgentSelectOption,
+  AgentSelectProps,
+  AgentStatusProps,
+  AgentTeamOption,
+} from './agent-patterns'
+
 export type {
   ConversationPageBodyProps,
   ConversationPageComposerProps,

@@ -1389,6 +1389,31 @@ runtime copy, `sdk-content` is 269 bytes direct / 753,951 bytes reachable, and
 entrypoint and measured parser/tooltip budget were explicitly approved before
 the performance baseline was recorded.
 
+**Status — T35b (2026-07-21):** Complete. `AgentAvatar`, `AgentDot`,
+`AgentStatus`, and the controlled agent/team `AgentSelect` now publish from
+`@makinbakin/sdk/patterns`; the already-canonical `AgentFilter` completes the
+family. The public contract accepts presentation-ready identity and options,
+keeps status meaning visible without color, honors associated field labels,
+rejects URL-based SVG paint values, and owns no registry, store, fetch,
+heartbeat clock, persistence, or URL state. Legacy root modules remain
+app-aware compatibility adapters for agent metadata, team loading, and
+heartbeat freshness; no official product or Bits composition was migrated.
+Two public stories cover portrait/fallback sizes, every presence state, long
+identity, team and agent assignment, filtering, empty/disabled constraints,
+320 px, 200%-text, keyboard, and non-color behavior. All 114 public Storybook
+interaction/accessibility cases and all 81 Chromium/Firefox/WebKit behavior
+contracts pass, including final targeted retries for the new family and one
+pre-existing WebKit Select timing race. Nineteen focused architecture,
+behavior, packaging, and compatibility tests pass, alongside 40 representative
+official consumers. The official census remains 299 entries across core and
+Bits; canonical CSS is 236,382 bytes with one runtime copy. `sdk-patterns` is
+1,762 bytes direct / 455,520 bytes reachable, `sdk-components` is 33,338 bytes
+direct / 1,221,700 bytes reachable, and shared SDK chunks total 1,189,939
+bytes. The final +34 direct / +406 reachable components delta and +372 shared
+reachable delta were explicitly user-approved before the baseline was
+recorded; CSS decreased by 117 bytes and no dependency, entrypoint, or chunk
+was added.
+
 **Acceptance:** each export has one justified entrypoint/owner and an official
 consumer; private host behavior is not accidentally public; stories cover the
 stable public set.

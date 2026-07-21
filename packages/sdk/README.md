@@ -195,6 +195,13 @@ views to `useQueryArrayState` or `useQueryState` from
 `@makinbakin/sdk/hooks`. The public `AgentFilter` accepts presentation-ready
 options; host adapters may add app-owned agent metadata and avatars.
 
+Agent identity and assignment use the same focused patterns entrypoint.
+`AgentAvatar`, `AgentStatus`, and `AgentSelect` accept presentation-ready
+identity, status, agent, and team options; they never fetch the registry or
+team API. Status remains visible in text, and consumers keep assignment state,
+heartbeat timing, URL state, and persistence. Existing official surfaces may
+continue through the migration-only components adapters until fleet migration.
+
 Compact display patterns use `StatusBadge` and `StatTile`. Status labels carry
 meaning without color, while optional icons remain decorative. Focused status
 tones use `attention` and `danger`; the legacy components adapter maps the old
