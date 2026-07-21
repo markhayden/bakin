@@ -51,10 +51,6 @@ mock.module('@/components/ui/card', () => ({
     <div data-testid="card" onClick={onClick as () => void} {...props}>{children as React.ReactNode}</div>
   ),
 }))
-mock.module('@/components/ui/skeleton', () => ({
-  Skeleton: (props: Record<string, unknown>) => <div data-testid="skeleton" {...props} />,
-}))
-
 import { MemorySearchResults } from '../../../plugins/memory/components/memory-search-results'
 import type { SearchResult } from '../../../src/hooks/use-search'
 
@@ -87,8 +83,8 @@ describe('MemorySearchResults', () => {
   })
 
   it('shows loading skeletons while fetching', () => {
-    render(<MemorySearchResults results={[]} loading={true} error={null} query="q" />)
-    expect(screen.getAllByTestId('skeleton').length).toBeGreaterThan(0)
+    const { container } = render(<MemorySearchResults results={[]} loading={true} error={null} query="q" />)
+    expect(container.querySelectorAll('[data-slot="skeleton"]').length).toBeGreaterThan(0)
   })
 
   it('shows an error banner when error is set', () => {

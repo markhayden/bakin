@@ -77,6 +77,6 @@ export const Behavior = {
     await expect(page.getByRole('group', { name: 'Local' })).toBeVisible()
     await userEvent.keyboard('{Home}{ArrowDown}{Enter}')
     await expect(trigger).toHaveTextContent('Pi')
-    await expect(trigger).toHaveFocus()
+    await waitFor(() => expect(trigger).toHaveFocus())
   },
 } satisfies Story

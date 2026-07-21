@@ -31,6 +31,8 @@
     "ui:census:check": "bun run scripts/ui/census.ts check",
     "ui:public-api:generate": "bun run scripts/ui/public-api.ts generate",
     "ui:public-api:check": "bun run scripts/ui/public-api.ts check",
+    "ui:governance:check": "bun run scripts/ui/conformance.ts governance",
+    "ui:conformance": "bun run scripts/ui/conformance.ts",
     "ui:legacy-styles:generate": "bun run scripts/ui/check-legacy-styles.ts generate",
     "ui:legacy-styles:check": "bun run scripts/ui/check-legacy-styles.ts check",
     "ui:performance:generate": "bun run scripts/ui/performance.ts generate",

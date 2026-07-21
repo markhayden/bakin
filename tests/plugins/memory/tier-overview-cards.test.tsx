@@ -44,10 +44,6 @@ mock.module('@/components/ui/card', () => ({
     <div data-testid="card" {...props}>{children as React.ReactNode}</div>
   ),
 }))
-mock.module('@/components/ui/skeleton', () => ({
-  Skeleton: (props: Record<string, unknown>) => <div data-testid="skeleton" {...props} />,
-}))
-
 import { TierOverviewCards } from '../../../plugins/memory/components/tier-overview-cards'
 
 type FetchFn = typeof global.fetch
@@ -106,8 +102,8 @@ describe('TierOverviewCards', () => {
 
   it('shows skeletons before the first response', () => {
     global.fetch = mock(() => new Promise(() => {})) as unknown as FetchFn
-    render(<TierOverviewCards />)
-    expect(screen.getAllByTestId('skeleton').length).toBeGreaterThan(0)
+    const { container } = render(<TierOverviewCards />)
+    expect(container.querySelectorAll('[data-slot="skeleton"]').length).toBeGreaterThan(0)
   })
 
   it('fetches /api/plugins/memory/status', async () => {

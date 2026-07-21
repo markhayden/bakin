@@ -80,6 +80,8 @@ comparison, and deletion of replaced styling/allowances.
 - [x] T35c Classify and migrate asset, model, and color picker patterns
 - [x] T35d Classify and migrate settings and turn-output patterns
 - [x] T36 Prove focused entrypoints and freeze the migration API
+- [x] T36a Reconcile pre-migration UI guidance and record API review findings
+- [x] T36b Enforce Storybook-first governance for Claude Code, Codex, and CI
 - [ ] USER CHECKPOINT: public component and layout contract approved
 
 ## Phase 4 — Plugin UI contract

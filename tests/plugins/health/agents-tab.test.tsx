@@ -307,10 +307,9 @@ describe('AgentsTab', () => {
     const takeaway = within(usageCost!).getByText(/The last completed day, 07-12, had 300 tokens.*Today is still being counted/i)
     const trendPlot = usageCost!.querySelector('[data-agent-token-trend-plot]')
     expect(takeaway.compareDocumentPosition(trendPlot!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    const exactTrend = usageCost!.querySelector('table[aria-label="Usage over time data"]')
-    expect(exactTrend).not.toBeNull()
-    expect(exactTrend?.textContent).toContain('07-12')
-    expect(exactTrend?.textContent).toContain('pixel')
+    const exactTrend = within(usageCost!).getByRole('table', { name: 'Usage over time data', hidden: true })
+    expect(exactTrend.textContent).toContain('07-12')
+    expect(exactTrend.textContent).toContain('pixel')
 
     expect(usageCost!.textContent).toContain('$0.03')
     expect(usageCost!.textContent).toContain('2 of 6 messages from 2026-07-12 through 2026-07-13 reported cost')

@@ -6,6 +6,10 @@ import { resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const REPO_ROOT = resolve(fileURLToPath(new URL('../..', import.meta.url)))
+const UI_GOVERNANCE_PATHS = [
+  /^\.claude\/skills\/bakin-ui-conformance(?:\/|$)/,
+  /^\.agents\/skills\/bakin-ui-conformance(?:\/|$)/,
+]
 const NON_UI_PATHS = [
   /^\.claude\//,
   /^\.agents\//,
@@ -18,6 +22,7 @@ const NON_UI_PATHS = [
 
 function isKnownNonUiPath(path) {
   const portablePath = path.replaceAll('\\', '/')
+  if (UI_GOVERNANCE_PATHS.some((pattern) => pattern.test(portablePath))) return false
   return NON_UI_PATHS.some((pattern) => pattern.test(portablePath))
 }
 

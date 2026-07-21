@@ -434,13 +434,15 @@ bun run ui:build                  # production maintainer Storybook build
 bun run ui:build:public           # SDK-only catalog for docs deployment
 bun run ui:tokens:check           # schema, generation, and clean-tree check
 bun run ui:census:check           # inventory completeness and migration ratchets
+bun run ui:governance:check       # approved temporary-deviation evidence
+bun run ui:conformance --quick    # deterministic local contract gate
+bun run ui:conformance --full     # merge-ready UI/checkpoint gate
 bun run ui:test:stories           # render, interaction, and automated a11y checks
 bun run ui:test:visual            # canonical Chromium image comparisons
-bun run ui:test:visual:update     # update in the pinned Linux environment only
+bun run ui:snapshots:update       # update in the pinned Linux environment only
 bun run ui:test:browsers          # Chromium, Firefox, and WebKit behavior smoke
-bun run ui:test:conformance       # reference and official plugin-host checks
+bun run ui:test:conformance       # T41 reference/official plugin-host checks
 bun run ui:performance            # browser payload and runtime budget checks
-bun run ui:check                  # complete design-system gate
 ```
 
 Generated plugin starters expose `bun run test:ui`, which invokes the pinned
@@ -473,6 +475,7 @@ The target layout is:
 design-system/
   census.json                     generated surface/component inventory
   migrations.json                 ownership, archetype, target, and status
+  exceptions.json                 approved temporary deviations + review dates
   terminology.md                  shared product-language glossary
   manual-a11y/                    archetype and complex-pattern review records
 

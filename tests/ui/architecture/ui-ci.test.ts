@@ -26,6 +26,8 @@ describe('UI CI impact classification', () => {
       ['plugins/tasks/client.tsx'],
       ['package.json'],
       ['.github/workflows/ci-pr.yml'],
+      ['.claude/skills/bakin-ui-conformance/SKILL.md'],
+      ['.agents/skills/bakin-ui-conformance'],
       ['docs/src/content/docs/index.md', 'src/core/server.ts'],
     ]) {
       expect(classifyUiImpact(files)).toEqual({ runUi: true, reason: 'ui-or-uncertain-impact' })

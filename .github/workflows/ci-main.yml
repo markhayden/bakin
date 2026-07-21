@@ -49,6 +49,9 @@ jobs:
         working-directory: ${{ runner.workspace }}/external/bakin-bits-official
         run: bun install --frozen-lockfile
 
+      - name: UI design-system governance
+        run: bun run ui:governance:check
+
       - name: Official UI census
         env:
           BAKIN_DOCS_EXTERNAL_SOURCES: ${{ runner.workspace }}/external/bakin-bits-official/plugins

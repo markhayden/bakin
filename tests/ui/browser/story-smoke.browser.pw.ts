@@ -640,8 +640,9 @@ test('canonical forms keep association, validation, submission, and mobile actio
     await page.goto(submissionWorkflowStory, { waitUntil: 'networkidle' })
     const slug = page.getByRole('textbox', { name: 'Plugin slug' })
     await slug.fill('plugin-existing')
-    await page.getByRole('button', { name: 'Register plugin' }).click()
+    const rejectedSubmission = page.getByRole('button', { name: 'Register plugin' }).click()
     await expect(page.getByRole('button', { name: 'Registering plugin' })).toBeDisabled()
+    await rejectedSubmission
     await expect(page.getByText('This plugin slug is already registered.')).toBeVisible()
     await expect(slug).toHaveAttribute('aria-invalid', 'true')
 

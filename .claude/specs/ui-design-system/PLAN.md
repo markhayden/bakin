@@ -1523,11 +1523,83 @@ architecture tests, representative reference plugin.
 **Size:** S.\
 **Commit:** `test(sdk): freeze focused UI entrypoint contracts`
 
+### T36a — Reconcile pre-migration UI guidance and API review findings
+
+**Description:** Review the completed foundation before surface migration,
+remove author-guidance contradictions, and make unresolved public-contract
+gaps visible at the user checkpoint instead of silently expanding the API.
+
+**Status (2026-07-21):** Complete. The full conformance suite is green across
+repository tests, builds, public Storybook, accessibility/interactions,
+canonical visuals, Chromium, Firefox, WebKit, performance, and published docs.
+The style guide now consumes the recent routing contract's plain-string query
+behavior, uses current focused entrypoints and status vocabulary, and delegates
+live counts to the generated census/migration ledgers. Public SDK and plugin
+guidance now imports conversation, chart, page, and assignment patterns from
+their focused owners. Stale agent instructions that prescribed generic tokens,
+private component paths, or legacy-barrel composition now delegate to the
+Storybook-first conformance workflow. Review found one unresolved contract gap:
+`PluginLink` is required to preserve real-anchor SPA navigation, and
+`useUnsavedChangesGuard`/`useUnsavedGuard` preserve the reviewed dirty-draft
+behavior, but all three remain available only through the frozen migration
+barrel. The docs call these out without adding an entrypoint/export or
+inventing a second routing abstraction.
+
+**Acceptance:** routing and UI guidance no longer contradict authoritative
+contracts; no new legacy consumer or public API is introduced; every unresolved
+API need is named at the user checkpoint.
+
+**Verification:** docs validation, architecture tests, focused import scans,
+full conformance gate.
+
+**Dependencies:** T36.\
+**Likely files:** internal/public UI guidance, legacy agent operations, review
+notes.\
+**Size:** S.\
+**Commit:** `docs(ui): reconcile pre-migration author guidance`
+
+### T36b — Enforce Storybook-first agent and CI governance
+
+**Description:** Give Claude Code and Codex one canonical repository skill for
+pattern selection, supported-system extension, explicit user-approved
+deviation, and risk-based verification; back it with deterministic local/CI
+contracts rather than relying on prose alone.
+
+**Status (2026-07-21):** Complete. The canonical skill validator, exception
+governance tests, CI-impact tests, quick conformance, and full conformance gate
+are green; targeted WebKit reruns verified the two transient interaction fixes
+found by the full pass.
+`.claude/skills/bakin-ui-conformance/SKILL.md` is the single source and is
+symlinked into `.agents/skills/`. Root instructions make it mandatory for every
+browser UI change. `design-system/exceptions.json` and its schema record only
+explicitly approved temporary deviations tied to real public story exports,
+exact paths, four safeguards, approval evidence, and expiring review dates.
+`bun run ui:conformance --quick|--full` composes existing objective gates
+without auto-updating evidence; CI validates governance on PR, main, release,
+and visual paths. Seeded valid/invalid records prove the exception gate bites.
+
+**Acceptance:** both agents discover byte-identical instructions; missing or
+generic deviation evidence fails; the skill requires a concrete explanation
+and explicit user approval before departure; quick/full commands are stable;
+CI cannot skip governance changes as documentation-only.
+
+**Verification:** official skill validator, seeded architecture tests,
+`bun run ui:governance:check`, quick and full conformance gates.
+
+**Dependencies:** T36a.\
+**Likely files:** repository skills/instructions, exception ledger/schema,
+conformance runner, UI CI, architecture tests.\
+**Size:** M.\
+**Commit:** `feat(ui): enforce Storybook-first conformance governance`
+
 ### 🔶 USER CHECKPOINT — Public component and layout contract
 
 - [ ] Review the public Storybook, props, composition recipes, and escape
   hatches before official fleet migration.
 - [ ] Confirm no missing Bits-driven requirement needs a public primitive.
+- [ ] Resolve the focused public locations for `PluginLink`,
+  `useUnsavedChangesGuard`, and `useUnsavedGuard` without changing the
+  established routing behavior.
 - [ ] Approve the frozen prerelease UI API for migration use.
 
 ---

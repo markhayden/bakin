@@ -1,0 +1,5 @@
+{
+  "schemaVersion": 1,
+  "policy": "Storybook is the default UI contract. Every temporary deviation requires concrete rationale, explicit user approval, safeguards, and a dated review.",
+  "exceptions": []
+}

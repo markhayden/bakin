@@ -97,6 +97,31 @@ The checked-in baseline must satisfy `performance.schema.json`. The UI budget
 extends the existing size report and issue #423; it does not replace that
 issue's whole-binary and release-artifact ownership.
 
+## Storybook-first governance
+
+Public Storybook is the default browser UI contract. Codex and Claude Code use
+one canonical repository skill at
+`.claude/skills/bakin-ui-conformance/SKILL.md` (symlinked under
+`.agents/skills/`) to select the closest pattern and expose design judgment to
+the user. The skill must explain any mismatch before implementation; static CI
+does not pretend it can infer design intent.
+
+`exceptions.json` is the schema-validated ledger for explicitly approved,
+temporary deviations. Every record is path-scoped, references a real public
+story export, explains why composition is insufficient, records accessibility,
+responsiveness, routing, and plugin-isolation safeguards, includes approval
+evidence, and expires for review. Known legacy debt remains in
+`migrations.json`; it must never be copied into the exception ledger.
+
+```sh
+bun run ui:governance:check       # validate approved exception evidence only
+bun run ui:conformance --quick    # deterministic contracts during iteration
+bun run ui:conformance --full     # merge-ready UI and migration checkpoint gate
+```
+
+Neither mode updates generated evidence, baselines, allowances, or budgets.
+Those changes remain explicit reviewed operations.
+
 ## Browser baseline
 
 See [`baseline/README.md`](baseline/README.md) for the versioned pre-revamp
