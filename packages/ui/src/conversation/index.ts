@@ -1,5 +1,4 @@
-/** @deprecated Import conversation models and folding from `@makinbakin/sdk/conversation`. */
-export { foldConversation } from '@makinbakin/sdk/conversation'
+export { foldConversation } from './fold'
 export type {
   ConversationChunk,
   ConversationMessage,
@@ -11,4 +10,11 @@ export type {
   FoldOptions,
   TurnItem,
   TurnStatus,
-} from '@makinbakin/sdk/conversation'
+} from './fold'
+
+export {
+  dayKey,
+  formatAbsoluteTime,
+  formatDayLabel,
+  formatRelativeTime,
+} from './relative-time'

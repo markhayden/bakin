@@ -19,13 +19,13 @@
     ]
   },
   "summary": {
-    "total": 288,
+    "total": 287,
     "byKind": {
       "host-route": 26,
       "plugin-route": 9,
       "plugin-slot": 30,
       "plugin-template": 2,
-      "shared-component": 93,
+      "shared-component": 92,
       "sdk-ui-export": 128
     },
     "nonVisualAliases": 3
@@ -2279,7 +2279,7 @@
         "symbol": "ConversationMessage",
         "entrypoint": "@makinbakin/sdk/components"
       },
-      "sourcePath": "src/components/conversation/fold.ts",
+      "sourcePath": "packages/sdk/src/conversation/index.ts",
       "symbols": [
         "ConversationMessage"
       ],
@@ -2289,7 +2289,7 @@
         {
           "type": "public-export",
           "path": "packages/sdk/src/components/index.ts",
-          "detail": "type ConversationMessage from @/components/conversation/fold (ConversationMessage)"
+          "detail": "type ConversationMessage from @makinbakin/sdk/conversation (ConversationMessage)"
         }
       ]
     },
@@ -2429,7 +2429,7 @@
         "symbol": "ConversationToolCall",
         "entrypoint": "@makinbakin/sdk/components"
       },
-      "sourcePath": "src/components/conversation/fold.ts",
+      "sourcePath": "packages/sdk/src/conversation/index.ts",
       "symbols": [
         "ConversationToolCall"
       ],
@@ -2439,7 +2439,7 @@
         {
           "type": "public-export",
           "path": "packages/sdk/src/components/index.ts",
-          "detail": "type ConversationToolCall from @/components/conversation/fold (ConversationToolCall)"
+          "detail": "type ConversationToolCall from @makinbakin/sdk/conversation (ConversationToolCall)"
         }
       ]
     },
@@ -2454,7 +2454,7 @@
         "symbol": "ConversationTurn",
         "entrypoint": "@makinbakin/sdk/components"
       },
-      "sourcePath": "src/components/conversation/fold.ts",
+      "sourcePath": "packages/sdk/src/conversation/index.ts",
       "symbols": [
         "ConversationTurn"
       ],
@@ -2464,7 +2464,7 @@
         {
           "type": "public-export",
           "path": "packages/sdk/src/components/index.ts",
-          "detail": "type ConversationTurn from @/components/conversation/fold (ConversationTurn)"
+          "detail": "type ConversationTurn from @makinbakin/sdk/conversation (ConversationTurn)"
         }
       ]
     },
@@ -2504,7 +2504,7 @@
         "symbol": "DisplayAttachment",
         "entrypoint": "@makinbakin/sdk/components"
       },
-      "sourcePath": "src/components/conversation/fold.ts",
+      "sourcePath": "packages/sdk/src/conversation/index.ts",
       "symbols": [
         "DisplayAttachment"
       ],
@@ -2514,7 +2514,7 @@
         {
           "type": "public-export",
           "path": "packages/sdk/src/components/index.ts",
-          "detail": "type DisplayAttachment from @/components/conversation/fold (DisplayAttachment)"
+          "detail": "type DisplayAttachment from @makinbakin/sdk/conversation (DisplayAttachment)"
         }
       ]
     },
@@ -2604,7 +2604,7 @@
         "symbol": "FoldOptions",
         "entrypoint": "@makinbakin/sdk/components"
       },
-      "sourcePath": "src/components/conversation/fold.ts",
+      "sourcePath": "packages/sdk/src/conversation/index.ts",
       "symbols": [
         "FoldOptions"
       ],
@@ -2614,7 +2614,7 @@
         {
           "type": "public-export",
           "path": "packages/sdk/src/components/index.ts",
-          "detail": "type FoldOptions from @/components/conversation/fold (FoldOptions)"
+          "detail": "type FoldOptions from @makinbakin/sdk/conversation (FoldOptions)"
         }
       ]
     },
@@ -3104,7 +3104,7 @@
         "symbol": "TurnItem",
         "entrypoint": "@makinbakin/sdk/components"
       },
-      "sourcePath": "src/components/conversation/fold.ts",
+      "sourcePath": "packages/sdk/src/conversation/index.ts",
       "symbols": [
         "TurnItem"
       ],
@@ -3114,7 +3114,7 @@
         {
           "type": "public-export",
           "path": "packages/sdk/src/components/index.ts",
-          "detail": "type TurnItem from @/components/conversation/fold (TurnItem)"
+          "detail": "type TurnItem from @makinbakin/sdk/conversation (TurnItem)"
         }
       ]
     },
@@ -3154,7 +3154,7 @@
         "symbol": "TurnStatus",
         "entrypoint": "@makinbakin/sdk/components"
       },
-      "sourcePath": "src/components/conversation/fold.ts",
+      "sourcePath": "packages/sdk/src/conversation/index.ts",
       "symbols": [
         "TurnStatus"
       ],
@@ -3164,7 +3164,7 @@
         {
           "type": "public-export",
           "path": "packages/sdk/src/components/index.ts",
-          "detail": "type TurnStatus from @/components/conversation/fold (TurnStatus)"
+          "detail": "type TurnStatus from @makinbakin/sdk/conversation (TurnStatus)"
         }
       ]
     },
@@ -4079,7 +4079,7 @@
         "symbol": "foldConversation",
         "entrypoint": "@makinbakin/sdk/components"
       },
-      "sourcePath": "src/components/conversation/fold.ts",
+      "sourcePath": "packages/sdk/src/conversation/index.ts",
       "symbols": [
         "foldConversation"
       ],
@@ -4089,7 +4089,7 @@
         {
           "type": "public-export",
           "path": "packages/sdk/src/components/index.ts",
-          "detail": "value foldConversation from @/components/conversation/fold (foldConversation)"
+          "detail": "value foldConversation from @makinbakin/sdk/conversation (foldConversation)"
         }
       ]
     },
@@ -4129,7 +4129,7 @@
         "symbol": "formatAbsoluteTime",
         "entrypoint": "@makinbakin/sdk/components"
       },
-      "sourcePath": "src/components/conversation/relative-time.ts",
+      "sourcePath": "packages/sdk/src/conversation/index.ts",
       "symbols": [
         "formatAbsoluteTime"
       ],
@@ -4139,7 +4139,7 @@
         {
           "type": "public-export",
           "path": "packages/sdk/src/components/index.ts",
-          "detail": "value formatAbsoluteTime from @/components/conversation/relative-time (formatAbsoluteTime)"
+          "detail": "value formatAbsoluteTime from @makinbakin/sdk/conversation (formatAbsoluteTime)"
         }
       ]
     },
@@ -4179,7 +4179,7 @@
         "symbol": "formatRelativeTime",
         "entrypoint": "@makinbakin/sdk/components"
       },
-      "sourcePath": "src/components/conversation/relative-time.ts",
+      "sourcePath": "packages/sdk/src/conversation/index.ts",
       "symbols": [
         "formatRelativeTime"
       ],
@@ -4189,7 +4189,7 @@
         {
           "type": "public-export",
           "path": "packages/sdk/src/components/index.ts",
-          "detail": "value formatRelativeTime from @/components/conversation/relative-time (formatRelativeTime)"
+          "detail": "value formatRelativeTime from @makinbakin/sdk/conversation (formatRelativeTime)"
         }
       ]
     },
@@ -5839,30 +5839,6 @@
           "type": "public-export",
           "path": "packages/sdk/src/components/index.ts",
           "detail": "ChartExplainer"
-        }
-      ]
-    },
-    {
-      "id": "shared-component:src/components/charts/chart-tooltip",
-      "kind": "shared-component",
-      "owner": {
-        "repository": "bakin",
-        "area": "sdk"
-      },
-      "identity": {
-        "component": "src/components/charts/chart-tooltip"
-      },
-      "sourcePath": "src/components/charts/chart-tooltip.tsx",
-      "symbols": [
-        "ChartTooltip"
-      ],
-      "exportStatus": "private",
-      "classification": "shared-ui",
-      "evidence": [
-        {
-          "type": "source-export",
-          "path": "src/components/charts/chart-tooltip.tsx",
-          "detail": "exported values discovered from TSX source"
         }
       ]
     },

@@ -98,6 +98,13 @@ describe('base UI dependency direction', () => {
       'packages/sdk/src/layout/index.ts -> packages/sdk/src/charts/index.ts',
       'packages/sdk/src/patterns/index.ts -> src/components/conversation/fold.ts',
     ])
+
+    writeFixture(root, 'packages/sdk/src/patterns/index.ts', "export * from '@bakin/ui/conversation'\n")
+    writeFixture(root, 'packages/ui/src/conversation/index.ts', 'export const fold = 1\n')
+    expect(findForbiddenFocusedSdkDependencies(root)).toEqual([
+      'packages/sdk/src/layout/index.ts -> packages/sdk/src/charts/index.ts',
+      'packages/sdk/src/patterns/index.ts -> packages/ui/src/conversation/index.ts',
+    ])
   })
 })
 

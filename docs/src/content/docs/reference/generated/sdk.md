@@ -219,7 +219,7 @@ import { PluginHeader, FacetFilter, AgentAvatar } from '@makinbakin/sdk/componen
 | `TurnToolChipState` | — |
 | `TurnTextSegment` | — |
 | `FoldedTurnOutput` | — |
-| `foldConversation` | — |
+| `foldConversation` | Fold persisted rows and live chunks into ordered render-ready turns. |
 | `ConversationMessage` | — |
 | `ConversationTurn` | — |
 | `ConversationToolCall` | — |
@@ -256,8 +256,8 @@ import { PluginHeader, FacetFilter, AgentAvatar } from '@makinbakin/sdk/componen
 | `ConversationSseHandlers` | — |
 | `ConversationEmptyState` | — |
 | `ConversationEmptyStateProps` | — |
-| `formatRelativeTime` | — |
-| `formatAbsoluteTime` | — |
+| `formatRelativeTime` | Compact and absolute timestamp helpers retained for legacy consumers. |
+| `formatAbsoluteTime` | Compact and absolute timestamp helpers retained for legacy consumers. |
 | `ChannelIcon` | Icon component for a notification channel (Discord, Slack, email, etc.). |
 | `ChartDataTable` | Exact table/disclosure shared by visual chart summaries. |
 | `ChartDataTableProps` | — |
@@ -460,7 +460,23 @@ Isolated data-visualization components and contracts. Source: `packages/sdk/src/
 
 Isolated conversation UI and models. Source: `packages/sdk/src/conversation/index.ts`.
 
-The boundary is established; public exports arrive with its owned component migration.
+| Export | Description |
+| --- | --- |
+| `foldConversation` | Fold persisted rows and live chunks into ordered render-ready turns. |
+| `ConversationChunk` | — |
+| `ConversationMessage` | — |
+| `ConversationTextFormat` | — |
+| `ConversationToolActivity` | — |
+| `ConversationToolCall` | — |
+| `ConversationTurn` | — |
+| `DisplayAttachment` | — |
+| `FoldOptions` | — |
+| `TurnItem` | — |
+| `TurnStatus` | — |
+| `dayKey` | Stable compact, absolute, and calendar-day timestamp helpers. |
+| `formatAbsoluteTime` | Stable compact, absolute, and calendar-day timestamp helpers. |
+| `formatDayLabel` | Stable compact, absolute, and calendar-day timestamp helpers. |
+| `formatRelativeTime` | Stable compact, absolute, and calendar-day timestamp helpers. |
 
 ## `@makinbakin/sdk/slots`
 

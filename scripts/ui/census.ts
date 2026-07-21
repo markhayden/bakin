@@ -193,6 +193,8 @@ function resolveModuleSource(root: string, moduleSpecifier: string): string | nu
     base = join(root, 'src', moduleSpecifier.slice(2))
   } else if (moduleSpecifier.startsWith('./')) {
     base = join(root, dirname(SDK_COMPONENT_BARREL), moduleSpecifier)
+  } else if (moduleSpecifier.startsWith('@makinbakin/sdk/')) {
+    base = join(root, 'packages/sdk/src', moduleSpecifier.slice('@makinbakin/sdk/'.length))
   } else {
     const pluginMatch = moduleSpecifier.match(/^@bakin\/([^/]+)\/(.+)$/)
     if (!pluginMatch) return null

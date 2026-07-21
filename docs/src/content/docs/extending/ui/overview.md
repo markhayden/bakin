@@ -925,6 +925,34 @@ export function OperationalCharts() {
 
 Each full chart owns a named, keyboard-scrollable plot boundary at narrow widths and a collapsed exact-data disclosure. Set `showDataTable={false}` on `BarChart` only when the same exact dataset is already rendered beside it; a chart without an equivalent table is not a supported composition. Axis labels may shorten visually to keep the plot readable, while the accessible mark labels and exact table retain the full text.
 
+## Conversation Model and Folding
+
+Import conversation models and pure helpers from the focused `@makinbakin/sdk/conversation` entrypoint. `foldConversation` is the one supported way to combine persisted `ConversationMessage` rows with an optional live stream into render-ready `ConversationTurn` objects. It preserves text and tool activity in arrival order, coalesces adjacent text with the same format, and settles tool results against their original call even when text arrived between the call and result.
+
+```ts
+import type { RuntimeChatChunk } from '@makinbakin/sdk/types'
+import {
+  foldConversation,
+  formatRelativeTime,
+  type ConversationMessage,
+} from '@makinbakin/sdk/conversation'
+
+const messages: ConversationMessage[] = [
+  { kind: 'user', ts: '2026-07-20T12:00:00.000Z', content: 'Check production.' },
+]
+const liveChunks: RuntimeChatChunk[] = [
+  { type: 'status', content: 'checking' },
+  { type: 'text', content: 'All systems are healthy.' },
+]
+
+const turns = foldConversation(messages, { liveChunks })
+const sent = formatRelativeTime(messages[0].ts)
+```
+
+`ConversationChunk` is structurally compatible with `RuntimeChatChunk`, so runtime output passes directly into the folder without conversion or a dependency on host internals. Missing tool previews, metadata, durations, status labels, and attachments stay missing data; consumers should not invent values. Error and aborted rows remain distinct terminal states, while an empty `liveChunks` array intentionally creates a streaming turn so the UI can show an honest waiting state.
+
+Use `formatRelativeTime` for compact visible timestamps, `formatAbsoluteTime` for full supplemental context, and `formatDayLabel` with `dayKey` for local-calendar separators. These helpers return an empty string for an invalid timestamp. Conversation rendering components will graduate through this same focused entrypoint in the next foundation slices; new consumers should not import the legacy `@makinbakin/sdk/components` barrel.
+
 ## Local Commands
 
 ```sh

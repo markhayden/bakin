@@ -106,7 +106,8 @@ export type { TurnOutputViewProps, TurnToolChipState, TurnTextSegment, FoldedTur
 // conversational surface builds on (chat plugin, embedded brainstorm
 // panels, turn output). New chat-like surfaces compose these; never
 // hand-roll message/tool rendering.
-export { foldConversation } from '@/components/conversation/fold'
+/** Fold persisted rows and live chunks into ordered render-ready turns. */
+export { foldConversation } from '@makinbakin/sdk/conversation'
 export type {
   ConversationMessage,
   ConversationTurn,
@@ -115,7 +116,7 @@ export type {
   TurnStatus,
   DisplayAttachment,
   FoldOptions,
-} from '@/components/conversation/fold'
+} from '@makinbakin/sdk/conversation'
 export { Conversation } from '@/components/conversation/conversation'
 export type { ConversationProps } from '@/components/conversation/conversation'
 export { AgentTurn, ThinkingIndicator, CopyButton, TurnTimestamp } from '@/components/conversation/agent-turn'
@@ -136,7 +137,8 @@ export { readConversationSseStream } from '@/components/conversation/sse'
 export type { ConversationSseHandlers } from '@/components/conversation/sse'
 export { ConversationEmptyState } from '@/components/conversation/conversation-empty-state'
 export type { ConversationEmptyStateProps } from '@/components/conversation/conversation-empty-state'
-export { formatRelativeTime, formatAbsoluteTime } from '@/components/conversation/relative-time'
+/** Compact and absolute timestamp helpers retained for legacy consumers. */
+export { formatRelativeTime, formatAbsoluteTime } from '@makinbakin/sdk/conversation'
 
 // Notification channel icon (from workflows plugin registry)
 

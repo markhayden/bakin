@@ -119,6 +119,28 @@ describe('scanCoreCensus', () => {
     expect(() => scanCoreCensus(root)).toThrow('Unsupported public SDK export syntax')
   })
 
+  it('follows legacy component exports delegated to a focused SDK entrypoint', () => {
+    const root = createFixture()
+    writeFixture(root, 'packages/sdk/src/conversation/index.ts', [
+      'export function foldConversation() { return [] }',
+      'export interface ConversationTurn {}',
+    ].join('\n'))
+    writeFixture(root, 'packages/sdk/src/components/index.ts', [
+      "export { foldConversation } from '@makinbakin/sdk/conversation'",
+      "export type { ConversationTurn } from '@makinbakin/sdk/conversation'",
+    ].join('\n'))
+
+    const entries = scanCoreCensus(root).entries
+    expect(entries).toContainEqual(expect.objectContaining({
+      id: 'sdk-ui-export:value:foldConversation',
+      sourcePath: 'packages/sdk/src/conversation/index.ts',
+    }))
+    expect(entries).toContainEqual(expect.objectContaining({
+      id: 'sdk-ui-export:type:ConversationTurn',
+      sourcePath: 'packages/sdk/src/conversation/index.ts',
+    }))
+  })
+
   it('surfaces a client slot that has no mirrored manifest declaration', () => {
     const root = createFixture()
     writeFixture(root, 'plugins/orphan/client.tsx', [

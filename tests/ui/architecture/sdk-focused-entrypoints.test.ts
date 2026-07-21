@@ -9,7 +9,6 @@ import { SDK_EXTERNALS } from '../../../src/core/whiskit/externals'
 
 const REPO_ROOT = resolve(import.meta.dir, '../../..')
 const FOCUSED_SUBPATHS = ['ui', 'layout', 'patterns', 'charts', 'conversation'] as const
-const PENDING_SUBPATHS = ['conversation'] as const
 
 function readJson(path: string): Record<string, any> {
   return JSON.parse(readFileSync(join(REPO_ROOT, path), 'utf8')) as Record<string, any>
@@ -48,12 +47,10 @@ describe('focused public SDK entrypoint contract', () => {
     }
   })
 
-  it('keeps new domain entrypoints empty until their owned migration tasks land', () => {
-    for (const subpath of PENDING_SUBPATHS) {
-      const source = readFileSync(join(REPO_ROOT, `packages/sdk/src/${subpath}/index.ts`), 'utf8')
-      expect(source).toContain('export {}')
-      expect(source).not.toMatch(/export\s+(?:\*|\{)[^}]*\bfrom\b/)
-    }
+  it('does not retain a placeholder after a focused domain starts migration', () => {
+    const conversation = readFileSync(join(REPO_ROOT, 'packages/sdk/src/conversation/index.ts'), 'utf8')
+    expect(conversation).not.toContain('export {}')
+    expect(conversation).toContain("from '@bakin/ui/conversation'")
   })
 
   it('retains the components barrel only as a separately named legacy surface', () => {

@@ -1288,6 +1288,21 @@ empty/overflow/multi-series/CVD/non-color stories and an exact table path.
 **Description:** Move folding/rendering/composer/tool-drawer/panel presentation
 behind the focused conversation contract and approved interaction language.
 
+**Status — T34a (2026-07-20):** Complete. The persisted/live conversation
+model, deterministic `foldConversation` engine, and four timestamp helpers now
+live in the dependency-free private conversation package and publish through
+`@makinbakin/sdk/conversation`. Its structural `ConversationChunk` contract is
+assignable from the existing `RuntimeChatChunk` without creating a UI-to-core
+or UI-to-SDK dependency. Legacy host modules and the migration-only components
+barrel are adapters to the focused entrypoint; the legacy barrel gained no new
+symbols. The census now follows focused SDK delegation, and base UI dependency
+checks cover private chart and conversation paths. Existing folding, renderer,
+panel/stream, and turn-output behavior remains green. The entrypoint measures
+222 bytes direct / 4,986 bytes reachable, CSS remains 298,306 bytes with one
+runtime copy, and the legacy components entry drops from 419,791 to 404,833
+direct bytes. T34a changes no rendered UI, Storybook story, or official page or
+plugin composition; browser visual baselines therefore remain unchanged.
+
 **Acceptance:** base UI does not include conversation code; streamed, thinking,
 tool, error, attachment, empty, long-content, and reduced-motion states pass;
 behavior/folding contracts remain unchanged.

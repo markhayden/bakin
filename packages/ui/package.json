@@ -10,6 +10,7 @@
     "./layout": "./src/layout/index.ts",
     "./patterns": "./src/patterns/index.ts",
     "./charts": "./src/charts/index.ts",
+    "./conversation": "./src/conversation/index.ts",
     "./tokens": "./src/tokens.generated.ts"
   },
   "sideEffects": [

@@ -1,7 +1,28 @@
 /**
  * `@makinbakin/sdk/conversation` — isolated conversation UI and models.
  *
- * T34 owns the conversation exports. The empty foundation gives the browser
- * and npm package a stable subpath without exposing the legacy implementation.
+ * Import this focused entrypoint for conversation models and pure helpers so
+ * unrelated UI does not pull the conversation domain into its bundle.
  */
-export {}
+/** Fold persisted rows and live chunks into ordered render-ready turns. */
+export { foldConversation } from '@bakin/ui/conversation'
+export type {
+  ConversationChunk,
+  ConversationMessage,
+  ConversationTextFormat,
+  ConversationToolActivity,
+  ConversationToolCall,
+  ConversationTurn,
+  DisplayAttachment,
+  FoldOptions,
+  TurnItem,
+  TurnStatus,
+} from '@bakin/ui/conversation'
+
+/** Stable compact, absolute, and calendar-day timestamp helpers. */
+export {
+  dayKey,
+  formatAbsoluteTime,
+  formatDayLabel,
+  formatRelativeTime,
+} from '@bakin/ui/conversation'

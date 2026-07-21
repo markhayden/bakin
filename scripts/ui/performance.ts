@@ -134,6 +134,7 @@ function forbiddenUiDomain(path: string): boolean {
   const normalized = path.split('\\').join('/')
   return normalized.includes('/components/charts/')
     || normalized.includes('/components/conversation/')
+    || /\/packages\/ui\/src\/(?:charts|conversation)\//.test(normalized)
     || /\/packages\/sdk\/src\/(?:charts|conversation)\//.test(normalized)
 }
 
