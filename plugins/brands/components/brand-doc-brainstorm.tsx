@@ -1,13 +1,15 @@
 /**
  * Embedded brainstorm for the brand doc editor (conversation kit): ask an
- * agent for feedback or drafted copy while editing. Session-only — the
- * transcript lives in component state; turns stream over the per-request SSE
- * route (POST .../brainstorm) with the editor's CURRENT content as context.
+ * agent for feedback or drafted copy while editing. Durable since #703 —
+ * the transcript persists per doc, turns run server-side on the
+ * conversation turn engine and stream as brands.brainstorm.* bus events,
+ * so navigating away never kills a turn and reopening the panel restores
+ * the conversation (including a mid-flight streaming indicator).
  */
-import { useCallback, useState } from 'react'
-import { ConversationPanel, useConversationStream } from '@makinbakin/sdk/components'
-import type { ConversationMessage } from '@makinbakin/sdk/components'
+import { useCallback, useEffect, useState } from 'react'
+import { ConversationPanel, useConversationThread } from '@makinbakin/sdk/components'
 import { toast, useMainAgentId } from '@makinbakin/sdk/hooks'
+import { pluginFetch } from '@makinbakin/sdk/utils'
 
 export function DocBrainstormPanel({
   brandId, kind, name, getDocContent,
@@ -21,34 +23,38 @@ export function DocBrainstormPanel({
   const mainAgentId = useMainAgentId()
   const [agentId, setAgentId] = useState<string | null>(null)
   const effectiveAgent = agentId ?? mainAgentId ?? ''
-  const [messages, setMessages] = useState<ConversationMessage[]>([])
+  const key = `${brandId}/${kind}/${name}`
+  const docPath = `${encodeURIComponent(brandId)}/docs/${encodeURIComponent(kind)}/${encodeURIComponent(name)}`
 
-  const stream = useConversationStream({
-    fetcher: (content, { signal }) =>
-      fetch(
-        `/api/plugins/brands/${encodeURIComponent(brandId)}/docs/${encodeURIComponent(kind)}/${encodeURIComponent(name)}/brainstorm`,
-        {
-          method: 'POST',
-          signal,
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            agent: effectiveAgent,
-            message: content,
-            history: messages
-              .filter((m): m is Extract<ConversationMessage, { kind: 'user' | 'assistant' }> => m.kind === 'user' || m.kind === 'assistant')
-              .map((m) => ({ role: m.kind === 'user' ? 'user' : 'agent', content: m.content })),
-            docContent: getDocContent(),
-          }),
-        },
-      ),
-    onDone: (finalContent) => {
-      setMessages((prev) => [
-        ...prev,
-        { kind: 'assistant', ts: new Date().toISOString(), agentId: effectiveAgent, content: finalContent },
-      ])
+  const thread = useConversationThread({
+    threadKey: key,
+    events: {
+      chunk: 'brands.brainstorm.chunk',
+      done: 'brands.brainstorm.done',
+      error: 'brands.brainstorm.error',
     },
-    onError: (message) => toast(message, 'error'),
+    keyOf: (payload) => payload.key,
+    load: async () => {
+      const res = await pluginFetch('brands', `${docPath}/brainstorm`)
+      if (!res.ok) return null
+      return (await res.json()) as { messages: []; streaming?: boolean }
+    },
+    post: async (_key, content) => {
+      const res = await pluginFetch('brands', `${docPath}/brainstorm`, {
+        method: 'POST',
+        body: { agent: effectiveAgent, message: content, docContent: getDocContent() },
+      })
+      if (res.ok) return { ok: true }
+      const body = (await res.json().catch(() => ({}))) as { error?: string }
+      return { ok: false, status: res.status, ...(body.error ? { error: body.error } : {}) }
+    },
   })
+
+  // Send failures (409 busy, network) surface as a toast — the panel has
+  // no persistent error strip and the optimistic row stays visible.
+  useEffect(() => {
+    if (thread.sendError) toast(thread.sendError, 'error')
+  }, [thread.sendError])
 
   const send = useCallback(
     async (content: string) => {
@@ -56,21 +62,24 @@ export function DocBrainstormPanel({
         toast('Pick an agent first', 'error')
         return
       }
-      setMessages((prev) => [...prev, { kind: 'user', ts: new Date().toISOString(), content }])
-      await stream.send(content)
+      await thread.send(content)
     },
-    [effectiveAgent, stream],
+    [effectiveAgent, thread],
   )
+
+  const abort = useCallback(() => {
+    void pluginFetch('brands', `${docPath}/brainstorm/abort`, { method: 'POST' }).catch(() => {})
+  }, [docPath])
 
   return (
     <ConversationPanel
-      messages={messages}
-      liveChunks={stream.liveChunks}
-      streaming={stream.streaming}
+      messages={thread.messages}
+      liveChunks={thread.liveChunks}
+      streaming={thread.streaming}
       agentId={effectiveAgent}
       onAgentChange={setAgentId}
       onSend={send}
-      onAbort={stream.abort}
+      onAbort={abort}
       storageKey={`brand-doc-brainstorm:${brandId}:${kind}:${name}`}
       title="Brainstorm"
       fitParent
