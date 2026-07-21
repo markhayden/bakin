@@ -124,5 +124,5 @@ export async function startChatTurn(
   content: string,
   attachments?: ChatAttachment[],
 ): Promise<StartTurnResult> {
-  return service.start(ctx as TurnContext, chatId, content, attachments)
+  return service.start(ctx as TurnContext, chatId, content, attachments?.length ? { attachments } : undefined)
 }

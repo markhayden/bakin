@@ -101,10 +101,16 @@ export interface ConversationTurnServiceConfig {
   resolveThread: (key: string) => { agentId: string } | null | Promise<{ agentId: string } | null>
   /** Append one durable transcript row. Failures are logged, never thrown into the turn. */
   appendRow: (key: string, row: ConversationTurnRow) => void | Promise<void>
-  /** Runtime session thread id (e.g. key => `chat:${key}`). */
-  threadId: (key: string) => string
+  /**
+   * Runtime session thread id (e.g. key => `chat:${key}`). Called once per
+   * turn — per-turn thread schemes (brands' ephemeral randomUUID threads)
+   * are legitimate.
+   */
+  threadId: (key: string, agentId: string) => string
   /** Per-turn delivery framing appended to the runtime content; never persisted. */
   framing?: string
+  /** Run turns as ephemeral runtime sessions (no provider-side accumulation). */
+  ephemeral?: boolean
   hooks?: {
     /** Read-only tap on EVERY runtime chunk (e.g. messaging proposal parsing). */
     onChunk?: (key: string, chunk: ChatChunk) => void
@@ -115,8 +121,20 @@ export interface ConversationTurnServiceConfig {
   }
 }
 
+export interface StartTurnOptions {
+  attachments?: TurnAttachment[]
+  /** Per-turn agent override (surfaces with an agent picker); default = resolveThread's. */
+  agentId?: string
+  /**
+   * Pre-assembled runtime content for THIS turn (embedded surfaces inject
+   * doc/context prompts here). The persisted user row always keeps the
+   * clean `content`; when omitted, the runtime gets content + framing.
+   */
+  runtimeContent?: string
+}
+
 export interface ConversationTurnService {
-  start(ctx: TurnContext, key: string, content: string, attachments?: TurnAttachment[]): Promise<StartTurnResult>
+  start(ctx: TurnContext, key: string, content: string, opts?: StartTurnOptions): Promise<StartTurnResult>
   /** Abort the in-flight turn; false when the thread is idle. */
   abort(key: string): boolean
   isInFlight(key: string): boolean
@@ -153,11 +171,14 @@ export function createConversationTurnService(config: ConversationTurnServiceCon
     ctx: TurnContext,
     key: string,
     content: string,
-    attachments?: TurnAttachment[],
+    opts?: StartTurnOptions,
   ): Promise<StartTurnResult> => {
     const thread = await config.resolveThread(key)
     if (!thread) return 'not_found'
     if (inflight.has(key)) return 'busy'
+
+    const attachments = opts?.attachments
+    const agentId = opts?.agentId ?? thread.agentId
 
     // Reserve the slot SYNCHRONOUSLY — checking then awaiting before setting
     // let two concurrent sends both pass the busy guard (review TOCTOU).
@@ -166,7 +187,7 @@ export function createConversationTurnService(config: ConversationTurnServiceCon
     const entry: InflightTurn = {
       promise: Promise.resolve(),
       controller,
-      agentId: thread.agentId,
+      agentId,
       startedAt: Date.now(),
       turnId,
     }
@@ -193,7 +214,7 @@ export function createConversationTurnService(config: ConversationTurnServiceCon
     // chat auto-titling) chains after release so it never holds the slot
     // through an LLM round-trip — but stays on the retained promise so
     // waitFor() covers it.
-    entry.promise = runTurn(config, ctx, key, thread.agentId, content, controller, turnId, attachments)
+    entry.promise = runTurn(config, ctx, key, agentId, content, controller, turnId, attachments, opts?.runtimeContent)
       .finally(() => {
         inflight.delete(key)
       })
@@ -232,6 +253,7 @@ async function runTurn(
   controller: AbortController,
   turnId: string,
   attachments?: TurnAttachment[],
+  runtimeContent?: string,
 ): Promise<TurnOutcome> {
   const recorder = createTurnRecorder({ turnId })
   let assistantText = ''
@@ -268,9 +290,10 @@ async function runTurn(
     }
     for await (const chunk of ctx.runtime.messaging.stream({
       agentId,
-      content: config.framing ? `${content}\n\n${config.framing}` : content,
-      threadId: config.threadId(key),
+      content: runtimeContent ?? (config.framing ? `${content}\n\n${config.framing}` : content),
+      threadId: config.threadId(key, agentId),
       signal: controller.signal,
+      ...(config.ephemeral ? { ephemeral: true } : {}),
       ...(prepared.length
         ? { attachments: prepared.map((a) => ({ path: a.path, mimeType: a.mimeType })) }
         : {}),

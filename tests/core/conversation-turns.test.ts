@@ -362,7 +362,7 @@ describe('conversation turn service', () => {
     const h = makeHarness()
     const service = makeService(h)
     expect(
-      await service.start(h.ctx, 't11', '   ', [{ name: 'pic.png', mimeType: 'image/png', path: filePath }]),
+      await service.start(h.ctx, 't11', '   ', { attachments: [{ name: 'pic.png', mimeType: 'image/png', path: filePath }] }),
     ).toBe('accepted')
     await service.waitFor('t11')
     const userRow = (h.rows.get('t11') ?? [])[0]
@@ -373,6 +373,24 @@ describe('conversation turn service', () => {
     })
     // Small file passes through undownscaled to the runtime call.
     expect(h.seenArgs[0].attachments).toEqual([{ path: filePath, mimeType: 'image/png' }])
+  })
+
+  test('per-turn agentId override and runtimeContent: runtime sees both, transcript keeps the clean text', async () => {
+    const h = makeHarness()
+    const service = makeService(h, { framing: '[never sent when runtimeContent wins]', ephemeral: true })
+    expect(
+      await service.start(h.ctx, 't13', 'clean question', {
+        agentId: 'pixel',
+        runtimeContent: '## Doc context\n...\nOperator: clean question',
+      }),
+    ).toBe('accepted')
+    await service.waitFor('t13')
+    expect(h.seenArgs[0].agentId).toBe('pixel')
+    expect(h.seenArgs[0].content).toBe('## Doc context\n...\nOperator: clean question')
+    expect((h.seenArgs[0] as { ephemeral?: boolean }).ephemeral).toBe(true)
+    expect((h.rows.get('t13') ?? [])[0]).toMatchObject({ kind: 'user', content: 'clean question' })
+    const done = h.events.find((e) => e.event === 'test.done')
+    expect(done?.data.agentId).toBe('pixel')
   })
 
   test('listInFlight exposes key/agent/turnId during the turn and empties after settle', async () => {
