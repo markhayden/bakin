@@ -14,11 +14,16 @@
  * concerns — seen tracking, retry, attachment URL mapping — stay in
  * consumer wrappers.
  *
- * Semantics mirror chat's use-chat-data.ts exactly (chat wraps this hook):
- * a failed POST rolls back the streaming state and surfaces sendError but
+ * Semantics mirror chat's use-chat-data.ts (chat wraps this hook): a
+ * failed POST rolls back the streaming state and surfaces sendError but
  * leaves the optimistic row until the next refetch; consecutive
  * same-format text deltas coalesce; payloads for other threads are
  * ignored via an active-key ref that re-checks after every await.
+ * Deliberate divergences from the pre-#703 chat hook (all bug fixes, not
+ * drift): rollback/sendError are suppressed after a thread switch; a send
+ * while a turn streams is refused instead of wiping the live turn; loads
+ * that started before the newest send never clobber the optimistic row;
+ * and load/post throws are contained (no unhandled rejections).
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ChatChunk as RuntimeChatChunk } from '@bakin/core/adapters/runtime'
@@ -87,16 +92,30 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
   const optionsRef = useRef(options)
   optionsRef.current = options
 
+  // Monotonic send counter: a load snapshot taken BEFORE the newest send
+  // must never clobber the optimistic user row appended by that send.
+  const sendSeqRef = useRef(0)
+
   const loadTranscript = useCallback(async () => {
     if (!threadKey) {
       setMeta(null)
       setMessages([])
       return
     }
-    const body = await optionsRef.current.load(threadKey)
+    const sendSeqAtStart = sendSeqRef.current
+    let body: ConversationThreadLoad<Meta> | null = null
+    try {
+      body = await optionsRef.current.load(threadKey)
+    } catch {
+      // A throwing load (network blip, server restart) keeps the current
+      // view; the next settle/switch retries. Never an unhandled rejection.
+      return
+    }
     // Re-check AFTER the load resolves too — a slow response for the
     // previous thread could land post-switch and render the wrong transcript.
-    if (!body || activeKeyRef.current !== threadKey) return
+    if (activeKeyRef.current !== threadKey) return
+    if (!body) return
+    if (sendSeqRef.current !== sendSeqAtStart) return
     setMeta(body.meta ?? null)
     setMessages(body.messages)
     if (body.streaming) {
@@ -106,6 +125,11 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
   }, [threadKey])
 
   useEffect(() => {
+    // Reset EVERYTHING on a thread switch — the previous thread's
+    // transcript must never render under the new key (even transiently, or
+    // permanently when the new load fails).
+    setMessages([])
+    setMeta(null)
     setLiveChunks(null)
     setStreaming(false)
     setSendError(null)
@@ -136,6 +160,9 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
   const settle = useCallback((payload: Record<string, unknown>) => {
     setStreaming(false)
     setLiveChunks(null)
+    // The settle refetch IS the newest truth — bump the seq so it applies
+    // even if an older send's guard would otherwise block a stale load.
+    sendSeqRef.current += 1
     void loadTranscript()
     optionsRef.current.onSettled?.(payload)
   }, [loadTranscript])
@@ -147,10 +174,20 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
     if (optionsRef.current.keyOf(payload) === activeKeyRef.current) settle(payload)
   })
 
+  const streamingRef = useRef(streaming)
+  streamingRef.current = streaming
+
   const send = useCallback(async (content: string, attachments?: Attachment[]) => {
     const key = activeKeyRef.current
     if (!key) return
+    // One turn per thread: sending while a turn streams would wipe the live
+    // chunks locally and 409 server-side anyway — refuse honestly instead.
+    if (streamingRef.current) {
+      setSendError('A reply is already in progress')
+      return
+    }
     setSendError(null)
+    sendSeqRef.current += 1
     // Optimistic user row — synchronously, before the network call; the
     // durable copy replaces it on the next refetch.
     const row: ConversationMessage = optionsRef.current.optimisticRow
@@ -159,7 +196,14 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
     setMessages((prev) => [...prev, row])
     setStreaming(true)
     setLiveChunks([])
-    const res = await optionsRef.current.post(key, content, attachments)
+    let res: { ok: boolean; status?: number; error?: string }
+    try {
+      res = await optionsRef.current.post(key, content, attachments)
+    } catch (err) {
+      // pluginFetch rejects on network failure — same rollback as a
+      // non-OK response, never an unhandled rejection or a stuck spinner.
+      res = { ok: false, error: err instanceof Error ? err.message : String(err) }
+    }
     if (!res.ok && activeKeyRef.current === key) {
       setStreaming(false)
       setLiveChunks(null)

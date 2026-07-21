@@ -24,7 +24,7 @@
  * abort ends clean with an `aborted` marker row + done flag; metering runs
  * for success AND abort (never error), with whatever usage arrived; the
  * slot releases BEFORE onSettled chains (holding it 409'd quick
- * follow-ups) but waitFor() resolves only after onSettled completes.
+ * follow-ups); waitFor() called mid-turn also covers the onSettled tail.
  */
 import { randomUUID } from 'crypto'
 
@@ -145,7 +145,11 @@ export interface ConversationTurnService {
   /** Abort the in-flight turn; false when the thread is idle. */
   abort(key: string): boolean
   isInFlight(key: string): boolean
-  /** Await the current turn (and its onSettled); resolves immediately when idle. */
+  /**
+   * Await the current turn; when called while the turn is in flight this
+   * also covers its onSettled tail. Resolves immediately when idle
+   * (including during onSettled itself — the slot has already released).
+   */
   waitFor(key: string): Promise<void>
   /** Every in-flight turn — consumers build active-turn resolution on top. */
   listInFlight(): InflightTurnInfo[]
@@ -185,7 +189,10 @@ export function createConversationTurnService(config: ConversationTurnServiceCon
     if (inflight.has(key)) return 'busy'
 
     const attachments = opts?.attachments
-    const agentId = opts?.agentId ?? thread.agentId
+    const agentId = (opts?.agentId ?? thread.agentId).trim()
+    // A thread that resolves without an agent AND no per-turn override has
+    // nowhere to run — fail before reserving the slot or persisting rows.
+    if (!agentId) return 'not_found'
 
     // Reserve the slot SYNCHRONOUSLY — checking then awaiting before setting
     // let two concurrent sends both pass the busy guard (review TOCTOU).
@@ -225,7 +232,16 @@ export function createConversationTurnService(config: ConversationTurnServiceCon
       .finally(() => {
         inflight.delete(key)
       })
-      .then((outcome) => config.hooks?.onSettled?.({ ctx, key, outcome }))
+      .then(async (outcome) => {
+        // Same never-throw contract as every other hook: a consumer's
+        // throwing onSettled must not become an unhandled rejection (or
+        // rethrow out of waitFor).
+        try {
+          await config.hooks?.onSettled?.({ ctx, key, outcome })
+        } catch (err) {
+          log.error(`[${config.name}] onSettled hook failed for ${key}`, err as Error)
+        }
+      })
     return 'accepted'
   }
 
@@ -374,7 +390,12 @@ async function runTurn(
     await persist([
       { kind: 'error', ts: new Date().toISOString(), turnId, message, ...(kind ? { errorKind: kind } : {}) },
     ])
-    ctx.events.emit(config.events.error, { ...config.payload(key), agentId, message, ...(kind ? { kind } : {}) })
+    try {
+      ctx.events.emit(config.events.error, { ...config.payload(key), agentId, message, ...(kind ? { kind } : {}) })
+    } catch (emitErr) {
+      // A consumer payload()/emit throw must not reject the turn promise.
+      log.error(`[${config.name}] error-event emit failed for ${key}`, emitErr as Error)
+    }
     return { aborted: false, errored: true }
   } finally {
     for (const p of prepared) cleanupPrepared?.(p)

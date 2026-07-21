@@ -14,7 +14,6 @@ import {
   type AttentionActions,
 } from '@makinbakin/sdk/components'
 
-export type { AttentionActions }
 export { badgeFor, withUnreadPrefix }
 
 export interface ChatDonePayload {

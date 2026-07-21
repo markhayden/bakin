@@ -15,8 +15,11 @@ import { join } from 'path'
 import { atomicWriteJson } from '@bakin/core/storage/atomic-write'
 import { parseFrontmatter } from '@bakin/core/format/frontmatter'
 import { getBakinPaths } from '../../../src/core/content-dir'
+import { createLogger } from '../../../src/core/logger'
 import type { ConversationTurnRow } from '../../../src/core/conversation-turns'
 import { brandIdSchema, brandManifestSchema, type BrandManifest } from './schemas'
+
+const log = createLogger('brands-store')
 
 export type BrandDocKind = 'guidelines' | 'lessons'
 
@@ -235,8 +238,13 @@ export function readDocBrainstorm(brandId: string, kind: BrandDocKind, name: str
   try {
     const rows = JSON.parse(readFileSync(path, 'utf-8')) as unknown
     return Array.isArray(rows) ? (rows as ConversationTurnRow[]) : []
-  } catch {
-    // A torn write loses the transcript, never the surface.
+  } catch (err) {
+    // A torn write loses the transcript, never the surface — but never
+    // silently: this is data loss worth a trace.
+    log.warn('doc brainstorm transcript unreadable; starting empty', {
+      path,
+      error: err instanceof Error ? err.message : String(err),
+    })
     return []
   }
 }
@@ -247,6 +255,11 @@ export function appendDocBrainstormRow(
   name: string,
   row: ConversationTurnRow,
 ): void {
+  // A turn racing a brand delete must not resurrect the directory — the
+  // throw surfaces as the engine's logged append failure.
+  if (getBrand(brandId).status !== 'ok') {
+    throw new BrandStoreError('missing', `brand ${brandId} is gone — dropping brainstorm row`)
+  }
   const path = docBrainstormPath(brandId, kind, name)
   mkdirSync(join(brandDir(brandId), 'brainstorms', kind), { recursive: true })
   atomicWriteJson(path, [...readDocBrainstorm(brandId, kind, name), row])

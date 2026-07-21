@@ -187,6 +187,11 @@ export interface ChatStreamState {
 
 export function useChatStream(chatId: string): ChatStreamState {
   const lastUserRef = useRef<{ content: string; attachments?: Array<{ name: string; mimeType: string; path: string }> }>({ content: '' })
+  // Guards the lastUserRef side effect below: a slow load for a PREVIOUS
+  // chat must never overwrite the retry payload after a switch (the kit's
+  // own stale-load guard protects messages/meta, not this ref).
+  const chatIdRef = useRef(chatId)
+  chatIdRef.current = chatId
 
   // The kit hook owns the shared client core (optimistic echo, bus
   // streaming + coalescing, active-thread guards, settle-by-refetch);
@@ -201,8 +206,10 @@ export function useChatStream(chatId: string): ChatStreamState {
       const res = await pluginFetch('chat', `chats/${key}`)
       if (!res.ok) return null
       const body = (await res.json()) as { chat: ChatSummaryDto; messages: TranscriptRowDto[] }
-      const lastUser = [...body.messages].reverse().find((r) => r.kind === 'user')
-      if (lastUser?.kind === 'user') lastUserRef.current = { content: lastUser.content, attachments: lastUser.attachments }
+      if (key === chatIdRef.current) {
+        const lastUser = [...body.messages].reverse().find((r) => r.kind === 'user')
+        if (lastUser?.kind === 'user') lastUserRef.current = { content: lastUser.content, attachments: lastUser.attachments }
+      }
       return { messages: body.messages.map((row) => rowToMessage(key, row)), meta: body.chat }
     },
     post: async (key, content, attachments) => {

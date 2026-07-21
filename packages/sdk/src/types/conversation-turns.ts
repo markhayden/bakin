@@ -96,9 +96,17 @@ export interface ConversationTurnServiceConfig {
    * with bespoke needs. Ignored by the standalone test harness (no host).
    */
   metering?: {
-    /** Work class the spend reports under (interactive surfaces: 'chat'). */
-    workClass: string
-    /** Durable run id, e.g. key => `brainstorm:projects:${key}:turn:${turnId}`. */
+    /**
+     * Work class the spend reports under. MUST be 'chat' (the metered-only
+     * interactive class) — the host rejects anything else at
+     * createTurnService time; the spend dimension is enum-pinned.
+     */
+    workClass: 'chat'
+    /**
+     * Durable run id, e.g. key => `brainstorm:<pluginId>:${key}:turn:${turnId}`.
+     * The host enforces the `brainstorm:<pluginId>:` prefix (prepending it
+     * when absent) so plugin run ids can never collide with task:/chat: ids.
+     */
     runId: (key: string, turnId: string) => string
   }
   hooks?: {

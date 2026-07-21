@@ -433,6 +433,31 @@ describe('conversation turn service', () => {
     expect(completions).toEqual([])
   })
 
+  test('a throwing onSettled never rejects the retained promise — waitFor resolves cleanly', async () => {
+    const h = makeHarness()
+    const service = makeService(h, {
+      hooks: {
+        onSettled: async () => {
+          throw new Error('settle hook exploded')
+        },
+      },
+    })
+    expect(await service.start(h.ctx, 't16', 'go')).toBe('accepted')
+    await service.waitFor('t16') // must not throw
+    expect(h.events.some((e) => e.event === 'test.done')).toBe(true)
+  })
+
+  test('an empty resolved agentId (no override) fails as not_found before reserving', async () => {
+    const h = makeHarness()
+    const service = makeService(h, { resolveThread: () => ({ agentId: '' }) })
+    expect(await service.start(h.ctx, 't17', 'go')).toBe('not_found')
+    expect(h.rows.get('t17')).toBeUndefined() // no user row persisted
+    expect(service.isInFlight('t17')).toBe(false)
+    // Override supplies the agent — accepted.
+    expect(await service.start(h.ctx, 't17', 'go', { agentId: 'pixel' })).toBe('accepted')
+    await service.waitFor('t17')
+  })
+
   test('listInFlight exposes key/agent/turnId during the turn and empties after settle', async () => {
     const h = makeHarness()
     const service = makeService(h)

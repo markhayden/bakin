@@ -218,3 +218,74 @@ describe('useConversationThread', () => {
     })
   })
 })
+
+describe('review-hardening guards (#703)', () => {
+  it('refuses a send while a turn is streaming instead of wiping the live turn', async () => {
+    const store = makeStore()
+    const { result } = hookFor(store, 'a')
+    await act(async () => {})
+    act(() => {
+      emitPluginEvent({ event: EVENTS.chunk, threadKey: 'a', chunk: { type: 'text', content: 'live so far' } })
+    })
+    await act(async () => { await result.current.send('impatient follow-up') })
+    // Live turn untouched, no POST fired, honest error surfaced.
+    expect(result.current.liveChunks).toEqual([{ type: 'text', content: 'live so far' }])
+    expect(store.posts).toHaveLength(0)
+    expect(result.current.sendError).toBe('A reply is already in progress')
+  })
+
+  it('a load started before the newest send never clobbers the optimistic row', async () => {
+    const store = makeStore()
+    let resolveLoad: (() => void) | null = null
+    const { result } = renderHook(() =>
+      useConversationThread({
+        threadKey: 'a',
+        events: EVENTS,
+        keyOf: (p) => p.threadKey,
+        load: () => new Promise((resolve) => {
+          resolveLoad = () => resolve({ messages: [] }) // stale pre-send snapshot
+        }),
+        post: async () => ({ ok: true }),
+      }),
+    )
+    await act(async () => {}) // mount load now pending
+    await act(async () => { await result.current.send('brand new message') })
+    expect(result.current.messages.at(-1)).toMatchObject({ kind: 'user', content: 'brand new message' })
+    await act(async () => { resolveLoad?.() })
+    // The stale load resolved AFTER the send — the optimistic row survives.
+    expect(result.current.messages.at(-1)).toMatchObject({ kind: 'user', content: 'brand new message' })
+  })
+
+  it('a throwing post rolls back and surfaces the error instead of rejecting', async () => {
+    const store = makeStore()
+    const { result } = hookFor(store, 'a', {
+      post: async () => { throw new Error('socket down') },
+    })
+    await act(async () => {})
+    await act(async () => { await result.current.send('doomed') })
+    expect(result.current.streaming).toBe(false)
+    expect(result.current.sendError).toBe('socket down')
+  })
+
+  it('switching threads clears the old transcript even when the new load fails', async () => {
+    const store = makeStore()
+    store.transcripts.set('a', [{ kind: 'user', ts: '2026-07-20T00:00:00Z', content: 'from A' }])
+    const { result, rerender } = renderHook(
+      ({ key }: { key: string }) =>
+        useConversationThread({
+          threadKey: key,
+          events: EVENTS,
+          keyOf: (p) => p.threadKey,
+          load: async (k) => (k === 'a' ? { messages: store.transcripts.get('a') ?? [] } : null),
+          post: async () => ({ ok: true }),
+        }),
+      { initialProps: { key: 'a' } },
+    )
+    await waitFor(() => expect(result.current.messages).toHaveLength(1))
+    rerender({ key: 'gone' })
+    await act(async () => {})
+    // Thread A's transcript must never render under thread "gone".
+    expect(result.current.messages).toEqual([])
+    expect(result.current.meta).toBeNull()
+  })
+})

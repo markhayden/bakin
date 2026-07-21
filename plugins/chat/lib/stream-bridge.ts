@@ -29,7 +29,6 @@ import { appendTranscriptRow, getChatSummary } from './store'
 
 const log = createLogger('chat-stream')
 
-export type { StartTurnResult }
 
 /**
  * Per-turn delivery framing — the chat counterpart of dispatch's OUTPUT

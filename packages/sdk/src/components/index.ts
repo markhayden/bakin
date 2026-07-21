@@ -67,7 +67,7 @@ export { FacetFilter } from '@/components/facet-filter'
 export type { FacetOption } from '@/components/facet-filter'
 /** Chat + plan-proposal review panel for brainstorm sessions. */
 // IntegratedBrainstorm was DELETED (2026-07): embedded conversation
-// surfaces compose ConversationPanel + useConversationStream instead
+// surfaces compose ConversationPanel + useConversationThread instead
 // (see the conversation-kit exports below).
 /** Render markdown content with syntax highlighting and link handling. */
 export { MarkdownContent } from '@/components/markdown-content'

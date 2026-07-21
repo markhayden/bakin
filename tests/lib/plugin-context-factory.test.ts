@@ -145,3 +145,62 @@ describe('ctx.conversations (#703)', () => {
     expect(meteredTurns[0]).toMatchObject({ workClass: 'chat', activityClass: 'user', agent: 'main' })
   })
 })
+
+describe('ctx.conversations guardrails (#703 review)', () => {
+  const baseConfig = {
+    name: 'demo4.brainstorm',
+    events: { chunk: 'demo4.chunk', done: 'demo4.done', error: 'demo4.error' },
+    payload: (key: string) => ({ threadKey: key }),
+    resolveThread: () => ({ agentId: 'main' }),
+    appendRow: () => {},
+    threadId: (key: string) => `demo4:${key}`,
+  }
+
+  function userCtx(pluginId = 'demo4') {
+    return buildPluginContext({
+      pluginId,
+      source: 'user',
+      services,
+      storage: {} as never,
+      events,
+      registrars: noopRegistrars(pluginId),
+      skipFileBackedWiring: true,
+      manifestPermissions: [],
+    })
+  }
+
+  it('rejects non-chat metering work classes (the spend dimension is enum-pinned)', () => {
+    expect(() =>
+      userCtx().conversations.createTurnService({
+        ...baseConfig,
+        metering: { workClass: 'dispatch' as never, runId: (k, t) => `brainstorm:demo4:${k}:${t}` },
+      }),
+    ).toThrow(/workClass/)
+  })
+
+  it('force-namespaces plugin run ids so they can never collide with task:/chat: ids', async () => {
+    const ctx = userCtx()
+    const service = ctx.conversations.createTurnService({
+      ...baseConfig,
+      metering: { workClass: 'chat', runId: () => 'task:t-123:d1' }, // spoof attempt
+    })
+    const turnCtx = {
+      events: { emit: () => {}, on: () => () => {}, once: () => () => {} },
+      runtime: { messaging: { stream: () => (async function* () { yield { type: 'done', usage: { inputTokens: 1, outputTokens: 1 } } })() } },
+    }
+    meteredTurns.length = 0
+    expect(await service.start(turnCtx as never, 'k1', 'hi')).toBe('accepted')
+    await service.waitFor('k1')
+    expect(meteredTurns).toHaveLength(1)
+    expect(String(meteredTurns[0].runId)).toBe('brainstorm:demo4:task:t-123:d1')
+  })
+
+  it('user-source plugins must namespace their turn events', () => {
+    expect(() =>
+      userCtx().conversations.createTurnService({
+        ...baseConfig,
+        events: { chunk: 'chat.chunk', done: 'demo4.done', error: 'demo4.error' }, // spoof attempt
+      }),
+    ).toThrow(/namespaced/)
+  })
+})

@@ -30,8 +30,12 @@ export interface ConversationAttentionTotals {
 export interface ConversationAttentionConfig {
   pluginId: string
   navItemId: string
-  /** The surface's bus event names; `refresh` lists extra total-bumping events. */
-  events: { chunk: string; done: string; error: string; refresh?: string[] }
+  /**
+   * The surface's bus event names; `refresh` lists extra total-bumping
+   * events — AT MOST TWO (hook-count constraints; extras would be
+   * silently dropped, so the type forbids them).
+   */
+  events: { chunk: string; done: string; error: string; refresh?: [string] | [string, string] }
   keyOf: (payload: PluginEventPayload) => string
   /** The thread key currently on screen ('' = none) — read at event time. */
   visibleKey: () => string
@@ -62,10 +66,13 @@ export function useConversationAttention(config: ConversationAttentionConfig): v
   const configRef = useRef(config)
   configRef.current = config
 
+  const refreshSeqRef = useRef(0)
   const refreshTotals = useCallback(async () => {
+    const seq = ++refreshSeqRef.current
     try {
       const totals = await configRef.current.refreshTotals()
-      if (!totals) return
+      // A superseded call's response must not regress newer totals.
+      if (!totals || seq !== refreshSeqRef.current) return
       setUnreadTotal(totals.unreadTotal)
       setInflight(new Set(totals.inflightKeys))
     } catch {
@@ -101,9 +108,14 @@ export function useConversationAttention(config: ConversationAttentionConfig): v
       settings: cfg.settings?.() ?? { sound: true, toasts: true },
     })
     if (actions.toast) {
-      // The closure reads `id` only on click, after toast() has returned it —
-      // navigating in-app dismisses the toast instead of leaving it to expire.
-      const id: string = toast(cfg.renderToast(done, () => useToastStore.getState().dismiss(id)), 'info')
+      // `toastId` is assigned right after toast() returns; the dismiss
+      // closure guards against a consumer invoking it synchronously during
+      // renderToast (before the id exists).
+      let toastId: string | null = null
+      const dismiss = () => {
+        if (toastId) useToastStore.getState().dismiss(toastId)
+      }
+      toastId = toast(cfg.renderToast(done, dismiss), 'info')
     }
     if (actions.sound) (cfg.chime ?? playReplyChime)()
     if (actions.browserNotification && done.preview) {

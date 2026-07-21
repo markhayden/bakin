@@ -693,6 +693,11 @@ export const brandRoutes = [
     body: { contentType: 'none' as const },
     responses: { 200: passthrough, 404: errorResponse },
     handler: async (_req, ctx, parsed) => {
+      // Abort any in-flight doc brainstorms first — a live turn would keep
+      // billing and its persistence would resurrect the deleted directory.
+      for (const turn of brandBrainstormTurns.listInFlight()) {
+        if (turn.key.startsWith(`${parsed.params.brandId}/`)) brandBrainstormTurns.abort(turn.key)
+      }
       if (!deleteBrand(parsed.params.brandId)) {
         return Response.json({ error: 'brand not found' }, { status: 404 })
       }
@@ -715,11 +720,17 @@ export const brandRoutes = [
       if (getBrand(parsed.params.brandId).status === 'missing') {
         return Response.json({ error: 'brand not found' }, { status: 404 })
       }
-      const key = docBrainstormKey(parsed.params.brandId, kind, parsed.params.name)
-      return Response.json({
-        messages: readDocBrainstorm(parsed.params.brandId, kind, parsed.params.name),
-        streaming: brandBrainstormTurns.isInFlight(key),
-      })
+      try {
+        const key = docBrainstormKey(parsed.params.brandId, kind, parsed.params.name)
+        return Response.json({
+          messages: readDocBrainstorm(parsed.params.brandId, kind, parsed.params.name),
+          streaming: brandBrainstormTurns.isInFlight(key),
+        })
+      } catch (err) {
+        // Invalid doc names throw BrandStoreError from the path guard — 400,
+        // not a 500.
+        return storeError(err)
+      }
     },
   }),
 
@@ -745,6 +756,7 @@ export const brandRoutes = [
       if (read.status === 'invalid') return Response.json({ error: read.error }, { status: 422 })
       const b = parsed.body
       const docName = parsed.params.name
+      try {
       const doc = b.docContent ?? readDoc(read.manifest.id, kind, docName) ?? ''
 
       // Cost caps: the prompt carries the doc + history EVERY turn, so bound
@@ -782,8 +794,11 @@ export const brandRoutes = [
         runtimeContent: prompt,
       })
       if (result === 'not_found') return Response.json({ error: 'brand not found' }, { status: 404 })
-      if (result === 'busy') return Response.json({ error: 'a brainstorm turn is already running for this doc' }, { status: 409 })
+      if (result === 'busy') return Response.json({ error: 'A brainstorm turn is already running for this doc' }, { status: 409 })
       return Response.json({ ok: true, streaming: true }, { status: 202 })
+      } catch (err) {
+        return storeError(err)
+      }
     },
   }),
 
@@ -880,6 +895,8 @@ export const brandRoutes = [
       const kind = parseKind(parsed.params.kind)
       if (!kind) return Response.json({ error: `invalid doc kind: ${parsed.params.kind}` }, { status: 400 })
       try {
+        // Abort a live brainstorm before the doc (and its transcript) go away.
+        brandBrainstormTurns.abort(docBrainstormKey(parsed.params.brandId, kind, parsed.params.name))
         if (!deleteDoc(parsed.params.brandId, kind, parsed.params.name)) {
           return Response.json({ error: 'doc not found' }, { status: 404 })
         }

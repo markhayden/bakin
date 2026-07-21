@@ -7,7 +7,7 @@
  * the conversation (including a mid-flight streaming indicator).
  */
 import { useCallback, useEffect, useState } from 'react'
-import { ConversationPanel, useConversationThread } from '@makinbakin/sdk/components'
+import { ConversationPanel, useConversationThread, type ConversationMessage } from '@makinbakin/sdk/components'
 import { toast, useMainAgentId } from '@makinbakin/sdk/hooks'
 import { pluginFetch } from '@makinbakin/sdk/utils'
 
@@ -37,7 +37,7 @@ export function DocBrainstormPanel({
     load: async () => {
       const res = await pluginFetch('brands', `${docPath}/brainstorm`)
       if (!res.ok) return null
-      return (await res.json()) as { messages: []; streaming?: boolean }
+      return (await res.json()) as { messages: ConversationMessage[]; streaming?: boolean }
     },
     post: async (_key, content) => {
       const res = await pluginFetch('brands', `${docPath}/brainstorm`, {
