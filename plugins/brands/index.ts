@@ -12,6 +12,7 @@ import { definePlugin } from '@bakin/core/routing'
 import type { BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
 import { createLogger } from '../../src/core/logger'
 import { brandRoutes } from './lib/routes'
+import { sweepInterruptedDocBrainstorms } from './lib/brainstorm-bridge'
 import { registerBrandsHooks } from './lib/register-hooks'
 import { registerBrandExecTools } from './lib/exec-tools'
 import { registerBrandsSearch } from './lib/search-sync'
@@ -39,6 +40,8 @@ const brandsPlugin: BakinPlugin = definePlugin({
   },
 
   async activate(ctx: PluginContext) {
+    // Stamp turns that died with the process (#706) — best-effort.
+    try { sweepInterruptedDocBrainstorms() } catch (err) { log.error('doc brainstorm sweep failed', err as Error) }
     registerBrandsHooks(ctx)
     registerBrandExecTools(ctx)
     registerBrandsSearch(ctx)

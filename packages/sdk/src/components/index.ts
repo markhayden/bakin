@@ -146,6 +146,7 @@ export type {
   ConversationDonePayload,
 } from '@/components/conversation/attention'
 export { playReplyChime } from '@/components/conversation/notification-sound'
+export { ConversationReplyToast } from '@/components/conversation/reply-toast'
 export { useConversationAttention } from '@/components/conversation/use-conversation-attention'
 export type {
   ConversationAttentionConfig,

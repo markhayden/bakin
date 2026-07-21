@@ -23,7 +23,7 @@ import {
   setPinned,
   setTitle,
 } from './store'
-import { abortChatTurn, isTurnInFlight, startChatTurn } from './stream-bridge'
+import { abortChatTurn, inflightTurnPreview, isTurnInFlight, startChatTurn } from './stream-bridge'
 
 /** Upload cap — generous for screenshots; the send path downscales to the 2 MB inline limit. */
 const ATTACHMENT_MAX_BYTES = 25 * 1024 * 1024
@@ -97,7 +97,14 @@ export const chatRoutes = [
     handler: async (_req, _ctx, { params }) => {
       const chat = getChatSummary(params.chatId)
       if (!chat) return Response.json({ error: 'chat not found' }, { status: 404 })
-      return Response.json({ chat, messages: readTranscript(params.chatId) })
+      const preview = inflightTurnPreview(params.chatId)
+      return Response.json({
+        chat: { ...chat, streaming: isTurnInFlight(params.chatId) },
+        messages: readTranscript(params.chatId),
+        // Mid-turn rehydration: what the running turn streamed so far, so a
+        // remount doesn't show the reply missing its beginning (#706).
+        ...(preview !== null ? { streamingText: preview } : {}),
+      })
     },
   }),
 

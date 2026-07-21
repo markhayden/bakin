@@ -249,6 +249,10 @@ export function readDocBrainstorm(brandId: string, kind: BrandDocKind, name: str
   }
 }
 
+/** Doc brainstorms are working conversations, not archives — bounded so the
+ *  per-row full-file rewrite stays cheap (#706). Oldest rows drop first. */
+export const DOC_BRAINSTORM_ROW_CAP = 300
+
 export function appendDocBrainstormRow(
   brandId: string,
   kind: BrandDocKind,
@@ -262,7 +266,25 @@ export function appendDocBrainstormRow(
   }
   const path = docBrainstormPath(brandId, kind, name)
   mkdirSync(join(brandDir(brandId), 'brainstorms', kind), { recursive: true })
-  atomicWriteJson(path, [...readDocBrainstorm(brandId, kind, name), row])
+  atomicWriteJson(path, [...readDocBrainstorm(brandId, kind, name), row].slice(-DOC_BRAINSTORM_ROW_CAP))
+}
+
+/** Every doc-brainstorm transcript key `<brandId>/<kind>/<name>` on disk. */
+export function listDocBrainstormKeys(): Array<{ brandId: string; kind: BrandDocKind; name: string }> {
+  const root = brandsDir()
+  if (!existsSync(root)) return []
+  const keys: Array<{ brandId: string; kind: BrandDocKind; name: string }> = []
+  for (const brand of readdirSync(root, { withFileTypes: true })) {
+    if (!brand.isDirectory()) continue
+    for (const kind of ['guidelines', 'lessons'] as const) {
+      const dir = join(root, brand.name, 'brainstorms', kind)
+      if (!existsSync(dir)) continue
+      for (const file of readdirSync(dir)) {
+        if (file.endsWith('.md.json')) keys.push({ brandId: brand.name, kind, name: file.slice(0, -'.json'.length) })
+      }
+    }
+  }
+  return keys
 }
 
 const lessonSlug = (title: string) =>

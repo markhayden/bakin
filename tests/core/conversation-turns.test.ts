@@ -476,4 +476,27 @@ describe('conversation turn service', () => {
     await service.waitFor('t12')
     expect(service.listInFlight()).toHaveLength(0)
   })
+
+  test('inflightPreview exposes streamed-so-far text mid-turn and null when idle (#706)', async () => {
+    const h = makeHarness()
+    const service = makeService(h)
+    let release: () => void = () => {}
+    const gate = new Promise<void>((r) => { release = r })
+    h.setStream(async function* () {
+      yield { type: 'text', content: 'stream so ' } as ChatChunk
+      yield { type: 'text', content: 'far' } as ChatChunk
+      await gate
+      yield { type: 'done' } as ChatChunk
+    })
+    expect(service.inflightPreview('t18')).toBeNull()
+    expect(await service.start(h.ctx, 't18', 'go')).toBe('accepted')
+    // Wait for both text chunks to land before peeking.
+    for (let i = 0; i < 50 && service.inflightPreview('t18') !== 'stream so far'; i++) {
+      await new Promise((r) => setTimeout(r, 2))
+    }
+    expect(service.inflightPreview('t18')).toBe('stream so far')
+    release()
+    await service.waitFor('t18')
+    expect(service.inflightPreview('t18')).toBeNull()
+  })
 })
