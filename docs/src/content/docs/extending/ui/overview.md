@@ -898,6 +898,33 @@ Pass the full entity set to `assignSeriesColors` before filtering or changing ti
 
 Never use color alone to carry series, state, or trend meaning. Keep a visible legend or series label, pair a sparkline with visible current-value and direction copy, and make pointer detail available from keyboard focus. `null`, omitted, and non-finite values are missing data: label them honestly and leave a visual gap instead of drawing through them or coercing them to zero.
 
+Use `LineChart` for change over time, including signed values; missing values break the line. Use `BarChart` for non-negative discrete comparisons, with `stacked` only when the total matters more than peer-to-peer comparison. Use `StackedColumnChart` for a dense composition whose named entities may be toggled. Pass its complete stable set through `series` (custom labels/colors) or `seriesKeys` (key-as-label shorthand), even when the current window omits an entity.
+
+```tsx
+import { BarChart, LineChart, StackedColumnChart } from '@makinbakin/sdk/charts'
+
+const series = [
+  { key: 'completed', label: 'Completed' },
+  { key: 'failed', label: 'Failed' },
+]
+const windows = [
+  { x: 'one', xLabel: 'Window 1', values: { completed: 8, failed: 2 } },
+  { x: 'two', xLabel: 'Window 2', values: { completed: 11 }, missingLabels: { failed: 'Not reported' } },
+]
+
+export function OperationalCharts() {
+  return (
+    <>
+      <LineChart label="Outcome trend" data={windows} series={series} />
+      <BarChart label="Outcome comparison" data={windows} series={series} />
+      <StackedColumnChart label="Outcome composition" data={windows} series={series} />
+    </>
+  )
+}
+```
+
+Each full chart owns a named, keyboard-scrollable plot boundary at narrow widths and a collapsed exact-data disclosure. Set `showDataTable={false}` on `BarChart` only when the same exact dataset is already rendered beside it; a chart without an equivalent table is not a supported composition. Axis labels may shorten visually to keep the plot readable, while the accessible mark labels and exact table retain the full text.
+
 ## Local Commands
 
 ```sh

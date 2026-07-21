@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from 'react'
 import { useRouter as useTanStackRouter, type HistoryLocation } from '@tanstack/react-router'
-import { UnsavedChangesDialog, type UnsavedChangesDialogProps } from '@bakin/ui/patterns'
+import { UnsavedChangesDialog, type UnsavedChangesDialogProps } from '@makinbakin/sdk/patterns'
 
 type RouteNavigationBlocker =
   | { status: 'idle' }

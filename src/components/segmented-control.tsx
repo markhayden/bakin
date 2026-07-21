@@ -1,7 +1,7 @@
 'use client'
 
-export { SegmentedControl } from '@bakin/ui/patterns'
+export { SegmentedControl } from '@makinbakin/sdk/patterns'
 export type {
   SegmentedControlOption,
   SegmentedControlProps,
-} from '@bakin/ui/patterns'
+} from '@makinbakin/sdk/patterns'

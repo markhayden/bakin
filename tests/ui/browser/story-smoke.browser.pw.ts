@@ -45,6 +45,9 @@ const actionableMetricsStory = '/iframe.html?id=patterns-status-and-metrics--act
 const chartExactDataStory = '/iframe.html?id=charts-exact-data-and-compact-trends--exact-data-table&viewMode=story'
 const chartPaletteStory = '/iframe.html?id=charts-exact-data-and-compact-trends--stable-palette&viewMode=story'
 const chartCompactTrendsStory = '/iframe.html?id=charts-exact-data-and-compact-trends--compact-trends&viewMode=story'
+const lineChartsStory = '/iframe.html?id=charts-line-bar-and-stacked-charts--line-charts&viewMode=story'
+const barChartsStory = '/iframe.html?id=charts-line-bar-and-stacked-charts--bar-charts&viewMode=story'
+const stackedColumnsStory = '/iframe.html?id=charts-line-bar-and-stacked-charts--stacked-columns&viewMode=story'
 
 test('public story keeps keyboard, focus, console, and responsive contracts', async ({ page }) => {
   const browserErrors: string[] = []
@@ -1322,6 +1325,94 @@ test('chart foundation preserves exact data, stable labels, gaps, and bounded ov
       scrollWidth: document.documentElement.scrollWidth,
     }))
     expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth)
+  })
+
+  expect(browserErrors).toEqual([])
+})
+
+test('visual charts preserve honest marks, exact data, and local plot overflow', async ({ page }) => {
+  const browserErrors: string[] = []
+  page.on('console', (message) => {
+    if (message.type() === 'error') browserErrors.push(`console: ${message.text()}`)
+  })
+  page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
+  page.on('requestfailed', (request) => {
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+  })
+
+  for (const [story, heading] of [
+    [lineChartsStory, 'A missing point is a gap, not a collapse to zero'],
+    [barChartsStory, 'Choose grouped bars for peers and stacked bars for totals'],
+    [stackedColumnsStory, 'Stable entities stay legible as the series count grows'],
+  ] as const) {
+    for (const width of responsiveWidths) {
+      await test.step(`${heading} remains document-contained at ${width}px`, async () => {
+        await page.setViewportSize({ width, height: 1000 })
+        await page.goto(story, { waitUntil: 'networkidle' })
+        await expect(page.getByRole('heading', { level: 1, name: heading })).toBeVisible()
+        const dimensions = await page.evaluate(() => ({
+          clientWidth: document.documentElement.clientWidth,
+          scrollWidth: document.documentElement.scrollWidth,
+        }))
+        expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth)
+      })
+    }
+  }
+
+  await test.step('line gaps stay absent while exact missing values and keyboard detail remain', async () => {
+    await page.setViewportSize({ width: 320, height: 1000 })
+    await page.goto(lineChartsStory, { waitUntil: 'networkidle' })
+    await expect(page.getByRole('img', { name: /Window 3 — Recovered/ })).toHaveCount(0)
+    await expect(page.locator('[data-slot="line-chart"] td[data-missing="true"]').filter({ hasText: 'Not reported' })).toHaveCount(1)
+    const mark = page.getByRole('img', { name: 'Window 4 — Recovered after retry: 3' })
+    await mark.focus()
+    await expect(mark).toBeFocused()
+    await expect(page.getByRole('tooltip')).toHaveText('Window 4 — Recovered after retry: 3')
+
+    const plot = page.getByRole('region', { name: 'Workflow outcomes plot' })
+    const dimensions = await plot.evaluate((element) => ({ clientWidth: element.clientWidth, scrollWidth: element.scrollWidth }))
+    expect(dimensions.scrollWidth).toBeGreaterThan(dimensions.clientWidth)
+    await plot.focus()
+    await plot.press('ArrowRight')
+    await expect.poll(() => plot.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0)
+  })
+
+  await test.step('grouped and stacked bars expose the same series values', async () => {
+    await page.goto(barChartsStory, { waitUntil: 'networkidle' })
+    await expect(page.getByRole('group', { name: 'Grouped workflow outcomes' })).toBeVisible()
+    await expect(page.getByRole('group', { name: 'Stacked workflow outcomes' })).toBeVisible()
+    const mark = page.getByRole('img', { name: 'Window 2 — Failed: 3' }).first()
+    await mark.focus()
+    await expect(mark).toBeFocused()
+    await expect(page.getByRole('tooltip')).toHaveText('Window 2 — Failed: 3')
+    await expect(page.locator('[data-slot="bar-chart"]').first().locator('[data-slot="chart-exact-table"]')).toContainText('Not reported')
+  })
+
+  await test.step('stacked columns expose missing, partial, Other, and visible toggle meaning', async () => {
+    await page.goto(stackedColumnsStory, { waitUntil: 'networkidle' })
+    const missing = page.getByRole('img', { name: 'Jul 17: Not reported' })
+    await expect(missing).toHaveAttribute('data-missing', 'true')
+    await expect(page.getByRole('img', { name: /Jul 20 · still accumulating \(in progress\)/ })).toHaveAttribute('data-partial', 'true')
+    await expect(page.getByRole('button', { name: 'Other (2)' })).toBeVisible()
+    const firstSeries = page.getByRole('button', { name: 'agent-01' })
+    await expect(firstSeries).toHaveAttribute('aria-pressed', 'true')
+    await firstSeries.click()
+    await expect(page.getByRole('button', { name: 'agent-01 (hidden)' })).toHaveAttribute('aria-pressed', 'false')
+    await missing.focus()
+    await expect(page.getByRole('tooltip')).toHaveText('Jul 17: Not reported')
+  })
+
+  await test.step('200% text preserves document containment and plot ownership', async () => {
+    await page.setViewportSize({ width: 320, height: 1000 })
+    await page.goto(stackedColumnsStory, { waitUntil: 'networkidle' })
+    await page.evaluate(() => { document.documentElement.style.fontSize = '200%' })
+    await expect(page.getByRole('heading', { name: 'Stable entities stay legible as the series count grows' })).toBeVisible()
+    const dimensions = await page.evaluate(() => ({
+      clientWidth: document.documentElement.clientWidth,
+      scrollWidth: document.documentElement.scrollWidth,
+    }))
+    expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth)
+    await expect(page.getByRole('region', { name: 'Agent activity by day plot' })).toBeVisible()
   })
 
   expect(browserErrors).toEqual([])

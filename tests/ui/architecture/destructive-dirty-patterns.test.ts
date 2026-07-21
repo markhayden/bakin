@@ -34,7 +34,7 @@ describe('canonical destructive and dirty-state patterns', () => {
   it('retains the shipped TanStack, anchor, and hard-navigation guard contract', () => {
     const guard = read('src/components/unsaved-changes-guard.tsx')
     const navigationGate = read('tests/architecture/no-hard-navigation.test.ts')
-    expect(guard).toContain("from '@bakin/ui/patterns'")
+    expect(guard).toContain("from '@makinbakin/sdk/patterns'")
     expect(guard).toContain('tanStackRouter.history.block')
     expect(guard).toContain("document.addEventListener('click'")
     expect(guard).toContain('window.location.assign(href)')

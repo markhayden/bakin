@@ -1248,6 +1248,31 @@ shifts initial host JS to 458,364 bytes (+1,358) without chart code entering the
 host artifact. No official page or plugin composition migration is included in
 T33a.
 
+**Status — T33b (2026-07-20):** Complete. `LineChart`, grouped/stacked
+`BarChart`, and `StackedColumnChart` now complete the focused charts entrypoint
+on the same exact-data, stable-palette, and keyboard-detail contract. Missing
+line values create real gaps, missing bar values never become zero, and dense
+stacked data keeps a sorted full entity set while folding only the ninth and
+later visual series into a named Other group; the exact table retains every
+underlying series. Long axis labels remain exact in accessible names and the
+table, plot labels truncate deliberately, partial and missing buckets have
+non-color treatments, and every narrow plot owns one named keyboard-scrollable
+overflow boundary. Three public stories add change-over-time, grouped versus
+stacked comparison, and dense composition guidance with empty, long-label,
+200%-text, missing-data, keyboard, and non-color coverage. Root compatibility
+adapters now consume the supported focused SDK entrypoints instead of reaching
+into the private UI package, and the unused legacy tooltip shim was removed.
+Thirty-five focused chart tests, all 100 public Storybook interaction/axe
+cases, all 82 exact desktop/mobile visual cases, and all 60
+Chromium/Firefox/WebKit behavior cases pass. The combined docs build validates
+48 pages and 268 typed routes, publishes all 100 stories, and consecutive
+public builds are deterministic. Canonical CSS is 298,306 bytes (-156 from
+T33a), initial host JS remains 458,364 bytes, the opt-in charts entrypoint
+remains 446 bytes direct / 35,096 reachable, and one shared CSS copy remains.
+The legacy-style ledger drops from 217 to 214 paths while all private-package
+ownership gates pass. No official page or plugin composition migration is
+included in T33b.
+
 **Acceptance:** importing base UI does not include charts; every chart has
 empty/overflow/multi-series/CVD/non-color stories and an exact table path.
 

@@ -1,2 +1,2 @@
-export { ChartExplainer } from '@bakin/ui/charts'
-export type { ChartExplainerProps } from '@bakin/ui/charts'
+export { ChartExplainer } from '@makinbakin/sdk/charts'
+export type { ChartExplainerProps } from '@makinbakin/sdk/charts'

@@ -157,6 +157,14 @@
   font-variant-numeric: tabular-nums;
 }
 
+.bakin-chart-story__chart-grid {
+  align-items: start;
+}
+
+.bakin-chart-story__chart-grid > * {
+  min-inline-size: 0;
+}
+
 @media (max-width: 30rem) {
   .bakin-chart-story__section {
     padding: var(--bakin-layout-space-4);

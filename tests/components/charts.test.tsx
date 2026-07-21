@@ -78,12 +78,12 @@ describe('StackedColumnChart', () => {
       values: Object.fromEntries(Array.from({ length: 10 }, (_, i) => [`a${i}`, 10 + i])),
     }]
     render(<StackedColumnChart data={wide} />)
-    expect(screen.getByText('Other (3)')).toBeDefined()
+    expect(screen.getByText('Other (2)')).toBeDefined()
   })
 
   it('honest empty state', () => {
     render(<StackedColumnChart data={[]} emptyLabel="No usage recorded yet." />)
-    expect(screen.getByText('No usage recorded yet.')).toBeDefined()
+    expect(screen.getByRole('status').textContent).toBe('No usage recorded yet.')
   })
 
   it('mirrors each column tooltip on keyboard focus and exposes the exact table', () => {

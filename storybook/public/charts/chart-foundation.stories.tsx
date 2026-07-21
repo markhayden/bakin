@@ -10,9 +10,9 @@ import {
   Sparkline,
   type ChartDatum,
 } from '@makinbakin/sdk/charts'
-import { Grid, PageShell, Stack } from '@makinbakin/sdk/layout'
+import { Grid } from '@makinbakin/sdk/layout'
 
-import './chart-foundation.stories.css'
+import { ChartStage } from './chart-story-stage'
 
 const meta = {
   title: 'Charts/Exact data and compact trends',
@@ -30,33 +30,6 @@ const meta = {
 
 export default meta
 type Story = StoryObj<typeof meta>
-
-function ChartStage({
-  eyebrow,
-  title,
-  description,
-  children,
-}: {
-  eyebrow: string
-  title: string
-  description: string
-  children: React.ReactNode
-}) {
-  return (
-    <main className="bakin-chart-story">
-      <PageShell width="wide">
-        <Stack gap="section">
-          <header className="bakin-chart-story__intro">
-            <p>{eyebrow}</p>
-            <h1>{title}</h1>
-            <p>{description}</p>
-          </header>
-          {children}
-        </Stack>
-      </PageShell>
-    </main>
-  )
-}
 
 const outcomeSeries = [
   { key: 'completed', label: 'Completed' },

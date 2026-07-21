@@ -1,7 +1,7 @@
 'use client'
 
-export { DangerZone } from '@bakin/ui/patterns'
+export { DangerZone } from '@makinbakin/sdk/patterns'
 export type {
   DangerZoneHeadingLevel,
   DangerZoneProps,
-} from '@bakin/ui/patterns'
+} from '@makinbakin/sdk/patterns'

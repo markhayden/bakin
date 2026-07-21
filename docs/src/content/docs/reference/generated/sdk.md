@@ -435,6 +435,7 @@ Isolated data-visualization components and contracts. Source: `packages/sdk/src/
 | Export | Description |
 | --- | --- |
 | `assignSeriesColors` | `@makinbakin/sdk/charts` — opt-in, accessible data visualization. |
+| `BarChart` | `@makinbakin/sdk/charts` — opt-in, accessible data visualization. |
 | `ChartDataTable` | `@makinbakin/sdk/charts` — opt-in, accessible data visualization. |
 | `ChartExplainer` | `@makinbakin/sdk/charts` — opt-in, accessible data visualization. |
 | `chartSeriesColor` | `@makinbakin/sdk/charts` — opt-in, accessible data visualization. |
@@ -442,12 +443,18 @@ Isolated data-visualization components and contracts. Source: `packages/sdk/src/
 | `CHART_OTHER_COLOR` | `@makinbakin/sdk/charts` — opt-in, accessible data visualization. |
 | `CHART_SERIES_COLORS` | `@makinbakin/sdk/charts` — opt-in, accessible data visualization. |
 | `CHART_TOKEN_COLORS` | `@makinbakin/sdk/charts` — opt-in, accessible data visualization. |
+| `LineChart` | `@makinbakin/sdk/charts` — opt-in, accessible data visualization. |
 | `Sparkline` | `@makinbakin/sdk/charts` — opt-in, accessible data visualization. |
+| `StackedColumnChart` | `@makinbakin/sdk/charts` — opt-in, accessible data visualization. |
+| `BarChartProps` | — |
 | `ChartDataTableProps` | — |
 | `ChartDatum` | — |
 | `ChartExplainerProps` | — |
 | `ChartSeries` | — |
+| `LineChartProps` | — |
 | `SparklineProps` | — |
+| `StackedColumnChartProps` | — |
+| `StackedColumnDatum` | — |
 
 ## `@makinbakin/sdk/conversation`
 

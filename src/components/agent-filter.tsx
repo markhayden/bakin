@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo } from 'react'
-import { AgentFilter as AgentFilterPresentation } from '@bakin/ui/patterns'
+import { AgentFilter as AgentFilterPresentation } from '@makinbakin/sdk/patterns'
 import { useAgentStore } from '@makinbakin/sdk/hooks'
 import { AgentAvatar } from '@/components/agent-avatar'
 

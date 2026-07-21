@@ -1,7 +1,7 @@
 'use client'
 
 import type { ComponentType, ReactNode } from 'react'
-import { StatTile as StatTilePresentation } from '@bakin/ui/patterns'
+import { StatTile as StatTilePresentation } from '@makinbakin/sdk/patterns'
 
 export interface StatTileProps {
   icon?: ComponentType<{ className?: string }>

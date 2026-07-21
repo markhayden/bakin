@@ -11,7 +11,7 @@
   },
   "css": {
     "canonicalPath": "packages/sdk/styles.css",
-    "canonicalBytes": 298462,
+    "canonicalBytes": 298306,
     "copyCount": 1,
     "copyPaths": [
       "packages/sdk/styles.css"

@@ -546,3 +546,43 @@ test('public compact chart trends visual baseline', async ({ page }) => {
     fullPage: true,
   })
 })
+
+test('public line chart visual baseline', async ({ page }) => {
+  await page.goto('/iframe.html?id=charts-line-bar-and-stacked-charts--line-charts&viewMode=story')
+  await expect(page.getByRole('heading', { level: 1, name: 'A missing point is a gap, not a collapse to zero' })).toBeVisible()
+  await expect(page.getByRole('group', { name: 'Workflow outcomes' })).toBeVisible()
+  await expect(page.getByRole('tooltip')).toHaveCount(0)
+  await expect.poll(() => page.getByRole('region', { name: 'Workflow outcomes plot' }).evaluate((element) => element.scrollLeft)).toBe(0)
+  await page.evaluate(async () => document.fonts.ready)
+  await expect(page).toHaveScreenshot('foundation-chart-line.png', {
+    animations: 'disabled',
+    caret: 'hide',
+    fullPage: true,
+  })
+})
+
+test('public bar chart visual baseline', async ({ page }) => {
+  await page.goto('/iframe.html?id=charts-line-bar-and-stacked-charts--bar-charts&viewMode=story')
+  await expect(page.getByRole('heading', { level: 1, name: 'Choose grouped bars for peers and stacked bars for totals' })).toBeVisible()
+  await expect(page.getByRole('group', { name: 'Grouped workflow outcomes' })).toBeVisible()
+  await expect(page.getByRole('tooltip')).toHaveCount(0)
+  await page.evaluate(async () => document.fonts.ready)
+  await expect(page).toHaveScreenshot('foundation-chart-bar.png', {
+    animations: 'disabled',
+    caret: 'hide',
+    fullPage: true,
+  })
+})
+
+test('public stacked column chart visual baseline', async ({ page }) => {
+  await page.goto('/iframe.html?id=charts-line-bar-and-stacked-charts--stacked-columns&viewMode=story')
+  await expect(page.getByRole('heading', { level: 1, name: 'Stable entities stay legible as the series count grows' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'agent-01' })).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByRole('tooltip')).toHaveCount(0)
+  await page.evaluate(async () => document.fonts.ready)
+  await expect(page).toHaveScreenshot('foundation-chart-stacked-column.png', {
+    animations: 'disabled',
+    caret: 'hide',
+    fullPage: true,
+  })
+})

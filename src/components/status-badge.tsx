@@ -4,7 +4,7 @@ import type { ComponentType, ReactNode } from 'react'
 import {
   StatusBadge as StatusBadgePresentation,
   type StatusTone as PresentationStatusTone,
-} from '@bakin/ui/patterns'
+} from '@makinbakin/sdk/patterns'
 
 export type StatusTone = 'neutral' | 'success' | 'warning' | 'destructive' | 'accent'
 

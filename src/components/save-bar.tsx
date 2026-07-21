@@ -2,8 +2,8 @@
 
 import { useEffect } from 'react'
 
-export { SaveBar } from '@bakin/ui/patterns'
-export type { SaveBarProps } from '@bakin/ui/patterns'
+export { SaveBar } from '@makinbakin/sdk/patterns'
+export type { SaveBarProps } from '@makinbakin/sdk/patterns'
 
 /**
  * Blocks the hard ways out (tab close, reload) while `dirty`. In-app route

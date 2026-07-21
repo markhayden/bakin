@@ -1,8 +1,8 @@
 'use client'
 
-export { ConfirmDialog } from '@bakin/ui/patterns'
+export { ConfirmDialog } from '@makinbakin/sdk/patterns'
 export type {
   ConfirmDialogCancelVariant,
   ConfirmDialogProps,
   ConfirmDialogTone,
-} from '@bakin/ui/patterns'
+} from '@makinbakin/sdk/patterns'

@@ -1,7 +1,10 @@
 import {
+  BarChart,
   ChartDataTable,
   ChartExplainer,
+  LineChart,
   Sparkline,
+  StackedColumnChart,
   type ChartDatum,
   type ChartSeries,
 } from '@makinbakin/sdk/charts'
@@ -13,6 +16,9 @@ export const validChartFoundation = (
   <>
     <ChartDataTable caption="Outcomes" data={data} series={series} defaultOpen />
     <Sparkline label="Outcome trend" values={[1, null, 3]} labels={['One', 'Two', 'Three']} />
+    <LineChart label="Outcome trend" data={data} series={series} />
+    <BarChart label="Outcome comparison" data={data} series={series} stacked />
+    <StackedColumnChart label="Outcome composition" data={data} series={series} />
     <ChartExplainer>Exact values remain available.</ChartExplainer>
   </>
 )

@@ -21,7 +21,7 @@ describe('canonical filter and navigation patterns', () => {
 
   it('retains app-aware agent lookup only in the compatibility adapter', () => {
     const adapter = read('src/components/agent-filter.tsx')
-    expect(adapter).toContain("from '@bakin/ui/patterns'")
+    expect(adapter).toContain("from '@makinbakin/sdk/patterns'")
     expect(adapter).toContain('useAgentStore')
     expect(adapter).toContain('AgentAvatar')
   })
