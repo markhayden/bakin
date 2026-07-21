@@ -22,7 +22,7 @@ and a verification step. Commit boundaries ARE the rollback checkpoints.
 [Z1 delete legacy path + final docs]   (PR 3, bakin — trivial, mechanical)
 ```
 
-**⚠️ Plan deviation from the locked "2 PRs" decision — needs Mark's sign-off:**
+**PR 3 — DECIDED (Mark approved 2026-07-20).** Historical framing below kept for the record. NOTE for readers: config shapes in this plan are PRE-BUILD working names (store.append→appendRow, makePayload→payload, onSettle→onSettled); the engine landed at `src/core/conversation-turns.ts` (not packages/core) with tests at `tests/core/conversation-turns.test.ts` — the SDK contract in `packages/sdk/src/types/conversation-turns.ts` is the reference, not this sketch. Original deviation note:
 deleting the per-request stream path (`useConversationStream` + client `sse.ts`)
 from the SDK before the bits plugins migrate would break the installed
 projects/messaging plugins at runtime (they load the SDK from the running
