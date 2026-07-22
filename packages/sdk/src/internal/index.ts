@@ -72,3 +72,7 @@ export { getLazyPluginsVersion } from '../lazy'
 /** Subscribe to lazy-plugin store mutations. Returns an unsubscribe fn. */
 export { subscribeLazyPlugins } from '../lazy'
 export type { LazyPluginIndex, PluginLoadState } from '../lazy'
+
+// ── Plugin UI ownership (host-injected; not an author-facing component) ────
+/** Transparent DOM/context boundary used around registered page and slot UI. */
+export { PluginOwnershipRoot, usePluginOwnership } from './plugin-ownership'

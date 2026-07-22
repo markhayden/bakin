@@ -21,6 +21,7 @@ import {
   getPluginRoute,
   getRegistryVersion,
   getRouteOwners,
+  PluginOwnershipRoot,
   requestRoutePlugins,
   retryPluginLoad,
   subscribeLazyPlugins,
@@ -116,13 +117,15 @@ function PluginCatchAllPage() {
 
   const Page = match.component
   return (
-    <PluginPageBoundary pluginId={match.pluginId} pathname={location.pathname}>
-      <Page
-        params={match.params}
-        pathname={location.pathname}
-        {...match.params}
-      />
-    </PluginPageBoundary>
+    <PluginOwnershipRoot pluginId={match.pluginId}>
+      <PluginPageBoundary pluginId={match.pluginId} pathname={location.pathname}>
+        <Page
+          params={match.params}
+          pathname={location.pathname}
+          {...match.params}
+        />
+      </PluginPageBoundary>
+    </PluginOwnershipRoot>
   )
 }
 

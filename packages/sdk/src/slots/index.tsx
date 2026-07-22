@@ -22,7 +22,8 @@
  * Test-only helpers are not exported — tests use the public unregister path.
  */
 
-import { Component, useEffect, useSyncExternalStore, type JSX, type ReactNode } from 'react'
+import { Component, Fragment, useEffect, useSyncExternalStore, type JSX, type ReactNode } from 'react'
+import { PluginOwnershipRoot } from '../internal/plugin-ownership'
 import { subscribeRegistry, getRegistryVersion } from '../register'
 import {
   getLazyPluginsVersion,
@@ -143,10 +144,17 @@ export function Slot({ name, ...props }: SlotProps): JSX.Element | null {
     <>
       {entries.map((entry, i) => {
         const C = entry.component
-        return (
-          <SlotEntryBoundary key={`${name}-${i}`} owner={entry.owner} slotName={name}>
+        const contribution = (
+          <SlotEntryBoundary owner={entry.owner} slotName={name}>
             <C {...props} />
           </SlotEntryBoundary>
+        )
+        return entry.owner ? (
+          <PluginOwnershipRoot key={`${name}-${i}`} pluginId={entry.owner}>
+            {contribution}
+          </PluginOwnershipRoot>
+        ) : (
+          <Fragment key={`${name}-${i}`}>{contribution}</Fragment>
         )
       })}
     </>

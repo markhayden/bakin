@@ -8,8 +8,9 @@
  * global Map keyed on slot name, so between-test isolation uses
  * `clearSlotsOwnedBy` with a test-scoped owner id.
  */
-import { afterEach, describe, expect, it, mock } from 'bun:test'
+import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { render, screen } from '@testing-library/react'
+import { useState } from 'react'
 import '../rtl-settle'
 
 // Defensive isolation per CLAUDE.md — this test is pure in-memory React but
@@ -41,8 +42,10 @@ mock.module('../../packages/core/src/content-dir', () => {
 })
 
 import { Slot, registerSlot, getSlotEntries, clearSlotsOwnedBy } from '@makinbakin/sdk/slots'
+import { usePluginOwnership } from '@makinbakin/sdk/internal'
 
 const TEST_OWNER = '__test_slots'
+const SECOND_TEST_OWNER = '__test_slots_second'
 
 function Caption({ text }: { text: string }) {
   return <span data-testid="caption">{text}</span>
@@ -54,6 +57,7 @@ function Alt({ text }: { text: string }) {
 
 afterEach(() => {
   clearSlotsOwnedBy(TEST_OWNER)
+  clearSlotsOwnedBy(SECOND_TEST_OWNER)
 })
 
 describe('@makinbakin/sdk/slots — registry', () => {
@@ -107,6 +111,123 @@ describe('@makinbakin/sdk/slots — <Slot>', () => {
     const body = screen.getByTestId('echo').textContent!
     expect(body).toContain('"foo":"bar"')
     expect(body).toContain('"count":42')
+  })
+
+  it('wraps every owned contribution in an independent plugin root', () => {
+    registerSlot('test.owned', Caption, 10, TEST_OWNER)
+    registerSlot('test.owned', Alt, 20, SECOND_TEST_OWNER)
+
+    const { container } = render(<Slot name="test.owned" text="owned" />)
+    const roots = container.querySelectorAll('[data-bakin-plugin]')
+
+    expect(roots).toHaveLength(2)
+    expect(roots[0].getAttribute('data-bakin-plugin')).toBe(TEST_OWNER)
+    expect(roots[0].querySelector('[data-testid="caption"]')).not.toBeNull()
+    expect(roots[1].getAttribute('data-bakin-plugin')).toBe(SECOND_TEST_OWNER)
+    expect(roots[1].querySelector('[data-testid="alt"]')).not.toBeNull()
+  })
+
+  it('gives a nested contribution its own nearest plugin root', () => {
+    function NestedSlot() {
+      return (
+        <section data-testid="outer-contribution">
+          <Slot name="test.nested-inner" text="nested" />
+        </section>
+      )
+    }
+
+    registerSlot('test.nested-outer', NestedSlot, 10, TEST_OWNER)
+    registerSlot('test.nested-inner', Caption, 10, SECOND_TEST_OWNER)
+
+    render(<Slot name="test.nested-outer" />)
+
+    const outer = screen.getByTestId('outer-contribution')
+    const inner = screen.getByTestId('caption')
+    expect(outer.closest('[data-bakin-plugin]')?.getAttribute('data-bakin-plugin')).toBe(TEST_OWNER)
+    expect(inner.closest('[data-bakin-plugin]')?.getAttribute('data-bakin-plugin')).toBe(SECOND_TEST_OWNER)
+  })
+
+  it('provides the nearest plugin identity to ownership-aware SDK internals', () => {
+    function OwnershipProbe() {
+      return <span data-testid="ownership-probe">{usePluginOwnership() ?? 'none'}</span>
+    }
+
+    registerSlot('test.ownership-context', OwnershipProbe, 10, TEST_OWNER)
+
+    render(<Slot name="test.ownership-context" />)
+
+    expect(screen.getByTestId('ownership-probe').textContent).toBe(TEST_OWNER)
+  })
+
+  it('preserves contribution identity when another owned entry registers', () => {
+    let mounts = 0
+    function StatefulContribution() {
+      const [instance] = useState(() => ++mounts)
+      return <span data-testid="stateful-contribution">{instance}</span>
+    }
+
+    registerSlot('test.identity', StatefulContribution, 10, TEST_OWNER)
+    const { rerender } = render(<Slot name="test.identity" text="first" />)
+
+    registerSlot('test.identity', Alt, 20, SECOND_TEST_OWNER)
+    rerender(<Slot name="test.identity" text="second" />)
+
+    expect(screen.getByTestId('stateful-contribution').textContent).toBe('1')
+    expect(mounts).toBe(1)
+  })
+
+  it('keeps a crashing contribution fallback inside its plugin root', () => {
+    const consoleError = spyOn(console, 'error').mockImplementation(() => {})
+    function BrokenContribution(): never {
+      throw new Error('expected slot ownership test crash')
+    }
+
+    try {
+      registerSlot('test.owned-error', BrokenContribution, 10, TEST_OWNER)
+
+      render(<Slot name="test.owned-error" />)
+
+      const alert = screen.getByRole('alert')
+      expect(alert.textContent).toContain(`Plugin "${TEST_OWNER}" failed to render this section.`)
+      expect(alert.closest('[data-bakin-plugin]')?.getAttribute('data-bakin-plugin')).toBe(TEST_OWNER)
+    } finally {
+      consoleError.mockRestore()
+    }
+  })
+
+  it('retains a stable root for an owned background contribution that renders null', () => {
+    function BackgroundContribution() {
+      return null
+    }
+
+    registerSlot('test.background', BackgroundContribution, 10, TEST_OWNER)
+
+    const { container } = render(<Slot name="test.background" />)
+
+    expect(container.firstElementChild?.getAttribute('data-bakin-plugin')).toBe(TEST_OWNER)
+    expect(container.firstElementChild?.childElementCount).toBe(0)
+  })
+
+  it('removes an ownership root when its contribution is cleared', () => {
+    registerSlot('test.ownership-cleanup', Caption, 10, TEST_OWNER)
+    const { container, rerender } = render(<Slot name="test.ownership-cleanup" text="cleanup" />)
+
+    expect(container.querySelector(`[data-bakin-plugin="${TEST_OWNER}"]`)).not.toBeNull()
+
+    clearSlotsOwnedBy(TEST_OWNER)
+    rerender(<Slot name="test.ownership-cleanup" text="cleanup" />)
+
+    expect(container.querySelector('[data-bakin-plugin]')).toBeNull()
+    expect(container.firstChild).toBeNull()
+  })
+
+  it('preserves the DOM shape of ownerless compatibility registrations', () => {
+    registerSlot('test.ownerless', Caption)
+
+    const { container } = render(<Slot name="test.ownerless" text="legacy" />)
+
+    expect(container.querySelector('[data-bakin-plugin]')).toBeNull()
+    expect(container.firstElementChild?.getAttribute('data-testid')).toBe('caption')
   })
 })
 
