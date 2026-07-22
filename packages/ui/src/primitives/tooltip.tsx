@@ -4,6 +4,7 @@ import { Tooltip as TooltipPrimitive } from '@base-ui/react/tooltip'
 
 import { mergeClassName } from '../utils'
 import { anchoredPositionerClasses } from './option-list'
+import { PluginPortalBoundary } from './portal-ownership'
 
 export type TooltipProviderProps = TooltipPrimitive.Provider.Props
 export type TooltipProps = TooltipPrimitive.Root.Props
@@ -25,8 +26,12 @@ export function TooltipTrigger(props: TooltipTriggerProps) {
   return <TooltipPrimitive.Trigger data-slot="tooltip-trigger" {...props} />
 }
 
-export function TooltipPortal(props: TooltipPortalProps) {
-  return <TooltipPrimitive.Portal data-slot="tooltip-portal" {...props} />
+export function TooltipPortal({ children, ...props }: TooltipPortalProps) {
+  return (
+    <TooltipPrimitive.Portal data-slot="tooltip-portal" {...props}>
+      <PluginPortalBoundary>{children}</PluginPortalBoundary>
+    </TooltipPrimitive.Portal>
+  )
 }
 
 const tooltipClasses = [

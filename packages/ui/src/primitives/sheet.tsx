@@ -12,6 +12,7 @@ import {
   modalCloseButtonClasses,
   useModalBusy,
 } from './modal-context'
+import { PluginPortalBoundary } from './portal-ownership'
 
 export type SheetSide = 'top' | 'right' | 'bottom' | 'left'
 export type SheetProps<Payload = unknown> = SheetPrimitive.Root.Props<Payload> & { busy?: boolean }
@@ -63,8 +64,12 @@ export function SheetClose({ disabled, ...props }: SheetCloseProps) {
   return <SheetPrimitive.Close data-slot="sheet-close" disabled={disabled || busy} {...props} />
 }
 
-export function SheetPortal(props: SheetPortalProps) {
-  return <SheetPrimitive.Portal data-slot="sheet-portal" {...props} />
+export function SheetPortal({ children, ...props }: SheetPortalProps) {
+  return (
+    <SheetPrimitive.Portal data-slot="sheet-portal" {...props}>
+      <PluginPortalBoundary>{children}</PluginPortalBoundary>
+    </SheetPrimitive.Portal>
+  )
 }
 
 export function SheetOverlay({ className, ...props }: SheetOverlayProps) {

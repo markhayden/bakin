@@ -11,6 +11,7 @@ import {
   optionScrollButtonClasses,
   optionSeparatorClasses,
 } from './option-list'
+import { PluginPortalBoundary } from './portal-ownership'
 
 export type SelectProps<Value, Multiple extends boolean | undefined = false> = SelectPrimitive.Root.Props<Value, Multiple>
 export type SelectGroupProps = SelectPrimitive.Group.Props
@@ -85,25 +86,27 @@ export function SelectContent({
 }: SelectContentProps) {
   return (
     <SelectPrimitive.Portal>
-      <SelectPrimitive.Positioner
-        side={side}
-        sideOffset={sideOffset}
-        align={align}
-        alignOffset={alignOffset}
-        alignItemWithTrigger={alignItemWithTrigger}
-        className="isolate z-50"
-      >
-        <SelectPrimitive.Popup
-          data-slot="select-content"
-          data-align-trigger={alignItemWithTrigger}
-          className={mergeClassName(optionPopupClasses, className)}
-          {...props}
+      <PluginPortalBoundary>
+        <SelectPrimitive.Positioner
+          side={side}
+          sideOffset={sideOffset}
+          align={align}
+          alignOffset={alignOffset}
+          alignItemWithTrigger={alignItemWithTrigger}
+          className="isolate z-50"
         >
-          <SelectScrollUpButton />
-          <SelectPrimitive.List data-slot="select-list" className={optionListClasses}>{children}</SelectPrimitive.List>
-          <SelectScrollDownButton />
-        </SelectPrimitive.Popup>
-      </SelectPrimitive.Positioner>
+          <SelectPrimitive.Popup
+            data-slot="select-content"
+            data-align-trigger={alignItemWithTrigger}
+            className={mergeClassName(optionPopupClasses, className)}
+            {...props}
+          >
+            <SelectScrollUpButton />
+            <SelectPrimitive.List data-slot="select-list" className={optionListClasses}>{children}</SelectPrimitive.List>
+            <SelectScrollDownButton />
+          </SelectPrimitive.Popup>
+        </SelectPrimitive.Positioner>
+      </PluginPortalBoundary>
     </SelectPrimitive.Portal>
   )
 }

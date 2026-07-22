@@ -63,6 +63,8 @@ export type {
 } from './forms'
 
 export { Banner, SystemState, Toast, ToastRegion, systemStateDefaults } from './states'
+export { PluginPortalOwnershipProvider } from './primitives/portal-ownership'
+export type { PluginPortalOwnershipProviderProps } from './primitives/portal-ownership'
 export type {
   BannerProps,
   BannerTone,

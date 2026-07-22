@@ -200,6 +200,12 @@ never sit at rest in a card — surface on hover or behind the detail view.
 - Failed CSS validation removes both emitted CSS and its paired client bundle.
   Fresh local artifacts are rechecked before activation, so cached output is
   not an enforcement bypass.
+- SDK dialogs, sheets, popovers, menus, selects, and tooltips automatically
+  carry the host-injected plugin identity through their portals. Plugin code
+  uses the normal public primitive APIs and must not add a manual ownership
+  wrapper or portal container just to recover scoped styles. Shell toasts stay
+  host-owned; plugins request them through `toast()` instead of mounting a
+  `ToastRegion`.
 
 ## 12. Migration tracking and exceptions
 

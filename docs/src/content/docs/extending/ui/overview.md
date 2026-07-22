@@ -855,6 +855,8 @@ Plugins may import their own domain stylesheet from `client.tsx`. The plugin bui
 
 The build fails with the author CSS file, location, reason, and repair guidance when a stylesheet escapes that boundary. Document selectors (`html`, `body`, `:host`, and `:global`), generic or foreign plugin roots, retained `@import` and `@font-face`, declarations of reserved `--bakin-*` properties, and another plugin's asset URL are not valid domain CSS. Use SDK patterns and semantic tokens for shared presentation; use plugin-prefixed custom properties and packaged assets for domain-specific values.
 
+SDK dialogs, sheets, popovers, menus, selects, and tooltips automatically retain the host-injected plugin identity when they portal outside the page or slot DOM subtree. Use the ordinary public primitive APIs; do not add a manual `data-bakin-plugin` wrapper or a custom portal container just to make scoped CSS reach an overlay. Toast presentation remains host-owned, so plugins call `toast()` rather than mounting `ToastRegion`.
+
 Standalone Storybook instances, browser previews, and external test harnesses do not have the host stylesheet. Import the public artifact once at the preview or application root:
 
 ```ts

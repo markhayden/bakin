@@ -267,6 +267,12 @@ That package export is the exact compiled stylesheet used by the host and the
 public component catalog. Plugin-owned CSS remains for domain-specific styling
 and should be scoped to the plugin root.
 
+SDK dialogs, sheets, popovers, menus, selects, and tooltips automatically keep
+the host-injected plugin identity when their content is portalled. Plugin code
+uses the normal primitive APIs without adding ownership wrappers or custom
+portal containers for styling. Toast presentation remains host-owned; plugins
+request toasts through the SDK instead of mounting a toast region.
+
 ## Repository
 
 This package is developed alongside Bakin in the

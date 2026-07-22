@@ -12,6 +12,7 @@ import {
   modalCloseButtonClasses,
   useModalBusy,
 } from './modal-context'
+import { PluginPortalBoundary } from './portal-ownership'
 
 export type DialogProps<Payload = unknown> = DialogPrimitive.Root.Props<Payload> & { busy?: boolean }
 export type DialogTriggerProps<Payload = unknown> = DialogPrimitive.Trigger.Props<Payload>
@@ -53,8 +54,12 @@ export function DialogTrigger<Payload>(props: DialogTriggerProps<Payload>) {
   return <DialogPrimitive.Trigger data-slot="dialog-trigger" {...props} />
 }
 
-export function DialogPortal(props: DialogPortalProps) {
-  return <DialogPrimitive.Portal data-slot="dialog-portal" {...props} />
+export function DialogPortal({ children, ...props }: DialogPortalProps) {
+  return (
+    <DialogPrimitive.Portal data-slot="dialog-portal" {...props}>
+      <PluginPortalBoundary>{children}</PluginPortalBoundary>
+    </DialogPrimitive.Portal>
+  )
 }
 
 export function DialogClose({ disabled, ...props }: DialogCloseProps) {

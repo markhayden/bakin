@@ -5,6 +5,7 @@ import { Popover as PopoverPrimitive } from '@base-ui/react/popover'
 
 import { cn, mergeClassName } from '../utils'
 import { anchoredPopupClasses, anchoredPositionerClasses } from './option-list'
+import { PluginPortalBoundary } from './portal-ownership'
 
 export type PopoverProps = PopoverPrimitive.Root.Props
 export type PopoverTriggerProps = PopoverPrimitive.Trigger.Props
@@ -24,8 +25,12 @@ export function PopoverTrigger(props: PopoverTriggerProps) {
   return <PopoverPrimitive.Trigger data-slot="popover-trigger" {...props} />
 }
 
-export function PopoverPortal(props: PopoverPortalProps) {
-  return <PopoverPrimitive.Portal data-slot="popover-portal" {...props} />
+export function PopoverPortal({ children, ...props }: PopoverPortalProps) {
+  return (
+    <PopoverPrimitive.Portal data-slot="popover-portal" {...props}>
+      <PluginPortalBoundary>{children}</PluginPortalBoundary>
+    </PopoverPrimitive.Portal>
+  )
 }
 
 export function PopoverContent({

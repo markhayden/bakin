@@ -1705,6 +1705,22 @@ fixtures/tests.\
 **Description:** Ensure system portals preserve plugin identity/style scope,
 the host loads one SDK stylesheet, and plugin bundles do not embed it.
 
+**Status (2026-07-22):** Complete. The authenticated host ownership root now
+bridges plugin identity through SDK dialog, sheet, popover, menu, select, and
+tooltip portals without requiring plugin-authored containers. Host-owned
+overlays remain unowned. Integration coverage exercises every portal family,
+including two simultaneous plugin contexts and the host case. The maintainer
+Storybook fixture proves two plugins can reuse the same domain class and custom
+property while receiving distinct computed styles; live Chromium checks cover
+popover, dialog, tooltip, host toast, responsive overflow, and console errors.
+The existing runtime contract continues to assert one `/globals.css` link, no
+CSS import-map entries, and rejection of canonical-style copies in plugin CSS.
+The reviewed production baseline records one 240,479-byte stylesheet,
+391,410 bytes of initial host JavaScript, and a 2,308-byte increase across the
+shared SDK vendor chunks for the portal ownership bridge.
+T40 promotes this scenario into the deterministic public SDK testing harness
+for the durable cross-browser conformance gate.
+
 **Acceptance:** dialog/popover/tooltip/toast examples from two plugins can
 coexist without selector/token bleed; portal content retains ownership;
 production build proves exactly one stylesheet copy.
@@ -1720,9 +1736,9 @@ assertions/tests.\
 
 ### Checkpoint 4A — Isolation contract
 
-- [ ] Seeded page, slot, selector, portal, and duplicate-style failures bite.
-- [ ] Existing routing/slot behavior remains green.
-- [ ] Two plugins can render overlays simultaneously without visual bleed.
+- [x] Seeded page, slot, selector, portal, and duplicate-style failures bite.
+- [x] Existing routing/slot behavior remains green.
+- [x] Two plugins can render overlays simultaneously without visual bleed.
 
 ### T40 — Build the deterministic plugin fixture host
 

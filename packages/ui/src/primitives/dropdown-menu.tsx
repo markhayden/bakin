@@ -12,6 +12,7 @@ import {
   optionPopupClasses,
   optionSeparatorClasses,
 } from './option-list'
+import { PluginPortalBoundary } from './portal-ownership'
 
 export type DropdownMenuProps = MenuPrimitive.Root.Props
 export type DropdownMenuPortalProps = MenuPrimitive.Portal.Props
@@ -36,8 +37,12 @@ export function DropdownMenu(props: DropdownMenuProps) {
   return <MenuPrimitive.Root data-slot="dropdown-menu" {...props} />
 }
 
-export function DropdownMenuPortal(props: DropdownMenuPortalProps) {
-  return <MenuPrimitive.Portal data-slot="dropdown-menu-portal" {...props} />
+export function DropdownMenuPortal({ children, ...props }: DropdownMenuPortalProps) {
+  return (
+    <MenuPrimitive.Portal data-slot="dropdown-menu-portal" {...props}>
+      <PluginPortalBoundary>{children}</PluginPortalBoundary>
+    </MenuPrimitive.Portal>
+  )
 }
 
 export function DropdownMenuTrigger(props: DropdownMenuTriggerProps) {
