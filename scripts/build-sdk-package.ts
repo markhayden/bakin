@@ -52,6 +52,7 @@ export const SDK_EXPORTS: SdkExportEntry[] = [
   { exportPath: './routing', source: 'packages/sdk/src/routing/index.ts', importPath: './routing/index.js', typesPath: './routing/index.d.ts' },
   { exportPath: './navigation', source: 'packages/sdk/src/navigation/index.ts', importPath: './navigation/index.js', typesPath: './navigation/index.d.ts' },
   { exportPath: './testing', source: 'packages/sdk/src/testing/index.ts', importPath: './testing/index.js', typesPath: './testing/index.d.ts' },
+  { exportPath: './testing/ui', source: 'packages/sdk/src/testing/ui/index.ts', importPath: './testing/ui/index.js', typesPath: './testing/ui/index.d.ts' },
   { exportPath: './internal', source: 'packages/sdk/src/internal/index.ts', importPath: './internal/index.js', typesPath: './internal/index.d.ts' },
 ]
 
@@ -145,7 +146,7 @@ function mapSdkModule(rest: string): string | null {
   if (rest === 'index') return 'index'
   if (rest === 'register') return 'register'
   if (rest.endsWith('/index')) return rest
-  if (rest === 'types' || rest === 'routing' || rest === 'ui' || rest === 'layout' || rest === 'patterns' || rest === 'charts' || rest === 'conversation' || rest === 'content' || rest === 'hooks' || rest === 'components' || rest === 'slots' || rest === 'utils' || rest === 'metadata' || rest === 'testing' || rest === 'internal') {
+  if (rest === 'types' || rest === 'routing' || rest === 'ui' || rest === 'layout' || rest === 'patterns' || rest === 'charts' || rest === 'conversation' || rest === 'content' || rest === 'hooks' || rest === 'components' || rest === 'slots' || rest === 'utils' || rest === 'metadata' || rest === 'testing' || rest === 'testing/ui' || rest === 'internal') {
     return `${rest}/index`
   }
   return rest === 'hooks/router' ? 'hooks/router' : null

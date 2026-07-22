@@ -1746,6 +1746,25 @@ assertions/tests.\
 containing real styles, wrappers, routing, slots, overlay roots, and controllable
 runtime data.
 
+**Status (2026-07-22):** Complete. The browser-only
+`@makinbakin/sdk/testing/ui` entrypoint now mounts real client registrations
+through the production route matcher, slot registry, plugin ownership roots,
+and portal bridge without importing the Node-backed test harness. The runtime
+freezes time, random values, UUIDs, theme, motion preference, route intent,
+viewport intent, and an explicit reject-unhandled network allowlist. Its
+memory router reuses the routing-overhaul plain-string query serializer through
+host-shell plumbing rather than introducing a second URL contract. Public
+Storybook covers registered page and slot contributions from two owners,
+owner-scoped portals, a host-owned toast root, desktop/mobile intent, and all
+five canonical replacement states plus ready content. The published-package
+consumer resolves declarations and JavaScript without repo-private leaks; the
+reference plugin still installs, builds, activates, and uses only public SDK
+imports. Focused Chromium exercises route changes, responsive containment, and
+the full state matrix; the same Playwright test is assigned to the repository's
+Chromium, Firefox, and WebKit projects for CI. Verification also includes 127
+public Storybook interactions/accessibility checks and 186 quick architecture
+checks.
+
 **Acceptance:** external-style plugins mount page and slot contributions using
 only public SDK imports; fixtures select desktop/mobile and all system states;
 no Bakin user state is required.

@@ -97,8 +97,9 @@ describe('Storybook catalog audiences', () => {
       "import * as Conversation from '@makinbakin/sdk/conversation'",
       "import * as Content from '@makinbakin/sdk/content'",
       "import * as Navigation from '@makinbakin/sdk/navigation'",
+      "import * as TestingUi from '@makinbakin/sdk/testing/ui'",
       "export default { title: 'Focused', tags: ['public'] }",
-      'export const Default = { args: { Layout, Patterns, Charts, Conversation, Content, Navigation } }',
+      'export const Default = { args: { Layout, Patterns, Charts, Conversation, Content, Navigation, TestingUi } }',
     ].join('\n'))
     expect(validatePublicStoryBoundary(root)).toEqual([])
 

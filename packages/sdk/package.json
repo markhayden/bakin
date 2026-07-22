@@ -22,6 +22,7 @@
     "./routing": "./src/routing/index.ts",
     "./navigation": "./src/navigation/index.ts",
     "./testing": "./src/testing/index.ts",
+    "./testing/ui": "./src/testing/ui/index.ts",
     "./internal": "./src/internal/index.ts",
     "./styles.css": "./styles.css"
   },

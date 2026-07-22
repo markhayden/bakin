@@ -110,11 +110,52 @@ The public npm package exposes these sub-paths:
 | `@makinbakin/sdk/metadata` | Docs-aware contract metadata helpers |
 | `@makinbakin/sdk/routing` | Typed declarative route helpers |
 | `@makinbakin/sdk/navigation` | Browser links, URL state, history, and dirty-exit guards |
+| `@makinbakin/sdk/testing/ui` | Deterministic browser fixture host for plugin pages and slots |
 | `@makinbakin/sdk/styles.css` | Canonical compiled design-system stylesheet |
 
 Use the focused entrypoints for new plugin UI and browser navigation. Existing
 `@makinbakin/sdk/components` consumers migrate as their replacement exports
 land; do not add new dependencies on that legacy barrel.
+
+## Browser UI fixtures
+
+Use `PluginUiFixtureHost` from `@makinbakin/sdk/testing/ui` to exercise a
+plugin's real client registration without a Bakin account, host database, or
+live service. The browser-only entrypoint mounts registered pages and slots
+through the production route matcher, ownership wrappers, and SDK portal
+roots. It also provides deterministic time, random values, UUIDs, theme,
+motion preferences, routes, and explicit network responses.
+
+```tsx
+import '@makinbakin/sdk/styles.css'
+import { PluginUiFixtureHost } from '@makinbakin/sdk/testing/ui'
+import { pluginRegistration } from './client-registration'
+
+export function PluginPreview() {
+  return (
+    <PluginUiFixtureHost
+      registrations={[pluginRegistration]}
+      fixture={{
+        fixedNow: '2026-01-15T12:00:00.000Z',
+        route: '/bookmarks?tag=release',
+        randomSeed: 'bookmarks-preview',
+        colorScheme: 'dark',
+        reducedMotion: true,
+        viewport: 'desktop',
+        network: [{ path: '/api/plugins/bookmarks', status: 200, json: { bookmarks: [] } }],
+      }}
+      slots={[{ name: 'home-widget', label: 'Home widget contributions' }]}
+    />
+  )
+}
+```
+
+Import the canonical stylesheet exactly once at the preview root; installed
+plugin clients still leave stylesheet loading to Bakin. Apply the matching
+`PLUGIN_UI_VIEWPORTS.desktop` or `.mobile` dimensions in the browser runner—the
+fixture's viewport field freezes responsive preferences and records intent but
+cannot resize the browser from inside React. Unlisted requests fail loudly so
+fixtures cannot silently depend on a developer machine or user state.
 
 The prerelease migration surface is machine-inventoried in
 [`design-system/public-api.json`](https://github.com/markhayden/bakin/blob/main/design-system/public-api.json).

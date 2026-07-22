@@ -90,7 +90,7 @@ comparison, and deletion of replaced styling/allowances.
 - [ ] T38 Implement plugin CSS containment validation
 - [ ] T39 Make overlays and runtime CSS containment-safe
 - [ ] Checkpoint 4A: isolation contract green
-- [ ] T40 Build the deterministic plugin fixture host
+- [x] T40 Build the deterministic plugin fixture host
 - [ ] T41 Implement the plugin UI conformance command
 - [ ] T42a Rebuild the Bakin reference plugin as an exemplar
 - [ ] T42b Rebuild the Bits official template as an exemplar

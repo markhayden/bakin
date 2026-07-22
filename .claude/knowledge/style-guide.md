@@ -206,6 +206,13 @@ never sit at rest in a card — surface on hover or behind the detail view.
   wrapper or portal container just to recover scoped styles. Shell toasts stay
   host-owned; plugins request them through `toast()` instead of mounting a
   `ToastRegion`.
+- Plugin browser fixtures use `PluginUiFixtureHost` from
+  `@makinbakin/sdk/testing/ui`. They pass real client registrations through the
+  production matcher, slots, ownership roots, and portal bridge; they do not
+  recreate host routing or scope wrappers. Freeze route, time, randomness,
+  theme, motion, viewport intent, and every network response, then apply the
+  exported desktop/mobile dimensions in the browser runner. Unhandled network
+  traffic is a fixture failure.
 
 ## 12. Migration tracking and exceptions
 

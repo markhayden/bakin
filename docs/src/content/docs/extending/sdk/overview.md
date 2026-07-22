@@ -26,6 +26,7 @@ description: Use @makinbakin/sdk to build plugins with supported registration, r
 | `@makinbakin/sdk/metadata` | docs-aware contract helper types and compatibility exports |
 | `@makinbakin/sdk/routing` | typed declarative route helpers re-exported from the canonical routing package |
 | `@makinbakin/sdk/navigation` | browser links, router hooks, URL state, history, and dirty-exit protection |
+| `@makinbakin/sdk/testing/ui` | deterministic browser fixture host for registered plugin pages and slots |
 | `@makinbakin/sdk/styles.css` | canonical compiled design-system stylesheet |
 
 </div>
@@ -86,6 +87,30 @@ The Bakin host loads the design-system stylesheet once. Installed plugin clients
 ```ts
 import '@makinbakin/sdk/styles.css'
 ```
+
+## Test Plugin UI Without Bakin User State
+
+`PluginUiFixtureHost` from `@makinbakin/sdk/testing/ui` mounts normal plugin
+client registrations through Bakin's production route matcher, slot registry,
+plugin ownership roots, and portal ownership bridge. It is browser-only and
+separate from the Node-backed `@makinbakin/sdk/testing` server harness.
+
+Give the fixture an explicit route, desktop or mobile viewport name, fixed
+time, random seed, color scheme, motion preference, and network responses.
+Unhandled requests throw instead of falling through to live services. The
+same registration can therefore cover its page, slot contributions, scoped
+domain CSS, portalled overlays, and canonical ready/empty/loading/error states
+without accounts, local storage, or production data.
+
+The viewport name records fixture intent and controls deterministic media
+preferences. Your browser runner must also apply the exported
+`PLUGIN_UI_VIEWPORTS` dimensions; a component cannot resize its own browser
+viewport. Import `@makinbakin/sdk/styles.css` once at the standalone preview
+root. Do not add that stylesheet import to an installed plugin client.
+
+See **Testing / Plugin UI fixture host** in the public component catalog for
+the registered page-and-slots, mobile, scoped-overlay, and system-state
+examples.
 
 ## Conversation Kit
 

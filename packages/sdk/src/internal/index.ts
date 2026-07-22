@@ -44,6 +44,10 @@ export { getSearchHitRenderersSnapshot } from '../register'
 export { subscribeSearchHitRenderers } from '../register'
 export type { ClientRouteEntry, MatchedPluginRoute } from '../register'
 
+// ── Host router compatibility (shared with the browser fixture) ────────────
+/** Parse opaque string query values without TanStack JSON coercion. */
+export { parseSearchPlain, stringifySearchPlain } from '../navigation/search-params'
+
 // ── Lazy plugin loading (manifest-driven demand loading) ────────────────────
 /** Install the manifest-derived slot/route ownership index for lazy loading. */
 export { configureLazyPlugins } from '../lazy'

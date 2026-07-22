@@ -49,6 +49,9 @@ export function createRoute<T>(opts: T): T {
 export function createRouter<T>(opts: T): T {
   return opts
 }
+export function createMemoryHistory<T>(opts: T): T {
+  return opts
+}
 export function redirect(opts: unknown): never {
   throw new Error('redirect() called outside RouterProvider — test-shim stub')
 }

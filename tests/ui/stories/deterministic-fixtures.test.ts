@@ -86,7 +86,7 @@ describe('deterministic Storybook fixtures', () => {
     expect(response.status).toBe(200)
     expect(await response.json()).toEqual({ items: [{ id: 'item-1' }] })
     await expect(fixtureFetch('/api/plugins/example/items?state=closed')).rejects.toThrow(
-      'Unhandled story fixture request: GET /api/plugins/example/items?state=closed',
+      'Unhandled plugin UI fixture request: GET /api/plugins/example/items?state=closed',
     )
   })
 })
