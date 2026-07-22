@@ -173,19 +173,28 @@ export async function checkAgentBurnWith(
       || lastScan?.report.coverage.status !== 'complete'
       || reports.some((report) => report.totalObservedTokens === null)
     if (incompleteCoverage) {
+      const coverageReason = lastScan
+        ? scanInFlight
+          ? 'scan_in_progress'
+          : scanFresh
+          ? lastScan.report.coverage.reason
+          : 'scan_stale'
+        : scanInFlight ? 'scan_in_progress' : 'scan_not_run'
+      // The card says WHICH state it is in and what resolves it — a bare
+      // "coverage is incomplete" left operators guessing whether to wait
+      // or act (field feedback, 2026-07-22).
+      const coverageReasonText: Record<string, string> = {
+        scan_in_progress: 'A transcript scan is running right now — this resolves itself when it completes; recheck in a minute.',
+        scan_not_run: 'No transcript scan has completed since the server started — the first scan resolves this on its own; recheck in a few minutes.',
+        scan_stale: 'The last transcript scan is older than its freshness window — the scanner may be stuck; rerun this check, and report it if staleness persists.',
+      }
       const transcriptUnknown = healthUnknown({
         key: 'usage',
         summary: 'Agent token burn could not be verified.',
         detail: 'Runtime transcript coverage is incomplete, so zero observed usage cannot be confirmed.',
         evidence: {
           coverage: scanFresh ? lastScan?.report.coverage.status ?? 'unavailable' : 'unavailable',
-          reason: lastScan
-            ? scanInFlight
-              ? 'scan_in_progress'
-              : scanFresh
-              ? lastScan.report.coverage.reason
-              : 'scan_stale'
-            : scanInFlight ? 'scan_in_progress' : 'scan_not_run',
+          reason: coverageReason,
           scanAgeMs,
           staleAfterMs,
         },
@@ -193,7 +202,7 @@ export async function checkAgentBurnWith(
           key: 'transcript-coverage-incomplete',
           title: 'Agent usage coverage is incomplete',
           class: 'evidence_gap',
-          impact: 'Health cannot confirm total or unattributed agent token use until runtime transcripts are fully scanned.',
+          impact: `Health cannot confirm total or unattributed agent token use until runtime transcripts are fully scanned. ${coverageReasonText[coverageReason] ?? `Coverage gap: ${coverageReason}.`}`,
           disposition: 'watch',
           resources: [{ kind: 'system', id: 'usage-history', label: 'Usage history' }],
           resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },

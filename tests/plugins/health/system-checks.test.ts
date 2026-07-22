@@ -1147,6 +1147,7 @@ describe('plugin registration', () => {
       'search-engine-burn-restart',
       'search-outbox-revive',
       'search-spin-rebuild',
+      'spend-evidence-refresh-pricing',
       'sweep-run-dirs',
       'sync-skill',
     ])

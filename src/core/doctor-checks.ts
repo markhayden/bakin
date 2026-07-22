@@ -152,10 +152,11 @@ function verificationObservation(
       key: def.id,
       title: `${def.name} could not be verified`,
       // This card means the CHECK ITSELF failed to produce evidence (it
-      // crashed or timed out) — the underlying error is in this card's
-      // detail. Operators repeatedly hit these with no path forward
-      // (field feedback, 2026-07-22): name the way out.
-      impact: 'Bakin cannot currently confirm whether this part of the system is healthy. The check itself failed to run — expand this card to read the underlying error.',
+      // crashed or timed out). The error goes INTO the card copy — the
+      // first version told operators to "expand this card" for a detail
+      // the incident view never rendered (field feedback, 2026-07-22:
+      // instructions must reference what is actually on screen).
+      impact: `Bakin cannot currently confirm whether this part of the system is healthy — the check crashed instead of reporting evidence. Error: ${reason.slice(0, 300)}`,
       disposition: 'watch',
       resources: [{ kind: 'plugin', id: def.owner.id, label: def.owner.label }],
       resolution: {
@@ -163,9 +164,8 @@ function verificationObservation(
         type: 'instructions',
         label: 'Diagnose the failed check',
         steps: [
-          'Expand this card — the detail is the actual error the check hit while gathering evidence.',
-          'Fix what it names (a missing tool, unreadable file, or unreachable service), then run checks again.',
-          'If the error is opaque or persists across reruns, it is a Bakin bug worth reporting — the check should report evidence, not crash.',
+          'Fix what the error above names (a missing tool, unreadable file, or unreachable service), then run checks again.',
+          'If the error is opaque or persists across reruns, it is a Bakin bug worth reporting — a check should report evidence, not crash.',
         ],
       },
     },

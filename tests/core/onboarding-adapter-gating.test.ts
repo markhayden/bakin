@@ -11,6 +11,10 @@ import { randomUUID } from 'crypto'
 const testDir = join(tmpdir(), `bakin-test-onboard-gate-${Date.now()}-${randomUUID()}`)
 process.env.BAKIN_HOME = testDir
 process.env.PI_HOME = join(testDir, 'pi')
+// Isolate antfly's home too: checkAll runs the search-models component,
+// and without this the check reads (and once hashed) the REAL ~/.antfly
+// model files — hundreds of MB of I/O inside a test (2026-07-22 flake).
+process.env.ANTFLY_HOME = join(testDir, 'antfly')
 
 const contentDirMock = () => ({
   getContentDir: () => testDir,
