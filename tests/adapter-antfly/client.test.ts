@@ -306,3 +306,37 @@ describe('identity', () => {
     expect(c.mappingFingerprint()).not.toBe(a.mappingFingerprint())
   })
 })
+
+describe('multiQuery fan-out budget (2026-07-22)', () => {
+  it('sequential (rerank) fan-out shares ONE wall-clock — total ≈ budget, not budget × tables', async () => {
+    const { AntflySearchClient } = await import('../../packages/adapter-antfly/src/client')
+    const { DEFAULT_SETTINGS } = await import('../../packages/adapter-antfly/src/defaults')
+    // Every table query hangs until its own deadline: pre-fix, N tables
+    // took N × deadline back-to-back (the 32-second /api/search spinner).
+    const slowFetch = (async (_url: unknown, init?: { signal?: AbortSignal }) => {
+      await new Promise((resolve, reject) => {
+        const t = setTimeout(resolve, 60_000)
+        init?.signal?.addEventListener('abort', () => { clearTimeout(t); reject(new Error('aborted')) })
+      })
+      return new Response('{}', { status: 200 })
+    }) as unknown as typeof fetch
+    const client = new AntflySearchClient({ ...DEFAULT_SETTINGS, url: 'http://127.0.0.1:9' }, { fetchImpl: slowFetch })
+
+    const started = Date.now()
+    const results = await client.multiQuery(
+      Array.from({ length: 6 }, (_, i) => ({
+        table: `t${i}`,
+        query: { text: 'x', limit: 1, rerank: true, deadlineMs: 500 },
+      })),
+    )
+    const took = Date.now() - started
+
+    expect(results).toHaveLength(6)
+    // Total ≈ one budget (+ grace), NOT 6 × 500ms = 3s+.
+    expect(took).toBeLessThan(2_500)
+    // Every table answered honestly (omitted/degraded), none silently.
+    for (const r of results) {
+      expect(r.diagnostics?.budget).toMatch(/omitted|degraded/)
+    }
+  })
+})

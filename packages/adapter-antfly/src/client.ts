@@ -44,6 +44,9 @@ const QUERY_TIMEOUT_MS = 15_000
 const DEADLINE_GRACE_MS = 500
 /** Below this remaining budget the fts-only degrade retry can't help. */
 const MIN_RETRY_BUDGET_MS = 100
+/** Scan fallback is a canary/availability safety net, not a full query engine. */
+const SCAN_FALLBACK_MAX_ROWS = 250
+const SCAN_FALLBACK_MAX_MS = 750
 const WRITE_TIMEOUT_MS = 30_000
 const AVAILABLE_TTL_MS = 3_000
 
@@ -163,11 +166,14 @@ export class AntflySearchClient implements SearchAdapter {
       }
       return []
     },
+    // Creates/drops ride the write gate too: they provision/tear down
+    // embedding legs, and concurrent structural ops are part of the same
+    // Metal-crash surface as concurrent batch writes (2026-07-22 ladder).
     create: async (name: string, config: TableConfig): Promise<void> => {
-      await this.request('POST', paths.table(name), buildTableCreate(config, this.settings))
+      await this.serializedWrite(() => this.request('POST', paths.table(name), buildTableCreate(config, this.settings)))
     },
     drop: async (name: string): Promise<void> => {
-      await this.request('DELETE', paths.table(name))
+      await this.serializedWrite(() => this.request('DELETE', paths.table(name)))
     },
     stats: async (name: string): Promise<TableStats | null> => {
       // Doc count from index status, NEVER a query (queries can hang during backfill).
@@ -192,21 +198,41 @@ export class AntflySearchClient implements SearchAdapter {
     }
   }
 
+  /**
+   * ONE write in flight, ever, process-wide. Root-caused 2026-07-22 via a
+   * minimal shell ladder: THREE parallel batch-write streams into
+   * embedding-leg tables CRASH the engine outright
+   * (metal-command-buffer-failed, MTLCommandBufferErrorDomain, process
+   * exit) — reproducible with plain curl, no Bakin involved. launchd's
+   * respawn masked the crash as mysterious "wedging" for a whole night.
+   * Serializing writes at the client honors the engine's real concurrency
+   * contract; reads are unaffected. Remove when upstream survives
+   * concurrent embed-bearing writes (antfly issue pending).
+   */
+  private writeGate: Promise<unknown> = Promise.resolve()
+  private serializedWrite<T>(fn: () => Promise<T>): Promise<T> {
+    const next = this.writeGate.then(fn, fn)
+    this.writeGate = next.catch(() => {})
+    return next
+  }
+
   documents = {
     index: async (table: string, key: string, doc: Document): Promise<void> => {
-      await this.request('POST', paths.batch(table), buildBatchInserts([{ key, doc }]))
+      await this.serializedWrite(() => this.request('POST', paths.batch(table), buildBatchInserts([{ key, doc }])))
     },
     batchIndex: async (table: string, items: IndexItem[], opts?: { sync?: boolean }): Promise<BatchResult> => {
       if (items.length === 0) return { indexed: 0, failed: [] }
-      const result = await this.requestJson<WireBatchResponse>('POST', paths.batch(table), buildBatchInserts(items, opts))
+      const result = await this.serializedWrite(() =>
+        this.requestJson<WireBatchResponse>('POST', paths.batch(table), buildBatchInserts(items, opts)))
       return { indexed: result?.inserted ?? items.length, failed: [] }
     },
     remove: async (table: string, key: string): Promise<void> => {
-      await this.request('POST', paths.batch(table), buildBatchDeletes([key]))
+      await this.serializedWrite(() => this.request('POST', paths.batch(table), buildBatchDeletes([key])))
     },
     batchRemove: async (table: string, keys: string[]): Promise<number> => {
       if (keys.length === 0) return 0
-      const result = await this.requestJson<WireBatchResponse>('POST', paths.batch(table), buildBatchDeletes(keys))
+      const result = await this.serializedWrite(() =>
+        this.requestJson<WireBatchResponse>('POST', paths.batch(table), buildBatchDeletes(keys)))
       return result?.deleted ?? 0
     },
     get: async (table: string, key: string): Promise<Document | null> => {
@@ -225,7 +251,7 @@ export class AntflySearchClient implements SearchAdapter {
       const current = await this.documents.get(table, key)
       if (!current) return // absent — nothing to transform
       const next = await fn(current)
-      await this.request('POST', paths.batch(table), buildBatchInserts([{ key, doc: next }]))
+      await this.serializedWrite(() => this.request('POST', paths.batch(table), buildBatchInserts([{ key, doc: next }])))
     },
   }
 
@@ -245,12 +271,19 @@ export class AntflySearchClient implements SearchAdapter {
       // diagnostics, never silent.
       const deadlineMiss = err instanceof SearchEngineUnavailableError
         && /timed out|TimeoutError|antfly 504 /i.test(err.message)
-      if (!deadlineMiss || request.semantic_search === undefined) throw err
-      const remaining = q.deadlineMs === undefined ? undefined : q.deadlineMs - (Date.now() - started)
-      if (remaining !== undefined && remaining < MIN_RETRY_BUDGET_MS) throw err
-      const ftsOnly = buildQueryRequest(table, { ...q, strategy: 'fts', deadlineMs: remaining }, this.settings)
-      main = await this.runQuery(table, ftsOnly, remaining)
-      degraded = true
+      if (deadlineMiss && request.semantic_search !== undefined) {
+        const remaining = (q.deadlineMs ?? QUERY_TIMEOUT_MS) - (Date.now() - started)
+        if (remaining < MIN_RETRY_BUDGET_MS) return this.scanFallbackQuery(table, q, err)
+        const ftsOnly = buildQueryRequest(table, { ...q, strategy: 'fts', deadlineMs: remaining }, this.settings)
+        try {
+          main = await this.runQuery(table, ftsOnly, remaining)
+          degraded = true
+        } catch (ftsErr) {
+          return this.scanFallbackQuery(table, { ...q, strategy: 'fts' }, ftsErr)
+        }
+      } else {
+        return this.scanFallbackQuery(table, q, err)
+      }
     }
     // rc.18 totals and aggregation buckets are corpus-true on every
     // response — the old page-scoped-totals count twin is gone.
@@ -264,6 +297,56 @@ export class AntflySearchClient implements SearchAdapter {
       }
     }
     return result
+  }
+
+  private async scanFallbackQuery(table: string, q: Query, error: unknown): Promise<QueryResult> {
+    const text = (q.text ?? '').trim()
+    const needle = text === '*' ? '' : text.toLowerCase()
+    const requested = q.adapterOptions?.searchableFields
+    const fields = Array.isArray(requested) ? requested.filter((f): f is string => typeof f === 'string') : undefined
+    const limit = q.limit ?? this.settings.search.defaultLimit
+    const maxRows = typeof q.adapterOptions?.scanFallbackMaxRows === 'number'
+      ? Math.max(1, Math.min(SCAN_FALLBACK_MAX_ROWS, Math.floor(q.adapterOptions.scanFallbackMaxRows)))
+      : SCAN_FALLBACK_MAX_ROWS
+    const remaining = q.deadlineMs === undefined ? SCAN_FALLBACK_MAX_MS : q.deadlineMs
+    const maxMs = Math.max(1, Math.min(SCAN_FALLBACK_MAX_MS, remaining))
+    const stopAt = Date.now() + maxMs
+    const hits: QueryResult['hits'] = []
+    let seen = 0
+    let capped = false
+    try {
+      // The scan's HTTP request must inherit the remaining budget: with the
+      // default write timeout it hung 30s AFTER the main query had already
+      // spent the deadline (2026-07-22 — the /api/search spinner's tail).
+      for await (const row of this.scan(table, fields && fields.length > 0 ? { fields } : undefined, maxMs + DEADLINE_GRACE_MS)) {
+        seen += 1
+        const haystack = Object.values(row.document).map((v) => String(v ?? '')).join('\n').toLowerCase()
+        if (needle.length === 0 || haystack.includes(needle)) {
+          hits.push({ key: row.key, document: row.document, score: needle.length > 0 ? 0.1 : 0 })
+          if (hits.length >= limit) break
+        }
+        if (seen >= maxRows || Date.now() >= stopAt) {
+          capped = true
+          break
+        }
+      }
+    } catch (scanErr) {
+      throw error instanceof Error ? error : scanErr
+    }
+    return {
+      hits,
+      total: hits.length,
+      diagnostics: {
+        strategy: 'fts',
+        budget: 'degraded',
+        adapter: {
+          degraded: 'query-endpoint-unavailable-scan-fallback',
+          error: error instanceof Error ? error.message : String(error),
+          scanned: seen,
+          capped,
+        },
+      },
+    }
   }
 
   private runQuery(table: string, request: WireQueryRequest, deadlineMs?: number): Promise<WireQueryEnvelope | null> {
@@ -297,11 +380,31 @@ export class AntflySearchClient implements SearchAdapter {
     }
     // Parallel by default; sequential only when something reranks (the
     // reranker serializes on one Metal queue — concurrent reranked queries
-    // back up behind each other anyway).
+    // back up behind each other anyway). SEQUENTIAL SHARES ONE WALL-CLOCK:
+    // per-table deadlines multiplied by table count turned "2s budget" into
+    // a 32-second spinner under rebuild load (2026-07-22 — every table
+    // burned its own slice back-to-back). The fan-out's budget is the MAX
+    // single-table deadline; tables past it are honestly omitted.
     let results: QueryResult[]
     if (queries.some((entry) => entry.query.rerank)) {
+      const budgetMs = Math.max(...queries.map((entry) => entry.query.deadlineMs ?? QUERY_TIMEOUT_MS))
+      const endAt = Date.now() + budgetMs
       results = []
-      for (const entry of queries) results.push(await run(entry))
+      for (const entry of queries) {
+        const remaining = endAt - Date.now()
+        if (remaining < 150) {
+          results.push({
+            hits: [],
+            total: 0,
+            diagnostics: { strategy: 'none', budget: 'omitted', adapter: { error: 'fan-out budget exhausted' } },
+          })
+          continue
+        }
+        const clamped = entry.query.deadlineMs === undefined || entry.query.deadlineMs > remaining
+          ? { ...entry, query: { ...entry.query, deadlineMs: remaining } }
+          : entry
+        results.push(await run(clamped))
+      }
     } else {
       results = await Promise.all(queries.map(run))
     }
@@ -314,10 +417,10 @@ export class AntflySearchClient implements SearchAdapter {
     return results
   }
 
-  async *scan(table: string, opts?: ScanOpts): AsyncIterable<ScannedDocument> {
+  async *scan(table: string, opts?: ScanOpts, timeoutMs?: number): AsyncIterable<ScannedDocument> {
     // The lookup endpoint requires a body — `{}` scans all keys.
     const body = opts?.fields?.length ? { fields: opts.fields } : {}
-    const response = await this.request('POST', paths.lookup(table), body)
+    const response = await this.request('POST', paths.lookup(table), body, timeoutMs)
     const text = await response.text()
     let warnedKeyless = false
     for (const line of text.split('\n')) {

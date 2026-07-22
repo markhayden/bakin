@@ -121,8 +121,8 @@ export function servicePaths(): ServicePaths {
  * The server argv — identical across launchd/systemd/child so behavior never
  * depends on the supervisor. Preloads every antfly-provider embedder so the
  * first embed doesn't hit a cold-model-load-vs-timeout wedge.
- * (`standalone` since rc.19 — upstream renamed the single-process
- * subcommand from `swarm`; flags are unchanged.)
+ * (rc.18 uses `swarm`; rc.19+ renamed it `standalone` — flip this with
+ * the pin when a healthy release ships.)
  */
 export function buildServiceArgv(settings: AntflySettings, paths: ServicePaths): string[] {
   const url = new URL(settings.url)
@@ -133,7 +133,7 @@ export function buildServiceArgv(settings: AntflySettings, paths: ServicePaths):
       .map((e) => `embedder:${e.model}`),
   )]
   return [
-    paths.binary, 'standalone',
+    paths.binary, 'swarm',
     '--host', '127.0.0.1',
     '--port', String(port),
     '--health-port', String(port + 1),

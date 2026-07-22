@@ -228,8 +228,13 @@ describe('blue/green migration', () => {
 
     // Green's legs never report ready → converge cannot pass → parked.
     const stuck = createMockSearchAdapter()
-    // seed the stuck adapter with the blue table state so drops/stats resolve
+    // seed the stuck adapter with the blue table state INCLUDING its docs —
+    // an empty blue would (correctly) trigger the dominance flip instead.
     await stuck.tables.create(blue, makeDef().config)
+    await stuck.documents.batchIndex(blue, [
+      { key: 'n1', doc: { title: 'first note' } },
+      { key: 'n2', doc: { title: 'second note' } },
+    ])
     const neverReady: SearchAdapter = {
       ...stuck,
       tables: {
@@ -345,6 +350,216 @@ describe('blue/green migration', () => {
     await resumeMigrations(adapter, [makeDef({ schemaVersion: 2 })], 'fp-a')
     expect(queryTarget('bakin_notes')).toMatch(/^bakin_notes_v2_/)
     expect(tableStatus('bakin_notes')?.state).toBe('active')
+  })
+})
+
+describe('2026-07-21 redesign: identity, progress-aware converge, chain split', () => {
+  it('resume replays the RECORDED nonce target — never a recomputed alias of the live table', async () => {
+    // The critical five-lens finding: resume used to recompute the
+    // fingerprint WITHOUT the rebuild nonce, alias the live physical, and
+    // the post-flip drop deleted it.
+    const adapter = createMockSearchAdapter()
+    await ensureTable(adapter, makeDef(), 'fp-a')
+    const live = queryTarget('bakin_notes')!
+
+    // Park a nonce'd rebuild (never-ready green, fast zero-progress park).
+    const neverReady: SearchAdapter = {
+      ...adapter,
+      tables: {
+        ...adapter.tables,
+        health: async (name) => (name === live
+          ? [{ leg: 'full_text', state: 'ready' as const, indexedCount: 2 }]
+          : [{ leg: 'full_text', state: 'building' as const, indexedCount: 0 }]),
+      },
+    }
+    const parked = await rebuildTable(neverReady, makeDef(), 'fp-a', { zeroProgressParkMs: 60, convergePollMs: 20 })
+    expect(parked).toBe('parked')
+    const recordedGreen = tableStatus('bakin_notes')!.migratingTo!
+    expect(recordedGreen).not.toBe(live)
+
+    // Resume with a healthy engine: it must complete toward the RECORDED
+    // green, and the live table must survive until the flip (then drop).
+    await resumeMigrations(adapter, [makeDef()], 'fp-a')
+    expect(queryTarget('bakin_notes')).toBe(recordedGreen)
+    expect(tableStatus('bakin_notes')?.state).toBe('active')
+    expect(await adapter.tables.stats(recordedGreen)).not.toBeNull()
+  })
+
+  it('plain ensure NO-OPS on a nonce\'d rebuild generation (no boomerang back to the base name)', async () => {
+    // Soak cycle-1 finding (2026-07-22): ensure compared physical NAMES, so
+    // every rebuilt (nonce'd) table read as drift and migrated BACK to the
+    // base name — re-running enumerators and re-embedding forever.
+    const adapter = createMockSearchAdapter()
+    await ensureTable(adapter, makeDef(), 'fp-a')
+    const rebuilt = await rebuildTable(adapter, makeDef(), 'fp-a')
+    expect(rebuilt).toBe('migrated')
+    const nonced = queryTarget('bakin_notes')!
+
+    const again = await ensureTable(adapter, makeDef(), 'fp-a')
+    expect(again).toBe('unchanged')
+    expect(queryTarget('bakin_notes')).toBe(nonced)
+
+    // A REAL identity change (new mapping fingerprint) still migrates.
+    const moved = await ensureTable(adapter, makeDef(), 'fp-b')
+    expect(moved).toBe('migrated')
+    expect(queryTarget('bakin_notes')).not.toBe(nonced)
+
+    // And a schemaVersion bump still migrates even with the same config.
+    const bumped = await ensureTable(adapter, makeDef({ schemaVersion: 2 }), 'fp-b')
+    expect(bumped).toBe('migrated')
+    expect(queryTarget('bakin_notes')).toMatch(/^bakin_notes_v2_/)
+  })
+
+  it('repairs (never drops) a legacy row whose migration target aliases the live physical', async () => {
+    const adapter = createMockSearchAdapter()
+    await ensureTable(adapter, makeDef(), 'fp-a')
+    const live = queryTarget('bakin_notes')!
+
+    // Hand-craft the recompute-era corruption: migrating toward yourself.
+    const { openNamedDb } = await import('../../packages/core/src/storage/db')
+    const store = openNamedDb('search', () => join(testDir, 'search.db'))
+    store.db().prepare(
+      "UPDATE search_tables SET state = 'migrating', migrating_to = physical, migrating_fp = NULL, migration_phase = 'parked' WHERE logical = 'bakin_notes'",
+    ).run()
+
+    await resumeMigrations(adapter, [makeDef()], 'fp-a')
+    expect(tableStatus('bakin_notes')?.state).toBe('active')
+    expect(queryTarget('bakin_notes')).toBe(live)
+    // The live table was never dropped.
+    expect(await adapter.tables.stats(live)).not.toBeNull()
+  })
+
+  it('parks a frozen green on the zero-progress window, far before the hard timeout', async () => {
+    const adapter = createMockSearchAdapter()
+    await ensureTable(adapter, makeDef(), 'fp-a')
+    const live = queryTarget('bakin_notes')!
+    const neverReady: SearchAdapter = {
+      ...adapter,
+      tables: {
+        ...adapter.tables,
+        health: async (name) => (name === live
+          ? [{ leg: 'full_text', state: 'ready' as const, indexedCount: 2 }]
+          : [{ leg: 'full_text', state: 'building' as const, indexedCount: 0, pendingCount: 0 }]),
+      },
+    }
+    const started = Date.now()
+    const result = await ensureTable(neverReady, makeDef({ schemaVersion: 3 }), 'fp-a', {
+      convergeTimeoutMs: 60_000,
+      convergePollMs: 20,
+      zeroProgressParkMs: 100,
+    })
+    expect(result).toBe('parked')
+    // Parked on frozen progress in well under a second — not the 60s cap.
+    expect(Date.now() - started).toBeLessThan(5_000)
+  })
+
+  it('keeps waiting while a green is PROGRESSING, then flips when legs go ready', async () => {
+    const adapter = createMockSearchAdapter()
+    await ensureTable(adapter, makeDef(), 'fp-a')
+    const live = queryTarget('bakin_notes')!
+    let polls = 0
+    const progressing: SearchAdapter = {
+      ...adapter,
+      tables: {
+        ...adapter.tables,
+        health: async (name) => {
+          if (name === live) return [{ leg: 'full_text', state: 'ready' as const, indexedCount: 2 }]
+          polls += 1
+          // Pending decreases each poll (real progress), ready on the 6th —
+          // total wait far exceeds the zero-progress window.
+          return polls < 6
+            ? [{ leg: 'sem', state: 'building' as const, indexedCount: polls, pendingCount: 6 - polls }]
+            : [{ leg: 'sem', state: 'ready' as const, indexedCount: 6, pendingCount: 0 }]
+        },
+      },
+    }
+    const result = await ensureTable(progressing, makeDef({ schemaVersion: 3 }), 'fp-a', {
+      convergePollMs: 30,
+      zeroProgressParkMs: 60,
+    })
+    expect(result).toBe('migrated')
+    expect(queryTarget('bakin_notes')).toMatch(/^bakin_notes_v3_/)
+  })
+
+  it('never flips on failed stats reads (evidence failure is not stability)', async () => {
+    // Old converged(): stats failure ?? 0, and two 0s in a row counted as
+    // "stable" — laundering outage into flip evidence.
+    const adapter = createMockSearchAdapter()
+    await ensureTable(adapter, makeDef(), 'fp-a')
+    const live = queryTarget('bakin_notes')!
+    const statsDark: SearchAdapter = {
+      ...adapter,
+      tables: {
+        ...adapter.tables,
+        stats: async (name) => {
+          if (name === live) return { table: name, documents: 2 }
+          throw new Error('stats unavailable')
+        },
+      },
+    }
+    const result = await ensureTable(statsDark, makeDef({ schemaVersion: 3 }), 'fp-a', {
+      convergePollMs: 20,
+      zeroProgressParkMs: 100,
+    })
+    expect(result).toBe('parked')
+    expect(queryTarget('bakin_notes')).toBe(live)
+  })
+
+  it('a leg in error state parks immediately — waiting cannot fix a failed worker', async () => {
+    const adapter = createMockSearchAdapter()
+    await ensureTable(adapter, makeDef(), 'fp-a')
+    const live = queryTarget('bakin_notes')!
+    const failedLeg: SearchAdapter = {
+      ...adapter,
+      tables: {
+        ...adapter.tables,
+        health: async (name) => (name === live
+          ? [{ leg: 'full_text', state: 'ready' as const, indexedCount: 2 }]
+          : [{ leg: 'sem', state: 'error' as const, indexedCount: 0, error: 'worker crashed' }]),
+      },
+    }
+    const started = Date.now()
+    const result = await ensureTable(failedLeg, makeDef({ schemaVersion: 3 }), 'fp-a', {
+      convergeTimeoutMs: 60_000,
+      convergePollMs: 20,
+      zeroProgressParkMs: 30_000,
+    })
+    expect(result).toBe('parked')
+    expect(Date.now() - started).toBeLessThan(5_000)
+  })
+
+  it('a converging table does NOT hold the chain — another table completes meanwhile', async () => {
+    const adapter = createMockSearchAdapter()
+    await ensureTable(adapter, makeDef(), 'fp-a')
+    const live = queryTarget('bakin_notes')!
+    const slowConverge: SearchAdapter = {
+      ...adapter,
+      tables: {
+        ...adapter.tables,
+        health: async (name) => (name === live
+          ? [{ leg: 'full_text', state: 'ready' as const, indexedCount: 2 }]
+          : [{ leg: 'full_text', state: 'building' as const, indexedCount: 0, pendingCount: 0 }]),
+      },
+    }
+    // Kick table A into a (doomed, slow) converge without awaiting it.
+    let aSettled = false
+    const a = ensureTable(slowConverge, makeDef({ schemaVersion: 3 }), 'fp-a', {
+      convergePollMs: 50,
+      zeroProgressParkMs: 2_000,
+    }).then((r) => {
+      aSettled = true
+      return r
+    })
+
+    // Give A time to clear its backfill (which DOES hold the chain).
+    await new Promise((resolve) => setTimeout(resolve, 300))
+
+    // Table B's whole lifecycle completes while A is still converging.
+    const b = await ensureTable(adapter, makeDef({ logical: 'bakin_other' }), 'fp-a')
+    expect(b).toBe('created')
+    expect(aSettled).toBe(false)
+
+    expect(await a).toBe('parked')
   })
 })
 
@@ -469,5 +684,55 @@ describe('sweepOrphanEngineTables', () => {
     const left = await sweepTombstones(base)
     expect(left).toBe(0)
     expect(await base.tables.stats(orphan)).toBeNull()
+  })
+})
+
+describe('dominance flip (2026-07-22)', () => {
+  it('flips an unconverged green over an EMPTY old physical (strictly better)', async () => {
+    const adapter = createMockSearchAdapter()
+    await ensureTable(adapter, makeDef(), 'fp-a')
+    const oldPhysical = queryTarget('bakin_notes')!
+    // Simulate the post-nuke shape: the active physical is EMPTY engine-side.
+    await adapter.tables.drop(oldPhysical)
+    await adapter.tables.create(oldPhysical, makeDef().config)
+
+    // Green's legs never go ready (residual stuck enrichment item), but its
+    // corpus lands fully — with an empty old, it must flip anyway.
+    const neverReady: SearchAdapter = {
+      ...adapter,
+      tables: {
+        ...adapter.tables,
+        health: async (name) => (name === oldPhysical
+          ? [{ leg: 'full_text', state: 'ready' as const, indexedCount: 0 }]
+          : [{ leg: 'sem', state: 'building' as const, indexedCount: 0, pendingCount: 2 }]),
+      },
+    }
+    const result = await ensureTable(neverReady, makeDef({ schemaVersion: 3 }), 'fp-a', {
+      convergePollMs: 20,
+      zeroProgressParkMs: 80,
+    })
+    expect(result).toBe('migrated')
+    expect(queryTarget('bakin_notes')).toMatch(/^bakin_notes_v3_/)
+  })
+
+  it('still parks when the old physical has real docs (no thin flip over content)', async () => {
+    const adapter = createMockSearchAdapter()
+    await ensureTable(adapter, makeDef(), 'fp-a')
+    const oldPhysical = queryTarget('bakin_notes')!
+    const neverReady: SearchAdapter = {
+      ...adapter,
+      tables: {
+        ...adapter.tables,
+        health: async (name) => (name === oldPhysical
+          ? [{ leg: 'full_text', state: 'ready' as const, indexedCount: 2 }]
+          : [{ leg: 'sem', state: 'building' as const, indexedCount: 0, pendingCount: 2 }]),
+      },
+    }
+    const result = await ensureTable(neverReady, makeDef({ schemaVersion: 3 }), 'fp-a', {
+      convergePollMs: 20,
+      zeroProgressParkMs: 80,
+    })
+    expect(result).toBe('parked')
+    expect(queryTarget('bakin_notes')).toBe(oldPhysical)
   })
 })

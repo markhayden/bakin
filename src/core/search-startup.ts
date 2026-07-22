@@ -34,7 +34,7 @@ export const SEARCH_STARTUP_RETRY_SCHEDULE_MS: readonly number[] = [
 export const SEARCH_BOOTSTRAP_BOOT_BUDGET_MS = 10_000
 
 async function runBootstrap(opts: { retry?: boolean } = {}): Promise<boolean> {
-  const { createRegisteredTables, resumeTableMigrations } = await import('./search-registry')
+  const { createRegisteredTables, resumeTableMigrations, startMigrationPump } = await import('./search-registry')
 
   const tableSetup = await createRegisteredTables()
   if (tableSetup.failures.length > 0) {
@@ -51,6 +51,10 @@ async function runBootstrap(opts: { retry?: boolean } = {}): Promise<boolean> {
   resumeTableMigrations().catch((err: unknown) => {
     log.error('Resuming in-flight table migrations failed', err instanceof Error ? err : undefined)
   })
+
+  // Parked work self-heals from here on — the migrations counterpart of
+  // the outbox safety tick (2026-07-21 five-lens review).
+  startMigrationPump()
 
   return true
 }

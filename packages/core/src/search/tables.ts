@@ -21,6 +21,7 @@
 import { join } from 'path'
 import { createHash } from 'crypto'
 import { openNamedDb, type Db } from '../storage/db'
+import { noteSearchEngineProgress } from './progress'
 import { getContentDir } from '../content-dir'
 import { createLogger } from '../logger'
 import type { Document, SearchAdapter, TableConfig } from '../adapters/search'
@@ -37,9 +38,11 @@ export interface TableEnsureDef {
 }
 
 export interface EnsureOpts {
-  /** Converge poll cap; on expiry the migration PARKS (never flips early). */
+  /** Hard converge cap for a STILL-PROGRESSING green (parks on expiry). */
   convergeTimeoutMs?: number
   convergePollMs?: number
+  /** Park after this long with zero observed progress (default 60s). */
+  zeroProgressParkMs?: number
   /** Force a fresh physical even when version+fingerprint match (rebuild). */
   forceNonce?: string
   /** Live progress for UI (phase + backfilled-row count). Display-only. */
@@ -62,8 +65,21 @@ export interface TableState {
 
 const MODULE = 'search-tables'
 const BACKFILL_CHUNK = 50
-const DEFAULT_CONVERGE_TIMEOUT_MS = 10 * 60 * 1000
+/**
+ * Hard converge cap — only reachable while the green is still making
+ * PROGRESS (counts moving). A stuck green parks on the zero-progress
+ * window below instead, so this can afford to be generous for large
+ * legitimate embed backfills.
+ */
+const DEFAULT_CONVERGE_TIMEOUT_MS = 30 * 60 * 1000
 const DEFAULT_CONVERGE_POLL_MS = 2_000
+/**
+ * Park after this long with ZERO observed progress (doc count, indexed
+ * count, and pending count all frozen). The 2026-07-21 rebuild burned a
+ * flat 10-minute timeout per stuck table — three of them serialized into
+ * a ~30-minute global stall; a frozen green is parkable in a minute.
+ */
+const DEFAULT_ZERO_PROGRESS_PARK_MS = 60 * 1000
 /**
  * An orphan candidate must stay unreferenced this long before it is
  * dropped. A cross-process ensure (CLI onboarding against the same engine)
@@ -131,6 +147,18 @@ const MIGRATIONS = [
       )
     },
   },
+  {
+    version: 4,
+    up: (db: Db) => {
+      // Persisted migration identity (2026-07-21 five-lens review, critical
+      // finding): resume used to RECOMPUTE the target fingerprint, losing
+      // any rebuild nonce — a resumed nonce'd rebuild aliased the LIVE
+      // physical and the post-flip drop deleted it. The green's fingerprint
+      // is now recorded when the migration starts and resume replays the
+      // recorded intent verbatim.
+      db.exec('ALTER TABLE search_tables ADD COLUMN migrating_fp TEXT')
+    },
+  },
 ]
 
 function db(): Db {
@@ -167,6 +195,7 @@ interface Row {
   config_fingerprint: string
   state: 'active' | 'migrating'
   migrating_to: string | null
+  migrating_fp: string | null
   migration_phase: string | null
   backfill_done: number | null
   updated_at: number
@@ -262,6 +291,7 @@ async function backfill(adapter: SearchAdapter, def: TableEnsureDef, physical: s
   const flush = async () => {
     if (chunk.length === 0) return
     await adapter.documents.batchIndex(physical, chunk, { sync: false })
+    noteSearchEngineProgress()
     emitted += chunk.length
     setPhase(def.logical, 'backfilling', emitted)
     onProgress?.('backfilling', emitted)
@@ -275,15 +305,42 @@ async function backfill(adapter: SearchAdapter, def: TableEnsureDef, physical: s
   return emitted
 }
 
-async function legsReady(adapter: SearchAdapter, physical: string): Promise<boolean> {
-  if (!adapter.tables.health) return true
+/**
+ * One convergence observation. `count: null` means the stats read FAILED —
+ * a null is never "0 documents" and never satisfies the stability
+ * criterion (the old `?? 0` laundered two transient stats failures into
+ * flip evidence — 2026-07-21 five-lens review, integrity finding).
+ */
+interface ConvergeSnapshot {
+  count: number | null
+  /** Sum of per-leg indexed counts — the progress signal flags can't fake. */
+  indexed: number
+  /** Sum of per-leg pending counts (0 when legs report none). */
+  pending: number
+  legsAllReady: boolean
+  /** First leg in state 'error', if any — parks immediately. */
+  failedLeg: string | null
+}
+
+async function observeGreen(adapter: SearchAdapter, physical: string): Promise<ConvergeSnapshot> {
+  const stats = await adapter.tables.stats(physical).catch(() => null)
+  const count = stats ? stats.documents : null
+  if (!adapter.tables.health) {
+    return { count, indexed: count ?? 0, pending: 0, legsAllReady: true, failedLeg: null }
+  }
   const legs = await adapter.tables.health(physical).catch(() => null)
-  if (!legs) return false
-  return legs.every((leg) => leg.state === 'ready')
+  if (!legs) return { count, indexed: 0, pending: 0, legsAllReady: false, failedLeg: null }
+  return {
+    count,
+    indexed: legs.reduce((sum, leg) => sum + (leg.indexedCount ?? 0), 0),
+    pending: legs.reduce((sum, leg) => sum + (leg.pendingCount ?? 0), 0),
+    legsAllReady: legs.every((leg) => leg.state === 'ready'),
+    failedLeg: legs.find((leg) => leg.state === 'error')?.leg ?? null,
+  }
 }
 
 /**
- * Converge check for one poll. `expected` (the backfill's emitted count)
+ * Converge verdict for one poll. `expected` (the backfill's emitted count)
  * is a point-in-time snapshot: a LIVE source can shrink after enumeration
  * (deletes/orphan sweeps dual-write into the green), so a green can be
  * complete yet never reach `expected` — that parked bakin_memory forever
@@ -291,18 +348,17 @@ async function legsReady(adapter: SearchAdapter, physical: string): Promise<bool
  * count is STABLE across two consecutive polls with every leg ready —
  * nothing in flight, nothing pending, the green simply IS the source now.
  */
-async function converged(
-  adapter: SearchAdapter,
-  physical: string,
-  expected: number,
-  prevCount: number | null,
-): Promise<{ ok: boolean; count: number }> {
-  const stats = await adapter.tables.stats(physical).catch(() => null)
-  const count = stats?.documents ?? 0
-  const reached = count >= expected
-  const stable = prevCount !== null && count === prevCount
-  if (!reached && !stable) return { ok: false, count }
-  return { ok: await legsReady(adapter, physical), count }
+function convergeVerdict(snap: ConvergeSnapshot, prev: ConvergeSnapshot | null, expected: number): boolean {
+  if (snap.count === null) return false
+  const reached = snap.count >= expected
+  const stable = prev !== null && prev.count !== null && snap.count === prev.count
+  return (reached || stable) && snap.legsAllReady
+}
+
+/** Progress = ANY observed movement between two snapshots. */
+function progressed(snap: ConvergeSnapshot, prev: ConvergeSnapshot | null): boolean {
+  if (prev === null) return true
+  return snap.count !== prev.count || snap.indexed !== prev.indexed || snap.pending !== prev.pending
 }
 
 /**
@@ -452,27 +508,55 @@ export async function sweepTombstones(adapter: SearchAdapter): Promise<number> {
   return db().prepare<{ n: number }, []>('SELECT COUNT(*) AS n FROM search_table_tombstones').get()?.n ?? 0
 }
 
+/** Repair a row whose migration target is invalid: back to plain active. */
+function repairRowActive(logical: string): void {
+  db()
+    .prepare(
+      `UPDATE search_tables SET state = 'active', migrating_to = NULL, migrating_fp = NULL,
+         migration_phase = NULL, backfill_done = NULL, updated_at = ? WHERE logical = ?`,
+    )
+    .run(Date.now(), logical)
+}
+
 /**
- * Run (or resume) the migration of `logical` toward `green`. Dual-write is
- * enabled by persisting migrating_to BEFORE backfill begins, so a doc
- * written during backfill exists in green either way.
+ * Stage the migration of `logical` toward `green`: persist intent (which
+ * turns dual-write ON before backfill begins, so a doc written during
+ * backfill exists in green either way), create the green, and backfill it.
+ * Runs ON the serialized chain — this is the embed-heavy phase and the
+ * only phase that deserves process-wide serialization.
+ *
+ * INVARIANT (2026-07-21 critical finding): green must never equal the
+ * active physical. A recomputed/aliased target would dual-write a table
+ * into itself and the post-flip drop would delete the live table.
  */
-async function runMigration(
+async function stageMigration(
   adapter: SearchAdapter,
   def: TableEnsureDef,
   green: string,
   fp: string,
+  baseFp: string,
   opts?: EnsureOpts,
-): Promise<'migrated' | 'parked'> {
+): Promise<{ emitted: number } | 'unchanged'> {
   const old = getRow(def.logical)
-  if (!old) throw new Error(`runMigration without a registry row for ${def.logical}`)
+  if (!old) throw new Error(`stageMigration without a registry row for ${def.logical}`)
+  if (green === old.physical) {
+    log.error('migration target aliases the ACTIVE physical — refusing and repairing the row', undefined, {
+      logical: def.logical,
+      physical: old.physical,
+    })
+    repairRowActive(def.logical)
+    return 'unchanged'
+  }
 
   db()
     .prepare(
-      `UPDATE search_tables SET state = 'migrating', migrating_to = ?, migration_phase = 'creating',
+      `UPDATE search_tables SET state = 'migrating', migrating_to = ?, migrating_fp = ?, migration_phase = 'creating',
          schema_version = ?, config_fingerprint = ?, updated_at = ? WHERE logical = ?`,
     )
-    .run(green, def.schemaVersion, fp, Date.now(), def.logical)
+    // migrating_fp records the TARGET (nonce included) for resume;
+    // config_fingerprint records IDENTITY (base, nonce-free) so later
+    // plain ensures recognize the flipped generation and no-op.
+    .run(green, fp, def.schemaVersion, baseFp, Date.now(), def.logical)
 
   await createTableTolerant(adapter, green, def.config)
 
@@ -482,66 +566,165 @@ async function runMigration(
   // another converge window. Skip straight to converge; dual-write has
   // kept the green current in the meantime.
   const priorEmitted = old.migrating_to === green ? old.backfill_done ?? 0 : 0
-  let emitted: number
   if (priorEmitted > 0) {
     const greenStats = await adapter.tables.stats(green).catch(() => null)
     if ((greenStats?.documents ?? 0) >= priorEmitted) {
-      emitted = priorEmitted
-      log.info('resume: green already backfilled — skipping re-backfill', { logical: def.logical, green, emitted })
-    } else {
-      setPhase(def.logical, 'backfilling', 0)
-      opts?.onProgress?.('backfilling', 0)
-      emitted = await backfill(adapter, def, green, opts?.onProgress)
+      log.info('resume: green already backfilled — skipping re-backfill', { logical: def.logical, green, emitted: priorEmitted })
+      return { emitted: priorEmitted }
     }
-  } else {
-    setPhase(def.logical, 'backfilling', 0)
-    opts?.onProgress?.('backfilling', 0)
-    emitted = await backfill(adapter, def, green, opts?.onProgress)
   }
+  setPhase(def.logical, 'backfilling', 0)
+  opts?.onProgress?.('backfilling', 0)
+  return { emitted: await backfill(adapter, def, green, opts?.onProgress) }
+}
 
+/**
+ * Converge-watch the green, then flip. Runs OFF the serialized chain — a
+ * pure poll loop plus a registry transaction; holding the chain here is
+ * what turned three stuck tables into a 30-minute global stall
+ * (2026-07-21). Parking rules:
+ *   - a leg in state 'error' parks immediately (waiting cannot fix it),
+ *   - ZERO progress (count/indexed/pending all frozen) for
+ *     zeroProgressParkMs parks — a frozen green is decided in a minute,
+ *   - the hard timeout only bounds a green that is STILL progressing.
+ */
+async function convergeAndFlip(
+  adapter: SearchAdapter,
+  def: TableEnsureDef,
+  green: string,
+  emitted: number,
+  opts?: EnsureOpts,
+): Promise<'migrated' | 'parked'> {
   setPhase(def.logical, 'converging')
   opts?.onProgress?.('converging', emitted)
   const timeoutMs = opts?.convergeTimeoutMs ?? DEFAULT_CONVERGE_TIMEOUT_MS
   const pollMs = opts?.convergePollMs ?? DEFAULT_CONVERGE_POLL_MS
+  const zeroProgressMs = opts?.zeroProgressParkMs ?? DEFAULT_ZERO_PROGRESS_PARK_MS
   const deadline = Date.now() + timeoutMs
-  let check = await converged(adapter, green, emitted, null)
-  while (!check.ok && Date.now() < deadline) {
+
+  let prev: ConvergeSnapshot | null = null
+  let snap = await observeGreen(adapter, green)
+  let lastProgressAt = Date.now()
+  let parkReason: string | null = null
+
+  while (!convergeVerdict(snap, prev, emitted)) {
+    if (snap.failedLeg) {
+      parkReason = `leg '${snap.failedLeg}' reports error`
+      break
+    }
+    const now = Date.now()
+    if (progressed(snap, prev)) {
+      lastProgressAt = now
+      noteSearchEngineProgress()
+    }
+    if (now - lastProgressAt >= zeroProgressMs) {
+      parkReason = `zero progress for ${Math.round((now - lastProgressAt) / 1000)}s`
+      break
+    }
+    if (now >= deadline) {
+      parkReason = 'hard converge timeout'
+      break
+    }
     await new Promise((resolve) => setTimeout(resolve, pollMs))
-    check = await converged(adapter, green, emitted, check.count)
+    prev = snap
+    snap = await observeGreen(adapter, green)
   }
-  const ok = check.ok
-  if (!ok) {
-    // NEVER flip early. Park with dual-write still on; the doctor surfaces
-    // it and resumeMigrations() finishes the job when the engine recovers.
+
+  if (parkReason) {
+    // Dominance exception (2026-07-22): when the OLD physical is EMPTY or
+    // missing, parking protects nothing — queries serve zero docs while a
+    // green with a complete corpus sits unflipped (post-nuke rebuilds with
+    // a residual stuck enrichment item, e.g. the two-doc embed stall).
+    // If the green's doc count met the converge criterion and no leg
+    // FAILED, flip: every leg of the green is at least as good as empty.
+    // A leg in 'error' still parks — that green may be structurally sick.
+    const rowNow = getRow(def.logical)
+    if (rowNow && rowNow.state === 'migrating' && rowNow.migrating_to === green && !snap.failedLeg) {
+      const oldStats = await adapter.tables.stats(rowNow.physical).catch(() => null)
+      const oldEmpty = oldStats === null || oldStats.documents === 0
+      const countOk = snap.count !== null && (snap.count >= emitted || (prev !== null && prev.count !== null && snap.count === prev.count))
+      if (oldEmpty && countOk && (snap.count ?? 0) > 0) {
+        log.warn('flipping an unconverged green over an EMPTY old physical — strictly better on every leg', {
+          logical: def.logical,
+          green,
+          emitted,
+          residual: parkReason,
+        })
+        parkReason = null
+      }
+    }
+  }
+
+  if (parkReason) {
+    // NEVER flip early. Park with dual-write still on; the migration pump
+    // and the doctor resume the job when the engine recovers.
     setPhase(def.logical, 'parked')
-    log.warn('migration parked — green never converged', { logical: def.logical, green, emitted })
+    log.warn('migration parked — green never converged', { logical: def.logical, green, emitted, reason: parkReason })
     return 'parked'
   }
 
-  const oldPhysical = old.physical
+  // Re-read: the row may have changed while we were off-chain converging
+  // (a concurrent ensure toward a different target abandons this green).
+  const row = getRow(def.logical)
+  if (!row || row.state !== 'migrating' || row.migrating_to !== green) {
+    log.warn('converge finished for a superseded green — leaving registry untouched', { logical: def.logical, green })
+    return 'parked'
+  }
+
+  const oldPhysical = row.physical
   store.withTx(() => {
     db()
       .prepare(
-        `UPDATE search_tables SET physical = ?, state = 'active', migrating_to = NULL,
+        `UPDATE search_tables SET physical = ?, state = 'active', migrating_to = NULL, migrating_fp = NULL,
            migration_phase = NULL, backfill_done = NULL, updated_at = ? WHERE logical = ?`,
       )
       .run(green, Date.now(), def.logical)
   })
   log.info('table migrated', { logical: def.logical, from: oldPhysical, to: green })
 
-  setPhase(def.logical, 'dropping')
-  await dropTolerant(adapter, oldPhysical)
-  db().prepare('UPDATE search_tables SET migration_phase = NULL WHERE logical = ?').run(def.logical)
+  if (oldPhysical !== green) {
+    setPhase(def.logical, 'dropping')
+    await dropTolerant(adapter, oldPhysical)
+    db().prepare('UPDATE search_tables SET migration_phase = NULL WHERE logical = ?').run(def.logical)
+  }
   return 'migrated'
 }
 
-// One migration at a time process-wide (bounds embed load); ensure() calls
-// for other tables queue behind it.
+async function runMigration(
+  adapter: SearchAdapter,
+  def: TableEnsureDef,
+  green: string,
+  fp: string,
+  baseFp: string,
+  opts?: EnsureOpts,
+): Promise<'migrated' | 'parked' | 'unchanged'> {
+  // Backfill holds the chain (bounds embed load); convergence does not.
+  const staged = await serialized(() => stageMigration(adapter, def, green, fp, baseFp, opts))
+  if (staged === 'unchanged') return 'unchanged'
+  return coalescedConverge(def.logical, () => convergeAndFlip(adapter, def, green, staged.emitted, opts))
+}
+
+// Backfill (the embed-heavy phase) runs one at a time process-wide; the
+// converge-wait does NOT — see convergeAndFlip. ensure() calls for other
+// tables queue behind an active backfill only.
 let migrationChain: Promise<unknown> = Promise.resolve()
 function serialized<T>(fn: () => Promise<T>): Promise<T> {
   const next = migrationChain.then(fn, fn)
   migrationChain = next.catch(() => {})
   return next
+}
+
+// One converge-watcher per logical: a resume racing an in-flight converge
+// attaches to it instead of double-polling and double-flipping.
+const convergeWatchers = new Map<string, Promise<'migrated' | 'parked'>>()
+function coalescedConverge(logical: string, fn: () => Promise<'migrated' | 'parked'>): Promise<'migrated' | 'parked'> {
+  const existing = convergeWatchers.get(logical)
+  if (existing) return existing
+  const watcher = fn().finally(() => {
+    convergeWatchers.delete(logical)
+  })
+  convergeWatchers.set(logical, watcher)
+  return watcher
 }
 
 /**
@@ -557,11 +740,26 @@ export async function ensureTable(
 ): Promise<EnsureResult> {
   const fp = fingerprint(def, mappingFingerprint, opts?.forceNonce)
   const desired = physicalName(def, fp)
+  // Identity is the BASE fingerprint, never the physical name: a nonce'd
+  // rebuild generation carries the same identity under a different name,
+  // and comparing names made every later plain ensure treat it as drift
+  // and migrate it BACK to the base name — the "boomerang" that re-ran
+  // enumerators and re-embedded healthy tables after every rebuild
+  // (2026-07-22 soak cycle-1 finding).
+  const baseFp = fingerprint(def, mappingFingerprint)
   const row = getRow(def.logical)
 
-  if (row && row.state === 'active' && row.physical === desired) return 'unchanged'
+  const identityMatches = (r: Row): boolean =>
+    r.schema_version === def.schemaVersion
+    && (r.physical === desired || (!opts?.forceNonce && r.config_fingerprint === baseFp))
 
-  return serialized(async () => {
+  if (row && row.state === 'active' && identityMatches(row)) return 'unchanged'
+
+  // Housekeeping + the create path hold the chain (create-seed IS a
+  // backfill); the migration path releases it before convergence — the
+  // chain must never be held across a converge-wait (2026-07-21), so
+  // runMigration re-enters serialized() itself for its staging phase only.
+  const prep = await serialized(async (): Promise<'created' | 'unchanged' | 'migrate'> => {
     const current = getRow(def.logical)
 
     if (!current) {
@@ -572,21 +770,32 @@ export async function ensureTable(
           `INSERT INTO search_tables (logical, physical, schema_version, config_fingerprint, state, updated_at)
            VALUES (?, ?, ?, ?, 'active', ?)`,
         )
-        .run(def.logical, desired, def.schemaVersion, fp, Date.now())
+        // Identity (config_fingerprint) is always the BASE fingerprint —
+        // the physical name may carry a nonce, identity never does.
+        .run(def.logical, desired, def.schemaVersion, baseFp, Date.now())
       log.info('table created + seeded', { logical: def.logical, physical: desired, seeded: emitted })
       return 'created'
     }
 
-    if (current.state === 'active' && current.physical === desired) return 'unchanged'
+    if (current.state === 'active' && identityMatches(current)) return 'unchanged'
 
-    if (current.state === 'migrating' && current.migrating_to && current.migrating_to !== desired) {
+    if (
+      current.state === 'migrating' && current.migrating_to
+      && current.migrating_to !== desired
+      // NEVER drop the active physical, whatever the row claims — an
+      // aliased migrating_to must be repaired, not deleted (2026-07-21).
+      && current.migrating_to !== current.physical
+    ) {
       // The desired layout changed underneath an in-flight migration —
       // abandon the stale green and migrate to the new target instead.
       await dropTolerant(adapter, current.migrating_to)
     }
 
-    return runMigration(adapter, def, desired, fp, opts)
+    return 'migrate'
   })
+  if (prep !== 'migrate') return prep
+
+  return runMigration(adapter, def, desired, fp, baseFp, opts)
 }
 
 /** Force a fresh physical with identical version+fingerprint (rebuild / black-swan recovery). */
@@ -600,34 +809,53 @@ export async function rebuildTable(
 }
 
 /**
- * Boot-time continuation: finish any migration left in-flight by a crash
- * or park. This is "resume recorded work" (allowed by D5) — it reads only
- * the registry, never the filesystem.
+ * Continuation: finish any migration left in-flight by a crash or park.
+ * "Resume recorded work" (allowed by D5) — it reads only the registry,
+ * never the filesystem, and it resumes the RECORDED target verbatim
+ * (migrating_to + migrating_fp). It never recomputes the target: the
+ * recompute path lost rebuild nonces and aliased the live physical
+ * (2026-07-21 critical finding). Rows recorded before migrating_fp
+ * existed fall back to the base fingerprint, guarded by the alias check.
+ *
+ * Callers: boot (all in-flight rows) and the migration pump
+ * (`onlyParked` — crash-interrupted rows belong to boot, parked rows
+ * belong to the pump).
  */
 export async function resumeMigrations(
   adapter: SearchAdapter,
   defs: TableEnsureDef[],
   mappingFingerprint: string,
-  opts?: EnsureOpts,
-): Promise<void> {
+  opts?: EnsureOpts & { onlyParked?: boolean },
+): Promise<Array<{ logical: string; result: 'migrated' | 'parked' | 'unchanged' | 'skipped' }>> {
   const inFlight = db().prepare<Row, []>("SELECT * FROM search_tables WHERE state = 'migrating'").all()
+  const outcomes: Array<{ logical: string; result: 'migrated' | 'parked' | 'unchanged' | 'skipped' }> = []
   for (const row of inFlight) {
+    if (opts?.onlyParked && row.migration_phase !== 'parked') continue
     const def = defs.find((d) => d.logical === row.logical)
     if (!def) {
       log.warn('in-flight migration has no registered def — leaving parked', { logical: row.logical })
+      outcomes.push({ logical: row.logical, result: 'skipped' })
       continue
     }
-    const fp = fingerprint(def, mappingFingerprint)
-    const desired = physicalName(def, fp)
-    await serialized(async () => {
-      const current = getRow(row.logical)
-      if (!current || current.state !== 'migrating') return
-      if (current.migrating_to && current.migrating_to !== desired) {
-        await dropTolerant(adapter, current.migrating_to)
-      }
-      await runMigration(adapter, def, desired, fp, opts)
-    })
+    const desired = row.migrating_to
+    const baseFp = fingerprint(def, mappingFingerprint)
+    const fp = row.migrating_fp ?? baseFp
+    if (!desired || desired === row.physical) {
+      // No recorded target, or a target aliasing the live table (legacy
+      // rows from the recompute era) — repair to active; a later ensure
+      // or reindex mints a legitimate fresh green if one is needed.
+      log.warn('in-flight migration has no safe recorded target — repairing row to active', {
+        logical: row.logical,
+        migratingTo: desired,
+      })
+      repairRowActive(row.logical)
+      outcomes.push({ logical: row.logical, result: 'unchanged' })
+      continue
+    }
+    const result = await runMigration(adapter, def, desired, fp, baseFp, opts)
+    outcomes.push({ logical: row.logical, result })
   }
+  return outcomes
 }
 
 /** Test-only: wipe registry + tombstones (close-first — see outbox note). */

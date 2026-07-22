@@ -371,13 +371,17 @@ export function createRequestHandler(deps: RequestHandlerDeps): (req: IncomingMe
       return
     }
 
-    // Reindex endpoint — per-table or all. Runs a blue/green rebuild:
-    // queries keep answering from the old physical table while the fresh
-    // one backfills; the pointer flips only after convergence (D4).
+    // Reindex endpoint — per-table or all. Default is REPAIR (resume
+    // parked, regenerate engine-missing, migrate drifted, skip healthy);
+    // ?force=1 mints fresh generations. Runs a blue/green rebuild either
+    // way: queries keep answering from the old physical table while the
+    // fresh one backfills; the pointer flips only after convergence (D4).
+    // Overlapping calls attach to the running pass (single-flight).
     if (url.pathname === '/api/reindex' && req.method === 'POST') {
       const { rebuildRegisteredTables } = require('../search-registry')
       const table = url.searchParams.get('table') || undefined
-      rebuildRegisteredTables(table).then((results: import('../search-registry').ReindexTableOutcome[]) => {
+      const force = url.searchParams.get('force') === '1'
+      rebuildRegisteredTables(table, { force }).then((results: import('../search-registry').ReindexTableOutcome[]) => {
         const errors = results.filter((r) => r.error).length
         const parked = results.filter((r) => r.result === 'parked').length
         jsonResponse(res, 200, {

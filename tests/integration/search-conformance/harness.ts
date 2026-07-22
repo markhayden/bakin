@@ -126,7 +126,7 @@ export async function spawnEphemeralAntfly(binary: string, opts: SpawnOpts = {})
     // rc.19+ renamed the single-process server subcommand swarm → standalone.
     // BAKIN_ANTFLY_SUBCOMMAND overrides for cross-version evaluation runs
     // (e.g. pointing BAKIN_ANTFLY_BIN at a pre-rc.19 binary).
-    process.env.BAKIN_ANTFLY_SUBCOMMAND ?? 'standalone',
+    process.env.BAKIN_ANTFLY_SUBCOMMAND ?? 'swarm',
     '--host', '127.0.0.1',
     '--port', String(port),
     '--health-port', String(healthPort),
