@@ -355,8 +355,16 @@ const MIGRATION_PUMP_INTERVAL_MS = 5 * 60 * 1000
 /** Consecutive failed resume attempts per table before the pump stands down
  * (the parked state stays visible to the doctor, which owns escalation). */
 const MIGRATION_PUMP_MAX_ATTEMPTS = 5
+/** Fast wedge-watchdog cadence — only bites while migrations are in flight. */
+const WEDGE_WATCH_INTERVAL_MS = 30 * 1000
+/** In-flight work + a heartbeat this stale = the engine wedged under load. */
+const WEDGE_STALE_MS = 2 * 60 * 1000
+/** Never bounce the engine twice inside this window. */
+const WEDGE_RESTART_DEBOUNCE_MS = 5 * 60 * 1000
 
 let pumpTimer: ReturnType<typeof setInterval> | null = null
+let wedgeTimer: ReturnType<typeof setInterval> | null = null
+let lastWedgeRestartAt = 0
 const pumpAttempts = new Map<string, number>()
 
 /**
@@ -373,12 +381,59 @@ export function startMigrationPump(): void {
     })
   }, MIGRATION_PUMP_INTERVAL_MS)
   pumpTimer.unref?.()
+  wedgeTimer = setInterval(() => {
+    void wedgeWatchTick().catch((err: unknown) => {
+      log.warn('wedge watchdog tick failed', { err: err instanceof Error ? err.message : String(err) })
+    })
+  }, WEDGE_WATCH_INTERVAL_MS)
+  wedgeTimer.unref?.()
 }
 
 export function stopMigrationPump(): void {
   if (pumpTimer) clearInterval(pumpTimer)
+  if (wedgeTimer) clearInterval(wedgeTimer)
   pumpTimer = null
+  wedgeTimer = null
   pumpAttempts.clear()
+  lastWedgeRestartAt = 0
+}
+
+/**
+ * Fast wedge watchdog (2026-07-22 soak finding): the engine repeatedly
+ * wedges UNDER REBUILD LOAD — SendFailed storms, zero embed batches, every
+ * in-flight backfill frozen — while still answering health probes. The
+ * doctor's canary catches that on a ~30-minute cadence; mid-rebuild it
+ * must be ~a minute. While migrations are in flight, a stale progress
+ * heartbeat (backfill chunks, converge movement, outbox landings all
+ * silent) bounces the engine via the adapter's own restartEngine, then
+ * pumps parked work immediately. Debounced; no-op for adapters that don't
+ * supervise their engine (guest/child modes return restartEngine
+ * undefined).
+ */
+async function wedgeWatchTick(): Promise<void> {
+  const inFlight = listVersionedTableStates().some(
+    (s) => s.state === 'migrating' && s.phase !== 'parked',
+  )
+  if (!inFlight) return
+  const { lastSearchEngineProgressAt } = await import('@bakin/core/search/progress')
+  const staleFor = Date.now() - lastSearchEngineProgressAt()
+  if (staleFor < WEDGE_STALE_MS) return
+  if (Date.now() - lastWedgeRestartAt < WEDGE_RESTART_DEBOUNCE_MS) return
+
+  const search = getSearchAdapter()
+  if (!search.restartEngine) return
+  lastWedgeRestartAt = Date.now()
+  log.warn('engine wedged under migration load — bouncing it', { staleForMs: staleFor })
+  try {
+    await search.restartEngine()
+  } catch (err) {
+    log.warn('wedge watchdog engine restart failed', { err: err instanceof Error ? err.message : String(err) })
+    return
+  }
+  const { noteSearchEngineProgress } = await import('@bakin/core/search/progress')
+  noteSearchEngineProgress()
+  // Parked work resumes right away instead of waiting for the slow tick.
+  void pumpParkedMigrations().catch(() => {})
 }
 
 /** One pump cycle (exported for tests + the doctor's repair path). */

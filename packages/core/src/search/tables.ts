@@ -21,6 +21,7 @@
 import { join } from 'path'
 import { createHash } from 'crypto'
 import { openNamedDb, type Db } from '../storage/db'
+import { noteSearchEngineProgress } from './progress'
 import { getContentDir } from '../content-dir'
 import { createLogger } from '../logger'
 import type { Document, SearchAdapter, TableConfig } from '../adapters/search'
@@ -290,6 +291,7 @@ async function backfill(adapter: SearchAdapter, def: TableEnsureDef, physical: s
   const flush = async () => {
     if (chunk.length === 0) return
     await adapter.documents.batchIndex(physical, chunk, { sync: false })
+    noteSearchEngineProgress()
     emitted += chunk.length
     setPhase(def.logical, 'backfilling', emitted)
     onProgress?.('backfilling', emitted)
@@ -611,7 +613,10 @@ async function convergeAndFlip(
       break
     }
     const now = Date.now()
-    if (progressed(snap, prev)) lastProgressAt = now
+    if (progressed(snap, prev)) {
+      lastProgressAt = now
+      noteSearchEngineProgress()
+    }
     if (now - lastProgressAt >= zeroProgressMs) {
       parkReason = `zero progress for ${Math.round((now - lastProgressAt) / 1000)}s`
       break
