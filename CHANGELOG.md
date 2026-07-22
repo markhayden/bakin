@@ -6,6 +6,31 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+## [0.0.1-rc.22] - 2026-07-22
+
+A search-reliability release, one day after rc.21. A production incident during an attempted antfly rc.21 engine upgrade turned into a full audit of the search migration machinery — five blind design reviews, a minimal-reproduction ladder against the engine, and a rebuilt migration core. The engine stays pinned at antfly rc.18 (rc.19–rc.21 fail evaluation with a crash dossier, filed upstream); everything Bakin-side is substantially hardened. If search on an rc.21 install shows "degraded", upgrade to this release, then clean-slate the engine (`bakin install search` after removing `~/.bakin/antfly`) and run `bakin reindex`.
+
+### Added
+- **Search migration engine v2 (#714).** The blue/green migration core rebuilt around the failure modes a real incident exposed:
+  - **Persisted migration identity.** The green's target fingerprint is recorded (`migrating_fp`, search.db v4) and resume replays it verbatim — the old recompute path lost rebuild nonces, could alias the live table, and the post-flip drop would have deleted it (found by review, confirmed in code, guarded by invariants: a migration target equal to the active physical is repaired, never staged, never dropped).
+  - **Progress-aware convergence.** A frozen green (doc/indexed/pending counts all static) parks in ~60 seconds instead of holding a flat 10-minute timeout; a leg in error state parks immediately; a still-progressing green gets up to 30 minutes; a failed stats read is never treated as flip evidence.
+  - **Backfill-only serialization.** The process-wide chain now bounds only the embed-heavy backfill; converge-waits run per-table off-chain — three stuck tables once serialized into a ~30-minute global stall.
+  - **Migration pump.** Parked migrations self-heal on a 5-minute tick (attempt-capped; the doctor owns escalation). Active tables whose physical vanished engine-side (data-dir wipe) are regenerated — judged from one authoritative table listing, never from per-table status errors, and skipped inside a post-restart grace window (a status-error misread once mass-regenerated 10 healthy tables in a feedback loop).
+  - **Dominance flip.** An unconverged green whose corpus landed fully now flips over an EMPTY old physical — parking used to leave queries serving zero docs while a complete table sat unflipped.
+  - **Surgical reindex.** `bakin reindex` / `POST /api/reindex` is repair-by-default: resume parked, regenerate engine-missing, migrate drifted, skip healthy. `--force` (`?force=1`) restores fresh-generations-for-everything. Overlapping passes single-flight — stacked passes once rebuilt one healthy table through 8 generations in an evening. Rebuilds run in product-priority order (assets first, memory last) at bounded concurrency.
+  - **Engine wedge watchdog.** A progress heartbeat (backfill chunks, converge movement, outbox drains) feeds a 30-second watchdog while migrations are in flight; a stale heartbeat bounces the engine via the adapter's own supervised restart instead of waiting on the doctor's 30-minute cadence.
+- **Cold drops (#715).** Every engine-side table drop is tombstone-first; the actual DELETE runs only in the doctor's sweep after a 30-minute cold dwell. Defends against antfly#386 (dropping a table with a hot embedding queue crashes affected engine versions — a regression since rc.18 still present upstream): the ladder gate protects Bakin's pin choices, cold drops protect end users from the regressions nobody tested for.
+
+### Changed
+- **Antfly stays pinned at 0.2.0-rc.18 (#712 evaluated, reverted in #714).** rc.21 was adopted, battle-tested, and rejected the same day on shell-only reproductions: concurrent embed-bearing writes crash the engine (Metal command-buffer failure, process exit), it exits mid table-creation on an empty data dir, sustained embed load sickens its data plane, and the in-place upgrade migrates table files one-way (a rollback then finds `InvalidTableFile`). Findings filed upstream (antfly #382, #383, #384, #386) with scripted repros; the pin comment documents the re-evaluation recipe for the next release. `bakin install search` now re-provisions the OS service unit unconditionally and treats an engine version change as a rebuild event (derived data dir cleared; the repair reindex regenerates).
+- **All engine writes are serialized (#714)** — one write in flight process-wide, matching the engine's demonstrated concurrency contract. Reads are unaffected; rebuild passes stay pipelined.
+- **Table identity is the base fingerprint (#714).** Plain ensures no longer treat a nonce'd rebuild generation as drift and migrate it back to the base name — the "boomerang" that re-ran enumerators and re-embedded healthy tables after every rebuild.
+
+### Fixed
+- **The search query fan-out shares one wall-clock budget (#714).** Sequential rerank fan-outs gave each of 12 tables its own budget slice (32-second spinners under rebuild load) and the scan fallback's HTTP request ignored the deadline entirely (default 30s timeout after the budget was already spent). Tables past the shared deadline are honestly omitted.
+- **The antfly idle-detection override is restored and re-scoped (#713).** Upstream's #319 fix covers media templates but skip-heavy text corpora can still report building-forever while idle; retiring the override had parked every such table. Its companion test is now a guard on the mapping plus raw-flag evidence logging.
+- **Gallery test de-flaked for release builds (#711)** — the brand-header assertions survive long describe-stamped versions.
+
 ## [0.0.1-rc.21] - 2026-07-21
 
 The largest release to date: ~90 PRs over four weeks. Bakin becomes genuinely multi-runtime — the new Pi adapter runs the full product alongside OpenClaw behind a capability-declared runtime contract with a first-class, carry-everything switch. Around that core: the search stack rebuilt on a durable outbox + blue/green tables, a Chat plugin and ONE conversation engine for every chat surface, cost control v2 with work-class model routing and honest usage attribution, the Brands plugin, team-aware task assignment, the #191 schedule initiative, a client-routing overhaul, and same-agent concurrency.
@@ -373,5 +398,7 @@ This is primarily an architecture release: ~380 commits, the bulk of them a beha
 
 [0.0.1-rc.20]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.20
 
-[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.21...HEAD
 [0.0.1-rc.21]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.21
+
+[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.22...HEAD
+[0.0.1-rc.22]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.22
