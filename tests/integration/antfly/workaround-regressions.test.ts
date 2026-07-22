@@ -193,6 +193,61 @@ if (!binary) {
       expect(vis?.indexedCount).toBe(1)
     }, 180_000)
 
+    it('GUARD antfly#319 (idle-detection override): an idle embeddings leg maps ready regardless of raw flags', async () => {
+      // The override this guards was retired at the rc.21 repin, then
+      // RESTORED hours later: the production memory-table green (50
+      // embeddable of ~10k skipped audit rows, rebuild interrupted by an
+      // engine bounce) sat with rebuilding/backfill_active raised while
+      // fully idle — and parked unconverged. A minimal 2-doc skip corpus
+      // does NOT reproduce the stuck flags on rc.21 (they clear), so the
+      // trigger is scale- or interruption-dependent and this cannot be a
+      // fails-when-fixed pin. The override's semantics are safe regardless
+      // (pending 0 + no active batch + not retrying ⇒ idle ⇒ ready).
+      // Retirement is MANUAL: prove a full-scale interrupted rebuild
+      // converges without it before deleting.
+      const T6 = 'pins_textskip'
+      await api('POST', `/db/v1/tables/${T6}`, {
+        num_shards: 1,
+        indexes: { sem: { name: 'sem', type: 'embeddings', template: '{{#if body}}{{body}}{{/if}}', dimension: 384, embedder: { provider: 'antfly', model: 'BAAI/bge-small-en-v1.5' } } },
+      })
+      await sleep(1200)
+      for (let i = 0; i < 10; i++) {
+        const r = await api('POST', `/db/v1/tables/${T6}/batch`, {
+          inserts: { s1: { title: 'has body', body: 'embeddable text' }, s2: { title: 'no body field' } },
+          sync_level: 'full_index',
+        })
+        if (r.status < 300) break
+        await sleep(500)
+      }
+      // Wait for idle: the one embeddable doc lands, nothing in flight.
+      let raw: Record<string, unknown> | null = null
+      for (let i = 0; i < 120; i++) {
+        const st = await api('GET', `/db/v1/tables/${T6}/indexes`)
+        const entries = Array.isArray(st.json) ? st.json as Array<{ config?: { name?: string }; status?: Record<string, unknown> }> : []
+        const sem = entries.find((e) => e.config?.name === 'sem')?.status ?? null
+        const runtime = sem?.enrichment_runtime as { pending_sequence_count?: number; active_embed_batch_items?: number } | undefined
+        if (sem && (sem.total_indexed as number) >= 1 && runtime?.pending_sequence_count === 0 && (runtime?.active_embed_batch_items ?? 0) === 0) {
+          raw = sem
+          break
+        }
+        await sleep(1000)
+      }
+      if (raw === null) {
+        console.warn('⚠ text-skip pin skipped — embeddable doc never indexed (no BAAI model?)')
+        return
+      }
+      // Record (not assert) whether the raw flags lie on this corpus —
+      // evidence for eventual manual retirement, not a gate.
+      console.warn(`text-skip raw flags: rebuilding=${String(raw.rebuilding)} backfill_active=${String(raw.backfill_active)}`)
+      // WORKAROUND GUARD: idle-detection maps the leg ready either way.
+      const { AntflySearchClient } = await import('../../../packages/adapter-antfly/src/client')
+      const { DEFAULT_SETTINGS } = await import('../../../packages/adapter-antfly/src/defaults')
+      const client = new AntflySearchClient({ ...DEFAULT_SETTINGS, url: instance.url }, { fetchImpl: nativeFetch })
+      const legs = await client.tables.health(T6)
+      const sem = legs.find((l) => l.leg === 'sem')
+      expect(sem?.state).toBe('ready')
+    }, 180_000)
+
     it('PIN rc.18: an EMPTY (never-written) table reports backfill running forever on every leg', async () => {
       // WHEN THIS FAILS (flags clear on an empty table): upstream fixed
       // empty-table backfill accounting → delete the !runtime idle-detection

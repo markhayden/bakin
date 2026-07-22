@@ -388,9 +388,21 @@ export function mapIndexStatuses(entries: WireIndexStatusEntry[]): TableLegHealt
       || (runtime?.fatal_error_count ?? 0) > 0
       || status?.backfill_state === 'failed'
     let building = status?.rebuilding === true || status?.backfill_active === true
-    // (The antfly#319 idle-detection override that lived here — mixed-corpus
-    // media legs stuck rebuilding forever — was retired at the rc.21 pin:
-    // upstream fixed the backfill accounting for empty-template docs.)
+    // antfly#319 idle-detection override — RESTORED at rc.21 (2026-07-22,
+    // the memory-table park during the production rebuild). Upstream's
+    // rc.21 fix is PARTIAL: MEDIA-template skip accounting clears its
+    // flags (the mixed-corpus guard pin), but TEXT-template legs whose
+    // docs render empty (memory: 50 embeddable of ~10k audit rows) still
+    // report rebuilding/backfill_active forever while fully idle —
+    // pending 0, no active batch, not retrying. Idle ⇒ ready, or every
+    // skip-heavy green parks unconverged. Pinned by the text-skip canary
+    // in workaround-regressions; delete when THAT pin fails.
+    if (building && runtime
+      && runtime.pending_sequence_count === 0
+      && runtime.retrying !== true
+      && (runtime.active_embed_batch_items ?? 0) === 0) {
+      building = false
+    }
     // rc.18 WORKAROUND — runtime-less legs (full_text) report
     // rebuilding/backfill_active FOREVER once caught up, including on
     // freshly created EMPTY tables (observed live 2026-07-11: every empty
