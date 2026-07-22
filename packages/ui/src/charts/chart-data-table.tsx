@@ -147,7 +147,7 @@ export function ChartDataTable({
       data-slot="chart-data-table"
       open={defaultOpen || undefined}
     >
-      <summary className="w-fit cursor-pointer rounded-bakin-control underline-offset-4 hover:text-bakin-text-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring">
+      <summary className="w-fit cursor-pointer rounded-bakin-control underline-offset-4 hover:text-bakin-text-primary hover:underline focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring">
         View {caption}
       </summary>
       <BoundedOverflow

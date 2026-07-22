@@ -6,6 +6,7 @@
  * declarations, a publish-only package.json, and no repo-only import leaks.
  */
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -27,6 +28,7 @@ export const PUBLIC_SDK_PACKAGE_NAME = '@makinbakin/sdk'
 export const SDK_STYLES_EXPORT = './styles.css'
 export const SDK_STYLES_SPECIFIER = `${PUBLIC_SDK_PACKAGE_NAME}/styles.css`
 const CANONICAL_SDK_STYLES_PATH = join(SDK_DIR, 'styles.css')
+const SDK_UI_TEST_BIN = 'bin/bakin-plugin-test-ui.js'
 
 export interface SdkExportEntry {
   exportPath: string
@@ -53,11 +55,14 @@ export const SDK_EXPORTS: SdkExportEntry[] = [
   { exportPath: './navigation', source: 'packages/sdk/src/navigation/index.ts', importPath: './navigation/index.js', typesPath: './navigation/index.d.ts' },
   { exportPath: './testing', source: 'packages/sdk/src/testing/index.ts', importPath: './testing/index.js', typesPath: './testing/index.d.ts' },
   { exportPath: './testing/ui', source: 'packages/sdk/src/testing/ui/index.ts', importPath: './testing/ui/index.js', typesPath: './testing/ui/index.d.ts' },
+  { exportPath: './testing/ui/conformance', source: 'packages/sdk/src/testing/ui/conformance/index.ts', importPath: './testing/ui/conformance/index.js', typesPath: './testing/ui/conformance/index.d.ts' },
   { exportPath: './internal', source: 'packages/sdk/src/internal/index.ts', importPath: './internal/index.js', typesPath: './internal/index.d.ts' },
 ]
 
 const EXTERNAL_JS_PEERS = [
   '@tanstack/react-router',
+  'axe-core',
+  'playwright',
   'react',
   'react-dom',
   'react-dom/client',
@@ -85,6 +90,7 @@ interface PackageJson {
   name?: string
   description?: string
   peerDependencies?: Record<string, string>
+  peerDependenciesMeta?: Record<string, { optional?: boolean }>
   dependencies?: Record<string, string>
   repository?: unknown
   homepage?: string
@@ -146,7 +152,7 @@ function mapSdkModule(rest: string): string | null {
   if (rest === 'index') return 'index'
   if (rest === 'register') return 'register'
   if (rest.endsWith('/index')) return rest
-  if (rest === 'types' || rest === 'routing' || rest === 'ui' || rest === 'layout' || rest === 'patterns' || rest === 'charts' || rest === 'conversation' || rest === 'content' || rest === 'hooks' || rest === 'components' || rest === 'slots' || rest === 'utils' || rest === 'metadata' || rest === 'testing' || rest === 'testing/ui' || rest === 'internal') {
+  if (rest === 'types' || rest === 'routing' || rest === 'ui' || rest === 'layout' || rest === 'patterns' || rest === 'charts' || rest === 'conversation' || rest === 'content' || rest === 'hooks' || rest === 'components' || rest === 'slots' || rest === 'utils' || rest === 'metadata' || rest === 'testing' || rest === 'testing/ui' || rest === 'testing/ui/conformance' || rest === 'internal') {
     return `${rest}/index`
   }
   return rest === 'hooks/router' ? 'hooks/router' : null
@@ -270,6 +276,31 @@ function buildJsEntry(entry: SdkExportEntry, outDir: string): void {
   }
 }
 
+function buildCli(outDir: string): void {
+  const targetFile = join(outDir, SDK_UI_TEST_BIN)
+  mkdirSync(dirname(targetFile), { recursive: true })
+  const result = spawnSync('bun', [
+    'build',
+    join(SDK_DIR, 'src/testing/ui/conformance/cli.ts'),
+    '--outfile', targetFile,
+    '--target', 'bun',
+    '--format', 'esm',
+    ...EXTERNAL_JS_PEERS.flatMap((specifier) => ['--external', specifier]),
+  ], {
+    cwd: REPO_ROOT,
+    encoding: 'utf-8',
+  })
+  if (result.status !== 0) {
+    throw new Error(`Failed to build bakin-plugin-test-ui:\n${result.stdout}${result.stderr}`)
+  }
+  if (!existsSync(targetFile) || statSync(targetFile).size === 0) {
+    throw new Error(`Expected ${SDK_UI_TEST_BIN} to be generated`)
+  }
+  const content = readFileSync(targetFile, 'utf8')
+  if (!content.startsWith('#!')) writeFileSync(targetFile, `#!/usr/bin/env bun\n${content}`, 'utf8')
+  chmodSync(targetFile, 0o755)
+}
+
 function buildStylesheet(outDir: string): void {
   const output = join(outDir, 'styles.css')
   const result = spawnSync('bun', [
@@ -386,11 +417,15 @@ function writePackageJson(outDir: string, version: string): void {
       'styles.css',
       'README.md',
     ],
+    bin: {
+      'bakin-plugin-test-ui': `./${SDK_UI_TEST_BIN}`,
+    },
     peerDependencies: sourcePkg.peerDependencies ?? {
       '@tanstack/react-router': '^1.168.23',
       react: '^19.0.0',
       'react-dom': '^19.0.0',
     },
+    peerDependenciesMeta: sourcePkg.peerDependenciesMeta,
     dependencies: buildDependencies(outDir, sourcePkg),
     repository: sourcePkg.repository,
     homepage: sourcePkg.homepage,
@@ -445,6 +480,7 @@ export async function buildSdkPackage(opts: BuildSdkPackageOptions): Promise<voi
   mkdirSync(outDir, { recursive: true })
 
   for (const entry of SDK_EXPORTS) buildJsEntry(entry, outDir)
+  buildCli(outDir)
   buildStylesheet(outDir)
 
   const tempDtsDir = mkdtempSync(join(tmpdir(), 'bakin-sdk-dts-'))

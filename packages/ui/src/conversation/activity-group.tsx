@@ -159,7 +159,7 @@ export function ToolCallRow({ call, onOpen, formatSummary }: ToolCallRowProps) {
         className={cn(
           classes,
           'transition-colors duration-[var(--bakin-motion-duration-feedback)] hover:bg-bakin-surface-default',
-          'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-bakin-focus-ring motion-reduce:transition-none',
+          'focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-bakin-focus-ring motion-reduce:transition-none',
         )}
       >
         {content}
@@ -235,7 +235,7 @@ export function ActivityGroup({
           'flex min-h-[var(--bakin-layout-size-control)] w-full min-w-0 items-center gap-bakin-2 px-bakin-3 py-bakin-2 text-left',
           'text-[length:var(--bakin-typography-size-meta)] text-bakin-text-muted outline-none',
           'transition-colors duration-[var(--bakin-motion-duration-feedback)] hover:bg-bakin-surface-default',
-          'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-bakin-focus-ring motion-reduce:transition-none',
+          'focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-bakin-focus-ring motion-reduce:transition-none',
         )}
       >
         <ChevronIcon expanded={expanded} />

@@ -1783,6 +1783,29 @@ Playwright render test.
 stylesheet identity, overflow, axe, keyboard/focus, console errors, and
 desktop/mobile screenshots.
 
+**Status (2026-07-22):** Complete. The public
+`@makinbakin/sdk/testing/ui/conformance` entrypoint now exposes a validated
+package-root config, programmatic runner, stable finding/report schema, and the
+`bakin-plugin-test-ui` executable used by a plugin's `test:ui` script. The
+runner builds a real external-style fixture, intercepts and requires exactly
+one canonical SDK stylesheet import, and reuses the exact PostCSS containment
+implementation used by Whiskit packaging. CSS escape and stylesheet identity
+remain the only package/install blockers. Chromium then captures 1440×900 and
+320×800 evidence while checking document overflow, axe, every visible keyboard
+target and focus treatment (including valid roving-focus composites), console
+errors, page errors, and failed requests. JSON and dependency-free HTML reports
+separate package findings from conformance-only findings and show both
+screenshots inline with concrete repairs. Teeth fixtures prove missing and
+duplicated/copied styles, unsafe global CSS, overflow, unnamed controls,
+keyboard exclusion, and console failure; the clean fixture also proves the
+public host and a valid roving tablist. Building the publish directory proves
+the executable bit, optional Playwright/axe peers, public declarations, and a
+focused package consumer. The repository full-conformance graph and canonical
+UI CI job now run the same stable `bun run ui:test:conformance` command. The
+new focus check also caught Tailwind v4's `outline-none` custom-property
+interaction; all SDK focus-ring consumers now explicitly restore a solid
+outline, with an architecture ratchet preventing regression.
+
 **Acceptance:** every promised violation has a seeded failing fixture and an
 actionable report; broader visual findings do not become runtime install
 blockers; deterministic contract violations can be reused by packaging.

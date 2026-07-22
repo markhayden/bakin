@@ -112,6 +112,37 @@ See **Testing / Plugin UI fixture host** in the public component catalog for
 the registered page-and-slots, mobile, scoped-overlay, and system-state
 examples.
 
+### Run the plugin UI conformance suite
+
+Install `playwright` and `axe-core` as plugin dev dependencies and expose the
+SDK binary as the package's `test:ui` script:
+
+```json
+{ "scripts": { "test:ui": "bakin-plugin-test-ui" } }
+```
+
+Install the browser once with `bunx playwright install chromium`.
+
+Create `bakin.ui-test.ts` at the package root:
+
+```ts
+import { definePluginUiConformance } from '@makinbakin/sdk/testing/ui/conformance'
+
+export default definePluginUiConformance({
+  pluginId: 'bookmarks',
+  fixtureEntry: './tests/ui.fixture.tsx',
+})
+```
+
+Run `bun run test:ui` and open `test-results/bakin-ui/index.html`. The command
+builds the external-style fixture, reuses the same CSS containment validator as
+plugin packaging, enforces exactly one canonical stylesheet import, and checks
+desktop/mobile overflow, axe, keyboard/focus behavior, and browser errors. Its
+HTML and JSON reports include concrete repair guidance plus desktop/mobile
+screenshots. CSS containment and stylesheet identity may block packaging;
+broader browser findings gate conformance and release without becoming runtime
+install policy.
+
 ## Conversation Kit
 
 Use the conversation kit for plugin-owned back-and-forth agent work. `ConversationPanel` is the embedded single-session surface — it owns the chat UI, tool-activity rendering (collapsed groups → detail drawer), the composer (drafts, history, abort, attachments), and resize persistence. The plugin still owns transport, storage, and domain side effects.

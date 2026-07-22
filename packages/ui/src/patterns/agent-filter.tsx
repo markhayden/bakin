@@ -85,7 +85,7 @@ export function AgentFilter({
               title={hideLabel ? item.label : undefined}
               data-agent-filter-value={item.value}
               className={cn(
-                'inline-flex h-bakin-8 shrink-0 items-center justify-center gap-bakin-1 rounded-bakin-control border border-transparent px-bakin-2 text-[length:var(--bakin-typography-size-meta)] font-bakin-typography-weight-semibold text-bakin-text-muted outline-none transition-[background-color,border-color,color,opacity] duration-[var(--bakin-motion-duration-feedback)] ease-bakin-standard hover:text-bakin-text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring disabled:pointer-events-none disabled:opacity-[var(--bakin-state-opacity-disabled)]',
+                'inline-flex h-bakin-8 shrink-0 items-center justify-center gap-bakin-1 rounded-bakin-control border border-transparent px-bakin-2 text-[length:var(--bakin-typography-size-meta)] font-bakin-typography-weight-semibold text-bakin-text-muted outline-none transition-[background-color,border-color,color,opacity] duration-[var(--bakin-motion-duration-feedback)] ease-bakin-standard hover:text-bakin-text-primary focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring disabled:pointer-events-none disabled:opacity-[var(--bakin-state-opacity-disabled)]',
                 selected && 'bg-bakin-border-subtle/35 text-bakin-text-primary',
               )}
               onClick={() => onValueChange(item.value)}

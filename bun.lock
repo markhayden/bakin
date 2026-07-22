@@ -60,6 +60,7 @@
         "@types/react": "^19",
         "@types/react-dom": "^19",
         "@vitest/browser-playwright": "4.1.10",
+        "axe-core": "4.12.1",
         "eslint": "^9",
         "eslint-plugin-react": "^7.37.5",
         "eslint-plugin-react-hooks": "^7.1.1",
@@ -129,14 +130,23 @@
     "packages/sdk": {
       "name": "@makinbakin/sdk",
       "version": "0.0.0-workspace",
+      "bin": {
+        "bakin-plugin-test-ui": "./src/testing/ui/conformance/cli.ts",
+      },
       "devDependencies": {
         "@bakin/ui": "workspace:*",
       },
       "peerDependencies": {
         "@tanstack/react-router": "^1.168.23",
+        "axe-core": "^4.12.0",
+        "playwright": "^1.60.0",
         "react": "^19.0.0",
         "react-dom": "^19.0.0",
       },
+      "optionalPeers": [
+        "axe-core",
+        "playwright",
+      ],
     },
     "packages/ui": {
       "name": "@bakin/ui",

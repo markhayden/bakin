@@ -348,7 +348,7 @@ export function Composer({
         className={cn(
           'group/handle flex h-bakin-2 w-full touch-none items-center justify-center outline-none',
           disabled ? 'cursor-not-allowed' : 'cursor-row-resize',
-          'focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-bakin-focus-ring',
+          'focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-[-2px] focus-visible:outline-bakin-focus-ring',
         )}
       >
         <span className="h-px w-bakin-8 rounded-bakin-pill bg-bakin-border-subtle opacity-0 transition-opacity group-hover/handle:opacity-100 group-focus-visible/handle:opacity-100" />

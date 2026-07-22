@@ -79,7 +79,7 @@ export function SegmentedControl<T extends string>({
               title={option.hideLabel && typeof option.label === 'string' ? option.label : undefined}
               data-segment={option.value}
               className={cn(
-                'inline-flex shrink-0 items-center justify-center gap-bakin-2 whitespace-nowrap rounded-bakin-control border border-transparent font-bakin-typography-weight-semibold text-bakin-text-muted outline-none transition-[background-color,border-color,color] duration-[var(--bakin-motion-duration-feedback)] ease-bakin-standard hover:text-bakin-text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring disabled:pointer-events-none disabled:opacity-[var(--bakin-state-opacity-disabled)]',
+                'inline-flex shrink-0 items-center justify-center gap-bakin-2 whitespace-nowrap rounded-bakin-control border border-transparent font-bakin-typography-weight-semibold text-bakin-text-muted outline-none transition-[background-color,border-color,color] duration-[var(--bakin-motion-duration-feedback)] ease-bakin-standard hover:text-bakin-text-primary focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring disabled:pointer-events-none disabled:opacity-[var(--bakin-state-opacity-disabled)]',
                 size === 'sm' ? 'h-bakin-8 gap-bakin-1 px-bakin-2 text-[length:var(--bakin-typography-size-meta)]' : 'h-[var(--bakin-layout-size-control)] px-bakin-4 text-[length:var(--bakin-typography-size-body)]',
                 selected && 'bg-bakin-border-subtle/35 text-bakin-text-primary',
               )}

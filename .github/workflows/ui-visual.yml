@@ -60,6 +60,9 @@ jobs:
       - name: Run cross-browser behavior checks
         run: bun run ui:test:browsers
 
+      - name: Verify plugin UI conformance runner
+        run: bun run ui:test:conformance
+
       - name: Upload UI failure artifacts
         if: failure()
         uses: actions/upload-artifact@v5
@@ -73,3 +76,4 @@ jobs:
             test-results/ui-visual
             playwright-report/ui-browser
             test-results/ui-browser
+            test-results/plugin-ui-conformance

@@ -29,7 +29,7 @@ export function CollapsibleTrigger({ className, ...props }: CollapsibleTriggerPr
         [
           'flex min-h-[var(--bakin-layout-size-control)] w-full items-center justify-between gap-bakin-3 py-bakin-2 text-left',
           'font-bakin-typography-weight-semibold outline-none transition-colors duration-[var(--bakin-motion-duration-feedback)]',
-          'hover:text-bakin-action-primary-background focus-visible:rounded-bakin-control focus-visible:outline-2',
+          'hover:text-bakin-action-primary-background focus-visible:rounded-bakin-control focus-visible:outline-2 focus-visible:outline-solid',
           'focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring disabled:opacity-[var(--bakin-state-opacity-disabled)]',
         ].join(' '),
         className,

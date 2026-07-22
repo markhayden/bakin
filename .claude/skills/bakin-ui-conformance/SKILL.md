@@ -16,7 +16,7 @@ Read [references/conformance-contract.md](references/conformance-contract.md) be
 3. State the selected story path and export in the working notes. Compose supported focused entrypoints: `@makinbakin/sdk/ui`, `/layout`, `/patterns`, `/charts`, `/conversation`, `/content`, and `/navigation`. Do not add a new consumer of the frozen `/components` barrel.
 4. Preserve the recent routing contract. Use `/navigation` for browser links, router hooks, URL state, history, and dirty-exit behavior; keep server declarations in `/routing`. Do not create visual-only routing abstractions.
 5. Implement the smallest coherent change. Update the public story, interaction coverage, visual/browser evidence, public guidance, and API inventory whenever the supported contract changes.
-6. Run `bun run ui:conformance --quick` while iterating. Run `bun run ui:conformance --full` before a migration checkpoint or merge-ready handoff. Never regenerate a visual baseline, public API freeze, legacy allowance, token artifact, or performance ceiling merely to make a failure pass.
+6. Run `bun run ui:conformance --quick` while iterating. For a client-bearing plugin, also run its `bun run test:ui` fixture and inspect `test-results/bakin-ui/index.html`. Run `bun run ui:conformance --full` before a migration checkpoint or merge-ready handoff. Never regenerate a visual baseline, public API freeze, legacy allowance, token artifact, or performance ceiling merely to make a failure pass.
 7. Report the story used, focused SDK entrypoints used, checks run, and whether the change has any deviation.
 
 ## Handle a missing pattern

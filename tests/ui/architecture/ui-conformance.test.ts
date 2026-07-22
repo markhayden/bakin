@@ -174,6 +174,7 @@ describe('one-command UI conformance', () => {
       'bun run ui:test:stories',
       'bun run ui:test:visual',
       'bun run ui:test:browsers',
+      'bun run ui:test:conformance',
       'bun run docs:check',
     ]) expect(full).toContain(command)
 

@@ -117,7 +117,7 @@ export function Toast({
           aria-label={dismissLabel}
           data-slot="toast-close"
           onClick={onDismiss}
-          className="inline-flex size-bakin-8 shrink-0 items-center justify-center rounded-bakin-control border border-transparent text-bakin-text-muted transition-colors hover:bg-bakin-border-subtle/20 hover:text-bakin-text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring"
+          className="inline-flex size-bakin-8 shrink-0 items-center justify-center rounded-bakin-control border border-transparent text-bakin-text-muted transition-colors hover:bg-bakin-border-subtle/20 hover:text-bakin-text-primary focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring"
         >
           <span aria-hidden="true" className="text-lg leading-none">×</span>
         </button>

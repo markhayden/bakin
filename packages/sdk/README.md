@@ -111,6 +111,7 @@ The public npm package exposes these sub-paths:
 | `@makinbakin/sdk/routing` | Typed declarative route helpers |
 | `@makinbakin/sdk/navigation` | Browser links, URL state, history, and dirty-exit guards |
 | `@makinbakin/sdk/testing/ui` | Deterministic browser fixture host for plugin pages and slots |
+| `@makinbakin/sdk/testing/ui/conformance` | Plugin UI test config, reports, CSS gate, and runner |
 | `@makinbakin/sdk/styles.css` | Canonical compiled design-system stylesheet |
 
 Use the focused entrypoints for new plugin UI and browser navigation. Existing
@@ -156,6 +157,39 @@ plugin clients still leave stylesheet loading to Bakin. Apply the matching
 fixture's viewport field freezes responsive preferences and records intent but
 cannot resize the browser from inside React. Unlisted requests fail loudly so
 fixtures cannot silently depend on a developer machine or user state.
+
+Add the one-command conformance suite to a client-bearing plugin package:
+
+```json
+{
+  "scripts": { "test:ui": "bakin-plugin-test-ui" },
+  "devDependencies": {
+    "axe-core": "^4.12.0",
+    "playwright": "^1.60.0"
+  }
+}
+```
+
+Install the browser once with `bunx playwright install chromium`.
+
+Then define the package-root fixture in `bakin.ui-test.ts`:
+
+```ts
+import { definePluginUiConformance } from '@makinbakin/sdk/testing/ui/conformance'
+
+export default definePluginUiConformance({
+  pluginId: 'bookmarks',
+  fixtureEntry: './tests/ui.fixture.tsx',
+})
+```
+
+`bun run test:ui` builds that real fixture, verifies CSS ownership and exactly
+one canonical stylesheet import, then runs axe, keyboard/focus, overflow, and
+browser-error checks in 1440×900 and 320×800 Chromium viewports. It writes
+machine-readable JSON, a self-contained HTML report, and both screenshots to
+`test-results/bakin-ui/`. CSS scope and stylesheet identity are reusable
+package/install blockers; broader browser findings gate CI or release without
+changing runtime installation policy.
 
 The prerelease migration surface is machine-inventoried in
 [`design-system/public-api.json`](https://github.com/markhayden/bakin/blob/main/design-system/public-api.json).

@@ -8,7 +8,7 @@ const checkboxClasses = [
   'group/checkbox relative inline-flex size-bakin-6 shrink-0 cursor-pointer items-center justify-center rounded-bakin-control border border-bakin-border-subtle',
   'bg-bakin-canvas-default text-bakin-action-primary-foreground outline-none select-none',
   'transition-[background-color,border-color,color,opacity] duration-[var(--bakin-motion-duration-feedback)] ease-bakin-standard',
-  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring',
+  'focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring',
   'data-checked:border-bakin-action-primary-background data-checked:bg-bakin-action-primary-background',
   'data-indeterminate:border-bakin-action-primary-background data-indeterminate:bg-bakin-action-primary-background',
   'aria-invalid:border-bakin-signal-danger',

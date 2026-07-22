@@ -61,7 +61,7 @@ export function SortableHead<F extends string>({
         disabled={disabled}
         onClick={() => onSort(field)}
         className={cn(
-          'inline-flex min-h-bakin-8 max-w-full items-center gap-bakin-1 rounded-bakin-control text-left text-[length:var(--bakin-typography-size-meta)] text-bakin-text-muted outline-none transition-colors hover:text-bakin-text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring disabled:cursor-default disabled:opacity-[var(--bakin-state-opacity-disabled)]',
+          'inline-flex min-h-bakin-8 max-w-full items-center gap-bakin-1 rounded-bakin-control text-left text-[length:var(--bakin-typography-size-meta)] text-bakin-text-muted outline-none transition-colors hover:text-bakin-text-primary focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring disabled:cursor-default disabled:opacity-[var(--bakin-state-opacity-disabled)]',
           active && 'text-bakin-text-primary',
           buttonClassName,
         )}

@@ -118,7 +118,7 @@ export function ToolCallDrawer({
           className={cn(
             'group/handle absolute inset-y-0 left-0 z-10 hidden w-bakin-2 touch-none items-center justify-center outline-none sm:flex',
             open ? 'cursor-col-resize' : 'cursor-default',
-            'focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-bakin-focus-ring',
+            'focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-[-2px] focus-visible:outline-bakin-focus-ring',
           )}
         >
           <span className="h-bakin-8 w-px rounded-bakin-pill bg-bakin-border-subtle opacity-0 transition-opacity group-hover/handle:opacity-100 group-focus-visible/handle:opacity-100" />

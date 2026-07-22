@@ -68,7 +68,7 @@ export function UnderlineTabs({
               tabIndex={index === tabIndex ? 0 : -1}
               disabled={tab.disabled}
               className={cn(
-                'relative inline-flex min-h-[var(--bakin-layout-size-control)] shrink-0 items-center whitespace-nowrap px-bakin-3 py-bakin-2 text-[length:var(--bakin-typography-size-body)] text-bakin-text-muted outline-none transition-colors duration-[var(--bakin-motion-duration-feedback)] ease-bakin-standard after:absolute after:inset-x-bakin-2 after:bottom-0 after:h-0.5 after:origin-center after:scale-x-0 after:bg-bakin-signal-accent after:transition-transform hover:text-bakin-text-primary focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-bakin-focus-ring disabled:pointer-events-none disabled:opacity-[var(--bakin-state-opacity-disabled)]',
+                'relative inline-flex min-h-[var(--bakin-layout-size-control)] shrink-0 items-center whitespace-nowrap px-bakin-3 py-bakin-2 text-[length:var(--bakin-typography-size-body)] text-bakin-text-muted outline-none transition-colors duration-[var(--bakin-motion-duration-feedback)] ease-bakin-standard after:absolute after:inset-x-bakin-2 after:bottom-0 after:h-0.5 after:origin-center after:scale-x-0 after:bg-bakin-signal-accent after:transition-transform hover:text-bakin-text-primary focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-[-2px] focus-visible:outline-bakin-focus-ring disabled:pointer-events-none disabled:opacity-[var(--bakin-state-opacity-disabled)]',
                 selected && 'font-bakin-typography-weight-semibold text-bakin-text-primary after:scale-x-100',
               )}
               onClick={() => onValueChange(tab.id)}

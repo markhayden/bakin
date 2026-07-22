@@ -45,7 +45,7 @@ const selectTriggerClasses = [
   'flex w-fit min-w-0 max-w-full items-center justify-between gap-bakin-2 rounded-bakin-control border border-bakin-border-subtle',
   'bg-bakin-canvas-default px-bakin-3 font-bakin-typography-family-ui text-[length:var(--bakin-typography-size-body)] leading-tight text-bakin-text-primary outline-none select-none',
   'transition-[background-color,border-color,color,opacity] duration-[var(--bakin-motion-duration-feedback)] ease-bakin-standard',
-  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring',
+  'focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring',
   'data-[size=default]:h-[var(--bakin-layout-size-control)] data-[size=sm]:min-h-bakin-8 data-[size=sm]:px-bakin-2',
   'data-placeholder:text-bakin-text-muted data-popup-open:border-bakin-focus-ring',
   'disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-[var(--bakin-state-opacity-disabled)]',

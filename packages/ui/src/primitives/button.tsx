@@ -50,7 +50,7 @@ const buttonStyles = cva(
     'rounded-bakin-control border font-bakin-typography-family-ui font-bakin-typography-weight-semibold',
     'text-[length:var(--bakin-typography-size-body)] leading-none',
     'transition-[background-color,border-color,color,filter,transform] duration-[var(--bakin-motion-duration-feedback)] ease-bakin-standard',
-    'outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring',
+    'outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring',
     'active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-[var(--bakin-state-opacity-disabled)]',
     'aria-invalid:border-bakin-signal-danger',
     '[&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*="size-"])]:size-bakin-4',

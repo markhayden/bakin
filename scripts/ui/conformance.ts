@@ -64,6 +64,7 @@ const FULL_ONLY_COMMANDS: readonly UiConformanceStep[] = [
   { label: 'Story accessibility and interactions', command: ['bun', 'run', 'ui:test:stories'] },
   { label: 'Canonical Chromium visuals', command: ['bun', 'run', 'ui:test:visual'] },
   { label: 'Cross-browser behavior', command: ['bun', 'run', 'ui:test:browsers'] },
+  { label: 'Plugin UI conformance teeth', command: ['bun', 'run', 'ui:test:conformance'] },
   { label: 'Published docs and catalog', command: ['bun', 'run', 'docs:check'] },
 ] as const
 

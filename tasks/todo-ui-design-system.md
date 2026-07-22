@@ -82,16 +82,16 @@ comparison, and deletion of replaced styling/allowances.
 - [x] T36 Prove focused entrypoints and freeze the migration API
 - [x] T36a Reconcile pre-migration UI guidance and record API review findings
 - [x] T36b Enforce Storybook-first governance for Claude Code, Codex, and CI
-- [ ] USER CHECKPOINT: public component and layout contract approved
+- [x] USER CHECKPOINT: public component and layout contract approved
 
 ## Phase 4 — Plugin UI contract
 
-- [ ] T37 Inject page and per-slot plugin ownership roots
-- [ ] T38 Implement plugin CSS containment validation
-- [ ] T39 Make overlays and runtime CSS containment-safe
-- [ ] Checkpoint 4A: isolation contract green
+- [x] T37 Inject page and per-slot plugin ownership roots
+- [x] T38 Implement plugin CSS containment validation
+- [x] T39 Make overlays and runtime CSS containment-safe
+- [x] Checkpoint 4A: isolation contract green
 - [x] T40 Build the deterministic plugin fixture host
-- [ ] T41 Implement the plugin UI conformance command
+- [x] T41 Implement the plugin UI conformance command
 - [ ] T42a Rebuild the Bakin reference plugin as an exemplar
 - [ ] T42b Rebuild the Bits official template as an exemplar
 - [ ] T43a Wire core plugin conformance CI

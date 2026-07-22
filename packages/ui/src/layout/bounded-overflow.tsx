@@ -31,7 +31,7 @@ export function BoundedOverflow({
       tabIndex={0}
       className={layoutClassName(
         'max-w-full min-w-0 overflow-x-auto overflow-y-hidden overscroll-x-contain',
-        'focus-visible:rounded-bakin-control focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring',
+        'focus-visible:rounded-bakin-control focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring',
         className,
       )}
     >

@@ -5,6 +5,7 @@ import type * as Layout from '@makinbakin/sdk/layout'
 import type * as Navigation from '@makinbakin/sdk/navigation'
 import type * as Patterns from '@makinbakin/sdk/patterns'
 import type * as TestingUi from '@makinbakin/sdk/testing/ui'
+import type * as TestingUiConformance from '@makinbakin/sdk/testing/ui/conformance'
 import type * as Ui from '@makinbakin/sdk/ui'
 import { BarChart } from '@makinbakin/sdk/charts'
 import { TurnOutputView } from '@makinbakin/sdk/conversation'
@@ -13,6 +14,7 @@ import { PageShell } from '@makinbakin/sdk/layout'
 import { PluginLink, useUnsavedChangesGuard } from '@makinbakin/sdk/navigation'
 import { PluginSettingsRenderer } from '@makinbakin/sdk/patterns'
 import { PluginUiFixtureHost, createPluginUiFixtureFetch } from '@makinbakin/sdk/testing/ui'
+import { definePluginUiConformance } from '@makinbakin/sdk/testing/ui/conformance'
 import { Button } from '@makinbakin/sdk/ui'
 
 export interface FocusedSdkConsumer {
@@ -23,6 +25,7 @@ export interface FocusedSdkConsumer {
   navigation: typeof Navigation
   patterns: typeof Patterns
   testingUi: typeof TestingUi
+  testingUiConformance: typeof TestingUiConformance
   ui: typeof Ui
 }
 
@@ -37,6 +40,7 @@ export const focusedSdkValues = {
   PluginUiFixtureHost,
   TurnOutputView,
   createPluginUiFixtureFetch,
+  definePluginUiConformance,
   useUnsavedChangesGuard,
 }
 
@@ -49,5 +53,6 @@ export interface FocusedSdkProps {
   link: Navigation.PluginLinkProps
   settings: Patterns.PluginSettingsRendererProps
   fixture: TestingUi.PluginUiFixtureHostProps
+  fixtureConfig: TestingUiConformance.PluginUiConformanceConfig
   button: Ui.ButtonProps
 }

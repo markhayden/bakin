@@ -44,6 +44,7 @@
       "@makinbakin/sdk/navigation": ["./packages/sdk/src/navigation/index.ts"],
       "@makinbakin/sdk/testing": ["./packages/sdk/src/testing/index.ts"],
       "@makinbakin/sdk/testing/ui": ["./packages/sdk/src/testing/ui/index.ts"],
+      "@makinbakin/sdk/testing/ui/conformance": ["./packages/sdk/src/testing/ui/conformance/index.ts"],
       "@makinbakin/sdk/internal": ["./packages/sdk/src/internal/index.ts"],
       "@bakin/core/docs": ["./packages/core/src/docs/index.ts"],
       "@bakin/tasks": ["./plugins/tasks"],

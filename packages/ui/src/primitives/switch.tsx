@@ -8,7 +8,7 @@ export type SwitchProps = SwitchPrimitive.Root.Props & { size?: SwitchSize }
 const switchClasses = [
   'group/switch relative inline-flex h-bakin-6 shrink-0 cursor-pointer items-center rounded-bakin-pill px-bakin-1 outline-none select-none',
   'transition-opacity duration-[var(--bakin-motion-duration-feedback)] ease-bakin-standard',
-  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring',
+  'focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring',
   'data-[size=default]:w-10 data-[size=sm]:w-bakin-8',
   'data-disabled:pointer-events-none data-disabled:cursor-not-allowed data-disabled:opacity-[var(--bakin-state-opacity-disabled)]',
   'data-readonly:cursor-default',

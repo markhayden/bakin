@@ -73,6 +73,7 @@ Wait for an explicit yes to this deviation. Approval of the feature, plan, or ge
 
 - Run focused unit/architecture/story tests first.
 - Run `bun run ui:conformance --quick` for every UI-affecting change.
+- Run the plugin's `bun run test:ui` fixture for every changed page or slot contribution and inspect its HTML report. Treat CSS containment and canonical stylesheet identity as package blockers; keep overflow, axe, keyboard/focus, console, and screenshot review in conformance/CI.
 - Run `bun run ui:conformance --full` for merge-ready migrations, supported-contract changes, and checkpoints.
 - Run the canonical Storybook/Playwright tooling for visuals; never substitute host-OS screenshots for baseline approval.
 - Keep the maintainer Storybook running when the user is actively reviewing it.

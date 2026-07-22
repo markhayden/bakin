@@ -44,7 +44,9 @@ describe('buildSdkPackage', () => {
       type: string
       exports: Record<string, { import: string; types: string } | string>
       sideEffects: string[]
+      bin: Record<string, string>
       peerDependencies: Record<string, string>
+      peerDependenciesMeta: Record<string, { optional?: boolean }>
       dependencies: Record<string, string>
     }>(join(outDir, 'package.json'))
 
@@ -53,9 +55,24 @@ describe('buildSdkPackage', () => {
     expect(pkg.type).toBe('module')
     expect(pkg.peerDependencies).toEqual({
       '@tanstack/react-router': '^1.168.23',
+      'axe-core': '^4.12.0',
+      playwright: '^1.60.0',
       react: '^19.0.0',
       'react-dom': '^19.0.0',
     })
+    expect(pkg.peerDependenciesMeta).toEqual({
+      'axe-core': { optional: true },
+      playwright: { optional: true },
+    })
+    expect(pkg.bin).toEqual({ 'bakin-plugin-test-ui': './bin/bakin-plugin-test-ui.js' })
+    expect(readFileSync(join(outDir, 'bin/bakin-plugin-test-ui.js'), 'utf8')).toStartWith('#!/usr/bin/env bun')
+    expect(statSync(join(outDir, 'bin/bakin-plugin-test-ui.js')).mode & 0o111).not.toBe(0)
+    const cliHelp = spawnSync('bun', [join(outDir, 'bin/bakin-plugin-test-ui.js'), '--help'], {
+      cwd: repoRoot,
+      encoding: 'utf8',
+    })
+    expect(cliHelp.status).toBe(0)
+    expect(cliHelp.stdout).toContain('Usage: bakin-plugin-test-ui')
     expect(pkg.dependencies.zod).toBeDefined()
     expect(pkg.dependencies['@base-ui/react']).toBeDefined()
     expect(SDK_STYLES_SPECIFIER).toBe('@makinbakin/sdk/styles.css')

@@ -182,7 +182,7 @@ export function StackedColumnChart({
             return (
               <div
                 key={datum.x}
-                className="relative flex min-w-0 flex-1 flex-col-reverse justify-start rounded-bakin-control focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring"
+                className="relative flex min-w-0 flex-1 flex-col-reverse justify-start rounded-bakin-control focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring"
                 style={{ height }}
                 role="img"
                 tabIndex={0}
@@ -257,7 +257,7 @@ export function StackedColumnChart({
               key={item.key}
               type="button"
               onClick={() => toggle(item.key)}
-              className="flex min-h-bakin-target items-center gap-bakin-2 rounded-bakin-control text-[length:var(--bakin-typography-size-meta)] text-bakin-text-muted transition-opacity motion-reduce:transition-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring"
+              className="flex min-h-bakin-target items-center gap-bakin-2 rounded-bakin-control text-[length:var(--bakin-typography-size-meta)] text-bakin-text-muted transition-opacity motion-reduce:transition-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring"
               data-hidden={hidden.has(item.key) || undefined}
               aria-pressed={!hidden.has(item.key)}
             >
