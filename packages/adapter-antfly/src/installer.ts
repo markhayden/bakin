@@ -121,10 +121,19 @@ export async function installAntflyDependency(
   const existing = findAntflyBinary()
   const existingVersion = existing ? await antflyBinaryVersion(existing) : null
   if (existing && existingVersion === pin.version) {
+    // Binary is current — but the SERVICE may be unprovisioned or stopped
+    // (the clean-slate recovery boots the unit out before reinstalling,
+    // and the old noop path left the engine dead: 2026-07-22, a fresh
+    // rc.22 box's reindex failed 12/12 with "antfly unreachable").
+    // A noop install still guarantees a provisioned, running engine.
+    await ensureProvisioned(SERVICE_DEFAULTS)
+    if (!await isLocalServerResponding()) {
+      await startService(SERVICE_DEFAULTS)
+    }
     return {
       name: 'antfly',
       status: 'noop' as const,
-      message: `Antfly v${pin.version} is already installed at ${existing}`,
+      message: `Antfly v${pin.version} is already installed at ${existing}; service provisioned and running`,
       durationMs: Date.now() - start,
     }
   }
