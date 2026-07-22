@@ -851,6 +851,10 @@ Skeletons are visual stand-ins and remain hidden from assistive technology. Use 
 
 `@makinbakin/sdk/styles.css` is the one supported compiled design-system stylesheet. The Bakin host loads it once for installed plugins, so plugin client entries must not import it or copy its contents into plugin-owned CSS.
 
+Plugins may import their own domain stylesheet from `client.tsx`. The plugin builder automatically scopes every safe selector to that plugin's `data-bakin-plugin` ownership root, localizes standalone `:root` declarations to the same root, and namespaces keyframes. Write selectors for the domain element itself—do not repeat the ownership selector merely to make containment work.
+
+The build fails with the author CSS file, location, reason, and repair guidance when a stylesheet escapes that boundary. Document selectors (`html`, `body`, `:host`, and `:global`), generic or foreign plugin roots, retained `@import` and `@font-face`, declarations of reserved `--bakin-*` properties, and another plugin's asset URL are not valid domain CSS. Use SDK patterns and semantic tokens for shared presentation; use plugin-prefixed custom properties and packaged assets for domain-specific values.
+
 Standalone Storybook instances, browser previews, and external test harnesses do not have the host stylesheet. Import the public artifact once at the preview or application root:
 
 ```ts

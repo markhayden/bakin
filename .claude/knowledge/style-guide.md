@@ -185,6 +185,22 @@ never sit at rest in a card — surface on hover or behind the detail view.
 - `data-*` test hooks on every meaningful element; tests assert behavior,
   not styling classes.
 
+### Plugin CSS ownership
+
+- The host owns one `@makinbakin/sdk/styles.css`; plugin clients never import
+  or copy it. `--bakin-*` declarations are reserved for that system artifact.
+- Domain CSS enters through `client.tsx`. The build scopes safe selectors to
+  the plugin's `data-bakin-plugin` root, localizes standalone `:root` rules,
+  and namespaces keyframes. Author selectors for the domain element, not the
+  ownership wrapper.
+- Document selectors, generic or foreign plugin roots, global fonts/imports,
+  and cross-plugin asset references fail the build with an author-facing
+  location and repair. Do not add an exception by weakening the validator;
+  a genuine system-owned case requires the style-guide deviation protocol.
+- Failed CSS validation removes both emitted CSS and its paired client bundle.
+  Fresh local artifacts are rechecked before activation, so cached output is
+  not an enforcement bypass.
+
 ## 12. Migration tracking and exceptions
 
 Do not maintain hand-counted migration backlogs in prose. The generated

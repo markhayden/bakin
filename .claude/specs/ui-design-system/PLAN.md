@@ -1674,6 +1674,20 @@ mount.
 font declarations, root/document selectors, and cross-plugin references with
 actionable source-mapped errors.
 
+**Status (2026-07-22):** Complete. Core and Whiskit client builds now run one
+PostCSS ownership transform after bundling: safe selectors and standalone
+`:root` rules are scoped to the exact plugin root, keyframes are namespaced,
+and unsafe document/cross-plugin/global declarations fail with author-facing
+source locations and concrete repairs. Invalid CSS and its paired client bundle
+are removed, stale CSS is removed when its final import disappears, and fresh
+local artifacts are revalidated before the build cache can skip compilation.
+The teeth matrix covers duplicate SDK token content, foreign selectors/assets,
+fonts/imports, source recovery, stale output, system-Bun/in-process parity, and
+atomic failure. All 11 core browser bundles pass; Team and Workflows prove the
+third-party React Flow stylesheet and keyframes are isolated independently.
+The official Bits source and built-artifact audit is clean (its current clients
+emit no CSS); T43 remains the planned cross-repository CI integration.
+
 **Acceptance:** global/escaping selectors and duplicate SDK stylesheet content
 fail; valid domain CSS nested under the plugin root passes; false-positive
 exceptions are explicit system-owned cases.

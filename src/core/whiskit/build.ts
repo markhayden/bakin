@@ -28,6 +28,7 @@ import { basename, join, resolve } from 'node:path'
 import { PLUGIN_CLIENT_EXTERNALS, PLUGIN_SERVER_EXTERNALS } from './externals'
 import { validatePluginImports, type PluginPackageJson } from './import-scan'
 import { commandFailure, runSystemBun, DEFAULT_BUILD_TIMEOUT_MS } from './command'
+import { processBuiltPluginCss } from './plugin-css'
 import { WhiskitBuildError, type WhiskitBuildRequest, type WhiskitBuildResult } from './types'
 
 const REPO_ROOT = resolve(import.meta.dir, '../../..')
@@ -297,6 +298,11 @@ function assertServerBundleExternalsClean(plugin: ValidatedPlugin): void {
 
 async function buildClientWithSystemBun(req: WhiskitBuildRequest, plugin: ValidatedPlugin): Promise<void> {
   if (!plugin.clientEntry) return
+  // A rebuild after the plugin removes its final CSS import must not leave the
+  // previous client.css active in the host.
+  rmSync(join(plugin.distDir, 'client.css'), { force: true })
+  rmSync(join(plugin.distDir, 'client.css.map'), { force: true })
+  rmSync(join(plugin.distDir, 'client.js.map'), { force: true })
   const result = await runSystemBun(
     [
       'build', plugin.clientEntry,
@@ -304,6 +310,7 @@ async function buildClientWithSystemBun(req: WhiskitBuildRequest, plugin: Valida
       '--target', 'browser',
       '--format', 'esm',
       '--entry-naming', 'client.[ext]',
+      '--sourcemap=external',
       ...(req.production ? ['--production'] : []),
       ...PLUGIN_CLIENT_EXTERNALS.flatMap((e) => ['--external', e]),
     ],
@@ -316,6 +323,23 @@ async function buildClientWithSystemBun(req: WhiskitBuildRequest, plugin: Valida
   })
   if (result.exitCode !== 0) {
     throw commandFailure('client-build', `Client build for "${plugin.pluginId}"`, result)
+  }
+
+  const cssStartedAt = Date.now()
+  try {
+    await processBuiltPluginCss({
+      pluginId: plugin.pluginId,
+      distDir: plugin.distDir,
+      sourceRoot: req.pluginDir,
+    })
+    req.onStage?.({ stage: 'css-validate', status: 'ok', durationMs: Date.now() - cssStartedAt })
+  } catch (error) {
+    rmSync(join(plugin.distDir, 'client.js'), { force: true })
+    req.onStage?.({ stage: 'css-validate', status: 'error', durationMs: Date.now() - cssStartedAt })
+    throw new WhiskitBuildError(
+      'css-validate',
+      error instanceof Error ? error.message : String(error),
+    )
   }
 }
 

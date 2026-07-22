@@ -49,8 +49,9 @@ function freshDir(prefix: string): string {
 }
 
 /** A minimal buildable plugin: server entry imports the SDK, client fills a slot. */
-function seedPlugin(opts: { withClient?: boolean } = {}): string {
-  const dir = freshDir('plugin')
+function seedPlugin(opts: { withClient?: boolean; css?: string } = {}): string {
+  const dir = join(freshDir('plugin'), 'demo')
+  mkdirSync(dir, { recursive: true })
   writeFileSync(join(dir, 'bakin-plugin.json'), JSON.stringify({
     id: 'demo', name: 'Demo', version: '0.1.0', bakin: '>=0.0.1',
     description: 'build fixture',   }))
@@ -70,10 +71,12 @@ function seedPlugin(opts: { withClient?: boolean } = {}): string {
   ].join('\n'))
   if (opts.withClient !== false) {
     writeFileSync(join(dir, 'client.tsx'), [
+      ...(opts.css === undefined ? [] : [`import './domain.css'`]),
       `import { registerPlugin } from '@makinbakin/sdk'`,
       `registerPlugin({ id: 'demo', slots: {} })`,
       '',
     ].join('\n'))
+    if (opts.css !== undefined) writeFileSync(join(dir, 'domain.css'), opts.css)
   }
   return dir
 }
@@ -113,6 +116,49 @@ describe('resolveSdkEntrypoints', () => {
 })
 
 describe('buildPluginWithSystemBun', () => {
+  it('scopes emitted CSS and removes transient source maps', async () => {
+    const dir = seedPlugin({ css: '.card{display:grid}@keyframes pulse{to{opacity:1}}.busy{animation:pulse 1s}' })
+
+    await buildPluginWithSystemBun({ pluginDir: dir })
+
+    const css = readFileSync(join(dir, 'dist', 'client.css'), 'utf-8')
+    const pluginId = dir.split('/').at(-1)!
+    expect(css).toContain(`:where([data-bakin-plugin="${pluginId}"]) .card`)
+    expect(css).toContain(`@keyframes bakin-plugin-${pluginId}-pulse`)
+    expect(existsSync(join(dir, 'dist', 'client.css.map'))).toBe(false)
+    expect(existsSync(join(dir, 'dist', 'client.js.map'))).toBe(false)
+  }, 30_000)
+
+  it('rejects and removes CSS that escapes the plugin ownership root', async () => {
+    const dir = seedPlugin({ css: 'body .card{display:grid}' })
+
+    try {
+      await buildPluginWithSystemBun({ pluginDir: dir })
+      throw new Error('expected build to fail')
+    } catch (error) {
+      expect(error).toBeInstanceOf(WhiskitBuildError)
+      expect((error as WhiskitBuildError).stage).toBe('css-validate')
+      expect((error as Error).message).toContain('domain.css:1:1')
+    }
+    expect(existsSync(join(dir, 'dist', 'client.css'))).toBe(false)
+    expect(existsSync(join(dir, 'dist', 'client.js'))).toBe(false)
+  }, 30_000)
+
+  it('removes stale emitted CSS when the client drops its final stylesheet import', async () => {
+    const dir = seedPlugin({ css: '.card{display:grid}' })
+    await buildPluginWithSystemBun({ pluginDir: dir })
+    expect(existsSync(join(dir, 'dist', 'client.css'))).toBe(true)
+
+    writeFileSync(join(dir, 'client.tsx'), [
+      `import { registerPlugin } from '@makinbakin/sdk'`,
+      `registerPlugin({ id: 'demo', slots: {} })`,
+      '',
+    ].join('\n'))
+    await buildPluginWithSystemBun({ pluginDir: dir })
+
+    expect(existsSync(join(dir, 'dist', 'client.css'))).toBe(false)
+  }, 30_000)
+
   it('inlines the SDK into the server bundle and keeps it external in the client', async () => {
     const dir = seedPlugin()
     const result = await buildPluginWithSystemBun({ pluginDir: dir })
@@ -242,6 +288,17 @@ describe('buildPluginWithSystemBun', () => {
 })
 
 describe('buildPluginInProcess (dev fast path)', () => {
+  it('applies the same CSS containment contract as the system backend', async () => {
+    const dir = seedPlugin({ css: '.card{display:grid}' })
+
+    await buildPluginInProcess({ pluginDir: dir })
+
+    const pluginId = dir.split('/').at(-1)!
+    expect(readFileSync(join(dir, 'dist', 'client.css'), 'utf-8')).toContain(
+      `:where([data-bakin-plugin="${pluginId}"]) .card`,
+    )
+  }, 30_000)
+
   it('rejects server bundles that retain a runtime React import (#267 residual)', async () => {
     const dir = seedPlugin()
     writeFileSync(join(dir, 'index.ts'), [

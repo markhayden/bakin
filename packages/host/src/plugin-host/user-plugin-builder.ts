@@ -17,7 +17,7 @@
  * Rebuild skip: if every dist output is newer than every source entry,
  * the build is a no-op. This keeps server boot fast when nothing changed.
  */
-import { existsSync, statSync, readdirSync, readFileSync } from 'node:fs'
+import { existsSync, statSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import type { Dirent } from 'node:fs'
 import { basename, join } from 'node:path'
 import { startStartupSpan, type StartupDiagnosticLogger } from '@/core/startup-diagnostics'
@@ -27,6 +27,7 @@ import {
   buildPluginWithSystemBun,
   canBuildInProcess,
 } from '@/core/whiskit/build'
+import { processBuiltPluginCss } from '@/core/whiskit/plugin-css'
 import { WhiskitBuildError, type WhiskitStageEvent } from '@/core/whiskit/types'
 import { verifyInstalledArtifact } from '@/core/whiskit/verify'
 
@@ -130,6 +131,7 @@ const STAGE_SPANS: Record<WhiskitStageEvent['stage'], { span: string; errorLabel
   'install': { span: 'userPlugin.dependencies', errorLabel: 'bun install failed' },
   'server-build': { span: 'userPlugin.serverBuild', errorLabel: 'server build failed' },
   'client-build': { span: 'userPlugin.clientBuild', errorLabel: 'client build failed' },
+  'css-validate': { span: 'userPlugin.cssValidate', errorLabel: 'CSS containment failed' },
 }
 
 const STAGE_ERROR_LABELS: Record<WhiskitBuildError['stage'], string> = {
@@ -139,6 +141,7 @@ const STAGE_ERROR_LABELS: Record<WhiskitBuildError['stage'], string> = {
   'install': 'dependency install failed',
   'server-build': 'server build failed',
   'client-build': 'client build failed',
+  'css-validate': 'CSS containment failed',
 }
 
 /**
@@ -221,6 +224,15 @@ export async function buildUserPlugin(
       // produces, and treating it as fresh would execute shipped dist
       // bytes that were never rebuilt from validated source.
       if (clientDistFresh && oldestDist > 0 && newestSource > 0 && oldestDist > newestSource) {
+        try {
+          await processBuiltPluginCss({ pluginId, distDir, sourceRoot: pluginDir })
+        } catch (error) {
+          rmSync(distClient, { force: true })
+          throw new WhiskitBuildError(
+            'css-validate',
+            error instanceof Error ? error.message : String(error),
+          )
+        }
         totalSpan?.end({ status: 'skipped', reason: 'fresh-dist', hasClient })
         return
       }
