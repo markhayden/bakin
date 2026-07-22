@@ -254,11 +254,40 @@ export function rebuildRegisteredTables(tableName?: string, opts?: RebuildOpts):
   return pass
 }
 
+/**
+ * Rebuild order = product priority, not plugin-activation accident.
+ * High-value, small tables first so useful coverage returns in seconds;
+ * memory (the largest and least interactive corpus) rebuilds LAST.
+ * Unlisted tables take the default middle slot, alphabetical tie-break.
+ * (A content-type-declared priority field is the eventual clean home for
+ * this; the explicit map keeps core honest until the SDK grows it.)
+ */
+const REBUILD_ORDER: Record<string, number> = {
+  bakin_assets: 10,
+  bakin_tasks: 15,
+  bakin_chats: 20,
+  bakin_projects: 25,
+  bakin_brands: 30,
+  'bakin_brand-lessons': 35,
+  bakin_workflows: 40,
+  bakin_schedule: 45,
+  bakin_team: 55,
+  'bakin_agent-lessons': 60,
+  bakin_messaging_brainstorm: 65,
+  bakin_memory: 100,
+}
+const REBUILD_ORDER_DEFAULT = 50
+
 async function runRebuildPass(tableName?: string, opts?: RebuildOpts): Promise<ReindexTableOutcome[]> {
   const registry = getRegistry()
   const search = getSearchAdapter()
   const targets = Array.from(registry.contentTypes.entries())
     .filter(([logical, def]) => !tableName || logical === tableName || def.table === tableName)
+    .sort(([a], [b]) => {
+      const pa = REBUILD_ORDER[a] ?? REBUILD_ORDER_DEFAULT
+      const pb = REBUILD_ORDER[b] ?? REBUILD_ORDER_DEFAULT
+      return pa === pb ? (a < b ? -1 : 1) : pa - pb
+    })
 
   const results: ReindexTableOutcome[] = []
   const queue = [...targets]
