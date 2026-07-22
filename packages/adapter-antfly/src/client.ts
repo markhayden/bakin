@@ -166,11 +166,14 @@ export class AntflySearchClient implements SearchAdapter {
       }
       return []
     },
+    // Creates/drops ride the write gate too: they provision/tear down
+    // embedding legs, and concurrent structural ops are part of the same
+    // Metal-crash surface as concurrent batch writes (2026-07-22 ladder).
     create: async (name: string, config: TableConfig): Promise<void> => {
-      await this.request('POST', paths.table(name), buildTableCreate(config, this.settings))
+      await this.serializedWrite(() => this.request('POST', paths.table(name), buildTableCreate(config, this.settings)))
     },
     drop: async (name: string): Promise<void> => {
-      await this.request('DELETE', paths.table(name))
+      await this.serializedWrite(() => this.request('DELETE', paths.table(name)))
     },
     stats: async (name: string): Promise<TableStats | null> => {
       // Doc count from index status, NEVER a query (queries can hang during backfill).
@@ -195,21 +198,41 @@ export class AntflySearchClient implements SearchAdapter {
     }
   }
 
+  /**
+   * ONE write in flight, ever, process-wide. Root-caused 2026-07-22 via a
+   * minimal shell ladder: THREE parallel batch-write streams into
+   * embedding-leg tables CRASH the engine outright
+   * (metal-command-buffer-failed, MTLCommandBufferErrorDomain, process
+   * exit) — reproducible with plain curl, no Bakin involved. launchd's
+   * respawn masked the crash as mysterious "wedging" for a whole night.
+   * Serializing writes at the client honors the engine's real concurrency
+   * contract; reads are unaffected. Remove when upstream survives
+   * concurrent embed-bearing writes (antfly issue pending).
+   */
+  private writeGate: Promise<unknown> = Promise.resolve()
+  private serializedWrite<T>(fn: () => Promise<T>): Promise<T> {
+    const next = this.writeGate.then(fn, fn)
+    this.writeGate = next.catch(() => {})
+    return next
+  }
+
   documents = {
     index: async (table: string, key: string, doc: Document): Promise<void> => {
-      await this.request('POST', paths.batch(table), buildBatchInserts([{ key, doc }]))
+      await this.serializedWrite(() => this.request('POST', paths.batch(table), buildBatchInserts([{ key, doc }])))
     },
     batchIndex: async (table: string, items: IndexItem[], opts?: { sync?: boolean }): Promise<BatchResult> => {
       if (items.length === 0) return { indexed: 0, failed: [] }
-      const result = await this.requestJson<WireBatchResponse>('POST', paths.batch(table), buildBatchInserts(items, opts))
+      const result = await this.serializedWrite(() =>
+        this.requestJson<WireBatchResponse>('POST', paths.batch(table), buildBatchInserts(items, opts)))
       return { indexed: result?.inserted ?? items.length, failed: [] }
     },
     remove: async (table: string, key: string): Promise<void> => {
-      await this.request('POST', paths.batch(table), buildBatchDeletes([key]))
+      await this.serializedWrite(() => this.request('POST', paths.batch(table), buildBatchDeletes([key])))
     },
     batchRemove: async (table: string, keys: string[]): Promise<number> => {
       if (keys.length === 0) return 0
-      const result = await this.requestJson<WireBatchResponse>('POST', paths.batch(table), buildBatchDeletes(keys))
+      const result = await this.serializedWrite(() =>
+        this.requestJson<WireBatchResponse>('POST', paths.batch(table), buildBatchDeletes(keys)))
       return result?.deleted ?? 0
     },
     get: async (table: string, key: string): Promise<Document | null> => {
@@ -228,7 +251,7 @@ export class AntflySearchClient implements SearchAdapter {
       const current = await this.documents.get(table, key)
       if (!current) return // absent — nothing to transform
       const next = await fn(current)
-      await this.request('POST', paths.batch(table), buildBatchInserts([{ key, doc: next }]))
+      await this.serializedWrite(() => this.request('POST', paths.batch(table), buildBatchInserts([{ key, doc: next }])))
     },
   }
 
