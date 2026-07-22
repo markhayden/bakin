@@ -861,6 +861,20 @@ export const BAKIN_SEMANTIC_TOKENS = [
     "sourcePointer": "#/semantic/typography/size/sectionTitle"
   },
   {
+    "name": "semantic.typography.size.title",
+    "family": "Typography",
+    "type": "dimension",
+    "visibility": "public",
+    "cssVariable": "--bakin-typography-size-title",
+    "cssValue": "1.125rem",
+    "tailwindVariable": null,
+    "description": "Canonical title size for overlays and contextual panels.",
+    "contrast": null,
+    "source": "packages/ui/tokens/semantic.tokens.json#/semantic/typography/size/title",
+    "sourceUrl": "https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json",
+    "sourcePointer": "#/semantic/typography/size/title"
+  },
+  {
     "name": "semantic.typography.weight.bold",
     "family": "Typography",
     "type": "fontWeight",

@@ -115,6 +115,8 @@ export type { FacetFilterProps, FacetOption } from './facet-filter'
 
 export { AgentFilter } from './agent-filter'
 export type { AgentFilterOption, AgentFilterProps } from './agent-filter'
+export { BakinDrawerSection } from './bakin-drawer-section'
+export type { BakinDrawerSectionHeadingLevel, BakinDrawerSectionProps } from './bakin-drawer-section'
 
 export { SegmentedControl } from './segmented-control'
 export type {

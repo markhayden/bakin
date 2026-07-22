@@ -22,6 +22,7 @@ describe('canonical search input', () => {
 
     expect(reserve?.className).toContain('max-w-[22rem]')
     expect(reserve?.className).toContain('min-w-[min(100%,14rem)]')
+    expect(reserve?.className).toContain('justify-end')
     expect(control.dataset.state).toBe('empty')
     expect(control.style.inlineSize).toBe('min(100%, 14rem)')
 

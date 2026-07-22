@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { useState } from 'react'
-import { Badge, BakinDrawer, Button, Input, Label, Textarea } from '@makinbakin/sdk/ui'
+import { Badge, BakinDrawer, BakinDrawerSection, Button, Input, Label, Textarea } from '@makinbakin/sdk/ui'
 import { expect, waitFor, within } from 'storybook/test'
 
 import './primitives.stories.css'
@@ -20,7 +20,17 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 function DrawerContents() {
-  return <div className="bakin-primitive-story__overlay-body bakin-primitive-story__overlay-body--flush"><div className="bakin-primitive-story__cluster"><Badge tone="attention">Needs attention</Badge><Badge variant="outline">Workflow</Badge></div><div className="bakin-primitive-story__field"><Label htmlFor="drawer-title">Task title</Label><Input id="drawer-title" defaultValue="Review plugin migration evidence" /></div><div className="bakin-primitive-story__field"><Label htmlFor="drawer-context">Context</Label><Textarea id="drawer-context" defaultValue="Confirm the SDK-only imports, responsive behavior, and route-state contract before marking this task complete." /></div></div>
+  return (
+    <div className="bakin-primitive-story__overlay-body bakin-primitive-story__overlay-body--flush">
+      <BakinDrawerSection title="Status">
+        <div className="bakin-primitive-story__cluster"><Badge tone="attention">Needs attention</Badge><Badge variant="outline">Workflow</Badge></div>
+      </BakinDrawerSection>
+      <BakinDrawerSection title="Details">
+        <div className="bakin-primitive-story__field"><Label htmlFor="drawer-title">Task title</Label><Input id="drawer-title" defaultValue="Review plugin migration evidence" /></div>
+        <div className="bakin-primitive-story__field"><Label htmlFor="drawer-context">Context</Label><Textarea id="drawer-context" defaultValue="Confirm the SDK-only imports, responsive behavior, and route-state contract before marking this task complete." /></div>
+      </BakinDrawerSection>
+    </div>
+  )
 }
 
 export const Default = {

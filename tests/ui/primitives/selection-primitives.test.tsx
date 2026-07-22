@@ -67,6 +67,11 @@ describe('Switch public contract', () => {
     expect(control.getAttribute('aria-invalid')).toBe('true')
     expect(control.getAttribute('data-size')).toBe('sm')
     expect(control.className).toContain('h-bakin-6')
+    const track = control.querySelector('[data-slot="switch-track"]')
+    const thumb = control.querySelector('[data-slot="switch-thumb"]')
+    expect(track?.className).toContain('group-data-[size=sm]/switch:inset-y-bakin-1')
+    expect(track?.className).toContain('group-data-[unchecked]/switch:border-bakin-text-muted/60')
+    expect(thumb?.className).toContain('group-data-[unchecked]/switch:bg-bakin-text-muted')
     expect(screen.getByRole('switch', { name: 'Managed setting' }).getAttribute('aria-disabled')).toBe('true')
   })
 

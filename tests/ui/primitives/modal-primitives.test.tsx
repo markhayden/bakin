@@ -40,6 +40,7 @@ describe('Dialog public contract', () => {
     expect(dialog.className).toContain('rounded-bakin-overlay')
     expect(dialog.className).toContain('shadow-bakin-elevation-overlay')
     expect(screen.getByRole('button', { name: 'Close dialog' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Delete runtime' }).className).toContain('--bakin-typography-size-title')
   })
 
   it('blocks close controls while busy and exposes the busy state', () => {
@@ -94,6 +95,7 @@ describe('Sheet public contract', () => {
     expect(sheet.getAttribute('data-side')).toBe('left')
     expect(sheet.className).toContain('h-dvh')
     expect(sheet.className).toContain('max-w-full')
+    expect(screen.getByRole('heading', { name: 'Task details' }).className).toContain('--bakin-typography-size-title')
     expect(screen.getByRole('button', { name: 'Close panel' })).toBeTruthy()
   })
 

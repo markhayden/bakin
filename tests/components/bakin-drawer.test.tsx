@@ -13,6 +13,7 @@ import {
   getDrawerWidthStorageKey,
   getStoredDrawerWidth,
 } from '@/components/bakin-drawer'
+import { BakinDrawerSection } from '@makinbakin/sdk/ui'
 
 mock.module('@bakin/core/main-agent', () => ({
   getMainAgentId: () => 'main',
@@ -25,7 +26,7 @@ mock.module('@/components/ui/sheet', () => ({
   SheetContent: ({ children, style, className }: { children: React.ReactNode; style?: React.CSSProperties; className?: string }) => (
     <div data-testid="sheet-content" style={style} className={className}>{children}</div>
   ),
-  SheetHeader: ({ children, className }: { children: React.ReactNode; className?: string }) => <div className={className}>{children}</div>,
+  SheetHeader: ({ children, className, ...props }: React.HTMLAttributes<HTMLDivElement>) => <div className={className} {...props}>{children}</div>,
   SheetTitle: ({ children, className }: { children: React.ReactNode; className?: string }) => <h2 className={className}>{children}</h2>,
   SheetDescription: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }))
@@ -137,6 +138,30 @@ describe('BakinDrawer', () => {
     expect(screen.getByRole('button', { name: 'Close panel' })).toHaveProperty('disabled', true)
     fireEvent.click(screen.getByRole('button', { name: 'Close panel' }))
     expect(onOpenChange).not.toHaveBeenCalled()
+  })
+
+  it('uses valid responsive gutters and a reusable nested section inset', () => {
+    const { container } = render(
+      <BakinDrawer open onOpenChange={() => {}} title="Task detail">
+        <BakinDrawerSection title="Details">
+          <p>Task evidence</p>
+        </BakinDrawerSection>
+      </BakinDrawer>,
+    )
+
+    const layout = container.querySelector('[data-slot="bakin-drawer-layout"]')
+    expect(layout?.className).toContain('px-bakin-4')
+    expect(layout?.className).toContain('sm:px-bakin-6')
+    expect(layout?.className).toContain('pt-bakin-4')
+    expect(layout?.className).toContain('pb-bakin-8')
+    expect(layout?.className).toContain('shrink-0')
+    expect(layout?.className).not.toContain('px-bakin-7')
+    const content = container.querySelector('[data-slot="bakin-drawer-content"]')
+    expect(content).toBeTruthy()
+    expect(content?.className).not.toContain('min-h-0')
+    expect(content?.className).not.toContain('flex-1')
+    expect(screen.getByRole('heading', { level: 3, name: 'Details' })).toBeTruthy()
+    expect(container.querySelector('[data-slot="bakin-drawer-section-content"]')?.className).toContain('px-bakin-2')
   })
 
   it('supports per-context storage keys and clamps invalid stored widths', () => {

@@ -1,6 +1,6 @@
 'use client'
 
-import { Button } from "@makinbakin/sdk/ui"
+import { BakinDrawerSection, Button } from "@makinbakin/sdk/ui"
 import { Input } from "@makinbakin/sdk/ui"
 import { AlertTriangle, Send } from 'lucide-react'
 import type { Task, TaskLogEntry } from '../types'
@@ -94,8 +94,7 @@ export function TaskNotesSection({ task, logMessage, setLogMessage, addingLog, o
   })() : null
 
   return (
-    <div>
-      <h3 className="text-[11px] text-muted-foreground uppercase tracking-wider mb-3">Notes</h3>
+    <BakinDrawerSection title="Notes">
       <div className="flex gap-2 mb-3">
         <Input
           value={logMessage}
@@ -117,6 +116,6 @@ export function TaskNotesSection({ task, logMessage, setLogMessage, addingLog, o
         <p className="text-xs text-muted-foreground">No notes yet.</p>
       )}
       {notesListJSX}
-    </div>
+    </BakinDrawerSection>
   )
 }

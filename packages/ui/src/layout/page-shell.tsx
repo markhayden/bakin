@@ -4,7 +4,7 @@ import { layoutClassName } from './utils'
 
 export type PageShellWidth = 'content' | 'wide' | 'full'
 export type PageShellPadding = 'default' | 'compact' | 'none'
-export type PageShellGap = 'none' | 'section' | 'page'
+export type PageShellGap = 'none' | 'content' | 'section' | 'page'
 
 export interface PageShellProps extends React.ComponentPropsWithoutRef<'div'> {
   gap?: PageShellGap
@@ -26,6 +26,7 @@ const paddingClasses: Record<PageShellPadding, string> = {
 
 const gapClasses: Record<PageShellGap, string> = {
   none: 'gap-bakin-0',
+  content: 'gap-bakin-4',
   section: 'gap-bakin-6',
   page: 'gap-bakin-8',
 }

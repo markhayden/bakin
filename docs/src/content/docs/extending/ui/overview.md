@@ -683,7 +683,7 @@ Choose the overlay by the work it contains:
 | --- | --- | --- |
 | Resolve a short, blocking decision | `Dialog` and its subparts | Keep the decision focused, label it with `DialogTitle`, and return focus to the trigger on close |
 | Inspect or edit contextual detail | `Sheet` and its subparts | Use the right side by default; top, bottom, and left are deliberate spatial choices |
-| Compose a long, product-level detail experience | `BakinDrawer` | Use the supported resizable right panel with optional back, actions, dirty-state, and width persistence |
+| Compose a long, product-level detail experience | `BakinDrawer` + `BakinDrawerSection` | Use the supported resizable right panel and its canonical title/content hierarchy, with optional back, actions, dirty-state, and width persistence |
 
 ```tsx
 import {
@@ -726,6 +726,8 @@ Every Dialog, Sheet, and BakinDrawer needs an accessible title. Use the matching
 Set `busy` on the owning Dialog, Sheet, or BakinDrawer while irreversible work is in flight. Busy overlays expose `aria-busy` and block Escape, outside-click, close-button, and programmatic dismissal until the operation resolves. They do not disable application controls automatically, so disable or otherwise guard conflicting actions in the content too.
 
 Sheets use the right side by default and become full-viewport panels on narrow screens. A BakinDrawer adds mouse and keyboard resizing on wider screens: Arrow keys adjust its width, Shift increases the step, and Home or End chooses the minimum or maximum. Pass `storageKey` when separate drawer contexts should remember independent widths. Use `dirty` to require confirmation before discarding local edits.
+
+Compose BakinDrawer content with `BakinDrawerSection`. The section title aligns to the drawer gutter while its body receives the canonical additional inset, so detail copy, form fields, assets, and activity rows do not sit against either wall. Use the optional `actions` slot for section-scoped controls rather than building a second ad hoc section header.
 
 The overlay portal is system-owned by default. In a standalone or contained host, pass the supported `portalProps={{ container }}` contract to `DialogContent` or `SheetContent`; do not relocate generated popup DOM or copy overlay z-index classes. URL-backed overlay state continues to follow the existing routing contract described below.
 

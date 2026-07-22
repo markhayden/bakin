@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { usePluginEvent } from '@makinbakin/sdk/hooks'
+import { BakinDrawerSection } from '@makinbakin/sdk/ui'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { FolderOpen, Plus, X } from 'lucide-react'
 import { AssetThumb } from './versioned/atoms'
@@ -59,13 +60,14 @@ export function TaskAssets({ taskId, readOnly }: TaskAssetsProps) {
   if (loading) return null
 
   return (
-    <div>
-      <div className="flex items-center gap-1.5 mb-2">
-        <FolderOpen className="size-3 text-muted-foreground" />
-        <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+    <BakinDrawerSection
+      title={(
+        <span className="inline-flex items-center gap-bakin-1">
+          <FolderOpen className="size-bakin-3" aria-hidden="true" />
           Assets {assets.length > 0 && `(${assets.length})`}
-        </h3>
-        {!readOnly && (
+        </span>
+      )}
+      actions={!readOnly ? (
           <Link
             to="/assets"
             search={{ linkTo: taskId }}
@@ -74,8 +76,8 @@ export function TaskAssets({ taskId, readOnly }: TaskAssetsProps) {
             <Plus className="size-3" />
             Add
           </Link>
-        )}
-      </div>
+      ) : undefined}
+    >
       <div className="flex flex-col gap-1.5">
         {assets.map(asset => (
           <div
@@ -108,6 +110,6 @@ export function TaskAssets({ taskId, readOnly }: TaskAssetsProps) {
           </div>
         ))}
       </div>
-    </div>
+    </BakinDrawerSection>
   )
 }

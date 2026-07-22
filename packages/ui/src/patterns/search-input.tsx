@@ -45,7 +45,7 @@ function ClearIcon() {
 
 /** Compact search that expands inside reserved layout space instead of reflowing peer controls. */
 export function SearchInput({
-  align = 'start',
+  align = 'end',
   autoComplete,
   autoFocus,
   className,

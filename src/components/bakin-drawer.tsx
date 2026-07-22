@@ -198,7 +198,10 @@ export function BakinDrawer({
             tabIndex={0}
           />
 
-          <div className="flex min-h-full flex-col gap-bakin-4 px-bakin-7 py-bakin-6">
+          <div
+            data-slot="bakin-drawer-layout"
+            className="flex min-h-full shrink-0 flex-col gap-bakin-4 px-bakin-4 pb-bakin-8 pt-bakin-4 sm:px-bakin-6"
+          >
             <SheetHeader className="p-0 pr-0">
               <div className="flex min-w-0 items-center justify-between gap-bakin-2">
                 <div className="flex min-w-0 items-center gap-bakin-2">
@@ -222,7 +225,7 @@ export function BakinDrawer({
               </div>
               {description ? <SheetDescription>{description}</SheetDescription> : null}
             </SheetHeader>
-            <div className="min-h-0 min-w-0 flex-1">{children}</div>
+            <div data-slot="bakin-drawer-content" className="min-w-0">{children}</div>
           </div>
         </SheetContent>
       </Sheet>

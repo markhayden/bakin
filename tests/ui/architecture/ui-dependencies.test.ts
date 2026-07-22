@@ -209,10 +209,34 @@ describe('UI performance ratchet', () => {
     expect(diffUiPerformance(baseline, reduced)).toEqual([])
 
     const regressed = snapshot({
-      vendorChunks: [{ path: 'packages/host/public/vendor/sdk-shared-newhash.js', bytes: 101 }],
+      vendorChunks: [{ path: 'packages/host/public/vendor/sdk-shared-newhash.js', bytes: 2149 }],
     })
     expect(diffUiPerformance(baseline, regressed)).toEqual([
-      'SDK shared vendor chunks increased: 100 -> 101',
+      'SDK shared vendor chunks increased: 100 -> 2149',
+    ])
+  })
+
+  it('allows up to 2 KiB of cumulative growth before requiring payload review', () => {
+    const baseline = snapshot()
+    const withinTolerance = snapshot({
+      css: { ...baseline.css, canonicalBytes: baseline.css.canonicalBytes + 2048 },
+      hostInitialJs: { ...baseline.hostInitialJs, bytes: baseline.hostInitialJs.bytes + 2048 },
+      sdkUiBundles: [{
+        ...baseline.sdkUiBundles[0],
+        bytes: baseline.sdkUiBundles[0].bytes + 2048,
+        reachableBytes: baseline.sdkUiBundles[0].reachableBytes + 2048,
+      }],
+      vendorChunks: [{ ...baseline.vendorChunks[0], bytes: baseline.vendorChunks[0].bytes + 2048 }],
+      pluginClients: [{ ...baseline.pluginClients[0], bytes: baseline.pluginClients[0].bytes + 2048 }],
+    })
+
+    expect(diffUiPerformance(baseline, withinTolerance)).toEqual([])
+
+    const beyondTolerance = snapshot({
+      pluginClients: [{ ...baseline.pluginClients[0], bytes: baseline.pluginClients[0].bytes + 2049 }],
+    })
+    expect(diffUiPerformance(baseline, beyondTolerance)).toEqual([
+      'plugin client increased: bakin:tasks 90 -> 2139',
     ])
   })
 
@@ -228,32 +252,32 @@ describe('UI performance ratchet', () => {
     expect(diffUiPerformance(baseline, reduced)).toEqual([])
 
     const regressed = snapshot({
-      css: { ...baseline.css, canonicalBytes: 101, copyCount: 2, copyPaths: [...baseline.css.copyPaths, 'plugins/example/dist/client.css'] },
-      hostInitialJs: { ...baseline.hostInitialJs, bytes: 201 },
+      css: { ...baseline.css, canonicalBytes: 2149, copyCount: 2, copyPaths: [...baseline.css.copyPaths, 'plugins/example/dist/client.css'] },
+      hostInitialJs: { ...baseline.hostInitialJs, bytes: 2249 },
       sdkUiBundles: [
-        { ...baseline.sdkUiBundles[0], bytes: 51, reachableBytes: 81 },
+        { ...baseline.sdkUiBundles[0], bytes: 2099, reachableBytes: 2129 },
         { name: 'sdk-charts', path: 'packages/host/public/vendor/sdk-charts.js', bytes: 10, reachableBytes: 10 },
       ],
       vendorChunks: [
-        { ...baseline.vendorChunks[0], bytes: 71 },
+        { ...baseline.vendorChunks[0], bytes: 2119 },
         { path: 'packages/host/public/vendor/new.js', bytes: 1 },
       ],
       pluginClients: [
-        { ...baseline.pluginClients[0], bytes: 91 },
+        { ...baseline.pluginClients[0], bytes: 2139 },
         { repository: 'bakin-bits-official', pluginId: 'new', path: 'bakin-bits-official/plugins/new/dist/client.js', bytes: 1 },
       ],
     })
 
     expect(diffUiPerformance(baseline, regressed)).toEqual([
-      'design-system CSS bytes increased: 100 -> 101',
+      'design-system CSS bytes increased: 100 -> 2149',
       'design-system CSS copies increased: 1 -> 2',
-      'initial host JS increased: 200 -> 201',
-      'SDK UI bundle increased: sdk-ui bytes 50 -> 51',
-      'SDK UI bundle reachable bytes increased: sdk-ui 80 -> 81',
+      'initial host JS increased: 200 -> 2249',
+      'SDK UI bundle increased: sdk-ui bytes 50 -> 2099',
+      'SDK UI bundle reachable bytes increased: sdk-ui 80 -> 2129',
       'new SDK UI bundle: sdk-charts (10 bytes)',
-      'vendor chunk increased: packages/host/public/vendor/react.js 70 -> 71',
+      'vendor chunk increased: packages/host/public/vendor/react.js 70 -> 2119',
       'new vendor chunk: packages/host/public/vendor/new.js (1 bytes)',
-      'plugin client increased: bakin:tasks 90 -> 91',
+      'plugin client increased: bakin:tasks 90 -> 2139',
       'new plugin client: bakin-bits-official:new (1 bytes)',
     ])
   })

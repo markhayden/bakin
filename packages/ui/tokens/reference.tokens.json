@@ -181,6 +181,7 @@
       "size": {
         "$type": "dimension",
         "pageTitle": { "$value": { "value": 2.25, "unit": "rem" } },
+        "title": { "$value": { "value": 1.125, "unit": "rem" } },
         "sectionTitle": { "$value": { "value": 0.86, "unit": "rem" } },
         "body": { "$value": { "value": 0.8, "unit": "rem" } },
         "meta": { "$value": { "value": 0.68, "unit": "rem" } }

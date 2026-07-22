@@ -1,7 +1,6 @@
 'use client'
 
-import { BakinDrawer } from "@makinbakin/sdk/components"
-import { Button } from "@makinbakin/sdk/ui"
+import { BakinDrawer, BakinDrawerSection, Button } from "@makinbakin/sdk/ui"
 import { Input } from "@makinbakin/sdk/ui"
 import { Textarea } from "@makinbakin/sdk/ui"
 import { Separator } from "@makinbakin/sdk/ui"
@@ -293,12 +292,11 @@ export function TaskDetailView({ m, task, columnId, open, onClose, onEdit, onDel
 
         {/* Description */}
         {task.description && (
-          <div>
-            <h3 className="text-[11px] text-muted-foreground uppercase tracking-wider mb-2">Details</h3>
+          <BakinDrawerSection title="Details">
             <div className="text-xs text-foreground/90 leading-relaxed rounded-lg p-4 border-l-2 bg-surface" style={{ borderLeftColor: agentMeta ? `var(--agent-${task.agent})` : 'var(--outline-variant)' }}>
               <MarkdownContent content={task.description} />
             </div>
-          </div>
+          </BakinDrawerSection>
         )}
 
         <Slot name="task-brand" taskId={task.id} />

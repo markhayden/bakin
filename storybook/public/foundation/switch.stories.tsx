@@ -30,12 +30,13 @@ function SwitchBehavior() {
 export const States = {
   render: () => (
     <main className="bakin-primitive-story">
-      <header className="bakin-primitive-story__intro"><p className="bakin-primitive-story__eyebrow">Immediate setting</p><h1>Switch</h1><p>Both sizes preserve the same 24px minimum target and explicit state semantics.</p></header>
+      <header className="bakin-primitive-story__intro"><p className="bakin-primitive-story__eyebrow">Immediate setting</p><h1>Switch</h1><p>Both sizes preserve the same 24px minimum target. The compact size uses a slimmer visual track while keeping clear on/off contrast.</p></header>
       <section className="bakin-primitive-story__section" aria-labelledby="switch-states-heading">
         <header><h2 id="switch-states-heading">Canonical states</h2></header>
         <div className="bakin-primitive-story__selection-stack">
           <div className="bakin-primitive-story__selection-row"><Switch id="switch-off" /><Label htmlFor="switch-off">Off</Label></div>
           <div className="bakin-primitive-story__selection-row"><Switch id="switch-on" defaultChecked /><Label htmlFor="switch-on">On</Label></div>
+          <div className="bakin-primitive-story__selection-row"><Switch id="switch-small-off" size="sm" /><Label htmlFor="switch-small-off">Compact off</Label></div>
           <div className="bakin-primitive-story__selection-row"><Switch id="switch-small" size="sm" defaultChecked /><Label htmlFor="switch-small">Compact operational setting</Label></div>
           <div className="bakin-primitive-story__selection-row"><Switch id="switch-invalid" aria-invalid="true" /><div><Label htmlFor="switch-invalid">Invalid setting</Label><p className="bakin-primitive-story__error">Resolve the policy conflict.</p></div></div>
           <div className="bakin-primitive-story__selection-row"><Switch id="switch-disabled" disabled /><Label htmlFor="switch-disabled">Disabled organization-managed setting with a long wrapping label</Label></div>

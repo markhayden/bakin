@@ -14,7 +14,7 @@ export type ListPageProps = Omit<PageShellProps, 'children' | 'gap' | 'padding' 
 /** Page canvas for searchable, filterable, or repeated-object indexes. */
 export function ListPage({ children, width = 'wide', ...props }: ListPageProps) {
   return (
-    <PageShell {...props} data-archetype="list" width={width}>
+    <PageShell {...props} data-archetype="list" gap="content" width={width}>
       {children}
     </PageShell>
   )

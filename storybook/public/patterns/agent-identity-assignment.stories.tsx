@@ -162,7 +162,7 @@ export const AssignmentAndFiltering = {
     await waitFor(() => expect(page.getByRole('listbox')).toBeVisible())
     await userEvent.click(page.getByRole('option', { name: 'Release team' }))
     await expect(canvas.getByRole('status')).toHaveTextContent('Selected owner: Release team')
-    const all = canvas.getByRole('radio', { name: 'All agents' })
+    const all = canvas.getByRole('radio', { name: 'All' })
     all.focus()
     await userEvent.keyboard('{ArrowRight}')
     await expect(canvas.getByRole('radio', { name: 'Maya Chen' })).toHaveAttribute('aria-checked', 'true')

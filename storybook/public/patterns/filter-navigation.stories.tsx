@@ -192,7 +192,7 @@ const agents = [
 
 function AgentFilteringExample() {
   const [agent, setAgent] = useState('all')
-  const label = agent === 'all' ? 'All agents' : agents.find((option) => option.value === agent)?.label
+  const label = agent === 'all' ? 'all agents' : agents.find((option) => option.value === agent)?.label
 
   return (
     <PatternStage
@@ -202,7 +202,7 @@ function AgentFilteringExample() {
     >
       <section aria-labelledby="agent-filter-heading" className="bakin-filter-navigation-story__section">
         <div><h2 id="agent-filter-heading">Assigned agent</h2><p>Arrow keys move and select within one horizontal radio group.</p></div>
-        <AgentFilter options={agents} value={agent} onValueChange={setAgent} />
+        <AgentFilter options={agents} value={agent} onValueChange={setAgent} compact />
         <p role="status" className="bakin-filter-navigation-story__status">Showing work for {label}</p>
       </section>
     </PatternStage>
@@ -212,7 +212,7 @@ function AgentFilteringExample() {
 export const AgentFiltering = {
   render: () => <AgentFilteringExample />,
   play: async ({ canvas, userEvent }) => {
-    const all = canvas.getByRole('radio', { name: 'All agents' })
+    const all = canvas.getByRole('radio', { name: 'All' })
     all.focus()
     await userEvent.keyboard('{ArrowRight}')
     await expect(canvas.getByRole('radio', { name: 'Patch' })).toHaveAttribute('aria-checked', 'true')

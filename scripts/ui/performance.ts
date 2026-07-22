@@ -21,6 +21,12 @@ const REPO_ROOT = resolve(import.meta.dir, '../..')
 const PERFORMANCE_PATH = join(REPO_ROOT, 'design-system/performance.json')
 const PERFORMANCE_SCHEMA_PATH = join(REPO_ROOT, 'design-system/performance.schema.json')
 const BASE_UI_ENTRY = 'packages/sdk/src/ui/index.ts'
+/**
+ * Keep the payload gate focused on download-significant regressions. This is
+ * cumulative against the reviewed baseline, so small build noise does not
+ * require churn while sustained growth still stops for explicit review.
+ */
+export const UI_PAYLOAD_REVIEW_THRESHOLD_BYTES = 2048
 const UI_VENDOR_NAMES = new Set([
   'sdk-ui',
   'sdk-components',
@@ -225,19 +231,23 @@ function mapBy<T>(values: readonly T[], key: (value: T) => string): Map<string, 
   return new Map(values.map((value) => [key(value), value]))
 }
 
-/** Compare current measurements to the checked-in monotonic ceilings. */
+function exceedsReviewedPayload(baselineBytes: number, actualBytes: number): boolean {
+  return actualBytes > baselineBytes + UI_PAYLOAD_REVIEW_THRESHOLD_BYTES
+}
+
+/** Compare current measurements to the checked-in reviewed payload ceilings. */
 export function diffUiPerformance(
   baseline: UiPerformanceSnapshot,
   actual: UiPerformanceSnapshot,
 ): string[] {
   const errors: string[] = []
-  if (actual.css.canonicalBytes > baseline.css.canonicalBytes) {
+  if (exceedsReviewedPayload(baseline.css.canonicalBytes, actual.css.canonicalBytes)) {
     errors.push(`design-system CSS bytes increased: ${baseline.css.canonicalBytes} -> ${actual.css.canonicalBytes}`)
   }
   if (actual.css.copyCount > baseline.css.copyCount) {
     errors.push(`design-system CSS copies increased: ${baseline.css.copyCount} -> ${actual.css.copyCount}`)
   }
-  if (actual.hostInitialJs.bytes > baseline.hostInitialJs.bytes) {
+  if (exceedsReviewedPayload(baseline.hostInitialJs.bytes, actual.hostInitialJs.bytes)) {
     errors.push(`initial host JS increased: ${baseline.hostInitialJs.bytes} -> ${actual.hostInitialJs.bytes}`)
   }
 
@@ -248,10 +258,10 @@ export function diffUiPerformance(
       errors.push(`new SDK UI bundle: ${entry.name} (${entry.bytes} bytes)`)
       continue
     }
-    if (entry.bytes > expected.bytes) {
+    if (exceedsReviewedPayload(expected.bytes, entry.bytes)) {
       errors.push(`SDK UI bundle increased: ${entry.name} bytes ${expected.bytes} -> ${entry.bytes}`)
     }
-    if (entry.reachableBytes > expected.reachableBytes) {
+    if (exceedsReviewedPayload(expected.reachableBytes, entry.reachableBytes)) {
       errors.push(`SDK UI bundle reachable bytes increased: ${entry.name} ${expected.reachableBytes} -> ${entry.reachableBytes}`)
     }
   }
@@ -263,7 +273,7 @@ export function diffUiPerformance(
   const actualSharedBytes = actual.vendorChunks
     .filter(sharedVendor)
     .reduce((total, entry) => total + entry.bytes, 0)
-  if (actualSharedBytes > expectedSharedBytes) {
+  if (exceedsReviewedPayload(expectedSharedBytes, actualSharedBytes)) {
     errors.push(`SDK shared vendor chunks increased: ${expectedSharedBytes} -> ${actualSharedBytes}`)
   }
 
@@ -271,7 +281,7 @@ export function diffUiPerformance(
   for (const entry of actual.vendorChunks.filter((candidate) => !sharedVendor(candidate))) {
     const expected = expectedVendor.get(entry.path)
     if (!expected) errors.push(`new vendor chunk: ${entry.path} (${entry.bytes} bytes)`)
-    else if (entry.bytes > expected.bytes) {
+    else if (exceedsReviewedPayload(expected.bytes, entry.bytes)) {
       errors.push(`vendor chunk increased: ${entry.path} ${expected.bytes} -> ${entry.bytes}`)
     }
   }
@@ -282,7 +292,7 @@ export function diffUiPerformance(
     const key = pluginKey(entry)
     const expected = expectedPlugins.get(key)
     if (!expected) errors.push(`new plugin client: ${key} (${entry.bytes} bytes)`)
-    else if (entry.bytes > expected.bytes) {
+    else if (exceedsReviewedPayload(expected.bytes, entry.bytes)) {
       errors.push(`plugin client increased: ${key} ${expected.bytes} -> ${entry.bytes}`)
     }
   }

@@ -15,6 +15,8 @@ export type {
 } from '@bakin/ui'
 export { BakinDrawer } from '@/components/bakin-drawer'
 export type { BakinDrawerProps } from '@/components/bakin-drawer'
+export { BakinDrawerSection } from '@bakin/ui'
+export type { BakinDrawerSectionHeadingLevel, BakinDrawerSectionProps } from '@bakin/ui'
 export {
   Avatar,
   AvatarBadge,

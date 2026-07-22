@@ -351,3 +351,9 @@ export type {
   InputGroupTextProps,
   InputGroupTextareaProps,
 } from './primitives/input-group'
+
+export { BakinDrawerSection } from './patterns/bakin-drawer-section'
+export type {
+  BakinDrawerSectionHeadingLevel,
+  BakinDrawerSectionProps,
+} from './patterns/bakin-drawer-section'

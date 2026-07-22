@@ -38,7 +38,7 @@ export function AgentFilter({
   value,
   onValueChange,
   ariaLabel = 'Filter by agent',
-  allLabel = 'All agents',
+  allLabel = 'All',
   allValue = 'all',
   showIcon = true,
   compact = false,

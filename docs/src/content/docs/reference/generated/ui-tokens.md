@@ -5,7 +5,7 @@ description: Generated public semantic token contract for Bakin product and plug
 
 This reference is generated from the DTCG token source. Use the namespaced CSS properties through [`@makinbakin/sdk/styles.css`](/docs/extending/ui/overview/); internal reference values, component aliases, and Tailwind mappings are not plugin-author contracts.
 
-The approved foundation contains **54 public tokens** across **8 semantic families**. Contrast ratios are calculated during generation. A declared WCAG role below its threshold fails generation and CI.
+The approved foundation contains **55 public tokens** across **8 semantic families**. Contrast ratios are calculated during generation. A declared WCAG role below its threshold fails generation and CI.
 
 ## Color
 
@@ -96,6 +96,7 @@ The approved foundation contains **54 public tokens** across **8 semantic famili
 | `semantic.typography.size.meta` | Canonical metadata and technical-chrome size. | `0.68rem` | `--bakin-typography-size-meta` | Public semantic | Not applicable | [semantic.tokens.json](https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json) `#/semantic/typography/size/meta` |
 | `semantic.typography.size.pageTitle` | Canonical page-title size before responsive clamping. | `2.25rem` | `--bakin-typography-size-page-title` | Public semantic | Not applicable | [semantic.tokens.json](https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json) `#/semantic/typography/size/pageTitle` |
 | `semantic.typography.size.sectionTitle` | Canonical section-title size for content hierarchy. | `0.86rem` | `--bakin-typography-size-section-title` | Public semantic | Not applicable | [semantic.tokens.json](https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json) `#/semantic/typography/size/sectionTitle` |
+| `semantic.typography.size.title` | Canonical title size for overlays and contextual panels. | `1.125rem` | `--bakin-typography-size-title` | Public semantic | Not applicable | [semantic.tokens.json](https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json) `#/semantic/typography/size/title` |
 | `semantic.typography.weight.bold` | Bold weight for high-emphasis labels and signal text. | `700` | `--bakin-typography-weight-bold` | Public semantic | Not applicable | [semantic.tokens.json](https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json) `#/semantic/typography/weight/bold` |
 | `semantic.typography.weight.medium` | Medium weight for restrained emphasis and table headings. | `500` | `--bakin-typography-weight-medium` | Public semantic | Not applicable | [semantic.tokens.json](https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json) `#/semantic/typography/weight/medium` |
 | `semantic.typography.weight.regular` | Regular weight for body copy and input values. | `400` | `--bakin-typography-weight-regular` | Public semantic | Not applicable | [semantic.tokens.json](https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json) `#/semantic/typography/weight/regular` |

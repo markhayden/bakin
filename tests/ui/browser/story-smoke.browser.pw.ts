@@ -1,4 +1,12 @@
-import { expect, test } from 'playwright/test'
+import { expect, test, type Request } from 'playwright/test'
+
+function isCancelledStorybookA11yInstrumentation(request: Request): boolean {
+  const failure = request.failure()?.errorText
+  if (failure !== 'Load request cancelled') return false
+
+  const { pathname } = new URL(request.url())
+  return /^\/assets\/axe-[^/]+\.js$/.test(pathname)
+}
 
 const responsiveWidths = [1024, 720, 480, 320] as const
 const behaviorStory = '/iframe.html?id=foundation-button--behavior-fixture&viewMode=story'
@@ -1200,7 +1208,7 @@ test('filter and navigation patterns preserve keyboard selection, meaning, and b
   await test.step('agent and compact view groups activate with arrow keys and skip disabled choices', async () => {
     await page.setViewportSize({ width: 1024, height: 900 })
     await page.goto(agentFilterStory, { waitUntil: 'networkidle' })
-    const allAgents = page.getByRole('radio', { name: 'All agents' })
+    const allAgents = page.getByRole('radio', { name: 'All' })
     await allAgents.focus()
     await allAgents.press('ArrowRight')
     const patch = page.getByRole('radio', { name: 'Patch' })
@@ -1871,6 +1879,10 @@ test('markdown and search patterns preserve overflow, keyboard, and trust contra
   })
   page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
   page.on('requestfailed', (request) => {
+    // WebKit may cancel Storybook's lazy a11y instrumentation when this test
+    // intentionally navigates between stories. Product request failures and
+    // every other Storybook asset failure remain fatal.
+    if (isCancelledStorybookA11yInstrumentation(request)) return
     browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
   })
 
@@ -1970,7 +1982,7 @@ test('agent identity and assignment preserve exact status, keyboard, and narrow-
     await page.getByRole('option', { name: 'Release team' }).click()
     await expect(page.getByRole('status')).toContainText('Selected owner: Release team')
 
-    const allAgents = page.getByRole('radio', { name: 'All agents' })
+    const allAgents = page.getByRole('radio', { name: 'All' })
     await allAgents.focus()
     await page.keyboard.press('ArrowRight')
     await expect(page.getByRole('radio', { name: 'Maya Chen' })).toHaveAttribute('aria-checked', 'true')

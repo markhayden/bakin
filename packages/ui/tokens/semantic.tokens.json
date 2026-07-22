@@ -213,6 +213,7 @@
       },
       "size": {
         "pageTitle": { "$description": "Canonical page-title size before responsive clamping.", "$value": "{reference.font.size.pageTitle}" },
+        "title": { "$description": "Canonical title size for overlays and contextual panels.", "$value": "{reference.font.size.title}" },
         "sectionTitle": { "$description": "Canonical section-title size for content hierarchy.", "$value": "{reference.font.size.sectionTitle}" },
         "body": { "$description": "Canonical body and control-copy size.", "$value": "{reference.font.size.body}" },
         "meta": { "$description": "Canonical metadata and technical-chrome size.", "$value": "{reference.font.size.meta}" }

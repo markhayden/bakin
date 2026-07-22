@@ -4,29 +4,39 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { KeyboardSensor, PointerSensor } from '@dnd-kit/dom'
 import { move } from '@dnd-kit/helpers'
 import { DragDropProvider, type DragDropEventHandlers } from '@dnd-kit/react'
-import { usePathname, useRouter, useSearchParams } from '@makinbakin/sdk/hooks'
+import { toast, useContentStore, useDebug, useJsonFetch, usePluginEvent } from '@makinbakin/sdk/hooks'
+import {
+  usePathname,
+  useQueryArrayState,
+  useQueryState,
+  useRouter,
+  useSearchParams,
+} from '@makinbakin/sdk/navigation'
+import {
+  ListPage,
+  ListPageContent,
+  ListPageControls,
+  PageHeader,
+  SearchDegradedChip,
+  SearchInput,
+  SearchPartialChip,
+  SegmentedControl,
+} from '@makinbakin/sdk/patterns'
+import { Badge, Button, SystemState } from '@makinbakin/sdk/ui'
+import { Kanban, Loader2, Plus, Table2 } from 'lucide-react'
 import { KanbanColumn } from './kanban-column'
 import { DeleteTaskDialog } from './delete-task-dialog'
 import { BlockReasonDialog } from './block-reason-dialog'
 import { TaskDetailDrawer } from './task-detail-dialog'
 import { TaskMetrics } from './task-metrics'
-import { PluginHeader, SearchDegradedChip, SearchPartialChip, SegmentedControl } from "@makinbakin/sdk/components"
 import { TaskFilters } from './task-filters'
 import { TaskLogTable } from './task-log-table'
 import { filterBoardColumns, useTaskFilters } from '../hooks/use-task-filters'
 import { countVisibleTasks } from '../lib/scheduled'
-import { useContentStore } from "@makinbakin/sdk/hooks"
-import { usePluginEvent } from "@makinbakin/sdk/hooks"
-import { useJsonFetch } from "@makinbakin/sdk/hooks"
-import { useDebug } from "@makinbakin/sdk/hooks"
-import { useQueryState, useQueryArrayState } from "@makinbakin/sdk/hooks"
-import { toast } from "@makinbakin/sdk/hooks"
 import { useGateStatus } from '../hooks/use-gate-status'
 import { useBudgetStatus, budgetHoldReason, type BudgetHold } from '../hooks/use-budget-status'
 import { useBrandStatus, brandHoldReason, type BrandHold } from '../hooks/use-brand-status'
 import { useLiveActivity } from '../hooks/use-live-activity'
-import { Button, Skeleton } from "@makinbakin/sdk/ui"
-import { Kanban, Table2, Plus, Loader2 } from 'lucide-react'
 import type { TaskScoreInfo } from './task-card'
 import type { Task, TaskColumns, ColumnId } from '../types'
 
@@ -139,17 +149,31 @@ export function KanbanBoard() {
   const searchParams = useSearchParams()
   const [boardData, setBoardData] = useState<{ columns: TaskColumns; timestamp?: string }>({ columns: emptyBoard })
   const [boardLoaded, setBoardLoaded] = useState(false)
+  const [boardRefreshing, setBoardRefreshing] = useState(false)
+  const [boardFailed, setBoardFailed] = useState(false)
+  const boardLoadedRef = useRef(false)
   const loading = useContentStore((s) => s.loading)
 
   const fetchBoard = useCallback(async () => {
+    setBoardRefreshing(true)
+    if (!boardLoadedRef.current) setBoardFailed(false)
     try {
       const res = await fetch('/api/plugins/tasks/')
-      if (res.ok) {
-        const data = await res.json()
-        setBoardData({ columns: data.columns ?? emptyBoard, timestamp: data.timestamp })
-        setBoardLoaded(true)
+      if (!res.ok) throw new Error(`Task board request failed (${res.status})`)
+      const data = await res.json()
+      setBoardData({ columns: data.columns ?? emptyBoard, timestamp: data.timestamp })
+      boardLoadedRef.current = true
+      setBoardLoaded(true)
+      setBoardFailed(false)
+    } catch {
+      // A background refresh never discards already-usable content. Only the
+      // initial load owns the result-region error state.
+      if (!boardLoadedRef.current) {
+        setBoardFailed(true)
       }
-    } catch { /* SSE will eventually re-trigger */ }
+    } finally {
+      setBoardRefreshing(false)
+    }
   }, [])
 
   useEffect(() => { fetchBoard() }, [fetchBoard])
@@ -436,73 +460,124 @@ export function KanbanBoard() {
     router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
   }, [pathname, router, searchParams])
 
-  if (loading) {
-    return (
-      <div className="p-6 space-y-4">
-        <Skeleton className="h-6 w-48" />
-        <Skeleton className="h-3 w-32" />
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mt-6">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="rounded-lg border border-border bg-surface p-3 space-y-3">
-              <Skeleton className="h-4 w-24" />
-              <Skeleton className="h-16 w-full" />
-              <Skeleton className="h-16 w-full" />
-            </div>
-          ))}
-        </div>
-      </div>
+  const openNewTask = useCallback(() => {
+    setDetailTask(null)
+    setEditing(true)
+  }, [])
+
+  const clearFilters = useCallback(() => {
+    setSearch('')
+    setAgentFilter('all')
+    setStatusFilter([])
+    setBrandFilter([])
+    setScheduledView('show')
+  }, [setAgentFilter, setBrandFilter, setScheduledView, setSearch, setStatusFilter])
+
+  const resultCount = view === 'kanban'
+    ? countVisibleTasks(filteredColumns, showScheduled)
+    : allTasksFlat.length
+  const hasActiveResultFilters = Boolean(search.trim())
+    || agentFilter !== 'all'
+    || brandFilter.length > 0
+    || (view === 'table' && statusFilter.length > 0)
+    || (view === 'kanban' && !showScheduled)
+  const initialLoading = !boardFailed && (Boolean(loading) || !boardLoaded)
+  const searchSettled = !search.trim() || searchStatus !== 'loading'
+
+  const searchFeedback = searchSignalActive ? (
+    <div className="flex min-w-0 flex-wrap items-center gap-bakin-2">
+      {searchStatus === 'loading' && (
+        <Badge
+          size="sm"
+          tone="neutral"
+          variant="ghost"
+          data-testid="tasks-search-loading"
+        >
+          <Loader2 className="size-bakin-3 animate-spin motion-reduce:animate-none" />
+          Searching…
+        </Badge>
+      )}
+      {searchStatus === 'unavailable' && <SearchDegradedChip testId="tasks-search-degraded" />}
+      {searchMeta?.partial && <SearchPartialChip meta={searchMeta} />}
+    </div>
+  ) : undefined
+
+  let resultState: React.ReactNode
+  if (initialLoading) {
+    resultState = (
+      <SystemState
+        kind="loading"
+        title="Loading tasks"
+        description="The latest task board will appear here when it is ready."
+      />
+    )
+  } else if (boardFailed && !boardLoaded) {
+    resultState = (
+      <SystemState
+        kind="error"
+        recovery="available"
+        title="Tasks could not be loaded"
+        description="The task service did not return a usable board. Try the request again."
+        action={<Button variant="outline" onClick={() => void fetchBoard()}>Try again</Button>}
+      />
+    )
+  } else if (boardLoaded && searchSettled && resultCount === 0) {
+    resultState = hasActiveResultFilters ? (
+      <SystemState
+        kind="no-results"
+        title="No tasks match this view"
+        description="Clear the current search and filters to return to the complete task board."
+        action={<Button variant="outline" onClick={clearFilters}>Clear search and filters</Button>}
+      />
+    ) : (
+      <SystemState
+        kind="initial-empty"
+        title="No tasks yet"
+        description="Create the first task to start coordinating work."
+        action={<Button onClick={openNewTask}><Plus />Create first task</Button>}
+      />
     )
   }
 
   return (
     <>
-      <div className="flex flex-col h-full min-w-0 min-h-0">
-        <div className="hidden md:block px-6 pt-[25px] pb-2 border-b border-border/50">
+      <ListPage width="full" className="h-full overflow-auto">
+        <PageHeader
+          title="Tasks"
+          meta={boardLoaded ? <Badge size="xs" variant="outline">{resultCount} shown</Badge> : undefined}
+          controlsLabel="Task search and view"
+          controls={(
+            <>
+              <SearchInput
+                label="Task search"
+                value={search}
+                onValueChange={setSearch}
+                placeholder="Search tasks…"
+              />
+              <SegmentedControl
+                options={[
+                  { value: 'kanban', label: 'Board', icon: Kanban },
+                  { value: 'table', label: 'Log', icon: Table2 },
+                ]}
+                value={view as 'kanban' | 'table'}
+                onValueChange={setView}
+                ariaLabel="Task view"
+              />
+            </>
+          )}
+          actions={(
+            <Button onClick={openNewTask}>
+              <Plus />
+              New Task
+            </Button>
+          )}
+        />
+
+        <div className="hidden md:block">
           <TaskMetrics columns={columns} timestamp={timestamp} />
         </div>
 
-        <div className="px-6 pt-3 md:pt-4 pb-2">
-          <PluginHeader
-            title="Tasks"
-            count={view === 'kanban'
-              ? countVisibleTasks(filteredColumns, showScheduled)
-              : allTasksFlat.length
-            }
-            search={{ value: search, onChange: setSearch, placeholder: 'Search tasks...' }}
-            actions={
-              <div className="flex items-center gap-2">
-                <SegmentedControl
-                  options={[
-                    { value: 'kanban', label: 'Board', icon: Kanban },
-                    { value: 'table', label: 'Log', icon: Table2 },
-                  ]}
-                  value={view as 'kanban' | 'table'}
-                  onValueChange={setView}
-                  ariaLabel="Board view"
-                />
-                <Button size="sm" onClick={() => { setDetailTask(null); setEditing(true) }}>
-                  <Plus className="size-4" />
-                  New Task
-                </Button>
-              </div>
-            }
-          />
-        </div>
-
-        {searchSignalActive && (
-          <div className="px-6 pb-2 flex items-center gap-2">
-            {searchStatus === 'loading' && (
-              <span className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground" data-testid="tasks-search-loading">
-                <Loader2 className="size-3 animate-spin" />
-                Searching…
-              </span>
-            )}
-            {searchStatus === 'unavailable' && <SearchDegradedChip testId="tasks-search-degraded" />}
-            {searchMeta?.partial && <SearchPartialChip meta={searchMeta} />}
-          </div>
-        )}
-
-        <div className="px-6 pb-3">
+        <ListPageControls label="Task filters">
           <TaskFilters
             agentFilter={agentFilter}
             onAgentChange={setAgentFilter}
@@ -516,115 +591,123 @@ export function KanbanBoard() {
             onBrandChange={setBrandFilter}
             brandOptions={brandOptions}
           />
-        </div>
+        </ListPageControls>
 
-        {view === 'kanban' ? (
-          <DragDropProvider
-            sensors={sensors}
-            onDragStart={handleDragStart}
-            onDragOver={handleDragOver}
-            onDragEnd={handleDragEnd}
-          >
-            <div className="flex-1 overflow-auto min-h-0">
-              <div className="inline-flex gap-4 items-start p-[25px] pt-0 md:pl-[25px] pl-4">
-                {COLUMN_ORDER.map((colId) => (
-                  <div key={colId} className="w-[75vw] sm:w-72 shrink-0">
-                    <KanbanColumn
-                      id={colId}
-                      tasks={colId === 'archived' ? [] : filteredColumns[colId]}
-                      gateLabels={gateLabels}
-                      childTaskLabels={childTaskLabels}
-                      budgetHolds={budgetHolds}
-                      brandHolds={brandHolds}
-                      liveActivity={liveActivity}
-                      warnUnbranded={warnUnbranded}
-                      scoreMap={scoreMap}
-                      onDelete={setDeleteTarget}
-                      onTaskClick={(task, columnId) => { setDetailTask({ task, columnId }); setEditing(false) }}
-                      compact={colId === 'archived'}
-                      totalCount={colId === 'archived' ? columns.archived.length : undefined}
-                      showScheduled={showScheduled}
-                      onHeaderClick={colId === 'archived' ? openArchivedLog : undefined}
-                    />
-                  </div>
-                ))}
+        <ListPageContent
+          label="Task results"
+          busy={boardLoaded && boardRefreshing}
+          feedback={searchFeedback}
+          state={resultState}
+          className="min-h-0 flex-1"
+        >
+          {view === 'kanban' ? (
+            <DragDropProvider
+              sensors={sensors}
+              onDragStart={handleDragStart}
+              onDragOver={handleDragOver}
+              onDragEnd={handleDragEnd}
+            >
+              <div className="flex-1 overflow-auto min-h-0">
+                <div className="inline-flex gap-4 items-start pb-bakin-2">
+                  {COLUMN_ORDER.map((colId) => (
+                    <div key={colId} className="w-[75vw] sm:w-72 shrink-0">
+                      <KanbanColumn
+                        id={colId}
+                        tasks={colId === 'archived' ? [] : filteredColumns[colId]}
+                        gateLabels={gateLabels}
+                        childTaskLabels={childTaskLabels}
+                        budgetHolds={budgetHolds}
+                        brandHolds={brandHolds}
+                        liveActivity={liveActivity}
+                        warnUnbranded={warnUnbranded}
+                        scoreMap={scoreMap}
+                        onDelete={setDeleteTarget}
+                        onTaskClick={(task, columnId) => { setDetailTask({ task, columnId }); setEditing(false) }}
+                        compact={colId === 'archived'}
+                        totalCount={colId === 'archived' ? columns.archived.length : undefined}
+                        showScheduled={showScheduled}
+                        onHeaderClick={colId === 'archived' ? openArchivedLog : undefined}
+                      />
+                    </div>
+                  ))}
+                </div>
               </div>
+            </DragDropProvider>
+          ) : (
+            <div className="flex-1 overflow-auto min-h-0 pb-bakin-2">
+              <TaskLogTable currentTasks={allTasksFlat} statusFilter={statusFilter} isSearching={Boolean(search)} scoreMap={scoreMap} />
             </div>
-          </DragDropProvider>
-        ) : (
-          <div className="flex-1 overflow-auto min-h-0 px-6 pb-[25px]">
-            <TaskLogTable currentTasks={allTasksFlat} statusFilter={statusFilter} isSearching={Boolean(search)} scoreMap={scoreMap} />
-          </div>
-        )}
+          )}
+        </ListPageContent>
+      </ListPage>
 
-        <TaskDetailDrawer
-          task={detailTask?.task ?? null}
-          columnId={detailTask?.columnId ?? null}
-          open={editing || !!detailTask}
-          editing={editing}
-          onClose={() => { setDetailTask(null); setEditing(false) }}
-          onEdit={() => setEditing(true)}
-          onCancelEdit={() => setEditing(false)}
-          onDelete={(task) => {
-            setDetailTask(null)
-            setEditing(false)
-            setDeleteTarget({ id: task.id, title: task.title })
-          }}
-          onDuplicate={async (task) => {
-            const ok = await apiFetch('/api/plugins/tasks/', {
-              title: `${task.title} (copy)`,
-              description: task.description || undefined,
-              column: detailTask?.columnId || 'todo',
-              assignee: task.agent || undefined,
-              workflowId: task.workflowId || undefined,
-            })
-            if (ok) {
-              toast(`Duplicated "${task.title}"`, 'success')
-              await refreshTaskboard()
-            }
-          }}
-        />
-
-        <DeleteTaskDialog
-          title={deleteTarget}
-          onConfirm={confirmDelete}
-          onCancel={() => setDeleteTarget(null)}
-        />
-
-        <BlockReasonDialog
-          taskTitle={pendingBlock?.task.title ?? null}
-          onConfirm={async (reason) => {
-            if (!pendingBlock) return
-            const { task, fromCol } = pendingBlock
-            setPendingBlock(null)
-            const ok = await apiFetch('/api/plugins/tasks/' + task.id + '/move', {
-              id: task.id, title: task.title, from: fromCol, to: 'blocked',
-              agent: 'human', channel: 'human', reason,
-            })
-            if (ok) {
-              const currentOpt = optimistic?.columns ?? parsed.columns
-              const sourceTasks = currentOpt[fromCol].filter(t => t.id !== task.id)
-              const blockedTasks = currentOpt.blocked
-              await apiFetch('/api/plugins/tasks/reorder', {
-                columnId: fromCol,
-                orderedIds: sourceTasks.map(t => t.id),
-              })
-              await apiFetch('/api/plugins/tasks/reorder', {
-                columnId: 'blocked',
-                orderedIds: blockedTasks.map(t => t.id),
-              })
-            } else {
-              toast(`Failed to block "${task.title}"`, 'error')
-            }
+      <TaskDetailDrawer
+        task={detailTask?.task ?? null}
+        columnId={detailTask?.columnId ?? null}
+        open={editing || !!detailTask}
+        editing={editing}
+        onClose={() => { setDetailTask(null); setEditing(false) }}
+        onEdit={() => setEditing(true)}
+        onCancelEdit={() => setEditing(false)}
+        onDelete={(task) => {
+          setDetailTask(null)
+          setEditing(false)
+          setDeleteTarget({ id: task.id, title: task.title })
+        }}
+        onDuplicate={async (task) => {
+          const ok = await apiFetch('/api/plugins/tasks/', {
+            title: `${task.title} (copy)`,
+            description: task.description || undefined,
+            column: detailTask?.columnId || 'todo',
+            assignee: task.agent || undefined,
+            workflowId: task.workflowId || undefined,
+          })
+          if (ok) {
+            toast(`Duplicated "${task.title}"`, 'success')
             await refreshTaskboard()
-            setOptimistic(null)
-          }}
-          onCancel={() => {
-            setPendingBlock(null)
-            setOptimistic(null)
-          }}
-        />
-      </div>
+          }
+        }}
+      />
+
+      <DeleteTaskDialog
+        title={deleteTarget}
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
+
+      <BlockReasonDialog
+        taskTitle={pendingBlock?.task.title ?? null}
+        onConfirm={async (reason) => {
+          if (!pendingBlock) return
+          const { task, fromCol } = pendingBlock
+          setPendingBlock(null)
+          const ok = await apiFetch('/api/plugins/tasks/' + task.id + '/move', {
+            id: task.id, title: task.title, from: fromCol, to: 'blocked',
+            agent: 'human', channel: 'human', reason,
+          })
+          if (ok) {
+            const currentOpt = optimistic?.columns ?? parsed.columns
+            const sourceTasks = currentOpt[fromCol].filter(t => t.id !== task.id)
+            const blockedTasks = currentOpt.blocked
+            await apiFetch('/api/plugins/tasks/reorder', {
+              columnId: fromCol,
+              orderedIds: sourceTasks.map(t => t.id),
+            })
+            await apiFetch('/api/plugins/tasks/reorder', {
+              columnId: 'blocked',
+              orderedIds: blockedTasks.map(t => t.id),
+            })
+          } else {
+            toast(`Failed to block "${task.title}"`, 'error')
+          }
+          await refreshTaskboard()
+          setOptimistic(null)
+        }}
+        onCancel={() => {
+          setPendingBlock(null)
+          setOptimistic(null)
+        }}
+      />
     </>
   )
 }

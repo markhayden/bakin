@@ -99,6 +99,8 @@ describe('list/index page recipe', () => {
     const page = container.querySelector('[data-archetype="list"]')
     expect(page?.id).toBe('task-index')
     expect(page?.getAttribute('data-width')).toBe('wide')
+    expect(page?.getAttribute('data-gap')).toBe('content')
+    expect(page?.querySelector('[data-slot="page-shell-content"]')?.className).toContain('gap-bakin-4')
     expect(screen.getByRole('region', { name: 'Task filters' })).toBeTruthy()
     const results = screen.getByRole('region', { name: 'Active task results' })
     expect(results.getAttribute('aria-busy')).toBe('true')

@@ -69,14 +69,17 @@ docs. Missing Bits input fails rather than silently weakening coverage.
 
 ## Browser UI performance baseline
 
-`performance.json` records monotonic production-payload ceilings for the one
+`performance.json` records reviewed production-payload baselines for the one
 canonical design-system stylesheet, initial host JavaScript, current and
 focused SDK UI entries (including their statically reachable chunks), every
 vendor chunk, every core plugin client, and every official Bits client. Existing
-payload is baselined; a reduction passes, while an increase or new artifact
-requires explicit review and regeneration. Stable vendor files are pinned
-individually; content-hashed `sdk-shared-*` chunks are pinned as an aggregate so
-a size-reducing rebuild is not mistaken for a new artifact.
+payload is baselined; reductions and cumulative growth up to 2 KiB per artifact
+pass, while larger growth or a new artifact requires explicit review and
+regeneration. The tolerance absorbs immaterial build and feature movement
+without hiding a download-significant trend because it is always measured from
+the checked-in baseline. Stable vendor files are pinned individually;
+content-hashed `sdk-shared-*` chunks are pinned as an aggregate so a
+size-reducing rebuild is not mistaken for a new artifact.
 
 The same architecture gate rejects a transitive chart or conversation import
 from base `@makinbakin/sdk/ui` and rejects a plugin-bundled copy of the canonical

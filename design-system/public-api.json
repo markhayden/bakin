@@ -10,8 +10,8 @@
     "entrypoints": 8,
     "supportedEntrypoints": 7,
     "frozenLegacyEntrypoints": 1,
-    "valueExports": 322,
-    "typeExports": 385
+    "valueExports": 323,
+    "typeExports": 387
   },
   "entrypoints": [
     {
@@ -36,6 +36,7 @@
         "Badge",
         "badgeVariants",
         "BakinDrawer",
+        "BakinDrawerSection",
         "Banner",
         "Button",
         "buttonVariants",
@@ -175,6 +176,8 @@
         "BadgeVariant",
         "BadgeVariantOptions",
         "BakinDrawerProps",
+        "BakinDrawerSectionHeadingLevel",
+        "BakinDrawerSectionProps",
         "BannerProps",
         "BannerTone",
         "ButtonProps",

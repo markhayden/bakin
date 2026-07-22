@@ -393,13 +393,13 @@ describe('SchedulePage smoke', () => {
     expect(screen.getByTestId('header-count').textContent).toBe('1')
   })
 
-  it('renders agent filter buttons for All agents + each agent id', () => {
+  it('renders agent filter buttons for All + each agent id', () => {
     scheduleState.jobs = [makeJob()]
     queryStateRefs.view = 'list'
 
     render(<SchedulePage />)
 
-    expect(screen.getByRole('radio', { name: 'All agents' })).toBeDefined()
+    expect(screen.getByRole('radio', { name: 'All' })).toBeDefined()
     // AgentAvatar stubs render the agent id as text
     expect(screen.getAllByText('chef').length).toBeGreaterThanOrEqual(1)
     expect(screen.getAllByText('pixel').length).toBeGreaterThanOrEqual(1)

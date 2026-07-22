@@ -19,13 +19,13 @@
     "private-import"
   ],
   "summary": {
-    "paths": 198,
+    "paths": 196,
     "totals": {
-      "raw-palette": 1345,
-      "arbitrary-size": 530,
+      "raw-palette": 1344,
+      "arbitrary-size": 523,
       "raw-control": 195,
       "inline-style": 56,
-      "generic-token": 2387,
+      "generic-token": 2379,
       "unscoped-css": 0,
       "private-import": 6
     }
@@ -700,21 +700,6 @@
         "arbitrary-size": 2,
         "raw-control": 1,
         "generic-token": 5
-      }
-    },
-    {
-      "path": "packages/host/src/routes/tasks.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "host"
-      },
-      "censusEntryId": "host-route:tasks",
-      "migrationTask": "T47",
-      "archetype": "shell",
-      "target": "supported host UI and namespaced semantic tokens",
-      "status": "legacy-allowed",
-      "allowances": {
-        "arbitrary-size": 2
       }
     },
     {
@@ -2317,8 +2302,7 @@
       "target": "task board/detail archetypes and supported SDK UI",
       "status": "legacy-allowed",
       "allowances": {
-        "arbitrary-size": 6,
-        "generic-token": 4
+        "arbitrary-size": 1
       }
     },
     {
@@ -2394,23 +2378,6 @@
         "arbitrary-size": 3,
         "inline-style": 1,
         "generic-token": 26
-      }
-    },
-    {
-      "path": "plugins/tasks/components/task-filters.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "plugin",
-        "pluginId": "tasks"
-      },
-      "censusEntryId": "plugin-slot:tasks:page:/tasks",
-      "migrationTask": "T48-T49",
-      "archetype": "workflow-action",
-      "target": "task board/detail archetypes and supported SDK UI",
-      "status": "legacy-allowed",
-      "allowances": {
-        "raw-palette": 1,
-        "generic-token": 4
       }
     },
     {

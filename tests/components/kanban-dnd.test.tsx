@@ -11,10 +11,15 @@
  */
 // @vitest-environment jsdom
 
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { act, render, screen, waitFor } from '@testing-library/react'
+import { rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { settleReact } from '../rtl-settle'
 import type { Task, TaskColumns } from '../../plugins/tasks/types'
+
+const testDir = join(tmpdir(), `bakin-test-kanban-dnd-${process.pid}-${Date.now()}`)
 
 const { mockMove, mockUseSortable } = (() => ({
   mockMove: mock(),
@@ -103,6 +108,27 @@ mock.module('@bakin/core/main-agent', () => ({
   getMainAgentName: () => 'Main',
 }))
 
+mock.module('@/core/content-dir', () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({}),
+}))
+mock.module('../../src/core/content-dir', () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({}),
+}))
+mock.module('../../packages/core/src/content-dir', () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({}),
+}))
+mock.module('@bakin/adapter-openclaw/home', () => ({
+  getOpenClawHome: () => join(testDir, 'openclaw'),
+  getOpenClawPath: (...parts: string[]) => join(testDir, 'openclaw', ...parts),
+}))
+
+afterAll(() => {
+  rmSync(testDir, { recursive: true, force: true })
+})
+
 mock.module('@dnd-kit/dom', () => {
   class MockPointerSensor {
     static configure() {
@@ -168,26 +194,29 @@ mock.module('../../plugins/tasks/components/task-log-table', () => ({
   TaskLogTable: () => null,
 }))
 
-mock.module('@/components/plugin-header', () => ({
-  PluginHeader: () => null,
-}))
-
 mock.module('@/components/agent-avatar', () => ({
   AgentAvatar: ({ agentId }: any) => <div>{agentId}</div>,
 }))
 
-mock.module('@/components/ui/button', () => ({
-  Button: ({ children, onClick }: any) => <button onClick={onClick}>{children}</button>,
-}))
-
-mock.module('@/hooks/use-query-state', () => ({
+mock.module('@makinbakin/sdk/navigation', () => ({
+  PluginLink: ({ children, to }: { children: React.ReactNode; to: string }) => <a href={to}>{children}</a>,
+  usePathname: () => '/tasks',
+  useRouter: () => ({
+    push: mock(),
+    replace: mock(),
+    back: mock(),
+    forward: mock(),
+    refresh: mock(),
+    prefetch: mock(),
+  }),
+  useSearchParams: () => new URLSearchParams(),
   useQueryState: (_key: string, defaultValue: string) => {
     const React = require('react') as typeof import('react')
     return React.useState(queryStateDefaults[_key] ?? defaultValue)
   },
   useQueryArrayState: () => {
     const React = require('react') as typeof import('react')
-    return React.useState([])
+    return React.useState<string[]>([])
   },
 }))
 

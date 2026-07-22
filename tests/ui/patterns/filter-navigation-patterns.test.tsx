@@ -73,7 +73,7 @@ describe('filter and navigation patterns', () => {
       />,
     )
 
-    const all = screen.getByRole('radio', { name: 'All agents' })
+    const all = screen.getByRole('radio', { name: 'All' })
     expect(all.getAttribute('aria-checked')).toBe('true')
     expect(all.className).toContain('bg-bakin-border-subtle/35')
     expect(all.className).not.toContain('border-bakin-border-subtle')
