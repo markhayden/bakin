@@ -30,6 +30,7 @@ A search-reliability release, one day after rc.21. A production incident during 
 - **The search query fan-out shares one wall-clock budget (#714).** Sequential rerank fan-outs gave each of 12 tables its own budget slice (32-second spinners under rebuild load) and the scan fallback's HTTP request ignored the deadline entirely (default 30s timeout after the budget was already spent). Tables past the shared deadline are honestly omitted.
 - **The antfly idle-detection override is restored and re-scoped (#713).** Upstream's #319 fix covers media templates but skip-heavy text corpora can still report building-forever while idle; retiring the override had parked every such table. Its companion test is now a guard on the mapping plus raw-flag evidence logging.
 - **Gallery test de-flaked for release builds (#711)** — the brand-header assertions survive long describe-stamped versions.
+- **A noop `bakin install search` still provisions and starts the engine service (#717)** — the clean-slate recovery (bootout → wipe → install) previously left the engine dead when the binary was already at the pinned version, failing every subsequent reindex with "antfly unreachable".
 
 ## [0.0.1-rc.21] - 2026-07-21
 
