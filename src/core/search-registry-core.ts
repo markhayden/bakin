@@ -388,23 +388,55 @@ export async function pumpParkedMigrations(
   const registry = getRegistry()
   const search = getSearchAdapter()
   const defs = Array.from(registry.contentTypes.values()).map(toVersionedDef)
-  const parked = listVersionedTableStates().filter((s) => s.state === 'migrating' && s.phase === 'parked')
-  if (parked.length === 0) return []
+  const states = listVersionedTableStates()
+  const parked = states.filter((s) => s.state === 'migrating' && s.phase === 'parked')
+
+  const outcomes: Array<{ logical: string; result: string }> = []
 
   const eligible = parked.filter((s) => (pumpAttempts.get(s.logical) ?? 0) < MIGRATION_PUMP_MAX_ATTEMPTS)
-  if (eligible.length === 0) return []
+  if (eligible.length > 0) {
+    const eligibleDefs = defs.filter((d) => eligible.some((s) => s.logical === d.logical))
+    outcomes.push(...await resumeVersionedMigrations(search, eligibleDefs, adapterFingerprint(search), { ...opts, onlyParked: true }))
+  }
 
-  const eligibleDefs = defs.filter((d) => eligible.some((s) => s.logical === d.logical))
-  const outcomes = await resumeVersionedMigrations(search, eligibleDefs, adapterFingerprint(search), { ...opts, onlyParked: true })
+  // ACTIVE rows whose physical vanished engine-side have no other owner
+  // until a human reindexes: boot ignores them (D5) and resume only sees
+  // 'migrating' rows. A crash mid-repair-pass strands exactly this shape
+  // (soak cycle 5 finding). Availability-guarded so an engine OUTAGE can
+  // never masquerade as mass table loss: stats null while the engine is
+  // down means "unreachable", not "missing".
+  if (await search.available().catch(() => false)) {
+    for (const state of states.filter((s) => s.state === 'active')) {
+      const def = defs.find((d) => d.logical === state.logical)
+      if (!def) continue
+      if ((pumpAttempts.get(state.logical) ?? 0) >= MIGRATION_PUMP_MAX_ATTEMPTS) continue
+      const stats = await search.tables.stats(state.physical).catch(() => null)
+      if (stats !== null) continue
+      log.warn('migration pump: active physical missing engine-side — regenerating', {
+        logical: state.logical,
+        physical: state.physical,
+      })
+      const result = await rebuildVersionedTable(search, def, adapterFingerprint(search), opts)
+        .catch((err: unknown) => {
+          log.warn('migration pump regeneration failed', {
+            logical: state.logical,
+            err: err instanceof Error ? err.message : String(err),
+          })
+          return 'failed' as const
+        })
+      outcomes.push({ logical: state.logical, result })
+    }
+  }
+
   for (const outcome of outcomes) {
     if (outcome.result === 'migrated' || outcome.result === 'unchanged') {
       pumpAttempts.delete(outcome.logical)
-      log.info('migration pump completed a parked migration', outcome)
+      log.info('migration pump completed recorded work', outcome)
     } else {
       const attempts = (pumpAttempts.get(outcome.logical) ?? 0) + 1
       pumpAttempts.set(outcome.logical, attempts)
       if (attempts >= MIGRATION_PUMP_MAX_ATTEMPTS) {
-        log.warn('migration pump standing down for table — repeated resume failures; doctor owns escalation', {
+        log.warn('migration pump standing down for table — repeated failures; doctor owns escalation', {
           logical: outcome.logical,
           attempts,
         })

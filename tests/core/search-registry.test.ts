@@ -989,3 +989,63 @@ describe('rebuild pass semantics (2026-07-21 redesign)', () => {
     expect(await pumpParkedMigrations()).toEqual([])
   })
 })
+
+describe('migration pump — engine-missing actives (soak cycle-5 finding)', () => {
+  let searchHarness: ReturnType<typeof createSearchAdapterHarness>
+
+  beforeEach(() => {
+    resetSearchRegistry()
+    searchHarness = createSearchAdapterHarness()
+    installSearchAdapter(searchHarness.adapter)
+    mock.clearAllMocks()
+  })
+
+  afterEach(() => {
+    clearSearchAdapter()
+  })
+
+  function makeDef(table: string) {
+    return {
+      table,
+      schemaVersion: 1,
+      schema: { title: { type: 'text' as const } },
+      searchableFields: ['title'],
+      embeddingTemplate: '{{title}}',
+      facets: [],
+      reindex: async function* () { yield { key: 'k1', doc: { title: 'row' } } },
+      verifyExists: async () => true,
+    }
+  }
+
+  it('regenerates an ACTIVE row whose physical vanished engine-side', async () => {
+    buildSearchAPI('gm-plugin').registerContentType(makeDef('gmone'))
+    await createRegisteredTables()
+    const before = tableStatus('bakin_gmone')!.physical
+
+    await searchHarness.adapter.tables.drop(before)
+    mock.clearAllMocks()
+
+    const outcomes = await pumpParkedMigrations({ convergePollMs: 20, zeroProgressParkMs: 200 })
+
+    expect(outcomes).toHaveLength(1)
+    expect(outcomes[0].logical).toBe('bakin_gmone')
+    expect(outcomes[0].result).toMatch(/migrated|created/)
+    const after = tableStatus('bakin_gmone')!
+    expect(after.state).toBe('active')
+    expect(after.physical).not.toBe(before)
+  })
+
+  it('does NOT regenerate when the engine is merely unavailable', async () => {
+    buildSearchAPI('gd-plugin').registerContentType(makeDef('gdone'))
+    await createRegisteredTables()
+    const before = tableStatus('bakin_gdone')!.physical
+
+    await searchHarness.adapter.tables.drop(before)
+    searchHarness.setAvailable(false)
+
+    const outcomes = await pumpParkedMigrations()
+
+    expect(outcomes).toEqual([])
+    expect(tableStatus('bakin_gdone')!.physical).toBe(before)
+  })
+})
