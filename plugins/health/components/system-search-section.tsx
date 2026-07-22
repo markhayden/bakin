@@ -226,12 +226,19 @@ export function SystemSearchSection({
               <Button
                 size="sm"
                 variant="outline"
-                disabled={!status?.enabled || mutationLocked}
+                disabled={!status?.enabled || status?.engineReachable === false || mutationLocked}
                 onClick={() => void onReindex()}
               >
                 {pendingAll ? 'Starting reindex…' : 'Reindex all'}
               </Button>
             </div>
+
+            {status?.enabled && status.engineReachable === false ? (
+              <p className="rounded-lg border border-dashed border-amber-500/50 bg-amber-500/5 p-3 text-sm text-muted-foreground">
+                Search is enabled but the engine is not answering. Table state below comes from local records;
+                document counts and reindexing are unavailable until the engine is back.
+              </p>
+            ) : null}
 
             {!status?.enabled ? (
               <p className="rounded-lg border border-dashed border-border p-3 text-sm text-muted-foreground">

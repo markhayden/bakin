@@ -39,6 +39,35 @@ function tableObservationId(logical: string): string {
   return `${SEARCH_CONSISTENCY_CHECK_ID}:indexes.table:${stableKeyPart(logical)}`
 }
 
+/** Engine-side table names, or null when the list itself is unavailable. */
+async function engineTableNames(
+  search: { tables: { list(): Promise<Array<{ name: string }>> } },
+): Promise<Set<string> | null> {
+  try {
+    return new Set((await search.tables.list()).map((table) => table.name))
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Rebuild-worthy = the engine's table LIST confirms the physical is gone.
+ * A null stats read alone can also mean a dead shard in a live engine
+ * (restart territory) — and when the list can't be fetched, ambiguity
+ * must never resolve to a rebuild. A THROWN stats read propagates so
+ * repair outcomes report the real error instead of a silent skip.
+ */
+async function confirmedMissing(
+  search: { tables: { list(): Promise<Array<{ name: string }>>; stats(name: string): Promise<unknown> } },
+  physical: string,
+  listedNames?: Set<string> | null,
+): Promise<boolean> {
+  const stats = await search.tables.stats(physical)
+  if (stats !== null) return false
+  const listed = listedNames === undefined ? await engineTableNames(search) : listedNames
+  return listed !== null && !listed.has(physical)
+}
+
 function tableIncidentId(table: SearchRepairTableState): string | null {
   const tableId = stableKeyPart(table.logical)
   if (table.state === 'migrating' && table.phase === 'parked') {
@@ -141,6 +170,8 @@ export async function checkSearchConsistency(): Promise<HealthCheckRunInput> {
 
   const { listTableStates } = await import('@bakin/core/search/tables')
   const observations: HealthObservationInput[] = []
+  // Fetched lazily on the first null stats read, shared across the loop.
+  let listedNames: Set<string> | null | undefined
 
   for (const table of listTableStates()) {
     const tableId = stableKeyPart(table.logical)
@@ -191,31 +222,75 @@ export async function checkSearchConsistency(): Promise<HealthCheckRunInput> {
       continue
     }
 
-    // Active table: the physical must exist engine-side. stats() === null
-    // is the real 404 signal (never a boot scan — this runs on the doctor).
+    // Active table: the physical must exist engine-side. stats() === null is
+    // the engine's 404 on the index-status read — but that alone is NOT
+    // proof the table is gone: a dead shard actor inside a running engine
+    // 404s the status path while the table still appears in tables.list()
+    // (field-diagnosed 2026-07-21; the wrong verdict sends the operator to
+    // a rebuild when a 20-second engine restart is the fix). Corroborate
+    // before claiming missing.
     try {
       const stats = await search.tables.stats(table.physical)
       if (stats === null) {
-        observations.push(healthError({
-          key: `indexes.table:${tableId}`,
-          summary: `${table.logical} points to a missing engine table.`,
-          detail: `The active physical table ${table.physical} does not exist in the Search engine.`,
-          evidence: { logicalTable: table.logical, physicalTable: table.physical, exists: false },
-          incident: {
-            key: `table-missing:${tableId}`,
-            title: 'Active Search index is missing',
-            class: 'service_failure',
-            impact: 'Queries against this logical index cannot return its source data.',
-            disposition: 'action_required',
-            resources: [{ kind: 'search_table', id: tableId, label: table.logical.slice(0, 120) }],
-            resolution: {
-              key: 'rebuild-table',
-              type: 'repair',
-              label: 'Rebuild the index blue/green',
-              actionId: 'search-consistency-rebuild',
+        if (listedNames === undefined) listedNames = await engineTableNames(search)
+        if (listedNames?.has(table.physical)) {
+          observations.push(healthError({
+            key: `indexes.table:${tableId}`,
+            summary: `${table.logical} exists but is unreadable.`,
+            detail: `The engine lists ${table.physical}, but its index status reads as not found — a dead shard inside a running engine. An engine restart reloads it; a rebuild is not needed.`,
+            evidence: { logicalTable: table.logical, physicalTable: table.physical, listed: true, statusReadable: false },
+            incident: {
+              key: `table-unreadable:${tableId}`,
+              title: 'Search index is unreadable inside a running engine',
+              class: 'service_failure',
+              impact: 'Queries touching this index hang or fail while the rest of Search stays up.',
+              disposition: 'action_required',
+              resources: [{ kind: 'search_table', id: tableId, label: table.logical.slice(0, 120) }],
+              resolution: {
+                key: 'restart-engine',
+                type: 'repair',
+                label: 'Restart the Search engine',
+                actionId: 'search-consistency-restart',
+              },
             },
-          },
-        }))
+          }))
+        } else if (listedNames === null) {
+          observations.push(healthUnknown({
+            key: `indexes.table:${tableId}`,
+            summary: `${table.logical} could not be verified.`,
+            detail: 'The index status read came back not-found, and the engine table list could not be fetched to distinguish a missing table from an unreadable one.',
+            incident: {
+              key: `table-unknown:${tableId}`,
+              title: 'Search index status is unknown',
+              class: 'evidence_gap',
+              impact: 'Health cannot confirm that this logical index has an active physical table.',
+              disposition: 'watch',
+              resources: [{ kind: 'search_table', id: tableId, label: table.logical.slice(0, 120) }],
+              resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
+            },
+          }))
+        } else {
+          observations.push(healthError({
+            key: `indexes.table:${tableId}`,
+            summary: `${table.logical} points to a missing engine table.`,
+            detail: `The active physical table ${table.physical} does not exist in the Search engine.`,
+            evidence: { logicalTable: table.logical, physicalTable: table.physical, exists: false },
+            incident: {
+              key: `table-missing:${tableId}`,
+              title: 'Active Search index is missing',
+              class: 'service_failure',
+              impact: 'Queries against this logical index cannot return its source data.',
+              disposition: 'action_required',
+              resources: [{ kind: 'search_table', id: tableId, label: table.logical.slice(0, 120) }],
+              resolution: {
+                key: 'rebuild-table',
+                type: 'repair',
+                label: 'Rebuild the index blue/green',
+                actionId: 'search-consistency-rebuild',
+              },
+            },
+          }))
+        }
       }
     } catch (err) {
       observations.push(healthUnknown({
@@ -375,13 +450,14 @@ export function searchConsistencyRepair(): HealthRepairActionDefinition {
 
       const { getAppServices } = await import('../../../../src/core/app-services')
       const search = getAppServices().search
+      const listedNames = await engineTableNames(search)
       const repairable: SearchRepairTableState[] = []
       for (const table of selected) {
         if (table.state === 'migrating' && table.phase === 'parked') {
           repairable.push(table)
           continue
         }
-        if (table.state === 'active' && await search.tables.stats(table.physical) === null) {
+        if (table.state === 'active' && await confirmedMissing(search, table.physical, listedNames)) {
           repairable.push(table)
         }
       }
@@ -416,10 +492,10 @@ export function searchConsistencyRepair(): HealthRepairActionDefinition {
 
             let needsRebuild = table.state === 'migrating' && table.phase === 'parked'
             if (table.state === 'active') {
-              needsRebuild = await search.tables.stats(table.physical) === null
+              needsRebuild = await confirmedMissing(search, table.physical)
             }
             if (!needsRebuild) {
-              outcomes.push(repairResult(item, 'skipped', `${logical} no longer needs rebuilding.`))
+              outcomes.push(repairResult(item, 'skipped', `${logical} no longer needs rebuilding (or is unreadable rather than missing — restart the engine instead).`))
               continue
             }
 

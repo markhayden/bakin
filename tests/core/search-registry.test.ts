@@ -80,6 +80,9 @@ import {
   purgeContentType,
   rebuildRegisteredTables,
   pumpParkedMigrations,
+  startReindexJob,
+  getReindexJobStatus,
+  stopMigrationPump,
 } from '@/core/search-registry'
 import { sweepOrphanRegistryRows } from '@/core/search-orphan-sweep'
 import { tableStatus, sweepTombstones } from '@bakin/core/search/tables'
@@ -873,13 +876,24 @@ describe('search-registry', () => {
     expect(table.legs.find((l) => l.name === 'embeddings')?.pending).toBe(3)
   })
 
-  it('getSearchHealth returns enabled false when search adapter is unavailable', async () => {
+  it('getSearchHealth reports enabled + engineReachable=false when the engine is down — never "disabled"', async () => {
+    // "disabled" (a setting) and "unreachable" (an outage) are different
+    // failures with different fixes; conflating them sent a field recovery
+    // down the wrong path (2026-07-21). Registry tables stay listed from
+    // local state with unknown doc counts so operators see what EXISTS.
+    buildSearchAPI('tasks').registerContentType(makeDef('tasks'))
     searchHarness.setAvailable(false)
 
     const health = await getSearchHealth()
 
-    expect(health.enabled).toBe(false)
-    expect(health.tables).toEqual([])
+    expect(health.enabled).toBe(true)
+    expect(health.engineReachable).toBe(false)
+    expect(health.tables.length).toBeGreaterThan(0)
+    for (const table of health.tables) {
+      expect(table.docCount).toBeNull()
+      expect(table.legs).toEqual([])
+      expect(table.healthy).toBe(false)
+    }
   })
 })
 
@@ -1053,5 +1067,110 @@ describe('migration pump — engine-missing actives (soak cycle-5 finding)', () 
 
     expect(outcomes).toEqual([])
     expect(tableStatus('bakin_gdone')!.physical).toBe(before)
+  })
+})
+
+describe('migration pump — dead shards inside a live engine (2026-07-21 field incident)', () => {
+  let searchHarness: ReturnType<typeof createSearchAdapterHarness>
+
+  beforeEach(() => {
+    resetSearchRegistry()
+    stopMigrationPump() // reset bounce debounce + stand-down counters
+    searchHarness = createSearchAdapterHarness()
+    installSearchAdapter(searchHarness.adapter)
+    mock.clearAllMocks()
+  })
+
+  afterEach(() => {
+    stopMigrationPump()
+    clearSearchAdapter()
+  })
+
+  function makeDef(table: string) {
+    return {
+      table,
+      schemaVersion: 1,
+      schema: { title: { type: 'text' as const } },
+      searchableFields: ['title'],
+      embeddingTemplate: '{{title}}',
+      facets: [],
+      reindex: async function* () { yield { key: 'k1', doc: { title: 'row' } } },
+      verifyExists: async () => true,
+    }
+  }
+
+  it('bounces the engine for a listed-but-status-404 active table; debounced; registry untouched', async () => {
+    // Two of twelve tables dark inside an otherwise-live engine: listed by
+    // tables.list, 404 on the status path, queries hanging. The heartbeat
+    // watchdog never fires (other tables progress); the pump must see it.
+    buildSearchAPI('ds-plugin').registerContentType(makeDef('dsone'))
+    await createRegisteredTables()
+    const physical = tableStatus('bakin_dsone')!.physical
+    searchHarness.setTableStats(physical, null)
+    mock.clearAllMocks()
+
+    await pumpParkedMigrations()
+
+    expect(searchHarness.calls.restartEngine).toHaveBeenCalledTimes(1)
+    // A dead shard is NOT a missing table — never regenerate over it.
+    expect(tableStatus('bakin_dsone')!.physical).toBe(physical)
+
+    // Second pass lands inside the post-restart grace/debounce: no re-bounce.
+    await pumpParkedMigrations()
+    expect(searchHarness.calls.restartEngine).toHaveBeenCalledTimes(1)
+  })
+
+  it('never bounces when stats read healthy', async () => {
+    buildSearchAPI('dh-plugin').registerContentType(makeDef('dhone'))
+    await createRegisteredTables()
+    mock.clearAllMocks()
+
+    await pumpParkedMigrations()
+
+    expect(searchHarness.calls.restartEngine).not.toHaveBeenCalled()
+  })
+})
+
+describe('reindex job (202 + poll contract)', () => {
+  let searchHarness: ReturnType<typeof createSearchAdapterHarness>
+
+  beforeEach(() => {
+    resetSearchRegistry()
+    searchHarness = createSearchAdapterHarness()
+    installSearchAdapter(searchHarness.adapter)
+    mock.clearAllMocks()
+  })
+
+  afterEach(() => {
+    clearSearchAdapter()
+  })
+
+  it('startReindexJob returns immediately, attaches while running, and lands the final outcome', async () => {
+    buildSearchAPI('job-plugin').registerContentType({
+      table: 'jobone',
+      schemaVersion: 1,
+      schema: { title: { type: 'text' as const } },
+      searchableFields: ['title'],
+      embeddingTemplate: '{{title}}',
+      facets: [],
+      reindex: async function* () { yield { key: 'k1', doc: { title: 'row' } } },
+      verifyExists: async () => true,
+    })
+
+    const job = startReindexJob()
+    expect(job.state).toBe('running')
+    // A second start while running ATTACHES (single-flight), same job id.
+    expect(startReindexJob().id).toBe(job.id)
+    expect(getReindexJobStatus()!.id).toBe(job.id)
+
+    // Poll to completion like the CLI does.
+    const deadline = Date.now() + 10_000
+    while (getReindexJobStatus()!.state === 'running' && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 25))
+    }
+    const done = getReindexJobStatus()!
+    expect(done.state).toBe('done')
+    expect(done.finishedAt).toBeGreaterThan(0)
+    expect(done.tables!.length).toBeGreaterThan(0)
   })
 })

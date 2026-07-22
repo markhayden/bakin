@@ -1,9 +1,8 @@
 import { spawn } from 'child_process'
-import { existsSync, readdirSync, statSync } from 'fs'
-import { join } from 'path'
 import type { SearchAdapterSetupOptions } from '@bakin/core/adapters/search'
 import type { AdapterLogger } from '@bakin/core/adapters/shared'
 import type { AntflySettings } from './defaults'
+import { modelDir, modelStructurallyComplete, unverifiedModelFiles } from './model-pins'
 import { inferenceModelsRoot } from './paths'
 import { findAntflyBinary } from './service'
 
@@ -70,48 +69,15 @@ export function requiredModelsForSettings(settings: AntflySettings): InferenceMo
 }
 
 function modelPath(m: InferenceModel): string {
-  // v0.2 layout is {root}/{owner}/{name} — no per-kind buckets.
-  return join(inferenceModelsRoot(), m.model)
+  return modelDir(m.model)
 }
 
-const WEIGHT_FILE_RE = /\.(onnx|gguf|safetensors)$/
-
-function hasWeightFile(dir: string, depth = 0): boolean {
-  if (depth > 2) return false
-  let entries: string[]
-  try {
-    entries = readdirSync(dir)
-  } catch {
-    return false
-  }
-  for (const entry of entries) {
-    const full = join(dir, entry)
-    try {
-      const stat = statSync(full)
-      if (stat.isFile() && WEIGHT_FILE_RE.test(entry) && stat.size > 0) return true
-      if (stat.isDirectory() && hasWeightFile(full, depth + 1)) return true
-    } catch {
-      continue
-    }
-  }
-  return false
-}
-
+/** Structural completeness via the pinned distribution set (model-pins.ts):
+ *  pinned models must carry their exact expected files — the old any-weight
+ *  check passed a wrong-distribution download while the engine crash-looped
+ *  on it (2026-07-21 field incident). */
 function modelComplete(m: InferenceModel): { ok: true } | { ok: false; reason: string } {
-  const root = modelPath(m)
-  if (!existsSync(root)) return { ok: false, reason: 'not downloaded yet' }
-
-  // The registry synthesizes model_manifest.json after a successful pull;
-  // its absence means the pull never completed.
-  if (!existsSync(join(root, 'model_manifest.json'))) {
-    return { ok: false, reason: 'model_manifest.json missing - pull likely incomplete' }
-  }
-
-  if (!hasWeightFile(root)) {
-    return { ok: false, reason: 'no model weight file (.onnx/.gguf/.safetensors) found' }
-  }
-
-  return { ok: true }
+  return modelStructurallyComplete(m.model)
 }
 
 interface MissingEntry {
@@ -155,11 +121,26 @@ export function describeMissingModels(missing: InferenceModel[]): { impact: stri
 export async function checkInferenceModels(models: InferenceModel[]) {
   const missing = missingModelEntries(models)
   if (missing.length === 0) {
+    // Presence passed — also verify pinned hashes. Drift is reported but
+    // never blocks: it means "differs from the verified distribution", not
+    // the crash-loop class a missing pinned file signals.
+    const unverified: Array<{ model: string; files: string[] }> = []
+    for (const m of models) {
+      const files = await unverifiedModelFiles(m.model)
+      if (files.length > 0) unverified.push({ model: m.model, files })
+    }
+    const driftNote = unverified.length > 0
+      ? ` (${unverified.length} model${unverified.length === 1 ? '' : 's'} differ from the pinned verified distribution — see details)`
+      : ''
     return {
       name: 'models',
       status: 'ok' as const,
-      message: `All ${models.length} search models present at ${inferenceModelsRoot()}`,
-      details: { root: inferenceModelsRoot(), models: models.map((m) => m.model) },
+      message: `All ${models.length} search models present at ${inferenceModelsRoot()}${driftNote}`,
+      details: {
+        root: inferenceModelsRoot(),
+        models: models.map((m) => m.model),
+        ...(unverified.length > 0 ? { unverified } : {}),
+      },
     }
   }
   const { impact, remediation } = describeMissingModels(missing.map((e) => e.model))
@@ -268,6 +249,10 @@ export async function installInferenceModels(opts: SearchAdapterSetupOptions, lo
           message: `antfly inference pull ${m.model} reported success but ${verified.reason}`,
           durationMs: Date.now() - start,
         }
+      }
+      const drifted = await unverifiedModelFiles(m.model)
+      if (drifted.length > 0) {
+        logger.warn('Pulled model differs from the pinned verified distribution', { model: m.model, files: drifted })
       }
       pulledLabels.push(m.label)
     } catch (err) {

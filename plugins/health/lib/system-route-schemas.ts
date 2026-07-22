@@ -44,6 +44,9 @@ const searchOutboxHealthSchema = z.object({
 
 export const searchStatusResponseSchema = z.object({
   enabled: z.boolean(),
+  // Absent on snapshots from pre-rc.23 servers; false = enabled but the
+  // engine is not answering (tables listed from local registry state).
+  engineReachable: z.boolean().optional(),
   outbox: searchOutboxHealthSchema.optional(),
   tables: z.array(searchHealthTableSchema),
 }).passthrough()

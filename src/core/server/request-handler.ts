@@ -377,10 +377,17 @@ export function createRequestHandler(deps: RequestHandlerDeps): (req: IncomingMe
     // way: queries keep answering from the old physical table while the
     // fresh one backfills; the pointer flips only after convergence (D4).
     // Overlapping calls attach to the running pass (single-flight).
+    // ?async=1 returns 202 + a job handle instead of holding the socket
+    // across a multi-minute pass; poll GET /api/reindex/status.
     if (url.pathname === '/api/reindex' && req.method === 'POST') {
-      const { rebuildRegisteredTables } = require('../search-registry')
       const table = url.searchParams.get('table') || undefined
       const force = url.searchParams.get('force') === '1'
+      if (url.searchParams.get('async') === '1') {
+        const { startReindexJob } = require('../search-registry')
+        jsonResponse(res, 202, { job: startReindexJob(table, { force }) })
+        return
+      }
+      const { rebuildRegisteredTables } = require('../search-registry')
       rebuildRegisteredTables(table, { force }).then((results: import('../search-registry').ReindexTableOutcome[]) => {
         const errors = results.filter((r) => r.error).length
         const parked = results.filter((r) => r.result === 'parked').length
@@ -395,6 +402,31 @@ export function createRequestHandler(deps: RequestHandlerDeps): (req: IncomingMe
         log.error('Rebuild failed', err, { table })
         jsonResponse(res, 500, { error: err instanceof Error ? err.message : String(err) })
       })
+      return
+    }
+
+    // Full engine reset: stop → wipe derived engine data → clean start →
+    // repair reindex (202 + job). Destructive to derived state only; the
+    // CLI gates it behind an explicit confirmation.
+    if (url.pathname === '/api/search/reset' && req.method === 'POST') {
+      const { resetSearchEngine } = require('../search-reset')
+      resetSearchEngine().then((result: import('../search-reset').SearchResetResult) => {
+        jsonResponse(res, result.ok ? 202 : 409, result)
+      }).catch((err: unknown) => {
+        log.error('Search engine reset failed', err)
+        jsonResponse(res, 500, { error: err instanceof Error ? err.message : String(err) })
+      })
+      return
+    }
+
+    if (url.pathname === '/api/reindex/status' && req.method === 'GET') {
+      const { getReindexJobStatus } = require('../search-registry')
+      const job = getReindexJobStatus()
+      if (!job) {
+        jsonResponse(res, 404, { error: 'no reindex job has run since the server started' })
+        return
+      }
+      jsonResponse(res, 200, { job })
       return
     }
 

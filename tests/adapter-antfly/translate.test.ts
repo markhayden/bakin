@@ -262,6 +262,42 @@ describe('buildTableCreate (capability legs)', () => {
     })
   })
 
+  it('a DISABLED embedder produces NO leg — keyword-only degrade, never a dimension-0 spec', () => {
+    // A disabled visual embedder once flowed through as dimension: 0, which
+    // the engine 500s on EVERY create — bricking every media-capable table
+    // on the box (2026-07-21 field incident).
+    const disabledVisual = {
+      ...S,
+      embedders: {
+        ...S.embedders,
+        visual: { provider: 'disabled', model: '', dimension: 0 },
+      },
+    }
+    const req = buildTableCreate({
+      fields: { title: { type: 'text' } },
+      legs: [
+        { name: 'assets_text', capability: 'text-embedding', fields: ['title'] },
+        { name: 'assets_visual', capability: 'media-embedding', fields: [], mediaUrlField: 'media_url' },
+      ],
+    }, disabledVisual)
+    expect(Object.keys(req.indexes ?? {})).toEqual(['assets_text'])
+  })
+
+  it('a zero-dimension embedder is treated as unusable even with a live provider', () => {
+    const zeroDim = {
+      ...S,
+      embedders: {
+        ...S.embedders,
+        default: { provider: 'antfly', model: 'BAAI/bge-small-en-v1.5', dimension: 0 },
+      },
+    }
+    const req = buildTableCreate({
+      fields: {},
+      legs: [{ name: 'sem', capability: 'text-embedding', fields: ['title'] }],
+    }, zeroDim)
+    expect(req.indexes).toBeUndefined()
+  })
+
   it('legacy indexes[] declarations still translate during the transition', () => {
     const req = buildTableCreate({
       fields: {},

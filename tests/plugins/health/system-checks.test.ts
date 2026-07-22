@@ -62,6 +62,16 @@ let mockSearchUrl = 'http://127.0.0.1:8765/api/v1'
 let mockSearchInstalled = true
 let mockTableStatsError: Error | null = null
 let mockTableStats: { table: string; documents: number } | null = { table: 't', documents: 1 }
+// Engine-side table list: corroborates "missing" verdicts (a name absent
+// here + null stats = genuinely gone; present here + null stats = dead
+// shard → restart, not rebuild).
+let mockEngineTables: Array<{ name: string }> = []
+let mockEngineTablesError: Error | null = null
+async function readMockEngineTables() {
+  if (mockEngineTablesError) throw mockEngineTablesError
+  return mockEngineTables
+}
+let mockSearchCapabilities: { legs: string[]; rerank: boolean; facets: boolean; transform: boolean } = { legs: ['full-text', 'text-embedding', 'media-embedding'], rerank: true, facets: true, transform: true }
 async function readMockTableStats() {
   if (mockTableStatsError) throw mockTableStatsError
   return mockTableStats
@@ -201,7 +211,7 @@ mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
 mock.module('../../../src/core/app-services', () => ({
   getAppServices: () => ({
     runtime: mockRuntime,
-    search: { available: async () => mockSearchAvailable, tables: { stats: readMockTableStats } },
+    search: { available: async () => mockSearchAvailable, tables: { stats: readMockTableStats, list: readMockEngineTables }, capabilities: () => mockSearchCapabilities },
     tasks: {},
     health: {},
   }),
@@ -221,7 +231,7 @@ mock.module('../../../src/core/app-services', () => ({
 mock.module('../../../src/core/app-services-store', () => ({
   getAppServices: () => ({
     runtime: mockRuntime,
-    search: { available: async () => mockSearchAvailable, tables: { stats: readMockTableStats } },
+    search: { available: async () => mockSearchAvailable, tables: { stats: readMockTableStats, list: readMockEngineTables }, capabilities: () => mockSearchCapabilities },
     tasks: {},
     health: {},
   }),
@@ -241,7 +251,7 @@ mock.module('../../../src/core/app-services-store', () => ({
 mock.module('../../../src/core/app-services.ts', () => ({
   getAppServices: () => ({
     runtime: mockRuntime,
-    search: { available: async () => mockSearchAvailable, tables: { stats: readMockTableStats } },
+    search: { available: async () => mockSearchAvailable, tables: { stats: readMockTableStats, list: readMockEngineTables }, capabilities: () => mockSearchCapabilities },
     tasks: {},
     health: {},
   }),
@@ -261,7 +271,7 @@ mock.module('../../../src/core/app-services.ts', () => ({
 mock.module('@/core/app-services', () => ({
   getAppServices: () => ({
     runtime: mockRuntime,
-    search: { available: async () => mockSearchAvailable, tables: { stats: readMockTableStats } },
+    search: { available: async () => mockSearchAvailable, tables: { stats: readMockTableStats, list: readMockEngineTables }, capabilities: () => mockSearchCapabilities },
     tasks: {},
     health: {},
   }),
@@ -281,7 +291,7 @@ mock.module('@/core/app-services', () => ({
 mock.module('@/core/app-services-store', () => ({
   getAppServices: () => ({
     runtime: mockRuntime,
-    search: { available: async () => mockSearchAvailable, tables: { stats: readMockTableStats } },
+    search: { available: async () => mockSearchAvailable, tables: { stats: readMockTableStats, list: readMockEngineTables }, capabilities: () => mockSearchCapabilities },
     tasks: {},
     health: {},
   }),
@@ -410,6 +420,9 @@ beforeEach(() => {
   mockRebuiltLogicalTables = []
   mockTableStatsError = null
   mockTableStats = { table: 't', documents: 1 }
+  mockEngineTables = []
+  mockEngineTablesError = null
+  mockSearchCapabilities = { legs: ['full-text', 'text-embedding', 'media-embedding'], rerank: true, facets: true, transform: true }
   mockOrphanSweepError = null
   mockOrphanSweepCalls = 0
   resetSearchConsistencyStateForTests()
@@ -847,6 +860,67 @@ describe('checkSearchConsistency', () => {
     mockTableStates = []
   })
 
+  it('reports UNREADABLE with a restart repair when stats 404s but the engine still lists the table', async () => {
+    // Dead shard actor inside a live engine (2026-07-21 field diagnosis):
+    // the status path 404s while tables.list still names the physical.
+    // The fix is a 20-second engine restart, NOT a blue/green rebuild.
+    mockSearchEnabled = true
+    mockSearchAvailable = true
+    mockTableStates = [{ logical: 'bakin_t', physical: 'bakin_t_v2_ff', schemaVersion: 2, state: 'active' }]
+    mockTableStats = null
+    mockEngineTables = [{ name: 'bakin_t_v2_ff' }]
+    const results = observed(await checkSearchConsistency())
+    const row = results.find((observation) => observation.key === 'indexes.table:bakin_t')!
+    expect(row.status).toBe('error')
+    expect(row.incident?.title).toBe('Search index is unreadable inside a running engine')
+    expect(row.incident?.resolution).toMatchObject({ type: 'repair', actionId: 'search-consistency-restart' })
+    mockTableStates = []
+  })
+
+  it('reports MISSING with a rebuild repair only when the engine list confirms the physical is gone', async () => {
+    mockSearchEnabled = true
+    mockSearchAvailable = true
+    mockTableStates = [{ logical: 'bakin_t', physical: 'bakin_t_v2_ff', schemaVersion: 2, state: 'active' }]
+    mockTableStats = null
+    mockEngineTables = [] // list fetch works; the physical is genuinely absent
+    const results = observed(await checkSearchConsistency())
+    const row = results.find((observation) => observation.key === 'indexes.table:bakin_t')!
+    expect(row.status).toBe('error')
+    expect(row.incident?.title).toBe('Active Search index is missing')
+    expect(row.incident?.resolution).toMatchObject({ type: 'repair', actionId: 'search-consistency-rebuild' })
+    mockTableStates = []
+  })
+
+  it('reports UNKNOWN when stats is null and the corroborating table list cannot be fetched', async () => {
+    // Ambiguity never resolves to "missing" — a rebuild on a guess costs
+    // GPU-hours; unknown keeps the human deciding.
+    mockSearchEnabled = true
+    mockSearchAvailable = true
+    mockTableStates = [{ logical: 'bakin_t', physical: 'bakin_t_v2_ff', schemaVersion: 2, state: 'active' }]
+    mockTableStats = null
+    mockEngineTablesError = new Error('list timed out')
+    const results = observed(await checkSearchConsistency())
+    const row = results.find((observation) => observation.key === 'indexes.table:bakin_t')!
+    expect(row.status).toBe('unknown')
+    mockTableStates = []
+  })
+
+  it('repair apply SKIPS an unreadable-but-listed table instead of rebuilding it', async () => {
+    mockSearchEnabled = true
+    mockTableStates = [{ logical: 'bakin_t', physical: 'bakin_t_v2_ff', schemaVersion: 2, state: 'active' }]
+    mockTableStats = null
+    mockEngineTables = [{ name: 'bakin_t_v2_ff' }]
+
+    const repair = searchConsistencyRepair()
+    const outcomes = await repair.apply(await repair.plan(searchConsistencyTarget('bakin_t')))
+
+    expect(mockRebuiltLogicalTables).toEqual([])
+    expect(outcomes).toEqual([
+      expect.objectContaining({ status: 'skipped' }),
+    ])
+    mockTableStates = []
+  })
+
   it('does not rebuild an index when its engine evidence cannot be read', async () => {
     mockSearchEnabled = true
     mockTableStates = [{ logical: 'bakin_t', physical: 'bakin_t_v2_ff', schemaVersion: 2, state: 'active' }]
@@ -914,7 +988,7 @@ describe('checkSearchConsistency', () => {
 
     expect(mockRebuiltLogicalTables).toEqual([])
     expect(outcomes).toEqual([
-      expect.objectContaining({ status: 'skipped', message: 'bakin_selected no longer needs rebuilding.' }),
+      expect.objectContaining({ status: 'skipped', message: expect.stringContaining('bakin_selected no longer needs rebuilding') }),
     ])
   })
 
@@ -1069,6 +1143,7 @@ describe('plugin registration', () => {
     expect(actionIds.sort()).toEqual([
       'search-canary-restart',
       'search-consistency-rebuild',
+      'search-consistency-restart',
       'search-engine-burn-restart',
       'search-outbox-revive',
       'search-spin-rebuild',

@@ -171,9 +171,92 @@ export async function checkSearchAdapter(): Promise<HealthCheckRunInput> {
       },
     }))
   }
+  observations.push(...await embedderCapabilityObservations())
   observations.push(...await checkSearchIndexObservations())
   observations.push(...await safeOutboxObservations())
   return healthObserved(observations as [HealthObservationInput, ...HealthObservationInput[]])
+}
+
+/**
+ * Declared content-type legs vs what the adapter's embedder settings can
+ * actually serve. A disabled embedder now degrades tables to keyword-only
+ * (never a broken create), but that degrade must be VISIBLE: an operator
+ * who turned off the visual embedder — or inherited a config that did —
+ * should learn it from Health, not from silently worse media search
+ * (2026-07-21 field incident: a disabled visual embedder was invisible
+ * until every media-capable table failed to build).
+ */
+async function embedderCapabilityObservations(): Promise<HealthObservationInput[]> {
+  try {
+    const { getAppServices } = await import('../../../../src/core/app-services')
+    const { getRegistry } = await import('../../../../src/core/search-registry')
+    const caps = getAppServices().search.capabilities()
+    const wantsMedia: string[] = []
+    for (const def of getRegistry().contentTypes.values()) {
+      if ((def.indexes ?? []).some((idx) => idx.mediaUrlField)) wantsMedia.push(def.table)
+    }
+    const observations: HealthObservationInput[] = []
+    if (!caps.legs.includes('text-embedding')) {
+      observations.push(healthWarning({
+        key: 'embedders.text',
+        summary: 'Semantic text search is disabled by embedder settings.',
+        detail: 'The default text embedder is disabled or misconfigured; all tables serve keyword-only results.',
+        evidence: { capabilityLegs: caps.legs },
+        incident: {
+          key: 'text-embedder-disabled',
+          title: 'Semantic search is disabled',
+          class: 'unsupported_surface',
+          impact: 'Search falls back to keyword matching everywhere; meaning-based queries lose recall.',
+          disposition: 'advisory',
+          resources: [{ kind: 'setting', id: 'search.settings.embedders', label: 'Search embedder settings' }],
+          resolution: {
+            key: 'review-embedders',
+            type: 'instructions',
+            label: 'Review embedder settings',
+            steps: ['Re-enable the default embedder in Search settings (provider, model, dimension), then reindex.'],
+          },
+        },
+      }))
+    }
+    if (wantsMedia.length > 0 && !caps.legs.includes('media-embedding')) {
+      observations.push(healthWarning({
+        key: 'embedders.media',
+        summary: `Media search is disabled for ${wantsMedia.length} content type${wantsMedia.length === 1 ? '' : 's'} that declare it.`,
+        detail: `The visual embedder is disabled or misconfigured; ${wantsMedia.join(', ')} serve keyword/text-only results.`,
+        evidence: { capabilityLegs: caps.legs, contentTypes: wantsMedia.slice(0, 50) },
+        incident: {
+          key: 'media-embedder-disabled',
+          title: 'Media search is degraded to keyword-only',
+          class: 'unsupported_surface',
+          impact: 'Content types with media legs cannot serve visual-similarity results.',
+          disposition: 'advisory',
+          resources: [{ kind: 'setting', id: 'search.settings.embedders', label: 'Search embedder settings' }],
+          resolution: {
+            key: 'review-embedders',
+            type: 'instructions',
+            label: 'Review embedder settings',
+            steps: ['Re-enable the visual embedder in Search settings, then reindex the affected content types.'],
+          },
+        },
+      }))
+    }
+    return observations
+  } catch (err) {
+    return [healthUnknown({
+      key: 'embedders.capabilities',
+      summary: 'Embedder capability coverage could not be verified.',
+      detail: err instanceof Error ? err.message : String(err),
+      incident: {
+        key: 'embedder-caps-unknown',
+        title: 'Embedder capability coverage is unknown',
+        class: 'evidence_gap',
+        impact: 'Health cannot confirm whether declared search legs are actually served.',
+        disposition: 'watch',
+        resources: [{ kind: 'service', id: 'search-engine', label: 'Search engine' }],
+        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
+      },
+    })]
+  }
 }
 
 function boundedTableNames(names: readonly string[]): string[] {
@@ -192,11 +275,13 @@ export async function checkSearchIndexObservations(
     const health = readSearchHealth
       ? await readSearchHealth()
       : await (await import('../../../../src/core/search-reindex')).getSearchHealth()
-    if (!health.enabled) {
+    if (!health.enabled || health.engineReachable === false) {
       return [healthUnknown({
         key: 'indexes.availability',
         summary: 'Search index health could not be verified.',
-        detail: 'The live Search health snapshot was unavailable.',
+        detail: !health.enabled
+          ? 'Search is disabled in settings.'
+          : 'Search is enabled, but the engine is unreachable — index health cannot be read until it answers.',
         incident: {
           key: 'indexes-unavailable',
           title: 'Search index health is unknown',

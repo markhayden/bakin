@@ -455,7 +455,20 @@ export async function checkBudget(): Promise<HealthCheckRunInput> {
               { kind: 'system' as const, id: 'usage-history', label: 'Usage history' },
             ]
           : [{ kind: 'system', id: 'usage-history', label: 'Usage history' }],
-        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
+        // A bare "rerun" gave operators nothing to actually FIX — the gaps
+        // are almost always unpriced models (no cached pricing → USD caps
+        // can't be computed) or usage rows without a billing lane. Name the
+        // remediations (field feedback, 2026-07-22).
+        resolution: {
+          key: 'complete-spend-evidence',
+          type: 'instructions',
+          label: 'Complete the spend evidence',
+          steps: [
+            'Open the Models page so pricing for every active model gets cached — usage from a model without cached pricing cannot be valued, which is the most common gap on a fresh install.',
+            'Run `bakin spend` and check the listed evidence gaps: value_missing = unpriced model, lane_unknown = usage that cannot be classified metered vs subscription (usually resolves after the next completed runs).',
+            'Rerun Health. Budget caps stay fail-closed (deferring, never overspending) until the evidence completes — that is by design.',
+          ],
+        },
       },
     }))
   } else if (worst) {

@@ -68,6 +68,72 @@ async function isLocalServerResponding(): Promise<boolean> {
   }
 }
 
+/**
+ * Full clean reset of the engine's DERIVED state: stop the supervised
+ * service, wipe the data dir (indexes only — models and source content are
+ * untouched), re-provision the unit, and start clean. The one-command
+ * escape hatch for a corrupted/wedged engine that survives restarts —
+ * assembled by hand eight separate times during the 2026-07-21 field
+ * recovery before earning a verb. Callers follow with a repair reindex.
+ * Refuses in guest mode: a non-default URL means the engine belongs to
+ * someone else (dev-rig lesson, 2026-07-11 hijack incident).
+ */
+export async function resetAntflyEngineData(
+  logger: AdapterLogger = noopLogger,
+): Promise<{ name: string; status: 'installed' | 'failed'; message: string; durationMs: number; error?: unknown }> {
+  const start = Date.now()
+  const { detectServiceMode } = await import('./service')
+  if (detectServiceMode(SERVICE_DEFAULTS) === 'guest') {
+    return {
+      name: 'reset',
+      status: 'failed' as const,
+      message: 'Search engine runs in guest mode (non-default URL) — Bakin does not manage its lifecycle or data, so it cannot be reset from here.',
+      durationMs: Date.now() - start,
+    }
+  }
+  try {
+    const dataDir = servicePaths().dataDir
+    logger.info('Resetting engine: stop → wipe derived data → provision → start', { dataDir })
+    await stopService(SERVICE_DEFAULTS)
+    rmSync(dataDir, { recursive: true, force: true })
+    await ensureProvisioned(SERVICE_DEFAULTS)
+    await startService(SERVICE_DEFAULTS)
+    const deadline = Date.now() + 30_000
+    let responding = false
+    while (Date.now() < deadline) {
+      if (await isLocalServerResponding()) {
+        responding = true
+        break
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1_000))
+    }
+    const durationMs = Date.now() - start
+    if (!responding) {
+      return {
+        name: 'reset',
+        status: 'failed' as const,
+        message: 'Engine data was wiped and the service restarted, but the engine is not answering after 30s — check `~/.bakin/logs/antfly.log`.',
+        durationMs,
+      }
+    }
+    return {
+      name: 'reset',
+      status: 'installed' as const,
+      message: 'Engine reset clean and responding. Run a repair reindex to regenerate the search tables from source.',
+      durationMs,
+    }
+  } catch (err) {
+    logger.error('Engine reset failed', err)
+    return {
+      name: 'reset',
+      status: 'failed' as const,
+      message: `Engine reset failed: ${err instanceof Error ? err.message : String(err)}`,
+      error: err,
+      durationMs: Date.now() - start,
+    }
+  }
+}
+
 export async function checkAntflyDependency(pin: AntflyPin = ANTFLY_PIN) {
   const binary = findAntflyBinary()
   if (!binary) {

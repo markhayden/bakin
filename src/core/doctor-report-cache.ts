@@ -159,7 +159,9 @@ function verificationObservation(
     incident: {
       key: `${kind}:${def.id}`,
       title: `${def.name} ${kind === 'stale' ? 'evidence is stale' : 'could not be verified'}`,
-      impact: 'Bakin cannot currently confirm whether this part of the system is healthy.',
+      impact: kind === 'stale'
+        ? 'Bakin cannot currently confirm whether this part of the system is healthy.'
+        : 'Bakin cannot currently confirm whether this part of the system is healthy. No evidence has been produced yet — run checks to gather it.',
       disposition: 'watch',
       resources: [{ kind: def.owner.kind === 'plugin' ? 'plugin' : 'other', id: def.owner.id, label: def.owner.label }],
       resolution: { key: 'rerun-check', type: 'rerun', label: 'Check again' },

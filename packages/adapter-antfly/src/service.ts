@@ -25,6 +25,7 @@ import { dirname, join } from 'path'
 import { createLogger } from '@bakin/core/logger'
 import { getBakinPaths } from '@bakin/core/content-dir'
 import { antflyBinaryPath, inferenceModelsRoot } from './paths'
+import { modelStructurallyComplete } from './model-pins'
 import type { AntflySettings } from './defaults'
 
 const log = createLogger('antfly-service')
@@ -42,6 +43,10 @@ export interface ServiceIo {
   exec: ExecRunner
   hasCommand: (cmd: string) => boolean
   env: Record<string, string | undefined>
+  /** Preload pre-check probe (structural model-distribution completeness).
+   *  Injectable so unit-rendering tests are independent of local model
+   *  state; defaults to the real on-disk check. */
+  modelReady?: (model: string) => boolean
 }
 
 async function realExec(cmd: string, args: string[]): Promise<{ code: number; stdout: string; stderr: string }> {
@@ -90,6 +95,13 @@ export function detectServiceMode(settings: AntflySettings, io: ServiceIo = defa
   if (!isLocalDefaultUrl(settings.url)) return 'guest'
   const override = io.env.BAKIN_SEARCH_SERVICE_MODE
   if (override === 'launchd' || override === 'systemd' || override === 'child') return override
+  // Test runs must NEVER reach the machine-global service unit: a test that
+  // misses one io-injection seam otherwise rewrites the REAL LaunchAgent to
+  // point at its temp dir and bounces production search (it happened —
+  // 2026-07-22, second incident of this class after 2026-07-11). bun test
+  // sets NODE_ENV=test; an explicit BAKIN_SEARCH_SERVICE_MODE override
+  // above still wins for integration tests that genuinely need a unit.
+  if (io.env.NODE_ENV === 'test' || io.env.VITEST) return 'child'
   if (io.platform === 'darwin' && io.hasCommand('launchctl')) return 'launchd'
   if (io.platform === 'linux' && io.hasCommand('systemctl')) return 'systemd'
   return 'child'
@@ -123,13 +135,26 @@ export function servicePaths(): ServicePaths {
  * first embed doesn't hit a cold-model-load-vs-timeout wedge.
  * (rc.18 uses `swarm`; rc.19+ renamed it `standalone` — flip this with
  * the pin when a healthy release ships.)
+ *
+ * Preload pre-check: the engine EXITS on a preload it cannot load instead
+ * of degrading, and the supervisor's respawn turns one broken model into
+ * an invisible crash loop (161 respawns before diagnosis, 2026-07-21).
+ * Models failing the structural distribution check are left OFF the argv —
+ * the engine boots, that leg degrades honestly, and the models health
+ * check names the broken model. `modelReady` is injectable for tests.
  */
-export function buildServiceArgv(settings: AntflySettings, paths: ServicePaths): string[] {
+export function buildServiceArgv(
+  settings: AntflySettings,
+  paths: ServicePaths,
+  opts?: { modelReady?: (model: string) => boolean },
+): string[] {
   const url = new URL(settings.url)
   const port = Number(url.port || 3738)
+  const modelReady = opts?.modelReady ?? ((model: string) => modelStructurallyComplete(model).ok)
   const preloads = [...new Set(
     Object.values(settings.embedders)
       .filter((e) => e.provider === 'antfly')
+      .filter((e) => modelReady(e.model))
       .map((e) => `embedder:${e.model}`),
   )]
   return [
@@ -277,7 +302,7 @@ export async function ensureProvisioned(settings: AntflySettings, io: ServiceIo 
   if (mode === 'guest' || mode === 'child') return { mode, action: 'skipped' }
 
   const paths = servicePaths()
-  const argv = buildServiceArgv(settings, paths)
+  const argv = buildServiceArgv(settings, paths, { modelReady: io.modelReady })
   mkdirSync(dirname(paths.logFile), { recursive: true })
   mkdirSync(paths.dataDir, { recursive: true })
 

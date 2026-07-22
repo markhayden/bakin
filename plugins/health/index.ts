@@ -68,7 +68,7 @@ import { checkSearchAdapter } from './lib/system-checks/search'
 import { searchOutboxRepair } from './lib/system-checks/search-outbox'
 import { checkSearchConsistency, searchConsistencyRepair } from './lib/system-checks/search-consistency'
 import { checkSearchSpin, searchSpinRepair } from './lib/system-checks/search-spin'
-import { checkSearchCanary, checkSearchEngineBurn, searchCanaryRepair, searchEngineBurnRepair } from './lib/system-checks/search-engine-watch'
+import { checkSearchCanary, checkSearchEngineBurn, searchCanaryRepair, searchConsistencyRestartRepair, searchEngineBurnRepair } from './lib/system-checks/search-engine-watch'
 import { checkAndSyncSkill, syncSkillRepair } from './lib/system-checks/sync-skill'
 import { checkPluginAssets } from './lib/system-checks/plugin-assets'
 import { checkPluginArtifacts } from './lib/system-checks/plugin-artifacts'
@@ -1050,6 +1050,7 @@ const healthPlugin: BakinPlugin = definePlugin({
     ctx.registerHealthRepairAction(searchSpinRepair())
     ctx.registerHealthRepairAction(searchCanaryRepair())
     ctx.registerHealthRepairAction(searchEngineBurnRepair())
+    ctx.registerHealthRepairAction(searchConsistencyRestartRepair())
     ctx.registerHealthRepairAction(syncSkillRepair(process.cwd(), ctx.runtime))
   },
 

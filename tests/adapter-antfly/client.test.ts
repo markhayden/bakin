@@ -245,6 +245,15 @@ describe('tables', () => {
     const client = makeClient([{ match: () => true, handle: () => new Response('no such table', { status: 404 }) }])
     expect(await client.tables.stats('missing')).toBeNull()
   })
+
+  it('stats THROWS on non-404 rejections instead of reporting null (missing)', async () => {
+    // A 400 (malformed leg, unprocessable read) once collapsed to null,
+    // which the doctor reported as "Active Search index is missing" and
+    // routed to a blue/green rebuild — the wrong repair entirely
+    // (2026-07-21 field incident). Only the engine's own 404 means gone.
+    const client = makeClient([{ match: () => true, handle: () => new Response('bad leg spec', { status: 400 }) }])
+    expect(client.tables.stats('t')).rejects.toThrow(SearchRequestRejectedError)
+  })
 })
 
 describe('documents', () => {
