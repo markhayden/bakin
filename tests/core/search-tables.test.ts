@@ -228,8 +228,13 @@ describe('blue/green migration', () => {
 
     // Green's legs never report ready → converge cannot pass → parked.
     const stuck = createMockSearchAdapter()
-    // seed the stuck adapter with the blue table state so drops/stats resolve
+    // seed the stuck adapter with the blue table state INCLUDING its docs —
+    // an empty blue would (correctly) trigger the dominance flip instead.
     await stuck.tables.create(blue, makeDef().config)
+    await stuck.documents.batchIndex(blue, [
+      { key: 'n1', doc: { title: 'first note' } },
+      { key: 'n2', doc: { title: 'second note' } },
+    ])
     const neverReady: SearchAdapter = {
       ...stuck,
       tables: {
@@ -679,5 +684,55 @@ describe('sweepOrphanEngineTables', () => {
     const left = await sweepTombstones(base)
     expect(left).toBe(0)
     expect(await base.tables.stats(orphan)).toBeNull()
+  })
+})
+
+describe('dominance flip (2026-07-22)', () => {
+  it('flips an unconverged green over an EMPTY old physical (strictly better)', async () => {
+    const adapter = createMockSearchAdapter()
+    await ensureTable(adapter, makeDef(), 'fp-a')
+    const oldPhysical = queryTarget('bakin_notes')!
+    // Simulate the post-nuke shape: the active physical is EMPTY engine-side.
+    await adapter.tables.drop(oldPhysical)
+    await adapter.tables.create(oldPhysical, makeDef().config)
+
+    // Green's legs never go ready (residual stuck enrichment item), but its
+    // corpus lands fully — with an empty old, it must flip anyway.
+    const neverReady: SearchAdapter = {
+      ...adapter,
+      tables: {
+        ...adapter.tables,
+        health: async (name) => (name === oldPhysical
+          ? [{ leg: 'full_text', state: 'ready' as const, indexedCount: 0 }]
+          : [{ leg: 'sem', state: 'building' as const, indexedCount: 0, pendingCount: 2 }]),
+      },
+    }
+    const result = await ensureTable(neverReady, makeDef({ schemaVersion: 3 }), 'fp-a', {
+      convergePollMs: 20,
+      zeroProgressParkMs: 80,
+    })
+    expect(result).toBe('migrated')
+    expect(queryTarget('bakin_notes')).toMatch(/^bakin_notes_v3_/)
+  })
+
+  it('still parks when the old physical has real docs (no thin flip over content)', async () => {
+    const adapter = createMockSearchAdapter()
+    await ensureTable(adapter, makeDef(), 'fp-a')
+    const oldPhysical = queryTarget('bakin_notes')!
+    const neverReady: SearchAdapter = {
+      ...adapter,
+      tables: {
+        ...adapter.tables,
+        health: async (name) => (name === oldPhysical
+          ? [{ leg: 'full_text', state: 'ready' as const, indexedCount: 2 }]
+          : [{ leg: 'sem', state: 'building' as const, indexedCount: 0, pendingCount: 2 }]),
+      },
+    }
+    const result = await ensureTable(neverReady, makeDef({ schemaVersion: 3 }), 'fp-a', {
+      convergePollMs: 20,
+      zeroProgressParkMs: 80,
+    })
+    expect(result).toBe('parked')
+    expect(queryTarget('bakin_notes')).toBe(oldPhysical)
   })
 })

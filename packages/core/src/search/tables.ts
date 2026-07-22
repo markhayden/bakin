@@ -631,6 +631,31 @@ async function convergeAndFlip(
   }
 
   if (parkReason) {
+    // Dominance exception (2026-07-22): when the OLD physical is EMPTY or
+    // missing, parking protects nothing — queries serve zero docs while a
+    // green with a complete corpus sits unflipped (post-nuke rebuilds with
+    // a residual stuck enrichment item, e.g. the two-doc embed stall).
+    // If the green's doc count met the converge criterion and no leg
+    // FAILED, flip: every leg of the green is at least as good as empty.
+    // A leg in 'error' still parks — that green may be structurally sick.
+    const rowNow = getRow(def.logical)
+    if (rowNow && rowNow.state === 'migrating' && rowNow.migrating_to === green && !snap.failedLeg) {
+      const oldStats = await adapter.tables.stats(rowNow.physical).catch(() => null)
+      const oldEmpty = oldStats === null || oldStats.documents === 0
+      const countOk = snap.count !== null && (snap.count >= emitted || (prev !== null && prev.count !== null && snap.count === prev.count))
+      if (oldEmpty && countOk && (snap.count ?? 0) > 0) {
+        log.warn('flipping an unconverged green over an EMPTY old physical — strictly better on every leg', {
+          logical: def.logical,
+          green,
+          emitted,
+          residual: parkReason,
+        })
+        parkReason = null
+      }
+    }
+  }
+
+  if (parkReason) {
     // NEVER flip early. Park with dual-write still on; the migration pump
     // and the doctor resume the job when the engine recovers.
     setPhase(def.logical, 'parked')
