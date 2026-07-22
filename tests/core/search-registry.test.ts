@@ -82,7 +82,7 @@ import {
   pumpParkedMigrations,
 } from '@/core/search-registry'
 import { sweepOrphanRegistryRows } from '@/core/search-orphan-sweep'
-import { tableStatus } from '@bakin/core/search/tables'
+import { tableStatus, sweepTombstones } from '@bakin/core/search/tables'
 import { enqueueIndex, outboxStats } from '@bakin/core/search/outbox'
 import { broadcast } from '@/core/sse'
 
@@ -825,6 +825,9 @@ describe('search-registry', () => {
 
       expect(removed).toEqual(['bakin_gone'])
       expect(tableStatus('bakin_gone')).toBeNull()
+      // Cold drop (antfly#386): retirement tombstones; the dwell sweep DELETEs.
+      expect(searchHarness.calls.tablesDrop).not.toHaveBeenCalledWith(gonePhysical)
+      await sweepTombstones(searchHarness.adapter, { dwellMs: 0 })
       expect(searchHarness.calls.tablesDrop).toHaveBeenCalledWith(gonePhysical)
       // registered row untouched
       expect(tableStatus('bakin_keeper')).not.toBeNull()
@@ -841,6 +844,7 @@ describe('search-registry', () => {
       const removed = await sweepOrphanRegistryRows()
 
       expect(removed).toEqual(['bakin_gone'])
+      await sweepTombstones(searchHarness.adapter, { dwellMs: 0 })
       expect(searchHarness.calls.tablesDrop).toHaveBeenCalledWith('bakin_gone_v1_deadbeef')
       expect(tableStatus('bakin_gone')).toBeNull()
     })
@@ -979,7 +983,9 @@ describe('rebuild pass semantics (2026-07-21 redesign)', () => {
     const after = tableStatus('bakin_ppone')!
     expect(after.state).toBe('active')
     expect(after.physical).toBe(green)
-    // The old live physical was dropped after the flip.
+    // Cold drop: the old physical survives as a tombstone until the sweep.
+    expect(await searchHarness.adapter.tables.stats(live)).not.toBeNull()
+    await sweepTombstones(searchHarness.adapter, { dwellMs: 0 })
     expect(await searchHarness.adapter.tables.stats(live)).toBeNull()
   })
 

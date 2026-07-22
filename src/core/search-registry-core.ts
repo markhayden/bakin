@@ -647,12 +647,11 @@ export async function purgeContentType(name: string): Promise<number> {
     log.warn('purgeContentType: failed to read row count before drop', err, { tableName })
   }
 
-  try {
-    await search.tables.drop(physical)
-  } catch (err) {
-    log.error('purgeContentType: table drop failed', err, { tableName })
-    throw err
-  }
+  // Cold drop (antfly#386): a purged content type's table may have taken
+  // writes moments ago — tombstone it; the doctor's dwell sweep DELETEs
+  // once its embed queue is stone cold.
+  const { retireTablePhysical } = await import('@bakin/core/search/tables')
+  retireTablePhysical(physical)
 
   // Tear down ALL durable state, not just the engine table: the registry
   // row (a survivor here resurrects the table on the next rebuild pass —
@@ -661,7 +660,7 @@ export async function purgeContentType(name: string): Promise<number> {
   const { purgeTable } = await import('@bakin/core/search/outbox')
   for (const leftover of removeTableRegistration(tableName)) {
     if (leftover !== physical) {
-      await search.tables.drop(leftover).catch(() => {})
+      retireTablePhysical(leftover)
     }
   }
   purgeTable(tableName)
