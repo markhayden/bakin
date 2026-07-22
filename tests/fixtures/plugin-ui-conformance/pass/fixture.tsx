@@ -20,6 +20,7 @@ function FixturePage() {
           <Stack gap="item">
             <p className="fixture-pass__summary">The canonical stylesheet is loaded exactly once.</p>
             <Button type="button">Run release check</Button>
+            <Button disabled type="button">Unavailable action</Button>
             <div role="tablist" aria-label="Release views">
               <Button role="tab" aria-selected="true" tabIndex={0} type="button">Overview</Button>
               <Button role="tab" aria-selected="false" tabIndex={-1} type="button">History</Button>

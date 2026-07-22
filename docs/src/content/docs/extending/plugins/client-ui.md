@@ -3,7 +3,7 @@ title: Client UI
 description: Register plugin navigation, pages, routes, slots, and shell-integrated UI through @makinbakin/sdk.
 ---
 
-Client entries use `registerPlugin()` from `@makinbakin/sdk`. Beyond `navItems`/`routes`/`slots`, a plugin can register `search: { hitRenderers }` — plain data-mapping functions (`(hit) => { title, subtitle?, href, thumbnailUrl?, icon?, meta? }`; `meta` is the small type · agent · date line under the subtitle) that render its content type in the global ⌘K search overlay; unknown types get a default renderer (see [Search](/docs/extending/plugins/search/)). For live UI updates when server-side data changes, subscribe with `usePluginEvent` — see [Realtime Events](/docs/extending/plugins/realtime/). Keep UI contributions predictable and compose them from the focused SDK contracts: `PageShell`/`PageHeader`, `SystemState`, `ConfirmDialog`, and `TurnOutputView` cover the common examples. The reference plugin's [`client.tsx`](https://github.com/markhayden/bakin/tree/main/examples/reference-plugin) is the worked example. Plugin UI should feel like part of Bakin: dense enough for repeated work, accessible, and clear about loading, empty, error, and permission states.
+Client entries use `registerPlugin()` from `@makinbakin/sdk`. Beyond `navItems`/`routes`/`slots`, a plugin can register `search: { hitRenderers }` — plain data-mapping functions (`(hit) => { title, subtitle?, href, thumbnailUrl?, icon?, meta? }`; `meta` is the small type · agent · date line under the subtitle) that render its content type in the global ⌘K search overlay; unknown types get a default renderer (see [Search](/docs/extending/plugins/search/)). For live UI updates when server-side data changes, subscribe with `usePluginEvent` — see [Realtime Events](/docs/extending/plugins/realtime/). Keep UI contributions predictable and compose them from the focused SDK contracts: `PageShell`/`PageHeader`, `SystemState`, `ConfirmDialog`, and `TurnOutputView` cover the common examples. The reference plugin's [`client-registration.tsx`](https://github.com/markhayden/bakin/blob/main/examples/reference-plugin/client-registration.tsx), [`BookmarksPage`](https://github.com/markhayden/bakin/blob/main/examples/reference-plugin/components/bookmarks-page.tsx), and [`ui.fixture.tsx`](https://github.com/markhayden/bakin/blob/main/examples/reference-plugin/tests/ui.fixture.tsx) are the worked production registration, page, slot, and browser-test examples. Plugin UI should feel like part of Bakin: dense enough for repeated work, accessible, and clear about loading, empty, error, and permission states.
 
 The tested minimal client entry lives at `docs/snippets/plugin-basic/client.tsx`.
 
@@ -226,6 +226,12 @@ import { PageHeader } from '@makinbakin/sdk/patterns'
 ```
 
 Custom UI is fine when the domain needs it, but keep Bakin conventions: small radii, clear tables and filters, keyboard-friendly controls, visible empty states, and no layout shift when data loads.
+
+Start in the public Storybook catalog and record any deliberate exception in
+the change. The explanation must name the domain requirement, the closest
+defined pattern, why that pattern does not fit, and the smallest accessible
+exception being introduced. The reference plugin's `bun run test:ui` command
+is the copyable page-and-slot conformance setup for external packages.
 
 ## Agent Chat Surfaces
 

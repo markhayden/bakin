@@ -19,13 +19,13 @@
     "private-import"
   ],
   "summary": {
-    "paths": 196,
+    "paths": 195,
     "totals": {
-      "raw-palette": 1344,
-      "arbitrary-size": 523,
-      "raw-control": 195,
+      "raw-palette": 1341,
+      "arbitrary-size": 521,
+      "raw-control": 191,
       "inline-style": 56,
-      "generic-token": 2379,
+      "generic-token": 2367,
       "unscoped-css": 0,
       "private-import": 6
     }
@@ -301,24 +301,6 @@
       "allowances": {
         "raw-palette": 8,
         "arbitrary-size": 1
-      }
-    },
-    {
-      "path": "examples/reference-plugin/components/bookmarks-page.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "plugin",
-        "pluginId": "reference-bookmarks"
-      },
-      "censusEntryId": "plugin-template:reference-plugin",
-      "migrationTask": "T42a",
-      "archetype": "plugin-contract",
-      "target": "reference plugin using only public SDK UI and scoped CSS",
-      "status": "legacy-allowed",
-      "allowances": {
-        "raw-palette": 3,
-        "raw-control": 4,
-        "generic-token": 5
       }
     },
     {
@@ -764,7 +746,7 @@
         "raw-palette": 2,
         "arbitrary-size": 3,
         "raw-control": 2,
-        "generic-token": 10
+        "generic-token": 8
       }
     },
     {
@@ -2375,9 +2357,9 @@
       "status": "legacy-allowed",
       "allowances": {
         "raw-palette": 4,
-        "arbitrary-size": 3,
+        "arbitrary-size": 2,
         "inline-style": 1,
-        "generic-token": 26
+        "generic-token": 25
       }
     },
     {
@@ -2430,9 +2412,9 @@
       "status": "legacy-allowed",
       "allowances": {
         "raw-palette": 8,
-        "arbitrary-size": 4,
+        "arbitrary-size": 3,
         "raw-control": 1,
-        "generic-token": 11
+        "generic-token": 9
       }
     },
     {
@@ -3334,7 +3316,7 @@
       "status": "legacy-allowed",
       "allowances": {
         "arbitrary-size": 2,
-        "generic-token": 6
+        "generic-token": 4
       }
     },
     {

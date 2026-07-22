@@ -164,4 +164,16 @@ describe('private UI ownership gate', () => {
       dependencies: { '@bakin/ui': 'workspace:*' },
     })).toThrow('@bakin/ui is private; use @makinbakin/sdk/*')
   })
+
+  it('excludes the author-only UI conformance config from runtime import validation', () => {
+    const root = fixtureRoot()
+    writeFixture(
+      root,
+      'bakin.ui-test.ts',
+      "import { definePluginUiConformance } from '@makinbakin/sdk/testing/ui/conformance'\nexport default definePluginUiConformance({})\n",
+    )
+    writeFixture(root, 'index.ts', 'export default {}\n')
+
+    expect(() => validatePluginImports(root, {})).not.toThrow()
+  })
 })

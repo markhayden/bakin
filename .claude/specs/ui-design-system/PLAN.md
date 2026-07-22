@@ -1825,6 +1825,24 @@ tests/reporting.\
 the focused SDK, canonical archetypes, form/state recipes, scoped domain CSS,
 stories/fixtures, and `test:ui`.
 
+**T42a status (2026-07-22):** Complete. The in-tree reference plugin now uses
+the focused public SDK entrypoints and the canonical list-page, page-header,
+form, field, state, card, collapsible, navigation, and turn-output contracts.
+Its exported production registration drives both the host entry and a
+deterministic page-plus-`home-widget` fixture, so the example cannot pass with
+a test-only implementation. Plugin CSS is limited to three explicitly
+owner-scoped domain selectors; the prior legacy-style allowance is removed.
+The copyable `bun run test:ui` workflow passes desktop/mobile overflow, axe,
+keyboard/focus, stylesheet-identity, console, and CSS-containment checks and is
+also enrolled in the repository conformance gate. The external install,
+build, activation, manifest, typecheck, server tests, UI architecture tests,
+SDK package-consumer test, docs generation/validation, public API freeze,
+route contract, full 8,201-test suite, and isolated drag-and-drop suite pass.
+The exemplar exposed and fixed two golden-path defects: author-only UI config
+was incorrectly scanned as runtime plugin code, and published SDK barrels did
+not retain declaration-only leaf modules needed by external consumers. T42b,
+the official Bits `_template`, remains next.
+
 **Acceptance:** no private/legacy imports, raw standard controls, unscoped CSS,
 or host Tailwind dependency remains; page and slot examples pass conformance;
 docs can source snippets from them.

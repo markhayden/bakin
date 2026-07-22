@@ -3,6 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "scripts": {
+    "test": "bun test tests --isolate",
+    "test:ui": "bakin-plugin-test-ui",
+    "typecheck": "tsc --noEmit"
+  },
   "dependencies": {
     "zod": "^4.3.0"
   },
@@ -11,6 +16,8 @@
     "@types/bun": "^1.0.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "axe-core": "^4.12.0",
+    "playwright": "^1.60.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "typescript": "^5.0.0"

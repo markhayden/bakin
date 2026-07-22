@@ -155,7 +155,11 @@ function mapSdkModule(rest: string): string | null {
   if (rest === 'types' || rest === 'routing' || rest === 'ui' || rest === 'layout' || rest === 'patterns' || rest === 'charts' || rest === 'conversation' || rest === 'content' || rest === 'hooks' || rest === 'components' || rest === 'slots' || rest === 'utils' || rest === 'metadata' || rest === 'testing' || rest === 'testing/ui' || rest === 'testing/ui/conformance' || rest === 'internal') {
     return `${rest}/index`
   }
-  return rest === 'hooks/router' ? 'hooks/router' : null
+  // Public entry declarations retain relative references to their SDK leaf
+  // modules (especially `types/*`). Preserve those leaves in the package;
+  // dropping them leaves syntactically valid barrels whose exports resolve
+  // to missing declarations for external consumers.
+  return rest
 }
 
 function mapOriginalModulePath(originalNoExt: string): string | null {

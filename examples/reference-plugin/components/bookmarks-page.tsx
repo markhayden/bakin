@@ -1,26 +1,38 @@
-/**
- * The bookmarks page — demonstrates the client-side SDK working set:
- *
- *  - `usePluginJsonFetch` for route data with {data, loading, error, refresh}
- *  - `usePluginEvent` for live SSE refresh (server emits on every mutation)
- *  - `pluginFetch` for mutations (no hand-built /api/plugins/... strings)
- *  - `PluginHeader` / `EmptyState` shared components
- *  - `TurnOutputView` — the canonical renderer for agent turn output; shown
- *    here replaying a static chunk sequence so authors see the shape agents
- *    produce when they call this plugin's exec tool.
- */
-import { useState } from 'react'
-import { PluginHeader, EmptyState, TurnOutputView } from '@makinbakin/sdk/components'
-import { usePluginEvent, usePluginJsonFetch } from '@makinbakin/sdk/hooks'
+import { useState, type FormEvent } from 'react'
+import { TurnOutputView } from '@makinbakin/sdk/conversation'
+import { Grid, Inline, Stack } from '@makinbakin/sdk/layout'
+import { ListPage, ListPageContent, PageHeader } from '@makinbakin/sdk/patterns'
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+  Badge,
+  Button,
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+  Field,
+  FieldDescription,
+  FieldLabel,
+  Form,
+  FormActions,
+  Input,
+  SubmitButton,
+  SystemState,
+  buttonVariants,
+} from '@makinbakin/sdk/ui'
 import { pluginFetch } from '@makinbakin/sdk/utils'
 import type { RuntimeChatChunk } from '@makinbakin/sdk/types'
 import type { Bookmark } from '../types'
+import { PLUGIN_ID, useBookmarks } from './use-bookmarks'
 
-const PLUGIN_ID = 'reference-bookmarks'
-
-/** What a real agent turn looks like when it saves a bookmark — static
- * replay for demonstration; live surfaces feed TurnOutputView the same
- * chunk shapes from streaming. */
+/** A static replay of the shape an agent produces after calling this plugin. */
 const DEMO_TURN: RuntimeChatChunk[] = [
   { type: 'status', content: 'thinking' },
   {
@@ -37,106 +49,223 @@ const DEMO_TURN: RuntimeChatChunk[] = [
   { type: 'done' },
 ]
 
+async function responseError(response: Response, fallback: string): Promise<string> {
+  const body = (await response.json().catch(() => null)) as { error?: string } | null
+  return body?.error ?? `${fallback} (${response.status})`
+}
+
+function BookmarkCard({ bookmark, deleting, onRemove }: {
+  bookmark: Bookmark
+  deleting: boolean
+  onRemove: (id: string) => void
+}) {
+  return (
+    <Card size="sm">
+      <CardHeader>
+        <CardTitle>
+          <a
+            aria-label={`${bookmark.title} (opens in a new tab)`}
+            className={buttonVariants({
+              variant: 'link',
+              size: 'sm',
+              className: 'reference-bookmarks__bookmark-link',
+            })}
+            href={bookmark.url}
+            rel="noreferrer"
+            target="_blank"
+          >
+            {bookmark.title}
+          </a>
+        </CardTitle>
+        <CardDescription className="reference-bookmarks__bookmark-url">
+          {bookmark.url}
+        </CardDescription>
+        <CardAction>
+          <Button
+            aria-label={`Delete ${bookmark.title}`}
+            disabled={deleting}
+            size="xs"
+            type="button"
+            variant="danger"
+            onClick={() => onRemove(bookmark.id)}
+          >
+            {deleting ? 'Deleting…' : 'Delete'}
+          </Button>
+        </CardAction>
+      </CardHeader>
+      {bookmark.note || bookmark.tags.length > 0 ? (
+        <CardContent>
+          <Stack gap="dense">
+            {bookmark.note ? <p>{bookmark.note}</p> : null}
+            {bookmark.tags.length > 0 ? (
+              <Inline as="ul" aria-label={`Tags for ${bookmark.title}`} className="reference-bookmarks__tags" gap="dense">
+                {bookmark.tags.map((tag) => (
+                  <li key={tag}><Badge size="xs" variant="outline">{tag}</Badge></li>
+                ))}
+              </Inline>
+            ) : null}
+          </Stack>
+        </CardContent>
+      ) : null}
+    </Card>
+  )
+}
+
+/** Canonical plugin-owned list page: public archetypes, form recipe, and states. */
 export function BookmarksPage() {
-  const { data, loading, error: fetchError, refresh } = usePluginJsonFetch<{ bookmarks: Bookmark[] }>(PLUGIN_ID, '/')
+  const { data, loading, error: fetchError, refresh } = useBookmarks()
   const [url, setUrl] = useState('')
   const [title, setTitle] = useState('')
-  const [error, setError] = useState<string | null>(null)
+  const [mutationError, setMutationError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const bookmarks = data?.bookmarks ?? []
 
-  // The server emits this on every create/delete (including agent-driven
-  // ones through the exec tool) — the page stays live without polling.
-  usePluginEvent(`${PLUGIN_ID}.changed`, () => refresh())
-
-  async function add() {
-    setError(null)
-    const res = await pluginFetch(PLUGIN_ID, '/', { method: 'POST', body: { url, title } })
-    if (!res.ok) {
-      const body = (await res.json().catch(() => null)) as { error?: string } | null
-      setError(body?.error ?? `save failed (${res.status})`)
-      return
+  async function add(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setMutationError(null)
+    setSaving(true)
+    try {
+      const response = await pluginFetch(PLUGIN_ID, '/', {
+        method: 'POST',
+        body: { url: url.trim(), title: title.trim() },
+      })
+      if (!response.ok) {
+        setMutationError(await responseError(response, 'Could not save bookmark'))
+        return
+      }
+      setUrl('')
+      setTitle('')
+      refresh()
+    } catch (error) {
+      setMutationError(error instanceof Error ? error.message : 'Could not save bookmark')
+    } finally {
+      setSaving(false)
     }
-    setUrl('')
-    setTitle('')
-    // No manual refresh needed — the .changed event round-trips via SSE.
   }
 
   async function remove(id: string) {
-    // Surface failures: a failed delete with no error state looks like a
-    // stuck row (the .changed refresh never fires on failure).
-    setError(null)
-    const res = await pluginFetch(PLUGIN_ID, `/${id}`, { method: 'DELETE' })
-    if (!res.ok) {
-      const body = (await res.json().catch(() => null)) as { error?: string } | null
-      setError(body?.error ?? `delete failed (${res.status})`)
+    setMutationError(null)
+    setDeletingId(id)
+    try {
+      const response = await pluginFetch(PLUGIN_ID, `/${id}`, { method: 'DELETE' })
+      if (!response.ok) {
+        setMutationError(await responseError(response, 'Could not delete bookmark'))
+        return
+      }
+      refresh()
+    } catch (error) {
+      setMutationError(error instanceof Error ? error.message : 'Could not delete bookmark')
+    } finally {
+      setDeletingId(null)
     }
   }
 
-  const bookmarks = data?.bookmarks ?? []
+  const replacementState = fetchError ? (
+    <SystemState
+      action={<Button type="button" variant="outline" onClick={refresh}>Retry</Button>}
+      description={`Bakin could not load this plugin's bookmarks. ${fetchError}`}
+      kind="error"
+      recovery="available"
+      title="Bookmarks are unavailable"
+    />
+  ) : loading && data === null ? (
+    <SystemState kind="loading" title="Loading bookmarks" />
+  ) : bookmarks.length === 0 ? (
+    <SystemState
+      description="Save the first link above, or ask an agent to save one with the plugin tool."
+      kind="initial-empty"
+      title="No bookmarks yet"
+    />
+  ) : undefined
 
   return (
-    <div className="p-6 space-y-6">
-      <PluginHeader title="Bookmarks" count={bookmarks.length} />
+    <ListPage
+      className="reference-bookmarks"
+      data-reference-bookmarks-ready={data !== null && !loading ? '' : undefined}
+    >
+      <PageHeader
+        description="Save useful links for people and agents through one shared plugin data path."
+        eyebrow="Reference plugin / saved links"
+        meta={<Badge size="xs" variant="outline">{bookmarks.length} saved</Badge>}
+        title="Bookmarks"
+      />
 
-      <div className="flex gap-2">
-        <input
-          className="flex-1 rounded-md border bg-transparent px-3 py-1.5 text-sm"
-          placeholder="https://…"
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-        />
-        <input
-          className="flex-1 rounded-md border bg-transparent px-3 py-1.5 text-sm"
-          placeholder="Title"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-        />
-        <button
-          className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50"
-          disabled={!url || !title}
-          onClick={() => void add()}
-        >
-          Save
-        </button>
-      </div>
-      {error ? <p className="text-sm text-red-500">{error}</p> : null}
-      {fetchError ? <p className="text-sm text-red-500">could not load bookmarks: {fetchError}</p> : null}
-
-      {loading && bookmarks.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Loading…</p>
-      ) : bookmarks.length === 0 ? (
-        <EmptyState title="No bookmarks yet" description="Save one above, or ask an agent to." />
-      ) : (
-        <ul className="space-y-2">
-          {bookmarks.map((b: Bookmark) => (
-            <li key={b.id} className="flex items-center gap-3 rounded-md border px-3 py-2">
-              <div className="min-w-0 flex-1">
-                <a href={b.url} target="_blank" rel="noreferrer" className="text-sm font-medium hover:underline">
-                  {b.title}
-                </a>
-                <p className="truncate text-xs text-muted-foreground">
-                  {b.url}
-                  {b.tags.length > 0 ? ` · ${b.tags.join(', ')}` : ''}
-                </p>
-              </div>
-              <button
-                className="text-xs text-muted-foreground hover:text-red-500"
-                onClick={() => void remove(b.id)}
+      <Card>
+        <CardHeader>
+          <CardTitle>Save a bookmark</CardTitle>
+          <CardDescription>The same validated creation path serves this form and the agent exec tool.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Form aria-label="Save a bookmark" busy={saving} onSubmit={add}>
+            <Grid gap="section" layout="split">
+              <Field name="url">
+                <FieldLabel requirement="required">URL</FieldLabel>
+                <FieldDescription>Use the complete address, including https://.</FieldDescription>
+                <Input
+                  required
+                  autoComplete="url"
+                  placeholder="https://example.com"
+                  type="url"
+                  value={url}
+                  onChange={(event) => setUrl(event.currentTarget.value)}
+                />
+              </Field>
+              <Field name="title">
+                <FieldLabel requirement="required">Title</FieldLabel>
+                <FieldDescription>Use a short name people can recognize at a glance.</FieldDescription>
+                <Input
+                  required
+                  placeholder="Release checklist"
+                  value={title}
+                  onChange={(event) => setTitle(event.currentTarget.value)}
+                />
+              </Field>
+            </Grid>
+            <FormActions>
+              <SubmitButton
+                busyLabel="Saving bookmark…"
+                disabled={!url.trim() || !title.trim()}
               >
-                delete
-              </button>
+                Save bookmark
+              </SubmitButton>
+            </FormActions>
+          </Form>
+        </CardContent>
+      </Card>
+
+      <ListPageContent
+        busy={loading && data !== null}
+        feedback={mutationError ? (
+          <Alert tone="danger">
+            <AlertTitle>Bookmark change failed</AlertTitle>
+            <AlertDescription>{mutationError}</AlertDescription>
+          </Alert>
+        ) : undefined}
+        label="Saved bookmarks"
+        state={replacementState}
+      >
+        <Grid as="ul" aria-label="Saved bookmarks" className="reference-bookmarks__list" gap="item" layout="cards">
+          {bookmarks.map((bookmark) => (
+            <li key={bookmark.id}>
+              <BookmarkCard
+                bookmark={bookmark}
+                deleting={deletingId === bookmark.id}
+                onRemove={(id) => void remove(id)}
+              />
             </li>
           ))}
-        </ul>
-      )}
+        </Grid>
+      </ListPageContent>
 
-      <details className="rounded-md border px-3 py-2">
-        <summary className="cursor-pointer text-sm text-muted-foreground">
-          What agents see — a saved-bookmark turn rendered with TurnOutputView
-        </summary>
-        <div className="pt-3">
+      <Collapsible>
+        <CollapsibleTrigger>
+          Agent-facing output example <span aria-hidden="true">+</span>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
           <TurnOutputView chunks={DEMO_TURN} />
-        </div>
-      </details>
-    </div>
+        </CollapsibleContent>
+      </Collapsible>
+    </ListPage>
   )
 }

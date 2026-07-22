@@ -13,6 +13,7 @@ const REPORT_ROOT = 'test-results/plugin-ui-conformance'
 interface TeethFixture {
   name: string
   pluginId: string
+  fixtureEntry?: string
   expectedRules: PluginUiConformanceRule[]
   expectedMessages: string[]
 }
@@ -43,6 +44,13 @@ const fixtures: TeethFixture[] = [
     expectedRules: ['overflow', 'axe', 'keyboard-focus', 'console'],
     expectedMessages: ['wider than', 'discernible text', 'removed from keyboard order', 'Seeded fixture console failure'],
   },
+  {
+    name: 'reference-plugin',
+    pluginId: 'reference-bookmarks',
+    fixtureEntry: 'examples/reference-plugin/tests/ui.fixture.tsx',
+    expectedRules: [],
+    expectedMessages: [],
+  },
 ]
 
 function uniqueRules(rules: readonly PluginUiConformanceRule[]): PluginUiConformanceRule[] {
@@ -55,7 +63,7 @@ async function main(): Promise<void> {
       cwd: REPO_ROOT,
       config: {
         pluginId: fixture.pluginId,
-        fixtureEntry: `${FIXTURE_ROOT}/${fixture.name}/fixture.tsx`,
+        fixtureEntry: fixture.fixtureEntry ?? `${FIXTURE_ROOT}/${fixture.name}/fixture.tsx`,
         reportDir: `${REPORT_ROOT}/${fixture.name}`,
       },
     })

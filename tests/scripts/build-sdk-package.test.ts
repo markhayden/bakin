@@ -119,6 +119,24 @@ describe('buildSdkPackage', () => {
     } finally {
       rmSync(consumerDir, { recursive: true, force: true })
     }
+
+    const referenceDir = join(repoRoot, `.tmp-reference-plugin-consumer-${Date.now()}`)
+    try {
+      cpSync(join(repoRoot, 'examples/reference-plugin'), referenceDir, {
+        recursive: true,
+        filter: (source) => !/(?:^|\/)(?:dist|node_modules|test-results)(?:\/|$)/.test(source),
+      })
+      mkdirSync(join(referenceDir, 'node_modules/@makinbakin'), { recursive: true })
+      cpSync(outDir, join(referenceDir, 'node_modules/@makinbakin/sdk'), { recursive: true })
+      const result = spawnSync(join(repoRoot, 'node_modules/.bin/tsc'), ['-p', 'tsconfig.json'], {
+        cwd: referenceDir,
+        encoding: 'utf8',
+      })
+      expect(`${result.stdout}${result.stderr}`).toBe('')
+      expect(result.status).toBe(0)
+    } finally {
+      rmSync(referenceDir, { recursive: true, force: true })
+    }
   }, 120_000)
 
   it('does not leak repo-only import specifiers into published JS or declarations', async () => {

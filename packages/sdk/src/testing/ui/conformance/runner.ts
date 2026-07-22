@@ -398,6 +398,8 @@ async function keyboardFocusFindings(
         && style.visibility !== 'hidden'
         && rect.width > 0
         && rect.height > 0
+        && !element.matches(':disabled')
+        && element.getAttribute('aria-disabled') !== 'true'
         && element.tabIndex >= 0
         && !element.closest('[inert], [aria-hidden="true"]')
     })
@@ -418,6 +420,7 @@ async function keyboardFocusFindings(
       const style = getComputedStyle(element)
       return {
         id,
+        label: (element.getAttribute('aria-label') || element.textContent?.trim() || element.tagName.toLowerCase()).slice(0, 80),
         resting: {
           backgroundColor: style.backgroundColor,
           borderColor: style.borderColor,
@@ -491,23 +494,31 @@ async function keyboardFocusFindings(
     }, Object.fromEntries(targets.map((target) => [target.id, target.resting])))
 
     if (!focus.reached) {
+      const missing = targets
+        .filter((target) => !reached.has(target.id))
+        .map((target) => target.label)
+        .join(', ')
       findings.push({
         rule: 'keyboard-focus',
         enforcement: 'conformance',
         fixture: FIXTURE_NAME,
         viewport,
-        message: `Tab left the visible fixture controls after reaching ${reached.size} of ${targets.length}.`,
+        message: `Tab left the visible fixture controls after reaching ${reached.size} of ${targets.length}. Missing: ${missing}.`,
         repair: 'Use native interactive elements or a documented SDK control and preserve its complete tab order.',
       })
       break
     }
     if (reached.has(focus.id)) {
+      const missing = targets
+        .filter((target) => !reached.has(target.id))
+        .map((target) => target.label)
+        .join(', ')
       findings.push({
         rule: 'keyboard-focus',
         enforcement: 'conformance',
         fixture: FIXTURE_NAME,
         viewport,
-        message: `Keyboard focus cycled before reaching all visible controls (${reached.size} of ${targets.length}).`,
+        message: `Keyboard focus cycled before reaching all visible controls (${reached.size} of ${targets.length}). Missing: ${missing}.`,
         repair: 'Remove focus traps from the page fixture or place them inside a documented modal interaction.',
       })
       break
