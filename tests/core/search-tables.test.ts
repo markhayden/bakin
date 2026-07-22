@@ -380,6 +380,31 @@ describe('2026-07-21 redesign: identity, progress-aware converge, chain split', 
     expect(await adapter.tables.stats(recordedGreen)).not.toBeNull()
   })
 
+  it('plain ensure NO-OPS on a nonce\'d rebuild generation (no boomerang back to the base name)', async () => {
+    // Soak cycle-1 finding (2026-07-22): ensure compared physical NAMES, so
+    // every rebuilt (nonce'd) table read as drift and migrated BACK to the
+    // base name — re-running enumerators and re-embedding forever.
+    const adapter = createMockSearchAdapter()
+    await ensureTable(adapter, makeDef(), 'fp-a')
+    const rebuilt = await rebuildTable(adapter, makeDef(), 'fp-a')
+    expect(rebuilt).toBe('migrated')
+    const nonced = queryTarget('bakin_notes')!
+
+    const again = await ensureTable(adapter, makeDef(), 'fp-a')
+    expect(again).toBe('unchanged')
+    expect(queryTarget('bakin_notes')).toBe(nonced)
+
+    // A REAL identity change (new mapping fingerprint) still migrates.
+    const moved = await ensureTable(adapter, makeDef(), 'fp-b')
+    expect(moved).toBe('migrated')
+    expect(queryTarget('bakin_notes')).not.toBe(nonced)
+
+    // And a schemaVersion bump still migrates even with the same config.
+    const bumped = await ensureTable(adapter, makeDef({ schemaVersion: 2 }), 'fp-b')
+    expect(bumped).toBe('migrated')
+    expect(queryTarget('bakin_notes')).toMatch(/^bakin_notes_v2_/)
+  })
+
   it('repairs (never drops) a legacy row whose migration target aliases the live physical', async () => {
     const adapter = createMockSearchAdapter()
     await ensureTable(adapter, makeDef(), 'fp-a')

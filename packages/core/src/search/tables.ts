@@ -532,6 +532,7 @@ async function stageMigration(
   def: TableEnsureDef,
   green: string,
   fp: string,
+  baseFp: string,
   opts?: EnsureOpts,
 ): Promise<{ emitted: number } | 'unchanged'> {
   const old = getRow(def.logical)
@@ -550,7 +551,10 @@ async function stageMigration(
       `UPDATE search_tables SET state = 'migrating', migrating_to = ?, migrating_fp = ?, migration_phase = 'creating',
          schema_version = ?, config_fingerprint = ?, updated_at = ? WHERE logical = ?`,
     )
-    .run(green, fp, def.schemaVersion, fp, Date.now(), def.logical)
+    // migrating_fp records the TARGET (nonce included) for resume;
+    // config_fingerprint records IDENTITY (base, nonce-free) so later
+    // plain ensures recognize the flipped generation and no-op.
+    .run(green, fp, def.schemaVersion, baseFp, Date.now(), def.logical)
 
   await createTableTolerant(adapter, green, def.config)
 
@@ -661,10 +665,11 @@ async function runMigration(
   def: TableEnsureDef,
   green: string,
   fp: string,
+  baseFp: string,
   opts?: EnsureOpts,
 ): Promise<'migrated' | 'parked' | 'unchanged'> {
   // Backfill holds the chain (bounds embed load); convergence does not.
-  const staged = await serialized(() => stageMigration(adapter, def, green, fp, opts))
+  const staged = await serialized(() => stageMigration(adapter, def, green, fp, baseFp, opts))
   if (staged === 'unchanged') return 'unchanged'
   return coalescedConverge(def.logical, () => convergeAndFlip(adapter, def, green, staged.emitted, opts))
 }
@@ -705,9 +710,20 @@ export async function ensureTable(
 ): Promise<EnsureResult> {
   const fp = fingerprint(def, mappingFingerprint, opts?.forceNonce)
   const desired = physicalName(def, fp)
+  // Identity is the BASE fingerprint, never the physical name: a nonce'd
+  // rebuild generation carries the same identity under a different name,
+  // and comparing names made every later plain ensure treat it as drift
+  // and migrate it BACK to the base name — the "boomerang" that re-ran
+  // enumerators and re-embedded healthy tables after every rebuild
+  // (2026-07-22 soak cycle-1 finding).
+  const baseFp = fingerprint(def, mappingFingerprint)
   const row = getRow(def.logical)
 
-  if (row && row.state === 'active' && row.physical === desired) return 'unchanged'
+  const identityMatches = (r: Row): boolean =>
+    r.schema_version === def.schemaVersion
+    && (r.physical === desired || (!opts?.forceNonce && r.config_fingerprint === baseFp))
+
+  if (row && row.state === 'active' && identityMatches(row)) return 'unchanged'
 
   // Housekeeping + the create path hold the chain (create-seed IS a
   // backfill); the migration path releases it before convergence — the
@@ -724,12 +740,14 @@ export async function ensureTable(
           `INSERT INTO search_tables (logical, physical, schema_version, config_fingerprint, state, updated_at)
            VALUES (?, ?, ?, ?, 'active', ?)`,
         )
-        .run(def.logical, desired, def.schemaVersion, fp, Date.now())
+        // Identity (config_fingerprint) is always the BASE fingerprint —
+        // the physical name may carry a nonce, identity never does.
+        .run(def.logical, desired, def.schemaVersion, baseFp, Date.now())
       log.info('table created + seeded', { logical: def.logical, physical: desired, seeded: emitted })
       return 'created'
     }
 
-    if (current.state === 'active' && current.physical === desired) return 'unchanged'
+    if (current.state === 'active' && identityMatches(current)) return 'unchanged'
 
     if (
       current.state === 'migrating' && current.migrating_to
@@ -747,7 +765,7 @@ export async function ensureTable(
   })
   if (prep !== 'migrate') return prep
 
-  return runMigration(adapter, def, desired, fp, opts)
+  return runMigration(adapter, def, desired, fp, baseFp, opts)
 }
 
 /** Force a fresh physical with identical version+fingerprint (rebuild / black-swan recovery). */
@@ -790,7 +808,8 @@ export async function resumeMigrations(
       continue
     }
     const desired = row.migrating_to
-    const fp = row.migrating_fp ?? fingerprint(def, mappingFingerprint)
+    const baseFp = fingerprint(def, mappingFingerprint)
+    const fp = row.migrating_fp ?? baseFp
     if (!desired || desired === row.physical) {
       // No recorded target, or a target aliasing the live table (legacy
       // rows from the recompute era) — repair to active; a later ensure
@@ -803,7 +822,7 @@ export async function resumeMigrations(
       outcomes.push({ logical: row.logical, result: 'unchanged' })
       continue
     }
-    const result = await runMigration(adapter, def, desired, fp, opts)
+    const result = await runMigration(adapter, def, desired, fp, baseFp, opts)
     outcomes.push({ logical: row.logical, result })
   }
   return outcomes
