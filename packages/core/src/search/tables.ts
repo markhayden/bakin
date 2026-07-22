@@ -374,23 +374,20 @@ export function removeTableRegistration(logical: string): string[] {
   return physicals
 }
 
+/**
+ * Public retirement path for a physical table: tombstone it for the
+ * doctor's cold-dwell sweep. NEVER call adapter.tables.drop directly on a
+ * table that may have received writes — hot-queue drops crash affected
+ * engine versions (antfly#386).
+ */
+export function retireTablePhysical(physical: string): void {
+  noteTombstone(physical)
+}
+
 function noteTombstone(physical: string): void {
   db()
     .prepare('INSERT INTO search_table_tombstones (physical, noted_at) VALUES (?, ?) ON CONFLICT (physical) DO NOTHING')
     .run(physical, Date.now())
-}
-
-async function dropTolerant(adapter: SearchAdapter, physical: string): Promise<void> {
-  try {
-    await adapter.tables.drop(physical)
-    forgetCreatedPhysical(physical)
-  } catch (err) {
-    log.warn('table drop failed — tombstoned for the doctor sweep', {
-      physical,
-      err: err instanceof Error ? err.message : String(err),
-    })
-    noteTombstone(physical)
-  }
 }
 
 export interface OrphanTableSweepResult {
@@ -493,9 +490,21 @@ export async function sweepOrphanEngineTables(
   return { dropped, pending, unclaimed }
 }
 
-/** Doctor sweep: retry dropping tombstoned physicals. Returns remaining. */
-export async function sweepTombstones(adapter: SearchAdapter): Promise<number> {
-  const rows = db().prepare<{ physical: string }, []>('SELECT physical FROM search_table_tombstones').all()
+/**
+ * Doctor sweep: drop tombstoned physicals whose COLD DWELL has passed.
+ * Every engine-side drop in this module is lazy (tombstone-first): the
+ * dwell guarantees a table's embed queue is stone cold before the DELETE
+ * reaches the engine — dropping hot-queue tables crashes affected engine
+ * versions (antfly#386, regression since rc.18, present at their HEAD).
+ */
+export const TOMBSTONE_COLD_DWELL_MS = 30 * 60 * 1000
+
+export async function sweepTombstones(adapter: SearchAdapter, opts?: { dwellMs?: number }): Promise<number> {
+  const dwellMs = opts?.dwellMs ?? TOMBSTONE_COLD_DWELL_MS
+  const cutoff = Date.now() - dwellMs
+  const rows = db()
+    .prepare<{ physical: string }, [number]>('SELECT physical FROM search_table_tombstones WHERE noted_at <= ?')
+    .all(cutoff)
   for (const row of rows) {
     try {
       await adapter.tables.drop(row.physical)
@@ -683,8 +692,13 @@ async function convergeAndFlip(
   log.info('table migrated', { logical: def.logical, from: oldPhysical, to: green })
 
   if (oldPhysical !== green) {
-    setPhase(def.logical, 'dropping')
-    await dropTolerant(adapter, oldPhysical)
+    // COLD DROP (antfly#386 defense, 2026-07-22): dual-write fed the old
+    // physical right up to this flip, so its engine-internal embed queue
+    // may be hot — and dropping a hot-queue table crashes affected engine
+    // versions outright. Never drop live: tombstone it and let the doctor
+    // sweep drop it after the cold dwell. This also lightens flip-time
+    // engine load; stale generations cost a little disk for a few hours.
+    noteTombstone(oldPhysical)
     db().prepare('UPDATE search_tables SET migration_phase = NULL WHERE logical = ?').run(def.logical)
   }
   return 'migrated'
@@ -788,7 +802,9 @@ export async function ensureTable(
     ) {
       // The desired layout changed underneath an in-flight migration —
       // abandon the stale green and migrate to the new target instead.
-      await dropTolerant(adapter, current.migrating_to)
+      // Tombstoned, not dropped live: an abandoned green mid-backfill has
+      // the hottest queue of all (antfly#386 — cold drops only).
+      noteTombstone(current.migrating_to)
     }
 
     return 'migrate'

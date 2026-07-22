@@ -192,8 +192,11 @@ describe('blue/green migration', () => {
     expect(green).not.toBe(blue)
     expect(resolveDrainTargets('bakin_notes')).toEqual([green])
     expect((await adapter.tables.stats(green))?.documents).toBe(2)
-    const tables = await adapter.tables.list()
-    expect(tables.map((t) => t.name)).not.toContain(blue)
+    // COLD DROP (antfly#386): the old physical survives the flip as a
+    // tombstone; the dwell sweep performs the actual engine DELETE.
+    expect((await adapter.tables.list()).map((t) => t.name)).toContain(blue)
+    expect(await sweepTombstones(adapter, { dwellMs: 0 })).toBe(0)
+    expect((await adapter.tables.list()).map((t) => t.name)).not.toContain(blue)
     expect(tableStatus('bakin_notes')?.state).toBe('active')
   })
 
@@ -681,7 +684,7 @@ describe('sweepOrphanEngineTables', () => {
     expect(sweep.pending).toBe(0) // no longer a candidate — it is a tombstone now
 
     // The tombstone sweep finishes the job once the engine recovers.
-    const left = await sweepTombstones(base)
+    const left = await sweepTombstones(base, { dwellMs: 0 })
     expect(left).toBe(0)
     expect(await base.tables.stats(orphan)).toBeNull()
   })
