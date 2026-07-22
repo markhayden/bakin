@@ -95,6 +95,24 @@ function writeSourceTree(root: string, sources = validSources()): void {
   }
 }
 
+function sourcesWithTypographySize(): TokenSourceFile[] {
+  const sources = validSources()
+  const reference = sources[0].document.reference as Record<string, unknown>
+  const semantic = sources[1].document.semantic as Record<string, unknown>
+  reference.font = {
+    size: {
+      $type: 'dimension',
+      body: { $value: { value: 0.8, unit: 'rem' } },
+    },
+  }
+  semantic.typography = {
+    size: {
+      body: { $ref: '#/reference/font/size/body' },
+    },
+  }
+  return sources
+}
+
 afterEach(() => {
   for (const root of fixtureRoots.splice(0)) rmSync(root, { recursive: true, force: true })
 })
@@ -315,7 +333,7 @@ describe('token artifact generation', () => {
   it('emits aligned public CSS, internal Tailwind mappings, and typed metadata', () => {
     const root = mkdtempSync(join(tmpdir(), 'bakin-token-artifacts-'))
     fixtureRoots.push(root)
-    writeSourceTree(root)
+    writeSourceTree(root, sourcesWithTypographySize())
 
     generateTokenArtifacts(root)
 
@@ -330,6 +348,7 @@ describe('token artifact generation', () => {
     expect(runtimeCss).not.toContain('component.')
 
     expect(tailwindCss).toContain('--color-bakin-canvas: var(--bakin-canvas);')
+    expect(tailwindCss).toContain('--text-bakin-typography-size-body: var(--bakin-typography-size-body);')
     expect(tailwindCss).not.toContain('component')
     expect(metadata).toContain('export const BAKIN_SEMANTIC_TOKENS = [')
     expect(metadata).toContain('"cssVariable": "--bakin-canvas"')

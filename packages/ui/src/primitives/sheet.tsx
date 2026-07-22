@@ -26,7 +26,10 @@ export type SheetContentProps = SheetPrimitive.Popup.Props & {
   showCloseButton?: boolean
   side?: SheetSide
 }
-export type SheetHeaderProps = React.ComponentProps<'div'>
+export type SheetHeaderProps = React.ComponentProps<'div'> & {
+  /** Use `none` when a containing composition already owns the horizontal inset. */
+  inset?: 'default' | 'none'
+}
 export type SheetFooterProps = React.ComponentProps<'div'>
 export type SheetTitleProps = SheetPrimitive.Title.Props
 export type SheetDescriptionProps = SheetPrimitive.Description.Props
@@ -118,8 +121,15 @@ export function SheetContent({
   )
 }
 
-export function SheetHeader({ className, ...props }: SheetHeaderProps) {
-  return <div data-slot="sheet-header" className={cn('flex min-w-0 flex-col gap-bakin-1 p-bakin-6 pr-bakin-12', className)} {...props} />
+export function SheetHeader({ className, inset = 'default', ...props }: SheetHeaderProps) {
+  return (
+    <div
+      data-slot="sheet-header"
+      data-inset={inset}
+      className={cn('flex min-w-0 flex-col gap-bakin-1', inset === 'default' && 'p-bakin-6 pr-bakin-12', className)}
+      {...props}
+    />
+  )
 }
 
 export function SheetFooter({ className, ...props }: SheetFooterProps) {

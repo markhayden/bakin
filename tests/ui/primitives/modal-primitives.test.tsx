@@ -79,6 +79,14 @@ describe('Dialog public contract', () => {
 })
 
 describe('Sheet public contract', () => {
+  it('can delegate its inset to a containing composition', () => {
+    render(<SheetHeader inset="none" data-testid="flush-sheet-header">Header</SheetHeader>)
+
+    const header = screen.getByTestId('flush-sheet-header')
+    expect(header.className).not.toContain('p-bakin-6')
+    expect(header.className).not.toContain('pr-bakin-12')
+  })
+
   it('uses a labelled full-height side-overlay contract', () => {
     render(
       <Sheet defaultOpen>

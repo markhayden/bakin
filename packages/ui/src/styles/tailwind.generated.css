@@ -35,6 +35,11 @@
   --radius-bakin-surface: var(--bakin-radius-surface);
   --font-bakin-typography-family-mono: var(--bakin-typography-family-mono);
   --font-bakin-typography-family-ui: var(--bakin-typography-family-ui);
+  --text-bakin-typography-size-body: var(--bakin-typography-size-body);
+  --text-bakin-typography-size-meta: var(--bakin-typography-size-meta);
+  --text-bakin-typography-size-page-title: var(--bakin-typography-size-page-title);
+  --text-bakin-typography-size-section-title: var(--bakin-typography-size-section-title);
+  --text-bakin-typography-size-title: var(--bakin-typography-size-title);
   --font-weight-bakin-typography-weight-bold: var(--bakin-typography-weight-bold);
   --font-weight-bakin-typography-weight-medium: var(--bakin-typography-weight-medium);
   --font-weight-bakin-typography-weight-regular: var(--bakin-typography-weight-regular);

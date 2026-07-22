@@ -202,7 +202,7 @@ export function BakinDrawer({
             data-slot="bakin-drawer-layout"
             className="flex min-h-full shrink-0 flex-col gap-bakin-4 px-bakin-4 pb-bakin-8 pt-bakin-4 sm:px-bakin-6"
           >
-            <SheetHeader className="p-0 pr-0">
+            <SheetHeader inset="none">
               <div className="flex min-w-0 items-center justify-between gap-bakin-2">
                 <div className="flex min-w-0 items-center gap-bakin-2">
                   {onBack ? (

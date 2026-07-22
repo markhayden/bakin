@@ -582,6 +582,9 @@ function tailwindVariable(token: ResolvedToken): string | undefined {
   if (token.type === 'dimension' && segments[0] === 'radius') {
     return `--radius-bakin-${cssSlug(segments.slice(1))}`
   }
+  if (token.type === 'dimension' && segments[0] === 'typography' && segments[1] === 'size') {
+    return `--text-bakin-${cssSlug(segments)}`
+  }
   if (token.type === 'cubicBezier' && segments[0] === 'motion' && segments[1] === 'easing') {
     return `--ease-bakin-${cssSlug(segments.slice(2))}`
   }

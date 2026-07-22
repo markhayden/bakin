@@ -120,7 +120,7 @@ export function TaskFilters({
           title={showScheduled ? 'Hide scheduled tasks' : 'Show scheduled tasks'}
         >
           {showScheduled ? <Eye className="size-bakin-4" aria-hidden="true" /> : <EyeOff className="size-bakin-4" aria-hidden="true" />}
-          <span>Scheduled Tasks</span>
+          <span className="text-bakin-typography-size-body">Scheduled Tasks</span>
           <Switch
             checked={showScheduled}
             onCheckedChange={(checked: boolean) => onShowScheduledChange(checked)}

@@ -75,6 +75,22 @@ describe('Textarea public contract', () => {
 })
 
 describe('InputGroup public contract', () => {
+  it('keeps the field interactive when only its local action is disabled', () => {
+    render(
+      <InputGroup data-testid="local-action-group">
+        <InputGroupInput aria-label="Task note" />
+        <InputGroupAddon align="inline-end"><InputGroupButton disabled>Add note</InputGroupButton></InputGroupAddon>
+      </InputGroup>,
+    )
+
+    const group = screen.getByTestId('local-action-group')
+    const input = screen.getByRole('textbox', { name: 'Task note' }) as HTMLInputElement
+    expect(group.className).toContain('has-[[data-slot=input-group-control]:disabled]:pointer-events-none')
+    expect(group.className).not.toContain('has-[:disabled]:pointer-events-none')
+    fireEvent.change(input, { target: { value: 'Follow up' } })
+    expect(input.value).toBe('Follow up')
+  })
+
   it('focuses the input from a non-interactive addon and preserves button semantics', () => {
     render(
       <InputGroup aria-label="Repository address">

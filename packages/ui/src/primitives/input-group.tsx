@@ -23,7 +23,7 @@ export function InputGroup({ className, ...props }: InputGroupProps) {
           'group/input-group relative flex h-[var(--bakin-layout-size-control)] w-full min-w-0 items-center',
           'rounded-bakin-control border border-bakin-border-subtle bg-bakin-canvas-default text-bakin-text-primary',
           'transition-[background-color,border-color,color] duration-[var(--bakin-motion-duration-feedback)] ease-bakin-standard outline-none',
-          'has-[:disabled]:pointer-events-none has-[:disabled]:opacity-[var(--bakin-state-opacity-disabled)]',
+          'has-[[data-slot=input-group-control]:disabled]:pointer-events-none has-[[data-slot=input-group-control]:disabled]:opacity-[var(--bakin-state-opacity-disabled)]',
           'has-[[data-slot=input-group-control]:focus-visible]:outline-2 has-[[data-slot=input-group-control]:focus-visible]:outline-offset-2 has-[[data-slot=input-group-control]:focus-visible]:outline-bakin-focus-ring',
           'has-[[data-slot=input-group-control][aria-invalid=true]]:border-bakin-signal-danger',
           'has-[>[data-align=block-end]]:h-auto has-[>[data-align=block-end]]:min-h-[var(--bakin-layout-size-control)] has-[>[data-align=block-end]]:flex-col',
@@ -45,7 +45,7 @@ const inputGroupAddonVariants = cva(
   [
     'flex h-auto cursor-text select-none items-center justify-center gap-bakin-2',
     'font-bakin-typography-family-ui text-[length:var(--bakin-typography-size-body)] font-bakin-typography-weight-semibold text-bakin-text-muted',
-    'group-has-[:disabled]/input-group:opacity-[var(--bakin-state-opacity-disabled)]',
+    'group-has-[[data-slot=input-group-control]:disabled]/input-group:opacity-[var(--bakin-state-opacity-disabled)]',
     '[&>svg:not([class*="size-"])]:size-bakin-4 [&>svg]:shrink-0',
   ],
   {

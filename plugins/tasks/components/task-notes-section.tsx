@@ -1,7 +1,12 @@
 'use client'
 
-import { BakinDrawerSection, Button } from "@makinbakin/sdk/ui"
-import { Input } from "@makinbakin/sdk/ui"
+import {
+  BakinDrawerSection,
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+} from "@makinbakin/sdk/ui"
 import { AlertTriangle, Send } from 'lucide-react'
 import type { Task, TaskLogEntry } from '../types'
 import { compactDispatchFailureLabel, getDispatchFailureDetail, specificDispatchFailureLabel, type DispatchFailureDetail } from '../lib/dispatch-failure'
@@ -95,23 +100,32 @@ export function TaskNotesSection({ task, logMessage, setLogMessage, addingLog, o
 
   return (
     <BakinDrawerSection title="Notes">
-      <div className="flex gap-2 mb-3">
-        <Input
-          value={logMessage}
-          onChange={(e) => setLogMessage(e.target.value)}
-          placeholder="Add a note..."
-          className="flex-1 h-8 bg-surface"
-          onKeyDown={(e) => { if (e.key === 'Enter') onAddLog() }}
-        />
-        <Button
-          variant="outline"
-          size="icon"
-          onClick={onAddLog}
-          disabled={addingLog || !logMessage.trim()}
-        >
-          <Send className="size-3.5" />
-        </Button>
-      </div>
+      <form
+        className="mb-bakin-3"
+        onSubmit={(event) => {
+          event.preventDefault()
+          if (!addingLog && logMessage.trim()) onAddLog()
+        }}
+      >
+        <InputGroup aria-label="Add task note">
+          <InputGroupInput
+            value={logMessage}
+            onChange={(event) => setLogMessage(event.target.value)}
+            placeholder="Add a note..."
+            aria-label="Task note"
+          />
+          <InputGroupAddon align="inline-end">
+            <InputGroupButton
+              type="submit"
+              size="icon-xs"
+              aria-label={addingLog ? 'Adding note' : 'Add note'}
+              disabled={addingLog || !logMessage.trim()}
+            >
+              <Send className="size-bakin-3" />
+            </InputGroupButton>
+          </InputGroupAddon>
+        </InputGroup>
+      </form>
       {(!task.log || task.log.length === 0) && (
         <p className="text-xs text-muted-foreground">No notes yet.</p>
       )}

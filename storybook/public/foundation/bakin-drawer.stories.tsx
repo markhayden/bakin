@@ -12,7 +12,7 @@ const meta = {
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',
-    docs: { description: { component: 'BakinDrawer is the supported resizable product composition for long contextual detail and edit flows. It uses Sheet semantics, persists width by context, fills mobile viewports, provides keyboard resizing, and owns the nested dirty-confirm path.' } },
+    docs: { description: { component: 'BakinDrawer is the supported resizable product composition for long contextual detail and edit flows. It uses Sheet semantics, persists width by context, fills mobile viewports, provides keyboard resizing, aligns its title and content to one shared gutter, and owns the nested dirty-confirm path.' } },
   },
 } satisfies Meta<typeof BakinDrawer>
 
@@ -37,6 +37,13 @@ export const Default = {
   render: function DefaultDrawer() {
     const [open, setOpen] = useState(true)
     return <main className="bakin-primitive-story__overlay-stage"><div className="bakin-primitive-story__overlay-workspace" aria-hidden="true"><div /><div /><div /></div><BakinDrawer open={open} onOpenChange={setOpen} title="Task detail" description="Task 842 · official workflows plugin" storageKey="storybook-default"><DrawerContents /></BakinDrawer></main>
+  },
+  play: async () => {
+    const page = within(document.body)
+    const title = await page.findByRole('heading', { name: 'Task detail' })
+    const content = document.querySelector<HTMLElement>('[data-slot="bakin-drawer-content"]')
+    await expect(content).toBeTruthy()
+    await expect(Math.abs(title.getBoundingClientRect().left - content!.getBoundingClientRect().left)).toBeLessThan(1)
   },
 } satisfies Story
 

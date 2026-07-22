@@ -26,7 +26,9 @@ mock.module('@/components/ui/sheet', () => ({
   SheetContent: ({ children, style, className }: { children: React.ReactNode; style?: React.CSSProperties; className?: string }) => (
     <div data-testid="sheet-content" style={style} className={className}>{children}</div>
   ),
-  SheetHeader: ({ children, className, ...props }: React.HTMLAttributes<HTMLDivElement>) => <div className={className} {...props}>{children}</div>,
+  SheetHeader: ({ children, className, inset = 'default', ...props }: React.HTMLAttributes<HTMLDivElement> & { inset?: 'default' | 'none' }) => (
+    <div className={className} data-inset={inset} {...props}>{children}</div>
+  ),
   SheetTitle: ({ children, className }: { children: React.ReactNode; className?: string }) => <h2 className={className}>{children}</h2>,
   SheetDescription: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }))
@@ -160,6 +162,7 @@ describe('BakinDrawer', () => {
     expect(content).toBeTruthy()
     expect(content?.className).not.toContain('min-h-0')
     expect(content?.className).not.toContain('flex-1')
+    expect(screen.getByRole('heading', { level: 2, name: 'Task detail' }).closest('[data-inset]')?.getAttribute('data-inset')).toBe('none')
     expect(screen.getByRole('heading', { level: 3, name: 'Details' })).toBeTruthy()
     expect(container.querySelector('[data-slot="bakin-drawer-section-content"]')?.className).toContain('px-bakin-2')
   })
