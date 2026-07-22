@@ -79,7 +79,7 @@ describe('unit rendering (goldens)', () => {
   it('argv preloads every antfly-provider embedder, deduped, same across supervisors', () => {
     const argv = buildServiceArgv(DEFAULT_SETTINGS, paths)
     expect(argv).toEqual([
-      '/opt/antfly/bin/antfly', 'standalone',
+      '/opt/antfly/bin/antfly', 'swarm',
       '--host', '127.0.0.1',
       '--port', '3738',
       '--health-port', '3739',
@@ -107,7 +107,7 @@ describe('unit rendering (goldens)', () => {
     expect(unit).toContain('LimitNOFILE=65536')
     expect(unit).toContain('StandardOutput=append:/home/u/.bakin/logs/antfly.log')
     expect(unit).toContain('WantedBy=default.target')
-    expect(unit).toContain('ExecStart=/opt/antfly/bin/antfly standalone --host 127.0.0.1 --port 3738')
+    expect(unit).toContain('ExecStart=/opt/antfly/bin/antfly swarm --host 127.0.0.1 --port 3738')
   })
 })
 

@@ -137,13 +137,14 @@ if (!binary) {
       expect(withBody.status).toBe(200)
     })
 
-    it('GUARD (was antfly#319): mixed-corpus media leg completes its backfill and reports ready', async () => {
-      // Upstream fixed the empty-template skip accounting at rc.21; the
-      // idle-detection override in mapIndexStatuses was retired with the
-      // old pin. This guard keeps the mixed-corpus case honest: a media
-      // leg over a corpus with non-media docs must go ready NATURALLY.
-      // WHEN THIS FAILS: the #319 class regressed — restore the override
-      // (see git history of translate.ts mapIndexStatuses) or hold the pin.
+    it('PIN antfly#319: mixed-corpus media leg — raw flags stuck building, health() overrides to ready', async () => {
+      // rc.18 behavior (re-pinned 2026-07-22 after the rc.21 crash dossier):
+      // docs whose media template renders empty never complete the leg's
+      // backfill accounting, so raw flags stay raised while fully idle; the
+      // idle-detection override in mapIndexStatuses maps ready. rc.21 fixed
+      // THIS accounting (verified) but is unshippable for other reasons —
+      // when a healthy release ships, flip this back to the guard form
+      // (git history, 2026-07-21).
       if (!instance.modelsAvailable || !existsSync(join(homedir(), '.antfly', 'inference', 'models', 'antflydb', 'clipclap'))) {
         console.warn('⚠ antfly#319 guard skipped — clipclap model not present')
         return
@@ -180,10 +181,10 @@ if (!binary) {
         await sleep(1000)
       }
       expect(raw).not.toBeNull()
-      // Raw flags clear once the pipeline is idle (the pre-rc.21 bug left
-      // them raised forever on mixed corpora).
-      expect(raw!.rebuilding === true || raw!.backfill_active === true).toBe(false)
-      // And the health mapping agrees with no override in play.
+      // CANARY: raw flags still lie (building forever) on rc.18 — when this
+      // flips on a future pin, revisit the override (guard form in history).
+      expect(raw!.rebuilding === true || raw!.backfill_active === true).toBe(true)
+      // WORKAROUND GUARD: our health mapping overrides to ready.
       const { AntflySearchClient } = await import('../../../packages/adapter-antfly/src/client')
       const { DEFAULT_SETTINGS } = await import('../../../packages/adapter-antfly/src/defaults')
       const client = new AntflySearchClient({ ...DEFAULT_SETTINGS, url: instance.url }, { fetchImpl: nativeFetch })
