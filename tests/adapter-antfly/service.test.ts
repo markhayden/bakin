@@ -54,6 +54,9 @@ function fakeIo(overrides: Partial<ServiceIo> & { record?: string[][] } = {}): S
   return {
     platform: overrides.platform ?? 'darwin',
     hasCommand: overrides.hasCommand ?? (() => true),
+    // Preload pre-check: goldens assume models are present on disk; the
+    // real probe would silently drop --preload-model in a bare test env.
+    modelReady: overrides.modelReady ?? (() => true),
     env: { HOME: testDir, ...overrides.env },
     exec: overrides.exec ?? (async (cmd, args) => {
       record.push([cmd, ...args])
@@ -77,7 +80,7 @@ describe('unit rendering (goldens)', () => {
   const paths = { binary: '/opt/antfly/bin/antfly', dataDir: '/home/u/.bakin/antfly', modelsDir: '/home/u/.antfly/inference/models', logFile: '/home/u/.bakin/logs/antfly.log' }
 
   it('argv preloads every antfly-provider embedder, deduped, same across supervisors', () => {
-    const argv = buildServiceArgv(DEFAULT_SETTINGS, paths)
+    const argv = buildServiceArgv(DEFAULT_SETTINGS, paths, { modelReady: () => true })
     expect(argv).toEqual([
       '/opt/antfly/bin/antfly', 'swarm',
       '--host', '127.0.0.1',
@@ -90,8 +93,17 @@ describe('unit rendering (goldens)', () => {
     ])
   })
 
+  it('argv leaves a model failing the distribution check OFF the preloads (crash-loop guard)', () => {
+    // The engine EXITS on a preload it cannot load; the supervisor respawn
+    // turns one broken model into an invisible crash loop (161 respawns,
+    // 2026-07-21). A broken model must degrade, never preload.
+    const argv = buildServiceArgv(DEFAULT_SETTINGS, paths, { modelReady: (m) => m !== 'antflydb/clipclap' })
+    expect(argv).toContain('embedder:BAAI/bge-small-en-v1.5')
+    expect(argv.join(' ')).not.toContain('clipclap')
+  })
+
   it('launchd plist: KeepAlive, RunAtLoad, log paths, escaped argv', () => {
-    const plist = renderLaunchdPlist(buildServiceArgv(DEFAULT_SETTINGS, paths), paths.logFile)
+    const plist = renderLaunchdPlist(buildServiceArgv(DEFAULT_SETTINGS, paths, { modelReady: () => true }), paths.logFile)
     expect(plist).toContain('<string>io.bakin.antfly</string>')
     expect(plist).toContain('<key>KeepAlive</key>\n  <true/>')
     expect(plist).toContain('<key>NumberOfFiles</key>')

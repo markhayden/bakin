@@ -7,6 +7,7 @@
  *
  * Uses globalThis so every reach into this module shares one registry.
  */
+import { randomUUID } from 'crypto'
 import type {
   SearchContentTypeDefinition,
   SearchIndexDefinition,
@@ -254,6 +255,67 @@ export function rebuildRegisteredTables(tableName?: string, opts?: RebuildOpts):
   return pass
 }
 
+// ---------------------------------------------------------------------------
+// Reindex as a job (202 + poll)
+// ---------------------------------------------------------------------------
+
+export interface ReindexJobStatus {
+  id: string
+  state: 'running' | 'done' | 'failed'
+  target: string | null
+  force: boolean
+  startedAt: number
+  finishedAt: number | null
+  ok?: boolean
+  errors?: number
+  parked?: number
+  total?: number
+  tables?: ReindexTableOutcome[]
+  error?: string
+}
+
+let lastReindexJob: ReindexJobStatus | null = null
+
+/**
+ * Job wrapper over the single-flight rebuild: callers get a 202-style
+ * handle immediately and poll for the outcome instead of holding an HTTP
+ * socket across a multi-minute blue/green pass (the old sync-only shape
+ * made every long rebuild look like a hang — the CLI had no timeout and
+ * no progress, just a dead prompt). A start while a job is running
+ * attaches to it, mirroring the underlying single-flight.
+ */
+export function startReindexJob(tableName?: string, opts?: RebuildOpts): ReindexJobStatus {
+  if (lastReindexJob?.state === 'running') return lastReindexJob
+  const job: ReindexJobStatus = {
+    id: randomUUID(),
+    state: 'running',
+    target: tableName ?? null,
+    force: Boolean(opts?.force),
+    startedAt: Date.now(),
+    finishedAt: null,
+  }
+  lastReindexJob = job
+  rebuildRegisteredTables(tableName, opts).then((results) => {
+    job.errors = results.filter((r) => r.error).length
+    job.parked = results.filter((r) => r.result === 'parked').length
+    job.ok = job.errors === 0 && job.parked === 0
+    job.total = results.reduce((sum, r) => sum + (r.indexed ?? 0), 0)
+    job.tables = results
+    job.state = 'done'
+    job.finishedAt = Date.now()
+  }).catch((err: unknown) => {
+    job.error = err instanceof Error ? err.message : String(err)
+    job.state = 'failed'
+    job.finishedAt = Date.now()
+    log.error('reindex job failed', err instanceof Error ? err : undefined, { target: tableName ?? 'all' })
+  })
+  return job
+}
+
+export function getReindexJobStatus(): ReindexJobStatus | null {
+  return lastReindexJob
+}
+
 /**
  * Rebuild order = product priority, not plugin-activation accident.
  * High-value, small tables first so useful coverage returns in seconds;
@@ -401,6 +463,10 @@ let lastWedgeRestartAt = 0
  * bounced (2026-07-22 04:03 feedback loop). */
 const POST_RESTART_REGEN_GRACE_MS = 5 * 60 * 1000
 const pumpAttempts = new Map<string, number>()
+/** Consecutive dead-shard bounces before the pump stands down (the doctor's
+ * unreadable-index incident stays visible and owns escalation). */
+const DEAD_SHARD_RESTART_MAX_ATTEMPTS = 3
+let deadShardRestartAttempts = 0
 
 /**
  * Start the migration pump: every cycle, resume any PARKED migration whose
@@ -431,6 +497,41 @@ export function stopMigrationPump(): void {
   wedgeTimer = null
   pumpAttempts.clear()
   lastWedgeRestartAt = 0
+  deadShardRestartAttempts = 0
+}
+
+/**
+ * Dead shards found on a pump pass: bounce the engine so it reloads them.
+ * Shares the wedge restart debounce, and stands down after
+ * DEAD_SHARD_RESTART_MAX_ATTEMPTS consecutive ineffective bounces so a
+ * shard the restart can't heal doesn't put the engine on a bounce loop —
+ * the doctor's unreadable-index incident keeps the human in the loop.
+ */
+async function handleDeadShards(
+  search: ReturnType<typeof getSearchAdapter>,
+  deadShards: string[],
+): Promise<void> {
+  if (deadShards.length === 0) {
+    deadShardRestartAttempts = 0
+    return
+  }
+  if (!search.restartEngine) return
+  if (deadShardRestartAttempts >= DEAD_SHARD_RESTART_MAX_ATTEMPTS) return
+  if (Date.now() - lastWedgeRestartAt < WEDGE_RESTART_DEBOUNCE_MS) return
+  lastWedgeRestartAt = Date.now()
+  deadShardRestartAttempts += 1
+  log.warn('migration pump: dead shard(s) inside a live engine — bouncing it', {
+    tables: deadShards,
+    attempt: deadShardRestartAttempts,
+  })
+  try {
+    await search.restartEngine()
+  } catch (err) {
+    log.warn('dead-shard engine restart failed', { err: err instanceof Error ? err.message : String(err) })
+    return
+  }
+  const { noteSearchEngineProgress } = await import('@bakin/core/search/progress')
+  noteSearchEngineProgress()
 }
 
 /**
@@ -505,11 +606,22 @@ export async function pumpParkedMigrations(
       () => null,
     )
     if (listed === null) return outcomes
+    const deadShards: string[] = []
     for (const state of states.filter((s) => s.state === 'active')) {
       const def = defs.find((d) => d.logical === state.logical)
       if (!def) continue
+      if (listed.has(state.physical)) {
+        // Listed but status-unreadable = a dead shard actor inside a LIVE
+        // engine (two-of-twelve-tables incident, 2026-07-21): queries into
+        // it hang while every other table progresses, so the heartbeat
+        // watchdog never fires. Only an engine restart reloads the shard.
+        // stats() null is the engine's own 404 on the status path; a thrown
+        // error is indeterminate and must not count as dead.
+        const stats = await search.tables.stats(state.physical).catch(() => undefined)
+        if (stats === null) deadShards.push(state.physical)
+        continue
+      }
       if ((pumpAttempts.get(state.logical) ?? 0) >= MIGRATION_PUMP_MAX_ATTEMPTS) continue
-      if (listed.has(state.physical)) continue
       log.warn('migration pump: active physical missing engine-side — regenerating', {
         logical: state.logical,
         physical: state.physical,
@@ -524,6 +636,7 @@ export async function pumpParkedMigrations(
         })
       outcomes.push({ logical: state.logical, result })
     }
+    await handleDeadShards(search, deadShards)
   }
 
   for (const outcome of outcomes) {

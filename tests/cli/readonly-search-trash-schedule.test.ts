@@ -155,15 +155,23 @@ describe('read-only CLI TTY commands — schedule, trash, search', () => {
     expect(output()).not.toContain('Search: "blocked task"')
 
     harness.log.mockClear()
+    // Payload = the real SearchHealthSnapshot shape (logical/docCount/legs);
+    // the old table/stats fields never existed on the route (2026-07-21).
     fetchMock.mockResolvedValueOnce(jsonResponse({
       enabled: true,
+      engineReachable: true,
+      outbox: { pending: 0, quarantined: 0, oldestPendingAt: null },
       tables: [
         {
-          table: 'bakin_tasks',
+          logical: 'bakin_tasks',
           pluginId: 'tasks',
-          stats: { documents: 12 },
+          docCount: 12,
+          lastIndexedAt: null,
+          journalPending: 0,
+          state: 'active',
+          phase: null,
+          legs: [],
           healthy: true,
-          indexHealth: [],
         },
       ],
     }))
@@ -171,8 +179,9 @@ describe('read-only CLI TTY commands — schedule, trash, search', () => {
     await main()
     expect(output()).toContain('Search Stats')
     expect(output()).toContain('TABLES')
-    expect(output()).toContain('bakin_tasks')
+    expect(output()).toContain('tasks')
     expect(output()).toContain('12')
+    expect(output()).toContain('healthy')
     expect(output()).not.toContain('Search: enabled')
   })
 
@@ -192,8 +201,10 @@ describe('read-only CLI TTY commands — schedule, trash, search', () => {
     process.argv = ['bun', 'cli/bakin.ts', 'reindex', '--table', 'tasks', '--rebuild']
     await main()
 
+    // ?async=1 requests the 202-job flow; a pre-rc.23 server (this mock)
+    // ignores it and answers with the final result — the CLI handles both.
     expect(fetchMock).toHaveBeenCalledWith(
-      'http://localhost:3737/api/reindex?table=tasks&rebuild=true',
+      'http://localhost:3737/api/reindex?async=1&table=tasks&rebuild=true',
       expect.objectContaining({ method: 'POST' }),
     )
     expect(output()).toContain('Reindex')

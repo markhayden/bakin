@@ -4,7 +4,7 @@
  * from cli/bakin.ts (B5.3 command-module split).
  */
 import { apiGet, apiPost } from '../http'
-import { exitUsage } from '../help'
+import { confirmPrompt, exitUsage } from '../help'
 import { renderInkReport } from '../../core/cli/ui/render-report'
 import type {
   ReindexResultData,
@@ -29,8 +29,13 @@ async function printSearchResultsTui(query: string, result: Record<string, unkno
   })
 }
 
-async function printSearchStatsTui(enabled: boolean, tables: Array<Record<string, unknown>>): Promise<void> {
-  return renderInkReport(() => import('../../core/cli/ui/readonly'), (m) => m.SearchStatsReport, { enabled, tables })
+async function printSearchStatsTui(snapshot: {
+  enabled: boolean
+  engineReachable?: boolean
+  outbox?: { pending: number; quarantined: number }
+  tables: Array<Record<string, unknown>>
+}): Promise<void> {
+  return renderInkReport(() => import('../../core/cli/ui/readonly'), (m) => m.SearchStatsReport, snapshot)
 }
 
 async function printReindexTui(result: ReindexResultData, options: { target: string; rebuild: boolean }): Promise<void> {
@@ -82,6 +87,7 @@ async function cmdSearchStats(): Promise<void> {
   // walBacklog fields never existed on this route and printed "? docs".
   const result = await apiGet('/api/plugins/health/search-status') as {
     enabled: boolean
+    engineReachable?: boolean
     outbox?: { pending: number; quarantined: number; oldestPendingAt: number | null }
     tables: Array<{
       logical: string
@@ -96,10 +102,19 @@ async function cmdSearchStats(): Promise<void> {
     }>
   }
   if (process.stdout.isTTY) {
-    await printSearchStatsTui(result.enabled, result.tables as unknown as Array<Record<string, unknown>>)
+    await printSearchStatsTui({
+      enabled: result.enabled,
+      engineReachable: result.engineReachable,
+      outbox: result.outbox,
+      tables: result.tables as unknown as Array<Record<string, unknown>>,
+    })
     return
   }
-  console.log(`Search: ${result.enabled ? 'enabled' : 'disabled'}`)
+  // "disabled" (a setting) and "unreachable" (an outage) demand different
+  // fixes — the old conflated header sent a Margo's-box recovery down the
+  // wrong path entirely (2026-07-21).
+  const reachable = result.engineReachable !== false
+  console.log(`Search: ${result.enabled ? (reachable ? 'enabled' : 'enabled — engine UNREACHABLE') : 'disabled'}`)
   if (result.outbox) {
     console.log(`Journal: ${result.outbox.pending} pending · ${result.outbox.quarantined} quarantined`)
   }
@@ -145,29 +160,64 @@ async function cmdReindex(options: { table?: string; rebuild?: boolean; force?: 
   }
 
   let url = '/api/reindex'
-  const params: string[] = []
+  const params: string[] = ['async=1']
   if (options.table) params.push(`table=${encodeURIComponent(options.table)}`)
   if (options.rebuild) params.push('rebuild=true')
   // Default is REPAIR (resume parked, regenerate engine-missing, skip
   // healthy); --force mints fresh generations for every targeted table.
   if (options.force) params.push('force=1')
-  if (params.length) url += `?${params.join('&')}`
+  url += `?${params.join('&')}`
 
   const target = options.table || 'all content'
   if (!process.stdout.isTTY) {
     console.log(`Reindexing ${target} into search${options.rebuild ? ' (rebuild indexes)' : ''}...`)
   }
-  // Response shape = the /api/reindex handler: per-table blue/green outcome
-  // ('migrated'/'parked'/'failed') + backfilled doc count. The old enrichment
-  // fields never existed on this route and printed "undefined documents".
-  // `total`/`parked` are OPTIONAL at runtime: an older not-yet-restarted
-  // server (this box's documented normal state) omits them.
-  const result = await apiPost(url) as ReindexResultData & {
+  // 202-job flow: the server no longer holds the socket across a
+  // multi-minute blue/green pass (the old sync request had NO timeout and
+  // NO progress — a long rebuild was indistinguishable from a hang). We
+  // poll /api/reindex/status and narrate elapsed time. An older
+  // not-yet-restarted server ignores ?async=1 and answers 200 with the
+  // final result directly — handle both shapes.
+  type ReindexResult = ReindexResultData & {
     ok: boolean
     total?: number
     errors: number
     parked?: number
     tables: Array<import('../../core/search-registry-core').ReindexTableOutcome>
+  }
+  const kicked = await apiPost(url) as { job?: { id: string; state: string } } & Partial<ReindexResult>
+  let result: ReindexResult
+  if (kicked.job) {
+    const startedAt = Date.now()
+    let lastNote = 0
+    for (;;) {
+      await new Promise((resolve) => setTimeout(resolve, 2_000))
+      const { job } = await apiGet('/api/reindex/status') as {
+        job: { state: 'running' | 'done' | 'failed'; error?: string } & Partial<ReindexResult>
+      }
+      if (job.state === 'failed') {
+        console.error(`Reindex failed: ${job.error ?? 'unknown error'}`)
+        process.exit(1)
+      }
+      if (job.state === 'done') {
+        result = {
+          ok: job.ok ?? false,
+          total: job.total,
+          errors: job.errors ?? 0,
+          parked: job.parked,
+          tables: job.tables ?? [],
+        }
+        break
+      }
+      const elapsed = Math.round((Date.now() - startedAt) / 1000)
+      // A quiet line every ~15s so a long pass reads as progress, not a hang.
+      if (elapsed - lastNote >= 15) {
+        lastNote = elapsed
+        console.log(`  still rebuilding (${elapsed}s) — queries keep answering from the current tables`)
+      }
+    }
+  } else {
+    result = kicked as ReindexResult
   }
   if (process.stdout.isTTY) {
     await printReindexTui(result, { target, rebuild: options.rebuild === true })
@@ -189,10 +239,67 @@ async function cmdReindex(options: { table?: string; rebuild?: boolean; force?: 
   }
 }
 
+/**
+ * `bakin search:reset` — stop the engine, wipe its derived index data,
+ * start clean, repair-reindex everything from source. The one-command
+ * version of the eight-step manual recovery from 2026-07-21. Derived
+ * data only: content and models are untouched. Gated on an explicit
+ * confirmation (--yes for non-interactive runs).
+ */
+async function cmdSearchReset(options: { yes: boolean }): Promise<void> {
+  if (!options.yes) {
+    const confirmed = await confirmPrompt(
+      'This stops the search engine, wipes its derived index data, and rebuilds every table from source.\nContent and models are untouched; search degrades until the rebuild converges. Continue?',
+    )
+    if (!confirmed) {
+      console.log('Aborted. (Use --yes to skip this prompt.)')
+      return
+    }
+  }
+  console.log('Resetting the search engine (stop → wipe derived data → clean start → repair reindex)...')
+  const result = await apiPost('/api/search/reset') as {
+    ok: boolean
+    message: string
+    job: { id: string; state: string } | null
+  }
+  if (!result.ok) {
+    console.error(`Reset failed: ${result.message}`)
+    process.exit(1)
+  }
+  console.log(result.message)
+  console.log('Rebuild is running in the background — following it now (safe to Ctrl-C; `bakin search:stats` shows progress).')
+  const startedAt = Date.now()
+  let lastNote = 0
+  for (;;) {
+    await new Promise((resolve) => setTimeout(resolve, 2_000))
+    const { job } = await apiGet('/api/reindex/status') as {
+      job: { state: 'running' | 'done' | 'failed'; error?: string; total?: number; errors?: number; parked?: number }
+    }
+    if (job.state === 'failed') {
+      console.error(`Rebuild failed: ${job.error ?? 'unknown error'}`)
+      process.exit(1)
+    }
+    if (job.state === 'done') {
+      console.log(`Done. ${job.total ?? 0} documents reindexed${(job.errors ?? 0) > 0 ? `, ${job.errors} table errors` : ''}${(job.parked ?? 0) > 0 ? `, ${job.parked} parked (doctor resumes them)` : ''}.`)
+      if ((job.errors ?? 0) > 0 || (job.parked ?? 0) > 0) process.exit(1)
+      return
+    }
+    const elapsed = Math.round((Date.now() - startedAt) / 1000)
+    if (elapsed - lastNote >= 15) {
+      lastNote = elapsed
+      console.log(`  still rebuilding (${elapsed}s)...`)
+    }
+  }
+}
+
 export async function run(args: string[]): Promise<void> {
   const cmd = args[0]
   if (cmd === 'search:stats') {
     await cmdSearchStats()
+    return
+  }
+  if (cmd === 'search:reset') {
+    await cmdSearchReset({ yes: args.includes('--yes') || args.includes('-y') })
     return
   }
   if (cmd === 'reindex') {

@@ -32,6 +32,7 @@ import {
   buildBatchInserts,
   buildQueryRequest,
   buildTableCreate,
+  embedderUsable,
   mapIndexStatuses,
   mapQueryResponse,
 } from './translate'
@@ -142,7 +143,14 @@ export class AntflySearchClient implements SearchAdapter {
   }
 
   capabilities(): SearchAdapterCapabilities {
-    return { legs: ['full-text', 'text-embedding', 'media-embedding'], rerank: true, facets: true, transform: true }
+    // Honest capabilities: a leg whose embedder is disabled in settings is
+    // NOT offered — table creates skip it (keyword-only degrade) and the
+    // doctor compares these legs against what content types declare.
+    const legs: SearchAdapterCapabilities['legs'] = ['full-text']
+    if (embedderUsable(this.settings.embedders.default)) legs.push('text-embedding')
+    // Mirrors embeddingIndexFromLeg's resolution: visual falls back to default.
+    if (embedderUsable(this.settings.embedders.visual ?? this.settings.embedders.default)) legs.push('media-embedding')
+    return { legs, rerank: true, facets: true, transform: true }
   }
 
   mappingFingerprint(): string {
@@ -193,7 +201,12 @@ export class AntflySearchClient implements SearchAdapter {
       const raw = await this.requestJson<WireIndexStatusEntry[]>('GET', paths.indexes(name))
       return Array.isArray(raw) ? raw : []
     } catch (err) {
-      if (err instanceof SearchRequestRejectedError) return null // 404: no such table
+      // ONLY a 404 means "no such table". Any other 4xx (malformed leg,
+      // auth, unprocessable) is a distinct failure and must THROW — a null
+      // here becomes "Active Search index is missing" in the doctor, which
+      // sends the operator to a blue/green rebuild instead of the real fix
+      // (Margo's-box incident, 2026-07-21).
+      if (err instanceof SearchRequestRejectedError && err.status === 404) return null
       throw err
     }
   }

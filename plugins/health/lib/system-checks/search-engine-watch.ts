@@ -418,8 +418,8 @@ async function checkSearchEngineBurnWithState(): Promise<HealthCheckRunInput> {
  * honestly during the bounce (D11).
  */
 function engineRestartRepair(
-  actionId: 'search-canary-restart' | 'search-engine-burn-restart',
-  checkId: 'search-canary' | 'search-engine-burn',
+  actionId: 'search-canary-restart' | 'search-engine-burn-restart' | 'search-consistency-restart',
+  checkId: 'search-canary' | 'search-engine-burn' | 'search-consistency',
   title: string,
 ): HealthRepairActionDefinition {
   return {
@@ -489,6 +489,16 @@ export function searchCanaryRepair(): HealthRepairActionDefinition {
 
 export function searchEngineBurnRepair(): HealthRepairActionDefinition {
   return engineRestartRepair('search-engine-burn-restart', 'search-engine-burn', 'Restart the Search engine (zero-progress wedge)')
+}
+
+/**
+ * Consistency-check variant: an active table the engine LISTS but whose
+ * index status reads 404 is a dead shard actor inside a live engine —
+ * field-diagnosed 2026-07-21 (two of twelve tables dark, UI search hanging).
+ * The fix is a bounce, NOT a blue/green rebuild.
+ */
+export function searchConsistencyRestartRepair(): HealthRepairActionDefinition {
+  return engineRestartRepair('search-consistency-restart', 'search-consistency', 'Restart the Search engine (unreadable index)')
 }
 
 function engineWatchStateUnknown(error: EngineWatchStateError) {
