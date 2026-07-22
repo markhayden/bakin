@@ -1,13 +1,21 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  Outlet,
+  RouterProvider,
+} from '@tanstack/react-router'
 import { useRef, useState } from 'react'
 import { expect, waitFor, within } from 'storybook/test'
 
 import { PageShell, Section, Stack } from '@makinbakin/sdk/layout'
+import { PluginLink, useUnsavedChangesGuard } from '@makinbakin/sdk/navigation'
 import {
   ConfirmDialog,
   DangerZone,
   SaveBar,
-  UnsavedChangesDialog,
 } from '@makinbakin/sdk/patterns'
 import { Badge, Button, Input, Label } from '@makinbakin/sdk/ui'
 
@@ -222,14 +230,25 @@ export const ConsequenceFirstDangerZone = {
 } satisfies Story
 
 function ExitDecisionExample() {
-  const [open, setOpen] = useState(true)
-  const [outcome, setOutcome] = useState('Navigation paused')
+  const [dirty, setDirty] = useState(true)
+  const [outcome, setOutcome] = useState('Draft has unsaved changes')
   const triggerRef = useRef<HTMLButtonElement>(null)
 
-  const decide = (next: string) => {
-    setOutcome(next)
-    setOpen(false)
-  }
+  const guard = useUnsavedChangesGuard({
+    hasUnsavedChanges: dirty,
+    saving: false,
+    onCancel: () => setOutcome('Explicit exit approved'),
+    onSaveAndExit: async () => {
+      setDirty(false)
+      setOutcome('Draft saved; navigation may continue')
+      return true
+    },
+    onDiscardAndExit: () => {
+      setDirty(false)
+      setOutcome('Draft discarded; navigation may continue')
+    },
+    finalFocus: triggerRef,
+  })
 
   return (
     <PatternStage
@@ -241,27 +260,41 @@ function ExitDecisionExample() {
         <Stack gap="dense">
           <h2 id="draft-settings-heading">Publishing settings</h2>
           <p className="bakin-destructive-story__muted">A changed provider key has not been saved.</p>
-          <div><Button ref={triggerRef} variant="outline" onClick={() => setOpen(true)}>Leave settings</Button></div>
+          <div className="bakin-destructive-story__actions">
+            <Button ref={triggerRef} variant="outline" onClick={guard.requestExit}>Leave settings</Button>
+            <PluginLink to="/workflows">Open workflows</PluginLink>
+          </div>
           <p role="status">{outcome}</p>
         </Stack>
       </Section>
-      <UnsavedChangesDialog
-        open={open}
-        finalFocus={triggerRef}
-        onSave={() => decide('Draft saved; navigation may continue')}
-        onDiscard={() => decide('Draft discarded; navigation may continue')}
-        onCancel={() => decide('Stayed on settings')}
-      />
+      {guard.dialog}
     </PatternStage>
   )
 }
 
+const exitDecisionRootRoute = createRootRoute({ component: Outlet })
+const exitDecisionRoute = createRoute({
+  getParentRoute: () => exitDecisionRootRoute,
+  path: '/',
+  component: ExitDecisionExample,
+})
+const exitDecisionRouteTree = exitDecisionRootRoute.addChildren([exitDecisionRoute])
+
+function RoutedExitDecisionExample() {
+  const [router] = useState(() => createRouter({
+    routeTree: exitDecisionRouteTree,
+    history: createMemoryHistory({ initialEntries: ['/'] }),
+  }))
+  return <RouterProvider router={router} />
+}
+
 export const UnsavedExitDecision = {
-  render: () => <ExitDecisionExample />,
+  render: () => <RoutedExitDecisionExample />,
   play: async ({ userEvent }) => {
     const page = within(document.body)
+    await userEvent.click(await page.findByRole('button', { name: 'Leave settings' }))
     const dialog = await page.findByRole('dialog', { name: 'Unsaved changes' })
     await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
-    await waitFor(() => expect(page.getByRole('status')).toHaveTextContent('Stayed on settings'))
+    await waitFor(() => expect(page.getByRole('status')).toHaveTextContent('Draft has unsaved changes'))
   },
 } satisfies Story

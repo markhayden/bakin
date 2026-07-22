@@ -137,7 +137,10 @@ divergences are intentional, not drift; don't collapse them (collapsing the
 runtime boundary is adapter-boundary work, not type cleanup).
 
 Sub-paths are declared via `exports` in `packages/sdk/package.json`:
-`@makinbakin/sdk/ui`, `@makinbakin/sdk/hooks`, `@makinbakin/sdk/components`,
+`@makinbakin/sdk/ui`, `@makinbakin/sdk/layout`, `@makinbakin/sdk/patterns`,
+`@makinbakin/sdk/charts`, `@makinbakin/sdk/conversation`,
+`@makinbakin/sdk/content`, `@makinbakin/sdk/navigation`,
+`@makinbakin/sdk/hooks`, `@makinbakin/sdk/components`,
 `@makinbakin/sdk/slots`, `@makinbakin/sdk/types`, `@makinbakin/sdk/utils`,
 `@makinbakin/sdk/metadata`, `@makinbakin/sdk/routing`.
 

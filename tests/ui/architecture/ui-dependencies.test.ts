@@ -154,7 +154,7 @@ describe('design-system stylesheet ownership', () => {
 })
 
 describe('UI performance ratchet', () => {
-  it('accepts the focused content entrypoint in the checked performance schema', () => {
+  it('accepts the focused opt-in entrypoints in the checked performance schema', () => {
     const baseline = snapshot()
     expect(validateUiPerformanceSnapshot(snapshot({
       sdkUiBundles: [
@@ -162,6 +162,12 @@ describe('UI performance ratchet', () => {
         {
           name: 'sdk-content',
           path: 'packages/host/public/vendor/sdk-content.js',
+          bytes: 1,
+          reachableBytes: 1,
+        },
+        {
+          name: 'sdk-navigation',
+          path: 'packages/host/public/vendor/sdk-navigation.js',
           bytes: 1,
           reachableBytes: 1,
         },

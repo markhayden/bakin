@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import * as PrivatePatterns from '@bakin/ui/patterns'
 import * as Components from '@makinbakin/sdk/components'
+import * as Navigation from '@makinbakin/sdk/navigation'
 import * as Patterns from '@makinbakin/sdk/patterns'
 
 const ROOT = resolve(import.meta.dir, '../../..')
@@ -17,6 +18,7 @@ describe('canonical destructive and dirty-state patterns', () => {
     expect(Components.ConfirmDialog).toBe(PrivatePatterns.ConfirmDialog)
     expect(Components.SaveBar).toBe(PrivatePatterns.SaveBar)
     expect(Components.DangerZone).toBe(PrivatePatterns.DangerZone)
+    expect(Components.useUnsavedChangesGuard).toBe(Navigation.useUnsavedChangesGuard)
   })
 
   it('keeps presentation free of routing, persistence, and legacy host styling', () => {
@@ -32,14 +34,14 @@ describe('canonical destructive and dirty-state patterns', () => {
   })
 
   it('retains the shipped TanStack, anchor, and hard-navigation guard contract', () => {
-    const guard = read('src/components/unsaved-changes-guard.tsx')
+    const guard = read('packages/sdk/src/navigation/unsaved-changes-guard.tsx')
     const navigationGate = read('tests/architecture/no-hard-navigation.test.ts')
-    expect(guard).toContain("from '@makinbakin/sdk/patterns'")
+    expect(guard).toContain("from '@bakin/ui/patterns'")
     expect(guard).toContain('tanStackRouter.history.block')
     expect(guard).toContain("document.addEventListener('click'")
     expect(guard).toContain('window.location.assign(href)')
     expect(guard).toContain('current.pathname === next.pathname')
-    expect(navigationGate).toContain("rel === 'src/components/unsaved-changes-guard.tsx'")
+    expect(navigationGate).toContain("rel === 'packages/sdk/src/navigation/unsaved-changes-guard.tsx'")
   })
 
   it('documents retry, mobile ordering, and the existing routing exception', () => {
@@ -47,6 +49,7 @@ describe('canonical destructive and dirty-state patterns', () => {
     const guide = read('docs/src/content/docs/extending/ui/overview.md')
     expect(story).toContain("title: 'Patterns/Destructive and dirty state'")
     expect(story).toContain('Retry save')
+    expect(story).toContain("from '@makinbakin/sdk/navigation'")
     expect(guide).toContain('Destructive and Dirty-State Recipe')
     expect(guide).toContain('recent routing work')
     expect(guide).toContain('pinned exception')

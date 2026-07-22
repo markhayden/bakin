@@ -67,13 +67,13 @@ import { useSearch, useDebug } from '@makinbakin/sdk/hooks'
 
 | Hook | Description |
 | --- | --- |
-| `useQueryState` | Bind a single component-state value to a URL query param. |
-| `useQueryArrayState` | Bind a multi-value (array) component state to a URL query param. |
+| `useQueryState` | — |
+| `useQueryArrayState` | — |
 | `useSidebar` | Read sidebar open/closed state and toggle helper. |
-| `useRouter` | Access the TanStack Router instance for imperative navigation. |
-| `usePathname` | Current URL pathname (Next.js-shape compatible). |
-| `useSearchParams` | Current URL search params as a URLSearchParams instance. |
-| `useParams` | Current route's typed path parameters. |
+| `useRouter` | — |
+| `usePathname` | — |
+| `useSearchParams` | — |
+| `useParams` | — |
 
 ### Agent Data
 
@@ -134,10 +134,10 @@ import { useSearch, useDebug } from '@makinbakin/sdk/hooks'
 | `useFileDrop` | Headless drag-drop file intake (drag-over state + handlers + accept filter) — style your own zone. |
 | `UseFileDropOptions` | — |
 | `UseFileDropResult` | — |
-| `useHistoryBack` | History-aware back for detail surfaces reachable from many places — real back() with a fallback route for cold deep-links. |
+| `useHistoryBack` | — |
 | `useHorizontalResize` | Resize a side-by-side split pane by dragging the divider between columns. |
 | `useAvailableModels` | The available-models catalog (cached, read-only); empty until loaded. |
-| `toNavigationOptions` | Split a browser-style URL string into TanStack navigate options (non-hook). |
+| `toNavigationOptions` | — |
 
 ## `@makinbakin/sdk/components`
 
@@ -169,10 +169,10 @@ import { PluginHeader, FacetFilter, AgentAvatar } from '@makinbakin/sdk/componen
 | `DangerZone` | Red-bordered destructive settings section with typed-confirmation delete — bottom of every settings surface. |
 | `DangerZoneProps` | — |
 | `EmptyState` | Centered empty-state component with icon, title, and CTA. |
-| `SaveBar` | Sticky save/discard bar for staged-draft pages (THE dirty-state pattern) + `useUnsavedGuard`. |
-| `useUnsavedGuard` | Sticky save/discard bar for staged-draft pages (THE dirty-state pattern) + `useUnsavedGuard`. |
+| `SaveBar` | Sticky save/discard bar for staged-draft pages (THE dirty-state pattern). |
 | `SaveBarProps` | — |
-| `useUnsavedChangesGuard` | Full navigation guard for dirty surfaces: beforeunload + TanStack history block + anchor interception + exit dialog. |
+| `useUnsavedGuard` | — |
+| `useUnsavedChangesGuard` | — |
 | `UnsavedChangesGuardOptions` | — |
 | `SectionCard` | Titled card with icon + a one-line "why this matters" description — the standard section wrapper. |
 | `SectionCardProps` | — |
@@ -210,7 +210,7 @@ import { PluginHeader, FacetFilter, AgentAvatar } from '@makinbakin/sdk/componen
 | `MarkdownEditorProps` | — |
 | `ModelSelect` | Model picker dropdown listing available models from the catalog. |
 | `PageLayout` | Standard plugin page wrapper with header, content area, and toaster. |
-| `PluginLink` | Client-side link for runtime-registered plugin and cross-plugin routes. |
+| `PluginLink` | — |
 | `PluginLinkProps` | — |
 | `PluginHeader` | Plugin page header with title, count badge, search, and action buttons. |
 | `PluginHeaderProps` | — |
@@ -780,6 +780,29 @@ Source: `packages/sdk/src/routing/index.ts`.
 | `APIRoute` | — |
 | `PluginWithRoutes` | — |
 | `DefinePluginInput` | — |
+
+## `@makinbakin/sdk/navigation`
+
+Source: `packages/sdk/src/navigation/index.ts`.
+
+| Browser navigation | Description |
+| --- | --- |
+| `PluginLink` | Real-anchor SPA navigation for runtime-registered plugin routes. |
+| `PluginLinkProps` | Props for a runtime-route link with native anchor semantics. |
+| `toNavigationOptions` | Browser router hooks and plain-string URL conversion. |
+| `useParams` | Browser router hooks and plain-string URL conversion. |
+| `usePathname` | Browser router hooks and plain-string URL conversion. |
+| `useRouter` | Browser router hooks and plain-string URL conversion. |
+| `useSearchParams` | Browser router hooks and plain-string URL conversion. |
+| `Router` | Public browser-router contracts for string-based plugin paths. |
+| `RouterNavigationOptions` | Public browser-router contracts for string-based plugin paths. |
+| `StringNavigationOptions` | Public browser-router contracts for string-based plugin paths. |
+| `useQueryArrayState` | URL-backed string state with clean defaults and same-tick batching. |
+| `useQueryState` | URL-backed string state with clean defaults and same-tick batching. |
+| `useHistoryBack` | History-aware back navigation with a cold-deep-link fallback. |
+| `useUnsavedChangesGuard` | Complete browser-unload, in-app route, anchor, and explicit-exit protection. |
+| `UnsavedChangesGuardOptions` | Inputs and result contract for complete unsaved-change protection. |
+| `UnsavedChangesGuardResult` | Inputs and result contract for complete unsaved-change protection. |
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
   <span>Generated Jul 21, 2026 · Bakin 0.0.0-dev</span>

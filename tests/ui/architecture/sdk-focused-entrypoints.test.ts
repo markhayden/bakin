@@ -12,7 +12,7 @@ import {
 } from '../../../src/core/whiskit/externals'
 
 const REPO_ROOT = resolve(import.meta.dir, '../../..')
-const FOCUSED_SUBPATHS = ['ui', 'layout', 'patterns', 'charts', 'conversation', 'content'] as const
+const FOCUSED_SUBPATHS = ['ui', 'layout', 'patterns', 'charts', 'conversation', 'content', 'navigation'] as const
 
 function readJson(path: string): Record<string, any> {
   return JSON.parse(readFileSync(join(REPO_ROOT, path), 'utf8')) as Record<string, any>
@@ -78,6 +78,8 @@ describe('focused public SDK entrypoint contract', () => {
     expect(importMap['react-dom']).toBe('/vendor/react-dom.js')
     expect(importMap['react-dom/client']).toBe('/vendor/react-dom.js')
     expect(sdk.peerDependencies).toMatchObject({ react: '^19.0.0', 'react-dom': '^19.0.0' })
+    expect(sdk.peerDependencies).toMatchObject({ '@tanstack/react-router': '^1.168.23' })
+    expect(sdk.dependencies?.['@tanstack/react-router']).toBeUndefined()
     expect(sdk.dependencies?.react).toBeUndefined()
     expect(sdk.dependencies?.['react-dom']).toBeUndefined()
     expect(ui.peerDependencies).toMatchObject({ react: '^19.0.0', 'react-dom': '^19.0.0' })

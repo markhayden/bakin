@@ -2,16 +2,16 @@
   "schemaVersion": 1,
   "generatedBy": "bun run ui:public-api:generate",
   "contracts": {
-    "routing": "@makinbakin/sdk/routing and the existing query-state hooks remain authoritative; visual entrypoints do not create a second routing model.",
+    "routing": "@makinbakin/sdk/routing owns server HTTP declarations; @makinbakin/sdk/navigation owns browser links, URL state, history, and dirty-exit behavior.",
     "stylesheet": "@makinbakin/sdk/styles.css",
     "privateImplementation": "@bakin/ui"
   },
   "summary": {
-    "entrypoints": 7,
-    "supportedEntrypoints": 6,
+    "entrypoints": 8,
+    "supportedEntrypoints": 7,
     "frozenLegacyEntrypoints": 1,
-    "valueExports": 311,
-    "typeExports": 378
+    "valueExports": 321,
+    "typeExports": 384
   },
   "entrypoints": [
     {
@@ -634,6 +634,34 @@
         "MarkdownEditorMode",
         "MarkdownEditorProps",
         "MarkdownInternalLinkProps"
+      ]
+    },
+    {
+      "specifier": "@makinbakin/sdk/navigation",
+      "sourcePath": "packages/sdk/src/navigation/index.ts",
+      "domain": "navigation",
+      "purpose": "Browser links, URL state, history, and complete dirty-exit behavior for runtime plugin routes.",
+      "status": "supported-prerelease",
+      "newConsumerPolicy": "supported",
+      "values": [
+        "PluginLink",
+        "toNavigationOptions",
+        "useHistoryBack",
+        "useParams",
+        "usePathname",
+        "useQueryArrayState",
+        "useQueryState",
+        "useRouter",
+        "useSearchParams",
+        "useUnsavedChangesGuard"
+      ],
+      "types": [
+        "PluginLinkProps",
+        "Router",
+        "RouterNavigationOptions",
+        "StringNavigationOptions",
+        "UnsavedChangesGuardOptions",
+        "UnsavedChangesGuardResult"
       ]
     },
     {

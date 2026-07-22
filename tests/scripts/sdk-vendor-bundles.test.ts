@@ -96,6 +96,11 @@ describe('split SDK vendor build', () => {
     expect(typeof hooks.useQueryState).toBe('function')
     expect(typeof hooks.useQueryArrayState).toBe('function')
 
+    const navigation = await import(join(outDir, 'sdk-navigation.js'))
+    expect(typeof navigation.PluginLink).toBe('function')
+    expect(typeof navigation.useUnsavedChangesGuard).toBe('function')
+    expect(navigation.useUnsavedGuard).toBeUndefined()
+
     const slots = await import(join(outDir, 'sdk-slots.js'))
     expect(typeof slots.registerSlot).toBe('function')
     expect(slots.Slot).toBeDefined()

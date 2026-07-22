@@ -67,6 +67,7 @@ export const SDK_VENDOR_TARGETS: ReadonlyArray<{ specifier: string; name: string
   { specifier: '@makinbakin/sdk/utils', name: 'sdk-utils', entrypoint: 'packages/sdk/src/utils/index.ts' },
   { specifier: '@makinbakin/sdk/metadata', name: 'sdk-metadata', entrypoint: 'packages/sdk/src/metadata/index.ts' },
   { specifier: '@makinbakin/sdk/routing', name: 'sdk-routing', entrypoint: 'packages/sdk/src/routing/index.ts' },
+  { specifier: '@makinbakin/sdk/navigation', name: 'sdk-navigation', entrypoint: 'packages/sdk/src/navigation/index.ts' },
   { specifier: '@makinbakin/sdk/internal', name: 'sdk-internal', entrypoint: 'packages/sdk/src/internal/index.ts' },
 ]
 

@@ -269,11 +269,11 @@ const eslintConfig = defineConfig([
       "packages/host/src/api/**",
       "packages/host/src/dev-client/**",
       // Deliberate full reloads, reasons in the arch test:
-      "src/components/unsaved-changes-guard.tsx",
+      "packages/sdk/src/navigation/unsaved-changes-guard.tsx",
       "src/lib/browser-notify.ts",
       "packages/host/src/components/layout/header.tsx",
       "packages/host/src/plugin-host/PluginHost.tsx",
-      "packages/sdk/src/hooks/router.ts",
+      "packages/sdk/src/navigation/router.ts",
       "src/hooks/use-sse.ts",
     ],
     rules: {

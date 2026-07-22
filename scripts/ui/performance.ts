@@ -29,6 +29,7 @@ const UI_VENDOR_NAMES = new Set([
   'sdk-charts',
   'sdk-conversation',
   'sdk-content',
+  'sdk-navigation',
 ])
 
 export interface ByteArtifact {

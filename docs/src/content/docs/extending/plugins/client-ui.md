@@ -135,8 +135,7 @@ Patterns support exact paths and dynamic segments in `:id`, `[id]`, or `$id` for
 Internal navigation must stay client-side — a raw `<a href="/…">` or `window.location` assignment reloads the whole shell (and fails Bakin's lint/architecture checks for in-tree plugins). Use:
 
 ```tsx
-import { PluginLink } from '@makinbakin/sdk/components'
-import { useRouter } from '@makinbakin/sdk/hooks'
+import { PluginLink, useRouter } from '@makinbakin/sdk/navigation'
 
 // Links: a real anchor (copy / cmd-click / middle-click all work) that
 // routes primary clicks through the client router.
@@ -149,12 +148,11 @@ router.push(url, { scroll: false })            // keep scroll position
 router.replace(`/docs-basic?view=grid`)        // no history entry; keeps scroll
 ```
 
-:::caution[Prerelease API checkpoint]
-`PluginLink` is still available only through the frozen migration barrel even
-though it is required for real-anchor client navigation. Do not copy its
-implementation or silently add another navigation abstraction. Raise this as
-a public-API gap before shipping a new consumer; the component/layout contract
-checkpoint must either publish a focused path or record a deliberate decision.
+:::note[One browser navigation boundary]
+`@makinbakin/sdk/navigation` also publishes URL-state hooks, history-aware back
+behavior, and the complete unsaved-changes guard. Keep server HTTP declarations
+in `@makinbakin/sdk/routing`; do not copy either implementation or add another
+router abstraction.
 :::
 
 Query values are always plain strings (`?id=123` reads back as `'123'`), and multiple `useQueryState` setter calls in one handler compose into a single navigation.

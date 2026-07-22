@@ -41,6 +41,7 @@
       "@makinbakin/sdk/utils": ["./packages/sdk/src/utils/index.ts"],
       "@makinbakin/sdk/metadata": ["./packages/sdk/src/metadata/index.ts"],
       "@makinbakin/sdk/routing": ["./packages/sdk/src/routing/index.ts"],
+      "@makinbakin/sdk/navigation": ["./packages/sdk/src/navigation/index.ts"],
       "@makinbakin/sdk/testing": ["./packages/sdk/src/testing/index.ts"],
       "@makinbakin/sdk/internal": ["./packages/sdk/src/internal/index.ts"],
       "@bakin/core/docs": ["./packages/core/src/docs/index.ts"],

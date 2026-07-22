@@ -35,7 +35,7 @@ import {
   isExternalsContractCompatible,
   type WhiskitBuildProvenance,
 } from '../../../src/core/whiskit/provenance'
-import { EXTERNALS_CONTRACT } from '../../../src/core/whiskit/externals'
+import { EXTERNALS_CONTRACT, supportsExternalsContract } from '../../../src/core/whiskit/externals'
 
 let dir: string | null = null
 afterEach(() => {
@@ -108,10 +108,22 @@ describe('whiskit provenance', () => {
   })
 
   it('reports externals-contract compatibility', () => {
+    expect(EXTERNALS_CONTRACT).toBe('react19-sdk-makinbakin-v2')
     expect(isExternalsContractCompatible(validProvenance())).toBe(true)
+    expect(
+      isExternalsContractCompatible({ ...validProvenance(), externalsContract: 'react19-sdk-makinbakin-v1' }),
+    ).toBe(true)
+    expect(
+      isExternalsContractCompatible({ ...validProvenance(), externalsContract: 'react19-sdk-makinbakin-v3' }),
+    ).toBe(false)
     expect(
       isExternalsContractCompatible({ ...validProvenance(), externalsContract: 'react18-old' }),
     ).toBe(false)
+    expect(
+      supportsExternalsContract('react19-sdk-makinbakin-v2', 'react19-sdk-makinbakin-v1'),
+    ).toBe(false)
+    expect(supportsExternalsContract('malformed', EXTERNALS_CONTRACT)).toBe(false)
+    expect(supportsExternalsContract('-v1', EXTERNALS_CONTRACT)).toBe(false)
   })
 
   it('writes pretty-printed JSON with a trailing newline (atomic writer)', () => {

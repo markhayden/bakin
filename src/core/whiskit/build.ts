@@ -48,6 +48,7 @@ export const SDK_SUBPATHS = [
   'utils',
   'metadata',
   'routing',
+  'navigation',
 ] as const
 
 export interface SdkResolution {

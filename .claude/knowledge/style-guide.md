@@ -106,9 +106,10 @@ never sit at rest in a card — surface on hover or behind the detail view.
 - Long-form docs: dedicated editor route with its own `SaveBar`.
 - Guard rails for staged drafts (all four, always): key the component by the
   route param; freshness-gate whole-record PUTs; clear the draft by
-  snapshot-compare; wire the existing `useUnsavedChangesGuard`. The guard's
-  focused public location is an unresolved prerelease API checkpoint gap; do
-  not copy it or create a parallel navigation engine.
+  snapshot-compare; wire `useUnsavedChangesGuard` from
+  `@makinbakin/sdk/navigation`. Do not use the deprecated unload-only
+  `useUnsavedGuard`, copy the complete guard, or create a parallel navigation
+  engine.
 - Cross-domain writes (e.g. asset notes from a brand page) stay immediate —
   they're not part of this page's draft.
 
@@ -126,13 +127,15 @@ never sit at rest in a card — surface on hover or behind the detail view.
 ## 7. Navigation & routing
 
 - Detail surfaces are path routes (`/thing/$id`), tabs/filters are URL query
-  state (`useQueryState` — CLAUDE.md mandate; search filters included).
-- Back is `useHistoryBack(fallback)` + icon-only arrow. Exception: after
+  state (`useQueryState` from `@makinbakin/sdk/navigation`; search filters
+  included).
+- Back is `useHistoryBack(fallback)` from the navigation entrypoint plus an
+  icon-only arrow. Exception: after
   DELETING the thing, navigate to the list explicitly.
 - Deep-linkable editors follow the workflows-edit precedent: route wrapper
   passes params + onSaved/back callbacks into the slot component.
 - Query values are plain strings: `?id=123` stays the string `'123'`. Use the
-  existing query-state hooks and their default omission/batching behavior;
+  navigation entrypoint's query-state hooks and their default omission/batching behavior;
   never add JSON coercion or rebuild query strings locally.
 
 ## 8. Empty, loading, error

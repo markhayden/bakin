@@ -34,10 +34,12 @@ export { DangerZone } from '@/components/danger-zone'
 export type { DangerZoneProps } from '@/components/danger-zone'
 /** Centered empty-state component with icon, title, and CTA. */
 export { EmptyState } from '@/components/empty-state'
-/** Sticky save/discard bar for staged-draft pages (THE dirty-state pattern) + `useUnsavedGuard`. */
-export { SaveBar, useUnsavedGuard } from '@/components/save-bar'
+/** Sticky save/discard bar for staged-draft pages (THE dirty-state pattern). */
+export { SaveBar } from '@/components/save-bar'
 export type { SaveBarProps } from '@/components/save-bar'
-/** Full navigation guard for dirty surfaces: beforeunload + TanStack history block + anchor interception + exit dialog. */
+/** @deprecated Unload-only protection; use the complete guard from `@makinbakin/sdk/navigation`. */
+export { useUnsavedGuard } from '@/components/save-bar'
+/** @deprecated Import the complete dirty-exit guard from `@makinbakin/sdk/navigation`. */
 export { useUnsavedChangesGuard } from '@/components/unsaved-changes-guard'
 export type { UnsavedChangesGuardOptions } from '@/components/unsaved-changes-guard'
 /** Titled card with icon + a one-line "why this matters" description — the standard section wrapper. */
@@ -97,7 +99,7 @@ export type {
 export { ModelSelect } from '@/components/model-select'
 /** Standard plugin page wrapper with header, content area, and toaster. */
 export { PageLayout } from '@/components/page-layout'
-/** Client-side link for runtime-registered plugin and cross-plugin routes. */
+/** @deprecated Import runtime-route links from `@makinbakin/sdk/navigation`. */
 export { PluginLink } from './plugin-link'
 export type { PluginLinkProps } from './plugin-link'
 /** Plugin page header with title, count badge, search, and action buttons. */

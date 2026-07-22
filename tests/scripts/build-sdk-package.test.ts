@@ -52,6 +52,7 @@ describe('buildSdkPackage', () => {
     expect(pkg.version).toBe('0.9.0-rc.1')
     expect(pkg.type).toBe('module')
     expect(pkg.peerDependencies).toEqual({
+      '@tanstack/react-router': '^1.168.23',
       react: '^19.0.0',
       'react-dom': '^19.0.0',
     })

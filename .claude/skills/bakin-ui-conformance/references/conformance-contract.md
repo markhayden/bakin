@@ -32,6 +32,7 @@ Use the most specific applicable layer:
 | exact data plus visual summaries | `Charts/` | `@makinbakin/sdk/charts` |
 | messages, turns, composer, streaming, tool detail | `Conversation/` | `@makinbakin/sdk/conversation` |
 | rendered or editable rich text | `Content/` | `@makinbakin/sdk/content` |
+| runtime links, URL state, history, dirty-exit behavior | `Patterns/Destructive and dirty state` | `@makinbakin/sdk/navigation` |
 
 Archetypes own page composition. Primitives do not grant permission to rebuild an archetype locally.
 

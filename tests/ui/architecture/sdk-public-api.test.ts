@@ -54,7 +54,7 @@ describe('focused SDK migration API freeze', () => {
     const legacy = inventory.entrypoints.find((entry) => entry.specifier === '@makinbakin/sdk/components')
     const focused = inventory.entrypoints.filter((entry) => entry !== legacy)
 
-    expect(focused).toHaveLength(6)
+    expect(focused).toHaveLength(7)
     expect(focused.every((entry) => entry.status === 'supported-prerelease')).toBe(true)
     expect(focused.every((entry) => entry.newConsumerPolicy === 'supported')).toBe(true)
     expect(legacy).toMatchObject({
@@ -62,6 +62,7 @@ describe('focused SDK migration API freeze', () => {
       newConsumerPolicy: 'migration-only',
     })
     expect(inventory.contracts.routing).toContain('@makinbakin/sdk/routing')
+    expect(inventory.contracts.routing).toContain('@makinbakin/sdk/navigation')
     expect(inventory.contracts.stylesheet).toBe('@makinbakin/sdk/styles.css')
   })
 })

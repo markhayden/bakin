@@ -581,7 +581,7 @@ Whiskit writes a build record into the artifact at publish time:
   "sourceTreeSha": "...",
   "manifestSha": "...",
   "packageLockSha": "...",
-  "externalsContract": "react19-sdk-makinbakin-v1",
+  "externalsContract": "react19-sdk-makinbakin-v2",
   "approvedInstallScripts": [
     {
       "package": "sharp",
@@ -748,9 +748,11 @@ serve.
 
 ## Host Upgrade Compatibility
 
-When a Bakin release bumps React or the SDK externals contract, installed
-artifacts whose provenance `externalsContract` no longer matches are marked
-**needs-update**, not silently inactive-forever. The repair path is to fetch a
+Externals versions are additive within the same family: a v2 host can load v1
+and v2 artifacts, while a v1 host rejects artifacts that require v2. A breaking
+React or SDK change starts an incompatible family. Installed artifacts whose
+provenance contract the host cannot satisfy are marked **needs-update**, not
+silently inactive-forever. The repair path is to fetch a
 newer compatible **published artifact** (a normal download), not a local
 rebuild. Doctor surfaces this and can perform the re-fetch. This avoids the
 "upgrade Bakin → all plugins vanish until manual rebuild" failure mode, and is

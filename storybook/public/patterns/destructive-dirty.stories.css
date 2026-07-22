@@ -65,6 +65,29 @@
   gap: var(--bakin-layout-space-2);
 }
 
+.bakin-destructive-story__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--bakin-layout-space-3);
+}
+
+.bakin-destructive-story__actions a {
+  color: var(--bakin-color-signal-accent);
+  font-weight: var(--bakin-typography-weight-medium);
+  text-underline-offset: .2em;
+}
+
+.bakin-destructive-story__actions a:hover {
+  color: var(--bakin-color-text-primary);
+}
+
+.bakin-destructive-story__actions a:focus-visible {
+  border-radius: var(--bakin-radius-control);
+  outline: 2px solid var(--bakin-color-focus-ring);
+  outline-offset: 3px;
+}
+
 .bakin-destructive-story__workspace {
   display: grid;
   min-block-size: 18rem;

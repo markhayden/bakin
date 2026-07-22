@@ -50,11 +50,13 @@ export const SDK_EXPORTS: SdkExportEntry[] = [
   { exportPath: './utils', source: 'packages/sdk/src/utils/index.ts', importPath: './utils/index.js', typesPath: './utils/index.d.ts' },
   { exportPath: './metadata', source: 'packages/sdk/src/metadata/index.ts', importPath: './metadata/index.js', typesPath: './metadata/index.d.ts' },
   { exportPath: './routing', source: 'packages/sdk/src/routing/index.ts', importPath: './routing/index.js', typesPath: './routing/index.d.ts' },
+  { exportPath: './navigation', source: 'packages/sdk/src/navigation/index.ts', importPath: './navigation/index.js', typesPath: './navigation/index.d.ts' },
   { exportPath: './testing', source: 'packages/sdk/src/testing/index.ts', importPath: './testing/index.js', typesPath: './testing/index.d.ts' },
   { exportPath: './internal', source: 'packages/sdk/src/internal/index.ts', importPath: './internal/index.js', typesPath: './internal/index.d.ts' },
 ]
 
 const EXTERNAL_JS_PEERS = [
+  '@tanstack/react-router',
   'react',
   'react-dom',
   'react-dom/client',
@@ -384,6 +386,7 @@ function writePackageJson(outDir: string, version: string): void {
       'README.md',
     ],
     peerDependencies: sourcePkg.peerDependencies ?? {
+      '@tanstack/react-router': '^1.168.23',
       react: '^19.0.0',
       'react-dom': '^19.0.0',
     },

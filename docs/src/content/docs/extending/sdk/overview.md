@@ -25,6 +25,7 @@ description: Use @makinbakin/sdk to build plugins with supported registration, r
 | `@makinbakin/sdk/utils` | shared utilities |
 | `@makinbakin/sdk/metadata` | docs-aware contract helper types and compatibility exports |
 | `@makinbakin/sdk/routing` | typed declarative route helpers re-exported from the canonical routing package |
+| `@makinbakin/sdk/navigation` | browser links, router hooks, URL state, history, and dirty-exit protection |
 | `@makinbakin/sdk/styles.css` | canonical compiled design-system stylesheet |
 
 </div>
@@ -64,7 +65,7 @@ At build time, plugin bundles should mark `@makinbakin/sdk`, `@makinbakin/sdk/*`
 
 </div>
 
-All public types are importable from `@makinbakin/sdk` or `@makinbakin/sdk/types`. Routing-specific types are also available from `@makinbakin/sdk/routing`.
+All public types are importable from `@makinbakin/sdk` or `@makinbakin/sdk/types`. Server route declaration types are also available from `@makinbakin/sdk/routing`; browser router, link, URL-state, history, and dirty-exit contracts are available from `@makinbakin/sdk/navigation`.
 
 Health producer constructors are available from `@makinbakin/sdk/utils`: `healthHealthy`, `healthWarning`, `healthError`, `healthUnknown`, `healthObserved`, and `healthNotApplicable`. They preserve the status/disposition invariants at the call site; core still validates all runtime input before publishing it.
 

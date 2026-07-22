@@ -22,8 +22,7 @@ mock.module('@tanstack/react-router', () => ({
   useNavigate: () => navigate,
 }))
 
-import { PluginLink } from '../../packages/sdk/src/components/plugin-link'
-import { toNavigationOptions, useRouter } from '../../packages/sdk/src/hooks/router'
+import { PluginLink, toNavigationOptions, useRouter } from '@makinbakin/sdk/navigation'
 
 function ReplaceProbe() {
   const router = useRouter()

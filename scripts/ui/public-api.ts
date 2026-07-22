@@ -11,7 +11,7 @@ const SCHEMA_PATH = join(REPO_ROOT, 'design-system/public-api.schema.json')
 
 export type PublicApiStatus = 'supported-prerelease' | 'migration-only-frozen'
 export type PublicApiConsumerPolicy = 'supported' | 'migration-only'
-export type PublicApiDomain = 'ui' | 'layout' | 'patterns' | 'charts' | 'conversation' | 'content' | 'legacy'
+export type PublicApiDomain = 'ui' | 'layout' | 'patterns' | 'charts' | 'conversation' | 'content' | 'navigation' | 'legacy'
 
 export interface PublicApiEntrypoint {
   specifier: string
@@ -94,6 +94,14 @@ export const PUBLIC_API_ENTRYPOINTS: readonly EntrypointDefinition[] = [
     newConsumerPolicy: 'supported',
   },
   {
+    specifier: '@makinbakin/sdk/navigation',
+    sourcePath: 'packages/sdk/src/navigation/index.ts',
+    domain: 'navigation',
+    purpose: 'Browser links, URL state, history, and complete dirty-exit behavior for runtime plugin routes.',
+    status: 'supported-prerelease',
+    newConsumerPolicy: 'supported',
+  },
+  {
     specifier: '@makinbakin/sdk/components',
     sourcePath: 'packages/sdk/src/components/index.ts',
     domain: 'legacy',
@@ -164,7 +172,7 @@ export function buildPublicApiInventory(root = REPO_ROOT): PublicApiInventory {
     schemaVersion: 1,
     generatedBy: 'bun run ui:public-api:generate',
     contracts: {
-      routing: '@makinbakin/sdk/routing and the existing query-state hooks remain authoritative; visual entrypoints do not create a second routing model.',
+      routing: '@makinbakin/sdk/routing owns server HTTP declarations; @makinbakin/sdk/navigation owns browser links, URL state, history, and dirty-exit behavior.',
       stylesheet: '@makinbakin/sdk/styles.css',
       privateImplementation: '@bakin/ui',
     },

@@ -910,13 +910,15 @@ Produces the bundles that the browser import map points at:
 packages/host/public/vendor/
   react.js, react-dom.js
   jsx-runtime.js, jsx-dev-runtime.js, tanstack-router.js
-  sdk-index.js, sdk-ui.js, sdk-hooks.js, sdk-components.js,
+  sdk-index.js, sdk-ui.js, sdk-layout.js, sdk-patterns.js,
+  sdk-charts.js, sdk-conversation.js, sdk-content.js,
+  sdk-navigation.js, sdk-hooks.js, sdk-components.js,
   sdk-slots.js, sdk-types.js, sdk-utils.js, sdk-metadata.js,
-  sdk-routing.js
+  sdk-routing.js, sdk-internal.js
   sdk-shared-<hash>.js   ← code-split chunks shared by the SDK bundles
 ```
 
-The nine SDK sub-paths are built in one `bun build --splitting`
+All browser-resolvable SDK entrypoints are built in one `bun build --splitting`
 invocation, so code shared between sub-paths exists once in the
 `sdk-shared-*` chunks (loaded via relative imports — they need no
 import-map entries). Only the chunk names are content-hashed; the entry

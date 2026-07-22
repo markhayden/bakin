@@ -40,7 +40,7 @@
         "properties": {
           "specifier": { "type": "string", "pattern": "^@makinbakin/sdk/" },
           "sourcePath": { "type": "string", "pattern": "^packages/sdk/src/.+/index\\.ts$" },
-          "domain": { "enum": ["ui", "layout", "patterns", "charts", "conversation", "content", "legacy"] },
+          "domain": { "enum": ["ui", "layout", "patterns", "charts", "conversation", "content", "navigation", "legacy"] },
           "purpose": { "type": "string", "minLength": 1 },
           "status": { "enum": ["supported-prerelease", "migration-only-frozen"] },
           "newConsumerPolicy": { "enum": ["supported", "migration-only"] },

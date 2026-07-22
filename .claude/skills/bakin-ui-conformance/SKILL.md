@@ -13,8 +13,8 @@ Read [references/conformance-contract.md](references/conformance-contract.md) be
 
 1. Identify every affected browser surface, including loading, empty, error, busy, disabled, narrow, and long-content states. Treat core and official Bits as one first-party fleet.
 2. Inspect the closest public Storybook pattern before proposing markup or styling. Search `storybook/public/` by interaction, archetype, component, and state—not only by the requested feature name.
-3. State the selected story path and export in the working notes. Compose supported focused entrypoints: `@makinbakin/sdk/ui`, `/layout`, `/patterns`, `/charts`, `/conversation`, and `/content`. Do not add a new consumer of the frozen `/components` barrel.
-4. Preserve the recent routing contract. Reuse existing query-state hooks, path/query taxonomy, client navigation, history, and scroll behavior; do not create visual-only routing abstractions.
+3. State the selected story path and export in the working notes. Compose supported focused entrypoints: `@makinbakin/sdk/ui`, `/layout`, `/patterns`, `/charts`, `/conversation`, `/content`, and `/navigation`. Do not add a new consumer of the frozen `/components` barrel.
+4. Preserve the recent routing contract. Use `/navigation` for browser links, router hooks, URL state, history, and dirty-exit behavior; keep server declarations in `/routing`. Do not create visual-only routing abstractions.
 5. Implement the smallest coherent change. Update the public story, interaction coverage, visual/browser evidence, public guidance, and API inventory whenever the supported contract changes.
 6. Run `bun run ui:conformance --quick` while iterating. Run `bun run ui:conformance --full` before a migration checkpoint or merge-ready handoff. Never regenerate a visual baseline, public API freeze, legacy allowance, token artifact, or performance ceiling merely to make a failure pass.
 7. Report the story used, focused SDK entrypoints used, checks run, and whether the change has any deviation.

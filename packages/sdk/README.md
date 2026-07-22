@@ -109,9 +109,10 @@ The public npm package exposes these sub-paths:
 | `@makinbakin/sdk/utils` | Shared utilities |
 | `@makinbakin/sdk/metadata` | Docs-aware contract metadata helpers |
 | `@makinbakin/sdk/routing` | Typed declarative route helpers |
+| `@makinbakin/sdk/navigation` | Browser links, URL state, history, and dirty-exit guards |
 | `@makinbakin/sdk/styles.css` | Canonical compiled design-system stylesheet |
 
-Use the focused visual entrypoints for new plugin UI. Existing
+Use the focused entrypoints for new plugin UI and browser navigation. Existing
 `@makinbakin/sdk/components` consumers migrate as their replacement exports
 land; do not add new dependencies on that legacy barrel.
 

@@ -30,6 +30,7 @@ const PUBLIC_VISUAL_SDK_ENTRYPOINTS = new Set([
   '@makinbakin/sdk/charts',
   '@makinbakin/sdk/conversation',
   '@makinbakin/sdk/content',
+  '@makinbakin/sdk/navigation',
 ])
 
 export interface PublicStoryViolation {
@@ -325,7 +326,7 @@ function bannedBareImport(specifier: string): string | null {
     (specifier === '@makinbakin/sdk' || specifier.startsWith('@makinbakin/sdk/'))
     && !PUBLIC_VISUAL_SDK_ENTRYPOINTS.has(specifier)
   ) {
-    return `public catalog cannot import ${specifier}; use a focused visual SDK entrypoint`
+    return `public catalog cannot import ${specifier}; use a focused public SDK entrypoint`
   }
   if (
     specifier.startsWith('@/')

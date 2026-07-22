@@ -33,9 +33,9 @@ export { useJsonFetch, usePluginJsonFetch } from '@/hooks/use-json-fetch'
 export type { UseJsonFetchResult } from '@/hooks/use-json-fetch'
 /** Subscribe to runtime connection status (online/offline, last heartbeat). */
 export { useRuntimeStatus } from '@/hooks/use-runtime-status'
-/** Bind a single component-state value to a URL query param. */
+/** @deprecated Import URL-backed state from `@makinbakin/sdk/navigation`. */
 export { useQueryState } from '@/hooks/use-query-state'
-/** Bind a multi-value (array) component state to a URL query param. */
+/** @deprecated Import URL-backed state from `@makinbakin/sdk/navigation`. */
 export { useQueryArrayState } from '@/hooks/use-query-state'
 /** List scheduled jobs with live updates. */
 export { useScheduleJobs } from '@/hooks/use-schedule'
@@ -61,7 +61,7 @@ export { usePluginEvent, emitPluginEvent, type PluginEventPayload } from '@/hook
 /** Headless drag-drop file intake (drag-over state + handlers + accept filter) — style your own zone. */
 export { useFileDrop } from '@/hooks/use-file-drop'
 export type { UseFileDropOptions, UseFileDropResult } from '@/hooks/use-file-drop'
-/** History-aware back for detail surfaces reachable from many places — real back() with a fallback route for cold deep-links. */
+/** @deprecated Import history-aware back from `@makinbakin/sdk/navigation`. */
 export { useHistoryBack } from '@/hooks/use-history-back'
 /** Fire a toast notification (success/error/info). */
 export { toast } from '@/hooks/use-toast'
@@ -107,15 +107,15 @@ export { getChannelInitials } from '@bakin/workflows/hooks/use-notification-chan
 /** The available-models catalog (cached, read-only); empty until loaded. */
 export { useAvailableModels } from '@/hooks/use-available-models'
 
-// Group 4: Router hooks (TanStack Router wrappers; Next.js-shape compatible)
+// Group 4: Router compatibility adapters; new work uses the navigation entrypoint.
 
-/** Access the TanStack Router instance for imperative navigation. */
+/** @deprecated Import browser navigation from `@makinbakin/sdk/navigation`. */
 export { useRouter } from './router'
-/** Current URL pathname (Next.js-shape compatible). */
+/** @deprecated Import browser navigation from `@makinbakin/sdk/navigation`. */
 export { usePathname } from './router'
-/** Current URL search params as a URLSearchParams instance. */
+/** @deprecated Import browser navigation from `@makinbakin/sdk/navigation`. */
 export { useSearchParams } from './router'
-/** Current route's typed path parameters. */
+/** @deprecated Import browser navigation from `@makinbakin/sdk/navigation`. */
 export { useParams } from './router'
-/** Split a browser-style URL string into TanStack navigate options (non-hook). */
+/** @deprecated Import browser navigation from `@makinbakin/sdk/navigation`. */
 export { toNavigationOptions } from './router'

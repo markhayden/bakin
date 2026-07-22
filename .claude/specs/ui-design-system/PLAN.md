@@ -1491,9 +1491,10 @@ comparisons, and official representative consumers; update the spec if any
 public API changed during implementation.
 
 **Status (2026-07-21):** Complete. A TypeScript-resolved, schema-validated
-inventory now freezes seven public visual entrypoints: six supported
-prerelease focused paths and the migration-only components barrel. It records
-311 runtime values and 378 types, rejects unreviewed entrypoint or symbol
+inventory initially froze seven public visual entrypoints: six supported
+prerelease focused paths and the migration-only components barrel. The reviewed
+T36c extension now freezes eight public entrypoints, seven supported focused
+paths, 321 runtime values, and 384 types. It rejects unreviewed entrypoint or symbol
 changes, rejects new legacy-barrel exports, and requires every focused value
 and type to have exactly one owner. The inventory also records the existing
 `@makinbakin/sdk/routing` and query-state work as authoritative, the one
@@ -1538,12 +1539,12 @@ live counts to the generated census/migration ledgers. Public SDK and plugin
 guidance now imports conversation, chart, page, and assignment patterns from
 their focused owners. Stale agent instructions that prescribed generic tokens,
 private component paths, or legacy-barrel composition now delegate to the
-Storybook-first conformance workflow. Review found one unresolved contract gap:
+Storybook-first conformance workflow. Review found one contract gap:
 `PluginLink` is required to preserve real-anchor SPA navigation, and
 `useUnsavedChangesGuard`/`useUnsavedGuard` preserve the reviewed dirty-draft
-behavior, but all three remain available only through the frozen migration
-barrel. The docs call these out without adding an entrypoint/export or
-inventing a second routing abstraction.
+behavior, but all three were available only through the frozen migration
+barrel. T36c resolves the public ownership question without changing the
+established routing behavior.
 
 **Acceptance:** routing and UI guidance no longer contradict authoritative
 contracts; no new legacy consumer or public API is introduced; every unresolved
@@ -1592,15 +1593,58 @@ conformance runner, UI CI, architecture tests.\
 **Size:** M.\
 **Commit:** `feat(ui): enforce Storybook-first conformance governance`
 
+### T36c — Resolve the browser-navigation SDK boundary
+
+**Description:** Give plugin builders one focused public browser-navigation
+contract without mixing client runtime behavior into server route declarations,
+expanding the frozen legacy barrel, or migrating official product surfaces
+before the public checkpoint.
+
+**Status (2026-07-21):** Complete. `@makinbakin/sdk/navigation` is the canonical
+owner for `PluginLink`, the string-path router facade, URL-backed query state,
+history-aware back behavior, and the complete `useUnsavedChangesGuard` flow.
+`@makinbakin/sdk/routing` remains the React-free owner of declarative server HTTP
+routes. Existing `/hooks`, `/components`, and host-local imports are compatibility
+adapters, so current core and official Bits plugins continue to work until their
+planned surface migrations. The unload-only `useUnsavedGuard` has no official
+consumer, remains deprecated only in the frozen components barrel, and does not
+graduate into the focused contract. `@tanstack/react-router` is an SDK peer and
+Whiskit external so host and plugins share one router context. The additive
+`react19-sdk-makinbakin-v2` externals contract lets the v2 host load v1 and v2
+artifacts while older hosts correctly reject v2 artifacts. Storybook exercises
+the real public link and dirty-exit guard. No official page or plugin composition
+was migrated, and Space Grotesk remains the selected product typeface.
+
+The user explicitly approved the new entrypoint and its generated performance
+evidence after a fresh scalability review. `sdk-navigation` is 558 bytes direct
+and 308,283 bytes reachable; total vendor output rises by 2,542 bytes and shared
+SDK chunks by 3,588 bytes. Canonical CSS decreases by 53 bytes. The split prevents
+browser navigation from becoming either a mixed server/client `routing` surface
+or an unrelated catch-all in `hooks`.
+
+**Acceptance:** browser and server routing have distinct focused owners; legacy
+imports preserve behavior; one router runtime is shared; v1 artifacts remain
+compatible with the v2 host; no product migration is bundled into the API slice.
+
+**Verification:** focused API and adapter identity tests, external package
+consumer, split vendor graph, Whiskit provenance compatibility, Storybook
+interaction, architecture, performance, and full conformance gates.
+
+**Dependencies:** T36a–T36b.\
+**Likely files:** navigation entrypoint, compatibility adapters, package/import
+map/build wiring, provenance contract, Storybook, docs, generated inventories.\
+**Size:** M.\
+**Commit:** `feat(sdk): add focused browser navigation contract`
+
 ### 🔶 USER CHECKPOINT — Public component and layout contract
 
-- [ ] Review the public Storybook, props, composition recipes, and escape
+- [x] Review the public Storybook, props, composition recipes, and escape
   hatches before official fleet migration.
-- [ ] Confirm no missing Bits-driven requirement needs a public primitive.
-- [ ] Resolve the focused public locations for `PluginLink`,
+- [x] Confirm no missing Bits-driven requirement needs a public primitive.
+- [x] Resolve the focused public locations for `PluginLink`,
   `useUnsavedChangesGuard`, and `useUnsavedGuard` without changing the
   established routing behavior.
-- [ ] Approve the frozen prerelease UI API for migration use.
+- [x] Approve the frozen prerelease UI API for migration use.
 
 ---
 

@@ -88,7 +88,7 @@ describe('Storybook catalog audiences', () => {
     expect(() => assertPublicStoryBoundary(root)).toThrow('Public Storybook boundary failed')
   })
 
-  it('reserves public stories for focused visual SDK entrypoints', () => {
+  it('reserves public stories for focused public SDK entrypoints', () => {
     const root = makeFixtureRoot()
     writeFileSync(join(root, 'storybook/public/focused.stories.tsx'), [
       "import * as Layout from '@makinbakin/sdk/layout'",
@@ -96,8 +96,9 @@ describe('Storybook catalog audiences', () => {
       "import * as Charts from '@makinbakin/sdk/charts'",
       "import * as Conversation from '@makinbakin/sdk/conversation'",
       "import * as Content from '@makinbakin/sdk/content'",
+      "import * as Navigation from '@makinbakin/sdk/navigation'",
       "export default { title: 'Focused', tags: ['public'] }",
-      'export const Default = { args: { Layout, Patterns, Charts, Conversation, Content } }',
+      'export const Default = { args: { Layout, Patterns, Charts, Conversation, Content, Navigation } }',
     ].join('\n'))
     expect(validatePublicStoryBoundary(root)).toEqual([])
 
@@ -106,7 +107,7 @@ describe('Storybook catalog audiences', () => {
       "export default { title: 'Legacy', component: PluginHeader, tags: ['public'] }",
     ].join('\n'))
     expect(validatePublicStoryBoundary(root)).toEqual([
-      'storybook/public/legacy.stories.tsx:1 public catalog cannot import @makinbakin/sdk/components; use a focused visual SDK entrypoint',
+      'storybook/public/legacy.stories.tsx:1 public catalog cannot import @makinbakin/sdk/components; use a focused public SDK entrypoint',
     ])
   })
 

@@ -18,16 +18,15 @@ The catalog will grow component by component as primitives, layout recipes, syst
 
 ## Authoring Rule
 
-Start with the focused visual SDK entrypoints: `@makinbakin/sdk/ui`, `@makinbakin/sdk/layout`, `@makinbakin/sdk/patterns`, `@makinbakin/sdk/charts`, `@makinbakin/sdk/conversation`, and `@makinbakin/sdk/content`. Use semantic component props and documented composition patterns. The older `@makinbakin/sdk/components` barrel is migration-only and should not gain new consumers. Add plugin-owned, root-scoped CSS only for domain-specific presentation that the SDK does not cover.
+Start with the focused SDK entrypoints: `@makinbakin/sdk/ui`, `@makinbakin/sdk/layout`, `@makinbakin/sdk/patterns`, `@makinbakin/sdk/charts`, `@makinbakin/sdk/conversation`, `@makinbakin/sdk/content`, and `@makinbakin/sdk/navigation`. Use semantic component props and documented composition patterns. The older `@makinbakin/sdk/components` barrel is migration-only and should not gain new consumers. Add plugin-owned, root-scoped CSS only for domain-specific presentation that the SDK does not cover.
 
-:::caution[Known prerelease routing UI gaps]
-The routing overhaul's `PluginLink`, `useUnsavedChangesGuard`, and
-`useUnsavedGuard` still exist only in the frozen migration barrel. Public
-examples below retain the link/guard behavior to preserve real-anchor SPA
-navigation and dirty-draft safety, but these are explicit component/API
-checkpoint findings—not permission to add new legacy consumers or invent
-another router. Resolve their focused public locations before external plugin
-migration begins.
+:::note[Browser navigation ownership]
+Use `@makinbakin/sdk/navigation` for `PluginLink`, router hooks, URL-backed
+state, history-aware back behavior, and `useUnsavedChangesGuard`. Server HTTP
+route declarations remain in `@makinbakin/sdk/routing`. The older hooks and
+components imports remain compatibility adapters only. `useUnsavedGuard` is
+deprecated because it protects browser close/reload but not in-app navigation;
+new dirty surfaces use the complete guard.
 :::
 
 Do not copy host components into a plugin. If the same need recurs across official or third-party plugins, propose it as an SDK contract with its public story, interaction test, accessibility coverage, and responsive states.
@@ -116,7 +115,7 @@ Use `@makinbakin/sdk/patterns` once a page is more specific than a general layou
 | Compose detail content | `DetailPageBody`, `DetailPageMain`, and `DetailPageAside` | Choose `single` or `aside`; a named aside moves below the primary content when its container is narrow |
 
 ```tsx
-import { useQueryState } from '@makinbakin/sdk/hooks'
+import { useQueryState } from '@makinbakin/sdk/navigation'
 import {
   ListPage,
   ListPageContent,
@@ -161,7 +160,7 @@ export function TasksPage({ matchingTasks }: { matchingTasks: Array<{ id: string
 Production filters, search, sorting, pagination, selected tabs, and open overlays continue to use the existing query-state hooks. `useQueryState` uses replace semantics for routine view changes and batches multiple setters from one interaction; do not add local history wrappers or rebuild query strings in the recipe. Paths still identify pages. Use the existing `PluginLink` for back links and cross-page navigation:
 
 ```tsx
-import { PluginLink } from '@makinbakin/sdk/components'
+import { PluginLink } from '@makinbakin/sdk/navigation'
 import {
   DetailPage,
   DetailPageAside,
@@ -347,9 +346,9 @@ SaveBar is the one page-level save/discard boundary for a staged draft. Do not r
 
 ConfirmDialog and DangerZone do not call APIs, remove records, close after success, or invent rollback. The consumer keeps the dialog open with `busy`, retains retryable failures in `error`, and closes it when the operation actually succeeds. Typed confirmation is exact and case-sensitive. Use it for genuinely difficult-to-recover actions, not routine archive, disable, or remove-from-view operations. DangerZone adds a visible non-color warning signal and supports heading levels 2–4 so it can preserve the surrounding page hierarchy. When an external button controls `ConfirmDialog` or `UnsavedChangesDialog`, pass that button's ref to `finalFocus`; DangerZone wires its own trigger automatically.
 
-The recent routing work remains authoritative; these presentation patterns do not recreate it. Paths identify pages. Query parameters hold overlay, tab, filter, selection, and other meaningful view state. `useUnsavedChangesGuard` remains the compatibility behavior layer for browser unload, TanStack history, and raw same-origin anchors. It deliberately allows query-only changes on the current pathname and must keep those changes inside the SPA router.
+The recent routing work remains authoritative; these presentation patterns do not recreate it. Paths identify pages. Query parameters hold overlay, tab, filter, selection, and other meaningful view state. `useUnsavedChangesGuard` from `@makinbakin/sdk/navigation` is the supported behavior layer for browser unload, TanStack history, and raw same-origin anchors. It deliberately allows query-only changes on the current pathname and must keep those changes inside the SPA router.
 
-There is one pinned exception to the no-hard-navigation rule: after the user explicitly confirms an intercepted raw same-origin anchor, the guard may continue that exact href with `window.location.assign`. Do not widen that exception or use it for ordinary links. Use `PluginLink`, `useRouter()`, and the existing query-state hooks for normal navigation. `useUnsavedGuard(dirty)` covers only browser close/reload; it is not a replacement for the router-aware guard.
+There is one pinned exception to the no-hard-navigation rule: after the user explicitly confirms an intercepted raw same-origin anchor, the guard may continue that exact href with `window.location.assign`. Do not widen that exception or use it for ordinary links. Use `PluginLink`, `useRouter()`, and the navigation entrypoint's query-state hooks for normal navigation. The deprecated `useUnsavedGuard(dirty)` covers only browser close/reload; it is not a replacement for the complete guard and must not be used by new surfaces.
 
 ## Action and Status Primitives
 
@@ -831,13 +830,13 @@ This is the exact artifact used by Bakin and the public component catalog. It su
 
 ## Navigation Stays Separate
 
-UI composition does not redefine routing. Follow the existing presentation-based routing contract: paths identify pages, while query parameters represent overlays, tabs, filters, and other composable view state. Use `PluginLink` or `useRouter()` for client-side navigation and the SDK query-state hooks for URL-backed view state.
+UI composition does not redefine routing. Follow the existing presentation-based routing contract: paths identify pages, while query parameters represent overlays, tabs, filters, and other composable view state. Import `PluginLink`, `useRouter()`, and the query-state hooks from `@makinbakin/sdk/navigation`.
 
 `FacetFilter`, `SegmentedControl`, and `UnderlineTabs` are controlled presentation patterns. Connect them to the shipped query-state hooks when their state should survive refreshes, participate in history, or be linkable:
 
 ```tsx
 import { FacetFilter, SegmentedControl } from '@makinbakin/sdk/patterns'
-import { useQueryArrayState, useQueryState } from '@makinbakin/sdk/hooks'
+import { useQueryArrayState, useQueryState } from '@makinbakin/sdk/navigation'
 
 export function TaskControls() {
   const [statuses, setStatuses] = useQueryArrayState('status')
@@ -965,7 +964,7 @@ Internal links must keep using the shipped routing contract. Supply `renderInter
 
 ```tsx
 import { MarkdownContent } from '@makinbakin/sdk/content'
-import { PluginLink } from '@makinbakin/sdk/components'
+import { PluginLink } from '@makinbakin/sdk/navigation'
 
 export function ReleaseNotes({ content }: { content: string }) {
   return (
@@ -996,7 +995,7 @@ import {
   SearchPartialChip,
   SearchUnavailable,
 } from '@makinbakin/sdk/patterns'
-import { PluginLink } from '@makinbakin/sdk/components'
+import { PluginLink } from '@makinbakin/sdk/navigation'
 import { buttonVariants } from '@makinbakin/sdk/ui'
 
 const unavailable = (
