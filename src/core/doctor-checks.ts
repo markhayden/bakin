@@ -9,6 +9,9 @@ import type {
 } from '../../packages/core/src/plugin-types'
 import { safeParseHealthCheckRunInput } from './health-contract'
 import { getHealthRepairAction, listHealthChecks } from './health-check-registry'
+import { createLogger } from './logger'
+
+const log = createLogger('doctor-checks')
 
 export interface DetailedHealthCheckRun {
   def: HealthCheckDef
@@ -190,6 +193,19 @@ export async function runHealthCheck(
     const completedAt = now().toISOString()
     const parsed = safeParseHealthCheckRunInput(raw)
     if (!parsed.success) {
+      // Surface the structured issues — the bare contract message hid the
+      // failing field paths from the card, the log, AND the execution
+      // record, leaving a field diagnosis stuck at "failed validation"
+      // with nothing to act on (2026-07-22).
+      const issueText = parsed.error.issues
+        .slice(0, 3)
+        .map((issue) => `${issue.path}: ${issue.message}`)
+        .join('; ')
+      const reason = issueText ? `${parsed.error.message} ${issueText}` : parsed.error.message
+      log.warn('health check output failed contract validation', {
+        checkId: def.id,
+        issues: parsed.error.issues.slice(0, 10),
+      })
       return {
         def,
         freshUntil: staleAt(completedAt, ttlMs),
@@ -199,9 +215,9 @@ export async function runHealthCheck(
           startedAt,
           completedAt,
           outcome: 'invalid',
-          error: { code: parsed.error.code, message: parsed.error.message },
+          error: { code: parsed.error.code, message: reason },
         },
-        observations: [verificationObservation(def, completedAt, ttlMs, parsed.error.message)],
+        observations: [verificationObservation(def, completedAt, ttlMs, reason)],
       }
     }
 
