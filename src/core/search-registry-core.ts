@@ -394,6 +394,12 @@ const WEDGE_RESTART_DEBOUNCE_MS = 5 * 60 * 1000
 let pumpTimer: ReturnType<typeof setInterval> | null = null
 let wedgeTimer: ReturnType<typeof setInterval> | null = null
 let lastWedgeRestartAt = 0
+/** No missing-table regeneration inside this window after an engine
+ * restart: a catching-up engine answers per-table status with errors, and
+ * a single pump tick once misread that as 10 simultaneously "missing"
+ * tables and mass-rebuilt them — re-loading the engine it had just
+ * bounced (2026-07-22 04:03 feedback loop). */
+const POST_RESTART_REGEN_GRACE_MS = 5 * 60 * 1000
 const pumpAttempts = new Map<string, number>()
 
 /**
@@ -486,16 +492,24 @@ export async function pumpParkedMigrations(
   // ACTIVE rows whose physical vanished engine-side have no other owner
   // until a human reindexes: boot ignores them (D5) and resume only sees
   // 'migrating' rows. A crash mid-repair-pass strands exactly this shape
-  // (soak cycle 5 finding). Availability-guarded so an engine OUTAGE can
-  // never masquerade as mass table loss: stats null while the engine is
-  // down means "unreachable", not "missing".
-  if (await search.available().catch(() => false)) {
+  // (soak cycle 5 finding). Guards against false "missing" verdicts:
+  //   - the engine must be available,
+  //   - we must be OUTSIDE the post-restart grace window (a catching-up
+  //     engine errors per-table status — 2026-07-22 mass-regen loop),
+  //   - absence is judged from ONE authoritative tables.list() call,
+  //     never from per-table status errors.
+  const inRestartGrace = Date.now() - lastWedgeRestartAt < POST_RESTART_REGEN_GRACE_MS
+  if (!inRestartGrace && await search.available().catch(() => false)) {
+    const listed = await search.tables.list().then(
+      (tables) => new Set(tables.map((t) => t.name)),
+      () => null,
+    )
+    if (listed === null) return outcomes
     for (const state of states.filter((s) => s.state === 'active')) {
       const def = defs.find((d) => d.logical === state.logical)
       if (!def) continue
       if ((pumpAttempts.get(state.logical) ?? 0) >= MIGRATION_PUMP_MAX_ATTEMPTS) continue
-      const stats = await search.tables.stats(state.physical).catch(() => null)
-      if (stats !== null) continue
+      if (listed.has(state.physical)) continue
       log.warn('migration pump: active physical missing engine-side — regenerating', {
         logical: state.logical,
         physical: state.physical,
