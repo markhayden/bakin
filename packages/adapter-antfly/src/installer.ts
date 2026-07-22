@@ -7,7 +7,7 @@ import type { AdapterLogger } from '@bakin/core/adapters/shared'
 import { DEFAULT_SETTINGS } from './defaults'
 import { antflyBinaryPath, antflyHome } from './paths'
 import { ANTFLY_PIN, antflyDownloadUrl, antflyPlatformKey, type AntflyPin } from './pin'
-import { findAntflyBinary, stopService, startService } from './service'
+import { ensureProvisioned, findAntflyBinary, servicePaths, stopService, startService } from './service'
 import { DEFAULT_SETTINGS as SERVICE_DEFAULTS } from './defaults'
 
 /**
@@ -262,8 +262,32 @@ export async function installAntflyDependency(
     mkdirSync(dirname(targetPath), { recursive: true })
     renameSync(extractedBinary, targetPath)
 
+    // Engine version change = a deliberate REBUILD event (2026-07-21: the
+    // rc.18→rc.21 in-place upgrade silently migrated table files one-way,
+    // stalled the data plane for the duration, and made rollback
+    // impossible). Search data is derived — clear it and let the repair
+    // reindex regenerate the tables instead of trusting an in-place
+    // engine-side format migration ever again.
+    let dataCleared = false
+    if (existing && existingVersion !== pin.version) {
+      const dataDir = servicePaths().dataDir
+      if (existsSync(dataDir)) {
+        logger.info('Engine version changed — clearing derived engine data for a clean rebuild', {
+          from: existingVersion ?? 'unknown',
+          to: pin.version,
+          dataDir,
+        })
+        rmSync(dataDir, { recursive: true, force: true })
+        dataCleared = true
+      }
+    }
+
     if (restartAfterSwap) {
       logger.info('Restarting managed antfly service on the new binary')
+      // Provision UNCONDITIONALLY before start: the unit's argv must match
+      // the binary being installed (a version rollback once left a
+      // `standalone` plist driving a `swarm`-era binary — silent no-boot).
+      await ensureProvisioned(SERVICE_DEFAULTS)
       await startService(SERVICE_DEFAULTS)
     }
     const durationMs = Date.now() - start
@@ -271,7 +295,9 @@ export async function installAntflyDependency(
     return {
       name: 'antfly',
       status: 'installed' as const,
-      message: `Installed Antfly v${installedVersion} to ${targetPath} (checksum verified)`,
+      message: dataCleared
+        ? `Installed Antfly v${installedVersion} to ${targetPath} (checksum verified). Engine data was cleared for the version change — run \`bakin reindex\` to rebuild the search tables from source.`
+        : `Installed Antfly v${installedVersion} to ${targetPath} (checksum verified)`,
       durationMs,
     }
   } catch (err) {

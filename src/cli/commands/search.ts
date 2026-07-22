@@ -126,7 +126,7 @@ async function cmdSearchStats(): Promise<void> {
   }
 }
 
-async function cmdReindex(options: { table?: string; rebuild?: boolean } = {}): Promise<void> {
+async function cmdReindex(options: { table?: string; rebuild?: boolean; force?: boolean } = {}): Promise<void> {
   // Pre-flight: reindexing with models missing "works" (documents land in
   // the tables) while every semantic query stays dead — a silently confusing
   // state. Name it before doing the work, at the moment it matters. Goes
@@ -148,6 +148,9 @@ async function cmdReindex(options: { table?: string; rebuild?: boolean } = {}): 
   const params: string[] = []
   if (options.table) params.push(`table=${encodeURIComponent(options.table)}`)
   if (options.rebuild) params.push('rebuild=true')
+  // Default is REPAIR (resume parked, regenerate engine-missing, skip
+  // healthy); --force mints fresh generations for every targeted table.
+  if (options.force) params.push('force=1')
   if (params.length) url += `?${params.join('&')}`
 
   const target = options.table || 'all content'
@@ -193,11 +196,12 @@ export async function run(args: string[]): Promise<void> {
     return
   }
   if (cmd === 'reindex') {
-    const reindexOpts: { table?: string; rebuild?: boolean } = {}
+    const reindexOpts: { table?: string; rebuild?: boolean; force?: boolean } = {}
     for (let i = 1; i < args.length; i++) {
       if (args[i].startsWith('--table=')) reindexOpts.table = args[i].split('=')[1]
       else if (args[i] === '--table' && args[i + 1]) reindexOpts.table = args[++i]
       else if (args[i] === '--rebuild') reindexOpts.rebuild = true
+      else if (args[i] === '--force') reindexOpts.force = true
     }
     await cmdReindex(reindexOpts)
     return

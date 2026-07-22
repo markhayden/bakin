@@ -168,13 +168,32 @@ no state file — each content type declares its own `schemaVersion`.
   physicals during a migration, so a doc written mid-backfill exists in the
   green either way. Backfill streams the content type's `reindex()` generator
   in 50-doc chunks.
-- **Convergence:** green flips only when `tables.stats()` doc count reaches
-  the backfilled count AND every leg from `tables.health()` reports `ready`.
-  Poll every 2s, default cap 10 minutes.
-- **Park, never flip early:** on convergence timeout the migration **parks**
-  with dual-write still on. Queries keep hitting the old table; the doctor
-  surfaces the parked state; `resumeMigrations()` finishes the job when the
-  engine recovers.
+- **Convergence (progress-aware, 2026-07-21 redesign):** green flips only
+  when `tables.stats()` doc count reaches the backfilled count (or is stable
+  across polls — a live source can shrink) AND every leg from
+  `tables.health()` reports `ready`. Poll every 2s. Parking is driven by
+  EVIDENCE, not a flat timeout: a leg in `error` state parks immediately;
+  ZERO observed progress (doc count + indexed + pending all frozen) parks
+  after ~60s (`zeroProgressParkMs`); the 30-min hard cap only bounds a green
+  that is still progressing. A failed `stats()` read observes `count: null`
+  and can never satisfy the flip criteria — evidence failure is not
+  stability. Engine ready/building flags never get to veto forever: the
+  adapter's honesty layer (idle-detection in `mapIndexStatuses`) plus the
+  zero-progress park bound the damage of lying flags.
+- **Park, never flip early — and parked work SELF-HEALS:** on park,
+  dual-write stays on and queries keep hitting the old table. The
+  **migration pump** (started by `startSearchEngine()`, 5-min tick — the
+  migrations counterpart of the outbox safety tick) resumes parked
+  migrations automatically, attempt-capped at 5 per table before standing
+  down to the doctor. `pumpParkedMigrations()` is also the doctor repair
+  path.
+- **Migration identity is PERSISTED:** the green's full fingerprint
+  (including any rebuild nonce) is recorded as `migrating_fp` when the
+  migration starts; resume replays `migrating_to`/`migrating_fp` verbatim
+  and NEVER recomputes the target (the recompute path lost rebuild nonces,
+  aliased the live physical, and the post-flip drop deleted it — 2026-07-21
+  critical finding). Invariants: a migration target equal to the active
+  physical is repaired (row → active), never staged and never dropped.
 - **Resume at boot:** `startSearchEngine()` → `resumeTableMigrations()` reads
   only the registry (recorded work, allowed by the boot-does-nothing rule) and
   re-runs any in-flight migration. A desired-layout change underneath an
@@ -182,16 +201,30 @@ no state file — each content type declares its own `schemaVersion`.
 - **Drops are tolerant:** a failed drop of the old physical is tombstoned
   (`search_table_tombstones`); `sweepTombstones()` retries from the doctor
   sweep.
-- **Serialized:** one migration at a time process-wide (bounds embedding
-  load); other tables' `ensure()` calls queue behind it.
-- **Rebuild = same machinery:** `rebuildTable()` forces a fresh physical with
-  a nonce in the fingerprint. `POST /api/reindex[?table=t]` (the
-  `bakin reindex` CLI verb) runs `rebuildRegisteredTables()` — a blue/green
-  rebuild during which queries keep answering — and broadcasts
-  `search.rebuild.{start,progress,complete}` SSE events (the health page's
-  live per-table progress consumes these). The response reports
-  `ok/errors/parked` per table. There is no separate "reset" surface —
-  rebuild IS the repair verb.
+- **Serialization bounds BACKFILL only:** the embed-heavy backfill runs one
+  at a time process-wide; converge-waits run per-table OFF the chain
+  (holding the chain through converge turned three stuck tables into a
+  ~30-minute global stall on 2026-07-21). Rebuild passes run tables with
+  bounded concurrency (3).
+- **Rebuild = repair by default:** `POST /api/reindex[?table=t][&force=1]`
+  (the `bakin reindex [--force]` CLI verb) runs `rebuildRegisteredTables()`.
+  The DEFAULT pass repairs: parked migrations resume (recorded target, no
+  re-embed via the resume fast path), tables whose physical vanished
+  engine-side (data-dir wipe) get a fresh nonce'd generation, drifted
+  layouts migrate via plain ensure, and healthy tables are untouched.
+  `--force` mints fresh generations for every targeted table (the old
+  always-on behavior — it once churned a healthy table through five
+  generations in one evening). Overlapping calls **single-flight** into the
+  running pass. Progress broadcasts `search.rebuild.{start,progress,complete}`
+  SSE events; the response reports `ok/errors/parked` per table. There is no
+  separate "reset" surface — rebuild IS the repair verb.
+- **Engine version change = rebuild event:** `bakin install search`
+  re-provisions the OS service unit unconditionally (argv must match the
+  binary being installed) and, on a version change, CLEARS the derived
+  engine data dir — the repair reindex regenerates every table from source.
+  In-place engine-side file-format migrations are never trusted again
+  (rc.18→rc.21 migrated one-way, stalled the data plane, and broke
+  rollback).
 
 ### Boot does nothing (guarantee)
 

@@ -78,6 +78,8 @@ import {
   crossTableSearch,
   getSearchHealth,
   purgeContentType,
+  rebuildRegisteredTables,
+  pumpParkedMigrations,
 } from '@/core/search-registry'
 import { sweepOrphanRegistryRows } from '@/core/search-orphan-sweep'
 import { tableStatus } from '@bakin/core/search/tables'
@@ -874,5 +876,116 @@ describe('search-registry', () => {
 
     expect(health.enabled).toBe(false)
     expect(health.tables).toEqual([])
+  })
+})
+
+describe('rebuild pass semantics (2026-07-21 redesign)', () => {
+  let searchHarness: ReturnType<typeof createSearchAdapterHarness>
+
+  beforeEach(() => {
+    resetSearchRegistry()
+    searchHarness = createSearchAdapterHarness()
+    installSearchAdapter(searchHarness.adapter)
+    mock.clearAllMocks()
+  })
+
+  afterEach(() => {
+    clearSearchAdapter()
+  })
+
+  function makeDef(table: string) {
+    return {
+      table,
+      schemaVersion: 1,
+      schema: { title: { type: 'text' as const } },
+      searchableFields: ['title'],
+      embeddingTemplate: '{{title}}',
+      facets: [],
+      reindex: async function* () { yield { key: 'k1', doc: { title: 'row' } } },
+      verifyExists: async () => true,
+    }
+  }
+
+  it('overlapping rebuild calls single-flight into ONE pass', async () => {
+    buildSearchAPI('sf-plugin').registerContentType(makeDef('sfone'))
+    await createRegisteredTables()
+
+    const first = rebuildRegisteredTables(undefined, { force: true })
+    const second = rebuildRegisteredTables(undefined, { force: true })
+    // The second call attaches to the running pass — same promise, no
+    // stacked generations (the 5-generations-of-team incident).
+    expect(second).toBe(first)
+    await first
+  })
+
+  it('default (repair) pass leaves a healthy table completely untouched', async () => {
+    buildSearchAPI('rp-plugin').registerContentType(makeDef('rpone'))
+    await createRegisteredTables()
+    const before = tableStatus('bakin_rpone')!.physical
+
+    const outcomes = await rebuildRegisteredTables('bakin_rpone')
+
+    expect(outcomes).toHaveLength(1)
+    expect(outcomes[0].result).toBe('unchanged')
+    expect(tableStatus('bakin_rpone')!.physical).toBe(before)
+  })
+
+  it('repair pass regenerates a table whose physical vanished engine-side (post-nuke)', async () => {
+    buildSearchAPI('nk-plugin').registerContentType(makeDef('nkone'))
+    await createRegisteredTables()
+    const before = tableStatus('bakin_nkone')!.physical
+
+    // Simulate the engine data-dir nuke: table gone, registry row intact.
+    await searchHarness.adapter.tables.drop(before)
+    mock.clearAllMocks()
+
+    const outcomes = await rebuildRegisteredTables('bakin_nkone')
+
+    expect(outcomes[0].result).toMatch(/migrated|created/)
+    const after = tableStatus('bakin_nkone')!
+    expect(after.state).toBe('active')
+    expect(after.physical).not.toBe(before)
+    expect(await searchHarness.adapter.tables.stats(after.physical)).not.toBeNull()
+  })
+
+  it('force pass mints a fresh generation even for a healthy table', async () => {
+    buildSearchAPI('fc-plugin').registerContentType(makeDef('fcone'))
+    await createRegisteredTables()
+    const before = tableStatus('bakin_fcone')!.physical
+
+    const outcomes = await rebuildRegisteredTables('bakin_fcone', { force: true })
+
+    expect(outcomes[0].result).toBe('migrated')
+    expect(tableStatus('bakin_fcone')!.physical).not.toBe(before)
+  })
+
+  it('the migration pump resumes a parked migration to completion', async () => {
+    buildSearchAPI('pp-plugin').registerContentType(makeDef('ppone'))
+    await createRegisteredTables()
+    const live = tableStatus('bakin_ppone')!.physical
+
+    // Hand-park a migration toward a recorded green (the crash/park shape).
+    const { openNamedDb } = require('../../packages/core/src/storage/db') as typeof import('../../packages/core/src/storage/db')
+    const store = openNamedDb('search', () => join(testDir, 'search.db'))
+    const green = 'bakin_ppone_v1_feedf00d'
+    store.db().prepare(
+      "UPDATE search_tables SET state = 'migrating', migrating_to = ?, migrating_fp = 'feedf00d-full', migration_phase = 'parked' WHERE logical = 'bakin_ppone'",
+    ).run(green)
+
+    const outcomes = await pumpParkedMigrations({ convergePollMs: 20, zeroProgressParkMs: 200 })
+
+    expect(outcomes).toHaveLength(1)
+    expect(outcomes[0]).toEqual({ logical: 'bakin_ppone', result: 'migrated' })
+    const after = tableStatus('bakin_ppone')!
+    expect(after.state).toBe('active')
+    expect(after.physical).toBe(green)
+    // The old live physical was dropped after the flip.
+    expect(await searchHarness.adapter.tables.stats(live)).toBeNull()
+  })
+
+  it('the pump is a no-op when nothing is parked', async () => {
+    buildSearchAPI('np-plugin').registerContentType(makeDef('npone'))
+    await createRegisteredTables()
+    expect(await pumpParkedMigrations()).toEqual([])
   })
 })

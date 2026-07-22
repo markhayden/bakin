@@ -29,6 +29,8 @@ import {
   ensureTable as ensureVersionedTable,
   rebuildTable as rebuildVersionedTable,
   resumeMigrations as resumeVersionedMigrations,
+  tableStatus as versionedTableStatus,
+  listTableStates as listVersionedTableStates,
   queryTarget,
   type TableEnsureDef,
 } from '@bakin/core/search/tables'
@@ -206,11 +208,6 @@ async function ensureTable(search: SearchAdapter, def: SearchContentTypeDefiniti
   return result === 'created' ? 'created' : 'exists'
 }
 
-/**
- * Force blue/green rebuilds (the /api/reindex + `bakin search rebuild`
- * path). Queries keep answering from the old physical throughout; SSE
- * `search.rebuild.*` events drive the health page's live progress.
- */
 /** Per-table rebuild outcome — the ONE shape the /api/reindex route and the CLI share. */
 export interface ReindexTableOutcome {
   table: string
@@ -219,30 +216,126 @@ export interface ReindexTableOutcome {
   error?: string
 }
 
-export async function rebuildRegisteredTables(tableName?: string): Promise<ReindexTableOutcome[]> {
+export interface RebuildOpts {
+  /**
+   * Force fresh generations for every targeted table. Without it (the
+   * default since 2026-07-21), a pass is a REPAIR: parked migrations are
+   * resumed, tables whose engine-side physical vanished (data-dir wipe,
+   * engine reset) are rebuilt, drifted layouts migrate via plain ensure —
+   * and healthy tables are NOT touched. The old force-everything default
+   * churned a healthy table through five generations in one evening.
+   */
+  force?: boolean
+}
+
+/** Concurrent tables per rebuild pass. Backfills still serialize on the
+ * migration chain (embed-load bound); this bounds how many tables can sit
+ * in their (cheap, off-chain) converge phase simultaneously. */
+const REBUILD_CONCURRENCY = 3
+
+let rebuildInFlight: Promise<ReindexTableOutcome[]> | null = null
+
+/**
+ * Blue/green rebuild pass (the /api/reindex + `bakin reindex` path).
+ * Queries keep answering from the old physical throughout; SSE
+ * `search.rebuild.*` events drive the health page's live progress.
+ * SINGLE-FLIGHT: overlapping calls coalesce into the running pass —
+ * stacked passes used to regenerate every table once per kick.
+ */
+export function rebuildRegisteredTables(tableName?: string, opts?: RebuildOpts): Promise<ReindexTableOutcome[]> {
+  if (rebuildInFlight) {
+    log.info('reindex requested while a pass is running — attaching to it')
+    return rebuildInFlight
+  }
+  const pass = runRebuildPass(tableName, opts).finally(() => {
+    rebuildInFlight = null
+  })
+  rebuildInFlight = pass
+  return pass
+}
+
+async function runRebuildPass(tableName?: string, opts?: RebuildOpts): Promise<ReindexTableOutcome[]> {
   const registry = getRegistry()
   const search = getSearchAdapter()
+  const targets = Array.from(registry.contentTypes.entries())
+    .filter(([logical, def]) => !tableName || logical === tableName || def.table === tableName)
+
   const results: ReindexTableOutcome[] = []
-  for (const [logical, def] of registry.contentTypes) {
-    if (tableName && logical !== tableName && def.table !== tableName) continue
-    broadcastRebuild('search.rebuild.start', logical)
-    try {
-      let indexed = 0
-      const result = await rebuildVersionedTable(search, toVersionedDef(def), adapterFingerprint(search), {
-        onProgress: (phase, backfillDone) => {
-          if (backfillDone !== undefined) indexed = backfillDone
-          broadcastRebuild('search.rebuild.progress', logical, { phase, indexed: backfillDone ?? 0 })
-        },
+  const queue = [...targets]
+  const workers = Array.from({ length: Math.min(REBUILD_CONCURRENCY, queue.length) }, async () => {
+    for (;;) {
+      const next = queue.shift()
+      if (!next) return
+      results.push(await rebuildOneTable(search, next[0], next[1], opts))
+    }
+  })
+  await Promise.all(workers)
+  return results
+}
+
+async function rebuildOneTable(
+  search: SearchAdapter,
+  logical: string,
+  def: SearchContentTypeDefinition & { pluginId: string },
+  opts?: RebuildOpts,
+): Promise<ReindexTableOutcome> {
+  broadcastRebuild('search.rebuild.start', logical)
+  try {
+    let indexed = 0
+    const ensureOpts = {
+      onProgress: (phase: string, backfillDone?: number) => {
+        if (backfillDone !== undefined) indexed = backfillDone
+        broadcastRebuild('search.rebuild.progress', logical, { phase, indexed: backfillDone ?? 0 })
+      },
+    }
+    const vdef = toVersionedDef(def)
+    const fingerprint = adapterFingerprint(search)
+    let result: string
+    if (opts?.force) {
+      result = await rebuildVersionedTable(search, vdef, fingerprint, ensureOpts)
+    } else {
+      result = await repairOneTable(search, vdef, fingerprint, ensureOpts)
+    }
+    broadcastRebuild('search.rebuild.complete', logical, { result, indexed })
+    return { table: logical, result, indexed }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    broadcastRebuild('search.rebuild.complete', logical, { error: message })
+    return { table: logical, result: 'failed', error: message }
+  }
+}
+
+/**
+ * Repair semantics for one table: resume a parked/in-flight migration
+ * (recorded target, no re-embed thanks to the resume fast path); force a
+ * fresh generation ONLY when the registry's physical is missing
+ * engine-side (data-dir wipe / engine reset — the post-nuke case); plain
+ * ensure otherwise, which is a no-op for healthy tables and a normal
+ * migration for drifted layouts.
+ */
+async function repairOneTable(
+  search: SearchAdapter,
+  vdef: ReturnType<typeof toVersionedDef>,
+  fingerprint: string,
+  ensureOpts: { onProgress: (phase: string, backfillDone?: number) => void },
+): Promise<string> {
+  const state = versionedTableStatus(vdef.logical)
+  if (state?.state === 'migrating') {
+    const outcomes = await resumeVersionedMigrations(search, [vdef], fingerprint, ensureOpts)
+    const outcome = outcomes.find((o) => o.logical === vdef.logical)
+    if (outcome && outcome.result !== 'skipped') return `resumed:${outcome.result}`
+  }
+  if (state) {
+    const stats = await search.tables.stats(state.physical).catch(() => null)
+    if (!stats) {
+      log.warn('registry physical missing engine-side — forcing a fresh generation', {
+        logical: vdef.logical,
+        physical: state.physical,
       })
-      broadcastRebuild('search.rebuild.complete', logical, { result, indexed })
-      results.push({ table: logical, result, indexed })
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      broadcastRebuild('search.rebuild.complete', logical, { error: message })
-      results.push({ table: logical, result: 'failed', error: message })
+      return rebuildVersionedTable(search, vdef, fingerprint, ensureOpts)
     }
   }
-  return results
+  return ensureVersionedTable(search, vdef, fingerprint, ensureOpts)
 }
 
 /** Boot-time continuation of crash/park-interrupted migrations (D5). */
@@ -251,6 +344,74 @@ export async function resumeTableMigrations(): Promise<void> {
   const search = getSearchAdapter()
   const defs = Array.from(registry.contentTypes.values()).map(toVersionedDef)
   await resumeVersionedMigrations(search, defs, adapterFingerprint(search))
+}
+
+// ---------------------------------------------------------------------------
+// Migration pump — parked work self-heals (2026-07-21 five-lens review)
+// ---------------------------------------------------------------------------
+
+/** Pump cadence; mirrors the outbox safety tick's role for writes. */
+const MIGRATION_PUMP_INTERVAL_MS = 5 * 60 * 1000
+/** Consecutive failed resume attempts per table before the pump stands down
+ * (the parked state stays visible to the doctor, which owns escalation). */
+const MIGRATION_PUMP_MAX_ATTEMPTS = 5
+
+let pumpTimer: ReturnType<typeof setInterval> | null = null
+const pumpAttempts = new Map<string, number>()
+
+/**
+ * Start the migration pump: every cycle, resume any PARKED migration whose
+ * table is still registered. Parked work previously waited for a server
+ * boot or a human re-kick — the outbox got a safety tick, migrations never
+ * did. Attempt-capped per table; a success resets the counter.
+ */
+export function startMigrationPump(): void {
+  if (pumpTimer) return
+  pumpTimer = setInterval(() => {
+    void pumpParkedMigrations().catch((err: unknown) => {
+      log.warn('migration pump cycle failed', { err: err instanceof Error ? err.message : String(err) })
+    })
+  }, MIGRATION_PUMP_INTERVAL_MS)
+  pumpTimer.unref?.()
+}
+
+export function stopMigrationPump(): void {
+  if (pumpTimer) clearInterval(pumpTimer)
+  pumpTimer = null
+  pumpAttempts.clear()
+}
+
+/** One pump cycle (exported for tests + the doctor's repair path). */
+export async function pumpParkedMigrations(
+  opts?: { convergePollMs?: number; zeroProgressParkMs?: number },
+): Promise<Array<{ logical: string; result: string }>> {
+  const registry = getRegistry()
+  const search = getSearchAdapter()
+  const defs = Array.from(registry.contentTypes.values()).map(toVersionedDef)
+  const parked = listVersionedTableStates().filter((s) => s.state === 'migrating' && s.phase === 'parked')
+  if (parked.length === 0) return []
+
+  const eligible = parked.filter((s) => (pumpAttempts.get(s.logical) ?? 0) < MIGRATION_PUMP_MAX_ATTEMPTS)
+  if (eligible.length === 0) return []
+
+  const eligibleDefs = defs.filter((d) => eligible.some((s) => s.logical === d.logical))
+  const outcomes = await resumeVersionedMigrations(search, eligibleDefs, adapterFingerprint(search), { ...opts, onlyParked: true })
+  for (const outcome of outcomes) {
+    if (outcome.result === 'migrated' || outcome.result === 'unchanged') {
+      pumpAttempts.delete(outcome.logical)
+      log.info('migration pump completed a parked migration', outcome)
+    } else {
+      const attempts = (pumpAttempts.get(outcome.logical) ?? 0) + 1
+      pumpAttempts.set(outcome.logical, attempts)
+      if (attempts >= MIGRATION_PUMP_MAX_ATTEMPTS) {
+        log.warn('migration pump standing down for table — repeated resume failures; doctor owns escalation', {
+          logical: outcome.logical,
+          attempts,
+        })
+      }
+    }
+  }
+  return outcomes
 }
 
 // ---------------------------------------------------------------------------
