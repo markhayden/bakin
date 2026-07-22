@@ -12,8 +12,11 @@ import {
   ListPageContent,
   ListPageControls,
   PageHeader,
+  SearchInput,
+  SegmentedControl,
 } from '@makinbakin/sdk/patterns'
 import { Badge, Banner, Button, Input, Label, SystemState } from '@makinbakin/sdk/ui'
+import { DEFAULT_STORY_FIXTURE } from '../../fixtures'
 
 import './page-archetypes.stories.css'
 
@@ -34,8 +37,70 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
+const motionStoryFixture = { ...DEFAULT_STORY_FIXTURE, reducedMotion: false }
+
 const filters = ['All', 'Needs attention', 'Running', 'Blocked'] as const
 type Filter = (typeof filters)[number]
+
+function ListHeaderControlsExample() {
+  const [query, setQuery] = useState('')
+  const [view, setView] = useState<'board' | 'log'>('board')
+
+  return (
+    <ListPage className="bakin-archetype-story" width="full">
+      <PageHeader
+        title="Tasks"
+        controlsLabel="Task search and view"
+        controls={(
+          <>
+            <SearchInput
+              align="end"
+              label="Search tasks"
+              value={query}
+              onValueChange={setQuery}
+              placeholder="Search tasks…"
+            />
+            <SegmentedControl
+              ariaLabel="Task view"
+              value={view}
+              onValueChange={setView}
+              options={[{ value: 'board', label: 'Board' }, { value: 'log', label: 'Log' }]}
+            />
+          </>
+        )}
+        actions={<Button>New task</Button>}
+      />
+      <ListPageContent label="Task results">
+        <div className="bakin-archetype-story__result-heading">
+          <Stack gap="dense">
+            <h2>{view === 'board' ? 'Board' : 'Operational log'}</h2>
+            <p>{query ? `Filtering by “${query}”` : 'Showing all active tasks.'}</p>
+          </Stack>
+        </div>
+      </ListPageContent>
+    </ListPage>
+  )
+}
+
+export const ListHeaderControls = {
+  render: () => <ListHeaderControlsExample />,
+  parameters: {
+    bakinFixture: motionStoryFixture,
+  },
+  play: async ({ canvas }) => {
+    const search = canvas.getByRole('searchbox', { name: 'Search tasks' })
+    const board = canvas.getByRole('tab', { name: 'Board' })
+    const action = canvas.getByRole('button', { name: 'New task' })
+    const control = search.closest('[data-slot="search-input-control"]') as HTMLElement
+    const boardTop = board.getBoundingClientRect().top
+    const actionTop = action.getBoundingClientRect().top
+
+    await expect(control).toHaveAttribute('data-state', 'empty')
+    await expect(search).toHaveValue('')
+    await expect(Math.abs(board.getBoundingClientRect().top - boardTop)).toBeLessThan(1)
+    await expect(Math.abs(action.getBoundingClientRect().top - actionTop)).toBeLessThan(1)
+  },
+} satisfies Story
 
 const tasks = [
   {

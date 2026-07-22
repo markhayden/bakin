@@ -107,7 +107,7 @@ Use `@makinbakin/sdk/patterns` once a page is more specific than a general layou
 
 | Need | Component | Contract |
 | --- | --- | --- |
-| Identify any routed page | `PageHeader` | Renders the page's single `h1`; optional navigation, eyebrow, description, metadata, and actions keep one order at every width |
+| Identify any routed page | `PageHeader` | Renders the page's single `h1`; optional navigation, eyebrow, description, metadata, compact controls, and actions keep one order at every width |
 | Build a searchable or filterable index | `ListPage` | Uses the routine wide canvas; `full` is reserved for genuinely intrinsic-width domain content |
 | Keep query controls available | `ListPageControls` | Requires an accessible region name and reflows search, filters, sorting, and peer actions without owning their values |
 | Bound list results and replacement states | `ListPageContent` | Requires an accessible region name; `state` replaces only the results, while `feedback` can remain beside stale usable content |
@@ -121,11 +121,15 @@ import {
   ListPageContent,
   ListPageControls,
   PageHeader,
+  SearchInput,
+  SegmentedControl,
 } from '@makinbakin/sdk/patterns'
 import { Button, SystemState } from '@makinbakin/sdk/ui'
 
 export function TasksPage({ matchingTasks }: { matchingTasks: Array<{ id: string; title: string }> }) {
   const [status, setStatus] = useQueryState('status', 'all')
+  const [query, setQuery] = useQueryState('q', '')
+  const [view, setView] = useQueryState('view', 'board')
 
   return (
     <ListPage>
@@ -133,6 +137,18 @@ export function TasksPage({ matchingTasks }: { matchingTasks: Array<{ id: string
         eyebrow="Tasks / live operations"
         title="Coordinate active work"
         description="Keep owners, timing, and operational context visible."
+        controlsLabel="Task search and view"
+        controls={(
+          <>
+            <SearchInput label="Search tasks" value={query} onValueChange={setQuery} />
+            <SegmentedControl
+              ariaLabel="Task view"
+              value={view}
+              onValueChange={setView}
+              options={[{ value: 'board', label: 'Board' }, { value: 'log', label: 'Log' }]}
+            />
+          </>
+        )}
         actions={<Button>New task</Button>}
       />
       <ListPageControls label="Task list controls">
@@ -156,6 +172,19 @@ export function TasksPage({ matchingTasks }: { matchingTasks: Array<{ id: string
   )
 }
 ```
+
+`PageShell` owns the page canvas and insets, `PageHeader` owns page identity and
+the responsive header toolbar, and `Stack` or `Section` owns the content flow
+below it. Put one compact `SearchInput` and peer view navigation in
+`PageHeader controls` when they must remain beside the primary action. The
+search reserves its expanded width, so focus never repacks that desktop row.
+It starts at 14rem, expands to the available 22rem slot, and collapses on blur
+to fit the controlled query up to that cap; longer values remain intact and
+truncate with an ellipsis behind the pattern's accessible clear action. Do not
+add or restyle the browser-native search cancel control. At narrower header
+containers, the whole toolbar stacks at the documented container breakpoint.
+Put broader facets, sorting, pagination,
+and clear-all actions in `ListPageControls` instead of crowding the header.
 
 Production filters, search, sorting, pagination, selected tabs, and open overlays continue to use the existing query-state hooks. `useQueryState` uses replace semantics for routine view changes and batches multiple setters from one interaction; do not add local history wrappers or rebuild query strings in the recipe. Paths still identify pages. Use the existing `PluginLink` for back links and cross-page navigation:
 

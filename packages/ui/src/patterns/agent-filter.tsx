@@ -86,7 +86,7 @@ export function AgentFilter({
               data-agent-filter-value={item.value}
               className={cn(
                 'inline-flex h-bakin-8 shrink-0 items-center justify-center gap-bakin-1 rounded-bakin-control border border-transparent px-bakin-2 text-[length:var(--bakin-typography-size-meta)] font-bakin-typography-weight-semibold text-bakin-text-muted outline-none transition-[background-color,border-color,color,opacity] duration-[var(--bakin-motion-duration-feedback)] ease-bakin-standard hover:text-bakin-text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring disabled:pointer-events-none disabled:opacity-[var(--bakin-state-opacity-disabled)]',
-                selected && 'border-bakin-border-subtle bg-bakin-surface-default text-bakin-text-primary shadow-bakin-elevation-raised',
+                selected && 'bg-bakin-border-subtle/35 text-bakin-text-primary',
               )}
               onClick={() => onValueChange(item.value)}
               onKeyDown={(event) => {
@@ -95,7 +95,15 @@ export function AgentFilter({
                 move(index, event.key as HorizontalSelectionKey)
               }}
             >
-              {item.visual ? <span aria-hidden="true" className="shrink-0">{item.visual}</span> : null}
+              {item.visual ? (
+                <span
+                  aria-hidden="true"
+                  data-slot="agent-filter-visual"
+                  className="inline-flex size-bakin-6 shrink-0 items-center justify-center leading-none"
+                >
+                  {item.visual}
+                </span>
+              ) : null}
               {hideLabel ? <span className="sr-only">{item.label}</span> : <span className="whitespace-nowrap">{item.label}</span>}
             </button>
           )

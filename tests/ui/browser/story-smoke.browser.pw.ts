@@ -16,6 +16,7 @@ const submissionWorkflowStory = '/iframe.html?id=forms-field-and-form-compositio
 const systemStateStory = '/iframe.html?id=states-system-state-and-feedback--state-matrix&viewMode=story'
 const feedbackStory = '/iframe.html?id=states-system-state-and-feedback--feedback&viewMode=story'
 const listPageStory = '/iframe.html?id=patterns-list-and-detail-pages--list-index&viewMode=story'
+const listHeaderControlsStory = '/iframe.html?id=patterns-list-and-detail-pages--list-header-controls&viewMode=story'
 const listNoResultsStory = '/iframe.html?id=patterns-list-and-detail-pages--list-no-results&viewMode=story'
 const detailPageStory = '/iframe.html?id=patterns-list-and-detail-pages--detail&viewMode=story'
 const detailUnavailableStory = '/iframe.html?id=patterns-list-and-detail-pages--detail-unavailable&viewMode=story'
@@ -35,6 +36,8 @@ const saveFailureStory = '/iframe.html?id=patterns-destructive-and-dirty-state--
 const typedConfirmationStory = '/iframe.html?id=patterns-destructive-and-dirty-state--typed-confirmation&viewMode=story'
 const unsavedExitStory = '/iframe.html?id=patterns-destructive-and-dirty-state--unsaved-exit-decision&viewMode=story'
 const facetFilterStory = '/iframe.html?id=patterns-filters-and-navigation--facet-filtering&viewMode=story'
+const searchBehaviorStory = '/iframe.html?id=patterns-filters-and-navigation--search-behavior&viewMode=story'
+const longQueryStory = '/iframe.html?id=patterns-filters-and-navigation--long-query&viewMode=story'
 const agentFilterStory = '/iframe.html?id=patterns-filters-and-navigation--agent-filtering&viewMode=story'
 const segmentedNavigationStory = '/iframe.html?id=patterns-filters-and-navigation--segmented-navigation&viewMode=story'
 const underlineNavigationStory = '/iframe.html?id=patterns-filters-and-navigation--underline-navigation&viewMode=story'
@@ -525,7 +528,7 @@ test('page and flow layout follows its container without document overflow', asy
     })
   }
 
-  await expect(page.getByRole('navigation', { name: 'Page actions' })).toBeVisible()
+  await expect(page.getByRole('group', { name: 'Page actions' })).toBeVisible()
   expect(browserErrors).toEqual([])
 })
 
@@ -740,6 +743,35 @@ test('list and detail recipes preserve page identity, state slots, and responsiv
     await expect(filter).toHaveAttribute('aria-pressed', 'true')
     await expect(page.getByRole('region', { name: 'Task results' }).getByRole('listitem')).toHaveCount(1)
     await expect(page.getByRole('heading', { level: 1, name: 'Coordinate active work' })).toBeVisible()
+  })
+
+  await test.step('desktop header search expands inside its slot without moving peer controls', async () => {
+    await page.setViewportSize({ width: 1024, height: 900 })
+    await page.goto(listHeaderControlsStory, { waitUntil: 'networkidle' })
+    const search = page.getByRole('searchbox', { name: 'Search tasks' })
+    const control = page.locator('[data-slot="search-input-control"]')
+    const board = page.getByRole('tab', { name: 'Board' })
+    const action = page.getByRole('button', { name: 'New task' })
+    await expect(control).toHaveAttribute('data-state', 'empty')
+    const compact = await control.boundingBox()
+    const boardTop = (await board.boundingBox())?.y
+    const actionTop = (await action.boundingBox())?.y
+
+    await search.focus()
+    await expect(control).toHaveAttribute('data-state', 'focused')
+    await page.waitForTimeout(220)
+    const expanded = await control.boundingBox()
+    expect(expanded!.width).toBeGreaterThan(compact!.width)
+    expect((await board.boundingBox())?.y).toBe(boardTop)
+    expect((await action.boundingBox())?.y).toBe(actionTop)
+    await expect(page.locator('html')).toHaveAttribute('data-bakin-reduced-motion', 'false')
+    expect(await control.evaluate((element) => getComputedStyle(element).transitionDuration)).toBe('0.18s')
+
+    await search.fill('blocked launch approval tasks with a deliberately long owner name')
+    await page.getByRole('heading', { level: 2 }).click()
+    await expect(control).toHaveAttribute('data-state', 'filled')
+    await expect(search).toHaveValue('blocked launch approval tasks with a deliberately long owner name')
+    expect((await control.boundingBox())!.width).toBeLessThanOrEqual((await page.locator('[data-slot="search-input-reserve"]').boundingBox())!.width)
   })
 
   await test.step('replacement states retain identity and their controlling region', async () => {
@@ -1131,13 +1163,58 @@ test('filter and navigation patterns preserve keyboard selection, meaning, and b
     await expect(page.getByRole('status')).toHaveText('Showing every task state')
   })
 
+  await test.step('search behavior remains contained at the minimum width and 200% text', async () => {
+    await page.setViewportSize({ width: 1024, height: 900 })
+    await page.goto(searchBehaviorStory, { waitUntil: 'networkidle' })
+    const search = page.getByRole('searchbox', { name: 'Search tasks' })
+    const control = page.locator('[data-slot="search-input-control"]')
+    const compact = await control.boundingBox()
+    await search.focus()
+    await page.waitForTimeout(220)
+    expect((await control.boundingBox())!.width).toBeGreaterThan(compact!.width)
+    await expect(page.locator('html')).toHaveAttribute('data-bakin-reduced-motion', 'false')
+    expect(await control.evaluate((element) => getComputedStyle(element).transitionDuration)).toBe('0.18s')
+
+    await page.setViewportSize({ width: 320, height: 1000 })
+    await page.goto(searchBehaviorStory, { waitUntil: 'networkidle' })
+    await page.evaluate(() => { document.documentElement.style.fontSize = '200%' })
+    await expect(page.getByRole('searchbox', { name: 'Search tasks' })).toBeVisible()
+    const dimensions = await page.evaluate(() => ({ clientWidth: document.documentElement.clientWidth, scrollWidth: document.documentElement.scrollWidth }))
+    expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth)
+  })
+
+  await test.step('long queries truncate behind a canonical clear action without losing their value', async () => {
+    await page.setViewportSize({ width: 1024, height: 900 })
+    await page.goto(longQueryStory, { waitUntil: 'networkidle' })
+    const search = page.getByRole('searchbox', { name: 'Search tasks' })
+    await expect(search).toHaveValue('blocked launch approval tasks with a deliberately long owner name')
+    await expect(search).toHaveCSS('text-overflow', 'ellipsis')
+    const clear = page.getByRole('button', { name: 'Clear Search tasks' })
+    await expect(clear).toBeVisible()
+    await clear.click()
+    await expect(search).toHaveValue('')
+    await expect(search).toBeFocused()
+    await expect(clear).toBeHidden()
+  })
+
   await test.step('agent and compact view groups activate with arrow keys and skip disabled choices', async () => {
     await page.setViewportSize({ width: 1024, height: 900 })
     await page.goto(agentFilterStory, { waitUntil: 'networkidle' })
     const allAgents = page.getByRole('radio', { name: 'All agents' })
     await allAgents.focus()
     await allAgents.press('ArrowRight')
-    await expect(page.getByRole('radio', { name: 'Patch' })).toHaveAttribute('aria-checked', 'true')
+    const patch = page.getByRole('radio', { name: 'Patch' })
+    await expect(patch).toHaveAttribute('aria-checked', 'true')
+    const avatarCenters = await patch.locator('[data-slot="agent-filter-visual"]').evaluate((element) => {
+      const slot = element.getBoundingClientRect()
+      const visual = element.firstElementChild!.getBoundingClientRect()
+      return {
+        x: (visual.x + visual.width / 2) - (slot.x + slot.width / 2),
+        y: (visual.y + visual.height / 2) - (slot.y + slot.height / 2),
+      }
+    })
+    expect(Math.abs(avatarCenters.x)).toBeLessThanOrEqual(0.5)
+    expect(Math.abs(avatarCenters.y)).toBeLessThanOrEqual(0.5)
 
     await page.goto(segmentedNavigationStory, { waitUntil: 'networkidle' })
     const taskView = page.getByRole('tablist', { name: 'Task view' })
@@ -1147,6 +1224,13 @@ test('filter and navigation patterns preserve keyboard selection, meaning, and b
     }))
     expect(Math.abs(sizing.outer - sizing.visual)).toBeLessThanOrEqual(1)
     const board = page.getByRole('tab', { name: 'Board' })
+    const selectedStyle = await board.evaluate((element) => {
+      const style = getComputedStyle(element)
+      return { background: style.backgroundColor, border: style.borderColor, shadow: style.boxShadow }
+    })
+    expect(selectedStyle.background).not.toBe('rgba(0, 0, 0, 0)')
+    expect(selectedStyle.border).toBe('rgba(0, 0, 0, 0)')
+    expect(selectedStyle.shadow).toBe('none')
     await board.focus()
     await board.press('ArrowRight')
     await expect(page.getByRole('tab', { name: 'Operational log with preserved context' })).toHaveAttribute('aria-selected', 'true')

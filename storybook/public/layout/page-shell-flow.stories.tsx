@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { Inline, PageShell, Stack } from '@makinbakin/sdk/layout'
+import { PageHeader } from '@makinbakin/sdk/patterns'
 import { Badge, Button, Separator } from '@makinbakin/sdk/ui'
 
 import './layout.stories.css'
@@ -12,7 +13,7 @@ const meta = {
     layout: 'fullscreen',
     docs: {
       description: {
-        component: 'PageShell supplies bounded page width, container-responsive insets, and one page rhythm. Stack owns vertical flow; Inline owns wrapping peer content and actions. All choices map to the finite Bakin layout scale.',
+        component: 'PageShell supplies bounded page width, container-responsive insets, and one page rhythm. PageHeader owns page identity and the stable controls/action row. Stack owns vertical content flow; Inline owns wrapping peer content. All choices map to the finite Bakin layout scale.',
       },
     },
   },
@@ -30,17 +31,12 @@ const taskStats = [
 export const ResponsivePage = {
   render: () => (
     <PageShell width="wide" className="bakin-layout-story">
-      <Inline as="header" align="start" justify="between" gap="section">
-        <Stack gap="dense" className="bakin-layout-story__heading">
-          <p className="bakin-layout-story__eyebrow">Tasks / live operations</p>
-          <h1>Coordinate active work</h1>
-          <p className="bakin-layout-story__lede">Keep owners, timing, and operational context visible without building another one-off page wrapper.</p>
-        </Stack>
-        <Inline as="nav" aria-label="Page actions" gap="dense">
-          <Button variant="outline">Export view</Button>
-          <Button>New task</Button>
-        </Inline>
-      </Inline>
+      <PageHeader
+        eyebrow="Tasks / live operations"
+        title="Coordinate active work"
+        description="Keep owners, timing, and operational context visible without building another one-off page wrapper."
+        actions={<><Button variant="outline">Export view</Button><Button>New task</Button></>}
+      />
 
       <Separator />
 

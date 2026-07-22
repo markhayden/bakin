@@ -10,8 +10,8 @@
     "entrypoints": 8,
     "supportedEntrypoints": 7,
     "frozenLegacyEntrypoints": 1,
-    "valueExports": 321,
-    "typeExports": 384
+    "valueExports": 322,
+    "typeExports": 385
   },
   "entrypoints": [
     {
@@ -391,6 +391,7 @@
         "SaveBar",
         "ScoreOverlay",
         "SearchDegradedChip",
+        "SearchInput",
         "SearchPartialChip",
         "SearchUnavailable",
         "SegmentedControl",
@@ -472,6 +473,7 @@
         "ScoreOverlayInfo",
         "ScoreOverlayProps",
         "SearchDegradedChipProps",
+        "SearchInputProps",
         "SearchPartialChipProps",
         "SearchPartialMeta",
         "SearchUnavailableProps",

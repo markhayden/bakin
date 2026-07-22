@@ -1,6 +1,9 @@
 export { PageHeader } from './page-header'
 export type { PageHeaderProps } from './page-header'
 
+export { SearchInput } from './search-input'
+export type { SearchInputProps } from './search-input'
+
 export { ListPage, ListPageContent, ListPageControls } from './list-page'
 export type {
   ListPageContentProps,

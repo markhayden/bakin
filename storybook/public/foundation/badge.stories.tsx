@@ -73,11 +73,12 @@ export const Sizes = {
     <main className="bakin-primitive-story">
       <header className="bakin-primitive-story__intro">
         <p className="bakin-primitive-story__eyebrow">Density</p>
-        <h1>Two badge sizes</h1>
-        <p>Small fits ordinary metadata. Medium supports stronger labels and comfortable interactive targets.</p>
+        <h1>Three badge sizes</h1>
+        <p>Extra small fits compact counts, small fits ordinary metadata, and medium supports stronger labels and comfortable interactive targets.</p>
       </header>
       <section className="bakin-primitive-story__section">
         <div className="bakin-primitive-story__cluster">
+          <Badge size="xs" tone="neutral" variant="solid">3</Badge>
           <Badge size="sm" tone="neutral">Small metadata</Badge>
           <Badge size="md" tone="attention" variant="outline">Medium action state</Badge>
         </div>

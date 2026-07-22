@@ -9,6 +9,8 @@ import {
   ListPageContent,
   ListPageControls,
   PageHeader,
+  SearchInput,
+  SegmentedControl,
 } from '@makinbakin/sdk/patterns'
 import { Button } from '@makinbakin/sdk/ui'
 
@@ -16,7 +18,17 @@ export function ValidListRecipe() {
   const [status, setStatus] = useQueryState('status', 'all')
   return (
     <ListPage width="full">
-      <PageHeader title="Tasks" actions={<Button>New task</Button>} />
+      <PageHeader
+        title="Tasks"
+        controlsLabel="Task search and view"
+        controls={(
+          <>
+            <SearchInput label="Search tasks" value="" onValueChange={() => {}} />
+            <SegmentedControl ariaLabel="Task view" options={[{ value: 'board', label: 'Board' }]} value="board" onValueChange={() => {}} />
+          </>
+        )}
+        actions={<Button>New task</Button>}
+      />
       <ListPageControls label="Task filters">
         <Button aria-pressed={status === 'open'} onClick={() => setStatus(status === 'open' ? 'all' : 'open')}>
           Toggle open tasks

@@ -85,8 +85,13 @@ never sit at rest in a card — surface on hover or behind the detail view.
 ## 4. Controls & actions
 
 - ONE primary action per header, right-aligned (`PageHeader actions` or the
-  owning section action). Never stack competing primaries (the three-publish-
-  buttons bug).
+  owning section action). `PageHeader controls` owns compact search and view
+  navigation beside it; the reserved search slot must not repack the desktop
+  row on focus. `SearchInput` expands on focus, collapses to the controlled
+  query width, truncates longer values with an ellipsis, and supplies the
+  neutral accessible clear action; do not expose a browser-native search
+  cancel control. Never stack competing primaries (the three-publish-buttons
+  bug).
 - Add-row actions live right-aligned in the section header ("+ Add color"),
   not stuffed left under content.
 - Destructive row actions are the trash ICON (with `aria-label` + `title`),

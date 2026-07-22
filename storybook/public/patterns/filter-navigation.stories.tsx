@@ -6,12 +6,14 @@ import { PageShell, Stack } from '@makinbakin/sdk/layout'
 import {
   AgentFilter,
   FacetFilter,
+  SearchInput,
   SegmentedControl,
   SortableHead,
   UnderlineTabs,
   type SortDir,
 } from '@makinbakin/sdk/patterns'
 import { Button } from '@makinbakin/sdk/ui'
+import { DEFAULT_STORY_FIXTURE } from '../../fixtures'
 
 import './filter-navigation.stories.css'
 
@@ -22,15 +24,18 @@ const meta = {
     layout: 'fullscreen',
     docs: {
       description: {
-        component: 'FacetFilter, AgentFilter, SegmentedControl, UnderlineTabs, and SortableHead provide consistent selection, overflow, keyboard, and sorting semantics. Consumers own values and connect linkable state to the existing SDK query-state hooks.',
+        component: 'SearchInput, FacetFilter, AgentFilter, SegmentedControl, UnderlineTabs, and SortableHead provide consistent query, selection, overflow, keyboard, and sorting semantics. Consumers own values and connect linkable state to the existing SDK query-state hooks.',
       },
     },
-    bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'overflow', 'interaction', 'keyboard', 'counts', 'clearing', 'long-labels', 'url-state-guidance'],
+    bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'overflow', 'interaction', 'keyboard', 'counts', 'clearing', 'long-labels', 'focus-expansion', 'query-truncation', 'reduced-motion', 'url-state-guidance'],
   },
 } satisfies Meta
 
 export default meta
 type Story = StoryObj<typeof meta>
+
+const motionStoryFixture = { ...DEFAULT_STORY_FIXTURE, reducedMotion: false }
+const longSearchQuery = 'blocked launch approval tasks with a deliberately long owner name'
 
 function PatternStage({
   eyebrow,
@@ -68,6 +73,60 @@ const states = [
   { value: 'draft', label: 'Draft' },
   { value: 'archived', label: 'Archived' },
 ] as const
+
+function SearchInputExample({ initialQuery = '' }: { initialQuery?: string }) {
+  const [query, setQuery] = useState(initialQuery)
+
+  return (
+    <PatternStage
+      eyebrow="Query / compact discovery"
+      title="Expand search without moving the page"
+      description="The field starts compact, expands inside reserved space while focused, then shrinks to fit the current query up to its cap. Longer values remain intact behind an ellipsis and the canonical clear action."
+    >
+      <section aria-labelledby="search-input-heading" className="bakin-filter-navigation-story__section">
+        <div>
+          <h2 id="search-input-heading">Task search</h2>
+          <p>A routed page stores the controlled query in the existing URL-state contract; this pattern only owns presentation.</p>
+        </div>
+        <SearchInput
+          label="Search tasks"
+          value={query}
+          onValueChange={setQuery}
+          placeholder="Search tasks…"
+        />
+        <p role="status" className="bakin-filter-navigation-story__status">
+          {query ? `Current query: ${query}` : 'No query entered'}
+        </p>
+      </section>
+    </PatternStage>
+  )
+}
+
+export const SearchBehavior = {
+  render: () => <SearchInputExample />,
+  parameters: {
+    bakinFixture: motionStoryFixture,
+  },
+  play: async ({ canvas }) => {
+    const search = canvas.getByRole('searchbox', { name: 'Search tasks' })
+    const control = search.closest('[data-slot="search-input-control"]') as HTMLElement
+
+    await expect(control).toHaveAttribute('data-state', 'empty')
+    await expect(search).toHaveValue('')
+  },
+} satisfies Story
+
+export const LongQuery = {
+  render: () => <SearchInputExample initialQuery={longSearchQuery} />,
+  play: async ({ canvas }) => {
+    const search = canvas.getByRole('searchbox', { name: 'Search tasks' })
+    const control = search.closest('[data-slot="search-input-control"]') as HTMLElement
+
+    await expect(control).toHaveAttribute('data-state', 'filled')
+    await expect(search).toHaveValue(longSearchQuery)
+    await expect(canvas.getByRole('button', { name: 'Clear Search tasks' })).toBeVisible()
+  },
+} satisfies Story
 
 const stateCounts = {
   running: 12,

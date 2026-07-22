@@ -42,7 +42,13 @@ describe('filter and navigation patterns', () => {
     render(<FacetHarness />)
 
     expect(screen.getByRole('button', { name: 'Remove Needs attention because a dependency is unavailable filter' })).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: /State, 1 selected/ }))
+    const facetTrigger = screen.getByRole('button', { name: /State, 1 selected/ })
+    const selectedCount = facetTrigger.querySelector('[data-slot="facet-filter-count"]')
+    expect(selectedCount?.className).toContain('h-bakin-4')
+    expect(selectedCount?.className).toContain('min-w-bakin-4')
+    expect(selectedCount?.className).toContain('text-[.625rem]')
+    expect(selectedCount?.className).not.toContain('h-bakin-6')
+    fireEvent.click(facetTrigger)
     await act(async () => { await settleReact(1) })
     expect(screen.getByRole('combobox', { name: 'Search State' })).toBeTruthy()
     expect(screen.getByText('3')).toBeTruthy()
@@ -69,10 +75,16 @@ describe('filter and navigation patterns', () => {
 
     const all = screen.getByRole('radio', { name: 'All agents' })
     expect(all.getAttribute('aria-checked')).toBe('true')
+    expect(all.className).toContain('bg-bakin-border-subtle/35')
+    expect(all.className).not.toContain('border-bakin-border-subtle')
     all.focus()
     fireEvent.keyDown(all, { key: 'ArrowRight' })
     expect(onValueChange).toHaveBeenCalledWith('patch')
     expect(document.activeElement).toBe(screen.getByRole('radio', { name: 'Patch' }))
+
+    const visual = screen.getByRole('radio', { name: 'Patch' }).querySelector('[data-slot="agent-filter-visual"]')
+    expect(visual?.className).toContain('items-center')
+    expect(visual?.className).toContain('justify-center')
   })
 
   it('gives segmented navigation roving keyboard focus and skips disabled options', () => {
@@ -91,7 +103,14 @@ describe('filter and navigation patterns', () => {
     )
 
     const board = screen.getByRole('tab', { name: 'Board' })
+    const segmentedList = board.parentElement
+    expect(segmentedList?.className.split(' ')).toContain('p-0')
+    expect(segmentedList?.className.split(' ')).not.toContain('p-px')
+    expect(segmentedList?.className.split(' ')).not.toContain('p-bakin-1')
     expect(board.tabIndex).toBe(0)
+    expect(board.className).toContain('bg-bakin-border-subtle/35')
+    expect(board.className).not.toContain('border-bakin-border-subtle')
+    expect(board.className).not.toContain('shadow-bakin-elevation-raised')
     board.focus()
     fireEvent.keyDown(board, { key: 'ArrowRight' })
     expect(onValueChange).toHaveBeenCalledWith('operational-log')

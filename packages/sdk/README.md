@@ -143,7 +143,12 @@ recovery action. Use `Banner` for persistent page context. Plugins call
 shell-owned `ToastRegion` to Bakin.
 
 Routed indexes and record pages compose from `@makinbakin/sdk/patterns`.
-`PageHeader` owns the single page heading and responsive action order.
+`PageHeader` owns the single page heading and its responsive controls/action
+order. Use its `controls` slot for the canonical compact `SearchInput` and peer
+view navigation when they belong beside the primary action; the reserved
+search slot expands without repacking the desktop header row. Longer queries
+remain intact behind an ellipsis, and the pattern supplies its own accessible
+clear action instead of a browser-dependent native cancel control.
 `ListPageControls` and `ListPageContent` keep query controls separate from the
 named result/state boundary. `DetailPageBody` composes a primary flow with an
 optional named `DetailPageAside` that reflows below it. The recipes do not own

@@ -369,6 +369,7 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 | `FacetFilter` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `AgentFilter` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `SaveBar` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `SearchInput` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `SegmentedControl` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `SortableHead` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `StatTile` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
@@ -474,6 +475,7 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 | `AgentFilterOption` | — |
 | `AgentFilterProps` | — |
 | `SaveBarProps` | — |
+| `SearchInputProps` | — |
 | `SegmentedControlOption` | — |
 | `SegmentedControlProps` | — |
 | `SortableHeadProps` | — |

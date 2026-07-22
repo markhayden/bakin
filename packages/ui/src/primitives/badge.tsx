@@ -6,7 +6,7 @@ import { cn } from '../utils'
 
 export type BadgeTone = 'neutral' | 'primary' | 'success' | 'attention' | 'danger' | 'accent'
 export type BadgeVariant = 'soft' | 'solid' | 'outline' | 'ghost' | 'link'
-export type BadgeSize = 'sm' | 'md'
+export type BadgeSize = 'xs' | 'sm' | 'md'
 
 /** Compatibility aliases retained while owned consumers move to tone + variant. */
 export type LegacyBadgeVariant = 'default' | 'secondary' | 'destructive'
@@ -63,6 +63,7 @@ const badgeStyles = cva(
         link: 'border-transparent bg-transparent underline-offset-4 hover:underline',
       },
       size: {
+        xs: 'h-bakin-4 min-w-bakin-4 gap-0 px-bakin-1 text-[.625rem] leading-none [&>svg]:size-bakin-2',
         sm: 'h-bakin-6 gap-bakin-1 px-bakin-2 text-[length:var(--bakin-typography-size-meta)] [&>svg]:size-bakin-3',
         md: 'h-bakin-8 gap-bakin-2 px-bakin-3 text-[length:var(--bakin-typography-size-body)] [&>svg]:size-bakin-4',
       },

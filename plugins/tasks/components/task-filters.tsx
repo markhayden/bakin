@@ -85,7 +85,8 @@ export function TaskFilters({
 
       {onShowScheduledChange && (
         <label
-          className="flex h-8 items-center gap-2 rounded-md px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground cursor-pointer select-none"
+          data-slot="scheduled-tasks-filter"
+          className="flex h-8 cursor-pointer select-none items-center gap-2 rounded-md px-2 text-xs font-medium text-muted-foreground"
           title={showScheduled ? 'Hide scheduled tasks' : 'Show scheduled tasks'}
         >
           {showScheduled ? <Eye className="size-3.5" /> : <EyeOff className="size-3.5" />}

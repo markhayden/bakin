@@ -39,9 +39,25 @@ describe('PluginHeader search + warm indicator', () => {
       />,
     )
 
-    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'diagram' } })
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'diagram' } })
 
     await waitFor(() => expect(onChange).toHaveBeenCalledWith('diagram'))
+  })
+
+  it('keeps the accessible search name independent from its visual hint', () => {
+    render(
+      <PluginHeader
+        title="Assets"
+        search={{
+          value: '',
+          onChange: () => {},
+          label: 'Search indexed assets',
+          placeholder: 'Filter by title or type…',
+        }}
+      />,
+    )
+
+    expect(screen.getByRole('searchbox', { name: 'Search indexed assets' })).toBeDefined()
   })
 
   it('NEVER blocks input while warming — the indicator is display-only', async () => {
@@ -58,12 +74,12 @@ describe('PluginHeader search + warm indicator', () => {
       />,
     )
 
-    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'diagram' } })
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'diagram' } })
 
     await waitFor(() => expect(onChange).toHaveBeenCalledWith('diagram'))
   })
 
-  it('wraps heading, search, and actions within the available container', () => {
+  it('keeps heading, search, and actions in one stable row when its container has room', () => {
     render(
       <PluginHeader
         title="A deliberately long operational page title"
@@ -76,17 +92,21 @@ describe('PluginHeader search + warm indicator', () => {
     )
 
     const root = screen.getByTestId('plugin-header')
+    const layout = screen.getByTestId('plugin-header-layout')
     const heading = screen.getByTestId('plugin-header-heading')
     const controls = screen.getByTestId('plugin-header-controls')
     const search = screen.getByTestId('plugin-header-search')
 
-    expect(root.className).toContain('flex-wrap')
+    expect(root.className).toContain('@container/plugin-header')
+    expect(layout.className).toContain('@3xl/plugin-header:grid-cols')
     expect(heading.className).toContain('min-w-0')
     expect(heading.className).toContain('flex-col')
-    expect(controls.className).toContain('flex-wrap')
+    expect(controls.className).toContain('@3xl/plugin-header:flex-nowrap')
     expect(search.className).toContain('max-w-full')
-    expect(search.className).toContain('motion-reduce:transition-none')
-    expect(search.className).not.toContain('w-[32rem]')
+    expect(search.className).toContain('@3xl/plugin-header:w-[22rem]')
+    expect(search.className).toContain('@3xl/plugin-header:shrink-0')
+    expect(search.querySelector('[data-slot="search-input-control"]')?.className).toContain('motion-reduce:transition-none')
+    expect(search.className).not.toContain('focus-within:basis-[32rem]')
     expect(screen.getByText('Fresh evidence from every required source').className).not.toContain('truncate')
     expect(screen.getByRole('button', { name: 'Run checks' })).toBeDefined()
   })

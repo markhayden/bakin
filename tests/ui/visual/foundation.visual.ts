@@ -298,6 +298,19 @@ test('public list/index page recipe visual baseline', async ({ page }) => {
   })
 })
 
+test('public page header controls visual baseline', async ({ page }) => {
+  await page.goto('/iframe.html?id=patterns-list-and-detail-pages--list-header-controls&viewMode=story')
+  await expect(page.getByRole('heading', { level: 1, name: 'Tasks' })).toBeVisible()
+  await expect(page.getByRole('group', { name: 'Task search and view' })).toBeVisible()
+  await expect(page.locator('[data-slot="search-input-control"]')).toHaveAttribute('data-state', 'empty')
+  await page.evaluate(async () => document.fonts.ready)
+  await expect(page).toHaveScreenshot('foundation-page-header-controls.png', {
+    animations: 'disabled',
+    caret: 'hide',
+    fullPage: true,
+  })
+})
+
 test('public detail page recipe visual baseline', async ({ page }) => {
   await page.goto('/iframe.html?id=patterns-list-and-detail-pages--detail&viewMode=story')
   await expect(page.getByRole('heading', { level: 1, name: 'Launch approval' })).toBeVisible()
@@ -421,6 +434,19 @@ test('public facet filter pattern visual baseline', async ({ page }) => {
   await expect(page.getByRole('option', { name: 'Needs attention because a dependency is unavailable Selected 3' })).toBeVisible()
   await page.evaluate(async () => document.fonts.ready)
   await expect(page).toHaveScreenshot('foundation-facet-filter.png', {
+    animations: 'disabled',
+    caret: 'hide',
+    fullPage: true,
+  })
+})
+
+test('public compact search behavior visual baseline', async ({ page }) => {
+  await page.goto('/iframe.html?id=patterns-filters-and-navigation--long-query&viewMode=story')
+  await expect(page.getByRole('heading', { level: 1, name: 'Expand search without moving the page' })).toBeVisible()
+  await expect(page.locator('[data-slot="search-input-control"]')).toHaveAttribute('data-state', 'filled')
+  await expect(page.getByRole('status')).toContainText('blocked launch approval tasks')
+  await page.evaluate(async () => document.fonts.ready)
+  await expect(page).toHaveScreenshot('foundation-search-input.png', {
     animations: 'disabled',
     caret: 'hide',
     fullPage: true,

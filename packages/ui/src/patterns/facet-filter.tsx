@@ -94,7 +94,13 @@ export function FacetFilter({
         >
           <span className="truncate">{label}</span>
           {selected.length > 0 ? (
-            <Badge tone="neutral" variant="solid" className="min-w-bakin-6 px-bakin-1 font-bakin-typography-family-mono">
+            <Badge
+              tone="neutral"
+              variant="solid"
+              size="xs"
+              data-slot="facet-filter-count"
+              className="font-bakin-typography-family-mono tabular-nums"
+            >
               {selected.length}
             </Badge>
           ) : null}

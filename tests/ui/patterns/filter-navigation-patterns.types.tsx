@@ -1,6 +1,7 @@
 import {
   AgentFilter,
   FacetFilter,
+  SearchInput,
   SegmentedControl,
   SortableHead,
   UnderlineTabs,
@@ -9,6 +10,7 @@ import {
 export const validFilterNavigationPatterns = (
   <>
     <FacetFilter label="State" options={[]} selected={[]} onChange={() => {}} />
+    <SearchInput label="Search tasks" value="" onValueChange={() => {}} />
     <AgentFilter ariaLabel="Agent" options={[]} value="all" onValueChange={() => {}} />
     <SegmentedControl ariaLabel="View" options={[{ value: 'board', label: 'Board' }]} value="board" onValueChange={() => {}} />
     <UnderlineTabs tabs={[{ id: 'overview', label: 'Overview' }]} value="overview" onValueChange={() => {}} />

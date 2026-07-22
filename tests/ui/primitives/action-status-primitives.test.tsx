@@ -78,6 +78,14 @@ describe('Badge public contract', () => {
     expect(badge.getAttribute('data-variant')).toBe('soft')
     expect(badgeVariants({ variant: 'secondary' })).toContain('text-bakin-text-muted')
   })
+
+  it('provides a compact badge size for counts inside dense controls', () => {
+    const classes = badgeVariants({ size: 'xs' }).split(' ')
+
+    expect(classes).toContain('h-bakin-4')
+    expect(classes).toContain('min-w-bakin-4')
+    expect(classes).not.toContain('h-bakin-6')
+  })
 })
 
 describe('Alert public contract', () => {

@@ -12,6 +12,7 @@ import {
   ListPageContent,
   ListPageControls,
   PageHeader,
+  SearchInput,
 } from '@makinbakin/sdk/patterns'
 import { Button, SystemState } from '@makinbakin/sdk/ui'
 
@@ -51,6 +52,32 @@ describe('shared page header recipe', () => {
 
     expect(screen.getByRole('heading', { level: 1, name: 'Task queue' })).toBeTruthy()
     expect(screen.getByRole('group', { name: 'Task queue actions' })).toBeTruthy()
+  })
+
+  it('keeps search, view controls, and the primary action in one stable desktop toolbar', () => {
+    const { container } = render(
+      <PageHeader
+        title="Tasks"
+        controlsLabel="Task view controls"
+        controls={(
+          <>
+            <SearchInput label="Search tasks" value="" onValueChange={() => {}} />
+            <Button variant="outline">Board</Button>
+          </>
+        )}
+        actions={<Button>New task</Button>}
+      />,
+    )
+
+    const layout = container.querySelector('[data-slot="page-header-layout"]')
+    const trailing = container.querySelector('[data-slot="page-header-trailing"]')
+    const controls = screen.getByRole('group', { name: 'Task view controls' })
+
+    expect(layout?.className).toContain('@3xl/page-header:grid-cols')
+    expect(trailing?.className).toContain('@3xl/page-header:flex-nowrap')
+    expect(controls.className).toContain('@3xl/page-header:[&>[data-slot=search-input-reserve]]:w-[22rem]')
+    expect(controls.querySelector('[data-slot="search-input-reserve"]')).toBeTruthy()
+    expect(screen.getByRole('group', { name: 'Page actions' })).toBeTruthy()
   })
 })
 
