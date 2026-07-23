@@ -6,6 +6,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+## [0.0.1-rc.24] - 2026-07-23
+
+The Health-honesty patch (#720), one day after rc.23. Field testing rc.23 on two machines exposed the next layer: health cards that told you something was wrong without telling you what, instructions that referenced UI that doesn't exist or asked a human to trigger machine operations, and a dashboard that lit up after every restart with states that resolve themselves. The standard this release enforces: **a health card names its exact evidence, resolves with one click wherever the fix is deterministic, and self-resolving states never masquerade as things you must fix.**
+
+### Added
+- **One-click spend-evidence repair (#720).** The "Spend evidence is incomplete" card now enumerates its actual gaps by model and reason ("openai/gpt-5.5: unpriced — 3 runs"; daily/monthly windows deduped) and, when the gap is missing pricing, offers a **Refresh model pricing** repair that force-refreshes the model catalog server-side through the new `models.refreshAvailableModels` hook — replacing an instruction to go visit the Models page. Failure modes are honest and specific: models plugin inactive, provider returned zero models (points at `bakin check llm`), fetch error surfaced verbatim — and success never overclaims (a model with no known pricing stays honestly uncapped-by-dollars).
+- **Advisory unknowns (#720).** The health contract now lets a producer mark an unknown as *advisory*: "this self-resolves, don't page anyone" — a transcript scan warming up after a restart, billing attribution completing as sessions land. Advisory unknowns show in the quiet advisories strip instead of the **Fix first** banner, which previously swallowed every unknown-status incident regardless of disposition or sensitivity — the reason a freshly restarted, perfectly healthy box greeted you with Verify cards. `action_required` unknowns remain unrepresentable: an unknown cannot honestly demand action.
+- **Shared clamped observation builders (`@bakin/core/health/observation-builders`, #720).** The health observation builders moved into core so adapter packages construct through the same protected path as plugins (`@makinbakin/sdk/utils` re-exports unchanged; the Pi adapter's raw-literal helpers now route through them).
+
+### Changed
+- **Crashed-check cards print their own error (#720).** The generic "could not be verified" card means the check itself failed to produce evidence — it now embeds the underlying error (bounded) in the card copy, and its instructions reference only what is actually on screen. When check output fails contract validation, the exact failing field paths surface on the card, in the server log, and in the execution record.
+- **Coverage and search cards speak plainly (#720).** "Agent usage coverage is incomplete" states which scan state it is in and what to expect (running → recheck in a minute; not yet run since boot → resolves itself; stale → the scanner may be stuck, report it), with every coverage reason mapped to plain language. The engine-unavailable card's instructions name real commands (`bakin install search`, the antfly log path, `bakin search:reset` as last resort). "Search is disabled" is now classed as a policy choice, so a box that turned Search off on purpose calms to advisory under standard sensitivity instead of glowing red forever.
+
+### Fixed
+- **Overlong copy no longer destroys check evidence (#720).** The root cause of the field-reported generic Verify cards: checks that interpolated dynamic text (a ~700-character runtime gateway error, unbounded model ids) into bounded contract fields failed validation *wholesale* — real evidence became a useless "could not be verified" card. The observation builders now clamp summary, detail, and incident impact to contract bounds (trim, blank-detail drop, surrogate-safe truncation), the known offenders (two schedule checks, five team checks) move errors into detail where they belong, and an independent review's reproduction of the same class in the new gap-enumeration code was fixed before ship.
+- **Model sha256 verification moved off the check path (#720).** rc.23 hashed pinned model weights (hundreds of MB) on doctor cadence, which blew check timeouts on loaded machines; checks now verify pinned structure only (file names + sizes — the crash-loop class) and hashing runs post-pull at install time.
+
 ## [0.0.1-rc.23] - 2026-07-22
 
 A field-hardening patch, same day as rc.22. Recovering a second production machine surfaced fourteen distinct failures across install, model acquisition, health reporting, and recovery tooling — every item in this release (#718) traces to one of them. The theme: when search breaks, Bakin says what is actually wrong and fixes it with one action. **If search is broken on an existing install:** upgrade, run `bakin install search` (a current binary no longer skips service provisioning), and if the engine state itself is suspect, `bakin search:reset` rebuilds it clean in one command.
@@ -424,5 +441,7 @@ This is primarily an architecture release: ~380 commits, the bulk of them a beha
 
 [0.0.1-rc.22]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.22
 
-[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.23...HEAD
 [0.0.1-rc.23]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.23
+
+[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.24...HEAD
+[0.0.1-rc.24]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.24
