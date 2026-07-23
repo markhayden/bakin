@@ -33,8 +33,12 @@ export async function checkRunDirs(): Promise<HealthCheckRunInput> {
       incident: {
         key: 'no-sweep-yet',
         title: 'Run-workspace usage unknown',
-        impact: 'Disk growth from per-run agent working directories is unmonitored until the first sweep.',
-        disposition: 'watch',
+        impact: 'Disk growth from per-run agent working directories is unmonitored until the first watchdog sweep completes — it runs on its own shortly after boot; Sweep now measures immediately.',
+        // Boot-warming state: the watchdog's first pass resolves this on
+        // its own within minutes — advisory keeps it out of the Fix first
+        // banner that lit up after every restart (aggressiveness pass,
+        // 2026-07-23; same treatment as the transcript-scan warm-up).
+        disposition: 'advisory',
         class: 'cleanup_backlog',
         resources: [{ kind: 'system', id: 'run-workspaces', label: '~/.bakin/run-workspaces' }],
         resolution: { key: 'sweep', type: 'repair', actionId: 'sweep-run-dirs', label: 'Sweep now' },
