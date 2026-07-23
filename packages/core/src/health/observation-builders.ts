@@ -43,7 +43,27 @@ function truncate(value: string, max: number): string {
   return `${value.slice(0, end)}…`
 }
 
-function clampCopy<T extends { summary: string; detail?: string; incident?: { impact: string } }>(input: T): T {
+const RESOURCE_LABEL_MAX = 120
+const STABLE_ID_PATTERN = /^[a-z0-9][a-z0-9._:-]{0,127}$/
+
+type ResourceLike = { id: string; label?: string }
+
+function normalizeResources<R extends ResourceLike>(resources: R[]): R[] {
+  return resources.map((resource) => {
+    const next = { ...resource }
+    // Deterministic sanitize is identity on already-valid ids — only
+    // contract-invalid ids (a filesystem path, uppercase, slashes) change.
+    if (!STABLE_ID_PATTERN.test(next.id)) next.id = healthResourceId(next.id)
+    if (next.label !== undefined) {
+      const label = next.label.trim()
+      if (label.length === 0) delete next.label
+      else next.label = truncate(label, RESOURCE_LABEL_MAX)
+    }
+    return next
+  })
+}
+
+function clampCopy<T extends { summary: string; detail?: string; incident?: { impact: string; resources?: ResourceLike[] } }>(input: T): T {
   const clamped = { ...input }
   const summary = clamped.summary.trim()
   clamped.summary = truncate(summary.length > 0 ? summary : '(no summary provided)', SUMMARY_MAX)
@@ -55,8 +75,11 @@ function clampCopy<T extends { summary: string; detail?: string; incident?: { im
       clamped.detail = truncate(detail, DETAIL_MAX)
     }
   }
-  if (clamped.incident && clamped.incident.impact.length > IMPACT_MAX) {
-    clamped.incident = { ...clamped.incident, impact: truncate(clamped.incident.impact, IMPACT_MAX) }
+  if (clamped.incident) {
+    const incident = { ...clamped.incident }
+    if (incident.impact.length > IMPACT_MAX) incident.impact = truncate(incident.impact, IMPACT_MAX)
+    if (incident.resources) incident.resources = normalizeResources(incident.resources)
+    clamped.incident = incident
   }
   return clamped
 }
@@ -91,4 +114,22 @@ export function healthObserved(
 /** Build an explicit successful not-applicable run. */
 export function healthNotApplicable(reason: string): NotApplicableHealthCheckRunInput {
   return { outcome: 'not_applicable', reason }
+}
+
+/**
+ * Deterministically coerce arbitrary text (a filesystem path, a table
+ * name, a task id) into the contract's stable resource-id format
+ * (`^[a-z0-9][a-z0-9._:-]{0,127}$`). A raw path used as a resource id
+ * failed contract validation and nuked a REAL finding into a generic
+ * "could not be verified" card for three releases (field-diagnosed
+ * 2026-07-23). Put the human-readable original in `label`, never in `id`.
+ */
+export function healthResourceId(raw: string): string {
+  const sanitized = raw
+    .toLowerCase()
+    .replace(/[^a-z0-9._:-]+/g, '-')
+    .replace(/^[^a-z0-9]+/, '')
+    .replace(/-+$/, '')
+    .slice(0, 128)
+  return sanitized.length > 0 ? sanitized : 'unknown'
 }

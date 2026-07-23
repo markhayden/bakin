@@ -15,6 +15,7 @@ export {
   healthHealthy,
   healthNotApplicable,
   healthObserved,
+  healthResourceId,
   healthUnknown,
   healthWarning,
 } from '../../../core/src/health/observation-builders'

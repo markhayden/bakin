@@ -592,3 +592,42 @@ describe('unknown incidents may be advisory — never action_required (2026-07-2
     expect(safeParseHealthCheckRunInput(unknownWith('action_required')).success).toBe(false)
   })
 })
+
+describe('builders normalize incident resources (2026-07-23)', () => {
+  // A filesystem path used as a resource id failed contract validation and
+  // hid a REAL stale-worktree finding behind a generic Verify card for
+  // three releases. Builders sanitize invalid ids deterministically (valid
+  // ids pass through untouched) and bound labels.
+  it('sanitizes a path id, bounds a long label, and the result passes the contract', async () => {
+    const { healthWarning, healthObserved } = await import('@makinbakin/sdk/utils')
+    const observation = healthWarning({
+      key: 'missing.w1',
+      summary: 'The worktree for task t1 is missing.',
+      incident: {
+        key: 'missing.w1',
+        title: 'A tracked Git worktree is missing',
+        impact: 'Task t1 may no longer have its working directory.',
+        disposition: 'action_required',
+        resources: [
+          { kind: 'task', id: 'task-1', label: 'T'.repeat(200) },
+          { kind: 'directory', id: '/Users/margo/.bakin/run-workspaces/Agent X/repo' },
+        ],
+        resolution: { key: 'release', type: 'rerun', label: 'Check again' },
+      },
+    })
+    const resources = observation.incident.resources!
+    expect(resources[0]!.id).toBe('task-1') // valid id untouched
+    expect(resources[0]!.label!.length).toBe(120)
+    expect(resources[1]!.id).toBe('users-margo-.bakin-run-workspaces-agent-x-repo')
+
+    const result = safeParseHealthCheckRunInput(healthObserved([observation]))
+    expect(result.success).toBe(true)
+  })
+
+  it('healthResourceId is deterministic and identity on valid ids', async () => {
+    const { healthResourceId } = await import('@makinbakin/sdk/utils')
+    expect(healthResourceId('already-valid.id:1')).toBe('already-valid.id:1')
+    expect(healthResourceId('/Some/Path')).toBe(healthResourceId('/Some/Path'))
+    expect(healthResourceId('///')).toBe('unknown')
+  })
+})
