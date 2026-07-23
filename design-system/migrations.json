@@ -19,34 +19,18 @@
     "private-import"
   ],
   "summary": {
-    "paths": 195,
+    "paths": 194,
     "totals": {
       "raw-palette": 1341,
       "arbitrary-size": 521,
       "raw-control": 191,
       "inline-style": 56,
-      "generic-token": 2367,
+      "generic-token": 2366,
       "unscoped-css": 0,
       "private-import": 6
     }
   },
   "entries": [
-    {
-      "path": "bakin-bits-official/plugins/_template/components/template-page.tsx",
-      "owner": {
-        "repository": "bakin-bits-official",
-        "area": "plugin",
-        "pluginId": "_template"
-      },
-      "censusEntryId": "plugin-slot:_template:page:/_template",
-      "migrationTask": "T42b",
-      "archetype": "plugin-contract",
-      "target": "official plugin template using only public SDK UI and scoped CSS",
-      "status": "legacy-allowed",
-      "allowances": {
-        "generic-token": 1
-      }
-    },
     {
       "path": "bakin-bits-official/plugins/messaging/components/brainstorm-view.tsx",
       "owner": {

@@ -1841,7 +1841,25 @@ route contract, full 8,201-test suite, and isolated drag-and-drop suite pass.
 The exemplar exposed and fixed two golden-path defects: author-only UI config
 was incorrectly scanned as runtime plugin code, and published SDK barrels did
 not retain declaration-only leaf modules needed by external consumers. T42b,
-the official Bits `_template`, remains next.
+the official Bits `_template`, followed as the cross-repository consumer.
+
+**T42b status (2026-07-22):** Complete. The official Bits `_template` is now a
+copyable route-plus-`home-widget` plugin with one exported production
+registration, focused layout/pattern/UI/navigation imports, real GET and
+validated POST examples, canonical page/form/state/card compositions, and one
+owner-scoped domain stylesheet. Its package ships typecheck, server tests,
+architecture tests, a deterministic network fixture, and the same `test:ui`
+command documented for third-party builders. A fresh copy installed the SDK
+from an npm tarball, then passed typecheck, six package tests, stylesheet/CSS
+containment, desktop/mobile overflow, axe, keyboard/focus, console, and visual
+checks. Full official Bits typecheck, lint, 426 tests, and production builds
+also pass. The real consumer path exposed and fixed four publish-contract
+defects: Bun tree-shook runtime declarations from public re-export barrels,
+the SDK emitted development JSX into production consumers, the author-only
+`_template` id was not accepted consistently by CSS containment, and broad
+Zod resolution could split nominal v4 types. Neutral publish wrappers,
+production JSX, one shared author-id validator, exact-minor Zod ranges, and
+package-level regression builds now prevent recurrence.
 
 **Acceptance:** no private/legacy imports, raw standard controls, unscoped CSS,
 or host Tailwind dependency remains; page and slot examples pass conformance;
@@ -1862,6 +1880,20 @@ fixtures.\
 **Description:** Run the same public harness for all client-bearing official
 plugins and feed results into the compatibility matrix and census.
 
+**Status (2026-07-22):** Complete as the pre-migration enrollment gate. Core's
+existing canonical Playwright job now validates a discovered, exhaustive
+official-plugin registry before running the seeded harness and clean reference
+plugin. It names every client-bearing package with its owning migration task
+and explicitly verifies that Git and Images are truly server-only. Official
+Bits has the same omission-proof registry and a separate pinned Playwright CI
+job: it assembles the compatible SDK from Bakin source, packs it exactly as an
+npm consumer, installs a fresh `_template`, and runs its typecheck, package
+tests, and public UI harness. Messaging and Projects are named as
+migration-pending and automatically become conformant entries in T67-T70;
+new packages, false server-only labels, or config-less conformant packages
+fail CI. Both repositories include seeded enrollment regressions, while the
+Core teeth suite proves every promised conformance violation blocks the gate.
+
 **Acceptance:** core and Bits CI name every plugin result; server-only Git and
 Images are explicitly non-UI rather than silently skipped; a seeded official
 violation blocks its repository.
@@ -1877,10 +1909,10 @@ official fixture metadata.\
 
 ### Checkpoint 4B — Plugin-author golden path
 
-- [ ] Fresh template: install dependencies → `bun run test:ui` → pass.
-- [ ] Reference plugin and Bits template render pages and slots in the real
+- [x] Fresh template: install dependencies → `bun run test:ui` → pass.
+- [x] Reference plugin and Bits template render pages and slots in the real
   contract with no private styling access.
-- [ ] Every client-bearing official plugin is enrolled before migration begins.
+- [x] Every client-bearing official plugin is enrolled before migration begins.
 
 ---
 

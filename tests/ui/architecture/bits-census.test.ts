@@ -88,11 +88,17 @@ function createFixture(): { bakinRoot: string; bitsRoot: string; bitsPluginsRoot
     '} })',
   ].join('\n'))
 
-  writeFixture(bitsRoot, 'plugins/_template/bakin-plugin.json', manifest('_template', [], ['page:/_template']))
+  writeFixture(bitsRoot, 'plugins/_template/bakin-plugin.json', manifest('_template', ['/_template'], ['home-widget']))
   writeFixture(bitsRoot, 'plugins/_template/client.tsx', [
     "import { registerPlugin } from '@makinbakin/sdk'",
+    "import { templateRegistration } from './client-registration'",
+    'registerPlugin(templateRegistration)',
+  ].join('\n'))
+  writeFixture(bitsRoot, 'plugins/_template/client-registration.tsx', [
+    "import type { PluginRegistration } from '@makinbakin/sdk'",
     'function TemplatePage() { return <main /> }',
-    "registerPlugin({ id: '_template', slots: { 'page:/_template': TemplatePage } })",
+    'function TemplateWidget() { return <aside /> }',
+    "export const templateRegistration = { id: '_template', routes: { '/_template': TemplatePage }, slots: { 'home-widget': TemplateWidget } } satisfies PluginRegistration",
   ].join('\n'))
   return { bakinRoot, bitsRoot, bitsPluginsRoot }
 }
@@ -108,7 +114,7 @@ describe('official Bits census', () => {
     const bitsEntries = census.entries.filter((entry) => entry.owner.repository === 'bakin-bits-official')
 
     expect(census.scope.repositories).toEqual(['bakin', 'bakin-bits-official'])
-    expect(bitsEntries.filter((entry) => entry.kind === 'plugin-route')).toHaveLength(9)
+    expect(bitsEntries.filter((entry) => entry.kind === 'plugin-route')).toHaveLength(10)
     expect(bitsEntries.filter((entry) => entry.kind === 'plugin-route' && entry.owner.pluginId === 'messaging' && entry.classification === 'visual-surface')).toHaveLength(4)
     expect(bitsEntries).toEqual(expect.arrayContaining([
       expect.objectContaining({
@@ -125,8 +131,12 @@ describe('official Bits census', () => {
         symbols: ['PlansBadgeProvider'],
       }),
       expect.objectContaining({
-        id: 'plugin-slot:_template:page:/_template',
+        id: 'plugin-route:_template:/_template',
         symbols: ['TemplatePage'],
+      }),
+      expect.objectContaining({
+        id: 'plugin-slot:_template:home-widget',
+        symbols: ['TemplateWidget'],
       }),
       expect.objectContaining({
         id: 'plugin-template:_template',

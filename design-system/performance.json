@@ -11,7 +11,7 @@
   },
   "css": {
     "canonicalPath": "packages/sdk/styles.css",
-    "canonicalBytes": 240479,
+    "canonicalBytes": 240565,
     "copyCount": 1,
     "copyPaths": [
       "packages/sdk/styles.css"
@@ -19,56 +19,56 @@
   },
   "hostInitialJs": {
     "path": "packages/host/dist/main.js",
-    "bytes": 391410
+    "bytes": 391338
   },
   "sdkUiBundles": [
     {
       "name": "sdk-charts",
       "path": "packages/host/public/vendor/sdk-charts.js",
       "bytes": 513,
-      "reachableBytes": 47626
+      "reachableBytes": 47738
     },
     {
       "name": "sdk-components",
       "path": "packages/host/public/vendor/sdk-components.js",
-      "bytes": 23960,
-      "reachableBytes": 1236078
+      "bytes": 23988,
+      "reachableBytes": 1236806
     },
     {
       "name": "sdk-content",
       "path": "packages/host/public/vendor/sdk-content.js",
       "bytes": 335,
-      "reachableBytes": 753916
+      "reachableBytes": 754168
     },
     {
       "name": "sdk-conversation",
       "path": "packages/host/public/vendor/sdk-conversation.js",
       "bytes": 893,
-      "reachableBytes": 219253
+      "reachableBytes": 219505
     },
     {
       "name": "sdk-layout",
       "path": "packages/host/public/vendor/sdk-layout.js",
       "bytes": 1508,
-      "reachableBytes": 4540
+      "reachableBytes": 4568
     },
     {
       "name": "sdk-navigation",
       "path": "packages/host/public/vendor/sdk-navigation.js",
       "bytes": 558,
-      "reachableBytes": 311976
+      "reachableBytes": 312256
     },
     {
       "name": "sdk-patterns",
       "path": "packages/host/public/vendor/sdk-patterns.js",
       "bytes": 2024,
-      "reachableBytes": 476993
+      "reachableBytes": 477413
     },
     {
       "name": "sdk-ui",
       "path": "packages/host/public/vendor/sdk-ui.js",
-      "bytes": 22906,
-      "reachableBytes": 432725
+      "bytes": 22934,
+      "reachableBytes": 433005
     }
   ],
   "vendorChunks": [
@@ -94,7 +94,7 @@
     },
     {
       "path": "packages/host/public/vendor/sdk-components.js",
-      "bytes": 23960
+      "bytes": 23988
     },
     {
       "path": "packages/host/public/vendor/sdk-content.js",
@@ -114,7 +114,7 @@
     },
     {
       "path": "packages/host/public/vendor/sdk-internal.js",
-      "bytes": 1260
+      "bytes": 1550
     },
     {
       "path": "packages/host/public/vendor/sdk-layout.js",
@@ -137,11 +137,7 @@
       "bytes": 160
     },
     {
-      "path": "packages/host/public/vendor/sdk-shared-1p8yte10.js",
-      "bytes": 105383
-    },
-    {
-      "path": "packages/host/public/vendor/sdk-shared-3e8kv1ry.js",
+      "path": "packages/host/public/vendor/sdk-shared-5ah2y9re.js",
       "bytes": 348173
     },
     {
@@ -153,10 +149,6 @@
       "bytes": 27087
     },
     {
-      "path": "packages/host/public/vendor/sdk-shared-6zw37m5y.js",
-      "bytes": 132948
-    },
-    {
       "path": "packages/host/public/vendor/sdk-shared-74f7yec3.js",
       "bytes": 26748
     },
@@ -165,64 +157,72 @@
       "bytes": 3688
     },
     {
-      "path": "packages/host/public/vendor/sdk-shared-cahvr225.js",
-      "bytes": 8741
-    },
-    {
-      "path": "packages/host/public/vendor/sdk-shared-dzyymhd0.js",
-      "bytes": 529
-    },
-    {
-      "path": "packages/host/public/vendor/sdk-shared-ej9c3zp3.js",
-      "bytes": 130689
-    },
-    {
-      "path": "packages/host/public/vendor/sdk-shared-f8w9nn12.js",
-      "bytes": 49024
-    },
-    {
-      "path": "packages/host/public/vendor/sdk-shared-jpy6cb3s.js",
-      "bytes": 24121
+      "path": "packages/host/public/vendor/sdk-shared-kybt2jk1.js",
+      "bytes": 49220
     },
     {
       "path": "packages/host/public/vendor/sdk-shared-m5kkpn7m.js",
       "bytes": 188
     },
     {
+      "path": "packages/host/public/vendor/sdk-shared-mvd8379r.js",
+      "bytes": 130829
+    },
+    {
+      "path": "packages/host/public/vendor/sdk-shared-n4hwmt6m.js",
+      "bytes": 24121
+    },
+    {
+      "path": "packages/host/public/vendor/sdk-shared-nj8pjkva.js",
+      "bytes": 557
+    },
+    {
       "path": "packages/host/public/vendor/sdk-shared-nqwbjtr4.js",
       "bytes": 0
+    },
+    {
+      "path": "packages/host/public/vendor/sdk-shared-p5dn02tb.js",
+      "bytes": 8741
+    },
+    {
+      "path": "packages/host/public/vendor/sdk-shared-pa95kkq7.js",
+      "bytes": 1792
+    },
+    {
+      "path": "packages/host/public/vendor/sdk-shared-pavss4xn.js",
+      "bytes": 19021
+    },
+    {
+      "path": "packages/host/public/vendor/sdk-shared-pdmbfdee.js",
+      "bytes": 43259
+    },
+    {
+      "path": "packages/host/public/vendor/sdk-shared-qa57ckw7.js",
+      "bytes": 4308
     },
     {
       "path": "packages/host/public/vendor/sdk-shared-qfbjg2ja.js",
       "bytes": 103
     },
     {
-      "path": "packages/host/public/vendor/sdk-shared-qms91fk0.js",
-      "bytes": 4308
+      "path": "packages/host/public/vendor/sdk-shared-r5zh7xfc.js",
+      "bytes": 1938
     },
     {
-      "path": "packages/host/public/vendor/sdk-shared-qvsy56gf.js",
-      "bytes": 43119
-    },
-    {
-      "path": "packages/host/public/vendor/sdk-shared-qz5xswyz.js",
-      "bytes": 1792
+      "path": "packages/host/public/vendor/sdk-shared-s0bsmx8y.js",
+      "bytes": 105439
     },
     {
       "path": "packages/host/public/vendor/sdk-shared-tgf6q1wv.js",
       "bytes": 280586
     },
     {
+      "path": "packages/host/public/vendor/sdk-shared-v3912a69.js",
+      "bytes": 133004
+    },
+    {
       "path": "packages/host/public/vendor/sdk-shared-xkf0pzpj.js",
       "bytes": 711
-    },
-    {
-      "path": "packages/host/public/vendor/sdk-shared-yq3asv6a.js",
-      "bytes": 18937
-    },
-    {
-      "path": "packages/host/public/vendor/sdk-shared-z0ff711e.js",
-      "bytes": 1938
     },
     {
       "path": "packages/host/public/vendor/sdk-slots.js",
@@ -234,7 +234,7 @@
     },
     {
       "path": "packages/host/public/vendor/sdk-ui.js",
-      "bytes": 22906
+      "bytes": 22934
     },
     {
       "path": "packages/host/public/vendor/sdk-utils.js",
@@ -250,7 +250,7 @@
       "repository": "bakin-bits-official",
       "pluginId": "_template",
       "path": "bakin-bits-official/plugins/_template/dist/client.js",
-      "bytes": 1483
+      "bytes": 11454
     },
     {
       "repository": "bakin-bits-official",

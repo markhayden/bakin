@@ -339,13 +339,23 @@ function collectClientBindings(
   const candidates = [
     join(bitsPluginsRoot, pluginDirectory, 'client.tsx'),
     join(bitsPluginsRoot, pluginDirectory, 'client.ts'),
-  ]
-  const path = candidates.find((candidate) => existsSync(candidate))
-  if (!path) return new Map()
-  const file = sourceFile(path)
+    join(bitsPluginsRoot, pluginDirectory, 'client-registration.tsx'),
+    join(bitsPluginsRoot, pluginDirectory, 'client-registration.ts'),
+  ].filter((candidate) => existsSync(candidate))
   const bindings = new Map<string, ClientBinding>()
 
-  const symbolDefinition = (symbol: string): string => {
+  const objectLiteral = (expression: ts.Expression): ts.ObjectLiteralExpression | undefined => {
+    let current = expression
+    while (
+      ts.isParenthesizedExpression(current)
+      || ts.isAsExpression(current)
+      || ts.isSatisfiesExpression(current)
+      || ts.isTypeAssertionExpression(current)
+    ) current = current.expression
+    return ts.isObjectLiteralExpression(current) ? current : undefined
+  }
+
+  const symbolDefinition = (file: ts.SourceFile, symbol: string): string => {
     for (const statement of file.statements) {
       if (ts.isFunctionDeclaration(statement) && statement.name?.text === symbol) return statement.getText(file)
       if (ts.isVariableStatement(statement)) {
@@ -357,15 +367,12 @@ function collectClientBindings(
     return ''
   }
 
-  const visit = (node: ts.Node): void => {
-    if (
-      ts.isCallExpression(node)
-      && ts.isIdentifier(node.expression)
-      && node.expression.text === 'registerPlugin'
-      && node.arguments[0]
-      && ts.isObjectLiteralExpression(node.arguments[0])
-    ) {
-      const contribution = node.arguments[0].properties.find((property) => (
+  const collectContribution = (
+    path: string,
+    file: ts.SourceFile,
+    registration: ts.ObjectLiteralExpression,
+  ): void => {
+      const contribution = registration.properties.find((property) => (
         ts.isPropertyAssignment(property) && propertyName(property.name, file) === propertyKey
       ))
       if (contribution && ts.isPropertyAssignment(contribution) && ts.isObjectLiteralExpression(contribution.initializer)) {
@@ -377,7 +384,7 @@ function collectClientBindings(
             throw new Error(`${bitsSourcePath(bitsPluginsRoot, path)} registers ${propertyKey} key ${JSON.stringify(key)} more than once`)
           }
           const symbol = property.initializer.getText(file)
-          const definition = ts.isIdentifier(property.initializer) ? symbolDefinition(symbol) : symbol
+          const definition = ts.isIdentifier(property.initializer) ? symbolDefinition(file, symbol) : symbol
           bindings.set(key, {
             key,
             symbol,
@@ -386,10 +393,31 @@ function collectClientBindings(
           })
         }
       }
-    }
-    ts.forEachChild(node, visit)
   }
-  visit(file)
+
+  for (const path of candidates) {
+    const file = sourceFile(path)
+    const visit = (node: ts.Node): void => {
+      if (
+        ts.isCallExpression(node)
+        && ts.isIdentifier(node.expression)
+        && node.expression.text === 'registerPlugin'
+        && node.arguments[0]
+      ) {
+        const registration = objectLiteral(node.arguments[0])
+        if (registration) collectContribution(path, file, registration)
+      }
+      if (ts.isVariableStatement(node) && hasExportModifier(node)) {
+        for (const declaration of node.declarationList.declarations) {
+          if (!ts.isIdentifier(declaration.name) || !declaration.name.text.endsWith('Registration') || !declaration.initializer) continue
+          const registration = objectLiteral(declaration.initializer)
+          if (registration) collectContribution(path, file, registration)
+        }
+      }
+      ts.forEachChild(node, visit)
+    }
+    visit(file)
+  }
   return bindings
 }
 

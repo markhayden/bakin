@@ -7,15 +7,15 @@
   ],
   "repositories": {
     "bakin": {
-      "ref": "b62a70c504c92e56ed5b53d453ccfda3ef968550"
+      "ref": "808d65fa16789cebfe149a083a66edf9c975897a"
     },
     "bakin-bits-official": {
-      "ref": "7c9aa15b0caf8dab6dcae459d3f55e8a5370abf7"
+      "ref": "510a50a12eb1a8d39a61c98315295d1bd29ca367"
     }
   },
   "sdk": {
     "workspaceVersion": "0.0.0-workspace",
-    "officialBitsFixtureVersion": "0.0.1-rc.1"
+    "officialBitsFixtureVersion": "0.1.1-rc.1"
   },
   "plugins": {
     "messaging": {
@@ -54,12 +54,12 @@
       "version": "0.0.0",
       "bakinRange": ">=0.0.1-rc.1",
       "routes": {
-        "total": 0,
-        "visual": 0,
+        "total": 1,
+        "visual": 1,
         "aliases": []
       },
       "slots": [
-        "page:/_template"
+        "home-widget"
       ]
     }
   }

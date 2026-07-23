@@ -19,10 +19,10 @@
     ]
   },
   "summary": {
-    "total": 299,
+    "total": 300,
     "byKind": {
       "host-route": 26,
-      "plugin-route": 9,
+      "plugin-route": 10,
       "plugin-slot": 30,
       "plugin-template": 2,
       "shared-component": 93,
@@ -656,6 +656,36 @@
       ]
     },
     {
+      "id": "plugin-route:_template:/_template",
+      "kind": "plugin-route",
+      "owner": {
+        "repository": "bakin-bits-official",
+        "area": "plugin",
+        "pluginId": "_template"
+      },
+      "identity": {
+        "route": "/_template"
+      },
+      "sourcePath": "bakin-bits-official/plugins/_template/client-registration.tsx",
+      "symbols": [
+        "TemplatePage"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "manifest-route",
+          "path": "bakin-bits-official/plugins/_template/bakin-plugin.json",
+          "detail": "contributes.routes[0].path"
+        },
+        {
+          "type": "client-registration",
+          "path": "bakin-bits-official/plugins/_template/client-registration.tsx",
+          "detail": "registerPlugin routes \"/_template\" -> TemplatePage"
+        }
+      ]
+    },
+    {
       "id": "plugin-route:messaging:/messaging",
       "kind": "plugin-route",
       "owner": {
@@ -926,7 +956,7 @@
       ]
     },
     {
-      "id": "plugin-slot:_template:page:/_template",
+      "id": "plugin-slot:_template:home-widget",
       "kind": "plugin-slot",
       "owner": {
         "repository": "bakin-bits-official",
@@ -934,15 +964,14 @@
         "pluginId": "_template"
       },
       "identity": {
-        "slot": "page:/_template",
-        "route": "/_template"
+        "slot": "home-widget"
       },
-      "sourcePath": "bakin-bits-official/plugins/_template/client.tsx",
+      "sourcePath": "bakin-bits-official/plugins/_template/client-registration.tsx",
       "symbols": [
-        "TemplatePage"
+        "TemplateWidget"
       ],
       "exportStatus": "not-applicable",
-      "classification": "visual-surface",
+      "classification": "embedded-surface",
       "evidence": [
         {
           "type": "manifest-slot",
@@ -951,8 +980,8 @@
         },
         {
           "type": "client-registration",
-          "path": "bakin-bits-official/plugins/_template/client.tsx",
-          "detail": "registerPlugin slots \"page:/_template\" -> TemplatePage"
+          "path": "bakin-bits-official/plugins/_template/client-registration.tsx",
+          "detail": "registerPlugin slots \"home-widget\" -> TemplateWidget"
         }
       ]
     },
