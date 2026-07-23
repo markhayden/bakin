@@ -6,6 +6,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+## [0.0.1-rc.25] - 2026-07-23
+
+A one-fix hotfix for rc.24.
+
+### Fixed
+- **"Health report response was invalid" after restart (#723).** rc.24's advisory-unknowns contract widening missed the client-side wire mirror, which still pinned unknown incidents to watch-only — so the first advisory unknown a server emitted (the scan-warm-up card, minutes after every restart) made the client reject the entire health report. The dashboard showed the error banner over an otherwise healthy overview until the scan finished. The mirror now matches the producer contract, with a regression test holding the two in lockstep.
+
 ## [0.0.1-rc.24] - 2026-07-23
 
 The Health-honesty patch (#720), one day after rc.23. Field testing rc.23 on two machines exposed the next layer: health cards that told you something was wrong without telling you what, instructions that referenced UI that doesn't exist or asked a human to trigger machine operations, and a dashboard that lit up after every restart with states that resolve themselves. The standard this release enforces: **a health card names its exact evidence, resolves with one click wherever the fix is deterministic, and self-resolving states never masquerade as things you must fix.**
@@ -443,5 +450,7 @@ This is primarily an architecture release: ~380 commits, the bulk of them a beha
 
 [0.0.1-rc.23]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.23
 
-[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.24...HEAD
 [0.0.1-rc.24]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.24
+
+[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.25...HEAD
+[0.0.1-rc.25]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.25
