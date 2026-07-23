@@ -22,24 +22,44 @@ type WarningObservationFields = Omit<WarningObservationInput, 'status'>
 type ErrorObservationFields = Omit<ErrorObservationInput, 'status'>
 type UnknownObservationFields = Omit<UnknownObservationInput, 'status'>
 
+// Contract copy bounds (mirror health-contract.ts observationBaseShape).
+// The builders CLAMP instead of letting an overlong string invalidate the
+// whole run: a check that interpolated a long runtime error into its
+// summary used to fail contract validation wholesale, turning real
+// evidence into a useless "could not be verified" card (field-diagnosed
+// 2026-07-22). Truncated copy is honest; discarded evidence is not.
+const SUMMARY_MAX = 500
+const DETAIL_MAX = 4_000
+
+function clampCopy<T extends { summary: string; detail?: string }>(input: T): T {
+  const clamped = { ...input }
+  if (clamped.summary.length > SUMMARY_MAX) {
+    clamped.summary = `${clamped.summary.slice(0, SUMMARY_MAX - 1)}…`
+  }
+  if (clamped.detail !== undefined && clamped.detail.length > DETAIL_MAX) {
+    clamped.detail = `${clamped.detail.slice(0, DETAIL_MAX - 1)}…`
+  }
+  return clamped
+}
+
 /** Build a healthy observation. Healthy observations cannot carry incidents. */
 export function healthHealthy(input: HealthyObservationFields): HealthyObservationInput {
-  return { ...input, status: 'healthy' }
+  return { ...clampCopy(input), status: 'healthy' }
 }
 
 /** Build a warning observation with an explicit advisory/watch/action disposition. */
 export function healthWarning(input: WarningObservationFields): WarningObservationInput {
-  return { ...input, status: 'warning' }
+  return { ...clampCopy(input), status: 'warning' }
 }
 
 /** Build an error observation. Its incident must require operator action. */
 export function healthError(input: ErrorObservationFields): ErrorObservationInput {
-  return { ...input, status: 'error' }
+  return { ...clampCopy(input), status: 'error' }
 }
 
 /** Build an Unknown verification observation with a watch disposition. */
 export function healthUnknown(input: UnknownObservationFields): UnknownObservationInput {
-  return { ...input, status: 'unknown' }
+  return { ...clampCopy(input), status: 'unknown' }
 }
 
 /** Build a successful observed run. Empty diagnostic output is unrepresentable. */
