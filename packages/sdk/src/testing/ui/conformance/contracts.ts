@@ -1,4 +1,9 @@
-const PLUGIN_ID = /^[a-z][a-z0-9-]{0,39}$/
+import {
+  AUTHOR_TEMPLATE_PLUGIN_ID,
+  isPluginUiOwnerId,
+  PUBLISHED_PLUGIN_ID_PATTERN,
+} from './plugin-id'
+
 const WINDOWS_ABSOLUTE = /^[a-zA-Z]:[\\/]/
 
 function isSafeRelativePath(value: string): boolean {
@@ -97,8 +102,8 @@ export interface RunPluginUiConformanceOptions {
 export function definePluginUiConformance(
   input: PluginUiConformanceConfigInput,
 ): PluginUiConformanceConfig {
-  if (!PLUGIN_ID.test(input.pluginId)) {
-    throw new Error(`pluginId must match ${PLUGIN_ID}`)
+  if (!isPluginUiOwnerId(input.pluginId)) {
+    throw new Error(`pluginId must match ${PUBLISHED_PLUGIN_ID_PATTERN} (the reserved ${AUTHOR_TEMPLATE_PLUGIN_ID} scaffold is also accepted)`)
   }
   for (const [field, value] of [
     ['fixtureEntry', input.fixtureEntry],

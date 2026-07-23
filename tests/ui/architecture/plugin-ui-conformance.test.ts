@@ -36,14 +36,19 @@ describe('public plugin UI conformance architecture', () => {
     expect(conformance).toContain("await import('./runner')")
   })
 
-  it('uses the exact packaging CSS validator and pins its duplicated leaf regex', () => {
+  it('uses the exact packaging CSS validator and pins its isolated authoring id contract', () => {
     const manifest = read('packages/core/src/plugins/manifest.ts')
     const validator = read('packages/sdk/src/testing/ui/conformance/plugin-css.ts')
+    const contracts = read('packages/sdk/src/testing/ui/conformance/contracts.ts')
+    const pluginId = read('packages/sdk/src/testing/ui/conformance/plugin-id.ts')
     const adapter = read('src/core/whiskit/plugin-css.ts')
     const manifestRegex = manifest.match(/PLUGIN_ID_RE = (\/\^.*?\/)/)?.[1]
-    const validatorRegex = validator.match(/PLUGIN_ID_RE = (\/\^.*?\/)/)?.[1]
+    const authoringRegex = pluginId.match(/PUBLISHED_PLUGIN_ID_PATTERN = (\/\^.*?\/)/)?.[1]
 
-    expect(validatorRegex).toBe(manifestRegex)
+    expect(authoringRegex).toBe(manifestRegex)
+    expect(pluginId).toContain("AUTHOR_TEMPLATE_PLUGIN_ID = '_template'")
+    expect(validator).toContain("from './plugin-id'")
+    expect(contracts).toContain("from './plugin-id'")
     expect(adapter).toContain("from '@makinbakin/sdk/testing/ui/conformance'")
     expect(adapter).not.toContain('postcss')
   })

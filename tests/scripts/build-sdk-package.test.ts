@@ -3,6 +3,7 @@ import { spawnSync } from 'node:child_process'
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
+import { pathToFileURL } from 'node:url'
 import {
   SDK_EXPORTS,
   SDK_STYLES_SPECIFIER,
@@ -92,7 +93,13 @@ describe('buildSdkPackage', () => {
       expect(existsSync(join(outDir, exportConfig.types))).toBe(true)
       expect(statSync(join(outDir, exportConfig.import)).size).toBeGreaterThan(0)
       expect(statSync(join(outDir, exportConfig.types)).size).toBeGreaterThan(0)
+      expect(readFileSync(join(outDir, exportConfig.import), 'utf8')).not.toContain('react/jsx-dev-runtime')
     }
+
+    const runtime = await import(`${pathToFileURL(join(outDir, 'index.js')).href}?test=${Date.now()}`)
+    expect(runtime.registerPlugin).toBeFunction()
+    expect(runtime.defineRoute).toBeFunction()
+    expect(runtime.definePlugin).toBeFunction()
 
     const consumerDir = join(repoRoot, `.tmp-sdk-focused-consumer-${Date.now()}`)
     try {
@@ -134,6 +141,23 @@ describe('buildSdkPackage', () => {
       })
       expect(`${result.stdout}${result.stderr}`).toBe('')
       expect(result.status).toBe(0)
+
+      const browserBuild = spawnSync('bun', [
+        'build',
+        'tests/ui.fixture.tsx',
+        '--outdir',
+        'test-results/package-build',
+        '--target',
+        'browser',
+        '--format',
+        'esm',
+        '--splitting',
+      ], {
+        cwd: referenceDir,
+        encoding: 'utf8',
+      })
+      expect(`${browserBuild.stdout}${browserBuild.stderr}`).not.toContain('is not declared in this file')
+      expect(browserBuild.status).toBe(0)
     } finally {
       rmSync(referenceDir, { recursive: true, force: true })
     }

@@ -48,7 +48,11 @@ describe('reference plugin UI exemplar', () => {
     const config = read('examples/reference-plugin/bakin.ui-test.ts')
     const repositoryGate = read('scripts/ui/verify-plugin-conformance.ts')
     const manifest = JSON.parse(read('examples/reference-plugin/bakin-plugin.json')) as {
-      contributes: { slots?: string[] }
+      contributes: {
+        clientRoutes?: Array<{ path?: string }>
+        routes?: Array<{ path?: string }>
+        slots?: string[]
+      }
     }
     const pkg = JSON.parse(read('examples/reference-plugin/package.json')) as {
       scripts?: Record<string, string>
@@ -64,6 +68,8 @@ describe('reference plugin UI exemplar', () => {
     expect(productionCanonicalStylesheetImports()).toBe(0)
     expect(config).toContain("fixtureEntry: './tests/ui.fixture.tsx'")
     expect(repositoryGate).toContain("fixtureEntry: 'examples/reference-plugin/tests/ui.fixture.tsx'")
+    expect(manifest.contributes.routes).toContainEqual(expect.objectContaining({ path: '/reference-bookmarks' }))
+    expect(manifest.contributes.clientRoutes).toContainEqual(expect.objectContaining({ path: '/reference-bookmarks' }))
     expect(manifest.contributes.slots).toContain('home-widget')
     expect(pkg.scripts?.['test:ui']).toBe('bakin-plugin-test-ui')
     expect(pkg.devDependencies?.['axe-core']).toBeDefined()

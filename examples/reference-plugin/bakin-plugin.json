@@ -35,6 +35,9 @@
     "routes": [
       { "path": "/reference-bookmarks", "summary": "Bookmarks page" }
     ],
+    "clientRoutes": [
+      { "path": "/reference-bookmarks", "summary": "Bookmarks page" }
+    ],
     "nav": [
       {
         "id": "reference-bookmarks",

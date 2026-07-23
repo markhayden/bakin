@@ -25,6 +25,16 @@ describe('transformPluginCss', () => {
     })).toThrow(/Invalid plugin id/)
   })
 
+  it('accepts the reserved official author-template id', () => {
+    const result = transformPluginCss({
+      pluginId: '_template',
+      from: '/plugins/_template/dist/client.css',
+      css: '.card{display:grid}',
+    })
+
+    expect(result.css).toContain(':where([data-bakin-plugin="_template"]) .card')
+  })
+
   it('scopes every selector to the owning plugin root and localizes root variables', () => {
     const result = transformPluginCss({
       pluginId: 'demo',

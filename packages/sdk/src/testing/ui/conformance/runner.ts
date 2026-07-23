@@ -37,6 +37,39 @@ interface BrowserConsoleError {
   message: string
 }
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
+/** Preserve Bun's structured build diagnostics instead of collapsing them to "Bundle failed". */
+export function formatFixtureBuildFailure(error: unknown): string {
+  const logs = error && typeof error === 'object' && 'logs' in error && Array.isArray(error.logs)
+    ? error.logs.map(String).filter(Boolean)
+    : []
+  const details = logs.length > 0 ? logs.join('\n') : errorMessage(error)
+  return `Plugin UI fixture build failed:\n${details}`
+}
+
+/** Explain a readiness timeout with browser evidence collected before the failure. */
+export function formatFixtureReadyFailure(
+  selector: string,
+  timeoutMs: number,
+  errors: readonly BrowserConsoleError[],
+  bodyText: string,
+  cause: unknown,
+): string {
+  const evidence = errors.length > 0
+    ? errors.map((error) => `- ${error.kind}: ${error.message}`).join('\n')
+    : '- No console, page, or request errors were captured.'
+  const rendered = bodyText.trim().replace(/\s+/g, ' ').slice(0, 500) || '<empty body>'
+  return [
+    `Plugin UI fixture did not render ready selector ${JSON.stringify(selector)} within ${timeoutMs}ms.`,
+    `Cause: ${errorMessage(cause)}`,
+    `Browser evidence:\n${evidence}`,
+    `Rendered body: ${rendered}`,
+  ].join('\n')
+}
+
 interface BrowserInspection {
   overflow: { clientWidth: number; scrollWidth: number }
   unreachable: string[]
@@ -145,34 +178,39 @@ async function buildFixture(
   }
 
   let sdkStylesheetImports = 0
-  const result = await Bun.build({
-    entrypoints: [entry],
-    outdir: stageDir,
-    target: 'browser',
-    format: 'esm',
-    splitting: true,
-    sourcemap: 'none',
-    minify: false,
-    naming: {
-      entry: 'fixture.[ext]',
-      chunk: 'chunks/[name]-[hash].[ext]',
-      asset: 'assets/[name]-[hash].[ext]',
-    },
-    define: { 'process.env.NODE_ENV': '"production"' },
-    plugins: [{
-      name: 'bakin-canonical-stylesheet-identity',
-      setup(builder: Bun.PluginBuilder) {
-        builder.onResolve({ filter: /^@makinbakin\/sdk\/styles\.css$/ }, () => {
-          sdkStylesheetImports += 1
-          return { path: SDK_STYLES_SPECIFIER, namespace: SDK_STYLES_NAMESPACE }
-        })
-        builder.onLoad({ filter: /.*/, namespace: SDK_STYLES_NAMESPACE }, () => ({
-          contents: '',
-          loader: 'css',
-        }))
+  let result: Awaited<ReturnType<typeof Bun.build>>
+  try {
+    result = await Bun.build({
+      entrypoints: [entry],
+      outdir: stageDir,
+      target: 'browser',
+      format: 'esm',
+      splitting: true,
+      sourcemap: 'none',
+      minify: false,
+      naming: {
+        entry: 'fixture.[ext]',
+        chunk: 'chunks/[name]-[hash].[ext]',
+        asset: 'assets/[name]-[hash].[ext]',
       },
-    }],
-  })
+      define: { 'process.env.NODE_ENV': '"production"' },
+      plugins: [{
+        name: 'bakin-canonical-stylesheet-identity',
+        setup(builder: Bun.PluginBuilder) {
+          builder.onResolve({ filter: /^@makinbakin\/sdk\/styles\.css$/ }, () => {
+            sdkStylesheetImports += 1
+            return { path: SDK_STYLES_SPECIFIER, namespace: SDK_STYLES_NAMESPACE }
+          })
+          builder.onLoad({ filter: /.*/, namespace: SDK_STYLES_NAMESPACE }, () => ({
+            contents: '',
+            loader: 'css',
+          }))
+        },
+      }],
+    })
+  } catch (error) {
+    throw new Error(formatFixtureBuildFailure(error), { cause: error })
+  }
   if (!result.success) {
     const details = result.logs.map(String).join('\n')
     throw new Error(`Plugin UI fixture build failed:\n${details}`)
@@ -624,7 +662,15 @@ async function runBrowserChecks(
       }))
 
       await page.goto(serverUrl, { waitUntil: 'networkidle', timeout: config.timeoutMs })
-      await page.locator(config.readySelector).waitFor({ state: 'visible', timeout: config.timeoutMs })
+      try {
+        await page.locator(config.readySelector).waitFor({ state: 'visible', timeout: config.timeoutMs })
+      } catch (error) {
+        const bodyText = await page.locator('body').innerText().catch(() => '')
+        throw new Error(
+          formatFixtureReadyFailure(config.readySelector, config.timeoutMs, errors, bodyText, error),
+          { cause: error },
+        )
+      }
 
       const screenshotPath = join(reportDir, 'screenshots', `${FIXTURE_NAME}-${viewport}.png`)
       await page.screenshot({ path: screenshotPath, fullPage: true })

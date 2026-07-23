@@ -8,6 +8,10 @@ import {
   type PluginUiConformanceFinding,
   type PluginUiConformanceReport,
 } from '@makinbakin/sdk/testing/ui/conformance'
+import {
+  formatFixtureBuildFailure,
+  formatFixtureReadyFailure,
+} from '../../../packages/sdk/src/testing/ui/conformance/runner'
 
 const finding = (overrides: Partial<PluginUiConformanceFinding> = {}): PluginUiConformanceFinding => ({
   rule: 'overflow',
@@ -51,6 +55,14 @@ describe('plugin UI conformance public contract', () => {
 
     expect(() => definePluginUiConformance({
       pluginId: 'Bad Plugin',
+      fixtureEntry: './tests/ui.fixture.tsx',
+    })).toThrow('pluginId')
+    expect(definePluginUiConformance({
+      pluginId: '_template',
+      fixtureEntry: './tests/ui.fixture.tsx',
+    }).pluginId).toBe('_template')
+    expect(() => definePluginUiConformance({
+      pluginId: '_other',
       fixtureEntry: './tests/ui.fixture.tsx',
     })).toThrow('pluginId')
     expect(() => definePluginUiConformance({
@@ -101,5 +113,23 @@ describe('plugin UI conformance public contract', () => {
         reportDir,
       })).toThrow('reportDir')
     }
+  })
+
+  it('preserves actionable build and readiness diagnostics', () => {
+    expect(formatFixtureBuildFailure({
+      message: 'Bundle failed',
+      logs: ['Could not resolve react/jsx-runtime at fixture.tsx:4:2'],
+    })).toContain('Could not resolve react/jsx-runtime at fixture.tsx:4:2')
+
+    const readyFailure = formatFixtureReadyFailure(
+      '[data-plugin-ready]',
+      2_000,
+      [{ kind: 'pageerror', message: 'jsxDEV is not a function' }],
+      'Plugin fixture crashed',
+      new Error('Timeout 2000ms exceeded'),
+    )
+    expect(readyFailure).toContain('ready selector "[data-plugin-ready]" within 2000ms')
+    expect(readyFailure).toContain('pageerror: jsxDEV is not a function')
+    expect(readyFailure).toContain('Rendered body: Plugin fixture crashed')
   })
 })

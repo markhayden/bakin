@@ -252,31 +252,49 @@ function copyDeclarationTree(tempDtsDir: string, outDir: string): void {
 
 function buildJsEntry(entry: SdkExportEntry, outDir: string): void {
   const targetFile = join(outDir, entry.importPath)
+  // The root source barrel combines SDK types with runtime values. Core also
+  // consumes those SDK types, creating a type-only cycle that Bun 1.3 can
+  // misinterpret as a runtime re-export cycle and emit dangling export names.
+  // Bundle the explicit cycle-free runtime entry; declarations still come
+  // from the public root barrel below.
+  const sourceModule = entry.exportPath === '.'
+    ? join(REPO_ROOT, 'scripts/sdk-runtime-entry.ts')
+    : join(REPO_ROOT, entry.source)
+  const wrapperDir = mkdtempSync(join(tmpdir(), 'bakin-sdk-entry-'))
+  const wrapper = join(wrapperDir, 'entry.ts')
+  // Bun 1.3 applies a source package's sideEffects metadata to a barrel used
+  // directly as the entrypoint and can tree-shake the declarations behind
+  // re-exports while retaining their export names. Building a neutral wrapper
+  // outside that package preserves the same public exports and their values.
+  writeFileSync(wrapper, `export * from ${JSON.stringify(sourceModule)}\n`, 'utf8')
   mkdirSync(dirname(targetFile), { recursive: true })
-  const result = spawnSync('bun', [
-    'build',
-    join(REPO_ROOT, entry.source),
-    '--outdir',
-    dirname(targetFile),
-    '--target',
-    'bun',
-    '--format',
-    'esm',
-    '--entry-naming',
-    '[name].[ext]',
-    ...EXTERNAL_JS_PEERS.flatMap((specifier) => ['--external', specifier]),
-  ], {
-    cwd: REPO_ROOT,
-    encoding: 'utf-8',
-  })
-  if (result.status !== 0) {
-    throw new Error(`Failed to build ${entry.exportPath}:\n${result.stdout}${result.stderr}`)
-  }
-  if (!existsSync(targetFile)) {
-    throw new Error(`Expected ${entry.importPath} to be generated`)
-  }
-  if (statSync(targetFile).size === 0) {
-    writeFileSync(targetFile, 'export {}\n', 'utf-8')
+  try {
+    const result = spawnSync('bun', [
+      'build',
+      wrapper,
+      '--outfile',
+      targetFile,
+      '--target',
+      'bun',
+      '--format',
+      'esm',
+      '--production',
+      ...EXTERNAL_JS_PEERS.flatMap((specifier) => ['--external', specifier]),
+    ], {
+      cwd: REPO_ROOT,
+      encoding: 'utf-8',
+    })
+    if (result.status !== 0) {
+      throw new Error(`Failed to build ${entry.exportPath}:\n${result.stdout}${result.stderr}`)
+    }
+    if (!existsSync(targetFile)) {
+      throw new Error(`Expected ${entry.importPath} to be generated`)
+    }
+    if (statSync(targetFile).size === 0) {
+      writeFileSync(targetFile, 'export {}\n', 'utf-8')
+    }
+  } finally {
+    rmSync(wrapperDir, { recursive: true, force: true })
   }
 }
 

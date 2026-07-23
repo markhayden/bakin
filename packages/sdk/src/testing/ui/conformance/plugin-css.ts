@@ -2,10 +2,11 @@ import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { isAbsolute, join, resolve } from 'node:path'
 import postcss, { list, type AtRule, type Node, type Rule } from 'postcss'
 
-// Must stay identical to the manifest contract in packages/core. Keeping this
-// tiny validation leaf here lets the published conformance entry stay free of
-// Bakin server/runtime dependencies.
-const PLUGIN_ID_RE = /^[a-z][a-z0-9-]{0,39}$/
+import {
+  AUTHOR_TEMPLATE_PLUGIN_ID,
+  isPluginUiOwnerId,
+  PUBLISHED_PLUGIN_ID_PATTERN,
+} from './plugin-id'
 
 const PLUGIN_OWNER_ATTRIBUTE = 'data-bakin-plugin'
 const KEYFRAME_NAME = /^-?[_a-zA-Z][_a-zA-Z0-9-]*$/
@@ -269,8 +270,11 @@ function validSourceMap(sourceMap: string | undefined): string | undefined {
 
 /** Validate global CSS hazards and scope safe rules to one plugin ownership root. */
 export function transformPluginCss(input: TransformPluginCssInput): TransformPluginCssResult {
-  if (!PLUGIN_ID_RE.test(input.pluginId)) {
-    throw new Error(`Invalid plugin id "${input.pluginId}" - must match ${PLUGIN_ID_RE}`)
+  if (!isPluginUiOwnerId(input.pluginId)) {
+    throw new Error(
+      `Invalid plugin id "${input.pluginId}" - must match ${PUBLISHED_PLUGIN_ID_PATTERN} ` +
+      `(the reserved ${AUTHOR_TEMPLATE_PLUGIN_ID} scaffold is also accepted)`,
+    )
   }
   const sourceMap = validSourceMap(input.sourceMap)
   const root = postcss.parse(input.css, {
