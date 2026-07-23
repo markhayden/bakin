@@ -6,17 +6,6 @@
  * so plugins have a single import path instead of reaching into `@/lib/*`.
  */
 
-import type {
-  ErrorObservationInput,
-  HealthNonEmptyArray,
-  HealthObservationInput,
-  HealthyObservationInput,
-  NotApplicableHealthCheckRunInput,
-  ObservedHealthCheckRunInput,
-  UnknownObservationInput,
-  WarningObservationInput,
-} from '../types'
-
 // The observation builders live in @bakin/core so adapter packages (which
 // depend only on core) share the SAME clamped construction path as
 // plugins. This module re-exports them unchanged — plugin authors keep
