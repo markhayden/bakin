@@ -523,6 +523,28 @@ describe('budget health check', () => {
     expect(gap!.incident?.disposition).toBe('watch')
   })
 
+  it('spend-evidence incident is ADVISORY when the only gap is scan coverage (self-resolving)', async () => {
+    // No pricing gap → nothing for a human to fix; caps fail closed while
+    // transcripts land. Advisory keeps it off the fix-first banner that
+    // used to light up after every restart (2026-07-22).
+    budgetPolicy = { rules: [{ scope: 'global', lane: 'metered', dailyCap: 100 }] }
+    seedSpend(5_000_000)
+    usageScanGlobal.__bakinUsageHistoryLastScan = {
+      at: Date.now(),
+      report: {
+        scanned: 1,
+        skipped: 0,
+        failed: 0,
+        coverage: { status: 'partial', reason: 'agent_log_unreadable', agents: [] },
+      },
+    }
+
+    const rows = observed(await checkBudget())
+    const gap = rows.find((row) => row.incident?.key === 'spend-evidence-incomplete')
+    expect(gap).toBeDefined()
+    expect(gap!.incident?.disposition).toBe('advisory')
+  })
+
   it('warns when runs were deferred even if utilization looks ok', async () => {
     budgetPolicy = { rules: [{ scope: 'global', lane: 'metered', dailyCap: 1000 }] }
     appendFileSync(join(testDir, 'audit.jsonl'), JSON.stringify({ ts: new Date().toISOString(), event: 'budget.deferred', agent: 'pixel', data: {} }) + '\n', 'utf-8')

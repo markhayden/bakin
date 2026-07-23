@@ -187,6 +187,12 @@ export async function checkAgentBurnWith(
         scan_in_progress: 'A transcript scan is running right now — this resolves itself when it completes; recheck in a minute.',
         scan_not_run: 'No transcript scan has completed since the server started — the first scan resolves this on its own; recheck in a few minutes.',
         scan_stale: 'The last transcript scan is older than its freshness window — the scanner may be stuck; rerun this check, and report it if staleness persists.',
+        roster_unavailable: 'The runtime agent roster could not be read, so usage cannot be attributed per agent — check runtime reachability (`bakin check runtime`), then rerun.',
+        agent_scan_failed: 'One or more agent transcript scans failed — rerun this check; if it persists, the server log names the failing agent.',
+        missing_session_tier: 'The active runtime does not expose a session-transcript tier, so per-message usage cannot be observed on this adapter.',
+        // The scan itself completed but an agent reported no observable
+        // token totals — its sessions may not expose usage.
+        complete: 'Transcripts scanned clean, but at least one agent reports no observable token totals — its runtime sessions may not expose usage data.',
       }
       const transcriptUnknown = healthUnknown({
         key: 'usage',
@@ -203,7 +209,13 @@ export async function checkAgentBurnWith(
           title: 'Agent usage coverage is incomplete',
           class: 'evidence_gap',
           impact: `Health cannot confirm total or unattributed agent token use until runtime transcripts are fully scanned. ${coverageReasonText[coverageReason] ?? `Coverage gap: ${coverageReason}.`}`,
-          disposition: 'watch',
+          // Warming states (scan running / first scan since boot pending)
+          // SELF-RESOLVE within minutes — advisory keeps them out of the
+          // "Fix first" banner that lit up after every restart. A stale
+          // scan means the scanner may be stuck: that one earns watch.
+          disposition: coverageReason === 'scan_in_progress' || coverageReason === 'scan_not_run'
+            ? 'advisory'
+            : 'watch',
           resources: [{ kind: 'system', id: 'usage-history', label: 'Usage history' }],
           resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
         },

@@ -17,62 +17,18 @@ import type {
   WarningObservationInput,
 } from '../types'
 
-type HealthyObservationFields = Omit<HealthyObservationInput, 'status'>
-type WarningObservationFields = Omit<WarningObservationInput, 'status'>
-type ErrorObservationFields = Omit<ErrorObservationInput, 'status'>
-type UnknownObservationFields = Omit<UnknownObservationInput, 'status'>
-
-// Contract copy bounds (mirror health-contract.ts observationBaseShape).
-// The builders CLAMP instead of letting an overlong string invalidate the
-// whole run: a check that interpolated a long runtime error into its
-// summary used to fail contract validation wholesale, turning real
-// evidence into a useless "could not be verified" card (field-diagnosed
-// 2026-07-22). Truncated copy is honest; discarded evidence is not.
-const SUMMARY_MAX = 500
-const DETAIL_MAX = 4_000
-
-function clampCopy<T extends { summary: string; detail?: string }>(input: T): T {
-  const clamped = { ...input }
-  if (clamped.summary.length > SUMMARY_MAX) {
-    clamped.summary = `${clamped.summary.slice(0, SUMMARY_MAX - 1)}…`
-  }
-  if (clamped.detail !== undefined && clamped.detail.length > DETAIL_MAX) {
-    clamped.detail = `${clamped.detail.slice(0, DETAIL_MAX - 1)}…`
-  }
-  return clamped
-}
-
-/** Build a healthy observation. Healthy observations cannot carry incidents. */
-export function healthHealthy(input: HealthyObservationFields): HealthyObservationInput {
-  return { ...clampCopy(input), status: 'healthy' }
-}
-
-/** Build a warning observation with an explicit advisory/watch/action disposition. */
-export function healthWarning(input: WarningObservationFields): WarningObservationInput {
-  return { ...clampCopy(input), status: 'warning' }
-}
-
-/** Build an error observation. Its incident must require operator action. */
-export function healthError(input: ErrorObservationFields): ErrorObservationInput {
-  return { ...clampCopy(input), status: 'error' }
-}
-
-/** Build an Unknown verification observation with a watch disposition. */
-export function healthUnknown(input: UnknownObservationFields): UnknownObservationInput {
-  return { ...clampCopy(input), status: 'unknown' }
-}
-
-/** Build a successful observed run. Empty diagnostic output is unrepresentable. */
-export function healthObserved(
-  observations: HealthNonEmptyArray<HealthObservationInput>,
-): ObservedHealthCheckRunInput {
-  return { outcome: 'observed', observations }
-}
-
-/** Build an explicit successful not-applicable run. */
-export function healthNotApplicable(reason: string): NotApplicableHealthCheckRunInput {
-  return { outcome: 'not_applicable', reason }
-}
+// The observation builders live in @bakin/core so adapter packages (which
+// depend only on core) share the SAME clamped construction path as
+// plugins. This module re-exports them unchanged — plugin authors keep
+// importing from '@makinbakin/sdk/utils'.
+export {
+  healthError,
+  healthHealthy,
+  healthNotApplicable,
+  healthObserved,
+  healthUnknown,
+  healthWarning,
+} from '../../../core/src/health/observation-builders'
 
 /** Tailwind class merger (clsx + tailwind-merge). */
 export { cn } from '../../../../src/lib/utils'

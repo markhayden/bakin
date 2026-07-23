@@ -375,6 +375,8 @@ export type {
   HealthyObservationInput,
   JsonObject,
   JsonValue,
+  NotApplicableHealthCheckRunInput,
+  ObservedHealthCheckRunInput,
   SearchReadiness,
   SearchReadinessStage,
   SearchReadinessStageKey,

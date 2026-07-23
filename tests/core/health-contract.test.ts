@@ -561,3 +561,34 @@ describe('SDK observation builders clamp copy to contract bounds (2026-07-22)', 
     expect(untouched.detail).toBe('fine')
   })
 })
+
+describe('unknown incidents may be advisory — never action_required (2026-07-22)', () => {
+  const unknownWith = (disposition: string) => ({
+    outcome: 'observed',
+    observations: [{
+      key: 'usage',
+      summary: 'Scan warming up.',
+      status: 'unknown',
+      incident: {
+        key: 'warming',
+        title: 'Usage coverage is incomplete',
+        impact: 'Resolves when the first scan completes.',
+        disposition,
+        resources: [{ kind: 'system', id: 'usage-history', label: 'Usage history' }],
+        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
+      },
+    }],
+  })
+
+  it('accepts advisory (producer vouches the unknown self-resolves)', () => {
+    expect(safeParseHealthCheckRunInput(unknownWith('advisory')).success).toBe(true)
+  })
+
+  it('still accepts watch', () => {
+    expect(safeParseHealthCheckRunInput(unknownWith('watch')).success).toBe(true)
+  })
+
+  it('REJECTS action_required — an unknown cannot honestly demand action', () => {
+    expect(safeParseHealthCheckRunInput(unknownWith('action_required')).success).toBe(false)
+  })
+})
