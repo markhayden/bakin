@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { HEALTH_INCIDENT_CLASSES } from '@makinbakin/sdk/types'
 import {
   actionIncidentInputSchema,
+  advisoryIncidentInputSchema,
   healthIncidentInputSchema,
   healthResourceSchema,
   healthResolutionSchema,
@@ -116,7 +117,12 @@ const unknownObservationSchema = z.object({
   ...canonicalObservationBase,
   status: z.literal('unknown'),
   incidentId: nonEmptyString,
-  incident: watchIncidentInputSchema,
+  // Mirror of the producer contract: watch, or advisory when the unknown
+  // self-resolves. This mirror lagging the contract made the CLIENT reject
+  // the ENTIRE health report the first time a server emitted an advisory
+  // unknown — "Health report response was invalid" on a healthy box
+  // (rc.24 field report, 2026-07-23). Keep the two in lockstep.
+  incident: z.union([watchIncidentInputSchema, advisoryIncidentInputSchema]),
 }).strict()
 
 export const canonicalHealthObservationSchema = z.discriminatedUnion('status', [
