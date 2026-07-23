@@ -41,6 +41,11 @@ export function registerModelsHooks(ctx: PluginContext): void {
     return result.models
   }, { label: 'List available models.', summary: 'Returns the model catalog available from the currently configured providers. Use it to populate pickers, validate assignments, or compare model options before saving config.', hookKind: 'rpc' })
 
+  ctx.hooks.register('models.refreshAvailableModels', async () => {
+    const result = await fetchAvailableModels(ctx, { force: true })
+    return { count: result.models.length, live: !result.cached, error: result.error ?? null }
+  }, { label: 'Refresh the model catalog.', summary: 'Bypasses caches and re-fetches the model catalog (with pricing) live from the configured providers. Use it when pricing is stale or missing — e.g. the spend-evidence repair — instead of waiting on the Models page to trigger a refresh.', hookKind: 'rpc' })
+
   // Price one completed agent turn: resolve the model that ran (explicit
   // override → agent's effective model), look up catalog pricing, and
   // return an estimated micro-dollar cost. Cost is null when the model has

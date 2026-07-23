@@ -608,7 +608,9 @@ export const errorObservationInputSchema = z.object({
 export const unknownObservationInputSchema = z.object({
   ...observationBaseShape,
   status: z.literal('unknown'),
-  incident: watchIncidentInputSchema,
+  // watch, or advisory when the producer vouches the unknown self-resolves
+  // (scan warm-up, attribution landing). Never action_required.
+  incident: z.union([watchIncidentInputSchema, advisoryIncidentInputSchema]),
 }).strict()
 
 export const healthObservationInputSchema = z.discriminatedUnion('status', [

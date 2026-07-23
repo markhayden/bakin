@@ -314,7 +314,18 @@ export function buildHealthOverviewViewModel({
     if (incident.effectiveDisposition === 'action_required') {
       needsAction.push(row)
     } else if (incident.status === 'unknown' || row.freshness === 'stale') {
-      unableToVerify.push(row)
+      // Advisory unknowns are SELF-RESOLVING states the producer vouched
+      // for (a scan warming up after restart, attribution completing as
+      // transcripts land). Routing every unknown into the "Fix first"
+      // banner regardless of disposition kept the dashboard permanently
+      // lit with cards nobody should act on (field feedback, 2026-07-22).
+      // Stale evidence still verifies — staleness means the vouching is
+      // out of date.
+      if (incident.effectiveDisposition === 'advisory' && row.freshness !== 'stale') {
+        advisories.push(row)
+      } else {
+        unableToVerify.push(row)
+      }
     } else if (incident.effectiveDisposition === 'watch' && incident.status === 'warning') {
       watching.push(row)
     } else if (incident.effectiveDisposition === 'advisory' && incident.status === 'warning') {

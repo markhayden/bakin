@@ -25,11 +25,15 @@ mock.module('../../../packages/core/src/logger', loggerMock)
 
 let budgetPolicy: unknown = {}
 let resolveBilling: (() => Promise<unknown>) | null = null
+let refreshModelsRegistered = true
+let refreshModelsResult: unknown = { count: 3, live: true, error: null }
 const hookRegistryMock = () => ({
   getHookRegistry: () => ({
+    has: (name: string) => (name === 'models.refreshAvailableModels' ? refreshModelsRegistered : true),
     invoke: async (name: string) => {
       if (name === 'models.getBudgetPolicy') return budgetPolicy
       if (name === 'models.resolveBilling' && resolveBilling) return await resolveBilling()
+      if (name === 'models.refreshAvailableModels') return refreshModelsResult
       return undefined
     },
   }),
@@ -38,7 +42,7 @@ const hookRegistryMock = () => ({
 mock.module('@bakin/core/hooks/hook-registry-singleton', hookRegistryMock)
 mock.module('../../../src/core/plugin-registry', hookRegistryMock)
 
-import { checkBudget } from '@bakin/health/lib/system-checks/budget'
+import { checkBudget, spendEvidenceRepair } from '@bakin/health/lib/system-checks/budget'
 import { recordRunCost } from '../../../src/core/execution-ledger'
 import { closeAllDbs, closeDb } from '../../../packages/core/src/storage/db'
 import { replaceSessionUsage, toLocalDayKey } from '../../../packages/core/src/usage-history/store'
@@ -63,6 +67,8 @@ beforeEach(() => {
   dbPath = join(testDir, 'bakin.db')
   budgetPolicy = {}
   resolveBilling = null
+  refreshModelsRegistered = true
+  refreshModelsResult = { count: 3, live: true, error: null }
   usageScanGlobal.__bakinUsageHistoryScanIntervalMs = 5 * 60_000
   usageScanGlobal.__bakinUsageHistoryScanInFlight = null
   usageScanGlobal.__bakinUsageHistoryScanPending = false
@@ -222,6 +228,15 @@ describe('budget health check', () => {
           })],
         },
       },
+    })
+    // The card is concrete and resolvable (2026-07-22 field feedback):
+    // a pricing gap names the model in the copy and offers the one-click
+    // catalog-refresh repair — never "open a page and pray".
+    expect(spend?.detail).toContain('unpriced')
+    expect(spend?.detail).toContain('gemini-3-flash')
+    expect(spend?.incident?.resolution).toMatchObject({
+      type: 'repair',
+      actionId: 'spend-evidence-refresh-pricing',
     })
   })
 
@@ -508,6 +523,28 @@ describe('budget health check', () => {
     expect(gap!.incident?.disposition).toBe('watch')
   })
 
+  it('spend-evidence incident is ADVISORY when the only gap is scan coverage (self-resolving)', async () => {
+    // No pricing gap → nothing for a human to fix; caps fail closed while
+    // transcripts land. Advisory keeps it off the fix-first banner that
+    // used to light up after every restart (2026-07-22).
+    budgetPolicy = { rules: [{ scope: 'global', lane: 'metered', dailyCap: 100 }] }
+    seedSpend(5_000_000)
+    usageScanGlobal.__bakinUsageHistoryLastScan = {
+      at: Date.now(),
+      report: {
+        scanned: 1,
+        skipped: 0,
+        failed: 0,
+        coverage: { status: 'partial', reason: 'agent_log_unreadable', agents: [] },
+      },
+    }
+
+    const rows = observed(await checkBudget())
+    const gap = rows.find((row) => row.incident?.key === 'spend-evidence-incomplete')
+    expect(gap).toBeDefined()
+    expect(gap!.incident?.disposition).toBe('advisory')
+  })
+
   it('warns when runs were deferred even if utilization looks ok', async () => {
     budgetPolicy = { rules: [{ scope: 'global', lane: 'metered', dailyCap: 1000 }] }
     appendFileSync(join(testDir, 'audit.jsonl'), JSON.stringify({ ts: new Date().toISOString(), event: 'budget.deferred', agent: 'pixel', data: {} }) + '\n', 'utf-8')
@@ -572,5 +609,40 @@ describe('budget health check', () => {
       rmSync(join(testDir, 'settings.json'), { force: true })
       resetSettingsCache()
     }
+  })
+})
+
+describe('spend evidence repair (spend-evidence-refresh-pricing)', () => {
+  it('force-refreshes the model catalog through the models hook and reports the count', async () => {
+    const repair = spendEvidenceRepair()
+    const outcomes = await repair.apply(await repair.plan({ type: 'all_actionable', reportId: 'r1' }))
+    expect(outcomes).toEqual([
+      expect.objectContaining({ status: 'applied', affectedCheckIds: ['budget'] }),
+    ])
+    expect(outcomes[0]!.message).toContain('3 models')
+  })
+
+  it('fails honestly when the models plugin is absent', async () => {
+    refreshModelsRegistered = false
+    const repair = spendEvidenceRepair()
+    const outcomes = await repair.apply(await repair.plan({ type: 'all_actionable', reportId: 'r1' }))
+    expect(outcomes[0]).toMatchObject({ status: 'failed' })
+    expect(outcomes[0]!.message).toContain('models plugin is not active')
+  })
+
+  it('fails with the credentials pointer when the provider returns zero models', async () => {
+    refreshModelsResult = { count: 0, live: true, error: null }
+    const repair = spendEvidenceRepair()
+    const outcomes = await repair.apply(await repair.plan({ type: 'all_actionable', reportId: 'r1' }))
+    expect(outcomes[0]).toMatchObject({ status: 'failed' })
+    expect(outcomes[0]!.message).toContain('bakin check llm')
+  })
+
+  it('surfaces the fetch error when the refresh itself fails', async () => {
+    refreshModelsResult = { count: 0, live: false, error: 'gateway unreachable' }
+    const repair = spendEvidenceRepair()
+    const outcomes = await repair.apply(await repair.plan({ type: 'all_actionable', reportId: 'r1' }))
+    expect(outcomes[0]).toMatchObject({ status: 'failed' })
+    expect(outcomes[0]!.message).toContain('gateway unreachable')
   })
 })

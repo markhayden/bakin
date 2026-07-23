@@ -61,7 +61,8 @@ export async function checkTeamRouting(opts: {
   } catch (error) {
     return healthObserved([healthUnknown({
       key: 'task-board',
-      summary: `Team routing demand could not be inspected: ${error instanceof Error ? error.message : String(error)}`,
+      summary: 'Team routing demand could not be inspected.',
+      detail: (error instanceof Error ? error.message : String(error)) || undefined,
       incident: {
         key: 'task-board',
         title: 'Team routing readiness could not be verified',
@@ -83,7 +84,8 @@ export async function checkTeamRouting(opts: {
   } catch (error) {
     return healthObserved([healthUnknown({
       key: 'runtime-credentials',
-      summary: `Runtime credential status could not be read: ${error instanceof Error ? error.message : String(error)}`,
+      summary: 'Runtime credential status could not be read.',
+      detail: (error instanceof Error ? error.message : String(error)) || undefined,
       evidence: { unresolvedTasks: unresolvedCount },
       incident: {
         key: 'runtime-credentials',
@@ -127,7 +129,8 @@ export async function checkAgentRoster(runtime: RuntimeAgentReader): Promise<Hea
   } catch (error) {
     return healthObserved([healthUnknown({
       key: 'roster-read',
-      summary: `The runtime agent roster could not be read: ${error instanceof Error ? error.message : String(error)}`,
+      summary: 'The runtime agent roster could not be read.',
+      detail: (error instanceof Error ? error.message : String(error)) || undefined,
       incident: {
         key: 'roster-read',
         title: 'Agent roster verification is unavailable',
@@ -196,7 +199,8 @@ export async function checkPersonas(
   } catch (error) {
     return healthObserved([healthUnknown({
       key: 'roster-read',
-      summary: `Runtime agents could not be read while checking personas: ${error instanceof Error ? error.message : String(error)}`,
+      summary: 'Runtime agents could not be read while checking personas.',
+      detail: (error instanceof Error ? error.message : String(error)) || undefined,
       incident: {
         key: 'roster-read',
         title: 'Persona coverage could not be verified',
@@ -332,7 +336,8 @@ export async function checkAgentSync(): Promise<HealthCheckRunInput> {
   } catch (error) {
     return healthObserved([healthUnknown({
       key: 'scan',
-      summary: `Agent sync state could not be scanned: ${error instanceof Error ? error.message : String(error)}`,
+      summary: 'Agent sync state could not be scanned.',
+      detail: (error instanceof Error ? error.message : String(error)) || undefined,
       incident: {
         key: 'scan',
         title: 'Agent sync verification is unavailable',

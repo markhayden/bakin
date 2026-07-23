@@ -524,3 +524,71 @@ describe('health run-output validation', () => {
     expect(JSON.stringify(result.error)).not.toContain(secretValue)
   })
 })
+
+describe('SDK observation builders clamp copy to contract bounds (2026-07-22)', () => {
+  // A check that interpolated a ~700-char runtime error into `summary`
+  // used to fail contract validation WHOLESALE — real evidence became a
+  // generic "could not be verified" card. The builders now clamp summary
+  // (500) and detail (4000) so overlong copy truncates honestly instead
+  // of invalidating the run.
+  it('clamps an overlong summary and the result passes the contract', async () => {
+    const { healthUnknown, healthObserved } = await import('@makinbakin/sdk/utils')
+    const observation = healthUnknown({
+      key: 'runtime-cron',
+      summary: `Runtime cron jobs could not be read: ${'x'.repeat(700)}`,
+      incident: {
+        key: 'runtime-cron',
+        title: 'Schedule synchronization could not be verified',
+        impact: 'Bakin cannot determine whether runtime cron jobs are tracked.',
+        disposition: 'watch',
+        resources: [{ kind: 'system', id: 'schedule', label: 'Schedule' }],
+        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
+      },
+    })
+    expect(observation.summary.length).toBe(500)
+    expect(observation.summary.endsWith('…')).toBe(true)
+
+    const result = safeParseHealthCheckRunInput(healthObserved([observation]))
+    expect(result.success).toBe(true)
+  })
+
+  it('clamps an overlong detail and leaves in-bounds copy untouched', async () => {
+    const { healthHealthy } = await import('@makinbakin/sdk/utils')
+    const clamped = healthHealthy({ key: 'k', summary: 'Short.', detail: 'd'.repeat(5_000) })
+    expect(clamped.detail!.length).toBe(4_000)
+    const untouched = healthHealthy({ key: 'k', summary: 'Short.', detail: 'fine' })
+    expect(untouched.summary).toBe('Short.')
+    expect(untouched.detail).toBe('fine')
+  })
+})
+
+describe('unknown incidents may be advisory — never action_required (2026-07-22)', () => {
+  const unknownWith = (disposition: string) => ({
+    outcome: 'observed',
+    observations: [{
+      key: 'usage',
+      summary: 'Scan warming up.',
+      status: 'unknown',
+      incident: {
+        key: 'warming',
+        title: 'Usage coverage is incomplete',
+        impact: 'Resolves when the first scan completes.',
+        disposition,
+        resources: [{ kind: 'system', id: 'usage-history', label: 'Usage history' }],
+        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
+      },
+    }],
+  })
+
+  it('accepts advisory (producer vouches the unknown self-resolves)', () => {
+    expect(safeParseHealthCheckRunInput(unknownWith('advisory')).success).toBe(true)
+  })
+
+  it('still accepts watch', () => {
+    expect(safeParseHealthCheckRunInput(unknownWith('watch')).success).toBe(true)
+  })
+
+  it('REJECTS action_required — an unknown cannot honestly demand action', () => {
+    expect(safeParseHealthCheckRunInput(unknownWith('action_required')).success).toBe(false)
+  })
+})

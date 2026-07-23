@@ -172,6 +172,32 @@ describe('buildHealthOverviewViewModel', () => {
     expect(model.needsAction[1]?.freshness).toBe('stale')
   })
 
+  it('ADVISORY unknowns route to advisories, not the fix-first banner (self-resolving states, 2026-07-22)', () => {
+    // A scan warming up after a restart is an unknown the producer vouches
+    // self-resolves — it must not sit in "Fix first" as if a human were
+    // needed. Stale advisory unknowns still verify: the vouching is old.
+    const warmingUnknown = incident({
+      id: 'warming-unknown', status: 'unknown', disposition: 'advisory', title: 'Scan warming up',
+    })
+    const realUnknown = incident({ id: 'real-unknown', status: 'unknown', disposition: 'watch', title: 'Genuinely unverified' })
+    const staleAdvisoryUnknown = incident({
+      id: 'stale-advisory-unknown', status: 'unknown', disposition: 'advisory', title: 'Stale advisory unknown',
+      stale: true, staleAt: '2026-07-13T11:30:00.000Z', observedAt: '2026-07-13T09:00:00.000Z',
+    })
+    const incidents = [warmingUnknown, realUnknown, staleAdvisoryUnknown]
+    const observations = incidents.map((row) => observation(row))
+    const checks = observations.map((row) => check(row, 'observed'))
+
+    const model = buildHealthOverviewViewModel({
+      report: report({ incidents, observations, checks, status: 'needs_attention' }),
+      now: NOW,
+    })
+
+    expect(model.advisories.map((row) => row.incident.id)).toEqual(['warming-unknown'])
+    expect(model.unableToVerify.map((row) => row.incident.id).sort()).toEqual(['real-unknown', 'stale-advisory-unknown'])
+    expect(model.needsAction).toEqual([])
+  })
+
   it('demoted and raw-advisory incidents land in the advisories bucket — quiet, never hidden (#690)', () => {
     const demoted = incident({
       id: 'demoted-housekeeping', status: 'warning', disposition: 'watch', title: 'Retired tables await deletion',

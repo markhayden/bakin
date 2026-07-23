@@ -70,9 +70,14 @@ export async function checkScheduleSync(
   try {
     scan = await orphanRuntimeJobs(contentDir, cron)
   } catch (error) {
+    // Static summary, error in detail: a long runtime error interpolated
+    // into summary blew the 500-char contract bound and invalidated the
+    // whole run (2026-07-22 field diagnosis). Builders clamp now, but the
+    // error belongs in detail regardless.
     return healthObserved([healthUnknown({
       key: 'runtime-cron',
-      summary: `Runtime cron jobs could not be read: ${error instanceof Error ? error.message : String(error)}`,
+      summary: 'Runtime cron jobs could not be read.',
+      detail: (error instanceof Error ? error.message : String(error)) || undefined,
       incident: {
         key: 'runtime-cron',
         title: 'Schedule synchronization could not be verified',
@@ -125,7 +130,8 @@ export async function checkScheduleCutover(
   } catch (error) {
     return healthObserved([healthUnknown({
       key: 'cutover-verification',
-      summary: `Runtime cron could not be read: ${error instanceof Error ? error.message : String(error)}`,
+      summary: 'Runtime cron could not be read.',
+      detail: (error instanceof Error ? error.message : String(error)) || undefined,
       incident: {
         key: 'cutover-verification',
         title: 'Schedule cutover could not be verified',

@@ -27,6 +27,11 @@ export async function checkSearchAdapter(): Promise<HealthCheckRunInput> {
       incident: {
         key: 'search-disabled',
         title: 'Search is disabled',
+        // policy_denial: disabling Search is an explicit operator setting,
+        // not a failure — under standard sensitivity this calms to
+        // advisory instead of permanently lighting the dashboard on boxes
+        // that turned it off on purpose (aggressiveness audit, 2026-07-22).
+        class: 'policy_denial',
         impact: 'Agents and user interfaces cannot use indexed search.',
         disposition: 'action_required',
         resources: [{ kind: 'setting', id: 'search.settings.enabled', label: 'Search enabled setting' }],
@@ -151,7 +156,11 @@ export async function checkSearchAdapter(): Promise<HealthCheckRunInput> {
             key: 'inspect-engine',
             type: 'instructions',
             label: 'Restore the Search engine',
-            steps: ['Inspect Search engine lines in ~/.bakin/logs/server.log, restore the service, then rerun Health.'],
+            steps: [
+              'Run `bakin install search` — it re-provisions the service unit and starts the engine if it is dark (safe to run repeatedly).',
+              'Still unreachable? Check `~/.bakin/logs/antfly.log` for crash loops — a broken model or corrupt data dir shows up there.',
+              'Last resort: `bakin search:reset` stops the engine, wipes its derived index data (content and models untouched), starts clean, and rebuilds.',
+            ],
           },
         },
       }))

@@ -62,7 +62,7 @@ import { checkRestartRecovery } from './lib/system-checks/restart-recovery'
 import { checkExecutionSafety } from './lib/system-checks/execution-safety'
 import { checkRunDirs, runDirsSweepRepair } from './lib/system-checks/run-dirs'
 import { checkStartupContextSize } from './lib/system-checks/context-report'
-import { checkBudget } from './lib/system-checks/budget'
+import { checkBudget, spendEvidenceRepair } from './lib/system-checks/budget'
 import { checkAgentBurn } from './lib/system-checks/agent-burn'
 import { checkSearchAdapter } from './lib/system-checks/search'
 import { searchOutboxRepair } from './lib/system-checks/search-outbox'
@@ -1051,6 +1051,7 @@ const healthPlugin: BakinPlugin = definePlugin({
     ctx.registerHealthRepairAction(searchCanaryRepair())
     ctx.registerHealthRepairAction(searchEngineBurnRepair())
     ctx.registerHealthRepairAction(searchConsistencyRestartRepair())
+    ctx.registerHealthRepairAction(spendEvidenceRepair())
     ctx.registerHealthRepairAction(syncSkillRepair(process.cwd(), ctx.runtime))
   },
 

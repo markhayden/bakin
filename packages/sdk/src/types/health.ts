@@ -201,7 +201,14 @@ export type ErrorObservationInput = HealthObservationBaseInput & {
 
 export type UnknownObservationInput = HealthObservationBaseInput & {
   status: 'unknown'
-  incident: WatchIncidentInput
+  /**
+   * watch = a human should keep an eye on this unknown; advisory = the
+   * producer vouches it SELF-RESOLVES (a scan warming up after restart,
+   * attribution completing as transcripts land) — surfaced, but never in
+   * the fix-first banner. action_required stays unrepresentable: an
+   * unknown cannot honestly demand action.
+   */
+  incident: WatchIncidentInput | AdvisoryIncidentInput
 }
 
 /** Status-discriminated producer observation; illegal combinations do not typecheck. */

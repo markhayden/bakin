@@ -14,11 +14,18 @@ import { queryAuditEvents } from '../../../../src/core/audit'
 import { getContentDir } from '../../../../src/core/content-dir'
 import { LedgerUnavailableError, listBudgetIncidents } from '../../../../src/core/execution-ledger'
 import { assembleBudgetSpend } from '../../../../src/core/budget-spend'
-import { evaluateBudget, type BudgetPolicy, type BudgetRule, type TurnBillingContext } from '../../../../src/core/budget'
+import { evaluateBudget, type BudgetPolicy, type BudgetRule, type SpendEvidenceGap, type TurnBillingContext } from '../../../../src/core/budget'
 import { getSettings } from '../../../../src/core/settings'
 import { getHookRegistry } from '../../../../packages/core/src/hooks/hook-registry-singleton'
 import { healthError, healthHealthy, healthObserved, healthUnknown, healthWarning } from '@makinbakin/sdk/utils'
-import type { HealthCheckRunInput, HealthObservationInput, JsonObject } from '@makinbakin/sdk'
+import type {
+  HealthCheckRunInput,
+  HealthObservationInput,
+  HealthRepairActionDefinition,
+  HealthRepairPlanItem,
+  JsonObject,
+} from '@makinbakin/sdk'
+import { repairTargetSelection } from './repair-support'
 import {
   getUsageHistoryScanState,
   getUsageHistoryScanStaleAfterMs,
@@ -26,6 +33,45 @@ import {
 } from '../usage-history-timer'
 
 const WINDOW_MS = 24 * 60 * 60 * 1000
+
+/** Bounded human summary of evidence gaps — the card must NAME what is
+ *  unverifiable ("openai/gpt-5.5: unpriced — 3 runs"), never gesture at it.
+ *  Daily+monthly windows overlap, so gaps dedupe by target+reasons (max
+ *  count wins — monthly subsumes daily for the same records). Model ids
+ *  are runtime-controlled and unbounded: per-target text is truncated and
+ *  the FULL enumeration belongs in detail (4000) — `impact` (500) gets
+ *  only the top few + a count (review finding: five bedrock-style ids
+ *  blew the impact bound and invalidated the whole run). */
+function summarizeEvidenceGaps(gaps: SpendEvidenceGap[]): { lines: string[]; impactSummary: string } {
+  const reasonText = (reason: SpendEvidenceGap['reasons'][number]): string => ({
+    value_missing: 'unpriced',
+    lane_unknown: 'billing lane unknown',
+    provider_unknown: 'provider unknown',
+    model_unknown: 'model unknown',
+  })[reason]
+  const merged = new Map<string, { target: string; reasons: string; count: number; unit: string }>()
+  for (const gap of gaps) {
+    const target = (gap.model ?? gap.provider ?? (gap.agent ? `agent ${gap.agent}` : 'unknown source')).slice(0, 80)
+    const reasons = gap.reasons.map(reasonText).join(' + ')
+    const unit = gap.source === 'attributed_run' ? 'run' : 'message'
+    const dedupeKey = `${target}\0${reasons}\0${unit}`
+    const existing = merged.get(dedupeKey)
+    if (existing) {
+      existing.count = Math.max(existing.count, gap.unknownCount)
+    } else {
+      merged.set(dedupeKey, { target, reasons, count: gap.unknownCount, unit })
+    }
+  }
+  const entries = [...merged.values()]
+  const lines = entries.slice(0, 8).map((entry) =>
+    `${entry.target}: ${entry.reasons} — ${entry.count} ${entry.unit}${entry.count === 1 ? '' : 's'}`)
+  const top = entries.slice(0, 2).map((entry) => `${entry.target} (${entry.reasons})`)
+  const more = entries.length - top.length
+  const impactSummary = top.length > 0
+    ? ` Gaps: ${top.join(', ')}${more > 0 ? ` +${more} more` : ''}.`
+    : ''
+  return { lines, impactSummary }
+}
 
 function fmtValue(unit: 'usd_micros' | 'tokens', v: number): string {
   return unit === 'usd_micros' ? `$${(v / 1_000_000).toFixed(2)}` : `${v.toLocaleString()} tokens`
@@ -433,9 +479,19 @@ export async function checkBudget(): Promise<HealthCheckRunInput> {
   } else if (incompleteSpendRules.length > 0
     || (policy.rules.some((rule) => rule.scope === 'global' || rule.scope === 'agent')
       && observedEvidence.status !== 'complete')) {
+    // Concrete, resolvable, or it doesn't ship (field feedback, 2026-07-22:
+    // "open a page and pray" is not a resolution). The card NAMES its gaps,
+    // and a pricing gap gets a one-click repair that force-refreshes the
+    // model catalog server-side — no page visit involved. Attribution gaps
+    // (lane/provider/model unknown) genuinely self-resolve as transcripts
+    // land, and the copy says exactly that instead of inventing busywork.
+    const evidenceGaps = [...facets.spendEvidence.daily.gaps, ...facets.spendEvidence.monthly.gaps]
+    const { lines: gapLines, impactSummary } = summarizeEvidenceGaps(evidenceGaps)
+    const hasPricingGap = evidenceGaps.some((gap) => gap.reasons.includes('value_missing'))
+    const detailSuffix = gapLines.length > 0 ? ` Gaps: ${gapLines.join('; ')}.` : ''
     const detail = incompleteSpendRules.length > 0
-      ? `${incompleteSpendRules.length} budget rule${incompleteSpendRules.length === 1 ? '' : 's'} cannot be evaluated because one or more matching spend records have incomplete value or attribution evidence.`
-      : 'Known Bakin-managed spend is below its configured limits, but recent transcript-observed usage is incomplete.'
+      ? `${incompleteSpendRules.length} budget rule${incompleteSpendRules.length === 1 ? '' : 's'} cannot be evaluated because one or more matching spend records have incomplete value or attribution evidence.${detailSuffix}`
+      : `Known Bakin-managed spend is below its configured limits, but recent transcript-observed usage is incomplete.${detailSuffix}`
     observations.push(healthUnknown({
       key: 'spend',
       summary: 'Spend could not be fully verified.',
@@ -445,30 +501,37 @@ export async function checkBudget(): Promise<HealthCheckRunInput> {
         key: 'spend-evidence-incomplete',
         title: 'Spend evidence is incomplete',
         class: 'evidence_gap',
-        impact: incompleteSpendRules.length > 0
+        impact: `${incompleteSpendRules.length > 0
           ? 'Matching budget caps fail closed until spend values and billing attribution can be verified.'
-          : 'Health cannot confirm that agent spend outside Bakin-managed runs remains within budget.',
-        disposition: 'watch',
+          : 'Health cannot confirm that agent spend outside Bakin-managed runs remains within budget.'}${impactSummary}`,
+        // Pricing gaps are ACTIONABLE (the one-click catalog refresh) —
+        // watch. Attribution-only gaps and scan freshness self-resolve as
+        // transcripts land, and caps fail closed meanwhile: advisory, so
+        // a state that needs no human stops lighting the banner.
+        disposition: hasPricingGap ? 'watch' : 'advisory',
         resources: incompleteSpendRules.length > 0
           ? [
               { kind: 'system' as const, id: 'spend-ledger', label: 'Spend ledger' },
               { kind: 'system' as const, id: 'usage-history', label: 'Usage history' },
             ]
           : [{ kind: 'system', id: 'usage-history', label: 'Usage history' }],
-        // A bare "rerun" gave operators nothing to actually FIX — the gaps
-        // are almost always unpriced models (no cached pricing → USD caps
-        // can't be computed) or usage rows without a billing lane. Name the
-        // remediations (field feedback, 2026-07-22).
-        resolution: {
-          key: 'complete-spend-evidence',
-          type: 'instructions',
-          label: 'Complete the spend evidence',
-          steps: [
-            'Open the Models page so pricing for every active model gets cached — usage from a model without cached pricing cannot be valued, which is the most common gap on a fresh install.',
-            'Run `bakin spend` and check the listed evidence gaps: value_missing = unpriced model, lane_unknown = usage that cannot be classified metered vs subscription (usually resolves after the next completed runs).',
-            'Rerun Health. Budget caps stay fail-closed (deferring, never overspending) until the evidence completes — that is by design.',
-          ],
-        },
+        resolution: hasPricingGap
+          ? {
+              key: 'refresh-model-pricing',
+              type: 'repair',
+              label: 'Refresh model pricing',
+              actionId: 'spend-evidence-refresh-pricing',
+            }
+          : {
+              key: 'attribution-settles',
+              type: 'instructions',
+              label: 'Attribution completes on its own',
+              steps: [
+                'The named records lack billing attribution (lane/provider/model), which completes as the runtime finishes writing its transcripts — no action needed.',
+                'Budget caps stay fail-closed (deferring, never overspending) until then — that is by design.',
+                'If the same gaps persist for hours across recheck, report it: attribution should converge without help.',
+              ],
+            },
       },
     }))
   } else if (worst) {
@@ -527,4 +590,68 @@ export async function checkBudget(): Promise<HealthCheckRunInput> {
 function budgetRuleId(rule: BudgetRule, index: number): string {
   const raw = [rule.scope, rule.scopeId, rule.lane, index].filter((value) => value !== undefined).join('-')
   return raw.toLowerCase().replace(/[^a-z0-9._:-]/g, '-').slice(0, 120) || `rule-${index}`
+}
+
+/**
+ * One-click repair for the pricing leg of incomplete spend evidence: force-
+ * refresh the model catalog (with pricing) through the models plugin's own
+ * hook — the deterministic version of "open the Models page so pricing
+ * caches", which asked a human to trigger a machine operation (field
+ * feedback, 2026-07-22). Attribution gaps are NOT repairable here; they
+ * complete as transcripts land, and the incident copy says so.
+ */
+export function spendEvidenceRepair(): HealthRepairActionDefinition {
+  return {
+    id: 'spend-evidence-refresh-pricing',
+    name: 'Refresh model pricing',
+    async plan(target) {
+      return [{
+        id: 'refresh-model-pricing',
+        actionId: 'spend-evidence-refresh-pricing',
+        title: 'Refresh model pricing',
+        reason: 'Spend records reference models without cached pricing, so USD caps cannot be evaluated.',
+        safety: 'safe',
+        ...repairTargetSelection(target),
+        changes: [{
+          kind: 'other',
+          target: 'model catalog cache',
+          action: 'update',
+          description: 'Re-fetch the model catalog (with pricing) live from the configured providers, bypassing caches. Read-only toward providers; overwrites only the local pricing cache.',
+        }],
+      }]
+    },
+    async apply(items) {
+      const done = (status: 'applied' | 'failed', message: string) => items.map((item: HealthRepairPlanItem) => ({
+        itemId: item.id,
+        actionId: item.actionId,
+        status,
+        message,
+        affectedCheckIds: ['budget'],
+        changes: item.changes,
+      }))
+      if (items.length === 0) return []
+      try {
+        const registry = getHookRegistry()
+        if (!registry.has('models.refreshAvailableModels')) {
+          return done('failed', 'The models plugin is not active — the catalog cannot be refreshed from here.')
+        }
+        const result = await registry.invoke<{ count: number; live: boolean; error: string | null }>(
+          'models.refreshAvailableModels',
+          {},
+        )
+        if (result?.error) {
+          return done('failed', `Catalog refresh failed: ${result.error}. Pricing stays as-is; spend evidence remains incomplete.`)
+        }
+        if (!result || result.count === 0) {
+          return done('failed', 'The provider returned no models — pricing cannot be cached. Check runtime credentials (`bakin check llm`), then run this repair again.')
+        }
+        // Honest scope: the refresh landed, but a gapped model may still
+        // have no known pricing in the refreshed catalog — never claim the
+        // gap is resolved before the next check run verifies it.
+        return done('applied', `Model catalog refreshed live (${result.count} models). Health re-verifies spend on the next check run — if the same gap persists, that model has no known pricing and its usage can only be capped by tokens.`)
+      } catch (err) {
+        return done('failed', `Catalog refresh failed: ${err instanceof Error ? err.message : String(err)}`)
+      }
+    },
+  }
 }

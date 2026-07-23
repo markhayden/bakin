@@ -121,26 +121,16 @@ export function describeMissingModels(missing: InferenceModel[]): { impact: stri
 export async function checkInferenceModels(models: InferenceModel[]) {
   const missing = missingModelEntries(models)
   if (missing.length === 0) {
-    // Presence passed — also verify pinned hashes. Drift is reported but
-    // never blocks: it means "differs from the verified distribution", not
-    // the crash-loop class a missing pinned file signals.
-    const unverified: Array<{ model: string; files: string[] }> = []
-    for (const m of models) {
-      const files = await unverifiedModelFiles(m.model)
-      if (files.length > 0) unverified.push({ model: m.model, files })
-    }
-    const driftNote = unverified.length > 0
-      ? ` (${unverified.length} model${unverified.length === 1 ? '' : 's'} differ from the pinned verified distribution — see details)`
-      : ''
+    // Structural verification only — pinned file NAMES and sizes, which is
+    // what catches the wrong-distribution crash-loop class. sha256 hashing
+    // lives on the INSTALL path (post-pull): checks run on doctor cadence
+    // and hashing hundreds of MB per pass made a fully loaded test/CI
+    // machine blow check timeouts (2026-07-22).
     return {
       name: 'models',
       status: 'ok' as const,
-      message: `All ${models.length} search models present at ${inferenceModelsRoot()}${driftNote}`,
-      details: {
-        root: inferenceModelsRoot(),
-        models: models.map((m) => m.model),
-        ...(unverified.length > 0 ? { unverified } : {}),
-      },
+      message: `All ${models.length} search models present at ${inferenceModelsRoot()}`,
+      details: { root: inferenceModelsRoot(), models: models.map((m) => m.model) },
     }
   }
   const { impact, remediation } = describeMissingModels(missing.map((e) => e.model))

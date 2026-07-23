@@ -17,42 +17,18 @@ import type {
   WarningObservationInput,
 } from '../types'
 
-type HealthyObservationFields = Omit<HealthyObservationInput, 'status'>
-type WarningObservationFields = Omit<WarningObservationInput, 'status'>
-type ErrorObservationFields = Omit<ErrorObservationInput, 'status'>
-type UnknownObservationFields = Omit<UnknownObservationInput, 'status'>
-
-/** Build a healthy observation. Healthy observations cannot carry incidents. */
-export function healthHealthy(input: HealthyObservationFields): HealthyObservationInput {
-  return { ...input, status: 'healthy' }
-}
-
-/** Build a warning observation with an explicit advisory/watch/action disposition. */
-export function healthWarning(input: WarningObservationFields): WarningObservationInput {
-  return { ...input, status: 'warning' }
-}
-
-/** Build an error observation. Its incident must require operator action. */
-export function healthError(input: ErrorObservationFields): ErrorObservationInput {
-  return { ...input, status: 'error' }
-}
-
-/** Build an Unknown verification observation with a watch disposition. */
-export function healthUnknown(input: UnknownObservationFields): UnknownObservationInput {
-  return { ...input, status: 'unknown' }
-}
-
-/** Build a successful observed run. Empty diagnostic output is unrepresentable. */
-export function healthObserved(
-  observations: HealthNonEmptyArray<HealthObservationInput>,
-): ObservedHealthCheckRunInput {
-  return { outcome: 'observed', observations }
-}
-
-/** Build an explicit successful not-applicable run. */
-export function healthNotApplicable(reason: string): NotApplicableHealthCheckRunInput {
-  return { outcome: 'not_applicable', reason }
-}
+// The observation builders live in @bakin/core so adapter packages (which
+// depend only on core) share the SAME clamped construction path as
+// plugins. This module re-exports them unchanged — plugin authors keep
+// importing from '@makinbakin/sdk/utils'.
+export {
+  healthError,
+  healthHealthy,
+  healthNotApplicable,
+  healthObserved,
+  healthUnknown,
+  healthWarning,
+} from '../../../core/src/health/observation-builders'
 
 /** Tailwind class merger (clsx + tailwind-merge). */
 export { cn } from '../../../../src/lib/utils'
