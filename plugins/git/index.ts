@@ -15,6 +15,7 @@ import type {
   PluginContext,
 } from '@bakin/core/plugin-types'
 import { healthHealthy, healthObserved, healthWarning } from '@makinbakin/sdk/utils'
+import { healthResourceId } from '@bakin/core/health/observation-builders'
 import type { PluginContextLite } from '@bakin/core/routing'
 import { definePlugin, defineRoute } from '@bakin/core/routing'
 import { getContentDir } from '../../packages/core/src/content-dir'
@@ -542,7 +543,13 @@ export async function checkWorktrees(ctx: PluginContextLite): Promise<HealthChec
           title: 'A tracked Git worktree is missing',
           impact: `Task ${entry.taskId} may no longer have its isolated working directory.`,
           disposition: 'action_required',
-          resources: [{ kind: 'task', id: entry.taskId, label: entry.taskId }, { kind: 'directory', id: entry.worktreePath }],
+          // Resource ids must satisfy the contract's stable-key format — a
+          // raw path here failed validation and hid this REAL finding
+          // behind a generic Verify card for three releases (2026-07-23).
+          resources: [
+            { kind: 'task', id: healthResourceId(entry.taskId), label: entry.taskId.slice(0, 120) },
+            { kind: 'directory', id: healthResourceId(entry.worktreePath), label: entry.worktreePath.slice(0, 120) },
+          ],
           resolution: { key: 'release-worktree', type: 'instructions', label: 'Review worktree', steps: ['Confirm the task no longer needs this worktree, then release its stale registry entry with the Git release tool.'] },
         },
       })) as [ReturnType<typeof healthWarning>, ...ReturnType<typeof healthWarning>[]])
