@@ -47,6 +47,20 @@ describe('canonical Health HTTP observation schema', () => {
 
     expect(result.success).toBe(false)
   })
+
+  it('accepts an ADVISORY Unknown observation — the wire mirror must not lag the producer contract', () => {
+    // This mirror lagging the contract made the CLIENT reject the whole
+    // health report the first time a server emitted an advisory unknown:
+    // "Health report response was invalid" on a healthy box (rc.24 field
+    // report, 2026-07-23).
+    const result = canonicalHealthObservationSchema.safeParse({
+      ...observationBase,
+      status: 'unknown',
+      incident: { ...incidentBase, disposition: 'advisory' },
+    })
+
+    expect(result.success).toBe(true)
+  })
 })
 
 function canonicalReport() {
