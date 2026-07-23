@@ -62,6 +62,7 @@ function ListHeaderControlsExample() {
             />
             <SegmentedControl
               ariaLabel="Task view"
+              size="md"
               value={view}
               onValueChange={setView}
               options={[{ value: 'board', label: 'Board' }, { value: 'log', label: 'Log' }]}
@@ -97,6 +98,8 @@ export const ListHeaderControls = {
 
     await expect(control).toHaveAttribute('data-state', 'empty')
     await expect(search).toHaveValue('')
+    await expect(Math.abs(search.getBoundingClientRect().height - board.getBoundingClientRect().height)).toBeLessThan(1)
+    await expect(Math.abs(search.getBoundingClientRect().height - action.getBoundingClientRect().height)).toBeLessThan(1)
     await expect(Math.abs(board.getBoundingClientRect().top - boardTop)).toBeLessThan(1)
     await expect(Math.abs(action.getBoundingClientRect().top - actionTop)).toBeLessThan(1)
   },

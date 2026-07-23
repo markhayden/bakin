@@ -250,7 +250,12 @@ describe('KanbanBoard — search signals', () => {
     })
     expect(screen.getByRole('heading', { level: 1, name: 'Tasks' })).toBeTruthy()
     expect(screen.getByRole('group', { name: 'Task search and view' })).toBeTruthy()
-    expect(screen.getByRole('searchbox', { name: 'Task search' })).toBeTruthy()
+    const search = screen.getByRole('searchbox', { name: 'Task search' })
+    const board = screen.getByRole('tab', { name: 'Board' })
+    const newTask = screen.getByRole('button', { name: 'New Task' })
+    expect(search.className).toContain('h-[var(--bakin-layout-size-control)]')
+    expect(board.className).toContain('h-[var(--bakin-layout-size-control)]')
+    expect(newTask.className).toContain('h-[var(--bakin-layout-size-control)]')
     expect(screen.getByRole('region', { name: 'Task results' })).toBeTruthy()
   })
 
@@ -338,16 +343,18 @@ describe('KanbanBoard — search signals', () => {
       render(<KanbanBoard />)
     })
 
-    // In-flight search (debounce + request) → visible loading indicator.
+    // In-flight search (debounce + request) stays inside the search field so
+    // the result region does not jump when a request begins.
     await waitFor(() => {
-      expect(screen.getByTestId('tasks-search-loading')).toBeDefined()
+      expect(screen.getByRole('searchbox', { name: 'Task search' }).getAttribute('aria-busy')).toBe('true')
     })
+    expect(screen.queryAllByTestId('tasks-search-loading')).toHaveLength(0)
 
     // Engine down → the honest degraded chip…
     await waitFor(() => {
       expect(screen.getByTestId('tasks-search-degraded')).toBeDefined()
     }, { timeout: 3000 })
-    expect(screen.queryAllByTestId('tasks-search-loading').length).toBe(0)
+    expect(screen.getByRole('searchbox', { name: 'Task search' }).getAttribute('aria-busy')).toBeNull()
 
     // …while basic text matching keeps the board usable (the fix is the
     // SIGNAL — the fallback stays).

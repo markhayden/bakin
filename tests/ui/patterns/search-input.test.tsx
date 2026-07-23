@@ -70,4 +70,20 @@ describe('canonical search input', () => {
     expect(document.activeElement).toBe(input)
     expect(screen.queryByRole('button', { name: 'Clear Search tasks' })).toBeNull()
   })
+
+  it('keeps in-progress feedback inside the search control without displacing results', () => {
+    const { container } = render(
+      <SearchInput
+        busy
+        label="Search tasks"
+        value="launch"
+        onValueChange={() => {}}
+      />,
+    )
+
+    const input = screen.getByRole('searchbox', { name: 'Search tasks' })
+    expect(input.getAttribute('aria-busy')).toBe('true')
+    expect(container.querySelector('[data-slot="search-input-progress"]')).toBeTruthy()
+    expect(screen.getByRole('status').textContent).toBe('Searching Search tasks')
+  })
 })

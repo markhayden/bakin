@@ -23,7 +23,7 @@ import {
   SegmentedControl,
 } from '@makinbakin/sdk/patterns'
 import { Badge, Button, SystemState } from '@makinbakin/sdk/ui'
-import { Kanban, Loader2, Plus, Table2 } from 'lucide-react'
+import { Kanban, Plus, Table2 } from 'lucide-react'
 import { KanbanColumn } from './kanban-column'
 import { DeleteTaskDialog } from './delete-task-dialog'
 import { BlockReasonDialog } from './block-reason-dialog'
@@ -215,12 +215,6 @@ export function KanbanBoard() {
   const { filteredColumns, allTasksFlat, aggregations, searchResults, searchStatus, searchMeta } = useTaskFilters(displayColumns, {
     search, agentFilter, statusFilter, brandFilter,
   })
-
-  // Honest search signal (spec D11): the substring fallback keeps the board
-  // browsable when the engine is down, but the user must SEE that search is
-  // degraded — plus in-flight and partial-results states while it's up.
-  const searchSignalActive = Boolean(search.trim()) &&
-    (searchStatus === 'loading' || searchStatus === 'unavailable' || Boolean(searchMeta?.partial))
 
   // Brand facet options + the opt-in unbranded nudge flag ride the brands
   // list response (#419) — no separate settings fetch from the tasks plugin.
@@ -484,19 +478,8 @@ export function KanbanBoard() {
   const initialLoading = !boardFailed && (Boolean(loading) || !boardLoaded)
   const searchSettled = !search.trim() || searchStatus !== 'loading'
 
-  const searchFeedback = searchSignalActive ? (
+  const searchFeedback = search.trim() && (searchStatus === 'unavailable' || searchMeta?.partial) ? (
     <div className="flex min-w-0 flex-wrap items-center gap-bakin-2">
-      {searchStatus === 'loading' && (
-        <Badge
-          size="sm"
-          tone="neutral"
-          variant="ghost"
-          data-testid="tasks-search-loading"
-        >
-          <Loader2 className="size-bakin-3 animate-spin motion-reduce:animate-none" />
-          Searching…
-        </Badge>
-      )}
       {searchStatus === 'unavailable' && <SearchDegradedChip testId="tasks-search-degraded" />}
       {searchMeta?.partial && <SearchPartialChip meta={searchMeta} />}
     </div>
@@ -553,6 +536,7 @@ export function KanbanBoard() {
                 value={search}
                 onValueChange={setSearch}
                 placeholder="Search tasks…"
+                busy={searchStatus === 'loading'}
               />
               <SegmentedControl
                 options={[
@@ -562,6 +546,7 @@ export function KanbanBoard() {
                 value={view as 'kanban' | 'table'}
                 onValueChange={setView}
                 ariaLabel="Task view"
+                size="md"
               />
             </>
           )}
@@ -635,7 +620,16 @@ export function KanbanBoard() {
             </DragDropProvider>
           ) : (
             <div className="flex-1 overflow-auto min-h-0 pb-bakin-2">
-              <TaskLogTable currentTasks={allTasksFlat} statusFilter={statusFilter} isSearching={Boolean(search)} scoreMap={scoreMap} />
+              <TaskLogTable
+                currentTasks={allTasksFlat}
+                statusFilter={statusFilter}
+                isSearching={Boolean(search)}
+                scoreMap={scoreMap}
+                onTaskOpen={(task, columnId) => {
+                  setDetailTask({ task, columnId })
+                  setEditing(false)
+                }}
+              />
             </div>
           )}
         </ListPageContent>

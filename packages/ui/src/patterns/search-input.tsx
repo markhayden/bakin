@@ -17,6 +17,8 @@ export interface SearchInputProps extends NativeSearchInputProps {
   value: string
   onValueChange: (value: string) => void
   placeholder?: string
+  /** Indicates an in-flight search without adding layout-changing feedback beside the field. */
+  busy?: boolean
   align?: 'start' | 'end'
   className?: string
   inputClassName?: string
@@ -35,6 +37,20 @@ function SearchIcon() {
   )
 }
 
+function SearchProgressIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      data-slot="search-input-progress"
+      viewBox="0 0 24 24"
+      className="pointer-events-none absolute left-bakin-3 top-1/2 size-bakin-4 -translate-y-1/2 animate-spin fill-none stroke-current stroke-2 text-bakin-text-muted motion-reduce:animate-none"
+    >
+      <circle cx="12" cy="12" r="8" className="opacity-25" />
+      <path d="M20 12a8 8 0 0 0-8-8" strokeLinecap="round" />
+    </svg>
+  )
+}
+
 function ClearIcon() {
   return (
     <svg aria-hidden="true" viewBox="0 0 16 16" className="size-bakin-3 fill-none stroke-current stroke-[1.75]">
@@ -48,6 +64,7 @@ export function SearchInput({
   align = 'end',
   autoComplete,
   autoFocus,
+  busy = false,
   className,
   disabled,
   id,
@@ -86,7 +103,7 @@ export function SearchInput({
         style={{ inlineSize: focused ? '100%' : collapsedSize }}
         className="relative max-w-full min-w-0 transition-[inline-size] duration-[var(--bakin-motion-duration-transition)] ease-bakin-standard motion-reduce:transition-none"
       >
-        <SearchIcon />
+        {busy ? <SearchProgressIcon /> : <SearchIcon />}
         <Input
           {...inputProps}
           ref={inputRef}
@@ -95,6 +112,7 @@ export function SearchInput({
           type="search"
           value={value}
           aria-label={label}
+          aria-busy={busy || undefined}
           placeholder={placeholder}
           autoComplete={autoComplete}
           autoFocus={autoFocus}
@@ -133,6 +151,7 @@ export function SearchInput({
             <ClearIcon />
           </Button>
         ) : null}
+        {busy ? <span role="status" className="sr-only">Searching {label}</span> : null}
       </div>
     </div>
   )

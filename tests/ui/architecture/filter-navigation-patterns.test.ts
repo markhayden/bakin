@@ -10,6 +10,7 @@ describe('canonical filter and navigation patterns', () => {
     const sources = [
       'packages/ui/src/patterns/agent-filter.tsx',
       'packages/ui/src/patterns/facet-filter.tsx',
+      'packages/ui/src/patterns/search-input.tsx',
       'packages/ui/src/patterns/segmented-control.tsx',
       'packages/ui/src/patterns/selection-navigation.ts',
       'packages/ui/src/patterns/sortable-head.tsx',
@@ -36,5 +37,16 @@ describe('canonical filter and navigation patterns', () => {
     expect(sources).not.toMatch(/URLSearchParams|history\.|location\.|useQuery/)
     expect(guide).toContain("useQueryArrayState('status')")
     expect(guide).toContain("useQueryState('view', 'board')")
+  })
+
+  it('keeps in-flight search feedback inside the canonical field', () => {
+    const search = read('packages/ui/src/patterns/search-input.tsx')
+    const story = read('storybook/public/patterns/filter-navigation.stories.tsx')
+    const guide = read('docs/src/content/docs/extending/ui/overview.md')
+
+    expect(search).toContain('busy?: boolean')
+    expect(search).toContain('data-slot="search-input-progress"')
+    expect(story).toContain('SearchInProgress')
+    expect(guide).toContain('progress indicator stays inside the field')
   })
 })

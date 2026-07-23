@@ -9,6 +9,7 @@ describe('canonical status and metric patterns', () => {
   it('keeps presentation-only status and metric code in the private UI package', () => {
     const sources = [
       read('packages/ui/src/patterns/status-badge.tsx'),
+      read('packages/ui/src/patterns/stat-group.tsx'),
       read('packages/ui/src/patterns/stat-tile.tsx'),
     ].join('\n')
     expect(sources).not.toMatch(/@\/|@makinbakin\/sdk|lucide-react|window\.|document\./)
@@ -26,6 +27,7 @@ describe('canonical status and metric patterns', () => {
   it('documents visible status language, meter labels, and the low-chrome default', () => {
     const guide = read('docs/src/content/docs/extending/ui/overview.md')
     expect(guide).toContain('StatusBadge')
+    expect(guide).toContain('StatGroup')
     expect(guide).toContain('visible label')
     expect(guide).toContain('progress.label')
     expect(guide).toContain('low-chrome')

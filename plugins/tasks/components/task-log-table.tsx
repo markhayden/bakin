@@ -2,19 +2,23 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
-  Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
-} from "@makinbakin/sdk/ui"
-import { SortableHead, type SortDir } from "@makinbakin/sdk/components"
+  Button, Skeleton, Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
+} from '@makinbakin/sdk/ui'
+import {
+  AgentAvatar,
+  SortableHead,
+  StatusBadge,
+  type SortDir,
+  type StatusTone,
+} from '@makinbakin/sdk/patterns'
 import { EmptyState } from "@makinbakin/sdk/components"
-import { Skeleton } from "@makinbakin/sdk/ui"
 import { ClipboardList } from 'lucide-react'
-import { STATUS_BADGE_STYLES } from '../constants'
+import { COLUMN_CONFIG } from '../constants'
 import { formatDateTime, formatDuration } from "@makinbakin/sdk/utils"
 import { useAgent } from "@makinbakin/sdk/hooks"
-import { AgentAvatar } from "@makinbakin/sdk/components"
 import type { FlatTask } from '../hooks/use-task-filters'
 import type { TaskScoreInfo } from './task-card'
-import type { ColumnId } from '../types'
+import type { ColumnId, Task } from '../types'
 
 interface AuditEntry {
   type: string
@@ -39,6 +43,27 @@ interface HistoricalTask {
 
 type TaskRow = FlatTask | HistoricalTask
 
+const STATUS_TONES: Record<ColumnId, StatusTone> = {
+  backlog: 'neutral',
+  todo: 'accent',
+  inProgress: 'accent',
+  review: 'attention',
+  done: 'success',
+  archived: 'neutral',
+  blocked: 'danger',
+}
+
+function taskForDrawer(task: TaskRow): Task {
+  if ('checked' in task) return task
+  return {
+    id: task.id,
+    title: task.title,
+    agent: task.agent,
+    checked: task.status === 'done' || task.status === 'archived',
+    date: task.createdAt,
+  }
+}
+
 function getCreatedAt(t: TaskRow): string | undefined {
   if ('createdAt' in t) return (t as HistoricalTask).createdAt
   return (t as FlatTask).date
@@ -61,9 +86,11 @@ interface TaskLogTableProps {
   isSearching?: boolean
   /** Per-task search score info, keyed by task id. Only set when debug + active search. */
   scoreMap?: Map<string, TaskScoreInfo>
+  /** Opens the canonical task detail drawer for current and historical rows. */
+  onTaskOpen: (task: Task, columnId: ColumnId) => void
 }
 
-export function TaskLogTable({ currentTasks, statusFilter, isSearching, scoreMap }: TaskLogTableProps) {
+export function TaskLogTable({ currentTasks, statusFilter, isSearching, scoreMap, onTaskOpen }: TaskLogTableProps) {
   const [auditTasks, setAuditTasks] = useState<HistoricalTask[]>([])
   const [loading, setLoading] = useState(true)
   const [sortField, setSortField] = useState<SortField>('completedAt')
@@ -190,18 +217,35 @@ export function TaskLogTable({ currentTasks, statusFilter, isSearching, scoreMap
               {sorted.map(task => {
                 const created = getCreatedAt(task)
                 const completed = getCompletedAt(task)
-                const badgeStyle = STATUS_BADGE_STYLES[task.status as ColumnId]
+                const drawerTask = taskForDrawer(task)
                 const scoreInfo = scoreMap?.get(task.id)
                 const semKey = 'embeddings'
                 const bm25Key = scoreInfo?.indexScores
                   ? Object.keys(scoreInfo.indexScores).find(k => k !== semKey)
                   : undefined
                 return (
-                  <TableRow key={task.id}>
+                  <TableRow
+                    key={task.id}
+                    data-task-log-row=""
+                    className="cursor-pointer"
+                    onClick={() => onTaskOpen(drawerTask, task.status)}
+                  >
                     <TableCell className="font-mono text-xs text-muted-foreground">{task.id.slice(0, 8)}</TableCell>
                     <TableCell className="max-w-[300px] truncate">
                       <div className="flex items-center gap-2">
-                        <span className="truncate">{task.title}</span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="xs"
+                          aria-label={`Open ${task.title}`}
+                          className="h-auto min-w-0 max-w-full justify-start px-bakin-1 py-bakin-1 text-left"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            onTaskOpen(drawerTask, task.status)
+                          }}
+                        >
+                          <span className="truncate">{task.title}</span>
+                        </Button>
                         {scoreInfo && (
                           <span className="flex items-center gap-1.5 font-mono text-[10px] shrink-0">
                             <span className="text-amber-400">RRF {scoreInfo.score.toFixed(3)}</span>
@@ -223,11 +267,7 @@ export function TaskLogTable({ currentTasks, statusFilter, isSearching, scoreMap
                       )}
                     </TableCell>
                     <TableCell>
-                      {badgeStyle && (
-                        <span className={`text-[11px] px-1.5 py-0.5 rounded-full ${badgeStyle.bg}`}>
-                          {badgeStyle.label}
-                        </span>
-                      )}
+                      <StatusBadge tone={STATUS_TONES[task.status]}>{COLUMN_CONFIG[task.status].label}</StatusBadge>
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">{formatDate(created)}</TableCell>
                     <TableCell className="text-xs text-muted-foreground">{formatDate(completed)}</TableCell>
@@ -247,10 +287,15 @@ export function TaskLogTable({ currentTasks, statusFilter, isSearching, scoreMap
 
 function AgentCell({ agentId }: { agentId: string }) {
   const agent = useAgent(agentId)
+  const name = agent?.name ?? agentId
   return (
     <span className="flex items-center gap-1.5">
-      <AgentAvatar agentId={agentId} size="xs" />
-      <span className="text-xs">{agent?.name ?? agentId}</span>
+      <AgentAvatar
+        agent={{ id: agentId, name, imageSrc: agent?.headshot }}
+        size="xs"
+        decorative
+      />
+      <span className="text-xs">{name}</span>
     </span>
   )
 }

@@ -1,7 +1,7 @@
-import { StatTile, StatusBadge } from '@makinbakin/sdk/patterns'
+import { StatGroup, StatTile, StatusBadge } from '@makinbakin/sdk/patterns'
 
 export const validStatusMetricPatterns = (
-  <>
+  <StatGroup label="Build metrics">
     <StatusBadge tone="attention" variant="outline">Needs review</StatusBadge>
     <StatTile
       label="Coverage"
@@ -9,7 +9,7 @@ export const validStatusMetricPatterns = (
       valueTone="success"
       progress={{ percent: 91, tone: 'success', label: 'Coverage' }}
     />
-  </>
+  </StatGroup>
 )
 
 // @ts-expect-error focused status tones use the canonical attention vocabulary

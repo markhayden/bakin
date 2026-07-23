@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import '../../rtl-settle'
 
-import { StatTile, StatusBadge } from '@makinbakin/sdk/patterns'
+import { StatGroup, StatTile, StatusBadge } from '@makinbakin/sdk/patterns'
 
 afterEach(cleanup)
 
@@ -37,6 +37,22 @@ describe('status and metric patterns', () => {
     expect(tile?.getAttribute('data-value-tone')).toBe('attention')
     expect(screen.getByText('128 / 140')).toBeTruthy()
     expect(screen.getByRole('progressbar', { name: 'Migration coverage' }).getAttribute('aria-valuenow')).toBe('91.428')
+  })
+
+  it('packs compact peer metrics from the start edge and wraps as a group', () => {
+    const { container } = render(
+      <StatGroup label="Task summary metrics">
+        <StatTile label="Active" value={4} />
+        <StatTile label="Blocked" value={23} valueTone="danger" />
+        <StatTile label="Done today" value={0} valueTone="success" />
+      </StatGroup>,
+    )
+
+    const group = screen.getByRole('group', { name: 'Task summary metrics' })
+    expect(group.getAttribute('data-stat-group')).toBe('')
+    expect(group.className).toContain('flex-wrap')
+    expect(group.className).toContain('justify-start')
+    expect(container.querySelectorAll('[data-stat-tile]')).toHaveLength(3)
   })
 
   it('clamps progress and makes actionable surface metrics native buttons', () => {

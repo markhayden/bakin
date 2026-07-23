@@ -143,6 +143,7 @@ export function TasksPage({ matchingTasks }: { matchingTasks: Array<{ id: string
             <SearchInput label="Search tasks" value={query} onValueChange={setQuery} />
             <SegmentedControl
               ariaLabel="Task view"
+              size="md"
               value={view}
               onValueChange={setView}
               options={[{ value: 'board', label: 'Board' }, { value: 'log', label: 'Log' }]}
@@ -989,9 +990,11 @@ For dialog composition, pass controlled `open` and `onOpenChange`. The picker do
 
 The migration-only `AssetPicker`, `ModelSelect`, and `ColorPicker` adapters in `@makinbakin/sdk/components` preserve existing official consumers while the fleet migration proceeds. New plugin UI should use the focused controlled contracts above. These patterns do not replace the established routing work: keep linkable library queries, overlay state, and selected records in the existing query-state contract when the product requires them.
 
-Use `StatusBadge` for compact state language and `StatTile` for scan-friendly technical metrics. A status always needs a visible label such as “Published,” “Needs review,” or “Blocked”; never use a bare colored dot or icon as the only meaning. Status icons are decorative reinforcement. Focused status tones follow the shared semantic vocabulary: `neutral`, `success`, `attention`, `danger`, and `accent`.
+Use `StatusBadge` for compact state language and `StatTile` for scan-friendly technical metrics. Wrap a short set of peer counters in `StatGroup`; it keeps them packed against the start edge and wraps the group without distributing a handful of values across the full page. A status always needs a visible label such as “Published,” “Needs review,” or “Blocked”; never use a bare colored dot or icon as the only meaning. Status icons are decorative reinforcement. Focused status tones follow the shared semantic vocabulary: `neutral`, `success`, `attention`, `danger`, and `accent`.
 
 `StatTile` uses the low-chrome Product Character treatment by default. Choose `variant="surface"` only when the metric is a genuinely bounded or actionable object, not to put a card around every number. When a tile has a meter, pass `progress.label` whenever the visible metric label is not a plain string. Consumers provide the exact value, denominator, and honest coverage copy; the component only clamps and presents the meter. An `onClick` tile becomes a native `type="button"` with the same visible focus contract as other actions.
+
+`SearchInput` owns compact-to-expanded presentation and accepts `busy` for in-flight work. The progress indicator stays inside the field so beginning a request cannot insert a new row or move nearby results. Keep unavailable, partial, empty, and no-results feedback at the result boundary because those states change what the user can trust or act on.
 
 ## Markdown and Search Trust Patterns
 

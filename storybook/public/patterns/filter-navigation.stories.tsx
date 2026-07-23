@@ -27,7 +27,7 @@ const meta = {
         component: 'SearchInput, FacetFilter, AgentFilter, SegmentedControl, UnderlineTabs, and SortableHead provide consistent query, selection, overflow, keyboard, and sorting semantics. Consumers own values and connect linkable state to the existing SDK query-state hooks.',
       },
     },
-    bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'overflow', 'interaction', 'keyboard', 'counts', 'clearing', 'long-labels', 'focus-expansion', 'query-truncation', 'reduced-motion', 'url-state-guidance'],
+    bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'overflow', 'interaction', 'keyboard', 'counts', 'clearing', 'long-labels', 'focus-expansion', 'query-truncation', 'busy', 'reduced-motion', 'url-state-guidance'],
   },
 } satisfies Meta
 
@@ -74,7 +74,7 @@ const states = [
   { value: 'archived', label: 'Archived' },
 ] as const
 
-function SearchInputExample({ initialQuery = '' }: { initialQuery?: string }) {
+function SearchInputExample({ initialQuery = '', busy = false }: { initialQuery?: string; busy?: boolean }) {
   const [query, setQuery] = useState(initialQuery)
 
   return (
@@ -93,6 +93,7 @@ function SearchInputExample({ initialQuery = '' }: { initialQuery?: string }) {
           value={query}
           onValueChange={setQuery}
           placeholder="Search tasks…"
+          busy={busy}
         />
         <p role="status" className="bakin-filter-navigation-story__status">
           {query ? `Current query: ${query}` : 'No query entered'}
@@ -125,6 +126,16 @@ export const LongQuery = {
     await expect(control).toHaveAttribute('data-state', 'filled')
     await expect(search).toHaveValue(longSearchQuery)
     await expect(canvas.getByRole('button', { name: 'Clear Search tasks' })).toBeVisible()
+  },
+} satisfies Story
+
+export const SearchInProgress = {
+  render: () => <SearchInputExample initialQuery="blocked tasks" busy />,
+  play: async ({ canvas }) => {
+    const search = canvas.getByRole('searchbox', { name: 'Search tasks' })
+    await expect(search).toHaveAttribute('aria-busy', 'true')
+    await expect(canvas.getByText('Searching Search tasks').closest('[role="status"]')).toBeTruthy()
+    await expect(search.closest('[data-slot="search-input-control"]')?.querySelector('[data-slot="search-input-progress"]')).toBeTruthy()
   },
 } satisfies Story
 

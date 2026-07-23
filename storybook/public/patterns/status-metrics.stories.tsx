@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { expect } from 'storybook/test'
 
 import { Grid, PageShell, Stack } from '@makinbakin/sdk/layout'
-import { StatTile, StatusBadge } from '@makinbakin/sdk/patterns'
+import { StatGroup, StatTile, StatusBadge } from '@makinbakin/sdk/patterns'
 
 import './status-metrics.stories.css'
 
@@ -123,6 +123,32 @@ export const DenseMetrics = {
     for (const tile of canvas.getAllByText(/42|91.4%|184 ms|128 \/ 140/).map((node) => node.closest('[data-stat-tile]'))) {
       await expect(tile).toHaveAttribute('data-variant', 'plain')
     }
+  },
+} satisfies Story
+
+export const CompactMetrics = {
+  render: () => (
+    <PatternStage
+      eyebrow="Data / compact peer summary"
+      title="Keep short peer metrics together"
+      description="A compact metric group packs from the start edge and wraps as one unit instead of stretching a handful of values across the page."
+    >
+      <section aria-labelledby="compact-metrics-heading" className="bakin-status-metrics-story__section">
+        <div><h2 id="compact-metrics-heading">Task summary</h2><p>Use this treatment for short, equally important counters above a result set.</p></div>
+        <StatGroup label="Task summary metrics">
+          <StatTile label="Active" value={4} valueTone="accent" />
+          <StatTile label="Blocked" value={23} valueTone="danger" />
+          <StatTile label="Done today" value={0} valueTone="success" />
+          <StatTile label="Total" value={35} />
+          <StatTile label="Agents" value={3} valueTone="accent" />
+        </StatGroup>
+      </section>
+    </PatternStage>
+  ),
+  play: async ({ canvas }) => {
+    const group = canvas.getByRole('group', { name: 'Task summary metrics' })
+    await expect(group).toHaveAttribute('data-stat-group', '')
+    await expect(group.querySelectorAll('[data-stat-tile]')).toHaveLength(5)
   },
 } satisfies Story
 

@@ -147,3 +147,6 @@ export type {
   StatTileProps,
   StatTileVariant,
 } from './stat-tile'
+
+export { StatGroup } from './stat-group'
+export type { StatGroupProps } from './stat-group'
