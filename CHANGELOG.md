@@ -6,6 +6,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+## [0.0.1-rc.26] - 2026-07-24
+
+The patch that closes the three-release "Git worktree registry could not be verified" mystery (#725) — and with it, the last known way a health check could destroy its own findings.
+
+### Fixed
+- **A real finding was hiding behind its own resource id (#725).** The git worktree check on an affected machine wasn't crashing: it had found a genuinely stale task worktree and reported it — with the worktree's filesystem path as a resource *id*, which the contract's stable-key format rightly rejects. The whole run was discarded into a generic Verify card, hiding a legitimate action-required finding since rc.22 (the rc.25 instrumentation finally named the failing field). Resource ids and labels now normalize at the shared observation builders: contract-invalid ids sanitize deterministically via the new `healthResourceId()` (already-valid ids pass through untouched), labels trim and bound to 120 characters, and the git producer carries paths in `label` where they belong. The sweep also defused the next landmine of the class before it fired — the tasks check put unbounded task titles into resource labels, so a single 121-character task title would have nuked the tasks card the same way.
+- **The run-workspace first-sweep card stops squatting in Fix first (#725).** "Run-workspace usage unknown" right after boot is a warming state the watchdog's first pass resolves within minutes — it is now advisory (same treatment as the transcript-scan warm-up), and its copy says it resolves itself, with Sweep now available for an immediate measurement.
+
 ## [0.0.1-rc.25] - 2026-07-23
 
 A one-fix hotfix for rc.24.
@@ -452,5 +460,7 @@ This is primarily an architecture release: ~380 commits, the bulk of them a beha
 
 [0.0.1-rc.24]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.24
 
-[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.25...HEAD
 [0.0.1-rc.25]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.25
+
+[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.26...HEAD
+[0.0.1-rc.26]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.26
