@@ -4,12 +4,12 @@ Plan: `tasks/plan-health-trust.md` · Spec: `SPEC.md` (root, approved 2026-07-24
 Branch: `feat/health-trust-overhaul` (main checkout; Mark tests live on 3737 before merge).
 
 ## CP1 — ack core
-- [ ] `src/core/health-acks.ts`: store (ENOENT→empty, validated, corrupt→typed error) + `resolveAckState` one-comparison re-fire
-- [ ] Projection join in `getHealthReport` (before status derivation); acked/snoozed excluded from attention in `deriveHealthReportStatus`
-- [ ] `semanticProjectionKey` gains ackState; ack writes trigger `bump()`
-- [ ] SDK `HealthIncident.ackState?` + wire mirror lockstep + round-trip test
-- [ ] Tests: store CRUD/expiry/corrupt; re-fire matrix (tier-escalation, same-tier drift, resource change, action_required any-evidence, snooze expiry); projection + republish
-- [ ] Gate: typecheck, lint, targeted tests → commit 1
+- [x] `src/core/health-acks.ts`: store (ENOENT→empty, validated, corrupt→typed error) + `resolveAckState` one-comparison re-fire
+- [x] Projection join in `getHealthReport` (before status derivation); acked/snoozed excluded from attention in `deriveHealthReportStatus`
+- [x] `semanticProjectionKey` gains ackState; ack writes trigger `bump()`
+- [x] SDK `HealthIncident.ackState?` + wire mirror lockstep + round-trip test
+- [x] Tests: store CRUD/expiry/corrupt; re-fire matrix (tier-escalation, same-tier drift, resource change, action_required any-evidence, snooze expiry); projection + republish
+- [x] Gate: typecheck, lint, targeted tests → commit 1
 
 ## CP2 — consumers
 - [ ] Badge (`use-health-summary`) excludes acked/snoozed

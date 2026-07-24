@@ -14,6 +14,8 @@ import {
 import { LedgerUnavailableError, listLiveRuns } from '../../src/core/execution-ledger'
 import { buildAgentBurnReports, coverageCanFlagSessions, getAgentBurnWindowScope, type ScheduledJobEvidence } from '../../src/core/agent-burn'
 import { getLastReport, runDiagnostics } from '../../src/core/doctor'
+import { acknowledgeHealthIncident } from '../../src/core/doctor-report-cache'
+import { HealthAckStoreError, readAckRecords } from '../../src/core/health-acks'
 import { createLogger } from '../../src/core/logger'
 import { getAgentUsageSnapshot, getAllAgentUsage } from '../../src/core/agent-usage'
 import {
@@ -709,6 +711,56 @@ const routes = [
       } catch (err) {
         log.error('Health repair delegation failed', err)
         return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/doctor/ack',
+    method: 'POST',
+    summary: 'Acknowledge, snooze, or un-ack a Health incident',
+    description: 'The "I know" verb (health trust overhaul). action=ack silences until material change (tier escalation / resource-set change); action=snooze silences for 24h or 7d (action_required incidents are snooze-only and re-fire on any evidence change); action=clear un-acks. Writes republish the report immediately.',
+    body: z.object({
+      incidentId: z.string().min(1),
+      action: z.enum(['ack', 'snooze', 'clear']),
+      for: z.enum(['24h', '7d']).optional(),
+    }).strict(),
+    responses: { 200: passthrough, 400: errorResponse, 404: errorResponse },
+    handler: async (_req, _ctx, { body }) => {
+      try {
+        const result = acknowledgeHealthIncident({
+          incidentId: body.incidentId,
+          action: body.action,
+          forMs: body.for === '7d' ? 7 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000,
+        })
+        return Response.json(result)
+      } catch (err) {
+        if (err instanceof HealthAckStoreError) {
+          const status = /no current incident/i.test(err.message) ? 404 : 400
+          return Response.json({ error: err.message }, { status })
+        }
+        throw err
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/doctor/acks',
+    method: 'GET',
+    activityClass: 'routine',
+    summary: 'List Health incident ack/snooze records',
+    description: 'Current acknowledge/snooze records — what is quiet and why. Suppressed is never hidden.',
+    responses: { 200: passthrough },
+    handler: async () => {
+      try {
+        return Response.json({ records: Object.values(readAckRecords()) })
+      } catch (err) {
+        if (err instanceof HealthAckStoreError) {
+          // Fail open toward visibility, matching the projection: an
+          // unreadable store reads as no records, with the error surfaced.
+          return Response.json({ records: [], error: err.message })
+        }
+        throw err
       }
     },
   }),
