@@ -62,6 +62,12 @@ export interface HealthOverviewViewModel {
    * "visible but quiet", never hidden.
    */
   advisories: OverviewIncident[]
+  /**
+   * Acked/snoozed incidents (health trust overhaul): the user said "I
+   * know". They leave every attention surface but stay VISIBLE here with
+   * un-ack controls — suppressed is never deleted.
+   */
+  acknowledged: OverviewIncident[]
   search: OverviewSearch
   rightNow: {
     runningDispatches: number | null
@@ -308,10 +314,13 @@ export function buildHealthOverviewViewModel({
   const unableToVerify: OverviewIncident[] = []
   const watching: OverviewIncident[] = []
   const advisories: OverviewIncident[] = []
+  const acknowledged: OverviewIncident[] = []
 
   for (const incident of report?.incidents ?? []) {
     const row = incidentModel(incident, observationById, checkById, now)
-    if (incident.effectiveDisposition === 'action_required') {
+    if (incident.ackState !== undefined) {
+      acknowledged.push(row)
+    } else if (incident.effectiveDisposition === 'action_required') {
       needsAction.push(row)
     } else if (incident.status === 'unknown' || row.freshness === 'stale') {
       // Advisory unknowns are SELF-RESOLVING states the producer vouched
@@ -336,6 +345,7 @@ export function buildHealthOverviewViewModel({
   unableToVerify.sort(compareUnable)
   watching.sort(compareWatching)
   advisories.sort(compareWatching)
+  acknowledged.sort(compareWatching)
 
   const evidenceStale = report ? healthReportNeedsFreshSweep(report, now) : false
   const overallStatus = report === null
@@ -367,6 +377,7 @@ export function buildHealthOverviewViewModel({
     unableToVerify,
     watching,
     advisories,
+    acknowledged,
     search,
     rightNow: {
       runningDispatches: liveNow?.runs.length ?? null,

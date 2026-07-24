@@ -311,3 +311,12 @@ describe('canonical Health escalation', () => {
     expect(send).not.toHaveBeenCalled()
   })
 })
+
+describe('ack suppression (health trust overhaul)', () => {
+  it('snoozed action_required incidents never relay — quiet means quiet', () => {
+    expect(freshActionRequiredIncidents(report([
+      incident({ disposition: 'action_required', effectiveDisposition: 'action_required' }),
+      incident({ disposition: 'action_required', effectiveDisposition: 'action_required', ackState: 'snoozed' }),
+    ]))).toHaveLength(1)
+  })
+})

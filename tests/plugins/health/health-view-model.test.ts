@@ -276,3 +276,25 @@ describe('buildHealthOverviewViewModel', () => {
     expect(buildHealthOverviewViewModel({ report: missingExpiry, now: NOW }).search.status).toBe('unknown')
   })
 })
+
+describe('acknowledged bucket (health trust overhaul)', () => {
+  it('acked/snoozed incidents leave every attention bucket and land in acknowledged — visible, never dropped', () => {
+    const ackedWatch = incident({ id: 'acked-watch', status: 'warning', disposition: 'watch', title: 'Acked watch', ackState: 'acked' })
+    const snoozedAr = incident({ id: 'snoozed-ar', status: 'error', disposition: 'action_required', title: 'Snoozed breach', ackState: 'snoozed' })
+    const liveWatch = incident({ id: 'live-watch', status: 'warning', disposition: 'watch', title: 'Live watch' })
+    const incidents = [ackedWatch, snoozedAr, liveWatch]
+    const observations = incidents.map((row) => observation(row))
+    const checks = observations.map((row) => check(row, 'observed'))
+
+    const model = buildHealthOverviewViewModel({
+      report: report({ incidents, observations, checks, status: 'healthy' }),
+      now: NOW,
+    })
+
+    expect(model.acknowledged.map((row) => row.incident.id).sort()).toEqual(['acked-watch', 'snoozed-ar'])
+    expect(model.watching.map((row) => row.incident.id)).toEqual(['live-watch'])
+    expect(model.needsAction).toEqual([])
+    expect(model.unableToVerify).toEqual([])
+    expect(model.advisories).toEqual([])
+  })
+})

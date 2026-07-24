@@ -95,6 +95,16 @@
       },
       {
         "method": "POST",
+        "path": "/doctor/ack",
+        "summary": "Acknowledge, snooze, or un-ack a Health incident"
+      },
+      {
+        "method": "GET",
+        "path": "/doctor/acks",
+        "summary": "List Health incident ack/snooze records"
+      },
+      {
+        "method": "POST",
         "path": "/doctor/repair/plan",
         "summary": "Plan targeted Health repairs"
       },

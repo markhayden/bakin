@@ -33,9 +33,11 @@ export function clearNotifiedIssues(): void {
  * incident never notifies or spawns a repair task — the report projection is
  * the one place urgency is decided.
  */
+/** Acked/snoozed incidents never escalate — the user said "I know", and
+ *  re-fire rules (not the relay) own bringing them back. */
 export function freshActionRequiredIncidents(report: HealthReport): HealthIncident[] {
   return report.incidents.filter((incident) =>
-    incident.effectiveDisposition === 'action_required' && !incident.stale,
+    incident.effectiveDisposition === 'action_required' && !incident.stale && incident.ackState === undefined,
   )
 }
 
