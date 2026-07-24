@@ -21,7 +21,7 @@ mock.module('../../src/core/content-dir', contentDirMock)
 mock.module('../../packages/core/src/content-dir', contentDirMock)
 
 import { afterAll } from 'bun:test'
-import { healthHealthy, healthNotApplicable, healthObserved, healthWarning } from '@makinbakin/sdk/utils'
+import { healthError, healthHealthy, healthNotApplicable, healthObserved, healthWarning } from '@makinbakin/sdk/utils'
 import { runHealthCheck } from '../../src/core/doctor-checks'
 import { resetSettingsCache } from '../../packages/core/src/settings'
 import {
@@ -328,5 +328,97 @@ describe('sensitivity projection in the published report (#690)', () => {
 
     writeFileSync(join(testDir, 'settings.json'), JSON.stringify({}))
     resetSettingsCache()
+  })
+})
+
+describe('incident ack projection (health trust overhaul, 2026-07-24)', () => {
+  const { acknowledgeHealthIncident } = require('../../src/core/doctor-report-cache') as typeof import('../../src/core/doctor-report-cache')
+
+  it('ack rides the wire, calms overall status, republishes, and re-fires on escalation', async () => {
+    let disposition: 'watch' | 'action_required' = 'watch'
+    const def = register(async () => healthObserved([
+      healthWarning({
+        key: 'latency', summary: 'Slow.',
+        incident: {
+          key: 'latency', title: 'Runtime is slow', impact: 'Turns take longer.',
+          disposition,
+          resources: [{ kind: 'agent', id: 'relay', label: 'relay' }],
+          resolution: { key: 'rerun', type: 'rerun', label: 'Check again' },
+        },
+      }),
+    ]), 'ack-probe', 'Ack probe')
+
+    await apply(def, '2026-07-24T12:00:00.000Z')
+    const before = getHealthReport('2026-07-24T12:00:10.000Z')
+    expect(before.overallStatus).toBe('degraded')
+    const incidentId = before.incidents[0]!.id
+
+    acknowledgeHealthIncident({ incidentId, action: 'ack', now: new Date('2026-07-24T12:00:20.000Z') })
+
+    const acked = getHealthReport('2026-07-24T12:00:30.000Z')
+    expect(acked.incidents[0]!.ackState).toBe('acked')
+    // An all-acked box reads calm at the top banner.
+    expect(acked.overallStatus).toBe('healthy')
+    expect(acked.revision).toBeGreaterThan(before.revision)
+
+    // Escalation past the acked tier re-fires and prunes the record.
+    disposition = 'action_required'
+    await apply(def, '2026-07-24T12:01:00.000Z', 'execution-2')
+    const refired = getHealthReport('2026-07-24T12:01:10.000Z')
+    expect(refired.incidents[0]!.ackState).toBeUndefined()
+    expect(refired.overallStatus).toBe('needs_attention')
+  })
+
+  it('action_required: permanent ack refused; snooze calms; ANY evidence change re-fires', async () => {
+    let load = 1
+    const def = register(async () => healthObserved([
+      healthError({
+        key: 'breach', summary: 'Cap breached.',
+        evidence: { load },
+        incident: {
+          key: 'breach', title: 'Spending cap reached', impact: 'Dispatch defers.',
+          disposition: 'action_required',
+          resources: [{ kind: 'budget_rule', id: 'global', label: 'global' }],
+          resolution: { key: 'rerun', type: 'rerun', label: 'Check again' },
+        },
+      }),
+    ]), 'ar-probe', 'AR probe')
+
+    await apply(def, '2026-07-24T12:00:00.000Z')
+    const report = getHealthReport('2026-07-24T12:00:10.000Z')
+    const incidentId = report.incidents[0]!.id
+
+    expect(() => acknowledgeHealthIncident({ incidentId, action: 'ack', now: new Date('2026-07-24T12:00:20.000Z') }))
+      .toThrow(/snooze only/i)
+
+    acknowledgeHealthIncident({ incidentId, action: 'snooze', forMs: 24 * 60 * 60 * 1000, now: new Date('2026-07-24T12:00:20.000Z') })
+    const snoozed = getHealthReport('2026-07-24T12:00:30.000Z')
+    expect(snoozed.incidents[0]!.ackState).toBe('snoozed')
+    expect(snoozed.overallStatus).toBe('healthy')
+
+    load = 2
+    await apply(def, '2026-07-24T12:01:00.000Z', 'execution-2')
+    const refired = getHealthReport('2026-07-24T12:01:10.000Z')
+    expect(refired.incidents[0]!.ackState).toBeUndefined()
+    expect(refired.overallStatus).toBe('needs_attention')
+  })
+
+  it('a corrupt ack store fails open toward visibility — acks ignored, report loud, no crash', async () => {
+    const def = register(async () => healthObserved([
+      healthWarning({
+        key: 'latency', summary: 'Slow.',
+        incident: {
+          key: 'latency', title: 'Runtime is slow', impact: 'Turns take longer.', disposition: 'watch',
+          resolution: { key: 'rerun', type: 'rerun', label: 'Check again' },
+        },
+      }),
+    ]), 'corrupt-probe', 'Corrupt probe')
+    await apply(def, '2026-07-24T12:00:00.000Z')
+    mkdirSync(join(testDir, 'health'), { recursive: true })
+    writeFileSync(join(testDir, 'health', 'acks.json'), '{ nope')
+
+    const report = getHealthReport('2026-07-24T12:00:10.000Z')
+    expect(report.incidents[0]!.ackState).toBeUndefined()
+    expect(report.overallStatus).toBe('degraded')
   })
 })
