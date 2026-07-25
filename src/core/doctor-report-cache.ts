@@ -11,6 +11,7 @@ import type {
 } from '../../packages/core/src/plugin-types'
 import type { DetailedHealthCheckRun } from './doctor-checks'
 import {
+  HealthAckNotFoundError,
   HealthAckStoreError,
   SNOOZE_MAX_MS,
   pruneAckRecords,
@@ -430,7 +431,7 @@ export function acknowledgeHealthIncident(input: {
   const report = getHealthReport(now.toISOString())
   const incident = report.incidents.find((candidate) => candidate.id === input.incidentId)
   if (!incident) {
-    throw new HealthAckStoreError(`No current incident with id '${input.incidentId}'.`)
+    throw new HealthAckNotFoundError(`No current incident with id '${input.incidentId}'.`)
   }
   const tier = incident.effectiveDisposition as HealthAckTier
   const record: HealthAckRecord = {

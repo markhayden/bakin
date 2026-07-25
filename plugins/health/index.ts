@@ -15,7 +15,7 @@ import { LedgerUnavailableError, listLiveRuns } from '../../src/core/execution-l
 import { buildAgentBurnReports, coverageCanFlagSessions, getAgentBurnWindowScope, type ScheduledJobEvidence } from '../../src/core/agent-burn'
 import { getLastReport, runDiagnostics } from '../../src/core/doctor'
 import { acknowledgeHealthIncident } from '../../src/core/doctor-report-cache'
-import { HealthAckStoreError, readAckRecords } from '../../src/core/health-acks'
+import { HealthAckNotFoundError, HealthAckStoreError, readAckRecords } from '../../src/core/health-acks'
 import { createLogger } from '../../src/core/logger'
 import { getAgentUsageSnapshot, getAllAgentUsage } from '../../src/core/agent-usage'
 import {
@@ -736,8 +736,7 @@ const routes = [
         return Response.json(result)
       } catch (err) {
         if (err instanceof HealthAckStoreError) {
-          const status = /no current incident/i.test(err.message) ? 404 : 400
-          return Response.json({ error: err.message }, { status })
+          return Response.json({ error: err.message }, { status: err instanceof HealthAckNotFoundError ? 404 : 400 })
         }
         throw err
       }

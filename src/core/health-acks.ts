@@ -43,6 +43,15 @@ export class HealthAckStoreError extends Error {
   }
 }
 
+/** Typed not-found (unknown incident id) — consumers branch on the TYPE,
+ *  never on message text (adapter-boundary architecture rule). */
+export class HealthAckNotFoundError extends HealthAckStoreError {
+  constructor(message: string) {
+    super(message)
+    this.name = 'HealthAckNotFoundError'
+  }
+}
+
 export const SNOOZE_MAX_MS = 7 * 24 * 60 * 60 * 1000
 
 const TIER_ORDER: Record<HealthAckTier, number> = {

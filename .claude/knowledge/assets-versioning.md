@@ -174,6 +174,8 @@ Enrichment fields (`caption`, `ocr_text`, `suggested_tags`, `transcript`,
 `media_url` (a `file://` URL) feeds the visual/audio embedding leg for raster
 images and audio files.
 
+**Enrichment health (health trust overhaul, 2026-07-24):** ONE self-healing coverage stat, never a per-asset nag. The assets check emits a single `enrichment-coverage` observation (evidence: total/wanting/enriched/missing/stale/failed/skipped/coveragePct); `skipped` assets leave the denominator. Advisory only below 60% coverage on 5+ enrichable assets (`ENRICHMENT_COVERAGE_ADVISORY_BELOW`); a missing engine stays a small advisory config callout. A daily self-heal pass (`incompleteEnrichmentAssetIds` → `enqueueEnrichmentBackfill`, NO force so nothing re-bills) re-attempts failed/missing/stale enrichment automatically.
+
 ## Live updates
 
 Every mutation rewrites the manifest → the watcher emits `asset.changed`
