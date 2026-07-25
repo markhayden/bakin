@@ -344,6 +344,31 @@ describe('queued follow-ups (#729 client)', () => {
     expect(result.current.queued[0]).toMatchObject({ id: 'qx-1', content: 'queued correction' })
   })
 
+  it('"Try again" during a streaming turn queues instead of erroring (documented #729 semantics change)', async () => {
+    const stub = stubFetch()
+    transcriptRoute(stub, CHAT_A, summary(CHAT_A), [
+      { kind: 'user', ts: '2026-07-25T00:00:00Z', content: 'the failed ask' },
+      { kind: 'error', ts: '2026-07-25T00:00:01Z', message: 'boom' },
+    ])
+    stub.routes.set(
+      'POST /messages',
+      new Response(JSON.stringify({ accepted: true, queued: true, queueId: 'retry-q', queueLength: 1 }), {
+        status: 202,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    const { result } = renderHook(() => useChatStream(CHAT_A))
+    await waitFor(() => expect(result.current.messages).toHaveLength(2))
+    // A drained turn is already streaming when the user clicks Try again.
+    act(() => {
+      emitPluginEvent({ event: 'chat.chunk', chatId: CHAT_A, chunk: { type: 'text', content: 'draining' } })
+    })
+    await act(async () => { result.current.retry() })
+    await waitFor(() => expect(result.current.queued).toHaveLength(1))
+    expect(result.current.sendError).toBeNull()
+    expect(result.current.queued[0]).toMatchObject({ id: 'retry-q', content: 'the failed ask' })
+  })
+
   it('queued list hydrates from GET (attachment URLs mapped); removeQueued DELETEs and returns the item', async () => {
     const stub = stubFetch()
     stub.routes.set(`DELETE chats/${CHAT_A}/queued/q1`, { removed: true })

@@ -245,6 +245,39 @@ describe('chat queue — management', () => {
 })
 
 describe('chat queue — boot restore', () => {
+  test('boot ordering: the interrupted-turn error row lands BEFORE drained queued rows (sweep → restore)', async () => {
+    const chat = await createChat({ agentId: 'main' })
+    const seenArgs: MessageArgs[] = []
+    scriptStreams([
+      async function* () {
+        yield { type: 'text', content: 'post-restart reply' } as ChatChunk
+        yield { type: 'done' } as ChatChunk
+      },
+    ], seenArgs)
+
+    // Simulate the restart state: transcript ends on an unanswered user row
+    // (the turn died with the process) AND a queue snapshot survives on disk.
+    const { appendTranscriptRow, sweepInterruptedTurns, writeQueue } = await import('../../../plugins/chat/lib/store')
+    await appendTranscriptRow(chat.id, { kind: 'user', ts: new Date().toISOString(), content: 'died mid-reply' })
+    await writeQueue(chat.id, [
+      { id: 'boot-order-1', ts: new Date().toISOString(), content: 'queued before the crash', agentId: 'main' },
+    ])
+
+    // The activate() sequence: sweep FIRST, then restore.
+    await sweepInterruptedTurns()
+    await restoreQueues(activated.ctx)
+    await waitUntil(() => seenArgs.some((a) => a.content.includes('queued before the crash')), 'boot drain')
+    await settleAll(chat.id)
+
+    const rows = readTranscript(chat.id)
+    const errorIdx = rows.findIndex((r) => r.kind === 'error')
+    const drainedIdx = rows.findIndex(
+      (r) => r.kind === 'user' && (r as { content: string }).content === 'queued before the crash',
+    )
+    expect(errorIdx).toBeGreaterThan(-1)
+    expect(drainedIdx).toBeGreaterThan(errorIdx)
+  })
+
   test('restoreQueues drains persisted queues (restart with queued items)', async () => {
     const chat = await createChat({ agentId: 'main' })
     const scripts: Array<() => AsyncIterable<ChatChunk>> = []
