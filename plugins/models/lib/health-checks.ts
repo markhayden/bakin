@@ -26,6 +26,9 @@ import { workClassKey } from './spend-rollup'
 
 const TIER_ORDER: Record<string, number> = { budget: 0, standard: 1, premium: 2 }
 const SEVEN_DAYS_MS = 7 * 86_400_000
+/** Premium-on-cheap escalates advisory→watch past this KNOWN spend in the
+ *  window (constant, not a setting — simplicity mandate). */
+const PREMIUM_ON_CHEAP_WATCH_USD_MICROS = 5_000_000
 
 export interface RoutingHealthDeps {
   getRoutingConfig(): RoutingConfig
@@ -192,29 +195,45 @@ export async function checkModelRouting(deps: RoutingHealthDeps): Promise<Health
     }))
   }
 
-  // 4. Premium models observed on cheap-recommended classes (last 7d) — warn.
+  // 4. Premium models observed on cheap-recommended classes (last 7d).
+  // Cost optimization is a nice-to-have, not damage (health trust
+  // overhaul): ADVISORY with the one-click routes repair, escalating to
+  // watch only past a real dollar threshold of KNOWN spend — the ledger's
+  // own attributed costs, never estimated, so unpriced rows cannot
+  // fabricate an escalation.
   const cheapClasses = new Map(WORK_CLASSES.filter((c) => c.recommendedTier).map((c) => [c.id as string, c]))
-  const premiumRuns: Record<string, { runs: number; models: Set<string> }> = {}
+  const premiumRuns: Record<string, { runs: number; models: Set<string>; usdMicros: number; unpricedRuns: number }> = {}
   for (const row of deps.listRecentRunCosts(now - SEVEN_DAYS_MS)) {
     const key = workClassKey(row)
     if (!cheapClasses.has(key) || !row.model) continue
     if (getKnownModel(row.model)?.tier !== 'premium') continue
-    const cell = (premiumRuns[key] ??= { runs: 0, models: new Set() })
+    const cell = (premiumRuns[key] ??= { runs: 0, models: new Set(), usdMicros: 0, unpricedRuns: 0 })
     cell.runs += 1
     cell.models.add(row.model)
+    if (row.costUsdMicros === null) cell.unpricedRuns += 1
+    else cell.usdMicros += row.costUsdMicros
   }
   for (const [workClass, cell] of Object.entries(premiumRuns)) {
+    const escalated = cell.usdMicros > PREMIUM_ON_CHEAP_WATCH_USD_MICROS
     observations.push(healthWarning({
       key: `premium-on-cheap-${workClass}`,
       summary: `${cell.runs} '${workClass}' turn(s) ran on premium-tier model(s) in the last 7 days (${[...cell.models].join(', ')}).`,
-      evidence: { workClass, runs: cell.runs, models: [...cell.models] },
+      evidence: {
+        workClass,
+        runs: cell.runs,
+        models: [...cell.models],
+        estimatedUsdMicros: cell.usdMicros,
+        unpricedRuns: cell.unpricedRuns,
+      },
       incident: {
         key: `premium-on-cheap-${workClass}`,
         title: `Premium model on cheap work (${workClass})`,
-        impact: 'Cheap background work is billing at premium rates.',
-        disposition: 'watch',
+        impact: escalated
+          ? `Cheap background work billed $${(cell.usdMicros / 1_000_000).toFixed(2)} at premium rates this week — one click routes it to a cheap model.`
+          : 'Cheap background work is billing at premium rates. One click routes it to a cheap model.',
+        disposition: escalated ? 'watch' : 'advisory',
         resources: [{ kind: 'setting', id: 'models.routing', label: 'Models → Routing' }],
-        resolution: { key: 'route-cheaper', type: 'navigate', label: 'Route to a cheaper model', href: '/models?tab=routing' },
+        resolution: { key: 'route-cheaper', type: 'repair', label: 'Apply recommended routes', actionId: 'apply-recommended-routes' },
       },
     }))
   }
