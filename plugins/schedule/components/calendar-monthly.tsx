@@ -2,10 +2,9 @@
 
 import { useMemo, useState } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
-import { Button } from "@makinbakin/sdk/ui"
-import { useOccurrences, type ScheduleJob, type ScheduleOccurrence, type ScheduledDomainEvent } from "@makinbakin/sdk/hooks"
+import { Button } from '@makinbakin/sdk/ui'
+import { useOccurrences, type ScheduleJob, type ScheduleOccurrence, type ScheduledDomainEvent } from '@makinbakin/sdk/hooks'
 import { AgentBadge } from './agent-badge'
-import { agentDotGlow } from './agent-colors'
 import { jobsById } from './calendar-weekly'
 import { EventChip, eventInstant } from './event-popover'
 
@@ -89,28 +88,30 @@ export function CalendarMonthly({
   const goToday = () => { setYear(now.getFullYear()); setMonth(now.getMonth()) }
 
   return (
-    <div className="flex flex-col gap-3 h-full min-h-0">
-      {/* Navigation */}
-      <div className="flex items-center gap-2">
-        <Button variant="ghost" size="sm" onClick={prev}><ChevronLeft className="size-4" /></Button>
-        <span className="text-sm font-medium w-[160px] text-center">{MONTH_LABELS[month]} {year}</span>
-        <Button variant="ghost" size="sm" onClick={next}><ChevronRight className="size-4" /></Button>
-        <Button variant="ghost" size="sm" className="text-xs ml-2" onClick={goToday}>Today</Button>
+    <div className="flex h-full min-h-0 flex-col gap-bakin-3">
+      <div className="flex items-center gap-bakin-2">
+        <Button variant="ghost" size="icon-sm" onClick={prev} aria-label="Previous month">
+          <ChevronLeft aria-hidden="true" />
+        </Button>
+        <span className="w-40 text-center font-bakin-typography-weight-medium text-bakin-text-primary">
+          {MONTH_LABELS[month]} {year}
+        </span>
+        <Button variant="ghost" size="icon-sm" onClick={next} aria-label="Next month">
+          <ChevronRight aria-hidden="true" />
+        </Button>
+        <Button variant="outline" size="xs" className="ml-bakin-2" onClick={goToday}>Today</Button>
       </div>
 
-      {/* Grid */}
-      <div className="grid grid-cols-7 gap-px rounded-lg overflow-auto flex-1 min-h-0 border border-border/20 bg-border/10">
-        {/* Headers */}
+      <div className="grid min-h-0 flex-1 grid-cols-7 gap-px overflow-auto rounded-bakin-surface border border-bakin-border-subtle bg-bakin-border-subtle">
         {DOW_LABELS.map(d => (
-          <div key={d} className="bg-muted/20 text-center text-[9px] text-zinc-500 uppercase tracking-widest py-2 font-medium">
+          <div key={d} className="bg-bakin-surface-default py-bakin-2 text-center text-bakin-typography-size-meta font-bakin-typography-weight-medium uppercase tracking-widest text-bakin-text-muted">
             {d}
           </div>
         ))}
 
-        {/* Day cells */}
         {grid.map((date, i) => {
           if (!date) {
-            return <div key={`empty-${i}`} className="bg-background/30 min-h-[88px]" />
+            return <div key={`empty-${i}`} className="min-h-24 bg-bakin-canvas-default/60" />
           }
 
           const dayOccurrences = occurrencesByDay.get(date.getDate()) || []
@@ -124,47 +125,46 @@ export function CalendarMonthly({
             <div
               key={date.getDate()}
               className={`
-                bg-background min-h-[88px] p-2 transition-colors
-                ${isToday(date) ? 'bg-blue-500/[0.04]' : ''}
-                ${hasRuns ? 'hover:bg-white/[0.02]' : ''}
+                min-h-24 bg-bakin-canvas-default p-bakin-2 transition-colors
+                ${isToday(date) ? 'bg-bakin-signal-accent/5' : ''}
+                ${hasRuns ? 'hover:bg-bakin-surface-default' : ''}
               `}
             >
-              {/* Date number */}
               <div className={`
-                text-[11px] mb-1.5 w-6 h-6 flex items-center justify-center rounded-full -ml-0.5
+                mb-bakin-2 flex size-bakin-6 items-center justify-center rounded-bakin-pill
+                text-bakin-typography-size-meta
                 ${isToday(date)
-                  ? 'bg-blue-500 text-white font-semibold'
-                  : 'text-zinc-500'
+                  ? 'bg-bakin-signal-accent font-bakin-typography-weight-semibold text-bakin-canvas-default'
+                  : 'text-bakin-text-muted'
                 }
               `}>
                 {date.getDate()}
               </div>
 
-              {/* Run indicators */}
-              <div className={`flex flex-col gap-1 ${isPast ? 'opacity-35 saturate-[0.3]' : ''}`}>
+              <div className={`flex flex-col gap-bakin-1 ${isPast ? 'opacity-50' : ''}`}>
                 {dayOccurrences.slice(0, MAX_SHOW).map(occurrence => {
                   const job = byId.get(occurrence.jobId)
                   if (!job) return null
                   return (
-                    <button
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="xs"
                       key={occurrence.jobId}
                       onClick={() => onSelectJob(job)}
-                      className={`group/dot flex items-center gap-1.5 w-full hover:bg-white/[0.04] rounded px-1 py-0.5 -mx-1 transition-colors ${isPast ? 'hover:opacity-60' : ''}`}
+                      className="h-auto min-h-bakin-6 w-full min-w-0 justify-start gap-bakin-2 px-bakin-1"
                     >
-                      <span
-                        className="shrink-0 transition-transform group-hover/dot:scale-110"
-                        style={{ filter: isPast ? 'none' : `drop-shadow(0 0 3px ${agentDotGlow(job.agentId)})` }}
-                      >
+                      <span className="shrink-0">
                         <AgentBadge agentId={job.agentId} size="sm" showName={false} />
                       </span>
-                      <span className={`text-[10px] truncate transition-colors ${isPast ? 'text-zinc-600' : 'text-zinc-400 group-hover/dot:text-zinc-300'}`}>
+                      <span className="min-w-0 truncate text-bakin-typography-size-meta text-bakin-text-muted">
                         {job.displayName || job.id}
                       </span>
-                    </button>
+                    </Button>
                   )
                 })}
                 {dayOccurrences.length > MAX_SHOW && (
-                  <span className="text-[9px] text-zinc-600 pl-1 font-medium">
+                  <span className="pl-bakin-1 text-bakin-typography-size-meta font-bakin-typography-weight-medium text-bakin-text-muted">
                     +{dayOccurrences.length - MAX_SHOW} more
                   </span>
                 )}

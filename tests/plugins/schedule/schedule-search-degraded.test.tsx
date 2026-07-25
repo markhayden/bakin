@@ -221,14 +221,14 @@ describe('SchedulePage — search signals', () => {
 
     // In-flight search → visible loading indicator.
     await waitFor(() => {
-      expect(screen.getByTestId('schedule-search-loading')).toBeDefined()
+      expect(screen.getByText('Searching Schedule search')).toBeDefined()
     })
 
     // Engine down → the honest degraded chip…
     await waitFor(() => {
       expect(screen.getByTestId('schedule-search-degraded')).toBeDefined()
     }, { timeout: 3000 })
-    expect(screen.queryAllByTestId('schedule-search-loading').length).toBe(0)
+    expect(screen.queryAllByText('Searching Schedule search').length).toBe(0)
 
     // …while basic text matching keeps the list usable.
     expect(screen.getByTestId('job-a')).toBeDefined()

@@ -2,10 +2,8 @@
 
 import { useState } from 'react'
 import { Pause, Play } from 'lucide-react'
-import { Button } from "@makinbakin/sdk/ui"
-import { Input } from "@makinbakin/sdk/ui"
-import { Label } from "@makinbakin/sdk/ui"
-import type { ScheduleJob } from "@makinbakin/sdk/hooks"
+import { Alert, AlertDescription, AlertTitle, Button, Field, FieldControl, FieldLabel } from '@makinbakin/sdk/ui'
+import type { ScheduleJob } from '@makinbakin/sdk/hooks'
 
 export function PauseControls({
   job,
@@ -24,38 +22,37 @@ export function PauseControls({
   }
 
   if (job.paused) {
+    const description = job.pauseReason === 'auto-failures'
+      ? `Auto-paused after ${job.maxFailures} consecutive failures`
+      : job.pauseUntil
+        ? `Paused until ${new Date(job.pauseUntil).toLocaleDateString()}`
+        : 'Manually paused'
+
     return (
-      <div className="space-y-2">
-        <div className="text-sm text-amber-400">
-          {job.pauseReason === 'auto-failures'
-            ? `Auto-paused after ${job.maxFailures} consecutive failures`
-            : job.pauseUntil
-              ? `Paused until ${new Date(job.pauseUntil).toLocaleDateString()}`
-              : 'Manually paused'}
-        </div>
-        <Button size="sm" variant="outline" onClick={() => onResume(job.id)}>
-          <Play className="size-3.5 mr-1.5" /> Resume
+      <Alert tone="attention">
+        <AlertTitle>This job is paused</AlertTitle>
+        <AlertDescription>{description}</AlertDescription>
+        <Button size="xs" variant="outline" onClick={() => onResume(job.id)}>
+          <Play aria-hidden="true" /> Resume
         </Button>
-      </div>
+      </Alert>
     )
   }
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-end gap-2">
-        <div className="flex-1">
-          <Label className="text-xs text-muted-foreground mb-1 block">Pause until (optional)</Label>
-          <Input
-            type="date"
-            value={pauseUntil}
-            onChange={(e) => setPauseUntil(e.target.value)}
-            className="h-8 text-sm [&::-webkit-calendar-picker-indicator]:invert [&::-webkit-calendar-picker-indicator]:opacity-40"
-          />
-        </div>
-        <Button size="sm" variant="outline" onClick={handlePause}>
-          <Pause className="size-3.5 mr-1.5" /> Pause
-        </Button>
-      </div>
+    <div className="flex min-w-0 flex-col gap-bakin-2 sm:flex-row sm:items-end">
+      <Field className="min-w-0 flex-1">
+        <FieldLabel>Pause until</FieldLabel>
+        <FieldControl
+          type="date"
+          aria-label="Pause until (optional)"
+          value={pauseUntil}
+          onChange={(event) => setPauseUntil(event.target.value)}
+        />
+      </Field>
+      <Button size="sm" variant="outline" onClick={handlePause}>
+        <Pause aria-hidden="true" /> Pause
+      </Button>
     </div>
   )
 }

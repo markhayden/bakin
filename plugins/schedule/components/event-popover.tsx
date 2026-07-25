@@ -2,9 +2,22 @@
 
 import { useState } from 'react'
 import { CalendarDays, ExternalLink } from 'lucide-react'
-import { Button, Input, Popover, PopoverContent, PopoverTrigger } from "@makinbakin/sdk/ui"
-import { ConfirmDialog } from "@makinbakin/sdk/components"
-import type { ScheduledDomainEvent } from "@makinbakin/sdk/hooks"
+import { ConfirmDialog } from '@makinbakin/sdk/patterns'
+import {
+  Button,
+  Field,
+  FieldControl,
+  FieldError,
+  FieldLabel,
+  Popover,
+  PopoverContent,
+  PopoverDescription,
+  PopoverHeader,
+  PopoverTitle,
+  PopoverTrigger,
+  buttonVariants,
+} from '@makinbakin/sdk/ui'
+import type { ScheduledDomainEvent } from '@makinbakin/sdk/hooks'
 
 /** The instant an event renders by (owner semantics: start, or deadline). */
 export function eventInstant(event: ScheduledDomainEvent): string {
@@ -76,49 +89,62 @@ export function EventChip({
     <>
       <Popover>
         <PopoverTrigger
+          render={(
+            <Button
+              type="button"
+              variant={due ? 'danger' : 'accent'}
+              size="xs"
+            />
+          )}
           className={`
-            group/event block w-full text-left rounded-md mb-1 border border-dashed
-            ${due ? 'border-rose-400/40 bg-rose-500/[0.05]' : 'border-teal-400/40 bg-teal-500/[0.05]'}
-            transition-all duration-200 hover:brightness-125
-            ${compact ? 'px-2 py-1.5' : 'px-3 py-2'}
+            group/event mb-bakin-1 block h-auto w-full min-w-0 whitespace-normal text-left
+            ${compact ? 'px-bakin-2 py-bakin-1' : 'px-bakin-3 py-bakin-2'}
           `}
         >
-          <span className="flex items-center gap-1.5 min-w-0">
-            <CalendarDays className={`size-3 shrink-0 ${due ? 'text-rose-400' : 'text-teal-400'}`} />
-            <span className={`font-medium truncate flex-1 leading-tight text-zinc-200 ${compact ? 'text-[11px]' : 'text-sm'}`}>
+          <span className="flex min-w-0 items-center gap-bakin-2">
+            <CalendarDays className={`size-bakin-3 shrink-0 ${due ? 'text-bakin-signal-danger' : 'text-bakin-signal-accent'}`} aria-hidden="true" />
+            <span className={`min-w-0 flex-1 truncate font-bakin-typography-weight-medium leading-tight text-bakin-text-primary ${
+              compact
+                ? 'text-bakin-typography-size-meta'
+                : 'text-bakin-typography-size-body'
+            }`}>
               {event.title}
             </span>
-            <span className={`font-mono opacity-70 shrink-0 tabular-nums ${due ? 'text-rose-400' : 'text-teal-400'} ${compact ? 'text-[9px]' : 'text-xs'}`}>
+            <span className={`shrink-0 font-bakin-typography-family-mono text-bakin-typography-size-meta tabular-nums ${
+              due ? 'text-bakin-signal-danger' : 'text-bakin-signal-accent'
+            }`}>
               {time}
             </span>
           </span>
-          <span className={`block mt-0.5 text-[9px] uppercase tracking-wider ${due ? 'text-rose-400/60' : 'text-teal-400/60'} ${compact ? 'pl-[18px]' : ''}`}>
+          <span className={`mt-bakin-1 block text-bakin-typography-size-meta uppercase tracking-wider text-bakin-text-muted ${
+            compact ? 'pl-bakin-5' : ''
+          }`}>
             {event.pluginId} · {event.kind}{event.status ? ` · ${event.status}` : ''}
           </span>
         </PopoverTrigger>
-        <PopoverContent className="w-72 space-y-3" align="start">
-          <div>
-            <p className="text-sm font-medium text-foreground">{event.title}</p>
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground mt-0.5">
+        <PopoverContent align="start">
+          <PopoverHeader>
+            <PopoverTitle>{event.title}</PopoverTitle>
+            <PopoverDescription className="uppercase tracking-wider">
               {event.pluginId} · {event.kind}{event.status ? ` · ${event.status}` : ''}
-            </p>
-          </div>
-          <p className="text-xs text-muted-foreground">
+            </PopoverDescription>
+          </PopoverHeader>
+          <p className="text-bakin-typography-size-meta text-bakin-text-muted">
             {due ? 'Due' : 'Starts'}{' '}
             {new Date(eventInstant(event)).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
           </p>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-bakin-2">
             {event.url && (
               <a
                 href={event.url}
-                className="inline-flex items-center rounded-md border border-border px-2.5 py-1.5 text-xs font-medium hover:bg-muted transition-colors"
+                className={buttonVariants({ variant: 'outline', size: 'xs' })}
               >
-                <ExternalLink className="size-3.5 mr-1.5" /> Open
+                <ExternalLink aria-hidden="true" /> Open
               </a>
             )}
             {event.reschedulable && (
-              <Button variant="outline" size="sm" onClick={() => { setError(null); setRescheduling(true) }}>
-                <CalendarDays className="size-3.5 mr-1.5" /> Reschedule
+              <Button variant="outline" size="xs" onClick={() => { setError(null); setRescheduling(true) }}>
+                <CalendarDays aria-hidden="true" /> Reschedule
               </Button>
             )}
           </div>
@@ -134,15 +160,16 @@ export function EventChip({
         onConfirm={confirmReschedule}
         onCancel={() => { setRescheduling(false); setError(null) }}
       >
-        <div className="space-y-2">
-          <Input
+        <Field invalid={Boolean(error)}>
+          <FieldLabel>New date and time</FieldLabel>
+          <FieldControl
             type="datetime-local"
             aria-label="New date and time"
             value={newInstant}
             onChange={(e) => setNewInstant(e.target.value)}
           />
-          {error && <p className="text-xs text-red-400">{error}</p>}
-        </div>
+          {error && <FieldError match>{error}</FieldError>}
+        </Field>
       </ConfirmDialog>
     </>
   )

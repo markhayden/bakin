@@ -286,7 +286,7 @@ describe('SchedulePage smoke', () => {
 
     const { container } = render(<SchedulePage />)
 
-    expect(container.querySelectorAll('[data-slot="skeleton"]').length).toBeGreaterThan(0)
+    expect(screen.getByText('Loading scheduled jobs')).toBeDefined()
   })
 
   it('shows an honest notice when ?jobId= matches no job (stale deep link)', () => {
@@ -349,7 +349,7 @@ describe('SchedulePage smoke', () => {
     expect(screen.getByTestId('job-a')).toBeDefined()
     expect(screen.getByTestId('job-b')).toBeDefined()
     expect(screen.getByTestId('job-c')).toBeDefined()
-    expect(screen.getByTestId('header-count').textContent).toBe('3')
+    expect(screen.getByTestId('header-count').textContent).toBe('3 shown')
   })
 
   it('filters and reorders by score when useSearch returns hits', () => {
@@ -371,7 +371,7 @@ describe('SchedulePage smoke', () => {
     const jobNodes = screen.getAllByTestId(/^job-[a-c]$/)
     expect(jobNodes.map(n => n.getAttribute('data-testid'))).toEqual(['job-c', 'job-b'])
     expect(screen.queryByTestId('job-a')).toBeNull()
-    expect(screen.getByTestId('header-count').textContent).toBe('2')
+    expect(screen.getByTestId('header-count').textContent).toBe('2 shown')
   })
 
   it('falls back to local substring filter when useSearch returns no hits', () => {
@@ -390,7 +390,7 @@ describe('SchedulePage smoke', () => {
     expect(screen.getByTestId('job-job-beta')).toBeDefined()
     expect(screen.queryByTestId('job-job-alpha')).toBeNull()
     expect(screen.queryByTestId('job-job-gamma')).toBeNull()
-    expect(screen.getByTestId('header-count').textContent).toBe('1')
+    expect(screen.getByTestId('header-count').textContent).toBe('1 shown')
   })
 
   it('renders agent filter buttons for All + each agent id', () => {

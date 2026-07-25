@@ -1,8 +1,6 @@
 'use client'
 
 import { Table, TableBody, TableHead, TableHeader, TableRow } from "@makinbakin/sdk/ui"
-import { EmptyState } from "@makinbakin/sdk/components"
-import { CalendarClock } from 'lucide-react'
 import { JobRow, type JobScoreInfo } from './job-row'
 import type { ScheduleJob } from "@makinbakin/sdk/hooks"
 
@@ -35,19 +33,15 @@ export function JobList({
   scoreMap?: Map<string, JobScoreInfo>
   showScores?: boolean
 }) {
-  if (jobs.length === 0) {
-    return <EmptyState icon={CalendarClock} title="No scheduled jobs found" />
-  }
-
   return (
-    <Table>
+    <Table data-testid="job-list" className="min-w-max">
       <TableHeader>
         <TableRow>
-          <TableHead className="w-[250px]">Name</TableHead>
-          <TableHead className="w-[130px]">Agent</TableHead>
-          <TableHead className="w-[200px]">Schedule</TableHead>
-          <TableHead className="w-[100px]">Status</TableHead>
-          <TableHead className="w-[60px]" />
+          <TableHead className="min-w-64">Name</TableHead>
+          <TableHead className="min-w-36">Agent</TableHead>
+          <TableHead className="min-w-48">Schedule</TableHead>
+          <TableHead className="min-w-28">Status</TableHead>
+          <TableHead className="w-12"><span className="sr-only">Actions</span></TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>

@@ -2,11 +2,11 @@
 
 import { Fragment, useMemo, useState } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
-import { Button } from "@makinbakin/sdk/ui"
-import { useOccurrences, type ScheduleJob, type ScheduleOccurrence, type ScheduledDomainEvent } from "@makinbakin/sdk/hooks"
+import { Button } from '@makinbakin/sdk/ui'
+import { useOccurrences, type ScheduleJob, type ScheduleOccurrence, type ScheduledDomainEvent } from '@makinbakin/sdk/hooks'
 import { AgentBadge } from './agent-badge'
-import { agentStyle } from './agent-colors'
 import { EventChip, eventInstant } from './event-popover'
+import './schedule-calendar.css'
 
 export const CALENDAR_HOURS = Array.from({ length: 24 }, (_, i) => i)
 const DOW_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -55,7 +55,9 @@ function DispositionDot({ occurrence }: { occurrence: ScheduleOccurrence }) {
   return (
     <span
       title={created ? 'Fired' : `Skipped${occurrence.skipReason ? ` — ${occurrence.skipReason}` : ''}`}
-      className={`size-1.5 rounded-full shrink-0 ${created ? 'bg-emerald-400' : 'bg-amber-400'}`}
+      className={`size-bakin-2 shrink-0 rounded-bakin-pill ${
+        created ? 'bg-bakin-action-primary-background' : 'bg-bakin-signal-highlight'
+      }`}
     />
   )
 }
@@ -72,52 +74,55 @@ export function OccurrenceCard({
   onClick: () => void
   expanded?: boolean
 }) {
-  const s = agentStyle(job.agentId)
   const time = formatInstantTime(occurrence.at)
   const past = occurrence.past
 
   return (
-    <button
+    <Button
+      type="button"
+      variant="secondary"
+      size="sm"
       onClick={onClick}
       className={`
-        group/card relative w-full text-left rounded-md mb-1
-        border ${s.border} ${s.bg}
-        transition-all duration-200
-        ${past
-          ? 'opacity-35 saturate-[0.3] hover:opacity-50'
-          : 'hover:scale-[1.02] hover:brightness-125'
-        }
+        group/card mb-bakin-1 h-auto min-h-bakin-8 w-full min-w-0 justify-start whitespace-normal
+        rounded-bakin-control border-bakin-border-subtle bg-bakin-canvas-default p-0 text-left
+        hover:bg-bakin-surface-default
+        ${past ? 'opacity-50 hover:opacity-70' : ''}
       `}
-      style={{ boxShadow: past ? 'none' : `0 1px 6px -1px ${s.glow}` }}
     >
-      <div className={expanded ? 'px-3 py-2.5' : 'px-2 py-1.5'}>
-        {/* Row 1: avatar + name + disposition + time pill */}
-        <div className="flex items-center gap-1.5 min-w-0">
+      <span className={`block w-full min-w-0 ${expanded ? 'px-bakin-3 py-bakin-2' : 'px-bakin-2 py-bakin-1'}`}>
+        <span className="flex min-w-0 items-center gap-bakin-2">
           <AgentBadge agentId={job.agentId} size="sm" showName={expanded} />
-          <span className={`font-medium truncate flex-1 leading-tight ${expanded ? 'text-sm' : 'text-[11px]'} ${past ? 'text-zinc-500' : 'text-zinc-200'}`}>
+          <span className={`min-w-0 flex-1 truncate font-bakin-typography-weight-medium leading-tight ${
+            expanded
+              ? 'text-bakin-typography-size-body'
+              : 'text-bakin-typography-size-meta'
+          } ${past ? 'text-bakin-text-muted' : 'text-bakin-text-primary'}`}>
             {job.displayName || job.id}
           </span>
           <DispositionDot occurrence={occurrence} />
-          <span className={`font-mono ${past ? 'text-zinc-600' : s.accent} opacity-70 shrink-0 tabular-nums ${expanded ? 'text-xs' : 'text-[9px]'}`}>
+          <span className="shrink-0 font-bakin-typography-family-mono text-bakin-typography-size-meta tabular-nums text-bakin-text-muted">
             {time}
           </span>
-        </div>
+        </span>
 
-        {/* Row 2: prompt snippet */}
         {job.taskPrompt && (
-          <p className={`leading-snug mt-1 ${past ? 'text-zinc-600' : 'text-zinc-500'} ${expanded ? 'text-xs pl-0 line-clamp-3' : 'text-[10px] pl-[26px] line-clamp-5'}`}>
+          <span className={`mt-bakin-1 block line-clamp-3 leading-snug text-bakin-text-muted ${
+            expanded
+              ? 'text-bakin-typography-size-meta'
+              : 'pl-bakin-6 text-bakin-typography-size-meta'
+          }`}>
             {job.taskPrompt}
-          </p>
+          </span>
         )}
 
-        {/* Row 3: schedule (expanded only) */}
         {expanded && job.humanSchedule && (
-          <p className={`text-[10px] ${past ? 'text-zinc-600' : s.accent} opacity-50 mt-1.5 font-mono`}>
+          <span className="mt-bakin-2 block font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
             {job.humanSchedule}
-          </p>
+          </span>
         )}
-      </div>
-    </button>
+      </span>
+    </Button>
   )
 }
 
@@ -174,47 +179,47 @@ export function CalendarWeekly({
   }, [events])
 
   return (
-    <div className="flex flex-col gap-3 h-full min-h-0">
-      {/* Navigation */}
-      <div className="flex items-center gap-2">
-        <Button variant="ghost" size="sm" onClick={prev}><ChevronLeft className="size-4" /></Button>
-        <span className="text-sm font-medium w-[240px] text-center">
+    <div className="flex h-full min-h-0 flex-col gap-bakin-3">
+      <div className="flex items-center gap-bakin-2">
+        <Button variant="ghost" size="icon-sm" onClick={prev} aria-label="Previous week">
+          <ChevronLeft aria-hidden="true" />
+        </Button>
+        <span className="w-60 text-center text-bakin-typography-size-body font-bakin-typography-weight-medium text-bakin-text-primary">
           {weekDates[0]!.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
           {' — '}
           {weekDates[6]!.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
         </span>
-        <Button variant="ghost" size="sm" onClick={next}><ChevronRight className="size-4" /></Button>
-        <Button variant="ghost" size="sm" className="text-xs ml-2" onClick={goToday}>Today</Button>
+        <Button variant="ghost" size="icon-sm" onClick={next} aria-label="Next week">
+          <ChevronRight aria-hidden="true" />
+        </Button>
+        <Button variant="outline" size="xs" className="ml-bakin-2" onClick={goToday}>Today</Button>
       </div>
 
-      {/* Timeline grid */}
-      <div className="overflow-auto flex-1 min-h-0 border border-border/30 rounded-lg bg-background/50">
-        <div className="grid" style={{ gridTemplateColumns: '56px repeat(7, 250px)' }}>
-          {/* Header row */}
-          <div className="bg-muted/20 sticky top-0 z-10 backdrop-blur-sm" />
+      <div className="min-h-0 flex-1 overflow-auto rounded-bakin-surface border border-bakin-border-subtle bg-bakin-canvas-default">
+        <div className="grid" data-schedule-week-grid>
+          <div className="sticky top-0 z-10 bg-bakin-surface-default" />
           {weekDates.map((d, i) => (
             <div
               key={i}
               className={`
-                sticky top-0 z-10 backdrop-blur-sm border-l border-border/10
-                text-center text-[11px] py-2.5 font-medium tracking-wide
+                sticky top-0 z-10 border-l border-bakin-border-subtle bg-bakin-surface-default
+                py-bakin-2 text-center font-bakin-typography-weight-medium tracking-wide
                 ${isToday(d)
-                  ? 'bg-blue-500/[0.08] text-blue-400'
-                  : 'bg-muted/20 text-zinc-500'
+                  ? 'text-bakin-signal-accent'
+                  : 'text-bakin-text-muted'
                 }
               `}
             >
-              <span className="uppercase text-[9px] tracking-widest block leading-none mb-0.5 opacity-60">
+              <span className="mb-bakin-1 block text-bakin-typography-size-meta uppercase leading-none tracking-widest">
                 {DOW_LABELS[d.getDay()]}
               </span>
-              <span className={isToday(d) ? 'text-blue-300' : 'text-zinc-400'}>{d.getDate()}</span>
+              <span className={isToday(d) ? 'text-bakin-signal-accent' : 'text-bakin-text-primary'}>{d.getDate()}</span>
             </div>
           ))}
 
-          {/* Hour rows */}
           {CALENDAR_HOURS.map(hour => (
             <Fragment key={hour}>
-              <div className="text-[10px] text-zinc-600 text-right pr-2.5 py-3 border-t border-border/[0.06] font-mono tabular-nums">
+              <div className="border-t border-bakin-border-subtle pr-bakin-2 pt-bakin-3 text-right font-bakin-typography-family-mono text-bakin-typography-size-meta tabular-nums text-bakin-text-muted">
                 {formatHour(hour)}
               </div>
               {Array.from({ length: 7 }, (_, dow) => {
@@ -225,9 +230,9 @@ export function CalendarWeekly({
                   <div
                     key={`${dow}-${hour}`}
                     className={`
-                      border-l border-t border-border/[0.06] p-1
-                      ${today ? 'bg-blue-500/[0.02]' : ''}
-                      ${cellOccurrences.length + cellEvents.length === 0 ? 'hover:bg-white/[0.01]' : ''}
+                      min-h-bakin-12 border-l border-t border-bakin-border-subtle p-bakin-1
+                      ${today ? 'bg-bakin-signal-accent/5' : ''}
+                      ${cellOccurrences.length + cellEvents.length === 0 ? 'hover:bg-bakin-surface-default' : ''}
                     `}
                   >
                     {cellOccurrences.map(occurrence => {

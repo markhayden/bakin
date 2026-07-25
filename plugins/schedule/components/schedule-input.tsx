@@ -1,11 +1,17 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { CalendarClock, Clock, Repeat } from 'lucide-react'
-import { Input } from "@makinbakin/sdk/ui"
+import { SegmentedControl, StatusBadge, type SegmentedControlOption } from '@makinbakin/sdk/patterns'
+import { Alert, AlertDescription, FieldError, Input } from '@makinbakin/sdk/ui'
 import type { ParseResult } from '../types'
 
 type ScheduleMode = 'recurring' | 'once'
+
+const SCHEDULE_MODES: SegmentedControlOption<ScheduleMode>[] = [
+  { value: 'recurring', label: 'Recurring', icon: Repeat },
+  { value: 'once', label: 'One-time', icon: CalendarClock },
+]
 
 /** ISO string for a datetime-local input value (local wall clock → instant). */
 function localInputToIso(value: string): string | null {
@@ -43,17 +49,17 @@ export function ScheduleInput({
       setLoading(true)
       setError(null)
       try {
-        const res = await fetch('/api/plugins/schedule/parse', {
+        const response = await fetch('/api/plugins/schedule/parse', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ input: value }),
         })
-        if (res.ok) {
-          const data = await res.json()
+        if (response.ok) {
+          const data = await response.json()
           setParsed(data)
           onParsed?.(data)
         } else {
-          const data = await res.json()
+          const data = await response.json()
           setError(data.error || 'Could not parse schedule')
           setParsed(null)
           onParsed?.(null)
@@ -73,82 +79,78 @@ export function ScheduleInput({
   }, [value]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div className="space-y-2">
-      <div className="inline-flex rounded-md border border-border/60 p-0.5 text-xs" role="tablist" aria-label="Schedule type">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={mode === 'recurring'}
-          className={`flex items-center gap-1 rounded px-2 py-1 ${mode === 'recurring' ? 'bg-muted text-foreground' : 'text-muted-foreground'}`}
-          onClick={() => setMode('recurring')}
-        >
-          <Repeat className="size-3" /> Recurring
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={mode === 'once'}
-          className={`flex items-center gap-1 rounded px-2 py-1 ${mode === 'once' ? 'bg-muted text-foreground' : 'text-muted-foreground'}`}
-          onClick={() => setMode('once')}
-        >
-          <CalendarClock className="size-3" /> One-time
-        </button>
-      </div>
+    <div className="grid min-w-0 gap-bakin-2">
+      <SegmentedControl
+        options={SCHEDULE_MODES}
+        value={mode}
+        onValueChange={setMode}
+        ariaLabel="Schedule type"
+        size="sm"
+      />
       <Input
+        aria-invalid={Boolean(error)}
         placeholder={mode === 'once'
           ? 'e.g. "tomorrow at 9am", "in 2 hours", "july 20 at 3pm"'
           : 'e.g. "every day at 9am" or "0 9 * * *"'}
         value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="text-sm"
+        onChange={(event) => onChange(event.target.value)}
       />
-      {mode === 'once' && (
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] text-muted-foreground uppercase tracking-wider">or pick</span>
+      {mode === 'once' ? (
+        <div className="flex min-w-0 flex-wrap items-center gap-bakin-2">
+          <span className="text-bakin-typography-size-meta uppercase tracking-wider text-bakin-text-muted">
+            Or pick
+          </span>
           <Input
             type="datetime-local"
             aria-label="Pick a date and time"
-            className="text-sm w-auto"
-            onChange={(e) => {
-              const iso = localInputToIso(e.target.value)
+            className="w-auto"
+            onChange={(event) => {
+              const iso = localInputToIso(event.target.value)
               if (iso) onChange(iso)
             }}
           />
         </div>
-      )}
-      {loading && (
-        <p className="text-xs text-muted-foreground">Parsing...</p>
-      )}
-      {error && (
-        <p className="text-xs text-red-400">{error}</p>
-      )}
-      {parsed && (
-        <div className="rounded-md border border-border/50 bg-muted/30 p-3 space-y-2">
-          <div className="flex items-center gap-2 text-sm">
-            <Clock className="size-3.5 text-muted-foreground" />
-            <span className="text-foreground">{parsed.human}</span>
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground border border-border/60 rounded px-1.5 py-0.5">
-              {parsed.kind === 'at' ? 'One-time' : 'Recurring'}
+      ) : null}
+      {loading ? (
+        <span role="status" className="text-bakin-typography-size-meta text-bakin-text-muted">
+          Parsing…
+        </span>
+      ) : null}
+      {error ? <FieldError match>{error}</FieldError> : null}
+      {parsed ? (
+        <Alert tone="success">
+          <Clock aria-hidden="true" className="size-bakin-4" />
+          <AlertDescription>
+            <span className="flex min-w-0 flex-wrap items-center gap-bakin-2">
+              <span className="text-bakin-text-primary">{parsed.human}</span>
+              <StatusBadge tone="success" variant="solid" size="xs">
+                {parsed.kind === 'at' ? 'One-time' : 'Recurring'}
+              </StatusBadge>
+              <code className="font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
+                {parsed.expr}
+              </code>
             </span>
-            <span className="text-xs text-muted-foreground font-mono ml-auto">{parsed.expr}</span>
-          </div>
-          {parsed.nextRuns && parsed.nextRuns.length > 0 && (
-            <div className="space-y-0.5">
-              <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
-                {parsed.kind === 'at' ? 'Fires' : 'Next runs'}
-              </p>
-              {parsed.nextRuns.slice(0, 5).map((run, i) => (
-                <p key={i} className="text-xs text-muted-foreground">
-                  {new Date(run).toLocaleString('en-US', {
-                    weekday: 'short', month: 'short', day: 'numeric',
-                    hour: 'numeric', minute: '2-digit',
-                  })}
-                </p>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
+            {parsed.nextRuns?.length ? (
+              <span className="mt-bakin-2 grid gap-bakin-1">
+                <span className="text-bakin-typography-size-meta font-bakin-typography-weight-semibold uppercase tracking-wider text-bakin-text-muted">
+                  {parsed.kind === 'at' ? 'Fires' : 'Next runs'}
+                </span>
+                {parsed.nextRuns.slice(0, 5).map((run) => (
+                  <time key={run} className="text-bakin-typography-size-meta text-bakin-text-muted">
+                    {new Date(run).toLocaleString('en-US', {
+                      weekday: 'short',
+                      month: 'short',
+                      day: 'numeric',
+                      hour: 'numeric',
+                      minute: '2-digit',
+                    })}
+                  </time>
+                ))}
+              </span>
+            ) : null}
+          </AlertDescription>
+        </Alert>
+      ) : null}
     </div>
   )
 }
