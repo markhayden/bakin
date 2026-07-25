@@ -6,11 +6,11 @@
   "layers": {
     "reference": {
       "visibility": "internal",
-      "tokens": 51
+      "tokens": 52
     },
     "semantic": {
       "visibility": "public",
-      "tokens": 55
+      "tokens": 56
     },
     "component": {
       "visibility": "internal",
@@ -263,6 +263,23 @@
       "value": {
         "unit": "rem",
         "value": 0.5
+      }
+    },
+    {
+      "path": "reference.color.blue.500",
+      "layer": "reference",
+      "visibility": "internal",
+      "type": "color",
+      "source": "packages/ui/tokens/reference.tokens.json#/reference/color/blue/500",
+      "references": [],
+      "value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.223529,
+          0.529412,
+          0.898039
+        ],
+        "hex": "#3987e5"
       }
     },
     {
@@ -1464,6 +1481,34 @@
         "against": "semantic.color.canvas.default",
         "role": "non-text",
         "ratio": 14.93,
+        "minimum": 3,
+        "standard": "WCAG AA non-text UI",
+        "status": "pass"
+      }
+    },
+    {
+      "path": "semantic.color.signal.info",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "color",
+      "description": "Informational guidance and non-urgent progress signals on the canvas.",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/color/signal/info",
+      "references": [
+        "reference.color.blue.500"
+      ],
+      "value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.223529,
+          0.529412,
+          0.898039
+        ],
+        "hex": "#3987e5"
+      },
+      "contrast": {
+        "against": "semantic.color.canvas.default",
+        "role": "non-text",
+        "ratio": 5.3,
         "minimum": 3,
         "standard": "WCAG AA non-text UI",
         "status": "pass"

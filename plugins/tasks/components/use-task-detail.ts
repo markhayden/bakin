@@ -1,10 +1,14 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { useAgent } from "@makinbakin/sdk/hooks"
-import { TEAM_VALUE_PREFIX, isTeamValue, teamIdFromValue } from '@makinbakin/sdk/components'
-import { useJsonFetch } from "@makinbakin/sdk/hooks"
-import { toast } from "@makinbakin/sdk/hooks"
+import { toast, useAgent, useAgentList, useAgentStore, useJsonFetch } from '@makinbakin/sdk/hooks'
+import {
+  TEAM_VALUE_PREFIX,
+  isTeamValue,
+  teamIdFromValue,
+  type AgentSelectOption,
+  type AgentTeamOption,
+} from '@makinbakin/sdk/patterns'
 import type { Task, ColumnId } from '../types'
 import type { WorkflowInstance as SdkWorkflowInstance, WorkflowDefinition as SdkWorkflowDefinition } from '@makinbakin/sdk/types'
 import { createShortClientId } from '../lib/client-id'
@@ -105,6 +109,20 @@ export function useTaskDetail({ task, columnId, open, editing, onClose }: UseTas
   // Published brands for the picker (#419) — drafts never appear.
   const { data: brandsData } = useJsonFetch<{ brands?: Array<{ id: string; name: string; draft?: boolean }> }>('/api/plugins/brands/')
   const brands = useMemo(() => (brandsData?.brands ?? []).filter(b => !b.draft), [brandsData])
+  const registeredAgents = useAgentList()
+  const displaySettings = useAgentStore(state => state.displaySettings)
+  const registeredTeams = useAgentStore(state => state.teams)
+  const agentOptions = useMemo<AgentSelectOption[]>(() => registeredAgents.map(registeredAgent => ({
+    id: registeredAgent.id,
+    name: displaySettings[registeredAgent.id]?.displayName ?? registeredAgent.name,
+    imageSrc: registeredAgent.headshot || undefined,
+    color: displaySettings[registeredAgent.id]?.accentColor,
+  })), [displaySettings, registeredAgents])
+  const teamOptions = useMemo<AgentTeamOption[]>(() => registeredTeams.map(team => ({
+    id: team.id,
+    label: team.label,
+    color: team.color,
+  })), [registeredTeams])
 
   // Populate form when entering edit mode
   useEffect(() => {
@@ -573,7 +591,7 @@ export function useTaskDetail({ task, columnId, open, editing, onClose }: UseTas
     mapStepId, mapChildren, mapActionLoading, handleMapChildAction,
     failedStep, handleReopenWorkflow,
     // agent
-    taskAgentMeta,
+    taskAgentMeta, agentOptions, teamOptions,
     // handlers
     markDirty, handleDescriptionPaste, handleSave, handleAddLog, handleApproveGate, handleRejectGate,
   }

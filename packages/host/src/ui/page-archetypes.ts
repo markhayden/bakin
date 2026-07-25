@@ -62,6 +62,7 @@ export type {
   ListPageControlsProps,
   ListPageProps,
   ListPageWidth,
+  PageHeaderMeasure,
   PageHeaderProps,
   SettingsPageBodyProps,
   SettingsPageContentProps,

@@ -1,10 +1,23 @@
 'use client'
 
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { useParams, useNavigate, Link } from '@tanstack/react-router'
-import { usePluginEvent, useHistoryBack } from '@makinbakin/sdk/hooks'
-import { ConfirmDialog } from '@makinbakin/sdk/components'
-import { Badge, Button } from '@makinbakin/sdk/ui'
+import {
+  PluginLink,
+  useHistoryBack,
+  useParams,
+  useRouter,
+} from '@makinbakin/sdk/navigation'
+import { usePluginEvent } from '@makinbakin/sdk/hooks'
+import {
+  ConfirmDialog,
+  DetailPage,
+  DetailPageAside,
+  DetailPageBody,
+  DetailPageMain,
+  PageHeader,
+} from '@makinbakin/sdk/patterns'
+import { Section, Stack } from '@makinbakin/sdk/layout'
+import { Badge, Banner, Button, SystemState } from '@makinbakin/sdk/ui'
 import { ArrowLeft, Download, Pencil, Trash2, Upload, Loader2, X } from 'lucide-react'
 import { AssetMetaSummary, AssetThumb } from './atoms'
 import { AssetEditDrawer } from './AssetEditDrawer'
@@ -15,8 +28,8 @@ import { assetVersionUrl, assetExportUrl, VERSIONED_API } from './asset-urls'
 import type { VersionedAssetManifest } from './types'
 
 export function VersionedAssetDetail() {
-  const { assetId } = useParams({ strict: false }) as { assetId: string }
-  const navigate = useNavigate()
+  const { assetId } = useParams<{ assetId: string }>()
+  const router = useRouter()
   // Reached from many places (brand assets tab, search, tasks) — back means
   // "where I came from", not the assets home.
   const goBack = useHistoryBack('/assets')
@@ -43,7 +56,7 @@ export function VersionedAssetDetail() {
 
   useEffect(() => { fetchManifest() }, [fetchManifest])
 
-  usePluginEvent('asset.removed', (d) => { if (d.assetId === assetId) navigate({ to: '/assets' }) })
+  usePluginEvent('asset.removed', (d) => { if (d.assetId === assetId) router.push('/assets') })
   usePluginEvent('asset.changed', (d) => { if (d.assetId === assetId) fetchManifest() })
 
   const promote = (version: number) => fetch(`${VERSIONED_API}/${encodeURIComponent(assetId)}/promote`, {
@@ -101,7 +114,7 @@ export function VersionedAssetDetail() {
           const body = await res.json().catch(() => ({})) as { error?: string }
           throw new Error(body.error || `Delete failed (${res.status})`)
         }
-        navigate({ to: '/assets' })
+        router.push('/assets')
       }
     } catch (err) {
       const message = err instanceof DOMException && err.name === 'AbortError'
@@ -116,12 +129,72 @@ export function VersionedAssetDetail() {
     }
   }
 
-  if (loading) return <div className="p-8 text-sm text-muted-foreground">Loading…</div>
-  if (!manifest) return (
-    <div className="p-8 text-sm text-muted-foreground" data-testid="asset-not-found">
-      Asset not found. <Link to="/assets" className="text-blue-400">Back to assets</Link>
-    </div>
-  )
+  if (loading) {
+    return (
+      <DetailPage width="full" data-testid="asset-detail">
+        <PageHeader
+          navigation={(
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              className="rounded-bakin-pill"
+              onClick={goBack}
+              aria-label="Back to assets"
+              title="Back to assets"
+            >
+              <ArrowLeft />
+            </Button>
+          )}
+          eyebrow="Assets / detail"
+          title="Asset detail"
+          description={assetId}
+        />
+        <DetailPageBody
+          state={(
+            <SystemState
+              kind="loading"
+              title="Loading asset"
+              description="The preview, metadata, and version history will appear here."
+            />
+          )}
+        />
+      </DetailPage>
+    )
+  }
+
+  if (!manifest) {
+    return (
+      <DetailPage width="full" data-testid="asset-not-found">
+        <PageHeader
+          navigation={(
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              className="rounded-bakin-pill"
+              onClick={goBack}
+              aria-label="Back to assets"
+              title="Back to assets"
+            >
+              <ArrowLeft />
+            </Button>
+          )}
+          eyebrow="Assets / detail"
+          title="Asset detail"
+          description={assetId}
+        />
+        <DetailPageBody
+          state={(
+            <SystemState
+              kind="error"
+              title="Asset not found"
+              description="This asset may have been removed or is no longer available."
+              action={<Button variant="outline" onClick={() => router.push('/assets')}>Open assets</Button>}
+            />
+          )}
+        />
+      </DetailPage>
+    )
+  }
 
   // Current pinned to the top, then the rest newest-first.
   const versions = [...manifest.versions].sort((a, b) => {
@@ -137,7 +210,7 @@ export function VersionedAssetDetail() {
   const isImage = manifest.type === 'images'
 
   return (
-    <div className="w-full p-4" data-testid="asset-detail">
+    <DetailPage width="full" data-testid="asset-detail">
       <input
         ref={versionInputRef}
         type="file"
@@ -146,37 +219,209 @@ export function VersionedAssetDetail() {
         data-testid="add-version-input"
         onChange={(e) => addVersion(e.target.files)}
       />
-      <div className="sticky top-0 z-20 -mx-4 -mt-4 mb-4 flex items-center gap-2 border-b border-border bg-background px-4 py-3">
-        <Button size="sm" variant="ghost" onClick={goBack} aria-label="Back"><ArrowLeft className="size-4" /></Button>
-        <h1 className="truncate text-base font-semibold" title={manifest.assetId}>{manifest.description || manifest.assetId}</h1>
-        <Badge variant="secondary" className="ml-auto" data-testid="version-count">{manifest.versions.length} version{manifest.versions.length === 1 ? '' : 's'}</Badge>
-        <Button size="sm" variant="outline" onClick={() => setEditOpen(true)} data-testid="edit-asset">
-          <Pencil className="size-4 mr-1" /> Edit
-        </Button>
-        <Button size="sm" variant="outline" onClick={() => versionInputRef.current?.click()} disabled={addingVersion} data-testid="add-version">
-          {addingVersion ? <Loader2 className="size-4 animate-spin mr-1" /> : <Upload className="size-4 mr-1" />}
-          {addingVersion ? 'Uploading…' : 'Add version'}
-        </Button>
-        <Button size="sm" variant="ghost" className="text-red-400 hover:text-red-300" onClick={() => { setDeleteScope('asset'); setDeleteError(null); setConfirmDelete(true) }} data-testid="delete-asset">
-          <Trash2 className="size-4" />
-        </Button>
-      </div>
-      {versionError && <p className="mb-2 text-xs text-destructive">{versionError}</p>}
 
-      {/* Current version preview — inline render by type, with editor for text. */}
-      <div className="mb-4" data-testid="current-preview">
-        <AssetPreview
-          assetId={manifest.assetId}
-          type={manifest.type}
-          mimeType={previewVer.mimeType}
-          version={previewVersion}
-          currentFile={previewVer.file}
-          onImageClick={() => setLightbox(true)}
-          onSaved={fetchManifest}
-        />
-      </div>
+      <PageHeader
+        measure="wide"
+        navigation={(
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            className="rounded-bakin-pill"
+            onClick={goBack}
+            aria-label="Back to assets"
+            title="Back to assets"
+          >
+            <ArrowLeft />
+          </Button>
+        )}
+        eyebrow="Assets / detail"
+        title={manifest.description || manifest.assetId}
+        meta={(
+          <>
+            <code className="break-all font-bakin-typography-family-mono">{manifest.assetId}</code>
+            <Badge tone="neutral" variant="soft">{manifest.type}</Badge>
+            <Badge tone="neutral" variant="soft" data-testid="version-count">
+              {manifest.versions.length} version{manifest.versions.length === 1 ? '' : 's'}
+            </Badge>
+          </>
+        )}
+        actionsLabel="Asset actions"
+        actions={(
+          <>
+            <Button variant="primary" onClick={() => setEditOpen(true)} data-testid="edit-asset">
+              <Pencil /> Edit asset
+            </Button>
+            <Button variant="outline" onClick={() => versionInputRef.current?.click()} disabled={addingVersion} data-testid="add-version">
+              {addingVersion ? <Loader2 className="animate-spin" /> : <Upload />}
+              {addingVersion ? 'Uploading…' : 'Add version'}
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => {
+                setDeleteScope('asset')
+                setDeleteError(null)
+                setConfirmDelete(true)
+              }}
+              data-testid="delete-asset"
+            >
+              <Trash2 /> Delete asset
+            </Button>
+          </>
+        )}
+      />
 
-      <div className="mb-4"><AssetMetaSummary agent={manifest.agent} created={manifest.created} taskId={manifest.taskId} tags={manifest.tags} maxTags={Infinity} /></div>
+      <DetailPageBody
+        layout="aside"
+        feedback={versionError ? (
+          <Banner
+            tone="danger"
+            title="Version upload failed"
+            description={versionError}
+          />
+        ) : undefined}
+      >
+        <DetailPageMain>
+          <Section spacing="compact" aria-labelledby="asset-preview-heading">
+            <Stack gap="dense">
+              <div className="flex min-w-0 flex-wrap items-center justify-between gap-bakin-2">
+                <h2
+                  id="asset-preview-heading"
+                  className="m-0 text-bakin-typography-size-section-title font-bakin-typography-weight-semibold text-bakin-text-primary"
+                >
+                  Preview
+                </h2>
+                <Badge tone={previewVersion === manifest.currentVersion ? 'success' : 'accent'} variant="soft">
+                  v{previewVersion}{previewVersion === manifest.currentVersion ? ' · current' : ' · selected'}
+                </Badge>
+              </div>
+            </Stack>
+            <div data-testid="current-preview">
+              <AssetPreview
+                assetId={manifest.assetId}
+                type={manifest.type}
+                mimeType={previewVer.mimeType}
+                version={previewVersion}
+                currentFile={previewVer.file}
+                onImageClick={() => setLightbox(true)}
+                onSaved={fetchManifest}
+              />
+            </div>
+          </Section>
+
+        </DetailPageMain>
+
+        <DetailPageAside label="Asset context">
+          <section className="flex min-w-0 flex-col gap-bakin-3" aria-labelledby="asset-context-heading">
+            <h2
+              id="asset-context-heading"
+              className="m-0 text-bakin-typography-size-section-title font-bakin-typography-weight-semibold text-bakin-text-primary"
+            >
+              Asset context
+            </h2>
+            <AssetMetaSummary
+              agent={manifest.agent}
+              created={manifest.created}
+              taskId={manifest.taskId}
+              tags={manifest.tags}
+              maxTags={Infinity}
+            />
+            <dl className="grid min-w-0 gap-bakin-2 text-bakin-typography-size-meta">
+              <div className="flex min-w-0 items-baseline justify-between gap-bakin-3 border-t border-bakin-border-subtle pt-bakin-2">
+                <dt className="text-bakin-text-muted">Source</dt>
+                <dd className="m-0 min-w-0 break-words text-right text-bakin-text-primary">{manifest.source.kind}</dd>
+              </div>
+              <div className="flex min-w-0 items-baseline justify-between gap-bakin-3 border-t border-bakin-border-subtle pt-bakin-2">
+                <dt className="text-bakin-text-muted">Current version</dt>
+                <dd className="m-0 font-bakin-typography-family-mono text-bakin-text-primary">v{manifest.currentVersion}</dd>
+              </div>
+            </dl>
+
+            <EnrichmentCard manifest={manifest} onChanged={fetchManifest} />
+          </section>
+
+          {previewVer.generation?.references && previewVer.generation.references.length > 0 ? (
+            <section className="flex min-w-0 flex-col gap-bakin-3 border-t border-bakin-border-subtle pt-bakin-4" aria-labelledby="asset-references-heading">
+              <h2
+                id="asset-references-heading"
+                className="m-0 text-bakin-typography-size-section-title font-bakin-typography-weight-semibold text-bakin-text-primary"
+              >
+                References
+              </h2>
+              <div className="flex min-w-0 flex-col gap-bakin-2" data-testid="references">
+                {previewVer.generation.references.map(ref => (
+                  <PluginLink
+                    key={`${ref.assetId}@${ref.version}`}
+                    to={`/assets/${encodeURIComponent(ref.assetId)}`}
+                    className="flex min-w-0 items-center gap-bakin-2 rounded-bakin-control px-bakin-2 py-bakin-1 text-bakin-typography-size-meta text-bakin-text-primary hover:bg-bakin-surface-default"
+                  >
+                    <span className="size-bakin-8 shrink-0 overflow-hidden rounded-bakin-control">
+                      <AssetThumb assetId={ref.assetId} type="images" version={ref.version} className="h-full w-full object-cover" />
+                    </span>
+                    <span className="min-w-0 break-all">
+                      {ref.assetId} <span className="text-bakin-text-muted">v{ref.version}</span>
+                    </span>
+                  </PluginLink>
+                ))}
+              </div>
+            </section>
+          ) : null}
+
+          {manifest.exports.length > 0 ? (
+            <section className="flex min-w-0 flex-col gap-bakin-3 border-t border-bakin-border-subtle pt-bakin-4" aria-labelledby="asset-downloads-heading">
+              <h2
+                id="asset-downloads-heading"
+                className="m-0 text-bakin-typography-size-section-title font-bakin-typography-weight-semibold text-bakin-text-primary"
+              >
+                Downloads
+              </h2>
+              <div className="flex min-w-0 flex-col gap-bakin-2" data-testid="exports">
+                {manifest.exports.map(exp => (
+                  <a
+                    key={exp.name}
+                    href={assetExportUrl(manifest.assetId, exp.name)}
+                    download
+                    className="flex min-w-0 items-center gap-bakin-2 rounded-bakin-control px-bakin-2 py-bakin-2 text-bakin-typography-size-meta text-bakin-text-primary hover:bg-bakin-surface-default"
+                  >
+                    <Download className="size-bakin-3 shrink-0 text-bakin-signal-accent" />
+                    <span className="min-w-0 break-all">{exp.name}.{exp.format}</span>
+                    <span className="ml-auto shrink-0 text-bakin-text-muted">v{exp.fromVersion}</span>
+                  </a>
+                ))}
+              </div>
+            </section>
+          ) : null}
+
+          <Section spacing="compact" divider="top" aria-labelledby="asset-history-heading">
+            <Stack gap="dense">
+              <h2
+                id="asset-history-heading"
+                className="m-0 text-bakin-typography-size-section-title font-bakin-typography-weight-semibold text-bakin-text-primary"
+              >
+                Version history
+              </h2>
+              <p className="m-0 text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">
+                Select a version to preview it. Promoting a version does not remove newer history.
+              </p>
+            </Stack>
+            <div className="flex flex-col gap-bakin-2" data-testid="version-timeline">
+              {versions.map(v => (
+                <VersionRow
+                  key={v.version}
+                  assetId={manifest.assetId}
+                  assetType={manifest.type}
+                  version={v}
+                  isCurrent={v.version === manifest.currentVersion}
+                  isSelected={v.version === previewVersion}
+                  canDelete={manifest.versions.length > 1}
+                  onSelect={setSelectedVersion}
+                  onPromote={promote}
+                  onDelete={deleteVersion}
+                />
+              ))}
+            </div>
+          </Section>
+        </DetailPageAside>
+      </DetailPageBody>
 
       <AssetEditDrawer
         assetId={manifest.assetId}
@@ -186,65 +431,6 @@ export function VersionedAssetDetail() {
         onOpenChange={setEditOpen}
         onSaved={fetchManifest}
       />
-
-      {/* Derived metadata — what the vision model saw (D8) */}
-      <EnrichmentCard manifest={manifest} onChanged={fetchManifest} />
-
-      {/* References — assets that conditioned this generation (#418) */}
-      {previewVer.generation?.references && previewVer.generation.references.length > 0 && (
-        <div className="mb-4">
-          <h2 className="mb-1.5 text-xs font-semibold uppercase text-muted-foreground">References</h2>
-          <div className="flex flex-wrap gap-2" data-testid="references">
-            {previewVer.generation.references.map(ref => (
-              <Link
-                key={`${ref.assetId}@${ref.version}`}
-                to="/assets/$assetId"
-                params={{ assetId: ref.assetId }}
-                className="flex items-center gap-2 rounded-md border border-border px-2 py-1 text-xs hover:bg-white/5"
-              >
-                <span className="size-8 shrink-0 overflow-hidden rounded">
-                  <AssetThumb assetId={ref.assetId} type="images" version={ref.version} className="h-full w-full object-cover" />
-                </span>
-                <span className="text-muted-foreground">{ref.assetId} <span className="opacity-60">v{ref.version}</span></span>
-              </Link>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Exports */}
-      {manifest.exports.length > 0 && (
-        <div className="mb-4">
-          <h2 className="mb-1.5 text-xs font-semibold uppercase text-muted-foreground">Exports</h2>
-          <div className="flex flex-wrap gap-2" data-testid="exports">
-            {manifest.exports.map(exp => (
-              <a key={exp.name} href={assetExportUrl(manifest.assetId, exp.name)} download
-                 className="flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs text-blue-400 hover:bg-white/5">
-                <Download className="size-3" /> {exp.name}.{exp.format} <span className="text-muted-foreground">(from v{exp.fromVersion})</span>
-              </a>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Version timeline */}
-      <h2 className="mb-1.5 text-xs font-semibold uppercase text-muted-foreground">History</h2>
-      <div className="flex flex-col gap-2" data-testid="version-timeline">
-        {versions.map(v => (
-          <VersionRow
-            key={v.version}
-            assetId={manifest.assetId}
-            assetType={manifest.type}
-            version={v}
-            isCurrent={v.version === manifest.currentVersion}
-            isSelected={v.version === previewVersion}
-            canDelete={manifest.versions.length > 1}
-            onSelect={setSelectedVersion}
-            onPromote={promote}
-            onDelete={deleteVersion}
-          />
-        ))}
-      </div>
 
       {/* Fullscreen image lightbox */}
       {lightbox && isImage && (
@@ -295,6 +481,6 @@ export function VersionedAssetDetail() {
         onConfirm={doDelete}
         onCancel={() => setConfirmDelete(false)}
       />
-    </div>
+    </DetailPage>
   )
 }

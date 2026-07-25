@@ -32,13 +32,13 @@ const defaultTitles: Record<ToastTone, string> = {
 }
 
 const toneClasses: Record<ToastTone, string> = {
-  info: 'border-bakin-border-subtle bg-bakin-surface-default',
+  info: 'border-bakin-signal-info/60 bg-bakin-surface-default',
   success: 'border-bakin-action-primary-background/60 bg-bakin-surface-default',
   error: 'border-bakin-signal-danger/60 bg-bakin-surface-default',
 }
 
 const signalClasses: Record<ToastTone, string> = {
-  info: 'bg-bakin-text-muted',
+  info: 'bg-bakin-signal-info',
   success: 'bg-bakin-action-primary-background',
   error: 'bg-bakin-signal-danger',
 }

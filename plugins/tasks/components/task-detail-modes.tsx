@@ -1,17 +1,40 @@
 'use client'
 
-import { BakinDrawer, BakinDrawerSection, Button } from "@makinbakin/sdk/ui"
-import { Input } from "@makinbakin/sdk/ui"
-import { Textarea } from "@makinbakin/sdk/ui"
-import { Separator } from "@makinbakin/sdk/ui"
-import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@makinbakin/sdk/ui"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@makinbakin/sdk/ui"
-import { MoreHorizontal, Copy, Trash2, Pencil, Loader2 } from 'lucide-react'
-import { MarkdownContent } from "@makinbakin/sdk/components"
+import {
+  BakinDrawer,
+  BakinDrawerSection,
+  Button,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+  Field,
+  FieldControl,
+  FieldDescription,
+  FieldLabel,
+  Form,
+  FormActions,
+  Input,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Separator,
+  SubmitButton,
+  Textarea,
+} from '@makinbakin/sdk/ui'
+import {
+  AgentAvatar,
+  AgentSelect,
+  StatusBadge,
+  type StatusTone,
+} from '@makinbakin/sdk/patterns'
+import { MarkdownContent } from '@makinbakin/sdk/content'
 import { Slot } from '@makinbakin/sdk/slots'
-import { AgentAvatar } from "@makinbakin/sdk/components"
-import { AgentSelect } from "@makinbakin/sdk/components"
-import { COLUMN_CONFIG, STATUS_DOT_COLORS } from '../constants'
+import { Copy, Loader2, MoreHorizontal, Pencil, Trash2, Workflow } from 'lucide-react'
+import { COLUMN_CONFIG } from '../constants'
 import type { Task, ColumnId } from '../types'
 import { TaskRunHistory } from './task-run-history'
 import { TaskNotesSection } from './task-notes-section'
@@ -20,29 +43,66 @@ import type { TaskDetail } from './use-task-detail'
 
 const COLUMN_IDS: ColumnId[] = ['backlog', 'todo', 'blocked', 'inProgress', 'review', 'done', 'archived']
 
+const STATUS_TONES: Record<ColumnId, StatusTone> = {
+  backlog: 'neutral',
+  todo: 'accent',
+  blocked: 'danger',
+  inProgress: 'accent',
+  review: 'attention',
+  done: 'success',
+  archived: 'neutral',
+}
+
+function workflowLabel(m: TaskDetail, id?: string): string | undefined {
+  if (!id) return undefined
+  return m.workflows.find(workflow => workflow.filename.replace('.yaml', '') === id)?.name ?? id
+}
+
 /** Hero card (agent avatar + status), shown in both modes for existing tasks. */
-function TaskHero({ task, columnId, agentMeta }: { task: Task | null; columnId: ColumnId | null; agentMeta: TaskDetail['taskAgentMeta'] }) {
+function TaskHero({
+  task,
+  columnId,
+  agentMeta,
+  workflowName,
+}: {
+  task: Task | null
+  columnId: ColumnId | null
+  agentMeta: TaskDetail['taskAgentMeta']
+  workflowName?: string
+}) {
   if (!task || !columnId) return null
   const colConfig = COLUMN_CONFIG[columnId]
+  const agentIdentity = agentMeta
+    ? {
+        id: agentMeta.id,
+        name: agentMeta.name,
+        imageSrc: agentMeta.headshot || undefined,
+      }
+    : {
+        id: 'unassigned',
+        name: 'Unassigned',
+      }
+
   return (
-    <div className="flex items-center gap-4 rounded-lg p-4 border border-border bg-surface">
-      {agentMeta ? (
-        <AgentAvatar agentId={task.agent!} size="lg" />
-      ) : (
-        <div className="size-10 rounded-full bg-zinc-700 flex items-center justify-center text-lg">?</div>
-      )}
-      <div className="flex-1 min-w-0">
-        <div className="text-sm font-medium text-foreground">{agentMeta?.name || 'Unassigned'}</div>
-        <div className="flex items-center gap-2 mt-1">
-          {colConfig && (
-            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <span className={`size-2 rounded-full ${STATUS_DOT_COLORS[columnId]}`} />
-              {colConfig.label}
+    <div
+      data-task-detail-hero=""
+      className="flex min-w-0 items-center gap-bakin-4 rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default p-bakin-4"
+    >
+      <AgentAvatar agent={agentIdentity} size="lg" decorative />
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-bakin-typography-size-body font-bakin-typography-weight-semibold text-bakin-text-primary">
+          {agentIdentity.name}
+        </div>
+        <div className="mt-bakin-1 flex min-w-0 flex-wrap items-center gap-bakin-2">
+          <StatusBadge tone={STATUS_TONES[columnId]} variant="solid" size="xs">
+            {colConfig.label}
+          </StatusBadge>
+          {workflowName ? (
+            <span className="inline-flex min-w-0 items-center gap-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted">
+              <Workflow aria-hidden="true" className="size-bakin-3 shrink-0" />
+              <span className="truncate">{workflowName}</span>
             </span>
-          )}
-          {task.workflowId && (
-            <span className="text-[11px] font-medium text-muted-foreground bg-muted/50 border border-border rounded-full px-2.5 py-0.5">{task.workflowId}</span>
-          )}
+          ) : null}
         </div>
       </div>
     </div>
@@ -64,7 +124,7 @@ export function TaskDetailForm({ m, task, columnId, open, onClose, onCancelEdit 
     title, setTitle, description, setDescription, agent, setAgent, column, setColumn,
     workflowId, setWorkflowId, workflows, brandId, setBrandId, brands, saving, dirty, pasting, descriptionRef,
     logMessage, setLogMessage, addingLog, showAllNotes, setShowAllNotes,
-    isCreate, taskAgentMeta, markDirty, handleDescriptionPaste, handleSave, handleAddLog,
+    isCreate, taskAgentMeta, agentOptions, teamOptions, markDirty, handleDescriptionPaste, handleSave, handleAddLog,
   } = m
 
   return (
@@ -74,86 +134,109 @@ export function TaskDetailForm({ m, task, columnId, open, onClose, onCancelEdit 
       title={isCreate ? 'New Task' : 'Edit Task'}
       onBack={isCreate ? undefined : onCancelEdit}
       dirty={dirty}
+      busy={saving}
+      storageKey="tasks-detail"
     >
-      <div className="space-y-4">
-        <TaskHero task={task} columnId={columnId} agentMeta={taskAgentMeta} />
-
-        <div>
-          <label className="text-sm text-muted-foreground mb-1 block">Title</label>
-          <Input
-            value={title}
-            onChange={(e) => { setTitle(e.target.value); markDirty() }}
-            placeholder="What needs to be done..."
-            className="bg-surface"
+      <div className="flex min-w-0 flex-col gap-bakin-6">
+        <Form
+          aria-label={isCreate ? 'Create task' : 'Edit task'}
+          busy={saving}
+          onSubmit={(event) => {
+            event.preventDefault()
+            void handleSave()
+          }}
+        >
+          <TaskHero
+            task={task}
+            columnId={columnId}
+            agentMeta={taskAgentMeta}
+            workflowName={workflowLabel(m, task?.workflowId)}
           />
-        </div>
 
-        <div>
-          <label className="text-sm text-muted-foreground mb-1 block">
+          <Field name="title">
+            <FieldLabel requirement="required">Title</FieldLabel>
+            <Input
+              required
+              value={title}
+              onChange={(e) => { setTitle(e.target.value); markDirty() }}
+              placeholder="What needs to be done…"
+            />
+          </Field>
+
+        <Field name="description">
+          <FieldLabel>
             Details
-            {pasting && <Loader2 className="inline size-3.5 ml-1.5 animate-spin text-muted-foreground" />}
-          </label>
-          <Textarea
-            ref={descriptionRef}
-            value={description}
-            onChange={(e) => { setDescription(e.target.value); markDirty() }}
-            onPaste={handleDescriptionPaste}
-            placeholder="Describe what needs to happen, any constraints, links, or context the agent needs... (paste images or long text to auto-attach)"
-            rows={8}
-            className="min-h-[120px] resize-y bg-surface"
+            {pasting ? <Loader2 aria-label="Processing pasted content" className="ml-bakin-1 inline size-bakin-3 animate-spin" /> : null}
+          </FieldLabel>
+          <FieldDescription>
+            Paste images or long text to attach them without crowding the task description.
+          </FieldDescription>
+          <FieldControl
+            render={(
+              <Textarea
+                ref={descriptionRef}
+                value={description}
+                onChange={(event) => { setDescription(event.target.value); markDirty() }}
+                onPaste={handleDescriptionPaste}
+                placeholder="Describe the outcome, constraints, links, and context the assignee needs…"
+                rows={8}
+                className="resize-y"
+              />
+            )}
           />
-        </div>
+        </Field>
 
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="text-sm text-muted-foreground mb-1 block">Assignee</label>
+        <div className="grid min-w-0 grid-cols-1 gap-bakin-4 @md/form:grid-cols-2">
+          <Field name="agent">
+            <FieldLabel>Assignee</FieldLabel>
             <AgentSelect
+              id="task-assignee"
+              name="agent"
               value={agent}
               onValueChange={(v) => { setAgent(v ?? ''); markDirty() }}
+              agents={agentOptions}
+              teams={teamOptions}
               allowNone
               noneLabel="Unassigned"
-              includeTeams
-              className="w-full bg-surface"
+              ariaLabel="Assignee"
+              className="w-full"
             />
             {task?.team && task?.agent && (
-              <p className="text-xs text-muted-foreground mt-1">
-                Routed from team <span className="font-medium">{task.team}</span> — the activity log records why.
-              </p>
+              <FieldDescription>
+                Routed from team <span className="font-bakin-typography-weight-semibold">{task.team}</span>; the activity log records why.
+              </FieldDescription>
             )}
-          </div>
+          </Field>
 
-          <div>
-            <label className="text-sm text-muted-foreground mb-1 block">Column</label>
+          <Field name="column">
+            <FieldLabel>Column</FieldLabel>
             <Select value={column} onValueChange={(v) => { setColumn((v ?? 'todo') as ColumnId); markDirty() }}>
-              <SelectTrigger className="w-full bg-surface">
+              <SelectTrigger aria-label="Column" className="w-full">
                 <SelectValue>
-                  <span className="flex items-center gap-2">
-                    <span className={`size-2 rounded-full ${STATUS_DOT_COLORS[column]} shrink-0`} />
-                    {COLUMN_CONFIG[column as ColumnId]?.label || column}
-                  </span>
+                  <StatusBadge tone={STATUS_TONES[column]} variant="solid" size="xs">
+                    {COLUMN_CONFIG[column]?.label || column}
+                  </StatusBadge>
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {COLUMN_IDS.map((id) => (
                   <SelectItem key={id} value={id}>
-                    <span className={`size-2 rounded-full ${STATUS_DOT_COLORS[id]} shrink-0`} />
-                    {COLUMN_CONFIG[id].label}
+                    <StatusBadge tone={STATUS_TONES[id]} variant="solid" size="xs">
+                      {COLUMN_CONFIG[id].label}
+                    </StatusBadge>
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
-          </div>
+          </Field>
         </div>
 
-        <div>
-          <label className="text-sm text-muted-foreground mb-1 block">Workflow</label>
+        <Field name="workflow">
+          <FieldLabel>Workflow</FieldLabel>
           <Select value={workflowId} onValueChange={(v) => { setWorkflowId(v ?? ''); markDirty() }}>
-            <SelectTrigger className="w-full bg-surface">
+            <SelectTrigger aria-label="Workflow" className="w-full">
               <SelectValue placeholder="None">
-                {(() => {
-                  const wf = workflows.find(w => w.filename.replace('.yaml', '') === workflowId)
-                  return wf ? `${wf.name} (${wf.stepCount} steps)` : workflowId || 'None'
-                })()}
+                {workflowLabel(m, workflowId) || 'None'}
               </SelectValue>
             </SelectTrigger>
             <SelectContent>
@@ -165,14 +248,14 @@ export function TaskDetailForm({ m, task, columnId, open, onClose, onCancelEdit 
               ))}
             </SelectContent>
           </Select>
-        </div>
+        </Field>
 
         {/* Brand (#419) — appears once at least one published brand exists */}
         {brands.length > 0 && (
-          <div>
-            <label className="text-sm text-muted-foreground mb-1 block">Brand</label>
+          <Field name="brand">
+            <FieldLabel>Brand</FieldLabel>
             <Select value={brandId} onValueChange={(v) => { setBrandId(v ?? ''); markDirty() }}>
-              <SelectTrigger className="w-full bg-surface">
+              <SelectTrigger aria-label="Brand" className="w-full">
                 <SelectValue placeholder="None">
                   {brands.find(b => b.id === brandId)?.name || (brandId || 'None (inherits from parent/project)')}
                 </SelectValue>
@@ -180,14 +263,11 @@ export function TaskDetailForm({ m, task, columnId, open, onClose, onCancelEdit 
               <SelectContent>
                 <SelectItem value="">None (inherits from parent/project)</SelectItem>
                 {brands.map((b) => (
-                  <SelectItem key={b.id} value={b.id}>
-                    <span className="size-2 rounded-full bg-fuchsia-500/50 shrink-0" />
-                    {b.name}
-                  </SelectItem>
+                  <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
-          </div>
+          </Field>
         )}
 
         {/* Workflow preview box */}
@@ -198,14 +278,19 @@ export function TaskDetailForm({ m, task, columnId, open, onClose, onCancelEdit 
         {!isCreate && task && <Slot name="task-brand" taskId={task.id} />}
         {!isCreate && task && <Slot name="task-assets" taskId={task.id} />}
 
-        <div className="flex justify-end gap-2">
-          <Button variant="outline" size="sm" onClick={isCreate ? onClose : onCancelEdit}>
-            Cancel
-          </Button>
-          <Button size="sm" onClick={handleSave} disabled={saving || (!isCreate && !dirty) || !title.trim()}>
-            {saving ? 'Saving...' : isCreate ? 'Create Task' : 'Save'}
-          </Button>
-        </div>
+          <FormActions>
+            <Button type="button" variant="outline" onClick={isCreate ? onClose : onCancelEdit} disabled={saving}>
+              Cancel
+            </Button>
+            <SubmitButton
+              busy={saving}
+              busyLabel="Saving task…"
+              disabled={(!isCreate && !dirty) || !title.trim()}
+            >
+              {isCreate ? 'Create task' : 'Save'}
+            </SubmitButton>
+          </FormActions>
+        </Form>
 
         {!isCreate && task && (
           <>
@@ -243,44 +328,55 @@ export function TaskDetailView({ m, task, columnId, open, onClose, onEdit, onDel
     logMessage, setLogMessage, addingLog, showAllNotes, setShowAllNotes,
     taskAgentMeta, handleAddLog,
   } = m
-  const agentMeta = taskAgentMeta
 
   return (
     <BakinDrawer
       open={open}
       onOpenChange={(o) => { if (!o) onClose() }}
       title={task.title}
+      storageKey="tasks-detail"
       actions={
         <DropdownMenu>
-          <DropdownMenuTrigger className="p-1.5 rounded-md hover:bg-accent transition-colors">
-            <MoreHorizontal className="size-4" />
+          <DropdownMenuTrigger
+            render={(
+              <Button variant="ghost" size="icon-sm" aria-label="Task actions">
+                <MoreHorizontal aria-hidden="true" />
+              </Button>
+            )}
+          >
+            <span className="sr-only">Task actions</span>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="min-w-36">
+          <DropdownMenuContent align="end">
             <DropdownMenuItem onClick={onEdit}>
-              <Pencil className="size-3.5 mr-2" />
+              <Pencil aria-hidden="true" />
               Edit
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => onDuplicate?.(task)}>
-              <Copy className="size-3.5 mr-2" />
+              <Copy aria-hidden="true" />
               Duplicate
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => onDelete?.(task)} className="text-red-400 focus:text-red-400">
-              <Trash2 className="size-3.5 mr-2" />
+            <DropdownMenuItem onClick={() => onDelete?.(task)} variant="danger">
+              <Trash2 aria-hidden="true" />
               Delete
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       }
     >
-      <div className="space-y-6">
+      <div className="flex min-w-0 flex-col gap-bakin-6">
         {/* Hero card */}
-        <TaskHero task={task} columnId={columnId} agentMeta={taskAgentMeta} />
+        <TaskHero
+          task={task}
+          columnId={columnId}
+          agentMeta={taskAgentMeta}
+          workflowName={workflowLabel(m, task.workflowId)}
+        />
 
         {/* Quick actions */}
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-bakin-2">
           <Button variant="outline" size="sm" onClick={onEdit}>
-            <Pencil className="size-3.5 mr-1.5" /> Edit
+            <Pencil aria-hidden="true" /> Edit
           </Button>
         </div>
 
@@ -293,7 +389,7 @@ export function TaskDetailView({ m, task, columnId, open, onClose, onEdit, onDel
         {/* Description */}
         {task.description && (
           <BakinDrawerSection title="Details">
-            <div className="text-xs text-foreground/90 leading-relaxed rounded-lg p-4 border-l-2 bg-surface" style={{ borderLeftColor: agentMeta ? `var(--agent-${task.agent})` : 'var(--outline-variant)' }}>
+            <div className="rounded-bakin-surface border-s-2 border-bakin-border-subtle bg-bakin-surface-default p-bakin-4 text-bakin-typography-size-body leading-relaxed text-bakin-text-primary">
               <MarkdownContent content={task.description} />
             </div>
           </BakinDrawerSection>

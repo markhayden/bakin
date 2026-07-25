@@ -64,7 +64,9 @@ never sit at rest in a card — surface on hover or behind the detail view.
   `neutral` (queued/imported) · `success` (published/ready) · `attention`
   (draft/attention/working) · `danger` (blocked/failed) · `accent`
   (unread/special signal). One tone scale for every "what state is this in"
-  chip.
+  chip. Use the filled treatment by default so status reads immediately;
+  reserve outline for secondary, uncertain, historical, or low-emphasis
+  context. Use soft badges for metadata rather than primary state.
 - Use `Banner`, `Alert`, and canonical danger patterns for attention and danger
   surfaces; do not restyle status colors locally.
 
@@ -73,10 +75,30 @@ never sit at rest in a card — surface on hover or behind the detail view.
 - Page hierarchy comes first from type, spacing, surface shifts, and subtle
   dividers. Cards are reserved for genuinely bounded objects and coherent
   grouped data; nested card stacks are a defect.
+- Searchable, filterable, and repeated-object indexes use the full available
+  plugin canvas through `ListPage`. A bounded `wide` list is an explicit,
+  evidenced exception rather than a page-by-page default.
+- `ListPageContent` owns the remaining results canvas. Terminal result states
+  use page scope so they center within that available height instead of
+  leaving a shallow panel above an empty page.
 - Approved radii and overlay elevation come from semantic tokens. Do not
   choose `rounded-*` or shadow utilities ad hoc.
 - Repeated rows use separators or a restrained surface shift. Explicit dense
   data rows use the canonical dense gap/height without changing typography.
+- Kanban lanes are low-chrome structure with a named header, quiet divider,
+  and task stack. The lane is never a bordered card around bordered cards;
+  only the bounded records inside it use the canonical Card surface. Inside a
+  task card, use a solid `StatusBadge` for the record's state, quiet icon-led
+  text for provenance such as workflow or project, and full-width
+  `KanbanCardSignal` rows for approval, live-turn, blocked, or failure
+  feedback. Do not turn every metadata value into another outlined chip.
+  Domain drag-and-drop keeps its stable scroll, lane, and keyed sortable
+  wrappers rather than reshaping proven interaction DOM to match a
+  presentation-only wrapper. During a drag, render the record at its exact
+  in-flow insertion position; replace an empty state with that preview when
+  relevant. A pointer clone is supplemental. Whole-lane highlighting is not a
+  placement signal, and every required move needs a named keyboard-accessible
+  alternative.
 - `Section` owns page rhythm; canonical cards own bounded-object structure.
   Titled regions pair one heading with a short description and a right-aligned
   action when needed. Every user-facing section explains itself in one caption
@@ -135,7 +157,10 @@ never sit at rest in a card — surface on hover or behind the detail view.
   state (`useQueryState` from `@makinbakin/sdk/navigation`; search filters
   included).
 - Back is `useHistoryBack(fallback)` from the navigation entrypoint plus an
-  icon-only arrow. Exception: after
+  icon-only circular arrow aligned to the page content edge, with an
+  accessible label and title. When an eyebrow supplies detail context, the
+  back action sits immediately to its left in the same compact context row.
+  Exception: after
   DELETING the thing, navigate to the list explicitly.
 - Deep-linkable editors follow the workflows-edit precedent: route wrapper
   passes params + onSaved/back callbacks into the slot component.
@@ -169,6 +194,11 @@ never sit at rest in a card — surface on hover or behind the detail view.
 - Content with imagery leads with the image. Reference-media cards are
   horizontal: a stable square thumbnail, bounded text, and the canonical card
   grid. Note previews clamp; machine ids are hover-reveal or detail content.
+- Media-led record pages use the full `DetailPage` workspace and a wide
+  `PageHeader` measure: preview in the
+  main column; core context first, quieter machine enrichment nested beneath
+  it, then downloads and version history in the named aside. Growing history
+  uses the host document scroll, not a nested vertical scroller.
 - Long text previews fade into a SOLID overlay (opaque base ~45%) carrying a
   summary + real CTA button (`FadeMore` shape) — never a trailing ghost of
   masked text, never a full dump beside a faded sibling.
@@ -249,8 +279,11 @@ and administrative surfaces during the full style-guide sweep:
   Empty charts stay honest and reduced motion removes animation.
 - **Container responsiveness is the contract.** Named containers drive card,
   control, and table layout. Headers wrap; essential state never truncates;
-  dense raw tables scroll inside their own card. Verify at 1024/720/480/320,
-  including the surrounding shell.
+  dense raw tables scroll inside their own card. A `split` grid remains
+  single-column until both objects have a comfortable reading width. Verify at 1024/720/480/320,
+  including the surrounding shell. Below the desktop breakpoint, secondary
+  shell rails collapse by default and reopen as overlays; they never consume
+  the page canvas.
 - **Only mounted views poll.** URL-backed tabs mount only the selected panel.
   Resource hooks cancel superseded requests, retain last good data after a
   background failure, and distinguish initial error, refreshing, and stale.

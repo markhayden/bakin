@@ -241,23 +241,24 @@ export function Header() {
         <div className="flex items-center gap-2">
           <img src="/bakin-logo.svg" alt="Bakin" className="h-7 w-7" />
           <span className="text-base font-bold tracking-widest text-foreground uppercase italic">Bakin</span>
-          {version && <span className="text-[10px] font-mono text-muted-foreground">v{version}</span>}
+          {version && <span className="hidden text-[10px] font-mono text-muted-foreground md:inline">v{version}</span>}
         </div>
-        <div className="ml-auto flex items-center gap-4">
+        <div className="ml-auto flex min-w-0 items-center gap-2 sm:gap-3 md:gap-4">
           <button
             type="button"
             onClick={() => openGlobalSearch()}
-            className="flex items-center gap-2 rounded-md border border-border/60 px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+            aria-label="Search everything"
+            className="flex h-bakin-8 w-bakin-8 shrink-0 items-center justify-center gap-2 rounded-md border border-border/60 p-0 text-xs text-muted-foreground transition-colors hover:text-foreground sm:h-auto sm:w-auto sm:px-2.5 sm:py-1"
             title="Search everything (⌘K)"
             data-testid="global-search-button"
           >
             <Search className="size-3.5" />
             <span className="hidden sm:inline">Search</span>
-            <kbd className="rounded border border-border/60 px-1 font-mono text-[10px]">⌘K</kbd>
+            <kbd className="hidden rounded border border-border/60 px-1 font-mono text-[10px] sm:inline">⌘K</kbd>
           </button>
-          <DispatchTimer />
-          <DebugToggle />
-          <NotificationToggle />
+          <div className="hidden md:block"><DispatchTimer /></div>
+          <div className="hidden md:block"><DebugToggle /></div>
+          <div className="hidden sm:block"><NotificationToggle /></div>
           <ConnectionDot />
         </div>
       </header>

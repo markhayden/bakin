@@ -17,6 +17,7 @@
   --color-bakin-signal-accent: var(--bakin-color-signal-accent);
   --color-bakin-signal-danger: var(--bakin-color-signal-danger);
   --color-bakin-signal-highlight: var(--bakin-color-signal-highlight);
+  --color-bakin-signal-info: var(--bakin-color-signal-info);
   --color-bakin-surface-default: var(--bakin-color-surface-default);
   --color-bakin-text-muted: var(--bakin-color-text-muted);
   --color-bakin-text-primary: var(--bakin-color-text-primary);

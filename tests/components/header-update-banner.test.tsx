@@ -63,9 +63,10 @@ describe('Header update banner', () => {
 
     renderHeader()
 
-    await waitFor(() => expect(screen.getByText(/New Bakin version available/i)).toBeDefined())
-    expect(screen.getByRole('status').textContent).toContain('v0.1.0')
-    expect(screen.getByRole('status').textContent).toContain('v0.2.0')
+    const updateMessage = await screen.findByText(/New Bakin version available/i)
+    const updateBanner = updateMessage.closest('[role="status"]')
+    expect(updateBanner?.textContent).toContain('v0.1.0')
+    expect(updateBanner?.textContent).toContain('v0.2.0')
     expect(screen.getByRole('button', { name: 'Update Bakin' })).toBeDefined()
     await waitFor(() => {
       expect(document.documentElement.style.getPropertyValue('--bakin-shell-top')).toBe('5.75rem')

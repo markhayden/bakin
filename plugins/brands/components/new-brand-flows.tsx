@@ -6,19 +6,33 @@
  */
 import { useCallback, useState } from 'react'
 import { Globe, FolderDown, Wand2, Loader2 } from 'lucide-react'
-import { AgentSelect } from '@makinbakin/sdk/components'
+import { AgentSelect } from '@makinbakin/sdk/patterns'
 import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
   Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  Field,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+  Form,
   Input,
-  Label,
+  SubmitButton,
   Textarea,
 } from '@makinbakin/sdk/ui'
+import { useBrandAgentOptions } from './use-brand-agent-options'
 import { toast } from '@makinbakin/sdk/hooks'
 import { pluginFetch } from '@makinbakin/sdk/utils'
 
@@ -51,24 +65,34 @@ const slugify = (name: string) =>
 /** The three path cards — used inside the chooser dialog AND inline on the empty state. */
 export function CreatePathCards({ onPick, size = 'row' }: { onPick: (path: CreatePath) => void; size?: 'row' | 'tile' }) {
   return (
-    <div className={size === 'tile' ? 'grid gap-3 sm:grid-cols-3' : 'flex flex-col gap-2'} data-create-paths>
+    <div
+      className={size === 'tile' ? 'grid gap-bakin-3 @lg:grid-cols-3' : 'grid gap-bakin-2'}
+      data-create-paths
+      data-layout={size}
+    >
       {CREATE_PATHS.map((p) => (
-        <button
+        <Button
           key={p.id}
-          className={`flex gap-3 rounded-xl bg-card p-4 text-left ring-1 ring-foreground/10 transition-shadow hover:ring-foreground/25 ${
-            size === 'tile' ? 'flex-col items-start' : 'items-start'
-          }`}
+          type="button"
+          variant="outline"
+          className={[
+            'h-auto min-h-[var(--bakin-layout-size-control)] w-full items-start justify-start whitespace-normal',
+            'gap-bakin-3 p-bakin-4 text-left leading-relaxed',
+            size === 'tile' ? 'flex-col' : '',
+          ].join(' ')}
           onClick={() => onPick(p.id)}
           data-create-path={p.id}
         >
-          <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-foreground/5">
-            <p.icon className="size-4.5 text-muted-foreground" />
+          <span className="flex size-bakin-8 shrink-0 items-center justify-center rounded-bakin-control bg-bakin-surface-default text-bakin-text-muted">
+            <p.icon className="size-bakin-4" />
           </span>
           <span className="min-w-0">
-            <span className="block font-medium">{p.title}</span>
-            <span className="mt-0.5 block text-sm text-muted-foreground">{p.description}</span>
+            <span className="block font-bakin-typography-weight-semibold text-bakin-text-primary">{p.title}</span>
+            <span className="mt-bakin-1 block text-bakin-typography-size-meta font-bakin-typography-weight-regular leading-relaxed text-bakin-text-muted">
+              {p.description}
+            </span>
           </span>
-        </button>
+        </Button>
       ))}
     </div>
   )
@@ -85,7 +109,7 @@ export function NewBrandChooser({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-card border-border sm:max-w-xl">
+      <DialogContent className="sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>New brand</DialogTitle>
           <DialogDescription>Every path creates a kit you review before agents start using it.</DialogDescription>
@@ -112,6 +136,7 @@ export function FromWebsiteDialog({
   /** taskId = the dispatched drafting task, so the detail page can link it in the drafting banner. */
   onCreated: (brandId: string, taskId?: string) => void
 }) {
+  const agentOptions = useBrandAgentOptions()
   const [name, setName] = useState('')
   const [urls, setUrls] = useState('')
   const [agent, setAgent] = useState('')
@@ -159,59 +184,81 @@ export function FromWebsiteDialog({
   const ready = name.trim().length > 0 && urls.trim().length > 0 && agent.length > 0
 
   return (
-    <Dialog open={open} onOpenChange={(next) => !busy && onOpenChange(next)}>
-      <DialogContent className="bg-card border-border sm:max-w-md" data-from-website>
+    <Dialog open={open} busy={busy} onOpenChange={(next) => !busy && onOpenChange(next)}>
+      <DialogContent className="sm:max-w-md" data-from-website>
         <DialogHeader>
           <DialogTitle>New brand from a website</DialogTitle>
           <DialogDescription>
             The agent reads your links, extracts colors, voice, and terminology, and drafts the kit for you to review.
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="fw-name">Brand name</Label>
-            <Input id="fw-name" autoFocus placeholder="e.g. Acme" value={name} onChange={(e) => setName(e.target.value)} />
+        <Form
+          aria-label="Create brand from website"
+          busy={busy}
+          onSubmit={(event) => {
+            event.preventDefault()
+            if (ready && !busy) void create()
+          }}
+        >
+          <FieldGroup>
+            <Field name="name">
+              <FieldLabel htmlFor="fw-name" requirement="required">Brand name</FieldLabel>
+              <FieldDescription>Used for the kit name and its stable identifier.</FieldDescription>
+              <Input id="fw-name" autoFocus required placeholder="e.g. Acme" value={name} onChange={(e) => setName(e.target.value)} />
             {name.trim() && (
-              <p className="text-[11px] text-muted-foreground">
-                id: <span className="font-mono">{id}</span>
+              <p className="font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
+                id: {id}
               </p>
             )}
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="fw-urls">Website or style guide links</Label>
-            <Textarea
-              id="fw-urls"
-              rows={2}
-              placeholder={'https://acme.example\nhttps://acme.example/styleguide'}
-              value={urls}
-              onChange={(e) => setUrls(e.target.value)}
-            />
-            <p className="text-[11px] text-muted-foreground">One or more links — homepage, style guide, brand page.</p>
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="fw-agent">Which agent drafts it?</Label>
-            <AgentSelect id="fw-agent" value={agent} onValueChange={setAgent} placeholder="Choose an agent..." />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="fw-notes">Anything else (optional)</Label>
-            <Textarea id="fw-notes" rows={2} placeholder="Phrases you love or hate, things the site gets wrong..." value={notes} onChange={(e) => setNotes(e.target.value)} />
-          </div>
-          {error && <p className="text-sm text-destructive">{error}</p>}
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>
-            Cancel
-          </Button>
-          <Button onClick={() => void create()} disabled={!ready || busy} data-from-website-create>
-            {busy ? (
-              <>
-                <Loader2 className="mr-1.5 size-3.5 animate-spin" /> Creating draft...
-              </>
-            ) : (
-              'Create draft'
-            )}
-          </Button>
-        </DialogFooter>
+            </Field>
+            <Field name="urls">
+              <FieldLabel htmlFor="fw-urls" requirement="required">Website or style guide links</FieldLabel>
+              <FieldDescription>Use one or more links: a homepage, style guide, or brand page.</FieldDescription>
+              <Textarea
+                id="fw-urls"
+                required
+                rows={3}
+                placeholder={'https://acme.example\nhttps://acme.example/styleguide'}
+                value={urls}
+                onChange={(e) => setUrls(e.target.value)}
+              />
+            </Field>
+            <Field name="agent">
+              <FieldLabel htmlFor="fw-agent" requirement="required">Which agent drafts it?</FieldLabel>
+              <FieldDescription>The selected agent reads the sources and authors the first draft.</FieldDescription>
+              <AgentSelect
+                id="fw-agent"
+                value={agent}
+                onValueChange={setAgent}
+                agents={agentOptions}
+                placeholder="Choose an agent..."
+              />
+            </Field>
+            <Field name="notes">
+              <FieldLabel htmlFor="fw-notes" requirement="optional">Anything else</FieldLabel>
+              <FieldDescription>Call out phrases you love or hate, or anything the current site gets wrong.</FieldDescription>
+              <Textarea id="fw-notes" rows={3} placeholder="Additional direction for the drafting agent…" value={notes} onChange={(e) => setNotes(e.target.value)} />
+            </Field>
+          </FieldGroup>
+          {error ? (
+            <Alert tone="danger">
+              <AlertTitle>Brand draft could not be created</AlertTitle>
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          ) : null}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>
+              Cancel
+            </Button>
+            <SubmitButton
+              busyLabel={<><Loader2 className="animate-spin motion-reduce:animate-none" /> Creating draft…</>}
+              disabled={!ready}
+              data-from-website-create
+            >
+              Create draft
+            </SubmitButton>
+          </DialogFooter>
+        </Form>
       </DialogContent>
     </Dialog>
   )
@@ -292,89 +339,90 @@ export function ImportBrandDialog({
   }, [preview, source, onOpenChange, onImported])
 
   return (
-    <Dialog open={open} onOpenChange={(next) => !busy && onOpenChange(next)}>
-      <DialogContent className="bg-card border-border sm:max-w-md" data-import-brand>
+    <Dialog open={open} busy={busy} onOpenChange={(next) => !busy && onOpenChange(next)}>
+      <DialogContent className="sm:max-w-md" data-import-brand>
         <DialogHeader>
           <DialogTitle>Import a brand</DialogTitle>
           <DialogDescription>Preview first — nothing is written until you confirm the import.</DialogDescription>
         </DialogHeader>
-        <div className="space-y-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="import-source">Where from?</Label>
+        <Form
+          aria-label="Import a brand"
+          busy={busy}
+          onSubmit={(event) => {
+            event.preventDefault()
+            if (preview) void doImport()
+            else if (source.trim()) void fetchPreview()
+          }}
+        >
+          <Field name="source">
+            <FieldLabel htmlFor="import-source" requirement="required">Import source</FieldLabel>
+            <FieldDescription>
+              Use <span className="font-bakin-typography-family-mono">github:user/repo</span> or the full path to a folder containing <span className="font-bakin-typography-family-mono">brand.json</span>.
+            </FieldDescription>
             <Input
               id="import-source"
               autoFocus
+              required
               placeholder="github:user/repo"
               value={source}
               onChange={(e) => {
                 setSource(e.target.value)
                 setPreview(null)
               }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && source.trim() && !busy) void fetchPreview()
-              }}
             />
-            <p className="text-[11px] text-muted-foreground">
-              GitHub is easiest: <span className="font-mono">github:user/repo</span>. For a local kit, paste the
-              folder's full path (e.g. <span className="font-mono">/Users/you/acme-brand</span>) — the folder must
-              contain a <span className="font-mono">brand.json</span>. Same as{' '}
-              <span className="font-mono">bakin brands import</span> in the terminal.
-            </p>
-          </div>
-          {error && <p className="text-sm text-destructive">{error}</p>}
-          {preview && (
-            <div className="space-y-2 rounded-lg bg-foreground/5 p-3" data-import-preview>
-              <div className="flex items-center gap-2">
-                <span className="font-medium">{preview.name}</span>
-                <span className="font-mono text-xs text-muted-foreground">{preview.id}</span>
-              </div>
+          </Field>
+          {error ? (
+            <Alert tone="danger">
+              <AlertTitle>Import source could not be read</AlertTitle>
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          ) : null}
+          {preview ? (
+            <Card size="sm" data-import-preview>
+              <CardHeader>
+                <CardTitle>{preview.name}</CardTitle>
+                <CardDescription className="font-bakin-typography-family-mono">{preview.id}</CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-bakin-3">
               {preview.palette.length > 0 && (
-                <div className="flex gap-1">
+                <div className="flex flex-wrap gap-bakin-1" aria-label="Imported brand palette">
                   {preview.palette.slice(0, 8).map((c) => (
-                    <span key={c.name} title={`${c.name} ${c.hex}`} className="size-4 rounded-full ring-1 ring-foreground/10" style={{ backgroundColor: c.hex }} />
+                    <span
+                      key={c.name}
+                      title={`${c.name} ${c.hex}`}
+                      className="size-bakin-4 rounded-bakin-pill border border-bakin-border-subtle"
+                      style={{ backgroundColor: c.hex }}
+                    />
                   ))}
                 </div>
               )}
-              <p className="text-xs text-muted-foreground">
+              <p className="text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted">
                 {preview.rules} rules · {preview.guidelines} guideline docs · {preview.lessons} lessons · {preview.assets} asset files
                 {preview.commit ? ` · ${preview.commit.slice(0, 8)}` : ''}
               </p>
               {preview.exists && (
-                <p className="text-xs font-medium text-warning">
-                  A brand with this id already exists — importing replaces it (your local edits are lost).
-                </p>
+                <Alert tone="attention">
+                  <AlertTitle>This brand already exists</AlertTitle>
+                  <AlertDescription>Importing replaces the current kit and its local edits.</AlertDescription>
+                </Alert>
               )}
-            </div>
-          )}
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>
-            Cancel
-          </Button>
-          {preview ? (
-            <Button onClick={() => void doImport()} disabled={busy} data-import-confirm>
-              {busy ? (
-                <>
-                  <Loader2 className="mr-1.5 size-3.5 animate-spin" /> Importing...
-                </>
-              ) : preview.exists ? (
-                'Replace + import'
-              ) : (
-                'Import'
-              )}
+              </CardContent>
+            </Card>
+          ) : null}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>
+              Cancel
             </Button>
-          ) : (
-            <Button onClick={() => void fetchPreview()} disabled={busy || !source.trim()} data-import-preview-btn>
-              {busy ? (
-                <>
-                  <Loader2 className="mr-1.5 size-3.5 animate-spin" /> Fetching...
-                </>
-              ) : (
-                'Preview'
-              )}
-            </Button>
-          )}
-        </DialogFooter>
+            <SubmitButton
+              busyLabel={<><Loader2 className="animate-spin motion-reduce:animate-none" /> {preview ? 'Importing…' : 'Fetching…'}</>}
+              disabled={!source.trim()}
+              data-import-confirm={preview ? true : undefined}
+              data-import-preview-btn={preview ? undefined : true}
+            >
+              {preview ? (preview.exists ? 'Replace and import' : 'Import') : 'Preview'}
+            </SubmitButton>
+          </DialogFooter>
+        </Form>
       </DialogContent>
     </Dialog>
   )

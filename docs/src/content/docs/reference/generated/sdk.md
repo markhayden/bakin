@@ -351,6 +351,11 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 | `InspectorPanelContent` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `InspectorPanelFooter` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `InspectorPanelHeader` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `KanbanBoard` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `KanbanCardSignal` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `KanbanColumn` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `KanbanColumnBody` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `KanbanColumnHeader` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `ListPage` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `ListPageContent` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `ListPageControls` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
@@ -372,6 +377,7 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 | `SearchInput` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `SegmentedControl` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `SortableHead` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `StatGroup` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `StatTile` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `StatusBadge` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `UnderlineTabs` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
@@ -445,10 +451,16 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 | `InspectorPanelFooterProps` | — |
 | `InspectorPanelHeaderProps` | — |
 | `InspectorPanelProps` | — |
+| `KanbanBoardProps` | — |
+| `KanbanCardSignalProps` | — |
+| `KanbanColumnBodyProps` | — |
+| `KanbanColumnHeaderProps` | — |
+| `KanbanColumnProps` | — |
 | `ListPageContentProps` | — |
 | `ListPageControlsProps` | — |
 | `ListPageProps` | — |
 | `ListPageWidth` | — |
+| `PageHeaderMeasure` | — |
 | `PageHeaderProps` | — |
 | `SettingsPageBodyProps` | — |
 | `SettingsPageContentProps` | — |
@@ -480,6 +492,7 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 | `SegmentedControlProps` | — |
 | `SortableHeadProps` | — |
 | `SortDir` | — |
+| `StatGroupProps` | — |
 | `StatTileProgress` | — |
 | `StatTileProgressTone` | — |
 | `StatTileProps` | — |
@@ -807,5 +820,5 @@ Source: `packages/sdk/src/navigation/index.ts`.
 | `UnsavedChangesGuardResult` | Inputs and result contract for complete unsaved-change protection. |
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Jul 22, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Jul 24, 2026 · Bakin 0.0.0-dev</span>
 </aside>

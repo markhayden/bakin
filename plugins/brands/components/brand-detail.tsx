@@ -9,10 +9,25 @@
  * editors that round-trip through the manifest PUT / doc routes.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from '@tanstack/react-router'
-import { MarkdownContent, UnderlineTabs, SaveBar, SectionCard, ConfirmDialog, AssetPicker, DangerZone, EmptyState, ErrorState, StatTile, StatusBadge, useUnsavedChangesGuard } from '@makinbakin/sdk/components'
+import { MarkdownContent } from '@makinbakin/sdk/content'
+import { Grid, Inline, Section, Stack } from '@makinbakin/sdk/layout'
+import { useRouter, useUnsavedChangesGuard } from '@makinbakin/sdk/navigation'
 import {
-  Button, Input, Textarea, Switch, Label, Skeleton, Progress,
+  ConfirmDialog,
+  DangerZone,
+  DetailPage,
+  DetailPageBody,
+  DetailPageMain,
+  PageHeader,
+  SaveBar,
+  StatGroup,
+  StatTile,
+  StatusBadge,
+  UnderlineTabs,
+} from '@makinbakin/sdk/patterns'
+import { AssetPicker, EmptyState, SectionCard } from '@makinbakin/sdk/components'
+import {
+  Banner, Button, Input, Textarea, Switch, Label, Skeleton, Progress, SystemState,
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
 } from '@makinbakin/sdk/ui'
@@ -40,6 +55,8 @@ const TABS = [
 const isHex = (h: string) => /^#[0-9a-fA-F]{6}$/.test(h)
 /** Frontmatter is machine metadata — previews render the body only. */
 const stripFrontmatter = (md: string) => md.replace(/^---\n[\s\S]*?\n---\n?/, '')
+/** A page preview already has its own title hierarchy; omit a document's leading H1. */
+const stripPreviewTitle = (md: string) => stripFrontmatter(md).replace(/^\s*#\s+[^\n]*(?:\n+|$)/, '')
 
 /** Thin alias over the SDK's section-variant empty state (promoted from here). */
 function SectionEmpty({ children }: { children: React.ReactNode }) {
@@ -100,7 +117,7 @@ const BLANK_HEX = '#888888'
 
 export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () => void }) {
   const [detail, setDetail] = useState<DetailResponse | null>(null)
-  const navigate = useNavigate()
+  const router = useRouter()
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [tabParam, setTab] = useQueryState('tab', 'overview')
@@ -265,19 +282,18 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
 
   /** Every doc opens in the dedicated editor route — never an inline swap (spec §7e). */
   const editDoc = useCallback(
-    (kind: DocKind, name: string, create = false) =>
-      void navigate({
-        to: '/brands/$brandId/docs/$kind/$name',
-        params: { brandId, kind, name },
-        search: (create ? { create: '1' } : {}) as never,
-      }),
-    [navigate, brandId],
+    (kind: DocKind, name: string, create = false) => {
+      const path = `/brands/${encodeURIComponent(brandId)}/docs/${encodeURIComponent(kind)}/${encodeURIComponent(name)}`
+      router.push(create ? `${path}?create=1` : path)
+    },
+    [router, brandId],
   )
 
   // Publishing gets a light confirm — it flips the switch agents act on.
   const [publishConfirm, setPublishConfirm] = useState(false)
   const [publishBusy, setPublishBusy] = useState(false)
   const [publishError, setPublishError] = useState<string | null>(null)
+  const [logoPickerRequested, setLogoPickerRequested] = useState(false)
   const publish = useCallback(async () => {
     setPublishBusy(true)
     setPublishError(null)
@@ -296,35 +312,62 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
 
   if (notFound) {
     return (
-      <div className="p-6">
-        <ErrorState
-          title="This brand doesn't exist"
-          message="It may have been deleted, or the link is stale."
-          retry={onBack}
+      <DetailPage width="full" data-brand-detail-not-found>
+        <BrandStateHeader brandId={brandId} onBack={onBack} />
+        <DetailPageBody
+          state={(
+            <SystemState
+              kind="initial-empty"
+              scope="page"
+              title="This brand doesn't exist"
+              description="It may have been deleted, or the link is stale."
+              action={<Button variant="outline" onClick={onBack}>Open brands</Button>}
+            />
+          )}
         />
-      </div>
+      </DetailPage>
     )
   }
   if (error && !detail) {
     return (
-      <div className="p-6">
-        <Button variant="ghost" size="sm" onClick={onBack}><ArrowLeft className="size-3.5" /> Branding</Button>
-        <p className="mt-3 text-sm text-destructive">{error}</p>
-      </div>
+      <DetailPage width="full" data-brand-detail-error>
+        <BrandStateHeader brandId={brandId} onBack={onBack} />
+        <DetailPageBody
+          state={(
+            <SystemState
+              kind="error"
+              scope="page"
+              recovery="available"
+              title="Brand details couldn't load"
+              description={error}
+              action={<Button variant="outline" onClick={() => void refresh()}>Try again</Button>}
+            />
+          )}
+        />
+      </DetailPage>
     )
   }
   if (!detail) {
-    // Hero + tabs skeleton — never a blank pane while loading.
     return (
-      <div className="flex flex-col gap-6 p-4 sm:p-6" data-brand-detail-loading>
-        <Skeleton className="h-8 w-24" />
-        <Skeleton className="h-40 rounded-2xl" />
-        <Skeleton className="h-8 w-96" />
-        <div className="grid gap-4 lg:grid-cols-2">
-          <Skeleton className="h-40 rounded-xl" />
-          <Skeleton className="h-40 rounded-xl" />
-        </div>
-      </div>
+      <DetailPage width="full" data-brand-detail-loading>
+        <BrandStateHeader brandId={brandId} onBack={onBack} />
+        <DetailPageBody
+          state={(
+            <SystemState
+              kind="loading"
+              scope="page"
+              title="Loading brand"
+              description="The brand identity, guidance, lessons, and assets will appear here."
+              preview={(
+                <Stack gap="item">
+                  <Skeleton className="h-bakin-8 w-full max-w-lg" />
+                  <Skeleton className="h-24 w-full rounded-bakin-surface" />
+                </Stack>
+              )}
+            />
+          )}
+        />
+      </DetailPage>
     )
   }
 
@@ -332,14 +375,15 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
   const b = staged ?? detail.brand
 
   return (
-    <div className="flex flex-col gap-6 p-4 sm:p-6">
-      {/* Icon-only history back — same pattern as the asset viewer. */}
-      <Button variant="ghost" size="sm" className="w-fit -ml-2 text-muted-foreground" onClick={onBack} aria-label="Back">
-        <ArrowLeft className="size-4" />
-      </Button>
-
-      {/* Publish lives in the draft banner (and Settings) — ONE prominent button, not three. */}
-      <PaletteHero brand={b} />
+    <DetailPage width="full" data-brand-detail>
+      <BrandPageHeader
+        brand={b}
+        onBack={onBack}
+        onAddLogo={() => {
+          setTab('assets')
+          setLogoPickerRequested(true)
+        }}
+      />
 
       {b.draft && <DraftBanner brand={b} brandId={brandId} onPublish={() => setPublishConfirm(true)} />}
 
@@ -357,11 +401,30 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
         }}
       />
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {error && (
+        <Banner
+          tone="danger"
+          title="The latest brand data couldn't load"
+          description={error}
+          action={<Button variant="outline" size="sm" onClick={() => void refresh()}>Try again</Button>}
+        />
+      )}
 
-      <UnderlineTabs tabs={TABS} value={tab} onValueChange={(id) => setTab(id as typeof tab)} />
+      <UnderlineTabs
+        tabs={TABS}
+        value={tab}
+        onValueChange={(id) => setTab(id as typeof tab)}
+        ariaLabel={`${b.name} sections`}
+        idPrefix="brand-detail"
+      />
 
-      {tab === 'overview' && <OverviewTab brand={b} detail={detail} brandId={brandId} onGoTo={setTab} onEditDoc={editDoc} />}
+      <DetailPageBody>
+        <DetailPageMain
+          id={`brand-detail-panel-${tab}`}
+          role="tabpanel"
+          aria-labelledby={`brand-detail-tab-${tab}`}
+        >
+          {tab === 'overview' && <OverviewTab brand={b} detail={detail} brandId={brandId} onGoTo={setTab} onEditDoc={editDoc} />}
 
       {tab === 'identity' && (
         <div className="grid gap-4 lg:grid-cols-2">
@@ -491,7 +554,14 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
         />
       )}
 
-      {tab === 'assets' && <BrandAssetsSection brand={b} onSave={stage} />}
+      {tab === 'assets' && (
+        <BrandAssetsSection
+          brand={b}
+          onSave={stage}
+          logoPickerRequested={logoPickerRequested}
+          onLogoPickerRequestHandled={() => setLogoPickerRequested(false)}
+        />
+      )}
 
       {tab === 'settings' && (
         <BrandSettingsTab
@@ -504,11 +574,13 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
           // and offers to Save to a brand that no longer exists.
           onDeleted={() => {
             discard()
-            setTimeout(() => void navigate({ to: '/brands' }), 0)
+            setTimeout(() => router.push('/brands'), 0)
           }}
           onChanged={() => void refresh()}
         />
       )}
+        </DetailPageMain>
+      </DetailPageBody>
 
       {/* ONE save path for the whole manifest — appears whenever anything is staged. */}
       <SaveBar
@@ -520,7 +592,7 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
         onDiscard={discard}
       />
       {unsavedGuard.dialog}
-    </div>
+    </DetailPage>
   )
 }
 
@@ -536,52 +608,116 @@ function RemoveBtn({ onClick }: { onClick: () => void }) {
   )
 }
 
-// ─── Hero: the brand paints its own header ────────────────────────────────────
+// ─── Shared detail identity ───────────────────────────────────────────────────
 
-function PaletteHero({ brand }: { brand: BrandManifest }) {
-  const colors = brand.palette.filter((c) => isHex(c.hex))
-  const primary = colors[0]?.hex
-  const logo = brand.logos.find((l) => l.variant === 'primary') ?? brand.logos[0]
+function BrandBackButton({ onBack }: { onBack: () => void }) {
   return (
-    <div className="overflow-hidden rounded-2xl ring-1 ring-foreground/10">
-      {/* Proportioned palette band — primary widest; muted when empty. */}
-      <div className="flex h-20 motion-safe:transition-all" aria-hidden={colors.length === 0}>
-        {colors.length > 0 ? colors.map((c, i) => (
-          <div key={`${c.name}-${i}`} title={`${c.name} ${c.hex}${c.usage ? ` — ${c.usage}` : ''}`} style={{ backgroundColor: c.hex, flexGrow: colors.length - i }} />
-        )) : (
-          <div className="flex w-full items-center justify-center bg-surface-container text-xs text-muted-foreground">
-            No palette yet — add colors under Identity so image tools have brand colors to follow
-          </div>
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      className="rounded-bakin-pill"
+      onClick={onBack}
+      aria-label="Back to brands"
+      title="Back to brands"
+    >
+      <ArrowLeft />
+    </Button>
+  )
+}
+
+function BrandStateHeader({ brandId, onBack }: { brandId: string; onBack: () => void }) {
+  return (
+    <PageHeader
+      measure="wide"
+      navigation={<BrandBackButton onBack={onBack} />}
+      eyebrow="Branding / Detail"
+      title="Brand detail"
+      meta={<code className="font-bakin-typography-family-mono">{brandId}</code>}
+    />
+  )
+}
+
+function BrandPageHeader({
+  brand,
+  onAddLogo,
+  onBack,
+}: {
+  brand: BrandManifest
+  onAddLogo: () => void
+  onBack: () => void
+}) {
+  const colors = brand.palette.filter((c) => isHex(c.hex))
+  const logo = brand.logos.find((l) => l.variant === 'primary') ?? brand.logos[0]
+
+  return (
+    <Grid
+      layout="single"
+      gap="item"
+      align="start"
+      className="@3xl/layout-grid:grid-cols-4 @3xl/layout-grid:gap-x-bakin-6"
+      data-brand-header
+    >
+      <PageHeader
+        className="@3xl/layout-grid:col-span-3"
+        measure="wide"
+        navigation={<BrandBackButton onBack={onBack} />}
+        eyebrow="Branding / Detail"
+        title={brand.name}
+        description={brand.description}
+        meta={(
+          <>
+            <code className="font-bakin-typography-family-mono">{brand.id}</code>
+            {brand.draft
+              ? <StatusBadge tone="attention" variant="solid">Draft</StatusBadge>
+              : <StatusBadge tone="success" variant="solid" icon={Check}>Published</StatusBadge>}
+            {brand.source ? <StatusBadge tone="neutral" variant="soft" icon={ExternalLink}>Imported</StatusBadge> : null}
+          </>
         )}
-      </div>
-      {/* Identity panel, ambient-tinted by the primary color. */}
-      <div
-        className="flex flex-wrap items-start justify-between gap-4 bg-card p-5"
-        style={primary ? { background: `linear-gradient(115deg, color-mix(in oklab, ${primary} 12%, var(--card)) 0%, var(--card) 55%)` } : undefined}
+      />
+      <Stack
+        align="start"
+        className="w-full @3xl/layout-grid:col-start-4 @3xl/layout-grid:row-start-1 @3xl/layout-grid:mt-bakin-8 @3xl/layout-grid:items-end @3xl/layout-grid:pt-bakin-3"
+        data-brand-visual-identity
       >
-        <div className="flex min-w-0 items-start gap-4">
-          {logo && (
-            <img
-              src={`/api/assets/${logo.assetId}`}
-              alt={`${brand.name} logo`}
-              className="size-14 shrink-0 rounded-xl bg-background/40 object-contain p-1.5 ring-1 ring-foreground/10"
-              onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+        {logo ? (
+          <img
+            src={`/api/assets/${logo.assetId}`}
+            alt={`${brand.name} logo`}
+            className="size-24 shrink-0 object-contain"
+            data-brand-logo
+            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+          />
+        ) : (
+          <Button
+            variant="outline"
+            className="h-24 w-full flex-col whitespace-normal border-dashed text-center"
+            onClick={onAddLogo}
+            data-add-logo-from-header
+          >
+            <ImageIcon className="size-bakin-6" />
+            Add logo
+          </Button>
+        )}
+      </Stack>
+      {colors.length > 0 ? (
+        <span
+          role="img"
+          aria-label={`Brand palette: ${colors.map((color) => `${color.name} ${color.hex}`).join(', ')}`}
+          className="flex h-bakin-2 w-full overflow-hidden border border-bakin-border-subtle @3xl/layout-grid:col-span-2 @3xl/layout-grid:col-start-1 @3xl/layout-grid:row-start-2"
+          data-brand-palette
+        >
+          {colors.map((color) => (
+            <span
+              key={`${color.name}-${color.hex}`}
+              aria-hidden="true"
+              title={`${color.name} ${color.hex}${color.usage ? ` — ${color.usage}` : ''}`}
+              className="h-full min-w-0 flex-1"
+              style={{ backgroundColor: color.hex }}
             />
-          )}
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2.5">
-              <h1 className="text-2xl font-semibold tracking-tight">{brand.name}</h1>
-              <span className="font-mono text-xs text-muted-foreground">{brand.id}</span>
-              {brand.draft
-                ? <StatusBadge tone="warning">Draft</StatusBadge>
-                : <StatusBadge tone="success" icon={Check}>Published</StatusBadge>}
-              {brand.source && <StatusBadge tone="neutral" icon={ExternalLink}>imported</StatusBadge>}
-            </div>
-            {brand.description && <p className="mt-1.5 max-w-2xl text-sm text-muted-foreground">{brand.description}</p>}
-          </div>
-        </div>
-      </div>
-    </div>
+          ))}
+        </span>
+      ) : null}
+    </Grid>
   )
 }
 
@@ -636,63 +772,89 @@ function OverviewTab({
   const completeness = detail.completeness
 
   return (
-    <div className="flex flex-col gap-6">
+    <Stack gap="section" data-brand-overview>
       {/* Finish-your-kit checklist: server-computed, every miss is a jump link. */}
       {completeness && completeness.percent < 100 && (
-        <SectionCard
-          title="Finish your kit"
-          icon={Check}
-          description="What's still missing before agents have the full picture — each item jumps to where you fix it."
-          action={
-            <span className="flex items-center gap-2">
-              <Progress value={completeness.percent} className="h-1.5 w-24" aria-label={`Kit ${completeness.percent}% complete`} />
-              <span className="text-xs tabular-nums text-muted-foreground">{completeness.percent}%</span>
-            </span>
-          }
+        <Section
+          spacing="compact"
+          data-kit-completeness
+          data-tone="neutral"
+          className="relative overflow-hidden rounded-bakin-surface border border-bakin-border-strong bg-bakin-surface-default px-bakin-4 py-bakin-4 before:absolute before:inset-y-0 before:start-0 before:w-bakin-1 before:bg-bakin-text-muted"
         >
-          <div className="grid gap-1 sm:grid-cols-2" data-kit-checklist>
+          <OverviewSectionHeader
+            title="Finish your kit"
+            icon={Info}
+            iconClassName="text-bakin-text-muted"
+            description="What's still missing before agents have the full picture — each item jumps to where you fix it."
+            action={(
+              <Inline gap="dense" wrap={false}>
+              <Progress value={completeness.percent} className="h-1.5 w-24" aria-label={`Kit ${completeness.percent}% complete`} />
+                <span className="text-bakin-typography-size-meta tabular-nums text-bakin-text-muted">{completeness.percent}%</span>
+              </Inline>
+            )}
+          />
+          <Grid layout="split" gap="dense" data-kit-checklist>
             {completeness.items.map((item) => (
-              <button
+              <Button
                 key={item.key}
-                className="flex items-start gap-2.5 rounded-lg px-1 py-1 text-left transition-colors hover:bg-foreground/5"
+                variant="ghost"
+                className="h-auto min-h-bakin-8 justify-start whitespace-normal px-bakin-2 py-bakin-2 text-left"
                 onClick={() => onGoTo(item.fixTab)}
                 data-kit-item={item.key}
               >
                 {item.done
-                  ? <Check className="mt-0.5 size-4 shrink-0 text-success" />
-                  : <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" />}
-                <span className="text-sm">
-                  <span className={item.done ? '' : 'text-warning'}>{item.label}</span>
-                  {!item.done && <span className="text-muted-foreground"> — {item.hint}</span>}
+                  ? (
+                      <span
+                        aria-hidden="true"
+                        className="flex size-bakin-4 shrink-0 items-center justify-center rounded-bakin-control bg-bakin-action-primary-background text-bakin-action-primary-foreground"
+                        data-kit-checkbox="complete"
+                      >
+                        <Check className="size-bakin-3" />
+                      </span>
+                    )
+                  : (
+                      <span
+                        aria-hidden="true"
+                        className="size-bakin-4 shrink-0 rounded-bakin-control border border-bakin-text-muted/80 bg-bakin-canvas-default"
+                        data-kit-checkbox="incomplete"
+                      />
+                    )}
+                <span className="min-w-0 text-bakin-typography-size-body leading-relaxed">
+                  <span>{item.label}</span>
+                  {!item.done && <span className="text-bakin-text-muted"> — {item.hint}</span>}
                 </span>
-              </button>
+              </Button>
             ))}
-          </div>
-        </SectionCard>
+          </Grid>
+        </Section>
       )}
 
       {/* Stat tiles */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <StatGroup
+        label="Brand summary metrics"
+        className="[&>[data-stat-tile]]:min-w-[min(100%,12rem)] [&>[data-stat-tile]]:flex-1 @4xl/page-shell:[&>[data-stat-tile]]:max-w-72"
+      >
         <CardFootprintTile card={card} />
         <StatTile icon={FileText} label="Guidelines" value={detail.guidelines.length} sub="docs" onClick={() => onGoTo('guidelines')} />
         <StatTile icon={BookOpen} label="Lessons" value={detail.lessons.length} sub="banked" onClick={() => onGoTo('lessons')} />
         <StatTile icon={ImageIcon} label="Assets" value={assetCount} sub={`${brand.assetGroups.length} group(s)`} onClick={() => onGoTo('assets')} />
-      </div>
+      </StatGroup>
 
-      <div className="grid gap-4 lg:grid-cols-[3fr_2fr]">
-        <SectionCard
-          title="Voice"
-          icon={Sparkles}
-          description="How the brand talks — the biggest lever on how on-brand output reads."
-          action={
+      <Grid layout="main-aside" gap="section" align="start">
+        <Section divider="top" spacing="compact">
+          <OverviewSectionHeader
+            title="Voice"
+            icon={Sparkles}
+            description="How the brand talks — the biggest lever on how on-brand output reads."
+            action={(
             <Button
               variant="ghost" size="xs" className="text-muted-foreground"
               onClick={() => onEditDoc('guidelines', 'voice.md', voice === null)}
             >
               <Pencil className="size-3" /> Edit voice
             </Button>
-          }
-        >
+            )}
+          />
           {voice === null
             ? <SectionEmpty>No voice.md yet — the biggest lever on how on-brand output reads.</SectionEmpty>
             : (
@@ -701,36 +863,69 @@ function OverviewTab({
                 actionLabel="Read the full voice guide"
                 onAction={() => onEditDoc('guidelines', 'voice.md')}
               >
-                <div className="prose-invert max-w-none text-sm"><MarkdownContent content={stripFrontmatter(voice)} /></div>
+                <div className="prose-invert max-w-none text-sm"><MarkdownContent content={stripPreviewTitle(voice)} /></div>
               </FadeMore>
             )}
-        </SectionCard>
+        </Section>
 
-        <SectionCard
-          title="Rules & terminology"
-          icon={AlertTriangle}
-          description="Non-negotiables that ride every branded task inline."
-          action={<Button variant="ghost" size="xs" className="text-muted-foreground" onClick={() => onGoTo('identity')}><Pencil className="size-3" /> Edit</Button>}
-        >
+        <Section divider="top" spacing="compact">
+          <OverviewSectionHeader
+            title="Rules & terminology"
+            icon={AlertTriangle}
+            description="Non-negotiables that ride every branded task inline."
+            action={<Button variant="ghost" size="xs" className="text-muted-foreground" onClick={() => onGoTo('identity')}><Pencil className="size-3" /> Edit</Button>}
+          />
           <RulesTermsSummary brand={brand} onGoTo={onGoTo} />
-        </SectionCard>
-      </div>
+        </Section>
+      </Grid>
 
-      <SectionCard
-        title="Recent activity"
-        icon={Rocket}
-        description="Edits, imports, publishes, and dispatch injections for this brand."
-      >
+      <Section divider="top" spacing="compact">
+        <OverviewSectionHeader
+          title="Recent activity"
+          icon={Rocket}
+          description="Edits, imports, publishes, and dispatch injections for this brand."
+        />
         {activity.length === 0
           ? <SectionEmpty>Nothing yet — activity shows up as the brand gets used.</SectionEmpty>
           : activity.slice(0, 8).map((a, i) => (
-            <div key={`${a.ts}-${i}`} className="flex items-baseline justify-between gap-2 text-sm">
+            <Inline key={`${a.ts}-${i}`} align="baseline" justify="between" gap="dense">
               <span>{activityLabel(a)}</span>
-              <span className="shrink-0 text-xs text-muted-foreground">{relTime(a.ts)}</span>
-            </div>
+              <span className="shrink-0 text-bakin-typography-size-meta text-bakin-text-muted">{relTime(a.ts)}</span>
+            </Inline>
           ))}
-      </SectionCard>
-    </div>
+      </Section>
+    </Stack>
+  )
+}
+
+function OverviewSectionHeader({
+  action,
+  description,
+  icon: Icon,
+  iconClassName = 'text-bakin-signal-accent',
+  title,
+}: {
+  action?: React.ReactNode
+  description: string
+  icon: React.ComponentType<{ className?: string }>
+  iconClassName?: string
+  title: string
+}) {
+  return (
+    <Inline align="start" justify="between" gap="item">
+      <Stack gap="dense">
+        <Inline gap="dense" wrap={false}>
+          <Icon className={`size-bakin-4 shrink-0 ${iconClassName}`} aria-hidden="true" />
+          <h2 className="m-0 text-bakin-typography-size-section-title font-bakin-typography-weight-semibold text-bakin-text-primary">
+            {title}
+          </h2>
+        </Inline>
+        <p className="m-0 max-w-prose text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">
+          {description}
+        </p>
+      </Stack>
+      {action}
+    </Inline>
   )
 }
 
@@ -779,7 +974,7 @@ function CardFootprintTile({ card }: { card: CardPreview | null }) {
           <span className="text-sm font-normal text-muted-foreground"> / {maxKb.toFixed(0)} KB</span>
         </>
       }
-      progress={{ percent: pct, tone: pct > 85 ? 'warning' : 'success' }}
+      progress={{ percent: pct, tone: pct > 85 ? 'attention' : 'success' }}
       sub={card.omitted > 0 ? `${card.omitted} omitted for size` : 'nothing omitted'}
     />
   )
@@ -1021,7 +1216,17 @@ const TYPE_ICON: Record<string, string> = { images: '🖼', pdf: '📄', video: 
 
 const LOGO_VARIANTS = ['primary', 'dark', 'light', 'mono', 'icon', 'wordmark']
 
-function BrandAssetsSection({ brand, onSave }: { brand: BrandManifest; onSave: (patch: ManifestPatch) => void }) {
+function BrandAssetsSection({
+  brand,
+  logoPickerRequested,
+  onLogoPickerRequestHandled,
+  onSave,
+}: {
+  brand: BrandManifest
+  logoPickerRequested: boolean
+  onLogoPickerRequestHandled: () => void
+  onSave: (patch: ManifestPatch) => void
+}) {
   const [assets, setAssets] = useState<Record<string, AssetInfo>>({})
   const [groupDraft, setGroupDraft] = useState<{ name: string; description: string } | null>(null)
   // ONE AssetPicker instance; whichever section opens it provides the target.
@@ -1032,7 +1237,6 @@ function BrandAssetsSection({ brand, onSave }: { brand: BrandManifest; onSave: (
   // snapshot from when the dialog opened (the drafting agent may have written
   // meanwhile; a stale-closure apply silently erased its work).
   const [removeTarget, setRemoveTarget] = useState<{ title: string; description: string; patch: (current: BrandManifest) => ManifestPatch } | null>(null)
-
   const loadAssets = useCallback(async () => {
     try {
       const res = await fetch('/api/plugins/assets/versioned')
@@ -1056,6 +1260,22 @@ function BrandAssetsSection({ brand, onSave }: { brand: BrandManifest; onSave: (
 
   const openPicker = (title: string, description: string, onPick: (assetId: string) => void) =>
     setPickTarget({ title, description, onPick })
+
+  const openLogoPicker = useCallback(() => {
+    setPickTarget({
+      title: 'Add a logo',
+      description: 'Pick or upload the logo image agents should use.',
+      onPick: (assetId) => onSave({
+        logos: [...brand.logos, { assetId, variant: brand.logos.length === 0 ? 'primary' : 'dark' }],
+      }),
+    })
+  }, [brand.logos, onSave])
+
+  useEffect(() => {
+    if (!logoPickerRequested) return
+    openLogoPicker()
+    onLogoPickerRequestHandled()
+  }, [logoPickerRequested, onLogoPickerRequestHandled, openLogoPicker])
 
   const tile = (assetId: string, patch: (current: BrandManifest) => ManifestPatch, extra?: React.ReactNode) => (
     <AssetTile
@@ -1111,7 +1331,7 @@ function BrandAssetsSection({ brand, onSave }: { brand: BrandManifest; onSave: (
         action={
           <Button
             variant="outline" size="sm" data-add-logo
-            onClick={() => openPicker('Add a logo', 'Pick or upload the logo image agents should use.', (assetId) => onSave({ logos: [...brand.logos, { assetId, variant: brand.logos.length === 0 ? 'primary' : 'dark' }] }))}
+            onClick={openLogoPicker}
           >
             <Plus className="size-3.5" /> Add logo
           </Button>
@@ -1266,11 +1486,11 @@ function AssetTile({
 }: {
   assetId: string; info?: AssetInfo; onDescription: (description: string) => void; onRemove: () => void; extra?: React.ReactNode
 }) {
-  const navigate = useNavigate()
+  const router = useRouter()
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(info?.description ?? '')
   const isImage = info?.type === 'images'
-  const open = () => navigate({ to: '/assets/$assetId', params: { assetId } })
+  const open = () => router.push(`/assets/${encodeURIComponent(assetId)}`)
   const commit = () => { setEditing(false); if (draft !== (info?.description ?? '')) onDescription(draft) }
 
   return (
@@ -1354,7 +1574,7 @@ const DRAFT_TASK_STATUS: Record<string, { label: string; tone: 'working' | 'queu
  * here, refreshed on every taskboard SSE tick.
  */
 function DraftBanner({ brand, brandId, onPublish }: { brand: BrandManifest; brandId: string; onPublish: () => void }) {
-  const navigate = useNavigate()
+  const router = useRouter()
   const [draftTaskParam] = useQueryState('draftTask', '')
   const taskId = brand.draftTaskId || draftTaskParam
   const blocked = useBlockedCount(brandId, true)
@@ -1388,45 +1608,48 @@ function DraftBanner({ brand, brandId, onPublish }: { brand: BrandManifest; bran
   usePluginEvent('taskboard', () => void loadTask())
 
   const status = taskColumn ? DRAFT_TASK_STATUS[taskColumn] : null
+  const availability = 'You can keep editing and reviewing it, but tasks and image tools cannot use it yet. Publishing makes it available to agents immediately.'
+  const description = status
+    ? `${status.label} ${availability}${blocked > 0 ? ` ${blocked} task${blocked === 1 ? ' is' : 's are'} waiting on this brand.` : ''}`
+    : `${taskId
+      ? `An agent is drafting it from your intake — usually takes a few minutes. ${availability}`
+      : availability
+    }${blocked > 0 ? ` ${blocked} task${blocked === 1 ? ' is' : 's are'} waiting on this brand.` : ''}`
 
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded-xl bg-warning/10 p-4 ring-1 ring-warning/20" data-draft-banner>
-      <Sparkles className="size-4 shrink-0 text-warning" />
-      <div className="min-w-0 flex-1 text-sm">
-        <p className="flex items-center gap-2 font-medium">
+    <Banner
+      tone="attention"
+      data-draft-banner
+      title={(
+        <span className="inline-flex min-w-0 flex-wrap items-center gap-bakin-2">
           This brand is a draft
           {status && (
             <span data-draft-task-status={taskColumn}>
               <StatusBadge
-                tone={status.tone === 'working' ? 'warning' : status.tone === 'done' ? 'success' : status.tone === 'blocked' ? 'destructive' : 'neutral'}
+                tone={status.tone === 'working' ? 'attention' : status.tone === 'done' ? 'success' : status.tone === 'blocked' ? 'danger' : 'neutral'}
                 className="font-normal"
               >
-                {status.tone === 'working' && <span className="size-1.5 animate-pulse rounded-full bg-warning" aria-hidden />}
+                {status.tone === 'working' && <span className="size-bakin-1 animate-pulse rounded-bakin-pill bg-bakin-signal-highlight" aria-hidden />}
                 {status.tone === 'working' ? 'Agent working' : status.tone === 'done' ? 'Draft ready' : status.tone === 'blocked' ? 'Blocked' : 'Queued'}
               </StatusBadge>
             </span>
           )}
-        </p>
-        <p className="text-muted-foreground">
-          {status
-            ? status.label
-            : taskId
-              ? 'An agent is drafting it from your intake — usually takes a few minutes. Review the tabs as they fill in, then publish.'
-              : 'Invisible to tasks and image tools until you publish it.'}
-          {blocked > 0 && ` ${blocked} task${blocked === 1 ? ' is' : 's are'} waiting on this brand.`}
-        </p>
-      </div>
-      <div className="flex shrink-0 items-center gap-2">
-        {taskId && (
-          <Button variant="outline" size="sm" onClick={() => void navigate({ to: '/tasks', search: { taskId } as never })} data-draft-task-link>
-            View the drafting task
+        </span>
+      )}
+      description={description}
+      action={(
+        <>
+          {taskId && (
+            <Button variant="outline" size="sm" onClick={() => router.push(`/tasks?taskId=${encodeURIComponent(taskId)}`)} data-draft-task-link>
+              View the drafting task
+            </Button>
+          )}
+          <Button size="sm" onClick={onPublish}>
+            <Rocket className="size-3.5" /> Publish
           </Button>
-        )}
-        <Button size="sm" onClick={onPublish}>
-          <Rocket className="size-3.5" /> Publish
-        </Button>
-      </div>
-    </div>
+        </>
+      )}
+    />
   )
 }
 

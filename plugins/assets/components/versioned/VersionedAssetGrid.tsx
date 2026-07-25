@@ -1,12 +1,43 @@
 'use client'
 
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
-import { useNavigate } from '@tanstack/react-router'
-import { useQueryState, useQueryArrayState, useSearch, useDebug, useRouter, usePathname, useSearchParams, usePluginEvent } from '@makinbakin/sdk/hooks'
-import { Button, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@makinbakin/sdk/ui'
-import { PluginHeader, FacetFilter, SearchUnavailable, ScoreOverlay } from '@makinbakin/sdk/components'
+import { useSearch, useDebug, usePluginEvent } from '@makinbakin/sdk/hooks'
+import {
+  usePathname,
+  useQueryArrayState,
+  useQueryState,
+  useRouter,
+  useSearchParams,
+} from '@makinbakin/sdk/navigation'
+import {
+  FacetFilter,
+  ListPage,
+  ListPageContent,
+  ListPageControls,
+  PageHeader,
+  ScoreOverlay,
+  SearchInput,
+  SearchUnavailable,
+  SegmentedControl,
+} from '@makinbakin/sdk/patterns'
+import {
+  Badge,
+  Button,
+  Card,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  Checkbox,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+  SystemState,
+} from '@makinbakin/sdk/ui'
 import { formatSize, formatAge } from '@makinbakin/sdk/utils'
-import { ImagePlus, Upload, Loader2, LayoutGrid, List, Trash2, RotateCcw, X, ListFilter, FolderOpen, Pencil, Check, Tags, ArrowLeft , Inbox, Sparkles } from 'lucide-react'
+import { Upload, Loader2, LayoutGrid, List, Trash2, RotateCcw, X, ListFilter, FolderOpen, Pencil, Tags, ArrowLeft, Inbox, Sparkles } from 'lucide-react'
 import { ASSET_TYPES } from '../../lib/constants'
 import { createSseRefetchScheduler } from './sse-refetch'
 import { AssetEditDrawer } from './AssetEditDrawer'
@@ -59,96 +90,117 @@ function EnrichmentDot({ status }: { status: VersionedAssetSummary['enrichment']
 }
 
 function AssetCard({ asset, onOpen, onEdit, selected, onToggleSelect, scoreInfo }: { asset: VersionedAssetSummary; onOpen: () => void; onEdit: () => void; selected: boolean; onToggleSelect: () => void; scoreInfo?: AssetScoreInfo }) {
+  const label = asset.description || asset.assetId
+
   return (
-    <div
-      onClick={onOpen}
-      className={`group flex cursor-pointer flex-col overflow-hidden rounded-lg border bg-card transition-all duration-150 hover:-translate-y-0.5 ${selected ? 'border-emerald-500/70 ring-1 ring-emerald-500/50' : 'border-border hover:border-[rgba(255,255,255,0.15)]'}`}
+    <Card
+      size="sm"
+      className={`relative data-[size=sm]:!gap-0 data-[size=sm]:!py-0 transition-colors duration-[var(--bakin-motion-duration-feedback)] motion-reduce:transition-none ${selected ? 'border-bakin-action-primary-background ring-1 ring-bakin-action-primary-background' : 'hover:border-bakin-border-strong'}`}
       data-testid={`asset-card-${asset.assetId}`}
     >
-      <div className="relative aspect-square overflow-hidden bg-zinc-900/50">
+      <button
+        type="button"
+        aria-label={`Open ${label}`}
+        className="absolute inset-0 z-0 rounded-bakin-surface outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring"
+        onClick={onOpen}
+      />
+      <div className="pointer-events-none relative z-10 aspect-square overflow-hidden bg-bakin-canvas-default">
         <AssetThumb assetId={asset.assetId} type={asset.type} version={asset.currentVersion} hasThumb={asset.hasThumb} />
-        <button
-          onClick={(e) => { e.stopPropagation(); onToggleSelect() }}
-          className={`absolute left-1.5 top-1.5 z-10 flex size-5 items-center justify-center rounded border transition-colors ${selected ? 'border-emerald-500 bg-emerald-500 text-black' : 'border-zinc-500 bg-black/60 hover:border-zinc-300'}`}
-          aria-label={selected ? 'Deselect asset' : 'Select asset'}
+        <Checkbox
+          checked={selected}
+          onCheckedChange={onToggleSelect}
+          className="pointer-events-auto absolute left-bakin-2 top-bakin-2 z-20 bg-bakin-canvas-default/85"
+          aria-label={`${selected ? 'Deselect' : 'Select'} ${label}`}
           data-testid={`asset-selected-${asset.assetId}`}
-        >
-          {selected && <Check className="size-3.5" />}
-        </button>
-        <button
-          onClick={(e) => { e.stopPropagation(); onEdit() }}
-          className="absolute right-1.5 top-1.5 z-10 rounded bg-black/60 p-1.5 text-zinc-300 opacity-0 transition-opacity hover:text-white group-hover:opacity-100"
-          aria-label={`Edit ${asset.description || asset.assetId}`}
+        />
+        <Button
+          type="button"
+          variant="secondary"
+          size="icon-xs"
+          onClick={onEdit}
+          className="pointer-events-auto absolute right-bakin-2 top-bakin-2 z-20 opacity-100 md:opacity-0 md:group-hover/card:opacity-100 md:focus-visible:opacity-100"
+          aria-label={`Edit ${label}`}
           data-testid={`asset-edit-${asset.assetId}`}
         >
-          <Pencil className="size-3.5" />
-        </button>
+          <Pencil />
+        </Button>
         {scoreInfo && <ScoreOverlay info={scoreInfo} className="absolute left-1.5 top-1.5 z-10" />}
         {asset.versionCount > 1 && (
-          <span className="absolute bottom-1.5 left-1.5 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-medium text-emerald-300" data-testid="version-badge">
+          <span className="absolute bottom-bakin-2 left-bakin-2 rounded-bakin-control bg-bakin-canvas-default/85 px-bakin-2 py-bakin-1 text-bakin-typography-size-meta font-bakin-typography-weight-semibold text-bakin-signal-success" data-testid="version-badge">
             {asset.versionCount} versions
           </span>
         )}
-        <span className="absolute bottom-1.5 right-1.5 flex items-center gap-1.5 rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-zinc-400">
+        <span className="absolute bottom-bakin-2 right-bakin-2 flex items-center gap-bakin-1 rounded-bakin-control bg-bakin-canvas-default/85 px-bakin-2 py-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted">
           <EnrichmentDot status={asset.enrichment} />
           {formatSize(asset.size)}
         </span>
       </div>
-      <div className="flex flex-1 flex-col gap-1.5 p-3">
-        <span className="truncate text-sm font-medium text-foreground" title={asset.assetId}>
-          {asset.description || asset.assetId}
-        </span>
-        <AssetMetaSummary agent={asset.agent} created={asset.created} taskId={asset.taskId} tags={asset.tags} />
-      </div>
-    </div>
+      <CardHeader className="pointer-events-none relative z-10 gap-bakin-2 py-bakin-3">
+        <CardTitle>
+          <span className="block truncate" title={label}>{label}</span>
+        </CardTitle>
+        <CardDescription>
+          <AssetMetaSummary agent={asset.agent} created={asset.created} taskId={asset.taskId} tags={asset.tags} />
+        </CardDescription>
+      </CardHeader>
+    </Card>
   )
 }
 
 function AssetListRow({ asset, onOpen, onEdit, selected, onToggleSelect, scoreInfo }: { asset: VersionedAssetSummary; onOpen: () => void; onEdit: () => void; selected: boolean; onToggleSelect: () => void; scoreInfo?: AssetScoreInfo }) {
+  const label = asset.description || asset.assetId
+
   return (
-    <div
-      onClick={onOpen}
-      className={`group flex w-full cursor-pointer items-center gap-3 rounded-md border bg-card px-3 py-2 text-left transition-colors ${selected ? 'border-emerald-500/70 ring-1 ring-emerald-500/50' : 'border-border hover:border-[rgba(255,255,255,0.15)]'}`}
+    <Card
+      size="sm"
+      className={`relative flex-row items-center gap-bakin-3 px-bakin-3 transition-colors duration-[var(--bakin-motion-duration-feedback)] motion-reduce:transition-none ${selected ? 'border-bakin-action-primary-background ring-1 ring-bakin-action-primary-background' : 'border-bakin-border-subtle/30 hover:border-bakin-border-subtle'}`}
       data-testid={`asset-row-${asset.assetId}`}
     >
       <button
-        onClick={(e) => { e.stopPropagation(); onToggleSelect() }}
-        className={`flex size-4.5 shrink-0 items-center justify-center rounded border transition-colors ${selected ? 'border-emerald-500 bg-emerald-500 text-black' : 'border-zinc-500 hover:border-zinc-300'}`}
-        aria-label={selected ? 'Deselect asset' : 'Select asset'}
+        type="button"
+        aria-label={`Open ${label}`}
+        className="absolute inset-0 z-0 rounded-bakin-surface outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring"
+        onClick={onOpen}
+      />
+      <Checkbox
+        checked={selected}
+        onCheckedChange={onToggleSelect}
+        className="relative z-20"
+        aria-label={`${selected ? 'Deselect' : 'Select'} ${label}`}
         data-testid={`asset-selected-${asset.assetId}`}
-      >
-        {selected && <Check className="size-3" />}
-      </button>
-      <div className="size-10 shrink-0 overflow-hidden rounded">
+      />
+      <div className="pointer-events-none relative z-10 size-bakin-8 shrink-0 overflow-hidden rounded-bakin-control">
         <AssetThumb assetId={asset.assetId} type={asset.type} version={asset.currentVersion} hasThumb={asset.hasThumb} />
       </div>
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-foreground">{asset.description || asset.assetId}</p>
-        <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+      <div className="pointer-events-none relative z-10 min-w-0 flex-1">
+        <p className="m-0 truncate font-bakin-typography-weight-semibold text-bakin-text-primary">{label}</p>
+        <div className="flex min-w-0 flex-wrap items-center gap-x-bakin-2 gap-y-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted">
           <span className="capitalize">{asset.type}</span>
           <span>·</span>
           <span>{asset.agent}</span>
-          {asset.versionCount > 1 && <><span>·</span><span className="text-emerald-400">{asset.versionCount} versions</span></>}
+          {asset.versionCount > 1 && <><span>·</span><span className="text-bakin-signal-success">{asset.versionCount} versions</span></>}
         </div>
       </div>
-      {scoreInfo && <ScoreOverlay info={scoreInfo} className="shrink-0" />}
-      <EnrichmentDot status={asset.enrichment} />
-      <button
-        onClick={(e) => { e.stopPropagation(); onEdit() }}
-        className="shrink-0 rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
-        aria-label={`Edit ${asset.description || asset.assetId}`}
+      {scoreInfo && <ScoreOverlay info={scoreInfo} className="pointer-events-none relative z-10 shrink-0" />}
+      <span className="pointer-events-none relative z-10"><EnrichmentDot status={asset.enrichment} /></span>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-xs"
+        onClick={onEdit}
+        className="relative z-20 shrink-0 opacity-100 md:opacity-0 md:group-hover/card:opacity-100 md:focus-visible:opacity-100"
+        aria-label={`Edit ${label}`}
         data-testid={`asset-edit-${asset.assetId}`}
       >
-        <Pencil className="size-3.5" />
-      </button>
-      <span className="shrink-0 text-[11px] text-muted-foreground">{formatSize(asset.size)}</span>
-      <span className="shrink-0 text-[11px] text-muted-foreground">{formatAge(asset.created)}</span>
-    </div>
+        <Pencil />
+      </Button>
+      <span className="pointer-events-none relative z-10 hidden shrink-0 text-bakin-typography-size-meta text-bakin-text-muted sm:inline">{formatSize(asset.size)}</span>
+      <span className="pointer-events-none relative z-10 hidden shrink-0 text-bakin-typography-size-meta text-bakin-text-muted md:inline">{formatAge(asset.created)}</span>
+    </Card>
   )
 }
 
 export function VersionedAssetGrid() {
-  const navigate = useNavigate()
   const [debug] = useDebug()
   const [linkTo] = useQueryState('linkTo', '')
   const [q, setQ] = useQueryState('q', '')
@@ -403,31 +455,11 @@ export function VersionedAssetGrid() {
     />
   )
 
-  const viewToggle = (
-    <div className="flex items-center gap-0.5 rounded-md border border-border p-0.5">
-      {VIEW_OPTIONS.map(({ key, label, Icon }) => (
-        <button
-          key={key}
-          onClick={() => setView(key)}
-          data-testid={`view-${key}`}
-          className={`flex items-center gap-1 rounded px-2 py-1 text-xs transition-colors ${view === key ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-        >
-          <Icon className="size-3.5" /> {label}
-        </button>
-      ))}
-    </div>
-  )
-
-  const actions = (
-    <div className="flex items-center gap-2">
-      {pending && <Loader2 className="size-4 animate-spin text-muted-foreground" data-testid="search-spinner" />}
-      <Button size="sm" onClick={openPicker} disabled={uploading} data-testid="add-asset">
-        {uploading ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
-        {uploading ? 'Uploading…' : 'Add asset'}
-      </Button>
-      {viewToggle}
-    </div>
-  )
+  const viewOptions = VIEW_OPTIONS.map(({ key, label, Icon }) => ({
+    value: key,
+    label,
+    icon: Icon,
+  }))
 
   const applyBulkTags = async () => {
     if (bulkTags.length === 0 || selected.size === 0) return
@@ -451,54 +483,85 @@ export function VersionedAssetGrid() {
     }
   }
 
-  if (loading) return <div className="p-8 text-sm text-muted-foreground">Loading assets…</div>
-
-  // True empty state (no assets at all, not in trash view) — promote upload.
-  if (assets.length === 0 && view !== 'trash') {
-    return (
-      <div className="flex min-h-[60vh] flex-col items-center justify-center p-8 text-center" data-testid="assets-empty">
-        {fileInput}
-        <div className="flex size-14 items-center justify-center rounded-full bg-accent/40 text-muted-foreground">
-          <ImagePlus className="size-7" />
-        </div>
-        <h2 className="mt-4 text-base font-semibold text-foreground">No assets yet</h2>
-        <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-          {linkTo
-            ? 'Upload a file to attach it to this task. Agents also create assets as they work.'
-            : 'Upload images, documents, or other files. Agents also create assets here as they work.'}
-        </p>
-        <Button className="mt-4" onClick={openPicker} disabled={uploading} data-testid="add-first-asset">
-          {uploading ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
-          {uploading ? 'Uploading…' : 'Add your first asset'}
-        </Button>
-        {uploadError && <p className="mt-2 text-xs text-destructive">{uploadError}</p>}
-      </div>
-    )
-  }
+  const collectionState = loading ? (
+    <div data-testid="assets-loading">
+      <SystemState
+        kind="loading"
+        title="Loading assets"
+        description="Your asset library will appear here when it is ready."
+      />
+    </div>
+  ) : assets.length === 0 && view !== 'trash' ? (
+    <div data-testid="assets-empty">
+      <SystemState
+        kind="initial-empty"
+        title="No assets yet"
+        description={linkTo
+          ? 'Upload a file to attach it to this task. Agents also create assets as they work.'
+          : 'Upload images, documents, or other files. Agents also create assets here as they work.'}
+        action={(
+          <Button onClick={openPicker} disabled={uploading} data-testid="add-first-asset">
+            {uploading ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
+            {uploading ? 'Uploading…' : 'Add your first asset'}
+          </Button>
+        )}
+      />
+    </div>
+  ) : undefined
 
   return (
-    <div className="p-4" data-testid="assets-browser">
+    <ListPage width="full" className="h-full overflow-auto" data-testid="assets-browser">
       {fileInput}
-      <PluginHeader
+      <PageHeader
         title="Assets"
-        count={view === 'trash' ? trash.length : view === 'import' ? undefined : view === 'tags' ? folderCount : displayed.length}
-        actions={actions}
-        search={view === 'trash' || view === 'import' ? undefined : view === 'tags'
-          ? { value: q, onChange: setQ, placeholder: 'Filter folders…' }
-          : { value: q, onChange: setQ, placeholder: 'Search assets…' }}
+        meta={loading || view === 'import' ? undefined : (
+          <Badge size="xs" variant="outline">
+            {view === 'trash' ? trash.length : view === 'tags' ? folderCount : displayed.length} shown
+          </Badge>
+        )}
+        controlsLabel="Asset search"
+        controls={view !== 'trash' && view !== 'import' ? (
+          <SearchInput
+            align="end"
+            label={view === 'tags' ? 'Folder search' : 'Asset search'}
+            value={q}
+            onValueChange={setQ}
+            placeholder={view === 'tags' ? 'Filter folders…' : 'Search assets…'}
+            busy={pending}
+            mobileFullWidth
+          />
+        ) : undefined}
+        actionsLabel="Asset actions"
+        actions={(
+          <Button className="min-w-28" onClick={openPicker} disabled={uploading} data-testid="add-asset">
+            {uploading ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
+            {uploading ? 'Uploading…' : 'Add asset'}
+          </Button>
+        )}
       />
 
       {uploadError && <p className="mb-2 text-xs text-destructive">{uploadError}</p>}
       {linkTo && view !== 'trash' && <p className="mb-2 text-xs text-muted-foreground">New uploads will be linked to this task.</p>}
 
-      {view !== 'trash' && view !== 'tags' && (
-        <div className="mb-3 mt-3 flex items-center gap-2" data-testid="asset-filters">
+      <ListPageControls label="Asset views and filters" data-testid="asset-filters">
+        <SegmentedControl
+          ariaLabel="Asset view"
+          options={viewOptions}
+          value={view as View}
+          onValueChange={setView}
+          size="md"
+          className="max-w-full"
+        />
+        {view !== 'trash' && view !== 'tags' ? (
+          <>
           <ListFilter className="size-3.5 shrink-0 text-muted-foreground" />
           <FacetFilter label="Type" options={TYPE_OPTIONS} selected={typeFilter} onChange={setTypeFilter} counts={typeCounts} />
           <FacetFilter label="Tags" options={tagOptions} selected={tagFilter} onChange={setTagFilter} counts={tagCounts} />
-        </div>
-      )}
+          </>
+        ) : null}
+      </ListPageControls>
 
+      <ListPageContent label="Asset results" busy={!loading && pending} state={collectionState}>
       {/* Breadcrumb back to the folders view while a tag filter is active.
           Clearing the filter happens via the Tags facet; the breadcrumb is
           purely a "go back" affordance. */}
@@ -523,7 +586,13 @@ export function VersionedAssetGrid() {
         <ImportView onImported={fetchAssets} />
       ) : view === 'trash' ? (
         trash.length === 0 ? (
-          <div className="p-8 text-sm text-muted-foreground" data-testid="trash-empty">Trash is empty.</div>
+          <div data-testid="trash-empty">
+            <SystemState
+              kind="initial-empty"
+              title="Trash is empty"
+              description="Deleted assets will stay recoverable here until the trash is emptied."
+            />
+          </div>
         ) : (
           <div className="flex flex-col gap-2" data-testid="trash-list">
             <div className="mb-1 flex justify-end">
@@ -568,12 +637,33 @@ export function VersionedAssetGrid() {
         // /assets?q=beef, or a new query after an empty result) must read as
         // "searching", never as a premature "no match".
         pending ? (
-          <div className="flex items-center gap-2 p-8 text-sm text-muted-foreground" data-testid="assets-searching">
-            <Loader2 className="size-4 animate-spin" />
-            Searching assets…
+          <div data-testid="assets-searching">
+            <SystemState
+              kind="loading"
+              title="Searching assets"
+              description="Keeping the last settled results available until this search finishes."
+            />
           </div>
         ) : (
-          <div className="p-8 text-sm text-muted-foreground" data-testid="assets-no-match">No assets match your filters.</div>
+          <div data-testid="assets-no-match">
+            <SystemState
+              kind="no-results"
+              title="No assets match this view"
+              description="Clear the current search and filters to return to the full asset library."
+              action={(
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setQ('')
+                    setTypeFilter([])
+                    setTagFilter([])
+                  }}
+                >
+                  Clear search and filters
+                </Button>
+              )}
+            />
+          </div>
         )
       ) : view === 'list' ? (
         <div className="flex flex-col gap-1.5" data-testid="assets-list">
@@ -584,7 +674,7 @@ export function VersionedAssetGrid() {
               scoreInfo={scoreFor(asset.assetId)}
               selected={selected.has(asset.assetId)}
               onToggleSelect={() => toggleSelected(asset.assetId)}
-              onOpen={() => navigate({ to: '/assets/$assetId', params: { assetId: asset.assetId } })}
+              onOpen={() => router.push(`/assets/${encodeURIComponent(asset.assetId)}`)}
               onEdit={() => setEditing(asset)}
             />
           ))}
@@ -598,12 +688,13 @@ export function VersionedAssetGrid() {
               scoreInfo={scoreFor(asset.assetId)}
               selected={selected.has(asset.assetId)}
               onToggleSelect={() => toggleSelected(asset.assetId)}
-              onOpen={() => navigate({ to: '/assets/$assetId', params: { assetId: asset.assetId } })}
+              onOpen={() => router.push(`/assets/${encodeURIComponent(asset.assetId)}`)}
               onEdit={() => setEditing(asset)}
             />
           ))}
         </div>
       )}
+      </ListPageContent>
 
       {/* Floating bulk-tag bar while assets are selected. */}
       {selected.size > 0 && (
@@ -663,6 +754,6 @@ export function VersionedAssetGrid() {
           onSaved={fetchAssets}
         />
       )}
-    </div>
+    </ListPage>
   )
 }

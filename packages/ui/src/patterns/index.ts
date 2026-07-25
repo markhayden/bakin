@@ -1,5 +1,20 @@
 export { PageHeader } from './page-header'
-export type { PageHeaderProps } from './page-header'
+export type { PageHeaderMeasure, PageHeaderProps } from './page-header'
+
+export {
+  KanbanBoard,
+  KanbanCardSignal,
+  KanbanColumn,
+  KanbanColumnBody,
+  KanbanColumnHeader,
+} from './kanban'
+export type {
+  KanbanBoardProps,
+  KanbanCardSignalProps,
+  KanbanColumnBodyProps,
+  KanbanColumnHeaderProps,
+  KanbanColumnProps,
+} from './kanban'
 
 export { SearchInput } from './search-input'
 export type { SearchInputProps } from './search-input'

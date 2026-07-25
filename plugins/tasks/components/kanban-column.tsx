@@ -2,8 +2,15 @@
 
 import { CollisionPriority } from '@dnd-kit/abstract'
 import { useDroppable } from '@dnd-kit/react'
+import {
+  KanbanColumn as KanbanLane,
+  KanbanColumnBody as KanbanLaneBody,
+  KanbanColumnHeader as KanbanLaneHeader,
+} from '@makinbakin/sdk/patterns'
+import { Badge, Button } from '@makinbakin/sdk/ui'
+import { Plus } from 'lucide-react'
 import { TaskCard, type TaskScoreInfo } from './task-card'
-import { COLUMN_CONFIG, STATUS_DOT_COLORS } from '../constants'
+import { COLUMN_CONFIG } from '../constants'
 import { splitScheduledTasks } from '../lib/scheduled'
 import type { BudgetHold } from '../hooks/use-budget-status'
 import type { BrandHold } from '../hooks/use-brand-status'
@@ -39,56 +46,46 @@ export function KanbanColumn({ id, tasks, gateLabels, childTaskLabels, budgetHol
     data: { group: id, columnId: id },
   })
   const config = COLUMN_CONFIG[id]
-  const dotColor = STATUS_DOT_COLORS[id]
 
   const { ready, scheduled } = splitScheduledTasks(tasks)
   const count = totalCount ?? (showScheduled ? tasks.length : ready.length)
+  const countLabel = `${count} task${count === 1 ? '' : 's'}`
 
   if (compact) {
     const isArchiveTarget = id === 'archived' && isDropTarget
 
     return (
       <div className="flex flex-col">
-        <div
-          ref={ref}
-          data-drop-target={isArchiveTarget || undefined}
-          className={`flex flex-col min-h-[80px] rounded-lg border border-dashed p-3 cursor-pointer transition-colors ${
-            isArchiveTarget
-              ? 'bg-[color:color-mix(in_oklab,var(--accent)_10%,var(--surface))] border-[var(--accent)] shadow-[0_0_0_1px_color-mix(in_oklab,var(--accent)_35%,transparent)]'
-              : 'border-border bg-surface/50 hover:bg-surface'
-          }`}
-          onClick={onHeaderClick}
-        >
-          <div className="flex items-center gap-2">
-            <span className={`size-2 rounded-full ${dotColor} shrink-0`} />
-            <span className="text-sm font-medium text-foreground">{config.label}</span>
-            <span className={`text-[11px] font-mono px-1.5 py-0.5 rounded-full tabular-nums leading-none ${
-              isArchiveTarget ? 'text-[var(--accent)] bg-[color:color-mix(in_oklab,var(--accent)_14%,transparent)]' : 'text-muted-foreground bg-muted/50'
-            }`}>
-              {count}
-            </span>
-          </div>
-          <div
-            className={`mt-3 rounded-md border border-dashed px-3 py-3.5 text-xs ${
-              isArchiveTarget
-                ? 'border-[color:color-mix(in_oklab,var(--accent)_60%,transparent)] bg-[color:color-mix(in_oklab,var(--accent)_8%,transparent)] text-[var(--accent)] font-medium'
-                : 'border-border/80 bg-muted/20 text-muted-foreground'
-            }`}
-          >
-            {isArchiveTarget ? 'Release to archive' : 'Drop here to archive'}
-          </div>
-          {onHeaderClick ? (
-            <button
-              type="button"
-              className="mt-3 self-center text-xs font-medium text-muted-foreground underline decoration-border underline-offset-4 transition-colors hover:text-foreground"
-              onClick={(event) => {
-                event.stopPropagation()
-                onHeaderClick()
-              }}
+        <div ref={ref} data-task-drop-surface className="flex flex-col">
+          <KanbanLane label={config.label}>
+            <KanbanLaneHeader>
+              <h2 className="m-0 text-bakin-typography-size-body font-bakin-typography-weight-semibold">
+                {config.label}
+              </h2>
+              <Badge size="xs" variant="outline" aria-label={countLabel}>{count}</Badge>
+            </KanbanLaneHeader>
+            <KanbanLaneBody
+              data-drop-target={isArchiveTarget || undefined}
+              className={`rounded-bakin-surface border border-transparent p-bakin-2 transition-[background-color,border-color,box-shadow] duration-[var(--bakin-motion-duration-feedback)] ease-bakin-standard ${
+                isArchiveTarget ? 'border-bakin-focus-ring bg-bakin-signal-accent/10 ring-2 ring-bakin-focus-ring' : ''
+              }`}
             >
-              View archived items
-            </button>
-          ) : null}
+              <Button
+                type="button"
+                variant={isArchiveTarget ? 'accent' : 'outline'}
+                size="sm"
+                className="h-auto min-h-bakin-8 w-full whitespace-normal border-dashed"
+                onClick={onHeaderClick}
+              >
+                {isArchiveTarget ? 'Release to archive' : 'Drop here to archive'}
+              </Button>
+              {onHeaderClick ? (
+                <Button type="button" variant="link" size="xs" className="self-center" onClick={onHeaderClick}>
+                  View archived items
+                </Button>
+              ) : null}
+            </KanbanLaneBody>
+          </KanbanLane>
         </div>
       </div>
     )
@@ -98,56 +95,66 @@ export function KanbanColumn({ id, tasks, gateLabels, childTaskLabels, budgetHol
     <div className="flex flex-col">
       <div
         ref={ref}
-        className="flex flex-col min-h-[200px] rounded-lg border border-border bg-surface p-3"
+        data-task-drop-surface
+        className="flex flex-col"
       >
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <span className={`size-2 rounded-full ${dotColor} shrink-0`} />
-            <span className="text-sm font-medium text-foreground">{config.label}</span>
-            <span className="text-[11px] font-mono text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded-full tabular-nums leading-none">
-              {count}
-            </span>
-          </div>
-          {onAddTask && (
-            <button
-              onClick={() => onAddTask(id)}
-              className="text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 -mr-2 rounded-md hover:bg-muted/50"
-            >
-              + Add
-            </button>
-          )}
-        </div>
-
-        <div className="flex flex-col gap-1.5 flex-1">
-          {ready.map((task) => (
-            <div key={task.id}>
-              <TaskCard
-                task={task}
-                columnId={id}
-                index={tasks.findIndex(item => item.id === task.id)}
-                gateLabel={gateLabels?.[task.id]}
-                childTaskId={childTaskLabels?.[task.id]}
-                budgetHold={budgetHolds?.[task.id]}
-                brandHold={brandHolds?.[task.id]}
-                liveActivity={liveActivity?.[task.id]}
-                warnUnbranded={warnUnbranded}
-                scoreInfo={scoreMap?.get(task.id)}
-                onDelete={onDelete}
-                onClick={onTaskClick}
-              />
+        <KanbanLane label={config.label}>
+          <KanbanLaneHeader>
+            <div className="flex min-w-0 items-center gap-bakin-2">
+              <h2 className="m-0 truncate text-bakin-typography-size-body font-bakin-typography-weight-semibold">
+                {config.label}
+              </h2>
+              <Badge size="xs" variant="outline" aria-label={countLabel}>{count}</Badge>
             </div>
-          ))}
-          {showScheduled && scheduled.length > 0 && (
-            <div className="mt-3 border-t border-border pt-3">
-              <div className="mb-2 flex items-center gap-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-                <span className="h-px flex-1 bg-border" />
-                <span>Scheduled</span>
-                <span className="rounded-full bg-muted/50 px-1.5 py-0.5 font-mono text-[10px] leading-none tabular-nums">
-                  {scheduled.length}
-                </span>
-                <span className="h-px flex-1 bg-border" />
+            {onAddTask ? (
+              <Button type="button" variant="ghost" size="xs" onClick={() => onAddTask(id)}>
+                <Plus />
+                Add
+              </Button>
+            ) : null}
+          </KanbanLaneHeader>
+
+          <KanbanLaneBody>
+            {ready.length === 0 ? (
+              <div className="flex min-h-bakin-8 items-center justify-center rounded-bakin-surface border border-dashed border-bakin-border-subtle px-bakin-3 py-bakin-4 text-bakin-typography-size-meta text-bakin-text-muted">
+                No tasks
               </div>
-              <div className="flex flex-col gap-1.5">
+            ) : ready.map((task) => (
+              <div key={task.id}>
+                <TaskCard
+                  task={task}
+                  columnId={id}
+                  index={tasks.findIndex(item => item.id === task.id)}
+                  gateLabel={gateLabels?.[task.id]}
+                  childTaskId={childTaskLabels?.[task.id]}
+                  budgetHold={budgetHolds?.[task.id]}
+                  brandHold={brandHolds?.[task.id]}
+                  liveActivity={liveActivity?.[task.id]}
+                  warnUnbranded={warnUnbranded}
+                  scoreInfo={scoreMap?.get(task.id)}
+                  onDelete={onDelete}
+                  onClick={onTaskClick}
+                />
+              </div>
+            ))}
+
+            {showScheduled && scheduled.length > 0 ? (
+              <section aria-labelledby={`${id}-scheduled-heading`} className="mt-bakin-2 grid gap-bakin-2 border-t border-bakin-border-subtle pt-bakin-3">
+                <div className="flex min-w-0 items-center justify-between gap-bakin-2">
+                  <h3
+                    id={`${id}-scheduled-heading`}
+                    className="m-0 text-bakin-typography-size-meta font-bakin-typography-weight-semibold uppercase tracking-wider text-bakin-text-muted"
+                  >
+                    Scheduled
+                  </h3>
+                  <Badge
+                    size="xs"
+                    variant="outline"
+                    aria-label={`${scheduled.length} scheduled task${scheduled.length === 1 ? '' : 's'}`}
+                  >
+                    {scheduled.length}
+                  </Badge>
+                </div>
                 {scheduled.map((task) => (
                   <div key={task.id}>
                     <TaskCard
@@ -157,22 +164,22 @@ export function KanbanColumn({ id, tasks, gateLabels, childTaskLabels, budgetHol
                       gateLabel={gateLabels?.[task.id]}
                       childTaskId={childTaskLabels?.[task.id]}
                       budgetHold={budgetHolds?.[task.id]}
-                brandHold={brandHolds?.[task.id]}
-                liveActivity={liveActivity?.[task.id]}
-                warnUnbranded={warnUnbranded}
+                      brandHold={brandHolds?.[task.id]}
+                      liveActivity={liveActivity?.[task.id]}
+                      warnUnbranded={warnUnbranded}
                       scoreInfo={scoreMap?.get(task.id)}
                       onDelete={onDelete}
                       onClick={onTaskClick}
                     />
                   </div>
                 ))}
-              </div>
-            </div>
-          )}
-        </div>
+              </section>
+            ) : null}
+          </KanbanLaneBody>
+        </KanbanLane>
       </div>
       {footer && (
-        <div className="flex justify-center mt-2">
+        <div className="flex justify-center">
           {footer}
         </div>
       )}

@@ -2,7 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
-  Button, Skeleton, Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
+  Button,
+  SystemState,
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
 } from '@makinbakin/sdk/ui'
 import {
   AgentAvatar,
@@ -11,8 +18,6 @@ import {
   type SortDir,
   type StatusTone,
 } from '@makinbakin/sdk/patterns'
-import { EmptyState } from "@makinbakin/sdk/components"
-import { ClipboardList } from 'lucide-react'
 import { COLUMN_CONFIG } from '../constants'
 import { formatDateTime, formatDuration } from "@makinbakin/sdk/utils"
 import { useAgent } from "@makinbakin/sdk/hooks"
@@ -190,21 +195,27 @@ export function TaskLogTable({ currentTasks, statusFilter, isSearching, scoreMap
   }
 
   return (
-    <div className="flex flex-col gap-3 h-full">
-      <div className="flex-1 overflow-auto min-h-0">
+    <div className="min-w-0" data-task-log="">
+      <div className="min-w-0">
         {loading ? (
-          <div className="flex flex-col gap-2 p-2">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <Skeleton key={i} className="h-10 w-full" />
-            ))}
-          </div>
+          <SystemState
+            kind="loading"
+            scope="section"
+            title="Loading task log"
+            description="Current and historical tasks will appear here when the activity log is ready."
+          />
         ) : sorted.length === 0 ? (
-          <EmptyState icon={ClipboardList} title="No tasks found" />
+          <SystemState
+            kind="initial-empty"
+            scope="section"
+            title="No tasks found"
+            description="This task view has no current or historical rows to display."
+          />
         ) : (
-          <Table>
+          <Table aria-label="Task log">
             <TableHeader>
               <TableRow>
-                <TableHead className="w-20">ID</TableHead>
+                <TableHead>ID</TableHead>
                 <SortableHead field="title" current={sortField} dir={sortDir} onSort={toggleSort}>Title</SortableHead>
                 <SortableHead field="agent" current={sortField} dir={sortDir} onSort={toggleSort}>Agent</SortableHead>
                 <SortableHead field="status" current={sortField} dir={sortDir} onSort={toggleSort}>Status</SortableHead>
@@ -230,15 +241,17 @@ export function TaskLogTable({ currentTasks, statusFilter, isSearching, scoreMap
                     className="cursor-pointer"
                     onClick={() => onTaskOpen(drawerTask, task.status)}
                   >
-                    <TableCell className="font-mono text-xs text-muted-foreground">{task.id.slice(0, 8)}</TableCell>
-                    <TableCell className="max-w-[300px] truncate">
-                      <div className="flex items-center gap-2">
+                    <TableCell className="font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
+                      {task.id.slice(0, 8)}
+                    </TableCell>
+                    <TableCell className="max-w-sm">
+                      <div className="flex min-w-0 items-center gap-bakin-2">
                         <Button
                           type="button"
-                          variant="ghost"
+                          variant="link"
                           size="xs"
                           aria-label={`Open ${task.title}`}
-                          className="h-auto min-w-0 max-w-full justify-start px-bakin-1 py-bakin-1 text-left"
+                          className="!h-auto min-w-0 max-w-full !justify-start !p-0 text-left font-bakin-typography-weight-semibold text-bakin-text-primary"
                           onClick={(event) => {
                             event.stopPropagation()
                             onTaskOpen(drawerTask, task.status)
@@ -247,12 +260,12 @@ export function TaskLogTable({ currentTasks, statusFilter, isSearching, scoreMap
                           <span className="truncate">{task.title}</span>
                         </Button>
                         {scoreInfo && (
-                          <span className="flex items-center gap-1.5 font-mono text-[10px] shrink-0">
-                            <span className="text-amber-400">RRF {scoreInfo.score.toFixed(3)}</span>
-                            <span className="text-cyan-400">
+                          <span className="flex shrink-0 items-center gap-bakin-2 font-bakin-typography-family-mono text-bakin-typography-size-meta">
+                            <span className="text-bakin-signal-highlight">RRF {scoreInfo.score.toFixed(3)}</span>
+                            <span className="text-bakin-data-series-1">
                               BM25 {(bm25Key ? scoreInfo.indexScores?.[bm25Key] ?? 0 : 0).toFixed(3)}
                             </span>
-                            <span className="text-purple-400">
+                            <span className="text-bakin-data-series-5">
                               SEM {(scoreInfo.indexScores?.[semKey] ?? 0).toFixed(3)}
                             </span>
                           </span>
@@ -263,15 +276,15 @@ export function TaskLogTable({ currentTasks, statusFilter, isSearching, scoreMap
                       {task.agent ? (
                         <AgentCell agentId={task.agent} />
                       ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
+                        <span className="text-bakin-typography-size-meta text-bakin-text-muted">—</span>
                       )}
                     </TableCell>
                     <TableCell>
                       <StatusBadge tone={STATUS_TONES[task.status]}>{COLUMN_CONFIG[task.status].label}</StatusBadge>
                     </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{formatDate(created)}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{formatDate(completed)}</TableCell>
-                    <TableCell className="text-xs font-mono text-muted-foreground">
+                    <TableCell className="text-bakin-typography-size-meta text-bakin-text-muted">{formatDate(created)}</TableCell>
+                    <TableCell className="text-bakin-typography-size-meta text-bakin-text-muted">{formatDate(completed)}</TableCell>
+                    <TableCell className="font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
                       {taskDuration(created, completed)}
                     </TableCell>
                   </TableRow>
@@ -289,13 +302,13 @@ function AgentCell({ agentId }: { agentId: string }) {
   const agent = useAgent(agentId)
   const name = agent?.name ?? agentId
   return (
-    <span className="flex items-center gap-1.5">
+    <span className="flex items-center gap-bakin-2">
       <AgentAvatar
         agent={{ id: agentId, name, imageSrc: agent?.headshot }}
         size="xs"
         decorative
       />
-      <span className="text-xs">{name}</span>
+      <span className="text-bakin-typography-size-meta text-bakin-text-primary">{name}</span>
     </span>
   )
 }

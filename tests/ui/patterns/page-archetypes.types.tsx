@@ -53,11 +53,26 @@ export function ValidDetailRecipe() {
   )
 }
 
+export function ValidMediaDetailRecipe() {
+  return (
+    <DetailPage width="full">
+      <PageHeader measure="wide" title="Asset detail" />
+      <DetailPageBody layout="aside">
+        <DetailPageMain>Asset preview</DetailPageMain>
+        <DetailPageAside label="Asset context">Metadata and version history</DetailPageAside>
+      </DetailPageBody>
+    </DetailPage>
+  )
+}
+
 // @ts-expect-error list pages intentionally exclude reading-width canvases
 export const invalidListWidth = <ListPage width="content">Invalid</ListPage>
 
-// @ts-expect-error detail pages intentionally exclude full-bleed canvases
-export const invalidDetailWidth = <DetailPage width="full">Invalid</DetailPage>
+// @ts-expect-error detail pages expose only the finite content, wide, and full canvases
+export const invalidDetailWidth = <DetailPage width="canvas">Invalid</DetailPage>
+
+// @ts-expect-error page headers expose only the finite standard and wide measures
+export const invalidPageHeaderMeasure = <PageHeader measure="full" title="Invalid">Invalid</PageHeader>
 
 // @ts-expect-error detail asides must have an accessible name
 export const invalidUnnamedAside = <DetailPageAside>Context</DetailPageAside>

@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 /**
  * TaskRunHistory outcome rendering (#476): the header carries the task-level
- * outcome badge, the per-run `settled` badge is blue (green is reserved for
- * task done), and the section still renders nothing without runs.
+ * outcome badge, the per-run `settled` badge is informational (success is
+ * reserved for task done), and the section still renders nothing without runs.
  */
 import { describe, expect, it, mock, beforeEach } from 'bun:test'
 import { render, screen } from '@testing-library/react'
@@ -41,12 +41,6 @@ let hookResult: HookResult = { runs: [], loading: false }
 mock.module('@makinbakin/sdk/hooks', () => ({
   useTaskRunHistory: () => hookResult,
 }))
-mock.module('@makinbakin/sdk/ui', () => ({
-  Badge: ({ children, className }: { children?: unknown; className?: string }) => (
-    <span data-testid="badge" className={className}>{children as never}</span>
-  ),
-  Separator: () => <hr />,
-}))
 
 const { TaskRunHistory } = await import('../../../plugins/tasks/components/task-run-history')
 
@@ -72,39 +66,38 @@ describe('TaskRunHistory task outcome', () => {
   it('shows a done outcome badge in the header', () => {
     hookResult = { runs: [run()], outcome: { state: 'done', completedAt: '2026-06-08T12:01:00.000Z', agent: 'pixel' }, loading: false }
     render(<TaskRunHistory taskId="t1" />)
-    expect(screen.getByText('done')).toBeDefined()
+    expect(screen.getByText('Done')).toBeDefined()
   })
 
   it('shows an in-progress outcome so a settled run does not read as success', () => {
     hookResult = { runs: [run()], outcome: { state: 'in_progress' }, loading: false }
     render(<TaskRunHistory taskId="t1" />)
-    expect(screen.getByText('in progress')).toBeDefined()
+    expect(screen.getByText('In progress')).toBeDefined()
   })
 
   it('shows a blocked outcome badge', () => {
     hookResult = { runs: [run()], outcome: { state: 'blocked' }, loading: false }
     render(<TaskRunHistory taskId="t1" />)
-    expect(screen.getByText('blocked')).toBeDefined()
+    expect(screen.getByText('Blocked')).toBeDefined()
   })
 
   it('shows an archived outcome badge', () => {
     hookResult = { runs: [run()], outcome: { state: 'archived' }, loading: false }
     render(<TaskRunHistory taskId="t1" />)
-    expect(screen.getByText('archived')).toBeDefined()
+    expect(screen.getByText('Archived')).toBeDefined()
   })
 
-  it('renders the settled badge blue, never green', () => {
+  it('renders settled as informational rather than successful', () => {
     hookResult = { runs: [run()], outcome: { state: 'in_progress' }, loading: false }
     render(<TaskRunHistory taskId="t1" />)
     const settled = screen.getByText('settled')
-    expect(settled.className).toContain('blue')
-    expect(settled.className).not.toContain('green')
+    expect(settled.closest('[data-status-badge]')?.getAttribute('data-tone')).toBe('neutral')
   })
 
-  it('reserves green for the done outcome badge', () => {
+  it('reserves the success tone for the done outcome badge', () => {
     hookResult = { runs: [run()], outcome: { state: 'done', completedAt: '2026-06-08T12:01:00.000Z' }, loading: false }
     render(<TaskRunHistory taskId="t1" />)
-    expect(screen.getByText('done').className).toContain('green')
+    expect(screen.getByText('Done').closest('[data-status-badge]')?.getAttribute('data-tone')).toBe('success')
   })
 
   it('includes the year on timestamps from a previous year', () => {

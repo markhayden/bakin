@@ -80,7 +80,7 @@ describe('MapChildrenPanel', () => {
     expect(screen.getByText('1/3 complete · 1 cancelled')).toBeTruthy()
     expect(screen.getByText('task-1--generate-variants--0')).toBeTruthy()
     // Child 2's live status (cancelled) wins over the cached in_progress entry.
-    expect(screen.getByText('cancelled')).toBeTruthy()
+    expect(screen.getByText('Cancelled')).toBeTruthy()
   })
 
   it('offers retry on non-complete children and cancel on live ones', () => {

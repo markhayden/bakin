@@ -25,6 +25,7 @@ mock.module('@tanstack/react-router', () => ({
   useNavigate: () => navigateMock,
   useParams: () => routeParams,
   useSearch: () => routeSearch,
+  useLocation: () => ({ pathname: '/brands/acme/docs/guidelines/voice.md', search: routeSearch }),
   useRouter: () => ({ history: { block: () => () => {} }, parseLocation: (l: unknown) => l }),
   Link: ({ children }: { children?: React.ReactNode }) => <a>{children}</a>,
 }))
@@ -117,8 +118,7 @@ describe('doc lists', () => {
     fireEvent.click(screen.getAllByRole('button', { name: /Edit/ })[0])
     expect(navigateMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        to: '/brands/$brandId/docs/$kind/$name',
-        params: { brandId: 'acme', kind: 'guidelines', name: 'voice.md' },
+        to: '/brands/acme/docs/guidelines/voice.md',
       }),
     )
     await settleReact()
@@ -141,7 +141,7 @@ describe('doc lists', () => {
     fireEvent.click(document.querySelector('[data-new-doc-create]')!)
     expect(navigateMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        params: { brandId: 'acme', kind: 'guidelines', name: 'imagery.md' },
+        to: '/brands/acme/docs/guidelines/imagery.md',
         search: { create: '1' },
       }),
     )
@@ -176,11 +176,13 @@ describe('doc lists', () => {
 describe('BrandDocEditorPage', () => {
   it('loads the doc, edits raise the SaveBar, Save PUTs the content', async () => {
     render(<BrandDocEditorPage />)
-    await waitFor(() => expect(screen.getByLabelText('Markdown content')).toBeDefined())
-    expect((screen.getByLabelText('Markdown content') as HTMLTextAreaElement).value).toContain('Sharp and warm')
+    await waitFor(() => expect(screen.getByLabelText('Acme guidelines content')).toBeDefined())
+    expect((screen.getByLabelText('Acme guidelines content') as HTMLTextAreaElement).value).toContain('Sharp and warm')
+    expect(document.querySelector('[data-archetype="detail"][data-width="full"]')).not.toBeNull()
+    expect(document.querySelector('[data-slot="page-header"]')).not.toBeNull()
     expect(document.querySelector('[data-savebar]')).toBeNull()
 
-    fireEvent.change(screen.getByLabelText('Markdown content'), { target: { value: '# Voice\n\nSharper.' } })
+    fireEvent.change(screen.getByLabelText('Acme guidelines content'), { target: { value: '# Voice\n\nSharper.' } })
     await waitFor(() => expect(document.querySelector('[data-savebar]')).not.toBeNull())
     fireEvent.click(screen.getByRole('button', { name: 'Save doc' }))
     await waitFor(() =>
@@ -195,21 +197,20 @@ describe('BrandDocEditorPage', () => {
 
   it('brainstorm toggle opens the side panel', async () => {
     render(<BrandDocEditorPage />)
-    await waitFor(() => expect(screen.getByLabelText('Markdown content')).toBeDefined())
+    await waitFor(() => expect(screen.getByLabelText('Acme guidelines content')).toBeDefined())
     expect(screen.queryByTestId('brainstorm-panel')).toBeNull()
     fireEvent.click(document.querySelector('[data-brainstorm-toggle]')!)
     await waitFor(() => expect(screen.getByTestId('brainstorm-panel')).toBeDefined())
+    expect(document.querySelector('[data-slot="detail-page-aside"]')).not.toBeNull()
     await settleReact()
   })
 
   it('create mode starts with the teaching template and the SaveBar up', async () => {
     routeParams = { brandId: 'acme', kind: 'guidelines', name: 'imagery.md' }
-    // TanStack Router JSON-parses search values: ?create=1 arrives as NUMBER 1.
-    // This pin broke live before the String() coercion — keep it a number.
-    routeSearch = { create: 1 as unknown as string }
+    routeSearch = { create: '1' }
     render(<BrandDocEditorPage />)
-    await waitFor(() => expect(screen.getByLabelText('Markdown content')).toBeDefined())
-    expect((screen.getByLabelText('Markdown content') as HTMLTextAreaElement).value).toContain('description:')
+    await waitFor(() => expect(screen.getByLabelText('Acme guidelines content')).toBeDefined())
+    expect((screen.getByLabelText('Acme guidelines content') as HTMLTextAreaElement).value).toContain('description:')
     expect(document.querySelector('[data-savebar]')).not.toBeNull() // unsaved new doc
     await settleReact()
   })
@@ -217,16 +218,17 @@ describe('BrandDocEditorPage', () => {
   it('missing doc renders the honest not-found state', async () => {
     routeParams = { brandId: 'acme', kind: 'guidelines', name: 'ghost.md' }
     render(<BrandDocEditorPage />)
-    await waitFor(() => expect(screen.getByText(/This doc doesn't exist/)).toBeDefined())
+    await waitFor(() => expect(screen.getByText(/This document doesn't exist/)).toBeDefined())
+    expect(document.querySelector('[data-slot="page-header"]')).not.toBeNull()
     await settleReact()
   })
 
   it('create mode with a COLLIDING name loads the existing doc — never a blank template over real content', async () => {
     routeParams = { brandId: 'acme', kind: 'guidelines', name: 'existing.md' }
-    routeSearch = { create: 1 as unknown as string }
+    routeSearch = { create: '1' }
     render(<BrandDocEditorPage />)
-    await waitFor(() => expect(screen.getByLabelText('Markdown content')).toBeDefined())
-    expect((screen.getByLabelText('Markdown content') as HTMLTextAreaElement).value).toContain('Already authored')
+    await waitFor(() => expect(screen.getByLabelText('Acme guidelines content')).toBeDefined())
+    expect((screen.getByLabelText('Acme guidelines content') as HTMLTextAreaElement).value).toContain('Already authored')
     expect(document.querySelector('[data-savebar]')).toBeNull() // it exists; nothing unsaved
     await settleReact()
   })
@@ -241,7 +243,9 @@ describe('BrandDocEditorPage', () => {
     }) as unknown as typeof fetch
     render(<BrandDocEditorPage />)
     await waitFor(() => expect(screen.getByText(/Couldn't load this doc/)).toBeDefined())
-    expect(screen.queryByText(/This doc doesn't exist/)).toBeNull()
+    expect(screen.queryByText(/This document doesn't exist/)).toBeNull()
+    expect(document.querySelector('[data-slot="page-header"]')).not.toBeNull()
+    expect(document.querySelector('[data-slot="system-state"]')).not.toBeNull()
     await settleReact()
   })
 })

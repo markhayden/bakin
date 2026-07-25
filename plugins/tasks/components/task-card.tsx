@@ -1,10 +1,41 @@
 'use client'
 
-import { useEffect, type CSSProperties } from 'react'
+import { useEffect } from 'react'
 import { useSortable } from '@dnd-kit/react/sortable'
-import { AlertTriangle, Users, X } from 'lucide-react'
-import { AgentAvatar, PluginLink } from "@makinbakin/sdk/components"
-import { STATUS_BADGE_STYLES } from '../constants'
+import {
+  Activity,
+  AlertTriangle,
+  Ban,
+  CalendarClock,
+  CircleDollarSign,
+  Clock3,
+  FolderKanban,
+  GitBranch,
+  Palette,
+  Users,
+  Workflow,
+  X,
+} from 'lucide-react'
+import { useAgent, useAgentColor, useAgentDisplayName } from '@makinbakin/sdk/hooks'
+import { PluginLink } from '@makinbakin/sdk/navigation'
+import {
+  AgentAvatar,
+  KanbanCardSignal,
+  StatusBadge,
+  type StatusTone,
+} from '@makinbakin/sdk/patterns'
+import {
+  Badge,
+  Button,
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '@makinbakin/sdk/ui'
+import { COLUMN_CONFIG } from '../constants'
 import { compactDispatchFailureLabel, getLatestDispatchFailure } from '../lib/dispatch-failure'
 import { getTaskAvailableAtMs } from '../lib/scheduled'
 import type { BudgetHold } from '../hooks/use-budget-status'
@@ -57,9 +88,19 @@ function shortId(id: string): string {
   return id.slice(0, 6).toUpperCase()
 }
 
-const CHILD_HIGHLIGHT_CLASSES = ['ring-2', 'ring-cyan-400/60', 'border-cyan-400/60']
+const CHILD_HIGHLIGHT_CLASSES = ['ring-2', 'ring-bakin-focus-ring', 'border-bakin-focus-ring']
 
-/** Outline the linked child task's card (matched via data-task-id) while the sub-task badge is hovered. */
+const STATUS_TONES: Record<ColumnId, StatusTone> = {
+  backlog: 'neutral',
+  todo: 'accent',
+  inProgress: 'accent',
+  review: 'attention',
+  done: 'success',
+  blocked: 'danger',
+  archived: 'neutral',
+}
+
+/** Outline the linked child task's card (matched via data-task-id) while its sub-task signal is hovered. */
 function setChildCardHighlight(childTaskId: string, on: boolean): void {
   const wrapper = document.querySelector(`[data-task-id="${CSS.escape(childTaskId)}"]`)
   const card = wrapper?.firstElementChild
@@ -67,8 +108,41 @@ function setChildCardHighlight(childTaskId: string, on: boolean): void {
   for (const cls of CHILD_HIGHLIGHT_CLASSES) card.classList.toggle(cls, on)
 }
 
-export function TaskCardContent({ task, columnId, className, gateLabel, childTaskId, budgetHold, brandHold, warnUnbranded, style, scoreInfo, liveActivity }: { task: Task; columnId: string; className?: string; gateLabel?: string; childTaskId?: string; budgetHold?: BudgetHold; brandHold?: BrandHold; warnUnbranded?: boolean; style?: CSSProperties; scoreInfo?: TaskScoreInfo; liveActivity?: LiveActivity }) {
-  const badge = STATUS_BADGE_STYLES[columnId as ColumnId]
+interface TaskCardContentProps {
+  task: Task
+  columnId: string
+  className?: string
+  gateLabel?: string
+  childTaskId?: string
+  budgetHold?: BudgetHold
+  brandHold?: BrandHold
+  warnUnbranded?: boolean
+  scoreInfo?: TaskScoreInfo
+  liveActivity?: LiveActivity
+  isDragging?: boolean
+  onDelete?: (task: { id: string; title: string }) => void
+  onOpen?: (task: Task, columnId: ColumnId) => void
+}
+
+export function TaskCardContent({
+  task,
+  columnId,
+  className,
+  gateLabel,
+  childTaskId,
+  budgetHold,
+  brandHold,
+  warnUnbranded,
+  scoreInfo,
+  liveActivity,
+  isDragging = false,
+  onDelete,
+  onOpen,
+}: TaskCardContentProps) {
+  const resolvedColumnId = columnId as ColumnId
+  const agent = useAgent(task.agent ?? '')
+  const agentDisplayName = useAgentDisplayName(task.agent ?? '')
+  const agentColor = useAgentColor(task.agent ?? '')
   // Clear any lingering child-card outline if this card unmounts mid-hover
   // (e.g. the sub-task finishes and the badge disappears under the cursor).
   useEffect(() => {
@@ -85,179 +159,251 @@ export function TaskCardContent({ task, columnId, className, gateLabel, childTas
     ? Object.keys(scoreInfo.indexScores).find(k => k !== semKey)
     : undefined
 
+  const hasMetadata = Boolean(task.workflowId || task.projectId || task.brandId || (!task.brandId && warnUnbranded && !isComplete))
+  const hasFooter = Boolean(task.agent || task.team || task.date)
+  const hasSignals = Boolean(
+    budgetHold || gateLabel || (liveActivity && columnId === 'inProgress' && !isComplete)
+      || childTaskId || task.dependsOn || task.blockedReason || dispatchFailure || brandHold
+      || (isFutureScheduled && task.availableAt),
+  )
+
+  const openTask = () => onOpen?.(task, resolvedColumnId)
+
   return (
-    <div className={className} style={style}>
-      {/* Top: status badge + ID */}
-      <div className="flex items-center gap-1.5 mb-3">
-        {badge && (
-          <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold ${badge.bg}`}>
-            {badge.label}
+    <Card
+      size="sm"
+      className={`${className ?? ''} cursor-grab select-none transition-[border-color,box-shadow,opacity] duration-[var(--bakin-motion-duration-feedback)] ease-bakin-standard hover:border-bakin-text-muted/50 active:cursor-grabbing ${
+        isComplete ? 'opacity-[var(--bakin-state-opacity-disabled)]' : ''
+      } ${
+        isDragging ? 'ring-2 ring-bakin-focus-ring shadow-bakin-elevation-overlay' : ''
+      }`}
+      onClick={openTask}
+    >
+      <CardHeader>
+        <div className="flex min-w-0 flex-wrap items-center gap-bakin-2">
+          <StatusBadge tone={STATUS_TONES[resolvedColumnId]} variant="solid" size="xs">
+            {COLUMN_CONFIG[resolvedColumnId].label}
+          </StatusBadge>
+          <span className="font-bakin-typography-family-mono text-bakin-typography-size-meta uppercase tracking-widest text-bakin-text-muted">
+            {shortId(task.id)}
           </span>
-        )}
-        <span className="text-[10px] font-mono text-muted-foreground/50 uppercase tracking-widest">
-          {shortId(task.id)}
-        </span>
-        {scoreInfo && (
-          <span className="ml-auto flex items-center gap-1.5 font-mono text-[10px]">
-            <span className="text-amber-400">RRF {scoreInfo.score.toFixed(3)}</span>
-            <span className="text-cyan-400">
-              BM25 {(bm25Key ? scoreInfo.indexScores?.[bm25Key] ?? 0 : 0).toFixed(3)}
+          {scoreInfo ? (
+            <span className="flex min-w-0 flex-wrap items-center gap-bakin-2 font-bakin-typography-family-mono text-bakin-typography-size-meta">
+              <span className="text-bakin-data-series-1">RRF {scoreInfo.score.toFixed(3)}</span>
+              <span className="text-bakin-data-series-2">
+                BM25 {(bm25Key ? scoreInfo.indexScores?.[bm25Key] ?? 0 : 0).toFixed(3)}
+              </span>
+              <span className="text-bakin-data-series-3">
+                SEM {(scoreInfo.indexScores?.[semKey] ?? 0).toFixed(3)}
+              </span>
             </span>
-            <span className="text-purple-400">
-              SEM {(scoreInfo.indexScores?.[semKey] ?? 0).toFixed(3)}
+          ) : null}
+        </div>
+
+        {onDelete ? (
+          <CardAction>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              aria-label={`Delete ${task.title}`}
+              title="Delete task"
+              className="text-bakin-text-muted opacity-100 hover:text-bakin-signal-danger focus-visible:opacity-100 md:opacity-0 md:group-hover/card:opacity-100"
+              onClick={(event) => {
+                event.stopPropagation()
+                onDelete({ id: task.id, title: task.title })
+              }}
+              onPointerDown={(event) => event.stopPropagation()}
+            >
+              <X />
+            </Button>
+          </CardAction>
+        ) : null}
+
+        <CardTitle
+          className={`col-start-1 font-bakin-typography-weight-bold leading-snug ${
+            isComplete ? 'line-through text-bakin-text-muted' : ''
+          }`}
+        >
+          <h3 className="m-0">
+            {onOpen ? (
+              <Button
+                type="button"
+                variant="link"
+                size="xs"
+                className="!h-auto !justify-start whitespace-normal !p-0 text-left font-bakin-typography-weight-bold text-bakin-text-primary"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  openTask()
+                }}
+                onPointerDown={(event) => event.stopPropagation()}
+              >
+                {task.title}
+              </Button>
+            ) : task.title}
+          </h3>
+        </CardTitle>
+
+        {task.description ? (
+          <CardDescription className="col-start-1 line-clamp-2">
+            {task.description}
+          </CardDescription>
+        ) : null}
+      </CardHeader>
+
+      {hasMetadata || hasSignals ? (
+        <CardContent className="grid gap-bakin-1 !px-0">
+          {hasMetadata ? (
+            <div className="grid min-w-0 gap-bakin-1 px-bakin-3 text-bakin-typography-size-meta text-bakin-text-muted">
+              {task.workflowId ? (
+                <span data-task-workflow className="flex min-w-0 items-center gap-bakin-1">
+                  <Workflow aria-hidden="true" className="size-bakin-3 shrink-0" />
+                  <span className="font-bakin-typography-weight-semibold text-bakin-text-primary">Workflow</span>
+                  <span className="truncate">{task.workflowId}</span>
+                </span>
+              ) : null}
+              {task.projectId ? (
+                <span className="flex min-w-0 items-center gap-bakin-1">
+                  <FolderKanban aria-hidden="true" className="size-bakin-3 shrink-0" />
+                  <span className="font-bakin-typography-weight-semibold text-bakin-text-primary">Project</span>
+                  <span className="truncate">{task.projectId.slice(0, 6)}</span>
+                </span>
+              ) : null}
+              {task.brandId ? (
+                <span className="flex min-w-0 items-center gap-bakin-1">
+                  <Palette aria-hidden="true" className="size-bakin-3 shrink-0" />
+                  <span className="font-bakin-typography-weight-semibold text-bakin-text-primary">Brand</span>
+                  <span className="truncate">{task.brandId}</span>
+                </span>
+              ) : null}
+              {!task.brandId && warnUnbranded && !isComplete ? (
+                <span className="flex min-w-0 items-center gap-bakin-1 text-bakin-signal-highlight" title="warnUnbranded is on — this task has no brand">
+                  <Palette aria-hidden="true" className="size-bakin-3 shrink-0" />
+                  <span className="font-bakin-typography-weight-semibold">No brand</span>
+                </span>
+              ) : null}
+            </div>
+          ) : null}
+
+          {budgetHold ? (
+            <PluginLink
+              to="/models?tab=spend"
+              onClick={(event) => event.stopPropagation()}
+              onPointerDown={(event) => event.stopPropagation()}
+              className="block min-w-0 hover:brightness-110"
+              title="Open Models → Spend"
+            >
+              <KanbanCardSignal tone="danger" label={budgetHold.label} icon={CircleDollarSign}>
+                {budgetHold.detail}
+              </KanbanCardSignal>
+            </PluginLink>
+          ) : null}
+
+          {gateLabel ? (
+            <KanbanCardSignal tone="attention" label="Needs approval" icon={AlertTriangle}>
+              {gateLabel}
+            </KanbanCardSignal>
+          ) : null}
+
+          {liveActivity && columnId === 'inProgress' && !isComplete ? (
+            <KanbanCardSignal
+              role="status"
+              aria-live="polite"
+              tone="accent"
+              label="Current turn"
+              icon={Activity}
+              title={liveActivity.label}
+            >
+              {liveActivity.label}
+            </KanbanCardSignal>
+          ) : null}
+
+          {childTaskId ? (
+            <KanbanCardSignal
+              tone="accent"
+              label="Sub-task in progress"
+              icon={GitBranch}
+              title={childTaskId}
+              onMouseEnter={() => setChildCardHighlight(childTaskId, true)}
+              onMouseLeave={() => setChildCardHighlight(childTaskId, false)}
+            >
+              <span className="truncate font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
+                {shortId(childTaskId)} · {childTaskId.split('--').pop() || childTaskId}
+              </span>
+            </KanbanCardSignal>
+          ) : null}
+
+          {task.dependsOn ? (
+            <KanbanCardSignal tone="attention" label="Waiting" icon={Clock3}>
+              #{task.dependsOn.slice(0, 6).toUpperCase()}
+            </KanbanCardSignal>
+          ) : null}
+
+          {task.blockedReason ? (
+            <KanbanCardSignal tone="danger" label="Blocked" icon={Ban}>
+              {task.blockedReason}
+            </KanbanCardSignal>
+          ) : null}
+
+          {dispatchFailure ? (
+            <KanbanCardSignal
+              tone="danger"
+              label={compactDispatchFailureLabel(dispatchFailure)}
+              icon={AlertTriangle}
+            />
+          ) : null}
+
+          {brandHold ? (
+            <PluginLink
+              to="/brands"
+              onClick={(event) => event.stopPropagation()}
+              onPointerDown={(event) => event.stopPropagation()}
+              className="block min-w-0 hover:brightness-110"
+              title="Open Brands"
+            >
+              <KanbanCardSignal tone="attention" label="Brand unavailable" icon={Palette}>
+                {brandHold.detail}
+              </KanbanCardSignal>
+            </PluginLink>
+          ) : null}
+
+          {isFutureScheduled && task.availableAt ? (
+            <KanbanCardSignal tone="accent" label="Scheduled" icon={CalendarClock}>
+              {formatWaitingLabel(task.availableAt)}
+            </KanbanCardSignal>
+          ) : null}
+        </CardContent>
+      ) : null}
+
+      {hasFooter ? (
+        <CardFooter className="justify-between gap-bakin-2">
+          <span className="flex min-w-0 items-center gap-bakin-2">
+            {task.agent ? (
+              <AgentAvatar
+                agent={{
+                  id: task.agent,
+                  name: agentDisplayName ?? agent?.name ?? task.agent,
+                  imageSrc: agent?.headshot,
+                  color: agentColor,
+                }}
+                size="sm"
+              />
+            ) : null}
+            {task.team ? (
+              <Badge size="xs" tone="accent" variant="outline">
+                <Users />
+                {task.team}
+              </Badge>
+            ) : null}
+          </span>
+          {task.date ? (
+            <span className="shrink-0 text-bakin-typography-size-meta uppercase tracking-tight text-bakin-text-muted">
+              {formatRelativeDate(task.date)}
             </span>
-          </span>
-        )}
-      </div>
-
-      {/* Title */}
-      <h3 className={`text-[14px] font-medium leading-[1.4] mb-2 ${isComplete ? 'line-through text-muted-foreground' : 'text-zinc-100'}`}>
-        {task.title}
-      </h3>
-
-      {/* Description — wraps up to 2 lines */}
-      {task.description && (
-        <p className="text-xs text-zinc-400 leading-relaxed line-clamp-2 mb-1">
-          {task.description}
-        </p>
-      )}
-
-      {/* Workflow badge */}
-      {task.workflowId && (
-        <span className="text-xs text-blue-400/70 mt-1">⚡ {task.workflowId}</span>
-      )}
-
-      {/* Project badge */}
-      {task.projectId && (
-        <span className="inline-flex items-center gap-1 text-[10px] text-violet-400/70 mt-1">
-          <span className="size-2 rounded-sm bg-violet-500/30" />
-          {task.projectId.slice(0, 6)}
-        </span>
-      )}
-
-      {/* Brand badge (#419) — plus an opt-in nudge for unbranded work */}
-      {task.brandId && (
-        <span className="inline-flex items-center gap-1 text-[10px] text-fuchsia-400/80 mt-1">
-          <span className="size-2 rounded-full bg-fuchsia-500/40" />
-          {task.brandId}
-        </span>
-      )}
-      {!task.brandId && warnUnbranded && !isComplete && (
-        <span className="inline-flex items-center gap-1 text-[10px] text-amber-400/60 mt-1" title="warnUnbranded is on — this task has no brand">
-          <span className="size-2 rounded-full border border-amber-500/40" />
-          no brand
-        </span>
-      )}
-
-      {/* Budget-deferred indicator (cost-control v2): the task is eligible
-          but the spend gate is holding it — visibly, never silently. */}
-      {budgetHold && (
-        <PluginLink
-          to="/models?tab=spend"
-          onClick={(e) => e.stopPropagation()}
-          onPointerDown={(e) => e.stopPropagation()}
-          className="flex items-center gap-1.5 mt-1.5 px-2 py-1 rounded-md bg-red-500/10 border border-red-500/20 whitespace-nowrap overflow-hidden hover:bg-red-500/20"
-          title="Open Models → Spend"
-        >
-          <span className="text-red-400 text-[11px] font-semibold shrink-0">{budgetHold.label}</span>
-          <span className="text-red-400/60 text-[10px] truncate">{budgetHold.detail}</span>
-        </PluginLink>
-      )}
-
-      {/* Gate approval indicator */}
-      {gateLabel && (
-        <div className="flex items-center gap-1.5 mt-1.5 px-2 py-1 rounded-md bg-amber-500/10 border border-amber-500/20 whitespace-nowrap overflow-hidden">
-          <span className="text-amber-400 text-[11px] font-semibold shrink-0">Needs Approval</span>
-          <span className="text-amber-400/60 text-[10px] truncate">{gateLabel}</span>
-        </div>
-      )}
-
-      {/* Live turn activity (ephemeral SSE chip): only meaningful while the
-          turn runs, so inProgress only — TTL in the hook sweeps stale chips. */}
-      {liveActivity && columnId === 'inProgress' && !isComplete && (
-        <div className="flex items-center gap-1.5 mt-1.5 px-2 py-1 rounded-md bg-blue-500/10 border border-blue-500/20 whitespace-nowrap overflow-hidden">
-          <span className="relative flex size-2 shrink-0">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-60" />
-            <span className="relative inline-flex size-2 rounded-full bg-blue-500" />
-          </span>
-          <span className="text-blue-300 text-[11px] truncate" title={liveActivity.label}>{liveActivity.label}</span>
-        </div>
-      )}
-
-      {/* Child sub-task indicator — hover outlines the linked child card */}
-      {childTaskId && (
-        <div
-          className="flex items-center gap-1.5 mt-1.5 px-2 py-1 rounded-md bg-cyan-500/10 border border-cyan-500/20 whitespace-nowrap overflow-hidden"
-          title={childTaskId}
-          onMouseEnter={() => setChildCardHighlight(childTaskId, true)}
-          onMouseLeave={() => setChildCardHighlight(childTaskId, false)}
-        >
-          <span className="text-cyan-400 text-[11px] shrink-0">Sub-task in progress</span>
-          <span className="text-cyan-400/60 text-[10px] font-mono truncate">
-            {shortId(childTaskId)} · {childTaskId.split('--').pop() || childTaskId}
-          </span>
-        </div>
-      )}
-
-      {/* Dependency indicator */}
-      {task.dependsOn && (
-        <p className="text-xs text-amber-500/70 mt-1 pl-[18px]">waiting on #{task.dependsOn.slice(0, 6).toUpperCase()}</p>
-      )}
-
-      {/* Blocked reason */}
-      {task.blockedReason && (
-        <p className="text-xs text-destructive mt-1.5">{task.blockedReason}</p>
-      )}
-
-      {dispatchFailure && (
-        <div className="flex items-center gap-1.5 mt-1.5 px-2 py-1 rounded-md bg-amber-500/10 border border-amber-500/20 overflow-hidden">
-          <AlertTriangle className="size-3 text-amber-400 shrink-0" />
-          <span className="text-amber-300 text-[11px] font-semibold truncate">
-            {compactDispatchFailureLabel(dispatchFailure)}
-          </span>
-        </div>
-      )}
-
-      {/* Brand-blocked indicator (#419): the task is eligible but its brand
-          is missing/draft — visibly deferring, never silently. */}
-      {brandHold && (
-        <PluginLink
-          to="/brands"
-          onClick={(e) => e.stopPropagation()}
-          onPointerDown={(e) => e.stopPropagation()}
-          className="flex items-center gap-1.5 mt-1.5 px-2 py-1 rounded-md bg-amber-500/10 border border-amber-500/20 whitespace-nowrap overflow-hidden hover:bg-amber-500/20"
-          title="Open Brands"
-        >
-          <span className="text-amber-400 text-[11px] font-semibold shrink-0">Brand unavailable</span>
-          <span className="text-amber-400/60 text-[10px] truncate">{brandHold.detail}</span>
-        </PluginLink>
-      )}
-
-      {isFutureScheduled && task.availableAt && (
-        <div className="mt-2 inline-flex items-center rounded-md border border-sky-500/20 bg-sky-500/10 px-2 py-1 text-[11px] font-medium text-sky-300">
-          {formatWaitingLabel(task.availableAt)}
-        </div>
-      )}
-
-      {/* Footer: avatar bottom-left, date right. A team task shows a team
-          chip until dispatch resolves it, then avatar + small chip (#189). */}
-      <div className="flex items-center justify-between mt-4">
-        <span className="flex items-center gap-1.5">
-          {task.agent && <AgentAvatar agentId={task.agent} size="sm" />}
-          {task.team && (
-            <span className="inline-flex items-center gap-1 rounded-md border border-violet-500/20 bg-violet-500/10 px-1.5 py-0.5 text-[11px] font-medium text-violet-300">
-              <Users className="size-3" />
-              {task.team}
-            </span>
-          )}
-        </span>
-        {task.date && (
-          <span className="text-zinc-500 text-[11px] font-medium tracking-tight uppercase">
-            {formatRelativeDate(task.date)}
-          </span>
-        )}
-      </div>
-    </div>
+          ) : null}
+        </CardFooter>
+      ) : null}
+    </Card>
   )
 }
 
@@ -289,28 +435,11 @@ export function TaskCard({ task, columnId, index = 0, gateLabel, childTaskId, bu
 
   return (
     <div
-      ref={ref as never}
+      ref={ref}
       data-task-id={task.id}
       data-column-id={columnId}
+      className="relative"
     >
-      <div
-        onClick={() => onClick(task, columnId as ColumnId)}
-        style={isDragging ? { borderColor: 'var(--accent)', boxShadow: '0 0 0 1px color-mix(in oklab, var(--accent) 35%, transparent), 0 24px 48px rgba(0, 0, 0, 0.35)' } : undefined}
-        className={`group relative rounded-xl border border-border bg-card cursor-grab active:cursor-grabbing hover:border-zinc-700 hover:shadow-sm shadow-sm shadow-black/20 select-none ${
-          task.checked || columnId === 'done' || columnId === 'archived' ? 'opacity-60' : ''
-        } ${task.blockedReason ? 'border-l-2 border-l-destructive' : ''} ${
-          isDragging ? 'ring-1 ring-[var(--accent)]/30' : ''
-        }`}
-      >
-      {/* Delete button — top-right, shows on hover */}
-      <button
-        className="absolute top-2.5 right-2.5 p-1 rounded-md opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive hover:bg-destructive/10 z-10"
-        onClick={(e) => { e.stopPropagation(); onDelete({ id: task.id, title: task.title }) }}
-        onPointerDown={(e) => e.stopPropagation()}
-      >
-        <X className="size-3.5" />
-      </button>
-
       <TaskCardContent
         task={task}
         columnId={columnId}
@@ -321,9 +450,10 @@ export function TaskCard({ task, columnId, index = 0, gateLabel, childTaskId, bu
         warnUnbranded={warnUnbranded}
         scoreInfo={scoreInfo}
         liveActivity={liveActivity}
-        className="p-4"
+        isDragging={isDragging}
+        onDelete={onDelete}
+        onOpen={onClick}
       />
-      </div>
     </div>
   )
 }

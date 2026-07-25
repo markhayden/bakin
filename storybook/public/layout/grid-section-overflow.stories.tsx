@@ -62,6 +62,29 @@ export const ResponsiveComposition = {
         </Grid>
       </Section>
 
+      <Section divider="top" aria-labelledby="comfortable-split-title">
+        <Stack gap="dense">
+          <h2 id="comfortable-split-title">Comfortable two-up objects</h2>
+          <p className="bakin-layout-recipes-story__meta">
+            Split grids stay single-column on narrow canvases, then divide when both objects retain a useful reading width.
+          </p>
+        </Stack>
+        <Grid layout="split" gap="item" data-testid="comfortable-split">
+          <Card>
+            <CardHeader>
+              <CardTitle>Daybreak Studio</CardTitle>
+              <CardDescription>A content-dense bounded object stays full width on mobile.</CardDescription>
+            </CardHeader>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>Northstar Trails</CardTitle>
+              <CardDescription>The pair appears side by side only when the container can support it.</CardDescription>
+            </CardHeader>
+          </Card>
+        </Grid>
+      </Section>
+
       <Section divider="top" aria-labelledby="operations-title">
         <Inline align="baseline" justify="between">
           <h2 id="operations-title">Active operations</h2>

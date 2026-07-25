@@ -39,7 +39,7 @@ export function TaskMetrics({ columns, timestamp }: TaskMetricsProps) {
         <StatTile label="Agents" value={metrics.agentsActive} valueTone="accent" />
       </StatGroup>
       {timestamp && (
-        <span className="self-end font-bakin-typography-family-mono text-[length:var(--bakin-typography-size-meta)] text-bakin-text-muted">
+        <span className="self-end font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
           Updated {timestamp}
         </span>
       )}

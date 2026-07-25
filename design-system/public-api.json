@@ -10,8 +10,8 @@
     "entrypoints": 8,
     "supportedEntrypoints": 7,
     "frozenLegacyEntrypoints": 1,
-    "valueExports": 324,
-    "typeExports": 388
+    "valueExports": 329,
+    "typeExports": 394
   },
   "entrypoints": [
     {
@@ -385,6 +385,11 @@
         "InspectorPanelFooter",
         "InspectorPanelHeader",
         "isTeamValue",
+        "KanbanBoard",
+        "KanbanCardSignal",
+        "KanbanColumn",
+        "KanbanColumnBody",
+        "KanbanColumnHeader",
         "ListPage",
         "ListPageContent",
         "ListPageControls",
@@ -461,6 +466,11 @@
         "InspectorPanelFooterProps",
         "InspectorPanelHeaderProps",
         "InspectorPanelProps",
+        "KanbanBoardProps",
+        "KanbanCardSignalProps",
+        "KanbanColumnBodyProps",
+        "KanbanColumnHeaderProps",
+        "KanbanColumnProps",
         "ListPageContentProps",
         "ListPageControlsProps",
         "ListPageProps",
@@ -469,6 +479,7 @@
         "ModelSelectOption",
         "ModelSelectProps",
         "NumberSettingsField",
+        "PageHeaderMeasure",
         "PageHeaderProps",
         "PluginSettingsFeedback",
         "PluginSettingsRendererProps",

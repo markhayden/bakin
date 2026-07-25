@@ -1,19 +1,27 @@
 import { Check, Plus } from 'lucide-react'
-import { AgentAvatar } from '@makinbakin/sdk/components'
-import { Badge } from '@makinbakin/sdk/ui'
+import { useAgent, useAgentColor, useAgentDisplayName } from '@makinbakin/sdk/hooks'
+import { AgentAvatar, StatusBadge } from '@makinbakin/sdk/patterns'
+import {
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '@makinbakin/sdk/ui'
 import { runtimeCompatible, type ExploreCatalogEntry } from '../types'
 
-export function entryStatusBadge(entry: ExploreCatalogEntry): { label: string; tone: 'builtin' | 'installed' | 'update' } | null {
-  if (entry.builtin) return { label: 'Built in', tone: 'builtin' }
-  if (entry.updateAvailable === true) return { label: 'Update available', tone: 'update' }
-  if (entry.installed) return { label: 'Installed', tone: 'installed' }
+export function entryStatusBadge(entry: ExploreCatalogEntry): {
+  label: string
+  tone: 'neutral' | 'success' | 'attention'
+  variant: 'soft' | 'solid'
+  icon?: typeof Check
+} | null {
+  if (entry.builtin) return { label: 'Built in', tone: 'neutral', variant: 'solid' }
+  if (entry.updateAvailable === true) return { label: 'Update available', tone: 'attention', variant: 'solid' }
+  if (entry.installed) return { label: 'Installed', tone: 'success', variant: 'soft', icon: Check }
   return null
-}
-
-const TONE_CLASSES: Record<'builtin' | 'installed' | 'update', string> = {
-  builtin: 'border-border bg-[rgba(255,255,255,0.06)] text-muted-foreground',
-  installed: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400',
-  update: 'border-amber-500/30 bg-amber-500/10 text-amber-400',
 }
 
 /**
@@ -22,8 +30,23 @@ const TONE_CLASSES: Record<'builtin' | 'installed' | 'update', string> = {
  * (bits-repo asset), else the emoji.
  */
 export function EntryVisual({ entry, size = 'md' }: { entry: ExploreCatalogEntry; size?: 'md' | 'lg' }) {
+  const registeredAgentId = entry.kind === 'agent' && entry.installed ? entry.id : ''
+  const registeredAgent = useAgent(registeredAgentId)
+  const registeredAgentName = useAgentDisplayName(registeredAgentId)
+  const registeredAgentColor = useAgentColor(registeredAgentId)
+
   if (entry.kind === 'agent' && entry.installed) {
-    return <AgentAvatar agentId={entry.id} size={size === 'lg' ? 'xl' : 'lg'} />
+    return (
+      <AgentAvatar
+        agent={{
+          id: entry.id,
+          name: registeredAgentName ?? registeredAgent?.name ?? entry.name,
+          imageSrc: registeredAgent?.headshot || entry.iconUrl,
+          color: registeredAgent ? registeredAgentColor : undefined,
+        }}
+        size={size === 'lg' ? 'xl' : 'lg'}
+      />
+    )
   }
   if (entry.iconUrl) {
     return (
@@ -32,11 +55,22 @@ export function EntryVisual({ entry, size = 'md' }: { entry: ExploreCatalogEntry
         alt={entry.name}
         loading="lazy"
         data-testid={`icon-${entry.kind}-${entry.id}`}
-        className={`${size === 'lg' ? 'size-12' : 'size-9'} shrink-0 rounded-full border border-border object-cover object-top`}
+        className={`${size === 'lg' ? 'size-bakin-12' : 'size-bakin-8'} shrink-0 rounded-bakin-pill border border-bakin-border-subtle object-cover object-top`}
       />
     )
   }
-  return <span className={size === 'lg' ? 'text-3xl leading-none' : 'text-2xl leading-none'}>{entry.emoji ?? '📦'}</span>
+  return (
+    <span
+      aria-hidden="true"
+      className={`inline-grid shrink-0 place-items-center rounded-bakin-control bg-bakin-surface-default leading-none ${
+        size === 'lg'
+          ? 'size-bakin-12 text-bakin-typography-size-title'
+          : 'size-bakin-8 text-bakin-typography-size-section-title'
+      }`}
+    >
+      {entry.emoji ?? '📦'}
+    </span>
+  )
 }
 
 export function CatalogCard({
@@ -56,67 +90,69 @@ export function CatalogCard({
   const status = entryStatusBadge(entry)
   const installable = !entry.builtin && !entry.installed && onInstall !== undefined && compatible
   return (
-    <button
-      type="button"
-      onClick={() => onSelect(entry)}
+    <Card
+      size="sm"
       data-testid={`catalog-card-${entry.kind}-${entry.id}`}
-      className="flex flex-col gap-2 rounded-xl bg-card p-4 text-left ring-1 ring-foreground/10 transition-shadow hover:ring-foreground/25"
+      className="h-full cursor-pointer transition-colors hover:border-bakin-border-strong"
+      onClick={(event) => {
+        if ((event.target as HTMLElement).closest('button, a')) return
+        onSelect(entry)
+      }}
     >
-      <div className="flex items-center gap-2.5">
+      <CardHeader className="grid-cols-[auto_minmax(0,1fr)] items-center gap-x-bakin-3">
         <EntryVisual entry={entry} />
-        <span className="font-medium text-foreground">{entry.name}</span>
-        <Badge variant="outline" className="ml-auto shrink-0 text-[10px] uppercase tracking-wide text-muted-foreground">
-          {entry.category}
-        </Badge>
-      </div>
-      <p className="line-clamp-2 text-sm text-muted-foreground">{entry.description}</p>
-      {entry.useCases[0] && (
-        <p className="line-clamp-1 text-xs text-muted-foreground/80">e.g. {entry.useCases[0]}</p>
-      )}
-      <div className="mt-auto flex items-center gap-2 pt-1.5">
-        {status && (
-          <span className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] ${TONE_CLASSES[status.tone]}`}>
-            {status.tone === 'installed' && <Check className="size-3" />}
-            {status.label}
+        <div className="flex min-w-0 items-center gap-bakin-2">
+          <CardTitle className="min-w-0 flex-1 group-data-[size=sm]/card:text-bakin-typography-size-section-title">
+            {entry.name}
+          </CardTitle>
+          <span className="shrink-0 text-bakin-typography-size-meta font-bakin-typography-weight-semibold uppercase tracking-wide text-bakin-text-muted">
+            {entry.category}
           </span>
-        )}
-        {!compatible && (
-          <span
-            data-testid={`card-incompatible-${entry.id}`}
-            className="flex items-center gap-1 rounded-full border border-border bg-[rgba(255,255,255,0.06)] px-2 py-0.5 text-[11px] text-muted-foreground"
-            title={`Requires runtime: ${(entry.runtimes ?? []).join(', ')}`}
-          >
-            Not for {activeAdapter ?? 'this runtime'}
-          </span>
-        )}
-        {installable && (
-          <span
-            role="button"
-            tabIndex={0}
-            data-testid={`card-install-${entry.kind}-${entry.id}`}
-            onClick={(event) => {
-              event.stopPropagation()
-              onInstall(entry)
-            }}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' || event.key === ' ') {
-                event.preventDefault()
-                event.stopPropagation()
-                onInstall(entry)
-              }
-            }}
-            className="flex items-center gap-1 rounded-full border border-accent/40 bg-accent/10 px-2.5 py-0.5 text-[11px] font-medium text-accent transition-colors hover:bg-accent/20"
-          >
-            <Plus className="size-3" />
-            Install
-          </span>
-        )}
-        {entry.installedVersion && (
-          <span className="ml-auto text-[11px] text-muted-foreground/60" data-testid="card-version">
-            v{entry.installedVersion}
-          </span>
-        )}
-      </div>
-    </button>
+        </div>
+      </CardHeader>
+      <CardContent className="flex-1">
+        <CardDescription className="line-clamp-2 leading-snug">{entry.description}</CardDescription>
+      </CardContent>
+      <CardFooter className="mt-auto flex-wrap justify-between gap-bakin-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-bakin-2">
+          {status && (
+            <StatusBadge tone={status.tone} variant={status.variant} icon={status.icon} size="xs">
+              {status.label}
+            </StatusBadge>
+          )}
+          {!compatible && (
+            <StatusBadge
+              data-testid={`card-incompatible-${entry.id}`}
+              title={`Requires runtime: ${(entry.runtimes ?? []).join(', ')}`}
+              tone="neutral"
+              size="xs"
+            >
+              Not for {activeAdapter ?? 'this runtime'}
+            </StatusBadge>
+          )}
+          {entry.installedVersion ? (
+            <span className="text-[length:var(--bakin-typography-size-meta)] text-bakin-text-muted" data-testid="card-version">
+              v{entry.installedVersion}
+            </span>
+          ) : null}
+        </div>
+        <div className="ml-auto flex items-center gap-bakin-1">
+          <Button type="button" variant="ghost" size="xs" onClick={() => onSelect(entry)}>
+            Details
+          </Button>
+          {installable ? (
+            <Button
+              type="button"
+              size="xs"
+              data-testid={`card-install-${entry.kind}-${entry.id}`}
+              onClick={() => onInstall(entry)}
+            >
+              <Plus />
+              Install
+            </Button>
+          ) : null}
+        </div>
+      </CardFooter>
+    </Card>
   )
 }

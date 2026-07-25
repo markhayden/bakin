@@ -34,7 +34,7 @@ describe('shared page header recipe', () => {
     const header = container.querySelector('[data-slot="page-header"]')
     expect(header?.tagName).toBe('HEADER')
     expect(header?.className).toContain('@container/page-header')
-    expect(screen.getByRole('heading', { level: 1, name: 'Launch approval' })).toBeTruthy()
+    expect(screen.getByRole('heading', { level: 1, name: 'Launch approval' }).className).toContain('max-w-[30ch]')
     expect(screen.getByRole('group', { name: 'Page actions' }).children).toHaveLength(2)
     expect(Array.from(header?.querySelectorAll('h1, button') ?? []).map((element) => element.textContent)).toEqual([
       'Launch approval',
@@ -44,6 +44,10 @@ describe('shared page header recipe', () => {
     expect(screen.getByText('Coordinates the final publishing decision.').id).toBeTruthy()
     expect(header?.getAttribute('aria-describedby')).toBe(screen.getByText('Coordinates the final publishing decision.').id)
     expect(container.querySelector('[data-slot="page-header-navigation"] a')?.textContent).toBe('Back to workflows')
+    expect(container.querySelector('[data-slot="page-header-navigation"]')?.parentElement).toBe(
+      container.querySelector('[data-slot="page-header-eyebrow"]')?.parentElement,
+    )
+    expect(container.querySelector('[data-slot="page-header-context"]')?.className).toContain('items-center')
     expect(container.querySelector('[data-slot="page-header-meta"]')?.textContent).toBe('workflow:launch-approval')
   })
 
@@ -52,6 +56,23 @@ describe('shared page header recipe', () => {
 
     expect(screen.getByRole('heading', { level: 1, name: 'Task queue' })).toBeTruthy()
     expect(screen.getByRole('group', { name: 'Task queue actions' })).toBeTruthy()
+  })
+
+  it('allows media and editor headers to follow the available primary-column measure', () => {
+    const { container } = render(
+      <PageHeader
+        measure="wide"
+        title="Gourmet seasoned popcorn with rosemary and parmesan"
+        description="Media context and immutable version history."
+        actions={<Button>Edit asset</Button>}
+      />,
+    )
+
+    const header = container.querySelector('[data-slot="page-header"]')
+    expect(header?.getAttribute('data-measure')).toBe('wide')
+    expect(container.querySelector('[data-slot="page-header-copy"]')?.className).toContain('max-w-none')
+    expect(container.querySelector('[data-slot="page-header-title"]')?.className).toContain('max-w-none')
+    expect(container.querySelector('[data-slot="page-header-description"]')?.className).toContain('max-w-none')
   })
 
   it('keeps search, view controls, and the primary action in one stable desktop toolbar', () => {
@@ -82,7 +103,7 @@ describe('shared page header recipe', () => {
 })
 
 describe('list/index page recipe', () => {
-  it('owns the wide page canvas and names controls and results independently', () => {
+  it('owns the full page canvas and names controls and results independently', () => {
     const { container } = render(
       <ListPage id="task-index">
         <PageHeader title="Active tasks" />
@@ -98,7 +119,7 @@ describe('list/index page recipe', () => {
 
     const page = container.querySelector('[data-archetype="list"]')
     expect(page?.id).toBe('task-index')
-    expect(page?.getAttribute('data-width')).toBe('wide')
+    expect(page?.getAttribute('data-width')).toBe('full')
     expect(page?.getAttribute('data-gap')).toBe('content')
     expect(page?.querySelector('[data-slot="page-shell-content"]')?.className).toContain('gap-bakin-4')
     expect(screen.getByRole('region', { name: 'Task filters' })).toBeTruthy()
@@ -109,7 +130,7 @@ describe('list/index page recipe', () => {
   })
 
   it('replaces only the result region when a terminal state is supplied', () => {
-    render(
+    const { container } = render(
       <ListPage>
         <PageHeader title="Active tasks" />
         <ListPageContent
@@ -124,6 +145,8 @@ describe('list/index page recipe', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Active tasks' })).toBeTruthy()
     expect(screen.getByRole('status', { name: 'No results' })).toBeTruthy()
     expect(screen.queryByText('Stale result that must not render')).toBeNull()
+    expect(container.querySelector('[data-slot="list-page-content"]')?.className).toContain('flex-1')
+    expect(container.querySelector('[data-slot="list-page-state"]')?.className).toContain('flex-1')
   })
 })
 
@@ -145,6 +168,23 @@ describe('detail page recipe', () => {
     expect(container.querySelector('[data-slot="detail-page-grid"]')?.getAttribute('data-layout')).toBe('main-aside')
     expect(screen.getByRole('complementary', { name: 'Workflow context' })).toBeTruthy()
     expect(container.querySelector('[data-slot="detail-page-feedback"]')?.textContent).toBe('Draft changes')
+  })
+
+  it('supports a full-width media detail canvas without changing scroll ownership', () => {
+    const { container } = render(
+      <DetailPage width="full">
+        <PageHeader title="Gourmet popcorn" />
+        <DetailPageBody layout="aside">
+          <DetailPageMain>Asset preview</DetailPageMain>
+          <DetailPageAside label="Asset context">Metadata and version history</DetailPageAside>
+        </DetailPageBody>
+      </DetailPage>,
+    )
+
+    const page = container.querySelector('[data-archetype="detail"]')
+    expect(page?.getAttribute('data-width')).toBe('full')
+    expect(container.querySelectorAll('main')).toHaveLength(0)
+    expect(container.querySelector('[data-slot="detail-page-aside"]')?.className).not.toMatch(/overflow-y-(?:auto|scroll)/)
   })
 
   it('replaces the body while preserving page identity and navigation', () => {

@@ -79,6 +79,20 @@ describe('public layout primitives', () => {
     expect(grid?.className).toContain('@3xl/layout-grid:grid-cols-[minmax(0,1.6fr)_minmax(16rem,.8fr)]')
   })
 
+  it('keeps a split grid single-column until each item has comfortable width', () => {
+    const { container } = render(
+      <Grid layout="split">
+        <article>First bounded object</article>
+        <article>Second bounded object</article>
+      </Grid>,
+    )
+
+    const grid = container.querySelector('[data-slot="grid"]')
+    expect(grid?.className).toContain('grid-cols-1')
+    expect(grid?.className).toContain('@lg/layout-grid:grid-cols-2')
+    expect(grid?.className).not.toContain('@sm/layout-grid:grid-cols-2')
+  })
+
   it('gives Section consistent rhythm and an optional semantic divider', () => {
     const { container } = render(
       <Section spacing="compact" divider="top" aria-labelledby="activity-title">

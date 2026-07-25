@@ -1,9 +1,22 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Button, Label, Textarea } from '@makinbakin/sdk/ui'
-import { BakinDrawer } from '@makinbakin/sdk/components'
-import { Loader2 } from 'lucide-react'
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+  BakinDrawer,
+  BakinDrawerSection,
+  Field,
+  FieldControl,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+  Form,
+  FormActions,
+  SubmitButton,
+  Textarea,
+} from '@makinbakin/sdk/ui'
 import { TagInput } from './TagInput'
 import { VERSIONED_API } from './asset-urls'
 import type { VersionedAssetSummary } from './types'
@@ -84,46 +97,69 @@ export function AssetEditDrawer({ assetId, initialDescription, initialTags, sugg
       description={assetId}
       storageKey="asset-edit"
       defaultWidth={480}
-      dirty={dirty && !saving}
+      dirty={dirty}
+      busy={saving}
     >
-      {/* Matches the AgentForm drawer conventions: BakinDrawer owns the
-          padding (px-7 py-6); fields are space-y-1.5 Label+control+help;
-          footer buttons live in the body, right-aligned. */}
-      <div className="flex flex-col gap-5" data-testid="asset-edit-drawer">
-        <div className="space-y-1.5">
-          <Label htmlFor="asset-edit-description">Description</Label>
-          <Textarea
-            id="asset-edit-description"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            maxLength={200}
-            rows={3}
-            placeholder="What is this asset?"
-            data-testid="asset-edit-description"
-          />
-          <p className="text-xs text-muted-foreground text-right">{description.length}/200</p>
-        </div>
+      <Form
+        aria-label="Edit asset metadata"
+        busy={saving}
+        onFormSubmit={save}
+        data-testid="asset-edit-drawer"
+      >
+        <BakinDrawerSection title="Metadata">
+          <FieldGroup>
+            <Field name="description">
+              <FieldLabel>Description</FieldLabel>
+              <FieldControl
+                render={(
+                  <Textarea
+                    value={description}
+                    onChange={(event) => setDescription(event.currentTarget.value)}
+                    maxLength={200}
+                    rows={3}
+                    placeholder="What is this asset?"
+                    data-testid="asset-edit-description"
+                  />
+                )}
+              />
+              <FieldDescription className="flex items-start justify-between gap-bakin-3">
+                <span>Describe what this asset contains or how it should be used.</span>
+                <span className="shrink-0 tabular-nums">{description.length}/200</span>
+              </FieldDescription>
+            </Field>
 
-        <div className="space-y-1.5">
-          <Label htmlFor="asset-edit-tags">Tags</Label>
-          <TagInput value={tags} onChange={setTags} suggestions={suggestions ?? fetchedSuggestions ?? []} />
-          <p className="text-xs text-muted-foreground">
-            Tags group assets into folders. Enter adds; type to reuse existing tags.
-          </p>
-        </div>
+            <Field name="tags">
+              <FieldLabel>Tags</FieldLabel>
+              <TagInput
+                value={tags}
+                onChange={setTags}
+                suggestions={suggestions ?? fetchedSuggestions ?? []}
+                ariaLabel="Tags"
+              />
+              <FieldDescription>
+                Tags group assets into folders. Enter adds; type to reuse existing tags.
+              </FieldDescription>
+            </Field>
+          </FieldGroup>
+        </BakinDrawerSection>
 
-        {error && <p className="text-xs text-destructive" data-testid="asset-edit-error">{error}</p>}
+        {error ? (
+          <Alert tone="danger" data-testid="asset-edit-error">
+            <AlertTitle>Asset was not saved</AlertTitle>
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        ) : null}
 
-        <div className="flex justify-end gap-2 pt-2">
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
-            Cancel
-          </Button>
-          <Button onClick={save} disabled={saving || !dirty} data-testid="asset-edit-save">
-            {saving && <Loader2 className="size-3.5 animate-spin mr-1.5" />}
-            {saving ? 'Saving…' : 'Save'}
-          </Button>
-        </div>
-      </div>
+        <FormActions>
+          <SubmitButton
+            disabled={!dirty}
+            busyLabel="Saving asset…"
+            data-testid="asset-edit-save"
+          >
+            Save asset
+          </SubmitButton>
+        </FormActions>
+      </Form>
     </BakinDrawer>
   )
 }

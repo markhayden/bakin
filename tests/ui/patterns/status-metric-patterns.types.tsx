@@ -2,7 +2,7 @@ import { StatGroup, StatTile, StatusBadge } from '@makinbakin/sdk/patterns'
 
 export const validStatusMetricPatterns = (
   <StatGroup label="Build metrics">
-    <StatusBadge tone="attention" variant="outline">Needs review</StatusBadge>
+    <StatusBadge tone="attention" variant="outline" size="xs">Needs review</StatusBadge>
     <StatTile
       label="Coverage"
       value="91%"

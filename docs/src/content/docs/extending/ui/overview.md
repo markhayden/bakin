@@ -99,6 +99,10 @@ import { BoundedOverflow, Grid, Section } from '@makinbakin/sdk/layout'
 
 Grid recipes respond to their own available container, not the browser viewport. Do not recreate their internal breakpoints in plugin code. `single`, `split`, `thirds`, and `quarters` describe equal-column intent; `cards` and `main-aside` cover the two recurring unequal cases found across official surfaces. If a layout does not fit one of these recipes, compose `Stack` and `Inline` first and bring repeated evidence to the design-system review before adding another public option.
 
+`split` keeps content-dense objects full width on narrow canvases and becomes
+two columns only when both objects retain a comfortable reading width. Do not
+force it into two mobile columns from plugin code.
+
 `BoundedOverflow` is intentionally horizontal. The child owns its intrinsic width, while the boundary prevents that width from escaping the page and provides keyboard focus for scrolling. It is not a general-purpose nested page scroller and does not set arbitrary heights.
 
 ## List and Detail Page Recipes
@@ -107,11 +111,11 @@ Use `@makinbakin/sdk/patterns` once a page is more specific than a general layou
 
 | Need | Component | Contract |
 | --- | --- | --- |
-| Identify any routed page | `PageHeader` | Renders the page's single `h1`; optional navigation, eyebrow, description, metadata, compact controls, and actions keep one order at every width |
-| Build a searchable or filterable index | `ListPage` | Uses the routine wide canvas; `full` is reserved for genuinely intrinsic-width domain content |
+| Identify any routed page | `PageHeader` | Renders the page's single `h1`; optional navigation and eyebrow share one compact context row, while description, metadata, compact controls, and actions keep one order at every width. Use `measure="wide"` only when a media/editor header should follow its primary-column breadth |
+| Build a searchable or filterable index | `ListPage` | Fills the available plugin canvas by default; use `wide` only for a deliberately bounded index |
 | Keep query controls available | `ListPageControls` | Requires an accessible region name and reflows search, filters, sorting, and peer actions without owning their values |
-| Bound list results and replacement states | `ListPageContent` | Requires an accessible region name; `state` replaces only the results, while `feedback` can remain beside stale usable content |
-| Build one resource or record page | `DetailPage` | Uses `wide` by default or `content` for a focused single-column record |
+| Bound list results and replacement states | `ListPageContent` | Requires an accessible region name; `state` replaces only the results and can fill the remaining page canvas, while `feedback` can remain beside stale usable content |
+| Build one resource or record page | `DetailPage` | Uses `wide` by default, `content` for a focused single-column record, or `full` for a media/editor workspace with evidenced breadth |
 | Compose detail content | `DetailPageBody`, `DetailPageMain`, and `DetailPageAside` | Choose `single` or `aside`; a named aside moves below the primary content when its container is narrow |
 
 ```tsx
@@ -187,10 +191,10 @@ containers, the whole toolbar stacks at the documented container breakpoint.
 Put broader facets, sorting, pagination,
 and clear-all actions in `ListPageControls` instead of crowding the header.
 
-Production filters, search, sorting, pagination, selected tabs, and open overlays continue to use the existing query-state hooks. `useQueryState` uses replace semantics for routine view changes and batches multiple setters from one interaction; do not add local history wrappers or rebuild query strings in the recipe. Paths still identify pages. Use the existing `PluginLink` for back links and cross-page navigation:
+Production filters, search, sorting, pagination, selected tabs, and open overlays continue to use the existing query-state hooks. `useQueryState` uses replace semantics for routine view changes and batches multiple setters from one interaction; do not add local history wrappers or rebuild query strings in the recipe. Paths still identify pages. Use the existing `PluginLink` for deliberate cross-page navigation. Detail-page back actions use `useHistoryBack(fallback)` with a circular icon-only button so they return to the actual prior context:
 
 ```tsx
-import { PluginLink } from '@makinbakin/sdk/navigation'
+import { useHistoryBack } from '@makinbakin/sdk/navigation'
 import {
   DetailPage,
   DetailPageAside,
@@ -198,12 +202,27 @@ import {
   DetailPageMain,
   PageHeader,
 } from '@makinbakin/sdk/patterns'
+import { Button } from '@makinbakin/sdk/ui'
+import { ArrowLeft } from 'lucide-react'
 
 export function WorkflowDetail() {
+  const goBack = useHistoryBack('/workflows')
+
   return (
     <DetailPage>
       <PageHeader
-        navigation={<PluginLink to="/workflows">Back to workflows</PluginLink>}
+        navigation={(
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="rounded-bakin-pill"
+            onClick={goBack}
+            aria-label="Back to workflows"
+            title="Back to workflows"
+          >
+            <ArrowLeft />
+          </Button>
+        )}
         title="Launch approval"
       />
       <DetailPageBody layout="aside">
@@ -218,6 +237,12 @@ export function WorkflowDetail() {
 `state` is for initial loading, empty, unavailable, permission, or fatal error content that replaces the owning region. During a refresh, retain usable rows or detail sections, set `busy`, and use `feedback` for a `Banner` or inline status instead. Page header, navigation, and controls should not disappear merely because a result request failed.
 
 The host owns the page's `main` landmark and vertical scroll. These recipes therefore render no nested `main`, fixed-height page pane, or vertical scroller. Put a truly wide table or canvas inside `BoundedOverflow`; do not make the entire list or detail body horizontally scrollable.
+
+For media-led detail pages, use `DetailPage width="full"` and
+`PageHeader measure="wide"` with the preview in
+`DetailPageMain` and context, enrichment, downloads, and version history in the
+named `DetailPageAside`. Version history stays in the host document scroll; do
+not introduce a nested vertical scroller merely because the history can grow.
 
 These are compositional recipes, not page controllers. Do not pass them fetchers, route definitions, filter schemas, resource arrays, or plugin-specific callbacks. Do not use `PageHeader` inside a dialog, drawer, or embedded slot, and do not add a second `h1` inside the page body. Domain CSS may style the actual rows or record content under the plugin's ownership root; it should not recreate the recipe's insets, heading scale, action placement, breakpoints, or state spacing.
 
@@ -424,7 +449,7 @@ export function ImportStatus() {
 
 Use one primary action per local decision area. `secondary`, `outline`, and `ghost` reduce emphasis; `danger` is reserved for destructive consequences. `warning`, `info`, and `accent` communicate specific context and should not replace clear action labels. Icon-only buttons need an accessible name.
 
-For badges, `tone` describes meaning (`neutral`, `primary`, `success`, `attention`, `danger`, or `accent`) while `variant` describes visual treatment (`soft`, `solid`, `outline`, `ghost`, or `link`). Do not encode status only with color: keep the text explicit. Badges label state; buttons change it.
+For badges, `tone` describes meaning (`neutral`, `primary`, `success`, `attention`, `danger`, or `accent`) while `variant` describes visual treatment (`soft`, `solid`, `outline`, `ghost`, or `link`). `StatusBadge` defaults to a filled treatment so primary state reads immediately; use outline for secondary, uncertain, historical, or low-emphasis context, and soft badges for metadata. Do not encode status only with color: keep the text explicit. Badges label state; buttons change it.
 
 Routine alerts announce with `role="status"`. Danger alerts default to `role="alert"`, so reserve them for conditions that need immediate assistive-technology announcement. Progress accepts an exact `value` for determinate work or `null` for indeterminate work; always supply a visible `ProgressLabel` or an `aria-label`.
 
@@ -439,6 +464,7 @@ The surface/content set covers bounded objects, compact identity, content bounda
 | Need | Component | Contract |
 | --- | --- | --- |
 | Represent a coherent bounded object | `Card` and its subparts | Use for an entity, record, or grouped data—not page layout |
+| Arrange bounded objects in lanes | `KanbanBoard`, `KanbanColumn`, `KanbanColumnHeader`, `KanbanColumnBody`, and `KanbanCardSignal` | Keep one labelled horizontal overflow boundary; lanes remain structural, records retain their own Card boundaries, and operational feedback uses a full-width filled row rather than another chip |
 | Show compact identity | `Avatar`, `AvatarFallback`, and group helpers | Pair the visual with a visible or accessible identity name |
 | Reinforce a real content boundary | `Separator` | Decorative by default; opt into separator semantics deliberately |
 | Approximate content while a labelled region loads | `Skeleton` | Silent by default and motion-reduced automatically |
@@ -490,6 +516,39 @@ export function WorkflowObject({ loading }: { loading: boolean }) {
 ```
 
 Card is intentionally not a layout primitive. Build page and section hierarchy from headings, semantic sections, whitespace, responsive layout primitives, surface shifts, and occasional dividers. A page made of bordered panels—or a Card nested inside another bordered Card—is a design-system failure, even if each individual component is valid. Reserve Card for an object whose boundary still makes sense when the object moves elsewhere.
+
+Kanban lanes are low-chrome structure, not cards around cards. Use `KanbanBoard` for the single labelled, keyboard-scrollable boundary (the same overflow contract as `BoundedOverflow`), then compose each named lane from `KanbanColumnHeader` and `KanbanColumnBody`. Put each persistent task or record in `Card`; use the lane header, a quiet divider, and spacing for the column itself. Within the card, reserve a solid `StatusBadge` for the record state, render provenance such as a workflow as quiet icon-led text, and use `KanbanCardSignal` for full-width approval, active-turn, blocked, or failure feedback. Do not represent every metadata value as an outlined chip.
+
+Domain code still owns data, drag/drop, routing, mutations, and a non-drag way to move the record. A drag implementation may preserve its proven stable scroll, lane, and keyed sortable wrappers rather than changing interaction-sensitive DOM merely to mirror the presentation-only `KanbanBoard` wrapper. It must still provide the same named, keyboard-scrollable overflow boundary. During a drag, show the record at the exact in-flow insertion position, replacing an empty state with the preview where appropriate. A pointer clone is supplemental; whole-lane highlighting is not sufficient placement feedback. Every required drag move also needs a named keyboard-accessible action.
+
+```tsx
+import { KanbanBoard, KanbanCardSignal, KanbanColumn, KanbanColumnBody, KanbanColumnHeader, StatusBadge } from '@makinbakin/sdk/patterns'
+import { Badge, Card, CardHeader, CardTitle } from '@makinbakin/sdk/ui'
+
+export function ReviewBoard() {
+  return (
+    <KanbanBoard label="Review board">
+      <KanbanColumn labelledBy="review-heading">
+        <KanbanColumnHeader>
+          <h2 id="review-heading">Review</h2>
+          <Badge size="xs" variant="outline">2</Badge>
+        </KanbanColumnHeader>
+        <KanbanColumnBody>
+          <Card size="sm">
+            <CardHeader>
+              <StatusBadge tone="attention" variant="solid" size="xs">Review</StatusBadge>
+              <CardTitle>Approve launch copy</CardTitle>
+            </CardHeader>
+            <KanbanCardSignal tone="attention" label="Needs approval">
+              Approve final copy
+            </KanbanCardSignal>
+          </Card>
+        </KanbanColumnBody>
+      </KanbanColumn>
+    </KanbanBoard>
+  )
+}
+```
 
 `Skeleton` does not announce itself. Put `aria-busy="true"` and a useful accessible name on the region being loaded. Use `shape="text"`, `"circle"`, or `"rectangle"` to approximate broad geometry, and keep the loading preview simpler than the final interface.
 

@@ -10,11 +10,12 @@ import { normalizeTag } from '../../lib/tags'
  * tags while typing, Enter/comma adds freeform. Normalization mirrors the
  * server's normalizeTags (which remains the authority on save).
  */
-export function TagInput({ value, onChange, suggestions = [], placeholder = 'Add tag…' }: {
+export function TagInput({ value, onChange, suggestions = [], placeholder = 'Add tag…', ariaLabel = 'Tags' }: {
   value: string[]
   onChange: (tags: string[]) => void
   suggestions?: string[]
   placeholder?: string
+  ariaLabel?: string
 }) {
   const [draft, setDraft] = useState('')
   const [focused, setFocused] = useState(false)
@@ -48,6 +49,7 @@ export function TagInput({ value, onChange, suggestions = [], placeholder = 'Add
         ))}
         <Input
           ref={inputRef}
+          aria-label={ariaLabel}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onFocus={() => setFocused(true)}

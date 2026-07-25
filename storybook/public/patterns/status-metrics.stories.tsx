@@ -67,10 +67,10 @@ export const StatusLanguage = {
       description="Every chip keeps a visible state label. Tone and optional iconography reinforce the message but never replace it."
     >
       <section aria-labelledby="status-language-heading" className="bakin-status-metrics-story__section">
-        <div><h2 id="status-language-heading">Operational status</h2><p>Use soft status by default and outline where the surrounding surface already carries more weight.</p></div>
+        <div><h2 id="status-language-heading">Operational status</h2><p>Use a filled status by default so state scans immediately. Use outline for secondary, uncertain, or historical context.</p></div>
         <div className="bakin-status-metrics-story__status-groups">
-          <div><span>Soft</span><div>
-            <StatusBadge tone="neutral">Draft</StatusBadge>
+          <div><span>Filled</span><div>
+            <StatusBadge tone="neutral" size="xs">Draft</StatusBadge>
             <StatusBadge tone="success" icon={CheckIcon}>Published</StatusBadge>
             <StatusBadge tone="attention">Needs review</StatusBadge>
             <StatusBadge tone="danger">Blocked</StatusBadge>

@@ -19,13 +19,13 @@
     "private-import"
   ],
   "summary": {
-    "paths": 194,
+    "paths": 191,
     "totals": {
-      "raw-palette": 1341,
-      "arbitrary-size": 521,
-      "raw-control": 191,
-      "inline-style": 56,
-      "generic-token": 2366,
+      "raw-palette": 1282,
+      "arbitrary-size": 486,
+      "raw-control": 188,
+      "inline-style": 54,
+      "generic-token": 2316,
       "unscoped-css": 0,
       "private-import": 6
     }
@@ -2256,40 +2256,6 @@
       }
     },
     {
-      "path": "plugins/tasks/components/kanban-board.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "plugin",
-        "pluginId": "tasks"
-      },
-      "censusEntryId": "plugin-slot:tasks:page:/tasks",
-      "migrationTask": "T48-T49",
-      "archetype": "workflow-action",
-      "target": "task board/detail archetypes and supported SDK UI",
-      "status": "legacy-allowed",
-      "allowances": {
-        "arbitrary-size": 1
-      }
-    },
-    {
-      "path": "plugins/tasks/components/kanban-column.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "plugin",
-        "pluginId": "tasks"
-      },
-      "censusEntryId": "plugin-slot:tasks:page:/tasks",
-      "migrationTask": "T48-T49",
-      "archetype": "workflow-action",
-      "target": "task board/detail archetypes and supported SDK UI",
-      "status": "legacy-allowed",
-      "allowances": {
-        "arbitrary-size": 10,
-        "raw-control": 2,
-        "generic-token": 33
-      }
-    },
-    {
       "path": "plugins/tasks/components/step-output-viewer.tsx",
       "owner": {
         "repository": "bakin",
@@ -2305,26 +2271,6 @@
         "raw-palette": 9,
         "arbitrary-size": 2,
         "generic-token": 2
-      }
-    },
-    {
-      "path": "plugins/tasks/components/task-card.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "plugin",
-        "pluginId": "tasks"
-      },
-      "censusEntryId": "plugin-slot:tasks:page:/tasks",
-      "migrationTask": "T48-T49",
-      "archetype": "workflow-action",
-      "target": "task board/detail archetypes and supported SDK UI",
-      "status": "legacy-allowed",
-      "allowances": {
-        "raw-palette": 51,
-        "arbitrary-size": 22,
-        "raw-control": 1,
-        "inline-style": 2,
-        "generic-token": 11
       }
     },
     {
@@ -2360,7 +2306,7 @@
       "status": "legacy-allowed",
       "allowances": {
         "raw-palette": 3,
-        "arbitrary-size": 3,
+        "arbitrary-size": 2,
         "generic-token": 5
       }
     },
@@ -2377,9 +2323,7 @@
       "target": "task board/detail archetypes and supported SDK UI",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-palette": 8,
-        "arbitrary-size": 2,
-        "generic-token": 6
+        "arbitrary-size": 1
       }
     },
     {

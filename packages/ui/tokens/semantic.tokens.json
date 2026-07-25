@@ -91,6 +91,16 @@
         }
       },
       "signal": {
+        "info": {
+          "$description": "Informational guidance and non-urgent progress signals on the canvas.",
+          "$value": "{reference.color.blue.500}",
+          "$extensions": {
+            "dev.bakin.tokens": {
+              "contrastAgainst": "semantic.color.canvas.default",
+              "contrastRole": "non-text"
+            }
+          }
+        },
         "accent": {
           "$description": "Brand accent for selected or emphasized non-text signal marks on the canvas.",
           "$value": "{reference.color.pink.500}",

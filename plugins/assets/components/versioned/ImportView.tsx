@@ -103,7 +103,7 @@ export function ImportView({ onImported }: { onImported?: () => void }) {
       </div>
       {error && <p className="text-xs text-destructive" data-testid="import-error">{error}</p>}
       {files.map(file => (
-        <div key={file.relPath} className="flex items-center gap-3 rounded-md border border-border bg-card px-3 py-2" data-testid={`import-row-${file.name}`}>
+        <div key={file.relPath} className="flex items-center gap-3 rounded-bakin-surface border border-bakin-border-subtle/30 bg-bakin-surface-default px-bakin-3 py-bakin-2" data-testid={`import-row-${file.name}`}>
           <div className="flex size-9 shrink-0 items-center justify-center rounded bg-zinc-900/50">
             <AssetTypeIcon type={typeOverrides[file.relPath] ?? file.suggestedType} className="size-4" />
           </div>

@@ -4,12 +4,12 @@ import { Grid } from '../layout/grid'
 import { PageShell, type PageShellProps } from '../layout/page-shell'
 import { cn } from '../utils'
 
-export type DetailPageWidth = 'content' | 'wide'
+export type DetailPageWidth = 'content' | 'wide' | 'full'
 export type DetailPageLayout = 'single' | 'aside'
 
 export type DetailPageProps = Omit<PageShellProps, 'children' | 'gap' | 'padding' | 'width'> & {
   children: React.ReactNode
-  /** Content suits focused records; wide supports an evidence-backed context aside. */
+  /** Content suits focused records; wide is routine; full supports media and editor workspaces. */
   width?: DetailPageWidth
 }
 

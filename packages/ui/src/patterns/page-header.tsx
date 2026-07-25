@@ -7,6 +7,8 @@ type NativePageHeaderProps = Omit<
   'aria-describedby' | 'children' | 'title'
 >
 
+export type PageHeaderMeasure = 'standard' | 'wide'
+
 export interface PageHeaderProps extends NativePageHeaderProps {
   /** Accessible label for the grouped page actions. */
   actionsLabel?: string
@@ -22,6 +24,8 @@ export interface PageHeaderProps extends NativePageHeaderProps {
   eyebrow?: React.ReactNode
   /** Stable identifiers, status, or other compact page metadata. */
   meta?: React.ReactNode
+  /** Standard preserves a readable title measure; wide follows media/editor primary-column breadth. */
+  measure?: PageHeaderMeasure
   /** Client-routed back link or breadcrumb supplied by the consumer. */
   navigation?: React.ReactNode
   /** The page's single level-one heading. */
@@ -38,6 +42,7 @@ export function PageHeader({
   description,
   eyebrow,
   meta,
+  measure = 'standard',
   navigation,
   title,
   ...props
@@ -48,41 +53,54 @@ export function PageHeader({
     <header
       {...props}
       aria-describedby={description ? descriptionId : undefined}
+      data-measure={measure}
       data-slot="page-header"
       className={cn(
         '@container/page-header grid min-w-0 gap-bakin-3 font-bakin-typography-family-ui text-bakin-text-primary',
         className,
       )}
     >
-      {navigation ? (
-        <div
-          data-slot="page-header-navigation"
-          className="min-w-0 [overflow-wrap:anywhere] text-[length:var(--bakin-typography-size-meta)] text-bakin-text-muted [&_a]:text-bakin-text-primary [&_a]:underline-offset-4 [&_a:hover]:underline"
-        >
-          {navigation}
-        </div>
-      ) : null}
-
       <div
         data-slot="page-header-layout"
         className="grid min-w-0 gap-bakin-3 @3xl/page-header:grid-cols-[minmax(0,1fr)_auto]"
       >
-        {eyebrow ? (
-          <p
-            data-slot="page-header-eyebrow"
-            className="m-0 min-w-0 [overflow-wrap:anywhere] text-[length:var(--bakin-typography-size-meta)] font-bakin-typography-weight-bold uppercase tracking-[.12em] text-bakin-signal-accent"
+        {navigation || eyebrow ? (
+          <div
+            data-slot="page-header-context"
+            className="flex min-w-0 flex-wrap items-center gap-bakin-2"
           >
-            {eyebrow}
-          </p>
+            {navigation ? (
+              <div
+                data-slot="page-header-navigation"
+                className="min-w-0 shrink-0 [overflow-wrap:anywhere] text-[length:var(--bakin-typography-size-meta)] text-bakin-text-muted [&_a]:text-bakin-text-primary [&_a]:underline-offset-4 [&_a:hover]:underline"
+              >
+                {navigation}
+              </div>
+            ) : null}
+            {eyebrow ? (
+              <p
+                data-slot="page-header-eyebrow"
+                className="m-0 min-w-0 [overflow-wrap:anywhere] text-[length:var(--bakin-typography-size-meta)] font-bakin-typography-weight-bold uppercase tracking-[.12em] text-bakin-signal-accent"
+              >
+                {eyebrow}
+              </p>
+            ) : null}
+          </div>
         ) : null}
 
         <div
           data-slot="page-header-copy"
-          className="grid min-w-0 max-w-3xl gap-bakin-2 @3xl/page-header:col-start-1"
+          className={cn(
+            'grid min-w-0 gap-bakin-2 @3xl/page-header:col-start-1',
+            measure === 'standard' ? 'max-w-3xl' : 'max-w-none',
+          )}
         >
           <h1
             data-slot="page-header-title"
-            className="m-0 max-w-[24ch] [overflow-wrap:anywhere] text-[length:var(--bakin-typography-size-page-title)] font-bakin-typography-weight-bold leading-[1.02] tracking-[-.04em] text-bakin-text-primary"
+            className={cn(
+              'm-0 [overflow-wrap:anywhere] text-[length:var(--bakin-typography-size-page-title)] font-bakin-typography-weight-bold leading-[1.02] tracking-[-.04em] text-bakin-text-primary',
+              measure === 'standard' ? 'max-w-[30ch]' : 'max-w-none',
+            )}
           >
             {title}
           </h1>
@@ -90,7 +108,10 @@ export function PageHeader({
             <p
               id={descriptionId}
               data-slot="page-header-description"
-              className="m-0 max-w-prose [overflow-wrap:anywhere] text-[length:var(--bakin-typography-size-body)] leading-relaxed text-bakin-text-muted"
+              className={cn(
+                'm-0 [overflow-wrap:anywhere] text-[length:var(--bakin-typography-size-body)] leading-relaxed text-bakin-text-muted',
+                measure === 'standard' ? 'max-w-prose' : 'max-w-none',
+              )}
             >
               {description}
             </p>
@@ -116,7 +137,7 @@ export function PageHeader({
                 role="group"
                 aria-label={controlsLabel}
                 data-slot="page-header-controls"
-                className="flex min-w-0 flex-col items-stretch gap-bakin-2 @sm/page-header:flex-row @sm/page-header:items-center @3xl/page-header:flex-nowrap @3xl/page-header:[&>[data-segmented-control]]:shrink-0 @3xl/page-header:[&>[data-slot=search-input-reserve]]:w-[22rem] @3xl/page-header:[&>[data-slot=search-input-reserve]]:shrink-0"
+                className="flex min-w-0 flex-col items-stretch gap-bakin-2 @lg/page-header:flex-row @lg/page-header:items-center @3xl/page-header:flex-nowrap @3xl/page-header:[&>[data-segmented-control]]:shrink-0 @3xl/page-header:[&>[data-slot=search-input-reserve]]:w-[22rem] @3xl/page-header:[&>[data-slot=search-input-reserve]]:shrink-0"
               >
                 {controls}
               </div>
@@ -126,7 +147,7 @@ export function PageHeader({
                 role="group"
                 aria-label={actionsLabel}
                 data-slot="page-header-actions"
-                className="flex min-w-0 shrink-0 flex-col items-stretch gap-bakin-2 @sm/page-header:flex-row @sm/page-header:items-center [&>[data-slot=button]]:w-full @sm/page-header:[&>[data-slot=button]]:w-auto"
+                className="flex min-w-0 shrink-0 flex-col items-stretch gap-bakin-2 @lg/page-header:flex-row @lg/page-header:items-center [&>[data-slot=button]]:w-full @lg/page-header:[&>[data-slot=button]]:w-auto"
               >
                 {actions}
               </div>

@@ -53,7 +53,7 @@ export const Treatments = {
       <header className="bakin-primitive-story__intro">
         <p className="bakin-primitive-story__eyebrow">Emphasis</p>
         <h1>Badge treatments</h1>
-        <p>Soft is the default. Solid is reserved for strong confirmed state; outline sits quietly beside dense data.</p>
+        <p>Solid is preferred for semantic status, soft supports compact metadata, and outline sits quietly beside dense data or marks secondary context.</p>
       </header>
       <section className="bakin-primitive-story__section">
         <div className="bakin-primitive-story__cluster">

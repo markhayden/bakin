@@ -79,7 +79,7 @@ export function AgentAvatar({
       role={decorative ? undefined : 'img'}
       aria-hidden={decorative || undefined}
       aria-label={decorative ? undefined : label}
-      className={`relative inline-flex shrink-0 ${className ?? ''}`}
+      className={`relative inline-flex shrink-0 items-center justify-center align-middle leading-none ${className ?? ''}`}
     >
       <Avatar size={size}>
         {agent.imageSrc ? <AvatarImage src={agent.imageSrc} alt="" className="object-cover object-top" /> : null}
@@ -212,9 +212,9 @@ function TeamMark({ color }: { color?: string }) {
 
 function AgentChoice({ agent }: { agent: AgentSelectOption }) {
   return (
-    <span className="flex min-w-0 items-center gap-bakin-2">
-      <AgentAvatar agent={agent} size="sm" decorative />
-      <span className="min-w-0 truncate">{agent.name}</span>
+    <span data-agent-choice="" className="inline-flex min-h-bakin-6 min-w-0 items-center gap-bakin-2 align-middle">
+      <AgentAvatar agent={agent} size="sm" decorative className="self-center" />
+      <span className="min-w-0 self-center truncate">{agent.name}</span>
     </span>
   )
 }

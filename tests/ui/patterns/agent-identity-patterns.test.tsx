@@ -44,6 +44,15 @@ describe('focused agent identity patterns', () => {
     expect(status.textContent).toContain('Deploying release 42')
   })
 
+  it('centers fallback identity content at the shared avatar root', () => {
+    render(<AgentAvatar agent={{ id: 'fallback', name: 'Fallback Agent' }} />)
+
+    const avatar = screen.getByLabelText('Fallback Agent')
+    expect(avatar.className).toContain('items-center')
+    expect(avatar.className).toContain('justify-center')
+    expect(avatar.querySelector('[data-slot="avatar-fallback"]')?.textContent).toBe('FA')
+  })
+
   it('keeps every supported presence state named in visible copy', () => {
     render(
       <>
@@ -95,6 +104,7 @@ describe('focused agent assignment pattern', () => {
 
     const trigger = screen.getByRole('combobox', { name: 'Assign owner' })
     expect(trigger.textContent).toContain('Maya Chen')
+    expect(trigger.querySelector('[data-agent-choice]')?.className).toContain('items-center')
     await user.click(trigger)
     expect(await screen.findByRole('group', { name: 'Teams' })).toBeTruthy()
     expect(screen.getByRole('group', { name: 'Agents' })).toBeTruthy()

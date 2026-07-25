@@ -27,14 +27,14 @@ const defaultTitles: Record<BannerTone, string> = {
 }
 
 const toneClasses: Record<BannerTone, string> = {
-  info: 'border-bakin-border-subtle bg-bakin-surface-default',
+  info: 'border-bakin-signal-info/60 bg-bakin-signal-info/10',
   success: 'border-bakin-action-primary-background/60 bg-bakin-action-primary-background/10',
   attention: 'border-bakin-signal-highlight/60 bg-bakin-signal-highlight/10',
   danger: 'border-bakin-signal-danger/60 bg-bakin-signal-danger/10',
 }
 
 const signalClasses: Record<BannerTone, string> = {
-  info: 'bg-bakin-text-muted',
+  info: 'bg-bakin-signal-info',
   success: 'bg-bakin-action-primary-background',
   attention: 'bg-bakin-signal-highlight',
   danger: 'bg-bakin-signal-danger',

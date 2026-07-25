@@ -3,7 +3,7 @@
  * the palette as its base edge, then name/status/completeness/meta. The
  * brand's OWN colors are the only strong color — chrome stays neutral.
  */
-import { StatusBadge } from '@makinbakin/sdk/components'
+import { StatusBadge } from '@makinbakin/sdk/patterns'
 import { Progress, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@makinbakin/sdk/ui'
 import type { BrandManifest } from '../types'
 
@@ -50,7 +50,7 @@ export function BrandCoverCard({ brand, onOpen }: { brand: ListedBrand; onOpen: 
 
   return (
     <button
-      className="group overflow-hidden rounded-xl bg-card text-left ring-1 ring-foreground/10 transition-shadow hover:ring-foreground/25"
+      className="group flex h-full flex-col overflow-hidden rounded-xl bg-card text-left ring-1 ring-foreground/10 transition-shadow hover:ring-foreground/25"
       onClick={onOpen}
       data-brand-card={brand.id}
     >
@@ -61,9 +61,10 @@ export function BrandCoverCard({ brand, onOpen }: { brand: ListedBrand; onOpen: 
       >
         {logo ? (
           <img
-            src={`/api/assets/${logo.assetId}/thumb`}
+            src={`/api/assets/${logo.assetId}`}
             alt=""
             className="max-h-16 max-w-[55%] object-contain drop-shadow-sm"
+            data-brand-logo
             onError={(e) => {
               ;(e.currentTarget as HTMLImageElement).style.display = 'none'
             }}
@@ -83,10 +84,10 @@ export function BrandCoverCard({ brand, onOpen }: { brand: ListedBrand; onOpen: 
         )}
       </div>
 
-      <div className="space-y-2 p-4">
+      <div className="flex-1 space-y-2 p-4" data-brand-card-body>
         <div className="flex items-center gap-2">
           <h3 className="min-w-0 truncate font-medium">{brand.name}</h3>
-          <StatusBadge tone={brand.draft ? 'warning' : 'success'} className="ml-auto shrink-0">
+          <StatusBadge tone={brand.draft ? 'attention' : 'success'} className="ml-auto shrink-0">
             {brand.draft ? 'Draft' : 'Published'}
           </StatusBadge>
         </div>

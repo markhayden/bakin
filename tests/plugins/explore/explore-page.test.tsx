@@ -22,9 +22,11 @@ let cachedData: unknown = null
 let cachedFor: unknown = null
 
 mock.module('@makinbakin/sdk/hooks', () => {
-  const { useState } = require('react') as typeof import('react')
   return {
     toast: toastMock,
+    useAgent: (agentId: string) => agentId ? { name: 'Pixel', headshot: '/agents/pixel.png' } : null,
+    useAgentColor: () => '#ff4f91',
+    useAgentDisplayName: (agentId: string) => agentId ? 'Pixel' : null,
     // data must be referentially stable across renders (like the real
     // hook's state) — the page clears probe overrides when data CHANGES.
     useJsonFetch: () => {
@@ -34,6 +36,12 @@ mock.module('@makinbakin/sdk/hooks', () => {
       }
       return { data: cachedData, loading: false, error: null, refresh: mock() }
     },
+  }
+})
+
+mock.module('@makinbakin/sdk/navigation', () => {
+  const { useState } = require('react') as typeof import('react')
+  return {
     useQueryState: (_key: string, initial = '') => {
       const [value, setValue] = useState(initial)
       return [value, setValue, setValue]
@@ -45,30 +53,110 @@ mock.module('@makinbakin/sdk/hooks', () => {
   }
 })
 
+mock.module('@makinbakin/sdk/layout', () => ({
+  Grid: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+}))
+
 mock.module('@makinbakin/sdk/ui', () => ({
   Badge: ({ children }: { children: ReactNode }) => <span>{children}</span>,
   Button: ({ children, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement>) => <button {...props}>{children}</button>,
+  Banner: ({
+    title,
+    description,
+    action,
+  }: {
+    title: string
+    description?: string
+    action?: ReactNode
+  }) => <div role="alert">{title}{description}{action}</div>,
+  Card: ({ children, ...props }: React.HTMLAttributes<HTMLDivElement>) => <div {...props}>{children}</div>,
+  CardContent: ({ children, ...props }: React.HTMLAttributes<HTMLDivElement>) => <div {...props}>{children}</div>,
+  CardDescription: ({ children, ...props }: React.HTMLAttributes<HTMLParagraphElement>) => <p {...props}>{children}</p>,
+  CardFooter: ({ children, ...props }: React.HTMLAttributes<HTMLDivElement>) => <div {...props}>{children}</div>,
+  CardHeader: ({ children, ...props }: React.HTMLAttributes<HTMLDivElement>) => <div {...props}>{children}</div>,
+  CardTitle: ({ children, ...props }: React.HTMLAttributes<HTMLHeadingElement>) => <h3 {...props}>{children}</h3>,
   Input: (props: React.InputHTMLAttributes<HTMLInputElement>) => <input {...props} />,
+  Skeleton: (props: React.HTMLAttributes<HTMLDivElement>) => <div {...props} />,
+  SystemState: ({
+    kind,
+    title,
+    description,
+    action,
+    preview,
+  }: {
+    kind: string
+    title: string
+    description?: string
+    action?: ReactNode
+    preview?: ReactNode
+  }) => (
+    <div
+      data-testid={kind === 'no-results' || kind === 'initial-empty' ? 'empty-state' : 'system-state'}
+      role={kind === 'error' ? 'alert' : kind === 'loading' ? 'status' : undefined}
+    >
+      {title}{description}{action}{preview}
+    </div>
+  ),
 }))
 
-mock.module('@makinbakin/sdk/components', () => ({
-  AgentAvatar: ({ agentId }: { agentId: string }) => <span data-testid={`avatar-${agentId}`} />,
-  PluginHeader: ({ title, actions, search }: { title: string; actions?: ReactNode; search?: { value: string; onChange: (v: string) => void; placeholder?: string } }) => (
+mock.module('@makinbakin/sdk/patterns', () => ({
+  AgentAvatar: ({ agent }: { agent: { id: string } }) => <span data-testid={`avatar-${agent.id}`} />,
+  StatusBadge: ({
+    children,
+    icon: _Icon,
+    ...props
+  }: React.HTMLAttributes<HTMLSpanElement> & { icon?: unknown }) => <span {...props}>{children}</span>,
+  PageHeader: ({
+    title,
+    description,
+    meta,
+    controls,
+    actions,
+  }: {
+    title: string
+    description?: string
+    meta?: ReactNode
+    controls?: ReactNode
+    actions?: ReactNode
+  }) => (
     <div>
       <h1>{title}</h1>
-      {search && (
-        <input
-          data-testid="header-search"
-          value={search.value}
-          placeholder={search.placeholder}
-          onChange={(e) => search.onChange(e.target.value)}
-        />
-      )}
+      {description}
+      {meta}
+      {controls}
       {actions}
     </div>
   ),
-  EmptyState: ({ title }: { title: string }) => <div data-testid="empty-state">{title}</div>,
-  ErrorBanner: ({ message }: { message: string }) => <div role="alert">{message}</div>,
+  SearchInput: ({
+    label,
+    value,
+    onValueChange,
+    placeholder,
+  }: {
+    label: string
+    value: string
+    onValueChange: (value: string) => void
+    placeholder?: string
+  }) => (
+    <input
+      aria-label={label}
+      data-testid="explore-search"
+      value={value}
+      placeholder={placeholder}
+      onChange={(event) => onValueChange(event.target.value)}
+    />
+  ),
+  ListPage: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  ListPageControls: ({ children, actions }: { children: ReactNode; actions?: ReactNode }) => <div>{children}{actions}</div>,
+  ListPageContent: ({
+    children,
+    feedback,
+    state,
+  }: {
+    children: ReactNode
+    feedback?: ReactNode
+    state?: ReactNode
+  }) => <main>{feedback}{state ?? children}</main>,
   UnderlineTabs: ({ tabs, onValueChange }: { tabs: Array<{ id: string; label: string }>; onValueChange: (id: string) => void }) => (
     <div>
       {tabs.map((tab) => (
@@ -87,8 +175,12 @@ mock.module('@makinbakin/sdk/components', () => ({
       ))}
     </div>
   ),
+}))
+
+mock.module('@makinbakin/sdk/components', () => ({
   BakinDrawer: ({ open, children, title }: { open: boolean; children: ReactNode; title?: ReactNode }) =>
     open ? <aside data-testid="drawer">{title}{children}</aside> : null,
+  PluginLink: ({ children }: { children: ReactNode }) => <a>{children}</a>,
 }))
 
 import { ExplorePage } from '../../../plugins/explore/components/explore-page'
@@ -147,7 +239,7 @@ describe('ExplorePage', () => {
     fixtureEntries = [...AGENTS, ...PLUGINS]
     render(<ExplorePage />)
     fireEvent.change(screen.getByTestId('explore-search'), { target: { value: 'zebra' } })
-    expect(screen.getByTestId('empty-state').textContent).toContain('No matches')
+    expect(screen.getByTestId('empty-state').textContent).toContain('No catalog items match')
   })
 
   it('hides the Packs tab when the catalog has no pack entries', () => {
@@ -163,10 +255,10 @@ describe('ExplorePage', () => {
     expect(screen.getByTestId('empty-state').textContent).toContain('Lesson packs are coming')
   })
 
-  it('renders the banner placeholder and a per-tab intro', () => {
+  it('renders the canonical page header and a per-tab intro', () => {
     fixtureEntries = [...AGENTS, ...PLUGINS]
     render(<ExplorePage />)
-    expect(screen.getByTestId('explore-banner')).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Explore' })).toBeTruthy()
     expect(screen.getByTestId('tab-intro').textContent).toContain('Hire your team')
     fireEvent.click(screen.getByTestId('tab-plugins'))
     expect(screen.getByTestId('tab-intro').textContent).toContain('Extend the platform')

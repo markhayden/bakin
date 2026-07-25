@@ -44,7 +44,7 @@ describe('canonical list and detail page archetypes', () => {
     ].join('\n')
 
     expect(source).toContain("'wide' | 'full'")
-    expect(source).toContain("'content' | 'wide'")
+    expect(source).toContain("'content' | 'wide' | 'full'")
     expect(source).toContain("'single' | 'aside'")
     expect(source).not.toMatch(/(?:filter|query|search|route|fetch|items|data)\??:/i)
     expect(source).not.toMatch(/overflow-y-(?:auto|scroll)|h-screen|max-h-/)

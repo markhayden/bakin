@@ -1,0 +1,217 @@
+.bakin-kanban-story {
+  min-height: 100vh;
+  background: var(--bakin-color-canvas-default);
+  color: var(--bakin-color-text-primary);
+}
+
+.bakin-kanban-story__intro {
+  max-width: 52rem;
+}
+
+.bakin-kanban-story__intro > p:first-child {
+  margin: 0 0 var(--bakin-layout-space-2);
+  color: var(--bakin-color-signal-accent);
+  font-size: var(--bakin-typography-size-meta);
+  font-weight: var(--bakin-typography-weight-bold);
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.bakin-kanban-story__intro h1 {
+  margin: 0;
+  font-size: var(--bakin-typography-size-page-title);
+  line-height: 1.05;
+}
+
+.bakin-kanban-story__intro > p:last-child,
+.bakin-kanban-story__opened,
+.bakin-kanban-story__empty {
+  color: var(--bakin-color-text-muted);
+}
+
+.bakin-kanban-story__intro > p:last-child {
+  margin: var(--bakin-layout-space-3) 0 0;
+  line-height: 1.6;
+}
+
+.bakin-kanban-story [data-slot='kanban-column-header'] h2 {
+  min-width: 0;
+  margin: 0;
+  font-size: var(--bakin-typography-size-body);
+  font-weight: var(--bakin-typography-weight-semibold);
+}
+
+.bakin-kanban-story__task-heading {
+  display: grid;
+  min-width: 0;
+  gap: var(--bakin-layout-space-2);
+}
+
+.bakin-kanban-story__task-meta,
+.bakin-kanban-story [data-slot='card-footer'] {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--bakin-layout-space-2);
+}
+
+.bakin-kanban-story__task-meta > span:last-child {
+  overflow-wrap: anywhere;
+  color: var(--bakin-color-text-muted);
+  font-family: var(--bakin-typography-family-mono);
+  font-size: var(--bakin-typography-size-meta);
+}
+
+.bakin-kanban-story [data-slot='card-title'] h3 {
+  margin: 0;
+}
+
+.bakin-kanban-story [data-slot='card-title'] [data-slot='button'] {
+  height: auto;
+  max-width: 100%;
+  padding: 0;
+  white-space: normal;
+  text-align: left;
+}
+
+.bakin-kanban-story__task-content {
+  display: grid;
+  gap: var(--bakin-layout-space-1);
+  padding-inline: 0;
+}
+
+.bakin-kanban-story__workflow {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--bakin-layout-space-1);
+  padding-inline: var(--bakin-layout-space-3);
+  color: var(--bakin-color-text-muted);
+  font-size: var(--bakin-typography-size-meta);
+}
+
+.bakin-kanban-story__workflow svg {
+  width: var(--bakin-layout-space-3);
+  height: var(--bakin-layout-space-3);
+  flex: none;
+}
+
+.bakin-kanban-story__workflow strong {
+  color: var(--bakin-color-text-primary);
+  font-weight: var(--bakin-typography-weight-semibold);
+}
+
+.bakin-kanban-story__workflow span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bakin-kanban-story__empty {
+  display: grid;
+  min-height: calc(var(--bakin-layout-size-row) * 2);
+  place-items: center;
+  margin: 0;
+  border: 1px dashed var(--bakin-color-border-subtle);
+  border-radius: var(--bakin-radius-surface);
+  font-size: var(--bakin-typography-size-meta);
+}
+
+.bakin-kanban-story__opened {
+  margin: 0;
+  font-size: var(--bakin-typography-size-meta);
+}
+
+.bakin-kanban-story__feedback-controls {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: var(--bakin-layout-space-2);
+}
+
+.bakin-kanban-story__feedback-controls [aria-pressed='true'] {
+  border-color: var(--bakin-color-text-muted);
+  background: var(--bakin-color-border-subtle);
+  color: var(--bakin-color-text-primary);
+}
+
+.bakin-kanban-story__feedback-stage {
+  position: relative;
+  min-width: 0;
+}
+
+.bakin-kanban-story [data-drag-insertion-preview] {
+  border-color: var(--bakin-color-focus-ring);
+  box-shadow: 0 0 0 1px var(--bakin-color-focus-ring);
+}
+
+.bakin-kanban-story [data-drag-insertion-preview] [data-slot='card-header'],
+.bakin-kanban-story [data-drag-pointer-clone] [data-slot='card-header'] {
+  gap: var(--bakin-layout-space-2);
+}
+
+.bakin-kanban-story [data-drag-insertion-preview] [data-slot='card-title'] h3,
+.bakin-kanban-story [data-drag-pointer-clone] [data-slot='card-title'] h3 {
+  margin: 0;
+}
+
+.bakin-kanban-story__pointer-clone {
+  position: absolute;
+  z-index: 2;
+  inset-block-start: var(--bakin-layout-space-6);
+  inset-inline-end: var(--bakin-layout-space-6);
+  width: min(18rem, calc(100% - (var(--bakin-layout-space-6) * 2)));
+  pointer-events: none;
+}
+
+.bakin-kanban-story__pointer-clone > p {
+  width: fit-content;
+  margin: 0 0 var(--bakin-layout-space-2) auto;
+  padding: var(--bakin-layout-space-1) var(--bakin-layout-space-2);
+  border-radius: var(--bakin-radius-pill);
+  background: var(--bakin-color-canvas-default);
+  color: var(--bakin-color-text-muted);
+  font-size: var(--bakin-typography-size-meta);
+  font-weight: var(--bakin-typography-weight-semibold);
+}
+
+.bakin-kanban-story [data-drag-pointer-clone] {
+  border-color: var(--bakin-color-text-muted);
+  box-shadow: var(--bakin-elevation-overlay);
+  transform: rotate(.5deg);
+}
+
+.bakin-kanban-story__feedback-contract {
+  max-width: 64rem;
+  margin: 0;
+  padding: var(--bakin-layout-space-3) var(--bakin-layout-space-4);
+  border-inline-start: 2px solid var(--bakin-color-signal-accent);
+  background: color-mix(in oklab, var(--bakin-color-signal-accent) 8%, transparent);
+  color: var(--bakin-color-text-muted);
+  line-height: 1.6;
+}
+
+.bakin-kanban-story__feedback-contract strong {
+  color: var(--bakin-color-text-primary);
+}
+
+@media (max-width: 48rem) {
+  .bakin-kanban-story__feedback-controls {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .bakin-kanban-story__pointer-clone {
+    position: static;
+    width: 100%;
+    margin-block-start: var(--bakin-layout-space-4);
+  }
+
+  .bakin-kanban-story__pointer-clone > p {
+    margin-inline: 0;
+  }
+
+  .bakin-kanban-story [data-drag-pointer-clone] {
+    transform: none;
+  }
+}

@@ -7,12 +7,12 @@ export type ListPageWidth = 'wide' | 'full'
 
 export type ListPageProps = Omit<PageShellProps, 'children' | 'gap' | 'padding' | 'width'> & {
   children: React.ReactNode
-  /** Wide is the routine index canvas; full is reserved for intrinsically wide domain content. */
+  /** Full uses the available plugin canvas; wide is an explicit opt-in for a deliberately bounded index. */
   width?: ListPageWidth
 }
 
 /** Page canvas for searchable, filterable, or repeated-object indexes. */
-export function ListPage({ children, width = 'wide', ...props }: ListPageProps) {
+export function ListPage({ children, width = 'full', ...props }: ListPageProps) {
   return (
     <PageShell {...props} data-archetype="list" gap="content" width={width}>
       {children}
@@ -52,7 +52,7 @@ export function ListPageControls({
       aria-labelledby={labelledBy}
       data-slot="list-page-controls"
       className={cn(
-        '@container/list-page-controls flex min-w-0 flex-col items-stretch gap-bakin-3 border-t border-bakin-border-subtle pt-bakin-4 @lg/list-page-controls:flex-row @lg/list-page-controls:items-center',
+        'flex min-w-0 flex-col items-stretch gap-bakin-3 border-t border-bakin-border-subtle pt-bakin-4 @lg/page-shell:flex-row @lg/page-shell:items-center',
         className,
       )}
     >
@@ -65,7 +65,7 @@ export function ListPageControls({
       {actions ? (
         <div
           data-slot="list-page-control-actions"
-          className="flex min-w-0 flex-wrap items-center gap-bakin-2 @lg/list-page-controls:ml-auto"
+          className="flex min-w-0 flex-wrap items-center gap-bakin-2 @lg/page-shell:ml-auto"
         >
           {actions}
         </div>
@@ -110,10 +110,14 @@ export function ListPageContent({
       aria-labelledby={labelledBy}
       data-content-state={hasState ? 'replaced' : 'ready'}
       data-slot="list-page-content"
-      className={cn('flex min-w-0 flex-col gap-bakin-6', className)}
+      className={cn('flex min-h-0 min-w-0 flex-1 flex-col gap-bakin-6', className)}
     >
       {feedback ? <div data-slot="list-page-feedback">{feedback}</div> : null}
-      {hasState ? <div data-slot="list-page-state">{state}</div> : children}
+      {hasState ? (
+        <div data-slot="list-page-state" className="flex min-h-0 min-w-0 flex-1 flex-col">
+          {state}
+        </div>
+      ) : children}
     </section>
   )
 }

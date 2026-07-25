@@ -249,7 +249,7 @@ describe('KanbanBoard — search signals', () => {
       expect(document.querySelector('[data-archetype="list"]')).toBeTruthy()
     })
     expect(screen.getByRole('heading', { level: 1, name: 'Tasks' })).toBeTruthy()
-    expect(screen.getByRole('group', { name: 'Task search and view' })).toBeTruthy()
+    expect(screen.getByRole('group', { name: 'Task search, view, and actions' })).toBeTruthy()
     const search = screen.getByRole('searchbox', { name: 'Task search' })
     const board = screen.getByRole('tab', { name: 'Board' })
     const newTask = screen.getByRole('button', { name: 'New Task' })
@@ -257,6 +257,7 @@ describe('KanbanBoard — search signals', () => {
     expect(board.className).toContain('h-[var(--bakin-layout-size-control)]')
     expect(newTask.className).toContain('h-[var(--bakin-layout-size-control)]')
     expect(screen.getByRole('region', { name: 'Task results' })).toBeTruthy()
+    expect(screen.getByRole('region', { name: 'Task board' })).toBeTruthy()
   })
 
   it('keeps the page identity visible while only the result region is loading', async () => {

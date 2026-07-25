@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { useMemo, useState } from 'react'
 import { expect } from 'storybook/test'
+import { ArrowLeft, Download, Sparkles } from 'lucide-react'
 
 import { Inline, Section, Stack } from '@makinbakin/sdk/layout'
 import {
@@ -27,7 +28,7 @@ const meta = {
     layout: 'fullscreen',
     docs: {
       description: {
-        component: 'ListPage and DetailPage codify page identity, action placement, responsive flow, named control/content regions, state replacement, and scroll ownership. Consumers retain domain data and the existing SDK routing/query-state contract.',
+        component: 'ListPage fills the available plugin canvas by default; use its wide option only for a deliberately bounded index. ListPage and DetailPage codify page identity, action placement, responsive flow, named control/content regions, state replacement, and scroll ownership. Header search, view controls, and primary actions remain deliberately stacked until the container has enough room for complete controls without internal scrolling. Consumers retain domain data and the existing SDK routing/query-state contract.',
       },
     },
     bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'overflow', 'interaction', 'system-states', 'url-state-guidance'],
@@ -47,29 +48,34 @@ function ListHeaderControlsExample() {
   const [view, setView] = useState<'board' | 'log'>('board')
 
   return (
-    <ListPage className="bakin-archetype-story" width="full">
+    <ListPage className="bakin-archetype-story">
       <PageHeader
         title="Tasks"
-        controlsLabel="Task search and view"
+        controlsLabel="Task search, view, and actions"
         controls={(
-          <>
+          <div className="grid w-full min-w-0 gap-bakin-2 @3xl/page-header:flex @3xl/page-header:items-start">
             <SearchInput
               align="end"
               label="Search tasks"
               value={query}
               onValueChange={setQuery}
               placeholder="Search tasks…"
+              mobileFullWidth
+              className="@3xl/page-header:w-[22rem] @3xl/page-header:shrink-0"
             />
-            <SegmentedControl
-              ariaLabel="Task view"
-              size="md"
-              value={view}
-              onValueChange={setView}
-              options={[{ value: 'board', label: 'Board' }, { value: 'log', label: 'Log' }]}
-            />
-          </>
+            <div className="flex min-w-0 flex-wrap items-center gap-bakin-2 @3xl/page-header:shrink-0 @3xl/page-header:flex-nowrap">
+              <SegmentedControl
+                ariaLabel="Task view"
+                size="md"
+                value={view}
+                onValueChange={setView}
+                options={[{ value: 'board', label: 'Board' }, { value: 'log', label: 'Log' }]}
+                className="shrink-0 [&_[role=tab]]:px-bakin-3"
+              />
+              <Button className="min-w-[7rem] flex-1 @3xl/page-header:flex-none">New task</Button>
+            </div>
+          </div>
         )}
-        actions={<Button>New task</Button>}
       />
       <ListPageContent label="Task results">
         <div className="bakin-archetype-story__result-heading">
@@ -93,10 +99,12 @@ export const ListHeaderControls = {
     const board = canvas.getByRole('tab', { name: 'Board' })
     const action = canvas.getByRole('button', { name: 'New task' })
     const control = search.closest('[data-slot="search-input-control"]') as HTMLElement
+    const page = search.closest('[data-archetype="list"]')
     const boardTop = board.getBoundingClientRect().top
     const actionTop = action.getBoundingClientRect().top
 
     await expect(control).toHaveAttribute('data-state', 'empty')
+    await expect(page).toHaveAttribute('data-width', 'full')
     await expect(search).toHaveValue('')
     await expect(Math.abs(search.getBoundingClientRect().height - board.getBoundingClientRect().height)).toBeLessThan(1)
     await expect(Math.abs(search.getBoundingClientRect().height - action.getBoundingClientRect().height)).toBeLessThan(1)
@@ -252,6 +260,7 @@ export const ListNoResults = {
         state={(
           <SystemState
             kind="no-results"
+            scope="page"
             title="No tasks match this view"
             description="Clear the archived invoice search or broaden the current status filter."
             action={<Button variant="outline">Clear search and filters</Button>}
@@ -266,7 +275,17 @@ function DetailExample() {
   return (
     <DetailPage className="bakin-archetype-story">
       <PageHeader
-        navigation={<Button variant="ghost" size="sm">← Back to workflows</Button>}
+        navigation={(
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="rounded-bakin-pill"
+            aria-label="Back to workflows"
+            title="Back to workflows"
+          >
+            <ArrowLeft />
+          </Button>
+        )}
         eyebrow="Workflows / detail"
         title="Launch approval"
         description="Coordinates the final publishing decision without hiding ownership, schedule, or recent execution context."
@@ -330,11 +349,157 @@ export const Detail = {
   },
 } satisfies Story
 
+const mediaVersions = [
+  { version: 'v4', state: 'Current', note: 'Final vertical crop', updated: '2 minutes ago' },
+  { version: 'v3', state: 'Previous', note: 'Color and contrast pass', updated: '18 minutes ago' },
+  { version: 'v2', state: 'Previous', note: 'Initial approved composition', updated: '1 hour ago' },
+]
+
+export const DetailMedia = {
+  render: () => (
+    <DetailPage
+      width="full"
+      className="bakin-archetype-story"
+      data-testid="media-detail-page"
+    >
+      <PageHeader
+        measure="wide"
+        navigation={(
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="rounded-bakin-pill"
+            aria-label="Back to assets"
+            title="Back to assets"
+          >
+            <ArrowLeft />
+          </Button>
+        )}
+        eyebrow="Assets / detail"
+        title="Gourmet seasoned popcorn with rosemary and parmesan"
+        meta={<><code>asset:spring-campaign-hero</code><Badge tone="success">v4 · current</Badge></>}
+        actions={<><Button variant="outline">Add version</Button><Button>Edit asset</Button></>}
+      />
+
+      <DetailPageBody layout="aside">
+        <DetailPageMain>
+          <Section spacing="compact" aria-labelledby="media-preview-heading">
+            <h2 id="media-preview-heading">Preview</h2>
+            <div
+              className="bakin-archetype-story__media-preview"
+              role="img"
+              aria-label="Abstract spring campaign preview"
+            >
+              <span>4:5 master</span>
+            </div>
+          </Section>
+        </DetailPageMain>
+
+        <DetailPageAside label="Asset context">
+          <section aria-labelledby="media-context-heading">
+            <h2 id="media-context-heading">Asset context</h2>
+            <dl className="bakin-archetype-story__context-list">
+              <div><dt>Owner</dt><dd>Pixel</dd></div>
+              <div><dt>Source</dt><dd>Generated</dd></div>
+              <div><dt>Format</dt><dd>WebP · 1600 × 2000</dd></div>
+            </dl>
+            <div className="bakin-archetype-story__media-enrichment">
+              <div className="bakin-archetype-story__media-enrichment-heading">
+                <h3 id="media-enrichment-heading">
+                  <Sparkles aria-hidden="true" /> Enrichment
+                </h3>
+                <Badge tone="success" variant="soft" size="xs">Done</Badge>
+              </div>
+              <p className="bakin-archetype-story__section-description">
+                Product photography with a warm botanical backdrop and clear copy-safe space.
+              </p>
+              <Inline gap="dense">
+                <Badge tone="neutral" variant="soft">campaign</Badge>
+                <Badge tone="neutral" variant="soft">spring</Badge>
+              </Inline>
+            </div>
+          </section>
+
+          <section aria-labelledby="media-downloads-heading">
+            <h2 id="media-downloads-heading">Downloads</h2>
+            <a className="bakin-archetype-story__media-download" href="#download">
+              <Download aria-hidden="true" />
+              <span>spring-campaign-square.webp</span>
+              <span>v4</span>
+            </a>
+          </section>
+
+          <section aria-labelledby="media-history-heading">
+            <h2 id="media-history-heading">Version history</h2>
+            <p className="bakin-archetype-story__section-description">
+              History follows the document scroll instead of creating a nested vertical scroller.
+            </p>
+            <ol className="bakin-archetype-story__media-history">
+              {mediaVersions.map((version) => (
+                <li key={version.version}>
+                  <div>
+                    <strong>{version.version}</strong>
+                    <Badge
+                      tone={version.state === 'Current' ? 'success' : 'neutral'}
+                      variant="soft"
+                      size="xs"
+                    >
+                      {version.state}
+                    </Badge>
+                  </div>
+                  <span>{version.note}</span>
+                  <time>{version.updated}</time>
+                </li>
+              ))}
+            </ol>
+          </section>
+        </DetailPageAside>
+      </DetailPageBody>
+    </DetailPage>
+  ),
+  play: async ({ canvas }) => {
+    const page = canvas.getByTestId('media-detail-page')
+    const aside = canvas.getByRole('complementary', { name: 'Asset context' })
+    const title = canvas.getByRole('heading', {
+      level: 1,
+      name: 'Gourmet seasoned popcorn with rosemary and parmesan',
+    })
+    const back = canvas.getByRole('button', { name: 'Back to assets' })
+    const actions = canvas.getByRole('group', { name: 'Page actions' })
+
+    await expect(page).toHaveAttribute('data-width', 'full')
+    await expect(title.closest('[data-slot="page-header"]')).toHaveAttribute('data-measure', 'wide')
+    await expect(title).toBeVisible()
+    await expect(title).toHaveClass(/max-w-none/)
+    await expect(back).toHaveClass(/rounded-bakin-pill/)
+    await expect(back).toHaveAttribute('data-size', 'icon-sm')
+    await expect(back.textContent).toBe('')
+    await expect(back.closest('[data-slot="page-header-context"]')).toContainElement(
+      canvas.getByText('Assets / detail'),
+    )
+    await expect(Math.abs(back.getBoundingClientRect().left - title.getBoundingClientRect().left)).toBeLessThan(1)
+    await expect(title.getBoundingClientRect().right).toBeLessThanOrEqual(actions.getBoundingClientRect().left)
+    await expect(aside).toContainElement(canvas.getByRole('heading', { level: 3, name: 'Enrichment' }))
+    await expect(aside).toContainElement(canvas.getByRole('heading', { level: 2, name: 'Downloads' }))
+    await expect(aside).toContainElement(canvas.getByRole('heading', { name: 'Version history' }))
+  },
+} satisfies Story
+
 export const DetailUnavailable = {
   render: () => (
     <DetailPage width="content" className="bakin-archetype-story">
       <PageHeader
-        navigation={<Button variant="ghost" size="sm">← Back to workflows</Button>}
+        navigation={(
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="rounded-bakin-pill"
+            aria-label="Back to workflows"
+            title="Back to workflows"
+          >
+            <ArrowLeft />
+          </Button>
+        )}
         eyebrow="Workflows / detail"
         title="Archived campaign approval"
         description="The page identity and navigation remain usable when policy restricts the record body."

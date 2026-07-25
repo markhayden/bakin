@@ -375,6 +375,28 @@ export const BAKIN_SEMANTIC_TOKENS = [
     "sourcePointer": "#/semantic/color/signal/highlight"
   },
   {
+    "name": "semantic.color.signal.info",
+    "family": "Color",
+    "type": "color",
+    "visibility": "public",
+    "cssVariable": "--bakin-color-signal-info",
+    "cssValue": "#3987e5",
+    "tailwindVariable": "--color-bakin-signal-info",
+    "description": "Informational guidance and non-urgent progress signals on the canvas.",
+    "contrast": {
+      "against": "semantic.color.canvas.default",
+      "role": "non-text",
+      "ratio": 5.3,
+      "minimum": 3,
+      "standard": "WCAG AA non-text UI",
+      "status": "pass",
+      "againstCssVariable": "--bakin-color-canvas-default"
+    },
+    "source": "packages/ui/tokens/semantic.tokens.json#/semantic/color/signal/info",
+    "sourceUrl": "https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json",
+    "sourcePointer": "#/semantic/color/signal/info"
+  },
+  {
     "name": "semantic.color.surface.default",
     "family": "Color",
     "type": "color",

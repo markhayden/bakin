@@ -19,6 +19,8 @@ export interface SearchInputProps extends NativeSearchInputProps {
   placeholder?: string
   /** Indicates an in-flight search without adding layout-changing feedback beside the field. */
   busy?: boolean
+  /** Uses the full available width below the desktop breakpoint, then restores compact focus expansion. */
+  mobileFullWidth?: boolean
   align?: 'start' | 'end'
   className?: string
   inputClassName?: string
@@ -70,6 +72,7 @@ export function SearchInput({
   id,
   inputClassName,
   label,
+  mobileFullWidth = false,
   name,
   onBlur,
   onFocus,
@@ -92,7 +95,8 @@ export function SearchInput({
     <div
       data-slot="search-input-reserve"
       className={cn(
-        'flex w-full min-w-[min(100%,14rem)] max-w-[22rem] font-bakin-typography-family-ui',
+        'flex w-full min-w-[min(100%,14rem)] font-bakin-typography-family-ui',
+        mobileFullWidth ? 'max-w-none md:max-w-[22rem]' : 'max-w-[22rem]',
         align === 'end' ? 'justify-end' : 'justify-start',
         className,
       )}
@@ -100,8 +104,13 @@ export function SearchInput({
       <div
         data-slot="search-input-control"
         data-state={state}
-        style={{ inlineSize: focused ? '100%' : collapsedSize }}
-        className="relative max-w-full min-w-0 transition-[inline-size] duration-[var(--bakin-motion-duration-transition)] ease-bakin-standard motion-reduce:transition-none"
+        style={{ '--bakin-search-input-inline-size': focused ? '100%' : collapsedSize } as React.CSSProperties}
+        className={cn(
+          'relative max-w-full min-w-0 transition-[inline-size] duration-[var(--bakin-motion-duration-transition)] ease-bakin-standard motion-reduce:transition-none',
+          mobileFullWidth
+            ? '[inline-size:100%] md:[inline-size:var(--bakin-search-input-inline-size)]'
+            : '[inline-size:var(--bakin-search-input-inline-size)]',
+        )}
       >
         {busy ? <SearchProgressIcon /> : <SearchIcon />}
         <Input

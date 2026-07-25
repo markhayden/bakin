@@ -15,8 +15,13 @@ mock.module('../../../packages/core/src/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ root: testDir }),
 }))
-mock.module('@makinbakin/sdk/components', () => ({
-  AgentAvatar: ({ agentId }: { agentId: string }) => <span>{agentId}</span>,
+mock.module('@makinbakin/sdk/hooks', () => ({
+  useAgent: (agentId: string) => agentId ? { name: 'Reviewer' } : undefined,
+  useAgentDisplayName: () => undefined,
+  useAgentColor: () => 'var(--bakin-color-signal-accent)',
+}))
+mock.module('@makinbakin/sdk/navigation', () => ({
+  PluginLink: ({ to, children, ...props }: { to: string; children: React.ReactNode }) => <a href={to} {...props}>{children}</a>,
 }))
 // Defensive isolation (checker-required): the card component itself never
 // touches the store, but nothing transitively imported may either.
@@ -37,7 +42,7 @@ function makeTask(overrides?: Partial<Task>): Task {
 
 describe('TaskCardContent dispatch failure context', () => {
   it('shows a compact provider-unavailable label from the latest dispatch failure log', () => {
-    render(
+    const { container } = render(
       <TaskCardContent
         task={makeTask({
           log: [
@@ -65,6 +70,57 @@ describe('TaskCardContent dispatch failure context', () => {
 
     expect(screen.getByText('Dispatch failed: model provider unavailable')).toBeDefined()
     expect(screen.queryByText('Provider in cooldown after timeout')).toBeNull()
+    expect(container.querySelector('[data-slot="card"]')?.getAttribute('data-size')).toBe('sm')
+    expect(container.querySelector('[data-status-badge="accent"]')).toBeTruthy()
+    expect(screen.getByText('Dispatch failed: model provider unavailable').closest('[data-slot="kanban-card-signal"]')?.getAttribute('data-tone')).toBe('danger')
+  })
+})
+
+describe('TaskCardContent hierarchy', () => {
+  it('uses a filled state label, flush bold headline, quiet workflow metadata, and full-width approval feedback', () => {
+    const onOpen = mock()
+    const { container } = render(
+      <TaskCardContent
+        task={makeTask({
+          title: 'Approve launch recommendation',
+          workflowId: 'approval-copy',
+        })}
+        columnId="review"
+        gateLabel="Approve final copy"
+        onOpen={onOpen}
+      />,
+    )
+
+    const state = screen.getByText('Review').closest('[data-status-badge]')
+    expect(state?.getAttribute('data-variant')).toBe('solid')
+
+    const title = screen.getByRole('button', { name: 'Approve launch recommendation' })
+    expect(title.closest('h3')).toBeTruthy()
+    expect(title.className).toContain('font-bakin-typography-weight-bold')
+    fireEvent.click(title)
+    expect(onOpen).toHaveBeenCalledTimes(1)
+
+    const workflow = container.querySelector('[data-task-workflow]')
+    expect(workflow).toBeTruthy()
+    expect(workflow?.querySelector('[data-slot="badge"]')).toBeNull()
+
+    const approval = screen.getByText('Needs approval').closest('[data-slot="kanban-card-signal"]')
+    expect(approval?.getAttribute('data-tone')).toBe('attention')
+    expect(screen.getByText('Approve final copy')).toBeTruthy()
+  })
+
+  it('shows current turn activity as a full-width feedback row', () => {
+    render(
+      <TaskCardContent
+        task={makeTask()}
+        columnId="inProgress"
+        liveActivity={{ label: 'Writing launch copy…', ts: Date.now() }}
+      />,
+    )
+
+    const signal = screen.getByText('Current turn').closest('[data-slot="kanban-card-signal"]')
+    expect(signal?.getAttribute('data-tone')).toBe('accent')
+    expect(screen.getByText('Writing launch copy…')).toBeTruthy()
   })
 })
 
@@ -76,13 +132,13 @@ describe('TaskCardContent team assignment (#189)', () => {
 
   it('resolved team task shows the agent avatar AND the team chip', () => {
     render(<TaskCardContent task={makeTask({ team: 'development', agent: 'reviewer' })} columnId="inProgress" />)
-    expect(screen.getByText('reviewer')).toBeDefined() // mocked AgentAvatar renders the id
+    expect(screen.getByRole('img', { name: 'Reviewer' })).toBeDefined()
     expect(screen.getByText('development')).toBeDefined()
   })
 
   it('direct-agent task renders no team chip', () => {
     render(<TaskCardContent task={makeTask({ agent: 'reviewer' })} columnId="todo" />)
-    expect(screen.getByText('reviewer')).toBeDefined()
+    expect(screen.getByRole('img', { name: 'Reviewer' })).toBeDefined()
     expect(screen.queryByText('development')).toBeNull()
   })
 })
@@ -97,8 +153,8 @@ describe('TaskCardContent sub-task indicator', () => {
       />,
     )
 
-    const badge = screen.getByText('Sub-task in progress').parentElement!
-    expect(badge.getAttribute('title')).toBe('305a1dd6--generate-image')
+    const signal = screen.getByText('Sub-task in progress').closest('[data-slot="kanban-card-signal"]')!
+    expect(signal.getAttribute('title')).toBe('305a1dd6--generate-image')
     expect(screen.getByText('305A1D · generate-image')).toBeDefined()
   })
 
@@ -116,14 +172,14 @@ describe('TaskCardContent sub-task indicator', () => {
       </div>,
     )
 
-    const badge = screen.getByText('Sub-task in progress').parentElement!
+    const signal = screen.getByText('Sub-task in progress').closest('[data-slot="kanban-card-signal"]')!
     const childCard = screen.getByTestId('child-card')
 
-    fireEvent.mouseEnter(badge)
+    fireEvent.mouseEnter(signal)
     expect(childCard.classList.contains('ring-2')).toBe(true)
-    expect(childCard.classList.contains('ring-cyan-400/60')).toBe(true)
+    expect(childCard.classList.contains('ring-bakin-focus-ring')).toBe(true)
 
-    fireEvent.mouseLeave(badge)
+    fireEvent.mouseLeave(signal)
     expect(childCard.classList.contains('ring-2')).toBe(false)
   })
 })

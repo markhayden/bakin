@@ -13,6 +13,7 @@ import { closeDb } from '../../packages/core/src/storage/db'
 import { getMockHome } from './env'
 import { seedUsageSessions } from './seed-usage-sessions'
 import { seedVersionedAssets } from './seed-assets'
+import { seedBrands } from './seed-brands'
 import { seedTeamContent } from './seed-team'
 import { seedEnrichAgent } from './seed-enrich'
 import { seedMessagingCalendar } from './seed-messaging'
@@ -91,6 +92,7 @@ export function seed(force = false): void {
   // versioned assets with enrichment states, personas + lessons + webp avatar.
   seedUsageSessions(mockHome)
   seedVersionedAssets(mockHome)
+  seedBrands(mockHome)
   seedTeamContent(mockHome)
   seedEnrichAgent(mockHome)
   seedMessagingCalendar(mockHome)

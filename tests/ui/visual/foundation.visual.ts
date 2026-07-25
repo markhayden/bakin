@@ -301,7 +301,7 @@ test('public list/index page recipe visual baseline', async ({ page }) => {
 test('public page header controls visual baseline', async ({ page }) => {
   await page.goto('/iframe.html?id=patterns-list-and-detail-pages--list-header-controls&viewMode=story')
   await expect(page.getByRole('heading', { level: 1, name: 'Tasks' })).toBeVisible()
-  await expect(page.getByRole('group', { name: 'Task search and view' })).toBeVisible()
+  await expect(page.getByRole('group', { name: 'Task search, view, and actions' })).toBeVisible()
   await expect(page.locator('[data-slot="search-input-control"]')).toHaveAttribute('data-state', 'empty')
   await page.evaluate(async () => document.fonts.ready)
   await expect(page).toHaveScreenshot('foundation-page-header-controls.png', {

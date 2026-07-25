@@ -119,10 +119,13 @@ export function ActivityFeed() {
       {!open && (
         <button
           onClick={toggle}
-          className="fixed right-0 top-[calc(50%+28px)] -translate-y-1/2 z-50 flex w-8 flex-col items-center justify-center gap-2 py-4 rounded-l-md border border-r-0 border-border bg-card/95 backdrop-blur-sm transition-colors hover:bg-surface-elevated"
+          aria-label="Open Live Activity"
+          title="Live Activity"
+          className="fixed bottom-bakin-4 right-bakin-4 top-auto z-50 flex h-[var(--bakin-layout-size-control)] w-[var(--bakin-layout-size-control)] translate-y-0 items-center justify-center rounded-bakin-pill border border-border bg-card/95 p-0 shadow-bakin-elevation-overlay backdrop-blur-sm transition-colors hover:bg-surface-elevated"
         >
-          <span className={`h-2 w-2 rounded-full ${connected ? 'bg-success animate-pulse' : 'bg-muted-foreground'}`} />
-          <span className="text-[10px] font-medium text-muted-foreground [writing-mode:vertical-lr]">
+          <Radio aria-hidden="true" className="size-bakin-4 text-muted-foreground" />
+          <span className={`absolute right-bakin-1 top-bakin-1 h-2 w-2 rounded-full ${connected ? 'bg-success animate-pulse' : 'bg-muted-foreground'}`} />
+          <span className="sr-only">
             Live Activity
           </span>
         </button>
@@ -130,7 +133,7 @@ export function ActivityFeed() {
 
       {/* Full-height panel */}
       <div
-        className="flex w-[360px] h-full flex-col bg-background"
+        className="flex h-full w-[min(360px,100vw)] flex-col bg-background"
       >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border px-3 py-2">
@@ -141,6 +144,7 @@ export function ActivityFeed() {
           <div className="flex items-center gap-1">
             <button
               onClick={toggle}
+              aria-label="Close Live Activity"
               className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded-md hover:bg-[rgba(255,255,255,0.06)]"
             >
               <ChevronRight className="size-4" />

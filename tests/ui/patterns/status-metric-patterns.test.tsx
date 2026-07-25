@@ -18,6 +18,7 @@ describe('status and metric patterns', () => {
     const badge = screen.getByText('Needs review').closest('[data-status-badge]')
     expect(badge?.getAttribute('data-status-badge')).toBe('attention')
     expect(badge?.getAttribute('data-tone')).toBe('attention')
+    expect(badge?.getAttribute('data-variant')).toBe('solid')
     expect(screen.getByTestId('status-icon').closest('[aria-hidden="true"]')).not.toBeNull()
   })
 

@@ -4,7 +4,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { KeyboardSensor, PointerSensor } from '@dnd-kit/dom'
 import { move } from '@dnd-kit/helpers'
 import { DragDropProvider, type DragDropEventHandlers } from '@dnd-kit/react'
-import { toast, useContentStore, useDebug, useJsonFetch, usePluginEvent } from '@makinbakin/sdk/hooks'
+import {
+  toast,
+  useContentStore,
+  useDebug,
+  useJsonFetch,
+  usePluginEvent,
+  type SearchResult,
+} from '@makinbakin/sdk/hooks'
 import {
   usePathname,
   useQueryArrayState,
@@ -141,6 +148,18 @@ function mergeVisibleColumns(
       }),
     ) as unknown as TaskColumns
   )
+}
+
+function applyFilteredMove(
+  columns: TaskColumns,
+  search: string,
+  agentFilter: string,
+  searchResults: SearchResult[],
+  brandFilter: string[],
+  event: unknown,
+): TaskColumns {
+  const visibleColumns = filterBoardColumns(columns, search, agentFilter, searchResults, brandFilter)
+  return mergeVisibleColumns(columns, visibleColumns, applyMove(visibleColumns, event))
 }
 
 export function KanbanBoard() {
@@ -317,16 +336,12 @@ export function KanbanBoard() {
 
     const currentColumns = optimistic?.columns ?? dragStartColumnsRef.current ?? parsed.columns
     const nextColumns = hasBoardFilters
-      ? mergeVisibleColumns(
-          currentColumns,
-          filterBoardColumns(currentColumns, search, agentFilter),
-          applyMove(filterBoardColumns(currentColumns, search, agentFilter), event),
-        )
+      ? applyFilteredMove(currentColumns, search, agentFilter, searchResults, brandFilter, event)
       : applyMove(currentColumns, event)
     if (areTaskOrdersEqual(currentColumns, nextColumns)) return
 
     setOptimistic({ columns: nextColumns })
-  }, [agentFilter, hasBoardFilters, optimistic, parsed.columns, search])
+  }, [agentFilter, brandFilter, hasBoardFilters, optimistic, parsed.columns, search, searchResults])
 
   const handleDragEnd = useCallback<DragDropEventHandlers['onDragEnd']>(async (event) => {
     const { source, target } = event.operation
@@ -351,11 +366,7 @@ export function KanbanBoard() {
     const finalColumns = target
       ? (optimistic?.columns ?? (
           hasBoardFilters
-            ? mergeVisibleColumns(
-                originalColumns,
-                filterBoardColumns(originalColumns, search, agentFilter),
-                applyMove(filterBoardColumns(originalColumns, search, agentFilter), event),
-              )
+            ? applyFilteredMove(originalColumns, search, agentFilter, searchResults, brandFilter, event)
             : applyMove(originalColumns, event)
         ))
       : originalColumns
@@ -408,7 +419,7 @@ export function KanbanBoard() {
 
     await refreshTaskboard()
     setOptimistic(null)
-  }, [agentFilter, hasBoardFilters, optimistic, refreshTaskboard, search])
+  }, [agentFilter, brandFilter, hasBoardFilters, optimistic, refreshTaskboard, search, searchResults])
 
   const [detailTask, setDetailTask] = useState<{ task: Task; columnId: ColumnId } | null>(null)
   const [editing, setEditing] = useState(false)
@@ -528,33 +539,35 @@ export function KanbanBoard() {
         <PageHeader
           title="Tasks"
           meta={boardLoaded ? <Badge size="xs" variant="outline">{resultCount} shown</Badge> : undefined}
-          controlsLabel="Task search and view"
+          controlsLabel="Task search, view, and actions"
           controls={(
-            <>
+            <div className="grid w-full min-w-0 gap-bakin-2 @3xl/page-header:flex @3xl/page-header:items-start">
               <SearchInput
                 label="Task search"
                 value={search}
                 onValueChange={setSearch}
                 placeholder="Search tasks…"
                 busy={searchStatus === 'loading'}
+                mobileFullWidth
               />
-              <SegmentedControl
-                options={[
-                  { value: 'kanban', label: 'Board', icon: Kanban },
-                  { value: 'table', label: 'Log', icon: Table2 },
-                ]}
-                value={view as 'kanban' | 'table'}
-                onValueChange={setView}
-                ariaLabel="Task view"
-                size="md"
-              />
-            </>
-          )}
-          actions={(
-            <Button onClick={openNewTask}>
-              <Plus />
-              New Task
-            </Button>
+              <div className="flex min-w-0 flex-wrap items-center gap-bakin-2 @3xl/page-header:shrink-0 @3xl/page-header:flex-nowrap">
+                <SegmentedControl
+                  options={[
+                    { value: 'kanban', label: 'Board', icon: Kanban },
+                    { value: 'table', label: 'Log', icon: Table2 },
+                  ]}
+                  value={view as 'kanban' | 'table'}
+                  onValueChange={setView}
+                  ariaLabel="Task view"
+                  size="md"
+                  className="shrink-0 [&_[role=tab]]:px-bakin-3"
+                />
+                <Button className="min-w-28 flex-1 @3xl/page-header:flex-none" onClick={openNewTask}>
+                  <Plus />
+                  New Task
+                </Button>
+              </div>
+            </div>
           )}
         />
 
@@ -592,10 +605,16 @@ export function KanbanBoard() {
               onDragOver={handleDragOver}
               onDragEnd={handleDragEnd}
             >
-              <div className="flex-1 overflow-auto min-h-0">
-                <div className="inline-flex gap-4 items-start pb-bakin-2">
+              <div
+                role="region"
+                aria-label="Task board"
+                tabIndex={0}
+                data-task-board-scroll
+                className="flex-1 min-h-0 max-w-full min-w-0 overflow-auto overscroll-x-contain focus-visible:rounded-bakin-control focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring"
+              >
+                <div data-task-board-track className="inline-flex items-start gap-4 pb-bakin-2">
                   {COLUMN_ORDER.map((colId) => (
-                    <div key={colId} className="w-[75vw] sm:w-72 shrink-0">
+                    <div key={colId} data-task-board-column className="w-72 shrink-0">
                       <KanbanColumn
                         id={colId}
                         tasks={colId === 'archived' ? [] : filteredColumns[colId]}

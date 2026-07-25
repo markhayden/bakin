@@ -5506,7 +5506,8 @@
       "sourcePath": "packages/host/src/components/layout/layout-shell.tsx",
       "symbols": [
         "LayoutShell",
-        "shouldAutoCollapseActivity"
+        "shouldAutoCollapseActivity",
+        "shouldAutoCollapseActivityForViewport"
       ],
       "exportStatus": "private",
       "classification": "shared-ui",
