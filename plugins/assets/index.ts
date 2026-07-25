@@ -36,7 +36,11 @@ const log = createLogger('assets')
 /** Daily is effectively free: the done+forVersion skip guard makes passes
  *  over healthy assets no-ops, and nothing runs with force (no re-billing). */
 const ENRICHMENT_SELF_HEAL_INTERVAL_MS = 24 * 60 * 60 * 1000
+/** First pass shortly after boot: hosts that restart daily would otherwise
+ *  never reach the 24h tick (review finding). */
+const ENRICHMENT_SELF_HEAL_INITIAL_DELAY_MS = 5 * 60 * 1000
 let selfHealTimer: ReturnType<typeof setInterval> | null = null
+let selfHealKickTimer: ReturnType<typeof setTimeout> | null = null
 
 const assetsPlugin: BakinPlugin = definePlugin({
   id: 'assets',
@@ -82,7 +86,7 @@ const assetsPlugin: BakinPlugin = definePlugin({
     // A slow background pass re-attempts failed/missing/stale enrichment so
     // coverage recovers without a human. No force: nothing re-bills and the
     // done+forVersion skip guard keeps a pass over healthy assets free.
-    selfHealTimer = setInterval(() => {
+    const selfHealPass = () => {
       try {
         const ids = incompleteEnrichmentAssetIds()
         if (ids.length === 0) return
@@ -92,7 +96,10 @@ const assetsPlugin: BakinPlugin = definePlugin({
       } catch (err) {
         log.warn('Enrichment self-heal pass failed', { err: err instanceof Error ? err.message : String(err) })
       }
-    }, ENRICHMENT_SELF_HEAL_INTERVAL_MS)
+    }
+    selfHealKickTimer = setTimeout(selfHealPass, ENRICHMENT_SELF_HEAL_INITIAL_DELAY_MS)
+    selfHealKickTimer.unref?.()
+    selfHealTimer = setInterval(selfHealPass, ENRICHMENT_SELF_HEAL_INTERVAL_MS)
     selfHealTimer.unref?.()
 
     // ─── Search Content Type Registration ─────────────────────────────
@@ -146,7 +153,9 @@ const assetsPlugin: BakinPlugin = definePlugin({
 
   onShutdown() {
     if (selfHealTimer) clearInterval(selfHealTimer)
+    if (selfHealKickTimer) clearTimeout(selfHealKickTimer)
     selfHealTimer = null
+    selfHealKickTimer = null
     stopEnrichmentQueue()
     log.info('Shutting down assets plugin')
   },

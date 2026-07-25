@@ -422,3 +422,39 @@ describe('incident ack projection (health trust overhaul, 2026-07-24)', () => {
     expect(report.overallStatus).toBe('degraded')
   })
 })
+
+describe('vanished-incident ack pruning (review finding)', () => {
+  const { acknowledgeHealthIncident } = require('../../src/core/doctor-report-cache') as typeof import('../../src/core/doctor-report-cache')
+  const { readAckRecords } = require('../../src/core/health-acks') as typeof import('../../src/core/health-acks')
+
+  it('resolution prunes the record — a recurrence returns LOUD, not pre-silenced', async () => {
+    // The corrupt-store test above leaves a poisoned file — start clean.
+    rmSync(join(testDir, 'health'), { recursive: true, force: true })
+    let healthy = false
+    const def = register(async () => healthObserved(healthy
+      ? [healthHealthy({ key: 'flap', summary: 'Fine now.' })]
+      : [healthWarning({
+          key: 'flap', summary: 'Flapping.',
+          incident: {
+            key: 'flap', title: 'Flapping thing', impact: 'Wobbles.', disposition: 'watch',
+            resolution: { key: 'rerun', type: 'rerun', label: 'Check again' },
+          },
+        })]), 'prune-probe', 'Prune probe')
+
+    await apply(def, '2026-07-24T12:00:00.000Z')
+    const incidentId = getHealthReport('2026-07-24T12:00:10.000Z').incidents[0]!.id
+    acknowledgeHealthIncident({ incidentId, action: 'ack', now: new Date('2026-07-24T12:00:20.000Z') })
+    expect(readAckRecords()[incidentId]).toBeDefined()
+
+    // Incident resolves → projection prunes the record.
+    healthy = true
+    await apply(def, '2026-07-24T12:01:00.000Z', 'execution-2')
+    getHealthReport('2026-07-24T12:01:10.000Z')
+    expect(readAckRecords()[incidentId]).toBeUndefined()
+
+    // Recurrence arrives LOUD.
+    healthy = false
+    await apply(def, '2026-07-24T12:02:00.000Z', 'execution-3')
+    expect(getHealthReport('2026-07-24T12:02:10.000Z').incidents[0]!.ackState).toBeUndefined()
+  })
+})

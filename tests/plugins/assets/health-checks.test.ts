@@ -377,3 +377,14 @@ describe('incompleteEnrichmentAssetIds — the self-heal selector', () => {
     expect(names).toEqual(['failed-1', 'missing-1', 'stale-1'])
   })
 })
+
+describe('stranded pending enrichment (review finding)', () => {
+  it('counts pending as incomplete so the self-heal pass retries crash-stranded jobs', () => {
+    seedFullAssetsTree()
+    seedEnrichedAsset('pending-1', { status: 'pending' })
+    const names = incompleteEnrichmentAssetIds().map((id) => id.split('-').slice(1, -1).join('-'))
+    expect(names).toEqual(['pending-1'])
+    const coverage = observations().filter((r) => r.key === 'enrichment-coverage')
+    expect(coverage[0].evidence).toMatchObject({ missing: 1, enriched: 0 })
+  })
+})

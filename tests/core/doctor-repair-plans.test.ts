@@ -68,7 +68,7 @@ function report(overrides: Partial<HealthReport> = {}): HealthReport {
       observedAt: now.toISOString(), staleAt: observation.staleAt, stale: false,
     }],
     subsystems: { search: { status: 'unhealthy', summary: 'Search unavailable.', observedAt: now.toISOString(), staleAt: observation.staleAt, stages: [], incidentIds: [observation.incidentId] } },
-    summary: { checks: { registered: 1, completed: 1, failed: 0, invalid: 0, notApplicable: 0 }, incidents: { actionRequired: 1, watching: 0, advisory: 0, unknown: 0 } },
+    summary: { checks: { registered: 1, completed: 1, failed: 0, invalid: 0, notApplicable: 0 }, incidents: { actionRequired: 1, watching: 0, advisory: 0, unknown: 0, acknowledged: 0} },
     ...overrides,
   }
 }

@@ -128,6 +128,7 @@ function report(options: {
         watching: incidents.filter((row) => row.disposition === 'watch').length,
         advisory: incidents.filter((row) => row.disposition === 'advisory').length,
         unknown: incidents.filter((row) => row.status === 'unknown').length,
+        acknowledged: incidents.filter((row) => row.ackState !== undefined).length,
       },
     },
   }

@@ -102,7 +102,7 @@ function report(): HealthReport {
     },
     summary: {
       checks: { registered: 3, completed: 2, failed: 1, invalid: 0, notApplicable: 1 },
-      incidents: { actionRequired: 0, watching: 0, advisory: 0, unknown: 0 },
+      incidents: { actionRequired: 0, watching: 0, advisory: 0, unknown: 0, acknowledged: 0 },
     },
   }
 }

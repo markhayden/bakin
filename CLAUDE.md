@@ -47,6 +47,7 @@ Created by `bakin onboard` / `initBakinHome()`. Per-installation state, NOT in t
   packages/                — Agent-package install state (lock.json + per-kind dirs)
   assets/                  — Versioned assets: store/<YYYY-MM>/<assetId>/ (manifest.json + vN files + exports/); see .claude/knowledge/assets-versioning.md
   antfly/                  — Data dir for Bakin's private antfly instance (127.0.0.1:3738; binary + models live under ~/.antfly)
+  health/                  — Incident ack/snooze records (acks.json — the "I know" verb)
   heartbeats/              — Agent status heartbeats (JSON)
   tasks/                   — Bakin-owned task metadata JSON, sharded by created month
   run-workspaces/          — Per-run agent working dirs (<agentId>/<runId>/ + .bakin-run.json sidecar; watcher-excluded, sweep-GC'd)

@@ -164,3 +164,43 @@ describe('resolveAckState — the ONE re-fire comparison', () => {
     expect(resolveAckState({ ...arBase, evidenceSha: 'sha-2', record })).toBeNull()
   })
 })
+
+describe('review findings — re-fire hardening', () => {
+  it('SNOOZED incidents also re-fire on tier escalation (never-quietly-silenceable)', () => {
+    const record = ackRecord({
+      mode: 'snooze',
+      tierAtAck: 'watch',
+      until: new Date(NOW + 6 * 24 * 60 * 60 * 1000).toISOString(),
+    })
+    expect(resolveAckState({
+      record,
+      effectiveDisposition: 'action_required',
+      resourceFingerprint: 'agent:relay',
+      evidenceSha: 'sha-1',
+      nowMs: NOW,
+    })).toBeNull()
+    // Same tier stays snoozed.
+    expect(resolveAckState({
+      record,
+      effectiveDisposition: 'watch',
+      resourceFingerprint: 'agent:relay',
+      evidenceSha: 'sha-1',
+      nowMs: NOW,
+    })).toBe('snoozed')
+  })
+
+  it('a snooze record without an expiry is invalid at read and never applies at resolve', () => {
+    mkdirSync(join(testDir, 'health'), { recursive: true })
+    writeFileSync(acksPath, JSON.stringify({
+      broken: { incidentId: 'broken', mode: 'snooze', at: new Date(NOW).toISOString(), tierAtAck: 'watch', resourceFingerprint: 'x' },
+    }))
+    expect(readAckRecords()).toEqual({})
+    expect(resolveAckState({
+      record: ackRecord({ mode: 'snooze', until: undefined }),
+      effectiveDisposition: 'watch',
+      resourceFingerprint: 'agent:relay',
+      evidenceSha: 'sha-1',
+      nowMs: NOW,
+    })).toBeNull()
+  })
+})

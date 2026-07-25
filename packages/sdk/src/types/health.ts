@@ -479,10 +479,13 @@ export interface HealthReportCheckSummary {
 }
 
 export interface HealthReportIncidentSummary {
+  /** Tier counts describe LIVE (un-acked) attention — they reconcile with overallStatus. */
   actionRequired: number
   watching: number
   advisory: number
   unknown: number
+  /** Acked/snoozed incidents — quiet, visible in the Acknowledged section. */
+  acknowledged: number
 }
 
 export interface HealthReportSummary {

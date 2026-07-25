@@ -26,6 +26,7 @@ import type {
   JsonObject,
 } from '@makinbakin/sdk'
 import { repairTargetSelection } from './repair-support'
+import { toLocalDayKey } from '@bakin/core/usage-history/store'
 import {
   getUsageHistoryScanState,
   getUsageHistoryScanStaleAfterMs,
@@ -493,6 +494,13 @@ export async function checkBudget(): Promise<HealthCheckRunInput> {
     // billing lane, so the write-off repair is the honest offer.
     const hasPricingGap = evidenceGaps.some((gap) =>
       gap.reasons.includes('value_missing') && !gap.reasons.includes('lane_unknown'))
+    // Fossils = lane-unknown gaps with rows BEFORE today: those are what a
+    // cutoff of today's key can actually write off (the strict day < cutoff
+    // comparison never covers today's rows — review finding: offering the
+    // destructive repair for today-only gaps was a no-op confirm).
+    const todayKey = toLocalDayKey(Date.now())
+    const hasFossilGap = evidenceGaps.some((gap) =>
+      gap.reasons.includes('lane_unknown') && gap.earliestDay !== undefined && gap.earliestDay < todayKey)
     const detailSuffix = gapLines.length > 0 ? ` Gaps: ${gapLines.join('; ')}.` : ''
     const detail = incompleteSpendRules.length > 0
       ? `${incompleteSpendRules.length} budget rule${incompleteSpendRules.length === 1 ? '' : 's'} cannot be evaluated because one or more matching spend records have incomplete value or attribution evidence.${detailSuffix}`
@@ -527,7 +535,7 @@ export async function checkBudget(): Promise<HealthCheckRunInput> {
               label: 'Refresh model pricing',
               actionId: 'spend-evidence-refresh-pricing',
             }
-          : evidenceGaps.length > 0
+          : hasFossilGap
             ? {
                 // Attribution-only gaps: recent ones settle on their own,
                 // but fossils (old sessions that will never attribute)
@@ -684,7 +692,7 @@ export function acceptUnattributedHistoryRepair(): HealthRepairActionDefinition 
     id: 'accept-unattributed-history',
     name: 'Accept unattributed history',
     async plan(target) {
-      const cutoff = toLocalDayKeyForCutoff(Date.now())
+      const cutoff = toLocalDayKey(Date.now())
       return [{
         id: 'accept-unattributed-history',
         actionId: 'accept-unattributed-history',
@@ -711,7 +719,7 @@ export function acceptUnattributedHistoryRepair(): HealthRepairActionDefinition 
       }))
       if (items.length === 0) return []
       try {
-        const cutoff = toLocalDayKeyForCutoff(Date.now())
+        const cutoff = toLocalDayKey(Date.now())
         const result = await getHookRegistry().invoke<{ ok: boolean; error?: string }>(
           'models.updateBudgetPolicy',
           { acceptUnattributedBefore: cutoff },
@@ -725,11 +733,4 @@ export function acceptUnattributedHistoryRepair(): HealthRepairActionDefinition 
       }
     },
   }
-}
-
-/** Local-day key matching the usage store's day bucketing. */
-function toLocalDayKeyForCutoff(ms: number): string {
-  const date = new Date(ms)
-  const pad = (value: number) => String(value).padStart(2, '0')
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
 }

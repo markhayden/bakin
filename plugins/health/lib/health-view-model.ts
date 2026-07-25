@@ -146,7 +146,9 @@ export function healthReportNeedsFreshSweep(report: HealthReport, now: number = 
   })
 }
 
-function statusPresentation(status: HealthReportStatus | null): {
+function statusPresentation(status: HealthReportStatus | null, context?: {
+  verifyCount: number
+}): {
   label: string
   summary: string
   tone: OverviewTone
@@ -158,8 +160,19 @@ function statusPresentation(status: HealthReportStatus | null): {
       return { label: 'Needs attention', summary: 'Some problems need your attention.', tone: 'destructive' }
     case 'degraded':
       return { label: 'Watching', summary: 'Bakin is working, but some items need watching.', tone: 'warning' }
-    case 'unknown_stale':
-      return { label: 'Unable to verify', summary: 'Bakin could not confirm its health.', tone: 'neutral' }
+    case 'unknown_stale': {
+      // Scope honesty (stakeholder, 2026-07-25): ONE unverified corner —
+      // or checks that simply haven't run yet since boot — must not brand
+      // the whole product "Unable to verify" under an alarm icon. Nothing
+      // is failing in this state; say what is actually happening, calmly.
+      // The doctor refreshes on its own cadence; Run checks is one click.
+      const count = context?.verifyCount ?? 0
+      return {
+        label: count > 0 ? `Running — ${count} to verify` : 'Running — verifying',
+        summary: 'Bakin is working; some evidence has not been verified yet. Run checks to verify now.',
+        tone: 'neutral',
+      }
+    }
     default:
       return { label: 'Checking health', summary: 'Checking whether Bakin is working.', tone: 'neutral' }
   }
@@ -355,7 +368,7 @@ export function buildHealthOverviewViewModel({
       : evidenceStale
         ? 'unknown_stale'
         : report.overallStatus
-  const overall = statusPresentation(overallStatus)
+  const overall = statusPresentation(overallStatus, { verifyCount: unableToVerify.length })
   const canonicalSearch = searchReadiness ?? report?.subsystems.search
   const search = buildSearch(canonicalSearch, now)
   const evidenceObservedAt = report === null ? null : oldest([

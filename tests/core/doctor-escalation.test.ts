@@ -100,7 +100,7 @@ function report(incidents: HealthIncident[]): HealthReport {
     },
     summary: {
       checks: { registered: 0, completed: 0, failed: 0, invalid: 0, notApplicable: 0 },
-      incidents: { actionRequired: incidents.length, watching: 0, advisory: 0, unknown: 0 },
+      incidents: { actionRequired: incidents.length, watching: 0, advisory: 0, unknown: 0, acknowledged: 0},
     },
   }
 }

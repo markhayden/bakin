@@ -126,6 +126,10 @@ function recordEvidenceGap(
     && candidate.reasons.join('\0') === reasons.join('\0'))
   if (existing) {
     existing.unknownCount = safeSum(existing.unknownCount, normalizedCount) ?? Number.MAX_SAFE_INTEGER
+    if (gap.earliestDay !== undefined
+      && (existing.earliestDay === undefined || gap.earliestDay < existing.earliestDay)) {
+      existing.earliestDay = gap.earliestDay
+    }
     return
   }
   evidence.gaps.push({ ...gap, reasons, unknownCount: normalizedCount })
@@ -485,7 +489,10 @@ export async function assembleBudgetSpend(now: number): Promise<BudgetSpendFacet
     const policy = invoke
       ? await invoke('models.getBudgetPolicy', {}).catch(() => undefined) as { acceptUnattributedBefore?: string } | undefined
       : undefined
-    const acceptedBefore = typeof policy?.acceptUnattributedBefore === 'string' ? policy.acceptUnattributedBefore : null
+    const rawCutoff = typeof policy?.acceptUnattributedBefore === 'string' ? policy.acceptUnattributedBefore : null
+    // Clamp to today at READ: a future-dated cutoff would silence current
+    // and future usage — money never pre-silences (review finding).
+    const acceptedBefore = rawCutoff !== null && rawCutoff > todayKey ? todayKey : rawCutoff
     const laneCache = new Map<string, Lane | null>()
     const observedByLane = new Map<string, DayLaneSums>()
     for (const cell of usageStore.readUsageByAgentModelDaySince(usageStore.toLocalDayKey(monthStart))) {
@@ -509,6 +516,7 @@ export async function assembleBudgetSpend(now: number): Promise<BudgetSpendFacet
             provider: null,
             model: cell.model || null,
             reasons: ['lane_unknown'],
+            earliestDay: cell.day,
           }, observedCount)
           recordEvidenceGap(evidence, {
             unit: 'usd_micros',
@@ -518,6 +526,7 @@ export async function assembleBudgetSpend(now: number): Promise<BudgetSpendFacet
             provider: null,
             model: cell.model || null,
             reasons: missingCostCount > 0 ? ['lane_unknown', 'value_missing'] : ['lane_unknown'],
+            earliestDay: cell.day,
           }, observedCount)
         }
         continue
@@ -533,6 +542,7 @@ export async function assembleBudgetSpend(now: number): Promise<BudgetSpendFacet
             provider: null,
             model: cell.model || null,
             reasons: ['value_missing'],
+            earliestDay: cell.day,
           }, missingCostCount)
         }
       }

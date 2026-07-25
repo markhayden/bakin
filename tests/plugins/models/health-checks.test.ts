@@ -139,7 +139,7 @@ describe('checkModelRouting', () => {
     expect(warn?.status).toBe('warning')
     expect(warn?.incident?.disposition).toBe('advisory')
     expect(warn?.incident?.resolution).toMatchObject({ type: 'repair', actionId: 'apply-recommended-routes' })
-    expect(warn?.evidence).toMatchObject({ runs: 1, models: ['anthropic/claude-opus-4-6'], estimatedUsdMicros: 40_000 })
+    expect(warn?.evidence).toMatchObject({ runs: 1, models: ['anthropic/claude-opus-4-6'], knownUsdMicros: 40_000 })
   })
 
   it('premium-on-cheap escalates to WATCH past $5 of KNOWN spend in the window — unpriced rows never fabricate', async () => {
@@ -152,7 +152,7 @@ describe('checkModelRouting', () => {
     if (expensive.outcome !== 'observed') throw new Error('expected observed')
     const escalated = expensive.observations.find((o) => o.key === 'premium-on-cheap-relay')
     expect(escalated?.incident?.disposition).toBe('watch')
-    expect(escalated?.evidence).toMatchObject({ estimatedUsdMicros: 6_000_000, unpricedRuns: 1 })
+    expect(escalated?.evidence).toMatchObject({ knownUsdMicros: 6_000_000, unpricedRuns: 1 })
 
     const unpricedOnly = await checkModelRouting(deps({
       listRecentRunCosts: () => Array.from({ length: 50 }, () =>

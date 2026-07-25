@@ -88,6 +88,10 @@ export interface SpendEvidenceGap {
   reasons: Array<'value_missing' | 'lane_unknown' | 'provider_unknown' | 'model_unknown'>
   /** Runs for attributed evidence; messages for observed evidence. */
   unknownCount: number
+  /** Earliest local day among the gapped observed rows — lets consumers
+   *  distinguish fossils (pre-today, write-off eligible) from fresh gaps
+   *  that settle on their own (review finding). */
+  earliestDay?: string
 }
 
 export interface SpendEvidenceWindow {

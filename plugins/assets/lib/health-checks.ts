@@ -147,8 +147,15 @@ function tallyEnrichment(): { tally: EnrichmentTally; incomplete: string[] } {
     } else if (enrichment.status === 'done' && (enrichment.forVersion ?? 0) < manifest.currentVersion) {
       tally.stale++
       incomplete.push(summary.assetId)
-    } else {
+    } else if (enrichment.status === 'done') {
       tally.enriched++
+    } else {
+      // 'pending' (or any unrecognized status): a crash mid-job strands the
+      // manifest here — count incomplete so the self-heal pass retries it
+      // (review finding; re-enqueueing a genuinely in-flight job is a
+      // cheap no-op behind the queue's own guards).
+      tally.missing++
+      incomplete.push(summary.assetId)
     }
   }
   return { tally, incomplete }

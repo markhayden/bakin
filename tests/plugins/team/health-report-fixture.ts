@@ -49,7 +49,7 @@ export function makeTeamHealthReport(overrides: Partial<HealthReport> = {}): Hea
     subsystems: { search: SEARCH_READINESS },
     summary: {
       checks: { registered: 0, completed: 0, failed: 0, invalid: 0, notApplicable: 0 },
-      incidents: { actionRequired: 0, watching: 0, advisory: 0, unknown: 0 },
+      incidents: { actionRequired: 0, watching: 0, advisory: 0, unknown: 0, acknowledged: 0 },
     },
     ...overrides,
   }
@@ -209,6 +209,6 @@ export const TEAM_ATTENTION_HEALTH_REPORT = makeTeamHealthReport({
   incidents: ATTENTION_FINDINGS.map((finding) => finding.incident),
   summary: {
     checks: { registered: 4, completed: 4, failed: 0, invalid: 0, notApplicable: 0 },
-    incidents: { actionRequired: 2, watching: 1, advisory: 1, unknown: 0 },
+    incidents: { actionRequired: 2, watching: 1, advisory: 1, unknown: 0, acknowledged: 0 },
   },
 })

@@ -350,6 +350,8 @@ async function runOfflineDoctor(): Promise<HealthReport> {
         watching: incidents.filter(incident => incident.disposition === 'watch').length,
         advisory: incidents.filter(incident => incident.disposition === 'advisory').length,
         unknown: incidents.filter(incident => incident.status === 'unknown').length,
+        // Offline reports never carry acks (no server store access).
+        acknowledged: 0,
       },
     },
   }
@@ -580,8 +582,11 @@ async function cmdDoctorFix(options: { json: boolean; yes: boolean; isTTY: boole
 }
 
 function actionRequiredIncidents(report: HealthReport): HealthIncident[] {
-  // Effective disposition (#690) — the CLI acts on the same story every other surface tells.
-  return report.incidents.filter(incident => incident.effectiveDisposition === 'action_required')
+  // Effective disposition (#690) + ack state (health trust overhaul) — the
+  // CLI acts on the same story every other surface tells: a snoozed
+  // incident never feeds --fix/--delegate.
+  return report.incidents.filter(incident =>
+    incident.effectiveDisposition === 'action_required' && incident.ackState === undefined)
 }
 
 async function cmdDoctorDelegate(options: { json: boolean; yes: boolean; isTTY: boolean }): Promise<void> {
@@ -737,8 +742,13 @@ function printPlainDoctor(report: HealthReport): void {
     console.log(`  [${status}] ${check.checkId}: ${message}`)
   }
   console.log('')
+  const acked = report.incidents.filter((incident) => incident.ackState !== undefined)
+  for (const incident of acked) {
+    console.log(`  [${incident.ackState === 'snoozed' ? 'SNOOZED' : 'ACKED'}] ${incident.id}: ${incident.title}`)
+  }
   const incidents = report.summary.incidents
-  console.log(`${report.overallStatus}: ${incidents.actionRequired} action required, ${incidents.watching} watching, ${incidents.advisory} advisory, ${incidents.unknown} unknown`)
+  const ackedSuffix = (incidents.acknowledged ?? acked.length) > 0 ? `, ${incidents.acknowledged ?? acked.length} acknowledged` : ''
+  console.log(`${report.overallStatus}: ${incidents.actionRequired} action required, ${incidents.watching} watching, ${incidents.advisory} advisory, ${incidents.unknown} unknown${ackedSuffix}`)
 }
 
 /**

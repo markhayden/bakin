@@ -222,7 +222,7 @@ export async function checkModelRouting(deps: RoutingHealthDeps): Promise<Health
         workClass,
         runs: cell.runs,
         models: [...cell.models],
-        estimatedUsdMicros: cell.usdMicros,
+        knownUsdMicros: cell.usdMicros,
         unpricedRuns: cell.unpricedRuns,
       },
       incident: {

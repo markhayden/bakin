@@ -18,6 +18,7 @@ import { isLegacyBudget, migrateLegacyBudget } from './budget-migration'
 import { isLegacyRouting, migrateLegacyRouting } from './routing-migration'
 import { normalizeModelId } from './model-id'
 import { fetchAvailableModels } from './available-models'
+import { toLocalDayKey } from '@bakin/core/usage-history/store'
 
 export function registerModelsHooks(ctx: PluginContext): void {
   ctx.hooks.register('models.configChanged', () => {
@@ -45,11 +46,20 @@ export function registerModelsHooks(ctx: PluginContext): void {
     // Narrow, explicit patch surface: today only the write-off cutoff
     // (accept-unattributed-history repair). Full policy edits stay on
     // PUT /budget with schema validation.
-    const patch = typeof data?.acceptUnattributedBefore === 'string'
+    const value = typeof data?.acceptUnattributedBefore === 'string'
       && /^\d{4}-\d{2}-\d{2}$/.test(data.acceptUnattributedBefore)
-      ? { acceptUnattributedBefore: data.acceptUnattributedBefore }
+      ? data.acceptUnattributedBefore
       : null
-    if (!patch) return { ok: false, error: 'acceptUnattributedBefore must be a YYYY-MM-DD day key' }
+    if (!value) return { ok: false, error: 'acceptUnattributedBefore must be a YYYY-MM-DD day key' }
+    // Future cutoffs would pre-silence current and future usage — money
+    // never pre-silences (review finding; the spend engine also clamps at
+    // read as defense in depth).
+    if (value > toLocalDayKey(Date.now())) {
+      return { ok: false, error: 'acceptUnattributedBefore cannot be in the future' }
+    }
+    const patch = { acceptUnattributedBefore: value }
+    // NOTE: read-spread-write races a concurrent PUT /budget (last writer
+    // wins). Single-user machine; acceptable — revisit if that changes.
     const current = ctx.getSettings<{ budget?: Record<string, unknown> }>().budget ?? {}
     await ctx.updateSettings({ budget: { ...current, ...patch } })
     return { ok: true }

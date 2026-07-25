@@ -145,7 +145,7 @@ function canonicalReport() {
     },
     summary: {
       checks: { registered: 1, completed: 1, failed: 0, invalid: 0, notApplicable: 0 },
-      incidents: { actionRequired: 0, watching: 1, advisory: 0, unknown: 0 },
+      incidents: { actionRequired: 0, watching: 1, advisory: 0, unknown: 0, acknowledged: 0 },
     },
   }
 }

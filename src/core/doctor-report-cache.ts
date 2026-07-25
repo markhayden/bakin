@@ -12,7 +12,6 @@ import type {
 import type { DetailedHealthCheckRun } from './doctor-checks'
 import {
   HealthAckNotFoundError,
-  HealthAckStoreError,
   SNOOZE_MAX_MS,
   pruneAckRecords,
   readAckRecords,
@@ -390,6 +389,15 @@ function applyIncidentAckStates(
   const observationsById = new Map(observations.map((observation) => [observation.id, observation]))
   const nowMs = Date.parse(generatedAt)
   const invalidated: string[] = []
+  // A record whose incident is ABSENT from the report means the incident
+  // resolved (last-known retention keeps flapping checks alive, so absence
+  // is evidence of resolution) — prune it, so a recurrence weeks later
+  // arrives LOUD, not pre-silenced, and GET /doctor/acks never lists
+  // ghost rows (review finding).
+  const liveIds = new Set(incidents.map((incident) => incident.id))
+  for (const recordId of Object.keys(records)) {
+    if (!liveIds.has(recordId)) invalidated.push(recordId)
+  }
   const joined = incidents.map((incident) => {
     const record = records[incident.id]
     if (!record) return incident
@@ -423,8 +431,7 @@ export function acknowledgeHealthIncident(input: {
 }): { incidentId: string; action: 'ack' | 'snooze' | 'clear' } {
   const now = input.now ?? new Date()
   if (input.action === 'clear') {
-    removeAckRecord(input.incidentId)
-    bump()
+    if (removeAckRecord(input.incidentId)) bump()
     return { incidentId: input.incidentId, action: 'clear' }
   }
 
@@ -489,10 +496,14 @@ export function getHealthReport(generatedAt = new Date().toISOString()): HealthR
       notApplicable: checks.filter((check) => check.latestExecution.outcome === 'not_applicable').length,
     },
     incidents: {
-      actionRequired: incidents.filter((incident) => incident.effectiveDisposition === 'action_required').length,
-      watching: incidents.filter((incident) => incident.effectiveDisposition === 'watch').length,
-      advisory: incidents.filter((incident) => incident.effectiveDisposition === 'advisory').length,
-      unknown: incidents.filter((incident) => incident.status === 'unknown').length,
+      // Tier counts describe LIVE attention (they must reconcile with
+      // overallStatus — review finding: acked incidents in the counts made
+      // 'healthy: 1 action required' printable); acknowledged is explicit.
+      actionRequired: liveIncidents.filter((incident) => incident.effectiveDisposition === 'action_required').length,
+      watching: liveIncidents.filter((incident) => incident.effectiveDisposition === 'watch').length,
+      advisory: liveIncidents.filter((incident) => incident.effectiveDisposition === 'advisory').length,
+      unknown: liveIncidents.filter((incident) => incident.status === 'unknown').length,
+      acknowledged: incidents.length - liveIncidents.length,
     },
   }
   const reportProjection = {

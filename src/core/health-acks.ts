@@ -13,7 +13,7 @@
  * `ackState`, never re-derive. Suppressed is not deleted: the overview
  * renders acked incidents in an always-visible Acknowledged section.
  */
-import { mkdirSync, readFileSync, writeFileSync } from 'fs'
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'fs'
 import { dirname, join } from 'path'
 import { getBakinPaths } from './content-dir'
 
@@ -78,6 +78,9 @@ function isRecord(value: unknown): value is HealthAckRecord {
     && (record.tierAtAck === 'advisory' || record.tierAtAck === 'watch' || record.tierAtAck === 'action_required')
     && typeof record.resourceFingerprint === 'string'
     && (record.evidenceSha === undefined || typeof record.evidenceSha === 'string')
+    // Mode invariant at read (defense in depth): a snooze without an
+    // expiry would otherwise never expire.
+    && (record.mode !== 'snooze' || typeof record.until === 'string')
 }
 
 /** Read all records. Missing file = empty; corrupt file = typed error the
@@ -110,7 +113,11 @@ export function readAckRecords(): Record<string, HealthAckRecord> {
 function writeAll(records: Record<string, HealthAckRecord>): void {
   const path = acksPath()
   mkdirSync(dirname(path), { recursive: true })
-  writeFileSync(path, JSON.stringify(records, null, 2))
+  // Temp+rename: a crash mid-write must not corrupt the store (a corrupt
+  // store fails open loudly, but the user's acks would be lost).
+  const tmp = `${path}.tmp`
+  writeFileSync(tmp, JSON.stringify(records, null, 2))
+  renameSync(tmp, path)
 }
 
 /** Validates the tier rules at the storage boundary (defense in depth —
@@ -181,14 +188,17 @@ export function resolveAckState(input: {
   nowMs: number
 }): 'acked' | 'snoozed' | null {
   const { record } = input
+  // Tier escalation re-fires EVERY mode (review finding: a watch snooze
+  // that escalated to action_required stayed silent for the window —
+  // violating the never-quietly-silenceable boundary).
+  if (TIER_ORDER[input.effectiveDisposition] > TIER_ORDER[record.tierAtAck]) return null
   if (record.mode === 'snooze') {
-    if (record.until !== undefined && Date.parse(record.until) <= input.nowMs) return null
+    if (record.until === undefined || Date.parse(record.until) <= input.nowMs) return null
     if (record.tierAtAck === 'action_required'
       && record.evidenceSha !== undefined
       && record.evidenceSha !== input.evidenceSha) return null
     return 'snoozed'
   }
-  if (TIER_ORDER[input.effectiveDisposition] > TIER_ORDER[record.tierAtAck]) return null
   if (record.resourceFingerprint !== input.resourceFingerprint) return null
   return 'acked'
 }
