@@ -21,12 +21,15 @@ import {
 } from '@makinbakin/sdk/components'
 import { useAgent } from '@makinbakin/sdk/hooks'
 
+import { formatTokenCount, formatUsageCost } from '@makinbakin/sdk/components'
+
 import {
   patchChatRequest,
   uploadAttachmentRequest,
   useAgentImageInput,
   useChatStream,
   type ChatSummaryDto,
+  type ChatUsageTotals,
   type UploadedAttachment,
 } from './use-chat-data'
 
@@ -167,16 +170,23 @@ function ViewHeader({
   agentId,
   chat,
   streaming,
+  usageTotals,
   onChanged,
   refreshChat,
 }: {
   agentId: string
   chat: ChatSummaryDto | null
   streaming: boolean
+  usageTotals?: ChatUsageTotals | null
   onChanged: () => void
   refreshChat?: () => Promise<void>
 }) {
   const agent = useAgent(agentId)
+  // Σ chip (#733): the chat's recorded usage sum — hidden entirely when
+  // nothing is recorded (absence, never zeros). Metered spend adds $.
+  const totalParts: string[] = []
+  if (usageTotals?.totalTokens !== undefined) totalParts.push(`Σ ${formatTokenCount(usageTotals.totalTokens)} tok`)
+  if (usageTotals?.costUsd !== undefined) totalParts.push(formatUsageCost(usageTotals.costUsd))
   return (
     <div className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-2.5">
       <AgentAvatar agentId={agentId} size="sm" />
@@ -188,6 +198,11 @@ function ViewHeader({
         )}
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <span>{agent?.name ?? agentId}</span>
+          {totalParts.length ? (
+            <span data-chat-usage-totals className="text-muted-foreground/80">
+              · {totalParts.join(' · ')}
+            </span>
+          ) : null}
           {streaming ? (
             <span className="flex items-center gap-1" data-chat-header-working>
               · <Loader2 className="size-3 animate-spin" /> working…
@@ -329,7 +344,7 @@ export function DraftChatView({
 }
 
 export function ChatView({ chatId, onChanged }: { chatId: string; onChanged: () => void }) {
-  const { chat, messages, liveChunks, streaming, sendError, queued, removeQueued, send, abort, retry, refreshChat } = useChatStream(chatId)
+  const { chat, messages, liveChunks, streaming, sendError, queued, removeQueued, turnUsage, usageTotals, send, abort, retry, refreshChat } = useChatStream(chatId)
   const [openCall, setOpenCall] = useState<ConversationToolCall | null>(null)
   const attachments = useComposerAttachments(chatId, chat?.agentId ?? '')
   const composerHandle = useRef<ComposerHandle | null>(null)
@@ -358,11 +373,12 @@ export function ChatView({ chatId, onChanged }: { chatId: string; onChanged: () 
 
   return (
     <div className="flex min-w-0 flex-1 flex-col">
-      <ViewHeader agentId={chat.agentId} chat={chat} streaming={streaming} onChanged={onChanged} refreshChat={refreshChat} />
+      <ViewHeader agentId={chat.agentId} chat={chat} streaming={streaming} usageTotals={usageTotals} onChanged={onChanged} refreshChat={refreshChat} />
 
       <Conversation
         turns={turns}
         agentId={chat.agentId}
+        turnUsage={turnUsage}
         onRetry={retry}
         onOpenCall={setOpenCall}
         emptyState={

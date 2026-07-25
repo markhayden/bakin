@@ -314,6 +314,63 @@ describe('ChatView', () => {
     cleanup()
   })
 
+  it('renders per-turn usage footers and the Σ header total (#733)', async () => {
+    mockFetch({
+      [`/chats/${CHAT_A}/seen`]: {},
+      capabilities: { imageInput: false },
+      [`/chats/${CHAT_A}`]: {
+        chat: summary(),
+        messages: [
+          { kind: 'user', ts: '2026-07-11T10:00:00.000Z', content: 'how do burn buckets work?' },
+          { kind: 'assistant', ts: '2026-07-11T10:00:05.000Z', turnId: 't1', content: 'Like this.' },
+          { kind: 'assistant', ts: '2026-07-11T10:01:00.000Z', turnId: 't2', content: 'Subscription reply.' },
+        ],
+        usage: {
+          t1: { inputTokens: 14_200, outputTokens: 890, costUsd: 0.03, model: 'anthropic/claude-sonnet-5', lane: 'metered' },
+          t2: { inputTokens: 22_100, outputTokens: 1_200, model: 'pi/pi-local', lane: 'subscription' },
+        },
+        usageTotals: { turns: 2, inputTokens: 36_300, outputTokens: 2_090, totalTokens: 38_390, costUsd: 0.03 },
+      },
+    })
+    const { container } = render(<ChatView chatId={CHAT_A} onChanged={() => {}} />)
+    await waitFor(() => {
+      expect(container.querySelectorAll('[data-conv-usage]').length).toBe(2)
+    })
+    const footers = [...container.querySelectorAll('[data-conv-usage]')].map((el) => el.textContent)
+    expect(footers[0]).toContain('14.2k in / 890 out')
+    expect(footers[0]).toContain('$0.03')
+    expect(footers[0]).toContain('claude-sonnet-5')
+    // Subscription lane: tokens only.
+    expect(footers[1]).toContain('22.1k in')
+    expect(footers[1]).not.toContain('$')
+    // The Σ chip in the header.
+    const chip = container.querySelector('[data-chat-usage-totals]')
+    expect(chip).not.toBeNull()
+    expect(chip!.textContent).toContain('38.4k tok')
+    expect(chip!.textContent).toContain('$0.03')
+    cleanup()
+  })
+
+  it('no recorded usage → no footers, no header chip (absence, never zeros)', async () => {
+    mockFetch({
+      [`/chats/${CHAT_A}/seen`]: {},
+      capabilities: { imageInput: false },
+      [`/chats/${CHAT_A}`]: {
+        chat: summary(),
+        messages: [
+          { kind: 'user', ts: '2026-07-11T10:00:00.000Z', content: 'hi' },
+          { kind: 'assistant', ts: '2026-07-11T10:00:05.000Z', turnId: 't1', content: 'hello' },
+        ],
+        usage: {},
+      },
+    })
+    const { container } = render(<ChatView chatId={CHAT_A} onChanged={() => {}} />)
+    await waitFor(() => expect(container.textContent).toContain('hello'))
+    expect(container.querySelector('[data-conv-usage]')).toBeNull()
+    expect(container.querySelector('[data-chat-usage-totals]')).toBeNull()
+    cleanup()
+  })
+
   it('renders the queued strip while streaming; remove restores the text into the empty composer (#729)', async () => {
     mockFetch({
       [`/chats/${CHAT_A}/queued/q1`]: { removed: true },
