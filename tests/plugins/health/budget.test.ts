@@ -27,13 +27,18 @@ let budgetPolicy: unknown = {}
 let resolveBilling: (() => Promise<unknown>) | null = null
 let refreshModelsRegistered = true
 let refreshModelsResult: unknown = { count: 3, live: true, error: null }
+let budgetPolicyPatches: Array<Record<string, unknown>> = []
 const hookRegistryMock = () => ({
   getHookRegistry: () => ({
     has: (name: string) => (name === 'models.refreshAvailableModels' ? refreshModelsRegistered : true),
-    invoke: async (name: string) => {
+    invoke: async (name: string, data?: Record<string, unknown>) => {
       if (name === 'models.getBudgetPolicy') return budgetPolicy
       if (name === 'models.resolveBilling' && resolveBilling) return await resolveBilling()
       if (name === 'models.refreshAvailableModels') return refreshModelsResult
+      if (name === 'models.updateBudgetPolicy') {
+        budgetPolicyPatches.push(data ?? {})
+        return { ok: true }
+      }
       return undefined
     },
   }),
@@ -42,7 +47,7 @@ const hookRegistryMock = () => ({
 mock.module('@bakin/core/hooks/hook-registry-singleton', hookRegistryMock)
 mock.module('../../../src/core/plugin-registry', hookRegistryMock)
 
-import { checkBudget, spendEvidenceRepair } from '@bakin/health/lib/system-checks/budget'
+import { acceptUnattributedHistoryRepair, checkBudget, spendEvidenceRepair } from '@bakin/health/lib/system-checks/budget'
 import { recordRunCost } from '../../../src/core/execution-ledger'
 import { closeAllDbs, closeDb } from '../../../packages/core/src/storage/db'
 import { replaceSessionUsage, toLocalDayKey } from '../../../packages/core/src/usage-history/store'
@@ -69,6 +74,7 @@ beforeEach(() => {
   resolveBilling = null
   refreshModelsRegistered = true
   refreshModelsResult = { count: 3, live: true, error: null }
+  budgetPolicyPatches = []
   usageScanGlobal.__bakinUsageHistoryScanIntervalMs = 5 * 60_000
   usageScanGlobal.__bakinUsageHistoryScanInFlight = null
   usageScanGlobal.__bakinUsageHistoryScanPending = false
@@ -644,5 +650,79 @@ describe('spend evidence repair (spend-evidence-refresh-pricing)', () => {
     const outcomes = await repair.apply(await repair.plan({ type: 'all_actionable', reportId: 'r1' }))
     expect(outcomes[0]).toMatchObject({ status: 'failed' })
     expect(outcomes[0]!.message).toContain('gateway unreachable')
+  })
+})
+
+describe('accept-unattributed-history (spend fossils, health trust overhaul)', () => {
+  it('a durable cutoff writes off pre-cutoff unattributable usage — caps compute forward, card goes green', async () => {
+    budgetPolicy = { rules: [{ scope: 'global', lane: 'metered', dailyCap: 100 }] }
+    resolveBilling = null // lane can never resolve — the fossil class
+    // The spend engine reads THIS month's usage; a "fossil" is an in-month
+    // row whose lane never resolves. Cutoff=tomorrow is date-proof.
+    replaceSessionUsage('fossil', 'patch', [{
+      day: toLocalDayKey(Date.now()),
+      model: 'openai-codex/gpt-5.5',
+      inputTokens: 5_000, outputTokens: 500, cacheReadTokens: 0, cacheWriteTokens: 0,
+      totalTokens: 5_500, costUsdMicros: null, costedMessages: 0, messageCount: 4, userMessages: 1,
+      firstTs: Date.now() - 3_600_000, lastTs: Date.now(),
+    }], { mtimeMs: 1, size: 1 })
+
+    // Without the cutoff: unverifiable → unknown.
+    let rows = observed(await checkBudget())
+    expect(rows.find((row) => row.key === 'spend')?.status).toBe('unknown')
+
+    // With the cutoff: written off, verified clean.
+    budgetPolicy = {
+      rules: [{ scope: 'global', lane: 'metered', dailyCap: 100 }],
+      acceptUnattributedBefore: toLocalDayKey(Date.now() + 24 * 60 * 60 * 1000),
+    }
+    rows = observed(await checkBudget())
+    expect(rows.find((row) => row.key === 'spend')?.status).toBe('healthy')
+  })
+
+  it('post-cutoff gaps still fail closed — the write-off never leaks forward', async () => {
+    budgetPolicy = {
+      rules: [{ scope: 'global', lane: 'metered', dailyCap: 100 }],
+      acceptUnattributedBefore: '2026-06-01',
+    }
+    resolveBilling = null
+    const now = Date.now()
+    replaceSessionUsage('fresh-gap', 'patch', [{
+      day: toLocalDayKey(now),
+      model: 'openai-codex/gpt-5.5',
+      inputTokens: 100, outputTokens: 10, cacheReadTokens: 0, cacheWriteTokens: 0,
+      totalTokens: 110, costUsdMicros: null, costedMessages: 0, messageCount: 2, userMessages: 1,
+      firstTs: now, lastTs: now,
+    }], { mtimeMs: 2, size: 2 })
+
+    const rows = observed(await checkBudget())
+    expect(rows.find((row) => row.key === 'spend')?.status).toBe('unknown')
+  })
+
+  it('attribution-only gaps offer the write-off repair on the card', async () => {
+    budgetPolicy = { rules: [{ scope: 'global', lane: 'metered', dailyCap: 100 }] }
+    resolveBilling = null
+    const now = Date.now()
+    replaceSessionUsage('lane-gap', 'patch', [{
+      day: toLocalDayKey(now),
+      model: 'openai-codex/gpt-5.5',
+      inputTokens: 100, outputTokens: 10, cacheReadTokens: 0, cacheWriteTokens: 0,
+      totalTokens: 110, costUsdMicros: null, costedMessages: 0, messageCount: 2, userMessages: 1,
+      firstTs: now, lastTs: now,
+    }], { mtimeMs: 3, size: 3 })
+
+    const spend = observed(await checkBudget()).find((row) => row.key === 'spend')
+    expect(spend?.incident?.resolution).toMatchObject({ type: 'repair', actionId: 'accept-unattributed-history' })
+  })
+
+  it('the repair writes the cutoff through the models hook after confirmation-tier planning', async () => {
+    const repair = acceptUnattributedHistoryRepair()
+    const plan = await repair.plan({ type: 'all_actionable', reportId: 'r1' })
+    expect(plan[0]?.safety).toBe('destructive')
+
+    const outcomes = await repair.apply(plan)
+    expect(outcomes[0]).toMatchObject({ status: 'applied' })
+    expect(budgetPolicyPatches).toHaveLength(1)
+    expect(typeof budgetPolicyPatches[0]!.acceptUnattributedBefore).toBe('string')
   })
 })

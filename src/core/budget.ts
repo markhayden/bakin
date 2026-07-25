@@ -130,6 +130,15 @@ export interface BudgetRule {
 
 export interface BudgetPolicy {
   rules?: BudgetRule[]
+  /**
+   * Local day key (YYYY-MM-DD): observed usage BEFORE this day that can
+   * never attribute (unknown billing lane, unpriced) is written off —
+   * excluded from evidence gaps and the unattributed delta, so caps
+   * compute from the cutoff forward. Written ONLY by the explicit
+   * accept-unattributed-history repair — money never silences itself
+   * (health trust overhaul).
+   */
+  acceptUnattributedBefore?: string
 }
 
 /** Billing context of the turn (or billed call) being gated. */

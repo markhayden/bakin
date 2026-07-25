@@ -41,6 +41,20 @@ export function registerModelsHooks(ctx: PluginContext): void {
     return result.models
   }, { label: 'List available models.', summary: 'Returns the model catalog available from the currently configured providers. Use it to populate pickers, validate assignments, or compare model options before saving config.', hookKind: 'rpc' })
 
+  ctx.hooks.register('models.updateBudgetPolicy', async (data: Record<string, unknown>) => {
+    // Narrow, explicit patch surface: today only the write-off cutoff
+    // (accept-unattributed-history repair). Full policy edits stay on
+    // PUT /budget with schema validation.
+    const patch = typeof data?.acceptUnattributedBefore === 'string'
+      && /^\d{4}-\d{2}-\d{2}$/.test(data.acceptUnattributedBefore)
+      ? { acceptUnattributedBefore: data.acceptUnattributedBefore }
+      : null
+    if (!patch) return { ok: false, error: 'acceptUnattributedBefore must be a YYYY-MM-DD day key' }
+    const current = ctx.getSettings<{ budget?: Record<string, unknown> }>().budget ?? {}
+    await ctx.updateSettings({ budget: { ...current, ...patch } })
+    return { ok: true }
+  }, { label: 'Update budget policy.', summary: 'Applies a narrow budget-policy patch — currently the accept-unattributed-history cutoff written by the Health repair. Money policy never changes without an explicit, validated write.', hookKind: 'rpc' })
+
   ctx.hooks.register('models.refreshAvailableModels', async () => {
     const result = await fetchAvailableModels(ctx, { force: true })
     return { count: result.models.length, live: !result.cached, error: result.error ?? null }

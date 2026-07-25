@@ -487,7 +487,12 @@ export async function checkBudget(): Promise<HealthCheckRunInput> {
     // land, and the copy says exactly that instead of inventing busywork.
     const evidenceGaps = [...facets.spendEvidence.daily.gaps, ...facets.spendEvidence.monthly.gaps]
     const { lines: gapLines, impactSummary } = summarizeEvidenceGaps(evidenceGaps)
-    const hasPricingGap = evidenceGaps.some((gap) => gap.reasons.includes('value_missing'))
+    // Resolution precedence: a PURE pricing gap (value_missing without
+    // lane_unknown) is fixable by the catalog refresh. Any lane_unknown
+    // present means attribution is the blocker — no refresh conjures a
+    // billing lane, so the write-off repair is the honest offer.
+    const hasPricingGap = evidenceGaps.some((gap) =>
+      gap.reasons.includes('value_missing') && !gap.reasons.includes('lane_unknown'))
     const detailSuffix = gapLines.length > 0 ? ` Gaps: ${gapLines.join('; ')}.` : ''
     const detail = incompleteSpendRules.length > 0
       ? `${incompleteSpendRules.length} budget rule${incompleteSpendRules.length === 1 ? '' : 's'} cannot be evaluated because one or more matching spend records have incomplete value or attribution evidence.${detailSuffix}`
@@ -522,16 +527,28 @@ export async function checkBudget(): Promise<HealthCheckRunInput> {
               label: 'Refresh model pricing',
               actionId: 'spend-evidence-refresh-pricing',
             }
-          : {
-              key: 'attribution-settles',
-              type: 'instructions',
-              label: 'Attribution completes on its own',
-              steps: [
-                'The named records lack billing attribution (lane/provider/model), which completes as the runtime finishes writing its transcripts — no action needed.',
-                'Budget caps stay fail-closed (deferring, never overspending) until then — that is by design.',
-                'If the same gaps persist for hours across recheck, report it: attribution should converge without help.',
-              ],
-            },
+          : evidenceGaps.length > 0
+            ? {
+                // Attribution-only gaps: recent ones settle on their own,
+                // but fossils (old sessions that will never attribute)
+                // otherwise fail caps closed FOREVER. The write-off is a
+                // confirmation-gated repair — accept only history you know
+                // will never attribute.
+                key: 'accept-unattributed-history',
+                type: 'repair',
+                label: 'Accept unattributed history',
+                actionId: 'accept-unattributed-history',
+              }
+            : {
+                key: 'attribution-settles',
+                type: 'instructions',
+                label: 'Attribution completes on its own',
+                steps: [
+                  'Recent usage lacks billing attribution, which completes as the runtime finishes writing its transcripts — no action needed.',
+                  'Budget caps stay fail-closed (deferring, never overspending) until then — that is by design.',
+                  'If the same gaps persist for hours across recheck, report it: attribution should converge without help.',
+                ],
+              },
       },
     }))
   } else if (worst) {
@@ -654,4 +671,65 @@ export function spendEvidenceRepair(): HealthRepairActionDefinition {
       }
     },
   }
+}
+
+/**
+ * The spend-fossil write-off: record a durable cutoff (today's local day
+ * key) so observed usage BEFORE it that can never attribute stops failing
+ * caps and lighting the card. Destructive-tier — money policy changes
+ * only through an explicit, confirmed click; there is NO auto-aging.
+ */
+export function acceptUnattributedHistoryRepair(): HealthRepairActionDefinition {
+  return {
+    id: 'accept-unattributed-history',
+    name: 'Accept unattributed history',
+    async plan(target) {
+      const cutoff = toLocalDayKeyForCutoff(Date.now())
+      return [{
+        id: 'accept-unattributed-history',
+        actionId: 'accept-unattributed-history',
+        title: `Accept unattributed usage before ${cutoff}`,
+        reason: 'Old sessions with no billing-lane evidence will never attribute; they keep budget caps fail-closed and the spend card lit until explicitly written off.',
+        safety: 'destructive',
+        ...repairTargetSelection(target),
+        changes: [{
+          kind: 'other',
+          target: 'budget policy',
+          action: 'update',
+          description: `Record acceptUnattributedBefore=${cutoff} on the budget policy. Caps compute from the cutoff forward; usage AFTER it still fails closed on missing evidence.`,
+        }],
+      }]
+    },
+    async apply(items) {
+      const done = (status: 'applied' | 'failed', message: string) => items.map((item: HealthRepairPlanItem) => ({
+        itemId: item.id,
+        actionId: item.actionId,
+        status,
+        message,
+        affectedCheckIds: ['budget'],
+        changes: item.changes,
+      }))
+      if (items.length === 0) return []
+      try {
+        const cutoff = toLocalDayKeyForCutoff(Date.now())
+        const result = await getHookRegistry().invoke<{ ok: boolean; error?: string }>(
+          'models.updateBudgetPolicy',
+          { acceptUnattributedBefore: cutoff },
+        )
+        if (!result?.ok) {
+          return done('failed', `Budget policy write failed: ${result?.error ?? 'models plugin unavailable'}`)
+        }
+        return done('applied', `Unattributed usage before ${cutoff} is written off. Caps compute from today forward; new evidence gaps still fail closed.`)
+      } catch (err) {
+        return done('failed', `Budget policy write failed: ${err instanceof Error ? err.message : String(err)}`)
+      }
+    },
+  }
+}
+
+/** Local-day key matching the usage store's day bucketing. */
+function toLocalDayKeyForCutoff(ms: number): string {
+  const date = new Date(ms)
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
 }

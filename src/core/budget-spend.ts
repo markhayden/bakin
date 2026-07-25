@@ -479,14 +479,25 @@ export async function assembleBudgetSpend(now: number): Promise<BudgetSpendFacet
   // ---- observed (usage.db) → unattributed delta --------------------------
   try {
     const invoke = hooksModule ? (n: string, d: Record<string, unknown>) => hooksModule.getHookRegistry().invoke(n, d) : null
+    // Explicit write-off cutoff (accept-unattributed-history repair):
+    // pre-cutoff usage that cannot attribute is excluded from gaps and
+    // the unattributed delta — caps compute from the cutoff forward.
+    const policy = invoke
+      ? await invoke('models.getBudgetPolicy', {}).catch(() => undefined) as { acceptUnattributedBefore?: string } | undefined
+      : undefined
+    const acceptedBefore = typeof policy?.acceptUnattributedBefore === 'string' ? policy.acceptUnattributedBefore : null
     const laneCache = new Map<string, Lane | null>()
     const observedByLane = new Map<string, DayLaneSums>()
     for (const cell of usageStore.readUsageByAgentModelDaySince(usageStore.toLocalDayKey(monthStart))) {
+      const writtenOff = acceptedBefore !== null && cell.day < acceptedBefore
       const lane = await resolveObservedLane(invoke, laneCache, cell.agent, cell.model)
       const evidenceWindows = cell.day === todayKey
         ? [monthlySpendEvidence, dailySpendEvidence]
         : [monthlySpendEvidence]
       if (lane === null) {
+        // Written-off fossil: never attributable, explicitly accepted —
+        // contributes nothing (no gaps, no spend).
+        if (writtenOff) continue
         const observedCount = Math.max(1, Math.floor(cell.messageCount))
         const missingCostCount = missingObservedCostCount(cell)
         for (const evidence of evidenceWindows) {
@@ -511,7 +522,7 @@ export async function assembleBudgetSpend(now: number): Promise<BudgetSpendFacet
         }
         continue
       }
-      if (lane === 'metered') {
+      if (lane === 'metered' && !writtenOff) {
         const missingCostCount = missingObservedCostCount(cell)
         for (const evidence of evidenceWindows) {
           recordEvidenceGap(evidence, {
@@ -565,6 +576,9 @@ export async function assembleBudgetSpend(now: number): Promise<BudgetSpendFacet
     }
     for (const [key, observed] of observedByLane) {
       const [agent, day, lane] = key.split('\0') as [string, string, Lane]
+      // Pre-cutoff observed-vs-attributed deltas are written off with the
+      // rest of the unattributable history.
+      if (acceptedBefore !== null && day < acceptedBefore) continue
       const attributed = attributedByLane.get(key) ?? emptyDayLaneSums()
       // An observed partial subtotal is still a safe lower bound. An
       // attributed partial subtotal is not safe to subtract: doing so could

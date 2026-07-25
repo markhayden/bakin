@@ -75,6 +75,8 @@ export const BudgetRuleSchema = z
   })
 export const BudgetPolicySchema = z.object({
   rules: z.array(BudgetRuleSchema).optional(),
+  // Written only by the accept-unattributed-history repair.
+  acceptUnattributedBefore: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 })
 
 // Spend reporting windows. Coarser than the live-usage 5m/1h windows —
