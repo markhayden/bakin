@@ -7,29 +7,27 @@
  * "available right now"), build byte-budgeted member profiles from
  * SOUL/IDENTITY prose, and ask a cheap routing LLM for {agentId, reason}.
  *
+ * The routing call rides the ACTIVE RUNTIME — an ephemeral one-shot turn as
+ * the main agent (`task:<id>:route` thread), with the 'team-routing'
+ * work-class route as a per-turn model override and spend metered under that
+ * class. No direct provider calls, no API keys: the runtime's own
+ * credentials serve every box (subscription or metered).
+ *
  * Results are typed by kind — dispatch classifies failures structurally
  * ('transient' retries next cycle, 'structural' blocks the task), never by
- * message text. Collaborators are injectable so tests never make live calls.
+ * message text. RuntimeError maps 'not_found' → structural (the send target
+ * is missing); every other kind is transient — the dispatch ladder bounds
+ * retries. Collaborators are injectable so tests never make live calls.
  */
 import { z } from 'zod'
-import {
-  callDirectTextProvider,
-  DirectTextError,
-} from '@bakin/core/llm/direct-text-provider'
-import {
-  resolveProviderKeySource,
-  type DirectProviderId,
-} from '@bakin/core/llm/provider-keys'
-import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
+import type { AgentRuntimeAdapter, MessageResult } from '@bakin/core/adapters/runtime'
+import { getRuntimeMainAgentId, RuntimeError } from '@bakin/core/adapters/runtime'
 import { createLogger } from '../../../src/core/logger'
 import { getTeamMembers as defaultGetTeamMembers } from './agent-status'
 import { readTeams as defaultReadTeams } from './team-settings'
 import type { OrgTeam } from '../types'
 
 const log = createLogger('team-assignment')
-
-export const DEFAULT_ROUTING_PROVIDER: DirectProviderId = 'anthropic'
-export const DEFAULT_ROUTING_MODEL = 'claude-haiku-4-5-20251001'
 
 /** Per-member cap on SOUL/IDENTITY prose sent to the router — routing is a
  * classification call; whole souls don't improve it, they just bill more. */
@@ -44,9 +42,13 @@ export type ResolveAssignmentResult =
   | { ok: true; agentId: string; reason: string; model: string }
   | { ok: false; kind: 'transient' | 'structural'; message: string }
 
-export interface RoutingSettings {
-  routingProvider?: string
-  routingModel?: string
+/** The team-routing work-class route (from the models routing matrix). */
+export interface TeamRoutingRoute {
+  /** Canonical `provider/model` id, passed whole to the runtime as a
+   * per-turn override; absent = inherit (main agent's default). */
+  model?: string
+  thinking?: string
+  source?: string
 }
 
 const PickSchema = z.object({
@@ -54,31 +56,27 @@ const PickSchema = z.object({
   reason: z.string().min(1).max(500),
 })
 
-type Transport = <T>(request: {
-  provider: DirectProviderId
-  model: string
-  apiKey: string
-  system?: string
-  prompt: string
-  schema: z.ZodType<T>
-  maxTokens?: number
-}) => Promise<T>
+type Meter = (opts: {
+  runId: string
+  agent: string
+  activityClass: 'system'
+  workClass: 'team-routing'
+  routeSource?: string
+  resolvedModel?: string
+  result: MessageResult
+  name: string
+}) => Promise<void>
 
 export interface ResolverDeps {
   runtime: AgentRuntimeAdapter
-  settings: RoutingSettings
+  /** Resolved 'team-routing' matrix route; absent/empty = inherit. */
+  route?: TeamRoutingRoute
   /** Injectable for tests; defaults are the real collaborators. */
-  transport?: Transport
-  keySource?: typeof resolveProviderKeySource
+  meter?: Meter
+  getMainAgentId?: (runtime: AgentRuntimeAdapter) => Promise<string>
   readTeams?: () => OrgTeam[]
   getTeamMembers?: (runtime: AgentRuntimeAdapter, teamId: string) => Promise<string[]>
   getStatus?: (agentId: string) => string
-}
-
-function normalizeProvider(value: string | undefined): DirectProviderId {
-  return value === 'openai' || value === 'google' || value === 'anthropic'
-    ? value
-    : DEFAULT_ROUTING_PROVIDER
 }
 
 function excerpt(text: string | null, budget: number): string {
@@ -86,6 +84,13 @@ function excerpt(text: string | null, budget: number): string {
   const trimmed = text.trim()
   if (trimmed.length <= budget) return trimmed
   return `${trimmed.slice(0, budget)}\n[truncated]`
+}
+
+/** Strip a ```json fence if the model wrapped its reply in one. */
+function stripFences(raw: string): string {
+  const trimmed = raw.trim()
+  const fence = trimmed.match(/^```(?:json)?\s*\n([\s\S]*?)\n```$/)
+  return (fence ? fence[1] : trimmed).trim()
 }
 
 interface PoolMember {
@@ -106,11 +111,15 @@ function memberBlock(m: PoolMember): string {
   return lines.join('\n')
 }
 
+const SYSTEM_PROMPT = 'You route tasks to the most suitable AI agent on a team. You always answer with strict JSON.'
+
 function buildPrompt(request: ResolveAssignmentRequest, pool: PoolMember[]): string {
   const task = request.task
   const tags = task.tags?.length ? `\nTags: ${task.tags.join(', ')}` : ''
   const description = task.description ? `\nDescription: ${task.description}` : ''
   return [
+    SYSTEM_PROMPT,
+    '',
     `A task needs to be routed to the best-suited member of the "${request.teamId}" team.`,
     '',
     `Task: ${task.title}${description}${tags}`,
@@ -122,7 +131,24 @@ function buildPrompt(request: ResolveAssignmentRequest, pool: PoolMember[]): str
   ].join('\n')
 }
 
-const SYSTEM_PROMPT = 'You route tasks to the most suitable AI agent on a team. You always answer with strict JSON.'
+function correctiveReask(pool: PoolMember[]): string {
+  return `Your last reply was not a usable pick. Respond with ONLY a JSON object (no markdown fences, no prose): {"agentId": "<one of: ${pool.map((m) => m.id).join(', ')}>", "reason": "<one short sentence>"}.`
+}
+
+function parsePick(content: string | undefined): z.infer<typeof PickSchema> | null {
+  if (!content?.trim()) return null
+  try {
+    const parsed = PickSchema.safeParse(JSON.parse(stripFences(content)))
+    return parsed.success ? parsed.data : null
+  } catch {
+    return null
+  }
+}
+
+const defaultMeter: Meter = async (opts) => {
+  const { meterAgentTurn } = await import('../../../src/core/agent-cost')
+  await meterAgentTurn(opts)
+}
 
 /**
  * Resolve a team assignment to a concrete agent. Never throws — every
@@ -132,22 +158,14 @@ export async function resolveTeamAssignment(
   deps: ResolverDeps,
   request: ResolveAssignmentRequest,
 ): Promise<ResolveAssignmentResult> {
-  const transport = deps.transport ?? (callDirectTextProvider as Transport)
-  const keySource = deps.keySource ?? resolveProviderKeySource
   const readTeams = deps.readTeams ?? defaultReadTeams
   const getTeamMembers = deps.getTeamMembers ?? defaultGetTeamMembers
+  const getMainAgentId = deps.getMainAgentId ?? getRuntimeMainAgentId
+  const meter = deps.meter ?? defaultMeter
 
   try {
-    const provider = normalizeProvider(deps.settings.routingProvider)
-    const model = deps.settings.routingModel?.trim() || DEFAULT_ROUTING_MODEL
-
     if (!readTeams().some((t) => t.id === request.teamId)) {
       return { ok: false, kind: 'structural', message: `Team "${request.teamId}" does not exist` }
-    }
-
-    const key = keySource(provider)
-    if (!key) {
-      return { ok: false, kind: 'structural', message: `No API key configured for routing provider "${provider}" (env or secret store)` }
     }
 
     const memberIds = await getTeamMembers(deps.runtime, request.teamId)
@@ -177,33 +195,60 @@ export async function resolveTeamAssignment(
         profile: excerpt([identity, soul].filter(Boolean).join('\n\n'), MEMBER_PROFILE_BYTE_BUDGET),
       }
     }))
-
     const poolIds = new Set(pool.map((m) => m.id))
-    const call = () => transport({
-      provider,
-      model,
-      apiKey: key.apiKey,
-      system: SYSTEM_PROMPT,
-      prompt: buildPrompt(request, pool),
-      schema: PickSchema,
-      maxTokens: 300,
-    })
 
-    let pick = await call()
-    if (!poolIds.has(pick.agentId)) {
-      // One fresh retry — the transport already retried malformed output;
-      // this guards a syntactically valid but out-of-pool hallucination.
-      log.warn('Routing pick outside candidate pool; retrying once', { taskId: request.task.id, pick: pick.agentId })
-      pick = await call()
+    const mainAgentId = await getMainAgentId(deps.runtime)
+    const threadId = `task:${request.task.id}:route`
+    const send = async (content: string): Promise<MessageResult> => {
+      const result = await deps.runtime.messaging.send({
+        agentId: mainAgentId,
+        activityClass: 'system',
+        ephemeral: true,
+        threadId,
+        ...(deps.route?.model ? { model: deps.route.model } : {}),
+        ...(deps.route?.thinking ? { thinking: deps.route.thinking } : {}),
+        content,
+      })
+      await meter({
+        runId: threadId,
+        agent: mainAgentId,
+        activityClass: 'system',
+        workClass: 'team-routing',
+        routeSource: deps.route?.source,
+        resolvedModel: deps.route?.model,
+        result,
+        name: 'team-routing',
+      })
+      return result
+    }
+
+    // Two sends max: the first pick, then ONE corrective re-ask on the same
+    // thread covering both failure shapes (malformed reply / out-of-pool
+    // hallucination), then honest transient failure — never a fabricated pick.
+    let pick = parsePick((await send(buildPrompt(request, pool))).content)
+    if (!pick || !poolIds.has(pick.agentId)) {
+      log.warn('Routing reply unusable; corrective re-ask', {
+        taskId: request.task.id,
+        pick: pick?.agentId ?? '(unparseable)',
+      })
+      pick = parsePick((await send(correctiveReask(pool))).content)
+      if (!pick) {
+        return { ok: false, kind: 'transient', message: 'Router reply was not a valid pick after a corrective re-ask' }
+      }
       if (!poolIds.has(pick.agentId)) {
         return { ok: false, kind: 'transient', message: `Router picked "${pick.agentId}", which is not in the ${request.teamId} pool` }
       }
     }
 
-    return { ok: true, agentId: pick.agentId, reason: pick.reason, model: `${provider}/${model}` }
+    return { ok: true, agentId: pick.agentId, reason: pick.reason, model: deps.route?.model ?? 'inherit' }
   } catch (err) {
-    if (err instanceof DirectTextError) {
-      return { ok: false, kind: err.kind, message: err.message }
+    if (err instanceof RuntimeError) {
+      // 'not_found' = the send target is missing on the runtime — structural.
+      // Everything else (transport, timeout, cooldown, runtime_failed,
+      // aborted, session_death) is a retry-later condition; the dispatch
+      // ladder bounds the retries and escalates honestly.
+      const kind = err.kind === 'not_found' ? 'structural' : 'transient'
+      return { ok: false, kind, message: err.message }
     }
     log.error('Unexpected assignment-resolver failure', err, { teamId: request.teamId, taskId: request.task.id })
     return { ok: false, kind: 'transient', message: err instanceof Error ? err.message : String(err) }

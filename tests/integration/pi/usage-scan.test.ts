@@ -89,7 +89,9 @@ describe('memory tiers → usage scan', () => {
     expect(parsed.integrity).toEqual({ status: 'complete', malformedLines: 0 })
     expect(parsed.sessionId).toBeTruthy()
     expect(parsed.messages.length).toBe(2)
-    expect(parsed.messages[0].model).toBe('fake-model')
+    // The transcript stores bare `model` + sibling `provider`; the parser
+    // re-joins them so downstream billing resolves the true provider (#689).
+    expect(parsed.messages[0].model).toBe('fakeai/fake-model')
     expect(parsed.messages[0].tokens.input).toBe(100)
     expect(parsed.messages[0].tokens.output).toBe(25)
     expect(parsed.messages[0].tokens.total).toBe(125)

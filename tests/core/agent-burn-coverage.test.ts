@@ -9,6 +9,7 @@ type UsageCell = {
   agent: string
   day: string
   tokens: { input: number; output: number; cacheRead: number; cacheWrite: number; total: number }
+  originTokens: { bakin: number; external: number; unknown: number }
   costUsdMicros: number | null
   costedMessages: number
   messageCount: number
@@ -35,6 +36,7 @@ const sources: AgentBurnSources = {
       byAgentDay: usageCells.filter((cell) => cell.day >= sinceDay),
     }
   },
+  readSessionUsageRollupsSince: () => [],
   runTokensByAgentSince: () => attributed,
   completionsByAgentSince: () => [],
 }
@@ -46,6 +48,8 @@ const config: BurnConfig = {
   baselineDays: 7,
   unattributedShare: 0.5,
   unattributedFloorTokens: 100_000,
+  runawayAssistantTurns: 20,
+  runawayFloorTokens: 1_000_000,
 }
 
 const NOW = new Date(2026, 6, 14, 12, 0, 0).getTime()
@@ -62,11 +66,13 @@ describe('buildAgentBurnReports coverage', () => {
       {
         agent: 'basil', day: TODAY,
         tokens: { input: 100, output: 0, cacheRead: 0, cacheWrite: 0, total: 100 },
+        originTokens: { bakin: 0, external: 0, unknown: 100 },
         costUsdMicros: null, costedMessages: 0, messageCount: 1,
       },
       {
         agent: 'clover', day: TODAY,
         tokens: { input: 20, output: 0, cacheRead: 0, cacheWrite: 0, total: 20 },
+        originTokens: { bakin: 0, external: 0, unknown: 20 },
         costUsdMicros: null, costedMessages: 0, messageCount: 1,
       },
     )
@@ -93,6 +99,7 @@ describe('buildAgentBurnReports coverage', () => {
     usageCells.push({
       agent: 'basil', day: TODAY,
       tokens: { input: 1_000_000, output: 0, cacheRead: 0, cacheWrite: 0, total: 1_000_000 },
+      originTokens: { bakin: 0, external: 0, unknown: 1_000_000 },
       costUsdMicros: null, costedMessages: 0, messageCount: 1,
     })
     const unknownMeteringSources: AgentBurnSources = {
@@ -118,7 +125,7 @@ describe('buildAgentBurnReports coverage', () => {
 
     expect(basil?.windowTokens).toBeNull()
     expect(basil?.totalObservedTokens).toBe(1_000_000)
-    expect(basil?.unattributedTokens).toBeNull()
+    expect(basil?.unexplainedTokens).toBeNull()
     expect(basil?.flags).toEqual([])
   })
 
@@ -126,6 +133,7 @@ describe('buildAgentBurnReports coverage', () => {
     usageCells.push({
       agent: 'basil', day: TODAY,
       tokens: { input: 1_000_000, output: 0, cacheRead: 0, cacheWrite: 0, total: 1_000_000 },
+      originTokens: { bakin: 0, external: 0, unknown: 1_000_000 },
       costUsdMicros: null, costedMessages: 0, messageCount: 1,
     })
     const partiallyMeteredSources: AgentBurnSources = {
@@ -157,9 +165,80 @@ describe('buildAgentBurnReports coverage', () => {
       tokenMeteredRuns: 2,
       costedRuns: 1,
       totalObservedTokens: 1_000_000,
-      unattributedTokens: null,
+      unexplainedTokens: null,
       flags: [],
     })
+  })
+
+  it('session rollups window-scope sums but span-read user turns so pre-window interaction kills runaway', () => {
+    const requestedArgs: Array<[string, string | undefined]> = []
+    usageCells.push({
+      agent: 'basil', day: TODAY,
+      tokens: { input: 2_000_000, output: 0, cacheRead: 0, cacheWrite: 0, total: 2_000_000 },
+      originTokens: { bakin: 0, external: 2_000_000, unknown: 0 },
+      costUsdMicros: null, costedMessages: 0, messageCount: 30,
+    })
+    const trackedSources: AgentBurnSources = {
+      ...sources,
+      readSessionUsageRollupsSince: (windowSinceDay: string, spanSinceDay?: string) => {
+        requestedArgs.push([windowSinceDay, spanSinceDay])
+        // The whole-window rollup carries yesterday's user turns; a
+        // window-truncated read would have reported userMessages: 0.
+        return [{
+          agent: 'basil',
+          sessionId: 'overnight',
+          origin: 'external',
+          totalTokens: 2_000_000,
+          userMessages: 3,
+          assistantMessages: 30,
+          lastTs: NOW,
+        }]
+      },
+    }
+
+    const basil = buildAgentBurnReports(NOW, {
+      config,
+      sources: trackedSources,
+      coverage: { agents: [{ agent: 'basil', status: 'complete' }] },
+    }).find((report) => report.agent === 'basil')
+
+    // Window sums start at the burn window; user counts span the baseline.
+    const expectedWindow = localDayKey(NOW - config.windowHours * 3_600_000)
+    const expectedEarliest = localDayKey(NOW - config.baselineDays * 86_400_000)
+    expect(requestedArgs).toEqual([[expectedWindow, expectedEarliest]])
+    expect(basil?.flags.some((flag) => flag.kind === 'runaway')).toBe(false)
+  })
+
+  it('threads origin splits and session rollups into the evaluator (#691)', () => {
+    usageCells.push({
+      agent: 'basil', day: TODAY,
+      tokens: { input: 1_000_000, output: 0, cacheRead: 0, cacheWrite: 0, total: 1_000_000 },
+      originTokens: { bakin: 0, external: 950_000, unknown: 50_000 },
+      costUsdMicros: null, costedMessages: 0, messageCount: 1,
+    })
+    const originSources: AgentBurnSources = {
+      ...sources,
+      readSessionUsageRollupsSince: () => [{
+        agent: 'basil',
+        sessionId: 'tui-session',
+        origin: 'external',
+        totalTokens: 950_000,
+        userMessages: 12,
+        assistantMessages: 40,
+        lastTs: NOW,
+      }],
+    }
+
+    const basil = buildAgentBurnReports(NOW, {
+      config,
+      sources: originSources,
+      coverage: { agents: [{ agent: 'basil', status: 'complete' }] },
+    }).find((report) => report.agent === 'basil')
+
+    expect(basil?.interactiveTokens).toBe(950_000)
+    // 50k unknown-origin minus 10 attributed — unknown never counts interactive.
+    expect(basil?.unexplainedTokens).toBe(49_990)
+    expect(basil?.flags.map((f) => f.kind)).toEqual(['interactive'])
   })
 
   it('propagates a store read failure instead of evaluating empty usage as zero', () => {
@@ -180,11 +259,13 @@ describe('buildAgentBurnReports coverage', () => {
       {
         agent: 'basil', day: yesterday,
         tokens: { input: 10, output: 0, cacheRead: 0, cacheWrite: 0, total: 10 },
+        originTokens: { bakin: 0, external: 0, unknown: 10 },
         costUsdMicros: null, costedMessages: 0, messageCount: 1,
       },
       {
         agent: 'basil', day: TODAY,
         tokens: { input: 1_000_000, output: 0, cacheRead: 0, cacheWrite: 0, total: 1_000_000 },
+        originTokens: { bakin: 0, external: 0, unknown: 1_000_000 },
         costUsdMicros: null, costedMessages: 0, messageCount: 1,
       },
     )

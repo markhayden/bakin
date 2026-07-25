@@ -82,7 +82,7 @@ export async function sweepTableOrphans(
 export async function sweepOrphanRegistryRows(): Promise<string[]> {
   const search = getAppServices().search
   if (!await search.available()) return []
-  const { listTableStates, removeTableRegistration } = await import('@bakin/core/search/tables')
+  const { listTableStates, removeTableRegistration, retireTablePhysical } = await import('@bakin/core/search/tables')
   const { purgeTable } = await import('@bakin/core/search/outbox')
   const registered = getContentTypes()
   const removed: string[] = []
@@ -93,7 +93,8 @@ export async function sweepOrphanRegistryRows(): Promise<string[]> {
       migratingTo: row.migratingTo,
     })
     for (const physical of removeTableRegistration(row.logical)) {
-      await search.tables.drop(physical).catch(() => {})
+      // Cold drop (antfly#386): tombstone; the dwell sweep does the DELETE.
+      retireTablePhysical(physical)
     }
     purgeTable(row.logical)
     removed.push(row.logical)

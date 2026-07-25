@@ -49,9 +49,15 @@ selection anywhere.
   integrity) → SDK `DangerZone` (typed brand-id confirm) at the bottom.
 - **Doc editor**: full-width; breadcrumb + Edit|Preview toggle + Brainstorm
   button in ONE header row. **Brainstorm** = embedded conversation-kit panel
-  (`brand-doc-brainstorm.tsx`) over `POST .../docs/:kind/:name/brainstorm` —
-  per-request SSE (`messaging.stream`, ephemeral, live editor content in the
-  prompt, session-only transcript). Publish button exists ONLY in the draft
+  (`brand-doc-brainstorm.tsx`) on the shared conversation turn engine
+  (#703, `lib/brainstorm-bridge.ts`): turns run server-side (202/409 +
+  abort route), stream as `brands.brainstorm.*` bus events, and persist to
+  a per-doc transcript sidecar (`brands/<id>/brainstorms/<kind>/<name>.json`,
+  deleted with the doc) — navigation never kills a turn; reopening
+  rehydrates (GET returns `messages` + seeded `streaming`). Per-turn
+  ephemeral runtime threads + capped doc/history prompt policy preserved
+  (history now built server-side from the transcript); turns meter under
+  work class `chat`. Publish button exists ONLY in the draft
   banner + Settings (never the hero). Status chips are the SDK `StatusBadge`
   (Draft=warning, Published=success). Doc rows are distinct tiles; section
   empty states use the centered `SectionEmpty`. Asset tiles' viewer link

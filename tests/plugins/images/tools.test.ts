@@ -1180,7 +1180,7 @@ describe('images tools', () => {
     registry.register('models.resolveBilling', (d: Record<string, unknown>) => ({ provider: String(d.model ?? '').split('/')[0], lane: 'metered', model: d.model ?? null }), { pluginId: 'test-budget' } as never)
     try {
       // $2 attributed today against the $1 cap.
-      recordRunCost({ runId: 'seed:media-gate', taskId: 't', agent: 'pixel', model: 'google/g', provider: 'google', lane: 'metered', totalTokens: 1, costUsdMicros: 2_000_000, occurredAt: Date.now() })
+      recordRunCost({ workClass: null, runId: 'seed:media-gate', taskId: 't', agent: 'pixel', model: 'google/g', provider: 'google', lane: 'metered', totalTokens: 1, costUsdMicros: 2_000_000, occurredAt: Date.now() })
 
       const generate = mock(async () => { throw new Error('provider must not be called') })
       const { ctx } = makeContext({ runtime: { images: { providers: mock(async () => []), generate } } as never })

@@ -77,6 +77,9 @@ export function createModelsSurface(): AgentRuntimeAdapter['models'] {
       defaultSubagentModel: false,
       aliases: false,
       perAgentSubagentModel: false,
+      // Pi sessions honor a bounded thinking ladder; 'adaptive'/'max' have
+      // no Pi semantics — Bakin clamps before the send (never silent).
+      supportedThinkingLevels: ['off', 'minimal', 'low', 'medium', 'high', 'xhigh'],
     }),
 
     async routingPolicy(): Promise<RuntimeRoutingPolicy> {

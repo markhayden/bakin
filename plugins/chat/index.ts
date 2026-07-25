@@ -13,7 +13,7 @@ import { definePlugin } from '@bakin/core/routing'
 
 import { chatRoutes } from './lib/routes'
 import { registerChatSearch } from './lib/search'
-import { getChatSummary } from './lib/store'
+import { getChatSummary, sweepInterruptedTurns } from './lib/store'
 import { resolveActiveTurnForAgent } from './lib/stream-bridge'
 
 const chatPlugin: BakinPlugin = definePlugin({
@@ -32,6 +32,10 @@ const chatPlugin: BakinPlugin = definePlugin({
   activate(ctx: PluginContext) {
     // Transcripts join global search (⌘K finds conversations by content).
     registerChatSearch(ctx)
+    // A turn that died with the process (restart/crash) left its user row
+    // unanswered with no marker — stamp it honestly so the transcript
+    // doesn't look forever-pending (#706). Best-effort, never blocks boot.
+    void sweepInterruptedTurns()
     // Cross-plugin: lets tools called mid-turn (image generation) bind
     // their output to the agent's current chat without the agent passing ids.
     ctx.hooks.register('chat.resolveActiveTurn', async (data) => {

@@ -65,7 +65,9 @@ export async function delegateDoctorRepair(options: DoctorDelegateOptions): Prom
     ? new Set(target.ids)
     : target.type === 'observations'
       ? new Set(report.incidents.filter((incident) => incident.observationIds.some((id) => target.ids.includes(id))).map((incident) => incident.id))
-      : new Set(report.incidents.filter((incident) => incident.disposition === 'action_required').map((incident) => incident.id))
+      // Effective disposition (#690): a sensitivity-demoted incident must not
+      // spawn a paid repair task every surface called calm.
+      : new Set(report.incidents.filter((incident) => incident.effectiveDisposition === 'action_required').map((incident) => incident.id))
   const incidents = report.incidents.filter((incident) => incidentIds.has(incident.id))
   const observationIds = [...new Set(incidents.flatMap((incident) => incident.observationIds))]
   const request = createDoctorRepairRequest(options.contentDir, {

@@ -23,8 +23,9 @@
  */
 import { describe, it } from 'bun:test'
 import { createHash } from 'crypto'
-import { existsSync, readdirSync, readFileSync } from 'fs'
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'fs'
 import { join } from 'path'
+import { tmpdir } from 'os'
 import type { AgentRuntimeAdapter, ChatChunk, MessageResult } from '../../../packages/core/src/adapters/runtime'
 import { RuntimeError } from '../../../packages/core/src/adapters/runtime'
 
@@ -88,6 +89,18 @@ export interface RuntimeConformanceTarget {
    * state the scenario re-pointed; always invoked.
    */
   makeFreshInitScenario?(): Promise<FreshInitScenario> | FreshInitScenario
+  /**
+   * REQUIRED for runtimes declaring `concurrency.sameAgentTurns: 'isolated'`
+   * (same-agent-concurrency D1): a turn recipe whose execution leaves a
+   * target-verifiable trace in the working directory it actually ran in.
+   * `content` is sent (concurrently, twice, with two distinct
+   * `runWorkspace` dirs); `verify(dir)` must return true iff a turn ran in
+   * `dir`. A declared-isolated target without this probe FAILS the suite —
+   * isolation claims must be provable, never asserted.
+   */
+  prepareIsolatedTurnProbe?():
+    | { content: string; verify(dir: string): boolean | Promise<boolean> }
+    | Promise<{ content: string; verify(dir: string): boolean | Promise<boolean> }>
 }
 
 export interface FreshInitScenario {
@@ -230,6 +243,48 @@ export const runtimeConformanceChecks = {
     }
   },
 
+  /**
+   * Session-origin honesty (#691): a runtime that exposes a `session_jsonl`
+   * memory tier must label session entries' provenance truthfully. Any
+   * `origin` metadata must be `bakin | external | unknown`, and after a
+   * threaded Bakin send at least one labeled entry must be `bakin` —
+   * otherwise dispatch provenance is lost and interactive-vs-unexplained
+   * usage buckets cannot be trusted. Runtimes without the tier (the minimal
+   * mock) conform vacuously.
+   */
+  async sessionOriginLabelsAreHonest(target: RuntimeConformanceTarget): Promise<void> {
+    const { runtime, agentId } = target
+    const tiers = await runtime.memory.listTiers()
+    const sessionTier = tiers.find((t) => t.metadata?.sourceKind === 'session_jsonl')
+    if (!sessionTier) return
+    await target.prepareOkTurn?.()
+    const result = await runtime.messaging.send({
+      agentId,
+      content: 'conformance: origin labeling turn',
+      threadId: target.newThreadId(),
+    })
+    const entries = await runtime.memory.listEntries(sessionTier.id, { agentId })
+    // Every origin label the tier surfaces must come from the closed set.
+    for (const entry of entries) {
+      if (!entry.metadata || !('origin' in entry.metadata)) continue
+      const origin = entry.metadata.origin
+      if (origin !== 'bakin' && origin !== 'external' && origin !== 'unknown') {
+        fail(`session entry origin must be 'bakin' | 'external' | 'unknown'; got ${JSON.stringify(origin)} on ${entry.id}`)
+      }
+    }
+    // If the transcript of the Bakin send we just made is listed, it must be
+    // labeled bakin — anything else loses dispatch provenance. Runtimes that
+    // don't persist per-turn transcripts (the crab mock) conform vacuously.
+    const sid = result.metadata?.sessionId
+    if (typeof sid !== 'string' || sid.length === 0) return
+    const ownEntry = entries.find(
+      (e) => e.id === sid || e.metadata?.sessionId === sid || e.id.includes(sid),
+    )
+    if (ownEntry && ownEntry.metadata?.origin !== 'bakin') {
+      fail(`the session of a threaded Bakin send is labeled ${JSON.stringify(ownEntry.metadata?.origin)} — dispatch provenance is lost`)
+    }
+  },
+
   /** Caller aborts settle as kind 'aborted' — terminal, clean, never a recovery-ladder entry. */
   async abortSettlesAsAbortedKind(target: RuntimeConformanceTarget): Promise<void> {
     const { settled } = await target.startAbortableTurn()
@@ -290,6 +345,64 @@ export const runtimeConformanceChecks = {
     }
     assertClassifiedChunks(chunks)
     assertDoneExactlyOnceAndLast(chunks)
+  },
+
+  /**
+   * Thinking-level honesty: every level an adapter DECLARES in
+   * routingSupport().supportedThinkingLevels must be honored — a turn sent
+   * at that level settles cleanly (Bakin's routing layer clamps to this set
+   * before the send, so a declared-but-broken level would fail real turns).
+   */
+  async thinkingLevelHonesty(target: RuntimeConformanceTarget): Promise<void> {
+    const support = target.runtime.models.routingSupport()
+    const declared = support.supportedThinkingLevels
+    if (!Array.isArray(declared)) fail('routingSupport() declares no supportedThinkingLevels array')
+    if (declared.length === 0) fail('routingSupport() declares an empty supportedThinkingLevels — a runtime that honors none must still accept turns without the param; declare the honored set')
+    for (const level of declared) {
+      await target.prepareOkTurn?.()
+      try {
+        await target.runtime.messaging.send({
+          agentId: target.agentId,
+          content: `conformance: thinking level ${level}`,
+          threadId: target.newThreadId(),
+          thinking: level,
+        })
+      } catch (err) {
+        fail(`declared thinking level '${level}' failed a turn (${String(err)}) — declare only levels the runtime honors`)
+      }
+    }
+  },
+
+  /**
+   * Usage parity (work-class attribution): a runtime whose send() results
+   * carry token usage must attach the same accounting to the stream's
+   * terminal `done` chunk — otherwise streamed turns (chat) are unmeterable
+   * while sent turns bill. N/A on runtimes that report no usage at all.
+   */
+  async streamDoneCarriesUsageWhereSendDoes(target: RuntimeConformanceTarget): Promise<void> {
+    await target.prepareOkTurn?.()
+    const sent = await target.runtime.messaging.send({
+      agentId: target.agentId,
+      content: 'conformance: usage parity send',
+      threadId: target.newThreadId(),
+    })
+    if (!sent.usage) return // runtime reports no usage anywhere — nothing to pin
+    await target.prepareOkTurn?.()
+    let done: Extract<ChatChunk, { type: 'done' }> | undefined
+    for await (const chunk of target.runtime.messaging.stream({
+      agentId: target.agentId,
+      content: 'conformance: usage parity stream',
+      threadId: target.newThreadId(),
+    })) {
+      if (chunk.type === 'done') done = chunk
+    }
+    if (!done) fail('usage-parity stream ended without a done chunk')
+    if (!done.usage) {
+      fail('send() reports usage but the stream done chunk carries none — streamed turns would be unmeterable (stream usage parity)')
+    }
+    const anyCount = [done.usage.input, done.usage.output, done.usage.total]
+      .some((n) => typeof n === 'number' && Number.isFinite(n))
+    if (!anyCount) fail('stream done usage carries no numeric token counts')
   },
 
   /**
@@ -424,6 +537,52 @@ export const runtimeConformanceChecks = {
           "capabilities() declares sessions 'native' but sessions.list is missing the session a completed threaded turn just created — declared-native surfaces must reflect real turns, not stubs",
         )
       }
+    }
+  },
+
+  /**
+   * A runtime declaring `concurrency.sameAgentTurns: 'isolated'` must HONOR
+   * `MessageArgs.runWorkspace`: two concurrent turns for ONE agent, each
+   * handed its own directory, must each leave the target's probe trace in
+   * exactly the dir it was handed. 'serialized' declarations have nothing
+   * to prove (dispatch clamps them) — the check is a no-op there. A
+   * declared-isolated target that provides no probe fails outright:
+   * unprovable isolation is a lie waiting to ship
+   * (same-agent-concurrency D1).
+   */
+  async sameAgentIsolationHonesty(target: RuntimeConformanceTarget): Promise<void> {
+    const caps = await target.runtime.capabilities()
+    if (caps.concurrency.sameAgentTurns !== 'isolated') return
+    const probe = await target.prepareIsolatedTurnProbe?.()
+    if (!probe) {
+      fail("capabilities() declares concurrency.sameAgentTurns 'isolated' but the conformance target provides no isolation probe — isolation claims must be provable")
+    }
+    const dirA = mkdtempSync(join(tmpdir(), 'bakin-conf-iso-a-'))
+    const dirB = mkdtempSync(join(tmpdir(), 'bakin-conf-iso-b-'))
+    try {
+      await Promise.all([
+        target.runtime.messaging.send({
+          agentId: target.agentId,
+          content: probe.content,
+          threadId: target.newThreadId(),
+          runWorkspace: dirA,
+        }),
+        target.runtime.messaging.send({
+          agentId: target.agentId,
+          content: probe.content,
+          threadId: target.newThreadId(),
+          runWorkspace: dirB,
+        }),
+      ])
+      if (!(await probe.verify(dirA))) {
+        fail("declared-isolated runtime left no trace in concurrent turn A's handed runWorkspace — runWorkspace is not honored")
+      }
+      if (!(await probe.verify(dirB))) {
+        fail("declared-isolated runtime left no trace in concurrent turn B's handed runWorkspace — runWorkspace is not honored")
+      }
+    } finally {
+      rmSync(dirA, { recursive: true, force: true })
+      rmSync(dirB, { recursive: true, force: true })
     }
   },
 
@@ -575,6 +734,10 @@ export function runRuntimeConformanceSuite(
       await runtimeConformanceChecks.threadedSendReturnsSessionId(getTarget())
     })
 
+    it('session-origin labels are honest where a transcript tier exists', async () => {
+      await runtimeConformanceChecks.sessionOriginLabelsAreHonest(getTarget())
+    })
+
     it("abort settles as kind 'aborted'", async () => {
       await runtimeConformanceChecks.abortSettlesAsAbortedKind(getTarget())
     })
@@ -591,6 +754,14 @@ export function runRuntimeConformanceSuite(
       await runtimeConformanceChecks.streamDoneExactlyOnceAndLast(getTarget())
     })
 
+    it('stream done carries usage where send does (usage parity)', async () => {
+      await runtimeConformanceChecks.streamDoneCarriesUsageWhereSendDoes(getTarget())
+    })
+
+    it('declared thinking levels are honored (thinking honesty)', async () => {
+      await runtimeConformanceChecks.thinkingLevelHonesty(getTarget())
+    })
+
     it('tool turns stream classified, structured chunks', async () => {
       await runtimeConformanceChecks.toolTurnStreamsClassifiedStructuredChunks(getTarget())
     })
@@ -605,6 +776,10 @@ export function runRuntimeConformanceSuite(
 
     it('capabilities() is honest about its surfaces', async () => {
       await runtimeConformanceChecks.capabilitiesAreHonest(getTarget(), options)
+    })
+
+    it('same-agent isolation declaration is honored (runWorkspace)', async () => {
+      await runtimeConformanceChecks.sameAgentIsolationHonesty(getTarget())
     })
 
     it('provisionToolAccess is idempotent', async () => {

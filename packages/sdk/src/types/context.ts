@@ -6,6 +6,8 @@ import type { HealthCheckRegistrationInput, HealthRepairActionDefinition } from 
 import type { ContentFile, ExecToolDefinition, NavItem, PluginNodeTypeInput, PluginNotificationChannelInput, PluginSettingsSchema, SkillDefinition, UISlotRegistration, WorkflowDefinitionInput } from './registration'
 import type { AgentRuntimeAdapter } from './runtime'
 import type { AssetsAPI, SearchAPI, TaskService } from './services'
+import type { ConversationTurnsAPI } from './conversation-turns'
+import type { EventBus } from './events'
 
 /** File metadata returned by storage adapter `stat()`. */
 export interface StorageStat {
@@ -37,11 +39,7 @@ export interface StorageAdapter {
 // ---------------------------------------------------------------------------
 
 /** Cross-plugin event bus. Emit and subscribe by pattern. */
-export interface EventBus {
-  emit(event: string, data?: Record<string, unknown>): void
-  on(pattern: string, handler: (event: string, data: Record<string, unknown>) => void): () => void
-  once(pattern: string, handler: (event: string, data: Record<string, unknown>) => void): () => void
-}
+export type { EventBus } from './events'
 
 /** Activity feed + structured audit log API exposed on the plugin context. */
 export interface ActivityAPI {
@@ -135,6 +133,8 @@ export interface PluginContext {
   hooks: HookAPI
   /** Search API for indexing and querying. */
   search: SearchAPI
+  /** Shared conversation turn engine — background turns for chat-like surfaces (#703). */
+  conversations: ConversationTurnsAPI
 }
 
 /** The main plugin interface. The default export of a plugin's `index.ts`. */

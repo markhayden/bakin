@@ -85,7 +85,7 @@ function report(): HealthReport {
     },
   }
   return {
-    id: 'report-1', revision: 1, generatedAt: OBSERVED_AT, overallStatus: 'degraded',
+    id: 'report-1', revision: 1, generatedAt: OBSERVED_AT, overallStatus: 'degraded', sensitivity: 'developer' as const,
     lastFullSweep: { id: 'sweep-1', startedAt: OBSERVED_AT, completedAt: OBSERVED_AT },
     checks: [healthyCheck, notApplicable, failed], observations: [healthy], incidents: [],
     subsystems: {
@@ -102,7 +102,7 @@ function report(): HealthReport {
     },
     summary: {
       checks: { registered: 3, completed: 2, failed: 1, invalid: 0, notApplicable: 1 },
-      incidents: { actionRequired: 0, watching: 0, advisory: 0, unknown: 0 },
+      incidents: { actionRequired: 0, watching: 0, advisory: 0, unknown: 0, acknowledged: 0 },
     },
   }
 }

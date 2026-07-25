@@ -15,6 +15,7 @@ import type {
   WatchIncidentInput,
 } from '@bakin/core/plugin-types'
 
+import { healthError, healthHealthy, healthObserved, healthUnknown, healthWarning } from '@bakin/core/health/observation-builders'
 import { listAuthProviders } from './config'
 import { getPiAgentsRoot, getPiHome, getPiRegistryPath } from './home'
 import { getModelRegistry } from './models'
@@ -23,11 +24,11 @@ import { createExtensionsSurface } from './extensions'
 
 const RUNTIME_GROUP = { key: 'runtime', label: 'Runtime' } as const
 
+// Route through the shared clamped builders — raw observation literals
+// bypass the copy-bounds protection (an overlong interpolated error would
+// invalidate the whole run instead of truncating; review finding).
 function observedHealthy(key: string, summary: string, evidence?: JsonObject): HealthCheckRunInput {
-  return {
-    outcome: 'observed',
-    observations: [{ key, status: 'healthy', summary, evidence }],
-  }
+  return healthObserved([healthHealthy({ key, summary, evidence })])
 }
 
 function observedError(
@@ -36,10 +37,7 @@ function observedError(
   incident: ActionIncidentInput,
   detail?: string,
 ): HealthCheckRunInput {
-  return {
-    outcome: 'observed',
-    observations: [{ key, status: 'error', summary, detail, incident }],
-  }
+  return healthObserved([healthError({ key, summary, detail, incident })])
 }
 
 function observedWarning(
@@ -48,10 +46,7 @@ function observedWarning(
   incident: ActionIncidentInput,
   evidence?: JsonObject,
 ): HealthCheckRunInput {
-  return {
-    outcome: 'observed',
-    observations: [{ key, status: 'warning', summary, evidence, incident }],
-  }
+  return healthObserved([healthWarning({ key, summary, evidence, incident })])
 }
 
 function observedUnknown(
@@ -60,10 +55,7 @@ function observedUnknown(
   incident: WatchIncidentInput,
   detail?: string,
 ): HealthCheckRunInput {
-  return {
-    outcome: 'observed',
-    observations: [{ key, status: 'unknown', summary, detail, incident }],
-  }
+  return healthObserved([healthUnknown({ key, summary, detail, incident })])
 }
 
 function installationIncident(resourceId: 'pi.home' | 'pi.agents-root', resourceLabel: string): ActionIncidentInput {

@@ -260,11 +260,22 @@ import { PluginHeader, FacetFilter, AgentAvatar } from '@makinbakin/sdk/componen
 | `ComposerAttachmentStatus` | — |
 | `ConversationPanel` | — |
 | `ConversationPanelProps` | — |
-| `useConversationStream` | — |
-| `ConversationStream` | — |
-| `ConversationStreamOptions` | — |
-| `readConversationSseStream` | — |
-| `ConversationSseHandlers` | — |
+| `useConversationThread` | — |
+| `ConversationThread` | — |
+| `ConversationThreadLoad` | — |
+| `ConversationThreadOptions` | — |
+| `attentionForDone` | — |
+| `badgeFor` | — |
+| `visibleIdFromLocation` | — |
+| `withUnreadPrefix` | — |
+| `AttentionActions` | — |
+| `ConversationAttentionContext` | — |
+| `ConversationDonePayload` | — |
+| `playReplyChime` | — |
+| `ConversationReplyToast` | — |
+| `useConversationAttention` | — |
+| `ConversationAttentionConfig` | — |
+| `ConversationAttentionTotals` | — |
 | `ConversationEmptyState` | Legacy empty-state adapter; use `@makinbakin/sdk/conversation` for new consumers. |
 | `ConversationEmptyStateProps` | — |
 | `formatRelativeTime` | Compact and absolute timestamp helpers retained for legacy consumers. |
@@ -560,11 +571,22 @@ Isolated conversation UI and models. Source: `packages/sdk/src/conversation/inde
 | `ToolCallDrawer` | Exact, resizable detail for one conversation tool call. |
 | `ConversationPanelProps` | — |
 | `ToolCallDrawerProps` | — |
-| `readConversationSseStream` | Response-scoped SSE reader and state machine for streamed turns. |
-| `ConversationSseHandlers` | — |
-| `useConversationStream` | One-at-a-time streamed-turn state for focused conversation surfaces. |
-| `ConversationStream` | — |
-| `ConversationStreamOptions` | — |
+| `useConversationThread` | Durable bus-driven thread state for server-owned conversational turns. |
+| `ConversationThread` | — |
+| `ConversationThreadLoad` | — |
+| `ConversationThreadOptions` | — |
+| `attentionForDone` | Shared attention, badge, notification, and reply-state primitives. |
+| `badgeFor` | Shared attention, badge, notification, and reply-state primitives. |
+| `visibleIdFromLocation` | Shared attention, badge, notification, and reply-state primitives. |
+| `withUnreadPrefix` | Shared attention, badge, notification, and reply-state primitives. |
+| `AttentionActions` | — |
+| `ConversationAttentionContext` | — |
+| `ConversationDonePayload` | — |
+| `playReplyChime` | — |
+| `ConversationReplyToast` | — |
+| `useConversationAttention` | — |
+| `ConversationAttentionConfig` | — |
+| `ConversationAttentionTotals` | — |
 | `dayKey` | Stable compact, absolute, and calendar-day timestamp helpers. |
 | `formatAbsoluteTime` | Stable compact, absolute, and calendar-day timestamp helpers. |
 | `formatDayLabel` | Stable compact, absolute, and calendar-day timestamp helpers. |
@@ -648,6 +670,9 @@ import type { BakinPlugin, PluginContext, ExecToolDefinition } from '@makinbakin
 | `HealthObservationStatus` | — |
 | `HealthDisposition` | — |
 | `HealthReportStatus` | — |
+| `HEALTH_INCIDENT_CLASSES` | Producer-stamped behavior class (#690) — what KIND of problem an incident |
+| `HealthIncidentClass` | — |
+| `HealthSensitivity` | Health sensitivity mode (#690): how loudly findings surface. `developer` |
 | `HealthOwnerKind` | — |
 | `HealthOwner` | Core-stamped owner of a registration or canonical finding. |
 | `HealthGroup` | Stable subsystem grouping supplied by a registration. |
@@ -711,12 +736,13 @@ Source: `packages/sdk/src/utils/index.ts`.
 
 | Utility | Description |
 | --- | --- |
-| `healthHealthy` | Build a healthy observation. Healthy observations cannot carry incidents. |
-| `healthWarning` | Build a warning observation with an explicit advisory/watch/action disposition. |
-| `healthError` | Build an error observation. Its incident must require operator action. |
-| `healthUnknown` | Build an Unknown verification observation with a watch disposition. |
-| `healthObserved` | Build a successful observed run. Empty diagnostic output is unrepresentable. |
-| `healthNotApplicable` | Build an explicit successful not-applicable run. |
+| `healthError` | `@makinbakin/sdk/utils` — tiny utilities for plugin authors. |
+| `healthHealthy` | `@makinbakin/sdk/utils` — tiny utilities for plugin authors. |
+| `healthNotApplicable` | `@makinbakin/sdk/utils` — tiny utilities for plugin authors. |
+| `healthObserved` | `@makinbakin/sdk/utils` — tiny utilities for plugin authors. |
+| `healthResourceId` | `@makinbakin/sdk/utils` — tiny utilities for plugin authors. |
+| `healthUnknown` | `@makinbakin/sdk/utils` — tiny utilities for plugin authors. |
+| `healthWarning` | `@makinbakin/sdk/utils` — tiny utilities for plugin authors. |
 | `cn` | Tailwind class merger (clsx + tailwind-merge). |
 | `BadgeTone` | Semantic tone for an outline status badge. |
 | `toneBadgeClass` | Classes for an outline status badge of the given tone — the |

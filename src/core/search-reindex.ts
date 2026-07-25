@@ -13,14 +13,57 @@ import { tableStatus } from '@bakin/core/search/tables'
 import { lastAckedAtForTable, pendingCountForTable } from '@bakin/core/search/outbox'
 import { getRegistry, getSearchAdapter, resolvePhysicalTable } from './search-registry-core'
 import { outboxStats } from './search-outbox'
+import { getSettings } from './settings'
 
 export async function getSearchHealth(): Promise<SearchHealthSnapshot> {
   const registry = getRegistry()
   const search = getSearchAdapter()
-  const isAvailable = await search.available()
 
+  // `enabled` reflects the SETTING; engine liveness is `engineReachable`.
+  // These were conflated until rc.22 — an unreachable engine reported
+  // "search disabled, no tables registered", which told an operator with a
+  // crash-looping engine that nothing was even configured (Margo's-box
+  // incident, 2026-07-21). Unreachable now still lists every registry
+  // table from local state, with null docCount and empty legs.
+  if (!getSettings().search.settings.enabled) {
+    return { enabled: false, engineReachable: false, tables: [] }
+  }
+
+  const isAvailable = await search.available()
   if (!isAvailable) {
-    return { enabled: false, tables: [] }
+    const journal = outboxStats()
+    const tables: SearchHealthTable[] = []
+    for (const [tableName, def] of registry.contentTypes) {
+      const state = tableStatus(tableName)
+      const lastAcked = lastAckedAtForTable(tableName)
+      const lastRebuildAt = state?.updatedAt ?? null
+      tables.push({
+        logical: tableName,
+        physical: state?.physical ?? resolvePhysicalTable(tableName),
+        schemaVersion: state?.schemaVersion ?? def.schemaVersion ?? 1,
+        state: state?.state ?? 'active',
+        phase: state?.phase ?? null,
+        pluginId: def.pluginId,
+        docCount: null,
+        lastIndexedAt: lastAcked !== null || lastRebuildAt !== null
+          ? Math.max(lastAcked ?? 0, lastRebuildAt ?? 0)
+          : null,
+        lastRebuildAt,
+        journalPending: pendingCountForTable(tableName),
+        legs: [],
+        healthy: false,
+      })
+    }
+    return {
+      enabled: true,
+      engineReachable: false,
+      outbox: {
+        pending: journal.pending,
+        quarantined: journal.quarantined,
+        oldestPendingAt: journal.oldestPendingEnqueuedAt,
+      },
+      tables,
+    }
   }
 
   const tables: SearchHealthTable[] = []
@@ -73,6 +116,7 @@ export async function getSearchHealth(): Promise<SearchHealthSnapshot> {
   const journal = outboxStats()
   return {
     enabled: true,
+    engineReachable: true,
     outbox: {
       pending: journal.pending,
       quarantined: journal.quarantined,

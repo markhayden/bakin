@@ -24,6 +24,46 @@ export type HealthObservationStatus = 'healthy' | 'warning' | 'error' | 'unknown
 export type HealthDisposition = 'advisory' | 'watch' | 'action_required'
 export type HealthReportStatus = 'healthy' | 'needs_attention' | 'degraded' | 'unknown_stale'
 
+/**
+ * Producer-stamped behavior class (#690) — what KIND of problem an incident
+ * is, in stable machine vocabulary. Drives the central sensitivity
+ * projection (class × sensitivity → effective disposition) and the
+ * plain-language category chip on incident cards. An incident WITHOUT a
+ * class is treated as `service_failure` — never demoted — so a missing
+ * stamp can never hide a real outage.
+ */
+export const HEALTH_INCIDENT_CLASSES = [
+  /** A capability or service is failing — the default, never demoted. */
+  'service_failure',
+  /** Stored data is at risk or inconsistent — never demoted. */
+  'data_integrity',
+  /** A budget cap is actively blocking or holding work — never demoted. */
+  'budget_block',
+  /** Accounting/verification evidence is incomplete (producer splits raw severity per D12). */
+  'evidence_gap',
+  /** Usage heuristics: spikes, effort-no-outcome, interactive sessions. */
+  'usage_anomaly',
+  /** Tokens nobody can account for — stays watch in every mode. */
+  'unattributed_usage',
+  /** Evidence-backed autonomous runaway — loud in every mode. */
+  'runaway_usage',
+  /** Housekeeping/cleanup debt (retired tables, stale files). */
+  'cleanup_backlog',
+  /** A guardrail correctly denied something — the system working. */
+  'policy_denial',
+  /** An optional surface the active runtime intentionally lacks. */
+  'unsupported_surface',
+] as const
+export type HealthIncidentClass = (typeof HEALTH_INCIDENT_CLASSES)[number]
+
+/**
+ * Health sensitivity mode (#690): how loudly findings surface. `developer`
+ * shows raw dispositions everywhere; `standard` (default) demotes expected
+ * noise classes to advisory; `quiet` additionally notifies (badge/escalation)
+ * only for action_required — watch stays visible on the page but silent.
+ */
+export type HealthSensitivity = 'developer' | 'standard' | 'quiet'
+
 export type HealthOwnerKind = 'plugin' | 'adapter' | 'core'
 
 /** Core-stamped owner of a registration or canonical finding. */
@@ -112,6 +152,8 @@ export interface HealthIncidentBaseInput {
   key: string
   title: string
   impact: string
+  /** Behavior class for the sensitivity projection; absent = service_failure (never demoted). */
+  class?: HealthIncidentClass
   resources?: HealthResource[]
   resolution: HealthResolution
 }
@@ -159,7 +201,14 @@ export type ErrorObservationInput = HealthObservationBaseInput & {
 
 export type UnknownObservationInput = HealthObservationBaseInput & {
   status: 'unknown'
-  incident: WatchIncidentInput
+  /**
+   * watch = a human should keep an eye on this unknown; advisory = the
+   * producer vouches it SELF-RESOLVES (a scan warming up after restart,
+   * attribution completing as transcripts land) — surfaced, but never in
+   * the fix-first banner. action_required stays unrepresentable: an
+   * unknown cannot honestly demand action.
+   */
+  incident: WatchIncidentInput | AdvisoryIncidentInput
 }
 
 /** Status-discriminated producer observation; illegal combinations do not typecheck. */
@@ -344,7 +393,16 @@ export interface HealthCheckExecution {
 export interface HealthIncident {
   id: string
   status: Exclude<HealthObservationStatus, 'healthy'>
+  /** The producer's honest raw disposition — preserved for developer mode and debugging. */
   disposition: HealthDisposition
+  /**
+   * Sensitivity-projected disposition (#690): what every consumer (UI,
+   * badge, escalation, CLI) acts on. Caps only ever lower; error-status
+   * incidents are never demoted.
+   */
+  effectiveDisposition: HealthDisposition
+  /** Producer-stamped behavior class; absent = unclassified (treated service_failure). */
+  class?: HealthIncidentClass
   title: string
   impact: string
   resources: HealthResource[]
@@ -353,6 +411,15 @@ export interface HealthIncident {
   observedAt: string
   staleAt: string
   stale: boolean
+  /**
+   * The user's "I know" state (health trust overhaul): 'acked' = silent
+   * until material change (tier escalation / resource-set change);
+   * 'snoozed' = silent until expiry (action_required also re-fires on any
+   * evidence change). Absent = live. Consumers (badge, Fix first, notices,
+   * escalation) FILTER on this — never re-derive; suppressed incidents
+   * stay on the wire and render in the Acknowledged section.
+   */
+  ackState?: 'acked' | 'snoozed'
 }
 
 export interface HealthCheckSnapshot {
@@ -412,10 +479,13 @@ export interface HealthReportCheckSummary {
 }
 
 export interface HealthReportIncidentSummary {
+  /** Tier counts describe LIVE (un-acked) attention — they reconcile with overallStatus. */
   actionRequired: number
   watching: number
   advisory: number
   unknown: number
+  /** Acked/snoozed incidents — quiet, visible in the Acknowledged section. */
+  acknowledged: number
 }
 
 export interface HealthReportSummary {
@@ -438,6 +508,8 @@ export interface HealthReport {
   revision: number
   generatedAt: string
   overallStatus: HealthReportStatus
+  /** The sensitivity mode this report was projected under (#690) — lets badge/CLI apply the quiet filter. */
+  sensitivity: HealthSensitivity
   lastFullSweep: HealthFullSweep | null
   checks: HealthCheckState[]
   observations: HealthObservation[]

@@ -29,6 +29,7 @@ export * from './services'
 export * from './health'
 export * from './registration'
 export * from './context'
+export * from './conversation-turns'
 export * from './scheduled-events'
 
 // The ONE public route type (declarative-generic) + its pure companions —

@@ -82,7 +82,7 @@ export { FacetFilter } from '@/components/facet-filter'
 export type { FacetFilterProps, FacetOption } from '@/components/facet-filter'
 /** Chat + plan-proposal review panel for brainstorm sessions. */
 // IntegratedBrainstorm was DELETED (2026-07): embedded conversation
-// surfaces compose ConversationPanel + useConversationStream instead
+// surfaces compose ConversationPanel + useConversationThread instead
 // (see the conversation-kit exports below).
 /** Render safe GFM, code, media, and visibly identified Bakin-managed sections. */
 export { MarkdownContent } from '@makinbakin/sdk/content'
@@ -161,10 +161,30 @@ export type {
 } from '@/components/conversation/composer'
 export { ConversationPanel } from '@/components/conversation/conversation-panel'
 export type { ConversationPanelProps } from '@/components/conversation/conversation-panel'
-export { useConversationStream } from '@/components/conversation/use-conversation-stream'
-export type { ConversationStream, ConversationStreamOptions } from '@/components/conversation/use-conversation-stream'
-export { readConversationSseStream } from '@/components/conversation/sse'
-export type { ConversationSseHandlers } from '@/components/conversation/sse'
+export { useConversationThread } from '@makinbakin/sdk/conversation'
+export type {
+  ConversationThread,
+  ConversationThreadLoad,
+  ConversationThreadOptions,
+} from '@makinbakin/sdk/conversation'
+export {
+  attentionForDone,
+  badgeFor,
+  visibleIdFromLocation,
+  withUnreadPrefix,
+} from '@/components/conversation/attention'
+export type {
+  AttentionActions,
+  ConversationAttentionContext,
+  ConversationDonePayload,
+} from '@/components/conversation/attention'
+export { playReplyChime } from '@/components/conversation/notification-sound'
+export { ConversationReplyToast } from '@/components/conversation/reply-toast'
+export { useConversationAttention } from '@/components/conversation/use-conversation-attention'
+export type {
+  ConversationAttentionConfig,
+  ConversationAttentionTotals,
+} from '@/components/conversation/use-conversation-attention'
 /** Legacy empty-state adapter; use `@makinbakin/sdk/conversation` for new consumers. */
 export { ConversationEmptyState } from '@/components/conversation/conversation-empty-state'
 export type { ConversationEmptyStateProps } from '@/components/conversation/conversation-empty-state'

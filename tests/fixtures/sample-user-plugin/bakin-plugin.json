@@ -2,7 +2,7 @@
   "id": "sample",
   "name": "Sample",
   "version": "0.1.0",
-  "bakin": ">=1.0.0",
+  "bakin": "*",
   "description": "Fixture plugin used by the build-on-install smoke test (#147 TE14).",
   "permissions": []
 }

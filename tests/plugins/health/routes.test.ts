@@ -71,6 +71,7 @@ const cachedReport: HealthReport = {
   revision: 4,
   generatedAt,
   overallStatus: 'needs_attention',
+  sensitivity: 'developer' as const,
   lastFullSweep: { id: 'sweep-1', startedAt: generatedAt, completedAt: generatedAt },
   checks: [],
   observations: [{
@@ -87,7 +88,7 @@ const cachedReport: HealthReport = {
     },
   }],
   incidents: [{
-    id: 'tasks:taskboard:missing-columns', status: 'error', disposition: 'action_required',
+    id: 'tasks:taskboard:missing-columns', status: 'error', disposition: 'action_required', effectiveDisposition: 'action_required',
     title: 'Task board columns are missing', impact: 'Tasks cannot move through the full workflow.',
     resources: [{ kind: 'plugin', id: 'tasks', label: 'Tasks' }],
     resolution: { key: 'repair-board', type: 'repair', label: 'Repair board', actionId: 'tasks.repair-store' },
@@ -101,7 +102,7 @@ const cachedReport: HealthReport = {
   },
   summary: {
     checks: { registered: 0, completed: 0, failed: 0, invalid: 0, notApplicable: 0 },
-    incidents: { actionRequired: 1, watching: 0, advisory: 0, unknown: 0 },
+    incidents: { actionRequired: 1, watching: 0, advisory: 0, unknown: 0, acknowledged: 0 },
   },
 }
 
@@ -254,8 +255,11 @@ const taskStoreMock = {
   addTaskLog: mock(async () => {}),
   blockTask: mock(async () => {}),
   moveTask: mock(async () => {}),
-  // context.startup-size check → context-report → dispatch-workflow graph.
+  // context.startup-size check → context-report → dispatch-workflow graph
+  // (which now reaches dispatch-team's task-store verbs, #611).
   updateTask: mock(async () => {}),
+  getTaskWithColumn: () => null,
+  recordTeamResolution: mock(async () => {}),
 }
 // Defensive stub — the test isolation hook scans for plugin refs in text
 // and flags any mention of plugins/tasks even though we never import the
@@ -309,7 +313,7 @@ beforeEach(() => {
 
 describe('Health Plugin Routes', () => {
   it('registers 21 routes', () => {
-    expect(activated.routes.length).toBe(21)
+    expect(activated.routes.length).toBe(23)
   })
 
   it('registers 2 exec tools', () => {

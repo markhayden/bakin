@@ -42,7 +42,7 @@ function writePluginSource(id: string, dependencies: string[]): string {
     id,
     name: id,
     version: '1.0.0',
-    bakin: '>=1.0.0',
+    bakin: '*',
     description: `${id} test plugin`,
         dependencies,
     permissions: [],

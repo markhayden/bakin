@@ -25,7 +25,7 @@ function scope(over: Partial<LaneSums> = {}, unattr: Partial<ScopeSpend['unattri
   return { ...lanes(over), unattributed: { meteredUsdMicros: 0, meteredTokens: 0, subscriptionTokens: 0, ...unattr } }
 }
 function window(over: Partial<WindowSpend> = {}): WindowSpend {
-  return { startMs: 0, global: scope(), byAgent: {}, byProvider: {}, byModel: {}, ...over }
+  return { startMs: 0, global: scope(), byAgent: {}, byProvider: {}, byModel: {}, byWorkClass: {}, ...over }
 }
 function facets(daily: Partial<WindowSpend> = {}, monthly: Partial<WindowSpend> = {}): BudgetSpendFacets {
   return {

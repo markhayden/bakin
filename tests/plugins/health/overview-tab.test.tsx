@@ -33,7 +33,7 @@ function incident(overrides: Partial<HealthIncident> & Pick<HealthIncident, 'id'
   const { id, ...rest } = overrides
   return {
     id,
-    status: 'warning', disposition: 'watch', title: id, impact: 'Operator impact.', resources: [],
+    status: 'warning', disposition: 'watch', effectiveDisposition: rest.disposition ?? 'watch', title: id, impact: 'Operator impact.', resources: [],
     resolution: { key: 'again', type: 'rerun', label: 'Check again' },
     observationIds: [`observation:${id}`], observedAt: OBSERVED_AT, staleAt: STALE_AT, stale: false,
     ...rest,
@@ -67,7 +67,7 @@ function report(incidents: HealthIncident[] = [], status: HealthReport['overallS
     latestValidSnapshot: { executionId: `execution:${row.id}`, observations: [row] },
   }))
   return {
-    id: 'report-1', revision: 1, generatedAt: '2026-07-13T12:00:00.000Z', overallStatus: status,
+    id: 'report-1', revision: 1, generatedAt: '2026-07-13T12:00:00.000Z', overallStatus: status, sensitivity: 'developer' as const,
     lastFullSweep: { id: 'sweep-1', startedAt: OBSERVED_AT, completedAt: '2026-07-13T12:00:00.000Z' },
     checks, observations, incidents, subsystems: { search: search() },
     summary: {
@@ -77,6 +77,7 @@ function report(incidents: HealthIncident[] = [], status: HealthReport['overallS
         watching: incidents.filter((row) => row.disposition === 'watch').length,
         advisory: incidents.filter((row) => row.disposition === 'advisory').length,
         unknown: incidents.filter((row) => row.status === 'unknown').length,
+        acknowledged: incidents.filter((row) => row.ackState !== undefined).length,
       },
     },
   }

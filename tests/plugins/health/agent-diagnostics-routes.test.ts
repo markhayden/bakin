@@ -180,8 +180,8 @@ describe('GET /live-now', () => {
 describe('GET /agent-effort', () => {
   it('joins attributed, observed, and unattributed per agent', async () => {
     // Attributed: 200k tokens across 2 runs, 1 completion.
-    recordRunCost({ runId: 'task:e1:d1', taskId: 'e1', agent: 'pixel', totalTokens: 150_000, costUsdMicros: 30_000, occurredAt: NOW - 3_600_000 })
-    recordRunCost({ runId: 'task:e2:d1', taskId: 'e2', agent: 'pixel', totalTokens: 50_000, costUsdMicros: 10_000, occurredAt: NOW - 1_800_000 })
+    recordRunCost({ workClass: null, runId: 'task:e1:d1', taskId: 'e1', agent: 'pixel', totalTokens: 150_000, costUsdMicros: 30_000, occurredAt: NOW - 3_600_000 })
+    recordRunCost({ workClass: null, runId: 'task:e2:d1', taskId: 'e2', agent: 'pixel', totalTokens: 50_000, costUsdMicros: 10_000, occurredAt: NOW - 1_800_000 })
     recordCompletion('e1', { agent: 'pixel', now: NOW - 3_500_000 })
     // Observed: 1M today → 800k unattributed (>50% share, >100k floor).
     replaceSessionUsage('sess-pixel', 'pixel', [{
@@ -195,6 +195,7 @@ describe('GET /agent-effort', () => {
       costUsdMicros: null,
       costedMessages: 0,
       messageCount: 4,
+      userMessages: 0,
       firstTs: NOW - 3_000_000,
       lastTs: NOW - 60_000,
     }], { mtimeMs: 1, size: 1 })
@@ -237,10 +238,11 @@ describe('GET /agent-effort', () => {
       completions: 1,
       tokensPerCompletion: 200_000,
       totalObservedTokens: 1_000_000,
-      unattributedTokens: 800_000,
+      interactiveTokens: 0,
+      unexplainedTokens: 800_000,
     })
     const flags = pixel.flags as Array<{ kind: string }>
-    expect(flags.map((f) => f.kind)).toEqual(['unattributed'])
+    expect(flags.map((f) => f.kind)).toEqual(['unexplained'])
   })
 
   it('rejects an unknown window with 400', async () => {

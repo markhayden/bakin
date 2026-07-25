@@ -112,8 +112,9 @@ export type RuntimeChatChunk =
   | { type: 'tool'; content?: string; data: RuntimeToolActivity }
   /** Turn lifecycle hint (e.g. 'thinking'). */
   | { type: 'status'; content?: string; data?: Record<string, unknown> }
-  /** Clean turn end (success or deliberate abort) — exactly once, always last. */
-  | { type: 'done'; content?: string; data?: Record<string, unknown> }
+  /** Clean turn end (success or deliberate abort) — exactly once, always last.
+   *  `usage` carries the turn's token accounting when the runtime reports it. */
+  | { type: 'done'; content?: string; data?: Record<string, unknown>; usage?: RuntimeMessageUsage }
   /** Terminal failure — `data.kind` carries the typed error kind when known. */
   | { type: 'error'; content?: string; data?: Record<string, unknown> }
 

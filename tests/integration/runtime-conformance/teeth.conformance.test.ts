@@ -167,6 +167,66 @@ describe('conformance suite teeth (broken adapter must fail every check)', () =>
       .rejects.toThrow(/conformance violation: .*sessions\.list is missing the session a completed threaded turn just created/)
   })
 
+  it("fails isolation honesty when 'isolated' is declared but runWorkspace is ignored", async () => {
+    // Lie: declares isolated, but the underlying send never touches the
+    // handed directory — the probe finds no trace.
+    const runtime = createMockRuntimeAdapter({
+      capabilities: async () => ({
+        ...(await createMockRuntimeAdapter().capabilities()),
+        concurrency: { sameAgentTurns: 'isolated' as const },
+      }),
+    })
+    const target = {
+      ...honestTargetShell(runtime),
+      prepareIsolatedTurnProbe: () => ({
+        content: 'teeth: isolation probe',
+        verify: () => false,
+      }),
+    }
+    await expect(runtimeConformanceChecks.sameAgentIsolationHonesty(target))
+      .rejects.toThrow(/left no trace in concurrent turn A's handed runWorkspace/)
+  })
+
+  it("fails isolation honesty when 'isolated' is declared with no probe at all", async () => {
+    const runtime = createMockRuntimeAdapter({
+      capabilities: async () => ({
+        ...(await createMockRuntimeAdapter().capabilities()),
+        concurrency: { sameAgentTurns: 'isolated' as const },
+      }),
+    })
+    const target = { ...honestTargetShell(runtime) }
+    await expect(runtimeConformanceChecks.sameAgentIsolationHonesty(target))
+      .rejects.toThrow(/provides no isolation probe — isolation claims must be provable/)
+  })
+
+  it('fails usage parity when send reports usage but the stream done omits it', async () => {
+    const runtime = createMockRuntimeAdapter()
+    // Lie: send() bills tokens…
+    const realSend = runtime.messaging.send.bind(runtime.messaging)
+    runtime.messaging.send = async (args) => ({
+      ...(await realSend(args)),
+      usage: { input: 10, output: 5, total: 15 },
+    })
+    // …but the stream's done chunk carries none (Pi's pre-fix behavior).
+    const target = { ...honestTargetShell(runtime) }
+    await expect(runtimeConformanceChecks.streamDoneCarriesUsageWhereSendDoes(target))
+      .rejects.toThrow(/conformance violation: send\(\) reports usage but the stream done chunk carries none/)
+  })
+
+  it('fails thinking honesty when a declared level fails turns', async () => {
+    const runtime = createMockRuntimeAdapter()
+    // Lie: declares 'max' but a turn at that level blows up (a declared-but-
+    // broken level — the exact class the pin exists to ban).
+    const realSend = runtime.messaging.send.bind(runtime.messaging)
+    runtime.messaging.send = async (args) => {
+      if (args.thinking === 'max') throw new Error('unsupported thinking level')
+      return realSend(args)
+    }
+    const target = { ...honestTargetShell(runtime) }
+    await expect(runtimeConformanceChecks.thinkingLevelHonesty(target))
+      .rejects.toThrow(/conformance violation: declared thinking level 'max' failed a turn/)
+  })
+
   it('fails the ping check when an unserveable runtime reports true', async () => {
     const runtime = createMockRuntimeAdapter()
     const target = {

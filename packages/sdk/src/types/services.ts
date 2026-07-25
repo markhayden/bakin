@@ -290,7 +290,14 @@ export interface SearchOutboxHealth {
 
 /** Health snapshot reported by the search adapter (per-table state). */
 export interface SearchHealthSnapshot {
+  /** Search is configured on (settings), NOT engine liveness — see engineReachable. */
   enabled: boolean
+  /**
+   * The engine answered the availability probe. false = enabled but
+   * unreachable: registry tables are still listed (from local state) with
+   * null docCount and empty legs. Absent on snapshots from older servers.
+   */
+  engineReachable?: boolean
   outbox?: SearchOutboxHealth
   tables: SearchHealthTable[]
 }

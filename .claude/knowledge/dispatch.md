@@ -74,8 +74,13 @@ the whole board behind one slow agent). Mechanics in
   dropped via `forceReleaseTurn` + `task.turn_force_released` audit so a
   hung provider turn can never hold the agent's slot until restart.
 - **Caps:** `settings.dispatch.maxConcurrentTurns` (global, default 3) and
-  `maxTurnsPerAgent` (default 1 pending rig validation of gateway per-agent
-  concurrency). A capped task is deferred with no failure recorded.
+  `maxTurnsPerAgent` (default 2 — honored only on runtimes declaring
+  `concurrency.sameAgentTurns: 'isolated'`; serialized runtimes clamp to 1
+  with a once-per-boot `dispatch.concurrency_clamped` audit). Workflow-step
+  gates fold in the cycle's reserved (collected-but-unfired) counts. A capped
+  task is deferred with no failure recorded. Isolated turns run in per-run
+  dirs; repo-bound tasks add a worktree — deep reference:
+  `.claude/knowledge/same-agent-concurrency.md`.
 - The state lock spans only the scan/fire phase, so manual kicks
   (`dispatchSingleTask`) interleave with in-flight cycles.
 - **Two-phase cycle (#434):** the regular loop *collects* dispatch intents
@@ -217,9 +222,9 @@ Bakin-owned policy checks wrap every turn fire. All read policy from the models 
 
 - **Kill switch** (`dispatchPaused`, checked inside `deferForBudget` and by the billed-media gate): `settings.dispatch.paused` pauses ALL Bakin-initiated task dispatch + billed media, independent of budget policy. Audited once per activation (`dispatch.paused`); watchdog/doctor health probes stay allowed. Surfaces: host header banner, budget health check row, `bakin budget pause|resume`.
 - **Budget gate** (`deferForBudget`/`budgetGate`, before each `claimDispatchRun`): reads the rule-list policy (`models.getBudgetPolicy` — `BudgetRule` = scope global|agent|provider (`model` evaluator-ready) × lane metered|subscription; unit-per-lane: metered caps are estimated USD, subscription caps are tokens) and the turn's billing context (`models.resolveBilling` — provider + lane from the routed/effective model). Spend comes from the ONE engine `assembleBudgetSpend` (`src/core/budget-spend.ts`): attributed `run_costs` PLUS the unattributed usage.db delta per (agent, local day, lane) — total-observed basis, so agent activity outside Bakin-managed tasks still moves the caps. **defer** → don't claim, task stays in todo (Tasks UI badges it via `/budget/status`); resumes at window rollover or a raised cap. **`atCap: 'pause'`** rules hold past rollover until a human resolves the incident. **Fail-closed**: an unreadable spend ledger defers. Breaches open durable `budget_incidents` rows — the table's UNIQUE is the restart-safe once-per-(rule, window, kind) debounce; a fresh open audits (`budget.warn`/`budget.deferred` with `incidentId`) and fans out via `budget-notify` (SSE → browser notification + one metered main-agent relay message). The cycle passes a per-cycle facets memo (`BudgetSpendMemo`, keyed on the local day-start — a cycle straddling midnight recomputes instead of gating on stale windows). Incident reopen fires only for `raised`/`window_rollover` resolutions — a human's 'resume as-is' (acknowledged) stays suppressed for the window. Warn incidents always carry `atCap: 'defer'` (sweepable) even on pause rules; the rollover sweep runs before the empty-policy early-return AND on `/budget/incidents` reads. `requestImmediateDispatch` (dispatch-cycle) runs a cycle now — the incident raise/resume routes call it. Spend counts ALL agent sends (dispatch + watchdog/doctor/orchestrator) plus billed images, metered via `src/core/agent-cost.ts`; billed media additionally gates PER CALL (`gateBilledMediaCall` — typed `budget_exceeded`/`dispatch_paused` refusal before any provider call or idempotency row).
-- **Model routing** (`resolveDispatchRouting`, hoisted above the gate): reads `models.getRoutingConfig` and resolves `{model?, thinking?}` from the turn's origin + tag overrides (`src/core/model-routing.ts`). Passed onto the gateway via `MessageArgs.model/thinking`; nothing resolved = inherit (agent's configured model). The resolved model is recorded on the `run_costs` row (with provider + billing lane) and audited (`task.routed`).
+- **Model routing** (`resolveDispatchRouting`, hoisted above the gate): reads `models.getRoutingConfig` and resolves `{model?, thinking?, source}` from the turn's **work class** + tag overrides (`resolveTurnModel` in `src/core/model-routing.ts`), then clamps the thinking level to the runtime's declared `supportedThinkingLevels` via `applyThinkingCapability` (clamp-and-warn down the ordinal ladder; `'adaptive'` clamps to inherit — never silent, never a failed turn). Never throws into the dispatch path — no plugin/config/match or a failed read = `{ source: 'inherit' }` (agent's configured model). Passed onto the runtime via `MessageArgs.model/thinking`; the resolved model + work class + `route_source` (`'tag:<name>'|'class'|'inherit'`) are recorded on the `run_costs` row (with provider + billing lane) and audited (`task.routed` carries `source`, plus `requestedThinking`/`clamped` when a clamp fired) — Team Diagnostics run rows render the receipt as `· via class route`/`tag:<x>`.
 
-Origin is derived from the task shape + dispatch context: `scheduleJobId`→scheduled, `workflowId`→workflow, recovery-ladder re-dispatch (source `recovery`)→recovery, `parentId`→decomposition, else adhoc.
+The dispatch work class is classified deterministically from task shape + dispatch context (`classifyDispatchWorkClass`): recovery-ladder re-dispatch→recovery, `workflowId`→workflow, `scheduleJobId`→scheduled, `parentId`→decomposition, else adhoc. System sends (auto-titles, enrichment, relays, team-routing, direct sends) resolve the same matrix via `resolveSystemRoute` (`src/core/system-route.ts`); interactive `chat` is metered-only, never routed. Deep reference: `.claude/knowledge/models-plugin.md` § Routing.
 
 ## Settle-time reconciliation
 
@@ -279,13 +284,23 @@ CONCURRENT across tasks, deduped by a per-task in-flight set, gated on
 dispatch eligibility (future availableAt / unmet dependsOn never bill),
 and stale-write-guarded before persisting (round-3 review). The pick is persisted immediately
 (`recordTeamResolution` — retains `team` for audit) so the routing LLM
-bills at most once per successful task lifetime. Transient failures
+bills at most once per successful task lifetime. The routing call itself is
+an EPHEMERAL RUNTIME TURN as the main agent (no API keys — the runtime's
+credentials serve it; metered under `workClass: 'team-routing'`), and its
+pause/budget gate (`routingCallGated`) sits at the callers OUTSIDE the
+ladder. Transient failures
 (including a throwing hook) are recorded in the SAME `failedDispatches`
 ladder as every other dispatch failure — transient cooldown between
 retries, escalation to blocked at `maxRetries` — with the reason
-task-logged once; structural failures (no key, empty pool, hook missing)
+task-logged once; structural failures (unknown team, empty pool, hook
+missing, runtime not_found)
 BLOCK the task with an honest reason — never a silent fallback pick.
-Audit: `task.team_resolved` / `task.team_resolution_failed`. Deep
+Workflow STEPS route the same way (#611): a `team:<id>` step agent resolves
+per-step at dispatch (`resolveTeamAssignmentForStep`, sticky on the
+instance via `workflows.recordStepTeamResolution`, ladder key
+`<contextTaskId>:<stepId>`, structural blocks hit the parent task).
+Audit: `task.team_resolved` / `task.team_resolution_failed` (with `stepId`
+for step resolutions). Deep
 reference: `.claude/knowledge/team-aware-assignment.md`.
 
 ## Prompt construction

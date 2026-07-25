@@ -46,6 +46,7 @@ export const actionableIncident: HealthIncident = {
   id: actionableObservation.incidentId,
   status: 'error',
   disposition: 'action_required',
+  effectiveDisposition: 'action_required',
   title: actionableObservation.incident.title,
   impact: actionableObservation.incident.impact,
   resources: actionableObservation.incident.resources ?? [],
@@ -84,6 +85,7 @@ export const advisoryIncident: HealthIncident = {
   id: advisoryObservation.incidentId,
   status: 'warning',
   disposition: 'advisory',
+  effectiveDisposition: 'advisory',
   title: advisoryObservation.incident.title,
   impact: advisoryObservation.incident.impact,
   resources: advisoryObservation.incident.resources ?? [],
@@ -122,6 +124,7 @@ export const unknownIncident: HealthIncident = {
   id: unknownObservation.incidentId,
   status: 'unknown',
   disposition: 'watch',
+  effectiveDisposition: 'watch',
   title: unknownObservation.incident.title,
   impact: unknownObservation.incident.impact,
   resources: unknownObservation.incident.resources ?? [],
@@ -175,6 +178,7 @@ export function makeHealthReport(
     revision: 7,
     generatedAt: healthTimestamp,
     overallStatus,
+    sensitivity: 'developer',
     lastFullSweep: {
       id: 'sweep-7',
       startedAt: healthTimestamp,
@@ -195,7 +199,7 @@ export function makeHealthReport(
     },
     summary: {
       checks: { registered: 0, completed: 0, failed: 0, invalid: 0, notApplicable: 0 },
-      incidents: { actionRequired: 0, watching: 0, advisory: 0, unknown: 0 },
+      incidents: { actionRequired: 0, watching: 0, advisory: 0, unknown: 0, acknowledged: 0 },
     },
     ...overrides,
   }
@@ -208,7 +212,7 @@ export const actionableHealthReport = makeHealthReport('needs_attention', {
   incidents: [actionableIncident],
   summary: {
     checks: { registered: 1, completed: 1, failed: 0, invalid: 0, notApplicable: 0 },
-    incidents: { actionRequired: 1, watching: 0, advisory: 0, unknown: 0 },
+    incidents: { actionRequired: 1, watching: 0, advisory: 0, unknown: 0, acknowledged: 0},
   },
 })
 
@@ -219,7 +223,7 @@ export const advisoryHealthReport = makeHealthReport('healthy', {
   incidents: [advisoryIncident],
   summary: {
     checks: { registered: 1, completed: 1, failed: 0, invalid: 0, notApplicable: 0 },
-    incidents: { actionRequired: 0, watching: 0, advisory: 1, unknown: 0 },
+    incidents: { actionRequired: 0, watching: 0, advisory: 1, unknown: 0, acknowledged: 0},
   },
 })
 
@@ -230,6 +234,6 @@ export const unknownHealthReport = makeHealthReport('unknown_stale', {
   incidents: [unknownIncident],
   summary: {
     checks: { registered: 1, completed: 1, failed: 0, invalid: 0, notApplicable: 0 },
-    incidents: { actionRequired: 0, watching: 1, advisory: 0, unknown: 1 },
+    incidents: { actionRequired: 0, watching: 1, advisory: 0, unknown: 1, acknowledged: 0},
   },
 })

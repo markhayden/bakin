@@ -360,7 +360,7 @@ export function completeStep(
   // Agent-scoping: verify the caller is the agent assigned to this step
   if (callerAgentId) {
     const rawAgent = (step as AgentStep | OutputStep).agent
-    const assignedAgent = resolveAgent(rawAgent, instance)
+    const assignedAgent = resolveAgent(rawAgent, instance, step.id)
     if (assignedAgent && assignedAgent !== '$assigned' && callerAgentId !== assignedAgent) {
       return { success: false, errors: [`Step "${stepId}" is assigned to "${assignedAgent}", not "${callerAgentId}". Stay in your lane.`] }
     }

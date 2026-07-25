@@ -57,11 +57,17 @@ export async function maybeAutoTitle(ctx: TitleContext, chatId: string): Promise
     const assistant = rows.find((r) => r.kind === 'assistant')
     if (user?.kind !== 'user' || assistant?.kind !== 'assistant') return
 
+    // Work-class route: auto-title is the canonical cheap-model class. No
+    // route = inherit (agent default), exactly as before routing existed.
+    const { resolveSystemRoute, routeSendArgs } = await import('../../../src/core/system-route')
+    const route = await resolveSystemRoute('auto-title')
+
     const result = await ctx.runtime.messaging.send({
       agentId: chat.agentId,
       activityClass: 'system',
       ephemeral: true,
       threadId: `chat:${chatId}:title`,
+      ...routeSendArgs(route),
       content: [
         'Reply with ONLY a short title (3-6 words) for this conversation.',
         'No quotes, no trailing punctuation, no explanation.',
@@ -69,6 +75,21 @@ export async function maybeAutoTitle(ctx: TitleContext, chatId: string): Promise
         `User: ${user.content.slice(0, TITLE_PROMPT_CONTEXT_MAX)}`,
         `Assistant: ${assistant.content.slice(0, TITLE_PROMPT_CONTEXT_MAX)}`,
       ].join('\n'),
+    })
+
+    // Attribute the title call's spend (work class 'auto-title'). The run id
+    // rides the durable `chat:<id>:title` prefix — the same shape the v8
+    // ledger backfill recognizes. Never throws (meterAgentTurn contract).
+    const { meterAgentTurn } = await import('../../../src/core/agent-cost')
+    await meterAgentTurn({
+      runId: `chat:${chatId}:title`,
+      agent: chat.agentId,
+      activityClass: 'system',
+      workClass: 'auto-title',
+      routeSource: route.source,
+      resolvedModel: route.model,
+      result,
+      name: 'auto-title',
     })
 
     const title = cleanTitle(result.content)

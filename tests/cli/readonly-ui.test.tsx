@@ -634,14 +634,28 @@ describe('read-only CLI TUI screens', () => {
     const stats = renderToString(
       <SearchStatsReport
         enabled={true}
+        engineReachable={true}
+        outbox={{ pending: 3, quarantined: 0 }}
         tables={[
           {
-            table: 'bakin_tasks',
+            logical: 'bakin_tasks',
             pluginId: 'tasks',
-            stats: { documents: 12 },
+            docCount: 12,
+            journalPending: 2,
+            state: 'active',
+            phase: null,
+            legs: [{ name: 'embeddings', pending: 4, rebuilding: false }],
             healthy: true,
-            indexHealth: [],
           },
+        ]}
+      />,
+    )
+    const statsUnreachable = renderToString(
+      <SearchStatsReport
+        enabled={true}
+        engineReachable={false}
+        tables={[
+          { logical: 'bakin_tasks', pluginId: 'tasks', docCount: null, journalPending: 0, state: 'active', phase: null, legs: [], healthy: false },
         ]}
       />,
     )
@@ -659,8 +673,17 @@ describe('read-only CLI TUI screens', () => {
     expect(search).toContain('blocked(1)')
     expect(stats).toContain('Search Stats')
     expect(stats).toContain('TABLES')
-    expect(stats).toContain('bakin_tasks')
+    // Row fields map from the real /search-status payload (logical/docCount/
+    // legs) — the old table/stats shape rendered "-" names and "?" docs for
+    // healthy tables (2026-07-21 field bug).
+    expect(stats).toContain('tasks')
     expect(stats).toContain('12')
+    expect(stats).toContain('2 queued · 4 embedding')
+    expect(stats).toContain('enriching')
+    expect(stats).toContain('3 pending')
+    // Disabled vs unreachable are DIFFERENT states with different fixes.
+    expect(statsUnreachable).toContain('unreachable')
+    expect(statsUnreachable).toContain('?')
   })
 
   it('renders package-oriented lists as shared TUI tables', () => {

@@ -36,11 +36,13 @@ const runPendingReconciles = mock(async () => {})
 const reindexContentTypes = mock(async () => [])
 const getSearchHealth = mock(async () => ({ tables: [] }))
 const resumeTableMigrations = mock(async () => {})
+const startMigrationPump = mock(() => {})
 mock.module('../../src/core/search-registry', () => ({
   createRegisteredTables,
   runPendingReconciles,
   reindexContentTypes,
   resumeTableMigrations,
+  startMigrationPump,
   getSearchHealth,
 }))
 

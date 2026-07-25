@@ -10,6 +10,7 @@ const report = {
   id: 'health-report-1',
   incidents: [{
     id: 'health:search:unavailable', status: 'error', disposition: 'action_required',
+    effectiveDisposition: 'action_required',
     title: 'Search is unavailable', impact: 'Search requests fail.', resources: [],
     resolution: { key: 'restart', type: 'repair', label: 'Restart', actionId: 'health.restart' },
     observationIds: ['health.search:engine'], observedAt: '2026-07-13T12:00:00.000Z', staleAt: '2026-07-13T12:10:00.000Z', stale: false,

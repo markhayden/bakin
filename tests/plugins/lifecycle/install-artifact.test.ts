@@ -73,7 +73,7 @@ async function publishFoo(manifestOverrides: Record<string, unknown> = {}): Prom
       id: 'foo',
       name: 'Foo',
       version: '1.0.0',
-      bakin: '>=1.0.0',
+      bakin: '*',
       description: 'Foo artifact-install fixture',
             permissions: [],
       ...manifestOverrides,

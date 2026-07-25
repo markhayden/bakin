@@ -1,5 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, mock, setSystemTime } from 'bun:test'
+import { join } from 'path'
+import { tmpdir } from 'os'
 import type { HealthIncident, HealthReport } from '@makinbakin/sdk/types'
+
+// Isolation: escalation itself is fully mocked below, but the system-route
+// path (route resolution before the relay send) transits core modules that
+// must never see the real home dirs.
+const testDir = join(tmpdir(), `bakin-test-doctor-escalation-${Date.now()}`)
+const contentDirMock = () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({ root: testDir, db: join(testDir, 'bakin.db') }),
+})
+mock.module('../../src/core/content-dir', contentDirMock)
+mock.module('../../packages/core/src/content-dir', contentDirMock)
 
 let mode: 'off' | 'notify' | 'task' = 'task'
 let cooldownMs = 6 * 60 * 60_000
@@ -50,6 +63,8 @@ function incident(overrides: Partial<HealthIncident> = {}): HealthIncident {
     id: 'health:search:unavailable',
     status: 'error',
     disposition: 'action_required',
+    // Effective mirrors raw unless a test overrides it explicitly (#690).
+    effectiveDisposition: overrides.disposition ?? 'action_required',
     title: 'Search is unavailable',
     impact: 'Search requests fail.',
     resources: [],
@@ -68,6 +83,7 @@ function report(incidents: HealthIncident[]): HealthReport {
     revision: 1,
     generatedAt: '2026-07-13T12:00:00.000Z',
     overallStatus: 'needs_attention',
+    sensitivity: 'developer',
     lastFullSweep: null,
     checks: [],
     observations: [],
@@ -84,7 +100,7 @@ function report(incidents: HealthIncident[]): HealthReport {
     },
     summary: {
       checks: { registered: 0, completed: 0, failed: 0, invalid: 0, notApplicable: 0 },
-      incidents: { actionRequired: incidents.length, watching: 0, advisory: 0, unknown: 0 },
+      incidents: { actionRequired: incidents.length, watching: 0, advisory: 0, unknown: 0, acknowledged: 0},
     },
   }
 }
@@ -127,6 +143,13 @@ describe('canonical Health escalation', () => {
     ])).map((row) => row.id)).toEqual(['health:search:unavailable'])
   })
 
+  it('a sensitivity-demoted incident never escalates (#690)', () => {
+    expect(freshActionRequiredIncidents(report([
+      // Raw action_required, but the projection demoted it.
+      incident({ id: 'demoted', effectiveDisposition: 'watch' }),
+    ]))).toEqual([])
+  })
+
   it('deduplicates notifications by incident ID, not message copy', async () => {
     await notifyActionRequiredIncidents(report([incident()]))
     await notifyActionRequiredIncidents(report([incident({ title: 'Copy changed' })]))
@@ -152,8 +175,9 @@ describe('canonical Health escalation', () => {
 
     const first = notifyActionRequiredIncidents(report([incident()]))
     const second = notifyActionRequiredIncidents(report([incident()]))
-    await Promise.resolve()
-    await Promise.resolve()
+    // Macrotask flush — the send now sits behind route resolution's async
+    // hops, so a fixed microtask count is too tight.
+    await new Promise((resolve) => setTimeout(resolve, 10))
     expect(send).toHaveBeenCalledTimes(1)
 
     releaseSend()
@@ -285,5 +309,14 @@ describe('canonical Health escalation', () => {
       '/tmp/project',
     )
     expect(send).not.toHaveBeenCalled()
+  })
+})
+
+describe('ack suppression (health trust overhaul)', () => {
+  it('snoozed action_required incidents never relay — quiet means quiet', () => {
+    expect(freshActionRequiredIncidents(report([
+      incident({ disposition: 'action_required', effectiveDisposition: 'action_required' }),
+      incident({ disposition: 'action_required', effectiveDisposition: 'action_required', ackState: 'snoozed' }),
+    ]))).toHaveLength(1)
   })
 })

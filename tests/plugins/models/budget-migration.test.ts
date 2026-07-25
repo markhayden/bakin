@@ -53,6 +53,9 @@ describe('activate() wiring — one-shot migration', () => {
       updateSettings: (patch: Record<string, unknown>) => { writes.push(patch) },
       hooks: { register: () => {} },
       registerExecTool: () => {},
+      registerHealthCheck: () => {},
+      registerHealthRepairAction: () => {},
+      runtime: { models: { routingSupport: () => ({ supportedThinkingLevels: [] }) } },
     }
     return { ctx: ctx as never, writes }
   }

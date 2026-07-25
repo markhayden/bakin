@@ -56,6 +56,18 @@ export interface HealthOverviewViewModel {
   needsAction: OverviewIncident[]
   unableToVerify: OverviewIncident[]
   watching: OverviewIncident[]
+  /**
+   * Fresh advisory incidents — raw advisories AND sensitivity-demoted
+   * findings (#690). They ride the calm notices surface: demotion means
+   * "visible but quiet", never hidden.
+   */
+  advisories: OverviewIncident[]
+  /**
+   * Acked/snoozed incidents (health trust overhaul): the user said "I
+   * know". They leave every attention surface but stay VISIBLE here with
+   * un-ack controls — suppressed is never deleted.
+   */
+  acknowledged: OverviewIncident[]
   search: OverviewSearch
   rightNow: {
     runningDispatches: number | null
@@ -134,7 +146,9 @@ export function healthReportNeedsFreshSweep(report: HealthReport, now: number = 
   })
 }
 
-function statusPresentation(status: HealthReportStatus | null): {
+function statusPresentation(status: HealthReportStatus | null, context?: {
+  verifyCount: number
+}): {
   label: string
   summary: string
   tone: OverviewTone
@@ -146,8 +160,19 @@ function statusPresentation(status: HealthReportStatus | null): {
       return { label: 'Needs attention', summary: 'Some problems need your attention.', tone: 'destructive' }
     case 'degraded':
       return { label: 'Watching', summary: 'Bakin is working, but some items need watching.', tone: 'warning' }
-    case 'unknown_stale':
-      return { label: 'Unable to verify', summary: 'Bakin could not confirm its health.', tone: 'neutral' }
+    case 'unknown_stale': {
+      // Scope honesty (stakeholder, 2026-07-25): ONE unverified corner —
+      // or checks that simply haven't run yet since boot — must not brand
+      // the whole product "Unable to verify" under an alarm icon. Nothing
+      // is failing in this state; say what is actually happening, calmly.
+      // The doctor refreshes on its own cadence; Run checks is one click.
+      const count = context?.verifyCount ?? 0
+      return {
+        label: count > 0 ? `Running — ${count} to verify` : 'Running — verifying',
+        summary: 'Bakin is working; some evidence has not been verified yet. Run checks to verify now.',
+        tone: 'neutral',
+      }
+    }
     default:
       return { label: 'Checking health', summary: 'Checking whether Bakin is working.', tone: 'neutral' }
   }
@@ -301,20 +326,39 @@ export function buildHealthOverviewViewModel({
   const needsAction: OverviewIncident[] = []
   const unableToVerify: OverviewIncident[] = []
   const watching: OverviewIncident[] = []
+  const advisories: OverviewIncident[] = []
+  const acknowledged: OverviewIncident[] = []
 
   for (const incident of report?.incidents ?? []) {
     const row = incidentModel(incident, observationById, checkById, now)
-    if (incident.disposition === 'action_required') {
+    if (incident.ackState !== undefined) {
+      acknowledged.push(row)
+    } else if (incident.effectiveDisposition === 'action_required') {
       needsAction.push(row)
     } else if (incident.status === 'unknown' || row.freshness === 'stale') {
-      unableToVerify.push(row)
-    } else if (incident.disposition === 'watch' && incident.status === 'warning') {
+      // Advisory unknowns are SELF-RESOLVING states the producer vouched
+      // for (a scan warming up after restart, attribution completing as
+      // transcripts land). Routing every unknown into the "Fix first"
+      // banner regardless of disposition kept the dashboard permanently
+      // lit with cards nobody should act on (field feedback, 2026-07-22).
+      // Stale evidence still verifies — staleness means the vouching is
+      // out of date.
+      if (incident.effectiveDisposition === 'advisory' && row.freshness !== 'stale') {
+        advisories.push(row)
+      } else {
+        unableToVerify.push(row)
+      }
+    } else if (incident.effectiveDisposition === 'watch' && incident.status === 'warning') {
       watching.push(row)
+    } else if (incident.effectiveDisposition === 'advisory' && incident.status === 'warning') {
+      advisories.push(row)
     }
   }
   needsAction.sort(compareAction)
   unableToVerify.sort(compareUnable)
   watching.sort(compareWatching)
+  advisories.sort(compareWatching)
+  acknowledged.sort(compareWatching)
 
   const evidenceStale = report ? healthReportNeedsFreshSweep(report, now) : false
   const overallStatus = report === null
@@ -324,7 +368,7 @@ export function buildHealthOverviewViewModel({
       : evidenceStale
         ? 'unknown_stale'
         : report.overallStatus
-  const overall = statusPresentation(overallStatus)
+  const overall = statusPresentation(overallStatus, { verifyCount: unableToVerify.length })
   const canonicalSearch = searchReadiness ?? report?.subsystems.search
   const search = buildSearch(canonicalSearch, now)
   const evidenceObservedAt = report === null ? null : oldest([
@@ -345,6 +389,8 @@ export function buildHealthOverviewViewModel({
     needsAction,
     unableToVerify,
     watching,
+    advisories,
+    acknowledged,
     search,
     rightNow: {
       runningDispatches: liveNow?.runs.length ?? null,

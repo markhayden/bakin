@@ -114,47 +114,99 @@ export function enrichmentCoverage(): EnrichmentCoverage {
   return coverage
 }
 
-export function checkEnrichment(): HealthObservationInput[] {
-  const summaries = listAssets()
-  let missing = 0
-  let stale = 0
-  let failed = 0
-  for (const summary of summaries) {
+/** Coverage advisory fires only below this fraction of enrichable assets. */
+export const ENRICHMENT_COVERAGE_ADVISORY_BELOW = 0.6
+/** Percentages are meaningless on tiny stores — never alert under this. */
+export const ENRICHMENT_MIN_ASSETS_FOR_ADVISORY = 5
+
+interface EnrichmentTally {
+  total: number
+  enriched: number
+  missing: number
+  stale: number
+  failed: number
+  skipped: number
+}
+
+function tallyEnrichment(): { tally: EnrichmentTally; incomplete: string[] } {
+  const tally: EnrichmentTally = { total: 0, enriched: 0, missing: 0, stale: 0, failed: 0, skipped: 0 }
+  const incomplete: string[] = []
+  for (const summary of listAssets()) {
     const manifest = getAsset(summary.assetId)
     if (!manifest) continue
+    tally.total++
     const enrichment = manifest.enrichment
-    if (!enrichment) { missing++; continue }
-    if (enrichment.status === 'failed') { failed++; continue }
-    if (enrichment.status === 'done' && (enrichment.forVersion ?? 0) < manifest.currentVersion) stale++
+    if (!enrichment) {
+      tally.missing++
+      incomplete.push(summary.assetId)
+    } else if (enrichment.status === 'failed') {
+      tally.failed++
+      incomplete.push(summary.assetId)
+    } else if (enrichment.status === 'skipped') {
+      tally.skipped++
+    } else if (enrichment.status === 'done' && (enrichment.forVersion ?? 0) < manifest.currentVersion) {
+      tally.stale++
+      incomplete.push(summary.assetId)
+    } else if (enrichment.status === 'done') {
+      tally.enriched++
+    } else {
+      // 'pending' (or any unrecognized status): a crash mid-job strands the
+      // manifest here — count incomplete so the self-heal pass retries it
+      // (review finding; re-enqueueing a genuinely in-flight job is a
+      // cheap no-op behind the queue's own guards).
+      tally.missing++
+      incomplete.push(summary.assetId)
+    }
+  }
+  return { tally, incomplete }
+}
+
+/** Assets the background self-heal pass should re-attempt: failed +
+ *  missing + stale. Skipped is a deliberate opt-out and current is done —
+ *  neither ever re-enqueues. */
+export function incompleteEnrichmentAssetIds(): string[] {
+  return tallyEnrichment().incomplete
+}
+
+/**
+ * Enrichment health = ONE coverage stat, never a per-asset nag (health
+ * trust overhaul, stakeholder reframe): enrichment is a nice-to-have that
+ * self-heals in the background. A single advisory only when coverage
+ * craters; skipped assets leave the denominator entirely.
+ */
+export function checkEnrichment(): HealthObservationInput[] {
+  const { tally } = tallyEnrichment()
+  const wanting = tally.total - tally.skipped
+  const coveragePct = wanting === 0 ? 1 : tally.enriched / wanting
+  const evidence = {
+    total: tally.total,
+    wanting,
+    enriched: tally.enriched,
+    missing: tally.missing,
+    stale: tally.stale,
+    failed: tally.failed,
+    skipped: tally.skipped,
+    coveragePct: Math.round(coveragePct * 100) / 100,
+  }
+  const pctLabel = `${Math.round(coveragePct * 100)}%`
+
+  if (wanting < ENRICHMENT_MIN_ASSETS_FOR_ADVISORY || coveragePct >= ENRICHMENT_COVERAGE_ADVISORY_BELOW) {
+    return [healthHealthy({
+      key: 'enrichment-coverage',
+      summary: wanting === 0
+        ? 'No assets currently want enrichment.'
+        : `Enrichment coverage: ${pctLabel} of ${wanting} asset(s)${tally.failed > 0 ? ` (${tally.failed} failed — retried automatically)` : ''}.`,
+      evidence,
+    })]
   }
 
-  const observations: HealthObservationInput[] = []
-  if (failed > 0) {
-    observations.push(assetWarning({
-      key: 'enrichment-failed',
-      summary: `${failed} asset(s) failed vision enrichment.`,
-      impact: 'Those assets may be harder to discover and reuse through semantic search.',
-      disposition: 'advisory',
-      evidence: { failed },
-    }))
-  }
-  if (missing + stale > 0) {
-    observations.push(assetWarning({
-      key: 'enrichment-incomplete',
-      summary: `${missing + stale} asset(s) lack current enrichment (${missing} missing, ${stale} stale).`,
-      impact: 'Asset descriptions and semantic search metadata may be incomplete.',
-      disposition: 'advisory',
-      evidence: { missing, stale },
-    }))
-  }
-  if (observations.length === 0) {
-    observations.push(healthHealthy({
-      key: 'enrichment',
-      summary: 'All assets carry current enrichment or a recorded skip.',
-      evidence: { total: summaries.length },
-    }))
-  }
-  return observations
+  return [assetWarning({
+    key: 'enrichment-coverage',
+    summary: `Enrichment coverage is low: ${pctLabel} of ${wanting} asset(s) (${tally.missing} missing, ${tally.stale} stale, ${tally.failed} failed).`,
+    impact: 'Unenriched assets are harder to find through semantic and media search. The daily retry pass re-attempts automatically; persistently low coverage usually means the enrichment engine has been unavailable.',
+    disposition: 'advisory',
+    evidence,
+  })]
 }
 
 /** Which engine would serve an image-enrichment job right now. */

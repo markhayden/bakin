@@ -8,6 +8,7 @@
  */
 import { z } from 'zod'
 
+import { HEALTH_INCIDENT_CLASSES } from '@makinbakin/sdk/types'
 import type {
   HealthCheckRegistrationInput,
   HealthCheckRunInput,
@@ -378,6 +379,8 @@ const incidentBaseShape = {
   key: stableKeySchema,
   title: nonBlankString(120, 'Incident title'),
   impact: nonBlankString(500, 'Incident impact'),
+  /** Producer-stamped behavior class (#690); absent = unclassified (never demoted). */
+  class: z.enum(HEALTH_INCIDENT_CLASSES).optional(),
   resources: z.array(healthResourceSchema).max(50, 'An incident may reference at most 50 resources.').optional(),
   resolution: healthResolutionSchema,
 }
@@ -605,7 +608,9 @@ export const errorObservationInputSchema = z.object({
 export const unknownObservationInputSchema = z.object({
   ...observationBaseShape,
   status: z.literal('unknown'),
-  incident: watchIncidentInputSchema,
+  // watch, or advisory when the producer vouches the unknown self-resolves
+  // (scan warm-up, attribution landing). Never action_required.
+  incident: z.union([watchIncidentInputSchema, advisoryIncidentInputSchema]),
 }).strict()
 
 export const healthObservationInputSchema = z.discriminatedUnion('status', [

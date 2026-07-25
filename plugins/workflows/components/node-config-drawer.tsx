@@ -516,6 +516,7 @@ function FieldControl({
           value={str}
           onValueChange={(v) => onChange(v || undefined)}
           includeAssigned
+          includeTeams
           allowNone={!field.required}
           aria-invalid={invalid || undefined}
           aria-describedby={describedBy}

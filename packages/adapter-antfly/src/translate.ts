@@ -311,9 +311,21 @@ export function buildBatchDeletes(keys: string[]): WireBatchRequest {
 // Tables
 // ---------------------------------------------------------------------------
 
-function embeddingIndexFromLeg(leg: TableLegConfig, settings: AntflySettings): WireIndexConfig {
+/** An embedder an operator has turned off (or gutted) must produce NO leg
+ *  at all. A disabled visual embedder once flowed through as a dimension-0
+ *  index spec, which the engine 500s on EVERY create — bricking every
+ *  media-capable table on the box (2026-07-21 field incident). */
+export function embedderUsable(embedder: { provider?: string; model?: string; dimension?: number } | undefined): boolean {
+  if (!embedder) return false
+  if (!embedder.provider || embedder.provider === 'disabled' || embedder.provider === 'none') return false
+  if (!embedder.model) return false
+  return typeof embedder.dimension === 'number' && embedder.dimension > 0
+}
+
+function embeddingIndexFromLeg(leg: TableLegConfig, settings: AntflySettings): WireIndexConfig | null {
   const ref = leg.capability === 'media-embedding' ? 'visual' : 'default'
   const embedder = settings.embedders[ref] ?? settings.embedders.default
+  if (!embedderUsable(embedder)) return null
   const template = leg.mediaUrlField
     ? `{{#if ${leg.mediaUrlField}}}{{remoteMedia url=${leg.mediaUrlField}}}{{/if}}`
     : leg.template ?? leg.fields.map((field) => `{{${field}}}`).join(' ')
@@ -358,6 +370,10 @@ function legFromLegacyIndex(idx: SearchIndexConfig): TableLegConfig | null {
  * the server always creates its own full_text index. No `schema` is sent —
  * type inference covers Bakin's needs. Never an inference URL (in-process
  * embedding only; a URL routes over HTTP and wedges backfill).
+ *
+ * Legs whose embedder is disabled/unusable are SKIPPED — the table is
+ * created keyword-only for those capabilities (honest degrade, D11)
+ * instead of shipping the engine a spec it 500s on.
  */
 export function buildTableCreate(config: TableConfig, settings: AntflySettings): WireTableCreateRequest {
   const legs: TableLegConfig[] = config.legs
@@ -365,7 +381,8 @@ export function buildTableCreate(config: TableConfig, settings: AntflySettings):
   const indexes: Record<string, WireIndexConfig> = {}
   for (const leg of legs) {
     if (leg.capability === 'full-text') continue
-    indexes[leg.name] = embeddingIndexFromLeg(leg, settings)
+    const index = embeddingIndexFromLeg(leg, settings)
+    if (index !== null) indexes[leg.name] = index
   }
   return {
     num_shards: 1,
@@ -388,14 +405,15 @@ export function mapIndexStatuses(entries: WireIndexStatusEntry[]): TableLegHealt
       || (runtime?.fatal_error_count ?? 0) > 0
       || status?.backfill_state === 'failed'
     let building = status?.rebuilding === true || status?.backfill_active === true
-    // Upstream accounting bug (antflydb/antfly#319): docs whose
-    // embed template renders EMPTY (e.g. non-media assets against a media
-    // leg) never complete the backfill, so a mixed corpus reports
-    // rebuilding/backfill_active FOREVER while nothing is in flight
-    // (pending_sequence_count 0, no active batch, not retrying). Without this
-    // override every assets-table migration would park. When upstream fixes
-    // the accounting, the canary pin in workaround-regressions fails → delete
-    // this block.
+    // antfly#319 idle-detection override — RESTORED at rc.21 (2026-07-22,
+    // the memory-table park during the production rebuild). Upstream's
+    // rc.21 fix is PARTIAL: MEDIA-template skip accounting clears its
+    // flags (the mixed-corpus guard pin), but TEXT-template legs whose
+    // docs render empty (memory: 50 embeddable of ~10k audit rows) still
+    // report rebuilding/backfill_active forever while fully idle —
+    // pending 0, no active batch, not retrying. Idle ⇒ ready, or every
+    // skip-heavy green parks unconverged. Pinned by the text-skip canary
+    // in workaround-regressions; delete when THAT pin fails.
     if (building && runtime
       && runtime.pending_sequence_count === 0
       && runtime.retrying !== true

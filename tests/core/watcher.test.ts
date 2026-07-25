@@ -51,6 +51,7 @@ import {
   registerSyncHook,
   createInboxHandler,
   shouldIgnoreContentWatcherPath,
+  resetCustomWorktreeRelCache,
 } from '../../src/core/watcher'
 import { broadcast } from '../../src/core/sse'
 import { appendAudit } from '../../src/core/audit'
@@ -113,6 +114,24 @@ describe('watcher', () => {
       expect(shouldIgnoreContentWatcherPath(tempDir, join(tempDir, 'antfly', 'data', 'replicas', 'group-1', 'table-db', 'indexes', 'full_text_index_v0', 'segments', '377.seg'))).toBe(true)
       // Sibling dirs that merely start with "antfly" are NOT ignored.
       expect(shouldIgnoreContentWatcherPath(tempDir, join(tempDir, 'antfly-notes', 'file.md'))).toBe(false)
+    })
+
+    it('ignores run-workspaces and git-worktrees — worktree churn fd-exhausts the server', () => {
+      expect(shouldIgnoreContentWatcherPath(tempDir, join(tempDir, 'run-workspaces'))).toBe(true)
+      expect(shouldIgnoreContentWatcherPath(tempDir, join(tempDir, 'run-workspaces', 'jessica', 'task-a-d1-ab12cd34', 'repo', 'node_modules', 'x.js'))).toBe(true)
+      expect(shouldIgnoreContentWatcherPath(tempDir, join(tempDir, 'git-worktrees'))).toBe(true)
+      expect(shouldIgnoreContentWatcherPath(tempDir, join(tempDir, 'git-worktrees', 'task-x', 'src', 'main.ts'))).toBe(true)
+      // Sibling-prefix names stay watched.
+      expect(shouldIgnoreContentWatcherPath(tempDir, join(tempDir, 'run-workspaces-notes', 'a.md'))).toBe(false)
+    })
+
+    it('ignores a CUSTOM git worktree root configured under the content dir', () => {
+      resetCustomWorktreeRelCache()
+      mkdirSync(join(tempDir, 'plugin-settings'), { recursive: true })
+      writeFileSync(join(tempDir, 'plugin-settings', 'git.json'), JSON.stringify({ worktreeRoot: join(tempDir, 'my-trees') }))
+      expect(shouldIgnoreContentWatcherPath(tempDir, join(tempDir, 'my-trees', 'wt-1', 'file.ts'))).toBe(true)
+      expect(shouldIgnoreContentWatcherPath(tempDir, join(tempDir, 'my-trees-other', 'file.ts'))).toBe(false)
+      resetCustomWorktreeRelCache()
     })
 
     it('ignores backup/snapshot siblings of ANY content root, never live content', () => {

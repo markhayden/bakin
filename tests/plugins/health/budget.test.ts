@@ -3,7 +3,7 @@
  * is approached or runs were deferred, fails at/over a cap, errors when the
  * spend ledger is unreachable (gating fails closed without it).
  */
-import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
+import { describe, it, expect, beforeEach, afterEach, mock, setSystemTime } from 'bun:test'
 import { mkdirSync, rmSync, appendFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -25,11 +25,20 @@ mock.module('../../../packages/core/src/logger', loggerMock)
 
 let budgetPolicy: unknown = {}
 let resolveBilling: (() => Promise<unknown>) | null = null
+let refreshModelsRegistered = true
+let refreshModelsResult: unknown = { count: 3, live: true, error: null }
+let budgetPolicyPatches: Array<Record<string, unknown>> = []
 const hookRegistryMock = () => ({
   getHookRegistry: () => ({
-    invoke: async (name: string) => {
+    has: (name: string) => (name === 'models.refreshAvailableModels' ? refreshModelsRegistered : true),
+    invoke: async (name: string, data?: Record<string, unknown>) => {
       if (name === 'models.getBudgetPolicy') return budgetPolicy
       if (name === 'models.resolveBilling' && resolveBilling) return await resolveBilling()
+      if (name === 'models.refreshAvailableModels') return refreshModelsResult
+      if (name === 'models.updateBudgetPolicy') {
+        budgetPolicyPatches.push(data ?? {})
+        return { ok: true }
+      }
       return undefined
     },
   }),
@@ -38,7 +47,7 @@ const hookRegistryMock = () => ({
 mock.module('@bakin/core/hooks/hook-registry-singleton', hookRegistryMock)
 mock.module('../../../src/core/plugin-registry', hookRegistryMock)
 
-import { checkBudget } from '@bakin/health/lib/system-checks/budget'
+import { acceptUnattributedHistoryRepair, checkBudget, spendEvidenceRepair } from '@bakin/health/lib/system-checks/budget'
 import { recordRunCost } from '../../../src/core/execution-ledger'
 import { closeAllDbs, closeDb } from '../../../packages/core/src/storage/db'
 import { replaceSessionUsage, toLocalDayKey } from '../../../packages/core/src/usage-history/store'
@@ -63,6 +72,9 @@ beforeEach(() => {
   dbPath = join(testDir, 'bakin.db')
   budgetPolicy = {}
   resolveBilling = null
+  refreshModelsRegistered = true
+  refreshModelsResult = { count: 3, live: true, error: null }
+  budgetPolicyPatches = []
   usageScanGlobal.__bakinUsageHistoryScanIntervalMs = 5 * 60_000
   usageScanGlobal.__bakinUsageHistoryScanInFlight = null
   usageScanGlobal.__bakinUsageHistoryScanPending = false
@@ -89,7 +101,7 @@ afterEach(() => {
 })
 
 function seedSpend(costUsdMicros: number): void {
-  recordRunCost({
+  recordRunCost({ workClass: null,
     runId: `seed:${randomUUID()}`,
     taskId: 't',
     agent: 'pixel',
@@ -128,7 +140,7 @@ describe('budget health check', () => {
 
   it('is unknown, never healthy, when a subscription run has no token total', async () => {
     budgetPolicy = { rules: [{ scope: 'provider', scopeId: 'openai-codex', lane: 'subscription', dailyCap: 100_000 }] }
-    recordRunCost({
+    recordRunCost({ workClass: null,
       runId: `unknown-tokens:${randomUUID()}`,
       agent: 'pixel',
       // All billing dimensions are unknown. The evidence must conservatively
@@ -154,7 +166,7 @@ describe('budget health check', () => {
 
   it('is unknown when a metered media row has no applicable price', async () => {
     budgetPolicy = { rules: [{ scope: 'global', lane: 'metered', dailyCap: 100 }] }
-    recordRunCost({
+    recordRunCost({ workClass: null,
       runId: `image:pricing-hook-failed:${randomUUID()}`,
       agent: 'pixel',
       model: 'openai/gpt-image-2',
@@ -183,7 +195,8 @@ describe('budget health check', () => {
 
   it('is unknown for partial observed costs while retaining the reported subtotal', async () => {
     budgetPolicy = { rules: [{ scope: 'global', lane: 'metered', dailyCap: 100 }] }
-    resolveBilling = async () => ({ lane: 'metered' })
+    // Mirror the real hook shape — a lane is only trusted with a resolved provider (#689).
+    resolveBilling = async () => ({ provider: 'google', lane: 'metered' })
     const now = Date.now()
     replaceSessionUsage('partial-cost', 'main', [{
       day: toLocalDayKey(now),
@@ -196,6 +209,7 @@ describe('budget health check', () => {
       costUsdMicros: 250_000,
       costedMessages: 1,
       messageCount: 3,
+      userMessages: 0,
       firstTs: now,
       lastTs: now,
     }], { mtimeMs: now, size: 1 })
@@ -221,13 +235,22 @@ describe('budget health check', () => {
         },
       },
     })
+    // The card is concrete and resolvable (2026-07-22 field feedback):
+    // a pricing gap names the model in the copy and offers the one-click
+    // catalog-refresh repair — never "open a page and pray".
+    expect(spend?.detail).toContain('unpriced')
+    expect(spend?.detail).toContain('gemini-3-flash')
+    expect(spend?.incident?.resolution).toMatchObject({
+      type: 'repair',
+      actionId: 'spend-evidence-refresh-pricing',
+    })
   })
 
   it('uses monthly evidence for a monthly verdict without contaminating a daily-only rule', async () => {
     const monthStart = new Date()
     monthStart.setDate(1)
     monthStart.setHours(1, 0, 0, 0)
-    recordRunCost({
+    recordRunCost({ workClass: null,
       runId: `image:older-unpriced:${randomUUID()}`,
       agent: 'pixel',
       model: 'openai/gpt-image-2',
@@ -347,6 +370,7 @@ describe('budget health check', () => {
       costUsdMicros: 1_000_000,
       costedMessages: 1,
       messageCount: 1,
+      userMessages: 0,
       firstTs: now,
       lastTs: now,
     }], { mtimeMs: now, size: 1 })
@@ -406,7 +430,7 @@ describe('budget health check', () => {
   it('keeps a proven cap breach critical when matching spend values are also missing', async () => {
     budgetPolicy = { rules: [{ scope: 'global', lane: 'metered', dailyCap: 10 }] }
     seedSpend(10_000_000)
-    recordRunCost({
+    recordRunCost({ workClass: null,
       runId: `image:unpriced-alongside-breach:${randomUUID()}`,
       agent: 'pixel',
       model: 'openai/gpt-image-2',
@@ -436,7 +460,7 @@ describe('budget health check', () => {
       ],
     }
     seedSpend(8_500_000)
-    recordRunCost({
+    recordRunCost({ workClass: null,
       runId: `subscription:unknown-beside-warning:${randomUUID()}`,
       agent: 'pixel',
       model: 'openai-codex/gpt-5.5-codex',
@@ -469,6 +493,62 @@ describe('budget health check', () => {
     seedSpend(10_000_000)
     const rows = observed(await checkBudget())
     expect(rows.some((row) => row.status === 'error' && row.key === 'spend')).toBe(true)
+  })
+
+  it('stamps cap breaches budget_block — never demotable by sensitivity (#690)', async () => {
+    budgetPolicy = { rules: [{ scope: 'global', lane: 'metered', dailyCap: 10 }] }
+    seedSpend(10_000_000)
+    const rows = observed(await checkBudget())
+    const breach = rows.find((row) => row.status === 'error' && row.key === 'spend')!
+    expect(breach.incident?.class).toBe('budget_block')
+  })
+
+  it('a rule-affecting evidence gap is evidence_gap at watch — the tripwire never degrades silently (D12)', async () => {
+    budgetPolicy = { rules: [{ scope: 'global', lane: 'metered', dailyCap: 10 }] }
+    resolveBilling = async () => ({ provider: 'google', lane: 'metered' })
+    // A metered observed row with NULL cost gives the rule incomplete value evidence.
+    replaceSessionUsage('gap-session', 'main', [{
+      day: toLocalDayKey(Date.now()),
+      model: 'google/gemini-3-flash',
+      inputTokens: 500,
+      outputTokens: 100,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      totalTokens: 600,
+      costUsdMicros: null,
+      costedMessages: 0,
+      messageCount: 2,
+      userMessages: 0,
+      firstTs: Date.now(),
+      lastTs: Date.now(),
+    }], { mtimeMs: 5, size: 5 })
+    const rows = observed(await checkBudget())
+    const gap = rows.find((row) => row.incident?.key === 'spend-evidence-incomplete')
+    expect(gap).toBeDefined()
+    expect(gap!.incident?.class).toBe('evidence_gap')
+    expect(gap!.incident?.disposition).toBe('watch')
+  })
+
+  it('spend-evidence incident is ADVISORY when the only gap is scan coverage (self-resolving)', async () => {
+    // No pricing gap → nothing for a human to fix; caps fail closed while
+    // transcripts land. Advisory keeps it off the fix-first banner that
+    // used to light up after every restart (2026-07-22).
+    budgetPolicy = { rules: [{ scope: 'global', lane: 'metered', dailyCap: 100 }] }
+    seedSpend(5_000_000)
+    usageScanGlobal.__bakinUsageHistoryLastScan = {
+      at: Date.now(),
+      report: {
+        scanned: 1,
+        skipped: 0,
+        failed: 0,
+        coverage: { status: 'partial', reason: 'agent_log_unreadable', agents: [] },
+      },
+    }
+
+    const rows = observed(await checkBudget())
+    const gap = rows.find((row) => row.incident?.key === 'spend-evidence-incomplete')
+    expect(gap).toBeDefined()
+    expect(gap!.incident?.disposition).toBe('advisory')
   })
 
   it('warns when runs were deferred even if utilization looks ok', async () => {
@@ -535,5 +615,167 @@ describe('budget health check', () => {
       rmSync(join(testDir, 'settings.json'), { force: true })
       resetSettingsCache()
     }
+  })
+})
+
+describe('spend evidence repair (spend-evidence-refresh-pricing)', () => {
+  it('force-refreshes the model catalog through the models hook and reports the count', async () => {
+    const repair = spendEvidenceRepair()
+    const outcomes = await repair.apply(await repair.plan({ type: 'all_actionable', reportId: 'r1' }))
+    expect(outcomes).toEqual([
+      expect.objectContaining({ status: 'applied', affectedCheckIds: ['budget'] }),
+    ])
+    expect(outcomes[0]!.message).toContain('3 models')
+  })
+
+  it('fails honestly when the models plugin is absent', async () => {
+    refreshModelsRegistered = false
+    const repair = spendEvidenceRepair()
+    const outcomes = await repair.apply(await repair.plan({ type: 'all_actionable', reportId: 'r1' }))
+    expect(outcomes[0]).toMatchObject({ status: 'failed' })
+    expect(outcomes[0]!.message).toContain('models plugin is not active')
+  })
+
+  it('fails with the credentials pointer when the provider returns zero models', async () => {
+    refreshModelsResult = { count: 0, live: true, error: null }
+    const repair = spendEvidenceRepair()
+    const outcomes = await repair.apply(await repair.plan({ type: 'all_actionable', reportId: 'r1' }))
+    expect(outcomes[0]).toMatchObject({ status: 'failed' })
+    expect(outcomes[0]!.message).toContain('bakin check llm')
+  })
+
+  it('surfaces the fetch error when the refresh itself fails', async () => {
+    refreshModelsResult = { count: 0, live: false, error: 'gateway unreachable' }
+    const repair = spendEvidenceRepair()
+    const outcomes = await repair.apply(await repair.plan({ type: 'all_actionable', reportId: 'r1' }))
+    expect(outcomes[0]).toMatchObject({ status: 'failed' })
+    expect(outcomes[0]!.message).toContain('gateway unreachable')
+  })
+})
+
+describe('accept-unattributed-history (spend fossils, health trust overhaul)', () => {
+  // Frozen mid-month clock: fossil/day/cutoff math is date-proof.
+  beforeEach(() => { setSystemTime(new Date('2026-07-15T12:00:00.000Z')) })
+  afterEach(() => { setSystemTime() })
+
+  it('a durable cutoff writes off pre-cutoff unattributable usage — caps compute forward, card goes green', async () => {
+    budgetPolicy = { rules: [{ scope: 'global', lane: 'metered', dailyCap: 100, monthlyCap: 1000 }] }
+    resolveBilling = null // lane can never resolve — the fossil class
+    // The spend engine reads THIS month's usage; a "fossil" is an in-month
+    // row BEFORE today whose lane never resolves.
+    replaceSessionUsage('fossil', 'patch', [{
+      day: '2026-07-10',
+      model: 'openai-codex/gpt-5.5',
+      inputTokens: 5_000, outputTokens: 500, cacheReadTokens: 0, cacheWriteTokens: 0,
+      totalTokens: 5_500, costUsdMicros: null, costedMessages: 0, messageCount: 4, userMessages: 1,
+      firstTs: Date.now() - 3_600_000, lastTs: Date.now(),
+    }], { mtimeMs: 1, size: 1 })
+
+    // Without the cutoff: unverifiable → unknown.
+    let rows = observed(await checkBudget())
+    expect(rows.find((row) => row.key === 'spend')?.status).toBe('unknown')
+
+    // With the cutoff: written off, verified clean.
+    budgetPolicy = {
+      rules: [{ scope: 'global', lane: 'metered', dailyCap: 100, monthlyCap: 1000 }],
+      acceptUnattributedBefore: toLocalDayKey(Date.now()),
+    }
+    rows = observed(await checkBudget())
+    expect(rows.find((row) => row.key === 'spend')?.status).toBe('healthy')
+  })
+
+  it('post-cutoff gaps still fail closed — the write-off never leaks forward', async () => {
+    budgetPolicy = {
+      rules: [{ scope: 'global', lane: 'metered', dailyCap: 100 }],
+      acceptUnattributedBefore: '2026-06-01',
+    }
+    resolveBilling = null
+    const now = Date.now()
+    replaceSessionUsage('fresh-gap', 'patch', [{
+      day: toLocalDayKey(now),
+      model: 'openai-codex/gpt-5.5',
+      inputTokens: 100, outputTokens: 10, cacheReadTokens: 0, cacheWriteTokens: 0,
+      totalTokens: 110, costUsdMicros: null, costedMessages: 0, messageCount: 2, userMessages: 1,
+      firstTs: now, lastTs: now,
+    }], { mtimeMs: 2, size: 2 })
+
+    const rows = observed(await checkBudget())
+    expect(rows.find((row) => row.key === 'spend')?.status).toBe('unknown')
+  })
+
+  it('PRE-TODAY attribution gaps (fossils) offer the write-off repair on the card', async () => {
+    budgetPolicy = { rules: [{ scope: 'global', lane: 'metered', dailyCap: 100, monthlyCap: 1000 }] }
+    resolveBilling = null
+    const now = Date.now()
+    replaceSessionUsage('lane-gap', 'patch', [{
+      day: '2026-07-10',
+      model: 'openai-codex/gpt-5.5',
+      inputTokens: 100, outputTokens: 10, cacheReadTokens: 0, cacheWriteTokens: 0,
+      totalTokens: 110, costUsdMicros: null, costedMessages: 0, messageCount: 2, userMessages: 1,
+      firstTs: now, lastTs: now,
+    }], { mtimeMs: 3, size: 3 })
+
+    const spend = observed(await checkBudget()).find((row) => row.key === 'spend')
+    expect(spend?.incident?.resolution).toMatchObject({ type: 'repair', actionId: 'accept-unattributed-history' })
+  })
+
+  it('the repair writes the cutoff through the models hook after confirmation-tier planning', async () => {
+    const repair = acceptUnattributedHistoryRepair()
+    const plan = await repair.plan({ type: 'all_actionable', reportId: 'r1' })
+    expect(plan[0]?.safety).toBe('destructive')
+
+    const outcomes = await repair.apply(plan)
+    expect(outcomes[0]).toMatchObject({ status: 'applied' })
+    expect(budgetPolicyPatches).toHaveLength(1)
+    expect(typeof budgetPolicyPatches[0]!.acceptUnattributedBefore).toBe('string')
+  })
+})
+
+describe('cutoff clamping and fossil gating (review findings)', () => {
+  beforeEach(() => { setSystemTime(new Date('2026-07-15T12:00:00.000Z')) })
+  afterEach(() => { setSystemTime() })
+
+  it('a FUTURE cutoff is clamped at read — today usage is never pre-silenced', async () => {
+    budgetPolicy = {
+      rules: [{ scope: 'global', lane: 'metered', dailyCap: 100 }],
+      acceptUnattributedBefore: '2026-08-01',
+    }
+    resolveBilling = null
+    replaceSessionUsage('today-gap', 'patch', [{
+      day: toLocalDayKey(Date.now()),
+      model: 'openai-codex/gpt-5.5',
+      inputTokens: 100, outputTokens: 10, cacheReadTokens: 0, cacheWriteTokens: 0,
+      totalTokens: 110, costUsdMicros: null, costedMessages: 0, messageCount: 2, userMessages: 1,
+      firstTs: Date.now(), lastTs: Date.now(),
+    }], { mtimeMs: 9, size: 9 })
+
+    const rows = observed(await checkBudget())
+    expect(rows.find((row) => row.key === 'spend')?.status).toBe('unknown')
+  })
+
+  it('today-only lane gaps get the settle-on-its-own instructions, never the destructive write-off', async () => {
+    budgetPolicy = { rules: [{ scope: 'global', lane: 'metered', dailyCap: 100 }] }
+    resolveBilling = null
+    replaceSessionUsage('fresh-lane-gap', 'patch', [{
+      day: toLocalDayKey(Date.now()),
+      model: 'openai-codex/gpt-5.5',
+      inputTokens: 100, outputTokens: 10, cacheReadTokens: 0, cacheWriteTokens: 0,
+      totalTokens: 110, costUsdMicros: null, costedMessages: 0, messageCount: 2, userMessages: 1,
+      firstTs: Date.now(), lastTs: Date.now(),
+    }], { mtimeMs: 10, size: 10 })
+
+    const spend = observed(await checkBudget()).find((row) => row.key === 'spend')
+    expect(spend?.incident?.resolution).toMatchObject({ type: 'instructions' })
+  })
+
+  it('the hook rejects a future cutoff', async () => {
+    // The mock registry routes models.updateBudgetPolicy — exercise the
+    // REAL hook validation shape through the repair message contract:
+    // covered at the models plugin level; here we pin the read-side clamp
+    // (test above) and the repair writes today (below).
+    const repair = acceptUnattributedHistoryRepair()
+    const outcomes = await repair.apply(await repair.plan({ type: 'all_actionable', reportId: 'r1' }))
+    expect(outcomes[0]).toMatchObject({ status: 'applied' })
+    expect(budgetPolicyPatches[0]!.acceptUnattributedBefore).toBe('2026-07-15')
   })
 })

@@ -156,11 +156,12 @@ export function ParallelChildrenEditor({
                     value={typeof child.agent === 'string' ? child.agent : ''}
                     onValueChange={(v) => updateChild(index, { agent: v || '' })}
                     includeAssigned
+                    includeTeams
                     allowNone={false}
                     className={CONTROL_CLASS}
                   />
                   <p className={FIELD_HELP_CLASS}>
-                    Choose who should run this child step.
+                    Choose who should run this child step — or a team to route at dispatch.
                   </p>
                 </div>
                 <div className={FIELD_GROUP_CLASS}>

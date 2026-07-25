@@ -339,3 +339,35 @@ export function setPinned(chatId: string, pinned: boolean): Promise<ChatSummary 
     return summary
   })
 }
+
+/**
+ * Boot sweep (#706): any chat whose transcript ends on a user row lost its
+ * turn to a process death (the engine's in-flight map dies with the
+ * server) — stamp an honest error row so the reply doesn't look pending
+ * forever and "Try again" is offered.
+ */
+export async function sweepInterruptedTurns(): Promise<void> {
+  let chats: ChatSummary[]
+  try {
+    chats = listChats()
+  } catch (err) {
+    // Never let the sweep break activation (e.g. minimal test contexts
+    // without a chat dir) — a missed sweep just waits for the next boot.
+    log.error('interrupted-turn sweep could not list chats', err as Error)
+    return
+  }
+  for (const chat of chats) {
+    try {
+      const rows = readTranscript(chat.id)
+      const last = rows[rows.length - 1]
+      if (last?.kind !== 'user') continue
+      await appendTranscriptRow(chat.id, {
+        kind: 'error',
+        ts: new Date().toISOString(),
+        message: 'Interrupted by a server restart before the reply finished.',
+      })
+    } catch (err) {
+      log.error(`interrupted-turn sweep failed for chat ${chat.id}`, err as Error)
+    }
+  }
+}

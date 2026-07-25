@@ -12,8 +12,10 @@ import {
   UsageHistoryStoreReadError,
 } from '@bakin/core/usage-history/store'
 import { LedgerUnavailableError, listLiveRuns } from '../../src/core/execution-ledger'
-import { buildAgentBurnReports, getAgentBurnWindowScope } from '../../src/core/agent-burn'
+import { buildAgentBurnReports, coverageCanFlagSessions, getAgentBurnWindowScope, type ScheduledJobEvidence } from '../../src/core/agent-burn'
 import { getLastReport, runDiagnostics } from '../../src/core/doctor'
+import { acknowledgeHealthIncident } from '../../src/core/doctor-report-cache'
+import { HealthAckNotFoundError, HealthAckStoreError, readAckRecords } from '../../src/core/health-acks'
 import { createLogger } from '../../src/core/logger'
 import { getAgentUsageSnapshot, getAllAgentUsage } from '../../src/core/agent-usage'
 import {
@@ -60,14 +62,15 @@ import { checkChannelApprovals } from './lib/system-checks/channel-approvals'
 import { checkChannelAliases } from './lib/system-checks/channel-aliases'
 import { checkRestartRecovery } from './lib/system-checks/restart-recovery'
 import { checkExecutionSafety } from './lib/system-checks/execution-safety'
+import { checkRunDirs, runDirsSweepRepair } from './lib/system-checks/run-dirs'
 import { checkStartupContextSize } from './lib/system-checks/context-report'
-import { checkBudget } from './lib/system-checks/budget'
+import { acceptUnattributedHistoryRepair, checkBudget, spendEvidenceRepair } from './lib/system-checks/budget'
 import { checkAgentBurn } from './lib/system-checks/agent-burn'
 import { checkSearchAdapter } from './lib/system-checks/search'
 import { searchOutboxRepair } from './lib/system-checks/search-outbox'
 import { checkSearchConsistency, searchConsistencyRepair } from './lib/system-checks/search-consistency'
 import { checkSearchSpin, searchSpinRepair } from './lib/system-checks/search-spin'
-import { checkSearchCanary, checkSearchEngineBurn, searchCanaryRepair, searchEngineBurnRepair } from './lib/system-checks/search-engine-watch'
+import { checkSearchCanary, checkSearchEngineBurn, searchCanaryRepair, searchConsistencyRestartRepair, searchEngineBurnRepair } from './lib/system-checks/search-engine-watch'
 import { checkAndSyncSkill, syncSkillRepair } from './lib/system-checks/sync-skill'
 import { checkPluginAssets } from './lib/system-checks/plugin-assets'
 import { checkPluginArtifacts } from './lib/system-checks/plugin-artifacts'
@@ -109,6 +112,28 @@ import {
 } from './lib/system-route-schemas'
 
 const log = createLogger('health')
+
+/**
+ * Cron-guard evidence for the runaway heuristic (D11): the runtime's enabled
+ * native scheduled jobs. null = no cron surface or the read failed — the
+ * engine then never downgrades a runaway page on missing evidence. Fetched
+ * identically by the doctor check and the /agent-effort route so the two
+ * surfaces can never disagree.
+ */
+async function fetchScheduledJobsEvidence(
+  runtime: import('@bakin/core/adapters/runtime').AgentRuntimeAdapter,
+): Promise<ScheduledJobEvidence[] | null> {
+  if (!runtime.cron) return null
+  try {
+    const jobs = await runtime.cron.list()
+    return jobs.filter((job) => job.enabled).map((job) => ({ id: job.id, name: job.name }))
+  } catch (err) {
+    log.warn('Scheduled-jobs read failed; runaway cron guard has no evidence this pass', {
+      error: err instanceof Error ? err.message : String(err),
+    })
+    return null
+  }
+}
 const SEARCH_ENRICHMENT_STATS_TIMEOUT_MS = 250
 let usageHistoryRuntime: PluginContext['runtime'] | null = null
 
@@ -519,7 +544,7 @@ const routes = [
     description: 'Token burn per agent joined with task completions and transcript-observed totals (Bakin-attributed vs total observed vs unattributed), plus warn-only burn flags. Same engine as the usage.agent-burn doctor check.',
     query: agentWindowQuerySchema,
     responses: { 200: agentEffortResponseSchema, 400: errorResponse, 503: errorResponse },
-    handler: async (_req, _ctx, { query }) => {
+    handler: async (_req, routeCtx, { query }) => {
       const evidence = currentUsageEvidence()
       try {
         const now = Date.now()
@@ -528,6 +553,11 @@ const routes = [
         const agents = buildAgentBurnReports(now, {
           windowHours,
           coverage: evidence.coverage,
+          // ONE cron-gate predicate shared with the doctor check (D11) —
+          // skipped only when no agent's coverage can produce a runaway flag.
+          scheduledJobs: coverageCanFlagSessions(evidence.coverage)
+            ? await fetchScheduledJobsEvidence(routeCtx.runtime)
+            : null,
         })
         return Response.json({
           window: query.window,
@@ -681,6 +711,55 @@ const routes = [
       } catch (err) {
         log.error('Health repair delegation failed', err)
         return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/doctor/ack',
+    method: 'POST',
+    summary: 'Acknowledge, snooze, or un-ack a Health incident',
+    description: 'The "I know" verb (health trust overhaul). action=ack silences until material change (tier escalation / resource-set change); action=snooze silences for 24h or 7d (action_required incidents are snooze-only and re-fire on any evidence change); action=clear un-acks. Writes republish the report immediately.',
+    body: z.object({
+      incidentId: z.string().min(1),
+      action: z.enum(['ack', 'snooze', 'clear']),
+      for: z.enum(['24h', '7d']).optional(),
+    }).strict(),
+    responses: { 200: passthrough, 400: errorResponse, 404: errorResponse },
+    handler: async (_req, _ctx, { body }) => {
+      try {
+        const result = acknowledgeHealthIncident({
+          incidentId: body.incidentId,
+          action: body.action,
+          forMs: body.for === '7d' ? 7 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000,
+        })
+        return Response.json(result)
+      } catch (err) {
+        if (err instanceof HealthAckStoreError) {
+          return Response.json({ error: err.message }, { status: err instanceof HealthAckNotFoundError ? 404 : 400 })
+        }
+        throw err
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/doctor/acks',
+    method: 'GET',
+    activityClass: 'routine',
+    summary: 'List Health incident ack/snooze records',
+    description: 'Current acknowledge/snooze records — what is quiet and why. Suppressed is never hidden.',
+    responses: { 200: passthrough },
+    handler: async () => {
+      try {
+        return Response.json({ records: Object.values(readAckRecords()) })
+      } catch (err) {
+        if (err instanceof HealthAckStoreError) {
+          // Fail open toward visibility, matching the projection: an
+          // unreadable store reads as no records, with the error surfaced.
+          return Response.json({ records: [], error: err.message })
+        }
+        throw err
       }
     },
   }),
@@ -910,6 +989,15 @@ const healthPlugin: BakinPlugin = definePlugin({
       maxAgeMs: 300_000,
       run: () => checkExecutionSafety(),
     })
+    ctx.registerHealthRepairAction(runDirsSweepRepair())
+    ctx.registerHealthCheck({
+      id: 'dispatch.run-dirs',
+      name: 'Per-run workspace disk usage',
+      description: 'Watches run-workspace scratch dirs against retention windows and the disk budget (sweep aggregate — never a live walk).',
+      group: workGroup,
+      maxAgeMs: 600_000,
+      run: () => checkRunDirs(),
+    })
     ctx.registerHealthCheck({
       id: 'context.startup-size',
       name: 'Per-dispatch startup context budget',
@@ -928,11 +1016,11 @@ const healthPlugin: BakinPlugin = definePlugin({
     })
     ctx.registerHealthCheck({
       id: 'usage.agent-burn',
-      name: 'Agent token burn (effort, spikes, unattributed)',
-      description: 'Flags unusually high, spiking, or unattributed agent token use.',
+      name: 'Agent token burn (effort, spikes, usage buckets)',
+      description: 'Flags unusually high or spiking token use, interactive-session usage, unexplained usage, and possible runaway autonomous activity.',
       group: workGroup,
       maxAgeMs: 600_000,
-      run: () => checkAgentBurn(),
+      run: () => checkAgentBurn(() => fetchScheduledJobsEvidence(ctx.runtime)),
     })
     ctx.registerHealthCheck({
       id: 'search',
@@ -1013,6 +1101,9 @@ const healthPlugin: BakinPlugin = definePlugin({
     ctx.registerHealthRepairAction(searchSpinRepair())
     ctx.registerHealthRepairAction(searchCanaryRepair())
     ctx.registerHealthRepairAction(searchEngineBurnRepair())
+    ctx.registerHealthRepairAction(searchConsistencyRestartRepair())
+    ctx.registerHealthRepairAction(spendEvidenceRepair())
+    ctx.registerHealthRepairAction(acceptUnattributedHistoryRepair())
     ctx.registerHealthRepairAction(syncSkillRepair(process.cwd(), ctx.runtime))
   },
 

@@ -6,9 +6,10 @@
 //      previously leaked test data into ~/.bakin/ and ~/.openclaw/. Matches
 //      both Bun's `mock.module(...)` and Vitest's `vi.mock(...)` so the
 //      checker works through the Next.js → Bun migration and any future shift.
-//   2. The test mocks src/core/content-dir (CLAUDE.md hard rule).
-//   3. If the test touches workflows/tasks/openclaw, it also mocks task-store
-//      and openclaw-home.
+//   2. Tests that reference server-reachable code mock src/core/content-dir
+//      (CLAUDE.md rule; pure client component tests have no path to disk).
+//   3. If the test touches workflows/tasks server code or openclaw, it also
+//      mocks task-store and openclaw-home.
 //
 // Broken paths set decision: "block" so Claude re-edits.
 // Missing required mocks emit a warning via additionalContext (no block).
@@ -74,6 +75,28 @@ function resolveRelativeMock(testFile, mockArg) {
 // REQUIRED_PATTERNS run against the *string argument* of vi.mock(...) calls,
 // so they need to match both relative paths ('../../../src/core/content-dir')
 // and aliases ('@/core/content-dir', '@bakin/adapter-openclaw/home').
+// A test can only leak into ~/.bakin/ if it (transitively) runs server-side
+// code. Pure client component tests — imports limited to plugins/*/
+// {components,hooks,types}, @/components, @/hooks, the SDK — have no path to
+// the filesystem, and warning on every edit of those files buries the real
+// signal. Requirements therefore fire on UNMOCKED imports of server-reachable
+// surfaces: a mock.module target never loads the real module, so mocked
+// specifiers don't count as reach (grepping the whole source made every
+// component test that stubs a plugin component look storage-touching).
+// Heuristic, single-file view: a test whose only server reference hides
+// behind a local fixture helper won't be flagged.
+const SERVER_SURFACE_RE =
+  /src\/core\/|packages\/core\/|@\/core\/|@bakin\/core|@bakin\/adapter|plugins\/[-\w]+\/(index|lib|routes|server)|(^|\/)plugins\/[-\w]+$|test-helpers/
+
+// Import/require/dynamic-import specifiers — the surfaces a test actually loads.
+const IMPORT_RE = /(?:from\s+|require\(\s*|import\(\s*)['"]([^'"]+)['"]/g
+
+function extractImportPaths(src) {
+  const out = []
+  for (const m of src.matchAll(IMPORT_RE)) out.push(m[1])
+  return out
+}
+
 const REQUIRED_PATTERNS = [
   {
     label: 'src/core/content-dir (or packages/core/src/content-dir)',
@@ -82,28 +105,33 @@ const REQUIRED_PATTERNS = [
       || /(^|\/)packages\/core\/src\/content-dir$/.test(p)
       || /@\/core\/content-dir$/.test(p)
       || /@bakin\/core\/content-dir$/.test(p),
-    always: true,
+    requiredIf: (ctx) => ctx.unmockedImports.some((p) => SERVER_SURFACE_RE.test(p)),
   },
   {
     label: 'src/core/task-store',
     matches: (p) =>
       /(^|\/)src\/core\/task-store$/.test(p)
       || /@\/core\/task-store$/.test(p),
-    requiredIf: (src) =>
-      /task-store|@bakin\/workflows|plugins\/(tasks|workflows)/.test(src),
+    requiredIf: (ctx) => ctx.unmockedImports.some((p) =>
+      /task-store|@bakin\/workflows/.test(p)
+      // plugins/tasks|workflows imports count only when they reach past the
+      // client-only dirs (components/hooks/types can't touch the store).
+      || (/plugins\/(tasks|workflows)(\/|$)/.test(p) && !/\/(components|hooks|types)(\/|$)/.test(p))),
   },
   {
     label: 'openclaw-home resolver (packages/adapter-openclaw/src/home or @bakin/adapter-openclaw/home)',
     matches: (p) =>
       /(^|\/)packages\/adapter-openclaw\/src\/home$/.test(p)
       || /@bakin\/adapter-openclaw\/home$/.test(p),
-    requiredIf: (src) =>
-      /openclaw-home|getOpenClawPath|getOpenClawHome|@bakin\/adapter-openclaw\/home/.test(src),
+    // Identifier-based (call sites like getOpenClawPath indicate real use),
+    // so this one stays a whole-source check.
+    requiredIf: (ctx) =>
+      /openclaw-home|getOpenClawPath|getOpenClawHome|@bakin\/adapter-openclaw\/home/.test(ctx.src),
   },
   {
     label: 'src/core/openclaw-client',
     matches: (p) => /(^|\/)src\/core\/openclaw-client$/.test(p) || /@\/core\/openclaw-client$/.test(p),
-    requiredIf: (src) => /openclaw-client|sendToAgent|openClawClient/.test(src),
+    requiredIf: (ctx) => /openclaw-client|sendToAgent|openClawClient/.test(ctx.src),
   },
 ]
 
@@ -142,14 +170,15 @@ function check(filePath) {
 
   const missing = []
   if (!isPureArchitectureTest(filePath) && !isSdkTestingFixture(filePath)) {
+    const mockSet = new Set(mockPaths)
+    const unmockedImports = extractImportPaths(src).filter((p) => !mockSet.has(p))
+    const ctx = { src, unmockedImports }
     for (const req of REQUIRED_PATTERNS) {
       const found = mockPaths.some(req.matches)
       if (found) continue
       if (isSelfTest(filePath, req.label)) continue
-      if (req.always) {
-        missing.push(req.label)
-      } else if (req.requiredIf && req.requiredIf(src)) {
-        missing.push(`${req.label} (referenced in this test file)`)
+      if (req.requiredIf && req.requiredIf(ctx)) {
+        missing.push(`${req.label} (this test imports server-reachable code)`)
       }
     }
   }

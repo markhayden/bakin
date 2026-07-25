@@ -15,12 +15,12 @@ import McpToolCard from '../../../../components/McpToolCard.astro'
 <p class="mcp-section-description">Asset tools let agents list, inspect, save, link, restore, and clean up files managed by Bakin.</p>
 
 <div class="mcp-tool-list">
-<McpToolCard id="assets-audit" name="bakin_exec_assets_audit" label="Audited assets" description="Audit versioned-asset health: manifest integrity, current-pointer resolution, and missing version files." source="plugins/assets/lib/exec-tools.ts:333">
+<McpToolCard id="assets-audit" name="bakin_exec_assets_audit" label="Audited assets" description="Audit versioned-asset health: manifest integrity, current-pointer resolution, and missing version files." source="plugins/assets/lib/exec-tools.ts:349">
 ```sh frame="terminal"
 bakin_exec_assets_audit
 ```
 </McpToolCard>
-<McpToolCard id="assets-consolidate" name="bakin_exec_assets_consolidate" label="Consolidated variant assets" description="Absorb variant assets as versions of a winner asset (select-best flows): each loser's current file becomes a new version of the winner with consolidatedFrom provenance, the winner's pre-call current version stays promoted, and the losers move to trash. End state: ONE asset, every variant preserved as version history. Safe to re-call — already-absorbed losers are skipped and the version pointer is never moved by a retry." source="plugins/assets/lib/exec-tools.ts:196" parameters={[{"name":"winnerAssetId","type":"string","required":true,"description":"The selected (winning) asset id — absorbs the others"},{"name":"loserAssetIds","type":"array","required":true,"description":"The variant asset ids to absorb, in display order"},{"name":"taskId","type":"string","required":true,"description":"Task ID this consolidation belongs to"}]}>
+<McpToolCard id="assets-consolidate" name="bakin_exec_assets_consolidate" label="Consolidated variant assets" description="Absorb variant assets as versions of a winner asset (select-best flows): each loser's current file becomes a new version of the winner with consolidatedFrom provenance, the winner's pre-call current version stays promoted, and the losers move to trash. End state: ONE asset, every variant preserved as version history. Safe to re-call — already-absorbed losers are skipped and the version pointer is never moved by a retry." source="plugins/assets/lib/exec-tools.ts:212" parameters={[{"name":"winnerAssetId","type":"string","required":true,"description":"The selected (winning) asset id — absorbs the others"},{"name":"loserAssetIds","type":"array","required":true,"description":"The variant asset ids to absorb, in display order"},{"name":"taskId","type":"string","required":true,"description":"Task ID this consolidation belongs to"}]}>
 ```sh frame="terminal"
 bakin_exec_assets_consolidate {
   "winnerAssetId": "value",
@@ -31,14 +31,14 @@ bakin_exec_assets_consolidate {
 }
 ```
 </McpToolCard>
-<McpToolCard id="assets-delete" name="bakin_exec_assets_delete" label="Deleted an asset" description="Soft-delete a whole asset (all versions) to trash, restorable until trash is emptied." source="plugins/assets/lib/exec-tools.ts:177" parameters={[{"name":"assetId","type":"string","required":true,"description":"Asset id"}]}>
+<McpToolCard id="assets-delete" name="bakin_exec_assets_delete" label="Deleted an asset" description="Soft-delete a whole asset (all versions) to trash, restorable until trash is emptied." source="plugins/assets/lib/exec-tools.ts:193" parameters={[{"name":"assetId","type":"string","required":true,"description":"Asset id"}]}>
 ```sh frame="terminal"
 bakin_exec_assets_delete {
   "assetId": "value"
 }
 ```
 </McpToolCard>
-<McpToolCard id="assets-empty-trash" name="bakin_exec_assets_empty_trash" label="Emptied asset trash" description="Permanently delete all trashed assets. This cannot be undone." source="plugins/assets/lib/exec-tools.ts:306">
+<McpToolCard id="assets-empty-trash" name="bakin_exec_assets_empty_trash" label="Emptied asset trash" description="Permanently delete all trashed assets. This cannot be undone." source="plugins/assets/lib/exec-tools.ts:322">
 ```sh frame="terminal"
 bakin_exec_assets_empty_trash
 ```
@@ -60,7 +60,7 @@ bakin_exec_assets_import {
 }
 ```
 </McpToolCard>
-<McpToolCard id="assets-link" name="bakin_exec_assets_link" label="Linked an asset" description="Link an asset to a different task, or unlink it (set taskId to null)." source="plugins/assets/lib/exec-tools.ts:235" parameters={[{"name":"assetId","type":"string","required":true,"description":"Asset id"},{"name":"taskId","type":"string","required":true,"description":"Target task ID, or null to unlink"}]}>
+<McpToolCard id="assets-link" name="bakin_exec_assets_link" label="Linked an asset" description="Link an asset to a different task, or unlink it (set taskId to null)." source="plugins/assets/lib/exec-tools.ts:251" parameters={[{"name":"assetId","type":"string","required":true,"description":"Asset id"},{"name":"taskId","type":"string","required":true,"description":"Target task ID, or null to unlink"}]}>
 ```sh frame="terminal"
 bakin_exec_assets_link {
   "assetId": "value",
@@ -79,7 +79,7 @@ bakin_exec_assets_list {
 }
 ```
 </McpToolCard>
-<McpToolCard id="assets-list-trash" name="bakin_exec_assets_list_trash" label="Listed trashed assets" description="List trashed assets (whole-asset deletions) with deletion time and version count." source="plugins/assets/lib/exec-tools.ts:279">
+<McpToolCard id="assets-list-trash" name="bakin_exec_assets_list_trash" label="Listed trashed assets" description="List trashed assets (whole-asset deletions) with deletion time and version count." source="plugins/assets/lib/exec-tools.ts:295">
 ```sh frame="terminal"
 bakin_exec_assets_list_trash
 ```
@@ -91,21 +91,21 @@ bakin_exec_assets_open {
 }
 ```
 </McpToolCard>
-<McpToolCard id="assets-permanent-delete" name="bakin_exec_assets_permanent_delete" label="Permanently deleted an asset" description="Permanently delete a specific trashed asset. This cannot be undone." source="plugins/assets/lib/exec-tools.ts:319" parameters={[{"name":"trashName","type":"string","required":true,"description":"Trash name (includes __deleted- suffix)"}]}>
+<McpToolCard id="assets-permanent-delete" name="bakin_exec_assets_permanent_delete" label="Permanently deleted an asset" description="Permanently delete a specific trashed asset. This cannot be undone." source="plugins/assets/lib/exec-tools.ts:335" parameters={[{"name":"trashName","type":"string","required":true,"description":"Trash name (includes __deleted- suffix)"}]}>
 ```sh frame="terminal"
 bakin_exec_assets_permanent_delete {
   "trashName": "value"
 }
 ```
 </McpToolCard>
-<McpToolCard id="assets-restore" name="bakin_exec_assets_restore" label="Restored an asset" description="Restore a trashed asset by its trash name (from bakin_exec_assets_list_trash)." source="plugins/assets/lib/exec-tools.ts:290" parameters={[{"name":"trashName","type":"string","required":true,"description":"Trash name (includes __deleted- suffix)"}]}>
+<McpToolCard id="assets-restore" name="bakin_exec_assets_restore" label="Restored an asset" description="Restore a trashed asset by its trash name (from bakin_exec_assets_list_trash)." source="plugins/assets/lib/exec-tools.ts:306" parameters={[{"name":"trashName","type":"string","required":true,"description":"Trash name (includes __deleted- suffix)"}]}>
 ```sh frame="terminal"
 bakin_exec_assets_restore {
   "trashName": "value"
 }
 ```
 </McpToolCard>
-<McpToolCard id="assets-retype" name="bakin_exec_assets_retype" label="Retyped an asset" description="Change an asset type classification." source="plugins/assets/lib/exec-tools.ts:257" parameters={[{"name":"assetId","type":"string","required":true,"description":"Asset id"},{"name":"type","type":"choice","required":true}]}>
+<McpToolCard id="assets-retype" name="bakin_exec_assets_retype" label="Retyped an asset" description="Change an asset type classification." source="plugins/assets/lib/exec-tools.ts:273" parameters={[{"name":"assetId","type":"string","required":true,"description":"Asset id"},{"name":"type","type":"choice","required":true}]}>
 ```sh frame="terminal"
 bakin_exec_assets_retype {
   "assetId": "value",
@@ -240,17 +240,17 @@ bakin_exec_get_step {
 <p class="mcp-section-description">MCP tools discovered from registered exec tool definitions.</p>
 
 <div class="mcp-tool-list">
-<McpToolCard id="git-prepare-worktree" name="bakin_exec_git_prepare_worktree" label="Prepared git worktree" description="Create or reuse an isolated git worktree for a task. Call this before editing code for a Bakin task." source="plugins/git/index.ts:645">
+<McpToolCard id="git-prepare-worktree" name="bakin_exec_git_prepare_worktree" label="Prepared git worktree" description="Create or reuse an isolated git worktree for a task. Call this before editing code for a Bakin task." source="plugins/git/index.ts:656">
 ```sh frame="terminal"
 bakin_exec_git_prepare_worktree
 ```
 </McpToolCard>
-<McpToolCard id="git-release-worktree" name="bakin_exec_git_release_worktree" label="Released git worktree" description="Release a tracked git worktree. Refuses dirty removal unless force=true." source="plugins/git/index.ts:660">
+<McpToolCard id="git-release-worktree" name="bakin_exec_git_release_worktree" label="Released git worktree" description="Release a tracked git worktree. Refuses dirty removal unless force=true." source="plugins/git/index.ts:671">
 ```sh frame="terminal"
 bakin_exec_git_release_worktree
 ```
 </McpToolCard>
-<McpToolCard id="git-status" name="bakin_exec_git_status" label="Checked git worktrees" description="List Bakin-tracked git worktrees and their dirty state." source="plugins/git/index.ts:653">
+<McpToolCard id="git-status" name="bakin_exec_git_status" label="Checked git worktrees" description="List Bakin-tracked git worktrees and their dirty state." source="plugins/git/index.ts:664">
 ```sh frame="terminal"
 bakin_exec_git_status
 ```
@@ -262,14 +262,14 @@ bakin_exec_git_status
 <p class="mcp-section-description">Health tools let agents check whether Bakin is running correctly before or during work.</p>
 
 <div class="mcp-tool-list">
-<McpToolCard id="health-doctor" name="bakin_exec_health_doctor" label="Ran diagnostics" description="Return the canonical Health report. Use fresh=true to join or start a full diagnostic sweep first." source="plugins/health/index.ts:805" parameters={[{"name":"fresh","type":"boolean","required":false,"description":"Force fresh diagnostics instead of cached results"}]}>
+<McpToolCard id="health-doctor" name="bakin_exec_health_doctor" label="Ran diagnostics" description="Return the canonical Health report. Use fresh=true to join or start a full diagnostic sweep first." source="plugins/health/index.ts:884" parameters={[{"name":"fresh","type":"boolean","required":false,"description":"Force fresh diagnostics instead of cached results"}]}>
 ```sh frame="terminal"
 bakin_exec_health_doctor {
   "fresh": true
 }
 ```
 </McpToolCard>
-<McpToolCard id="health-status" name="bakin_exec_health_status" label="Checked system health" description="Get a quick canonical system health summary with uptime, memory, connected session count, activity failures, and incident counts." source="plugins/health/index.ts:775">
+<McpToolCard id="health-status" name="bakin_exec_health_status" label="Checked system health" description="Get a quick canonical system health summary with uptime, memory, connected session count, activity failures, and incident counts." source="plugins/health/index.ts:854">
 ```sh frame="terminal"
 bakin_exec_health_status
 ```
@@ -334,7 +334,7 @@ bakin_exec_images_recommend
 <p class="mcp-section-description">MCP tools discovered from registered exec tool definitions.</p>
 
 <div class="mcp-tool-list">
-<McpToolCard id="lesson-search" name="bakin_exec_lesson_search" label="Searched package lessons" description="Search the enabled agent-package lessons for the calling agent." source="plugins/team/index.ts:384" parameters={[{"name":"query","type":"string","required":true,"description":"Search query"},{"name":"limit","type":"number","required":false,"description":"Max lessons to return (default from settings, max 10)"}]}>
+<McpToolCard id="lesson-search" name="bakin_exec_lesson_search" label="Searched package lessons" description="Search the enabled agent-package lessons for the calling agent." source="plugins/team/index.ts:371" parameters={[{"name":"query","type":"string","required":true,"description":"Search query"},{"name":"limit","type":"number","required":false,"description":"Max lessons to return (default from settings, max 10)"}]}>
 ```sh frame="terminal"
 bakin_exec_lesson_search {
   "query": "value",
@@ -1125,7 +1125,7 @@ bakin_exec_tasks_update {
 <p class="mcp-section-description">Team tools expose agent roster, identity, status, messaging, and permission operations.</p>
 
 <div class="mcp-tool-list">
-<McpToolCard id="team-create-agent" name="bakin_exec_team_create_agent" label="Created agent" description="Create a new agent: registers it with the active runtime, writes persona files, configures dispatch permissions, optionally assigns it to a team. Returns next-step instructions." source="plugins/team/index.ts:551" parameters={[{"name":"id","type":"string","required":false,"description":"Agent ID (lowercase alphanumeric + hyphens). Auto-derived from name if omitted."},{"name":"name","type":"string","required":true,"description":"Display name (e.g. \"Jessica\")"},{"name":"emoji","type":"string","required":false,"description":"Single emoji (e.g. \"🔎\")"},{"name":"role","type":"string","required":false,"description":"One-line role description"},{"name":"vibe","type":"string","required":false,"description":"Personality vibe"},{"name":"primaryFunction","type":"string","required":false,"description":"What the agent does"},{"name":"defaultMode","type":"string","required":false,"description":"How the agent operates by default"},{"name":"model","type":"string","required":false,"description":"Full provider/model string. Uses default if omitted."},{"name":"soul","type":"string","required":false,"description":"Raw markdown for SOUL.md"},{"name":"tools","type":"string","required":false,"description":"Raw markdown for TOOLS.md"},{"name":"teamId","type":"string","required":false,"description":"Bakin team to assign the agent to"},{"name":"dispatchable","type":"union","required":false,"description":"Who can dispatch tasks to this agent. Default: \"main\"."}]}>
+<McpToolCard id="team-create-agent" name="bakin_exec_team_create_agent" label="Created agent" description="Create a new agent: registers it with the active runtime, writes persona files, configures dispatch permissions, optionally assigns it to a team. Returns next-step instructions." source="plugins/team/index.ts:538" parameters={[{"name":"id","type":"string","required":false,"description":"Agent ID (lowercase alphanumeric + hyphens). Auto-derived from name if omitted."},{"name":"name","type":"string","required":true,"description":"Display name (e.g. \"Jessica\")"},{"name":"emoji","type":"string","required":false,"description":"Single emoji (e.g. \"🔎\")"},{"name":"role","type":"string","required":false,"description":"One-line role description"},{"name":"vibe","type":"string","required":false,"description":"Personality vibe"},{"name":"primaryFunction","type":"string","required":false,"description":"What the agent does"},{"name":"defaultMode","type":"string","required":false,"description":"How the agent operates by default"},{"name":"model","type":"string","required":false,"description":"Full provider/model string. Uses default if omitted."},{"name":"soul","type":"string","required":false,"description":"Raw markdown for SOUL.md"},{"name":"tools","type":"string","required":false,"description":"Raw markdown for TOOLS.md"},{"name":"teamId","type":"string","required":false,"description":"Bakin team to assign the agent to"},{"name":"dispatchable","type":"union","required":false,"description":"Who can dispatch tasks to this agent. Default: \"main\"."}]}>
 ```sh frame="terminal"
 bakin_exec_team_create_agent {
   "id": "value",
@@ -1143,7 +1143,7 @@ bakin_exec_team_create_agent {
 }
 ```
 </McpToolCard>
-<McpToolCard id="team-delete-agent" name="bakin_exec_team_delete_agent" label="Deleted agent" description="Remove an agent from the active runtime and clean up Bakin state. Requires confirm=true as a safety guard." source="plugins/team/index.ts:661" parameters={[{"name":"agentId","type":"string","required":true,"description":"Agent to delete"},{"name":"confirm","type":"boolean","required":true,"description":"Must be true — safety guard against accidental deletion"}]}>
+<McpToolCard id="team-delete-agent" name="bakin_exec_team_delete_agent" label="Deleted agent" description="Remove an agent from the active runtime and clean up Bakin state. Requires confirm=true as a safety guard." source="plugins/team/index.ts:648" parameters={[{"name":"agentId","type":"string","required":true,"description":"Agent to delete"},{"name":"confirm","type":"boolean","required":true,"description":"Must be true — safety guard against accidental deletion"}]}>
 ```sh frame="terminal"
 bakin_exec_team_delete_agent {
   "agentId": "value",
@@ -1151,19 +1151,19 @@ bakin_exec_team_delete_agent {
 }
 ```
 </McpToolCard>
-<McpToolCard id="team-list" name="bakin_exec_team_list" label="Listed team" description="List all agents with their current status (online/working/available/offline)." source="plugins/team/index.ts:335">
+<McpToolCard id="team-list" name="bakin_exec_team_list" label="Listed team" description="List all agents with their current status (online/working/available/offline)." source="plugins/team/index.ts:322">
 ```sh frame="terminal"
 bakin_exec_team_list
 ```
 </McpToolCard>
-<McpToolCard id="team-members" name="bakin_exec_team_members" label="Listed team members" description="Get agents that belong to a specific team (e.g. &quot;builders&quot;, &quot;creators&quot;)." source="plugins/team/index.ts:506" parameters={[{"name":"teamId","type":"string","required":true,"description":"Team ID (e.g. \"builders\", \"creators\")"}]}>
+<McpToolCard id="team-members" name="bakin_exec_team_members" label="Listed team members" description="Get agents that belong to a specific team (e.g. &quot;builders&quot;, &quot;creators&quot;)." source="plugins/team/index.ts:493" parameters={[{"name":"teamId","type":"string","required":true,"description":"Team ID (e.g. \"builders\", \"creators\")"}]}>
 ```sh frame="terminal"
 bakin_exec_team_members {
   "teamId": "value"
 }
 ```
 </McpToolCard>
-<McpToolCard id="team-message" name="bakin_exec_team_message" label="Sent a message" description="Send a message to an agent via the active runtime." source="plugins/team/index.ts:449" parameters={[{"name":"agentId","type":"string","required":true,"description":"Agent ID"},{"name":"message","type":"string","required":true,"description":"Message to send. Do NOT use this to brief an agent about a task they were just assigned — dispatch already notified them, and a second message starts a duplicate worker in their main session."}]}>
+<McpToolCard id="team-message" name="bakin_exec_team_message" label="Sent a message" description="Send a message to an agent via the active runtime." source="plugins/team/index.ts:436" parameters={[{"name":"agentId","type":"string","required":true,"description":"Agent ID"},{"name":"message","type":"string","required":true,"description":"Message to send. Do NOT use this to brief an agent about a task they were just assigned — dispatch already notified them, and a second message starts a duplicate worker in their main session."}]}>
 ```sh frame="terminal"
 bakin_exec_team_message {
   "agentId": "value",
@@ -1171,26 +1171,26 @@ bakin_exec_team_message {
 }
 ```
 </McpToolCard>
-<McpToolCard id="team-my-team" name="bakin_exec_team_my_team" label="Read own team" description="Get the team that a specific agent belongs to, including all teammates." source="plugins/team/index.ts:525" parameters={[{"name":"agentId","type":"string","required":true,"description":"Agent ID"}]}>
+<McpToolCard id="team-my-team" name="bakin_exec_team_my_team" label="Read own team" description="Get the team that a specific agent belongs to, including all teammates." source="plugins/team/index.ts:512" parameters={[{"name":"agentId","type":"string","required":true,"description":"Agent ID"}]}>
 ```sh frame="terminal"
 bakin_exec_team_my_team {
   "agentId": "value"
 }
 ```
 </McpToolCard>
-<McpToolCard id="team-org" name="bakin_exec_team_org" label="Read organization" description="Get the full org structure: teams with their members. Use this to understand who is on which team and reporting lines." source="plugins/team/index.ts:496">
+<McpToolCard id="team-org" name="bakin_exec_team_org" label="Read organization" description="Get the full org structure: teams with their members. Use this to understand who is on which team and reporting lines." source="plugins/team/index.ts:483">
 ```sh frame="terminal"
 bakin_exec_team_org
 ```
 </McpToolCard>
-<McpToolCard id="team-profile" name="bakin_exec_team_profile" label="Read agent profile" description="Get the full profile for an agent including soul, rules, and tools." source="plugins/team/index.ts:355" parameters={[{"name":"agentId","type":"string","required":true,"description":"Agent ID"}]}>
+<McpToolCard id="team-profile" name="bakin_exec_team_profile" label="Read agent profile" description="Get the full profile for an agent including soul, rules, and tools." source="plugins/team/index.ts:342" parameters={[{"name":"agentId","type":"string","required":true,"description":"Agent ID"}]}>
 ```sh frame="terminal"
 bakin_exec_team_profile {
   "agentId": "value"
 }
 ```
 </McpToolCard>
-<McpToolCard id="team-read-file" name="bakin_exec_team_read_file" label="Read agent file" description="Read a workspace file for an agent (e.g., SOUL.md, AGENTS.md, TOOLS.md)." source="plugins/team/index.ts:434" parameters={[{"name":"agentId","type":"string","required":true,"description":"Agent ID"},{"name":"filename","type":"string","required":true,"description":"File name (e.g., SOUL.md)"}]}>
+<McpToolCard id="team-read-file" name="bakin_exec_team_read_file" label="Read agent file" description="Read a workspace file for an agent (e.g., SOUL.md, AGENTS.md, TOOLS.md)." source="plugins/team/index.ts:421" parameters={[{"name":"agentId","type":"string","required":true,"description":"Agent ID"},{"name":"filename","type":"string","required":true,"description":"File name (e.g., SOUL.md)"}]}>
 ```sh frame="terminal"
 bakin_exec_team_read_file {
   "agentId": "value",
@@ -1198,7 +1198,7 @@ bakin_exec_team_read_file {
 }
 ```
 </McpToolCard>
-<McpToolCard id="team-set-permissions" name="bakin_exec_team_set_permissions" label="Updated permissions" description="Update dispatch permissions — which agents a given agent can dispatch tasks to (subagents.allowAgents)." source="plugins/team/index.ts:706" parameters={[{"name":"agentId","type":"string","required":true,"description":"Agent whose allowAgents to modify"},{"name":"allowAgents","type":"array","required":true,"description":"Full replacement list of agent IDs this agent can dispatch to"}]}>
+<McpToolCard id="team-set-permissions" name="bakin_exec_team_set_permissions" label="Updated permissions" description="Update dispatch permissions — which agents a given agent can dispatch tasks to (subagents.allowAgents)." source="plugins/team/index.ts:693" parameters={[{"name":"agentId","type":"string","required":true,"description":"Agent whose allowAgents to modify"},{"name":"allowAgents","type":"array","required":true,"description":"Full replacement list of agent IDs this agent can dispatch to"}]}>
 ```sh frame="terminal"
 bakin_exec_team_set_permissions {
   "agentId": "value",
@@ -1208,14 +1208,14 @@ bakin_exec_team_set_permissions {
 }
 ```
 </McpToolCard>
-<McpToolCard id="team-status" name="bakin_exec_team_status" label="Checked agent status" description="Get the heartbeat and health status for an agent." source="plugins/team/index.ts:369" parameters={[{"name":"agentId","type":"string","required":true,"description":"Agent ID"}]}>
+<McpToolCard id="team-status" name="bakin_exec_team_status" label="Checked agent status" description="Get the heartbeat and health status for an agent." source="plugins/team/index.ts:356" parameters={[{"name":"agentId","type":"string","required":true,"description":"Agent ID"}]}>
 ```sh frame="terminal"
 bakin_exec_team_status {
   "agentId": "value"
 }
 ```
 </McpToolCard>
-<McpToolCard id="team-update-identity" name="bakin_exec_team_update_identity" label="Updated agent identity" description="Update an existing agent's identity fields (name, emoji, role, vibe, etc.) and/or workspace files (SOUL.md, TOOLS.md)." source="plugins/team/index.ts:626" parameters={[{"name":"agentId","type":"string","required":true,"description":"Target agent ID"},{"name":"name","type":"string","required":false,"description":"New display name"},{"name":"emoji","type":"string","required":false,"description":"New emoji"},{"name":"role","type":"string","required":false,"description":"Updated role"},{"name":"vibe","type":"string","required":false,"description":"Updated vibe"},{"name":"primaryFunction","type":"string","required":false,"description":"Updated primary function"},{"name":"defaultMode","type":"string","required":false,"description":"Updated default mode"},{"name":"soul","type":"string","required":false,"description":"Replace SOUL.md content"},{"name":"tools","type":"string","required":false,"description":"Replace TOOLS.md content"}]}>
+<McpToolCard id="team-update-identity" name="bakin_exec_team_update_identity" label="Updated agent identity" description="Update an existing agent's identity fields (name, emoji, role, vibe, etc.) and/or workspace files (SOUL.md, TOOLS.md)." source="plugins/team/index.ts:613" parameters={[{"name":"agentId","type":"string","required":true,"description":"Target agent ID"},{"name":"name","type":"string","required":false,"description":"New display name"},{"name":"emoji","type":"string","required":false,"description":"New emoji"},{"name":"role","type":"string","required":false,"description":"Updated role"},{"name":"vibe","type":"string","required":false,"description":"Updated vibe"},{"name":"primaryFunction","type":"string","required":false,"description":"Updated primary function"},{"name":"defaultMode","type":"string","required":false,"description":"Updated default mode"},{"name":"soul","type":"string","required":false,"description":"Replace SOUL.md content"},{"name":"tools","type":"string","required":false,"description":"Replace TOOLS.md content"}]}>
 ```sh frame="terminal"
 bakin_exec_team_update_identity {
   "agentId": "value",

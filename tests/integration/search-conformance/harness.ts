@@ -9,10 +9,13 @@
  * from ~/toolchains, `make -C zig build` in the antfly-main worktree.
  */
 import { createServer } from 'net'
+import { execFileSync } from 'child_process'
 import { existsSync, mkdtempSync, mkdirSync, openSync, rmSync, symlinkSync } from 'fs'
 import { tmpdir, homedir } from 'os'
 import { join } from 'path'
 import { spawn, type ChildProcess } from 'child_process'
+
+import { ANTFLY_PIN } from '../../../packages/adapter-antfly/src/pin'
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -31,6 +34,25 @@ export function resolveAntflyBinary(): string | null {
   ]
   for (const candidate of candidates) {
     if (candidate && existsSync(candidate)) {
+      // Version guard: a machine/dev binary older than the pin would fail
+      // confusingly (e.g. pre-rc.19 binaries lack the `standalone`
+      // subcommand and time out unready) — skip loudly instead, unless the
+      // caller explicitly chose the binary via BAKIN_ANTFLY_BIN.
+      if (candidate !== process.env.BAKIN_ANTFLY_BIN) {
+        try {
+          const reported = execFileSync(candidate, ['--version'], { encoding: 'utf-8', timeout: 10_000 }).trim()
+          if (!reported.includes(ANTFLY_PIN.version)) {
+            console.warn(
+              `search-conformance: SKIPPING ${candidate} — reports "${reported}" but the pin is ${ANTFLY_PIN.version}. ` +
+              'Run `bakin install search` to upgrade, or set BAKIN_ANTFLY_BIN to test this binary anyway.',
+            )
+            continue
+          }
+        } catch {
+          console.warn(`search-conformance: SKIPPING ${candidate} — could not probe --version`)
+          continue
+        }
+      }
       console.warn(`search-conformance: antfly binary = ${candidate}`)
       return candidate
     }
@@ -101,7 +123,10 @@ export async function spawnEphemeralAntfly(binary: string, opts: SpawnOpts = {})
   const healthPort = port + 1
 
   const argv = [
-    'swarm',
+    // rc.19+ renamed the single-process server subcommand swarm → standalone.
+    // BAKIN_ANTFLY_SUBCOMMAND overrides for cross-version evaluation runs
+    // (e.g. pointing BAKIN_ANTFLY_BIN at a pre-rc.19 binary).
+    process.env.BAKIN_ANTFLY_SUBCOMMAND ?? 'swarm',
     '--host', '127.0.0.1',
     '--port', String(port),
     '--health-port', String(healthPort),

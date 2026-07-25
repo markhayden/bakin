@@ -237,9 +237,10 @@ is the copyable page-and-slot conformance setup for external packages.
 
 Use the conversation kit's `ConversationPanel` when a plugin needs a durable
 agent chat panel inside its own page. Keep the plugin-owned record as the
-source of truth for visible messages and pass a stable thread id (built with
-`conversationThreadId`) to the server route so the runtime adapter can
-preserve conversation continuity.
+source of truth for visible messages. Create the server-owned background turn
+with `ctx.conversations.createTurnService(...)`, and use
+`useConversationThread` to load the transcript and consume the service's
+plugin-namespaced events. The turn survives navigation and request teardown.
 
 `transformText` lets the plugin post-process assistant text and render
 structured artifacts below it without forking the chat component. For
@@ -247,31 +248,54 @@ example, a content planning plugin can strip proposal JSON from an assistant
 message and render a review badge inline:
 
 ```tsx
-import { ConversationPanel, useConversationStream } from '@makinbakin/sdk/conversation'
+import {
+  ConversationPanel,
+  useConversationThread,
+  type ConversationMessage,
+} from '@makinbakin/sdk/conversation'
 import { pluginFetch } from '@makinbakin/sdk/utils'
 
-function PlanningChat({ sessionId, agentId, messages, refresh }) {
-  const stream = useConversationStream({
-    fetcher: (content, { signal }) =>
-      pluginFetch('messaging', `sessions/${sessionId}/messages`, {
+function PlanningChat({ sessionId, agentId }) {
+  const thread = useConversationThread({
+    threadKey: sessionId,
+    events: {
+      chunk: 'messaging.plan.chunk',
+      done: 'messaging.plan.done',
+      error: 'messaging.plan.error',
+    },
+    keyOf: (payload) => payload.sessionId,
+    load: async () => {
+      const response = await pluginFetch('messaging', `sessions/${sessionId}`)
+      if (!response.ok) return null
+      return response.json() as Promise<{
+        messages: ConversationMessage[]
+        streaming?: boolean
+        streamingText?: string
+      }>
+    },
+    post: async (_key, content) => {
+      const response = await pluginFetch('messaging', `sessions/${sessionId}/messages`, {
         method: 'POST',
         body: { content },
-        signal,
-      }),
-    onCustom: (event, data) => {
-      if (event === 'proposal') mergeProposal(data)
+      })
+      return response.ok
+        ? { ok: true }
+        : { ok: false, status: response.status }
     },
-    onDone: refresh,
   })
 
   return (
     <ConversationPanel
-      messages={messages}
-      liveChunks={stream.liveChunks}
-      streaming={stream.streaming}
-      agentId={agentId}
-      onSend={stream.send}
-      onAbort={stream.abort}
+      messages={thread.messages}
+      liveChunks={thread.liveChunks}
+      streaming={thread.streaming}
+      agent={{ id: agentId, name: agentId }}
+      onSend={thread.send}
+      onAbort={() => {
+        void pluginFetch('messaging', `sessions/${sessionId}/abort`, {
+          method: 'POST',
+        })
+      }}
       storageKey={`messaging:${sessionId}`}
       fitParent
       showHeader={false}

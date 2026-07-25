@@ -45,7 +45,7 @@ beforeEach(() => {
 describe('meterAgentTurn', () => {
   it('records a non-dispatch row with a synthetic runId and null taskId', async () => {
     priceTurnImpl = () => ({ model: 'anthropic/claude-sonnet-4-6', costUsdMicros: 4200 })
-    await meterAgentTurn({
+    await meterAgentTurn({ workClass: 'send',
       agent: 'main',
       activityClass: 'system',
       result: { id: 'm', usage: { input: 100, output: 50, total: 150 }, metadata: { adapterTurnId: 'turn-m' } },
@@ -67,7 +67,7 @@ describe('meterAgentTurn', () => {
   })
 
   it('uses the dispatch runId + taskId when provided', async () => {
-    await meterAgentTurn({ runId: 'task:t1:d1', taskId: 't1', agent: 'pixel', activityClass: 'user', result: { id: 'm', usage: { input: 1, output: 1 } } })
+    await meterAgentTurn({ workClass: 'send', runId: 'task:t1:d1', taskId: 't1', agent: 'pixel', activityClass: 'user', result: { id: 'm', usage: { input: 1, output: 1 } } })
     expect(costRows[0].runId).toBe('task:t1:d1')
     expect(costRows[0].taskId).toBe('t1')
     expect(costRows[0].usageKind).toBe('tokens')
@@ -75,7 +75,7 @@ describe('meterAgentTurn', () => {
   })
 
   it('threads cache read/write tokens into the cost row and the usage entry', async () => {
-    await meterAgentTurn({
+    await meterAgentTurn({ workClass: 'send',
       runId: 'task:t-cache:d1', taskId: 't-cache', agent: 'pixel',
       activityClass: 'user',
       result: { id: 'm', usage: { input: 1000, output: 50, total: 1050, cacheRead: 900, cacheWrite: 40 } },
@@ -85,7 +85,7 @@ describe('meterAgentTurn', () => {
   })
 
   it('preserves an explicit total even when separately reported cache tokens are larger', async () => {
-    await meterAgentTurn({
+    await meterAgentTurn({ workClass: 'send',
       agent: 'pixel',
       activityClass: 'user',
       result: { id: 'm', usage: { input: 537, output: 73, total: 610, cacheRead: 34_200 } },
@@ -100,7 +100,7 @@ describe('meterAgentTurn', () => {
   })
 
   it('includes cache components when it must derive a missing total', async () => {
-    await meterAgentTurn({
+    await meterAgentTurn({ workClass: 'send',
       agent: 'pixel',
       activityClass: 'user',
       result: { id: 'm', usage: { input: 537, output: 73, cacheRead: 34_200 } },
@@ -110,7 +110,7 @@ describe('meterAgentTurn', () => {
   })
 
   it('withholds a derived total when either base token counter is missing', async () => {
-    await meterAgentTurn({
+    await meterAgentTurn({ workClass: 'send',
       agent: 'pixel',
       activityClass: 'user',
       result: { id: 'm', usage: { input: 537, cacheRead: 34_200 } },
@@ -125,7 +125,7 @@ describe('meterAgentTurn', () => {
   })
 
   it('omits cache fields entirely when the runtime reports no cache usage', async () => {
-    await meterAgentTurn({ agent: 'pixel', activityClass: 'user', result: { id: 'm', usage: { input: 10, output: 5 } } })
+    await meterAgentTurn({ workClass: 'send', agent: 'pixel', activityClass: 'user', result: { id: 'm', usage: { input: 10, output: 5 } } })
     expect(costRows[0].cacheReadTokens ?? null).toBeNull()
     expect('tokensCacheRead' in usageRows[0]).toBe(false)
     expect('tokensCacheWrite' in usageRows[0]).toBe(false)
@@ -135,27 +135,27 @@ describe('meterAgentTurn', () => {
     // Runtime reports it ran modelY; routing had requested modelX.
     const seen: Record<string, unknown>[] = []
     priceTurnImpl = (d) => { seen.push(d); return { model: d.model as string, costUsdMicros: 999 } }
-    await meterAgentTurn({ agent: 'pixel', activityClass: 'user', resolvedModel: 'modelX', result: { id: 'm', usage: { input: 1, output: 1, model: 'modelY' } } })
+    await meterAgentTurn({ workClass: 'send', agent: 'pixel', activityClass: 'user', resolvedModel: 'modelX', result: { id: 'm', usage: { input: 1, output: 1, model: 'modelY' } } })
     expect(seen[0].model).toBe('modelY') // priced against what ran
     expect(costRows[0].model).toBe('modelY')
   })
 
   it('persists the billing attribution (provider + lane) from the pricing hook', async () => {
     priceTurnImpl = () => ({ model: 'openai-codex/gpt-5.5-codex', provider: 'openai-codex', lane: 'subscription', costUsdMicros: null })
-    await meterAgentTurn({ agent: 'main', activityClass: 'user', result: { id: 'm', usage: { input: 10, output: 5 } } })
+    await meterAgentTurn({ workClass: 'send', agent: 'main', activityClass: 'user', result: { id: 'm', usage: { input: 10, output: 5 } } })
     expect(costRows[0]).toMatchObject({ provider: 'openai-codex', lane: 'subscription' })
   })
 
   it('records null provider/lane when the hook does not attribute billing', async () => {
     priceTurnImpl = () => ({ model: 'm', costUsdMicros: 10 })
-    await meterAgentTurn({ agent: 'main', activityClass: 'user', result: { id: 'm', usage: { input: 1, output: 1 } } })
+    await meterAgentTurn({ workClass: 'send', agent: 'main', activityClass: 'user', result: { id: 'm', usage: { input: 1, output: 1 } } })
     expect(costRows[0].provider ?? null).toBeNull()
     expect(costRows[0].lane ?? null).toBeNull()
   })
 
   it('records null cost (unmetered) when pricing is unavailable, never throws', async () => {
     priceTurnImpl = () => { throw new Error('boom') }
-    await meterAgentTurn({ agent: 'pixel', activityClass: 'user', resolvedModel: 'fallback/model', result: { id: 'm', usage: { input: 1, output: 1 } } })
+    await meterAgentTurn({ workClass: 'send', agent: 'pixel', activityClass: 'user', resolvedModel: 'fallback/model', result: { id: 'm', usage: { input: 1, output: 1 } } })
     expect(costRows).toHaveLength(1)
     expect(costRows[0]).toMatchObject({
       agent: 'pixel',
@@ -170,7 +170,7 @@ describe('meterAgentTurn', () => {
   })
 
   it('rejects malformed counters as unknown without inventing a total', async () => {
-    await meterAgentTurn({
+    await meterAgentTurn({ workClass: 'send',
       agent: 'pixel',
       activityClass: 'user',
       result: { id: 'm', usage: { input: -1, output: 2, cacheRead: Number.POSITIVE_INFINITY } },
@@ -189,7 +189,7 @@ describe('meterAgentTurn', () => {
 
   it('rejects malformed pricing as unpriced evidence', async () => {
     priceTurnImpl = () => ({ model: 'provider/model', costUsdMicros: -25 })
-    await meterAgentTurn({
+    await meterAgentTurn({ workClass: 'send',
       agent: 'pixel',
       activityClass: 'user',
       result: { id: 'm', usage: { input: 1, output: 2 } },

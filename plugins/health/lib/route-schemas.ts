@@ -1,7 +1,9 @@
 /** Exact HTTP schemas for the canonical Health report and repair boundaries. */
 import { z } from 'zod'
+import { HEALTH_INCIDENT_CLASSES } from '@makinbakin/sdk/types'
 import {
   actionIncidentInputSchema,
+  advisoryIncidentInputSchema,
   healthIncidentInputSchema,
   healthResourceSchema,
   healthResolutionSchema,
@@ -115,7 +117,12 @@ const unknownObservationSchema = z.object({
   ...canonicalObservationBase,
   status: z.literal('unknown'),
   incidentId: nonEmptyString,
-  incident: watchIncidentInputSchema,
+  // Mirror of the producer contract: watch, or advisory when the unknown
+  // self-resolves. This mirror lagging the contract made the CLIENT reject
+  // the ENTIRE health report the first time a server emitted an advisory
+  // unknown — "Health report response was invalid" on a healthy box
+  // (rc.24 field report, 2026-07-23). Keep the two in lockstep.
+  incident: z.union([watchIncidentInputSchema, advisoryIncidentInputSchema]),
 }).strict()
 
 export const canonicalHealthObservationSchema = z.discriminatedUnion('status', [
@@ -153,6 +160,8 @@ export const canonicalHealthIncidentSchema = z.object({
   id: nonEmptyString,
   status: z.enum(['warning', 'error', 'unknown']),
   disposition: z.enum(['advisory', 'watch', 'action_required']),
+  effectiveDisposition: z.enum(['advisory', 'watch', 'action_required']),
+  class: z.enum(HEALTH_INCIDENT_CLASSES).optional(),
   title: nonEmptyString,
   impact: nonEmptyString,
   resources: z.array(healthResourceSchema),
@@ -161,6 +170,9 @@ export const canonicalHealthIncidentSchema = z.object({
   observedAt: isoDateTime,
   staleAt: isoDateTime,
   stale: z.boolean(),
+  // Lockstep with HealthIncident.ackState (health trust overhaul) — a
+  // lagging mirror makes the client reject the entire report (rc.25).
+  ackState: z.enum(['acked', 'snoozed']).optional(),
 }).strict()
 
 export const searchReadinessStageSchema = z.object({
@@ -200,6 +212,7 @@ export const healthReportSchema = z.object({
   revision: z.number().int().nonnegative(),
   generatedAt: isoDateTime,
   overallStatus: z.enum(['healthy', 'needs_attention', 'degraded', 'unknown_stale']),
+  sensitivity: z.enum(['developer', 'standard', 'quiet']),
   lastFullSweep: z.object({
     id: nonEmptyString,
     startedAt: isoDateTime,
@@ -222,6 +235,9 @@ export const healthReportSchema = z.object({
       watching: z.number().int().nonnegative(),
       advisory: z.number().int().nonnegative(),
       unknown: z.number().int().nonnegative(),
+      // Lockstep with the summary shape (health trust overhaul): tier
+      // counts describe LIVE attention; acked/snoozed count separately.
+      acknowledged: z.number().int().nonnegative(),
     }).strict(),
   }).strict(),
 }).strict().superRefine((report, context) => {
@@ -302,11 +318,16 @@ export const healthReportSchema = z.object({
   }
   reconcileSummary(report.summary.checks, expectedCheckSummary, 'checks', 'check executions', context)
 
+  // Summary counts reconcile against EFFECTIVE dispositions (#690) of
+  // LIVE (un-acked) incidents — the urgency consumers act on; acked and
+  // snoozed incidents reconcile into their own count.
+  const live = report.incidents.filter((incident) => incident.ackState === undefined)
   const expectedIncidentSummary = {
-    actionRequired: report.incidents.filter((incident) => incident.disposition === 'action_required').length,
-    watching: report.incidents.filter((incident) => incident.disposition === 'watch').length,
-    advisory: report.incidents.filter((incident) => incident.disposition === 'advisory').length,
-    unknown: report.incidents.filter((incident) => incident.status === 'unknown').length,
+    actionRequired: live.filter((incident) => incident.effectiveDisposition === 'action_required').length,
+    watching: live.filter((incident) => incident.effectiveDisposition === 'watch').length,
+    advisory: live.filter((incident) => incident.effectiveDisposition === 'advisory').length,
+    unknown: live.filter((incident) => incident.status === 'unknown').length,
+    acknowledged: report.incidents.length - live.length,
   }
   reconcileSummary(report.summary.incidents, expectedIncidentSummary, 'incidents', 'incidents', context)
 })

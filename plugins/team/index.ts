@@ -129,23 +129,6 @@ const teamPlugin: BakinPlugin = definePlugin({
         description: 'Mark agents as offline after this many minutes without a heartbeat or audit activity',
         default: 15,
       },
-      {
-        key: 'routingProvider',
-        type: 'select',
-        label: 'Task routing provider',
-        description: 'LLM provider for resolving team-assigned tasks to the best-suited member (key from env or secret store)',
-        options: [{ value: 'anthropic', label: 'anthropic' }, { value: 'openai', label: 'openai' }, { value: 'google', label: 'google' }],
-        default: 'anthropic',
-      },
-      {
-        key: 'routingModel',
-        type: 'string',
-        label: 'Task routing model',
-        description: 'Provider-native model id for assignment routing — a cheap/fast model is right; this is a classification call',
-        // Literal (not DEFAULT_ROUTING_MODEL) so the docs settings-table
-        // generator can read it; keep in sync with assignment-resolver.ts.
-        default: 'claude-haiku-4-5-20251001',
-      },
     ],
   },
 
@@ -317,15 +300,19 @@ const teamPlugin: BakinPlugin = definePlugin({
       return readTeams().some((t) => t.id === (d.teamId as string))
     }, { label: 'Check team exists.', summary: 'Returns true when the given teamId is a configured team. Use it for write-time validation of team assignments.', hookKind: 'rpc' })
     ctx.hooks.register('team.resolveAssignment', async (d: Record<string, unknown>) => {
-      const settings = ctx.getSettings<{ routingProvider?: string; routingModel?: string }>()
+      // The router's own model comes from the work-class matrix (models
+      // plugin) — the 'team-routing' row; no route = inherit (the main
+      // agent's default model, since the call rides the runtime).
+      const { resolveSystemRoute } = await import('../../src/core/system-route')
+      const route = await resolveSystemRoute('team-routing')
       const heartbeats = readHeartbeats()
       const lastAuditActivity = getLastAuditActivity()
       return resolveTeamAssignment({
         runtime: ctx.runtime,
-        settings: { routingProvider: settings.routingProvider, routingModel: settings.routingModel },
+        route: { model: route.model, thinking: route.thinking, source: route.source },
         getStatus: (agentId) => resolveAgentStatus(agentId, heartbeats, lastAuditActivity).status,
       }, d as unknown as ResolveAssignmentRequest)
-    }, { label: 'Resolve team assignment.', summary: 'Resolves a team-assigned task to the best-suited member via the routing LLM (#189). Returns {ok:true, agentId, reason, model} or {ok:false, kind: transient|structural, message} — dispatch classifies by kind. Use it from dispatch or any surface that must turn a teamId into a concrete agent.', hookKind: 'rpc' })
+    }, { label: 'Resolve team assignment.', summary: 'Resolves a team-assigned task to the best-suited member via an ephemeral runtime turn (#189). Returns {ok:true, agentId, reason, model} or {ok:false, kind: transient|structural, message} — dispatch classifies by kind. Use it from dispatch or any surface that must turn a teamId into a concrete agent.', hookKind: 'rpc' })
 
     // routes registered at module scope via the lib/routes/* populate functions (T20+).
 
@@ -765,12 +752,17 @@ const teamPlugin: BakinPlugin = definePlugin({
     ctx.registerHealthCheck({
       id: 'routing',
       name: 'Task routing readiness (#189)',
-      description: 'Checks that unresolved team-assigned tasks have credentials for their routing provider.',
+      description: 'Checks that the runtime can serve the routing turn for unresolved team-assigned tasks.',
       group: { key: 'agents', label: 'Agents' },
       maxAgeMs: 60_000,
-      run: () => checkTeamRouting({
-        routingProvider: ctx.getSettings<{ routingProvider?: string }>().routingProvider,
-      }),
+      run: async () => {
+        const { resolveSystemRoute } = await import('../../src/core/system-route')
+        const route = await resolveSystemRoute('team-routing')
+        return checkTeamRouting({
+          credentialStatus: () => ctx.runtime.credentialStatus(),
+          routeModel: route.model,
+        })
+      },
     })
   },
 

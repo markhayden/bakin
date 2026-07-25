@@ -1,7 +1,7 @@
 import type { SearchAdapterSetup } from '@bakin/core/adapters/search'
 import type { AdapterLogger } from '@bakin/core/adapters/shared'
 import { DEFAULT_SETTINGS, type AntflySettings } from './defaults'
-import { checkAntflyDependency, installAntflyDependency } from './installer'
+import { checkAntflyDependency, installAntflyDependency, resetAntflyEngineData } from './installer'
 import { checkInferenceModels, installInferenceModels, requiredModelsForSettings } from './models'
 
 /**
@@ -37,5 +37,6 @@ export function createAntflySearchSetup(
       check: () => checkInferenceModels(models),
       install: (opts) => installInferenceModels(opts, logger, models),
     },
+    resetEngineData: () => resetAntflyEngineData(logger),
   }
 }

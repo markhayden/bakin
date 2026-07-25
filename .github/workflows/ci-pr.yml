@@ -118,8 +118,37 @@ jobs:
       # --timeout 15000: worker contention on the 4-core runner can push
       # render-heavy component tests past the 5s default (observed 5.4-7.2s).
       - name: Tests
-        run: bun test --parallel --isolate --timeout 15000 --path-ignore-patterns "tests/components/kanban-dnd.test.tsx"
-      # Quarantined serial step — kanban-dnd destabilizes the parallel pool under
-      # contention on 2-vCPU runners (issue #650). Still GATES; quarantine != skip.
-      - name: Quarantined serial tests (issue #650)
-        run: bun test tests/components/kanban-dnd.test.tsx --isolate --timeout 15000
+        run: bun test --parallel --isolate --timeout 15000
+
+  # The release pipeline stamps APP_VERSION before testing, which turns on
+  # stamped-host-only behavior (the plugin compat gate skips satisfaction on
+  # 0.0.0-dev but enforces on real versions). The rc.21 release build failed
+  # on tests that had only ever run unstamped — this job catches that class
+  # pre-merge by running the suite against a describe-stamped version.
+  check-stamped:
+    name: Tests (stamped host)
+    if: ${{ github.event.pull_request.draft == false }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      # Full history + tags so stamp-version.ts resolves a real
+      # describe-stamped version (v0.0.1-rc.N-M-g<sha>) instead of 0.0.0-dev.
+      - name: Checkout full history
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Stamp release version
+        run: bun run scripts/stamp-version.ts
+
+      - name: Tests
+        run: bun test --parallel --isolate --timeout 15000

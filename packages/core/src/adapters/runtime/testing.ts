@@ -1,3 +1,5 @@
+import { writeFileSync } from 'fs'
+import { join } from 'path'
 import type { AgentRuntimeAdapter, ChatChunk, CronJob, CronRun, MessageArgs, RuntimeAgent, RuntimeSession, RuntimeToolActivity } from './concepts'
 import { RuntimeError } from './errors'
 
@@ -31,6 +33,41 @@ export function mockChannels(): NonNullable<AgentRuntimeAdapter['channels']> {
  *
  * Usage: `createMockRuntimeAdapter({ cron: mockCron() })`
  */
+/**
+ * Filename the isolation-honoring mock drops into each turn's runWorkspace —
+ * the conformance isolation probe's observable (same-agent-concurrency D1).
+ */
+export const MOCK_ISOLATION_PROBE = 'cwd-probe.txt'
+
+/**
+ * Opt-in same-agent-turn isolation for the mock: declares
+ * `concurrency.sameAgentTurns: 'isolated'` and honors
+ * `MessageArgs.runWorkspace` by dropping MOCK_ISOLATION_PROBE into the
+ * handed directory before delegating — the minimal observable proof the
+ * conformance isolation check requires. The DEFAULT mock stays
+ * 'serialized' (minimal shape).
+ *
+ * Usage: `withMockIsolation(createMockRuntimeAdapter())`
+ */
+export function withMockIsolation(base: AgentRuntimeAdapter): AgentRuntimeAdapter {
+  return {
+    ...base,
+    capabilities: async (opts?: { agentId?: string }) => ({
+      ...(await base.capabilities(opts)),
+      concurrency: { sameAgentTurns: 'isolated' as const },
+    }),
+    messaging: {
+      ...base.messaging,
+      send: async (args: MessageArgs) => {
+        if (args.runWorkspace) {
+          writeFileSync(join(args.runWorkspace, MOCK_ISOLATION_PROBE), args.threadId ?? 'no-thread')
+        }
+        return base.messaging.send(args)
+      },
+    },
+  }
+}
+
 export function mockCron(): NonNullable<AgentRuntimeAdapter['cron']> {
   // Stateful (Map-backed) so the conformance CRUD round-trip pins real
   // behavior: created jobs are listable/gettable, updates persist, a missing
@@ -390,6 +427,7 @@ export function createMockRuntimeAdapter(
         defaultSubagentModel: true,
         aliases: true,
         perAgentSubagentModel: true,
+        supportedThinkingLevels: ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'adaptive', 'max'],
       }),
       routingPolicy: async () => ({ ...mockRoutingPolicy }),
       setRoutingPolicy: async (patch, _reason) => {
@@ -461,5 +499,7 @@ function mockCapabilities(deliveryNative: boolean) {
     sessions: { mode: 'native' as const },
     workspaceFiles: { mode: 'native' as const },
     input: { imageInput: false, audioInput: false },
+    // Minimal mock shape: no isolation — conformance's isolated legs opt in.
+    concurrency: { sameAgentTurns: 'serialized' as const },
   }
 }

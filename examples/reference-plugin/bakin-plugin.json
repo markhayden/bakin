@@ -2,7 +2,7 @@
   "id": "reference-bookmarks",
   "name": "Bookmarks (reference plugin)",
   "version": "0.1.0",
-  "bakin": ">=0.1.0",
+  "bakin": ">=0.0.1",
   "description": "The canonical Bakin plugin template: a small bookmarks manager exercising routes, exec tools, settings, search, health checks, SSE events, and storage — written only against @makinbakin/sdk.",
   "permissions": ["storage.read", "storage.write"],
   "contributes": {

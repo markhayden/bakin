@@ -36,6 +36,25 @@ describe('Settings', () => {
     expect(settings.dispatch.maxBrandContextBytes).toBe(12288)
   })
 
+  it('doctor.sensitivity defaults to standard and coerces invalid values (#690)', () => {
+    expect(getSettings().doctor.sensitivity).toBe('standard')
+
+    resetSettingsCache()
+    fs.mkdirSync(TEST_CONTENT_DIR, { recursive: true })
+    fs.writeFileSync(
+      path.join(TEST_CONTENT_DIR, 'settings.json'),
+      JSON.stringify({ doctor: { sensitivity: 'shouty' } }),
+    )
+    expect(getSettings().doctor.sensitivity).toBe('standard')
+
+    resetSettingsCache()
+    fs.writeFileSync(
+      path.join(TEST_CONTENT_DIR, 'settings.json'),
+      JSON.stringify({ doctor: { sensitivity: 'quiet' } }),
+    )
+    expect(getSettings().doctor.sensitivity).toBe('quiet')
+  })
+
   it('returns doctor defaults including requireOnboard', () => {
     const settings = getSettings()
     expect(settings.doctor.intervalMs).toBe(30 * 60 * 1000)

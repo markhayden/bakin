@@ -149,6 +149,7 @@ type TurnSnapshot = { marker: string; agentId: string; taskId: string; threadId:
 let turnsSnapshot: TurnSnapshot[] = []
 let snapshotThrows = false
 const abortTurnsSpy = mock((_taskId: string, _reason: string) => 1)
+const abortByRunIdsSpy = mock((_runIds: string[], _reason: string) => 1)
 const forceReleaseSpy = mock((_marker: string) => true)
 mock.module('../../src/core/dispatch-registry', () => ({
   getInFlightTurnsSnapshot: () => {
@@ -156,6 +157,7 @@ mock.module('../../src/core/dispatch-registry', () => ({
     return turnsSnapshot
   },
   abortTurnsForTask: (...args: unknown[]) => abortTurnsSpy(...(args as [string, string])),
+  abortTurnsByRunIds: (...args: unknown[]) => abortByRunIdsSpy(...(args as [string[], string])),
   forceReleaseTurn: (...args: unknown[]) => forceReleaseSpy(...(args as [string])),
   ORPHAN_TURN_FORCE_RELEASE_GRACE_MS: 60_000,
 }))
@@ -254,19 +256,25 @@ describe('watchdog', () => {
       expect(forceReleaseSpy).not.toHaveBeenCalled()
     })
 
-    it('force-releases an aborted orphan only after the grace period, with audit', async () => {
-      turnsSnapshot = [{ ...baseTurn, marker: 'ghost-2', taskId: 'ghost-2', abortedAt: Date.now() - 61_000 }]
+    it('force-releases an aborted orphan only after the grace period, with audit + ledger settle', async () => {
+      // Force-release keys by threadId (the run identity) and settles the
+      // ledger row as lost so a zombie's late asset saves can't pass the
+      // staleness gate (same-agent-concurrency D3). Claim a real run so the
+      // ledger settle has a row to flip.
+      claimRun({ runId: 'task:ghost-2:d1', taskId: 'ghost-2', seq: 1, agent: 'pixel', bootId: 'boot-wd', now: Date.now() })
+      turnsSnapshot = [{ ...baseTurn, marker: 'ghost-2', taskId: 'ghost-2', threadId: 'task:ghost-2:d1', abortedAt: Date.now() - 61_000 }]
 
       start(tempDir)
       await vi.advanceTimersByTimeAsync(1500)
 
       expect(abortTurnsSpy).not.toHaveBeenCalled()
-      expect(forceReleaseSpy).toHaveBeenCalledWith('ghost-2')
+      expect(forceReleaseSpy).toHaveBeenCalledWith('task:ghost-2:d1')
+      expect(getLiveRun('ghost-2')).toBeNull()
       expect(vi.mocked(appendAudit)).toHaveBeenCalledWith(
         tempDir,
         'task.turn_force_released',
         'watchdog',
-        expect.objectContaining({ id: 'ghost-2', agent: 'pixel' }),
+        expect.objectContaining({ id: 'ghost-2', agent: 'pixel', runId: 'task:ghost-2:d1' }),
       )
     })
 
@@ -533,6 +541,11 @@ describe('watchdog', () => {
       )
       expect(mockStoreMoveTask).toHaveBeenCalledWith('hb-stale', 'todo')
       expect(getLiveRun('hb-stale')).toBeNull()
+      // ONLY the superseded runs' turns are aborted (by runId) — a healthy
+      // parallel workflow-step sibling sharing the taskId must survive
+      // (same-agent-concurrency D3 + review F2).
+      expect(abortByRunIdsSpy).toHaveBeenCalledWith(['task:hb-stale:d1'], 'superseded')
+      expect(abortTurnsSpy).not.toHaveBeenCalledWith('hb-stale', 'superseded')
 
       // The slot is freed exactly once — a racing second supersede loses.
       expect(supersedeStaleRun('hb-stale', Date.now())).toEqual({ superseded: false })

@@ -3,14 +3,15 @@
 import { useId, useState } from 'react'
 import type { HealthIncident } from '@makinbakin/sdk/types'
 import { PluginLink, StatusBadge } from '@makinbakin/sdk/components'
-import { Button, buttonVariants } from '@makinbakin/sdk/ui'
-import { AlertTriangle, ChevronRight, CircleHelp, Wrench } from 'lucide-react'
+import { Button, Popover, PopoverContent, PopoverTrigger, buttonVariants } from '@makinbakin/sdk/ui'
+import { AlertTriangle, BellOff, ChevronRight, CircleHelp, Wrench } from 'lucide-react'
 import type { OverviewIncident, OverviewTone } from '../lib/health-view-model'
 
 export interface IncidentRowProps {
   item: OverviewIncident
   onRepair?: (incident: HealthIncident) => void
   onRerun?: (incident: HealthIncident) => void
+  onAck?: (incident: HealthIncident, action: 'ack' | 'snooze' | 'clear', window?: '24h' | '7d') => void
 }
 
 function incidentStatus(incident: HealthIncident): {
@@ -18,13 +19,39 @@ function incidentStatus(incident: HealthIncident): {
   tone: OverviewTone
   icon: typeof AlertTriangle
 } {
+  // Cards render EFFECTIVE urgency (#690) — error and unknown are never
+  // demoted (evidence state is not a presentation choice), so Critical and
+  // Verify keep precedence; a demoted or advisory incident reads calm.
   if (incident.status === 'error') return { label: 'Critical', tone: 'destructive', icon: AlertTriangle }
   if (incident.status === 'unknown') return { label: 'Verify', tone: 'neutral', icon: CircleHelp }
+  if (incident.effectiveDisposition === 'advisory') {
+    return { label: 'Advisory', tone: 'neutral', icon: CircleHelp }
+  }
   return {
-    label: incident.disposition === 'action_required' ? 'Action' : 'Watch',
+    label: incident.effectiveDisposition === 'action_required' ? 'Action' : 'Watch',
     tone: 'warning',
     icon: AlertTriangle,
   }
+}
+
+/** Plain-language category chip per behavior class — the card says what KIND of thing this is. */
+const CLASS_LABEL: Record<NonNullable<HealthIncident['class']>, string> = {
+  service_failure: 'Service issue',
+  data_integrity: 'Data integrity',
+  budget_block: 'Budget cap',
+  evidence_gap: 'Cost accounting',
+  usage_anomaly: 'Usage',
+  unattributed_usage: 'Unattributed usage',
+  runaway_usage: 'Runaway usage',
+  cleanup_backlog: 'Housekeeping',
+  policy_denial: 'Guardrail worked',
+  unsupported_surface: 'Not supported here',
+}
+
+const DISPOSITION_LABEL: Record<HealthIncident['disposition'], string> = {
+  advisory: 'advisory',
+  watch: 'watch',
+  action_required: 'action',
 }
 
 const TONE_CLASS: Record<OverviewTone, string> = {
@@ -34,7 +61,7 @@ const TONE_CLASS: Record<OverviewTone, string> = {
   destructive: 'border-destructive/30 bg-destructive/[0.05]',
 }
 
-export function IncidentRow({ item, onRepair, onRerun }: IncidentRowProps) {
+export function IncidentRow({ item, onRepair, onRerun, onAck }: IncidentRowProps) {
   const instructionsId = useId()
   const impactId = useId()
   const [showInstructions, setShowInstructions] = useState(false)
@@ -97,7 +124,20 @@ export function IncidentRow({ item, onRepair, onRerun }: IncidentRowProps) {
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <StatusBadge tone={status.tone}>{status.label}</StatusBadge>
+            {incident.class && (
+              <StatusBadge tone="neutral" variant="outline">{CLASS_LABEL[incident.class]}</StatusBadge>
+            )}
+            {incident.effectiveDisposition !== incident.disposition && (
+              <StatusBadge tone="neutral" variant="outline">
+                {`Calmed from ${DISPOSITION_LABEL[incident.disposition]}`}
+              </StatusBadge>
+            )}
             {item.freshness === 'stale' && <StatusBadge tone="neutral" variant="outline">Last known</StatusBadge>}
+            {incident.ackState && (
+              <StatusBadge tone="neutral" variant="outline">
+                {incident.ackState === 'acked' ? 'Acknowledged' : 'Snoozed'}
+              </StatusBadge>
+            )}
           </div>
           <h3 className="mt-2 font-semibold leading-snug text-foreground">{incident.title}</h3>
           <p
@@ -134,7 +174,40 @@ export function IncidentRow({ item, onRepair, onRerun }: IncidentRowProps) {
         </div>
       )}
 
-      <div className="mt-auto flex justify-end pt-4">{action}</div>
+      <div className="mt-auto flex items-center justify-end gap-2 pt-4">
+        {onAck && (incident.ackState ? (
+          <Button size="sm" variant="ghost" onClick={() => onAck(incident, 'clear')}>
+            Un-ack
+          </Button>
+        ) : (
+          <>
+            {incident.effectiveDisposition !== 'action_required' && (
+              <Button
+                size="sm"
+                variant="ghost"
+                aria-label={`Acknowledge ${incident.title}`}
+                onClick={() => onAck(incident, 'ack')}
+              >
+                <BellOff aria-hidden="true" />
+                Ack
+              </Button>
+            )}
+            <Popover>
+              <PopoverTrigger
+                aria-label={`Snooze ${incident.title}`}
+                className={buttonVariants({ size: 'sm', variant: 'ghost' })}
+              >
+                Snooze
+              </PopoverTrigger>
+              <PopoverContent align="end" className="flex w-32 flex-col p-1">
+                <Button size="sm" variant="ghost" onClick={() => onAck(incident, 'snooze', '24h')}>24 hours</Button>
+                <Button size="sm" variant="ghost" onClick={() => onAck(incident, 'snooze', '7d')}>7 days</Button>
+              </PopoverContent>
+            </Popover>
+          </>
+        ))}
+        {action}
+      </div>
     </article>
   )
 }

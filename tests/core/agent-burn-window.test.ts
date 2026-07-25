@@ -4,8 +4,13 @@ import { getAgentBurnWindowScope } from '../../src/core/agent-burn'
 const ORIGINAL_TZ = process.env.TZ
 
 afterEach(() => {
+  // Restore by ASSIGNMENT first: assigning process.env.TZ is what resets the
+  // engine's cached timezone. A bare `delete` leaves the cache on this test's
+  // Denver TZ, and later files in the same serial worker then render local
+  // times in Denver (broke activity-tab in the rc.21 release build, which
+  // runs the suite serially — parallel runs dodge it by worker partitioning).
+  process.env.TZ = ORIGINAL_TZ ?? 'UTC'
   if (ORIGINAL_TZ === undefined) delete process.env.TZ
-  else process.env.TZ = ORIGINAL_TZ
 })
 
 describe('getAgentBurnWindowScope', () => {

@@ -13,6 +13,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./agent-path-map": "./src/agent-path-map.ts",
+    "./health/observation-builders": "./src/health/observation-builders.ts",
     "./app-services": "./src/app-services.ts",
     "./adapters/shared": "./src/adapters/shared.ts",
     "./adapters/runtime": "./src/adapters/runtime/index.ts",

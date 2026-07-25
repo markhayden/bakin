@@ -120,6 +120,13 @@ export interface SearchAdapterSetupComponent {
 export interface SearchAdapterSetup {
   readonly dependency: SearchAdapterSetupComponent
   readonly models?: SearchAdapterSetupComponent
+  /**
+   * Stop the engine, wipe its DERIVED data (indexes — never models or
+   * source content), and start it clean. Optional: adapters whose engine
+   * Bakin does not supervise (guest mode) omit it or fail honestly.
+   * Callers follow with a repair reindex to regenerate tables.
+   */
+  resetEngineData?(): Promise<SearchAdapterSetupInstallResult>
 }
 
 export type {

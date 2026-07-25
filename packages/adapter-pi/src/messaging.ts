@@ -41,6 +41,7 @@ import { getAgentWorkspaceDir, getPiAgentDir } from './home'
 import { findPiModel, getModelRegistry, qualifiedModelId } from './models'
 import { readRoutingDefaultModel } from './config'
 import { readRegistry, scaffoldAgentDirs, type PiAgentRecord } from './registry'
+import { recoverSeededLinks, seedRunWorkspace } from './run-workspace'
 import { recordThreadSession, sessionManagerForThread, withThreadLock } from './sessions'
 import { buildAppendSystemPrompt } from './system-prompt'
 import { bridgeExecTools, filterExecToolDescriptors } from './tool-bridge'
@@ -312,6 +313,17 @@ async function openTurnSession(args: MessageArgs, deps: PiMessagingDeps): Promis
   const agentDir = getPiAgentDir()
   const { auth, registry: modelRegistry } = getModelRegistry()
 
+  // Per-run isolation (same-agent-concurrency D2): ONLY the session's
+  // tool-execution cwd moves to the handed run dir. The settings manager,
+  // resource loader (project context/skills/extensions discovery), session
+  // store, and prompt assembly below all stay pinned to the agent
+  // WORKSPACE, so an isolated turn's prompt is byte-identical to a
+  // workspace turn's. Seeding symlinks the workspace-root *.md files in so
+  // the agent's cwd-relative reads/writes of its own identity/memory files
+  // keep flowing to the real workspace.
+  if (args.runWorkspace) seedRunWorkspace(record.id, args.runWorkspace)
+  const executionCwd = args.runWorkspace ?? workspace
+
   const settingsManager = hardenSettingsManager(createTurnSettingsManager(workspace, agentDir), { stripPackages: true })
   const adapterSettings = deps.getSettings?.()
   const extPolicy = extensionsPolicy(adapterSettings)
@@ -366,7 +378,7 @@ async function openTurnSession(args: MessageArgs, deps: PiMessagingDeps): Promis
   const thinking = args.thinking && THINKING_LEVELS.has(args.thinking) ? args.thinking : undefined
 
   const { session } = await createAgentSession({
-    cwd: workspace,
+    cwd: executionCwd,
     agentDir,
     authStorage: auth,
     modelRegistry,
@@ -607,6 +619,16 @@ export function createMessagingSurface(deps: PiMessagingDeps): AgentRuntimeAdapt
         args.signal?.removeEventListener('abort', onAbort)
         unsubscribe()
         handle.dispose()
+        if (args.runWorkspace) {
+          // Severed-symlink recovery (D2): rename-style writes replace a
+          // seeded link with a regular file — copy those back to the
+          // workspace (LWW) so memory writes are never silently stranded.
+          try {
+            recoverSeededLinks(args.agentId, args.runWorkspace, (msg, data) => deps.getLogger?.()?.warn(msg, data))
+          } catch (err) {
+            deps.getLogger?.()?.warn('adapter-pi: run-workspace link recovery failed', { error: String(err) })
+          }
+        }
       }
     })
   }
@@ -692,8 +714,10 @@ export function createMessagingSurface(deps: PiMessagingDeps): AgentRuntimeAdapt
         threadId: args.threadId,
         operation: 'stream',
       })
+      let streamUsage: MessageUsage | undefined
       const turn = runTurn(args, async ({ session, record }, observer) => {
         const chunkState = { announcedThinking: false }
+        const before = session.getSessionStats()
         const observeToolActivity = createToolActivityObserver(args, deps, lifecycle.turnId)
         const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
           for (const chunk of sessionEventChunks(event, chunkState)) {
@@ -708,8 +732,17 @@ export function createMessagingSurface(deps: PiMessagingDeps): AgentRuntimeAdapt
           }
           persistThreadMapping(record.id, args.threadId, session)
           throwOnTerminalFailure(observer, session, args, record)
-          push({ type: 'done' })
+          // Usage parity with send() (conformance-pinned): the terminal done
+          // carries the turn's token accounting so streamed turns are meterable.
+          const usage = usageDelta(before, session.getSessionStats(), session)
+          streamUsage = usage
+          push({ type: 'done', ...(usage ? { usage } : {}) })
         } catch (err) {
+          // Whatever accounting accrued before the failure/abort — the clean
+          // abort done below attaches it so partial turns still meter.
+          try {
+            streamUsage = usageDelta(before, session.getSessionStats(), session)
+          } catch { /* stats unavailable mid-teardown — leave undefined */ }
           throw toRuntimeError(err, {
             aborted: args.signal?.aborted,
             sessionId: session.sessionId,
@@ -721,7 +754,7 @@ export function createMessagingSurface(deps: PiMessagingDeps): AgentRuntimeAdapt
       })
 
       turn.then(() => {
-        lifecycle.finish({ status: 'completed' })
+        lifecycle.finish({ status: 'completed', usage: streamUsage })
         finish()
       }, (rawErr) => {
         // Normalize BEFORE classifying so pre-prompt raw throws (e.g. from
@@ -731,7 +764,8 @@ export function createMessagingSurface(deps: PiMessagingDeps): AgentRuntimeAdapt
         if (err.kind === 'aborted') {
           // Contract: a deliberate abort ends the stream with a clean done —
           // matching the send path's kind:'aborted' settle. Never an error chunk.
-          push({ type: 'done' })
+          // Partial usage still rides it: aborted turns billed those tokens.
+          push({ type: 'done', ...(streamUsage ? { usage: streamUsage } : {}) })
         } else {
           // Contract: the terminal error chunk carries the typed kind so
           // consumers classify without parsing message text.

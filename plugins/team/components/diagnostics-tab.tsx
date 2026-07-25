@@ -157,7 +157,7 @@ function reportFlagsAgent(report: HealthReport, checkId: string, agentId: string
       .map(observation => observation.id),
   )
   return report.incidents.some(incident => (
-    incident.disposition !== 'advisory'
+    incident.effectiveDisposition !== 'advisory'
     && incident.resources.some(resource => resource.kind === 'agent' && resource.id === agentId)
     && incident.observationIds.some(observationId => observationIds.has(observationId))
   ))
@@ -738,6 +738,7 @@ function TimelinePanel({ agentId }: { agentId: string }) {
                     {event.inputTokens !== null && `${formatTokens(event.inputTokens)} in`}
                     {event.outputTokens !== null && ` / ${formatTokens(event.outputTokens)} out`}
                     {event.costUsdMicros !== null && ` · $${(event.costUsdMicros / 1_000_000).toFixed(2)}`}
+                    {event.routeSource && ` · via ${event.routeSource === 'class' ? 'class route' : event.routeSource}`}
                   </div>
                   {event.logs.length > 0 && (
                     <details className="mt-1">

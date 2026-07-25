@@ -145,17 +145,30 @@ install policy.
 
 ## Conversation Kit
 
-Use the conversation kit for plugin-owned back-and-forth agent work. `ConversationPanel` is the embedded single-session surface — it owns the chat UI, tool-activity rendering (collapsed groups → detail drawer), the composer (drafts, history, abort, attachments), and resize persistence. The plugin still owns transport, storage, and domain side effects.
+Use the conversation kit for plugin-owned back-and-forth agent work.
+`ConversationPanel` is the embedded single-session surface — it owns the chat
+UI, tool-activity rendering (collapsed groups → detail drawer), the composer
+(drafts, history, abort, attachments), and resize persistence. The plugin owns
+its durable transcript and domain side effects; Bakin's shared turn engine owns
+the background runtime turn and event transport.
 
 ```tsx
 import {
   ConversationPanel,
-  useConversationStream,
+  useConversationThread,
   type ConversationMessage,
 } from '@makinbakin/sdk/conversation'
 ```
 
-Server routes and exec tools should use the matching utilities from `@makinbakin/sdk/utils`:
+Create the matching server service once during plugin activation with
+`ctx.conversations.createTurnService(...)`. Configure your plugin-namespaced
+`chunk`, `done`, and `error` events; transcript resolver and append function;
+runtime thread id; and `metering: { workClass: 'chat', runId }`. Send routes call
+`service.start(...)` and return `202` for `accepted`, `409` for `busy`, or `404`
+for `not_found`. The turn continues if the browser navigates away or the HTTP
+request ends.
+
+Server services can use the matching utilities from `@makinbakin/sdk/utils`:
 
 ```ts
 import { conversationThreadId, createTurnRecorder } from '@makinbakin/sdk/utils'
@@ -163,7 +176,7 @@ import { conversationThreadId, createTurnRecorder } from '@makinbakin/sdk/utils'
 
 - `conversationThreadId(scope, entityId, agentId)` builds a stable adapter-neutral runtime thread key. Use it for durable sessions, for example `projects:${projectId}:${agentId}` or `messaging:${sessionId}:${agentId}`.
 - `createTurnRecorder({ turnId })` turns one streamed turn's runtime chunks into persistable `ConversationMessage` rows (`ingest` per chunk, `drain` for crash-safe incremental writes, `finish` at turn end). Structured tool rows survive; previews are clipped honestly.
-- Your SSE route streams `event: chunk` frames whose data is the raw runtime chunk JSON, plus `done`/`error`; custom events (domain payloads like proposals) pass through `useConversationStream`'s `onCustom`.
+- `useConversationThread` loads the durable transcript, adds an optimistic user row, posts the send request, and folds your plugin events into live chunks. On `done` or `error` it refetches the durable transcript.
 
 Do not replay an entire plugin-stored transcript into every prompt when a durable runtime thread is available. Store `ConversationMessage` rows for UI hydration and search, but let the active runtime adapter map repeated `agentId + threadId` calls to the same provider session.
 

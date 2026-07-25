@@ -5,7 +5,7 @@
  * must not be passing against fantasy semantics.
  */
 import { afterAll, beforeEach, describe, it, mock } from 'bun:test'
-import { rmSync } from 'fs'
+import { existsSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
@@ -32,7 +32,7 @@ const loggerMock = () => ({
 mock.module('../../../src/core/logger', loggerMock)
 mock.module('../../../packages/core/src/logger', loggerMock)
 
-import { createMockRuntimeAdapter, mockCron } from '../../../packages/core/src/adapters/runtime/testing'
+import { createMockRuntimeAdapter, mockCron, withMockIsolation, MOCK_ISOLATION_PROBE } from '../../../packages/core/src/adapters/runtime/testing'
 import { runRuntimeConformanceSuite, runtimeConformanceChecks, type RuntimeConformanceTarget } from './conformance'
 
 let target: RuntimeConformanceTarget
@@ -107,5 +107,26 @@ describe('mock cron opt-in (mockCron)', () => {
   it('round-trips the cron CRUD contract', async () => {
     const cronTarget = { ...target, runtime: createMockRuntimeAdapter({ cron: mockCron() }) }
     await runtimeConformanceChecks.cronCrudRoundTrip(cronTarget)
+  })
+})
+
+// The minimal mock declares 'serialized'; the isolation opt-in must pass the
+// isolation-honesty pin so isolated-runtime consumers can test against it
+// (same-agent-concurrency D1).
+describe('mock isolation opt-in (withMockIsolation)', () => {
+  it('honors runWorkspace for concurrent same-agent turns', async () => {
+    const isoTarget = {
+      ...target,
+      runtime: withMockIsolation(createMockRuntimeAdapter()),
+      prepareIsolatedTurnProbe: () => ({
+        content: 'conformance: isolation probe',
+        verify: (dir: string) => existsSync(join(dir, MOCK_ISOLATION_PROBE)),
+      }),
+    }
+    await runtimeConformanceChecks.sameAgentIsolationHonesty(isoTarget)
+  })
+
+  it('the default serialized mock is a no-op for the isolation pin', async () => {
+    await runtimeConformanceChecks.sameAgentIsolationHonesty(target)
   })
 })

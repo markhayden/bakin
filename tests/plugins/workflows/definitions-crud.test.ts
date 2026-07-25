@@ -477,4 +477,44 @@ describe('workflows CRUD routes', () => {
       expect(existsSync(outsidePath)).toBe(true)
     })
   })
+
+  describe('team-target validation (#611)', () => {
+    const teamDef = {
+      name: 'Team Demo',
+      description: 'workflow with a team step',
+      version: 1,
+      steps: [{ id: 's1', type: 'agent', label: 'Do', agent: 'team:builders' }],
+    }
+
+    it('rejects a definition referencing a nonexistent team when the team plugin answers', async () => {
+      const activated = await activatePlugin(workflowsPlugin, testDir)
+      activated.ctx.hooks.invoke = mock(async (name: string) =>
+        name === 'team.exists' ? false : undefined) as typeof activated.ctx.hooks.invoke
+      const route = findRoute(activated.routes, 'POST', '/definitions')!
+
+      const res = await callRoute(route, activated.ctx, { body: { id: 'team-demo', ...teamDef } })
+      expect(res.status).toBe(400)
+      expect((res.body.errors as string[]).join('\n')).toContain('unknown team "builders"')
+    })
+
+    it('accepts a definition whose team exists', async () => {
+      const activated = await activatePlugin(workflowsPlugin, testDir)
+      activated.ctx.hooks.invoke = mock(async (name: string) =>
+        name === 'team.exists' ? true : undefined) as typeof activated.ctx.hooks.invoke
+      const route = findRoute(activated.routes, 'POST', '/definitions')!
+
+      const res = await callRoute(route, activated.ctx, { body: { id: 'team-demo', ...teamDef } })
+      expect(res.status).toBe(201)
+    })
+
+    it('unavailable team plugin (unregistered hook) skips existence checks — tiered pass', async () => {
+      const activated = await activatePlugin(workflowsPlugin, testDir)
+      // Default harness invoke returns undefined for every hook — exactly the
+      // unregistered-hook shape.
+      const route = findRoute(activated.routes, 'POST', '/definitions')!
+
+      const res = await callRoute(route, activated.ctx, { body: { id: 'team-demo', ...teamDef } })
+      expect(res.status).toBe(201)
+    })
+  })
 })

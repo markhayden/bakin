@@ -36,7 +36,7 @@ import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
 import type { AgentRuntimeAdapter, RuntimeMemoryEntry } from '@bakin/core/adapters/runtime'
 import { scanUsageHistory, bucketSessionUsage } from '../../src/core/usage-history'
 import { getScanState, usageByAgentSince, usageByDaySince, toLocalDayKey } from '@bakin/core/usage-history/store'
-import { closeAllDbs } from '@bakin/core/storage/db'
+import { closeAllDbs, openNamedDb } from '@bakin/core/storage/db'
 
 afterAll(() => {
   closeAllDbs()
@@ -49,6 +49,7 @@ interface FixtureSession {
   content: string
   mtimeMs: number
   size: number
+  metadata?: Record<string, unknown>
 }
 
 const SESSION_TIER = 'runtime-session-jsonl'
@@ -81,12 +82,26 @@ function makeRuntime(): AgentRuntimeAdapter {
 }
 
 function toEntry(s: FixtureSession): RuntimeMemoryEntry {
-  return { id: s.id, tierId: SESSION_TIER, agentId: s.agentId, path: s.id, content: s.content, metadata: {} }
+  return { id: s.id, tierId: SESSION_TIER, agentId: s.agentId, path: s.id, content: s.content, metadata: s.metadata ?? {} }
 }
 
-function sessionLines(sessionId: string, startTs: string, msgs: Array<{ ts?: string; model?: string; input: number; output: number; cost?: number }>): string {
+type FixtureMessage =
+  | { role?: 'assistant'; ts?: string; model?: string; provider?: string; input: number; output: number; cost?: number }
+  | { role: 'user'; ts?: string }
+
+function sessionLines(sessionId: string, startTs: string, msgs: FixtureMessage[]): string {
   const lines = [JSON.stringify({ type: 'session', id: sessionId, timestamp: startTs })]
   for (const m of msgs) {
+    if (m.role === 'user') {
+      lines.push(
+        JSON.stringify({
+          type: 'message',
+          ...(m.ts ? { timestamp: m.ts } : {}),
+          message: { role: 'user' },
+        }),
+      )
+      continue
+    }
     lines.push(
       JSON.stringify({
         type: 'message',
@@ -94,6 +109,7 @@ function sessionLines(sessionId: string, startTs: string, msgs: Array<{ ts?: str
         message: {
           role: 'assistant',
           ...(m.model ? { model: m.model } : {}),
+          ...(m.provider ? { provider: m.provider } : {}),
           usage: {
             input: m.input, output: m.output, cacheRead: 0, cacheWrite: 0,
             totalTokens: m.input + m.output,
@@ -106,8 +122,17 @@ function sessionLines(sessionId: string, startTs: string, msgs: Array<{ ts?: str
   return lines.join('\n') + '\n'
 }
 
-function addSession(agentId: string, id: string, content: string, mtimeMs = 1000) {
-  sessions.push({ agentId, id, content, mtimeMs, size: content.length })
+function addSession(agentId: string, id: string, content: string, mtimeMs = 1000, metadata?: Record<string, unknown>) {
+  sessions.push({ agentId, id, content, mtimeMs, size: content.length, metadata })
+}
+
+function storedRows(): Array<{ session_id: string; model: string; origin: string; user_messages: number; message_count: number }> {
+  return openNamedDb('usage', () => join(testDir, 'usage.db'))
+    .db()
+    .prepare<{ session_id: string; model: string; origin: string; user_messages: number; message_count: number }, []>(
+      'SELECT session_id, model, origin, user_messages, message_count FROM session_usage_days ORDER BY session_id, model',
+    )
+    .all()
 }
 
 beforeEach(() => {
@@ -736,5 +761,129 @@ describe('bucketSessionUsage cost honesty', () => {
     })
 
     expect(() => bucketSessionUsage(content)).toThrow('timestamp')
+  })
+})
+
+describe('transcript provider qualification (#689)', () => {
+  const START = '2026-07-01T10:00:00Z'
+
+  it('qualifies bare model ids with the sibling provider field', () => {
+    const content = sessionLines('s-codex', START, [
+      { ts: '2026-07-01T10:01:00Z', model: 'gpt-5.5', provider: 'openai-codex', input: 100, output: 50 },
+      { ts: '2026-07-01T10:02:00Z', model: 'gpt-5.4', provider: 'openai', input: 10, output: 5 },
+    ])
+    const models = bucketSessionUsage(content).map((b) => b.model).sort()
+    expect(models).toEqual(['openai-codex/gpt-5.5', 'openai/gpt-5.4'])
+  })
+
+  it('keeps the bare model when the line has no provider', () => {
+    const content = sessionLines('s-bare', START, [
+      { ts: '2026-07-01T10:01:00Z', model: 'local-model', input: 1, output: 1 },
+    ])
+    expect(bucketSessionUsage(content).map((b) => b.model)).toEqual(['local-model'])
+  })
+
+  it('never double-qualifies an already qualified model id', () => {
+    const content = sessionLines('s-qualified', START, [
+      { ts: '2026-07-01T10:01:00Z', model: 'openai-codex/gpt-5.5', provider: 'openai-codex', input: 1, output: 1 },
+    ])
+    expect(bucketSessionUsage(content).map((b) => b.model)).toEqual(['openai-codex/gpt-5.5'])
+  })
+
+  it('a null provider is missing evidence, not a malformed session', () => {
+    // Some runtimes write "provider": null. That line must meter with the
+    // bare model — invalidating the session would permanently fail its
+    // rescan and silently drop its usage from every surface.
+    const lines = [
+      JSON.stringify({ type: 'session', id: 's-null-provider', timestamp: START }),
+      JSON.stringify({
+        type: 'message',
+        timestamp: '2026-07-01T10:01:00Z',
+        message: {
+          role: 'assistant',
+          model: 'gpt-5.4',
+          provider: null,
+          usage: { input: 10, output: 5, cacheRead: 0, cacheWrite: 0, totalTokens: 15 },
+        },
+      }),
+    ].join('\n')
+    const buckets = bucketSessionUsage(lines)
+    expect(buckets.map((b) => b.model)).toEqual(['gpt-5.4'])
+    expect(buckets[0]!.totalTokens).toBe(15)
+  })
+
+  it('provider without a model leaves the empty-model bucket alone', () => {
+    const content = sessionLines('s-nomodel', START, [
+      { ts: '2026-07-01T10:01:00Z', provider: 'openai-codex', input: 1, output: 1 },
+    ])
+    expect(bucketSessionUsage(content).map((b) => b.model)).toEqual([''])
+  })
+})
+
+describe('user message attribution (#691)', () => {
+  const START = '2026-07-01T10:00:00Z'
+
+  it('attributes each user message to the next usage-bearing assistant bucket', () => {
+    const content = sessionLines('s-roles', START, [
+      { role: 'user', ts: '2026-07-01T10:00:30Z' },
+      { ts: '2026-07-01T10:01:00Z', model: 'm1', input: 10, output: 5 },
+      { role: 'user', ts: '2026-07-01T10:02:00Z' },
+      { role: 'user', ts: '2026-07-01T10:02:30Z' },
+      { ts: '2026-07-01T10:03:00Z', model: 'm2', input: 10, output: 5 },
+    ])
+    const buckets = bucketSessionUsage(content)
+    expect(buckets.find((b) => b.model === 'm1')?.userMessages).toBe(1)
+    expect(buckets.find((b) => b.model === 'm2')?.userMessages).toBe(2)
+  })
+
+  it('attributes trailing user messages to the latest bucket', () => {
+    const content = sessionLines('s-trailing', START, [
+      { ts: '2026-07-01T10:01:00Z', model: 'm1', input: 10, output: 5 },
+      { ts: '2026-07-01T10:03:00Z', model: 'm2', input: 10, output: 5 },
+      { role: 'user', ts: '2026-07-01T10:04:00Z' },
+    ])
+    const buckets = bucketSessionUsage(content)
+    expect(buckets.find((b) => b.model === 'm1')?.userMessages).toBe(0)
+    expect(buckets.find((b) => b.model === 'm2')?.userMessages).toBe(1)
+  })
+
+  it('an autonomous session reports zero user messages', () => {
+    const content = sessionLines('s-auto', START, [
+      { ts: '2026-07-01T10:01:00Z', model: 'm1', input: 10, output: 5 },
+      { ts: '2026-07-01T10:02:00Z', model: 'm1', input: 10, output: 5 },
+    ])
+    const buckets = bucketSessionUsage(content)
+    expect(buckets).toHaveLength(1)
+    expect(buckets[0].userMessages).toBe(0)
+    expect(buckets[0].messageCount).toBe(2)
+  })
+})
+
+describe('session origin provenance (#691)', () => {
+  const START = '2026-07-01T10:00:00Z'
+  const MSG = [{ ts: '2026-07-01T10:01:00Z', model: 'm1', input: 10, output: 5 }]
+
+  it('persists the adapter-reported origin on scanned rows', async () => {
+    addSession('main', 'bakin.jsonl', sessionLines('s1', START, MSG), 1000, {
+      sourceKind: 'session_jsonl', origin: 'bakin',
+    })
+    addSession('main', 'external.jsonl', sessionLines('s2', START, MSG), 1000, {
+      sourceKind: 'session_jsonl', origin: 'external',
+    })
+    await scanUsageHistory(makeRuntime())
+    const rows = storedRows()
+    expect(rows.find((r) => r.session_id === 'bakin.jsonl')?.origin).toBe('bakin')
+    expect(rows.find((r) => r.session_id === 'external.jsonl')?.origin).toBe('external')
+  })
+
+  it('missing or invalid origin metadata stores unknown, never a guess', async () => {
+    addSession('main', 'no-meta.jsonl', sessionLines('s1', START, MSG))
+    addSession('main', 'bad-meta.jsonl', sessionLines('s2', START, MSG), 1000, {
+      sourceKind: 'session_jsonl', origin: 'totally-invalid',
+    })
+    await scanUsageHistory(makeRuntime())
+    const rows = storedRows()
+    expect(rows.find((r) => r.session_id === 'no-meta.jsonl')?.origin).toBe('unknown')
+    expect(rows.find((r) => r.session_id === 'bad-meta.jsonl')?.origin).toBe('unknown')
   })
 })

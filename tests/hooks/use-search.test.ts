@@ -243,6 +243,24 @@ describe('useSearch — response handling', () => {
     expect(result.current.results).toHaveLength(1)
   })
 
+  it('a 200 with no results field yields an empty array, never undefined', async () => {
+    // A malformed/mis-routed 200 body must not set results to undefined —
+    // consumers do results.length and a single bad response would crash
+    // every component using the hook (the kanban-dnd CI crash, #650).
+    mockFetchResponse({ columns: { todo: [] } } as never)
+
+    const { result } = renderHook(() => useSearch({ plugin: 'tasks', debounce: 10 }))
+
+    act(() => {
+      result.current.search('foo')
+    })
+
+    await waitFor(() => {
+      expect(result.current.status).toBe('ok')
+    })
+    expect(result.current.results).toEqual([])
+  })
+
   it('sets error state and clears results on a 500 response', async () => {
     mockFetchResponse({}, { ok: false, status: 500 })
 

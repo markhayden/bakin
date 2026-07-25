@@ -151,6 +151,7 @@ export async function checkSearchSpin(): Promise<HealthCheckRunInput> {
     incident: {
       key: 'backfill-spin',
       title: 'Search index backfill is spinning',
+      class: 'service_failure',
       impact: 'The engine can consume sustained CPU without advancing the affected indexes.',
       disposition: 'action_required',
       resources: tables.slice(0, 50).map((table) => ({ kind: 'search_table' as const, id: stableKeyPart(table), label: table.slice(0, 120) })),

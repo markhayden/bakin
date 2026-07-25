@@ -34,7 +34,18 @@ mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
 
+// Brainstorm turns meter under work class 'chat' (#703) — capture instead of
+// touching the real ledger.
+const meteredTurns: Array<Record<string, unknown>> = []
+mock.module('../../../src/core/agent-cost', () => ({
+  meterAgentTurn: async (opts: Record<string, unknown>) => { meteredTurns.push(opts) },
+  meterImageTurn: async () => {},
+}))
+
 import brandsPlugin from '../../../plugins/brands'
+import { brandBrainstormTurns, docBrainstormKey } from '../../../plugins/brands/lib/brainstorm-bridge'
+import { readDocBrainstorm } from '../../../plugins/brands/lib/store'
+import type { ChatChunk } from '../../../packages/core/src/adapters/runtime/concepts'
 import { activatePlugin, callRoute, callTool, findRoute, type ActivatedPlugin } from '../test-helpers'
 
 let activated: ActivatedPlugin
@@ -497,140 +508,185 @@ describe('builder flow (#419 §9.1)', () => {
   })
 })
 
-describe('doc brainstorm (embedded editing help)', () => {
-  it('streams a turn as SSE frames with the live doc content in the prompt', async () => {
-    await createAcme()
-    let seenArgs: Record<string, unknown> = {}
+describe('doc brainstorm (engine-backed, durable — #703)', () => {
+  const KEY = docBrainstormKey('acme', 'guidelines', 'voice.md')
+  const params = { brandId: 'acme', kind: 'guidelines', name: 'voice.md' }
+
+  function scriptStream(
+    script: (args: Record<string, unknown>) => AsyncIterable<ChatChunk>,
+    seen?: Array<Record<string, unknown>>,
+  ) {
     const runtime = activated.ctx.runtime as unknown as {
-      messaging: { stream: (args: Record<string, unknown>) => AsyncIterable<Record<string, unknown>> }
+      messaging: { stream: (args: Record<string, unknown>) => AsyncIterable<ChatChunk> }
     }
     runtime.messaging = {
       ...(runtime.messaging ?? {}),
       stream: (args: Record<string, unknown>) => {
-        seenArgs = args
-        return (async function* () {
-          yield { type: 'text', content: 'Tighten ' }
-          yield { type: 'text', content: 'the intro.' }
-        })()
+        seen?.push(args)
+        return script(args)
       },
     } as typeof runtime.messaging
+  }
+
+  it('202s immediately, streams over the bus, persists durable rows, and meters the turn', async () => {
+    await createAcme()
+    const events: Array<{ event: string; data: Record<string, unknown> }> = []
+    const off = activated.ctx.events.on('brands.*', (event, data) => events.push({ event, data }))
+    const seenArgs: Array<Record<string, unknown>> = []
+    meteredTurns.length = 0
+    scriptStream(async function* () {
+      yield { type: 'text', content: 'Tighten ' } as ChatChunk
+      yield { type: 'text', content: 'the intro.' } as ChatChunk
+      yield { type: 'done', usage: { inputTokens: 5, outputTokens: 3 } } as ChatChunk
+    }, seenArgs)
 
     const res = await callRoute(route('POST', '/:brandId/docs/:kind/:name/brainstorm'), activated.ctx, {
-      searchParams: { brandId: 'acme', kind: 'guidelines', name: 'voice.md' },
-      body: {
-        agent: 'pixel',
-        message: 'What is missing?',
-        history: [{ role: 'user', content: 'earlier question' }],
-        docContent: '# Voice\n\nUNSAVED DRAFT CONTENT',
-      },
-      rawResponse: true,
+      searchParams: params,
+      body: { agent: 'pixel', message: 'What is missing?', docContent: '# Voice\n\nUNSAVED DRAFT CONTENT' },
     })
-    expect(res.status).toBe(200)
-    expect(res.response.headers.get('Content-Type')).toBe('text/event-stream')
-    const text = await res.response.text()
-    expect(text).toContain('event: chunk')
-    expect(text).toContain('Tighten ')
-    expect(text).toContain('event: done')
-    expect(text).toContain('"content":"Tighten the intro."')
+    expect(res.status).toBe(202)
+    await brandBrainstormTurns.waitFor(KEY)
+    off()
 
-    // the prompt carries the EDITOR's live content + history, and the turn is ephemeral
-    expect(String(seenArgs.content)).toContain('UNSAVED DRAFT CONTENT')
-    expect(String(seenArgs.content)).toContain('earlier question')
-    expect(String(seenArgs.content)).toContain('do NOT write files')
-    expect(seenArgs.ephemeral).toBe(true)
-    expect(seenArgs.agentId).toBe('pixel')
-    expect(String(seenArgs.threadId)).toContain('brand-doc')
+    // The prompt carries the EDITOR's live content; the turn is ephemeral,
+    // per-turn threaded, and runs as the chosen agent.
+    const args = seenArgs[0]
+    expect(String(args.content)).toContain('UNSAVED DRAFT CONTENT')
+    expect(String(args.content)).toContain('do NOT write files')
+    expect(args.ephemeral).toBe(true)
+    expect(args.agentId).toBe('pixel')
+    expect(String(args.threadId)).toContain('brand-doc')
+
+    // Bus events with the composite key payload.
+    const chunkEvents = events.filter((e) => e.event === 'brands.brainstorm.chunk')
+    expect(chunkEvents.length).toBe(2)
+    expect(chunkEvents[0].data).toMatchObject({ key: KEY, brandId: 'acme', kind: 'guidelines', name: 'voice.md' })
+    const done = events.find((e) => e.event === 'brands.brainstorm.done')
+    expect(done?.data).toMatchObject({ key: KEY, agentId: 'pixel', preview: 'Tighten the intro.' })
+
+    // Durable rows: clean user text (not the assembled prompt) + reply.
+    const rows = readDocBrainstorm('acme', 'guidelines', 'voice.md')
+    expect(rows[0]).toMatchObject({ kind: 'user', content: 'What is missing?' })
+    expect(rows.find((r) => r.kind === 'assistant')).toMatchObject({ content: 'Tighten the intro.' })
+
+    // Metered under work class chat with the brainstorm runId scheme.
+    expect(meteredTurns).toHaveLength(1)
+    expect(String(meteredTurns[0].runId)).toStartWith('brainstorm:brands:acme/guidelines/voice.md:turn:')
+    expect(meteredTurns[0].workClass).toBe('chat')
   })
 
-  it('uses a fresh per-turn threadId and caps history in the prompt (no quadratic session pileup)', async () => {
+  it('builds capped history from the durable transcript and uses a fresh per-turn threadId', async () => {
     await createAcme()
-    const seenThreads: string[] = []
-    let seenPrompt = ''
-    const runtime = activated.ctx.runtime as unknown as {
-      messaging: { stream: (args: Record<string, unknown>) => AsyncIterable<Record<string, unknown>> }
+    const { appendDocBrainstormRow } = await import('../../../plugins/brands/lib/store')
+    for (let i = 0; i < 12; i++) {
+      appendDocBrainstormRow('acme', 'guidelines', 'voice.md', {
+        kind: 'user', ts: new Date().toISOString(), content: `exchange-${i}`,
+      })
     }
-    runtime.messaging = {
-      ...(runtime.messaging ?? {}),
-      stream: (args: Record<string, unknown>) => {
-        seenThreads.push(String(args.threadId))
-        seenPrompt = String(args.content)
-        return (async function* () {
-          yield { type: 'text', content: 'ok' }
-        })()
-      },
-    } as typeof runtime.messaging
+    const seenArgs: Array<Record<string, unknown>> = []
+    scriptStream(async function* () {
+      yield { type: 'text', content: 'ok' } as ChatChunk
+      yield { type: 'done' } as ChatChunk
+    }, seenArgs)
 
-    const history = Array.from({ length: 12 }, (_, i) => ({ role: 'user' as const, content: `exchange-${i}` }))
     const call = () =>
       callRoute(route('POST', '/:brandId/docs/:kind/:name/brainstorm'), activated.ctx, {
-        searchParams: { brandId: 'acme', kind: 'guidelines', name: 'voice.md' },
-        body: { agent: 'pixel', message: 'hi', history },
-        rawResponse: true,
+        searchParams: params,
+        body: { agent: 'pixel', message: 'hi' },
       })
-    await (await call()).response.text()
-    await (await call()).response.text()
+    await call()
+    await brandBrainstormTurns.waitFor(KEY)
+    await call()
+    await brandBrainstormTurns.waitFor(KEY)
 
-    expect(seenThreads[0]).not.toBe(seenThreads[1]) // per-turn thread
-    expect(seenPrompt).toContain('exchange-11') // newest kept
-    expect(seenPrompt).not.toContain('exchange-0') // oldest capped away (last 8 only)
+    expect(seenArgs[0].threadId).not.toBe(seenArgs[1].threadId) // per-turn thread
+    const prompt = String(seenArgs[0].content)
+    expect(prompt).toContain('exchange-11') // newest kept
+    expect(prompt).not.toContain('exchange-0') // oldest capped away (last 8 only)
   })
 
-  it('cancelling the brainstorm response stream aborts the runtime turn', async () => {
+  it('one turn per doc: second send 409s; abort settles clean with an aborted marker', async () => {
     await createAcme()
-    let sawAbort = false
-    const runtime = activated.ctx.runtime as unknown as {
-      messaging: { stream: (args: Record<string, unknown>) => AsyncIterable<Record<string, unknown>> }
-    }
-    runtime.messaging = {
-      ...(runtime.messaging ?? {}),
-      stream: (args: Record<string, unknown>) => {
-        const signal = args.signal as AbortSignal
-        return (async function* () {
-          yield { type: 'text', content: 'first' }
-          // hold the turn open until the signal fires or 2s passes
-          await new Promise<void>((resolve) => {
-            if (signal.aborted) return resolve()
-            const t = setTimeout(resolve, 2000)
-            signal.addEventListener('abort', () => { clearTimeout(t); sawAbort = true; resolve() }, { once: true })
-          })
-          if (!signal.aborted) yield { type: 'text', content: 'second' }
-        })()
-      },
-    } as typeof runtime.messaging
+    let release: () => void = () => {}
+    const gate = new Promise<void>((r) => { release = r })
+    scriptStream(() => (async function* () {
+      yield { type: 'text', content: 'partial' } as ChatChunk
+      await gate
+      yield { type: 'done' } as ChatChunk
+    })())
 
-    const res = await callRoute(route('POST', '/:brandId/docs/:kind/:name/brainstorm'), activated.ctx, {
-      searchParams: { brandId: 'acme', kind: 'guidelines', name: 'voice.md' },
-      body: { agent: 'pixel', message: 'hi' },
-      rawResponse: true,
+    const first = await callRoute(route('POST', '/:brandId/docs/:kind/:name/brainstorm'), activated.ctx, {
+      searchParams: params,
+      body: { agent: 'pixel', message: 'go' },
     })
-    const reader = res.response.body!.getReader()
-    await reader.read() // first chunk arrives
-    await reader.cancel() // consumer walks away
-    await new Promise((r) => setTimeout(r, 50))
-    expect(sawAbort).toBe(true)
+    expect(first.status).toBe(202)
+    const second = await callRoute(route('POST', '/:brandId/docs/:kind/:name/brainstorm'), activated.ctx, {
+      searchParams: params,
+      body: { agent: 'pixel', message: 'again' },
+    })
+    expect(second.status).toBe(409)
+
+    const aborted = await callRoute(route('POST', '/:brandId/docs/:kind/:name/brainstorm/abort'), activated.ctx, {
+      searchParams: params,
+    })
+    expect(aborted.status).toBe(200)
+    release()
+    await brandBrainstormTurns.waitFor(KEY)
+    const rows = readDocBrainstorm('acme', 'guidelines', 'voice.md')
+    expect(rows[rows.length - 1]?.kind).toBe('aborted')
+
+    // Idle abort → 409.
+    const idle = await callRoute(route('POST', '/:brandId/docs/:kind/:name/brainstorm/abort'), activated.ctx, {
+      searchParams: params,
+    })
+    expect(idle.status).toBe(409)
   })
 
-  it('streams an error frame when the runtime turn fails (never a hung stream)', async () => {
+  it('a failing runtime turn lands an error row and a brands.brainstorm.error event', async () => {
     await createAcme()
-    const runtime = activated.ctx.runtime as unknown as {
-      messaging: { stream: (args: Record<string, unknown>) => AsyncIterable<Record<string, unknown>> }
-    }
-    runtime.messaging = {
-      ...(runtime.messaging ?? {}),
-      // eslint-disable-next-line require-yield
-      stream: () => (async function* (): AsyncGenerator<Record<string, unknown>> {
-        throw new Error('runtime down')
-      })(),
-    } as typeof runtime.messaging
+    const events: Array<{ event: string }> = []
+    const off = activated.ctx.events.on('brands.*', (event) => events.push({ event }))
+    // eslint-disable-next-line require-yield
+    scriptStream(() => (async function* (): AsyncGenerator<ChatChunk> {
+      throw new Error('runtime down')
+    })())
 
     const res = await callRoute(route('POST', '/:brandId/docs/:kind/:name/brainstorm'), activated.ctx, {
-      searchParams: { brandId: 'acme', kind: 'guidelines', name: 'voice.md' },
+      searchParams: params,
       body: { agent: 'pixel', message: 'hi' },
-      rawResponse: true,
     })
-    const text = await res.response.text()
-    expect(text).toContain('event: error')
-    expect(text).toContain('runtime down')
+    expect(res.status).toBe(202)
+    await brandBrainstormTurns.waitFor(KEY)
+    off()
+    const rows = readDocBrainstorm('acme', 'guidelines', 'voice.md')
+    expect(rows[rows.length - 1]).toMatchObject({ kind: 'error', message: 'runtime down' })
+    expect(events.some((e) => e.event === 'brands.brainstorm.error')).toBe(true)
+  })
+
+  it('GET returns the transcript with the server-seeded streaming flag; doc deletion removes it', async () => {
+    await createAcme()
+    scriptStream(() => (async function* () {
+      yield { type: 'text', content: 'reply' } as ChatChunk
+      yield { type: 'done' } as ChatChunk
+    })())
+    await callRoute(route('POST', '/:brandId/docs/:kind/:name/brainstorm'), activated.ctx, {
+      searchParams: params,
+      body: { agent: 'pixel', message: 'hello' },
+    })
+    await brandBrainstormTurns.waitFor(KEY)
+
+    const res = await callRoute(route('GET', '/:brandId/docs/:kind/:name/brainstorm'), activated.ctx, {
+      searchParams: params,
+    })
+    expect(res.status).toBe(200)
+    expect(res.body.streaming).toBe(false)
+    const messages = res.body.messages as Array<{ kind: string }>
+    expect(messages[0]).toMatchObject({ kind: 'user' })
+    expect(messages.some((m) => m.kind === 'assistant')).toBe(true)
+
+    // Deleting the doc removes its transcript sidecar.
+    await callRoute(route('DELETE', '/:brandId/docs/:kind/:name'), activated.ctx, { searchParams: params })
+    expect(readDocBrainstorm('acme', 'guidelines', 'voice.md')).toEqual([])
   })
 
   it('404s for a ghost brand', async () => {

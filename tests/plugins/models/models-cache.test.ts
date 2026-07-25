@@ -130,3 +130,24 @@ afterEach(() => {
 process.on('exit', () => {
   rmSync(testDir, { recursive: true, force: true })
 })
+
+describe('fetchAvailableModels — cache-served tiers are recomputed', () => {
+  it('a persisted cache with stale tier labels serves fresh heuristic tiers', async () => {
+    const { fetchAvailableModels, setModelsCache } = await import('../../../plugins/models/lib/available-models')
+    setModelsCache(null)
+    // Written by an old heuristic that labeled the mini model premium.
+    writePersistedCache({
+      models: [
+        { id: 'openai-codex/gpt-5.4-mini', name: 'GPT-5.4 Mini', tier: 'premium', provider: 'openai-codex' },
+        { id: 'openai-codex/gpt-5.5', name: 'GPT-5.5', tier: 'premium', provider: 'openai-codex' },
+      ] as AvailableModel[],
+      fetchedAt: Date.now(),
+      source: 'runtime',
+    })
+    const result = await fetchAvailableModels({} as never)
+    expect(result.cached).toBe(true)
+    const byId = new Map(result.models.map((m) => [m.id, m]))
+    expect(byId.get('openai-codex/gpt-5.4-mini')?.tier).toBe('budget') // recomputed, not the stale label
+    expect(byId.get('openai-codex/gpt-5.5')?.tier).toBe('premium')
+  })
+})

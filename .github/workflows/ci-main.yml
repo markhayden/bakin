@@ -79,11 +79,7 @@ jobs:
       # --timeout 15000: worker contention on the 4-core runner can push
       # render-heavy component tests past the 5s default (observed 5.4-7.2s).
       - name: Tests
-        run: bun test --parallel --isolate --timeout 15000 --path-ignore-patterns "tests/components/kanban-dnd.test.tsx"
-      # Quarantined serial step — kanban-dnd destabilizes the parallel pool under
-      # contention on 2-vCPU runners (issue #650). Still GATES; quarantine != skip.
-      - name: Quarantined serial tests (issue #650)
-        run: bun test tests/components/kanban-dnd.test.tsx --isolate --timeout 15000
+        run: bun test --parallel --isolate --timeout 15000
 
       - name: Build (host + plugins, no binary compile)
         run: |

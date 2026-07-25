@@ -9,6 +9,9 @@ import type {
 } from '../../packages/core/src/plugin-types'
 import { safeParseHealthCheckRunInput } from './health-contract'
 import { getHealthRepairAction, listHealthChecks } from './health-check-registry'
+import { createLogger } from './logger'
+
+const log = createLogger('doctor-checks')
 
 export interface DetailedHealthCheckRun {
   def: HealthCheckDef
@@ -151,10 +154,23 @@ function verificationObservation(
     incident: {
       key: def.id,
       title: `${def.name} could not be verified`,
-      impact: 'Bakin cannot currently confirm whether this part of the system is healthy.',
+      // This card means the CHECK ITSELF failed to produce evidence (it
+      // crashed or timed out). The error goes INTO the card copy — the
+      // first version told operators to "expand this card" for a detail
+      // the incident view never rendered (field feedback, 2026-07-22:
+      // instructions must reference what is actually on screen).
+      impact: `Bakin cannot currently confirm whether this part of the system is healthy — the check crashed instead of reporting evidence. Error: ${reason.slice(0, 300)}`,
       disposition: 'watch',
       resources: [{ kind: 'plugin', id: def.owner.id, label: def.owner.label }],
-      resolution: { key: 'rerun-check', type: 'rerun', label: 'Check again' },
+      resolution: {
+        key: 'diagnose-check-failure',
+        type: 'instructions',
+        label: 'Diagnose the failed check',
+        steps: [
+          'Fix what the error above names (a missing tool, unreadable file, or unreachable service), then run checks again.',
+          'If the error is opaque or persists across reruns, it is a Bakin bug worth reporting — a check should report evidence, not crash.',
+        ],
+      },
     },
   }
 }
@@ -177,6 +193,19 @@ export async function runHealthCheck(
     const completedAt = now().toISOString()
     const parsed = safeParseHealthCheckRunInput(raw)
     if (!parsed.success) {
+      // Surface the structured issues — the bare contract message hid the
+      // failing field paths from the card, the log, AND the execution
+      // record, leaving a field diagnosis stuck at "failed validation"
+      // with nothing to act on (2026-07-22).
+      const issueText = parsed.error.issues
+        .slice(0, 3)
+        .map((issue) => `${issue.path}: ${issue.message}`)
+        .join('; ')
+      const reason = issueText ? `${parsed.error.message} ${issueText}` : parsed.error.message
+      log.warn('health check output failed contract validation', {
+        checkId: def.id,
+        issues: parsed.error.issues.slice(0, 10),
+      })
       return {
         def,
         freshUntil: staleAt(completedAt, ttlMs),
@@ -186,9 +215,9 @@ export async function runHealthCheck(
           startedAt,
           completedAt,
           outcome: 'invalid',
-          error: { code: parsed.error.code, message: parsed.error.message },
+          error: { code: parsed.error.code, message: reason },
         },
-        observations: [verificationObservation(def, completedAt, ttlMs, parsed.error.message)],
+        observations: [verificationObservation(def, completedAt, ttlMs, reason)],
       }
     }
 

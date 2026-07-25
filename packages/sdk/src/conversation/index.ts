@@ -37,15 +37,32 @@ export type {
   ToolCallDrawerProps,
 } from '@bakin/ui/conversation'
 
-/** Response-scoped SSE reader and state machine for streamed turns. */
-export { readConversationSseStream } from './sse'
-export type { ConversationSseHandlers } from './sse'
-/** One-at-a-time streamed-turn state for focused conversation surfaces. */
-export { useConversationStream } from './use-conversation-stream'
+/** Durable bus-driven thread state for server-owned conversational turns. */
+export { useConversationThread } from './use-conversation-thread'
 export type {
-  ConversationStream,
-  ConversationStreamOptions,
-} from './use-conversation-stream'
+  ConversationThread,
+  ConversationThreadLoad,
+  ConversationThreadOptions,
+} from './use-conversation-thread'
+/** Shared attention, badge, notification, and reply-state primitives. */
+export {
+  attentionForDone,
+  badgeFor,
+  visibleIdFromLocation,
+  withUnreadPrefix,
+} from '@/components/conversation/attention'
+export type {
+  AttentionActions,
+  ConversationAttentionContext,
+  ConversationDonePayload,
+} from '@/components/conversation/attention'
+export { playReplyChime } from '@/components/conversation/notification-sound'
+export { ConversationReplyToast } from '@/components/conversation/reply-toast'
+export { useConversationAttention } from '@/components/conversation/use-conversation-attention'
+export type {
+  ConversationAttentionConfig,
+  ConversationAttentionTotals,
+} from '@/components/conversation/use-conversation-attention'
 
 /** Stable compact, absolute, and calendar-day timestamp helpers. */
 export {

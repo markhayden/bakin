@@ -85,8 +85,6 @@ Everything else (soul, identity, rules, tools, skills, sessions) lives in the ru
 | Setting | Type | Default | What it does |
 | --- | --- | --- | --- |
 | Heartbeat stale threshold (minutes) | `number` | `15` | Mark agents as offline after this many minutes without a heartbeat or audit activity |
-| Task routing provider | `select` | `anthropic` | LLM provider for resolving team-assigned tasks to the best-suited member (key from env or secret store) |
-| Task routing model | `string` | `claude-haiku-4-5-20251001` | Provider-native model id for assignment routing — a cheap/fast model is right; this is a classification call |
 
 </div>
 <!-- /docs:settings -->

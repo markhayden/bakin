@@ -91,10 +91,10 @@ export function ConversationPanel({
       streaming={streaming}
       agent={resolveAgent(agentId)}
       resolveAgent={resolveAgent}
-      agentControl={onAgentChange && agentId ? (
+      agentControl={onAgentChange ? (
         <span data-conv-agent-select="">
           <AgentSelect
-            value={agentId}
+            value={agentId ?? ''}
             onValueChange={onAgentChange}
             className="h-8 w-auto min-w-[130px] text-xs"
           />

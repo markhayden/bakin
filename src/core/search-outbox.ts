@@ -19,6 +19,7 @@ import {
   type DrainReport,
   type OutboxDrainTarget,
 } from '@bakin/core/search/outbox'
+import { noteSearchEngineProgress } from '@bakin/core/search/progress'
 import { createLogger } from './logger'
 import { recordUsage } from './usage'
 
@@ -87,6 +88,7 @@ export function nudgeOutboxPump(): Promise<DrainReport | null> {
         const backoff = DOWN_BACKOFF_MS[Math.min(pump.consecutiveDownCycles, DOWN_BACKOFF_MS.length) - 1]
         pump.nextAttemptAt = Date.now() + backoff
       } else {
+        if (report.processed > 0) noteSearchEngineProgress()
         pump.consecutiveDownCycles = 0
         pump.nextAttemptAt = 0
       }

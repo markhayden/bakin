@@ -89,6 +89,8 @@ function run(overrides: Partial<RunWithCostRow> = {}): RunWithCostRow {
     cacheReadTokens: null,
     cacheWriteTokens: null,
     costUsdMicros: 40_000,
+    workClass: 'adhoc',
+    routeSource: 'class',
     ...overrides,
   }
 }
@@ -208,7 +210,7 @@ describe('GET /:agentId/timeline route', () => {
     const task = await tasks.create({ title: 'render pdf', agent: 'pixel', createdBy: 'test' } as never)
     expect(claimRun({ runId: `task:${task.id}:d1`, taskId: task.id, seq: 1, agent: 'pixel', bootId: 'b', now: Date.now() - 60_000 })).toEqual({ claimed: true })
     expect(settleRun(`task:${task.id}:d1`, 'turn-ok')).toBe(true)
-    recordRunCost({ runId: `task:${task.id}:d1`, taskId: task.id, agent: 'pixel', model: 'sonnet-5', totalTokens: 12_345, costUsdMicros: 999, occurredAt: Date.now() - 30_000 })
+    recordRunCost({ workClass: null, runId: `task:${task.id}:d1`, taskId: task.id, agent: 'pixel', model: 'sonnet-5', totalTokens: 12_345, costUsdMicros: 999, occurredAt: Date.now() - 30_000 })
     // other-agent run must not leak
     expect(claimRun({ runId: 'task:other:d1', taskId: 'other', seq: 1, agent: 'scout', bootId: 'b' })).toEqual({ claimed: true })
 

@@ -220,7 +220,9 @@ describe('drafting banner', () => {
     mockApi({ draft: true, blocked: { 't1': 'acme', 't2': 'acme', 't3': 'other' } })
     await renderDetail()
     await waitFor(() => expect(document.querySelector('[data-draft-banner]')).not.toBeNull())
-    expect(screen.getByText(/2 tasks are waiting on this brand/)).toBeDefined()
+    // the blocked count arrives from a separate /blocked-tasks fetch — one
+    // re-render after the banner itself, so it needs its own waitFor
+    await waitFor(() => expect(screen.getByText(/2 tasks are waiting on this brand/)).toBeDefined())
     expect(document.querySelector('[data-draft-task-link]')).toBeNull() // no task id known
     await settleReact()
   })

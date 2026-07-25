@@ -176,53 +176,69 @@ describe('checkTeamRouting', () => {
   const board = (teams: Array<string | undefined>, column = 'todo') => () => ({
     columns: { [column]: teams.map((team, i) => ({ id: `t${i}`, team })) },
   })
+  const creds = (providers: string[]) => async () => ({ llmProviders: providers })
 
-  it('ignores RESOLVED team tasks — no warn when only team+agent tasks exist without a key (R7)', async () => {
+  it('ignores RESOLVED team tasks — no warn when only team+agent tasks exist without runtime creds (R7)', async () => {
     const readBoard = () => ({
       columns: { inProgress: [{ id: 't0', team: 'development', agent: 'reviewer' }] },
     })
     const results = observations(await checkTeamRouting({
-      routingProvider: 'anthropic',
       readBoard,
-      keySource: () => null,
+      credentialStatus: creds([]),
     }))
     expect(results[0].status).toBe('healthy')
   })
 
   it('passes quietly when no team-assigned tasks exist', async () => {
     const results = observations(await checkTeamRouting({
-      routingProvider: 'anthropic',
       readBoard: board([undefined, undefined]),
-      keySource: () => null,
+      credentialStatus: creds([]),
     }))
     expect(results).toHaveLength(1)
     expect(results[0].status).toBe('healthy')
   })
 
-  it('warns when team tasks exist but no routing key resolves', async () => {
+  it('errors when team tasks exist but the runtime has no usable LLM credentials', async () => {
     const results = observations(await checkTeamRouting({
-      routingProvider: 'anthropic',
       readBoard: board(['development', undefined]),
-      keySource: () => null,
+      credentialStatus: creds([]),
     }))
     expect(results[0].status).toBe('error')
-    expect(results[0].summary).toContain('anthropic')
+    expect(results[0].summary).toContain('no usable LLM credentials')
   })
 
-  it('passes when team tasks exist and the key resolves', async () => {
+  it('passes when team tasks exist and the runtime has credentials; surfaces the route model', async () => {
     const results = observations(await checkTeamRouting({
-      routingProvider: 'anthropic',
       readBoard: board(['development']),
-      keySource: () => ({ apiKey: 'k', source: 'env' as const }),
+      credentialStatus: creds(['anthropic']),
+      routeModel: 'openai-codex/gpt-5.4-mini',
     }))
     expect(results[0].status).toBe('healthy')
+    expect(results[0].summary).toContain('openai-codex/gpt-5.4-mini')
+  })
+
+  it('no route model reports inherit', async () => {
+    const results = observations(await checkTeamRouting({
+      readBoard: board(['development']),
+      credentialStatus: creds(['anthropic']),
+    }))
+    expect(results[0].status).toBe('healthy')
+    expect(results[0].summary).toContain('inherit')
+  })
+
+  it('unreadable credential status → unknown, never healthy', async () => {
+    const results = observations(await checkTeamRouting({
+      readBoard: board(['development']),
+      credentialStatus: async () => { throw new Error('adapter offline') },
+    }))
+    expect(results[0].status).toBe('unknown')
+    expect(results[0].key).toBe('runtime-credentials')
   })
 
   it('ignores done/archived team tasks', async () => {
     const results = observations(await checkTeamRouting({
-      routingProvider: 'anthropic',
       readBoard: board(['development'], 'done'),
-      keySource: () => null,
+      credentialStatus: creds([]),
     }))
     expect(results[0].status).toBe('healthy')
   })

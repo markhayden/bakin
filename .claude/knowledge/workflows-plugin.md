@@ -109,6 +109,19 @@ Start-time validation checks those ids against the runtime roster. `$assigned`
 requires the task to already have an assignee and fails before instance creation
 if it cannot resolve.
 
+User-owned and agent-package steps may also target a TEAM (#611):
+`agent: "team:<teamId>"` (token DSL in `@bakin/core/workflows/team-token`;
+plugin-shipped defaults may NOT hardcode teams — same portability rule as
+literal agents). The step resolves to a concrete member at dispatch through
+the `team.resolveAssignment` hook; the pick is sticky on the instance
+(`teamResolutions[stepId]`, first-write-wins via
+`workflows.recordStepTeamResolution`) so gate rejections and retries return
+to the same agent. Save/start validation checks team existence via
+`team.exists` (tiered — unreachable team plugin skips the check and
+dispatch fails honestly). Structural resolution failures block the parent
+task with the team-routing sentinels; transients ride the dispatch ladder.
+Deep reference: `.claude/knowledge/team-aware-assignment.md`.
+
 ### Three-tier reference validation (#374)
 
 Nested `workflow_id` existence is deliberately validated at three tiers,

@@ -85,6 +85,7 @@ describe('createMockRuntimeAdapter minimal default (R24)', () => {
         memory: { mode: 'unavailable' as const },
         sessions: { mode: 'unavailable' as const },
         workspaceFiles: { mode: 'unavailable' as const },
+        concurrency: { sameAgentTurns: 'serialized' as const },
         input: { imageInput: false, audioInput: false },
       }),
     })

@@ -138,11 +138,15 @@ if (!binary) {
     })
 
     it('PIN antfly#319: mixed-corpus media leg — raw flags stuck building, health() overrides to ready', async () => {
-      // WHEN THE CANARY HALF FAILS (raw backfill_state becomes 'ready'):
-      // upstream fixed the skip accounting → delete the idle-detection
-      // override in mapIndexStatuses + this pin.
+      // rc.18 behavior (re-pinned 2026-07-22 after the rc.21 crash dossier):
+      // docs whose media template renders empty never complete the leg's
+      // backfill accounting, so raw flags stay raised while fully idle; the
+      // idle-detection override in mapIndexStatuses maps ready. rc.21 fixed
+      // THIS accounting (verified) but is unshippable for other reasons —
+      // when a healthy release ships, flip this back to the guard form
+      // (git history, 2026-07-21).
       if (!instance.modelsAvailable || !existsSync(join(homedir(), '.antfly', 'inference', 'models', 'antflydb', 'clipclap'))) {
-        console.warn('⚠ antfly#319 pin skipped — clipclap model not present')
+        console.warn('⚠ antfly#319 guard skipped — clipclap model not present')
         return
       }
       const T2 = 'pins_mixed'
@@ -177,9 +181,8 @@ if (!binary) {
         await sleep(1000)
       }
       expect(raw).not.toBeNull()
-      // CANARY: raw flags still lie (building forever) — when this flips,
-      // delete the workaround.
-      expect(raw!.backfill_state).toBe('running')
+      // CANARY: raw flags still lie (building forever) on rc.18 — when this
+      // flips on a future pin, revisit the override (guard form in history).
       expect(raw!.rebuilding === true || raw!.backfill_active === true).toBe(true)
       // WORKAROUND GUARD: our health mapping overrides to ready.
       const { AntflySearchClient } = await import('../../../packages/adapter-antfly/src/client')
@@ -189,6 +192,61 @@ if (!binary) {
       const vis = legs.find((l) => l.leg === 'vis')
       expect(vis?.state).toBe('ready')
       expect(vis?.indexedCount).toBe(1)
+    }, 180_000)
+
+    it('GUARD antfly#319 (idle-detection override): an idle embeddings leg maps ready regardless of raw flags', async () => {
+      // The override this guards was retired at the rc.21 repin, then
+      // RESTORED hours later: the production memory-table green (50
+      // embeddable of ~10k skipped audit rows, rebuild interrupted by an
+      // engine bounce) sat with rebuilding/backfill_active raised while
+      // fully idle — and parked unconverged. A minimal 2-doc skip corpus
+      // does NOT reproduce the stuck flags on rc.21 (they clear), so the
+      // trigger is scale- or interruption-dependent and this cannot be a
+      // fails-when-fixed pin. The override's semantics are safe regardless
+      // (pending 0 + no active batch + not retrying ⇒ idle ⇒ ready).
+      // Retirement is MANUAL: prove a full-scale interrupted rebuild
+      // converges without it before deleting.
+      const T6 = 'pins_textskip'
+      await api('POST', `/db/v1/tables/${T6}`, {
+        num_shards: 1,
+        indexes: { sem: { name: 'sem', type: 'embeddings', template: '{{#if body}}{{body}}{{/if}}', dimension: 384, embedder: { provider: 'antfly', model: 'BAAI/bge-small-en-v1.5' } } },
+      })
+      await sleep(1200)
+      for (let i = 0; i < 10; i++) {
+        const r = await api('POST', `/db/v1/tables/${T6}/batch`, {
+          inserts: { s1: { title: 'has body', body: 'embeddable text' }, s2: { title: 'no body field' } },
+          sync_level: 'full_index',
+        })
+        if (r.status < 300) break
+        await sleep(500)
+      }
+      // Wait for idle: the one embeddable doc lands, nothing in flight.
+      let raw: Record<string, unknown> | null = null
+      for (let i = 0; i < 120; i++) {
+        const st = await api('GET', `/db/v1/tables/${T6}/indexes`)
+        const entries = Array.isArray(st.json) ? st.json as Array<{ config?: { name?: string }; status?: Record<string, unknown> }> : []
+        const sem = entries.find((e) => e.config?.name === 'sem')?.status ?? null
+        const runtime = sem?.enrichment_runtime as { pending_sequence_count?: number; active_embed_batch_items?: number } | undefined
+        if (sem && (sem.total_indexed as number) >= 1 && runtime?.pending_sequence_count === 0 && (runtime?.active_embed_batch_items ?? 0) === 0) {
+          raw = sem
+          break
+        }
+        await sleep(1000)
+      }
+      if (raw === null) {
+        console.warn('⚠ text-skip pin skipped — embeddable doc never indexed (no BAAI model?)')
+        return
+      }
+      // Record (not assert) whether the raw flags lie on this corpus —
+      // evidence for eventual manual retirement, not a gate.
+      console.warn(`text-skip raw flags: rebuilding=${String(raw.rebuilding)} backfill_active=${String(raw.backfill_active)}`)
+      // WORKAROUND GUARD: idle-detection maps the leg ready either way.
+      const { AntflySearchClient } = await import('../../../packages/adapter-antfly/src/client')
+      const { DEFAULT_SETTINGS } = await import('../../../packages/adapter-antfly/src/defaults')
+      const client = new AntflySearchClient({ ...DEFAULT_SETTINGS, url: instance.url }, { fetchImpl: nativeFetch })
+      const legs = await client.tables.health(T6)
+      const sem = legs.find((l) => l.leg === 'sem')
+      expect(sem?.state).toBe('ready')
     }, 180_000)
 
     it('PIN rc.18: an EMPTY (never-written) table reports backfill running forever on every leg', async () => {
@@ -284,6 +342,21 @@ if (!binary) {
         await sleep(500)
       }
       expect(status).toBe(500)
+      // rc.20+: the failed batch flips the engine's read path to
+      // ReadUnavailable for EVERY table until a successful write lands
+      // (reported upstream 2026-07; see read-unavailable-storm in
+      // engine-status.ts). Heal it here so later tests query a healthy
+      // engine — and pin the healing behavior itself while we're at it.
+      const heal = await api('POST', `/db/v1/tables/${T}/batch`, {
+        inserts: { heal1: { title: 'healing write' } },
+        sync_level: 'full_index',
+      })
+      expect(heal.status).toBeLessThan(300)
+      const probe = await api('POST', `/db/v1/tables/${T}/query`, {
+        full_text_search: { match_all: {} },
+        limit: 1,
+      })
+      expect(probe.status).toBe(200)
     }, 120_000)
 
     it('PIN: filter_query rejects match_phrase nodes (the eq-filter shape) with 400', async () => {

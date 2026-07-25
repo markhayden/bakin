@@ -18,14 +18,17 @@ export interface AntflyPin {
 }
 
 export const ANTFLY_PIN: AntflyPin = {
-  // rc.18 (tagged 2026-07-09), adopted 2026-07-11 for the search trust &
-  // speed initiative (.claude/specs/search-trust-and-speed.md). Fixes #317
-  // (batch double-free on internal write failure — our proposed patch
-  // landed verbatim; the local copy in tasks/ was deleted). Known-open
-  // upstream at this pin: #319 (mixed-corpus backfill accounting —
-  // idle-detection workaround + canary pin in
-  // tests/integration/antfly/workaround-regressions.test.ts). Empirical
-  // rc.18 verdicts per shim live in tasks/evidence-search-trust-and-speed.md.
+  // rc.18 (tagged 2026-07-09) — RE-PINNED 2026-07-22 after the rc.21
+  // evaluation ended in a crash dossier: concurrent embed-bearing writes
+  // crash the engine outright (metal-command-buffer-failed, process exit);
+  // it exits mid table-create even on an EMPTY data dir; sustained embed
+  // load sickens the data plane; and the in-place rc.18→rc.21 upgrade
+  // migrates table files one-way. All reported upstream with shell-only
+  // repros (antfly#382 + the crash dossier). Re-evaluate on the next
+  // release: bump version+checksums, flip the server subcommand back to
+  // `standalone` (rc.19+ rename) at the three spawn sites, and re-run
+  // tests/integration/antfly/ + the reproduction ladder BEFORE adopting.
+  // rc.18 runs the pre-rename `swarm` subcommand.
   version: '0.2.0-rc.18',
   baseUrl: 'https://releases.antfly.io/antfly',
   checksums: {

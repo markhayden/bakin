@@ -11,6 +11,7 @@ import { appendAudit } from './audit'
 import { isStale } from '../lib/format'
 import { getAppServices } from './app-services'
 import { meterAgentTurn } from './agent-cost'
+import { resolveSystemRoute, routeSendArgs } from './system-route'
 import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 import { getStatsByMs } from './usage'
@@ -21,13 +22,16 @@ import {
   moveTask,
   readTaskboard,
 } from './task-store'
-import { getLiveRun, supersedeStaleRun } from './execution-ledger'
+import { getLiveRun, loseRun, supersedeStaleRun } from './execution-ledger'
 import {
+  abortTurnsByRunIds,
   abortTurnsForTask,
   forceReleaseTurn,
+  getInFlightTurn,
   getInFlightTurnsSnapshot,
   ORPHAN_TURN_FORCE_RELEASE_GRACE_MS,
 } from './dispatch-registry'
+import { settleRunWorkspace, sweepRunWorkspaces } from './run-workspace'
 
 const log = createLogger('watchdog')
 const hooks = () => getHookRegistry()
@@ -140,8 +144,9 @@ async function sendWatchdogChannelMessage(channel: string, message: string): Pro
 async function sendMainAgentAlert(message: string): Promise<void> {
   const runtime = getAppServices().runtime
   const agentId = await getRuntimeMainAgentId(runtime)
-  const result = await runtime.messaging.send({ agentId, content: message, activityClass: 'system' })
-  await meterAgentTurn({ agent: agentId, activityClass: 'system', result, name: 'watchdog-alert' })
+  const route = await resolveSystemRoute('relay')
+  const result = await runtime.messaging.send({ agentId, content: message, activityClass: 'system', ...routeSendArgs(route) })
+  await meterAgentTurn({ agent: agentId, activityClass: 'system', result, workClass: 'relay', routeSource: route.source, resolvedModel: route.model, name: 'watchdog-alert' })
 }
 
 export function start(contentDir: string): void {
@@ -158,6 +163,7 @@ export function start(contentDir: string): void {
     // try/catch: a sweep failure must never break the stuck-task scan.
     try {
       sweepOrphanedTurns(contentDir)
+      await sweepRunWorkspacesTick(settings)
     } catch (err) {
       log.error('Orphan turn sweep failed', err)
     }
@@ -238,6 +244,13 @@ export function start(contentDir: string): void {
                 runIds: supersede.runIds,
                 minutesStuck,
               })
+              // Abort the SUPERSEDED runs' turns NOW instead of leaving
+              // zombies running: their late settles would otherwise race the
+              // refired attempt (stale asset saves, ladder re-entry for an
+              // already-recovered task). By runId, NEVER by taskId — parallel
+              // workflow-step siblings share a taskId and a healthy working
+              // step must not be killed for its stale sibling (review F2).
+              abortTurnsByRunIds(supersede.runIds, 'superseded')
             }
           } catch (err) {
             log.error('Ledger supersede failed — skipping auto-recovery this tick (fail closed)', err, { id: task.id })
@@ -471,7 +484,25 @@ function sweepOrphanedTurns(contentDir: string): void {
       continue
     }
     if (now - turn.abortedAt < ORPHAN_TURN_FORCE_RELEASE_GRACE_MS) continue
-    if (forceReleaseTurn(turn.marker)) {
+    if (forceReleaseTurn(turn.threadId)) {
+      // Settle the ledger row too — a force-released zombie may never settle
+      // on its own, and a row stuck at 'running' would let its late asset
+      // saves pass the staleness gate and hide the dir from GC forever
+      // (same-agent-concurrency D3). First-write-wins: a no-op if the run
+      // already settled some other way.
+      try {
+        loseRun(turn.threadId, 'force-released')
+      } catch (err) {
+        log.error('Failed to settle force-released run in ledger', err, { runId: turn.threadId })
+      }
+      // Settle the run-workspace sidecar too — a force-released zombie may
+      // never settle it itself, and a forever-'running' sidecar is invisible
+      // to the size aggregate and unevictable by the disk budget (review F6).
+      try {
+        settleRunWorkspace(turn.agentId, turn.threadId, 'lost: force-released')
+      } catch (err) {
+        log.warn('Failed to settle force-released run workspace sidecar', { runId: turn.threadId, error: String(err) })
+      }
       appendAudit(contentDir, 'task.turn_force_released', 'watchdog', {
         id: turn.taskId,
         agent: turn.agentId,
@@ -481,6 +512,29 @@ function sweepOrphanedTurns(contentDir: string): void {
       })
       log.warn('Force-released hung orphan turn', { taskId: turn.taskId, agent: turn.agentId, runId: turn.threadId })
     }
+  }
+}
+
+/**
+ * Run-workspace GC (same-agent-concurrency D5): classify + bounded removal +
+ * size budget, dependencies injected so the run-workspace module stays a
+ * policy engine (registry liveness orders task-deletion sweeps AFTER
+ * settle-or-force-release — the #604 grace this rides). Failures never
+ * break the tick.
+ */
+async function sweepRunWorkspacesTick(settings: ReturnType<typeof getSettings>): Promise<void> {
+  try {
+    // Awaited: an unawaited async call would let rejections escape both this
+    // catch and the tick-level catch as unhandled rejections (review F8).
+    await sweepRunWorkspaces({
+      isTurnLive: (threadId) => getInFlightTurn(threadId) !== undefined,
+      taskExists: (taskId) => Boolean(getTask(taskId)),
+      retentionDays: settings.dispatch.runDirRetentionDays,
+      maxTotalBytes: settings.dispatch.runDirMaxTotalGb * 1024 * 1024 * 1024,
+      graceMs: settings.watchdog.intervalMs * 2,
+    })
+  } catch (err) {
+    log.error('Run-workspace sweep failed (next tick retries)', err)
   }
 }
 

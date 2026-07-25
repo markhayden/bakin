@@ -34,6 +34,8 @@ import { createAppServices, maybeGetAppServices } from './app-services'
 import { createRuntimeAdapter, getSupportedRuntimeAdapterNames } from './runtime-adapter-factory'
 import { syncBakinRuntimeSkill } from './bakin-skill'
 import { getContentDir } from './content-dir'
+import { getInFlightTurnCount } from './dispatch-registry'
+import { resetSameAgentTurnsModeCache } from './dispatch-turns'
 import { createLogger } from './logger'
 import { reconcileRoster, type RosterCarryReport } from './roster-reconcile'
 import { getSettings, updateSettings } from './settings'
@@ -256,6 +258,16 @@ export async function switchRuntime(
     emit({ phase: 'validate', status: 'error', detail: result.error })
     return result
   }
+  // In-flight dispatch turns hold live sessions on the OLD adapter — a
+  // switch would shutdown() under them (exposure doubles at per-agent cap
+  // 2). Refuse honestly; the operator retries when the board is quiet.
+  // Dry runs are read-only against a secondary adapter and stay allowed.
+  const inFlight = getInFlightTurnCount()
+  if (!opts.dryRun && inFlight > 0) {
+    result.error = `${inFlight} dispatch turn(s) are in flight — wait for them to settle (or abort their tasks) before switching runtimes`
+    emit({ phase: 'validate', status: 'error', detail: result.error })
+    return result
+  }
   emit({ phase: 'validate', status: 'ok', detail: `${from} → ${target}${opts.dryRun ? ' (dry run)' : ''}` })
   switchInFlight = true
 
@@ -388,6 +400,11 @@ export async function switchRuntime(
     // ── flip ─────────────────────────────────────────────────────────────
     emit({ phase: 'flip', status: 'start' })
     updateSettings({ runtime: { adapter: target } })
+    // The dispatch gate's per-process concurrency-mode cache belongs to the
+    // OLD adapter — without this reset, a Pi→OpenClaw switch would keep
+    // firing two same-agent turns at a serialized runtime until the restart
+    // (review F1: the exact shared-workspace collision the gate prevents).
+    resetSameAgentTurnsModeCache()
     emit({ phase: 'flip', status: 'ok' })
 
     // ── initialize target (fresh app services off the flipped settings) ──

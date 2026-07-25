@@ -172,6 +172,8 @@ export function createSearchAdapterHarness() {
     )
   ))
 
+  const restartEngine = mock(async () => {})
+
   const adapter: SearchAdapter = {
     name: 'mock-search',
     version: '0.0.0',
@@ -181,6 +183,7 @@ export function createSearchAdapterHarness() {
     available,
     capabilities,
     mappingFingerprint,
+    restartEngine,
     tables: {
       list: tablesList,
       create: tablesCreate,
@@ -225,6 +228,7 @@ export function createSearchAdapterHarness() {
       available,
       capabilities,
       mappingFingerprint,
+      restartEngine,
       tablesList,
       tablesCreate,
       tablesDrop,

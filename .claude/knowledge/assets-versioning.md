@@ -174,6 +174,8 @@ Enrichment fields (`caption`, `ocr_text`, `suggested_tags`, `transcript`,
 `media_url` (a `file://` URL) feeds the visual/audio embedding leg for raster
 images and audio files.
 
+**Enrichment health (health trust overhaul, 2026-07-24):** ONE self-healing coverage stat, never a per-asset nag. The assets check emits a single `enrichment-coverage` observation (evidence: total/wanting/enriched/missing/stale/failed/skipped/coveragePct); `skipped` assets leave the denominator. Advisory only below 60% coverage on 5+ enrichable assets (`ENRICHMENT_COVERAGE_ADVISORY_BELOW`); a missing engine stays a small advisory config callout. A daily self-heal pass (`incompleteEnrichmentAssetIds` → `enqueueEnrichmentBackfill`, NO force so nothing re-bills) re-attempts failed/missing/stale enrichment automatically.
+
 ## Live updates
 
 Every mutation rewrites the manifest → the watcher emits `asset.changed`
@@ -208,6 +210,17 @@ first); no `savePromptPacket` (the prompt lives per-version in the manifest).
   (same prompt + different references ≠ duplicate).
 
 ## save-by-source upsert
+
+**Run-workspace saves (same-agent concurrency):** paths under
+`~/.bakin/run-workspaces/` dedup on a task-stable virtual key
+(`run:task:<taskId>/<relpath>`, derived by READING the run dir's
+`.bakin-run.json` sidecar — never path parsing; missing/torn sidecar degrades
+to real-path identity). The virtual key stores as `source.path`. **Staleness
+gate:** a save whose origin run is not `running` in the ledger
+(superseded/lost/settled/purged/unreadable — fail-closed) records its version
+WITHOUT advancing `currentVersion` + audits `asset.stale_run_write_suppressed`
+(`addVersion` `advanceCurrent:false`) — a zombie's late output never displaces
+the corrective attempt's deliverable.
 
 `bakin_exec_assets_save` → `upsertFromSource`: a re-save of the same source path
 versions the existing asset (content-hash → no-op if unchanged), instead of

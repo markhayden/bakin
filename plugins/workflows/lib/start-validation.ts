@@ -15,6 +15,7 @@
  */
 import type { PluginContext } from '@bakin/core/plugin-types'
 import type { WorkflowDefinition, NestedWorkflowStep, MapWorkflowStep } from '../types'
+import { collectTeamTokenIds } from '@bakin/core/workflows/team-token'
 import { listDefinitions, loadDefinition, validateDefinition, validateWorkflowId } from './parser'
 import { createInstance } from './runtime'
 
@@ -53,7 +54,7 @@ export async function validateWorkflowForStart(
   // nesting cycles. The REST /instances/start path previously skipped this —
   // only the hook/exec-tool paths recursed — so a cyclic or invalid nested
   // workflow could be started via REST. This matches the strong validator.
-  const visit = (id: string, path: string[]): void => {
+  const visit = async (id: string, path: string[]): Promise<void> => {
     const workflowIdError = validateWorkflowId(id)
     if (workflowIdError) {
       errors.push(`Workflow "${id}": ${workflowIdError}`)
@@ -72,6 +73,25 @@ export async function validateWorkflowForStart(
       return
     }
 
+    // Team targets (#611): verify referenced teams exist at start time.
+    // Unreachable team plugin → undefined → existence unchecked (tiered);
+    // dispatch fails honestly then.
+    let knownTeamIds: Set<string> | undefined
+    const teamIds = collectTeamTokenIds(def.steps ?? [])
+    if (teamIds.length > 0 && ctx) {
+      try {
+        const checks = await Promise.all(teamIds.map(async (teamId) =>
+          [teamId, await ctx.hooks.invoke<boolean>('team.exists', { teamId })] as const))
+        // Unregistered hook → undefined (never a boolean): team plugin
+        // unavailable, skip existence checks rather than rejecting all teams.
+        knownTeamIds = checks.some(([, exists]) => exists === undefined)
+          ? undefined
+          : new Set(checks.filter(([, exists]) => exists === true).map(([teamId]) => teamId))
+      } catch {
+        knownTeamIds = undefined
+      }
+    }
+
     errors.push(...validateDefinition(def, {
       definitionId: id,
       source: def.source,
@@ -80,14 +100,15 @@ export async function validateWorkflowForStart(
       runtimeAgents: knownAgents,
       assignee,
       requireResolvedAgents: true,
+      knownTeamIds,
     }).map((message) => `Workflow "${id}": ${message}`))
 
     const nestedIds = new Set<string>()
     collectNestedWorkflowIds(def, nestedIds)
-    for (const nestedId of nestedIds) visit(nestedId, [...path, id])
+    for (const nestedId of nestedIds) await visit(nestedId, [...path, id])
   }
 
-  visit(workflowId, [])
+  await visit(workflowId, [])
 
   if (assignee && !knownAgents.has(assignee)) {
     errors.push(`Assignee "${assignee}" is not a known runtime agent`)

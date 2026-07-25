@@ -44,7 +44,7 @@ function manifest(id: string, version: string): string {
       id,
       name: id,
       version,
-      bakin: '>=1.0.0',
+      bakin: '*',
       description: `${id} fixture`,
             permissions: [],
     },

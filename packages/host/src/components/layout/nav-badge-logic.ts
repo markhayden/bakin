@@ -68,6 +68,41 @@ export function collapsedParentRollupTone(
 }
 
 /**
+ * Aggregated badge for an expanded-sidebar group header whose children are
+ * HIDDEN (the group is closed). Children's badges must surface here or a
+ * child's unread count / working dot is invisible until the user happens to
+ * open the group. Merge rule mirrors the kit's badge precedence: pick the
+ * highest-severity tone across the parent's own badge and all active child
+ * badges, then sum the counts carried by badges of that tone (no counts →
+ * presence-only dot). Returns the parent's own badge untouched when nothing
+ * rolls up, and undefined when nothing is active at all.
+ */
+export function closedGroupRollupBadge(
+  item: NavItem,
+  parentBadge: NavBadgeData | undefined,
+  badges: ReadonlyMap<string, NavBadgeData>,
+): NavBadgeData | undefined {
+  const active: NavBadgeData[] = []
+  if (badgeIsActive(parentBadge)) active.push(parentBadge)
+  for (const child of item.children ?? []) {
+    const b = badges.get(child.id) ?? child.badge
+    if (badgeIsActive(b)) active.push(b)
+  }
+  if (active.length === 0) return undefined
+  let tone: NavBadgeTone = active[0].tone ?? 'attention'
+  for (const b of active) {
+    const t = b.tone ?? 'attention'
+    if (TONE_PRIORITY[t] < TONE_PRIORITY[tone]) tone = t
+  }
+  let count: number | undefined
+  for (const b of active) {
+    if ((b.tone ?? 'attention') !== tone || typeof b.count !== 'number') continue
+    count = (count ?? 0) + b.count
+  }
+  return typeof count === 'number' ? { tone, count } : { tone }
+}
+
+/**
  * Aria-label suffix for a collapsed parent. When the dot comes from the
  * parent's own badge we announce its count/tone; when a child provides the
  * highest severity we announce that children need attention — otherwise the

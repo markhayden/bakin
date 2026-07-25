@@ -184,7 +184,7 @@ describe('ModelsPage component', () => {
         return jsonResponse({ window: '24h', estimated: true, totalUsdMicros: 0, byAgent: [], byModel: [] })
       }
       if (url === '/api/plugins/models/routing' && method === 'GET') {
-        return jsonResponse({ policies: [], tagOverrides: [] })
+        return jsonResponse({ routes: [], tagOverrides: [] })
       }
       if (url === '/api/plugins/models/budget' && method === 'GET') {
         return jsonResponse({})

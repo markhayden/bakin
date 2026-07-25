@@ -27,6 +27,7 @@ function incident(overrides: Partial<HealthIncident> = {}): HealthIncident {
     id: 'health:search:queries-dark',
     status: 'error',
     disposition: 'action_required',
+    effectiveDisposition: 'action_required',
     title: 'Search queries are failing',
     impact: 'Users cannot find indexed content.',
     resources: [{ kind: 'service', id: 'search' }],
@@ -111,6 +112,7 @@ describe('Search readiness classifier', () => {
       id: 'core:verification:health.search-canary',
       status: 'unknown',
       disposition: 'watch',
+      effectiveDisposition: 'watch',
       title: 'Search canary could not be verified',
       observationIds: ['health.search-canary:verification'],
     })
@@ -150,6 +152,7 @@ describe('Search readiness classifier', () => {
       id: 'core:verification:health.search',
       status: 'unknown',
       disposition: 'watch',
+      effectiveDisposition: 'watch',
       title: 'Search live composite could not be verified',
       observationIds: ['health.search:verification'],
     })
@@ -199,6 +202,7 @@ describe('Search readiness classifier', () => {
       id: 'core:verification:stale:health.search-canary',
       status: 'unknown',
       disposition: 'watch',
+      effectiveDisposition: 'watch',
       title: 'Search canary evidence is stale',
       observationIds: ['health.search-canary:verification.stale'],
     })

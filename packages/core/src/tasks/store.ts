@@ -29,6 +29,8 @@ export interface BakinTask {
   projectId?: string
   /** Brand link (#419) — resolved lazily at dispatch, mirrors projectId. */
   brandId?: string
+  /** Repo binding override (same-agent-concurrency D6): dispatch worktree target; project binding via projects.getRepo otherwise. */
+  repoPath?: string
   parentId?: string | null
   dependsOn?: string
   availableAt?: string
@@ -72,6 +74,8 @@ export interface CreateBakinTaskInput {
   scheduleJobId?: string
   projectId?: string
   brandId?: string
+  /** Repo binding override (same-agent-concurrency D6): dispatch worktree target; project binding via projects.getRepo otherwise. */
+  repoPath?: string
   parentId?: string | null
   dependsOn?: string
   availableAt?: string
@@ -93,6 +97,7 @@ export type BakinTaskPatch = Partial<Pick<
   | 'scheduleJobId'
   | 'projectId'
   | 'brandId'
+  | 'repoPath'
   | 'parentId'
   | 'dependsOn'
   | 'availableAt'
@@ -110,6 +115,8 @@ export interface TaskListOpts {
   agent?: string
   projectId?: string
   brandId?: string
+  /** Repo binding override (same-agent-concurrency D6): dispatch worktree target; project binding via projects.getRepo otherwise. */
+  repoPath?: string
   includePendingDelete?: boolean
 }
 
@@ -178,6 +185,7 @@ export function createEmptyBakinTask(input: CreateBakinTaskInput, now = new Date
     scheduleJobId: input.scheduleJobId,
     projectId: input.projectId,
     brandId: input.brandId,
+    repoPath: input.repoPath,
     parentId: input.parentId ?? null,
     dependsOn: input.dependsOn,
     availableAt: input.availableAt,

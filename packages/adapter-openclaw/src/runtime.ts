@@ -1046,6 +1046,8 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       defaultSubagentModel: true,
       aliases: true,
       perAgentSubagentModel: true,
+      // Gateway forwards every per-turn thinking level as-is.
+      supportedThinkingLevels: ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'adaptive', 'max'],
     }),
     routingPolicy: async (): Promise<RuntimeRoutingPolicy> => readRoutingPolicy(),
     setRoutingPolicy: async (patch: Partial<RuntimeRoutingPolicy>, reason: string): Promise<void> => {
@@ -1194,6 +1196,9 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     sessions: { mode: 'native' },
     workspaceFiles: { mode: 'native' },
     input: await this.inputModality(opts?.agentId),
+    // The gateway protocol cannot express per-run cwd (discovery §2) —
+    // honest 'serialized' until the upstream asks land.
+    concurrency: { sameAgentTurns: 'serialized' },
   })
 
   private inputModality = async (agentId?: string): Promise<RuntimeCapabilities> => {
@@ -1616,6 +1621,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       lifecycle.turnId,
     )
     let status: 'completed' | 'failed' | 'aborted' | undefined
+    let doneUsage: MessageUsage | undefined
     let sourceEnded = false
     try {
       for await (const chunk of stream) {
@@ -1623,6 +1629,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
         if (chunk.type === 'error') status = getRuntimeStatus() ?? 'failed'
         if (chunk.type === 'done') {
           status = getRuntimeStatus() ?? (args.signal?.aborted ? 'aborted' : 'completed')
+          doneUsage = chunk.usage
         }
         yield chunk
       }
@@ -1635,7 +1642,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     } finally {
       // No terminal chunk + natural source end is a malformed failure. If
       // the consumer returned early, the observed interaction was aborted.
-      lifecycle.finish({ status: status ?? (sourceEnded ? 'failed' : 'aborted') })
+      lifecycle.finish({ status: status ?? (sourceEnded ? 'failed' : 'aborted'), usage: doneUsage })
     }
   }
 

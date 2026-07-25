@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * ConversationPanel + useConversationStream (T3.4) — the embedded
+ * ConversationPanel (T3.4) — the embedded
  * single-session contract, mirroring the three real bits call sites
  * (messaging brainstorm-view, messaging plan-workspace, projects
  * project-detail): fitParent/showHeader layout modes, readOnly notice,
@@ -24,7 +24,6 @@ import '../rtl-settle'
 
 import {
   ConversationPanel,
-  useConversationStream,
   type ConversationMessage,
 } from '@makinbakin/sdk/components'
 
@@ -101,59 +100,3 @@ function sseResponse(frames: string[]): Response {
   })
   return new Response(stream, { status: 200, headers: { 'content-type': 'text/event-stream' } })
 }
-
-describe('useConversationStream', () => {
-  it('streams chunks, forwards custom events, settles through onDone', async () => {
-    const custom: Array<[string, unknown]> = []
-    const done: string[] = []
-    const { result } = renderHook(() =>
-      useConversationStream({
-        fetcher: async () =>
-          sseResponse([
-            `event: chunk\ndata: {"type":"text","content":"hi"}\n\n`,
-            `event: proposal\ndata: {"id":"p1"}\n\n`,
-            `event: done\ndata: {"content":"hi"}\n\n`,
-          ]),
-        onCustom: (name, data) => custom.push([name, data]),
-        onDone: (content) => {
-          done.push(content)
-        },
-      }),
-    )
-    await act(async () => {
-      await result.current.send('go')
-    })
-    expect(done).toEqual(['hi'])
-    expect(custom).toEqual([['proposal', { id: 'p1' }]])
-    expect(result.current.streaming).toBe(false)
-    expect(result.current.liveChunks).toBeNull()
-  })
-
-  it('keeps a trailing error item visible and reports onError', async () => {
-    const errors: string[] = []
-    const { result } = renderHook(() =>
-      useConversationStream({
-        fetcher: async () =>
-          sseResponse([
-            `event: chunk\ndata: {"type":"text","content":"partial"}\n\n`,
-            `event: error\ndata: {"message":"agent unavailable"}\n\n`,
-          ]),
-        onError: (m) => {
-          errors.push(m)
-        },
-      }),
-    )
-    await act(async () => {
-      await result.current.send('go')
-    })
-    await waitFor(() => {
-      expect(errors).toEqual(['agent unavailable'])
-    })
-    expect(result.current.streaming).toBe(false)
-    expect(result.current.liveChunks).toEqual([
-      { type: 'text', content: 'partial' },
-      { type: 'error', content: 'agent unavailable' },
-    ])
-    cleanup()
-  })
-})

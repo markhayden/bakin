@@ -1,16 +1,39 @@
 /** Per-check canonical Health cache and immutable report projection. */
+import { createHash } from 'crypto'
 import type {
   HealthCheckDef,
   HealthCheckExecution,
   HealthCheckState,
   HealthFullSweep,
+  HealthIncident,
   HealthObservation,
   HealthReport,
 } from '../../packages/core/src/plugin-types'
 import type { DetailedHealthCheckRun } from './doctor-checks'
-import { buildHealthIncidents, deriveHealthReportStatus, sortHealthIncidents } from './health-report'
+import {
+  HealthAckNotFoundError,
+  SNOOZE_MAX_MS,
+  pruneAckRecords,
+  readAckRecords,
+  removeAckRecord,
+  resolveAckState,
+  resourceFingerprint,
+  writeAckRecord,
+  type HealthAckRecord,
+  type HealthAckTier,
+} from './health-acks'
+import {
+  buildHealthIncidents,
+  deriveHealthReportStatus,
+  projectEffectiveDispositions,
+  sortHealthIncidents,
+} from './health-report'
 import { deriveSearchReadiness } from './health-search-readiness'
 import { listHealthChecks, onHealthRegistryChanged } from './health-check-registry'
+import { createLogger } from './logger'
+import { getSettings } from './settings'
+
+const log = createLogger('doctor-report-cache')
 
 interface CachedCheck {
   state: HealthCheckState
@@ -153,7 +176,9 @@ function verificationObservation(
     incident: {
       key: `${kind}:${def.id}`,
       title: `${def.name} ${kind === 'stale' ? 'evidence is stale' : 'could not be verified'}`,
-      impact: 'Bakin cannot currently confirm whether this part of the system is healthy.',
+      impact: kind === 'stale'
+        ? 'Bakin cannot currently confirm whether this part of the system is healthy.'
+        : 'Bakin cannot currently confirm whether this part of the system is healthy. No evidence has been produced yet — run checks to gather it.',
       disposition: 'watch',
       resources: [{ kind: def.owner.kind === 'plugin' ? 'plugin' : 'other', id: def.owner.id, label: def.owner.label }],
       resolution: { key: 'rerun-check', type: 'rerun', label: 'Check again' },
@@ -291,9 +316,12 @@ function safeIncidentProjection(
  */
 function semanticProjectionKey(report: Pick<
   HealthReport,
-  'checks' | 'observations' | 'incidents' | 'overallStatus' | 'subsystems'
+  'checks' | 'observations' | 'incidents' | 'overallStatus' | 'subsystems' | 'sensitivity'
 >): string {
   return JSON.stringify({
+    // Sensitivity participates in identity: a mode flip must republish even
+    // when the underlying evidence is unchanged (no-restart flips, #690).
+    sensitivity: report.sensitivity,
     checks: report.checks.map((check) => [
       check.checkId,
       check.latestValidSnapshot?.observations.map((observation) => [observation.id, observation.snapshot]) ?? [],
@@ -308,8 +336,13 @@ function semanticProjectionKey(report: Pick<
       incident.id,
       incident.status,
       incident.disposition,
+      incident.effectiveDisposition,
+      incident.class ?? null,
       incident.stale,
       incident.observationIds,
+      // Ack state participates in identity: ack writes and snooze expiry
+      // republish without a doctor re-run (health trust overhaul).
+      incident.ackState ?? null,
     ]),
     overallStatus: report.overallStatus,
     search: {
@@ -320,18 +353,137 @@ function semanticProjectionKey(report: Pick<
   })
 }
 
+/** Evidence identity for the any-change re-fire rule (action_required
+ *  snoozes): a digest of the incident's linked observations' evidence. */
+function incidentEvidenceSha(incident: HealthIncident, observationsById: Map<string, HealthObservation>): string {
+  const payload = [...incident.observationIds].sort().map((id) => {
+    const observation = observationsById.get(id)
+    return [id, observation?.status ?? null, observation?.evidence ?? null]
+  })
+  return createHash('sha256').update(JSON.stringify(payload)).digest('hex')
+}
+
+/**
+ * Join the user's ack/snooze records onto projected incidents. Invalid
+ * records (expired snoozes, escalated acks, changed evidence) are pruned
+ * lazily. A corrupt store FAILS OPEN toward visibility: acks are ignored,
+ * everything re-surfaces, a warning logs — the user's attention is the
+ * safe default for a health system.
+ */
+function applyIncidentAckStates(
+  incidents: HealthIncident[],
+  observations: HealthObservation[],
+  generatedAt: string,
+): HealthIncident[] {
+  let records: Record<string, HealthAckRecord>
+  try {
+    records = readAckRecords()
+  } catch (error) {
+    log.warn('health ack store unreadable — acks ignored, all incidents re-surface', {
+      err: error instanceof Error ? error.message : String(error),
+    })
+    return incidents
+  }
+  if (Object.keys(records).length === 0) return incidents
+
+  const observationsById = new Map(observations.map((observation) => [observation.id, observation]))
+  const nowMs = Date.parse(generatedAt)
+  const invalidated: string[] = []
+  // A record whose incident is ABSENT from the report means the incident
+  // resolved (last-known retention keeps flapping checks alive, so absence
+  // is evidence of resolution) — prune it, so a recurrence weeks later
+  // arrives LOUD, not pre-silenced, and GET /doctor/acks never lists
+  // ghost rows (review finding).
+  const liveIds = new Set(incidents.map((incident) => incident.id))
+  for (const recordId of Object.keys(records)) {
+    if (!liveIds.has(recordId)) invalidated.push(recordId)
+  }
+  const joined = incidents.map((incident) => {
+    const record = records[incident.id]
+    if (!record) return incident
+    const state = resolveAckState({
+      record,
+      effectiveDisposition: incident.effectiveDisposition as HealthAckTier,
+      resourceFingerprint: resourceFingerprint(incident.resources),
+      evidenceSha: incidentEvidenceSha(incident, observationsById),
+      nowMs,
+    })
+    if (state === null) {
+      invalidated.push(incident.id)
+      return incident
+    }
+    return { ...incident, ackState: state }
+  })
+  pruneAckRecords(invalidated)
+  return joined
+}
+
+/**
+ * The ack/snooze verb. Validates against the CURRENT report (the incident
+ * must exist; tier rules enforced with honest errors), writes the record,
+ * and republishes immediately — no doctor re-run.
+ */
+export function acknowledgeHealthIncident(input: {
+  incidentId: string
+  action: 'ack' | 'snooze' | 'clear'
+  forMs?: number
+  now?: Date
+}): { incidentId: string; action: 'ack' | 'snooze' | 'clear' } {
+  const now = input.now ?? new Date()
+  if (input.action === 'clear') {
+    if (removeAckRecord(input.incidentId)) bump()
+    return { incidentId: input.incidentId, action: 'clear' }
+  }
+
+  const report = getHealthReport(now.toISOString())
+  const incident = report.incidents.find((candidate) => candidate.id === input.incidentId)
+  if (!incident) {
+    throw new HealthAckNotFoundError(`No current incident with id '${input.incidentId}'.`)
+  }
+  const tier = incident.effectiveDisposition as HealthAckTier
+  const record: HealthAckRecord = {
+    incidentId: incident.id,
+    mode: input.action,
+    at: now.toISOString(),
+    tierAtAck: tier,
+    resourceFingerprint: resourceFingerprint(incident.resources),
+  }
+  if (input.action === 'snooze') {
+    const forMs = Math.min(input.forMs ?? 24 * 60 * 60 * 1000, SNOOZE_MAX_MS)
+    record.until = new Date(now.getTime() + forMs).toISOString()
+    if (tier === 'action_required') {
+      const observationsById = new Map(report.observations.map((observation) => [observation.id, observation]))
+      record.evidenceSha = incidentEvidenceSha(incident, observationsById)
+    }
+  }
+  writeAckRecord(record)
+  bump()
+  return { incidentId: incident.id, action: input.action }
+}
+
 export function getHealthReport(generatedAt = new Date().toISOString()): HealthReport {
   const definitions = listHealthChecks()
   const defById = new Map(definitions.map((def) => [def.id, def]))
   const projected = definitions.map((def) => projectCheck(def, generatedAt))
   const checks = projected.map((entry) => entry.state)
   const candidateObservations = projected.flatMap((entry) => entry.observations)
-  const { observations, incidents } = safeIncidentProjection(candidateObservations, generatedAt, defById)
+  const { observations, incidents: rawIncidents } = safeIncidentProjection(candidateObservations, generatedAt, defById)
+  // Sensitivity is applied HERE, once, before status derivation — every
+  // consumer (UI, badge, escalation, CLI) reads the same effective story.
+  // Ack state joins at the same ONE point: acked/snoozed incidents stay on
+  // the wire (Acknowledged section) but stop driving attention anywhere.
+  const sensitivity = getSettings().doctor.sensitivity
+  const incidents = applyIncidentAckStates(
+    sortHealthIncidents(projectEffectiveDispositions(rawIncidents, sensitivity)),
+    observations,
+    generatedAt,
+  )
+  const liveIncidents = incidents.filter((incident) => incident.ackState === undefined)
   const search = deriveSearchReadiness({ observations, incidents, checks, generatedAt })
   const overallStatus = deriveHealthReportStatus({
     registeredChecks: definitions.length,
     checks,
-    incidents,
+    incidents: liveIncidents,
   })
   const summary: HealthReport['summary'] = {
     checks: {
@@ -344,14 +496,19 @@ export function getHealthReport(generatedAt = new Date().toISOString()): HealthR
       notApplicable: checks.filter((check) => check.latestExecution.outcome === 'not_applicable').length,
     },
     incidents: {
-      actionRequired: incidents.filter((incident) => incident.disposition === 'action_required').length,
-      watching: incidents.filter((incident) => incident.disposition === 'watch').length,
-      advisory: incidents.filter((incident) => incident.disposition === 'advisory').length,
-      unknown: incidents.filter((incident) => incident.status === 'unknown').length,
+      // Tier counts describe LIVE attention (they must reconcile with
+      // overallStatus — review finding: acked incidents in the counts made
+      // 'healthy: 1 action required' printable); acknowledged is explicit.
+      actionRequired: liveIncidents.filter((incident) => incident.effectiveDisposition === 'action_required').length,
+      watching: liveIncidents.filter((incident) => incident.effectiveDisposition === 'watch').length,
+      advisory: liveIncidents.filter((incident) => incident.effectiveDisposition === 'advisory').length,
+      unknown: liveIncidents.filter((incident) => incident.status === 'unknown').length,
+      acknowledged: incidents.length - liveIncidents.length,
     },
   }
   const reportProjection = {
     overallStatus,
+    sensitivity,
     checks,
     observations,
     incidents,

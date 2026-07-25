@@ -19,6 +19,7 @@ import { currentSeq } from './execution-ledger'
 import { RuntimeTurnError } from '@bakin/core/adapters/runtime'
 import { blockTask as blockStoredTask, moveTask as moveStoredTask } from './task-store'
 import { formatSanitizedRuntimeFailure, classifyDispatchError, classifyDispatchFailureDetail } from './dispatch-failures'
+import { BoundRepoError } from './repo-binding'
 import type { DispatchState, DispatchTask, DispatchColumns, SessionDeathState, SessionDeathDiagnosisLite } from './dispatch-types'
 import { getFailureRecord, removeDispatchMarkersForTask } from './dispatch-state'
 import { findDispatchTaskSnapshot, taskAlreadyLeftActiveWork, shouldBlockAfterDispatchFailure, tryAddTaskLog } from './dispatch-board'
@@ -110,6 +111,7 @@ async function handleSessionDeath(input: {
   err: RuntimeTurnError
   dispatchKind: 'regular' | 'workflow'
   snapshotColumn: keyof DispatchColumns | null
+  threadId?: string
 }): Promise<void> {
   const diagnosis = input.err.diagnosis
   if (!input.state.failedDispatches) input.state.failedDispatches = {}
@@ -166,7 +168,7 @@ async function handleSessionDeath(input: {
     lastAttempt: Date.now(),
     count: existing?.count ?? 0, // session deaths don't burn generic retries
     kind: 'structural',
-    sessionDeath: { stage, deaths, lastDiagnosis: stripSalvage(diagnosis), salvagedAssetIds },
+    sessionDeath: { stage, deaths, lastDiagnosis: stripSalvage(diagnosis), salvagedAssetIds, ...(input.threadId ? { lastRunId: input.threadId } : {}) },
   }
 
   await tryAddTaskLog(
@@ -232,6 +234,9 @@ export async function reconcileRejectedDispatch(input: {
   initialLogCount: number
   logPrefix: string
   dispatchKind: 'regular' | 'workflow'
+  /** The failed attempt's runId — recorded on the sessionDeath state so the
+   *  corrective prompt can point at its retained run dir. */
+  threadId?: string
 }): Promise<void> {
   const snapshot = findDispatchTaskSnapshot(input.task.id)
   removeDispatchMarkersForTask(input.state, input.dispatchedSet, input.task.id)
@@ -249,6 +254,27 @@ export async function reconcileRejectedDispatch(input: {
 
   // Diagnosed session deaths take the recovery ladder — never the generic
   // block-or-cooldown paths below.
+  // Repo-binding failures are CONFIGURATION problems (allowlist unset, repo
+  // moved, not a git repo) — deterministic, and "waiting doesn't fix a
+  // deterministic failure". Block IMMEDIATELY with the binding error's own
+  // remediation text instead of grinding 5×30-min generic retries that end
+  // in a false "agent may be unavailable" (UI review #1).
+  if (input.err instanceof BoundRepoError) {
+    delete input.state.failedDispatches?.[input.task.id]
+    try {
+      await blockStoredTask(input.task.id, input.err.message)
+    } catch (blockErr) {
+      log.error('Failed to block task on repo-binding failure', blockErr, { id: input.task.id })
+    }
+    await tryAddTaskLog(input.task.id, 'system', `Repo binding failed — task blocked: ${input.err.message}`)
+    appendAudit(input.contentDir, 'task.repo_binding_blocked', input.targetAgent, {
+      id: input.task.id,
+      title: input.task.title,
+      error: input.err.message,
+    })
+    return
+  }
+
   if (input.err instanceof RuntimeTurnError) {
     await handleSessionDeath({
       contentDir: input.contentDir,
@@ -259,6 +285,7 @@ export async function reconcileRejectedDispatch(input: {
       err: input.err,
       dispatchKind: input.dispatchKind,
       snapshotColumn: snapshot?.column ?? null,
+      ...(input.threadId ? { threadId: input.threadId } : {}),
     })
     return
   }

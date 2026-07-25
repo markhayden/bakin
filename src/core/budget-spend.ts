@@ -28,6 +28,7 @@ import {
   type UnattributedSums,
   type ScopeSpend,
   type WindowSpend,
+  type WorkClassSums,
   type BudgetSpendFacets,
 } from './budget'
 
@@ -40,6 +41,7 @@ export type {
   UnattributedSums,
   ScopeSpend,
   WindowSpend,
+  WorkClassSums,
   BudgetSpendFacets,
 } from './budget'
 
@@ -53,7 +55,7 @@ function emptyScope(): ScopeSpend {
   return { ...emptyLanes(), unattributed: emptyUnattributed() }
 }
 function emptyWindow(startMs: number): WindowSpend {
-  return { startMs, global: emptyScope(), byAgent: {}, byProvider: {}, byModel: {} }
+  return { startMs, global: emptyScope(), byAgent: {}, byProvider: {}, byModel: {}, byWorkClass: {} }
 }
 
 type Lane = 'metered' | 'subscription'
@@ -124,6 +126,10 @@ function recordEvidenceGap(
     && candidate.reasons.join('\0') === reasons.join('\0'))
   if (existing) {
     existing.unknownCount = safeSum(existing.unknownCount, normalizedCount) ?? Number.MAX_SAFE_INTEGER
+    if (gap.earliestDay !== undefined
+      && (existing.earliestDay === undefined || gap.earliestDay < existing.earliestDay)) {
+      existing.earliestDay = gap.earliestDay
+    }
     return
   }
   evidence.gaps.push({ ...gap, reasons, unknownCount: normalizedCount })
@@ -296,10 +302,31 @@ async function resolveObservedLane(
   let lane: Lane | null = null
   if (invoke) {
     try {
-      const billing = (await invoke('models.resolveBilling', { agentId: agent, model: model || undefined })) as
-        | { lane?: string }
+      // prospective:false = this is HISTORY: the hook must not substitute
+      // the agent's current effective model, so provider-scoped overrides
+      // can never match a guessed provider and no runtime round-trip runs
+      // on the budget hot path.
+      const billing = (await invoke('models.resolveBilling', {
+        agentId: agent,
+        model: model || undefined,
+        prospective: false,
+      })) as
+        | { lane?: string; provider?: string; laneSource?: string }
         | undefined
-      if (billing?.lane === 'subscription' || billing?.lane === 'metered') lane = billing.lane
+      // A lane is trustworthy when the hook resolved a REAL provider from a
+      // REAL model — 'other' is the could-not-resolve bucket whose
+      // default-metered lane would book theoretical dollars as real spend
+      // (#689). An operator lane override is trusted too (with
+      // prospective:false an override match is exact, never via a guessed
+      // provider): operator truth, not a guess.
+      const providerResolved = model !== ''
+        && typeof billing?.provider === 'string'
+        && billing.provider !== '' && billing.provider !== 'other'
+      const operatorOverride = billing?.laneSource === 'override'
+      if ((providerResolved || operatorOverride)
+        && (billing?.lane === 'subscription' || billing?.lane === 'metered')) {
+        lane = billing.lane
+      }
     } catch (err) {
       log.warn('resolveBilling failed for observed usage; leaving its lane unresolved', {
         agent, model, err: err instanceof Error ? err.message : String(err),
@@ -435,6 +462,14 @@ export async function assembleBudgetSpend(now: number): Promise<BudgetSpendFacet
           provider: row.provider,
           model: row.model,
         })
+        // Work-class slice (unit economics): the dimension that routes IS the
+        // dimension spend reports on. 'media' = classless-by-design image
+        // rows; 'unclassified' = pre-migration token rows. Reporting-only —
+        // no cap rules bind here, so no evidence-gap plumbing.
+        const workClass = row.usageKind === 'media' ? 'media' : (row.workClass ?? 'unclassified')
+        const wc: WorkClassSums = (window.byWorkClass[workClass] ??= { ...emptyLanes(), runs: 0 })
+        addAttributed(wc, lane, tokens, usd)
+        wc.runs += 1
       }
       const day = usageStore.toLocalDayKey(row.occurredAt)
       const key = laneKey(row.agent, day, lane)
@@ -448,14 +483,28 @@ export async function assembleBudgetSpend(now: number): Promise<BudgetSpendFacet
   // ---- observed (usage.db) → unattributed delta --------------------------
   try {
     const invoke = hooksModule ? (n: string, d: Record<string, unknown>) => hooksModule.getHookRegistry().invoke(n, d) : null
+    // Explicit write-off cutoff (accept-unattributed-history repair):
+    // pre-cutoff usage that cannot attribute is excluded from gaps and
+    // the unattributed delta — caps compute from the cutoff forward.
+    const policy = invoke
+      ? await invoke('models.getBudgetPolicy', {}).catch(() => undefined) as { acceptUnattributedBefore?: string } | undefined
+      : undefined
+    const rawCutoff = typeof policy?.acceptUnattributedBefore === 'string' ? policy.acceptUnattributedBefore : null
+    // Clamp to today at READ: a future-dated cutoff would silence current
+    // and future usage — money never pre-silences (review finding).
+    const acceptedBefore = rawCutoff !== null && rawCutoff > todayKey ? todayKey : rawCutoff
     const laneCache = new Map<string, Lane | null>()
     const observedByLane = new Map<string, DayLaneSums>()
     for (const cell of usageStore.readUsageByAgentModelDaySince(usageStore.toLocalDayKey(monthStart))) {
+      const writtenOff = acceptedBefore !== null && cell.day < acceptedBefore
       const lane = await resolveObservedLane(invoke, laneCache, cell.agent, cell.model)
       const evidenceWindows = cell.day === todayKey
         ? [monthlySpendEvidence, dailySpendEvidence]
         : [monthlySpendEvidence]
       if (lane === null) {
+        // Written-off fossil: never attributable, explicitly accepted —
+        // contributes nothing (no gaps, no spend).
+        if (writtenOff) continue
         const observedCount = Math.max(1, Math.floor(cell.messageCount))
         const missingCostCount = missingObservedCostCount(cell)
         for (const evidence of evidenceWindows) {
@@ -467,6 +516,7 @@ export async function assembleBudgetSpend(now: number): Promise<BudgetSpendFacet
             provider: null,
             model: cell.model || null,
             reasons: ['lane_unknown'],
+            earliestDay: cell.day,
           }, observedCount)
           recordEvidenceGap(evidence, {
             unit: 'usd_micros',
@@ -476,11 +526,12 @@ export async function assembleBudgetSpend(now: number): Promise<BudgetSpendFacet
             provider: null,
             model: cell.model || null,
             reasons: missingCostCount > 0 ? ['lane_unknown', 'value_missing'] : ['lane_unknown'],
+            earliestDay: cell.day,
           }, observedCount)
         }
         continue
       }
-      if (lane === 'metered') {
+      if (lane === 'metered' && !writtenOff) {
         const missingCostCount = missingObservedCostCount(cell)
         for (const evidence of evidenceWindows) {
           recordEvidenceGap(evidence, {
@@ -491,6 +542,7 @@ export async function assembleBudgetSpend(now: number): Promise<BudgetSpendFacet
             provider: null,
             model: cell.model || null,
             reasons: ['value_missing'],
+            earliestDay: cell.day,
           }, missingCostCount)
         }
       }
@@ -534,6 +586,9 @@ export async function assembleBudgetSpend(now: number): Promise<BudgetSpendFacet
     }
     for (const [key, observed] of observedByLane) {
       const [agent, day, lane] = key.split('\0') as [string, string, Lane]
+      // Pre-cutoff observed-vs-attributed deltas are written off with the
+      // rest of the unattributable history.
+      if (acceptedBefore !== null && day < acceptedBefore) continue
       const attributed = attributedByLane.get(key) ?? emptyDayLaneSums()
       // An observed partial subtotal is still a safe lower bound. An
       // attributed partial subtotal is not safe to subtract: doing so could

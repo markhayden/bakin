@@ -14,7 +14,8 @@ Spec/plan for the 2026-07 overhaul: `.claude/specs/chat-conversation-kit.md`, `t
 - **Streaming rides the existing SSE bus.** Server: `chat.chunk` / `chat.done` / `chat.error` / `chat.titled` plugin-events (all carry `agentId`; `done` adds a reply `preview` + `aborted` flag). Client folds durable rows + live chunks through the kit's `foldConversation` — chat owns NO rendering logic, only page chrome.
 - **Persistence via the kit's `createTurnRecorder`** (drain-per-chunk so a crash keeps the partial turn; interleaving preserved — text before a tool result flushes as its own row).
 - **Attention system.** `ChatBadgeProvider` in the global `nav-badge-providers` slot: nav badge (unread total, working dot while streaming), `(N)` tab-title prefix, click-to-jump toast + generated WebAudio chime + OS notification (via `src/lib/browser-notify`, self-suppressing when focused) when a reply lands while the user is elsewhere. Pure rules in `components/attention.ts`: viewing the chat = no fanfare + mark seen; aborted = silence. Toggles in the plugin `settingsSchema` (toasts/sound, default on). Unread is server-side (`unreadCount`/`lastSeenAt`, cleared by `POST /chats/:id/seen` or a user send).
-- **Titles**: first user message titles instantly (`titleSource: 'fallback'`); after the FIRST completed exchange one budget-gated ephemeral LLM call upgrades it (`lib/auto-title.ts` — gate = `dispatchPaused` + `budgetGate`, the dispatch primitives; blocked = silent skip). Precedence user > llm > fallback; renames are never overwritten.
+- **Every chat turn is metered.** Interactive turns bill under work class `'chat'` (the matrix's single metered-only class — model choice stays with the operator, never routed): `meterAgentTurn` with runId `chat:<chatId>:turn:<uuid>`, usage taken from the stream's `done` chunk (`ChatChunk done.usage` — conformance-pinned parity with `send()`). Aborted turns bill their partial usage — the tokens were consumed. Never throws into the turn path.
+- **Titles**: first user message titles instantly (`titleSource: 'fallback'`); after the FIRST completed exchange one budget-gated ephemeral LLM call upgrades it (`lib/auto-title.ts` — gate = `dispatchPaused` + `budgetGate`, the dispatch primitives; blocked = silent skip). The call is ROUTABLE via the `'auto-title'` system work class (`resolveSystemRoute` — recommended-tier cheap) and metered under runId `chat:<chatId>:title` (the durable prefix the ledger's v8 backfill recognizes). Precedence user > llm > fallback; renames are never overwritten.
 - **Search (S11):** file-backed `chats` content type (`lib/search.ts`) — one doc per chat (title, agent facet, recency-biased user+assistant body, 6k cap; tool noise never indexes). ⌘K hits deep-link `/chat/<id>`.
 - **Agents keep their tools.** The turn is a normal runtime turn — `bakin_*` exec tools work mid-chat exactly as in dispatch.
 
@@ -26,11 +27,17 @@ plugins/chat/
   lib/store.ts                   index.json + JSONL v2 store; markSeen/setTitle/setPinned; attachmentsDir
   lib/routes.ts                  CRUD, messages (202/404/409), PATCH rename/pin, seen, abort,
                                  attachments upload/serve (multipart, image/*, 25 MB), GET /capabilities
-  lib/stream-bridge.ts           in-flight registry + AbortControllers; kit turn-recorder persistence;
-                                 attachment downscale (@bakin/core/media/downscale); waitForTurn() for tests
-  lib/auto-title.ts              budget-gated first-exchange titling
+  lib/stream-bridge.ts           chat's consumer config over the shared conversation turn engine
+                                 (src/core/conversation-turns.ts, extracted FROM this module in #703 —
+                                 wire contract unchanged); chat-side policy: CHAT_TURN_FRAMING,
+                                 per-turn metering (work class 'chat'), post-release auto-title,
+                                 ambiguity-null resolveActiveTurnForAgent; waitForTurn() for tests
+  lib/auto-title.ts              budget-gated, 'auto-title'-routed + metered first-exchange titling
   lib/search.ts                  file-backed 'chats' search content type
-  components/use-chat-data.ts    useChats/useChatStream (kit rows + live chunks), requests, useAgentImageInput
+  components/use-chat-data.ts    useChats + useChatStream (thin wrapper over the kit's
+                                 useConversationThread since #703 — chat keeps seen tracking,
+                                 retry-with-attachments, URL mapping, no streaming pre-light),
+                                 requests, useAgentImageInput
   components/chat-page.tsx       header (search + Start a chat) + rail + view/draft/launcher; shortcuts
                                  (⌘⇧O new, ⌥↑/⌥↓ switch, ⇧Esc focus); paths /chat, /chat/$chatId, /chat/new?agent=
   components/chat-rail.tsx       Pinned/Today/Yesterday/This week/Older groups, unread pills, working
@@ -39,10 +46,12 @@ plugins/chat/
                                  staged attachments (capability-gated); DraftChatView (create on first send)
   components/launcher.tsx        empty-pane launcher: agent cards + recents + skeletons
   components/agent-picker.tsx    'Start a chat' popover (Command list of agents)
-  components/chat-badge-provider.tsx  global attention brain (renders null)
-  components/attention.ts        pure suppression/badge/title-prefix rules
-  components/notification-sound.ts    generated two-tone chime (no asset)
+  components/chat-badge-provider.tsx  chat wiring over the kit's useConversationAttention (renders null)
+  components/attention.ts        facade over the kit's shared attention rules (chatId-shaped signatures)
 tests/plugins/chat/              store/stream/attachments/auto-title/search/attention/chat-page suites
+                                 + chat-stream-client (the #703 client characterization gate); this
+                                 directory + tests/integration/pi/chat-on-pi.test.ts are the FROZEN
+                                 behavior gate for any engine/kit refactor — edit means regression
 ```
 
 ## Gotchas

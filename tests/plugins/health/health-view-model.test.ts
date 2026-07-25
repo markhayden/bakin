@@ -18,6 +18,8 @@ function incident(overrides: Partial<HealthIncident> & Pick<HealthIncident, 'id'
     id,
     status: 'warning',
     disposition: 'watch',
+    // Effective mirrors the (possibly overridden) raw disposition (#690).
+    effectiveDisposition: rest.disposition ?? 'watch',
     title: id,
     impact: 'Operator impact.',
     resources: [],
@@ -109,6 +111,7 @@ function report(options: {
   return {
     id: 'report-1', revision: 1, generatedAt: '2026-07-13T12:00:00.000Z',
     overallStatus: options.status ?? (incidents.length > 0 ? 'degraded' : 'healthy'),
+    sensitivity: 'developer',
     lastFullSweep: { id: 'sweep-1', startedAt: '2026-07-13T11:59:00.000Z', completedAt: '2026-07-13T12:00:00.000Z' },
     checks, observations, incidents,
     subsystems: { search: options.search ?? search() },
@@ -125,6 +128,7 @@ function report(options: {
         watching: incidents.filter((row) => row.disposition === 'watch').length,
         advisory: incidents.filter((row) => row.disposition === 'advisory').length,
         unknown: incidents.filter((row) => row.status === 'unknown').length,
+        acknowledged: incidents.filter((row) => row.ackState !== undefined).length,
       },
     },
   }
@@ -167,6 +171,52 @@ describe('buildHealthOverviewViewModel', () => {
       ...model.needsAction, ...model.unableToVerify, ...model.watching,
     ].some((row) => row.incident.id === advisory.id)).toBe(false)
     expect(model.needsAction[1]?.freshness).toBe('stale')
+  })
+
+  it('ADVISORY unknowns route to advisories, not the fix-first banner (self-resolving states, 2026-07-22)', () => {
+    // A scan warming up after a restart is an unknown the producer vouches
+    // self-resolves — it must not sit in "Fix first" as if a human were
+    // needed. Stale advisory unknowns still verify: the vouching is old.
+    const warmingUnknown = incident({
+      id: 'warming-unknown', status: 'unknown', disposition: 'advisory', title: 'Scan warming up',
+    })
+    const realUnknown = incident({ id: 'real-unknown', status: 'unknown', disposition: 'watch', title: 'Genuinely unverified' })
+    const staleAdvisoryUnknown = incident({
+      id: 'stale-advisory-unknown', status: 'unknown', disposition: 'advisory', title: 'Stale advisory unknown',
+      stale: true, staleAt: '2026-07-13T11:30:00.000Z', observedAt: '2026-07-13T09:00:00.000Z',
+    })
+    const incidents = [warmingUnknown, realUnknown, staleAdvisoryUnknown]
+    const observations = incidents.map((row) => observation(row))
+    const checks = observations.map((row) => check(row, 'observed'))
+
+    const model = buildHealthOverviewViewModel({
+      report: report({ incidents, observations, checks, status: 'needs_attention' }),
+      now: NOW,
+    })
+
+    expect(model.advisories.map((row) => row.incident.id)).toEqual(['warming-unknown'])
+    expect(model.unableToVerify.map((row) => row.incident.id).sort()).toEqual(['real-unknown', 'stale-advisory-unknown'])
+    expect(model.needsAction).toEqual([])
+  })
+
+  it('demoted and raw-advisory incidents land in the advisories bucket — quiet, never hidden (#690)', () => {
+    const demoted = incident({
+      id: 'demoted-housekeeping', status: 'warning', disposition: 'watch', title: 'Retired tables await deletion',
+      effectiveDisposition: 'advisory',
+    })
+    const rawAdvisory = incident({ id: 'plain-advisory', status: 'warning', disposition: 'advisory', title: 'Just a note' })
+    const observations = [demoted, rawAdvisory].map((row) => observation(row))
+    const checks = observations.map((row) => check(row, 'observed'))
+
+    const model = buildHealthOverviewViewModel({
+      report: report({ incidents: [demoted, rawAdvisory], observations, checks, status: 'healthy' }),
+      now: NOW,
+    })
+
+    expect(model.advisories.map((row) => row.incident.id).sort()).toEqual(['demoted-housekeeping', 'plain-advisory'])
+    expect(model.needsAction).toEqual([])
+    expect(model.watching).toEqual([])
+    expect(model.unableToVerify).toEqual([])
   })
 
   it('always returns the four labeled Search stages and explains missing or stale evidence', () => {
@@ -225,5 +275,27 @@ describe('buildHealthOverviewViewModel', () => {
     const missingExpiry = report()
     missingExpiry.subsystems.search.staleAt = null
     expect(buildHealthOverviewViewModel({ report: missingExpiry, now: NOW }).search.status).toBe('unknown')
+  })
+})
+
+describe('acknowledged bucket (health trust overhaul)', () => {
+  it('acked/snoozed incidents leave every attention bucket and land in acknowledged — visible, never dropped', () => {
+    const ackedWatch = incident({ id: 'acked-watch', status: 'warning', disposition: 'watch', title: 'Acked watch', ackState: 'acked' })
+    const snoozedAr = incident({ id: 'snoozed-ar', status: 'error', disposition: 'action_required', title: 'Snoozed breach', ackState: 'snoozed' })
+    const liveWatch = incident({ id: 'live-watch', status: 'warning', disposition: 'watch', title: 'Live watch' })
+    const incidents = [ackedWatch, snoozedAr, liveWatch]
+    const observations = incidents.map((row) => observation(row))
+    const checks = observations.map((row) => check(row, 'observed'))
+
+    const model = buildHealthOverviewViewModel({
+      report: report({ incidents, observations, checks, status: 'healthy' }),
+      now: NOW,
+    })
+
+    expect(model.acknowledged.map((row) => row.incident.id).sort()).toEqual(['acked-watch', 'snoozed-ar'])
+    expect(model.watching.map((row) => row.incident.id)).toEqual(['live-watch'])
+    expect(model.needsAction).toEqual([])
+    expect(model.unableToVerify).toEqual([])
+    expect(model.advisories).toEqual([])
   })
 })

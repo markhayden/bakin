@@ -217,6 +217,29 @@ describe('health repair-action validation', () => {
 })
 
 describe('health run-output validation', () => {
+  it('rejects an invalid incident class string at the producer boundary (#690)', () => {
+    const withBadClass = warningObservation({
+      incident: {
+        ...(warningObservation().incident as Record<string, unknown>),
+        class: 'totally-made-up',
+      },
+    })
+    expect(() => parseHealthCheckRunInput({ outcome: 'observed', observations: [withBadClass] })).toThrow()
+  })
+
+  it('accepts every declared incident class (#690)', () => {
+    for (const cls of ['service_failure', 'policy_denial', 'runaway_usage', 'unsupported_surface']) {
+      const observation = warningObservation({
+        incident: {
+          ...(warningObservation().incident as Record<string, unknown>),
+          class: cls,
+        },
+      })
+      const parsed = parseHealthCheckRunInput({ outcome: 'observed', observations: [observation] })
+      expect(parsed.outcome).toBe('observed')
+    }
+  })
+
   it('accepts every resolution variant and JSON-safe evidence', () => {
     const observations = [
       warningObservation(),
@@ -499,5 +522,112 @@ describe('health run-output validation', () => {
       message: 'Contract input could not be inspected safely.',
     }])
     expect(JSON.stringify(result.error)).not.toContain(secretValue)
+  })
+})
+
+describe('SDK observation builders clamp copy to contract bounds (2026-07-22)', () => {
+  // A check that interpolated a ~700-char runtime error into `summary`
+  // used to fail contract validation WHOLESALE — real evidence became a
+  // generic "could not be verified" card. The builders now clamp summary
+  // (500) and detail (4000) so overlong copy truncates honestly instead
+  // of invalidating the run.
+  it('clamps an overlong summary and the result passes the contract', async () => {
+    const { healthUnknown, healthObserved } = await import('@makinbakin/sdk/utils')
+    const observation = healthUnknown({
+      key: 'runtime-cron',
+      summary: `Runtime cron jobs could not be read: ${'x'.repeat(700)}`,
+      incident: {
+        key: 'runtime-cron',
+        title: 'Schedule synchronization could not be verified',
+        impact: 'Bakin cannot determine whether runtime cron jobs are tracked.',
+        disposition: 'watch',
+        resources: [{ kind: 'system', id: 'schedule', label: 'Schedule' }],
+        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
+      },
+    })
+    expect(observation.summary.length).toBe(500)
+    expect(observation.summary.endsWith('…')).toBe(true)
+
+    const result = safeParseHealthCheckRunInput(healthObserved([observation]))
+    expect(result.success).toBe(true)
+  })
+
+  it('clamps an overlong detail and leaves in-bounds copy untouched', async () => {
+    const { healthHealthy } = await import('@makinbakin/sdk/utils')
+    const clamped = healthHealthy({ key: 'k', summary: 'Short.', detail: 'd'.repeat(5_000) })
+    expect(clamped.detail!.length).toBe(4_000)
+    const untouched = healthHealthy({ key: 'k', summary: 'Short.', detail: 'fine' })
+    expect(untouched.summary).toBe('Short.')
+    expect(untouched.detail).toBe('fine')
+  })
+})
+
+describe('unknown incidents may be advisory — never action_required (2026-07-22)', () => {
+  const unknownWith = (disposition: string) => ({
+    outcome: 'observed',
+    observations: [{
+      key: 'usage',
+      summary: 'Scan warming up.',
+      status: 'unknown',
+      incident: {
+        key: 'warming',
+        title: 'Usage coverage is incomplete',
+        impact: 'Resolves when the first scan completes.',
+        disposition,
+        resources: [{ kind: 'system', id: 'usage-history', label: 'Usage history' }],
+        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
+      },
+    }],
+  })
+
+  it('accepts advisory (producer vouches the unknown self-resolves)', () => {
+    expect(safeParseHealthCheckRunInput(unknownWith('advisory')).success).toBe(true)
+  })
+
+  it('still accepts watch', () => {
+    expect(safeParseHealthCheckRunInput(unknownWith('watch')).success).toBe(true)
+  })
+
+  it('REJECTS action_required — an unknown cannot honestly demand action', () => {
+    expect(safeParseHealthCheckRunInput(unknownWith('action_required')).success).toBe(false)
+  })
+})
+
+describe('builders normalize incident resources (2026-07-23)', () => {
+  // A filesystem path used as a resource id failed contract validation and
+  // hid a REAL stale-worktree finding behind a generic Verify card for
+  // three releases. Builders sanitize invalid ids deterministically (valid
+  // ids pass through untouched) and bound labels.
+  it('sanitizes a path id, bounds a long label, and the result passes the contract', async () => {
+    const { healthWarning, healthObserved } = await import('@makinbakin/sdk/utils')
+    const observation = healthWarning({
+      key: 'missing.w1',
+      summary: 'The worktree for task t1 is missing.',
+      incident: {
+        key: 'missing.w1',
+        title: 'A tracked Git worktree is missing',
+        impact: 'Task t1 may no longer have its working directory.',
+        disposition: 'action_required',
+        resources: [
+          { kind: 'task', id: 'task-1', label: 'T'.repeat(200) },
+          { kind: 'directory', id: '/Users/margo/.bakin/run-workspaces/Agent X/repo' },
+        ],
+        resolution: { key: 'release', type: 'rerun', label: 'Check again' },
+      },
+    })
+    const resources = observation.incident.resources!
+    expect(resources[0]!.id).toBe('task-1') // valid id untouched
+    expect(resources[0]!.label!.length).toBe(120)
+    expect(resources[1]!.id).toBe('users-margo-.bakin-run-workspaces-agent-x-repo')
+
+    const result = safeParseHealthCheckRunInput(healthObserved([observation]))
+    expect(result.success).toBe(true)
+  })
+
+  it('healthResourceId is deterministic and identity on valid ids', async () => {
+    const { healthResourceId } = await import('@makinbakin/sdk/utils')
+    expect(healthResourceId('already-valid.id:1')).toBe('already-valid.id:1')
+    expect(healthResourceId('/Some/Path')).toBe(healthResourceId('/Some/Path'))
+    expect(healthResourceId('///')).toBe('unknown')
   })
 })

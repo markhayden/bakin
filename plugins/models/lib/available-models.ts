@@ -114,21 +114,37 @@ function warnRuntimeModelFetchFailed(message: string): void {
   console.warn(`Failed to fetch models from runtime: ${message}`)
 }
 
-export async function fetchAvailableModels(ctx: PluginContext): Promise<FetchResult> {
-  // 1. Hot read — in-memory cache (fresh by TTL)
-  const memCached = getModelsCache()
-  if (memCached && Date.now() - memCached.fetchedAt < CACHE_TTL) {
-    return { models: memCached.models, cached: true, cachedAt: memCached.fetchedAt, stale: false }
-  }
+/**
+ * Recompute catalog-derived enrichment on cache-served rows. Tier (and its
+ * heuristic) is code, not runtime data — a persisted cache written by an
+ * older heuristic/catalog must never pin stale labels (live incident: the
+ * cheap-route recommender saw gpt-5.4-mini as 'premium' from a pre-fix
+ * cache until a manual refresh).
+ */
+function withFreshTiers(models: AvailableModel[]): AvailableModel[] {
+  return models.map((m) => ({ ...m, tier: getKnownModel(m.id)?.tier ?? tierFromId(m.id) }))
+}
 
-  // 2. Persistent cache hydration — survives server restart even when
-  //    in-memory is empty. Always returns last-known-good; `stale` tells
-  //    the client whether to kick off a background refresh.
-  const diskCached = memCached ? null : readPersistedCache()
-  if (diskCached) {
-    setModelsCache({ models: diskCached.models, fetchedAt: diskCached.fetchedAt })
-    const stale = Date.now() - diskCached.fetchedAt >= CACHE_TTL
-    return { models: diskCached.models, cached: true, cachedAt: diskCached.fetchedAt, stale }
+export async function fetchAvailableModels(ctx: PluginContext, opts?: { force?: boolean }): Promise<FetchResult> {
+  // force: skip both caches and fetch live — the repair path for stale/
+  // missing pricing (a health repair must refresh deterministically, not
+  // depend on a human visiting the Models page to trigger it).
+  if (!opts?.force) {
+    // 1. Hot read — in-memory cache (fresh by TTL)
+    const memCached = getModelsCache()
+    if (memCached && Date.now() - memCached.fetchedAt < CACHE_TTL) {
+      return { models: withFreshTiers(memCached.models), cached: true, cachedAt: memCached.fetchedAt, stale: false }
+    }
+
+    // 2. Persistent cache hydration — survives server restart even when
+    //    in-memory is empty. Always returns last-known-good; `stale` tells
+    //    the client whether to kick off a background refresh.
+    const diskCached = memCached ? null : readPersistedCache()
+    if (diskCached) {
+      setModelsCache({ models: diskCached.models, fetchedAt: diskCached.fetchedAt })
+      const stale = Date.now() - diskCached.fetchedAt >= CACHE_TTL
+      return { models: withFreshTiers(diskCached.models), cached: true, cachedAt: diskCached.fetchedAt, stale }
+    }
   }
 
   // 3. No cache → live fetch. Dedupe concurrent callers against one

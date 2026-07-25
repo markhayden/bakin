@@ -16,6 +16,7 @@ import {
   getTaskWithColumn,
 } from '../../../src/core/task-store'
 import { syncLedgerForStoreMove } from '../../../src/core/task-service'
+import { isTeamStepToken } from '@bakin/core/workflows/team-token'
 import { listInstances } from './instance-store'
 import { resolveAgent } from './step-context'
 
@@ -168,8 +169,10 @@ export function createBoardTaskForChild(
     // unrenderable "$preferred(pixel,$assigned)" agent on the board.
     const childAgent = childDef?.steps.find(s => s.type === 'agent')
     const agent = childAgent ? (childAgent as AgentStep).agent : childInstance.resolvedAgent
-    const resolved = agent ? resolveAgent(agent, childInstance) : undefined
-    const resolvedAgent = resolved && !resolved.startsWith('$') ? resolved : childInstance.resolvedAgent
+    const resolved = agent ? resolveAgent(agent, childInstance, childAgent?.id) : undefined
+    // Selectors AND unresolved team tokens are unrenderable on the board —
+    // fall back to the instance's snapshotted assignee.
+    const resolvedAgent = resolved && !resolved.startsWith('$') && !isTeamStepToken(resolved) ? resolved : childInstance.resolvedAgent
 
     await createTask(
       title,

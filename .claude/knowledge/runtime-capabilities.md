@@ -88,7 +88,7 @@ need crosses a neutral method:
 |---|---|
 | tool-access wiring | `provisionToolAccess()` family |
 | credential presence (onboarding llm/channels) | `credentialStatus()` — names only, never secrets |
-| model routing policy (defaults/fallbacks/aliases/subagent defaults) | `models.routingPolicy()` / `setRoutingPolicy()` + `models.routingSupport()` (declares which knobs the runtime HONORS; unsupported patches are rejected, never silently stored) |
+| model routing policy (defaults/fallbacks/aliases/subagent defaults) | `models.routingPolicy()` / `setRoutingPolicy()` + `models.routingSupport()` (declares which knobs the runtime HONORS; unsupported patches are rejected, never silently stored). `RuntimeRoutingSupport.supportedThinkingLevels` declares which per-turn thinking levels the runtime honors (Pi: `off`…`xhigh`; OpenClaw: all 8 incl. `adaptive`/`max`) — Bakin's work-class thinking routes clamp-and-warn against it (`applyThinkingCapability`), never a silent drop |
 | per-agent model assignments | `agents.update({ model, subagentModel })` — null clears; OpenClaw persists into `agents.list[]`, Pi into its registry |
 | roster integrity (onboarding runtime check) | `agents.list()` + adapter-resolved `metadata.workspacePath` |
 
@@ -197,8 +197,28 @@ unsupported.
    e.g. `delivery: 'native'` ⇔ `channels` present); provisioning
    idempotency; nonexistent-id `agents.update`/`agents.remove` reject
    `kind:'not_found'` (reads return null; workspace-file writes provision
-   on demand by design). `teeth.conformance.test.ts` proves the checks
-   reject violators — a new runner is three target hooks, not new checks.
+   on demand by design); `streamDoneCarriesUsageWhereSendDoes` — the
+   `done` chunk variant carries `usage?: MessageUsage`, and a runtime
+   whose `send()` results report usage MUST attach it to stream `done`
+   (Pi computes a session-stats delta; OpenClaw threads its RPC result
+   usage through the chunk machine) — chat metering depends on it;
+   `thinkingLevelHonesty` — every level declared in
+   `routingSupport().supportedThinkingLevels` must serve a clean turn;
+   `sessionOriginLabelsAreHonest` (#691) — a runtime exposing a
+   `session_jsonl` memory tier must label session entries' `metadata.origin`
+   from `{bakin, external, unknown}`, and the transcript of a threaded Bakin
+   send — when listed — must be `bakin` (Pi labels via `bakin-threads.json`
+   membership with its OWN error channel: missing map = external, corrupt
+   map = unknown; OpenClaw via sessions.json key shapes + deterministic v5
+   uuids — files predating a reset/rotation miss the store lookup and
+   classify by uuid version (v5 = bakin, v4 = rotated interactive), so a
+   /reset never converts the user's own chats into an unexplained-usage
+   alarm; subagent sessions are runtime-spawned child work = bakin).
+   Runtimes without the tier or without per-turn transcript persistence
+   conform vacuously — never mislabel.
+   `teeth.conformance.test.ts` proves the checks
+   reject violators (incl. per-lie adapters for the two routing pins) — a
+   new runner is three target hooks, not new checks.
 4. Nothing else: prompts, AGENTS.md sections, provisioning, onboarding
    checks, the switch, and the management page all derive from the contract.
 
@@ -275,3 +295,13 @@ allowlist — see the contract doc, born of the P5.3 conflation below).
   no-inline-actions rule; dry-run preview results render on the page,
   live SSE steps, grouped result cards). Unknown ?tab= values fall back
   to Overview.
+
+## concurrency.sameAgentTurns (same-agent concurrency)
+
+REQUIRED `CapabilitySet` member: `'isolated'` (adapter honors `MessageArgs.runWorkspace` per-turn
+cwd — Pi) or `'serialized'` (cannot isolate — OpenClaw, default mock; dispatch clamps that agent
+to 1 turn with an audit receipt). Conformance: `sameAgentIsolationHonesty` requires a
+declared-isolated target to prove it via `prepareIsolatedTurnProbe` (two CONCURRENT turns leave
+traces in the two handed dirs; probeless isolated declarations FAIL) + teeth. Mock opt-in:
+`withMockIsolation(createMockRuntimeAdapter())`. Deep reference:
+`.claude/knowledge/same-agent-concurrency.md`.

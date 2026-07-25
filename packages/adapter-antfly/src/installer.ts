@@ -7,7 +7,7 @@ import type { AdapterLogger } from '@bakin/core/adapters/shared'
 import { DEFAULT_SETTINGS } from './defaults'
 import { antflyBinaryPath, antflyHome } from './paths'
 import { ANTFLY_PIN, antflyDownloadUrl, antflyPlatformKey, type AntflyPin } from './pin'
-import { findAntflyBinary, stopService, startService } from './service'
+import { ensureProvisioned, findAntflyBinary, servicePaths, stopService, startService } from './service'
 import { DEFAULT_SETTINGS as SERVICE_DEFAULTS } from './defaults'
 
 /**
@@ -68,6 +68,72 @@ async function isLocalServerResponding(): Promise<boolean> {
   }
 }
 
+/**
+ * Full clean reset of the engine's DERIVED state: stop the supervised
+ * service, wipe the data dir (indexes only — models and source content are
+ * untouched), re-provision the unit, and start clean. The one-command
+ * escape hatch for a corrupted/wedged engine that survives restarts —
+ * assembled by hand eight separate times during the 2026-07-21 field
+ * recovery before earning a verb. Callers follow with a repair reindex.
+ * Refuses in guest mode: a non-default URL means the engine belongs to
+ * someone else (dev-rig lesson, 2026-07-11 hijack incident).
+ */
+export async function resetAntflyEngineData(
+  logger: AdapterLogger = noopLogger,
+): Promise<{ name: string; status: 'installed' | 'failed'; message: string; durationMs: number; error?: unknown }> {
+  const start = Date.now()
+  const { detectServiceMode } = await import('./service')
+  if (detectServiceMode(SERVICE_DEFAULTS) === 'guest') {
+    return {
+      name: 'reset',
+      status: 'failed' as const,
+      message: 'Search engine runs in guest mode (non-default URL) — Bakin does not manage its lifecycle or data, so it cannot be reset from here.',
+      durationMs: Date.now() - start,
+    }
+  }
+  try {
+    const dataDir = servicePaths().dataDir
+    logger.info('Resetting engine: stop → wipe derived data → provision → start', { dataDir })
+    await stopService(SERVICE_DEFAULTS)
+    rmSync(dataDir, { recursive: true, force: true })
+    await ensureProvisioned(SERVICE_DEFAULTS)
+    await startService(SERVICE_DEFAULTS)
+    const deadline = Date.now() + 30_000
+    let responding = false
+    while (Date.now() < deadline) {
+      if (await isLocalServerResponding()) {
+        responding = true
+        break
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1_000))
+    }
+    const durationMs = Date.now() - start
+    if (!responding) {
+      return {
+        name: 'reset',
+        status: 'failed' as const,
+        message: 'Engine data was wiped and the service restarted, but the engine is not answering after 30s — check `~/.bakin/logs/antfly.log`.',
+        durationMs,
+      }
+    }
+    return {
+      name: 'reset',
+      status: 'installed' as const,
+      message: 'Engine reset clean and responding. Run a repair reindex to regenerate the search tables from source.',
+      durationMs,
+    }
+  } catch (err) {
+    logger.error('Engine reset failed', err)
+    return {
+      name: 'reset',
+      status: 'failed' as const,
+      message: `Engine reset failed: ${err instanceof Error ? err.message : String(err)}`,
+      error: err,
+      durationMs: Date.now() - start,
+    }
+  }
+}
+
 export async function checkAntflyDependency(pin: AntflyPin = ANTFLY_PIN) {
   const binary = findAntflyBinary()
   if (!binary) {
@@ -121,10 +187,19 @@ export async function installAntflyDependency(
   const existing = findAntflyBinary()
   const existingVersion = existing ? await antflyBinaryVersion(existing) : null
   if (existing && existingVersion === pin.version) {
+    // Binary is current — but the SERVICE may be unprovisioned or stopped
+    // (the clean-slate recovery boots the unit out before reinstalling,
+    // and the old noop path left the engine dead: 2026-07-22, a fresh
+    // rc.22 box's reindex failed 12/12 with "antfly unreachable").
+    // A noop install still guarantees a provisioned, running engine.
+    await ensureProvisioned(SERVICE_DEFAULTS)
+    if (!await isLocalServerResponding()) {
+      await startService(SERVICE_DEFAULTS)
+    }
     return {
       name: 'antfly',
       status: 'noop' as const,
-      message: `Antfly v${pin.version} is already installed at ${existing}`,
+      message: `Antfly v${pin.version} is already installed at ${existing}; service provisioned and running`,
       durationMs: Date.now() - start,
     }
   }
@@ -262,8 +337,32 @@ export async function installAntflyDependency(
     mkdirSync(dirname(targetPath), { recursive: true })
     renameSync(extractedBinary, targetPath)
 
+    // Engine version change = a deliberate REBUILD event (2026-07-21: the
+    // rc.18→rc.21 in-place upgrade silently migrated table files one-way,
+    // stalled the data plane for the duration, and made rollback
+    // impossible). Search data is derived — clear it and let the repair
+    // reindex regenerate the tables instead of trusting an in-place
+    // engine-side format migration ever again.
+    let dataCleared = false
+    if (existing && existingVersion !== pin.version) {
+      const dataDir = servicePaths().dataDir
+      if (existsSync(dataDir)) {
+        logger.info('Engine version changed — clearing derived engine data for a clean rebuild', {
+          from: existingVersion ?? 'unknown',
+          to: pin.version,
+          dataDir,
+        })
+        rmSync(dataDir, { recursive: true, force: true })
+        dataCleared = true
+      }
+    }
+
     if (restartAfterSwap) {
       logger.info('Restarting managed antfly service on the new binary')
+      // Provision UNCONDITIONALLY before start: the unit's argv must match
+      // the binary being installed (a version rollback once left a
+      // `standalone` plist driving a `swarm`-era binary — silent no-boot).
+      await ensureProvisioned(SERVICE_DEFAULTS)
       await startService(SERVICE_DEFAULTS)
     }
     const durationMs = Date.now() - start
@@ -271,7 +370,9 @@ export async function installAntflyDependency(
     return {
       name: 'antfly',
       status: 'installed' as const,
-      message: `Installed Antfly v${installedVersion} to ${targetPath} (checksum verified)`,
+      message: dataCleared
+        ? `Installed Antfly v${installedVersion} to ${targetPath} (checksum verified). Engine data was cleared for the version change — run \`bakin reindex\` to rebuild the search tables from source.`
+        : `Installed Antfly v${installedVersion} to ${targetPath} (checksum verified)`,
       durationMs,
     }
   } catch (err) {

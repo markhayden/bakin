@@ -146,14 +146,37 @@ export function createRuntimeEngine(runtime: AgentRuntimeAdapter, agentId: strin
         attachments = [{ path: prepared.path, mimeType: prepared.mimeType }]
       }
 
-      const send = (content: string) => runtime.messaging.send({
-        agentId,
-        activityClass: 'system',
-        content,
-        threadId,
-        ephemeral: true,
-        ...(attachments ? { attachments } : {}),
-      })
+      // Work-class route ('enrichment') — DOCUMENT jobs only: attachment
+      // turns must stay override-free (the gateway's attachment gate ignores
+      // per-turn models, bakin#584 — the header contract above). Metering
+      // applies to every send regardless.
+      const { resolveSystemRoute, routeSendArgs } = await import('../../../../src/core/system-route')
+      const { meterAgentTurn } = await import('../../../../src/core/agent-cost')
+      const route = input.kind === 'document' && !attachments
+        ? await resolveSystemRoute('enrichment')
+        : { source: 'inherit' as const }
+
+      const send = async (content: string) => {
+        const result = await runtime.messaging.send({
+          agentId,
+          activityClass: 'system',
+          content,
+          threadId,
+          ephemeral: true,
+          ...(attachments ? { attachments } : {}),
+          ...routeSendArgs(route),
+        })
+        await meterAgentTurn({
+          agent: agentId,
+          activityClass: 'system',
+          workClass: 'enrichment',
+          routeSource: route.source,
+          resolvedModel: route.model,
+          result,
+          name: 'enrichment',
+        })
+        return result
+      }
 
       try {
         const first = await send(buildPrompt(input))

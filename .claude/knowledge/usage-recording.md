@@ -23,7 +23,7 @@ recordUsage({ kind, name, activityClass, agent, durationMs, status, meta, tokens
 | `costUsdMicros` | estimated turn cost in micro-dollars; omitted when unmetered |
 | `meta` | free-form record for extra context |
 
-The token/cost fields are the **live** half of cost metering (the durable half is the ledger `run_costs` table — see `.claude/knowledge/execution-ledger.md`). Dispatch's settle path emits a `kind:'agent', name:'turn'` entry carrying them. This stays the single live stat feed — **never** add a parallel cost tracker.
+The token/cost fields are the **live** half of cost metering (the durable half is the ledger `run_costs` table — see `.claude/knowledge/execution-ledger.md`). Dispatch's settle path emits a `kind:'agent', name:'turn'` entry carrying them. Every caller of the shared meter (`meterAgentTurn` in `src/core/agent-cost.ts`) MUST name its `workClass` (required — the routing + spend-attribution dimension; optional `routeSource` records how the model was chosen); the recorder entry's `meta` carries `workClass` so the live feed slices on the same dimension the durable rows do. This stays the single live stat feed — **never** add a parallel cost tracker.
 
 The ring buffer holds 10 000 entries, FIFO-evicted.
 
@@ -51,6 +51,28 @@ Health's latest-session token surface and runtime-reported transcript-cost rollu
 Historical token usage lives in its own named SQLite store `~/.bakin/usage.db` (via `openNamedDb`, like the search outbox — **never** the coordination ledger) and is populated by scanning the same session JSONL source the latest-session card reads. One parser feeds both surfaces (`parseSessionUsageMessages` in `src/core/agent-usage.ts`) so they cannot drift.
 
 Pipeline: health plugin interval timer (`usageHistoryScanMinutes` setting, default 5; armed in `activate`, first sweep one interval after boot, stopped in `onShutdown`) → `scanUsageHistory(runtime)` in `src/core/usage-history.ts` → `runtime.memory.statEntry` mtime+size skip → changed sessions recomputed into per-`(session_id, day, model)` rows → `replaceSessionUsage` in `packages/core/src/usage-history/store.ts`.
+
+**Schema v4 (#689/#691)** — three attribution facts ride every row:
+- **Provider-qualified models.** Both runtimes write `provider` as a sibling
+  of the bare `model` on every assistant message; the parser re-joins them
+  (`openai-codex/gpt-5.5`), so billing-lane resolution never guesses from a
+  bare id. Bare survives only when the transcript truly had no provider —
+  and the spend engine treats that as a `lane_unknown` evidence gap, never
+  default-metered dollars (#689).
+- **`origin`** (`bakin | external | unknown`) — who started the session, as
+  labeled by the adapter's session-tier entry metadata (Pi: membership in
+  `bakin-threads.json`; OpenClaw: sessions.json key shapes + deterministic
+  v5 uuids). Absent/invalid metadata stores `unknown`, never a guess. This
+  drives the burn engine's interactive/unexplained split and the per-session
+  runaway evidence (`readSessionUsageRollupsSince`).
+- **`user_messages`** — user turns per bucket (each user message attributes
+  to the next usage-bearing assistant message; trailing turns to the
+  session's latest bucket). `message_count` IS the token-bearing
+  assistant-turn count — there is no duplicate assistants column.
+
+Migrations are wipe-and-rescan (v3 precedent): v4 rebuilds
+`session_usage_days` and clears `session_scan_state` so every transcript
+rescans into the new shape on the next sweep.
 
 Invariants:
 - **Absolute replace, never accumulate.** A rescan deletes the session's rows and inserts the fresh recompute in one transaction — retries, rescans, and rewritten/compacted transcripts structurally cannot double-count. There is no other write path.
@@ -106,14 +128,19 @@ no fourth tracking system:
 
 - Ledger (`run_costs`/`runs`/`completions`): `runTokensByAgentSince`
   (NULL-honest token/cost sums), `listRunsByAgent` (runs LEFT JOIN run_costs —
-  the timeline run spine), `listLiveRuns` (status='running' snapshot behind
+  the timeline run spine; rows carry `workClass`/`routeSource`, which Team
+  Diagnostics renders as the `· via class route`/`tag:<x>` receipt),
+  `listLiveRuns` (status='running' snapshot behind
   `GET /api/plugins/health/live-now`), `completionsByAgentSince`.
-- usage.db: `usageByAgentDaySince` — the (agent × day) cross-tab, exposed as
-  `byAgentDay` on `GET /usage-history` (stacked chart) and joined day-aligned
-  against run_costs by `src/core/agent-burn.ts` to compute UNATTRIBUTED usage
-  (transcript-observed minus Bakin-metered — the "activity outside
-  Bakin-managed tasks" signal on `GET /agent-effort` and the
-  `usage.agent-burn` doctor check).
+- usage.db: `usageByAgentDaySince` — the (agent × day) cross-tab with
+  per-origin token splits, exposed as `byAgentDay` on `GET /usage-history`
+  (stacked chart) and joined day-aligned against run_costs by
+  `src/core/agent-burn.ts` to split non-task usage into INTERACTIVE
+  (external-origin sessions — the operator's own chats, advisory) and
+  UNEXPLAINED (bakin/unknown-origin observed minus attributed — watch) on
+  `GET /agent-effort` and the `usage.agent-burn` doctor check (#691).
+  `readSessionUsageRollupsSince` is the per-session rollup behind the
+  runaway evidence.
 
 The two token stores intentionally differ in coverage (run_costs = Bakin
 dispatches only; usage.db = everything in transcripts); the delta is a

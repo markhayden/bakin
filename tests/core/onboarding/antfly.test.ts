@@ -174,11 +174,15 @@ describe('installAntflyDependency', () => {
     expect(check.status).toBe('ok')
   })
 
-  it('is a noop when the pinned version is already installed', async () => {
+  it('is a noop when the pinned version is already installed — but still ensures the service is up (#717)', async () => {
     writeBinary(managedBinary, PIN_VERSION)
     const result = await installAntflyDependency(optsAutoYes, undefined, makePin())
     expect(result.status).toBe('noop')
-    expect(fetchCalls).toHaveLength(0)
+    // The noop path now provisions + probes readyz (and starts the managed
+    // service when dark): a current binary with a dead service was the
+    // field failure #717 fixes. No tarball download happens.
+    expect(fetchCalls.length).toBeGreaterThan(0)
+    expect(fetchCalls.every((u) => u.endsWith('/readyz'))).toBe(true)
   })
 
   it('replaces a wrong-version binary after the running-server guard passes', async () => {

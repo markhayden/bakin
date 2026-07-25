@@ -169,6 +169,10 @@ export interface WorkflowInstance {
   resolvedAgent?: string
   /** Snapshot of runtime agents at workflow start, used to resolve preferred-agent selectors */
   availableAgents?: string[]
+  /** Sticky per-step `team:<id>` resolutions (#611), keyed by stepId —
+   * written once at first step dispatch; retries/revisions reuse the pick. */
+  teamResolutions?: Record<string, { agentId: string; team: string; reason: string; at: string }>
+
   /** If this instance was spawned by a parent workflow step */
   parentTaskId?: string
   parentStepId?: string

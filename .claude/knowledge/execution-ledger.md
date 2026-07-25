@@ -72,16 +72,32 @@ run_costs     run_id PK ← per-turn/-op cost attribution (#464, migration v3);
               resolve at read time), lane 'metered' (API-key dollars) |
               'subscription' (plan quota; tokens are the unit — the dollar
               estimate is suppressed, unit-per-lane) | NULL (unknown =
-              readers treat as metered, never fabricated). A billing
+              readers treat as metered, never fabricated),
+              work_class + route_source (work-class routing, migration v8):
+              the routing + spend-attribution dimension and its receipt
+              ('tag:<name>'|'class'|'inherit'). RunCostInput.workClass is
+              REQUIRED — every new writer names its class at the call site
+              (compile-time forcing function); null is reserved for work
+              that has no class (media rows), never a default. The v8
+              backfill maps ONLY the unique `chat:%:title` prefix →
+              'auto-title'; `task:`/`turn:`/`image:` history stays NULL
+              ("unclassified (pre-migration)") because `turn:` was shared
+              by relays AND generic sends — mapping it would mislabel
+              history. A billing
               fact, not content: written once on settle via recordRunCost
               (INSERT OR IGNORE → first write wins, so a transport retry of
-              the same run can't double-count). Verbs: spendTotal({agent?,
-              sinceMs, untilMs?}), spendByAgent(sinceMs), spendByModel(sinceMs),
+              the same run can't double-count). Verbs:
               listRunCostsSince(sinceMs) — raw rows for the spend engine
               (local-day bucketing lives in TypeScript, ONE place),
               recentRunsByAgent(agent, {sinceMs?, limit?}) — newest-first,
               `run_id LIKE 'task:%'` only (context-report grounding, #357)
               — null costs coalesce to 0 (counted as runs, never dropped).
+              The old GROUP-BY verbs spendTotal/spendByAgent/spendByModel
+              are DELETED — their COALESCE(SUM,0) fabricated $0 for
+              unpriced rows; `tests/architecture/no-legacy-spend-rollups.
+              test.ts` bans reintroducing them. Rollups live in the models
+              plugin's NULL-honest rollupSpend over listRunCostsSince.
+              RunWithCostRow (listRunsByAgent) carries workClass/routeSource.
               Consumed by the models Spend view + dispatch budget gating.
 budget_incidents  one durable row per cap-rule breach per window
               (cost-control v2, migration v6). UNIQUE(scope, scope_id,

@@ -15,7 +15,11 @@ import { join } from 'path'
 import { atomicWriteJson } from '@bakin/core/storage/atomic-write'
 import { parseFrontmatter } from '@bakin/core/format/frontmatter'
 import { getBakinPaths } from '../../../src/core/content-dir'
+import { createLogger } from '../../../src/core/logger'
+import type { ConversationTurnRow } from '../../../src/core/conversation-turns'
 import { brandIdSchema, brandManifestSchema, type BrandManifest } from './schemas'
+
+const log = createLogger('brands-store')
 
 export type BrandDocKind = 'guidelines' | 'lessons'
 
@@ -213,7 +217,74 @@ export function deleteDoc(brandId: string, kind: BrandDocKind, name: string): bo
   const path = docPath(brandId, kind, name)
   if (!existsSync(path)) return false
   unlinkSync(path)
+  const transcript = docBrainstormPath(brandId, kind, name)
+  if (existsSync(transcript)) unlinkSync(transcript)
   return true
+}
+
+// ── Doc brainstorm transcripts (#703) ───────────────────────────────────────
+// Durable per-doc conversation sidecars; rows are the conversation kit's
+// storable shape (the engine's ConversationTurnRow). Deleting the doc (or
+// the brand directory) removes its transcript.
+
+function docBrainstormPath(brandId: string, kind: BrandDocKind, name: string): string {
+  docPath(brandId, kind, name) // same id/name validation, throws on escape attempts
+  return join(brandDir(brandId), 'brainstorms', kind, `${name}.json`)
+}
+
+export function readDocBrainstorm(brandId: string, kind: BrandDocKind, name: string): ConversationTurnRow[] {
+  const path = docBrainstormPath(brandId, kind, name)
+  if (!existsSync(path)) return []
+  try {
+    const rows = JSON.parse(readFileSync(path, 'utf-8')) as unknown
+    return Array.isArray(rows) ? (rows as ConversationTurnRow[]) : []
+  } catch (err) {
+    // A torn write loses the transcript, never the surface — but never
+    // silently: this is data loss worth a trace.
+    log.warn('doc brainstorm transcript unreadable; starting empty', {
+      path,
+      error: err instanceof Error ? err.message : String(err),
+    })
+    return []
+  }
+}
+
+/** Doc brainstorms are working conversations, not archives — bounded so the
+ *  per-row full-file rewrite stays cheap (#706). Oldest rows drop first. */
+export const DOC_BRAINSTORM_ROW_CAP = 300
+
+export function appendDocBrainstormRow(
+  brandId: string,
+  kind: BrandDocKind,
+  name: string,
+  row: ConversationTurnRow,
+): void {
+  // A turn racing a brand delete must not resurrect the directory — the
+  // throw surfaces as the engine's logged append failure.
+  if (getBrand(brandId).status !== 'ok') {
+    throw new BrandStoreError('missing', `brand ${brandId} is gone — dropping brainstorm row`)
+  }
+  const path = docBrainstormPath(brandId, kind, name)
+  mkdirSync(join(brandDir(brandId), 'brainstorms', kind), { recursive: true })
+  atomicWriteJson(path, [...readDocBrainstorm(brandId, kind, name), row].slice(-DOC_BRAINSTORM_ROW_CAP))
+}
+
+/** Every doc-brainstorm transcript key `<brandId>/<kind>/<name>` on disk. */
+export function listDocBrainstormKeys(): Array<{ brandId: string; kind: BrandDocKind; name: string }> {
+  const root = brandsDir()
+  if (!existsSync(root)) return []
+  const keys: Array<{ brandId: string; kind: BrandDocKind; name: string }> = []
+  for (const brand of readdirSync(root, { withFileTypes: true })) {
+    if (!brand.isDirectory()) continue
+    for (const kind of ['guidelines', 'lessons'] as const) {
+      const dir = join(root, brand.name, 'brainstorms', kind)
+      if (!existsSync(dir)) continue
+      for (const file of readdirSync(dir)) {
+        if (file.endsWith('.md.json')) keys.push({ brandId: brand.name, kind, name: file.slice(0, -'.json'.length) })
+      }
+    }
+  }
+  return keys
 }
 
 const lessonSlug = (title: string) =>

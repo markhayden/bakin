@@ -24,7 +24,7 @@ describe('doctor CLI UI', () => {
       incidents: [actionableIncident, unknownIncident],
       summary: {
         checks: { registered: 2, completed: 2, failed: 0, invalid: 0, notApplicable: 0 },
-        incidents: { actionRequired: 1, watching: 1, advisory: 0, unknown: 1 },
+        incidents: { actionRequired: 1, watching: 1, advisory: 0, unknown: 1, acknowledged: 0},
       },
     })
     const rendered = renderToString(<DoctorReport report={report} mode="offline" color={false} />)
@@ -88,7 +88,7 @@ describe('doctor CLI UI', () => {
       incidents: [unknownIncident],
       summary: {
         checks: { registered: 1, completed: 0, failed: 1, invalid: 0, notApplicable: 0 },
-        incidents: { actionRequired: 0, watching: 1, advisory: 0, unknown: 1 },
+        incidents: { actionRequired: 0, watching: 1, advisory: 0, unknown: 1, acknowledged: 0},
       },
     })
     const rendered = renderToString(<DoctorReport report={report} mode="full" color={false} />)

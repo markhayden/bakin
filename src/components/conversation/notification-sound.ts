@@ -1,7 +1,9 @@
 /**
- * Reply chime — a soft two-tone WebAudio blip. Generated, not an asset:
- * zero bundle weight, no file to embed, and the volume stays deliberately
- * low (this is a nudge, not an alarm).
+ * Reply chime — a soft two-tone WebAudio blip shared by every
+ * conversational surface's attention provider (moved from the chat plugin
+ * in #703; chat re-exports from here). Generated, not an asset: zero
+ * bundle weight, no file to embed, and the volume stays deliberately low
+ * (this is a nudge, not an alarm).
  */
 
 let audioCtx: AudioContext | null = null

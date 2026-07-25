@@ -57,6 +57,14 @@ description: Generated reference for Bakin core settings defaults.
       <td><code>500000</code></td>
     </tr>
     <tr>
+      <td><code>burn.runawayAssistantTurns</code></td>
+      <td><code>20</code></td>
+    </tr>
+    <tr>
+      <td><code>burn.runawayFloorTokens</code></td>
+      <td><code>1000000</code></td>
+    </tr>
+    <tr>
       <td><code>burn.spikeMultiplier</code></td>
       <td><code>3</code></td>
     </tr>
@@ -130,7 +138,7 @@ description: Generated reference for Bakin core settings defaults.
     </tr>
     <tr>
       <td><code>dispatch.maxTurnsPerAgent</code></td>
-      <td><code>1</code></td>
+      <td><code>2</code></td>
     </tr>
     <tr>
       <td><code>dispatch.maxWorkflowContextBytes</code></td>
@@ -143,6 +151,14 @@ description: Generated reference for Bakin core settings defaults.
     <tr>
       <td><code>dispatch.paused</code></td>
       <td><code>false</code></td>
+    </tr>
+    <tr>
+      <td><code>dispatch.runDirMaxTotalGb</code></td>
+      <td><code>4</code></td>
+    </tr>
+    <tr>
+      <td><code>dispatch.runDirRetentionDays</code></td>
+      <td><code>7</code></td>
     </tr>
     <tr>
       <td><code>dispatch.transientCooldownMs</code></td>
@@ -181,6 +197,10 @@ description: Generated reference for Bakin core settings defaults.
     <tr>
       <td><code>doctor.requireOnboard</code></td>
       <td><code>true</code></td>
+    </tr>
+    <tr>
+      <td><code>doctor.sensitivity</code></td>
+      <td><code>&quot;standard&quot;</code></td>
     </tr>
   </tbody>
 </table>

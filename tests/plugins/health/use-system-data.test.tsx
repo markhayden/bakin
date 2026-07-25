@@ -27,6 +27,7 @@ function healthReport(): HealthReport {
     revision: 1,
     generatedAt: OBSERVED_AT,
     overallStatus: 'healthy',
+    sensitivity: 'developer',
     lastFullSweep: { id: 'sweep-1', startedAt: OBSERVED_AT, completedAt: OBSERVED_AT },
     checks: [],
     observations: [],
@@ -43,7 +44,7 @@ function healthReport(): HealthReport {
     },
     summary: {
       checks: { registered: 0, completed: 0, failed: 0, invalid: 0, notApplicable: 0 },
-      incidents: { actionRequired: 0, watching: 0, advisory: 0, unknown: 0 },
+      incidents: { actionRequired: 0, watching: 0, advisory: 0, unknown: 0, acknowledged: 0 },
     },
   }
 }

@@ -54,6 +54,12 @@ const usageByDaySchema = z.object({
 const usageByAgentDaySchema = z.object({
   agent: z.string().min(1),
   day: dayKeySchema,
+  /** Token totals split by session origin (#691) — must sum to tokens.total. */
+  originTokens: z.object({
+    bakin: nonNegativeInteger,
+    external: nonNegativeInteger,
+    unknown: nonNegativeInteger,
+  }).strict(),
   ...usageRollupFields,
 }).strict().superRefine(checkCostCoverage)
 
@@ -131,10 +137,34 @@ const usageHistoryClientResponseSchema = z.union([
   usageHistoryLegacyResponseSchema,
 ])
 
-const agentEffortFlagSchema = z.object({
+// Frozen: the flag vocabulary of retired server generations (pre-#691).
+const agentEffortLegacyFlagSchema = z.object({
   kind: z.enum(['effort-no-outcome', 'spike', 'unattributed']),
   message: z.string(),
 }).strict()
+
+const agentEffortFlagSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('effort-no-outcome'), message: z.string() }).strict(),
+  z.object({ kind: z.literal('spike'), message: z.string() }).strict(),
+  z.object({ kind: z.literal('interactive'), message: z.string(), tokens: nonNegativeInteger }).strict(),
+  z.object({
+    kind: z.literal('unexplained'),
+    message: z.string(),
+    tokens: nonNegativeInteger,
+    spikeConcurrent: z.boolean(),
+  }).strict(),
+  z.object({
+    kind: z.literal('runaway'),
+    message: z.string(),
+    sessions: z.array(z.object({
+      sessionId: z.string().min(1),
+      tokens: nonNegativeInteger,
+      assistantTurns: nonNegativeInteger,
+    }).strict()),
+    scheduledJobs: z.array(z.string()),
+    downgraded: z.boolean(),
+  }).strict(),
+])
 
 const agentEffortLegacyRowSchema = z.object({
   agent: z.string().min(1),
@@ -145,7 +175,7 @@ const agentEffortLegacyRowSchema = z.object({
   tokensPerCompletion: nullableNonNegativeInteger,
   totalObservedTokens: nullableNonNegativeInteger,
   unattributedTokens: nullableNonNegativeInteger,
-  flags: z.array(agentEffortFlagSchema),
+  flags: z.array(agentEffortLegacyFlagSchema),
 }).strict().superRefine((row, context) => {
   if (row.totalObservedTokens === null && row.unattributedTokens !== null) {
     context.addIssue({
@@ -182,7 +212,8 @@ const agentEffortRowSchema = z.object({
   completions: nonNegativeInteger,
   tokensPerCompletion: nullableNonNegativeInteger,
   totalObservedTokens: nullableNonNegativeInteger,
-  unattributedTokens: nullableNonNegativeInteger,
+  interactiveTokens: nullableNonNegativeInteger,
+  unexplainedTokens: nullableNonNegativeInteger,
   flags: z.array(agentEffortFlagSchema),
 }).strict().superRefine((row, context) => {
   if (row.tokenApplicableRuns > row.runs) {
@@ -245,14 +276,21 @@ const agentEffortRowSchema = z.object({
       input: row.windowTokens,
     })
   }
+  // Attributed evidence gates the attributed-derived surfaces only: ratios,
+  // the unexplained delta, and the effort/spike/unexplained flags. The
+  // interactive bucket and per-session runaway evidence are observed-only
+  // truths and stay publishable under partial metering.
+  const attributedDependentFlags = row.flags.filter(
+    (flag) => flag.kind === 'effort-no-outcome' || flag.kind === 'spike' || flag.kind === 'unexplained',
+  )
   if (!tokenEvidenceComplete && (
     row.tokensPerCompletion !== null
-    || row.unattributedTokens !== null
-    || row.flags.length > 0
+    || row.unexplainedTokens !== null
+    || attributedDependentFlags.length > 0
   )) {
     context.addIssue({
       code: 'custom',
-      message: 'partial token evidence cannot publish ratios, deltas, or burn flags',
+      message: 'partial token evidence cannot publish ratios, unexplained deltas, or attributed-derived burn flags',
       input: row,
     })
   }
@@ -268,15 +306,15 @@ const agentEffortRowSchema = z.object({
         input: row.tokensPerCompletion,
       })
     }
-    const expectedUnattributedTokens = row.totalObservedTokens === null
+    const expectedUnexplainedTokens = row.totalObservedTokens === null || row.interactiveTokens === null
       ? null
-      : Math.max(0, row.totalObservedTokens - row.windowTokens)
-    if (row.unattributedTokens !== expectedUnattributedTokens) {
+      : Math.max(0, row.totalObservedTokens - row.interactiveTokens - row.windowTokens)
+    if (row.unexplainedTokens !== expectedUnexplainedTokens) {
       context.addIssue({
         code: 'custom',
-        path: ['unattributedTokens'],
-        message: 'unattributedTokens must agree with complete observed and attributed totals',
-        input: row.unattributedTokens,
+        path: ['unexplainedTokens'],
+        message: 'unexplainedTokens must agree with complete observed, interactive, and attributed totals',
+        input: row.unexplainedTokens,
       })
     }
   }
@@ -292,25 +330,27 @@ const agentEffortRowSchema = z.object({
       input: row.windowCostUsdMicros,
     })
   }
-  if (row.totalObservedTokens === null && row.unattributedTokens !== null) {
-    context.addIssue({
-      code: 'custom',
-      path: ['unattributedTokens'],
-      message: 'unattributedTokens requires observed token evidence',
-      input: row.unattributedTokens,
-    })
-  }
-  if (
-    row.totalObservedTokens !== null
-    && row.unattributedTokens !== null
-    && row.unattributedTokens > row.totalObservedTokens
-  ) {
-    context.addIssue({
-      code: 'custom',
-      path: ['unattributedTokens'],
-      message: 'unattributedTokens cannot exceed totalObservedTokens',
-      input: row,
-    })
+  for (const field of ['interactiveTokens', 'unexplainedTokens'] as const) {
+    if (row.totalObservedTokens === null && row[field] !== null) {
+      context.addIssue({
+        code: 'custom',
+        path: [field],
+        message: `${field} requires observed token evidence`,
+        input: row[field],
+      })
+    }
+    if (
+      row.totalObservedTokens !== null
+      && row[field] !== null
+      && row[field] > row.totalObservedTokens
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: [field],
+        message: `${field} cannot exceed totalObservedTokens`,
+        input: row,
+      })
+    }
   }
 })
 
@@ -336,7 +376,9 @@ function checkAgentEffortCoverage(
     agents: Array<{
       agent: string
       totalObservedTokens: number | null
-      unattributedTokens: number | null
+      unattributedTokens?: number | null
+      interactiveTokens?: number | null
+      unexplainedTokens?: number | null
     }>
   },
   context: z.core.$RefinementCtx,
@@ -354,11 +396,17 @@ function checkAgentEffortCoverage(
         input: agent.totalObservedTokens,
       })
     }
-    if (!hasCompleteCoverage && (agent.totalObservedTokens !== null || agent.unattributedTokens !== null)) {
+    const observedDerived = [
+      agent.totalObservedTokens,
+      agent.unattributedTokens ?? null,
+      agent.interactiveTokens ?? null,
+      agent.unexplainedTokens ?? null,
+    ]
+    if (!hasCompleteCoverage && observedDerived.some((value) => value !== null)) {
       context.addIssue({
         code: 'custom',
         path: ['agents', index, 'totalObservedTokens'],
-        message: 'incomplete per-agent coverage cannot publish observed or unattributed token totals',
+        message: 'incomplete per-agent coverage cannot publish observed-derived token totals',
         input: agent.totalObservedTokens,
       })
     }

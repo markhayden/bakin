@@ -23,7 +23,7 @@ mock.module('../../src/core/logger', () => ({ createLogger: () => ({ info: mock(
 type CostRow = {
   runId: string; agent: string; model: string | null; provider: string | null
   lane: 'metered' | 'subscription' | null; usageKind: 'tokens' | 'media'; totalTokens: number | null
-  costUsdMicros: number | null; occurredAt: number
+  costUsdMicros: number | null; workClass?: string | null; occurredAt: number
 }
 type UsageCell = {
   agent: string; day: string; model: string
@@ -54,13 +54,22 @@ mock.module('../../packages/core/src/usage-history/store', () => ({
 }))
 
 // Billing resolution for observed (usage.db) rows — the models plugin hook.
-let resolveBillingMode: 'normal' | 'undefined' | 'throw' = 'normal'
+let resolveBillingMode: 'normal' | 'undefined' | 'throw' | 'lane-only' | 'agent-override' = 'normal'
+const resolveBillingCalls: Array<Record<string, unknown>> = []
 const resolveBillingImpl: (data: Record<string, unknown>) => unknown = (d) => {
+  resolveBillingCalls.push(d)
   if (resolveBillingMode === 'throw') throw new Error('billing hook unavailable')
   if (resolveBillingMode === 'undefined') return undefined
+  if (resolveBillingMode === 'lane-only') return { lane: 'metered' }
+  // An operator override laning a model Bakin cannot resolve (provider 'other').
+  if (resolveBillingMode === 'agent-override') return { provider: 'other', lane: 'subscription', laneSource: 'override' }
   const model = (d.model as string) ?? ''
   const provider = model.includes('/') ? model.split('/')[0] : model.startsWith('claude-') ? 'anthropic' : 'other'
-  return { provider, lane: provider === 'openai-codex' ? 'subscription' : 'metered' }
+  return {
+    provider,
+    lane: provider === 'openai-codex' ? 'subscription' : 'metered',
+    laneSource: provider === 'other' ? 'default' : 'detected',
+  }
 }
 mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
   getHookRegistry: () => ({
@@ -90,6 +99,7 @@ beforeEach(() => {
   usageCells.length = 0
   usageReadFails = false
   resolveBillingMode = 'normal'
+  resolveBillingCalls.length = 0
 })
 
 describe('assembleBudgetSpend', () => {
@@ -115,6 +125,24 @@ describe('assembleBudgetSpend', () => {
     expect(s.monthly.byProvider.google?.meteredUsdMicros).toBe(3_000_000)
     expect(s.monthly.byProvider['openai-codex']?.subscriptionTokens).toBe(5000)
     expect(s.monthly.byModel['google/gemini-3-flash']?.meteredUsdMicros).toBe(3_000_000)
+  })
+
+  it('facets attributed spend by work class (unit economics slice)', async () => {
+    costRows.push(
+      { runId: 't1', agent: 'pixel', model: 'g/f', provider: 'g', lane: 'metered', usageKind: 'tokens', totalTokens: 1000, costUsdMicros: 2_000_000, workClass: 'scheduled', occurredAt: TODAY },
+      { runId: 't2', agent: 'pixel', model: 'g/f', provider: 'g', lane: 'metered', usageKind: 'tokens', totalTokens: 200, costUsdMicros: 400_000, workClass: 'scheduled', occurredAt: TODAY },
+      { runId: 't3', agent: 'main', model: 'a/h', provider: 'a', lane: 'subscription', usageKind: 'tokens', totalTokens: 500, costUsdMicros: null, workClass: 'auto-title', occurredAt: TODAY },
+      { runId: 't4', agent: 'main', model: 'legacy', provider: null, lane: 'metered', usageKind: 'tokens', totalTokens: 50, costUsdMicros: 10_000, workClass: null, occurredAt: TODAY },
+      { runId: 'img1', agent: 'pixel', model: 'g/img', provider: 'g', lane: 'metered', usageKind: 'media', totalTokens: null, costUsdMicros: 39_000, workClass: null, occurredAt: TODAY },
+    )
+    const s = await assembleBudgetSpend(NOW)
+    const wc = s.daily.byWorkClass
+    expect(wc.scheduled).toMatchObject({ runs: 2, meteredUsdMicros: 2_400_000, meteredTokens: 1200 })
+    expect(wc['auto-title']).toMatchObject({ runs: 1, subscriptionTokens: 500, meteredUsdMicros: 0 })
+    // Pre-migration token rows are honestly 'unclassified'; media rows are
+    // classless by design and get their own bucket — never mixed.
+    expect(wc.unclassified).toMatchObject({ runs: 1, meteredUsdMicros: 10_000 })
+    expect(wc.media).toMatchObject({ runs: 1, meteredUsdMicros: 39_000 })
   })
 
   it('does not silently classify NULL-lane rows as metered', async () => {
@@ -151,6 +179,65 @@ describe('assembleBudgetSpend', () => {
     const s = await assembleBudgetSpend(NOW)
     expect(s.daily.byAgent.main?.unattributed.subscriptionTokens).toBe(8000)
     expect(s.daily.byAgent.main?.unattributed.meteredUsdMicros).toBe(0) // reported $ suppressed on the subscription lane
+  })
+
+  it('bare-model observed rows are an evidence gap, never confident metered dollars (#689)', async () => {
+    // A Codex subscription day exactly as usage.db stored it before provider
+    // qualification: bare id + runtime-reported theoretical cost. The billing
+    // hook resolves bare ids to provider 'other' (could-not-resolve) whose
+    // default lane is metered — that default must not book dollars.
+    usageCells.push(usage('main', TODAY, 'gpt-5.5', 157_286, 5_168_103))
+    const s = await assembleBudgetSpend(NOW)
+    expect(s.daily.global.meteredUsdMicros).toBe(0)
+    expect(s.daily.global.unattributed.meteredUsdMicros).toBe(0)
+    expect(s.daily.global.unattributed.meteredTokens).toBe(0)
+    expect(s.spendEvidence.daily.gaps).toEqual(expect.arrayContaining([
+      expect.objectContaining({ lane: null, model: 'gpt-5.5', reasons: ['lane_unknown'] }),
+    ]))
+  })
+
+  it('a lane without provider evidence is not trusted', async () => {
+    resolveBillingMode = 'lane-only'
+    usageCells.push(usage('main', TODAY, 'mystery-model', 500, 900_000))
+    const s = await assembleBudgetSpend(NOW)
+    expect(s.daily.global.meteredUsdMicros).toBe(0)
+    expect(s.spendEvidence.daily.gaps).toEqual(expect.arrayContaining([
+      expect.objectContaining({ lane: null, model: 'mystery-model', reasons: ['lane_unknown'] }),
+    ]))
+  })
+
+  it('an empty-model row never trusts current-model guessing (#689 review)', async () => {
+    // With no model the hook substitutes the agent's CURRENT effective model
+    // — a guess about the past. Its resolved provider proves nothing; the
+    // row stays an honest gap unless an operator override decides the lane.
+    usageCells.push(usage('main', TODAY, '', 500, 900_000))
+    const s = await assembleBudgetSpend(NOW)
+    expect(s.daily.global.meteredUsdMicros).toBe(0)
+    expect(s.spendEvidence.daily.gaps).toEqual(expect.arrayContaining([
+      expect.objectContaining({ lane: null, model: null, reasons: ['lane_unknown'] }),
+    ]))
+  })
+
+  it('an operator override reaches empty-model rows too (#689 second pass)', async () => {
+    // Transcript rows with no model field must still honor an explicit
+    // agent-scoped billing override — otherwise their spend never counts
+    // against any cap the operator configured.
+    resolveBillingMode = 'agent-override'
+    usageCells.push(usage('main', TODAY, '', 8_000, 5_000_000))
+    const s = await assembleBudgetSpend(NOW)
+    expect(s.daily.byAgent.main?.unattributed.subscriptionTokens).toBe(8_000)
+    expect(s.daily.global.meteredUsdMicros).toBe(0)
+    // The hook received NO model — no fabricated model reached resolution.
+    expect(resolveBillingCalls).toEqual([{ agentId: 'main', model: undefined, prospective: false }])
+  })
+
+  it('an explicit operator lane override is trusted even for an unresolvable model (#689 review)', async () => {
+    resolveBillingMode = 'agent-override'
+    usageCells.push(usage('main', TODAY, 'weird-local-model', 8_000, 5_000_000))
+    const s = await assembleBudgetSpend(NOW)
+    // Operator said subscription: tokens count, theoretical dollars stay suppressed.
+    expect(s.daily.byAgent.main?.unattributed.subscriptionTokens).toBe(8_000)
+    expect(s.daily.global.meteredUsdMicros).toBe(0)
   })
 
   it('NULL-cost observed metered rows contribute tokens but no dollars', async () => {

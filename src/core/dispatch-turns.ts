@@ -20,7 +20,7 @@ import { getAppServices } from './app-services-store'
 import { RuntimeError, RuntimeTurnError, type ChatChunk, type MessageResult } from '@bakin/core/adapters/runtime'
 import { claimNextRun, loseRun, settleRun, openBudgetIncident, resolveExpiredBudgetIncidents, findOpenCapIncident, type ClaimNextRunResult } from './execution-ledger'
 import { meterAgentTurn } from './agent-cost'
-import { resolveTurnModel, type ResolvedTurn, type RoutingConfig } from './model-routing'
+import { classifyDispatchWorkClass, resolveTurnModel, type DispatchWorkClass, type ResolvedTurn, type RoutingConfig } from './model-routing'
 import { evaluateBudget, ruleMatchesTurn, dayStartMs, monthStartMs, type BudgetPolicy, type BudgetDecision, type TurnBillingContext } from './budget'
 import { assembleBudgetSpend, type BudgetSpendFacets } from './budget-spend'
 import { notifyBudgetIncidentOpened } from './budget-notify'
@@ -32,6 +32,9 @@ import type { DispatchTask, ConcurrencyGate } from './dispatch-types'
 import { withStateLock, loadDispatchState, saveDispatchState } from './dispatch-state'
 import { findDispatchTaskSnapshot, tryAddTaskLog } from './dispatch-board'
 import { reconcileRejectedDispatch } from './dispatch-session-death'
+import { allocateRunWorkspace, readRunSidecar, removeRunWorkspace, setRunWorkspaceRepo, settleRunWorkspace } from './run-workspace'
+import { addRunWorktree, removeRunWorktree } from './git-worktree'
+import { resolveRepoBinding } from './repo-binding'
 
 const log = createLogger('dispatch-turns')
 const hooks = () => getHookRegistry()
@@ -44,7 +47,7 @@ const hooks = () => getHookRegistry()
  * sends (orchestrator/watchdog/doctor) deliberately stay in the agent's
  * default session and don't go through here.
  */
-async function sendDispatchMessage(agentId: string, content: string, threadId: string, routing?: ResolvedTurn, signal?: AbortSignal, onActivity?: (chunk: ChatChunk) => void): Promise<MessageResult> {
+async function sendDispatchMessage(agentId: string, content: string, threadId: string, routing?: ResolvedTurn, signal?: AbortSignal, onActivity?: (chunk: ChatChunk) => void, runWorkspace?: string): Promise<MessageResult> {
   return getAppServices().runtime.messaging.send({
     agentId,
     content,
@@ -53,8 +56,55 @@ async function sendDispatchMessage(agentId: string, content: string, threadId: s
     ...(routing?.thinking ? { thinking: routing.thinking } : {}),
     ...(signal ? { signal } : {}),
     ...(onActivity ? { onActivity } : {}),
+    // Per-run isolation cwd — set ONLY here, only for dispatch turns on
+    // isolated runtimes (same-agent-concurrency D2). Chat and system sends
+    // never carry it.
+    ...(runWorkspace ? { runWorkspace } : {}),
     // Typed contract field (T29) — core policy never rides the metadata bag.
     oversizedOutputBytes: getSettings().dispatch.oversizedOutputBytes,
+  })
+}
+
+/**
+ * The active runtime's same-agent concurrency mode, cached per process:
+ * capability declarations are static per adapter, and a completed runtime
+ * switch requires a server restart anyway. Unreachable/undeclared reads
+ * fail SAFE to 'serialized' (per-agent cap clamps to 1) without caching,
+ * so a late-initializing runtime is re-probed next dispatch.
+ */
+let sameAgentTurnsModeCache: 'isolated' | 'serialized' | undefined
+export function resetSameAgentTurnsModeCache(): void {
+  sameAgentTurnsModeCache = undefined
+  concurrencyClampAudited = false
+}
+export async function getSameAgentTurnsMode(): Promise<'isolated' | 'serialized'> {
+  if (sameAgentTurnsModeCache) return sameAgentTurnsModeCache
+  try {
+    sameAgentTurnsModeCache = (await getAppServices().runtime.capabilities()).concurrency.sameAgentTurns
+    return sameAgentTurnsModeCache
+  } catch {
+    return 'serialized'
+  }
+}
+
+/**
+ * Clamp-and-warn (thinking-level precedent, never a silent drop): when
+ * settings ask for per-agent parallelism a serialized runtime can't isolate,
+ * audit it — once per boot, not per turn (the clamp is a standing condition,
+ * not an event stream).
+ */
+let concurrencyClampAudited = false
+export function auditConcurrencyClampIfNeeded(contentDir: string, mode: 'isolated' | 'serialized'): void {
+  if (concurrencyClampAudited || mode === 'isolated') return
+  if (getSettings().dispatch.maxTurnsPerAgent <= 1) return
+  concurrencyClampAudited = true
+  appendAudit(contentDir, 'dispatch.concurrency_clamped', 'dispatch', {
+    requested: getSettings().dispatch.maxTurnsPerAgent,
+    effective: 1,
+    reason: 'runtime declares concurrency.sameAgentTurns: serialized — per-run isolation unavailable',
+  })
+  log.warn('Per-agent concurrency clamped to 1: active runtime cannot isolate same-agent turns', {
+    requested: getSettings().dispatch.maxTurnsPerAgent,
   })
 }
 
@@ -382,15 +432,17 @@ export async function deferForBudget(
 export async function resolveDispatchRouting(task: DispatchTask, isRecovery: boolean): Promise<ResolvedTurn> {
   try {
     const config = await hooks().invoke<RoutingConfig>('models.getRoutingConfig', {})
-    if (!config) return {}
-    return resolveTurnModel({
+    if (!config) return { source: 'inherit' }
+    const resolved = resolveTurnModel({
       task: { tags: task.tags, scheduleJobId: task.scheduleJobId, workflowId: task.workflowId, parentId: task.parentId },
       isRecovery,
       config,
     })
+    const { applyThinkingCapability } = await import('./system-route')
+    return await applyThinkingCapability(resolved, classifyDispatchWorkClass(task, isRecovery))
   } catch (err) {
     log.error('Routing resolve failed; using agent default', err, { id: task.id })
-    return {}
+    return { source: 'inherit' }
   }
 }
 
@@ -402,8 +454,8 @@ export async function resolveDispatchRouting(task: DispatchTask, isRecovery: boo
  * same data also feeds the live usage recorder. Never throws into the settle
  * path — a metering failure must not fail a successful turn.
  */
-function recordTurnCost(runId: string, taskId: string, agent: string, result: MessageResult, resolvedModel?: string): Promise<void> {
-  return meterAgentTurn({ runId, taskId, agent, activityClass: 'user', result, resolvedModel })
+function recordTurnCost(runId: string, taskId: string, agent: string, result: MessageResult, workClass: DispatchWorkClass, routeSource: string, resolvedModel?: string): Promise<void> {
+  return meterAgentTurn({ runId, taskId, agent, activityClass: 'user', result, resolvedModel, workClass, routeSource })
 }
 
 /**
@@ -462,9 +514,14 @@ export function concurrencyGate(
   // Slots reserved by collected-but-not-yet-fired turns in the current
   // two-phase cycle — invisible to the in-flight registry until phase 2.
   reserved?: { total: number; forAgent: number },
+  // The active runtime's concurrency declaration (getSameAgentTurnsMode).
+  // Omitted/serialized ⇒ per-agent cap clamps to 1 regardless of settings:
+  // without per-run isolation, two same-agent turns share one workspace.
+  sameAgentTurns: 'isolated' | 'serialized' = 'serialized',
 ): ConcurrencyGate {
+  const perAgentCap = sameAgentTurns === 'isolated' ? settings.dispatch.maxTurnsPerAgent : Math.min(settings.dispatch.maxTurnsPerAgent, 1)
   if (getInFlightTurnCount() + (reserved?.total ?? 0) >= settings.dispatch.maxConcurrentTurns) return 'concurrency_cap'
-  if (getInFlightTurnCount(agentId) + (reserved?.forAgent ?? 0) >= settings.dispatch.maxTurnsPerAgent) return 'agent_busy'
+  if (getInFlightTurnCount(agentId) + (reserved?.forAgent ?? 0) >= perAgentCap) return 'agent_busy'
   return null
 }
 
@@ -526,6 +583,9 @@ export function fireDispatchTurn(opts: {
   /** Nested-workflow child board task this step turn serves — deleting it
    *  must abort the turn even though `task` is the parent (#604 review). */
   childTaskId?: string
+  /** Workflow step id (recorded on the run-workspace sidecar so the sweep's
+   *  failed-retention and salvage can attribute per step). */
+  stepId?: string
   /** True when this is a recovery-ladder re-dispatch (routes to the
    *  'recovery' origin policy regardless of the task's shape). */
   isRecovery?: boolean
@@ -539,6 +599,11 @@ export function fireDispatchTurn(opts: {
   // completes — awaitDispatchIdle() must mean "all bookkeeping done", and a
   // turn's slot shouldn't free until its outcome has been recorded.
   const abort = new AbortController()
+  // Allocated inside the settle chain (isolated runtimes only); shared with
+  // the catch branches so every settle path stamps the sidecar. For bound
+  // tasks the execution cwd is the worktree CHECKOUT inside the run dir.
+  let runWorkspace: string | undefined
+  let executionWorkspace: string | undefined
   const settled = (opts.routing ? Promise.resolve(opts.routing) : resolveDispatchRouting(opts.task, opts.isRecovery ?? false))
     .then(async (routing) => {
       // Fire-time existence check: a delete can interleave between the
@@ -549,8 +614,52 @@ export function fireDispatchTurn(opts: {
         abort.abort('task-deleted')
         throw new RuntimeError('Task deleted before dispatch turn fired', { kind: 'aborted' })
       }
-      if (routing.model || routing.thinking) {
+      // Per-run isolation (same-agent-concurrency D2/D4): allocate AFTER the
+      // existence check (a deleted task never mints a dir) and inside the
+      // settle chain — post-claim, outside withStateLock (the chain runs
+      // after the lock releases). Serialized runtimes never get a dir.
+      if ((await getSameAgentTurnsMode()) === 'isolated') {
+        runWorkspace = allocateRunWorkspace({
+          threadId: opts.threadId,
+          taskId: opts.task.id,
+          ...(opts.stepId ? { stepId: opts.stepId } : {}),
+          agentId: opts.targetAgent,
+        })
+        // Repo-bound task (D6): materialize the worktree at <runDir>/repo on
+        // branch-per-run and make the CHECKOUT the turn's cwd (the agent
+        // starts where the code is; scratch is one level up; the adapter's
+        // .git guard keeps seeding out of the checkout). Multi-second git
+        // adds run here in the settle chain — this turn waits, dispatch
+        // doesn't. Failure removes the dir and takes the failure ladder —
+        // a bound task never fires without its checkout.
+        try {
+          const binding = await resolveRepoBinding(opts.task as { id: string; repoPath?: unknown; projectId?: unknown })
+          if (binding) {
+            const { checkoutDir, branch } = await addRunWorktree(binding.repoPath, runWorkspace, opts.threadId)
+            setRunWorkspaceRepo(opts.targetAgent, opts.threadId, binding.repoPath)
+            executionWorkspace = checkoutDir
+            appendAudit(opts.contentDir, 'task.worktree_materialized', opts.targetAgent, {
+              id: opts.task.id,
+              runId: opts.threadId,
+              repoPath: binding.repoPath,
+              branch,
+              source: binding.source,
+            })
+            // The BRANCH is the deliverable and the checkout dies at settle —
+            // the task log is where the user learns which branch holds the
+            // work (UI review #2).
+            await tryAddTaskLog(opts.task.id, 'system', `Working in an isolated worktree of ${binding.repoPath} on branch ${branch}. The checkout is removed when the task settles; the branch (and its commits) survive for your review.`)
+          }
+        } catch (err) {
+          removeRunWorkspace(runWorkspace)
+          runWorkspace = undefined
+          throw err
+        }
+      }
+      if (routing.model || routing.thinking || routing.thinkingClamp) {
         appendAudit(opts.contentDir, 'task.routed', opts.targetAgent, {
+          source: routing.source,
+          ...(routing.thinkingClamp ? { requestedThinking: routing.thinkingClamp.requested, clamped: true } : {}),
           id: opts.task.id,
           ...(routing.model ? { model: routing.model } : {}),
           ...(routing.thinking ? { thinking: routing.thinking } : {}),
@@ -558,13 +667,12 @@ export function fireDispatchTurn(opts: {
       }
       // Drop-after-settle guard: the tap can rarely fire after the turn
       // settles (late gateway frames) — once the registry entry is gone,
-      // nothing broadcasts. The gate matches the EXACT entry (threadId, not
-      // mere marker presence) so a future retry reusing the marker can't
-      // broadcast a zombie chunk under a stale runId.
+      // nothing broadcasts. The registry is threadId-keyed, so this lookup
+      // is structurally this attempt's own entry: a retry under the same
+      // marker can never broadcast a zombie chunk under a stale runId.
       const onActivity = (chunk: ChatChunk): void => {
         if (chunk.type === 'done' || chunk.type === 'error') return
-        const inFlight = getInFlightTurn(opts.marker)
-        if (!inFlight || inFlight.threadId !== opts.threadId) return
+        if (!getInFlightTurn(opts.threadId)) return
         broadcastTurnActivity({
           type: 'turn-activity',
           taskId: opts.task.id,
@@ -575,7 +683,7 @@ export function fireDispatchTurn(opts: {
           ts: new Date().toISOString(),
         })
       }
-      const result = await sendDispatchMessage(opts.targetAgent, opts.message, opts.threadId, routing, abort.signal, onActivity)
+      const result = await sendDispatchMessage(opts.targetAgent, opts.message, opts.threadId, routing, abort.signal, onActivity, executionWorkspace ?? runWorkspace)
       // Free the live-run slot FIRST — the settle reconciliation below (and
       // any ladder re-dispatch it schedules) must be able to claim anew.
       try {
@@ -583,9 +691,23 @@ export function fireDispatchTurn(opts: {
       } catch (err) {
         log.error('Failed to settle run in ledger', err, { threadId: opts.threadId })
       }
+      if (runWorkspace) {
+        settleRunWorkspace(opts.targetAgent, opts.threadId, 'ok')
+        // Worktrees die at successful settle — the BRANCH is the deliverable,
+        // the checkout is reproducible scratch (spec r4; unbounded retained
+        // checkouts were the audited machine-killer). Failed/aborted runs
+        // keep theirs for the 48h salvage window (sweep-owned).
+        if (executionWorkspace) {
+          const sidecar = readRunSidecar(runWorkspace)
+          if (sidecar?.repoPath && (await removeRunWorktree(sidecar.repoPath, executionWorkspace))) {
+            setRunWorkspaceRepo(opts.targetAgent, opts.threadId, null)
+          }
+        }
+      }
       // Attribute the turn's token/dollar cost (run_id == threadId). The
       // resolved routing model is what actually ran — price against it.
-      await recordTurnCost(opts.threadId, opts.task.id, opts.targetAgent, result, routing.model)
+      const workClass = classifyDispatchWorkClass(opts.task, opts.isRecovery ?? false)
+      await recordTurnCost(opts.threadId, opts.task.id, opts.targetAgent, result, workClass, routing.source ?? 'inherit', routing.model)
       let completedDecomposition = false
       await withStateLock(() => {
         const state = loadDispatchState(opts.contentDir)
@@ -628,6 +750,7 @@ export function fireDispatchTurn(opts: {
         } catch (ledgerErr) {
           log.debug('Ledger settle after abort was a no-op', { threadId: opts.threadId, err: ledgerErr instanceof Error ? ledgerErr.message : String(ledgerErr) })
         }
+        if (runWorkspace) settleRunWorkspace(opts.targetAgent, opts.threadId, `aborted: ${reason}`)
         appendAudit(opts.contentDir, 'task.turn_aborted', opts.targetAgent, {
           id: opts.task.id,
           title: opts.task.title,
@@ -648,6 +771,13 @@ export function fireDispatchTurn(opts: {
       } catch (ledgerErr) {
         log.error('Failed to settle failed run in ledger', ledgerErr, { threadId: opts.threadId })
       }
+      // Failed/lost runs KEEP their dir (salvage window — sweep owns aging).
+      if (runWorkspace) {
+        settleRunWorkspace(opts.targetAgent, opts.threadId, err instanceof RuntimeTurnError ? 'lost: session-death' : `failed: ${formatDispatchError(err).slice(0, 80)}`)
+        // Tell the USER where the attempt's scratch lives — files that used
+        // to be findable in the agent workspace now live here (UI review #7).
+        await tryAddTaskLog(opts.task.id, 'system', `The failed attempt's working files are retained for review at ${runWorkspace} (kept up to 30 days${executionWorkspace ? '; its repo checkout is kept 48 hours' : ''}).`)
+      }
       try {
         await withStateLock(async () => {
           const state = loadDispatchState(opts.contentDir)
@@ -662,6 +792,7 @@ export function fireDispatchTurn(opts: {
             initialLogCount: opts.initialLogCount,
             logPrefix: opts.logPrefix,
             dispatchKind: opts.dispatchKind,
+            threadId: opts.threadId,
           })
           saveDispatchState(opts.contentDir, state)
         })
@@ -671,10 +802,23 @@ export function fireDispatchTurn(opts: {
       opts.onSettled?.('error', err)
     })
     .finally(() => {
-      unregisterTurn(opts.marker)
+      unregisterTurn(opts.threadId)
     })
 
-  registerTurn(opts.marker, {
+  // A live entry under this threadId is a bug: the ledger mints seq
+  // atomically, so two fires can only share a threadId if a dispatch path
+  // double-fired one claim. Register-over audits loudly and proceeds (the
+  // newer settle chain wins the entry; both settles are idempotent).
+  if (getInFlightTurn(opts.threadId)) {
+    appendAudit(opts.contentDir, 'dispatch.registry_clobber', opts.targetAgent, {
+      id: opts.task.id,
+      runId: opts.threadId,
+      marker: opts.marker,
+    })
+    log.error('Registry clobber: threadId already live at register', { threadId: opts.threadId, marker: opts.marker })
+  }
+  registerTurn({
+    marker: opts.marker,
     agentId: opts.targetAgent,
     taskId: opts.task.id,
     ...(opts.childTaskId ? { childTaskId: opts.childTaskId } : {}),
