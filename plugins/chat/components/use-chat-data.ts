@@ -162,28 +162,43 @@ export async function uploadAttachmentRequest(chatId: string, file: File): Promi
   return ((await res.json()) as { attachment: UploadedAttachment }).attachment
 }
 
-// Capability probes are per (agent, model) and stable within a session —
-// cache so switching chats doesn't re-fetch.
+// Capability cache — stale-while-revalidate (#731): the Map is only an
+// instant seed (no flicker when switching chats); EVERY mount re-probes in
+// the background so a model change surfaces on the next chat open instead
+// of after a browser restart. Staleness is bounded to the mounted view.
 const imageInputCache = new Map<string, boolean>()
+// In-flight probe dedup — rail + view mounting together share one fetch.
+const imageInputProbes = new Map<string, Promise<boolean | null>>()
+
+/** Probe the agent's image capability; null = probe failed (keep last-known). */
+function probeImageInput(agentId: string): Promise<boolean | null> {
+  let probe = imageInputProbes.get(agentId)
+  if (!probe) {
+    probe = pluginFetch('chat', `capabilities?agent=${encodeURIComponent(agentId)}`)
+      .then(async (res) => (res.ok ? ((await res.json()) as { imageInput?: boolean }).imageInput === true : null))
+      .catch(() => null)
+      .finally(() => {
+        imageInputProbes.delete(agentId)
+      })
+    imageInputProbes.set(agentId, probe)
+  }
+  return probe
+}
 
 export function useAgentImageInput(agentId: string): boolean {
   const [enabled, setEnabled] = useState(imageInputCache.get(agentId) ?? false)
   useEffect(() => {
     // Empty while the chat summary loads — the probe re-runs with the real id.
     if (!agentId) return
-    const cached = imageInputCache.get(agentId)
-    if (cached !== undefined) {
-      setEnabled(cached)
-      return
-    }
     let cancelled = false
-    void pluginFetch('chat', `capabilities?agent=${encodeURIComponent(agentId)}`)
-      .then(async (res) => {
-        const value = res.ok ? ((await res.json()) as { imageInput?: boolean }).imageInput === true : false
-        imageInputCache.set(agentId, value)
-        if (!cancelled) setEnabled(value)
-      })
-      .catch(() => {})
+    setEnabled(imageInputCache.get(agentId) ?? false)
+    void probeImageInput(agentId).then((value) => {
+      // Failure keeps last-known (a blip never yanks a working affordance);
+      // an agent never probed successfully stays conservative-false.
+      if (value === null) return
+      imageInputCache.set(agentId, value)
+      if (!cancelled) setEnabled(value)
+    })
     return () => {
       cancelled = true
     }

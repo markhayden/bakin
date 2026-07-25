@@ -261,6 +261,65 @@ describe('useChatStream characterization (frozen chat client behavior)', () => {
   })
 })
 
+describe('useAgentImageInput stale-while-revalidate (#731)', () => {
+  const capsRoute = (stub: FetchStub, value: unknown) => {
+    stub.routes.set('GET capabilities', value)
+  }
+
+  it('always revalidates on mount: a cached true downgrades to false after a model change — no session reset needed', async () => {
+    const { useAgentImageInput } = await import('../../../plugins/chat/components/use-chat-data')
+    const stub1 = stubFetch()
+    capsRoute(stub1, { imageInput: true })
+    const first = renderHook(() => useAgentImageInput('swr-agent'))
+    await waitFor(() => expect(first.result.current).toBe(true))
+    first.unmount()
+
+    // The agent's model changed to text-only; a remount must catch it.
+    const stub2 = stubFetch()
+    capsRoute(stub2, { imageInput: false })
+    const second = renderHook(() => useAgentImageInput('swr-agent'))
+    // Seeds instantly from cache (no flicker)…
+    expect(second.result.current).toBe(true)
+    // …then the background probe corrects it.
+    await waitFor(() => expect(second.result.current).toBe(false))
+    second.unmount()
+  })
+
+  it('revalidation failure keeps the last-known value; first-ever failure stays conservative-false', async () => {
+    const { useAgentImageInput } = await import('../../../plugins/chat/components/use-chat-data')
+    const stub1 = stubFetch()
+    capsRoute(stub1, { imageInput: true })
+    const first = renderHook(() => useAgentImageInput('swr-flaky'))
+    await waitFor(() => expect(first.result.current).toBe(true))
+    first.unmount()
+
+    const stub2 = stubFetch()
+    stub2.routes.set('GET capabilities', new Response('{}', { status: 500 }))
+    const second = renderHook(() => useAgentImageInput('swr-flaky'))
+    await act(async () => {})
+    expect(second.result.current).toBe(true) // network blip never yanks the affordance
+    second.unmount()
+
+    const third = renderHook(() => useAgentImageInput('swr-never-seen'))
+    await act(async () => {})
+    expect(third.result.current).toBe(false) // conservative-false preserved
+    third.unmount()
+  })
+
+  it('concurrent mounts share one probe (rail + view double mount)', async () => {
+    const { useAgentImageInput } = await import('../../../plugins/chat/components/use-chat-data')
+    const stub = stubFetch()
+    capsRoute(stub, { imageInput: true })
+    const a = renderHook(() => useAgentImageInput('swr-dedup'))
+    const b = renderHook(() => useAgentImageInput('swr-dedup'))
+    await waitFor(() => expect(a.result.current).toBe(true))
+    await waitFor(() => expect(b.result.current).toBe(true))
+    expect(stub.calls.filter((c) => c.url.includes('capabilities'))).toHaveLength(1)
+    a.unmount()
+    b.unmount()
+  })
+})
+
 describe('queued follow-ups (#729 client)', () => {
   it('send while streaming posts and records a queued row — no busy error, live turn untouched', async () => {
     const stub = stubFetch()
