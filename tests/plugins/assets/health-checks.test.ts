@@ -15,7 +15,7 @@ process.env.BAKIN_HOME = testDir
 process.env.OPENCLAW_HOME = pathJoin(testDir, 'openclaw')
 
 import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
-import { existsSync, mkdirSync, rmSync, statSync, truncateSync, utimesSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync, truncateSync, utimesSync, writeFileSync } from 'fs'
 import { join } from 'path'
 
 mock.module('@/core/content-dir', () => ({
@@ -53,7 +53,7 @@ mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
 
-import { assetRepair, checkAssets } from '../../../plugins/assets/lib/health-checks'
+import { assetRepair, checkAssets, incompleteEnrichmentAssetIds } from '../../../plugins/assets/lib/health-checks'
 
 const assetsRoot = join(testDir, 'assets')
 const storeRoot = join(assetsRoot, 'store')
@@ -301,5 +301,79 @@ describe('plugin registration', () => {
 
     expect(registeredIds).toContain('assets')
     expect(registeredActionIds).toContain('repair-store')
+  })
+})
+
+// ─── Enrichment coverage (health trust overhaul, 2026-07-24) ─────────────
+
+function seedEnrichedAsset(name: string, enrichment?: Record<string, unknown>, currentVersion?: number): void {
+  // Valid asset-id shape (YYYYMMDD-slug-id8) under the 2026-03 shard so
+  // listAssets sees it; the hex suffix derives from the name for stability.
+  const suffix = Buffer.from(name).toString('hex').padEnd(8, '0').slice(0, 8)
+  const assetId = `20260301-${name}-${suffix}`
+  const dir = seedVersionedAsset(assetId, currentVersion ? { currentVersion } : undefined)
+  const manifestPath = join(dir, 'manifest.json')
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'))
+  if (enrichment) manifest.enrichment = enrichment
+  writeFileSync(manifestPath, JSON.stringify(manifest))
+}
+
+describe('enrichment coverage — one stat, never a per-asset nag', () => {
+  it('healthy single observation with coverage evidence when coverage is fine (failures fold in)', () => {
+    seedFullAssetsTree()
+    for (let i = 0; i < 19; i++) seedEnrichedAsset(`ok-${i}`, { status: 'done', forVersion: 1 })
+    seedEnrichedAsset('failed-1', { status: 'failed', error: 'boom' })
+
+    const results = observations()
+    const coverage = results.filter((r) => r.key === 'enrichment-coverage')
+    expect(coverage).toHaveLength(1)
+    expect(coverage[0].status).toBe('healthy')
+    expect(coverage[0].evidence).toMatchObject({ wanting: 20, enriched: 19, failed: 1 })
+    // The old per-bucket nags are GONE.
+    expect(results.some((r) => r.key === 'enrichment-failed' || r.key === 'enrichment-incomplete')).toBe(false)
+  })
+
+  it('ONE advisory when coverage craters below the threshold', () => {
+    seedFullAssetsTree()
+    for (let i = 0; i < 2; i++) seedEnrichedAsset(`ok-${i}`, { status: 'done', forVersion: 1 })
+    for (let i = 0; i < 8; i++) seedEnrichedAsset(`missing-${i}`)
+
+    const results = observations()
+    const coverage = results.filter((r) => r.key === 'enrichment-coverage')
+    expect(coverage).toHaveLength(1)
+    expect(coverage[0].status).toBe('warning')
+    if (coverage[0].status !== 'warning') throw new Error('unreachable')
+    expect(coverage[0].incident.disposition).toBe('advisory')
+    expect(coverage[0].evidence).toMatchObject({ enriched: 2, missing: 8 })
+  })
+
+  it('tiny stores never alert regardless of coverage', () => {
+    seedFullAssetsTree()
+    for (let i = 0; i < 3; i++) seedEnrichedAsset(`missing-${i}`)
+    const coverage = observations().filter((r) => r.key === 'enrichment-coverage')
+    expect(coverage[0].status).toBe('healthy')
+  })
+
+  it('skipped assets leave the denominator — deliberate opt-outs never count against coverage', () => {
+    seedFullAssetsTree()
+    for (let i = 0; i < 2; i++) seedEnrichedAsset(`ok-${i}`, { status: 'done', forVersion: 1 })
+    for (let i = 0; i < 8; i++) seedEnrichedAsset(`skipped-${i}`, { status: 'skipped', reason: 'unsupported' })
+    const coverage = observations().filter((r) => r.key === 'enrichment-coverage')
+    expect(coverage[0].status).toBe('healthy')
+    expect(coverage[0].evidence).toMatchObject({ wanting: 2, skipped: 8 })
+  })
+})
+
+describe('incompleteEnrichmentAssetIds — the self-heal selector', () => {
+  it('selects failed + missing + stale, never skipped or current', () => {
+    seedFullAssetsTree()
+    seedEnrichedAsset('current', { status: 'done', forVersion: 1 })
+    seedEnrichedAsset('stale-1', { status: 'done', forVersion: 1 }, 2)
+    seedEnrichedAsset('failed-1', { status: 'failed', error: 'x' })
+    seedEnrichedAsset('missing-1')
+    seedEnrichedAsset('skipped-1', { status: 'skipped', reason: 'unsupported' })
+
+    const names = incompleteEnrichmentAssetIds().map((id) => id.split('-').slice(1, -1).join('-')).sort()
+    expect(names).toEqual(['failed-1', 'missing-1', 'stale-1'])
   })
 })

@@ -18,7 +18,9 @@ import { registerAssetsHooks } from './lib/register-hooks'
 import { registerAssetsExecTools } from './lib/exec-tools'
 import { onAssetWritten } from './lib/asset-events'
 import {
+  drainEnrichmentQueue,
   enqueueEnrichment,
+  enqueueEnrichmentBackfill,
   initEnrichmentQueue,
   stopEnrichmentQueue,
 } from './lib/enrichment/queue'
@@ -26,10 +28,15 @@ import type { EnrichmentSettings } from './lib/enrichment/providers'
 import { setUnmanagedEmitter } from './lib/unmanaged-tracker'
 import { getContentDir } from '../../src/core/content-dir'
 import { createLogger } from '../../src/core/logger'
-import { assetRepair, checkAssets, checkEnrichmentEngine } from './lib/health-checks'
+import { assetRepair, checkAssets, checkEnrichmentEngine, incompleteEnrichmentAssetIds } from './lib/health-checks'
 import { healthObserved } from '@makinbakin/sdk/utils'
 
 const log = createLogger('assets')
+
+/** Daily is effectively free: the done+forVersion skip guard makes passes
+ *  over healthy assets no-ops, and nothing runs with force (no re-billing). */
+const ENRICHMENT_SELF_HEAL_INTERVAL_MS = 24 * 60 * 60 * 1000
+let selfHealTimer: ReturnType<typeof setInterval> | null = null
 
 const assetsPlugin: BakinPlugin = definePlugin({
   id: 'assets',
@@ -70,6 +77,23 @@ const assetsPlugin: BakinPlugin = definePlugin({
       },
     })
     onAssetWritten(({ assetId }) => enqueueEnrichment(assetId))
+
+    // ─── Enrichment self-heal (health trust overhaul) ──────────────────
+    // A slow background pass re-attempts failed/missing/stale enrichment so
+    // coverage recovers without a human. No force: nothing re-bills and the
+    // done+forVersion skip guard keeps a pass over healthy assets free.
+    selfHealTimer = setInterval(() => {
+      try {
+        const ids = incompleteEnrichmentAssetIds()
+        if (ids.length === 0) return
+        log.info(`Enrichment self-heal: re-attempting ${ids.length} asset(s)`)
+        enqueueEnrichmentBackfill(ids)
+        void drainEnrichmentQueue()
+      } catch (err) {
+        log.warn('Enrichment self-heal pass failed', { err: err instanceof Error ? err.message : String(err) })
+      }
+    }, ENRICHMENT_SELF_HEAL_INTERVAL_MS)
+    selfHealTimer.unref?.()
 
     // ─── Search Content Type Registration ─────────────────────────────
     registerAssetsSearch(ctx)
@@ -121,6 +145,8 @@ const assetsPlugin: BakinPlugin = definePlugin({
   },
 
   onShutdown() {
+    if (selfHealTimer) clearInterval(selfHealTimer)
+    selfHealTimer = null
     stopEnrichmentQueue()
     log.info('Shutting down assets plugin')
   },
