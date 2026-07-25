@@ -22,6 +22,9 @@ export {
 
 /** Tailwind class merger (clsx + tailwind-merge). */
 export { cn } from '../../../../src/lib/utils'
+// Clipboard write that works on the tailnet's plain-HTTP origin (where
+// navigator.clipboard is undefined) — resolves true only on a real copy.
+export { copyToClipboard } from '../../../../src/lib/copy-to-clipboard'
 
 /** Semantic tone for an outline status badge. */
 export type BadgeTone = 'success' | 'pending' | 'error' | 'muted' | 'info'
