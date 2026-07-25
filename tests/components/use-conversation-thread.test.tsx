@@ -305,6 +305,35 @@ describe('review-hardening guards (#703)', () => {
     expect(result.current.streaming).toBe(true)
   })
 
+  it('a queued-event refetch that already delivered the item never duplicates the optimistic row', async () => {
+    const store = makeStore()
+    const serverQueue: Array<{ id: string; ts: string; content: string }> = []
+    let resolvePost: ((v: { ok: boolean; queued?: { id: string } }) => void) | null = null
+    const { result } = hookFor(store, 'a', {
+      queue: { enabled: true, queuedEvent: 'probe.queued' },
+      load: async () => ({ messages: [], queued: [...serverQueue] }),
+      post: () => new Promise((r) => { resolvePost = r as typeof resolvePost }),
+    })
+    await act(async () => {})
+    act(() => {
+      emitPluginEvent({ event: EVENTS.chunk, threadKey: 'a', chunk: { type: 'text', content: 'live' } })
+    })
+    let sendPromise: Promise<void> = Promise.resolve()
+    act(() => { sendPromise = result.current.send('dupe me not') })
+    // Server-side: the enqueue lands and its event fires BEFORE the 202
+    // response is written — the refetch delivers the item first.
+    serverQueue.push({ id: 'dup-1', ts: '2026-07-25T00:00:00Z', content: 'dupe me not' })
+    act(() => { emitPluginEvent({ event: 'probe.queued', threadKey: 'a', queueId: 'dup-1', queueLength: 1 }) })
+    await waitFor(() => expect(result.current.queued).toHaveLength(1))
+    // Now the 202 resolves with the same id — no second bubble.
+    await act(async () => {
+      resolvePost?.({ ok: true, queued: { id: 'dup-1' } })
+      await sendPromise
+    })
+    expect(result.current.queued).toHaveLength(1)
+    expect(result.current.queued[0].id).toBe('dup-1')
+  })
+
   it('queued/started events refetch queue state for the active thread', async () => {
     const store = makeStore()
     const serverQueue: Array<{ id: string; ts: string; content: string }> = []

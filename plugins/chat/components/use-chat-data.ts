@@ -99,6 +99,10 @@ export function useChats(agentFilter: string) {
 
   useEffect(() => { void refresh() }, [refresh])
   // A finished turn bumps updatedAt/title/unreadCount — keep the list fresh.
+  // chat.started re-lights the rail's working spinner the instant a drained
+  // turn reserves its slot (without it the dot blinked off between a done
+  // and the drained turn's first chunk).
+  usePluginEvent('chat.started', () => { void refresh() })
   usePluginEvent('chat.done', () => { void refresh() })
   usePluginEvent('chat.error', () => { void refresh() })
   usePluginEvent('chat.titled', () => { void refresh() })

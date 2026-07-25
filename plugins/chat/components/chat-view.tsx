@@ -236,7 +236,7 @@ export function DraftChatView({
 }: {
   agentId: string
   onCreated: (chatId: string) => void
-  createAndSend: (agentId: string, content: string, files?: File[]) => Promise<string | null>
+  createAndSend: (agentId: string, content: string, files?: File[]) => Promise<{ chatId: string | null; sent: boolean }>
 }) {
   const agent = useAgent(agentId)
   const name = agent?.name ?? agentId
@@ -244,17 +244,36 @@ export function DraftChatView({
   const [error, setError] = useState<string | null>(null)
   const imageInput = useAgentImageInput(agentId)
   const [staged, setStaged] = useState<DraftStagedFile[]>([])
+  const draftComposer = useRef<ComposerHandle | null>(null)
+
+  // Unmount (incl. agent switch — the parent keys this view by agent):
+  // release every staged preview URL; they'd otherwise leak for the whole
+  // page session.
+  const stagedRef = useRef(staged)
+  stagedRef.current = staged
+  useEffect(
+    () => () => {
+      for (const s of stagedRef.current) URL.revokeObjectURL(s.previewUrl)
+    },
+    [],
+  )
 
   const handleSend = async (content: string) => {
     setSending(true)
     setError(null)
     try {
-      const chatId = await createAndSend(agentId, content, staged.map((s) => s.file))
-      if (chatId) {
+      const res = await createAndSend(agentId, content, staged.map((s) => s.file))
+      if (res.chatId) {
+        // Navigate even when the message POST failed — the chat exists and
+        // createAndSend preserved the text as its composer draft + toasted.
         for (const s of staged) URL.revokeObjectURL(s.previewUrl)
         setStaged([])
-        onCreated(chatId)
-      } else setError('Could not start the chat — is the agent still in the roster?')
+        onCreated(res.chatId)
+      } else {
+        setError('Could not start the chat — is the agent still in the roster?')
+        // Total failure: put the typed text back (the composer cleared on send).
+        draftComposer.current?.setText(content)
+      }
     } finally {
       setSending(false)
     }
@@ -279,6 +298,7 @@ export function DraftChatView({
         placeholder={`Message ${name}…`}
         onSend={(content) => { void handleSend(content) }}
         busy={sending}
+        handleRef={draftComposer}
         maxLength={CONTENT_MAX}
         attachments={{
           enabled: imageInput,
@@ -316,11 +336,13 @@ export function ChatView({ chatId, onChanged }: { chatId: string; onChanged: () 
 
   // Queue-remove restore (spec D8): an EMPTY composer gets the removed
   // message back — text and still-uploaded attachments — for editing.
-  // Mid-typing removal just discards (no surprise merging).
+  // "Empty" means no text AND no staged attachments (review finding:
+  // text-only emptiness merged restored attachments into a staged set —
+  // exactly the surprise-merging D8 forbids). Otherwise: discard.
   const handleRemoveQueued = async (item: ConversationQueuedItem) => {
     const removed = await removeQueued(item.id)
     if (!removed) return
-    if (composerHandle.current?.isEmpty()) {
+    if (composerHandle.current?.isEmpty() && attachments.composerProps.items.length === 0) {
       composerHandle.current.setText(removed.content)
       const restorable = (removed.attachments ?? []).filter(
         (a): a is { name: string; mimeType: string; url?: string; path: string } =>
@@ -369,6 +391,7 @@ export function ChatView({ chatId, onChanged }: { chatId: string; onChanged: () 
         busy={streaming}
         onAbort={abort}
         queueMode
+        queuedCount={queued.length}
         handleRef={composerHandle}
         maxLength={CONTENT_MAX}
         attachments={attachments.composerProps}

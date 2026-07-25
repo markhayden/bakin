@@ -169,7 +169,7 @@ describe('DraftChatView', () => {
         onCreated={(id) => created.push(id)}
         createAndSend={async (agentId, content) => {
           calls.push([agentId, content])
-          return CHAT_A
+          return { chatId: CHAT_A, sent: true }
         }}
       />,
     )
@@ -194,7 +194,7 @@ describe('DraftChatView', () => {
           onCreated={() => {}}
           createAndSend={async (_agentId, content, files) => {
             sends.push({ content, files: files ?? [] })
-            return CHAT_A
+            return { chatId: CHAT_A, sent: true }
           }}
         />,
       )
@@ -226,7 +226,7 @@ describe('DraftChatView', () => {
   it('hides the attach affordance for a text-only agent', async () => {
     mockFetch({ capabilities: { imageInput: false } })
     const { container } = render(
-      <DraftChatView agentId="texty" onCreated={() => {}} createAndSend={async () => CHAT_A} />,
+      <DraftChatView agentId="texty" onCreated={() => {}} createAndSend={async () => ({ chatId: CHAT_A, sent: true })} />,
     )
     await settleReact()
     const attach = container.querySelector('[data-composer-attach]') as HTMLButtonElement | null
@@ -246,8 +246,8 @@ describe('createAndSend orchestration (#730)', () => {
     })
     const { createAndSend } = await import('../../../plugins/chat/components/chat-page')
     const file = new File(['png-bytes'], 'first.png', { type: 'image/png' })
-    const chatId = await createAndSend('main', 'look at this', [file])
-    expect(chatId).toBe(CHAT_A)
+    const res = await createAndSend('main', 'look at this', [file])
+    expect(res).toEqual({ chatId: CHAT_A, sent: true })
 
     const urls = fetchCalls.map((c) => `${c.init?.method ?? 'GET'} ${c.url}`)
     const createIdx = urls.findIndex((u) => u.startsWith('POST') && u.endsWith('/chats'))
@@ -260,6 +260,26 @@ describe('createAndSend orchestration (#730)', () => {
     const sendCall = fetchCalls.find((c) => c.url.includes('/messages'))!
     const body = JSON.parse(String(sendCall.init?.body)) as { attachments?: Array<{ name: string }> }
     expect(body.attachments?.map((a) => a.name)).toEqual(['first.png'])
+  })
+
+  it('a failed first-message POST preserves the text as the new chat\'s composer draft (never silent loss)', async () => {
+    fetchCalls = []
+    globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      fetchCalls.push({ url, init })
+      if (url.includes('/messages')) {
+        return Promise.resolve(new Response('{"error":"boom"}', { status: 500 }))
+      }
+      if (url.endsWith('/chats') && init?.method === 'POST') {
+        return Promise.resolve(new Response(JSON.stringify({ chat: { id: CHAT_A, agentId: 'main' } }), { status: 201, headers: { 'Content-Type': 'application/json' } }))
+      }
+      return Promise.resolve(new Response('{}', { status: 200 }))
+    }) as typeof fetch
+    const { createAndSend } = await import('../../../plugins/chat/components/chat-page')
+    const res = await createAndSend('main', 'precious words', [])
+    expect(res).toEqual({ chatId: CHAT_A, sent: false })
+    // The typed text became the created chat's persisted composer draft.
+    expect(localStorage.getItem(`bakin-composer-draft:chat:${CHAT_A}`)).toBe('precious words')
   })
 })
 

@@ -151,7 +151,14 @@ export function buildPluginContext(opts: BuildPluginContextOptions): PluginConte
         // could inject content into every open chat) — user-source plugins
         // must stay in their own namespace. Loud activation-time failure.
         if (source === 'user') {
-          for (const eventName of Object.values(config.events)) {
+          // queue.event joins the same guard — it is emitted with a fully
+          // plugin-controlled payload on every enqueue, so an unguarded
+          // name would be the exact chat.chunk-class spoofing surface.
+          const eventNames = [
+            ...Object.values(config.events),
+            ...(config.queue?.event ? [config.queue.event] : []),
+          ]
+          for (const eventName of eventNames) {
             if (!eventName.startsWith(`${pluginId}.`)) {
               throw new Error(
                 `conversation turn events must be namespaced "${pluginId}.*" — got "${eventName}"`,

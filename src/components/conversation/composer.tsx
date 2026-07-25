@@ -8,7 +8,9 @@
  * right. Drag the handle above to raise the minimum height; typing can
  * still grow to the cap. Enter/Shift+Enter/Esc with an IME guard,
  * shell-style ↑/↓ input history, per-thread draft persistence — and typing
- * is NEVER blocked while a turn streams; only send waits.
+ * is NEVER blocked while a turn streams. What send does while busy depends
+ * on the surface: strict surfaces hold it (Stop shows); queueMode surfaces
+ * morph the button to queue-send (#732).
  */
 import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { ArrowUp, ListEnd, Loader2, Plus, Square, X } from 'lucide-react'
@@ -41,6 +43,15 @@ function writeDraft(storageKey: string, value: string): void {
   } catch {
     // Storage failures never break typing.
   }
+}
+
+/**
+ * Write a thread's persisted composer draft from OUTSIDE a mounted
+ * Composer — failure-recovery flows (e.g. a draft send that created the
+ * chat but failed to deliver preserves the text as the NEW chat's draft).
+ */
+export function writeComposerDraft(storageKey: string, value: string): void {
+  writeDraft(storageKey, value)
 }
 
 function readHistory(storageKey: string): string[] {
@@ -105,6 +116,9 @@ export interface ComposerProps {
    * hold send while busy.
    */
   queueMode?: boolean
+  /** Pending queued messages on this thread — keeps the busy helper copy
+   *  honest about what happens when the reply settles (they send next). */
+  queuedCount?: number
   /** Hard-disabled surface (read-only/archived). */
   disabled?: boolean
   placeholder?: string
@@ -124,6 +138,7 @@ export function Composer({
   busy = false,
   onAbort,
   queueMode = false,
+  queuedCount = 0,
   disabled = false,
   placeholder = 'Send a message…',
   maxLength,
@@ -194,6 +209,12 @@ export function Composer({
   const hasPayload = hasText || readyAttachments.length > 0
   // Queue surfaces may send while busy — the action queues server-side.
   const canSend = !disabled && (!busy || queueMode) && !uploadsPending && hasPayload
+  // The user has QUEUE intent while busy (text or any attachment, even one
+  // still uploading) — the button must never silently morph back to Stop
+  // under their cursor while the copy promises queueing (review finding:
+  // a click meant to queue would abort the live reply).
+  const wantsQueue =
+    busy && queueMode && !disabled && (hasText || (attachments?.items.length ?? 0) > 0)
 
   const send = useCallback(() => {
     if (!canSend) return
@@ -392,17 +413,20 @@ export function Composer({
               >
                 <Loader2 className="size-4 animate-spin" />
               </button>
-            ) : busy && queueMode && canSend ? (
-              // The single morphing button (D4): text present → queue-send.
+            ) : wantsQueue ? (
+              // The single morphing button (D4): queue intent → queue-send.
               // Enter queues; the instant morph-back to Stop after sending
-              // is the steering sequence (queue → Stop → drain).
+              // is the steering sequence (queue → Stop → drain). While an
+              // attachment is still uploading the button DISABLES (never
+              // swaps back to Stop under the cursor).
               <button
                 type="button"
                 data-composer-queue
                 onClick={send}
+                disabled={!canSend}
                 aria-label="Queue message"
-                title="Queue for when the reply finishes (Enter)"
-                className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
+                title={canSend ? 'Queue for when the reply finishes (Enter)' : 'Waiting for the upload to finish…'}
+                className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground"
               >
                 <ListEnd className="size-4" />
               </button>
@@ -440,9 +464,13 @@ export function Composer({
               : !onAbort
                 ? 'Sending…'
                 : queueMode
-                  ? hasPayload
-                    ? 'Replying — Enter queues your message; Esc stops the reply.'
-                    : 'Replying — type to queue a follow-up; Esc stops the reply.'
+                  ? wantsQueue
+                    ? canSend
+                      ? 'Replying — Enter queues your message; Esc stops the reply.'
+                      : 'Replying — attachment uploading; queueing waits for it. Esc stops the reply.'
+                    : queuedCount > 0
+                      ? `Replying — ${queuedCount} queued message${queuedCount === 1 ? '' : 's'} send when it finishes; Esc stops the reply.`
+                      : 'Replying — type to queue a follow-up; Esc stops the reply.'
                   : 'Replying — wait for the reply to finish, or stop it.'}
           </div>
           {showCounter ? (

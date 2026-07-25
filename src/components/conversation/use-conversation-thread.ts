@@ -251,15 +251,27 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
       const base = optionsRef.current.optimisticRow?.(content, attachments)
       const baseUser = base?.kind === 'user' ? base : undefined
       if (res.queued) {
-        setQueued((prev) => [
-          ...prev,
-          {
-            id: res.queued!.id,
-            ts: new Date().toISOString(),
-            content: baseUser?.content ?? content,
-            ...(baseUser?.attachments ? { attachments: baseUser.attachments } : {}),
-          },
-        ])
+        // Discard loads that started before this acceptance — a stale GET
+        // snapshot resolving late must not wipe the queued row we're about
+        // to add (the guard's queue-side half; review finding).
+        sendSeqRef.current += 1
+        const queuedId = res.queued.id
+        setQueued((prev) =>
+          // The server's chat.queued event fires BEFORE the 202 is written,
+          // so an event-triggered refetch can land the same item first —
+          // dedupe by id, never a double bubble.
+          prev.some((i) => i.id === queuedId)
+            ? prev
+            : [
+                ...prev,
+                {
+                  id: queuedId,
+                  ts: new Date().toISOString(),
+                  content: baseUser?.content ?? content,
+                  ...(baseUser?.attachments ? { attachments: baseUser.attachments } : {}),
+                },
+              ],
+        )
       } else {
         // The turn settled before the POST landed — the server accepted a
         // normal turn. Adopt the normal optimistic shape.

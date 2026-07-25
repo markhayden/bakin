@@ -158,7 +158,14 @@ export function readQueue(chatId: string): ChatQueuedMessage[] {
   try {
     return z.array(QueuedMessageSchema).parse(JSON.parse(readFileSync(path, 'utf-8')))
   } catch (err) {
-    log.error(`queue snapshot unreadable for ${chatId} — treating as empty`, err as Error)
+    // Quarantine the corrupt snapshot — leaving it in place would re-log
+    // this same failure on every boot restore forever (review finding).
+    log.error(`queue snapshot unreadable for ${chatId} — quarantining as .corrupt`, err as Error)
+    try {
+      renameSync(path, `${path}.corrupt`)
+    } catch (renameErr) {
+      log.error(`could not quarantine corrupt queue snapshot for ${chatId}`, renameErr as Error)
+    }
     return []
   }
 }

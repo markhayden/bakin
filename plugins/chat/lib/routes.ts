@@ -153,11 +153,12 @@ export const chatRoutes = [
       }
       const result = await startChatTurn(ctx, params.chatId, body.content, attachments, { queueIfBusy: true })
       if (result === 'not_found') return Response.json({ error: 'chat not found' }, { status: 404 })
-      if (result === 'queued') {
-        // The engine appends synchronously — the enqueued item is the tail.
-        const queued = listQueuedMessages(params.chatId)
+      if (typeof result === 'object') {
+        // The engine captured id/length at push time — never re-read the
+        // queue tail here (a concurrent enqueue during the persist await
+        // would hand this caller the OTHER send's id; review finding).
         return Response.json(
-          { accepted: true, queued: true, queueId: queued[queued.length - 1]?.id, queueLength: queued.length },
+          { accepted: true, queued: true, queueId: result.queueId, queueLength: result.queueLength },
           { status: 202 },
         )
       }

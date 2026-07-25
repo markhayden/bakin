@@ -169,6 +169,22 @@ describe('ctx.conversations guardrails (#703 review)', () => {
     })
   }
 
+  it('the queue event joins the user-plugin namespace guard (no chat.queued spoofing)', () => {
+    expect(() =>
+      userCtx().conversations.createTurnService({
+        ...baseConfig,
+        queue: { event: 'chat.queued' },
+      }),
+    ).toThrow(/namespaced/)
+    // A properly-namespaced queue event is accepted.
+    expect(() =>
+      userCtx().conversations.createTurnService({
+        ...baseConfig,
+        queue: { event: 'demo4.queued' },
+      }),
+    ).not.toThrow()
+  })
+
   it('rejects non-chat metering work classes (the spend dimension is enum-pinned)', () => {
     expect(() =>
       userCtx().conversations.createTurnService({

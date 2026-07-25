@@ -220,6 +220,48 @@ describe('Composer queueMode (#732)', () => {
     expect(container.textContent).toContain('Sending…')
   })
 
+  it('uploads-pending in queueMode: DISABLED queue button (never Stop under the cursor) + honest copy', () => {
+    const sent: string[] = []
+    const aborted: string[] = []
+    const { container } = render(
+      <Composer
+        storageKey="qm7"
+        onSend={(c) => { sent.push(c) }}
+        busy
+        queueMode
+        onAbort={() => aborted.push('x')}
+        attachments={{
+          enabled: true,
+          items: [{ id: 'u1', name: 'up.png', status: 'uploading' }],
+          onAdd: () => {},
+          onRemove: () => {},
+        }}
+      />,
+    )
+    const ta = getTextarea(container)
+    fireEvent.change(ta, { target: { value: 'queue me with the image' } })
+    // A click here must NOT abort the reply — the button is a disabled queue,
+    // not Stop (review finding: the morph-under-cursor misclick).
+    const queueBtn = container.querySelector('[data-composer-queue]') as HTMLButtonElement | null
+    expect(queueBtn).not.toBeNull()
+    expect(queueBtn!.disabled).toBe(true)
+    expect(container.querySelector('[data-composer-stop]')).toBeNull()
+    fireEvent.keyDown(ta, { key: 'Enter' })
+    expect(sent).toEqual([]) // held until the upload lands
+    expect(container.textContent).toContain('attachment uploading')
+    expect(container.textContent).not.toContain('Enter queues your message')
+    // Esc still stops.
+    fireEvent.keyDown(ta, { key: 'Escape' })
+    expect(aborted).toEqual(['x'])
+  })
+
+  it('queuedCount makes the empty-composer copy teach that queued messages send next', () => {
+    const { container } = render(
+      <Composer storageKey="qm8" onSend={() => {}} busy queueMode queuedCount={2} onAbort={() => {}} />,
+    )
+    expect(container.textContent).toContain('2 queued messages send when it finishes')
+  })
+
   it('idle queueMode behaves exactly like a normal composer', () => {
     const sent: string[] = []
     const { container } = render(<Composer storageKey="qm6" onSend={(c) => { sent.push(c) }} queueMode />)

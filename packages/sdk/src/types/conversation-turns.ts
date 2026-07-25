@@ -45,7 +45,15 @@ export interface ConversationTurnOutcome {
   errored: boolean
 }
 
-export type ConversationStartTurnResult = 'accepted' | 'not_found' | 'busy' | 'queued'
+export type ConversationStartTurnResult = 'accepted' | 'not_found' | 'busy' | ConversationQueuedStart
+
+/** The queued acceptance — id/length captured at push time (never a tail
+ *  re-read a concurrent enqueue could poison). */
+export interface ConversationQueuedStart {
+  queued: true
+  queueId: string
+  queueLength: number
+}
 
 /**
  * A message accepted while the slot was busy (#729) — only surfaces that
@@ -79,7 +87,13 @@ export interface ConversationStartTurnOptions {
   attachments?: ConversationTurnAttachment[]
   /** Per-turn agent override (surfaces with an agent picker); default = resolveThread's. */
   agentId?: string
-  /** Busy slot → enqueue instead of `'busy'` (requires the service's `queue` config). */
+  /**
+   * Busy slot → enqueue instead of `'busy'` (requires the service's
+   * `queue` config). CAVEAT: a queued send keeps only content +
+   * attachments — `agentId` overrides and `runtimeContent` are DISCARDED
+   * at drain time (the combined turn resolves the thread's agent fresh
+   * and joins clean content). Surfaces needing either must not queue.
+   */
   queueIfBusy?: boolean
   /**
    * Pre-assembled runtime content for THIS turn (embedded surfaces inject
@@ -113,7 +127,9 @@ export interface ConversationTurnServiceConfig {
   queue?: {
     /** Full-snapshot persistence after every queue mutation (restart durability). */
     persist?: (key: string, items: ConversationQueuedMessage[]) => void | Promise<void>
-    /** Bus event emitted on enqueue (payload + queueId + queueLength). */
+    /** Bus event emitted on enqueue (payload + queueId + queueLength).
+     *  User-source plugins: must live in your `<pluginId>.*` namespace —
+     *  enforced at createTurnService time like the chunk/done/error names. */
     event?: string
   }
   /**

@@ -81,7 +81,19 @@ export interface TurnOutcome {
   errored: boolean
 }
 
-export type StartTurnResult = 'accepted' | 'not_found' | 'busy' | 'queued'
+export type StartTurnResult = 'accepted' | 'not_found' | 'busy' | QueuedStart
+
+/**
+ * The queued acceptance (#729) — captured synchronously at push time so
+ * callers get THEIR item's id, never a tail re-read that a concurrent
+ * enqueue could poison (review finding: the awaited persist can park
+ * behind streaming transcript writes, making post-await reads stale).
+ */
+export interface QueuedStart {
+  queued: true
+  queueId: string
+  queueLength: number
+}
 
 /**
  * A message accepted while the slot was busy (#729). Queued messages are a
@@ -167,6 +179,10 @@ export interface StartTurnOptions {
   /**
    * Busy slot → enqueue instead of `'busy'` (requires `config.queue`).
    * The busy-check and enqueue happen in one synchronous block (no TOCTOU).
+   * CAVEAT: a QUEUED send keeps only content + attachments — a per-turn
+   * `agentId` override and `runtimeContent` are DISCARDED at drain time
+   * (the combined turn resolves the thread's agent fresh and joins clean
+   * content). Surfaces that need either must not opt into queueing.
    */
   queueIfBusy?: boolean
   /**
@@ -282,7 +298,10 @@ export function createConversationTurnService(config: ConversationTurnServiceCon
     const entry: InflightTurn = {
       promise: Promise.resolve(),
       controller,
-      // Enqueue-time agent — refreshed from resolveThread before the runtime call.
+      // Enqueue-time agent — refreshed from resolveThread before the
+      // runtime call. Until that refresh, listInFlight()-based attribution
+      // (chat's resolveActiveTurnForAgent) can see a stale label for a
+      // ms-scale window; ambiguity-is-null consumers tolerate it.
       agentId: items[items.length - 1].agentId,
       startedAt: Date.now(),
       turnId,
@@ -336,7 +355,14 @@ export function createConversationTurnService(config: ConversationTurnServiceCon
     // a silently lost instruction).
     await persistQueue(key)
     if (config.events.started) {
-      ctx.events.emit(config.events.started, { ...config.payload(key), agentId })
+      try {
+        ctx.events.emit(config.events.started, { ...config.payload(key), agentId })
+      } catch (emitErr) {
+        // A throwing consumer payload() here would reject the retained
+        // promise AFTER slot release — an unhandled rejection (and a
+        // throwing waitFor). Same guard as runTurn's error-event emit.
+        log.error(`[${config.name}] started-event emit failed for ${key}`, emitErr as Error)
+      }
     }
     const combined = items.map((m) => m.content).join('\n\n')
     const attachments = items.flatMap((m) => m.attachments ?? [])
@@ -368,7 +394,9 @@ export function createConversationTurnService(config: ConversationTurnServiceCon
     if (inflight.has(key)) {
       if (!(opts?.queueIfBusy && config.queue)) return 'busy'
       // Busy-check → push happens in ONE synchronous block (no TOCTOU with
-      // the drain's synchronous reservation).
+      // the drain's synchronous reservation). queueLength is captured HERE
+      // too: after the persist await, the live array may already hold later
+      // enqueues — the return and the event must describe THIS push.
       const item: QueuedMessage = {
         id: randomUUID(),
         ts: new Date().toISOString(),
@@ -379,15 +407,16 @@ export function createConversationTurnService(config: ConversationTurnServiceCon
       const items = queues.get(key) ?? []
       items.push(item)
       queues.set(key, items)
+      const queueLength = items.length
       await persistQueue(key)
       if (config.queue.event) {
         ctx.events.emit(config.queue.event, {
           ...config.payload(key),
           queueId: item.id,
-          queueLength: items.length,
+          queueLength,
         })
       }
-      return 'queued'
+      return { queued: true, queueId: item.id, queueLength }
     }
 
     // Reserve the slot SYNCHRONOUSLY — checking then awaiting before setting
@@ -448,6 +477,9 @@ export function createConversationTurnService(config: ConversationTurnServiceCon
       if (!items || idx < 0) return false
       items.splice(idx, 1)
       if (!items.length) queues.delete(key)
+      // Fire-and-forget persist (unlike enqueue's await): a crash in the
+      // write window resurrects the removed item at boot — consistent with
+      // the queue's at-least-once bias (duplicate/return over loss).
       void persistQueue(key)
       return true
     },
@@ -457,7 +489,10 @@ export function createConversationTurnService(config: ConversationTurnServiceCon
     },
     restore: (ctx, key, items) => {
       if (!items.length) return
-      queues.set(key, [...(queues.get(key) ?? []), ...items])
+      // Restored items are the OLDER messages (they predate the restart) —
+      // they go FIRST so a send that beat the boot restore drains in
+      // chronological order.
+      queues.set(key, [...items, ...(queues.get(key) ?? [])])
       maybeDrain(ctx, key)
     },
     isInFlight: (key) => inflight.has(key),
@@ -592,6 +627,37 @@ async function runTurn(
     })
     return { aborted, errored: false }
   } catch (err) {
+    // Abort landed before the stream produced its clean done — e.g. during
+    // a drained turn's async prefix (resolveThread/row appends/attachment
+    // prep), where both adapters throw kind 'aborted' on an already-aborted
+    // signal. The operator asked to stop: settle CLEAN like any aborted
+    // turn (dispatch's "kind 'aborted' settles clean" rule) — never an
+    // error row + toast for a deliberate Stop (review finding, D3 flow).
+    if (controller.signal.aborted) {
+      await persist(recorder.finish() as ConversationTurnRow[])
+      await persist([{ kind: 'aborted', ts: new Date().toISOString(), turnId }])
+      try {
+        await config.hooks?.onTurnComplete?.({ key, aborted: true })
+      } catch (hookErr) {
+        log.error(`[${config.name}] onTurnComplete hook failed for ${key}`, hookErr as Error)
+      }
+      try {
+        await config.hooks?.meter?.({ key, agentId, turnId, usage: doneUsage })
+      } catch (meterErr) {
+        log.error(`[${config.name}] metering failed for ${key}`, meterErr as Error)
+      }
+      try {
+        ctx.events.emit(config.events.done, {
+          ...config.payload(key),
+          agentId,
+          ...(assistantText ? { preview: firstLine(assistantText) } : {}),
+          aborted: true,
+        })
+      } catch (emitErr) {
+        log.error(`[${config.name}] done-event emit failed for ${key}`, emitErr as Error)
+      }
+      return { aborted: true, errored: false }
+    }
     const message = err instanceof Error ? err.message : String(err)
     // The typed kind the adapter attached to its error chunk survives to
     // both the durable row and the bus event (never re-parsed from text).
