@@ -350,6 +350,8 @@ async function runOfflineDoctor(): Promise<HealthReport> {
         watching: incidents.filter(incident => incident.disposition === 'watch').length,
         advisory: incidents.filter(incident => incident.disposition === 'advisory').length,
         unknown: incidents.filter(incident => incident.status === 'unknown').length,
+        // Offline reports never carry acks (no server store access).
+        acknowledged: 0,
       },
     },
   }
@@ -580,8 +582,11 @@ async function cmdDoctorFix(options: { json: boolean; yes: boolean; isTTY: boole
 }
 
 function actionRequiredIncidents(report: HealthReport): HealthIncident[] {
-  // Effective disposition (#690) — the CLI acts on the same story every other surface tells.
-  return report.incidents.filter(incident => incident.effectiveDisposition === 'action_required')
+  // Effective disposition (#690) + ack state (health trust overhaul) — the
+  // CLI acts on the same story every other surface tells: a snoozed
+  // incident never feeds --fix/--delegate.
+  return report.incidents.filter(incident =>
+    incident.effectiveDisposition === 'action_required' && incident.ackState === undefined)
 }
 
 async function cmdDoctorDelegate(options: { json: boolean; yes: boolean; isTTY: boolean }): Promise<void> {
@@ -737,8 +742,63 @@ function printPlainDoctor(report: HealthReport): void {
     console.log(`  [${status}] ${check.checkId}: ${message}`)
   }
   console.log('')
+  const acked = report.incidents.filter((incident) => incident.ackState !== undefined)
+  for (const incident of acked) {
+    console.log(`  [${incident.ackState === 'snoozed' ? 'SNOOZED' : 'ACKED'}] ${incident.id}: ${incident.title}`)
+  }
   const incidents = report.summary.incidents
-  console.log(`${report.overallStatus}: ${incidents.actionRequired} action required, ${incidents.watching} watching, ${incidents.advisory} advisory, ${incidents.unknown} unknown`)
+  const ackedSuffix = (incidents.acknowledged ?? acked.length) > 0 ? `, ${incidents.acknowledged ?? acked.length} acknowledged` : ''
+  console.log(`${report.overallStatus}: ${incidents.actionRequired} action required, ${incidents.watching} watching, ${incidents.advisory} advisory, ${incidents.unknown} unknown${ackedSuffix}`)
+}
+
+/**
+ * The ack/snooze verbs (health trust overhaul): quiet an incident you have
+ * seen without hiding it. action_required is snooze-only server-side.
+ */
+async function cmdDoctorAck(args: string[], opts: { json: boolean }): Promise<void> {
+  const verb = args[0]!
+  if (verb === 'acks') {
+    const { records } = await apiGet('/api/plugins/health/doctor/acks') as {
+      records: Array<{ incidentId: string; mode: string; at: string; until?: string; tierAtAck: string }>
+    }
+    if (opts.json) {
+      console.log(JSON.stringify({ records }, null, 2))
+      return
+    }
+    if (records.length === 0) {
+      console.log('No acknowledged or snoozed incidents.')
+      return
+    }
+    for (const record of records) {
+      const window = record.mode === 'snooze' && record.until ? ` until ${record.until}` : ''
+      console.log(`  ${record.incidentId} — ${record.mode}${window} (was ${record.tierAtAck}, ${record.at})`)
+    }
+    return
+  }
+
+  const incidentId = args[1]
+  if (!incidentId) {
+    await exitUsage(`bakin doctor ${verb} <incidentId>${verb === 'snooze' ? ' [--for 24h|7d]' : ''}`)
+    return
+  }
+  const action = verb === 'unack' ? 'clear' : verb
+  const forIndex = args.indexOf('--for')
+  const body: Record<string, string> = { incidentId, action }
+  if (action === 'snooze') {
+    const window = forIndex !== -1 ? args[forIndex + 1] : '24h'
+    if (window !== '24h' && window !== '7d') {
+      await exitUsage('bakin doctor snooze <incidentId> [--for 24h|7d]')
+      return
+    }
+    body.for = window
+  }
+  const result = await apiPost('/api/plugins/health/doctor/ack', body) as { incidentId: string; action: string }
+  if (opts.json) {
+    console.log(JSON.stringify(result, null, 2))
+    return
+  }
+  const past = result.action === 'clear' ? 'un-acked' : result.action === 'snooze' ? 'snoozed' : 'acknowledged'
+  console.log(`Incident ${result.incidentId} ${past}. It stays visible in the Acknowledged section and re-surfaces on material change.`)
 }
 
 async function cmdDoctor(args: string[] = process.argv.slice(2)): Promise<void> {
@@ -751,6 +811,10 @@ async function cmdDoctor(args: string[] = process.argv.slice(2)): Promise<void> 
   const isTTY = Boolean(process.stdout.isTTY)
   if (args[0] === 'repair') {
     await cmdDoctorRepair(args, { json, isTTY })
+    return
+  }
+  if (args[0] === 'acks' || args[0] === 'ack' || args[0] === 'snooze' || args[0] === 'unack') {
+    await cmdDoctorAck(args, { json })
     return
   }
   if (fix) {

@@ -26,6 +26,7 @@ import type {
   JsonObject,
 } from '@makinbakin/sdk'
 import { repairTargetSelection } from './repair-support'
+import { toLocalDayKey } from '@bakin/core/usage-history/store'
 import {
   getUsageHistoryScanState,
   getUsageHistoryScanStaleAfterMs,
@@ -487,7 +488,19 @@ export async function checkBudget(): Promise<HealthCheckRunInput> {
     // land, and the copy says exactly that instead of inventing busywork.
     const evidenceGaps = [...facets.spendEvidence.daily.gaps, ...facets.spendEvidence.monthly.gaps]
     const { lines: gapLines, impactSummary } = summarizeEvidenceGaps(evidenceGaps)
-    const hasPricingGap = evidenceGaps.some((gap) => gap.reasons.includes('value_missing'))
+    // Resolution precedence: a PURE pricing gap (value_missing without
+    // lane_unknown) is fixable by the catalog refresh. Any lane_unknown
+    // present means attribution is the blocker — no refresh conjures a
+    // billing lane, so the write-off repair is the honest offer.
+    const hasPricingGap = evidenceGaps.some((gap) =>
+      gap.reasons.includes('value_missing') && !gap.reasons.includes('lane_unknown'))
+    // Fossils = lane-unknown gaps with rows BEFORE today: those are what a
+    // cutoff of today's key can actually write off (the strict day < cutoff
+    // comparison never covers today's rows — review finding: offering the
+    // destructive repair for today-only gaps was a no-op confirm).
+    const todayKey = toLocalDayKey(Date.now())
+    const hasFossilGap = evidenceGaps.some((gap) =>
+      gap.reasons.includes('lane_unknown') && gap.earliestDay !== undefined && gap.earliestDay < todayKey)
     const detailSuffix = gapLines.length > 0 ? ` Gaps: ${gapLines.join('; ')}.` : ''
     const detail = incompleteSpendRules.length > 0
       ? `${incompleteSpendRules.length} budget rule${incompleteSpendRules.length === 1 ? '' : 's'} cannot be evaluated because one or more matching spend records have incomplete value or attribution evidence.${detailSuffix}`
@@ -522,16 +535,28 @@ export async function checkBudget(): Promise<HealthCheckRunInput> {
               label: 'Refresh model pricing',
               actionId: 'spend-evidence-refresh-pricing',
             }
-          : {
-              key: 'attribution-settles',
-              type: 'instructions',
-              label: 'Attribution completes on its own',
-              steps: [
-                'The named records lack billing attribution (lane/provider/model), which completes as the runtime finishes writing its transcripts — no action needed.',
-                'Budget caps stay fail-closed (deferring, never overspending) until then — that is by design.',
-                'If the same gaps persist for hours across recheck, report it: attribution should converge without help.',
-              ],
-            },
+          : hasFossilGap
+            ? {
+                // Attribution-only gaps: recent ones settle on their own,
+                // but fossils (old sessions that will never attribute)
+                // otherwise fail caps closed FOREVER. The write-off is a
+                // confirmation-gated repair — accept only history you know
+                // will never attribute.
+                key: 'accept-unattributed-history',
+                type: 'repair',
+                label: 'Accept unattributed history',
+                actionId: 'accept-unattributed-history',
+              }
+            : {
+                key: 'attribution-settles',
+                type: 'instructions',
+                label: 'Attribution completes on its own',
+                steps: [
+                  'Recent usage lacks billing attribution, which completes as the runtime finishes writing its transcripts — no action needed.',
+                  'Budget caps stay fail-closed (deferring, never overspending) until then — that is by design.',
+                  'If the same gaps persist for hours across recheck, report it: attribution should converge without help.',
+                ],
+              },
       },
     }))
   } else if (worst) {
@@ -651,6 +676,60 @@ export function spendEvidenceRepair(): HealthRepairActionDefinition {
         return done('applied', `Model catalog refreshed live (${result.count} models). Health re-verifies spend on the next check run — if the same gap persists, that model has no known pricing and its usage can only be capped by tokens.`)
       } catch (err) {
         return done('failed', `Catalog refresh failed: ${err instanceof Error ? err.message : String(err)}`)
+      }
+    },
+  }
+}
+
+/**
+ * The spend-fossil write-off: record a durable cutoff (today's local day
+ * key) so observed usage BEFORE it that can never attribute stops failing
+ * caps and lighting the card. Destructive-tier — money policy changes
+ * only through an explicit, confirmed click; there is NO auto-aging.
+ */
+export function acceptUnattributedHistoryRepair(): HealthRepairActionDefinition {
+  return {
+    id: 'accept-unattributed-history',
+    name: 'Accept unattributed history',
+    async plan(target) {
+      const cutoff = toLocalDayKey(Date.now())
+      return [{
+        id: 'accept-unattributed-history',
+        actionId: 'accept-unattributed-history',
+        title: `Accept unattributed usage before ${cutoff}`,
+        reason: 'Old sessions with no billing-lane evidence will never attribute; they keep budget caps fail-closed and the spend card lit until explicitly written off.',
+        safety: 'destructive',
+        ...repairTargetSelection(target),
+        changes: [{
+          kind: 'other',
+          target: 'budget policy',
+          action: 'update',
+          description: `Record acceptUnattributedBefore=${cutoff} on the budget policy. Caps compute from the cutoff forward; usage AFTER it still fails closed on missing evidence.`,
+        }],
+      }]
+    },
+    async apply(items) {
+      const done = (status: 'applied' | 'failed', message: string) => items.map((item: HealthRepairPlanItem) => ({
+        itemId: item.id,
+        actionId: item.actionId,
+        status,
+        message,
+        affectedCheckIds: ['budget'],
+        changes: item.changes,
+      }))
+      if (items.length === 0) return []
+      try {
+        const cutoff = toLocalDayKey(Date.now())
+        const result = await getHookRegistry().invoke<{ ok: boolean; error?: string }>(
+          'models.updateBudgetPolicy',
+          { acceptUnattributedBefore: cutoff },
+        )
+        if (!result?.ok) {
+          return done('failed', `Budget policy write failed: ${result?.error ?? 'models plugin unavailable'}`)
+        }
+        return done('applied', `Unattributed usage before ${cutoff} is written off. Caps compute from today forward; new evidence gaps still fail closed.`)
+      } catch (err) {
+        return done('failed', `Budget policy write failed: ${err instanceof Error ? err.message : String(err)}`)
       }
     },
   }

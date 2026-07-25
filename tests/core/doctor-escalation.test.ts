@@ -100,7 +100,7 @@ function report(incidents: HealthIncident[]): HealthReport {
     },
     summary: {
       checks: { registered: 0, completed: 0, failed: 0, invalid: 0, notApplicable: 0 },
-      incidents: { actionRequired: incidents.length, watching: 0, advisory: 0, unknown: 0 },
+      incidents: { actionRequired: incidents.length, watching: 0, advisory: 0, unknown: 0, acknowledged: 0},
     },
   }
 }
@@ -309,5 +309,14 @@ describe('canonical Health escalation', () => {
       '/tmp/project',
     )
     expect(send).not.toHaveBeenCalled()
+  })
+})
+
+describe('ack suppression (health trust overhaul)', () => {
+  it('snoozed action_required incidents never relay — quiet means quiet', () => {
+    expect(freshActionRequiredIncidents(report([
+      incident({ disposition: 'action_required', effectiveDisposition: 'action_required' }),
+      incident({ disposition: 'action_required', effectiveDisposition: 'action_required', ackState: 'snoozed' }),
+    ]))).toHaveLength(1)
   })
 })

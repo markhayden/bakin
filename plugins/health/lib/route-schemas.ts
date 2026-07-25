@@ -170,6 +170,9 @@ export const canonicalHealthIncidentSchema = z.object({
   observedAt: isoDateTime,
   staleAt: isoDateTime,
   stale: z.boolean(),
+  // Lockstep with HealthIncident.ackState (health trust overhaul) — a
+  // lagging mirror makes the client reject the entire report (rc.25).
+  ackState: z.enum(['acked', 'snoozed']).optional(),
 }).strict()
 
 export const searchReadinessStageSchema = z.object({
@@ -232,6 +235,9 @@ export const healthReportSchema = z.object({
       watching: z.number().int().nonnegative(),
       advisory: z.number().int().nonnegative(),
       unknown: z.number().int().nonnegative(),
+      // Lockstep with the summary shape (health trust overhaul): tier
+      // counts describe LIVE attention; acked/snoozed count separately.
+      acknowledged: z.number().int().nonnegative(),
     }).strict(),
   }).strict(),
 }).strict().superRefine((report, context) => {
@@ -312,13 +318,16 @@ export const healthReportSchema = z.object({
   }
   reconcileSummary(report.summary.checks, expectedCheckSummary, 'checks', 'check executions', context)
 
-  // Summary counts reconcile against EFFECTIVE dispositions (#690) — the
-  // urgency consumers act on, not the producer's raw severity.
+  // Summary counts reconcile against EFFECTIVE dispositions (#690) of
+  // LIVE (un-acked) incidents — the urgency consumers act on; acked and
+  // snoozed incidents reconcile into their own count.
+  const live = report.incidents.filter((incident) => incident.ackState === undefined)
   const expectedIncidentSummary = {
-    actionRequired: report.incidents.filter((incident) => incident.effectiveDisposition === 'action_required').length,
-    watching: report.incidents.filter((incident) => incident.effectiveDisposition === 'watch').length,
-    advisory: report.incidents.filter((incident) => incident.effectiveDisposition === 'advisory').length,
-    unknown: report.incidents.filter((incident) => incident.status === 'unknown').length,
+    actionRequired: live.filter((incident) => incident.effectiveDisposition === 'action_required').length,
+    watching: live.filter((incident) => incident.effectiveDisposition === 'watch').length,
+    advisory: live.filter((incident) => incident.effectiveDisposition === 'advisory').length,
+    unknown: live.filter((incident) => incident.status === 'unknown').length,
+    acknowledged: report.incidents.length - live.length,
   }
   reconcileSummary(report.summary.incidents, expectedIncidentSummary, 'incidents', 'incidents', context)
 })

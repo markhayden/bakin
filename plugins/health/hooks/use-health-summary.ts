@@ -17,6 +17,7 @@ interface HealthSummaryPayload {
   incidents: Array<{
     id: string
     effectiveDisposition: 'advisory' | 'watch' | 'action_required'
+    ackState?: 'acked' | 'snoozed'
   }>
 }
 
@@ -52,7 +53,10 @@ function parseHealthSummary(value: unknown): HealthSummaryPayload {
         ? incident.disposition
         : null
     if (effective === null) throw new Error('Health summary response was invalid')
-    return { id: incident.id, effectiveDisposition: effective }
+    const ackState = 'ackState' in incident && (incident.ackState === 'acked' || incident.ackState === 'snoozed')
+      ? incident.ackState
+      : undefined
+    return { id: incident.id, effectiveDisposition: effective, ackState }
   })
   return { sensitivity, incidents }
 }
@@ -83,6 +87,9 @@ export function useHealthSummary(): UseHealthSummaryResult {
   const badgeFloor = resource.data.sensitivity === 'quiet' ? 'action_required' : 'watch'
   const incidents = [...new Map(
     resource.data.incidents
+      // Acked/snoozed incidents never light the badge — the user said
+      // "I know" (health trust overhaul).
+      .filter((incident) => incident.ackState === undefined)
       .filter((incident) => badgeFloor === 'action_required'
         ? incident.effectiveDisposition === 'action_required'
         : incident.effectiveDisposition !== 'advisory')

@@ -102,7 +102,7 @@ const cachedReport: HealthReport = {
   },
   summary: {
     checks: { registered: 0, completed: 0, failed: 0, invalid: 0, notApplicable: 0 },
-    incidents: { actionRequired: 1, watching: 0, advisory: 0, unknown: 0 },
+    incidents: { actionRequired: 1, watching: 0, advisory: 0, unknown: 0, acknowledged: 0 },
   },
 }
 
@@ -313,7 +313,7 @@ beforeEach(() => {
 
 describe('Health Plugin Routes', () => {
   it('registers 21 routes', () => {
-    expect(activated.routes.length).toBe(21)
+    expect(activated.routes.length).toBe(23)
   })
 
   it('registers 2 exec tools', () => {

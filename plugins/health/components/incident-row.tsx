@@ -3,14 +3,15 @@
 import { useId, useState } from 'react'
 import type { HealthIncident } from '@makinbakin/sdk/types'
 import { PluginLink, StatusBadge } from '@makinbakin/sdk/components'
-import { Button, buttonVariants } from '@makinbakin/sdk/ui'
-import { AlertTriangle, ChevronRight, CircleHelp, Wrench } from 'lucide-react'
+import { Button, Popover, PopoverContent, PopoverTrigger, buttonVariants } from '@makinbakin/sdk/ui'
+import { AlertTriangle, BellOff, ChevronRight, CircleHelp, Wrench } from 'lucide-react'
 import type { OverviewIncident, OverviewTone } from '../lib/health-view-model'
 
 export interface IncidentRowProps {
   item: OverviewIncident
   onRepair?: (incident: HealthIncident) => void
   onRerun?: (incident: HealthIncident) => void
+  onAck?: (incident: HealthIncident, action: 'ack' | 'snooze' | 'clear', window?: '24h' | '7d') => void
 }
 
 function incidentStatus(incident: HealthIncident): {
@@ -60,7 +61,7 @@ const TONE_CLASS: Record<OverviewTone, string> = {
   destructive: 'border-destructive/30 bg-destructive/[0.05]',
 }
 
-export function IncidentRow({ item, onRepair, onRerun }: IncidentRowProps) {
+export function IncidentRow({ item, onRepair, onRerun, onAck }: IncidentRowProps) {
   const instructionsId = useId()
   const impactId = useId()
   const [showInstructions, setShowInstructions] = useState(false)
@@ -132,6 +133,11 @@ export function IncidentRow({ item, onRepair, onRerun }: IncidentRowProps) {
               </StatusBadge>
             )}
             {item.freshness === 'stale' && <StatusBadge tone="neutral" variant="outline">Last known</StatusBadge>}
+            {incident.ackState && (
+              <StatusBadge tone="neutral" variant="outline">
+                {incident.ackState === 'acked' ? 'Acknowledged' : 'Snoozed'}
+              </StatusBadge>
+            )}
           </div>
           <h3 className="mt-2 font-semibold leading-snug text-foreground">{incident.title}</h3>
           <p
@@ -168,7 +174,40 @@ export function IncidentRow({ item, onRepair, onRerun }: IncidentRowProps) {
         </div>
       )}
 
-      <div className="mt-auto flex justify-end pt-4">{action}</div>
+      <div className="mt-auto flex items-center justify-end gap-2 pt-4">
+        {onAck && (incident.ackState ? (
+          <Button size="sm" variant="ghost" onClick={() => onAck(incident, 'clear')}>
+            Un-ack
+          </Button>
+        ) : (
+          <>
+            {incident.effectiveDisposition !== 'action_required' && (
+              <Button
+                size="sm"
+                variant="ghost"
+                aria-label={`Acknowledge ${incident.title}`}
+                onClick={() => onAck(incident, 'ack')}
+              >
+                <BellOff aria-hidden="true" />
+                Ack
+              </Button>
+            )}
+            <Popover>
+              <PopoverTrigger
+                aria-label={`Snooze ${incident.title}`}
+                className={buttonVariants({ size: 'sm', variant: 'ghost' })}
+              >
+                Snooze
+              </PopoverTrigger>
+              <PopoverContent align="end" className="flex w-32 flex-col p-1">
+                <Button size="sm" variant="ghost" onClick={() => onAck(incident, 'snooze', '24h')}>24 hours</Button>
+                <Button size="sm" variant="ghost" onClick={() => onAck(incident, 'snooze', '7d')}>7 days</Button>
+              </PopoverContent>
+            </Popover>
+          </>
+        ))}
+        {action}
+      </div>
     </article>
   )
 }

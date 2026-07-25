@@ -1141,6 +1141,7 @@ describe('plugin registration', () => {
       'skill', 'plugin-assets', 'plugin-artifacts', 'plugin-registry',
     ]))
     expect(actionIds.sort()).toEqual([
+      'accept-unattributed-history',
       'search-canary-restart',
       'search-consistency-rebuild',
       'search-consistency-restart',

@@ -411,6 +411,15 @@ export interface HealthIncident {
   observedAt: string
   staleAt: string
   stale: boolean
+  /**
+   * The user's "I know" state (health trust overhaul): 'acked' = silent
+   * until material change (tier escalation / resource-set change);
+   * 'snoozed' = silent until expiry (action_required also re-fires on any
+   * evidence change). Absent = live. Consumers (badge, Fix first, notices,
+   * escalation) FILTER on this — never re-derive; suppressed incidents
+   * stay on the wire and render in the Acknowledged section.
+   */
+  ackState?: 'acked' | 'snoozed'
 }
 
 export interface HealthCheckSnapshot {
@@ -470,10 +479,13 @@ export interface HealthReportCheckSummary {
 }
 
 export interface HealthReportIncidentSummary {
+  /** Tier counts describe LIVE (un-acked) attention — they reconcile with overallStatus. */
   actionRequired: number
   watching: number
   advisory: number
   unknown: number
+  /** Acked/snoozed incidents — quiet, visible in the Acknowledged section. */
+  acknowledged: number
 }
 
 export interface HealthReportSummary {

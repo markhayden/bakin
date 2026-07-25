@@ -130,14 +130,36 @@ describe('checkModelRouting', () => {
     expect(result.observations.find((o) => o.key === 'route-thinking-clamped-relay')?.status).toBe('warning')
   })
 
-  it('warns when premium-tier models ran cheap-recommended classes in 7d', async () => {
+  it('premium-on-cheap is ADVISORY with the one-click routes repair below the dollar threshold', async () => {
     const result = await checkModelRouting(deps({
-      listRecentRunCosts: () => [row({ workClass: 'relay', model: 'anthropic/claude-opus-4-6' })],
+      listRecentRunCosts: () => [row({ workClass: 'relay', model: 'anthropic/claude-opus-4-6', costUsdMicros: 40_000 })],
     }))
     if (result.outcome !== 'observed') throw new Error('expected observed')
     const warn = result.observations.find((o) => o.key === 'premium-on-cheap-relay')
     expect(warn?.status).toBe('warning')
-    expect(warn?.evidence).toMatchObject({ runs: 1, models: ['anthropic/claude-opus-4-6'] })
+    expect(warn?.incident?.disposition).toBe('advisory')
+    expect(warn?.incident?.resolution).toMatchObject({ type: 'repair', actionId: 'apply-recommended-routes' })
+    expect(warn?.evidence).toMatchObject({ runs: 1, models: ['anthropic/claude-opus-4-6'], knownUsdMicros: 40_000 })
+  })
+
+  it('premium-on-cheap escalates to WATCH past $5 of KNOWN spend in the window — unpriced rows never fabricate', async () => {
+    const expensive = await checkModelRouting(deps({
+      listRecentRunCosts: () => [
+        row({ workClass: 'relay', model: 'anthropic/claude-opus-4-6', costUsdMicros: 6_000_000 }),
+        row({ workClass: 'relay', model: 'anthropic/claude-opus-4-6', costUsdMicros: null }),
+      ],
+    }))
+    if (expensive.outcome !== 'observed') throw new Error('expected observed')
+    const escalated = expensive.observations.find((o) => o.key === 'premium-on-cheap-relay')
+    expect(escalated?.incident?.disposition).toBe('watch')
+    expect(escalated?.evidence).toMatchObject({ knownUsdMicros: 6_000_000, unpricedRuns: 1 })
+
+    const unpricedOnly = await checkModelRouting(deps({
+      listRecentRunCosts: () => Array.from({ length: 50 }, () =>
+        row({ workClass: 'relay', model: 'anthropic/claude-opus-4-6', costUsdMicros: null })),
+    }))
+    if (unpricedOnly.outcome !== 'observed') throw new Error('expected observed')
+    expect(unpricedOnly.observations.find((o) => o.key === 'premium-on-cheap-relay')?.incident?.disposition).toBe('advisory')
   })
 
   it('is healthy when every recommended class is routed to available models', async () => {

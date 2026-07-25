@@ -88,6 +88,10 @@ export interface SpendEvidenceGap {
   reasons: Array<'value_missing' | 'lane_unknown' | 'provider_unknown' | 'model_unknown'>
   /** Runs for attributed evidence; messages for observed evidence. */
   unknownCount: number
+  /** Earliest local day among the gapped observed rows — lets consumers
+   *  distinguish fossils (pre-today, write-off eligible) from fresh gaps
+   *  that settle on their own (review finding). */
+  earliestDay?: string
 }
 
 export interface SpendEvidenceWindow {
@@ -130,6 +134,15 @@ export interface BudgetRule {
 
 export interface BudgetPolicy {
   rules?: BudgetRule[]
+  /**
+   * Local day key (YYYY-MM-DD): observed usage BEFORE this day that can
+   * never attribute (unknown billing lane, unpriced) is written off —
+   * excluded from evidence gaps and the unattributed delta, so caps
+   * compute from the cutoff forward. Written ONLY by the explicit
+   * accept-unattributed-history repair — money never silences itself
+   * (health trust overhaul).
+   */
+  acceptUnattributedBefore?: string
 }
 
 /** Billing context of the turn (or billed call) being gated. */

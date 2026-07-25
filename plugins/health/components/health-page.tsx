@@ -64,6 +64,32 @@ function OverviewPanel({ onRunChecksReady, onRunChecks }: OverviewPanelProps) {
     setSelectedRepair({ incident, reportId: overview.model.reportId })
   }, [overview.model.reportId])
 
+  // The "I know" verb: POST, surface failures inline, and let the SSE
+  // republish (health.report.changed fires on every ack write) plus an
+  // explicit refresh update every consumer.
+  const [ackError, setAckError] = useState<string | null>(null)
+  const ackIncident = useCallback(async (
+    incident: HealthIncident,
+    action: 'ack' | 'snooze' | 'clear',
+    window?: '24h' | '7d',
+  ) => {
+    setAckError(null)
+    try {
+      const response = await fetch('/api/plugins/health/doctor/ack', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ incidentId: incident.id, action, ...(window ? { for: window } : {}) }),
+      })
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}))
+        throw new Error((body as { error?: string }).error ?? `Acknowledge failed (${response.status})`)
+      }
+      void overview.refresh()
+    } catch (error) {
+      setAckError(error instanceof Error ? error.message : String(error))
+    }
+  }, [overview])
+
   const repairTarget: HealthRepairTarget | null = selectedRepair
     ? {
         type: 'incidents',
@@ -74,10 +100,16 @@ function OverviewPanel({ onRunChecksReady, onRunChecks }: OverviewPanelProps) {
 
   return (
     <>
+      {ackError && (
+        <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+          {ackError}
+        </p>
+      )}
       <OverviewTab
         data={overview}
         onRepair={reviewRepair}
         onRerun={() => { void onRunChecks() }}
+        onAck={(incident, action, window) => { void ackIncident(incident, action, window) }}
       />
 
       {selectedRepair && repairTarget && (

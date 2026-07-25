@@ -11,6 +11,24 @@ interface OverviewAlertsProps {
   model: HealthOverviewViewModel
   onRepair?: (incident: HealthIncident) => void
   onRerun?: (incident: HealthIncident) => void
+  onAck?: (incident: HealthIncident, action: 'ack' | 'snooze' | 'clear', window?: '24h' | '7d') => void
+}
+
+/** Suppressed is never hidden: acked/snoozed incidents stay visible here,
+ *  collapsed and calm, with un-ack one click away. */
+function AcknowledgedSection({ model, onRepair, onRerun, onAck }: OverviewAlertsProps) {
+  if (model.acknowledged.length === 0) return null
+  return (
+    <details className="group rounded-lg border border-border/70 bg-foreground/[0.02]" data-testid="overview-acknowledged">
+      <summary className="flex cursor-pointer list-none items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+        <ChevronDown className="size-4 -rotate-90 transition-transform group-open:rotate-0 motion-reduce:transition-none" aria-hidden="true" />
+        Acknowledged ({model.acknowledged.length})
+      </summary>
+      <div className="border-t border-border/70 p-3">
+        <AlertGrid incidents={model.acknowledged} onRepair={onRepair} onRerun={onRerun} onAck={onAck} />
+      </div>
+    </details>
+  )
 }
 
 /** Prefer distinct titles so repeated failures from one subsystem do not consume the snapshot. */
@@ -40,11 +58,13 @@ function AlertGrid({
   testId,
   onRepair,
   onRerun,
+  onAck,
 }: {
   incidents: OverviewIncident[]
   testId?: string
   onRepair?: (incident: HealthIncident) => void
   onRerun?: (incident: HealthIncident) => void
+  onAck?: (incident: HealthIncident, action: 'ack' | 'snooze' | 'clear', window?: '24h' | '7d') => void
 }) {
   const columnClasses = [
     incidents.length > 1 && '@[36rem]/health:grid-cols-2',
@@ -58,7 +78,7 @@ function AlertGrid({
     >
       {incidents.map((item) => (
         <li key={item.incident.id} className="min-w-0">
-          <IncidentRow item={item} onRepair={onRepair} onRerun={onRerun} />
+          <IncidentRow item={item} onRepair={onRepair} onRerun={onRerun} onAck={onAck} />
         </li>
       ))}
     </ul>
@@ -104,7 +124,7 @@ function Notices({ incidents }: { incidents: OverviewIncident[] }) {
   )
 }
 
-export function OverviewAlerts({ model, onRepair, onRerun }: OverviewAlertsProps) {
+export function OverviewAlerts({ model, onRepair, onRerun, onAck }: OverviewAlertsProps) {
   const primary = [...model.needsAction, ...model.unableToVerify]
   const { visible, hidden } = splitDistinctIncidents(primary)
   const actionLabel = model.unableToVerify.length === 0
@@ -113,11 +133,14 @@ export function OverviewAlerts({ model, onRepair, onRerun }: OverviewAlertsProps
 
   if (primary.length === 0) {
     return (
+      <>
       <section className="flex min-h-12 items-center gap-3 rounded-xl border border-success/20 bg-success/[0.035] px-4 py-3">
         <CheckCircle2 className="size-5 shrink-0 text-success" aria-hidden="true" />
         <h2 className="text-sm font-semibold text-success">No problems need attention</h2>
         <div className="ml-auto"><Notices incidents={[...model.watching, ...model.advisories]} /></div>
       </section>
+      <AcknowledgedSection model={model} onRepair={onRepair} onRerun={onRerun} onAck={onAck} />
+      </>
     )
   }
 
@@ -136,6 +159,7 @@ export function OverviewAlerts({ model, onRepair, onRerun }: OverviewAlertsProps
         testId="overview-primary-alerts"
         onRepair={onRepair}
         onRerun={onRerun}
+        onAck={onAck}
       />
 
       {hidden.length > 0 && (
@@ -145,10 +169,11 @@ export function OverviewAlerts({ model, onRepair, onRerun }: OverviewAlertsProps
             View {hidden.length} more {hidden.length === 1 ? 'problem' : 'problems'}
           </summary>
           <div className="border-t border-border/70 p-3">
-            <AlertGrid incidents={hidden} onRepair={onRepair} onRerun={onRerun} />
+            <AlertGrid incidents={hidden} onRepair={onRepair} onRerun={onRerun} onAck={onAck} />
           </div>
         </details>
       )}
+      <AcknowledgedSection model={model} onRepair={onRepair} onRerun={onRerun} onAck={onAck} />
     </section>
   )
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test'
 import {
+  canonicalHealthIncidentSchema,
   canonicalHealthObservationSchema,
   healthReportSchema,
 } from '../../../plugins/health/lib/route-schemas'
@@ -144,7 +145,7 @@ function canonicalReport() {
     },
     summary: {
       checks: { registered: 1, completed: 1, failed: 0, invalid: 0, notApplicable: 0 },
-      incidents: { actionRequired: 0, watching: 1, advisory: 0, unknown: 0 },
+      incidents: { actionRequired: 0, watching: 1, advisory: 0, unknown: 0, acknowledged: 0 },
     },
   }
 }
@@ -225,5 +226,30 @@ describe('canonical Health HTTP report schema', () => {
     report.summary.incidents[key] += 1
 
     expect(healthReportSchema.safeParse(report).success).toBe(false)
+  })
+})
+
+describe('incident ackState wire mirror (health trust overhaul)', () => {
+  // Lockstep rule: the mirror lagging the producer contract made the
+  // client reject the ENTIRE report (rc.25). Pin both directions.
+  it('accepts acked/snoozed and absent; rejects unknown values', () => {
+    const base = {
+      id: 'models:routing:premium-on-cheap-relay',
+      status: 'warning',
+      disposition: 'watch',
+      effectiveDisposition: 'advisory',
+      title: 'Premium model on cheap work',
+      impact: 'Costs more than needed.',
+      resources: [{ kind: 'agent', id: 'relay', label: 'relay' }],
+      resolution: { key: 'rerun', type: 'rerun', label: 'Check again' },
+      observationIds: ['obs-1'],
+      observedAt: '2026-07-24T12:00:00.000Z',
+      staleAt: '2026-07-24T13:00:00.000Z',
+      stale: false,
+    }
+    expect(canonicalHealthIncidentSchema.safeParse(base).success).toBe(true)
+    expect(canonicalHealthIncidentSchema.safeParse({ ...base, ackState: 'acked' }).success).toBe(true)
+    expect(canonicalHealthIncidentSchema.safeParse({ ...base, ackState: 'snoozed' }).success).toBe(true)
+    expect(canonicalHealthIncidentSchema.safeParse({ ...base, ackState: 'muted' }).success).toBe(false)
   })
 })

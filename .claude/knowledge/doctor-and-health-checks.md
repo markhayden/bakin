@@ -105,6 +105,50 @@ Every report change increments its revision and emits `health.report.changed`; c
 - canonical observations and merged incidents
 - subsystem projections, currently Search readiness
 
+## Acknowledge & snooze — the "I know" verb (health trust overhaul, 2026-07-24)
+
+Per-incident ack/snooze keyed on stable incident ids; ONE flat store
+(`~/.bakin/health/acks.json`, `src/core/health-acks.ts`) and ONE join point
+(`getHealthReport`, beside sensitivity). The projected `ackState`
+(`'acked' | 'snoozed'`, optional on `HealthIncident` + the wire mirror in
+`plugins/health/lib/route-schemas.ts` — keep both in LOCKSTEP, rc.25
+lesson) is what every consumer filters on; nobody re-derives.
+
+- **Tiered:** advisory/watch/unknown incidents ack (silent until material
+  change) or snooze (24h/7d). `action_required` is SNOOZE-ONLY (7d cap)
+  and re-fires on ANY evidence change — money/outages are never
+  permanently silenceable (enforced at store, route, and type level).
+- **Re-fire (one comparison, `resolveAckState`):** acks return when the
+  effective tier escalates past `tierAtAck` or the resource-set
+  fingerprint changes; count drift within a tier stays silent. Snoozes
+  expire (resolved at next report access — up to one doctor tick of lag).
+  Invalid records prune lazily.
+- **Suppression is total but transparent:** acked incidents leave the
+  badge, Fix first, notices, and the escalation relay; they render in the
+  overview's collapsed "Acknowledged (N)" section with un-ack one click
+  away, and they are excluded from `overallStatus` (an all-acked box reads
+  calm). A corrupt ack store FAILS OPEN toward visibility: acks ignored,
+  everything re-surfaces, warn logged.
+- Surfaces: `POST /doctor/ack` (`action: ack|snooze|clear`),
+  `GET /doctor/acks`, card controls, and `bakin doctor
+  acks|ack|snooze|unack`. Ack writes republish immediately (ackState rides
+  the semantic projection key).
+
+**Severity philosophy (same overhaul):** the dashboard lights up only for
+things the user can and should act on. Self-resolving warming states
+(transcript scan after boot, run-workspace first sweep) are ADVISORY
+unknowns (the contract now allows advisory on unknown incidents — never
+action_required); every standing card carries a deterministic resolution
+where one exists (premium-on-cheap → apply-recommended-routes; spend
+pricing gaps → spend-evidence-refresh-pricing; spend lane fossils →
+accept-unattributed-history, destructive-tier, writes
+`BudgetPolicy.acceptUnattributedBefore`); enrichment is ONE self-healing
+coverage stat (assets plugin, daily no-force retry pass), never a
+per-asset nag. Thresholds are constants, not settings (simplicity
+mandate): enrichment advisory below 60% on 5+ enrichable assets;
+premium-on-cheap escalates advisory→watch past $5 of KNOWN attributed
+spend per 7d.
+
 ## Sensitivity & incident classes (#690)
 
 Producers may stamp `class` on incident inputs (SDK `HealthIncidentClass`,

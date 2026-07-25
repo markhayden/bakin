@@ -93,10 +93,10 @@ export const CLI_COMMANDS = [
   }),
   cli({
     name: 'doctor',
-    usage: 'bakin doctor [--json] [--full] [--notify-agent] [--fix|--delegate] [--yes]',
+    usage: 'bakin doctor [--json] [--full] [--notify-agent] [--fix|--delegate] [--yes] | doctor acks | doctor ack <incidentId> | doctor snooze <incidentId> [--for 24h|7d] | doctor unack <incidentId>',
     group: 'Lifecycle',
     summary: 'Run health checks.',
-    description: 'Runs local offline diagnostics by default. Pass --full to include server-backed plugin, task, workflow, search, and runtime checks. Pass --notify-agent with --full to send fresh action-required incidents to the runtime main agent. Pass --fix to plan deterministic repairs or --delegate to create a linked repair task for the main agent; add --yes to execute either repair path.',
+    description: 'Runs local offline diagnostics by default. Pass --full to include server-backed plugin, task, workflow, search, and runtime checks. Pass --notify-agent with --full to send fresh action-required incidents to the runtime main agent. Pass --fix to plan deterministic repairs or --delegate to create a linked repair task for the main agent; add --yes to execute either repair path. Ack verbs quiet an incident you have seen without hiding it (action_required incidents are snooze-only and re-fire on any evidence change).',
     examples: [
       { title: 'Run offline diagnostics', code: 'bakin doctor', test: 'illustrative', reason: 'Depends on local Bakin/runtime state.' },
       { title: 'Run full diagnostics against the server', code: 'bakin doctor --full', test: 'illustrative', reason: 'Requires a running Bakin server.' },

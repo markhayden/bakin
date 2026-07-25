@@ -18,6 +18,7 @@ import { isLegacyBudget, migrateLegacyBudget } from './budget-migration'
 import { isLegacyRouting, migrateLegacyRouting } from './routing-migration'
 import { normalizeModelId } from './model-id'
 import { fetchAvailableModels } from './available-models'
+import { toLocalDayKey } from '@bakin/core/usage-history/store'
 
 export function registerModelsHooks(ctx: PluginContext): void {
   ctx.hooks.register('models.configChanged', () => {
@@ -40,6 +41,29 @@ export function registerModelsHooks(ctx: PluginContext): void {
     const result = await fetchAvailableModels(ctx as unknown as PluginContext)
     return result.models
   }, { label: 'List available models.', summary: 'Returns the model catalog available from the currently configured providers. Use it to populate pickers, validate assignments, or compare model options before saving config.', hookKind: 'rpc' })
+
+  ctx.hooks.register('models.updateBudgetPolicy', async (data: Record<string, unknown>) => {
+    // Narrow, explicit patch surface: today only the write-off cutoff
+    // (accept-unattributed-history repair). Full policy edits stay on
+    // PUT /budget with schema validation.
+    const value = typeof data?.acceptUnattributedBefore === 'string'
+      && /^\d{4}-\d{2}-\d{2}$/.test(data.acceptUnattributedBefore)
+      ? data.acceptUnattributedBefore
+      : null
+    if (!value) return { ok: false, error: 'acceptUnattributedBefore must be a YYYY-MM-DD day key' }
+    // Future cutoffs would pre-silence current and future usage — money
+    // never pre-silences (review finding; the spend engine also clamps at
+    // read as defense in depth).
+    if (value > toLocalDayKey(Date.now())) {
+      return { ok: false, error: 'acceptUnattributedBefore cannot be in the future' }
+    }
+    const patch = { acceptUnattributedBefore: value }
+    // NOTE: read-spread-write races a concurrent PUT /budget (last writer
+    // wins). Single-user machine; acceptable — revisit if that changes.
+    const current = ctx.getSettings<{ budget?: Record<string, unknown> }>().budget ?? {}
+    await ctx.updateSettings({ budget: { ...current, ...patch } })
+    return { ok: true }
+  }, { label: 'Update budget policy.', summary: 'Applies a narrow budget-policy patch — currently the accept-unattributed-history cutoff written by the Health repair. Money policy never changes without an explicit, validated write.', hookKind: 'rpc' })
 
   ctx.hooks.register('models.refreshAvailableModels', async () => {
     const result = await fetchAvailableModels(ctx, { force: true })

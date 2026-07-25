@@ -22,6 +22,7 @@ export interface OverviewTabViewProps {
   onRetry?: () => void
   onRepair?: (incident: HealthIncident) => void
   onRerun?: (incident: HealthIncident) => void
+  onAck?: (incident: HealthIncident, action: 'ack' | 'snooze' | 'clear', window?: '24h' | '7d') => void
 }
 
 export function OverviewTabView({
@@ -34,6 +35,7 @@ export function OverviewTabView({
   onRetry,
   onRepair,
   onRerun,
+  onAck,
 }: OverviewTabViewProps) {
   return (
     <div className="min-w-0 space-y-4" data-testid="health-overview-tab">
@@ -56,7 +58,7 @@ export function OverviewTabView({
         </p>
       )}
 
-      <OverviewAlerts model={model} onRepair={onRepair} onRerun={onRerun} />
+      <OverviewAlerts model={model} onRepair={onRepair} onRerun={onRerun} onAck={onAck} />
 
       <OverviewOperations model={model} telemetry={telemetry} />
     </div>
@@ -68,12 +70,14 @@ export interface OverviewTabProps {
   data?: UseOverviewDataResult
   onRepair?: (incident: HealthIncident) => void
   onRerun?: (incident: HealthIncident) => void
+  onAck?: (incident: HealthIncident, action: 'ack' | 'snooze' | 'clear', window?: '24h' | '7d') => void
 }
 
 function ConnectedOverviewTab({
   data,
   onRepair,
   onRerun,
+  onAck,
 }: Required<Pick<OverviewTabProps, 'data'>> & Omit<OverviewTabProps, 'data'>) {
   const contextError = data.contextReport.error ?? data.settings.error
   const contextReady = !data.contextReport.loading && !data.settings.loading && contextError === null
@@ -116,6 +120,7 @@ function ConnectedOverviewTab({
       onRetry={() => { void data.refresh() }}
       onRepair={onRepair}
       onRerun={onRerun ?? (() => { void data.runChecks() })}
+      onAck={onAck}
     />
   )
 }
