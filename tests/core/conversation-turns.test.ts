@@ -507,6 +507,21 @@ describe('conversation turn service', () => {
     expect(service.listInFlight()).toHaveLength(0)
   })
 
+  test('queueIfBusy without queue config stays busy (strict surfaces unchanged)', async () => {
+    const h = makeHarness()
+    const service = makeService(h)
+    let release: () => void = () => {}
+    const gate = new Promise<void>((r) => { release = r })
+    h.setStream(async function* () {
+      await gate
+      yield { type: 'done' } as ChatChunk
+    })
+    expect(await service.start(h.ctx, 'tq0', 'go')).toBe('accepted')
+    expect(await service.start(h.ctx, 'tq0', 'follow-up', { queueIfBusy: true })).toBe('busy')
+    release()
+    await service.waitFor('tq0')
+  })
+
   test('inflightPreview exposes streamed-so-far text mid-turn and null when idle (#706)', async () => {
     const h = makeHarness()
     const service = makeService(h)
@@ -528,5 +543,289 @@ describe('conversation turn service', () => {
     release()
     await service.waitFor('t18')
     expect(service.inflightPreview('t18')).toBeNull()
+  })
+})
+
+/**
+ * Pending queue (#729): opt-in per service config. Messages sent while the
+ * slot is busy queue durably (via the persist hook) and drain as ONE
+ * combined turn when the active turn settles — done, error, AND abort all
+ * drain. The drained turn persists each message as its own user row.
+ */
+describe('conversation turn service — pending queue', () => {
+  /** Queue-enabled service + a per-call stream script queue. */
+  function makeQueueHarness(overrides?: Partial<ConversationTurnServiceConfig>) {
+    const h = makeHarness()
+    const persisted: Array<{ key: string; items: Array<{ id: string; content: string }> }> = []
+    const scripts: Array<() => AsyncIterable<ChatChunk>> = []
+    h.setStream(() => {
+      const next = scripts.shift() ?? (async function* () {
+        yield { type: 'done' } as ChatChunk
+      })
+      return next()
+    })
+    const service = makeService(h, {
+      events: { chunk: 'test.chunk', done: 'test.done', error: 'test.error', started: 'test.started' },
+      queue: {
+        persist: (key, items) => {
+          persisted.push({ key, items: items.map((i) => ({ id: i.id, content: i.content })) })
+        },
+        event: 'test.queued',
+      },
+      ...overrides,
+    })
+    return { h, service, persisted, scripts }
+  }
+
+  /** A stream gated on an external release; pushes onto `scripts`. */
+  function gatedScript(scripts: Array<() => AsyncIterable<ChatChunk>>, chunks: ChatChunk[] = []) {
+    let release!: () => void
+    const gate = new Promise<void>((r) => { release = r })
+    scripts.push(async function* () {
+      for (const c of chunks) yield c
+      await gate
+      yield { type: 'done' } as ChatChunk
+    })
+    return () => release()
+  }
+
+  async function waitUntil(cond: () => boolean, label: string) {
+    for (let i = 0; i < 200 && !cond(); i++) await new Promise((r) => setTimeout(r, 2))
+    if (!cond()) throw new Error(`timed out waiting for ${label}`)
+  }
+
+  test('enqueue while busy: queued result, queued event, persisted snapshot, listQueued', async () => {
+    const { h, service, persisted, scripts } = makeQueueHarness()
+    const release = gatedScript(scripts)
+    expect(await service.start(h.ctx, 'q1', 'first')).toBe('accepted')
+
+    expect(await service.start(h.ctx, 'q1', 'follow-up', { queueIfBusy: true })).toBe('queued')
+    const queued = service.listQueued('q1')
+    expect(queued).toHaveLength(1)
+    expect(queued[0]).toMatchObject({ content: 'follow-up' })
+    expect(typeof queued[0].id).toBe('string')
+    // Snapshot persisted at enqueue; queued event carries id + length.
+    expect(persisted[persisted.length - 1]).toMatchObject({ key: 'q1', items: [{ content: 'follow-up' }] })
+    const queuedEvent = h.events.find((e) => e.event === 'test.queued')
+    expect(queuedEvent?.data).toMatchObject({ threadKey: 'q1', queueId: queued[0].id, queueLength: 1 })
+
+    release()
+    await service.waitFor('q1')
+    await waitUntil(() => !service.isInFlight('q1') && service.listQueued('q1').length === 0, 'drain settle')
+  })
+
+  test('combined drain after done: FIFO user rows, ONE runtime call with joined content + merged attachments, one meter', async () => {
+    mkdirSync(testDir, { recursive: true })
+    const filePath = join(testDir, 'queued-pic.png')
+    writeFileSync(filePath, 'tiny')
+    const metered: Array<Record<string, unknown>> = []
+    const { h, service, persisted, scripts } = makeQueueHarness({
+      hooks: { meter: (info) => { metered.push(info) } },
+    })
+    const release = gatedScript(scripts)
+    scripts.push(async function* () {
+      yield { type: 'text', content: 'combined reply' } as ChatChunk
+      yield { type: 'done' } as ChatChunk
+    })
+
+    expect(await service.start(h.ctx, 'q2', 'first')).toBe('accepted')
+    expect(await service.start(h.ctx, 'q2', 'fix A', { queueIfBusy: true })).toBe('queued')
+    expect(
+      await service.start(h.ctx, 'q2', 'also B', {
+        queueIfBusy: true,
+        attachments: [{ name: 'queued-pic.png', mimeType: 'image/png', path: filePath }],
+      }),
+    ).toBe('queued')
+    expect(service.listQueued('q2')).toHaveLength(2)
+
+    release()
+    await service.waitFor('q2')
+    await waitUntil(() => h.events.filter((e) => e.event === 'test.done').length === 2, 'drained turn done')
+
+    // Exactly two runtime calls total: original + ONE combined drained turn.
+    expect(h.seenArgs).toHaveLength(2)
+    expect(h.seenArgs[1].content).toBe('fix A\n\nalso B')
+    expect(h.seenArgs[1].attachments).toEqual([{ path: filePath, mimeType: 'image/png' }])
+
+    // Rows: user(first) … user(fix A), user(also B) in FIFO order, then reply.
+    const rows = h.rows.get('q2') ?? []
+    const userRows = rows.filter((r) => r.kind === 'user').map((r) => (r as { content: string }).content)
+    expect(userRows).toEqual(['first', 'fix A', 'also B'])
+    const queuedUserRow = rows.find((r) => r.kind === 'user' && (r as { content: string }).content === 'also B')
+    expect((queuedUserRow as { attachments?: unknown[] }).attachments).toHaveLength(1)
+    expect(rows.filter((r) => r.kind === 'assistant').map((r) => (r as { content: string }).content).join('')).toContain('combined reply')
+
+    // Drained turn: started event fired, queue empty + persisted empty, one meter per turn.
+    expect(h.events.filter((e) => e.event === 'test.started')).toHaveLength(2)
+    expect(service.listQueued('q2')).toHaveLength(0)
+    expect(persisted[persisted.length - 1]).toMatchObject({ key: 'q2', items: [] })
+    expect(metered).toHaveLength(2)
+  })
+
+  test('drain fires after an error settle', async () => {
+    const { h, service, scripts } = makeQueueHarness()
+    let releaseErr!: () => void
+    const errGate = new Promise<void>((r) => { releaseErr = r })
+    scripts.push(async function* () {
+      yield { type: 'text', content: 'partial' } as ChatChunk
+      await errGate
+      yield { type: 'error', content: 'boom', data: { kind: 'session_lost' } } as ChatChunk
+    })
+    scripts.push(async function* () {
+      yield { type: 'text', content: 'recovered' } as ChatChunk
+      yield { type: 'done' } as ChatChunk
+    })
+
+    expect(await service.start(h.ctx, 'q3', 'first')).toBe('accepted')
+    expect(await service.start(h.ctx, 'q3', 'follow-up', { queueIfBusy: true })).toBe('queued')
+    releaseErr()
+    await service.waitFor('q3')
+    await waitUntil(() => h.events.some((e) => e.event === 'test.done'), 'drained turn after error')
+
+    const rows = h.rows.get('q3') ?? []
+    expect(rows.some((r) => r.kind === 'error')).toBe(true)
+    const userRows = rows.filter((r) => r.kind === 'user').map((r) => (r as { content: string }).content)
+    expect(userRows).toEqual(['first', 'follow-up'])
+    expect(service.listQueued('q3')).toHaveLength(0)
+  })
+
+  test('drain fires after abort (the steering flow): aborted row, then combined turn', async () => {
+    const { h, service, scripts } = makeQueueHarness()
+    const release = gatedScript(scripts, [{ type: 'text', content: 'wrong direction' } as ChatChunk])
+    scripts.push(async function* () {
+      yield { type: 'text', content: 'corrected' } as ChatChunk
+      yield { type: 'done' } as ChatChunk
+    })
+
+    expect(await service.start(h.ctx, 'q4', 'first')).toBe('accepted')
+    await waitUntil(() => service.inflightPreview('q4') === 'wrong direction', 'first text chunk')
+    expect(await service.start(h.ctx, 'q4', 'correction', { queueIfBusy: true })).toBe('queued')
+    expect(service.abort('q4')).toBe(true)
+    release()
+    await service.waitFor('q4')
+    await waitUntil(() => h.events.filter((e) => e.event === 'test.done').length === 2, 'drained turn after abort')
+
+    const rows = h.rows.get('q4') ?? []
+    const abortedIdx = rows.findIndex((r) => r.kind === 'aborted')
+    expect(abortedIdx).toBeGreaterThan(-1)
+    const correctionIdx = rows.findIndex((r) => r.kind === 'user' && (r as { content: string }).content === 'correction')
+    expect(correctionIdx).toBeGreaterThan(abortedIdx)
+    expect(h.seenArgs[1].content).toBe('correction')
+  })
+
+  test('removeQueued and clearQueue mutate + persist; remove of unknown id is false', async () => {
+    const { h, service, persisted, scripts } = makeQueueHarness()
+    const release = gatedScript(scripts)
+    expect(await service.start(h.ctx, 'q5', 'first')).toBe('accepted')
+    await service.start(h.ctx, 'q5', 'a', { queueIfBusy: true })
+    await service.start(h.ctx, 'q5', 'b', { queueIfBusy: true })
+    const [a] = service.listQueued('q5')
+
+    expect(service.removeQueued('q5', a.id)).toBe(true)
+    expect(service.removeQueued('q5', 'nope')).toBe(false)
+    expect(service.listQueued('q5').map((i) => i.content)).toEqual(['b'])
+    await waitUntil(() => {
+      const last = persisted[persisted.length - 1]
+      return last?.key === 'q5' && last.items.length === 1
+    }, 'remove persisted')
+
+    service.clearQueue('q5')
+    expect(service.listQueued('q5')).toHaveLength(0)
+    await waitUntil(() => persisted[persisted.length - 1]?.items.length === 0, 'clear persisted')
+
+    release()
+    await service.waitFor('q5')
+    // Cleared queue: nothing drains — exactly one runtime call ever.
+    await new Promise((r) => setTimeout(r, 20))
+    expect(h.seenArgs).toHaveLength(1)
+  })
+
+  test('restore with idle slot drains immediately; restore while busy drains at settle', async () => {
+    const { h, service, scripts } = makeQueueHarness()
+    scripts.push(async function* () {
+      yield { type: 'text', content: 'restored reply' } as ChatChunk
+      yield { type: 'done' } as ChatChunk
+    })
+    service.restore(h.ctx, 'q6', [
+      { id: 'r1', ts: new Date().toISOString(), content: 'restored A', agentId: 'main' },
+      { id: 'r2', ts: new Date().toISOString(), content: 'restored B', agentId: 'main' },
+    ])
+    await waitUntil(() => h.seenArgs.length === 1, 'boot drain')
+    expect(h.seenArgs[0].content).toBe('restored A\n\nrestored B')
+    await service.waitFor('q6')
+
+    // Busy thread: restore parks; drains when the active turn settles.
+    const release = gatedScript(scripts)
+    scripts.push(async function* () {
+      yield { type: 'done' } as ChatChunk
+    })
+    expect(await service.start(h.ctx, 'q7', 'live')).toBe('accepted')
+    service.restore(h.ctx, 'q7', [{ id: 'r3', ts: new Date().toISOString(), content: 'parked', agentId: 'main' }])
+    await new Promise((r) => setTimeout(r, 20))
+    expect(h.seenArgs.filter((a) => a.content === 'parked')).toHaveLength(0)
+    release()
+    await service.waitFor('q7')
+    await waitUntil(() => h.seenArgs.some((a) => a.content === 'parked'), 'parked drain after settle')
+  })
+
+  test('drain against a deleted thread drops the queue and persists empty — no throw, no runtime call', async () => {
+    let gone = false
+    const { h, service, persisted, scripts } = makeQueueHarness({
+      resolveThread: (key) => (key === 'q8' && gone ? null : { agentId: 'main' }),
+    })
+    const release = gatedScript(scripts)
+    expect(await service.start(h.ctx, 'q8', 'first')).toBe('accepted')
+    expect(await service.start(h.ctx, 'q8', 'orphan', { queueIfBusy: true })).toBe('queued')
+    gone = true
+    release()
+    await service.waitFor('q8')
+    await waitUntil(() => service.listQueued('q8').length === 0, 'queue dropped')
+    expect(persisted[persisted.length - 1]).toMatchObject({ key: 'q8', items: [] })
+    // Only the original call — the drained turn never ran.
+    await new Promise((r) => setTimeout(r, 20))
+    expect(h.seenArgs).toHaveLength(1)
+    expect((h.rows.get('q8') ?? []).filter((r) => r.kind === 'user')).toHaveLength(1)
+  })
+
+  test('start(queueIfBusy) during the drained turn queues again — never a double turn', async () => {
+    const { h, service, scripts } = makeQueueHarness()
+    const releaseFirst = gatedScript(scripts)
+    const releaseDrain = gatedScript(scripts)
+    scripts.push(async function* () {
+      yield { type: 'done' } as ChatChunk
+    })
+
+    expect(await service.start(h.ctx, 'q9', 'first')).toBe('accepted')
+    expect(await service.start(h.ctx, 'q9', 'queued-1', { queueIfBusy: true })).toBe('queued')
+    releaseFirst()
+    await waitUntil(() => h.seenArgs.length === 2, 'drained turn started')
+    // The drained turn holds the slot — a new send queues behind it.
+    expect(await service.start(h.ctx, 'q9', 'queued-2', { queueIfBusy: true })).toBe('queued')
+    releaseDrain()
+    await waitUntil(() => h.seenArgs.length === 3, 'second drain')
+    expect(h.seenArgs.map((a) => a.content)).toEqual(['first', 'queued-1', 'queued-2'])
+    await waitUntil(() => !service.isInFlight('q9'), 'all settled')
+  })
+
+  test('attachment-only queued message gets the visible placeholder at enqueue', async () => {
+    mkdirSync(testDir, { recursive: true })
+    const filePath = join(testDir, 'q-only.png')
+    writeFileSync(filePath, 'tiny')
+    const { h, service, scripts } = makeQueueHarness()
+    const release = gatedScript(scripts)
+    scripts.push(async function* () {
+      yield { type: 'done' } as ChatChunk
+    })
+    expect(await service.start(h.ctx, 'q10', 'first')).toBe('accepted')
+    expect(
+      await service.start(h.ctx, 'q10', '  ', {
+        queueIfBusy: true,
+        attachments: [{ name: 'q-only.png', mimeType: 'image/png', path: filePath }],
+      }),
+    ).toBe('queued')
+    expect(service.listQueued('q10')[0].content).toBe('See the attached image.')
+    release()
+    await service.waitFor('q10')
+    await waitUntil(() => !service.isInFlight('q10') && service.listQueued('q10').length === 0, 'drained')
   })
 })
