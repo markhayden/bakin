@@ -88,6 +88,9 @@ export type ConversationTurn =
       ts?: string
       /** Author agent, when known (multi-agent embedded threads switch mid-conversation). */
       agentId?: string
+      /** The rows' turnId (#733 — the per-turn usage join key); absent on
+       *  legacy rows folded by adjacency and on live streaming turns. */
+      turnId?: string
       items: TurnItem[]
       status: TurnStatus
       /** Latest runtime status label ('thinking', …) — meaningful while streaming. */
@@ -220,12 +223,13 @@ function foldLiveChunks(chunks: readonly RuntimeChatChunk[]): AgentTurnBuilder {
   return builder
 }
 
-function finishAgentTurn(builder: AgentTurnBuilder, key: string): ConversationTurn {
+function finishAgentTurn(builder: AgentTurnBuilder, key: string, turnId?: string): ConversationTurn {
   return {
     kind: 'agent',
     key,
     ...(builder.ts ? { ts: builder.ts } : {}),
     ...(builder.agentId ? { agentId: builder.agentId } : {}),
+    ...(turnId !== undefined ? { turnId } : {}),
     items: builder.items,
     status: builder.status,
     ...(builder.statusLabel ? { statusLabel: builder.statusLabel } : {}),
@@ -248,7 +252,7 @@ export function foldConversation(
 
   const flush = () => {
     if (!current) return
-    turns.push(finishAgentTurn(current, `agent-${agentTurnIndex++}`))
+    turns.push(finishAgentTurn(current, `agent-${agentTurnIndex++}`, currentTurnId))
     current = null
     currentTurnId = undefined
   }
