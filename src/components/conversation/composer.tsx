@@ -11,7 +11,7 @@
  * is NEVER blocked while a turn streams; only send waits.
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react'
-import { ArrowUp, Loader2, Plus, Square, X } from 'lucide-react'
+import { ArrowUp, ListEnd, Loader2, Plus, Square, X } from 'lucide-react'
 
 import { useVerticalResize } from '@/hooks/use-vertical-resize'
 
@@ -85,9 +85,16 @@ export interface ComposerProps {
   /** Thread identity: keys drafts, history, and the resize persistence. */
   storageKey: string
   onSend: (content: string) => void | Promise<void>
-  /** A turn is streaming: send is held (typing stays live), stop shows. */
+  /** A turn is streaming: typing stays live; see queueMode for what send does. */
   busy?: boolean
   onAbort?: () => void
+  /**
+   * Queue-aware surface (#732): while busy, the action button MORPHS —
+   * Stop when the composer is empty, queue-send when text/attachments are
+   * present (Enter queues; Esc always stops). Strict surfaces (default)
+   * hold send while busy.
+   */
+  queueMode?: boolean
   /** Hard-disabled surface (read-only/archived). */
   disabled?: boolean
   placeholder?: string
@@ -105,6 +112,7 @@ export function Composer({
   onSend,
   busy = false,
   onAbort,
+  queueMode = false,
   disabled = false,
   placeholder = 'Send a message…',
   maxLength,
@@ -158,7 +166,9 @@ export function Composer({
   const hasText = value.trim().length > 0
   const readyAttachments = attachments?.items.filter((a) => a.status !== 'uploading') ?? []
   const uploadsPending = (attachments?.items.length ?? 0) > readyAttachments.length
-  const canSend = !disabled && !busy && !uploadsPending && (hasText || readyAttachments.length > 0)
+  const hasPayload = hasText || readyAttachments.length > 0
+  // Queue surfaces may send while busy — the action queues server-side.
+  const canSend = !disabled && (!busy || queueMode) && !uploadsPending && hasPayload
 
   const send = useCallback(() => {
     if (!canSend) return
@@ -345,7 +355,33 @@ export function Composer({
               {leadingSlot}
             </div>
 
-            {busy ? (
+            {busy && !onAbort ? (
+              // A busy surface with no abort (draft-mode create/upload/send
+              // window): a spinner, never a dead Stop button.
+              <button
+                type="button"
+                data-composer-sending
+                disabled
+                aria-label="Sending"
+                className="flex size-8 shrink-0 cursor-default items-center justify-center rounded-full bg-muted text-muted-foreground"
+              >
+                <Loader2 className="size-4 animate-spin" />
+              </button>
+            ) : busy && queueMode && canSend ? (
+              // The single morphing button (D4): text present → queue-send.
+              // Enter queues; the instant morph-back to Stop after sending
+              // is the steering sequence (queue → Stop → drain).
+              <button
+                type="button"
+                data-composer-queue
+                onClick={send}
+                aria-label="Queue message"
+                title="Queue for when the reply finishes (Enter)"
+                className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
+              >
+                <ListEnd className="size-4" />
+              </button>
+            ) : busy ? (
               <button
                 type="button"
                 data-composer-stop
@@ -374,7 +410,15 @@ export function Composer({
 
         <div className="flex items-center justify-between pt-1">
           <div className="text-[11px] text-muted-foreground/70">
-            {busy ? 'Replying — you can keep typing; send waits for the reply to finish.' : ''}
+            {!busy
+              ? ''
+              : !onAbort
+                ? 'Sending…'
+                : queueMode
+                  ? hasPayload
+                    ? 'Replying — Enter queues your message; Esc stops the reply.'
+                    : 'Replying — type to queue a follow-up; Esc stops the reply.'
+                  : 'Replying — wait for the reply to finish, or stop it.'}
           </div>
           {showCounter ? (
             <div
