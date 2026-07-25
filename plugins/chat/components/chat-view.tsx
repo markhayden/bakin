@@ -4,7 +4,7 @@
  * Draft mode renders the same shell before a chat exists; the chat is
  * created on first send.
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { AlertTriangle, Check, Loader2, Pencil, Pin } from 'lucide-react'
 import { toast } from '@makinbakin/sdk/hooks'
 import {
@@ -12,8 +12,11 @@ import {
   Composer,
   Conversation,
   ConversationEmptyState,
+  QueuedMessageList,
   ToolCallDrawer,
   foldConversation,
+  type ComposerHandle,
+  type ConversationQueuedItem,
   type ConversationToolCall,
 } from '@makinbakin/sdk/components'
 import { useAgent } from '@makinbakin/sdk/hooks'
@@ -81,8 +84,24 @@ function useComposerAttachments(chatId: string, agentId: string) {
     return out
   }
 
+  /** Re-stage already-uploaded files (queue-remove restore) — the files
+   *  still live in the chat's attachment dir, so they're send-ready. */
+  const restore = (items: Array<UploadedAttachment & { url?: string }>) => {
+    setStaged((prev) => [
+      ...prev,
+      ...items.map((i) => ({
+        id: `${Date.now()}-${i.name}-${Math.random().toString(36).slice(2, 7)}`,
+        name: i.name,
+        previewUrl: i.url ?? '',
+        status: 'ready' as const,
+        uploaded: { name: i.name, mimeType: i.mimeType, path: i.path },
+      })),
+    ])
+  }
+
   return {
     take,
+    restore,
     composerProps: {
       enabled: imageInput,
       disabledReason: `${agentId}'s model can't see images`,
@@ -253,9 +272,26 @@ export function DraftChatView({
 }
 
 export function ChatView({ chatId, onChanged }: { chatId: string; onChanged: () => void }) {
-  const { chat, messages, liveChunks, streaming, sendError, send, abort, retry, refreshChat } = useChatStream(chatId)
+  const { chat, messages, liveChunks, streaming, sendError, queued, removeQueued, send, abort, retry, refreshChat } = useChatStream(chatId)
   const [openCall, setOpenCall] = useState<ConversationToolCall | null>(null)
   const attachments = useComposerAttachments(chatId, chat?.agentId ?? '')
+  const composerHandle = useRef<ComposerHandle | null>(null)
+
+  // Queue-remove restore (spec D8): an EMPTY composer gets the removed
+  // message back — text and still-uploaded attachments — for editing.
+  // Mid-typing removal just discards (no surprise merging).
+  const handleRemoveQueued = async (item: ConversationQueuedItem) => {
+    const removed = await removeQueued(item.id)
+    if (!removed) return
+    if (composerHandle.current?.isEmpty()) {
+      composerHandle.current.setText(removed.content)
+      const restorable = (removed.attachments ?? []).filter(
+        (a): a is { name: string; mimeType: string; url?: string; path: string } =>
+          typeof (a as { path?: unknown }).path === 'string',
+      )
+      if (restorable.length) attachments.restore(restorable)
+    }
+  }
 
   if (!chat) return null
 
@@ -287,12 +323,16 @@ export function ChatView({ chatId, onChanged }: { chatId: string; onChanged: () 
         </div>
       ) : null}
 
+      <QueuedMessageList items={queued} onRemove={(item) => { void handleRemoveQueued(item) }} />
+
       <Composer
         storageKey={`chat:${chatId}`}
         placeholder="Message the agent…"
         onSend={(content) => { void send(content, attachments.take()) }}
         busy={streaming}
         onAbort={abort}
+        queueMode
+        handleRef={composerHandle}
         maxLength={CONTENT_MAX}
         attachments={attachments.composerProps}
       />

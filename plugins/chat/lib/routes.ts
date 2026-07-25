@@ -23,7 +23,15 @@ import {
   setPinned,
   setTitle,
 } from './store'
-import { abortChatTurn, inflightTurnPreview, isTurnInFlight, startChatTurn } from './stream-bridge'
+import {
+  abortChatTurn,
+  clearChatQueue,
+  inflightTurnPreview,
+  isTurnInFlight,
+  listQueuedMessages,
+  removeQueuedMessage,
+  startChatTurn,
+} from './stream-bridge'
 
 /** Upload cap — generous for screenshots; the send path downscales to the 2 MB inline limit. */
 const ATTACHMENT_MAX_BYTES = 25 * 1024 * 1024
@@ -104,6 +112,10 @@ export const chatRoutes = [
       return Response.json({
         chat: { ...chat, streaming },
         messages: readTranscript(params.chatId),
+        // Pending follow-ups (#729) — clients hydrate their queue strip.
+        queued: listQueuedMessages(params.chatId).map(({ id, ts, content, attachments }) => ({
+          id, ts, content, ...(attachments?.length ? { attachments } : {}),
+        })),
         // Mid-turn rehydration: what the running turn streamed so far, so a
         // remount doesn't show the reply missing its beginning (#706).
         ...(preview !== null ? { streamingText: preview } : {}),
@@ -115,10 +127,10 @@ export const chatRoutes = [
     path: '/chats/:chatId/messages',
     method: 'POST',
     summary: 'Send a message to the chat agent',
-    description: 'Returns 202 immediately; the reply streams as chat.chunk SSE events, closed by chat.done or chat.error. One in-flight turn per chat (409 otherwise).',
+    description: 'Returns 202 immediately; the reply streams as chat.chunk SSE events, closed by chat.done or chat.error. One turn runs at a time — a send while a turn streams is QUEUED (202 { queued: true }) and drains as one combined turn when the reply settles (#729).',
     params: chatIdParams,
     body: sendMessageBody,
-    responses: { 202: passthrough, 404: errorResponse, 409: errorResponse },
+    responses: { 202: passthrough, 404: errorResponse },
     handler: async (_req, ctx, { params, body }) => {
       // NEVER trust a caller-supplied path (a raw startsWith check passed
       // `..` traversal, review finding 2026-07-12): the server re-derives
@@ -139,9 +151,16 @@ export const chatRoutes = [
         }
         attachments = derived
       }
-      const result = await startChatTurn(ctx, params.chatId, body.content, attachments)
+      const result = await startChatTurn(ctx, params.chatId, body.content, attachments, { queueIfBusy: true })
       if (result === 'not_found') return Response.json({ error: 'chat not found' }, { status: 404 })
-      if (result === 'busy') return Response.json({ error: 'a turn is already in flight for this chat' }, { status: 409 })
+      if (result === 'queued') {
+        // The engine appends synchronously — the enqueued item is the tail.
+        const queued = listQueuedMessages(params.chatId)
+        return Response.json(
+          { accepted: true, queued: true, queueId: queued[queued.length - 1]?.id, queueLength: queued.length },
+          { status: 202 },
+        )
+      }
       return Response.json({ accepted: true, streaming: isTurnInFlight(params.chatId) }, { status: 202 })
     },
   }),
@@ -273,6 +292,22 @@ export const chatRoutes = [
   }),
 
   defineRoute({
+    path: '/chats/:chatId/queued/:queueId',
+    method: 'DELETE',
+    summary: 'Remove a queued follow-up message',
+    description: 'Removes one pending queued message before it drains. The client may restore its text into an empty composer.',
+    params: z.object({ chatId: z.string().min(1), queueId: z.string().min(1) }),
+    responses: { 200: passthrough, 404: errorResponse },
+    handler: async (_req, _ctx, { params }) => {
+      if (!getChatSummary(params.chatId)) return Response.json({ error: 'chat not found' }, { status: 404 })
+      if (!removeQueuedMessage(params.chatId, params.queueId)) {
+        return Response.json({ error: 'queued message not found' }, { status: 404 })
+      }
+      return Response.json({ removed: true, queueLength: listQueuedMessages(params.chatId).length })
+    },
+  }),
+
+  defineRoute({
     path: '/chats/:chatId',
     method: 'DELETE',
     summary: 'Delete a chat and its transcript',
@@ -280,8 +315,11 @@ export const chatRoutes = [
     responses: { 200: passthrough, 404: errorResponse },
     handler: async (_req, _ctx, { params }) => {
       // Abort any in-flight turn FIRST — a deleted chat must never keep
-      // billing runtime/image work (the deleted-task incident class).
+      // billing runtime/image work (the deleted-task incident class) — and
+      // clear the queue in the same sync block so the abort settle can
+      // never drain it.
       abortChatTurn(params.chatId)
+      clearChatQueue(params.chatId)
       const removed = await deleteChat(params.chatId)
       if (!removed) return Response.json({ error: 'chat not found' }, { status: 404 })
       return Response.json({ ok: true })

@@ -10,7 +10,7 @@
  * shell-style ↑/↓ input history, per-thread draft persistence — and typing
  * is NEVER blocked while a turn streams; only send waits.
  */
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { ArrowUp, ListEnd, Loader2, Plus, Square, X } from 'lucide-react'
 
 import { useVerticalResize } from '@/hooks/use-vertical-resize'
@@ -81,10 +81,20 @@ export interface ComposerAttachments {
   onRemove: (id: string) => void
 }
 
+/** Imperative surface for queue-remove restore (spec D8): the surface can
+ *  ask "is the composer empty?" and hand a removed message's text back. */
+export interface ComposerHandle {
+  isEmpty(): boolean
+  /** Replace the composer text (draft persists) and focus. */
+  setText(text: string): void
+}
+
 export interface ComposerProps {
   /** Thread identity: keys drafts, history, and the resize persistence. */
   storageKey: string
   onSend: (content: string) => void | Promise<void>
+  /** Imperative handle for restore-to-composer flows. */
+  handleRef?: React.Ref<ComposerHandle>
   /** A turn is streaming: typing stays live; see queueMode for what send does. */
   busy?: boolean
   onAbort?: () => void
@@ -110,6 +120,7 @@ export interface ComposerProps {
 export function Composer({
   storageKey,
   onSend,
+  handleRef,
   busy = false,
   onAbort,
   queueMode = false,
@@ -161,6 +172,20 @@ export function Composer({
       writeDraft(storageKey, next)
     },
     [storageKey],
+  )
+
+  const valueRef = useRef(value)
+  valueRef.current = value
+  useImperativeHandle(
+    handleRef,
+    () => ({
+      isEmpty: () => valueRef.current.trim().length === 0,
+      setText: (text: string) => {
+        setDraft(text)
+        taRef.current?.focus()
+      },
+    }),
+    [setDraft],
   )
 
   const hasText = value.trim().length > 0

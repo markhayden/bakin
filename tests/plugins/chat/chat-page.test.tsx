@@ -213,4 +213,31 @@ describe('ChatView', () => {
     expect(fetchCalls.some((c) => c.url.includes(`/chats/${CHAT_A}/seen`) && c.init?.method === 'POST')).toBe(true)
     cleanup()
   })
+
+  it('renders the queued strip while streaming; remove restores the text into the empty composer (#729)', async () => {
+    mockFetch({
+      [`/chats/${CHAT_A}/queued/q1`]: { removed: true },
+      [`/chats/${CHAT_A}/seen`]: {},
+      capabilities: { imageInput: false },
+      [`/chats/${CHAT_A}`]: {
+        chat: summary({ streaming: true }),
+        messages: [{ kind: 'user', ts: '2026-07-11T10:00:00.000Z', content: 'long job' }],
+        queued: [{ id: 'q1', ts: '2026-07-25T00:00:00.000Z', content: 'queued correction' }],
+      },
+    })
+    const { container } = render(<ChatView chatId={CHAT_A} onChanged={() => {}} />)
+    await waitFor(() => {
+      expect(container.querySelector('[data-queued-list]')?.textContent).toContain('queued correction')
+    })
+    // Streaming + empty composer → the morphing button shows Stop.
+    expect(container.querySelector('[data-composer-stop]')).not.toBeNull()
+
+    fireEvent.click(container.querySelector('[data-queued-remove]')!)
+    await waitFor(() => {
+      expect((container.querySelector('textarea') as HTMLTextAreaElement).value).toBe('queued correction')
+    })
+    await settleReact()
+    expect(fetchCalls.some((c) => c.url.includes('/queued/q1') && c.init?.method === 'DELETE')).toBe(true)
+    cleanup()
+  })
 })

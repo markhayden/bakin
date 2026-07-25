@@ -125,7 +125,7 @@ export type { ActivityGroupProps } from '@/components/conversation/activity-grou
 export { ToolCallDrawer } from '@/components/conversation/tool-call-drawer'
 export type { ToolCallDrawerProps } from '@/components/conversation/tool-call-drawer'
 export { Composer } from '@/components/conversation/composer'
-export type { ComposerProps, ComposerAttachments, ComposerAttachmentItem } from '@/components/conversation/composer'
+export type { ComposerProps, ComposerAttachments, ComposerAttachmentItem, ComposerHandle } from '@/components/conversation/composer'
 export { QueuedMessageList } from '@/components/conversation/queued-message-list'
 export type { ConversationQueuedItem } from '@/components/conversation/queued-message-list'
 export { ConversationPanel } from '@/components/conversation/conversation-panel'

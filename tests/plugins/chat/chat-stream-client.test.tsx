@@ -260,3 +260,58 @@ describe('useChatStream characterization (frozen chat client behavior)', () => {
     expect(result.current.liveChunks).toEqual([{ type: 'text', content: 'the reply so far and more' }])
   })
 })
+
+describe('queued follow-ups (#729 client)', () => {
+  it('send while streaming posts and records a queued row — no busy error, live turn untouched', async () => {
+    const stub = stubFetch()
+    transcriptRoute(stub, CHAT_A, summary(CHAT_A), [])
+    stub.routes.set(
+      'POST /messages',
+      new Response(JSON.stringify({ accepted: true, queued: true, queueId: 'qx-1', queueLength: 1 }), {
+        status: 202,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    const { result } = renderHook(() => useChatStream(CHAT_A))
+    await act(async () => {})
+    act(() => {
+      emitPluginEvent({ event: 'chat.chunk', chatId: CHAT_A, chunk: { type: 'text', content: 'live so far' } })
+    })
+    await act(async () => { await result.current.send('queued correction') })
+    expect(messagePosts(stub)).toHaveLength(1)
+    expect(result.current.sendError).toBeNull()
+    expect(result.current.liveChunks).toEqual([{ type: 'text', content: 'live so far' }])
+    expect(result.current.queued).toHaveLength(1)
+    expect(result.current.queued[0]).toMatchObject({ id: 'qx-1', content: 'queued correction' })
+  })
+
+  it('queued list hydrates from GET (attachment URLs mapped); removeQueued DELETEs and returns the item', async () => {
+    const stub = stubFetch()
+    stub.routes.set(`DELETE chats/${CHAT_A}/queued/q1`, { removed: true })
+    stub.routes.set(`GET chats/${CHAT_A}`, {
+      chat: summary(CHAT_A),
+      messages: [],
+      queued: [
+        {
+          id: 'q1',
+          ts: '2026-07-25T00:00:00Z',
+          content: 'stored follow-up',
+          attachments: [{ name: 'pic.png', mimeType: 'image/png', path: '/srv/pic.png' }],
+        },
+      ],
+    })
+    const { result } = renderHook(() => useChatStream(CHAT_A))
+    await waitFor(() => expect(result.current.queued).toHaveLength(1))
+    expect(result.current.queued[0].attachments?.[0].url).toBe(
+      `/api/plugins/chat/chats/${CHAT_A}/attachments/pic.png`,
+    )
+
+    let removed: unknown
+    await act(async () => { removed = await result.current.removeQueued('q1') })
+    expect(removed).toMatchObject({ id: 'q1', content: 'stored follow-up' })
+    expect(result.current.queued).toHaveLength(0)
+    expect(
+      stub.calls.some((c) => c.url.includes(`/queued/q1`) && c.init?.method === 'DELETE'),
+    ).toBe(true)
+  })
+})

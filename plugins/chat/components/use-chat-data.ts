@@ -8,7 +8,11 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { emitPluginEvent, usePluginEvent } from '@makinbakin/sdk/hooks'
-import { useConversationThread, type ConversationMessage } from '@makinbakin/sdk/components'
+import {
+  useConversationThread,
+  type ConversationMessage,
+  type ConversationQueuedItem,
+} from '@makinbakin/sdk/components'
 import type { RuntimeChatChunk } from '@makinbakin/sdk/types'
 import { pluginFetch } from '@makinbakin/sdk/utils'
 
@@ -51,6 +55,23 @@ export type TranscriptRowDto =
 
 export function attachmentUrl(chatId: string, name: string): string {
   return `/api/plugins/chat/chats/${chatId}/attachments/${encodeURIComponent(name)}`
+}
+
+/** Server queued-message DTO (GET /chats/:id `queued`). */
+export interface ChatQueuedDto {
+  id: string
+  ts: string
+  content: string
+  attachments?: Array<{ name: string; mimeType: string; path: string }>
+}
+
+/** Queued DTO → kit item. The spread keeps `path` alongside the display
+ *  url so remove-restore can re-stage the attachment for a resend. */
+function toQueuedItem(chatId: string, q: ChatQueuedDto): ConversationQueuedItem {
+  return {
+    ...q,
+    attachments: q.attachments?.map((a) => ({ ...a, url: attachmentUrl(chatId, a.name) })),
+  }
 }
 
 function rowToMessage(chatId: string, row: TranscriptRowDto): ConversationMessage {
@@ -178,6 +199,10 @@ export interface ChatStreamState {
   liveChunks: RuntimeChatChunk[] | null
   streaming: boolean
   sendError: string | null
+  /** Pending queued follow-ups (#729). */
+  queued: ConversationQueuedItem[]
+  /** Remove a queued item; returns it so the view can restore its text. */
+  removeQueued: (id: string) => Promise<ConversationQueuedItem | null>
   send: (content: string, attachments?: Array<{ name: string; mimeType: string; path: string }>) => Promise<void>
   abort: () => void
   /** Re-send the newest user message (error-turn "Try again"). */
@@ -204,13 +229,19 @@ export function useChatStream(chatId: string): ChatStreamState {
     load: async (key) => {
       const res = await pluginFetch('chat', `chats/${key}`)
       if (!res.ok) return null
-      const body = (await res.json()) as { chat: ChatSummaryDto; messages: TranscriptRowDto[]; streamingText?: string }
+      const body = (await res.json()) as {
+        chat: ChatSummaryDto
+        messages: TranscriptRowDto[]
+        queued?: ChatQueuedDto[]
+        streamingText?: string
+      }
       if (key === chatIdRef.current) {
         const lastUser = [...body.messages].reverse().find((r) => r.kind === 'user')
         if (lastUser?.kind === 'user') lastUserRef.current = { content: lastUser.content, attachments: lastUser.attachments }
       }
       return {
         messages: body.messages.map((row) => rowToMessage(key, row)),
+        queued: (body.queued ?? []).map((q) => toQueuedItem(key, q)),
         meta: body.chat,
         // Chat now pre-lights like every other surface (#706 decision):
         // reopening a chat mid-turn shows the live indicator + the text
@@ -225,19 +256,36 @@ export function useChatStream(chatId: string): ChatStreamState {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content, ...(attachments?.length ? { attachments } : {}) }),
       })
-      if (res.ok) return { ok: true }
+      if (res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { queued?: boolean; queueId?: string; queueLength?: number }
+        return {
+          ok: true,
+          ...(body.queued && body.queueId ? { queued: { id: body.queueId, queueLength: body.queueLength } } : {}),
+        }
+      }
       const body = (await res.json().catch(() => ({}))) as { error?: string }
       return { ok: false, status: res.status, ...(body.error ? { error: body.error } : {}) }
     },
+    // Queue-aware sends (#729): streaming sends enqueue server-side; the
+    // queued/started events keep the strip honest across tabs and drains.
+    queue: {
+      enabled: true,
+      queuedEvent: 'chat.queued',
+      startedEvent: 'chat.started',
+      remove: async (key, id) => {
+        const res = await pluginFetch('chat', `chats/${key}/queued/${encodeURIComponent(id)}`, { method: 'DELETE' })
+        return res.ok
+      },
+    },
     // Optimistic user row — WITH its attachments (they lagged to the
     // post-turn refetch otherwise); the durable copy replaces it on the
-    // next refetch.
+    // next refetch. The spread keeps `path` so queued rows stay restorable.
     optimisticRow: (content, attachments) => ({
       kind: 'user',
       ts: new Date().toISOString(),
       content,
       ...(attachments?.length
-        ? { attachments: attachments.map((a) => ({ name: a.name, mimeType: a.mimeType, url: attachmentUrl(chatId, a.name) })) }
+        ? { attachments: attachments.map((a) => ({ ...a, url: attachmentUrl(chatId, a.name) })) }
         : {}),
     }),
     // The reply landed while the user is looking at this chat.
@@ -276,6 +324,8 @@ export function useChatStream(chatId: string): ChatStreamState {
     liveChunks: thread.liveChunks,
     streaming: thread.streaming,
     sendError: thread.sendError,
+    queued: thread.queued,
+    removeQueued: thread.removeQueued,
     send,
     abort,
     retry,
