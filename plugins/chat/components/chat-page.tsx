@@ -22,18 +22,30 @@ import { AgentPicker } from './agent-picker'
 import { ChatRail, useRailCollapsed } from './chat-rail'
 import { ChatView, DraftChatView } from './chat-view'
 import { Launcher } from './launcher'
-import { createChatRequest, useChats } from './use-chat-data'
+import { createChatRequest, uploadAttachmentRequest, useChats, type UploadedAttachment } from './use-chat-data'
 
-/** Create the chat and fire the first message (draft mode's first send). */
-async function createAndSend(agentId: string, content: string): Promise<string | null> {
+/**
+ * Create the chat and fire the first message (draft mode's first send).
+ * Draft-staged files upload AFTER creation (#730, spec D5 client
+ * orchestration): create → upload each → send with the uploaded refs.
+ * A late-step failure still returns the created chat id — the chat
+ * exists, files that made it are in its attachment dir, and the view is
+ * where errors surface (single-user box; no atomic endpoint by decision).
+ */
+export async function createAndSend(agentId: string, content: string, files?: File[]): Promise<string | null> {
   const chat = await createChatRequest(agentId)
   if (!chat) return null
-  const res = await pluginFetch('chat', `chats/${chat.id}/messages`, {
+  const attachments: UploadedAttachment[] = []
+  for (const file of files ?? []) {
+    const uploaded = await uploadAttachmentRequest(chat.id, file)
+    if (uploaded) attachments.push(uploaded)
+  }
+  await pluginFetch('chat', `chats/${chat.id}/messages`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ content }),
-  })
-  return res.ok ? chat.id : chat.id // chat exists either way; errors surface in the view
+    body: JSON.stringify({ content, ...(attachments.length ? { attachments } : {}) }),
+  }).catch(() => {})
+  return chat.id
 }
 
 interface ChatPageProps {

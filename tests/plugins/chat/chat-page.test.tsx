@@ -181,6 +181,86 @@ describe('DraftChatView', () => {
     expect(calls).toEqual([['main', 'first message']])
     cleanup()
   })
+
+  it('stages an image locally before the chat exists and hands the Files to first send (#730)', async () => {
+    const realCreateObjectURL = URL.createObjectURL
+    URL.createObjectURL = (() => 'blob:draft-preview') as typeof URL.createObjectURL
+    try {
+      mockFetch({ capabilities: { imageInput: true } })
+      const sends: Array<{ content: string; files: File[] }> = []
+      const { container } = render(
+        <DraftChatView
+          agentId="main"
+          onCreated={() => {}}
+          createAndSend={async (_agentId, content, files) => {
+            sends.push({ content, files: files ?? [] })
+            return CHAT_A
+          }}
+        />,
+      )
+      // Capability-gated affordance appears for an image-capable agent.
+      await waitFor(() => {
+        const attach = container.querySelector('[data-composer-attach]') as HTMLButtonElement | null
+        expect(attach).not.toBeNull()
+        expect(attach!.disabled).toBe(false)
+      })
+      const file = new File(['png-bytes'], 'first.png', { type: 'image/png' })
+      const input = container.querySelector('input[type="file"]')!
+      fireEvent.change(input, { target: { files: [file] } })
+      // Local stage: instant thumbnail, no upload yet.
+      await waitFor(() => expect(container.querySelector('img')?.getAttribute('src')).toBe('blob:draft-preview'))
+      expect(fetchCalls.some((c) => c.url.includes('/attachments'))).toBe(false)
+
+      const ta = container.querySelector('textarea')!
+      fireEvent.change(ta, { target: { value: 'look at this' } })
+      fireEvent.keyDown(ta, { key: 'Enter' })
+      await waitFor(() => expect(sends).toHaveLength(1))
+      expect(sends[0].content).toBe('look at this')
+      expect(sends[0].files.map((f) => f.name)).toEqual(['first.png'])
+      cleanup()
+    } finally {
+      URL.createObjectURL = realCreateObjectURL
+    }
+  })
+
+  it('hides the attach affordance for a text-only agent', async () => {
+    mockFetch({ capabilities: { imageInput: false } })
+    const { container } = render(
+      <DraftChatView agentId="texty" onCreated={() => {}} createAndSend={async () => CHAT_A} />,
+    )
+    await settleReact()
+    const attach = container.querySelector('[data-composer-attach]') as HTMLButtonElement | null
+    // Affordance renders disabled with the honest reason (existing gating pattern).
+    expect(attach).not.toBeNull()
+    expect(attach!.disabled).toBe(true)
+    cleanup()
+  })
+})
+
+describe('createAndSend orchestration (#730)', () => {
+  it('creates the chat, uploads each staged file, then sends with attachment refs — in that order', async () => {
+    mockFetch({
+      attachments: { attachment: { name: 'first.png', mimeType: 'image/png', path: '/srv/chat/attachments/x/first.png' } },
+      messages: { accepted: true },
+      chats: { chat: { id: CHAT_A, agentId: 'main' } },
+    })
+    const { createAndSend } = await import('../../../plugins/chat/components/chat-page')
+    const file = new File(['png-bytes'], 'first.png', { type: 'image/png' })
+    const chatId = await createAndSend('main', 'look at this', [file])
+    expect(chatId).toBe(CHAT_A)
+
+    const urls = fetchCalls.map((c) => `${c.init?.method ?? 'GET'} ${c.url}`)
+    const createIdx = urls.findIndex((u) => u.startsWith('POST') && u.endsWith('/chats'))
+    const uploadIdx = urls.findIndex((u) => u.includes(`/chats/${CHAT_A}/attachments`))
+    const sendIdx = urls.findIndex((u) => u.includes(`/chats/${CHAT_A}/messages`))
+    expect(createIdx).toBeGreaterThanOrEqual(0)
+    expect(uploadIdx).toBeGreaterThan(createIdx)
+    expect(sendIdx).toBeGreaterThan(uploadIdx)
+    // The send body carries the uploaded refs.
+    const sendCall = fetchCalls.find((c) => c.url.includes('/messages'))!
+    const body = JSON.parse(String(sendCall.init?.body)) as { attachments?: Array<{ name: string }> }
+    expect(body.attachments?.map((a) => a.name)).toEqual(['first.png'])
+  })
 })
 
 describe('ChatView', () => {

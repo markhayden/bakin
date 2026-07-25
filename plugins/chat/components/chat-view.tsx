@@ -219,6 +219,15 @@ function ViewHeader({
   )
 }
 
+/** A draft-mode attachment: staged locally as a File — nothing uploads
+ *  until first send creates the chat to upload into (#730). */
+interface DraftStagedFile {
+  id: string
+  name: string
+  previewUrl: string
+  file: File
+}
+
 /** Draft mode: agent picked, chat not yet persisted — created on first send. */
 export function DraftChatView({
   agentId,
@@ -227,20 +236,25 @@ export function DraftChatView({
 }: {
   agentId: string
   onCreated: (chatId: string) => void
-  createAndSend: (agentId: string, content: string) => Promise<string | null>
+  createAndSend: (agentId: string, content: string, files?: File[]) => Promise<string | null>
 }) {
   const agent = useAgent(agentId)
   const name = agent?.name ?? agentId
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const imageInput = useAgentImageInput(agentId)
+  const [staged, setStaged] = useState<DraftStagedFile[]>([])
 
   const handleSend = async (content: string) => {
     setSending(true)
     setError(null)
     try {
-      const chatId = await createAndSend(agentId, content)
-      if (chatId) onCreated(chatId)
-      else setError('Could not start the chat — is the agent still in the roster?')
+      const chatId = await createAndSend(agentId, content, staged.map((s) => s.file))
+      if (chatId) {
+        for (const s of staged) URL.revokeObjectURL(s.previewUrl)
+        setStaged([])
+        onCreated(chatId)
+      } else setError('Could not start the chat — is the agent still in the roster?')
     } finally {
       setSending(false)
     }
@@ -266,6 +280,29 @@ export function DraftChatView({
         onSend={(content) => { void handleSend(content) }}
         busy={sending}
         maxLength={CONTENT_MAX}
+        attachments={{
+          enabled: imageInput,
+          disabledReason: `${name}'s model can't see images`,
+          items: staged.map(({ id, name: fileName, previewUrl }) => ({ id, name: fileName, previewUrl, status: 'ready' as const })),
+          onAdd: (files) => {
+            setStaged((prev) => [
+              ...prev,
+              ...files.map((file) => ({
+                id: `${Date.now()}-${file.name}-${Math.random().toString(36).slice(2, 7)}`,
+                name: file.name,
+                previewUrl: URL.createObjectURL(file),
+                file,
+              })),
+            ])
+          },
+          onRemove: (id) => {
+            setStaged((prev) => {
+              const item = prev.find((s) => s.id === id)
+              if (item) URL.revokeObjectURL(item.previewUrl)
+              return prev.filter((s) => s.id !== id)
+            })
+          },
+        }}
       />
     </div>
   )
