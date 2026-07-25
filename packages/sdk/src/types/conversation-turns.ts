@@ -45,7 +45,30 @@ export interface ConversationTurnOutcome {
   errored: boolean
 }
 
-export type ConversationStartTurnResult = 'accepted' | 'not_found' | 'busy'
+export type ConversationStartTurnResult = 'accepted' | 'not_found' | 'busy' | ConversationQueuedStart
+
+/** The queued acceptance — id/length captured at push time (never a tail
+ *  re-read a concurrent enqueue could poison). */
+export interface ConversationQueuedStart {
+  queued: true
+  queueId: string
+  queueLength: number
+}
+
+/**
+ * A message accepted while the slot was busy (#729) — only surfaces that
+ * configure `queue` and send with `queueIfBusy` ever see these. Queued
+ * messages drain as ONE combined turn when the active turn settles (done,
+ * error, and abort all drain), each persisting as its own user row.
+ */
+export interface ConversationQueuedMessage {
+  id: string
+  ts: string
+  content: string
+  /** Agent resolved at enqueue time (refreshed from resolveThread at drain). */
+  agentId: string
+  attachments?: ConversationTurnAttachment[]
+}
 
 export interface ConversationInflightTurnInfo {
   key: string
@@ -64,6 +87,14 @@ export interface ConversationStartTurnOptions {
   attachments?: ConversationTurnAttachment[]
   /** Per-turn agent override (surfaces with an agent picker); default = resolveThread's. */
   agentId?: string
+  /**
+   * Busy slot → enqueue instead of `'busy'` (requires the service's
+   * `queue` config). CAVEAT: a queued send keeps only content +
+   * attachments — `agentId` overrides and `runtimeContent` are DISCARDED
+   * at drain time (the combined turn resolves the thread's agent fresh
+   * and joins clean content). Surfaces needing either must not queue.
+   */
+  queueIfBusy?: boolean
   /**
    * Pre-assembled runtime content for THIS turn (embedded surfaces inject
    * doc/context prompts here). The persisted user row always keeps the
@@ -89,6 +120,18 @@ export interface ConversationTurnServiceConfig {
   framing?: string
   /** Run turns as ephemeral runtime sessions (no provider-side accumulation). */
   ephemeral?: boolean
+  /**
+   * Opt-in pending queue (#729). Without this, a busy slot always answers
+   * `'busy'` — strict surfaces are unchanged.
+   */
+  queue?: {
+    /** Full-snapshot persistence after every queue mutation (restart durability). */
+    persist?: (key: string, items: ConversationQueuedMessage[]) => void | Promise<void>
+    /** Bus event emitted on enqueue (payload + queueId + queueLength).
+     *  User-source plugins: must live in your `<pluginId>.*` namespace —
+     *  enforced at createTurnService time like the chunk/done/error names. */
+    event?: string
+  }
   /**
    * Declarative spend attribution — the host meters every turn (success and
    * abort, never error) through its ONE metering engine. External plugins
@@ -141,8 +184,16 @@ export interface ConversationTurnService {
     content: string,
     opts?: ConversationStartTurnOptions,
   ): Promise<ConversationStartTurnResult>
-  /** Abort the in-flight turn; false when the thread is idle. */
+  /** Abort the in-flight turn; false when the thread is idle. Queued messages stay — they drain at settle. */
   abort(key: string): boolean
+  /** Snapshot of the pending queue (empty for strict surfaces). */
+  listQueued(key: string): ConversationQueuedMessage[]
+  /** Remove one queued message by id; persists. False when absent. */
+  removeQueued(key: string, id: string): boolean
+  /** Drop the whole queue (delete-thread path); persists empty. */
+  clearQueue(key: string): void
+  /** Seed the queue from persisted state (boot path); drains when idle. Does not re-persist. */
+  restore(ctx: ConversationTurnContext, key: string, items: ConversationQueuedMessage[]): void
   isInFlight(key: string): boolean
   /** Await the current turn (and its onSettled); resolves immediately when idle. */
   waitFor(key: string): Promise<void>

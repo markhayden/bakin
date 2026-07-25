@@ -169,7 +169,7 @@ describe('DraftChatView', () => {
         onCreated={(id) => created.push(id)}
         createAndSend={async (agentId, content) => {
           calls.push([agentId, content])
-          return CHAT_A
+          return { chatId: CHAT_A, sent: true }
         }}
       />,
     )
@@ -180,6 +180,106 @@ describe('DraftChatView', () => {
     await waitFor(() => expect(created).toEqual([CHAT_A]))
     expect(calls).toEqual([['main', 'first message']])
     cleanup()
+  })
+
+  it('stages an image locally before the chat exists and hands the Files to first send (#730)', async () => {
+    const realCreateObjectURL = URL.createObjectURL
+    URL.createObjectURL = (() => 'blob:draft-preview') as typeof URL.createObjectURL
+    try {
+      mockFetch({ capabilities: { imageInput: true } })
+      const sends: Array<{ content: string; files: File[] }> = []
+      const { container } = render(
+        <DraftChatView
+          agentId="main"
+          onCreated={() => {}}
+          createAndSend={async (_agentId, content, files) => {
+            sends.push({ content, files: files ?? [] })
+            return { chatId: CHAT_A, sent: true }
+          }}
+        />,
+      )
+      // Capability-gated affordance appears for an image-capable agent.
+      await waitFor(() => {
+        const attach = container.querySelector('[data-composer-attach]') as HTMLButtonElement | null
+        expect(attach).not.toBeNull()
+        expect(attach!.disabled).toBe(false)
+      })
+      const file = new File(['png-bytes'], 'first.png', { type: 'image/png' })
+      const input = container.querySelector('input[type="file"]')!
+      fireEvent.change(input, { target: { files: [file] } })
+      // Local stage: instant thumbnail, no upload yet.
+      await waitFor(() => expect(container.querySelector('img')?.getAttribute('src')).toBe('blob:draft-preview'))
+      expect(fetchCalls.some((c) => c.url.includes('/attachments'))).toBe(false)
+
+      const ta = container.querySelector('textarea')!
+      fireEvent.change(ta, { target: { value: 'look at this' } })
+      fireEvent.keyDown(ta, { key: 'Enter' })
+      await waitFor(() => expect(sends).toHaveLength(1))
+      expect(sends[0].content).toBe('look at this')
+      expect(sends[0].files.map((f) => f.name)).toEqual(['first.png'])
+      cleanup()
+    } finally {
+      URL.createObjectURL = realCreateObjectURL
+    }
+  })
+
+  it('hides the attach affordance for a text-only agent', async () => {
+    mockFetch({ capabilities: { imageInput: false } })
+    const { container } = render(
+      <DraftChatView agentId="texty" onCreated={() => {}} createAndSend={async () => ({ chatId: CHAT_A, sent: true })} />,
+    )
+    await settleReact()
+    const attach = container.querySelector('[data-composer-attach]') as HTMLButtonElement | null
+    // Affordance renders disabled with the honest reason (existing gating pattern).
+    expect(attach).not.toBeNull()
+    expect(attach!.disabled).toBe(true)
+    cleanup()
+  })
+})
+
+describe('createAndSend orchestration (#730)', () => {
+  it('creates the chat, uploads each staged file, then sends with attachment refs — in that order', async () => {
+    mockFetch({
+      attachments: { attachment: { name: 'first.png', mimeType: 'image/png', path: '/srv/chat/attachments/x/first.png' } },
+      messages: { accepted: true },
+      chats: { chat: { id: CHAT_A, agentId: 'main' } },
+    })
+    const { createAndSend } = await import('../../../plugins/chat/components/chat-page')
+    const file = new File(['png-bytes'], 'first.png', { type: 'image/png' })
+    const res = await createAndSend('main', 'look at this', [file])
+    expect(res).toEqual({ chatId: CHAT_A, sent: true })
+
+    const urls = fetchCalls.map((c) => `${c.init?.method ?? 'GET'} ${c.url}`)
+    const createIdx = urls.findIndex((u) => u.startsWith('POST') && u.endsWith('/chats'))
+    const uploadIdx = urls.findIndex((u) => u.includes(`/chats/${CHAT_A}/attachments`))
+    const sendIdx = urls.findIndex((u) => u.includes(`/chats/${CHAT_A}/messages`))
+    expect(createIdx).toBeGreaterThanOrEqual(0)
+    expect(uploadIdx).toBeGreaterThan(createIdx)
+    expect(sendIdx).toBeGreaterThan(uploadIdx)
+    // The send body carries the uploaded refs.
+    const sendCall = fetchCalls.find((c) => c.url.includes('/messages'))!
+    const body = JSON.parse(String(sendCall.init?.body)) as { attachments?: Array<{ name: string }> }
+    expect(body.attachments?.map((a) => a.name)).toEqual(['first.png'])
+  })
+
+  it('a failed first-message POST preserves the text as the new chat\'s composer draft (never silent loss)', async () => {
+    fetchCalls = []
+    globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      fetchCalls.push({ url, init })
+      if (url.includes('/messages')) {
+        return Promise.resolve(new Response('{"error":"boom"}', { status: 500 }))
+      }
+      if (url.endsWith('/chats') && init?.method === 'POST') {
+        return Promise.resolve(new Response(JSON.stringify({ chat: { id: CHAT_A, agentId: 'main' } }), { status: 201, headers: { 'Content-Type': 'application/json' } }))
+      }
+      return Promise.resolve(new Response('{}', { status: 200 }))
+    }) as typeof fetch
+    const { createAndSend } = await import('../../../plugins/chat/components/chat-page')
+    const res = await createAndSend('main', 'precious words', [])
+    expect(res).toEqual({ chatId: CHAT_A, sent: false })
+    // The typed text became the created chat's persisted composer draft.
+    expect(localStorage.getItem(`bakin-composer-draft:chat:${CHAT_A}`)).toBe('precious words')
   })
 })
 
@@ -211,6 +311,33 @@ describe('ChatView', () => {
     // seen fired on mount
     await settleReact()
     expect(fetchCalls.some((c) => c.url.includes(`/chats/${CHAT_A}/seen`) && c.init?.method === 'POST')).toBe(true)
+    cleanup()
+  })
+
+  it('renders the queued strip while streaming; remove restores the text into the empty composer (#729)', async () => {
+    mockFetch({
+      [`/chats/${CHAT_A}/queued/q1`]: { removed: true },
+      [`/chats/${CHAT_A}/seen`]: {},
+      capabilities: { imageInput: false },
+      [`/chats/${CHAT_A}`]: {
+        chat: summary({ streaming: true }),
+        messages: [{ kind: 'user', ts: '2026-07-11T10:00:00.000Z', content: 'long job' }],
+        queued: [{ id: 'q1', ts: '2026-07-25T00:00:00.000Z', content: 'queued correction' }],
+      },
+    })
+    const { container } = render(<ChatView chatId={CHAT_A} onChanged={() => {}} />)
+    await waitFor(() => {
+      expect(container.querySelector('[data-queued-list]')?.textContent).toContain('queued correction')
+    })
+    // Streaming + empty composer → the morphing button shows Stop.
+    expect(container.querySelector('[data-composer-stop]')).not.toBeNull()
+
+    fireEvent.click(container.querySelector('[data-queued-remove]')!)
+    await waitFor(() => {
+      expect((container.querySelector('textarea') as HTMLTextAreaElement).value).toBe('queued correction')
+    })
+    await settleReact()
+    expect(fetchCalls.some((c) => c.url.includes('/queued/q1') && c.init?.method === 'DELETE')).toBe(true)
     cleanup()
   })
 })

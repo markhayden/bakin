@@ -11,6 +11,7 @@ import { AlertTriangle, Check, CircleSlash, Copy, Loader2, RotateCcw } from 'luc
 import { formatStructured } from '@bakin/core/format'
 import { useAgent } from '@makinbakin/sdk/hooks'
 
+import { copyToClipboard } from '@/lib/copy-to-clipboard'
 import { AgentAvatar } from '../agent-avatar'
 import { MarkdownContent } from '../markdown-content'
 import { ActivityGroup } from './activity-group'
@@ -33,13 +34,11 @@ export function TurnTimestamp({ ts }: { ts?: string }) {
 export function CopyButton({ text, label = 'Copy' }: { text: string; label?: string }) {
   const [copied, setCopied] = useState(false)
   const copy = useCallback(() => {
-    navigator.clipboard?.writeText(text).then(
-      () => {
-        setCopied(true)
-        setTimeout(() => setCopied(false), 1500)
-      },
-      () => {},
-    )
+    void copyToClipboard(text).then((ok) => {
+      if (!ok) return
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    })
   }, [text])
   return (
     <button

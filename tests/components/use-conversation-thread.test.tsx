@@ -267,6 +267,129 @@ describe('review-hardening guards (#703)', () => {
     expect(result.current.sendError).toBe('socket down')
   })
 
+  it('queue-enabled: a send while streaming posts and records a queued row — no busy error, live turn untouched', async () => {
+    const store = makeStore()
+    const { result } = hookFor(store, 'a', {
+      queue: { enabled: true, queuedEvent: 'probe.queued', startedEvent: 'probe.started' },
+      post: async (k: string, content: string) => {
+        store.posts.push({ key: k, content })
+        return { ok: true, queued: { id: 'qid-1', queueLength: 1 } }
+      },
+    })
+    await act(async () => {})
+    act(() => {
+      emitPluginEvent({ event: EVENTS.chunk, threadKey: 'a', chunk: { type: 'text', content: 'live so far' } })
+    })
+    await act(async () => { await result.current.send('queued follow-up') })
+    expect(store.posts).toHaveLength(1)
+    expect(result.current.sendError).toBeNull()
+    // Live turn untouched; the message landed in the queue, not messages.
+    expect(result.current.liveChunks).toEqual([{ type: 'text', content: 'live so far' }])
+    expect(result.current.messages.some((m) => (m as { content?: string }).content === 'queued follow-up')).toBe(false)
+    expect(result.current.queued).toHaveLength(1)
+    expect(result.current.queued[0]).toMatchObject({ id: 'qid-1', content: 'queued follow-up' })
+  })
+
+  it('queue-enabled idle send is the normal optimistic path; server queued list hydrates from load', async () => {
+    const store = makeStore()
+    const { result } = hookFor(store, 'a', {
+      queue: { enabled: true },
+      load: async () => ({
+        messages: [],
+        queued: [{ id: 'srv-1', ts: '2026-07-25T00:00:00Z', content: 'from server' }],
+      }),
+    })
+    await waitFor(() => expect(result.current.queued).toHaveLength(1))
+    await act(async () => { await result.current.send('normal idle send') })
+    expect(result.current.messages.at(-1)).toMatchObject({ kind: 'user', content: 'normal idle send' })
+    expect(result.current.streaming).toBe(true)
+  })
+
+  it('a queued-event refetch that already delivered the item never duplicates the optimistic row', async () => {
+    const store = makeStore()
+    const serverQueue: Array<{ id: string; ts: string; content: string }> = []
+    let resolvePost: ((v: { ok: boolean; queued?: { id: string } }) => void) | null = null
+    const { result } = hookFor(store, 'a', {
+      queue: { enabled: true, queuedEvent: 'probe.queued' },
+      load: async () => ({ messages: [], queued: [...serverQueue] }),
+      post: () => new Promise((r) => { resolvePost = r as typeof resolvePost }),
+    })
+    await act(async () => {})
+    act(() => {
+      emitPluginEvent({ event: EVENTS.chunk, threadKey: 'a', chunk: { type: 'text', content: 'live' } })
+    })
+    let sendPromise: Promise<void> = Promise.resolve()
+    act(() => { sendPromise = result.current.send('dupe me not') })
+    // Server-side: the enqueue lands and its event fires BEFORE the 202
+    // response is written — the refetch delivers the item first.
+    serverQueue.push({ id: 'dup-1', ts: '2026-07-25T00:00:00Z', content: 'dupe me not' })
+    act(() => { emitPluginEvent({ event: 'probe.queued', threadKey: 'a', queueId: 'dup-1', queueLength: 1 }) })
+    await waitFor(() => expect(result.current.queued).toHaveLength(1))
+    // Now the 202 resolves with the same id — no second bubble.
+    await act(async () => {
+      resolvePost?.({ ok: true, queued: { id: 'dup-1' } })
+      await sendPromise
+    })
+    expect(result.current.queued).toHaveLength(1)
+    expect(result.current.queued[0].id).toBe('dup-1')
+  })
+
+  it('queued/started events refetch queue state for the active thread', async () => {
+    const store = makeStore()
+    const serverQueue: Array<{ id: string; ts: string; content: string }> = []
+    const { result } = hookFor(store, 'a', {
+      queue: { enabled: true, queuedEvent: 'probe.queued', startedEvent: 'probe.started' },
+      load: async (k: string) => {
+        store.loads.push(k)
+        return { messages: [], queued: [...serverQueue] }
+      },
+    })
+    await act(async () => {})
+    serverQueue.push({ id: 'q-other-tab', ts: '2026-07-25T00:00:00Z', content: 'from another tab' })
+    act(() => { emitPluginEvent({ event: 'probe.queued', threadKey: 'a', queueId: 'q-other-tab', queueLength: 1 }) })
+    await waitFor(() => expect(result.current.queued).toHaveLength(1))
+
+    serverQueue.length = 0 // drain started server-side
+    act(() => { emitPluginEvent({ event: 'probe.started', threadKey: 'a' }) })
+    await waitFor(() => expect(result.current.queued).toHaveLength(0))
+  })
+
+  it('removeQueued calls the consumer remove, drops the row locally, and returns the removed item for restore', async () => {
+    const store = makeStore()
+    const removed: string[] = []
+    const { result } = hookFor(store, 'a', {
+      queue: {
+        enabled: true,
+        remove: async (_k: string, id: string) => { removed.push(id); return true },
+      },
+      load: async () => ({
+        messages: [],
+        queued: [{ id: 'q1', ts: '2026-07-25T00:00:00Z', content: 'reword me' }],
+      }),
+    })
+    await waitFor(() => expect(result.current.queued).toHaveLength(1))
+    let item: unknown
+    await act(async () => { item = await result.current.removeQueued('q1') })
+    expect(removed).toEqual(['q1'])
+    expect(item).toMatchObject({ id: 'q1', content: 'reword me' })
+    expect(result.current.queued).toHaveLength(0)
+    // Unknown id: no-op, null.
+    await act(async () => { item = await result.current.removeQueued('nope') })
+    expect(item).toBeNull()
+  })
+
+  it('default surfaces expose an empty queue and still refuse streaming sends', async () => {
+    const store = makeStore()
+    const { result } = hookFor(store, 'a')
+    await act(async () => {})
+    act(() => {
+      emitPluginEvent({ event: EVENTS.chunk, threadKey: 'a', chunk: { type: 'text', content: 'live' } })
+    })
+    await act(async () => { await result.current.send('nope') })
+    expect(result.current.sendError).toBe('A reply is already in progress')
+    expect(result.current.queued).toEqual([])
+  })
+
   it('switching threads clears the old transcript even when the new load fails', async () => {
     const store = makeStore()
     store.transcripts.set('a', [{ kind: 'user', ts: '2026-07-20T00:00:00Z', content: 'from A' }])

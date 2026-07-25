@@ -22,9 +22,9 @@ import { createChatMeterHook } from '../../../src/core/conversation-metering'
 
 /** The bridge needs only messaging + the event bus — accept any context that has them. */
 type ChatTurnContext = Pick<PluginContext, 'runtime' | 'events'>
-import type { ChatAttachment, ChatTranscriptRow } from '../types'
+import type { ChatAttachment, ChatQueuedMessage, ChatTranscriptRow } from '../types'
 import { maybeAutoTitle } from './auto-title'
-import { appendTranscriptRow, getChatSummary } from './store'
+import { appendTranscriptRow, getChatSummary, listQueuedChatIds, readQueue, writeQueue } from './store'
 
 /**
  * Per-turn delivery framing — the chat counterpart of dispatch's OUTPUT
@@ -51,6 +51,12 @@ const service = createConversationTurnService({
   appendRow: (chatId, row) => appendTranscriptRow(chatId, row as ChatTranscriptRow),
   threadId: (chatId) => `chat:${chatId}`,
   framing: CHAT_TURN_FRAMING,
+  // Pending follow-ups (#729): durable snapshots under chat/queue/, the
+  // enqueue announced as chat.queued for open tabs.
+  queue: {
+    persist: (chatId, items) => writeQueue(chatId, items as ChatQueuedMessage[]),
+    event: 'chat.queued',
+  },
   hooks: {
     // Spend attribution under work class 'chat' — the shared host meter
     // hook; chat keeps its historical runId scheme.
@@ -96,9 +102,37 @@ export async function waitForTurn(chatId: string): Promise<void> {
   await service.waitFor(chatId)
 }
 
-/** Abort the in-flight turn; returns false when the chat is idle. */
+/** Abort the in-flight turn; returns false when the chat is idle. Queued
+ *  follow-ups stay and drain when the aborted turn settles (spec D3). */
 export function abortChatTurn(chatId: string): boolean {
   return service.abort(chatId)
+}
+
+/** Pending follow-ups for a chat (engine in-memory state — the live truth). */
+export function listQueuedMessages(chatId: string): ChatQueuedMessage[] {
+  return service.listQueued(chatId) as ChatQueuedMessage[]
+}
+
+/** Remove one queued follow-up; persists. False when absent. */
+export function removeQueuedMessage(chatId: string, queueId: string): boolean {
+  return service.removeQueued(chatId, queueId)
+}
+
+/** Drop a chat's whole queue (delete-chat path); persists empty. */
+export function clearChatQueue(chatId: string): void {
+  service.clearQueue(chatId)
+}
+
+/**
+ * Boot restore (#729): seed the engine from persisted queue snapshots and
+ * drain them. Runs AFTER sweepInterruptedTurns so the interrupted turn's
+ * honest error row lands before the drained follow-ups.
+ */
+export async function restoreQueues(ctx: ChatTurnContext): Promise<void> {
+  for (const chatId of listQueuedChatIds()) {
+    const items = readQueue(chatId)
+    if (items.length) service.restore(ctx as TurnContext, chatId, items)
+  }
 }
 
 export async function startChatTurn(
@@ -106,6 +140,10 @@ export async function startChatTurn(
   chatId: string,
   content: string,
   attachments?: ChatAttachment[],
+  opts?: { queueIfBusy?: boolean },
 ): Promise<StartTurnResult> {
-  return service.start(ctx as TurnContext, chatId, content, attachments?.length ? { attachments } : undefined)
+  return service.start(ctx as TurnContext, chatId, content, {
+    ...(attachments?.length ? { attachments } : {}),
+    ...(opts?.queueIfBusy ? { queueIfBusy: true } : {}),
+  })
 }

@@ -7,6 +7,8 @@ import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
 import { Check, Copy } from 'lucide-react'
 
+import { copyToClipboard } from '@/lib/copy-to-clipboard'
+
 /**
  * Markdown renderer.
  *
@@ -88,13 +90,11 @@ function CodeBlock({ children }: { children?: React.ReactNode }) {
   const raw = nodeText(codeProps?.children).replace(/\n$/, '')
 
   const copy = useCallback(() => {
-    navigator.clipboard?.writeText(raw).then(
-      () => {
-        setCopied(true)
-        setTimeout(() => setCopied(false), 1500)
-      },
-      () => {},
-    )
+    void copyToClipboard(raw).then((ok) => {
+      if (!ok) return
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    })
   }, [raw])
 
   return (

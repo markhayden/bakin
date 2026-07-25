@@ -16,6 +16,7 @@ import { AgentAvatar } from '../agent-avatar'
 import { AgentSelect } from '../agent-select'
 import { Conversation } from './conversation'
 import { Composer, type ComposerAttachments } from './composer'
+import { QueuedMessageList, type ConversationQueuedItem } from './queued-message-list'
 import { ToolCallDrawer } from './tool-call-drawer'
 import { foldConversation, type ConversationMessage, type ConversationToolCall } from './fold'
 import type { AgentTurnProps } from './agent-turn'
@@ -50,6 +51,11 @@ export interface ConversationPanelProps {
   emptyState?: React.ReactNode
   maxLength?: number
   attachments?: ComposerAttachments
+  /** Queue-aware surface (#732): send-while-streaming queues (opt-in). */
+  queueMode?: boolean
+  /** Pending queued follow-ups, rendered between conversation and composer. */
+  queuedItems?: ConversationQueuedItem[]
+  onRemoveQueued?: (item: ConversationQueuedItem) => void
   className?: string
 }
 
@@ -73,6 +79,9 @@ export function ConversationPanel({
   emptyState,
   maxLength,
   attachments,
+  queueMode = false,
+  queuedItems,
+  onRemoveQueued,
   className,
 }: ConversationPanelProps) {
   const [openCall, setOpenCall] = useState<ConversationToolCall | null>(null)
@@ -126,6 +135,8 @@ export function ConversationPanel({
         transformText={transformText}
       />
 
+      {queuedItems?.length ? <QueuedMessageList items={queuedItems} onRemove={onRemoveQueued} /> : null}
+
       {readOnly ? (
         readOnlyNotice ? (
           <div data-conv-readonly className="shrink-0 border-t border-border px-3 py-2 text-xs text-muted-foreground">
@@ -138,6 +149,7 @@ export function ConversationPanel({
           onSend={onSend}
           busy={streaming}
           onAbort={onAbort}
+          queueMode={queueMode}
           placeholder={placeholder}
           maxLength={maxLength}
           attachments={attachments}

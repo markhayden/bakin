@@ -118,6 +118,35 @@ describe('openclaw streaming over the mock gateway (e2e)', () => {
     expect(chunks.at(-1)?.type).toBe('done')
   })
 
+  it('[[slow]] streams word-by-word and aborts cleanly mid-stream (the queue-showcase marker, #729)', async () => {
+    harness = await createImitationCrabHarness({ chatMode: 'canned' })
+    mockHome = harness.env.home
+
+    const controller = new AbortController()
+    const chunks: Chunk[] = []
+    for await (const chunk of harness.services.runtime.messaging.stream({
+      agentId: 'rolo',
+      content: 'take your time with this one [[slow]]',
+      signal: controller.signal,
+    })) {
+      chunks.push(chunk)
+      // Word-by-word pacing gives a human-scale window — stop after a few
+      // words, like an operator steering mid-reply.
+      if (chunks.filter((c) => c.type === 'text').length === 4) controller.abort()
+    }
+
+    const partial = textOf(chunks)
+    // Real partial text survived the Stop, and we aborted long before the end.
+    expect(partial.length).toBeGreaterThan(0)
+    expect(partial).toContain('[mock:Rolo]')
+    expect(partial).not.toContain('wrapping up')
+    // Clean abort per the runtime contract: done, never an error chunk.
+    expect(chunks.some((c) => c.type === 'error')).toBe(false)
+    expect(chunks.at(-1)?.type).toBe('done')
+    // The marker never leaks into the reply text.
+    expect(partial).not.toContain('[[slow]]')
+  })
+
   it('self-heals a dropped delta from cumulative text', async () => {
     harness = await createImitationCrabHarness({ chatMode: 'echo' })
     mockHome = harness.env.home

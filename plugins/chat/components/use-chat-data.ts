@@ -8,7 +8,11 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { emitPluginEvent, usePluginEvent } from '@makinbakin/sdk/hooks'
-import { useConversationThread, type ConversationMessage } from '@makinbakin/sdk/components'
+import {
+  useConversationThread,
+  type ConversationMessage,
+  type ConversationQueuedItem,
+} from '@makinbakin/sdk/components'
 import type { RuntimeChatChunk } from '@makinbakin/sdk/types'
 import { pluginFetch } from '@makinbakin/sdk/utils'
 
@@ -53,6 +57,23 @@ export function attachmentUrl(chatId: string, name: string): string {
   return `/api/plugins/chat/chats/${chatId}/attachments/${encodeURIComponent(name)}`
 }
 
+/** Server queued-message DTO (GET /chats/:id `queued`). */
+export interface ChatQueuedDto {
+  id: string
+  ts: string
+  content: string
+  attachments?: Array<{ name: string; mimeType: string; path: string }>
+}
+
+/** Queued DTO → kit item. The spread keeps `path` alongside the display
+ *  url so remove-restore can re-stage the attachment for a resend. */
+function toQueuedItem(chatId: string, q: ChatQueuedDto): ConversationQueuedItem {
+  return {
+    ...q,
+    attachments: q.attachments?.map((a) => ({ ...a, url: attachmentUrl(chatId, a.name) })),
+  }
+}
+
 function rowToMessage(chatId: string, row: TranscriptRowDto): ConversationMessage {
   if (row.kind === 'user' && row.attachments?.length) {
     return {
@@ -78,6 +99,10 @@ export function useChats(agentFilter: string) {
 
   useEffect(() => { void refresh() }, [refresh])
   // A finished turn bumps updatedAt/title/unreadCount — keep the list fresh.
+  // chat.started re-lights the rail's working spinner the instant a drained
+  // turn reserves its slot (without it the dot blinked off between a done
+  // and the drained turn's first chunk).
+  usePluginEvent('chat.started', () => { void refresh() })
   usePluginEvent('chat.done', () => { void refresh() })
   usePluginEvent('chat.error', () => { void refresh() })
   usePluginEvent('chat.titled', () => { void refresh() })
@@ -141,28 +166,43 @@ export async function uploadAttachmentRequest(chatId: string, file: File): Promi
   return ((await res.json()) as { attachment: UploadedAttachment }).attachment
 }
 
-// Capability probes are per (agent, model) and stable within a session —
-// cache so switching chats doesn't re-fetch.
+// Capability cache — stale-while-revalidate (#731): the Map is only an
+// instant seed (no flicker when switching chats); EVERY mount re-probes in
+// the background so a model change surfaces on the next chat open instead
+// of after a browser restart. Staleness is bounded to the mounted view.
 const imageInputCache = new Map<string, boolean>()
+// In-flight probe dedup — rail + view mounting together share one fetch.
+const imageInputProbes = new Map<string, Promise<boolean | null>>()
+
+/** Probe the agent's image capability; null = probe failed (keep last-known). */
+function probeImageInput(agentId: string): Promise<boolean | null> {
+  let probe = imageInputProbes.get(agentId)
+  if (!probe) {
+    probe = pluginFetch('chat', `capabilities?agent=${encodeURIComponent(agentId)}`)
+      .then(async (res) => (res.ok ? ((await res.json()) as { imageInput?: boolean }).imageInput === true : null))
+      .catch(() => null)
+      .finally(() => {
+        imageInputProbes.delete(agentId)
+      })
+    imageInputProbes.set(agentId, probe)
+  }
+  return probe
+}
 
 export function useAgentImageInput(agentId: string): boolean {
   const [enabled, setEnabled] = useState(imageInputCache.get(agentId) ?? false)
   useEffect(() => {
     // Empty while the chat summary loads — the probe re-runs with the real id.
     if (!agentId) return
-    const cached = imageInputCache.get(agentId)
-    if (cached !== undefined) {
-      setEnabled(cached)
-      return
-    }
     let cancelled = false
-    void pluginFetch('chat', `capabilities?agent=${encodeURIComponent(agentId)}`)
-      .then(async (res) => {
-        const value = res.ok ? ((await res.json()) as { imageInput?: boolean }).imageInput === true : false
-        imageInputCache.set(agentId, value)
-        if (!cancelled) setEnabled(value)
-      })
-      .catch(() => {})
+    setEnabled(imageInputCache.get(agentId) ?? false)
+    void probeImageInput(agentId).then((value) => {
+      // Failure keeps last-known (a blip never yanks a working affordance);
+      // an agent never probed successfully stays conservative-false.
+      if (value === null) return
+      imageInputCache.set(agentId, value)
+      if (!cancelled) setEnabled(value)
+    })
     return () => {
       cancelled = true
     }
@@ -178,6 +218,10 @@ export interface ChatStreamState {
   liveChunks: RuntimeChatChunk[] | null
   streaming: boolean
   sendError: string | null
+  /** Pending queued follow-ups (#729). */
+  queued: ConversationQueuedItem[]
+  /** Remove a queued item; returns it so the view can restore its text. */
+  removeQueued: (id: string) => Promise<ConversationQueuedItem | null>
   send: (content: string, attachments?: Array<{ name: string; mimeType: string; path: string }>) => Promise<void>
   abort: () => void
   /** Re-send the newest user message (error-turn "Try again"). */
@@ -204,13 +248,19 @@ export function useChatStream(chatId: string): ChatStreamState {
     load: async (key) => {
       const res = await pluginFetch('chat', `chats/${key}`)
       if (!res.ok) return null
-      const body = (await res.json()) as { chat: ChatSummaryDto; messages: TranscriptRowDto[]; streamingText?: string }
+      const body = (await res.json()) as {
+        chat: ChatSummaryDto
+        messages: TranscriptRowDto[]
+        queued?: ChatQueuedDto[]
+        streamingText?: string
+      }
       if (key === chatIdRef.current) {
         const lastUser = [...body.messages].reverse().find((r) => r.kind === 'user')
         if (lastUser?.kind === 'user') lastUserRef.current = { content: lastUser.content, attachments: lastUser.attachments }
       }
       return {
         messages: body.messages.map((row) => rowToMessage(key, row)),
+        queued: (body.queued ?? []).map((q) => toQueuedItem(key, q)),
         meta: body.chat,
         // Chat now pre-lights like every other surface (#706 decision):
         // reopening a chat mid-turn shows the live indicator + the text
@@ -225,19 +275,36 @@ export function useChatStream(chatId: string): ChatStreamState {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content, ...(attachments?.length ? { attachments } : {}) }),
       })
-      if (res.ok) return { ok: true }
+      if (res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { queued?: boolean; queueId?: string; queueLength?: number }
+        return {
+          ok: true,
+          ...(body.queued && body.queueId ? { queued: { id: body.queueId, queueLength: body.queueLength } } : {}),
+        }
+      }
       const body = (await res.json().catch(() => ({}))) as { error?: string }
       return { ok: false, status: res.status, ...(body.error ? { error: body.error } : {}) }
     },
+    // Queue-aware sends (#729): streaming sends enqueue server-side; the
+    // queued/started events keep the strip honest across tabs and drains.
+    queue: {
+      enabled: true,
+      queuedEvent: 'chat.queued',
+      startedEvent: 'chat.started',
+      remove: async (key, id) => {
+        const res = await pluginFetch('chat', `chats/${key}/queued/${encodeURIComponent(id)}`, { method: 'DELETE' })
+        return res.ok
+      },
+    },
     // Optimistic user row — WITH its attachments (they lagged to the
     // post-turn refetch otherwise); the durable copy replaces it on the
-    // next refetch.
+    // next refetch. The spread keeps `path` so queued rows stay restorable.
     optimisticRow: (content, attachments) => ({
       kind: 'user',
       ts: new Date().toISOString(),
       content,
       ...(attachments?.length
-        ? { attachments: attachments.map((a) => ({ name: a.name, mimeType: a.mimeType, url: attachmentUrl(chatId, a.name) })) }
+        ? { attachments: attachments.map((a) => ({ ...a, url: attachmentUrl(chatId, a.name) })) }
         : {}),
     }),
     // The reply landed while the user is looking at this chat.
@@ -276,6 +343,8 @@ export function useChatStream(chatId: string): ChatStreamState {
     liveChunks: thread.liveChunks,
     streaming: thread.streaming,
     sendError: thread.sendError,
+    queued: thread.queued,
+    removeQueued: thread.removeQueued,
     send,
     abort,
     retry,

@@ -55,7 +55,7 @@ mock.module('../../../src/core/agent-cost', () => ({
 
 import chatPlugin from '../../../plugins/chat'
 import { createChat, readTranscript } from '../../../plugins/chat/lib/store'
-import { abortChatTurn, startChatTurn, waitForTurn } from '../../../plugins/chat/lib/stream-bridge'
+import { abortChatTurn, isTurnInFlight, startChatTurn, waitForTurn } from '../../../plugins/chat/lib/stream-bridge'
 import { activatePlugin, callRoute, findRoute, type ActivatedPlugin } from '../test-helpers'
 import type { ChatChunk, MessageArgs } from '../../../packages/core/src/adapters/runtime/concepts'
 
@@ -315,7 +315,10 @@ describe('chat stream bridge', () => {
     expect(starts).toBe(1)
   })
 
-  test('one in-flight turn per chat: second send gets busy/409', async () => {
+  test('one in-flight turn per chat: a second send QUEUES (202) — the 409 contract was retired by #729', async () => {
+    // DELIBERATE wire-contract change (spec chat-queue-and-followups D7/T3):
+    // busy no longer rejects; the message queues and drains after settle.
+    // tests/plugins/chat/queue.test.ts owns the full queue behavior.
     const chat = await createChat({ agentId: 'main' })
     let release!: () => void
     const gate = new Promise<void>((r) => { release = r })
@@ -330,13 +333,18 @@ describe('chat stream bridge', () => {
 
     const send = findRoute(activated.routes, 'POST', '/chats/:chatId/messages')!
     const busy = await callRoute(send, activated.ctx, { path: `/chats/${chat.id}/messages`, body: { content: 'second' } })
-    expect(busy.status).toBe(409)
+    expect(busy.status).toBe(202)
+    expect(busy.body).toMatchObject({ queued: true, queueLength: 1 })
 
     release()
     await waitForTurn(chat.id)
+    // Drained turn (the queued 'second') settles too.
+    await waitForTurn(chat.id)
+    for (let i = 0; i < 200 && isTurnInFlight(chat.id); i++) await new Promise((r) => setTimeout(r, 2))
 
     const done = await callRoute(send, activated.ctx, { path: `/chats/${chat.id}/messages`, body: { content: 'third' } })
     expect(done.status).toBe(202)
+    expect(done.body.queued).toBeUndefined()
     await waitForTurn(chat.id)
   })
 

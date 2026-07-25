@@ -18,6 +18,7 @@ import {
   appendFileSync,
   existsSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   renameSync,
   rmSync,
@@ -29,7 +30,7 @@ import { z } from 'zod'
 
 import { getBakinPaths } from '../../../src/core/content-dir'
 import { createLogger } from '../../../src/core/logger'
-import type { ChatSummary, ChatTitleSource, ChatTranscriptRow } from '../types'
+import type { ChatQueuedMessage, ChatSummary, ChatTitleSource, ChatTranscriptRow } from '../types'
 
 const log = createLogger('chat-store')
 
@@ -132,6 +133,74 @@ export function attachmentsDir(chatId: string): string {
   return join(chatDir(), 'attachments', chatId)
 }
 
+// --- Pending queue snapshots (#729) — chat/queue/<chatId>.json -------------
+
+const QueuedMessageSchema = z.object({
+  id: z.string().min(1),
+  ts: z.string(),
+  content: z.string(),
+  agentId: z.string().min(1),
+  attachments: z.array(AttachmentSchema).optional(),
+})
+
+function queueDir(): string {
+  return join(chatDir(), 'queue')
+}
+
+function queuePath(chatId: string): string {
+  assertChatId(chatId)
+  return join(queueDir(), `${chatId}.json`)
+}
+
+export function readQueue(chatId: string): ChatQueuedMessage[] {
+  const path = queuePath(chatId)
+  if (!existsSync(path)) return []
+  try {
+    return z.array(QueuedMessageSchema).parse(JSON.parse(readFileSync(path, 'utf-8')))
+  } catch (err) {
+    // Quarantine the corrupt snapshot — leaving it in place would re-log
+    // this same failure on every boot restore forever (review finding).
+    log.error(`queue snapshot unreadable for ${chatId} — quarantining as .corrupt`, err as Error)
+    try {
+      renameSync(path, `${path}.corrupt`)
+    } catch (renameErr) {
+      log.error(`could not quarantine corrupt queue snapshot for ${chatId}`, renameErr as Error)
+    }
+    return []
+  }
+}
+
+/** Full-snapshot write (the engine's queue.persist hook). Empty = file removed. */
+export function writeQueue(chatId: string, items: ChatQueuedMessage[]): Promise<void> {
+  return serialized(() => {
+    const path = queuePath(chatId)
+    if (!items.length) {
+      rmSync(path, { force: true })
+      return
+    }
+    mkdirSync(queueDir(), { recursive: true })
+    const tmp = `${path}.tmp`
+    writeFileSync(tmp, JSON.stringify(items, null, 2))
+    renameSync(tmp, path)
+  })
+}
+
+/** Chat ids with a persisted queue snapshot (boot restore). Never throws —
+ *  like the interrupted-turn sweep, a failure here (e.g. a minimal test
+ *  context without a chat dir) must not break activation. */
+export function listQueuedChatIds(): string[] {
+  try {
+    if (!existsSync(queueDir())) return []
+    return readdirSync(queueDir())
+      .filter((f) => f.endsWith('.json'))
+      .map((f) => f.slice(0, -'.json'.length))
+      .filter((id) => /^[0-9a-f-]{36}$/i.test(id))
+  } catch (err) {
+    log.error('queued-chat listing failed — skipping restore', err as Error)
+    return []
+  }
+}
+
 function ensureChatDir(): void {
   if (!existsSync(chatDir())) mkdirSync(chatDir(), { recursive: true })
 }
@@ -148,11 +217,11 @@ function readIndex(): { chats: ChatSummary[] } {
 
 // One writer at a time: every mutation runs through this queue so
 // concurrent route handlers can't interleave read-modify-write cycles.
-let writeQueue: Promise<unknown> = Promise.resolve()
+let pendingWrites: Promise<unknown> = Promise.resolve()
 
 function serialized<T>(fn: () => T): Promise<T> {
-  const next = writeQueue.then(fn)
-  writeQueue = next.catch(() => {})
+  const next = pendingWrites.then(fn)
+  pendingWrites = next.catch(() => {})
   return next
 }
 
@@ -211,6 +280,7 @@ export function deleteChat(chatId: string): Promise<boolean> {
     writeIndexAtomic(index)
     rmSync(transcriptPath(chatId), { force: true })
     rmSync(attachmentsDir(chatId), { recursive: true, force: true })
+    rmSync(queuePath(chatId), { force: true })
     return true
   })
 }
