@@ -15,16 +15,51 @@ mock.module('../../../src/core/content-dir', contentDirMock)
 mock.module('../../../packages/core/src/content-dir', contentDirMock)
 
 mock.module('@makinbakin/sdk/ui', () => ({
+  Alert: ({ children, ...props }: React.HTMLAttributes<HTMLDivElement>) => <div role="alert" {...props}>{children}</div>,
+  AlertTitle: ({ children }: { children: ReactNode }) => <strong>{children}</strong>,
+  AlertDescription: ({ children }: { children: ReactNode }) => <div>{children}</div>,
   Badge: ({ children }: { children: ReactNode }) => <span>{children}</span>,
   Button: ({ children, ...props }: ButtonHTMLAttributes<HTMLButtonElement>) => <button {...props}>{children}</button>,
+  Checkbox: ({
+    checked,
+    onCheckedChange,
+    ...props
+  }: InputHTMLAttributes<HTMLInputElement> & { onCheckedChange?: (checked: boolean) => void }) => (
+    <input
+      {...props}
+      type="checkbox"
+      checked={checked}
+      onChange={(event) => onCheckedChange?.(event.target.checked)}
+    />
+  ),
   Input: (props: InputHTMLAttributes<HTMLInputElement>) => <input {...props} />,
-  Label: ({ children, htmlFor }: { children: ReactNode; htmlFor?: string }) => <label htmlFor={htmlFor}>{children}</label>,
-  Dialog: ({ children, open }: { children: ReactNode; open?: boolean }) => (open ? <div role="dialog">{children}</div> : null),
+  Dialog: ({ children, open, busy }: { children: ReactNode; open?: boolean; busy?: boolean }) => (
+    open ? <div role="dialog" aria-busy={busy || undefined}>{children}</div> : null
+  ),
   DialogContent: ({ children }: { children: ReactNode }) => <div>{children}</div>,
   DialogHeader: ({ children }: { children: ReactNode }) => <div>{children}</div>,
   DialogTitle: ({ children }: { children: ReactNode }) => <h2>{children}</h2>,
   DialogDescription: ({ children }: { children: ReactNode }) => <p>{children}</p>,
-  DialogFooter: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  Field: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  FieldDescription: ({ children }: { children: ReactNode }) => <p>{children}</p>,
+  FieldGroup: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  FieldLabel: ({ children, htmlFor }: { children: ReactNode; htmlFor?: string }) => <label htmlFor={htmlFor}>{children}</label>,
+  Form: ({
+    children,
+    busy: _busy,
+    ...props
+  }: React.FormHTMLAttributes<HTMLFormElement> & { busy?: boolean }) => <form {...props}>{children}</form>,
+  FormActions: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  Select: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  SelectContent: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  SelectItem: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  SelectTrigger: ({ children, ...props }: ButtonHTMLAttributes<HTMLButtonElement>) => <button type="button" {...props}>{children}</button>,
+  SelectValue: ({ children }: { children: ReactNode }) => <span>{children}</span>,
+  SubmitButton: ({
+    children,
+    busyLabel: _busyLabel,
+    ...props
+  }: ButtonHTMLAttributes<HTMLButtonElement> & { busyLabel?: ReactNode }) => <button type="submit" {...props}>{children}</button>,
 }))
 
 import { InstallDialog, inferSourceType } from '../../../plugins/explore/components/install-dialog'
@@ -259,7 +294,7 @@ describe('InstallDialog', () => {
     render(<InstallDialog open onOpenChange={mock()} entry={null} onInstalled={onInstalled} />)
     fireEvent.change(screen.getByPlaceholderText(/github:user\/repo/), { target: { value: 'github:me/custom#agents/foo' } })
     fireEvent.change(screen.getByPlaceholderText('alt-pixel'), { target: { value: 'foo-two' } })
-    fireEvent.click(screen.getByText(/Adopt existing agent/))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Adopt existing agent' }))
     fireEvent.click(screen.getByTestId('install-submit'))
     await waitFor(() => expect(onInstalled).toHaveBeenCalled())
     const { url, body } = lastCall()

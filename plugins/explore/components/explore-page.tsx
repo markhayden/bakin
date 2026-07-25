@@ -1,5 +1,5 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
-import { Plus, RefreshCw, Sparkles } from 'lucide-react'
+import { Check, Plus, RefreshCw, Sparkles } from 'lucide-react'
 import { Grid } from '@makinbakin/sdk/layout'
 import { useQueryArrayState, useQueryState } from '@makinbakin/sdk/navigation'
 import {
@@ -396,17 +396,34 @@ function ExplorePageInner() {
           if (!open) setSelectedKey('')
         }}
         actions={
-          selected && !selected.builtin && !selected.installed ? (
-            <Button
-              data-testid="drawer-install"
-              onClick={() => {
-                setInstallEntry(selected)
-                setInstallOpen(true)
-              }}
-            >
-              Install
-            </Button>
-          ) : undefined
+          selected && !selected.builtin
+            ? selected.installed
+              ? (
+                  <Button
+                    data-testid="drawer-installed"
+                    size="xs"
+                    variant="primary"
+                    disabled
+                  >
+                    <Check />
+                    Installed
+                  </Button>
+                )
+              : (
+                  <Button
+                    data-testid="drawer-install"
+                    size="xs"
+                    variant="primary"
+                    onClick={() => {
+                      setInstallEntry(selected)
+                      setInstallOpen(true)
+                    }}
+                  >
+                    <Plus />
+                    Install
+                  </Button>
+                )
+            : undefined
         }
       />
 

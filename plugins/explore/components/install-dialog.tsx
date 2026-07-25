@@ -1,18 +1,31 @@
 import { useState, type FormEvent } from 'react'
-import { ChevronDown, Loader2 } from 'lucide-react'
 import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
   Button,
+  Checkbox,
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
+  Field,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+  Form,
+  FormActions,
   Input,
-  Label,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  SubmitButton,
 } from '@makinbakin/sdk/ui'
-import { sourceWithRef } from '../../../src/lib/package-source'
 import { ConsentDialog, type ConsentRequest } from './consent-dialog'
+import { sourceWithRef } from '../lib/package-source'
 import type { ExploreCatalogEntry } from '../types'
 
 /**
@@ -242,7 +255,7 @@ export function InstallDialog({
 
   if (keyStep) {
     return (
-      <Dialog open={open} onOpenChange={close}>
+      <Dialog busy={submitting} open={open} onOpenChange={close}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{keyStep.packName} is installed — one more step</DialogTitle>
@@ -251,44 +264,55 @@ export function InstallDialog({
               never displayed again) or skip and add it later in Settings → Integrations &amp; Keys.
             </DialogDescription>
           </DialogHeader>
-          <div className="flex flex-col gap-4" data-testid="capability-key-step">
-            {keyStep.secrets.map((secret) => (
-              <div key={secret.name} className="flex flex-col gap-2">
-                <Label htmlFor={`cap-key-${secret.name}`}>{secret.name}</Label>
-                <Input
-                  id={`cap-key-${secret.name}`}
-                  type="password"
-                  placeholder="Paste key…"
-                  value={keyDrafts[secret.name] ?? ''}
-                  onChange={(e) => setKeyDrafts((d) => ({ ...d, [secret.name]: e.target.value }))}
-                />
-                {secret.help && (
-                  <p className="text-xs text-muted-foreground">
-                    Get one at <a className="underline" href={secret.help} target="_blank" rel="noreferrer">{secret.help}</a>
-                  </p>
-                )}
-              </div>
-            ))}
-            {error && (
-              <div role="alert" className="rounded border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
-                {error}
-              </div>
-            )}
-          </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" disabled={submitting} onClick={() => finishSuccess()}>
-              Skip for now
-            </Button>
-            <Button
-              type="button"
-              disabled={submitting || keyStep.secrets.every((s) => !(keyDrafts[s.name] ?? '').trim())}
-              onClick={() => void saveKeys()}
-              data-testid="capability-key-save"
-            >
-              {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Save key
-            </Button>
-          </DialogFooter>
+          <Form
+            busy={submitting}
+            data-testid="capability-key-step"
+            onSubmit={(event) => {
+              event.preventDefault()
+              void saveKeys()
+            }}
+          >
+            <FieldGroup>
+              {keyStep.secrets.map((secret) => (
+                <Field key={secret.name} name={secret.name}>
+                  <FieldLabel htmlFor={`cap-key-${secret.name}`} requirement="optional">{secret.name}</FieldLabel>
+                  <Input
+                    id={`cap-key-${secret.name}`}
+                    type="password"
+                    placeholder="Paste key…"
+                    value={keyDrafts[secret.name] ?? ''}
+                    onChange={(event) => setKeyDrafts((drafts) => ({
+                      ...drafts,
+                      [secret.name]: event.target.value,
+                    }))}
+                  />
+                  {secret.help ? (
+                    <FieldDescription>
+                      Get one at <a href={secret.help} target="_blank" rel="noreferrer">{secret.help}</a>
+                    </FieldDescription>
+                  ) : null}
+                </Field>
+              ))}
+            </FieldGroup>
+            {error ? (
+              <Alert tone="danger">
+                <AlertTitle>The key was not saved</AlertTitle>
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            ) : null}
+            <FormActions>
+              <Button type="button" variant="outline" disabled={submitting} onClick={finishSuccess}>
+                Skip for now
+              </Button>
+              <SubmitButton
+                disabled={keyStep.secrets.every((secret) => !(keyDrafts[secret.name] ?? '').trim())}
+                busyLabel="Saving key…"
+                data-testid="capability-key-save"
+              >
+                Save key
+              </SubmitButton>
+            </FormActions>
+          </Form>
         </DialogContent>
       </Dialog>
     )
@@ -296,8 +320,8 @@ export function InstallDialog({
 
   return (
     <>
-      <Dialog open={open && consent === null} onOpenChange={close}>
-        <DialogContent className="sm:max-w-3xl">
+      <Dialog busy={submitting} open={open && consent === null} onOpenChange={close}>
+        <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>{preset ? `Install ${entry.name}` : 'Install from source'}</DialogTitle>
             <DialogDescription>
@@ -306,109 +330,117 @@ export function InstallDialog({
                 : 'Fetch a package or plugin from a GitHub repo or local path.'}
             </DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-            {preset ? (
-              <div className="flex flex-col gap-1">
-                <Label>Source</Label>
-                <code className="break-all rounded-md border border-border bg-card px-3 py-2 text-xs text-muted-foreground">
-                  {source}
-                </code>
-              </div>
-            ) : (
-              <>
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="explore-install-source">Source</Label>
-                  <Input
-                    id="explore-install-source"
-                    placeholder="github:user/repo@v0.1.0 or ./local/path"
-                    value={customSource}
-                    onChange={(e) => setCustomSource(e.target.value)}
-                    autoFocus
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Bare names aren't supported. Use the github: prefix or a local-path prefix (./, ../, /, ~/).
-                  </p>
-                </div>
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="explore-install-kind">Kind</Label>
-                  <div className="relative">
-                    <select
-                      id="explore-install-kind"
+          <Form busy={submitting} onSubmit={handleSubmit}>
+            <FieldGroup>
+              {preset ? (
+                <Field name="source">
+                  <FieldLabel>Source</FieldLabel>
+                  <code className="block break-all rounded-bakin-control border border-bakin-border-subtle bg-bakin-canvas-default px-bakin-3 py-bakin-2 font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
+                    {source}
+                  </code>
+                </Field>
+              ) : (
+                <>
+                  <Field name="source">
+                    <FieldLabel requirement="required">Source</FieldLabel>
+                    <FieldDescription>
+                      Use the github: prefix or a local-path prefix (./, ../, /, ~/). Bare names are not supported.
+                    </FieldDescription>
+                    <Input
+                      id="explore-install-source"
+                      placeholder="github:user/repo@v0.1.0 or ./local/path"
+                      value={customSource}
+                      onChange={(event) => setCustomSource(event.target.value)}
+                      autoFocus
+                      required
+                    />
+                  </Field>
+                  <Field name="kind">
+                    <FieldLabel>Kind</FieldLabel>
+                    <Select
                       value={customKind}
-                      onChange={(e) => setCustomKind(e.target.value as InstallKind)}
-                      className="h-9 w-full appearance-none rounded-md border border-border bg-background pl-3 pr-9 text-sm"
+                      onValueChange={(value) => setCustomKind((value ?? 'agent') as InstallKind)}
                     >
-                      {KIND_OPTIONS.map((option) => (
-                        <option key={option.value} value={option.value}>{option.label}</option>
-                      ))}
-                    </select>
-                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                  </div>
-                </div>
-              </>
-            )}
+                      <SelectTrigger id="explore-install-kind" aria-label="Kind" className="w-full">
+                        <SelectValue>
+                          {KIND_OPTIONS.find((option) => option.value === customKind)?.label}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {KIND_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                </>
+              )}
 
-            {kind !== 'plugin' && (
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="explore-install-as">Install as (optional)</Label>
-                <Input
-                  id="explore-install-as"
-                  placeholder="alt-pixel"
-                  value={installAs}
-                  onChange={(e) => setInstallAs(e.target.value)}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Lockfile-key alias. Useful when two packages share an id. You'll see this
-                  name in package listings and CLI commands — it does not change the
-                  {kind === 'agent' ? " agent's name or how it appears in the app" : ' installed content itself'}.
-                </p>
-              </div>
-            )}
+              {kind !== 'plugin' ? (
+                <Field name="installAs">
+                  <FieldLabel requirement="optional">Install as</FieldLabel>
+                  <FieldDescription>
+                    Lockfile-key alias for packages that share an id. It changes package listings and CLI commands,
+                    not the {kind === 'agent' ? "agent's visible name" : 'installed content'}.
+                  </FieldDescription>
+                  <Input
+                    id="explore-install-as"
+                    placeholder="alt-pixel"
+                    value={installAs}
+                    onChange={(event) => setInstallAs(event.target.value)}
+                  />
+                </Field>
+              ) : null}
 
-            {kind === 'agent' && (
-              <label className="flex items-start gap-2.5 text-sm">
-                <input type="checkbox" checked={adopt} onChange={(e) => setAdopt(e.target.checked)} className="mt-1 rounded" />
-                <span className="flex flex-col gap-0.5">
-                  <span>Adopt existing agent</span>
-                  <span className="text-xs text-muted-foreground">
+              {kind === 'agent' ? (
+                <Field orientation="horizontal" name="adopt">
+                  <Checkbox
+                    aria-label="Adopt existing agent"
+                    checked={adopt}
+                    onCheckedChange={(checked) => setAdopt(checked === true)}
+                  />
+                  <FieldLabel>Adopt existing agent</FieldLabel>
+                  <FieldDescription>
                     Already have an agent with this name? Adopting brings it under package
                     management without erasing anything — it keeps its memory, files, and
                     personality, and just starts receiving updates from this package.
-                  </span>
-                </span>
-              </label>
-            )}
+                  </FieldDescription>
+                </Field>
+              ) : null}
 
-            {kind !== 'plugin' && (
-              <label className="flex items-start gap-2.5 text-sm">
-                <input type="checkbox" checked={replace} onChange={(e) => setReplace(e.target.checked)} className="mt-1 rounded" />
-                <span className="flex flex-col gap-0.5">
-                  <span>Replace on collision</span>
-                  <span className="text-xs text-muted-foreground">
+              {kind !== 'plugin' ? (
+                <Field orientation="horizontal" name="replace">
+                  <Checkbox
+                    aria-label="Replace on collision"
+                    checked={replace}
+                    onCheckedChange={(checked) => setReplace(checked === true)}
+                  />
+                  <FieldLabel>Replace on collision</FieldLabel>
+                  <FieldDescription>
                     If something with this name is already installed, replace it with this
                     one. Leave this off and Bakin will stop and warn you instead of
                     overwriting — the safe default.
-                  </span>
-                </span>
-              </label>
-            )}
+                  </FieldDescription>
+                </Field>
+              ) : null}
+            </FieldGroup>
 
-            {error && (
-              <div role="alert" className="rounded border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
-                {error}
-              </div>
-            )}
+            {error ? (
+              <Alert tone="danger">
+                <AlertTitle>Installation failed</AlertTitle>
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            ) : null}
 
-            <DialogFooter>
+            <FormActions>
               <Button type="button" variant="outline" onClick={() => close(false)} disabled={submitting}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={submitting} data-testid="install-submit">
-                {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              <SubmitButton busyLabel="Installing…" data-testid="install-submit">
                 Install
-              </Button>
-            </DialogFooter>
-          </form>
+              </SubmitButton>
+            </FormActions>
+          </Form>
         </DialogContent>
       </Dialog>
 

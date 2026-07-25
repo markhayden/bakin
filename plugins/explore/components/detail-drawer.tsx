@@ -1,6 +1,7 @@
 import { ArrowUpRight, Check, Image as ImageIcon } from 'lucide-react'
-import { BakinDrawer, PluginLink } from '@makinbakin/sdk/components'
-import { Badge } from '@makinbakin/sdk/ui'
+import { PluginLink } from '@makinbakin/sdk/navigation'
+import { BakinDrawer, BakinDrawerSection } from '@makinbakin/sdk/ui'
+import { StatusBadge } from '@makinbakin/sdk/patterns'
 import { EntryVisual } from './catalog-card'
 import type { ExploreCatalogEntry } from '../types'
 
@@ -32,91 +33,100 @@ export function DetailDrawer({
       onOpenChange={onOpenChange}
       storageKey="explore-detail"
       title={
-        <span className="flex items-center gap-2.5">
+        <span className="flex min-w-0 items-center gap-bakin-2">
           <EntryVisual entry={entry} />
-          <span>{entry.name}</span>
+          <span className="truncate">{entry.name}</span>
           {entry.trust === 'official' && (
-            <Badge variant="outline" className="text-[10px] text-muted-foreground">official ✓</Badge>
+            <StatusBadge tone="accent" variant="solid" size="xs">Official</StatusBadge>
           )}
         </span>
       }
       description={`${entry.category} · ${KIND_LABELS[entry.kind]}${entry.installedVersion ? ` · v${entry.installedVersion}` : ''}`}
+      actions={actions}
     >
-      <div className="flex flex-col gap-5 p-4" data-testid="detail-drawer-body">
-        <p className="text-sm text-foreground/90">{entry.description}</p>
+      <div className="flex min-w-0 flex-col gap-bakin-6 pb-bakin-6" data-testid="detail-drawer-body">
+        <BakinDrawerSection title="Overview">
+          <p className="m-0 leading-relaxed text-bakin-text-primary">{entry.description}</p>
+        </BakinDrawerSection>
 
         {/* Gallery — real screenshots once the bits-repo catalog ships them;
             placeholder frames until then so the layout is ready. */}
-        <div data-testid="drawer-gallery" className="grid grid-cols-3 gap-2">
-          {entry.screenshots.length > 0
-            ? entry.screenshots.slice(0, 6).map((src) => (
-                <img
-                  key={src}
-                  src={src}
-                  alt={`${entry.name} screenshot`}
-                  loading="lazy"
-                  className="aspect-video w-full rounded-lg border border-border object-cover"
-                />
-              ))
-            : Array.from({ length: 3 }).map((_, i) => (
-                <div
-                  key={i}
-                  data-testid="gallery-placeholder"
-                  className="flex aspect-video w-full items-center justify-center rounded-lg border border-dashed border-border bg-[rgba(255,255,255,0.03)]"
-                >
-                  <ImageIcon className="size-5 text-muted-foreground/40" />
-                </div>
-              ))}
-        </div>
-        {entry.screenshots.length === 0 && (
-          <p className="-mt-3 text-[11px] text-muted-foreground/50">Screenshots coming soon</p>
-        )}
+        <BakinDrawerSection title="Preview">
+          <div data-testid="drawer-gallery" className="grid grid-cols-1 gap-bakin-2 sm:grid-cols-2">
+            {entry.screenshots.length > 0
+              ? entry.screenshots.slice(0, 6).map((src) => (
+                  <img
+                    key={src}
+                    src={src}
+                    alt={`${entry.name} screenshot`}
+                    loading="lazy"
+                    className="aspect-video w-full rounded-bakin-surface border border-bakin-border-subtle object-cover"
+                  />
+                ))
+              : Array.from({ length: 2 }).map((_, index) => (
+                  <div
+                    key={index}
+                    data-testid="gallery-placeholder"
+                    className="flex aspect-video w-full items-center justify-center rounded-bakin-surface border border-dashed border-bakin-border-subtle bg-bakin-canvas-default"
+                  >
+                    <ImageIcon className="size-bakin-5 text-bakin-text-muted opacity-50" />
+                  </div>
+                ))}
+          </div>
+          {entry.screenshots.length === 0 ? (
+            <p className="mb-0 mt-bakin-2 text-bakin-typography-size-meta text-bakin-text-muted">
+              Screenshots coming soon
+            </p>
+          ) : null}
+        </BakinDrawerSection>
 
-        {entry.useCases.length > 0 && (
-          <div>
-            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Use cases</h3>
-            <ul className="flex flex-col gap-1.5">
+        {entry.useCases.length > 0 ? (
+          <BakinDrawerSection title="Use cases">
+            <ul className="m-0 grid list-none gap-bakin-2 p-0">
               {entry.useCases.map((useCase) => (
-                <li key={useCase} className="flex items-start gap-2 text-sm text-muted-foreground">
-                  <span className="mt-1 size-1 shrink-0 rounded-full bg-foreground/40" />
-                  {useCase}
+                <li key={useCase} className="flex items-start gap-bakin-2 leading-relaxed text-bakin-text-muted">
+                  <span aria-hidden="true" className="mt-bakin-2 size-bakin-1 shrink-0 rounded-bakin-pill bg-bakin-text-muted" />
+                  <span>{useCase}</span>
                 </li>
               ))}
             </ul>
-          </div>
-        )}
+          </BakinDrawerSection>
+        ) : null}
 
-        {entry.dependencies.length > 0 && (
-          <div>
-            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Requires</h3>
-            <div className="flex flex-wrap gap-2">
+        {entry.dependencies.length > 0 ? (
+          <BakinDrawerSection title="Requires">
+            <div className="flex flex-wrap gap-bakin-2">
               {entry.dependencies.map((dep) => (
-                <span key={dep} className="flex items-center gap-1 rounded-md border border-border px-2 py-0.5 text-xs text-muted-foreground">
+                <StatusBadge
+                  key={dep}
+                  tone={installedPluginIds.has(dep) ? 'success' : 'neutral'}
+                  variant={installedPluginIds.has(dep) ? 'solid' : 'soft'}
+                  size="sm"
+                >
                   {dep}
-                  {installedPluginIds.has(dep) && <Check className="size-3 text-emerald-400" />}
-                </span>
+                  {installedPluginIds.has(dep) ? <Check aria-hidden="true" /> : null}
+                </StatusBadge>
               ))}
             </div>
-          </div>
-        )}
+          </BakinDrawerSection>
+        ) : null}
 
-        {entry.source && (
-          <div>
-            <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Source</h3>
-            <code className="break-all text-xs text-muted-foreground">{entry.source}</code>
-          </div>
-        )}
+        {entry.source ? (
+          <BakinDrawerSection title="Source">
+            <code className="block break-all rounded-bakin-control border border-bakin-border-subtle bg-bakin-canvas-default px-bakin-3 py-bakin-2 font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
+              {entry.source}
+            </code>
+          </BakinDrawerSection>
+        ) : null}
 
         {entry.updateAvailable === true && entry.kind === 'agent' && (
           <PluginLink
             to={`/team/${entry.id}`}
-            className="flex items-center gap-1 text-sm text-amber-400 hover:underline"
+            className="inline-flex items-center gap-bakin-1 text-bakin-action-primary-background hover:underline"
           >
-            Update available — manage in Team <ArrowUpRight className="size-3.5" />
+            Update available — manage in Team <ArrowUpRight aria-hidden="true" className="size-bakin-4" />
           </PluginLink>
         )}
-
-        {actions && <div className="mt-2 flex justify-end gap-2">{actions}</div>}
       </div>
     </BakinDrawer>
   )

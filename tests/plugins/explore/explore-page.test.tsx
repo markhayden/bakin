@@ -42,6 +42,7 @@ mock.module('@makinbakin/sdk/hooks', () => {
 mock.module('@makinbakin/sdk/navigation', () => {
   const { useState } = require('react') as typeof import('react')
   return {
+    PluginLink: ({ children }: { children: ReactNode }) => <a>{children}</a>,
     useQueryState: (_key: string, initial = '') => {
       const [value, setValue] = useState(initial)
       return [value, setValue, setValue]
@@ -59,7 +60,28 @@ mock.module('@makinbakin/sdk/layout', () => ({
 
 mock.module('@makinbakin/sdk/ui', () => ({
   Badge: ({ children }: { children: ReactNode }) => <span>{children}</span>,
-  Button: ({ children, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement>) => <button {...props}>{children}</button>,
+  BakinDrawer: ({
+    open,
+    children,
+    title,
+    actions,
+  }: {
+    open: boolean
+    children: ReactNode
+    title?: ReactNode
+    actions?: ReactNode
+  }) => open ? <aside data-testid="drawer">{title}{actions}{children}</aside> : null,
+  BakinDrawerSection: ({ children, title }: { children: ReactNode; title: ReactNode }) => (
+    <section><h3>{title}</h3>{children}</section>
+  ),
+  Button: ({
+    children,
+    size,
+    variant,
+    ...props
+  }: React.ButtonHTMLAttributes<HTMLButtonElement> & { size?: string; variant?: string }) => (
+    <button data-size={size} data-variant={variant} {...props}>{children}</button>
+  ),
   Banner: ({
     title,
     description,
@@ -104,8 +126,18 @@ mock.module('@makinbakin/sdk/patterns', () => ({
   StatusBadge: ({
     children,
     icon: _Icon,
+    size,
+    tone,
+    variant,
     ...props
-  }: React.HTMLAttributes<HTMLSpanElement> & { icon?: unknown }) => <span {...props}>{children}</span>,
+  }: React.HTMLAttributes<HTMLSpanElement> & {
+    icon?: unknown
+    size?: string
+    tone?: string
+    variant?: string
+  }) => (
+    <span data-size={size} data-tone={tone} data-variant={variant} {...props}>{children}</span>
+  ),
   PageHeader: ({
     title,
     description,
@@ -175,12 +207,6 @@ mock.module('@makinbakin/sdk/patterns', () => ({
       ))}
     </div>
   ),
-}))
-
-mock.module('@makinbakin/sdk/components', () => ({
-  BakinDrawer: ({ open, children, title }: { open: boolean; children: ReactNode; title?: ReactNode }) =>
-    open ? <aside data-testid="drawer">{title}{children}</aside> : null,
-  PluginLink: ({ children }: { children: ReactNode }) => <a>{children}</a>,
 }))
 
 import { ExplorePage } from '../../../plugins/explore/components/explore-page'
@@ -322,7 +348,12 @@ describe('ExplorePage', () => {
     render(<ExplorePage />)
     // Available agent → Install present
     fireEvent.click(screen.getByTestId('catalog-card-agent-pixel'))
-    expect(screen.getByTestId('drawer-install')).toBeTruthy()
+    const install = screen.getByTestId('drawer-install')
+    const official = screen.getByText('Official')
+    expect(install.getAttribute('data-size')).toBe('xs')
+    expect(install.getAttribute('data-variant')).toBe('primary')
+    expect(official.getAttribute('data-tone')).toBe('accent')
+    expect(official.getAttribute('data-variant')).toBe('solid')
   })
 
   it('never shows Install for builtin entries', () => {
@@ -334,12 +365,16 @@ describe('ExplorePage', () => {
     expect(screen.queryByTestId('drawer-install')).toBeNull()
   })
 
-  it('never shows Install for already-installed entries', () => {
+  it('shows a compact disabled Installed action for already-installed entries', () => {
     fixtureEntries = [{ ...AGENTS[0], installed: true, installedVersion: '1.0.0' }]
     render(<ExplorePage />)
     fireEvent.click(screen.getByTestId('catalog-card-agent-pixel'))
     expect(screen.getByTestId('drawer')).toBeTruthy()
     expect(screen.queryByTestId('drawer-install')).toBeNull()
+    const installed = screen.getByTestId('drawer-installed') as HTMLButtonElement
+    expect(installed.disabled).toBe(true)
+    expect(installed.getAttribute('data-size')).toBe('xs')
+    expect(installed.getAttribute('data-variant')).toBe('primary')
   })
 })
 

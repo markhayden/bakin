@@ -1,5 +1,8 @@
 import { Loader2, ShieldAlert } from 'lucide-react'
 import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
   Button,
   Dialog,
   DialogContent,
@@ -57,7 +60,7 @@ export function ConsentDialog({
 }) {
   if (!consent) return null
   return (
-    <Dialog open={consent !== null} onOpenChange={(open) => { if (!open) onDecline() }}>
+    <Dialog busy={busy} open={consent !== null} onOpenChange={(open) => { if (!open) onDecline() }}>
       <DialogContent className="sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>
@@ -68,22 +71,26 @@ export function ConsentDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {consent.manifestChanged && (
-          <div
-            data-testid="manifest-changed-notice"
-            className="flex items-start gap-2 rounded border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-400"
-          >
-            <ShieldAlert className="mt-0.5 size-4 shrink-0" />
-            The plugin's permissions changed since the preview. Review the updated list before accepting.
-          </div>
-        )}
+        {consent.manifestChanged ? (
+          <Alert tone="attention" data-testid="manifest-changed-notice">
+            <ShieldAlert aria-hidden="true" />
+            <AlertTitle>Permissions changed</AlertTitle>
+            <AlertDescription>
+              The plugin changed its permission request since the preview. Review the updated list before accepting.
+            </AlertDescription>
+          </Alert>
+        ) : null}
 
-        <ul className="flex flex-col gap-2" data-testid="consent-permission-list">
+        <ul className="m-0 divide-y divide-bakin-border-subtle p-0" data-testid="consent-permission-list">
           {consent.permissions.map((permission) => (
-            <li key={permission} className="flex flex-col rounded-md border border-border px-3 py-2">
-              <code className="text-sm text-foreground">{permission}</code>
+            <li key={permission} className="flex list-none flex-col gap-bakin-1 px-bakin-2 py-bakin-3 first:pt-0 last:pb-0">
+              <code className="font-bakin-typography-family-mono text-bakin-typography-size-body text-bakin-text-primary">
+                {permission}
+              </code>
               {PERMISSION_HINTS[permission] && (
-                <span className="text-xs text-muted-foreground">{PERMISSION_HINTS[permission]}</span>
+                <span className="text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted">
+                  {PERMISSION_HINTS[permission]}
+                </span>
               )}
             </li>
           ))}
@@ -94,8 +101,8 @@ export function ConsentDialog({
             Decline
           </Button>
           <Button type="button" onClick={() => onAccept(consent)} disabled={busy} data-testid="consent-accept">
-            {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Accept
+            {busy ? <Loader2 aria-hidden="true" className="size-bakin-4 animate-spin" /> : null}
+            {busy ? 'Installing…' : 'Accept and install'}
           </Button>
         </DialogFooter>
       </DialogContent>

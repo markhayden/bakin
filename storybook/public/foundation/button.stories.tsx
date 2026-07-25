@@ -43,7 +43,7 @@ const meta = {
     layout: 'fullscreen',
     docs: {
       description: {
-        component: 'Use Button for actions. Choose intent with `variant`, hierarchy with placement, and the smallest size that still preserves a 24px target. `default`, `destructive`, and `icon` remain migration aliases; new code should use `primary`, `danger`, and `icon-md`.',
+        component: 'Use Button for actions. Choose intent with `variant`, hierarchy with placement, and the smallest size that still preserves a 24px target. Primary green carries affirmative product actions such as Install; the same treatment may remain disabled and labelled Installed after completion. `default`, `destructive`, and `icon` remain migration aliases; new code should use `primary`, `danger`, and `icon-md`.',
       },
     },
   },
@@ -77,12 +77,12 @@ export const Variants = {
       <header className="bakin-primitive-story__intro">
         <p className="bakin-primitive-story__eyebrow">Intent</p>
         <h1>Action hierarchy</h1>
-        <p>Primary and danger are deliberate decisions. Secondary, outline, and ghost support the surrounding hierarchy.</p>
+        <p>Primary green carries affirmative actions such as installation. Secondary, outline, and ghost support the surrounding hierarchy.</p>
       </header>
       <section className="bakin-primitive-story__section">
         <header><h2>Canonical variants</h2><p>Labels carry meaning; color reinforces it and never stands alone.</p></header>
         <div className="bakin-primitive-story__cluster">
-          <Button variant="primary">Create task</Button>
+          <Button variant="primary">Install plugin</Button>
           <Button variant="secondary">Export</Button>
           <Button variant="outline">Cancel</Button>
           <Button variant="ghost">View details</Button>
@@ -137,8 +137,8 @@ export const States = {
       </header>
       <section className="bakin-primitive-story__section">
         <div className="bakin-primitive-story__cluster">
-          <Button>Enabled</Button>
-          <Button disabled>Disabled</Button>
+          <Button size="xs" variant="primary">Install</Button>
+          <Button size="xs" variant="primary" disabled>Installed</Button>
           <Button aria-invalid="true" variant="outline">Invalid action</Button>
           <Button aria-expanded="true" variant="secondary">Expanded</Button>
           <a href="#button-helper" className={buttonVariants({ variant: 'outline', size: 'md' })}>Styled link</a>
@@ -146,6 +146,12 @@ export const States = {
       </section>
     </main>
   ),
+  play: async ({ canvas }) => {
+    await expect(canvas.getByRole('button', { name: 'Install' })).toHaveAttribute('data-variant', 'primary')
+    await expect(canvas.getByRole('button', { name: 'Install' })).toHaveAttribute('data-size', 'xs')
+    await expect(canvas.getByRole('button', { name: 'Installed' })).toBeDisabled()
+    await expect(canvas.getByRole('button', { name: 'Installed' })).toHaveAttribute('data-variant', 'primary')
+  },
 } satisfies Story
 
 export const BehaviorFixture = {

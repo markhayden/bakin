@@ -14,7 +14,7 @@ const meta = {
     layout: 'fullscreen',
     docs: {
       description: {
-        component: 'StatusBadge and StatTile provide one non-color status vocabulary and a compact technical metric treatment. Public patterns use canonical attention/danger tones; compatibility adapters retain legacy names until official surface migration.',
+        component: 'StatusBadge and StatTile provide one non-color status vocabulary and a compact technical metric treatment. Accent identifies provenance or a product signal such as Official; success is reserved for confirmed outcomes such as Installed. Public patterns use canonical attention/danger tones; compatibility adapters retain legacy names until official surface migration.',
       },
     },
     bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'long-labels', 'non-color', 'progress', 'keyboard', 'dense-data'],
@@ -82,6 +82,10 @@ export const StatusLanguage = {
             <StatusBadge tone="attention" variant="outline">Coverage partial</StatusBadge>
             <StatusBadge tone="danger" variant="outline">Action required</StatusBadge>
           </div></div>
+          <div><span>Provenance and lifecycle</span><div>
+            <StatusBadge tone="accent" variant="solid" size="xs">Official</StatusBadge>
+            <StatusBadge tone="success" variant="solid" size="xs" icon={CheckIcon}>Installed</StatusBadge>
+          </div></div>
         </div>
       </section>
     </PatternStage>
@@ -91,6 +95,9 @@ export const StatusLanguage = {
     await expect(canvas.getByText('Needs review')).toBeVisible()
     await expect(canvas.getByText('Blocked')).toBeVisible()
     await expect(canvas.getByText('Working now').closest('[data-status-badge]')?.querySelector('[aria-hidden="true"]')).toBeTruthy()
+    await expect(canvas.getByText('Official').closest('[data-status-badge]')).toHaveAttribute('data-tone', 'accent')
+    await expect(canvas.getByText('Official').closest('[data-status-badge]')).toHaveAttribute('data-variant', 'solid')
+    await expect(canvas.getByText('Installed').closest('[data-status-badge]')).toHaveAttribute('data-tone', 'success')
   },
 } satisfies Story
 

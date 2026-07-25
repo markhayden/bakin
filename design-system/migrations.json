@@ -19,15 +19,15 @@
     "private-import"
   ],
   "summary": {
-    "paths": 178,
+    "paths": 174,
     "totals": {
-      "raw-palette": 1154,
-      "arbitrary-size": 423,
-      "raw-control": 167,
+      "raw-palette": 1148,
+      "arbitrary-size": 419,
+      "raw-control": 164,
       "inline-style": 53,
-      "generic-token": 2083,
+      "generic-token": 2049,
       "unscoped-css": 0,
-      "private-import": 8
+      "private-import": 7
     }
   },
   "entries": [
@@ -1032,75 +1032,6 @@
       "allowances": {
         "raw-control": 2,
         "generic-token": 10
-      }
-    },
-    {
-      "path": "plugins/explore/components/catalog-card.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "plugin",
-        "pluginId": "explore"
-      },
-      "censusEntryId": "plugin-slot:explore:page:/explore",
-      "migrationTask": "T54",
-      "archetype": "list-index",
-      "target": "catalog archetype and supported SDK UI",
-      "status": "legacy-allowed",
-      "allowances": {
-        "arbitrary-size": 2
-      }
-    },
-    {
-      "path": "plugins/explore/components/consent-dialog.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "plugin",
-        "pluginId": "explore"
-      },
-      "censusEntryId": "plugin-slot:explore:page:/explore",
-      "migrationTask": "T54",
-      "archetype": "list-index",
-      "target": "catalog archetype and supported SDK UI",
-      "status": "legacy-allowed",
-      "allowances": {
-        "raw-palette": 3,
-        "generic-token": 3
-      }
-    },
-    {
-      "path": "plugins/explore/components/detail-drawer.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "plugin",
-        "pluginId": "explore"
-      },
-      "censusEntryId": "plugin-slot:explore:page:/explore",
-      "migrationTask": "T54",
-      "archetype": "list-index",
-      "target": "catalog archetype and supported SDK UI",
-      "status": "legacy-allowed",
-      "allowances": {
-        "raw-palette": 3,
-        "arbitrary-size": 2,
-        "generic-token": 14
-      }
-    },
-    {
-      "path": "plugins/explore/components/install-dialog.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "plugin",
-        "pluginId": "explore"
-      },
-      "censusEntryId": "plugin-slot:explore:page:/explore",
-      "migrationTask": "T54",
-      "archetype": "list-index",
-      "target": "catalog archetype and supported SDK UI",
-      "status": "legacy-allowed",
-      "allowances": {
-        "raw-control": 3,
-        "generic-token": 17,
-        "private-import": 1
       }
     },
     {

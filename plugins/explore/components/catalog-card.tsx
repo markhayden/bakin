@@ -99,15 +99,17 @@ export function CatalogCard({
         onSelect(entry)
       }}
     >
-      <CardHeader className="grid-cols-[auto_minmax(0,1fr)] items-center gap-x-bakin-3">
-        <EntryVisual entry={entry} />
-        <div className="flex min-w-0 items-center gap-bakin-2">
-          <CardTitle className="min-w-0 flex-1 group-data-[size=sm]/card:text-bakin-typography-size-section-title">
-            {entry.name}
-          </CardTitle>
-          <span className="shrink-0 text-bakin-typography-size-meta font-bakin-typography-weight-semibold uppercase tracking-wide text-bakin-text-muted">
-            {entry.category}
-          </span>
+      <CardHeader>
+        <div className="flex min-w-0 items-center gap-bakin-3">
+          <EntryVisual entry={entry} />
+          <div className="flex min-w-0 flex-1 items-center gap-bakin-2">
+            <CardTitle className="min-w-0 flex-1 group-data-[size=sm]/card:text-bakin-typography-size-section-title">
+              {entry.name}
+            </CardTitle>
+            <span className="shrink-0 text-bakin-typography-size-meta font-bakin-typography-weight-semibold uppercase tracking-wide text-bakin-text-muted">
+              {entry.category}
+            </span>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="flex-1">
@@ -131,7 +133,7 @@ export function CatalogCard({
             </StatusBadge>
           )}
           {entry.installedVersion ? (
-            <span className="text-[length:var(--bakin-typography-size-meta)] text-bakin-text-muted" data-testid="card-version">
+            <span className="text-bakin-typography-size-meta text-bakin-text-muted" data-testid="card-version">
               v{entry.installedVersion}
             </span>
           ) : null}
