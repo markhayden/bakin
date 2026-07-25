@@ -92,6 +92,18 @@ describe('AgentTurn usage footer (#733)', () => {
     cleanup()
   })
 
+  it('a streaming turn never shows a usage footer — usage exists only at settle', () => {
+    const { container } = render(
+      <AgentTurn
+        agentId="main"
+        turn={agentTurn({ status: 'streaming', items: [{ type: 'text', format: 'markdown', content: 'typing…' }] })}
+        usage={{ inputTokens: 1_000, outputTokens: 50, costUsd: 0.01, lane: 'metered' }}
+      />,
+    )
+    expect(container.querySelector('[data-conv-usage]')).toBeNull()
+    cleanup()
+  })
+
   it('Conversation plumbs turnUsage to agent turns by turnId', () => {
     const { container } = render(
       <Conversation
