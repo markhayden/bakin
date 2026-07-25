@@ -23,6 +23,7 @@ import {
   setPinned,
   setTitle,
 } from './store'
+import { chatTurnUsage } from './usage'
 import {
   abortChatTurn,
   clearChatQueue,
@@ -109,9 +110,15 @@ export const chatRoutes = [
       // streaming:false with no text (honest), never text without the flag.
       const streaming = isTurnInFlight(params.chatId)
       const preview = streaming ? inflightTurnPreview(params.chatId) : null
+      // Per-turn usage (#733): a read-time join over run_costs — ledger
+      // failure serves the transcript WITHOUT usage, never a 500.
+      const usageDecoration = chatTurnUsage(params.chatId)
       return Response.json({
         chat: { ...chat, streaming },
         messages: readTranscript(params.chatId),
+        ...(usageDecoration
+          ? { usage: usageDecoration.usage, ...(usageDecoration.totals ? { usageTotals: usageDecoration.totals } : {}) }
+          : {}),
         // Pending follow-ups (#729) — clients hydrate their queue strip.
         queued: listQueuedMessages(params.chatId).map(({ id, ts, content, attachments }) => ({
           id, ts, content, ...(attachments?.length ? { attachments } : {}),
