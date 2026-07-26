@@ -194,7 +194,11 @@ function ViewHeader({
   if (usageTotals?.costUsd !== undefined) totalParts.push(formatUsageCost(usageTotals.costUsd))
   return (
     <div className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-2.5">
-      <AgentAvatar agentId={agentId} size="sm" />
+      {/* The avatar carries the agent identity (name in its tooltip) —
+          same convention as agent turns; no redundant name text. */}
+      <span title={agent?.name ?? agentId}>
+        <AgentAvatar agentId={agentId} size="sm" />
+      </span>
       <div className="min-w-0 flex-1">
         {chat ? (
           <InlineTitle chat={chat} onChanged={onChanged} />
@@ -202,7 +206,6 @@ function ViewHeader({
           <span className="text-sm font-medium">New chat</span>
         )}
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <span>{agent?.name ?? agentId}</span>
           {/* The compaction bar (#737) leads — runtime truth only; renders
               nothing when there's nothing honest to show. */}
           <ContextMeter stats={contextStats} />
@@ -212,12 +215,12 @@ function ViewHeader({
               title="Total recorded usage for this chat"
               className="text-muted-foreground/80"
             >
-              · {totalParts.join(' · ')}
+              {contextStats ? '· ' : ''}{totalParts.join(' · ')}
             </span>
           ) : null}
           {streaming ? (
             <span className="flex items-center gap-1" data-chat-header-working>
-              · <Loader2 className="size-3 animate-spin" /> working…
+              <Loader2 className="size-3 animate-spin" /> working…
             </span>
           ) : null}
         </div>
