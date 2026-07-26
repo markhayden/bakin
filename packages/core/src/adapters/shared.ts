@@ -1,4 +1,5 @@
 import type { ActivityClass } from '@makinbakin/sdk/types'
+import type { ChannelBridge } from '../delivery/bridge'
 
 export type Unsubscribe = () => void
 
@@ -124,6 +125,14 @@ export interface RuntimeExecToolProvider {
 
 export interface AdapterInitOpts {
   contentDir: string
+  /**
+   * Optional runtime-neutral channel bridge (issue #669). Runtimes without a
+   * native delivery layer (Pi) expose `runtime.channels` by delegating to
+   * this handle when `isConfigured()`; natively-delivering runtimes ignore
+   * it. This is a HANDLE only — the server owns `boot()`/`shutdown()`;
+   * adapters never connect transports.
+   */
+  channelBridge?: ChannelBridge
   settings?: Record<string, unknown>
   /**
    * LIVE view of the adapter-private settings bag. `settings` is a boot-time
