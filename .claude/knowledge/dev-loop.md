@@ -134,6 +134,10 @@ Runtime knobs:
   home, never sends a final frame — exercises fail-fast forensics + the
   recovery ladder end to end; see `.claude/knowledge/session-forensics.md`).
 - `OPENCLAW_MOCK_TOOL_MODE` — `ok` or `error`.
+- The mock's sessions.json entries carry the real gateway's context fields
+  (#737): `contextTokens: 272000`, `totalTokens` growing 500/turn,
+  `totalTokensFresh: true` — so `sessions.contextStats` (and chat's
+  compaction bar) work against dev:mock; the bar visibly fills across turns.
 - Per-message markers (stripped from the reply): `[[tool]]` (scripted tool-call
   frame sequence), `[[dropped-delta]]` (self-heal path), `[[slow]]` — a long
   reply streamed word-by-word for ~15s. `[[slow]]` is the chat-QUEUE showcase

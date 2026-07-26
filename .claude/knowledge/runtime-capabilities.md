@@ -227,6 +227,28 @@ unconditionally implemented** — declaring `sessions: 'native'` over a stub
 was the audit's M1 dishonesty; T28 restored the standard by implementing
 real `sessions.list/get` on OpenClaw (store-mapped, mtime-cached).
 
+**`sessions.contextStats?` (#737)** — optional member (the cron/storeStats
+presence-is-the-contract pattern): `contextStats({agentId, threadId})` →
+`RuntimeSessionContextStats | null` — a session's context reading, runtime
+truth only, read AT REST (no gateway calls, no session mutation, no thread
+locks; keyed on threadId because the thread→session map is adapter-private).
+Null-honesty IS the contract: `tokens: null` = honestly unknown (post-
+compaction gap, stale store), `compactionThreshold: null` when the runtime
+owns compaction opaquely (codex-native), null result for unmapped threads.
+**Billing aggregates are a BANNED source** — run_costs usage sums across a
+turn's internal tool-loop requests (the 109% incident; post-mortem in
+`.claude/specs/chat-turn-usage.md` D1). Pi: file-only SDK-parity read
+(`packages/adapter-pi/src/context-stats.ts` — last valid assistant
+usage.totalTokens + chars÷4 tail, compaction guard, threshold = window −
+reserveTokens). OpenClaw: pure sessions.json read
+(`packages/adapter-openclaw/src/context-stats.ts` — totalTokens gated on
+totalTokensFresh, window from contextTokens, threshold ONLY from a
+runtime-written contextBudgetStatus; the trajectory is never read).
+Conformance pins declaration honesty + sane values (tokens ≤ window; a
+lying adapter fails the teeth); mock declares 'absent', Imitation Crab
+writes the store fields so the OpenClaw runner exercises it end-to-end.
+Consumer: chat's compaction bar (kit `ContextMeter`).
+
 **Specified contract semantics (T29/T30):** `ping()` = "can serve a turn,
 cheaply probed" (Pi checks initialized + ≥1 LLM credential — never an LLM
 call); `restart()` = "re-read all durable config"; `MessageArgs.toolsAllow`
