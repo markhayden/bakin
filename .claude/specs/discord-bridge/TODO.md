@@ -26,7 +26,7 @@ Plan: `.claude/specs/discord-bridge/PLAN.md`
 - [x] B1 subscribeInboundMessages contract + bridge inbound gating + attachments
 - [x] B2 Chat plugin wiring: channel↔chat map, turn engine, typing, reply
 - [x] B3 Docs + #669 close-out comment
-- [ ] CHECKPOINT 2: live validation + owner sign-off + PR 2 merged
+- [~] CHECKPOINT 2: owner live-validated inbound 2026-07-26 ("works so good") — review pass running, PR 2 next
 
 ## Deferred (review suggestions, non-blocking)
 - [ ] Channel cache on-demand refresh (new channels invisible until restart)
