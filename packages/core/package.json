@@ -36,6 +36,7 @@
     "./logger": "./src/logger.ts",
     "./settings": "./src/settings.ts",
     "./content-dir": "./src/content-dir.ts",
+    "./delivery": "./src/delivery/index.ts",
     "./plugin-types": "./src/plugin-types.ts",
     "./routing": "./src/routing/index.ts",
     "./openapi": "./src/openapi/index.ts",

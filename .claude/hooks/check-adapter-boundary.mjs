@@ -24,6 +24,10 @@ const ALLOWED_FILES = new Set([
   'packages/core/src/storage/db.ts',
 ])
 
+// The delivery bridge (#669) is the ONE sanctioned Discord client upstream
+// of the runtime adapters (per-rule allow in the CI arch test).
+const ALLOWED_PREFIXES = ['src/core/delivery/']
+
 const DENYLIST = [
   {
     label: 'concrete adapter import outside adapter factories',
@@ -102,6 +106,7 @@ function shouldScanProviderBoundary(rel) {
   if (!EXT_RE.test(rel)) return false
   if (rel.startsWith('packages/adapter-openclaw/') || rel.startsWith('packages/adapter-antfly/')) return false
   if (ALLOWED_FILES.has(rel)) return false
+  if (ALLOWED_PREFIXES.some(prefix => rel.startsWith(prefix))) return false
   // The OpenClaw Docker dev rig is inherently OpenClaw-specific dev tooling at
   // the adapter layer (see tests/architecture/adapter-boundary.test.ts). The CI
   // test exempts it per-rule; the edit-time hook exempts it wholesale.

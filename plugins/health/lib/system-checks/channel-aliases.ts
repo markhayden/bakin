@@ -22,7 +22,14 @@ export async function checkChannelAliases(runtime: Pick<AgentRuntimeAdapter, 'ch
   }
   let knownChannelIds: string[]
   try {
-    knownChannelIds = (await runtime.channels.list()).map((channel) => channel.id)
+    // Runtimes list channels in two id shapes: provider-level ids
+    // (OpenClaw: "discord") and fully-qualified per-channel refs (the
+    // delivery bridge, #669: "discord:channel:<id>"). A target resolves when
+    // either the exact ref or its provider prefix is known, so expand the
+    // known set with each id's driver prefix.
+    knownChannelIds = Array.from(new Set(
+      (await runtime.channels.list()).flatMap((channel) => [channel.id, targetDriver(channel.id)]),
+    ))
   } catch (err) {
     return healthObserved([healthUnknown({
       key: 'validation',

@@ -29,6 +29,7 @@ import { getContentDir, getBakinPaths } from './src/core/content-dir'
 import { broadcast } from './src/core/sse'
 import { appendAudit } from './src/core/audit'
 import { createAppServices } from './src/core/app-services'
+import { bootDeliveryBridge } from './src/core/delivery'
 import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 import * as watcher from './src/core/watcher'
 import { runStartupRecovery } from './src/core/server/startup-recovery'
@@ -119,6 +120,16 @@ const eventBus = new BakinEventBus(broadcast)
     await appServices.runtime.provisionToolAccess()
   } catch (err) {
     log.warn('Runtime tool-access provisioning failed at boot', err)
+  }
+
+  // Discord delivery bridge (#669): connects only when configured AND the
+  // active runtime lacks native delivery (D11). Server-boot only — never
+  // inside createAppServices. Never block boot on a transport failure; the
+  // delivery.discord doctor check surfaces a down bridge.
+  try {
+    await bootDeliveryBridge(appServices.runtime)
+  } catch (err) {
+    log.warn('Discord delivery bridge boot failed', err)
   }
   // The Bakin runtime skill previously only installed via the openclaw-gated
   // onboarding component, so fresh installs on other runtimes (Pi implements

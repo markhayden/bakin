@@ -60,6 +60,7 @@ import { checkRuntime } from './lib/system-checks/runtime'
 import { checkSessionStore } from './lib/system-checks/session-store'
 import { checkChannelApprovals } from './lib/system-checks/channel-approvals'
 import { checkChannelAliases } from './lib/system-checks/channel-aliases'
+import { checkDeliveryDiscord } from './lib/system-checks/delivery-discord'
 import { checkRestartRecovery } from './lib/system-checks/restart-recovery'
 import { checkExecutionSafety } from './lib/system-checks/execution-safety'
 import { checkRunDirs, runDirsSweepRepair } from './lib/system-checks/run-dirs'
@@ -972,6 +973,14 @@ const healthPlugin: BakinPlugin = definePlugin({
       group: runtimeGroup,
       maxAgeMs: 300_000,
       run: () => checkChannelAliases(ctx.runtime),
+    })
+    ctx.registerHealthCheck({
+      id: 'delivery-discord',
+      name: 'Discord delivery bridge',
+      description: 'Verifies the Discord bridge config (token, guilds, allowlists) and its gateway connection.',
+      group: runtimeGroup,
+      maxAgeMs: 300_000,
+      run: () => checkDeliveryDiscord(ctx.runtime),
     })
     ctx.registerHealthCheck({
       id: 'restart-recovery',

@@ -234,11 +234,18 @@ async function scenarioReject(workflowId: string, agent: string, rewindStepId: s
     'Validation run: write a short post about morning coffee. Keep it under 3 sentences.')
   const delivered = await verifyDelivery(taskId, 'US3')
 
-  await pause('Click **Reject** on the Discord message now (no reason — the button cannot collect one).')
+  await pause([
+    'Click **Reject** on the Discord message now.',
+    '  - Delivery bridge (Pi, #669): a modal opens — type the reason "modal validation reason" and submit.',
+    '  - OpenClaw native buttons: no modal exists; the reject records the provider-neutral default reason.',
+  ].join('\n'))
   const rejected = await waitForRecordStatus(delivered.approvalId, 'rejected')
-  const defaultReason = rejected.response?.comment ?? ''
-  record('US3', 'button reject recorded the default reason', defaultReason.includes('no reason provided'),
-    `reason: "${defaultReason}"`)
+  const buttonReason = rejected.response?.comment ?? ''
+  // Bridge era: the modal carries the TYPED reason. Native-button era: the
+  // canned default. Either way a reason must be recorded — never empty.
+  record('US3', 'channel reject recorded a reason (typed modal or provider default)',
+    buttonReason.length > 0,
+    `reason: "${buttonReason}"`)
 
   const rewound = await waitForInstanceState(taskId, `workflow to rewind to ${rewindStepId}`,
     i => i.currentStepId === rewindStepId && i.status !== 'pending_approval')

@@ -5,6 +5,7 @@ import { useAgent } from "@makinbakin/sdk/hooks"
 import { TEAM_VALUE_PREFIX, isTeamValue, teamIdFromValue } from '@makinbakin/sdk/components'
 import { useJsonFetch } from "@makinbakin/sdk/hooks"
 import { toast } from "@makinbakin/sdk/hooks"
+import { usePluginEvent, type PluginEventPayload } from "@makinbakin/sdk/hooks"
 import type { Task, ColumnId } from '../types'
 import type { WorkflowInstance as SdkWorkflowInstance, WorkflowDefinition as SdkWorkflowDefinition } from '@makinbakin/sdk/types'
 import { createShortClientId } from '../lib/client-id'
@@ -187,6 +188,22 @@ export function useTaskDetail({ task, columnId, open, editing, onClose }: UseTas
     const d = await fetch(`/api/plugins/workflows/instances/${taskId}`).then(r => r.ok ? r.json() : null).catch(() => null)
     if (d?.instance) setWfInstance(d.instance)
   }, [])
+
+  // Out-of-band gate decisions (Discord bridge buttons, the fallback page,
+  // another tab) change the instance with NO local action to piggyback on —
+  // without this the pending-approval callout lingers until something else
+  // happens to refetch (#669 live-validation finding). Refresh on every
+  // workflow lifecycle event for the open task.
+  const onWorkflowEvent = useCallback((payload: PluginEventPayload) => {
+    if (task?.id && payload.taskId === task.id) void refreshWfInstance(task.id)
+  }, [task?.id, refreshWfInstance])
+  usePluginEvent('workflow.gate_approved', onWorkflowEvent)
+  usePluginEvent('workflow.gate_rejected', onWorkflowEvent)
+  usePluginEvent('workflow.gate_reached', onWorkflowEvent)
+  usePluginEvent('workflow.step_dispatched', onWorkflowEvent)
+  usePluginEvent('workflow.step_complete', onWorkflowEvent)
+  usePluginEvent('workflow.complete', onWorkflowEvent)
+  usePluginEvent('workflow.reopened', onWorkflowEvent)
 
   useEffect(() => {
     if (!wfInstance || !mapStepId) { setMapChildren([]); return }

@@ -35,6 +35,8 @@ mock.module('@makinbakin/sdk/hooks', () => ({
   // useTaskDetail migrated the workflow-definitions load to useJsonFetch (WS3);
   // stub the standard lifecycle shape (no data — this test drives no workflow).
   useJsonFetch: () => ({ data: null, loading: false, error: null, refresh: () => {} }),
+  // Inert here — the gate-refresh behavior has its own focused test.
+  usePluginEvent: () => {},
 }))
 
 mock.module('@makinbakin/sdk/ui', () => ({
