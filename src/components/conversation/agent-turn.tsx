@@ -17,7 +17,7 @@ import { MarkdownContent } from '../markdown-content'
 import { ActivityGroup } from './activity-group'
 import type { ConversationToolCall, ConversationTurn, TurnItem } from './fold'
 import { formatAbsoluteTime, formatRelativeTime } from './relative-time'
-import { formatTokenCount, usageFooterParts, type ConversationTurnUsage } from './turn-usage'
+import { formatTokenCount, usageFooterLines, type ConversationTurnUsage } from './turn-usage'
 
 export function TurnTimestamp({ ts }: { ts?: string }) {
   if (!ts) return null
@@ -171,7 +171,13 @@ export function AgentTurn({ turn, agentId, onRetry, onOpenCall, transformText, u
   const name = agent?.name ?? author ?? 'Agent'
   const streaming = turn.status === 'streaming'
   const copyText = turnText(turn.items)
-  const usageParts = usage && !streaming ? usageFooterParts(usage) : []
+  // Request count for the cost explainer: the turn's own tool calls + 1
+  // (each tool round-trip is one more model request).
+  const toolCallCount = turn.items.reduce(
+    (n, item) => n + (item.type === 'activity' ? item.calls.length : 0),
+    0,
+  )
+  const usageLines = usage && !streaming ? usageFooterLines(usage, toolCallCount) : []
 
   return (
     <div className="group/turn relative flex items-start gap-3" data-conv-turn>
@@ -247,9 +253,11 @@ export function AgentTurn({ turn, agentId, onRetry, onOpenCall, transformText, u
           </button>
         ) : null}
 
-        {usageParts.length ? (
-          <div data-conv-usage className="pt-0.5 text-[11px] text-muted-foreground/70">
-            {usageParts.join(' · ')}
+        {usageLines.length ? (
+          <div data-conv-usage className="pt-0.5 text-[11px] leading-4 text-muted-foreground/70">
+            {usageLines.map((line, i) => (
+              <div key={i}>{line}</div>
+            ))}
           </div>
         ) : null}
       </div>

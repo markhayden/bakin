@@ -46,8 +46,87 @@ const userTurn = (over: Partial<Extract<ConversationTurn, { kind: 'user' }>> = {
   ...over,
 })
 
-describe('AgentTurn usage footer (#733)', () => {
-  it('metered lane shows tokens + $ + model tail; sub-cent costs floor at <$0.01', () => {
+describe('AgentTurn billed-first cost explainer (#737)', () => {
+  it('a tool turn shows the two-line bill story: billed · cached% · ~requests · $ · model, then in/out', () => {
+    const { container } = render(
+      <AgentTurn
+        agentId="main"
+        turn={agentTurn({
+          items: [
+            {
+              type: 'activity',
+              calls: [
+                { key: 'c1', callId: 'c1', toolName: 'exec', status: 'completed' },
+                { key: 'c2', callId: 'c2', toolName: 'exec', status: 'completed' },
+              ],
+            },
+            { type: 'text', format: 'markdown', content: 'done' },
+          ],
+        })}
+        usage={{
+          totalTokens: 133_839,
+          cacheReadTokens: 103_936,
+          inputTokens: 29_187,
+          outputTokens: 716,
+          costUsd: 0.04,
+          model: 'openai-codex/gpt-5.5',
+          lane: 'metered',
+        }}
+      />,
+    )
+    const footer = container.querySelector('[data-conv-usage]')!
+    expect(footer.textContent).toContain('133.8k billed')
+    expect(footer.textContent).toContain('78% cached')
+    expect(footer.textContent).toContain('~3 requests') // 2 tool calls + 1
+    expect(footer.textContent).toContain('$0.04')
+    expect(footer.textContent).toContain('gpt-5.5')
+    expect(footer.textContent).toContain('29.2k in / 716 out')
+    cleanup()
+  })
+
+  it('a no-tool turn collapses to ONE billed line (no ~requests, no in/out line)', () => {
+    const { container } = render(
+      <AgentTurn
+        agentId="main"
+        turn={agentTurn({ items: [{ type: 'text', format: 'markdown', content: 'simple reply' }] })}
+        usage={{ totalTokens: 45_476, cacheReadTokens: 43_520, inputTokens: 1_778, outputTokens: 178, costUsd: 0.004, model: 'openai-codex/gpt-5.5', lane: 'metered' }}
+      />,
+    )
+    const footer = container.querySelector('[data-conv-usage]')!
+    expect(footer.textContent).toContain('45.5k billed')
+    expect(footer.textContent).toContain('96% cached')
+    expect(footer.textContent).toContain('<$0.01')
+    expect(footer.textContent).not.toContain('requests')
+    expect(footer.textContent).not.toContain(' in')
+    cleanup()
+  })
+
+  it('in+out fallback bills without a fabricated cached share; a lone-out legacy row keeps the old line', () => {
+    const fallback = render(
+      <AgentTurn
+        agentId="main"
+        turn={agentTurn()}
+        usage={{ inputTokens: 14_200, outputTokens: 890, costUsd: 0.03, model: 'sonnet-5', lane: 'metered' }}
+      />,
+    )
+    const footer = fallback.container.querySelector('[data-conv-usage]')!
+    expect(footer.textContent).toContain('15.1k billed')
+    expect(footer.textContent).not.toContain('cached')
+    cleanup()
+
+    // No billed total computable (output only) → the legacy parts line.
+    const legacy = render(
+      <AgentTurn agentId="main" turn={agentTurn()} usage={{ outputTokens: 890, model: 'sonnet-5' }} />,
+    )
+    const legacyFooter = legacy.container.querySelector('[data-conv-usage]')!
+    expect(legacyFooter.textContent).toContain('890 out')
+    expect(legacyFooter.textContent).not.toContain('billed')
+    cleanup()
+  })
+})
+
+describe('AgentTurn usage footer (#733, billed-first since #737)', () => {
+  it('metered lane shows billed total + $ + model tail; sub-cent costs floor at <$0.01', () => {
     const { container } = render(
       <AgentTurn
         agentId="main"
@@ -57,8 +136,7 @@ describe('AgentTurn usage footer (#733)', () => {
     )
     const footer = container.querySelector('[data-conv-usage]')
     expect(footer).not.toBeNull()
-    expect(footer!.textContent).toContain('14.2k in')
-    expect(footer!.textContent).toContain('890 out')
+    expect(footer!.textContent).toContain('15.1k billed') // in+out fallback
     expect(footer!.textContent).toContain('$0.03')
     expect(footer!.textContent).toContain('claude-sonnet-5')
     cleanup()
@@ -79,7 +157,7 @@ describe('AgentTurn usage footer (#733)', () => {
       />,
     )
     const footer = container.querySelector('[data-conv-usage]')!
-    expect(footer.textContent).toContain('22.1k in')
+    expect(footer.textContent).toContain('23.3k billed')
     expect(footer.textContent).not.toContain('$')
     cleanup()
 
@@ -152,7 +230,7 @@ describe('AgentTurn usage footer (#733)', () => {
         turnUsage={{ 'turn-a': { inputTokens: 5_000, outputTokens: 300, costUsd: 0.02, lane: 'metered' } }}
       />,
     )
-    expect(container.querySelector('[data-conv-usage]')!.textContent).toContain('5k in')
+    expect(container.querySelector('[data-conv-usage]')!.textContent).toContain('5.3k billed')
   })
 })
 

@@ -1,0 +1,105 @@
+// @vitest-environment jsdom
+/**
+ * ContextMeter (#737) — the compaction bar. Renders ONLY runtime truth:
+ * fill + reading when tokens+window are known, tokens-only when the
+ * window is unknown, an honest "—" during a post-compaction gap, and
+ * NOTHING when there's nothing honest to show. Amber ≥70%, red ≥90%,
+ * tick at the runtime-reported threshold.
+ */
+import { describe, expect, it, mock } from 'bun:test'
+import { join } from 'path'
+import { tmpdir } from 'os'
+
+const testDir = join(tmpdir(), `bakin-test-context-meter-${Date.now()}`)
+const contentDirMock = () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({ root: testDir, db: join(testDir, 'bakin.db') }),
+})
+mock.module('@/core/content-dir', contentDirMock)
+mock.module('../../packages/core/src/content-dir', contentDirMock)
+
+import { cleanup, render } from '@testing-library/react'
+import '../rtl-settle'
+
+import { ContextMeter } from '@makinbakin/sdk/components'
+
+describe('ContextMeter', () => {
+  it('renders fill + reading + threshold tick when everything is known', () => {
+    const { container } = render(
+      <ContextMeter stats={{ tokens: 45_300, contextWindow: 272_000, compactionThreshold: 255_616 }} />,
+    )
+    const meter = container.querySelector('[data-context-meter]')
+    expect(meter).not.toBeNull()
+    expect(meter!.textContent).toContain('45.3k / 272k (17%)')
+    const fill = container.querySelector('[data-context-fill]') as HTMLElement
+    expect(fill.style.width).toBe('17%')
+    expect(container.querySelector('[data-context-tick]')).not.toBeNull()
+    cleanup()
+  })
+
+  it('no tick when the threshold is unknown (codex-native)', () => {
+    const { container } = render(
+      <ContextMeter stats={{ tokens: 45_300, contextWindow: 272_000, compactionThreshold: null }} />,
+    )
+    expect(container.querySelector('[data-context-tick]')).toBeNull()
+    cleanup()
+  })
+
+  it('amber at ≥70%, red at ≥90%', () => {
+    const amber = render(
+      <ContextMeter stats={{ tokens: 200_000, contextWindow: 272_000, compactionThreshold: null }} />,
+    )
+    expect((amber.container.querySelector('[data-context-fill]') as HTMLElement).className).toContain('amber')
+    cleanup()
+
+    const red = render(
+      <ContextMeter stats={{ tokens: 250_000, contextWindow: 272_000, compactionThreshold: null }} />,
+    )
+    expect((red.container.querySelector('[data-context-fill]') as HTMLElement).className).toContain('red')
+    cleanup()
+  })
+
+  it('window unknown → number only, no bar, no percent', () => {
+    const { container } = render(
+      <ContextMeter stats={{ tokens: 45_300, contextWindow: null, compactionThreshold: null }} />,
+    )
+    expect(container.textContent).toContain('context 45.3k')
+    expect(container.textContent).not.toContain('%')
+    expect(container.querySelector('[data-context-fill]')).toBeNull()
+    cleanup()
+  })
+
+  it('post-compaction gap → honest unknown with the compaction note', () => {
+    const { container } = render(
+      <ContextMeter
+        stats={{
+          tokens: null,
+          contextWindow: 272_000,
+          compactionThreshold: null,
+          lastCompaction: { at: new Date(Date.now() - 120_000).toISOString(), tokensBefore: 253_000 },
+        }}
+      />,
+    )
+    expect(container.textContent).toContain('context —')
+    expect(container.textContent?.toLowerCase()).toContain('compacted')
+    expect(container.querySelector('[data-context-fill]')).toBeNull()
+    cleanup()
+  })
+
+  it('nothing honest to show → renders nothing', () => {
+    const none = render(<ContextMeter stats={null} />)
+    expect(none.container.querySelector('[data-context-meter]')).toBeNull()
+    cleanup()
+    const unknown = render(<ContextMeter stats={{ tokens: null, contextWindow: null, compactionThreshold: null }} />)
+    expect(unknown.container.querySelector('[data-context-meter]')).toBeNull()
+    cleanup()
+  })
+
+  it('fill clamps at 100% even if a runtime misreports', () => {
+    const { container } = render(
+      <ContextMeter stats={{ tokens: 300_000, contextWindow: 272_000, compactionThreshold: null }} />,
+    )
+    expect((container.querySelector('[data-context-fill]') as HTMLElement).style.width).toBe('100%')
+    cleanup()
+  })
+})

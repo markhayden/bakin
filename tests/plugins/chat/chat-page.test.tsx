@@ -337,11 +337,13 @@ describe('ChatView', () => {
       expect(container.querySelectorAll('[data-conv-usage]').length).toBe(2)
     })
     const footers = [...container.querySelectorAll('[data-conv-usage]')].map((el) => el.textContent)
-    expect(footers[0]).toContain('14.2k in / 890 out')
+    // Billed-first cost explainer (#737): in+out fallback bill, no-tool
+    // turns collapse to one line.
+    expect(footers[0]).toContain('15.1k billed')
     expect(footers[0]).toContain('$0.03')
     expect(footers[0]).toContain('claude-sonnet-5')
     // Subscription lane: tokens only.
-    expect(footers[1]).toContain('22.1k in')
+    expect(footers[1]).toContain('23.3k billed')
     expect(footers[1]).not.toContain('$')
     // The totals chip in the header — plain words, no Σ sigil (review:
     // "nobody will understand that").
