@@ -47,6 +47,10 @@ const ChatSummarySchema = z.object({
   lastSeenAt: z.string().optional(),
   lastMessageAt: z.string().optional(),
   lastMessagePreview: z.string().optional(),
+  // #735: chats created since the marker era carry it from birth; pre-#735
+  // index entries parse as false (legacy sweep rules apply until their
+  // transcript shows a done row).
+  markerEra: z.boolean().default(false),
 })
 
 const ChatIndexSchema = z.object({
@@ -97,6 +101,11 @@ const TranscriptRowSchema = z.discriminatedUnion('kind', [
   }),
   z.object({
     kind: z.literal('aborted'),
+    ts: z.string(),
+    turnId: z.string().optional(),
+  }),
+  z.object({
+    kind: z.literal('done'),
     ts: z.string(),
     turnId: z.string().optional(),
   }),
@@ -262,6 +271,7 @@ export function createChat(input: { agentId: string; title?: string }): Promise<
       updatedAt: now,
       messageCount: 0,
       unreadCount: 0,
+      markerEra: true,
     }
     const index = readIndex()
     index.chats.push(summary)
@@ -411,12 +421,24 @@ export function setPinned(chatId: string, pinned: boolean): Promise<ChatSummary 
 }
 
 /**
- * Boot sweep (#706): any chat whose transcript ends on a user row lost its
- * turn to a process death (the engine's in-flight map dies with the
- * server) — stamp an honest error row so the reply doesn't look pending
- * forever and "Try again" is offered.
+ * Boot sweep (#706, #735): stamp turns that died with the process (the
+ * engine's in-flight map dies with the server) so the transcript never
+ * looks forever-pending or silently truncated.
+ *
+ * Rule 1 — transcript ends on a user row: the turn died before any output.
+ * Stamped in every era (turnId-less; the engine's user rows carry none).
+ * Rule 2 — marker era only: a tail row that is agent-side content (has a
+ * turnId, kind not terminal) means the turn died mid-reply AFTER partial
+ * rows persisted — stamp with that turnId so the notice folds into the
+ * truncated turn. Marker-era evidence is `summary.markerEra` (stamped at
+ * creation since #735) or any done row (pre-#735 chat that completed a
+ * turn post-upgrade). Legacy transcripts keep rule 1 only: a completed
+ * legacy turn must NEVER be falsely marked.
+ *
+ * `isInFlight` guards the activation race: the sweep is void-fired while
+ * routes already accept sends — never stamp a live turn.
  */
-export async function sweepInterruptedTurns(): Promise<void> {
+export async function sweepInterruptedTurns(isInFlight?: (chatId: string) => boolean): Promise<void> {
   let chats: ChatSummary[]
   try {
     chats = listChats()
@@ -428,13 +450,26 @@ export async function sweepInterruptedTurns(): Promise<void> {
   }
   for (const chat of chats) {
     try {
+      if (isInFlight?.(chat.id)) continue
       const rows = readTranscript(chat.id)
       const last = rows[rows.length - 1]
-      if (last?.kind !== 'user') continue
+      if (!last) continue
+      if (last.kind === 'user') {
+        await appendTranscriptRow(chat.id, {
+          kind: 'error',
+          ts: new Date().toISOString(),
+          message: 'Interrupted — the server stopped before the agent could reply.',
+        })
+        continue
+      }
+      const markerEra = chat.markerEra || rows.some((r) => r.kind === 'done')
+      const terminal = last.kind === 'done' || last.kind === 'aborted' || last.kind === 'error'
+      if (!markerEra || terminal || !last.turnId) continue
       await appendTranscriptRow(chat.id, {
         kind: 'error',
         ts: new Date().toISOString(),
-        message: 'Interrupted by a server restart before the reply finished.',
+        turnId: last.turnId,
+        message: 'Interrupted — the server stopped before this reply finished.',
       })
     } catch (err) {
       log.error(`interrupted-turn sweep failed for chat ${chat.id}`, err as Error)

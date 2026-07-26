@@ -278,6 +278,45 @@ describe('chat queue — boot restore', () => {
     expect(drainedIdx).toBeGreaterThan(errorIdx)
   })
 
+  test('partial-output death (#735): the stamp carries the dead turnId and lands ABOVE the drained rows', async () => {
+    const chat = await createChat({ agentId: 'main' })
+    const seenArgs: MessageArgs[] = []
+    scriptStreams([
+      async function* () {
+        yield { type: 'text', content: 'post-restart reply' } as ChatChunk
+        yield { type: 'done' } as ChatChunk
+      },
+    ], seenArgs)
+
+    // Crash shape #735: the turn died AFTER partial assistant rows persisted
+    // (no terminal row), with a queue snapshot surviving on disk.
+    const { appendTranscriptRow, sweepInterruptedTurns, writeQueue } = await import('../../../plugins/chat/lib/store')
+    await appendTranscriptRow(chat.id, { kind: 'user', ts: new Date().toISOString(), content: 'long question' })
+    await appendTranscriptRow(chat.id, { kind: 'assistant', ts: new Date().toISOString(), turnId: 'dead-turn', content: 'reply cut mid-sen' })
+    await writeQueue(chat.id, [
+      { id: 'boot-partial-1', ts: new Date().toISOString(), content: 'queued during the dead turn', agentId: 'main' },
+    ])
+
+    await sweepInterruptedTurns()
+    await restoreQueues(activated.ctx)
+    await waitUntil(() => seenArgs.some((a) => a.content.includes('queued during the dead turn')), 'boot drain')
+    await settleAll(chat.id)
+
+    const rows = readTranscript(chat.id)
+    const stamp = rows.find((r) => r.kind === 'error')
+    expect(stamp).toMatchObject({
+      turnId: 'dead-turn',
+      message: 'Interrupted — the server stopped before this reply finished.',
+    })
+    const stampIdx = rows.indexOf(stamp!)
+    const drainedIdx = rows.findIndex(
+      (r) => r.kind === 'user' && (r as { content: string }).content === 'queued during the dead turn',
+    )
+    expect(drainedIdx).toBeGreaterThan(stampIdx)
+    // The drained turn settled cleanly → it carries its own done marker.
+    expect(rows[rows.length - 1]?.kind).toBe('done')
+  })
+
   test('restoreQueues drains persisted queues (restart with queued items)', async () => {
     const chat = await createChat({ agentId: 'main' })
     const scripts: Array<() => AsyncIterable<ChatChunk>> = []

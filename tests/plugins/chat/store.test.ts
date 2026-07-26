@@ -139,6 +139,22 @@ describe('chat store', () => {
       appendTranscriptRow('00000000-0000-0000-0000-000000000000', { kind: 'user', ts: '', content: 'x' }),
     ).rejects.toThrow('unknown chat')
   })
+
+  test('done marker rows bump NOTHING — no messageCount/unread/preview (#735); new chats are marker-era', async () => {
+    const chat = await createChat({ agentId: 'main' })
+    expect(chat.markerEra).toBe(true)
+    await appendTranscriptRow(chat.id, { kind: 'user', ts: new Date().toISOString(), content: 'question' })
+    await appendTranscriptRow(chat.id, { kind: 'assistant', ts: new Date().toISOString(), turnId: 't1', content: 'answer' })
+    const before = listChats().find((c) => c.id === chat.id)!
+
+    await appendTranscriptRow(chat.id, { kind: 'done', ts: new Date().toISOString(), turnId: 't1' })
+    const after = listChats().find((c) => c.id === chat.id)!
+    expect(after.messageCount).toBe(before.messageCount)
+    expect(after.unreadCount).toBe(before.unreadCount)
+    expect(after.lastMessagePreview).toBe(before.lastMessagePreview)
+    expect(after.lastMessageAt).toBe(before.lastMessageAt)
+    expect(readTranscript(chat.id).map((r) => r.kind)).toEqual(['user', 'assistant', 'done'])
+  })
 })
 
 describe('chat routes v2', () => {
@@ -225,5 +241,18 @@ describe('chat routes', () => {
 
     const gone = await callRoute(get, activated.ctx, { path: `/chats/${chatId}` })
     expect(gone.status).toBe(404)
+  })
+
+  test('GET /chats/:chatId serves done marker rows to the client (#735 — the fold hides them, the wire does not)', async () => {
+    const chat = await createChat({ agentId: 'main' })
+    await appendTranscriptRow(chat.id, { kind: 'user', ts: new Date().toISOString(), content: 'q' })
+    await appendTranscriptRow(chat.id, { kind: 'assistant', ts: new Date().toISOString(), turnId: 't1', content: 'a' })
+    await appendTranscriptRow(chat.id, { kind: 'done', ts: new Date().toISOString(), turnId: 't1' })
+
+    const get = findRoute(activated.routes, 'GET', '/chats/:chatId')!
+    const got = await callRoute(get, activated.ctx, { path: `/chats/${chat.id}` })
+    expect(got.status).toBe(200)
+    const kinds = (got.body.messages as Array<{ kind: string }>).map((m) => m.kind)
+    expect(kinds).toEqual(['user', 'assistant', 'done'])
   })
 })
