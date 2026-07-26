@@ -99,12 +99,34 @@ not-applicable; missing token/guilds → action_required with remediation;
 native runtime → idle-healthy (by design); configured-but-disconnected →
 action_required; empty allowlists while on → `policy_denial` watch notices.
 
-## Inbound chat (Phase B — planned, not yet shipped)
+## Inbound chat (Phase B — SHIPPED)
 
-`channels.subscribeInboundMessages` + chat-plugin wiring per the spec:
-mention-gated guild messages / allowlisted DMs become real Bakin chats
-through the conversation turn engine. Until it ships, the bot ignores
-ordinary messages.
+Optional contract members `channels.subscribeInboundMessages` (pre-gated
+`InboundChannelMessage` events) and `channels.sendTyping` (ephemeral typing
+pulse). ALL gating is bridge-side before the contract (D9):
+`discord/inbound.ts` filters bot/self messages, mention-gates guild
+messages (DMs exempt), fails closed on `inbound.allowFrom` with
+`delivery.inbound_denied` audits, and materializes image attachments to
+local temp files (CDN semantics never cross the boundary; failed downloads
+degrade to text-only).
+
+The chat plugin consumes it (`plugins/chat/lib/channel-inbound.ts`,
+mirroring workflows' approval wiring — feature-detected at activate,
+unsubscribed on shutdown): each channel binds to a chat via
+`ChatSummary.externalKey` (delete-resilient; a Discord thread is its own
+channel id, so threads get their own chats for free), turns run through
+the ONE conversation turn engine (work class `chat`, queue-when-busy,
+engine-side downscaling), a typing pulse repeats while the turn runs, and
+the `chat.done` bus event posts the assistant reply back to the channel —
+including for turns started from the web UI on a bound chat
+(interchangeable conversation is the D7 point, not a bug). `chat.error`
+posts an honest failure line; aborted turns stay silent. Unsupported
+image input degrades to a visible note in the message.
+
+Facade note: `src/lib/plugin-context-services.ts` forwards the optional
+channel members (subscribeInboundMessages, sendTyping, createThread,
+editMessage) conditionally so user plugins see honest absence; the
+permission map (`src/lib/plugin-permissions.ts`) covers them.
 
 ## Testing
 

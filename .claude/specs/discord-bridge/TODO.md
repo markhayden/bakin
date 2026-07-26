@@ -25,7 +25,7 @@ Plan: `.claude/specs/discord-bridge/PLAN.md`
 ## Phase B — Inbound chat (branch: feat/discord-inbound-chat)
 - [x] B1 subscribeInboundMessages contract + bridge inbound gating + attachments
 - [x] B2 Chat plugin wiring: channel↔chat map, turn engine, typing, reply
-- [ ] B3 Docs + #669 close-out comment
+- [x] B3 Docs + #669 close-out comment
 - [ ] CHECKPOINT 2: live validation + owner sign-off + PR 2 merged
 
 ## Deferred (review suggestions, non-blocking)

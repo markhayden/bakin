@@ -22,6 +22,8 @@ Spec/plan for the 2026-07 overhaul: `.claude/specs/chat-conversation-kit.md`, `t
 - **Search (S11):** file-backed `chats` content type (`lib/search.ts`) — one doc per chat (title, agent facet, recency-biased user+assistant body, 6k cap; tool noise never indexes). ⌘K hits deep-link `/chat/<id>`.
 - **Agents keep their tools.** The turn is a normal runtime turn — `bakin_*` exec tools work mid-chat exactly as in dispatch.
 
+- **Inbound channel chat (#669 Phase B).** `lib/channel-inbound.ts` (wired in `activate`, unsubscribed in `onShutdown`, feature-detected — inert on runtimes without `channels.subscribeInboundMessages`): bridge-gated inbound messages find-or-create a chat bound via `ChatSummary.externalKey` (deterministic channel-label title suppresses auto-titling by design; a Discord thread is its own channel id ⇒ its own chat), run through `startChatTurn` (queue-when-busy), pulse `channels.sendTyping` while running, and post the reply back on the `chat.done` bus event — INCLUDING web-originated turns on bound chats (interchangeable conversation, D7). `chat.error` posts an honest failure line; aborted turns stay silent. Attachments adopt into `chat/attachments/<chatId>/` gated on `capabilities().input.imageInput` (unsupported ⇒ visible note). Deep dive: `.claude/knowledge/delivery-bridge.md`.
+
 ## File map
 
 ```

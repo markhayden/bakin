@@ -94,9 +94,22 @@ export async function checkDeliveryDiscord(runtime: Pick<AgentRuntimeAdapter, 'c
       },
     }))
   }
-  // NOTE: no inbound-allowlist notice yet — inbound chat is not built
-  // (Phase B). A doctor finding must never describe behavior that doesn't
-  // exist; Phase B reintroduces it alongside the real MessageCreate consumer.
+  if (settings.inbound.enabled && settings.inbound.allowFrom.length === 0) {
+    notices.push(healthWarning({
+      key: 'inbound-allowlist',
+      summary: 'Discord inbound chat is on but the allowlist is empty — every sender is ignored (fail closed).',
+      detail: 'Set integrations.discord.inbound.allowFrom to the Discord user IDs allowed to chat.',
+      incident: {
+        key: 'empty-inbound-allowlist',
+        title: 'Discord inbound chat is locked',
+        class: 'policy_denial',
+        impact: 'Messages at the bot are silently denied (audited) until a sender is allowlisted.',
+        disposition: 'watch',
+        resources: [{ kind: 'setting', id: 'integrations.discord', label: 'Discord integration' }],
+        resolution: { key: 'open-settings', type: 'navigate', label: 'Open System & Alerts', href: '/settings' },
+      },
+    }))
+  }
   if (notices.length > 0) return healthObserved([notices[0], ...notices.slice(1)])
 
   return healthObserved([healthHealthy({
