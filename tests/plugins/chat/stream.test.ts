@@ -148,13 +148,16 @@ describe('chat stream bridge', () => {
     expect(done?.data).toMatchObject({ chatId: chat.id, agentId: 'main', preview: 'Hello world' })
 
     // Durable transcript v2: interleaving preserved — text before the tool
-    // result flushes as its own row, structured tool row, trailing text.
+    // result flushes as its own row, structured tool row, trailing text,
+    // then the terminal done marker (#735 — this is the ONE test proving
+    // the bridge actually sets terminalMarkerRows; engine tests use a
+    // synthetic consumer).
     const rows = readTranscript(chat.id)
-    expect(rows.map((r) => r.kind)).toEqual(['user', 'assistant', 'tool', 'assistant'])
+    expect(rows.map((r) => r.kind)).toEqual(['user', 'assistant', 'tool', 'assistant', 'done'])
     expect(rows[1]).toMatchObject({ content: 'Hello ' })
     expect(rows[2]).toMatchObject({ toolName: 'bash', status: 'completed', summary: 'ls -la' })
     expect(rows[3]).toMatchObject({ content: 'world' })
-    // rows of one turn share a turnId so replay regroups exactly
+    // rows of one turn (marker included) share a turnId so replay regroups exactly
     const turnIds = rows.slice(1).map((r) => (r as { turnId?: string }).turnId)
     expect(new Set(turnIds).size).toBe(1)
     expect(turnIds[0]).toBeTruthy()
@@ -223,6 +226,7 @@ describe('chat stream bridge', () => {
     expect(done?.data).toMatchObject({ chatId: chat.id, aborted: true })
 
     const rows = readTranscript(chat.id)
+    // The aborted row is the terminal — never a done marker on abort (#735).
     expect(rows.map((r) => r.kind)).toEqual(['user', 'assistant', 'aborted'])
     expect(rows[1]).toMatchObject({ content: 'partial thought' })
   })

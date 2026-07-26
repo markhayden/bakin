@@ -54,6 +54,7 @@ export type TranscriptRowDto =
     }
   | { kind: 'error'; ts: string; turnId?: string; message: string; errorKind?: string }
   | { kind: 'aborted'; ts: string; turnId?: string }
+  | { kind: 'done'; ts: string; turnId?: string }
 
 export function attachmentUrl(chatId: string, name: string): string {
   return `/api/plugins/chat/chats/${chatId}/attachments/${encodeURIComponent(name)}`
