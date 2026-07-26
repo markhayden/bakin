@@ -78,6 +78,32 @@ function CopyIcon({ copied }: { copied: boolean }) {
   )
 }
 
+async function copyText(text: string): Promise<boolean> {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text)
+      return true
+    } catch {
+      // Fall back for denied permissions and plain-HTTP origins.
+    }
+  }
+  try {
+    const textarea = document.createElement('textarea')
+    textarea.value = text
+    textarea.setAttribute('readonly', '')
+    textarea.style.position = 'fixed'
+    textarea.style.opacity = '0'
+    document.body.appendChild(textarea)
+    textarea.focus()
+    textarea.select()
+    const copied = document.execCommand('copy')
+    textarea.remove()
+    return copied
+  } catch {
+    return false
+  }
+}
+
 function CodeBlock({ children }: { children?: ReactNode }) {
   const [copied, setCopied] = useState(false)
   const resetRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -93,14 +119,10 @@ function CodeBlock({ children }: { children?: ReactNode }) {
   }, [])
 
   const copy = useCallback(async () => {
-    try {
-      await navigator.clipboard?.writeText(raw)
-      setCopied(true)
-      if (resetRef.current) clearTimeout(resetRef.current)
-      resetRef.current = setTimeout(() => setCopied(false), 1500)
-    } catch {
-      // Copy is progressive enhancement; the exact code stays selectable.
-    }
+    if (!await copyText(raw)) return
+    setCopied(true)
+    if (resetRef.current) clearTimeout(resetRef.current)
+    resetRef.current = setTimeout(() => setCopied(false), 1500)
   }, [raw])
 
   return (

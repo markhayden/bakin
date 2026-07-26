@@ -15,25 +15,58 @@
  */
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { PluginHeader } from '@makinbakin/sdk/components'
-import { usePluginEvent, useQueryState, useRouter } from '@makinbakin/sdk/hooks'
+import { writeComposerDraft } from '@makinbakin/sdk/conversation'
+import { toast, usePluginEvent, useQueryState, useRouter } from '@makinbakin/sdk/hooks'
 import { pluginFetch } from '@makinbakin/sdk/utils'
 
 import { AgentPicker } from './agent-picker'
 import { ChatRail, useRailCollapsed } from './chat-rail'
 import { ChatView, DraftChatView } from './chat-view'
 import { Launcher } from './launcher'
-import { createChatRequest, useChats } from './use-chat-data'
+import { createChatRequest, uploadAttachmentRequest, useChats, type UploadedAttachment } from './use-chat-data'
 
-/** Create the chat and fire the first message (draft mode's first send). */
-async function createAndSend(agentId: string, content: string): Promise<string | null> {
+export interface CreateAndSendResult {
+  /** Null only when chat creation itself failed. */
+  chatId: string | null
+  /** The first message actually reached the server. */
+  sent: boolean
+}
+
+/**
+ * Create the chat and fire the first message (draft mode's first send).
+ * Draft-staged files upload AFTER creation (#730, spec D5 client
+ * orchestration): create → upload each → send with the uploaded refs.
+ * Late-step failures are NEVER silent (review finding — the old path
+ * navigated into an empty chat with the text gone): a failed upload
+ * toasts (parity with the existing-chat path), and a failed message POST
+ * toasts AND preserves the text as the NEW chat's composer draft, so the
+ * operator lands in the chat with their words intact.
+ */
+export async function createAndSend(agentId: string, content: string, files?: File[]): Promise<CreateAndSendResult> {
   const chat = await createChatRequest(agentId)
-  if (!chat) return null
-  const res = await pluginFetch('chat', `chats/${chat.id}/messages`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ content }),
-  })
-  return res.ok ? chat.id : chat.id // chat exists either way; errors surface in the view
+  if (!chat) return { chatId: null, sent: false }
+  const attachments: UploadedAttachment[] = []
+  for (const file of files ?? []) {
+    const uploaded = await uploadAttachmentRequest(chat.id, file)
+    if (uploaded) attachments.push(uploaded)
+    else toast(`Couldn't attach ${file.name} — upload failed`, 'error')
+  }
+  let sent = false
+  try {
+    const res = await pluginFetch('chat', `chats/${chat.id}/messages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content, ...(attachments.length ? { attachments } : {}) }),
+    })
+    sent = res.ok
+  } catch {
+    sent = false
+  }
+  if (!sent) {
+    writeComposerDraft(`chat:${chat.id}`, content)
+    toast("Message didn't send — your text is waiting in the composer", 'error')
+  }
+  return { chatId: chat.id, sent }
 }
 
 interface ChatPageProps {

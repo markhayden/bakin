@@ -24,6 +24,7 @@ import {
 import { useRouter } from '@makinbakin/sdk/navigation'
 import { StatusBadge } from '@makinbakin/sdk/patterns'
 import { toast, useAgentStore, useMainAgentId } from '@makinbakin/sdk/hooks'
+import { copyToClipboard } from '@makinbakin/sdk/utils'
 import { PackageStateBadge } from './package-state-badge'
 import { AdoptDialog } from './adopt-dialog'
 import type { PackageStateRow } from '../types'
@@ -33,12 +34,12 @@ export const ADOPT_INFO = `Adopting attaches an agent-package to this agent. Bak
 function CliHint({ command }: { command: string }) {
   const [copied, setCopied] = useState(false)
   const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(command)
+    // copyToClipboard falls back to execCommand on the plain-HTTP tailnet
+    // origin (navigator.clipboard is undefined there — the old direct call
+    // threw and never copied).
+    if (await copyToClipboard(command)) {
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
-    } catch {
-      // clipboard api unavailable — fail quietly, the command is visible
     }
   }
   return (

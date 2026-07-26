@@ -9,6 +9,7 @@ import {
   type ConversationAgent,
   type ConversationMessage,
   type ConversationPanelProps as FocusedConversationPanelProps,
+  type ConversationQueuedItem,
 } from '@makinbakin/sdk/conversation'
 import { useAgentStore } from '@makinbakin/sdk/hooks'
 
@@ -37,6 +38,9 @@ export interface ConversationPanelProps {
   emptyState?: ReactNode
   maxLength?: number
   attachments?: ComposerAttachments
+  queueMode?: boolean
+  queuedItems?: readonly ConversationQueuedItem[]
+  onRemoveQueued?: (item: ConversationQueuedItem) => void
   defaultHeight?: number
   minHeight?: number
   maxHeight?: number
@@ -65,6 +69,9 @@ export function ConversationPanel({
   emptyState,
   maxLength,
   attachments,
+  queueMode,
+  queuedItems,
+  onRemoveQueued,
   defaultHeight,
   minHeight,
   maxHeight,
@@ -118,6 +125,9 @@ export function ConversationPanel({
       emptyState={emptyState}
       maxLength={maxLength}
       attachments={attachments}
+      queueMode={queueMode}
+      queuedItems={queuedItems}
+      onRemoveQueued={onRemoveQueued}
       defaultHeight={defaultHeight}
       minHeight={minHeight}
       maxHeight={maxHeight}

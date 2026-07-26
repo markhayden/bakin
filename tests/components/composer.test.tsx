@@ -158,6 +158,122 @@ describe('Composer attachments', () => {
   })
 })
 
+describe('Composer queueMode (#732)', () => {
+  it('busy + text: the button morphs to queue-send; Enter queues and clears; empty morphs instantly back to Stop', () => {
+    const sent: string[] = []
+    const { container } = render(
+      <Composer storageKey="qm1" onSend={(c) => { sent.push(c) }} busy queueMode onAbort={() => {}} />,
+    )
+    const ta = getTextarea(container)
+    // Empty while busy → Stop visible, no queue button.
+    expect(container.querySelector('[data-composer-stop]')).not.toBeNull()
+    expect(container.querySelector('[data-composer-queue]')).toBeNull()
+
+    fireEvent.change(ta, { target: { value: 'a correction' } })
+    // Text present → queue-send replaces Stop (single morphing button, D4).
+    expect(container.querySelector('[data-composer-queue]')).not.toBeNull()
+    expect(container.querySelector('[data-composer-stop]')).toBeNull()
+
+    fireEvent.keyDown(ta, { key: 'Enter' })
+    expect(sent).toEqual(['a correction'])
+    expect(ta.value).toBe('')
+    // The steering sequence depends on the INSTANT morph-back to Stop.
+    expect(container.querySelector('[data-composer-stop]')).not.toBeNull()
+    expect(container.querySelector('[data-composer-queue]')).toBeNull()
+  })
+
+  it('queue-send button click queues; Esc still aborts with text present', () => {
+    const sent: string[] = []
+    const aborted: string[] = []
+    const { container } = render(
+      <Composer storageKey="qm2" onSend={(c) => { sent.push(c) }} busy queueMode onAbort={() => aborted.push('x')} />,
+    )
+    const ta = getTextarea(container)
+    fireEvent.change(ta, { target: { value: 'follow-up' } })
+    fireEvent.keyDown(ta, { key: 'Escape' })
+    expect(aborted).toEqual(['x'])
+    fireEvent.click(container.querySelector('[data-composer-queue]')!)
+    expect(sent).toEqual(['follow-up'])
+  })
+
+  it('helper copy is honest in every busy mode', () => {
+    // Queue surface, empty composer.
+    const q = render(<Composer storageKey="qm3" onSend={() => {}} busy queueMode onAbort={() => {}} />)
+    expect(q.container.textContent).toContain('type to queue a follow-up')
+    fireEvent.change(getTextarea(q.container), { target: { value: 'x' } })
+    expect(q.container.textContent).toContain('Enter queues your message')
+    cleanup()
+
+    // Strict surface: no false "send waits" claim.
+    const s = render(<Composer storageKey="qm4" onSend={() => {}} busy onAbort={() => {}} />)
+    expect(s.container.textContent).toContain('wait for the reply to finish, or stop it')
+    expect(s.container.textContent).not.toContain('send waits')
+    cleanup()
+  })
+
+  it('busy without onAbort renders a disabled sending spinner, never a dead Stop', () => {
+    const { container } = render(<Composer storageKey="qm5" onSend={() => {}} busy />)
+    expect(container.querySelector('[data-composer-stop]')).toBeNull()
+    const spinner = container.querySelector('[data-composer-sending]')
+    expect(spinner).not.toBeNull()
+    expect((spinner as HTMLButtonElement).disabled).toBe(true)
+    expect(container.textContent).toContain('Sending…')
+  })
+
+  it('uploads-pending in queueMode: DISABLED queue button (never Stop under the cursor) + honest copy', () => {
+    const sent: string[] = []
+    const aborted: string[] = []
+    const { container } = render(
+      <Composer
+        storageKey="qm7"
+        onSend={(c) => { sent.push(c) }}
+        busy
+        queueMode
+        onAbort={() => aborted.push('x')}
+        attachments={{
+          enabled: true,
+          items: [{ id: 'u1', name: 'up.png', status: 'uploading' }],
+          onAdd: () => {},
+          onRemove: () => {},
+        }}
+      />,
+    )
+    const ta = getTextarea(container)
+    fireEvent.change(ta, { target: { value: 'queue me with the image' } })
+    // A click here must NOT abort the reply — the button is a disabled queue,
+    // not Stop (review finding: the morph-under-cursor misclick).
+    const queueBtn = container.querySelector('[data-composer-queue]') as HTMLButtonElement | null
+    expect(queueBtn).not.toBeNull()
+    expect(queueBtn!.disabled).toBe(true)
+    expect(container.querySelector('[data-composer-stop]')).toBeNull()
+    fireEvent.keyDown(ta, { key: 'Enter' })
+    expect(sent).toEqual([]) // held until the upload lands
+    expect(container.textContent).toContain('attachment uploading')
+    expect(container.textContent).not.toContain('Enter queues your message')
+    // Esc still stops.
+    fireEvent.keyDown(ta, { key: 'Escape' })
+    expect(aborted).toEqual(['x'])
+  })
+
+  it('queuedCount makes the empty-composer copy teach that queued messages send next', () => {
+    const { container } = render(
+      <Composer storageKey="qm8" onSend={() => {}} busy queueMode queuedCount={2} onAbort={() => {}} />,
+    )
+    expect(container.textContent).toContain('2 queued messages send when it finishes')
+  })
+
+  it('idle queueMode behaves exactly like a normal composer', () => {
+    const sent: string[] = []
+    const { container } = render(<Composer storageKey="qm6" onSend={(c) => { sent.push(c) }} queueMode />)
+    const ta = getTextarea(container)
+    fireEvent.change(ta, { target: { value: 'normal send' } })
+    expect(container.querySelector('[data-composer-send]')).not.toBeNull()
+    expect(container.querySelector('[data-composer-queue]')).toBeNull()
+    fireEvent.keyDown(ta, { key: 'Enter' })
+    expect(sent).toEqual(['normal send'])
+  })
+})
+
 describe('Composer char counter + autofocus', () => {
   it('shows the counter near the cap and autofocuses on mount', () => {
     const { container } = render(<Composer storageKey="cap-a" onSend={() => {}} maxLength={100} />)

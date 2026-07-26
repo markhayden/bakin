@@ -134,6 +134,14 @@ Runtime knobs:
   home, never sends a final frame — exercises fail-fast forensics + the
   recovery ladder end to end; see `.claude/knowledge/session-forensics.md`).
 - `OPENCLAW_MOCK_TOOL_MODE` — `ok` or `error`.
+- Per-message markers (stripped from the reply): `[[tool]]` (scripted tool-call
+  frame sequence), `[[dropped-delta]]` (self-heal path), `[[slow]]` — a long
+  reply streamed word-by-word for ~15s. `[[slow]]` is the chat-QUEUE showcase
+  (#729): send it, then type + Enter to queue follow-ups mid-stream, × one to
+  restore its text, or Stop mid-stream (partial text kept) and watch the
+  queued messages drain as one combined turn. Per-message, unlike
+  `OPENCLAW_MOCK_CHAT_MODE=slow` which parks BEFORE streaming and slows every
+  turn globally.
 - `OPENCLAW_MOCK_FORCE=1` — bypasses the safety check that refuses to run when
   a real OpenClaw binary/config/gateway is detected.
 

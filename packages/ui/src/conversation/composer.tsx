@@ -4,11 +4,13 @@ import {
   useCallback,
   useEffect,
   useId,
+  useImperativeHandle,
   useLayoutEffect,
   useRef,
   useState,
   type ClipboardEvent,
   type KeyboardEvent,
+  type Ref,
   type ReactNode,
 } from 'react'
 
@@ -54,6 +56,11 @@ function writeStorage(key: string, value: string | null) {
 
 function readDraft(storageKey: string) {
   return readStorage(draftKey(storageKey)) ?? ''
+}
+
+/** Persist a composer draft before its surface mounts, such as after recovery. */
+export function writeComposerDraft(storageKey: string, value: string) {
+  writeStorage(draftKey(storageKey), value)
 }
 
 function readHistory(storageKey: string): string[] {
@@ -158,6 +165,12 @@ export interface ComposerAttachments {
   onRemove: (id: string) => void
 }
 
+/** Imperative draft access for queue removal and other restore flows. */
+export interface ComposerHandle {
+  isEmpty(): boolean
+  setText(text: string): void
+}
+
 /** Props for the persistent, IME-safe conversation input. */
 export interface ComposerProps {
   /** Thread identity used only for local draft, history, and resize preferences. */
@@ -166,6 +179,12 @@ export interface ComposerProps {
   /** A reply is active: typing remains enabled while send waits. */
   busy?: boolean
   onAbort?: () => void
+  /** Allow send-while-busy so the consumer can queue a follow-up. */
+  queueMode?: boolean
+  /** Pending follow-ups, used only for honest busy-state guidance. */
+  queuedCount?: number
+  /** Restore or inspect the current draft from a queue-management surface. */
+  handleRef?: Ref<ComposerHandle>
   disabled?: boolean
   placeholder?: string
   inputLabel?: string
@@ -188,6 +207,9 @@ export function Composer({
   onSend,
   busy = false,
   onAbort,
+  queueMode = false,
+  queuedCount = 0,
+  handleRef,
   disabled = false,
   placeholder = 'Send a message…',
   inputLabel,
@@ -242,12 +264,31 @@ export function Composer({
     writeStorage(draftKey(storageKey), next)
   }, [storageKey])
 
+  const valueRef = useRef(value)
+  valueRef.current = value
+  useImperativeHandle(
+    handleRef,
+    () => ({
+      isEmpty: () => valueRef.current.trim().length === 0,
+      setText: (text: string) => {
+        setDraft(text)
+        textareaRef.current?.focus()
+      },
+    }),
+    [setDraft],
+  )
+
   const readyAttachments = attachments?.items.filter((item) => !item.status || item.status === 'ready') ?? []
   const uploadsPending = attachments?.items.some((item) => item.status === 'uploading') ?? false
   const canSend = !disabled
-    && !busy
+    && (!busy || queueMode)
     && !uploadsPending
     && (value.trim().length > 0 || readyAttachments.length > 0)
+  const wantsQueue =
+    busy &&
+    queueMode &&
+    !disabled &&
+    (value.trim().length > 0 || (attachments?.items.length ?? 0) > 0)
 
   const send = useCallback(() => {
     if (!canSend) return
@@ -480,7 +521,21 @@ export function Composer({
               {leadingSlot}
             </div>
 
-            {busy && onAbort ? (
+            {wantsQueue ? (
+              <Button
+                type="button"
+                data-composer-queue=""
+                variant="primary"
+                size="icon-sm"
+                onClick={send}
+                disabled={!canSend}
+                aria-label="Queue message"
+                title={uploadsPending ? 'Queue after attachments finish uploading' : 'Queue message (Enter)'}
+                className="rounded-bakin-pill"
+              >
+                <SendIcon />
+              </Button>
+            ) : busy && onAbort ? (
               <Button
                 type="button"
                 data-composer-stop=""
@@ -494,14 +549,19 @@ export function Composer({
                 <StopIcon />
               </Button>
             ) : busy ? (
-              <span
-                role="status"
+              <Button
+                type="button"
+                data-composer-sending=""
+                variant="secondary"
+                size="icon-sm"
+                disabled
                 aria-label="Reply in progress"
-                className="flex size-bakin-8 items-center justify-center text-bakin-text-muted"
+                title="Sending…"
+                className="rounded-bakin-pill"
               >
                 <SpinnerIcon />
                 <span className="sr-only">Reply in progress</span>
-              </span>
+              </Button>
             ) : (
               <Button
                 type="button"
@@ -522,7 +582,19 @@ export function Composer({
 
         <div id={descriptionId} className="flex min-h-bakin-4 items-start justify-between gap-bakin-3 pt-bakin-1 text-[length:var(--bakin-typography-size-meta)] text-bakin-text-muted">
           <span aria-live="polite">
-            {busy ? 'Replying—you can keep typing. Send waits until the reply finishes.' : ''}
+            {!busy
+              ? ''
+              : !onAbort
+                ? 'Sending…'
+                : queueMode
+                  ? wantsQueue
+                    ? canSend
+                      ? 'Replying — Enter queues your message; Esc stops the reply.'
+                      : 'Replying — attachment uploading; queueing waits for it. Esc stops the reply.'
+                    : queuedCount > 0
+                      ? `Replying — ${queuedCount} queued message${queuedCount === 1 ? '' : 's'} send when it finishes; Esc stops the reply.`
+                      : 'Replying — type to queue a follow-up; Esc stops the reply.'
+                  : 'Replying — wait for the reply to finish, or stop it.'}
           </span>
           {showCounter ? (
             <span

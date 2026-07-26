@@ -18,6 +18,10 @@ import {
   type ConversationMessage,
   type ConversationToolCall,
 } from './fold'
+import {
+  QueuedMessageList,
+  type ConversationQueuedItem,
+} from './queued-message-list'
 import { ToolCallDrawer } from './tool-call-drawer'
 import type { ConversationAttachmentRenderer } from './user-message'
 import { usePersistedLeadingEdgeResize } from './use-persisted-leading-edge-resize'
@@ -71,6 +75,11 @@ export interface ConversationPanelProps {
   emptyState?: ReactNode
   maxLength?: number
   attachments?: ComposerAttachments
+  /** Allow send-while-streaming so the consumer can queue a follow-up. */
+  queueMode?: boolean
+  /** Pending follow-ups rendered between the transcript and composer. */
+  queuedItems?: readonly ConversationQueuedItem[]
+  onRemoveQueued?: (item: ConversationQueuedItem) => void
   defaultHeight?: number
   minHeight?: number
   maxHeight?: number
@@ -107,6 +116,9 @@ export function ConversationPanel({
   emptyState,
   maxLength,
   attachments,
+  queueMode = false,
+  queuedItems,
+  onRemoveQueued,
   defaultHeight = PANEL_DEFAULT_HEIGHT,
   minHeight = PANEL_MIN_HEIGHT,
   maxHeight = PANEL_MAX_HEIGHT,
@@ -186,6 +198,10 @@ export function ConversationPanel({
         className="min-h-0 flex-1"
       />
 
+      {queuedItems?.length ? (
+        <QueuedMessageList items={queuedItems} onRemove={onRemoveQueued} />
+      ) : null}
+
       {readOnly ? (
         <div
           data-conv-readonly=""
@@ -199,6 +215,8 @@ export function ConversationPanel({
           onSend={onSend}
           busy={streaming}
           onAbort={onAbort}
+          queueMode={queueMode}
+          queuedCount={queuedItems?.length ?? 0}
           placeholder={placeholder}
           inputLabel={inputLabel}
           maxLength={maxLength}

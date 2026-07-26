@@ -260,3 +260,142 @@ describe('useChatStream characterization (frozen chat client behavior)', () => {
     expect(result.current.liveChunks).toEqual([{ type: 'text', content: 'the reply so far and more' }])
   })
 })
+
+describe('useAgentImageInput stale-while-revalidate (#731)', () => {
+  const capsRoute = (stub: FetchStub, value: unknown) => {
+    stub.routes.set('GET capabilities', value)
+  }
+
+  it('always revalidates on mount: a cached true downgrades to false after a model change — no session reset needed', async () => {
+    const { useAgentImageInput } = await import('../../../plugins/chat/components/use-chat-data')
+    const stub1 = stubFetch()
+    capsRoute(stub1, { imageInput: true })
+    const first = renderHook(() => useAgentImageInput('swr-agent'))
+    await waitFor(() => expect(first.result.current).toBe(true))
+    first.unmount()
+
+    // The agent's model changed to text-only; a remount must catch it.
+    const stub2 = stubFetch()
+    capsRoute(stub2, { imageInput: false })
+    const second = renderHook(() => useAgentImageInput('swr-agent'))
+    // Seeds instantly from cache (no flicker)…
+    expect(second.result.current).toBe(true)
+    // …then the background probe corrects it.
+    await waitFor(() => expect(second.result.current).toBe(false))
+    second.unmount()
+  })
+
+  it('revalidation failure keeps the last-known value; first-ever failure stays conservative-false', async () => {
+    const { useAgentImageInput } = await import('../../../plugins/chat/components/use-chat-data')
+    const stub1 = stubFetch()
+    capsRoute(stub1, { imageInput: true })
+    const first = renderHook(() => useAgentImageInput('swr-flaky'))
+    await waitFor(() => expect(first.result.current).toBe(true))
+    first.unmount()
+
+    const stub2 = stubFetch()
+    stub2.routes.set('GET capabilities', new Response('{}', { status: 500 }))
+    const second = renderHook(() => useAgentImageInput('swr-flaky'))
+    await act(async () => {})
+    expect(second.result.current).toBe(true) // network blip never yanks the affordance
+    second.unmount()
+
+    const third = renderHook(() => useAgentImageInput('swr-never-seen'))
+    await act(async () => {})
+    expect(third.result.current).toBe(false) // conservative-false preserved
+    third.unmount()
+  })
+
+  it('concurrent mounts share one probe (rail + view double mount)', async () => {
+    const { useAgentImageInput } = await import('../../../plugins/chat/components/use-chat-data')
+    const stub = stubFetch()
+    capsRoute(stub, { imageInput: true })
+    const a = renderHook(() => useAgentImageInput('swr-dedup'))
+    const b = renderHook(() => useAgentImageInput('swr-dedup'))
+    await waitFor(() => expect(a.result.current).toBe(true))
+    await waitFor(() => expect(b.result.current).toBe(true))
+    expect(stub.calls.filter((c) => c.url.includes('capabilities'))).toHaveLength(1)
+    a.unmount()
+    b.unmount()
+  })
+})
+
+describe('queued follow-ups (#729 client)', () => {
+  it('send while streaming posts and records a queued row — no busy error, live turn untouched', async () => {
+    const stub = stubFetch()
+    transcriptRoute(stub, CHAT_A, summary(CHAT_A), [])
+    stub.routes.set(
+      'POST /messages',
+      new Response(JSON.stringify({ accepted: true, queued: true, queueId: 'qx-1', queueLength: 1 }), {
+        status: 202,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    const { result } = renderHook(() => useChatStream(CHAT_A))
+    await act(async () => {})
+    act(() => {
+      emitPluginEvent({ event: 'chat.chunk', chatId: CHAT_A, chunk: { type: 'text', content: 'live so far' } })
+    })
+    await act(async () => { await result.current.send('queued correction') })
+    expect(messagePosts(stub)).toHaveLength(1)
+    expect(result.current.sendError).toBeNull()
+    expect(result.current.liveChunks).toEqual([{ type: 'text', content: 'live so far' }])
+    expect(result.current.queued).toHaveLength(1)
+    expect(result.current.queued[0]).toMatchObject({ id: 'qx-1', content: 'queued correction' })
+  })
+
+  it('"Try again" during a streaming turn queues instead of erroring (documented #729 semantics change)', async () => {
+    const stub = stubFetch()
+    transcriptRoute(stub, CHAT_A, summary(CHAT_A), [
+      { kind: 'user', ts: '2026-07-25T00:00:00Z', content: 'the failed ask' },
+      { kind: 'error', ts: '2026-07-25T00:00:01Z', message: 'boom' },
+    ])
+    stub.routes.set(
+      'POST /messages',
+      new Response(JSON.stringify({ accepted: true, queued: true, queueId: 'retry-q', queueLength: 1 }), {
+        status: 202,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    const { result } = renderHook(() => useChatStream(CHAT_A))
+    await waitFor(() => expect(result.current.messages).toHaveLength(2))
+    // A drained turn is already streaming when the user clicks Try again.
+    act(() => {
+      emitPluginEvent({ event: 'chat.chunk', chatId: CHAT_A, chunk: { type: 'text', content: 'draining' } })
+    })
+    await act(async () => { result.current.retry() })
+    await waitFor(() => expect(result.current.queued).toHaveLength(1))
+    expect(result.current.sendError).toBeNull()
+    expect(result.current.queued[0]).toMatchObject({ id: 'retry-q', content: 'the failed ask' })
+  })
+
+  it('queued list hydrates from GET (attachment URLs mapped); removeQueued DELETEs and returns the item', async () => {
+    const stub = stubFetch()
+    stub.routes.set(`DELETE chats/${CHAT_A}/queued/q1`, { removed: true })
+    stub.routes.set(`GET chats/${CHAT_A}`, {
+      chat: summary(CHAT_A),
+      messages: [],
+      queued: [
+        {
+          id: 'q1',
+          ts: '2026-07-25T00:00:00Z',
+          content: 'stored follow-up',
+          attachments: [{ name: 'pic.png', mimeType: 'image/png', path: '/srv/pic.png' }],
+        },
+      ],
+    })
+    const { result } = renderHook(() => useChatStream(CHAT_A))
+    await waitFor(() => expect(result.current.queued).toHaveLength(1))
+    expect(result.current.queued[0].attachments?.[0].url).toBe(
+      `/api/plugins/chat/chats/${CHAT_A}/attachments/pic.png`,
+    )
+
+    let removed: unknown
+    await act(async () => { removed = await result.current.removeQueued('q1') })
+    expect(removed).toMatchObject({ id: 'q1', content: 'stored follow-up' })
+    expect(result.current.queued).toHaveLength(0)
+    expect(
+      stub.calls.some((c) => c.url.includes(`/queued/q1`) && c.init?.method === 'DELETE'),
+    ).toBe(true)
+  })
+})

@@ -154,10 +154,10 @@ export type { ToolCallDrawerProps } from '@/components/conversation/tool-call-dr
 /** Legacy composer adapter; use `@makinbakin/sdk/conversation` for new consumers. */
 export { Composer } from '@/components/conversation/composer'
 export type {
-  ComposerProps,
-  ComposerAttachments,
   ComposerAttachmentItem,
   ComposerAttachmentStatus,
+  ComposerAttachments,
+  ComposerProps,
 } from '@/components/conversation/composer'
 export { ConversationPanel } from '@/components/conversation/conversation-panel'
 export type { ConversationPanelProps } from '@/components/conversation/conversation-panel'

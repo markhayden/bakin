@@ -45,6 +45,15 @@ export interface ChatAttachment {
 }
 
 /** A persisted transcript row (one JSONL line in <chatId>.jsonl). */
+/** A follow-up accepted while a turn streamed (#729) — mirrors the engine's QueuedMessage. */
+export interface ChatQueuedMessage {
+  id: string
+  ts: string
+  content: string
+  agentId: string
+  attachments?: ChatAttachment[]
+}
+
 export type ChatTranscriptRow =
   | { kind: 'user'; ts: string; content: string; attachments?: ChatAttachment[] }
   | { kind: 'assistant'; ts: string; turnId?: string; content: string }

@@ -40,6 +40,7 @@ export type {
 /** Durable bus-driven thread state for server-owned conversational turns. */
 export { useConversationThread } from './use-conversation-thread'
 export type {
+  ConversationQueuedItem,
   ConversationThread,
   ConversationThreadLoad,
   ConversationThreadOptions,
@@ -114,10 +115,15 @@ export type {
 } from '@bakin/ui/conversation'
 
 /** Persistent, IME-safe composer with consumer-owned attachment mutations. */
-export { Composer } from '@bakin/ui/conversation'
+export { Composer, writeComposerDraft } from '@bakin/ui/conversation'
 export type {
   ComposerAttachmentItem,
   ComposerAttachments,
   ComposerAttachmentStatus,
+  ComposerHandle,
   ComposerProps,
 } from '@bakin/ui/conversation'
+
+/** Accepted follow-ups waiting behind an active turn. */
+export { QueuedMessageList } from '@bakin/ui/conversation'
+export type { QueuedMessageListProps } from '@bakin/ui/conversation'

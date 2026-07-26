@@ -4,18 +4,23 @@
  * Draft mode renders the same shell before a chat exists; the chat is
  * created on first send.
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { AlertTriangle, Check, Loader2, Pencil, Pin } from 'lucide-react'
 import { toast } from '@makinbakin/sdk/hooks'
 import {
   AgentAvatar,
-  Composer,
   Conversation,
   ConversationEmptyState,
   ToolCallDrawer,
   foldConversation,
   type ConversationToolCall,
 } from '@makinbakin/sdk/components'
+import {
+  Composer,
+  QueuedMessageList,
+  type ComposerHandle,
+  type ConversationQueuedItem,
+} from '@makinbakin/sdk/conversation'
 import { useAgent } from '@makinbakin/sdk/hooks'
 
 import {
@@ -81,8 +86,24 @@ function useComposerAttachments(chatId: string, agentId: string) {
     return out
   }
 
+  /** Re-stage already-uploaded files (queue-remove restore) — the files
+   *  still live in the chat's attachment dir, so they're send-ready. */
+  const restore = (items: Array<UploadedAttachment & { url?: string }>) => {
+    setStaged((prev) => [
+      ...prev,
+      ...items.map((i) => ({
+        id: `${Date.now()}-${i.name}-${Math.random().toString(36).slice(2, 7)}`,
+        name: i.name,
+        previewUrl: i.url ?? '',
+        status: 'ready' as const,
+        uploaded: { name: i.name, mimeType: i.mimeType, path: i.path },
+      })),
+    ])
+  }
+
   return {
     take,
+    restore,
     composerProps: {
       enabled: imageInput,
       disabledReason: `${agentId}'s model can't see images`,
@@ -200,6 +221,15 @@ function ViewHeader({
   )
 }
 
+/** A draft-mode attachment: staged locally as a File — nothing uploads
+ *  until first send creates the chat to upload into (#730). */
+interface DraftStagedFile {
+  id: string
+  name: string
+  previewUrl: string
+  file: File
+}
+
 /** Draft mode: agent picked, chat not yet persisted — created on first send. */
 export function DraftChatView({
   agentId,
@@ -208,20 +238,44 @@ export function DraftChatView({
 }: {
   agentId: string
   onCreated: (chatId: string) => void
-  createAndSend: (agentId: string, content: string) => Promise<string | null>
+  createAndSend: (agentId: string, content: string, files?: File[]) => Promise<{ chatId: string | null; sent: boolean }>
 }) {
   const agent = useAgent(agentId)
   const name = agent?.name ?? agentId
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const imageInput = useAgentImageInput(agentId)
+  const [staged, setStaged] = useState<DraftStagedFile[]>([])
+  const draftComposer = useRef<ComposerHandle | null>(null)
+
+  // Unmount (incl. agent switch — the parent keys this view by agent):
+  // release every staged preview URL; they'd otherwise leak for the whole
+  // page session.
+  const stagedRef = useRef(staged)
+  stagedRef.current = staged
+  useEffect(
+    () => () => {
+      for (const s of stagedRef.current) URL.revokeObjectURL(s.previewUrl)
+    },
+    [],
+  )
 
   const handleSend = async (content: string) => {
     setSending(true)
     setError(null)
     try {
-      const chatId = await createAndSend(agentId, content)
-      if (chatId) onCreated(chatId)
-      else setError('Could not start the chat — is the agent still in the roster?')
+      const res = await createAndSend(agentId, content, staged.map((s) => s.file))
+      if (res.chatId) {
+        // Navigate even when the message POST failed — the chat exists and
+        // createAndSend preserved the text as its composer draft + toasted.
+        for (const s of staged) URL.revokeObjectURL(s.previewUrl)
+        setStaged([])
+        onCreated(res.chatId)
+      } else {
+        setError('Could not start the chat — is the agent still in the roster?')
+        // Total failure: put the typed text back (the composer cleared on send).
+        draftComposer.current?.setText(content)
+      }
     } finally {
       setSending(false)
     }
@@ -246,16 +300,59 @@ export function DraftChatView({
         placeholder={`Message ${name}…`}
         onSend={(content) => { void handleSend(content) }}
         busy={sending}
+        handleRef={draftComposer}
         maxLength={CONTENT_MAX}
+        attachments={{
+          enabled: imageInput,
+          disabledReason: `${name}'s model can't see images`,
+          items: staged.map(({ id, name: fileName, previewUrl }) => ({ id, name: fileName, previewUrl, status: 'ready' as const })),
+          onAdd: (files) => {
+            setStaged((prev) => [
+              ...prev,
+              ...files.map((file) => ({
+                id: `${Date.now()}-${file.name}-${Math.random().toString(36).slice(2, 7)}`,
+                name: file.name,
+                previewUrl: URL.createObjectURL(file),
+                file,
+              })),
+            ])
+          },
+          onRemove: (id) => {
+            setStaged((prev) => {
+              const item = prev.find((s) => s.id === id)
+              if (item) URL.revokeObjectURL(item.previewUrl)
+              return prev.filter((s) => s.id !== id)
+            })
+          },
+        }}
       />
     </div>
   )
 }
 
 export function ChatView({ chatId, onChanged }: { chatId: string; onChanged: () => void }) {
-  const { chat, messages, liveChunks, streaming, sendError, send, abort, retry, refreshChat } = useChatStream(chatId)
+  const { chat, messages, liveChunks, streaming, sendError, queued, removeQueued, send, abort, retry, refreshChat } = useChatStream(chatId)
   const [openCall, setOpenCall] = useState<ConversationToolCall | null>(null)
   const attachments = useComposerAttachments(chatId, chat?.agentId ?? '')
+  const composerHandle = useRef<ComposerHandle | null>(null)
+
+  // Queue-remove restore (spec D8): an EMPTY composer gets the removed
+  // message back — text and still-uploaded attachments — for editing.
+  // "Empty" means no text AND no staged attachments (review finding:
+  // text-only emptiness merged restored attachments into a staged set —
+  // exactly the surprise-merging D8 forbids). Otherwise: discard.
+  const handleRemoveQueued = async (item: ConversationQueuedItem) => {
+    const removed = await removeQueued(item.id)
+    if (!removed) return
+    if (composerHandle.current?.isEmpty() && attachments.composerProps.items.length === 0) {
+      composerHandle.current.setText(removed.content)
+      const restorable = (removed.attachments ?? []).filter(
+        (a): a is { name: string; mimeType: string; url?: string; path: string } =>
+          typeof (a as { path?: unknown }).path === 'string',
+      )
+      if (restorable.length) attachments.restore(restorable)
+    }
+  }
 
   if (!chat) return null
 
@@ -287,12 +384,17 @@ export function ChatView({ chatId, onChanged }: { chatId: string; onChanged: () 
         </div>
       ) : null}
 
+      <QueuedMessageList items={queued} onRemove={(item) => { void handleRemoveQueued(item) }} />
+
       <Composer
         storageKey={`chat:${chatId}`}
         placeholder="Message the agent…"
         onSend={(content) => { void send(content, attachments.take()) }}
         busy={streaming}
         onAbort={abort}
+        queueMode
+        queuedCount={queued.length}
+        handleRef={composerHandle}
         maxLength={CONTENT_MAX}
         attachments={attachments.composerProps}
       />

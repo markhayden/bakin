@@ -26,12 +26,17 @@
  * and load/post throws are contained (no unhandled rejections).
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { ConversationMessage } from '@bakin/ui/conversation'
+import type {
+  ConversationMessage,
+  ConversationQueuedItem,
+} from '@bakin/ui/conversation'
 import { usePluginEvent } from '@/hooks/use-plugin-event'
 import type { RuntimeChatChunk } from '../types/runtime'
 
 export interface ConversationThreadLoad<Meta> {
   messages: ConversationMessage[]
+  /** Server-side pending follow-ups for queue-enabled surfaces. */
+  queued?: ConversationQueuedItem[]
   /**
    * Server-seeded in-flight flag: true seeds the streaming indicator on
    * mount so a turn started before this mount shows as live immediately.
@@ -56,16 +61,28 @@ export interface ConversationThreadOptions<Meta = unknown, Attachment = unknown>
   keyOf: (payload: Record<string, unknown>) => unknown
   /** Fetch the durable transcript (+ in-flight flag + consumer meta). Null = gone. */
   load: (key: string) => Promise<ConversationThreadLoad<Meta> | null>
-  /** POST the user's message; the turn itself arrives over the bus. */
+  /** POST the user's message; queue-enabled surfaces report an acceptance. */
   post: (
     key: string,
     content: string,
     attachments?: Attachment[],
-  ) => Promise<{ ok: boolean; status?: number; error?: string }>
+  ) => Promise<{
+    ok: boolean
+    status?: number
+    error?: string
+    queued?: { id: string; queueLength?: number }
+  }>
   /** Build the optimistic user row (chat maps attachment paths to URLs here). */
   optimisticRow?: (content: string, attachments?: Attachment[]) => ConversationMessage
   /** A turn for the ACTIVE thread settled (after the refetch was triggered). */
   onSettled?: (payload: Record<string, unknown>) => void
+  /** Opt into server-backed follow-up queueing while a turn is active. */
+  queue?: {
+    enabled: boolean
+    queuedEvent?: string
+    startedEvent?: string
+    remove?: (key: string, id: string) => Promise<boolean>
+  }
 }
 
 export interface ConversationThread<Meta = unknown, Attachment = unknown> {
@@ -77,6 +94,10 @@ export interface ConversationThread<Meta = unknown, Attachment = unknown> {
   liveChunks: RuntimeChatChunk[] | null
   streaming: boolean
   sendError: string | null
+  /** Pending follow-ups; strict surfaces always expose an empty array. */
+  queued: ConversationQueuedItem[]
+  /** Remove and return one queued item so a consumer can restore its draft. */
+  removeQueued: (id: string) => Promise<ConversationQueuedItem | null>
   send: (content: string, attachments?: Attachment[]) => Promise<void>
   refresh: () => Promise<void>
 }
@@ -90,6 +111,9 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
   const [liveChunks, setLiveChunks] = useState<RuntimeChatChunk[] | null>(null)
   const [streaming, setStreaming] = useState(false)
   const [sendError, setSendError] = useState<string | null>(null)
+  const [queued, setQueued] = useState<ConversationQueuedItem[]>([])
+  const queuedRef = useRef(queued)
+  queuedRef.current = queued
   // Guard against bus events for other threads / stale fetches after switching.
   const activeKeyRef = useRef(threadKey)
   activeKeyRef.current = threadKey
@@ -104,6 +128,7 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
     if (!threadKey) {
       setMeta(null)
       setMessages([])
+      setQueued([])
       return
     }
     const sendSeqAtStart = sendSeqRef.current
@@ -122,6 +147,7 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
     if (sendSeqRef.current !== sendSeqAtStart) return
     setMeta(body.meta ?? null)
     setMessages(body.messages)
+    setQueued(body.queued ?? [])
     if (body.streaming) {
       setStreaming(true)
       const seed = body.streamingText
@@ -138,8 +164,17 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
     setLiveChunks(null)
     setStreaming(false)
     setSendError(null)
+    setQueued([])
     void loadTranscript()
   }, [loadTranscript])
+
+  const refetchQueueState = (payload: Record<string, unknown>) => {
+    if (!optionsRef.current.queue?.enabled) return
+    if (optionsRef.current.keyOf(payload) !== activeKeyRef.current) return
+    void loadTranscript()
+  }
+  usePluginEvent(options.queue?.queuedEvent ?? '__conv_thread_no_queued__', refetchQueueState)
+  usePluginEvent(options.queue?.startedEvent ?? '__conv_thread_no_started__', refetchQueueState)
 
   usePluginEvent(events.chunk, (payload) => {
     if (optionsRef.current.keyOf(payload) !== activeKeyRef.current) return
@@ -185,10 +220,60 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
   const send = useCallback(async (content: string, attachments?: Attachment[]) => {
     const key = activeKeyRef.current
     if (!key) return
-    // One turn per thread: sending while a turn streams would wipe the live
-    // chunks locally and 409 server-side anyway — refuse honestly instead.
-    if (streamingRef.current) {
+    if (streamingRef.current && !optionsRef.current.queue?.enabled) {
       setSendError('A reply is already in progress')
+      return
+    }
+    if (streamingRef.current) {
+      setSendError(null)
+      let result: Awaited<ReturnType<ConversationThreadOptions<Meta, Attachment>['post']>>
+      try {
+        result = await optionsRef.current.post(key, content, attachments)
+      } catch (error) {
+        result = {
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+        }
+      }
+      if (activeKeyRef.current !== key) return
+      if (!result.ok) {
+        setSendError(result.error ?? `send failed (${result.status ?? 'network'})`)
+        return
+      }
+
+      const optimistic = optionsRef.current.optimisticRow?.(content, attachments)
+      const optimisticUser = optimistic?.kind === 'user' ? optimistic : undefined
+      if (result.queued) {
+        sendSeqRef.current += 1
+        const queuedId = result.queued.id
+        setQueued((current) =>
+          current.some((item) => item.id === queuedId)
+            ? current
+            : [
+                ...current,
+                {
+                  id: queuedId,
+                  ts: new Date().toISOString(),
+                  content: optimisticUser?.content ?? content,
+                  ...(optimisticUser?.attachments
+                    ? { attachments: optimisticUser.attachments }
+                    : {}),
+                },
+              ],
+        )
+      } else {
+        sendSeqRef.current += 1
+        setMessages((current) => [
+          ...current,
+          optimisticUser ?? {
+            kind: 'user',
+            ts: new Date().toISOString(),
+            content,
+          },
+        ])
+        setStreaming(true)
+        setLiveChunks([])
+      }
       return
     }
     setSendError(null)
@@ -216,5 +301,41 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
     }
   }, [])
 
-  return { messages, meta, liveChunks, streaming, sendError, send, refresh: loadTranscript }
+  const removeQueued = useCallback(async (
+    id: string,
+  ): Promise<ConversationQueuedItem | null> => {
+    const key = activeKeyRef.current
+    const item = queuedRef.current.find((candidate) => candidate.id === id)
+    if (!item) return null
+
+    const remove = optionsRef.current.queue?.remove
+    if (remove) {
+      let removed = false
+      try {
+        removed = await remove(key, id)
+      } catch {
+        removed = false
+      }
+      if (!removed) return null
+    }
+
+    if (activeKeyRef.current === key) {
+      setQueued((current) => current.filter((candidate) => candidate.id !== id))
+    }
+    return item
+  }, [])
+
+  return {
+    messages,
+    meta,
+    liveChunks,
+    streaming,
+    sendError,
+    queued,
+    removeQueued,
+    send,
+    refresh: loadTranscript,
+  }
 }
+
+export type { ConversationQueuedItem } from '@bakin/ui/conversation'

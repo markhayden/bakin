@@ -14,7 +14,7 @@ import { definePlugin } from '@bakin/core/routing'
 import { chatRoutes } from './lib/routes'
 import { registerChatSearch } from './lib/search'
 import { getChatSummary, sweepInterruptedTurns } from './lib/store'
-import { resolveActiveTurnForAgent } from './lib/stream-bridge'
+import { resolveActiveTurnForAgent, restoreQueues } from './lib/stream-bridge'
 
 const chatPlugin: BakinPlugin = definePlugin({
   id: 'chat',
@@ -35,7 +35,11 @@ const chatPlugin: BakinPlugin = definePlugin({
     // A turn that died with the process (restart/crash) left its user row
     // unanswered with no marker — stamp it honestly so the transcript
     // doesn't look forever-pending (#706). Best-effort, never blocks boot.
+    // THEN drain any persisted queued follow-ups (#729, spec D2) — sweep
+    // first so the interrupted turn's error row lands before drained rows.
     void sweepInterruptedTurns()
+      .then(() => restoreQueues(ctx))
+      .catch((err) => ctx.log.error('queued-message restore failed', err as Error))
     // Cross-plugin: lets tools called mid-turn (image generation) bind
     // their output to the agent's current chat without the agent passing ids.
     ctx.hooks.register('chat.resolveActiveTurn', async (data) => {

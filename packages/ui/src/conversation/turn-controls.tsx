@@ -23,6 +23,32 @@ function CopyIcon() {
   )
 }
 
+async function copyText(text: string): Promise<boolean> {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text)
+      return true
+    } catch {
+      // Fall back for denied permissions and plain-HTTP origins.
+    }
+  }
+  try {
+    const textarea = document.createElement('textarea')
+    textarea.value = text
+    textarea.setAttribute('readonly', '')
+    textarea.style.position = 'fixed'
+    textarea.style.opacity = '0'
+    document.body.appendChild(textarea)
+    textarea.focus()
+    textarea.select()
+    const copied = document.execCommand('copy')
+    textarea.remove()
+    return copied
+  } catch {
+    return false
+  }
+}
+
 /** Props for a compact, fully described conversation timestamp. */
 export interface TurnTimestampProps {
   ts?: string
@@ -65,15 +91,10 @@ export function CopyButton({ text, label = 'Copy', className }: CopyButtonProps)
   }, [])
 
   const copy = useCallback(async () => {
-    if (!navigator.clipboard) return
-    try {
-      await navigator.clipboard.writeText(text)
-      setCopied(true)
-      if (resetTimer.current) clearTimeout(resetTimer.current)
-      resetTimer.current = setTimeout(() => setCopied(false), 1500)
-    } catch {
-      // Clipboard permission failures leave the action available for retry.
-    }
+    if (!await copyText(text)) return
+    setCopied(true)
+    if (resetTimer.current) clearTimeout(resetTimer.current)
+    resetTimer.current = setTimeout(() => setCopied(false), 1500)
   }, [text])
 
   return (

@@ -10,8 +10,8 @@
     "entrypoints": 8,
     "supportedEntrypoints": 7,
     "frozenLegacyEntrypoints": 1,
-    "valueExports": 341,
-    "typeExports": 404
+    "valueExports": 343,
+    "typeExports": 407
   },
   "entrypoints": [
     {
@@ -587,6 +587,7 @@
         "formatRelativeTime",
         "humanizeActivity",
         "playReplyChime",
+        "QueuedMessageList",
         "ThinkingIndicator",
         "ToolCallDrawer",
         "ToolCallRow",
@@ -597,7 +598,8 @@
         "useConversationThread",
         "UserMessage",
         "visibleIdFromLocation",
-        "withUnreadPrefix"
+        "withUnreadPrefix",
+        "writeComposerDraft"
       ],
       "types": [
         "ActivityGroupProps",
@@ -606,6 +608,7 @@
         "ComposerAttachmentItem",
         "ComposerAttachments",
         "ComposerAttachmentStatus",
+        "ComposerHandle",
         "ComposerProps",
         "ConversationAgent",
         "ConversationAttachmentRenderer",
@@ -620,6 +623,7 @@
         "ConversationMode",
         "ConversationPanelProps",
         "ConversationProps",
+        "ConversationQueuedItem",
         "ConversationTextFormat",
         "ConversationTextRenderer",
         "ConversationTextTransform",
@@ -633,6 +637,7 @@
         "DisplayAttachment",
         "FoldedTurnOutput",
         "FoldOptions",
+        "QueuedMessageListProps",
         "ThinkingIndicatorProps",
         "ToolCallDrawerProps",
         "ToolCallRowProps",

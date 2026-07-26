@@ -55,13 +55,20 @@ export type { ConversationMode, ConversationProps } from './conversation'
 export { ConversationEmptyState } from './conversation-empty-state'
 export type { ConversationEmptyStateProps } from './conversation-empty-state'
 
-export { Composer } from './composer'
+export { Composer, writeComposerDraft } from './composer'
 export type {
   ComposerAttachmentItem,
   ComposerAttachments,
   ComposerAttachmentStatus,
+  ComposerHandle,
   ComposerProps,
 } from './composer'
+
+export { QueuedMessageList } from './queued-message-list'
+export type {
+  ConversationQueuedItem,
+  QueuedMessageListProps,
+} from './queued-message-list'
 
 export { ToolCallDrawer } from './tool-call-drawer'
 export type { ToolCallDrawerProps } from './tool-call-drawer'

@@ -19,7 +19,7 @@ const contentDirMock = () => ({
 mock.module('@/core/content-dir', contentDirMock)
 mock.module('../../packages/core/src/content-dir', contentDirMock)
 
-import { act, cleanup, render, renderHook, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, renderHook, waitFor } from '@testing-library/react'
 import '../rtl-settle'
 
 import {
@@ -87,6 +87,38 @@ describe('ConversationPanel layout modes (bits contract)', () => {
       <ConversationPanel messages={[]} agentId="main" onAgentChange={() => {}} onSend={() => {}} storageKey="ag-1" />,
     )
     expect(container.querySelector('[data-conv-agent-select]')).not.toBeNull()
+    cleanup()
+  })
+
+  it('queue-enabled panel allows submitting a follow-up while streaming; default stays strict (#732)', () => {
+    const sent: string[] = []
+    const queued = render(
+      <ConversationPanel
+        messages={MESSAGES}
+        agentId="main"
+        onSend={(c) => { sent.push(c) }}
+        onAbort={() => {}}
+        storageKey="qp-1"
+        streaming
+        queueMode
+        queuedItems={[{ id: 'q1', ts: '2026-07-25T00:00:00Z', content: 'queued already' }]}
+        onRemoveQueued={() => {}}
+      />,
+    )
+    const ta = queued.container.querySelector('textarea')!
+    fireEvent.change(ta, { target: { value: 'mid-stream follow-up' } })
+    fireEvent.keyDown(ta, { key: 'Enter' })
+    expect(sent).toEqual(['mid-stream follow-up'])
+    expect(queued.container.querySelector('[data-queued-list]')!.textContent).toContain('queued already')
+    cleanup()
+
+    const strict = render(
+      <ConversationPanel messages={MESSAGES} agentId="main" onSend={(c) => { sent.push(c) }} onAbort={() => {}} storageKey="qp-2" streaming />,
+    )
+    const strictTa = strict.container.querySelector('textarea')!
+    fireEvent.change(strictTa, { target: { value: 'blocked' } })
+    fireEvent.keyDown(strictTa, { key: 'Enter' })
+    expect(sent).toEqual(['mid-stream follow-up'])
     cleanup()
   })
 })

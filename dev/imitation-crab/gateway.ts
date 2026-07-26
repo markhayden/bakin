@@ -392,18 +392,30 @@ export async function handleGatewayRpcRequest(method: string, params: Record<str
     // Scenario markers script the streaming shape; they never reach the reply.
     const wantsTool = userMessage.includes('[[tool]]')
     const wantsDroppedDelta = userMessage.includes('[[dropped-delta]]')
-    const cleanMessage = userMessage.replace(/ ?\[\[(tool|dropped-delta)\]\]/g, '')
+    // [[slow]] — the chat-queue showcase (#729): a long reply streamed
+    // word-by-word for ~15s, giving a human-scale busy window to type and
+    // queue follow-ups, hit Stop mid-stream (partial text kept), and watch
+    // the combined drain. Per-message, unlike OPENCLAW_MOCK_CHAT_MODE=slow
+    // which parks BEFORE streaming and slows every turn globally.
+    const wantsSlow = userMessage.includes('[[slow]]')
+    const cleanMessage = userMessage.replace(/ ?\[\[(tool|dropped-delta|slow)\]\]/g, '')
 
     // Acknowledge inbound attachments (the real gateway's native `attachments`
     // param) so chat-attachment e2e drives can assert the pixels arrived.
     const attachmentCount = Array.isArray(params.attachments) ? params.attachments.length : 0
     const attachmentNote = attachmentCount ? ` [saw ${attachmentCount} attachment${attachmentCount === 1 ? '' : 's'}]` : ''
 
-    const reply = (mode === 'echo'
-      ? `[mock:${agentName}] ${cleanMessage}`
-      : mode === 'slow'
-        ? `[mock:${agentName}] Acknowledged after a slow turn.`
-        : `[mock:${agentName}] Acknowledged. Task understood — working on it.`) + attachmentNote
+    const reply = (wantsSlow
+      ? `[mock:${agentName}] Taking my time with this one. ` +
+        'Let me think it through step by step: first I would survey the request, then weigh the options, ' +
+        'then settle on the simplest approach that holds up. While I keep typing you can queue follow-up ' +
+        'messages, remove one you regret, or hit Stop — anything queued sends the moment this reply settles. ' +
+        'Almost there now; wrapping up the slow streamed reply.'
+      : mode === 'echo'
+        ? `[mock:${agentName}] ${cleanMessage}`
+        : mode === 'slow'
+          ? `[mock:${agentName}] Acknowledged after a slow turn.`
+          : `[mock:${agentName}] Acknowledged. Task understood — working on it.`) + attachmentNote
 
     // Real-wire run identity: runId echoes the client idempotencyKey; the
     // canonical sessionKey is agent:<id>:explicit:<sessionId> for threaded
@@ -478,7 +490,13 @@ export async function handleGatewayRpcRequest(method: string, params: Record<str
         if (wantsTool) await pushToolSequence(run)
         if (run.aborted) return postAbortFinal(run)
 
-        const deltas = splitIntoDeltas(reply)
+        // [[slow]] streams word-by-word with human-visible pacing (~200ms
+        // per word ≈ 15s for the long reply); normal turns stream in thirds
+        // with 8ms gaps. Both sleeps are abortable — Stop mid-stream keeps
+        // the cumulative partial text in the aborted final.
+        const deltas = wantsSlow
+          ? reply.split(' ').map((w, i) => (i === 0 ? w : ` ${w}`))
+          : splitIntoDeltas(reply)
         let cumulative = ''
         for (const [index, delta] of deltas.entries()) {
           cumulative += delta
@@ -493,7 +511,7 @@ export async function handleGatewayRpcRequest(method: string, params: Record<str
             // adapter must treat it as noise (text rides `chat` only).
             pushAgentFrame(run, 'assistant', { text: cumulative, delta })
           }
-          if (await abortableRunSleep(run, 8)) return postAbortFinal(run)
+          if (await abortableRunSleep(run, wantsSlow ? 200 : 8)) return postAbortFinal(run)
         }
 
         ctx.push({ type: 'event', event: 'tick', payload: {}, seq: ++frameSeq })

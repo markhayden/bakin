@@ -19,13 +19,13 @@
     ]
   },
   "summary": {
-    "total": 313,
+    "total": 314,
     "byKind": {
       "host-route": 26,
       "plugin-route": 10,
       "plugin-slot": 30,
       "plugin-template": 2,
-      "shared-component": 95,
+      "shared-component": 96,
       "sdk-ui-export": 150
     },
     "nonVisualAliases": 3
@@ -6679,7 +6679,8 @@
       },
       "sourcePath": "src/components/conversation/composer.tsx",
       "symbols": [
-        "Composer"
+        "Composer",
+        "writeComposerDraft"
       ],
       "exportStatus": "public",
       "classification": "shared-ui",
@@ -6780,6 +6781,30 @@
           "type": "public-export",
           "path": "packages/sdk/src/components/index.ts",
           "detail": "ConversationPanel, ConversationPanelProps"
+        }
+      ]
+    },
+    {
+      "id": "shared-component:src/components/conversation/queued-message-list",
+      "kind": "shared-component",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "identity": {
+        "component": "src/components/conversation/queued-message-list"
+      },
+      "sourcePath": "src/components/conversation/queued-message-list.tsx",
+      "symbols": [
+        "QueuedMessageList"
+      ],
+      "exportStatus": "private",
+      "classification": "shared-ui",
+      "evidence": [
+        {
+          "type": "source-export",
+          "path": "src/components/conversation/queued-message-list.tsx",
+          "detail": "exported values discovered from TSX source"
         }
       ]
     },
