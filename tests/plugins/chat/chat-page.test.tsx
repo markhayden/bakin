@@ -353,7 +353,7 @@ describe('ChatView', () => {
     cleanup()
   })
 
-  it('while streaming, the totals chip appends a clearly-labeled output estimate (#733 live piece)', async () => {
+  it('while streaming, the live output estimate rides the streaming TURN (far right of the shimmer) — the header chip stays recorded-only', async () => {
     mockFetch({
       [`/chats/${CHAT_A}/seen`]: {},
       capabilities: { imageInput: false },
@@ -368,12 +368,17 @@ describe('ChatView', () => {
     })
     const { container } = render(<ChatView chatId={CHAT_A} onChanged={() => {}} />)
     await waitFor(() => {
-      const chip = container.querySelector('[data-chat-usage-totals]')
-      expect(chip).not.toBeNull()
-      expect(chip!.textContent).toContain('+~100 out…')
+      const live = container.querySelector('[data-conv-usage-live]')
+      expect(live).not.toBeNull()
+      expect(live!.textContent).toContain('~100 out…')
     })
-    // The settled total still reads alongside the estimate, un-blended.
-    expect(container.querySelector('[data-chat-usage-totals]')!.textContent).toContain('10.5k tokens')
+    // The estimate sits on the shimmer row of the streaming turn.
+    const shimmerRow = container.querySelector('[data-conv-usage-live]')!.parentElement!
+    expect(shimmerRow.textContent).toContain('thinking')
+    // The header chip stays recorded-only — no estimate blended in.
+    const chip = container.querySelector('[data-chat-usage-totals]')!
+    expect(chip.textContent).toContain('10.5k tokens')
+    expect(chip.textContent).not.toContain('~')
     cleanup()
   })
 

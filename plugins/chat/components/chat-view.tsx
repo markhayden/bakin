@@ -171,7 +171,6 @@ function ViewHeader({
   chat,
   streaming,
   usageTotals,
-  streamingOutEstimate = 0,
   onChanged,
   refreshChat,
 }: {
@@ -179,8 +178,6 @@ function ViewHeader({
   chat: ChatSummaryDto | null
   streaming: boolean
   usageTotals?: ChatUsageTotals | null
-  /** ~tokens of the in-flight reply streamed so far (0 when idle). */
-  streamingOutEstimate?: number
   onChanged: () => void
   refreshChat?: () => Promise<void>
 }) {
@@ -188,13 +185,11 @@ function ViewHeader({
   // Usage totals chip (#733): the chat's recorded sum in PLAIN WORDS (the
   // Σ sigil confused people — review feedback) — hidden entirely when
   // nothing is recorded (absence, never zeros). Metered spend adds $.
-  // While a reply streams, a clearly-marked estimate of the output so far
-  // (~ + ellipsis) rides along and reconciles to the real number at settle;
-  // it is NEVER blended into the recorded total.
+  // The live streaming estimate lives on the TURN (beside the shimmer),
+  // not here — recorded numbers only in the header.
   const totalParts: string[] = []
   if (usageTotals?.totalTokens !== undefined) totalParts.push(`${formatTokenCount(usageTotals.totalTokens)} tokens`)
   if (usageTotals?.costUsd !== undefined) totalParts.push(formatUsageCost(usageTotals.costUsd))
-  if (streaming && streamingOutEstimate > 0) totalParts.push(`+~${formatTokenCount(streamingOutEstimate)} out…`)
   return (
     <div className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-2.5">
       <AgentAvatar agentId={agentId} size="sm" />
@@ -397,12 +392,13 @@ export function ChatView({ chatId, onChanged }: { chatId: string; onChanged: () 
 
   return (
     <div className="flex min-w-0 flex-1 flex-col">
-      <ViewHeader agentId={chat.agentId} chat={chat} streaming={streaming} usageTotals={usageTotals} streamingOutEstimate={streamingOutEstimate} onChanged={onChanged} refreshChat={refreshChat} />
+      <ViewHeader agentId={chat.agentId} chat={chat} streaming={streaming} usageTotals={usageTotals} onChanged={onChanged} refreshChat={refreshChat} />
 
       <Conversation
         turns={turns}
         agentId={chat.agentId}
         turnUsage={turnUsage}
+        liveOutEstimate={streamingOutEstimate}
         onRetry={retry}
         onOpenCall={setOpenCall}
         emptyState={

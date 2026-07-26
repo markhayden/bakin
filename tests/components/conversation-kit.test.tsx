@@ -92,7 +92,7 @@ describe('AgentTurn usage footer (#733)', () => {
     cleanup()
   })
 
-  it('a streaming turn never shows a usage footer — usage exists only at settle', () => {
+  it('a streaming turn never shows a RECORDED usage footer — usage exists only at settle', () => {
     const { container } = render(
       <AgentTurn
         agentId="main"
@@ -102,6 +102,43 @@ describe('AgentTurn usage footer (#733)', () => {
     )
     expect(container.querySelector('[data-conv-usage]')).toBeNull()
     cleanup()
+  })
+
+  it('a streaming turn shows the ~-labeled live output estimate; settled turns ignore it', () => {
+    const live = render(
+      <AgentTurn
+        agentId="main"
+        turn={agentTurn({ status: 'streaming', items: [{ type: 'text', format: 'markdown', content: 'typing…' }] })}
+        liveOutEstimate={320}
+      />,
+    )
+    const el = live.container.querySelector('[data-conv-usage-live]')
+    expect(el).not.toBeNull()
+    expect(el!.textContent).toContain('~320 out…')
+    cleanup()
+
+    const settled = render(
+      <AgentTurn agentId="main" turn={agentTurn()} usage={{ inputTokens: 100, outputTokens: 10 }} liveOutEstimate={320} />,
+    )
+    expect(settled.container.querySelector('[data-conv-usage-live]')).toBeNull()
+    expect(settled.container.querySelector('[data-conv-usage]')).not.toBeNull()
+    cleanup()
+  })
+
+  it('Conversation hands liveOutEstimate only to the streaming turn', () => {
+    const { container } = render(
+      <Conversation
+        agentId="main"
+        turns={[
+          agentTurn({ key: 'done-turn', turnId: 'done-turn', items: [{ type: 'text', format: 'markdown', content: 'settled' }] }),
+          agentTurn({ key: 'live-turn', status: 'streaming', items: [{ type: 'text', format: 'markdown', content: 'going…' }] }),
+        ]}
+        liveOutEstimate={128}
+      />,
+    )
+    const liveEls = container.querySelectorAll('[data-conv-usage-live]')
+    expect(liveEls.length).toBe(1)
+    expect(liveEls[0].textContent).toContain('~128 out…')
   })
 
   it('Conversation plumbs turnUsage to agent turns by turnId', () => {
