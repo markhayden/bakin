@@ -77,7 +77,7 @@ export function Conversation({
           <div className="flex h-full items-center justify-center p-6">{emptyState}</div>
         ) : (
           <div className="w-full space-y-5 px-4 py-4">
-            {turns.map((turn) => {
+            {turns.map((turn, index) => {
               const day = dayKey(turn.ts)
               const separator = day && day !== prevDay ? (
                 <div data-conv-day className="flex items-center gap-3 py-2" key={`day-${day}`}>
@@ -96,7 +96,14 @@ export function Conversation({
                     <AgentTurn
                       turn={turn}
                       agentId={agentId}
-                      onRetry={turn.status === 'error' ? onRetry : undefined}
+                      onRetry={
+                        // Retry re-sends the NEWEST user message, so only the
+                        // final turn may offer it — a mid-transcript button
+                        // (routine once the boot sweep stamps interrupted
+                        // turns above drained queue content) would resend the
+                        // wrong message.
+                        turn.status === 'error' && index === turns.length - 1 ? onRetry : undefined
+                      }
                       onOpenCall={onOpenCall}
                       transformText={transformText}
                       usage={turn.turnId ? turnUsage?.[turn.turnId] : undefined}

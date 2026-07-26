@@ -58,6 +58,7 @@ export type ConversationMessage =
     }
   | { kind: 'error'; ts: string; turnId?: string; message: string; errorKind?: string }
   | { kind: 'aborted'; ts: string; turnId?: string }
+  | { kind: 'done'; ts: string; turnId?: string }
 
 /** One tool invocation inside an activity group. */
 export interface ConversationToolCall {
@@ -269,6 +270,11 @@ export function foldConversation(
       })
       continue
     }
+
+    // Terminal marker rows are invisible bookkeeping (#735) — skip BEFORE
+    // the builder logic so they never split a turn on turnId or open a
+    // phantom empty one.
+    if (row.kind === 'done') continue
 
     // Agent-side row: start a new turn when the turnId changes (rows with
     // an explicit turnId split on it; legacy rows without one group by

@@ -39,6 +39,7 @@ export type ConversationTurnRow =
     }
   | { kind: 'error'; ts: string; turnId?: string; message: string; errorKind?: string }
   | { kind: 'aborted'; ts: string; turnId?: string }
+  | { kind: 'done'; ts: string; turnId?: string }
 
 export interface ConversationTurnOutcome {
   aborted: boolean
@@ -120,6 +121,14 @@ export interface ConversationTurnServiceConfig {
   framing?: string
   /** Run turns as ephemeral runtime sessions (no provider-side accumulation). */
   ephemeral?: boolean
+  /**
+   * Persist an invisible `{kind:'done'}` marker row at clean success settle
+   * so every settled turn ends on a terminal row (`done | aborted | error`)
+   * — boot-sweep evidence for stamping partial-output deaths. Chat-style
+   * sweepable transcripts only: bounded stores would evict real rows and
+   * foreign schemas would reject the kind. The kit's fold skips these rows.
+   */
+  terminalMarkerRows?: boolean
   /**
    * Opt-in pending queue (#729). Without this, a busy slot always answers
    * `'busy'` — strict surfaces are unchanged.

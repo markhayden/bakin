@@ -75,6 +75,7 @@ export type ConversationTurnRow =
     }
   | { kind: 'error'; ts: string; turnId?: string; message: string; errorKind?: string }
   | { kind: 'aborted'; ts: string; turnId?: string }
+  | { kind: 'done'; ts: string; turnId?: string }
 
 export interface TurnOutcome {
   aborted: boolean
@@ -142,6 +143,16 @@ export interface ConversationTurnServiceConfig {
   framing?: string
   /** Run turns as ephemeral runtime sessions (no provider-side accumulation). */
   ephemeral?: boolean
+  /**
+   * Persist an invisible `{kind:'done'}` marker row at clean success settle
+   * (#735). Abort/error settles already end on their own terminal rows, so
+   * with this on EVERY settled turn ends on a terminal row — the evidence a
+   * boot sweep needs to stamp partial-output deaths without ever falsely
+   * marking a completed turn. Chat-style sweepable transcripts only:
+   * bounded stores (brands' 300-row brainstorm array) would evict real
+   * rows, and foreign zod schemas would reject the kind.
+   */
+  terminalMarkerRows?: boolean
   /**
    * Opt-in pending queue (#729). Without this, a busy slot always answers
    * `'busy'` — strict surfaces are unchanged.
@@ -605,6 +616,8 @@ async function runTurn(
     const aborted = controller.signal.aborted
     if (aborted) {
       await persist([{ kind: 'aborted', ts: new Date().toISOString(), turnId }])
+    } else if (config.terminalMarkerRows) {
+      await persist([{ kind: 'done', ts: new Date().toISOString(), turnId }])
     }
     try {
       await config.hooks?.onTurnComplete?.({ key, aborted })
