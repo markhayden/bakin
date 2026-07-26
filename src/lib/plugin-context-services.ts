@@ -256,6 +256,20 @@ export function createPluginRuntimeFacade(runtime: AgentRuntimeAdapter): AgentRu
             cancelApproval: runtime.channels.cancelApproval.bind(runtime.channels),
             resolveApproval: runtime.channels.resolveApproval.bind(runtime.channels),
             subscribeApprovalResponses: runtime.channels.subscribeApprovalResponses.bind(runtime.channels),
+            // Optional members forward only when the runtime provides them —
+            // honest absence must survive the facade (feature-detection).
+            ...(runtime.channels.createThread
+              ? { createThread: runtime.channels.createThread.bind(runtime.channels) }
+              : {}),
+            ...(runtime.channels.editMessage
+              ? { editMessage: runtime.channels.editMessage.bind(runtime.channels) }
+              : {}),
+            ...(runtime.channels.subscribeInboundMessages
+              ? { subscribeInboundMessages: runtime.channels.subscribeInboundMessages.bind(runtime.channels) }
+              : {}),
+            ...(runtime.channels.sendTyping
+              ? { sendTyping: runtime.channels.sendTyping.bind(runtime.channels) }
+              : {}),
           },
         }
       : {}),

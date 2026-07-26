@@ -63,6 +63,7 @@ const channels: ChannelSurface = {
   },
   createThread: async (args) => requireState().send.createThread(args),
   editMessage: async (args) => requireState().send.editMessage(args),
+  sendTyping: async (args) => requireState().send.sendTyping(args),
 }
 
 let bootInFlight: Promise<void> | null = null

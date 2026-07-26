@@ -57,6 +57,7 @@ export interface SendApi {
   editMessage(channelId: string, messageId: string, body: string): Promise<void>
   startThread(channelId: string, name: string, messageId?: string): Promise<{ id: string }>
   createDM(userId: string): Promise<{ id: string }>
+  showTyping(channelId: string): Promise<void>
 }
 
 export interface SendSurfaceDeps {
@@ -72,6 +73,7 @@ export interface SendSurface {
   deliverContent(args: ContentDeliveryArgs): Promise<DeliveryResult>
   createThread(args: CreateThreadArgs): Promise<CreatedThread | null>
   editMessage(args: EditChannelMessageArgs): Promise<void>
+  sendTyping(args: { channel: string }): Promise<void>
 }
 
 /**
@@ -321,6 +323,13 @@ export function createSendSurface(deps: SendSurfaceDeps): SendSurface {
       const parsed = parseDiscordRef(args.channel)
       const messageId = args.messageRef.startsWith('message:') ? args.messageRef.slice('message:'.length) : args.messageRef
       await withRetry('edit', args.channel, () => deps.api.editMessage(parsed.id, messageId, args.body))
+    },
+
+    sendTyping: async (args) => {
+      // Best-effort by nature — no retry, no audit; a lost typing pulse is
+      // invisible and the caller repeats it anyway.
+      const channelId = await resolveChannelId(args.channel)
+      await deps.api.showTyping(channelId)
     },
   }
 }

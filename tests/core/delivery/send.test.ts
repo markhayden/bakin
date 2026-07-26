@@ -58,6 +58,7 @@ function makeApi(overrides: Partial<SendApi> = {}) {
     },
     startThread: async () => ({ id: 'thread-1' }),
     createDM: async (userId) => ({ id: `dm-${userId}` }),
+    showTyping: async () => {},
     ...overrides,
   }
   return { api, sent, edits }

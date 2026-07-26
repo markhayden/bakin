@@ -140,6 +140,9 @@ export function sendApiFromTransport(transport: DiscordTransport): SendApi {
       const channel = await transport.api.users.createDM(userId)
       return { id: channel.id }
     },
+    async showTyping(channelId) {
+      await transport.api.channels.showTyping(channelId)
+    },
   }
 }
 

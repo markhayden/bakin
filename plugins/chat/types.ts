@@ -42,6 +42,11 @@ export interface ChatSummary {
    * (zod default) until their transcript shows a done row.
    */
   markerEra: boolean
+  /**
+   * Binds this chat to an external channel (#669 Phase B) — e.g.
+   * "discord:channel:<id>". Inbound messages route here; replies post back.
+   */
+  externalKey?: string
 }
 
 /** A user-sent attachment as persisted (path-addressed; served by GET route). */

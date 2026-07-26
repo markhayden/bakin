@@ -15,11 +15,14 @@ import { chatRoutes } from './lib/routes'
 import { registerChatSearch } from './lib/search'
 import { getChatSummary, sweepInterruptedTurns } from './lib/store'
 import { isTurnInFlight, resolveActiveTurnForAgent, restoreQueues } from './lib/stream-bridge'
+import { wireChannelInbound } from './lib/channel-inbound'
+
+let unsubscribeChannelInbound: (() => void) | null = null
 
 const chatPlugin: BakinPlugin = definePlugin({
   id: 'chat',
   name: 'Chat',
-  version: '0.1.0',
+  version: '0.2.0',
   routes: chatRoutes,
 
   settingsSchema: {
@@ -50,6 +53,16 @@ const chatPlugin: BakinPlugin = definePlugin({
       if (!active || !getChatSummary(active.chatId)) return null
       return active
     })
+    // Inbound channel chat (#669 Phase B): messages from the delivery
+    // bridge become real chats; replies post back. Feature-detected —
+    // inert on runtimes without an inbound stream. Idempotent for reload.
+    unsubscribeChannelInbound?.()
+    unsubscribeChannelInbound = wireChannelInbound(ctx)
+  },
+
+  onShutdown() {
+    unsubscribeChannelInbound?.()
+    unsubscribeChannelInbound = null
   },
 })
 

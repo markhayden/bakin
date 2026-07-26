@@ -220,4 +220,10 @@ export interface RuntimeChannelSurface {
    * (OpenClaw) OMIT this member — consumers feature-detect.
    */
   subscribeInboundMessages?(handler: (message: InboundChannelMessage) => void): () => void
+  /**
+   * OPTIONAL ephemeral typing/activity signal (#669 Phase B, D10). Providers
+   * without the concept omit it; callers feature-detect and repeat while
+   * work runs (platform typing states expire — Discord's after ~10s).
+   */
+  sendTyping?(args: { channel: string }): Promise<void>
 }

@@ -1,0 +1,210 @@
+/**
+ * Inbound channel messages → real Bakin chats (#669 Phase B, D7).
+ *
+ * Mirrors workflows' wireChannelApprovals: feature-detect the optional
+ * runtime surface at activate, return an unsubscribe for onShutdown. The
+ * bridge has ALREADY gated the sender (allowlists fail closed, mention
+ * rules) — this module only routes:
+ *
+ *   inbound message → find-or-create the chat bound to the channel
+ *   (ChatSummary.externalKey) → run the turn through the ONE conversation
+ *   turn engine (work class `chat`, queue-when-busy) → on `chat.done`, post
+ *   the reply back through runtime.channels.sendMessage. A typing pulse
+ *   repeats while the turn runs (sendTyping is optional — feature-detected).
+ *
+ * The same chat is usable from the web UI interchangeably: replies to a
+ * BOUND chat post back to its channel regardless of where the user message
+ * came from — that is the point, not a bug.
+ */
+import { copyFileSync, mkdirSync, rmSync } from 'fs'
+import { join, basename } from 'path'
+import type { PluginContext } from '@bakin/core/plugin-types'
+import type { InboundChannelMessage } from '@bakin/core/adapters/runtime'
+import { createLogger } from '../../../src/core/logger'
+import { getSettings } from '../../../src/core/settings'
+import type { ChatAttachment, ChatTranscriptRow } from '../types'
+import { attachmentsDir, createChat, findChatByExternalKey, getChatSummary, readTranscript } from './store'
+import { startChatTurn } from './stream-bridge'
+
+const log = createLogger('chat-channel-inbound')
+
+/** Discord's typing state expires after ~10s — pulse well inside that. */
+const TYPING_PULSE_MS = 8_000
+
+type WireContext = Pick<PluginContext, 'runtime' | 'events'>
+
+function inboundAgentId(): string {
+  return getSettings().integrations.discord.inbound.agentId || 'main'
+}
+
+/** Assistant text of the just-finished turn: rows after the last user row. */
+export function extractReplyText(rows: ChatTranscriptRow[]): string {
+  let lastUser = -1
+  for (let i = rows.length - 1; i >= 0; i--) {
+    if (rows[i].kind === 'user') { lastUser = i; break }
+  }
+  return rows
+    .slice(lastUser + 1)
+    .filter((row): row is Extract<ChatTranscriptRow, { kind: 'assistant' }> => row.kind === 'assistant')
+    .map(row => row.content)
+    .join('\n\n')
+    .trim()
+}
+
+export function wireChannelInbound(ctx: WireContext): () => void {
+  const channels = ctx.runtime.channels
+  if (!channels?.subscribeInboundMessages) {
+    log.info('Runtime has no inbound channel stream — inbound chat inactive')
+    return () => {}
+  }
+  const subscribeInbound = channels.subscribeInboundMessages.bind(channels)
+
+  // ── typing pulse per chat ────────────────────────────────────────────
+  const typingTimers = new Map<string, ReturnType<typeof setInterval>>()
+  function startTyping(chatId: string, channelRef: string): void {
+    if (!channels?.sendTyping || typingTimers.has(chatId)) return
+    const sendTyping = channels.sendTyping.bind(channels)
+    const pulse = (): void => {
+      void sendTyping({ channel: channelRef }).catch(() => {
+        // Best-effort by design — a lost pulse is invisible.
+      })
+    }
+    pulse()
+    typingTimers.set(chatId, setInterval(pulse, TYPING_PULSE_MS))
+  }
+  function stopTyping(chatId: string): void {
+    const timer = typingTimers.get(chatId)
+    if (timer) {
+      clearInterval(timer)
+      typingTimers.delete(chatId)
+    }
+  }
+
+  async function channelLabel(channelRef: string): Promise<string | null> {
+    try {
+      const listed = await channels?.list() ?? []
+      return listed.find(channel => channel.id === channelRef)?.label ?? null
+    } catch {
+      return null
+    }
+  }
+
+  async function findOrCreateChat(message: InboundChannelMessage): Promise<{ id: string; agentId: string }> {
+    const existing = findChatByExternalKey(message.channelRef)
+    if (existing) return existing
+    // Deterministic zero-cost title from the channel label (guild channels)
+    // or the sender (DMs — not enumerable via list()).
+    const label = await channelLabel(message.channelRef)
+    const title = label
+      ? `${label} · Discord`
+      : `DM · ${message.authorName ?? message.authorId} · Discord`
+    const created = await createChat({ agentId: inboundAgentId(), title, externalKey: message.channelRef })
+    log.info('Bound new chat to channel', { chatId: created.id, channel: message.channelRef })
+    return created
+  }
+
+  /**
+   * Copy bridge temp files into the chat's own attachment dir (the engine
+   * downscales; the GET route serves only from this dir), gated on the
+   * agent's image-input capability — an unsupported attachment degrades to
+   * a visible note, never a dropped message.
+   */
+  async function adoptAttachments(
+    chatId: string,
+    agentId: string,
+    message: InboundChannelMessage,
+  ): Promise<{ attachments: ChatAttachment[]; notes: string[] }> {
+    const incoming = message.attachments ?? []
+    if (incoming.length === 0) return { attachments: [], notes: [] }
+    let imageInput = false
+    try {
+      imageInput = (await ctx.runtime.capabilities({ agentId })).input.imageInput === true
+    } catch {
+      imageInput = false // conservative — same as the composer probe
+    }
+    if (!imageInput) {
+      return {
+        attachments: [],
+        notes: [`[${incoming.length} image attachment${incoming.length === 1 ? '' : 's'} omitted — the agent's model has no image input]`],
+      }
+    }
+    const dir = attachmentsDir(chatId)
+    mkdirSync(dir, { recursive: true })
+    const attachments: ChatAttachment[] = []
+    const notes: string[] = []
+    for (const file of incoming) {
+      try {
+        const name = basename(file.name)
+        const target = join(dir, name)
+        copyFileSync(file.path, target)
+        rmSync(file.path, { force: true })
+        attachments.push({ name, mimeType: file.contentType ?? 'image/png', path: target })
+      } catch (err) {
+        log.warn('Inbound attachment adoption failed — noted, not fatal', err, { name: file.name })
+        notes.push(`[attachment ${file.name} could not be processed]`)
+      }
+    }
+    return { attachments, notes }
+  }
+
+  const unsubscribeInbound = subscribeInbound((message) => {
+    void (async () => {
+      const chat = await findOrCreateChat(message)
+      const { attachments, notes } = await adoptAttachments(chat.id, chat.agentId, message)
+      const content = [message.text, ...notes].filter(Boolean).join('\n\n')
+      if (!content && attachments.length === 0) return
+      startTyping(chat.id, message.channelRef)
+      const result = await startChatTurn(ctx as Parameters<typeof startChatTurn>[0], chat.id, content || '(image)', attachments, { queueIfBusy: true })
+      if (result === 'not_found' || result === 'busy') {
+        stopTyping(chat.id)
+        log.warn('Inbound turn not accepted', { chatId: chat.id, result })
+      }
+    })().catch((err) => {
+      log.error('Inbound channel message handling failed', err, { channel: message.channelRef })
+    })
+  })
+
+  // Reply relay: ANY settled turn on a bound chat posts back to its channel
+  // — web-originated messages included (interchangeable conversation, D7).
+  const unsubscribeDone = ctx.events.on('chat.done', (_event: string, payload: Record<string, unknown>) => {
+    void (async () => {
+      const chatId = typeof payload.chatId === 'string' ? payload.chatId : null
+      if (!chatId) return
+      stopTyping(chatId)
+      if (payload.aborted === true) return
+      const summary = getChatSummary(chatId)
+      if (!summary?.externalKey || !channels) return
+      const reply = extractReplyText(readTranscript(chatId))
+      if (!reply) return
+      await channels.sendMessage({ channels: [summary.externalKey], message: { body: reply } })
+    })().catch((err) => {
+      log.error('Posting chat reply to channel failed', err)
+    })
+  })
+
+  const unsubscribeError = ctx.events.on('chat.error', (_event: string, payload: Record<string, unknown>) => {
+    void (async () => {
+      const chatId = typeof payload.chatId === 'string' ? payload.chatId : null
+      if (!chatId) return
+      stopTyping(chatId)
+      const summary = getChatSummary(chatId)
+      if (!summary?.externalKey || !channels) return
+      const message = typeof payload.message === 'string' ? payload.message : 'unknown error'
+      // Honest failure — a Discord-side sender must never wait on silence.
+      await channels.sendMessage({
+        channels: [summary.externalKey],
+        message: { body: `⚠️ The agent turn failed: ${message}` },
+      })
+    })().catch((err) => {
+      log.error('Posting chat error to channel failed', err)
+    })
+  })
+
+  return () => {
+    unsubscribeInbound()
+    unsubscribeDone()
+    unsubscribeError()
+    for (const timer of typingTimers.values()) clearInterval(timer)
+    typingTimers.clear()
+  }
+}
