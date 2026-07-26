@@ -24,7 +24,7 @@ describe('public layout primitives', () => {
     expect(shell?.className).toContain('flex-col')
     expect(content?.className).toContain('max-w-3xl')
     expect(content?.className).toContain('@md/page-shell:px-bakin-4')
-    expect(content?.className).toContain('pb-bakin-8')
+    expect(content?.className).toContain('pb-[calc(var(--bakin-layout-space-8)*2)]')
     expect(content?.className).toContain('shrink-0')
     expect(content?.className).not.toMatch(/\bflex-1\b/)
   })

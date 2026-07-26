@@ -28,6 +28,7 @@ import '../rtl-settle'
 import { MarkdownContent } from '@makinbakin/sdk/components'
 
 const CODE_MD = '```typescript\nconst x: number = 1\n```'
+const JSON_MD = '```json\n{"state":"ready","count":2}\n```'
 
 describe('MarkdownContent code blocks', () => {
   it('syntax-highlights fenced code and shows a language label', () => {
@@ -39,6 +40,15 @@ describe('MarkdownContent code blocks', () => {
     expect(container.querySelector('pre code span[class*="hljs-"]')).not.toBeNull()
     // language label visible in the block header
     expect(container.textContent).toContain('typescript')
+  })
+
+  it('syntax-highlights JSON keys and values as distinct tokens', () => {
+    const { container } = render(<MarkdownContent content={JSON_MD} />)
+    const code = container.querySelector('pre code.language-json')
+    expect(code).not.toBeNull()
+    expect(code!.querySelector('.hljs-attr')?.textContent).toContain('state')
+    expect(code!.querySelector('.hljs-string')?.textContent).toContain('ready')
+    expect(code!.querySelector('.hljs-number')?.textContent).toBe('2')
   })
 
   it('copy button writes the code text to the clipboard', async () => {

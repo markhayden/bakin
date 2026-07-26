@@ -1,28 +1,29 @@
 'use client'
 
 /**
- * MemorySearchResults — cross-tier result list for the /memory page.
+ * Cross-tier memory results rendered as a low-chrome semantic list.
  *
- * Renders rows from the unified `bakin_memory` table — either search
- * results (when `query` is non-empty) or the /recent feed (when `query`
- * is empty). Each row surfaces the tier badge (the whole point of
- * cross-tier search), the owning agent, title, snippet, and score.
- * Callers pass in the merged result set plus the active query; the
- * component handles its own loading / error / empty states.
+ * Tier and agent are taxonomy metadata, while the title and snippet carry the
+ * content hierarchy. Search relevance stays hidden unless global debug mode
+ * explicitly asks for the canonical score overlay.
  */
-import { Card } from "@makinbakin/sdk/ui"
-import { Badge } from "@makinbakin/sdk/ui"
-import { Button } from "@makinbakin/sdk/ui"
-import { Skeleton } from "@makinbakin/sdk/ui"
-import { ErrorBanner } from "@makinbakin/sdk/components"
-import { EmptyState } from "@makinbakin/sdk/components"
-import { Search, Clock, Bug } from 'lucide-react'
-import type { SearchResult } from "@makinbakin/sdk/hooks"
-import { useDebug } from "@makinbakin/sdk/hooks"
+import { useMemo } from 'react'
+import { Bug } from 'lucide-react'
+import {
+  AgentAvatar,
+  ScoreOverlay,
+  StatusBadge,
+  computeMatchedFields,
+  type AgentIdentity,
+} from '@makinbakin/sdk/patterns'
+import { Button, Card, Skeleton, SystemState } from '@makinbakin/sdk/ui'
+import type { SearchResult } from '@makinbakin/sdk/hooks'
+import { useDebug } from '@makinbakin/sdk/hooks'
 import { tierStyle } from './tier-colors'
 
 interface Props {
   results: SearchResult[]
+  agents?: readonly AgentIdentity[]
   loading: boolean
   error: string | null
   query: string
@@ -30,40 +31,64 @@ interface Props {
   hiddenByDebug?: boolean
   /** Callback to flip the page-local Debug toggle from the empty state CTA. */
   onEnableDebug?: () => void
+  /** Clears the routed search query from the no-results recovery action. */
+  onClear?: () => void
   onSelect?: (result: SearchResult) => void
 }
 
-function str(v: unknown): string {
-  return typeof v === 'string' ? v : ''
+function str(value: unknown): string {
+  return typeof value === 'string' ? value : ''
 }
 
-function formatScore(n: number): string {
-  return Number.isFinite(n) ? n.toFixed(2) : '—'
+function summarizeSnippet(value: string, title: string): string {
+  const summary = value
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/^[\s>*+-]+/gm, '')
+    .replace(/_/g, ' ')
+    .replace(/[#*`~]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (!title || !summary.toLocaleLowerCase().startsWith(title.toLocaleLowerCase())) return summary
+  return summary.slice(title.length).replace(/^[\s:–—-]+/, '').trim()
 }
 
 export function MemorySearchResults({
   results,
+  agents = [],
   loading,
   error,
   query,
   hiddenByDebug,
   onEnableDebug,
+  onClear,
   onSelect,
 }: Props) {
   const [debug] = useDebug()
+  const agentById = useMemo(
+    () => new Map(agents.map((item) => [item.id, item])),
+    [agents],
+  )
 
   if (loading) {
     return (
-      <div className="flex flex-col gap-2" data-testid="memory-search-results-loading">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <Skeleton key={i} className="h-20 w-full" />
+      <div className="flex flex-col gap-bakin-2" data-testid="memory-search-results-loading">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <Skeleton key={index} className="h-bakin-20 w-full" />
         ))}
       </div>
     )
   }
 
   if (error) {
-    return <ErrorBanner message={`Search failed: ${error}`} />
+    return (
+      <SystemState
+        kind="error"
+        recovery="unavailable"
+        scope="page"
+        title="Memory could not be loaded"
+        description={error}
+      />
+    )
   }
 
   const searching = query.trim().length > 0
@@ -72,110 +97,118 @@ export function MemorySearchResults({
   if (results.length === 0) {
     if (hiddenByDebug) {
       return (
-        <EmptyState
-          icon={Bug}
-          title="Only debug-tier matches"
-          description={`Every hit for "${query}" is a turn or audit row. Enable Debug to see them.`}
+        <SystemState
+          kind="no-results"
+          scope="page"
+          title="Only system-log matches"
+          description={`Every hit for "${query}" is a turn or audit row. Include System Logs to see them.`}
           action={
             onEnableDebug ? (
-              <Button size="sm" onClick={onEnableDebug} className="gap-1.5">
-                <Bug className="size-3.5" />
-                Enable Debug
+              <Button size="sm" onClick={onEnableDebug}>
+                <Bug />
+                Include System Logs
               </Button>
-            ) : undefined
+            ) : <Button size="sm" variant="outline" disabled>Include System Logs</Button>
           }
         />
       )
     }
+
     return searching ? (
-      <EmptyState
-        icon={Search}
-        title="No results"
-        description={`No results for "${query}"`}
+      <SystemState
+        kind="no-results"
+        scope="page"
+        title="No memory matches"
+        description={`No results for "${query}". Clear the search or adjust the filters.`}
+        action={<Button variant="outline" onClick={onClear} disabled={!onClear}>Clear search</Button>}
       />
     ) : (
-      <EmptyState
-        icon={Clock}
-        title="No recent activity"
-        description="Nothing has been indexed yet, or your filters exclude everything. Try toggling Debug to include turns and audit entries."
+      <SystemState
+        kind="initial-empty"
+        scope="page"
+        title="No recent memory"
+        description="Nothing has been indexed yet, or the current filters exclude every memory record."
       />
     )
   }
 
   return (
-    <ul className="flex flex-col gap-2">
-      {results.map((r) => {
-        const tier = str(r.fields.tier)
-        const agent = str(r.fields.agent)
-        const title = str(r.fields.title) || r.id
-        const snippet = str(r.fields.snippet)
+    <ul className="grid gap-bakin-2">
+      {results.map((result) => {
+        const tier = str(result.fields.tier)
+        const agent = str(result.fields.agent)
+        const title = str(result.fields.title) || result.id
+        const snippet = summarizeSnippet(str(result.fields.snippet), title)
         const clickable = typeof onSelect === 'function'
         const style = tierStyle(tier)
+        const agentIdentity = agent
+          ? agentById.get(agent) ?? { id: agent, name: agent }
+          : null
+        const content = (
+          <span className="pointer-events-none relative z-10 grid min-w-0">
+            <span className="grid min-w-0 gap-bakin-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start sm:gap-bakin-4">
+              <span className="grid min-w-0 gap-bakin-1">
+                <span className="min-w-0 [overflow-wrap:anywhere] text-bakin-typography-size-body font-bakin-typography-weight-semibold leading-snug text-bakin-text-primary">
+                  {title}
+                </span>
+                {snippet ? (
+                  <span
+                    data-memory-summary=""
+                    className="line-clamp-1 min-w-0 [overflow-wrap:anywhere] text-bakin-typography-size-body leading-relaxed text-bakin-text-muted"
+                  >
+                    {snippet}
+                  </span>
+                ) : null}
+              </span>
+              <span className="flex min-w-0 items-center gap-bakin-2 sm:justify-end">
+                <StatusBadge tone="neutral" variant="soft" size="xs" className={style.badge}>
+                  {style.label}
+                </StatusBadge>
+                {agentIdentity ? (
+                  <span className="flex min-w-0 items-center gap-bakin-1">
+                    <AgentAvatar agent={agentIdentity} size="xs" decorative />
+                    <span className="truncate text-bakin-typography-size-meta text-bakin-text-muted">
+                      {agentIdentity.name}
+                    </span>
+                  </span>
+                ) : null}
+              </span>
+            </span>
+            {showScoreBreakdown ? (
+              <ScoreOverlay
+                info={{
+                  score: result.score,
+                  indexScores: result.indexScores,
+                  matchedFields: computeMatchedFields(query, result.fields),
+                }}
+                className="mt-bakin-1"
+              />
+            ) : null}
+          </span>
+        )
 
         return (
-          <li key={r.id}>
+          <li key={result.id}>
             <Card
-              className={
-                'flex flex-col gap-2 p-4 border-l-4 transition-colors ' +
-                style.accent +
-                (clickable ? ' cursor-pointer ' + style.bg : '')
-              }
-              onClick={clickable ? () => onSelect!(r) : undefined}
+              size="sm"
+              data-memory-result=""
+              className="relative gap-0 border-bakin-border-subtle/30 px-bakin-3 transition-colors duration-[var(--bakin-motion-duration-feedback)] hover:border-bakin-border-subtle motion-reduce:transition-none"
             >
-              <div className="flex items-center gap-2 flex-wrap">
-                <Badge
-                  variant="outline"
-                  className={`text-[10px] uppercase tracking-wide ${style.badge}`}
-                >
-                  {style.label}
-                </Badge>
-                {agent && (
-                  <Badge variant="secondary" className="text-[10px]">
-                    {agent}
-                  </Badge>
-                )}
-                <div className="ml-auto flex items-center gap-2 font-mono text-[10px] shrink-0">
-                  {showScoreBreakdown ? (
-                    <ScoreBreakdown result={r} />
-                  ) : (
-                    <span className="text-xs text-muted-foreground">{formatScore(r.score)}</span>
-                  )}
-                </div>
-              </div>
-
-              <div className="text-sm font-medium leading-snug">{title}</div>
-
-              {snippet && (
-                <div className="text-xs text-muted-foreground line-clamp-2">{snippet}</div>
-              )}
+              {clickable ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label={`Open ${title}`}
+                  className="absolute inset-0 z-0 h-auto w-auto min-h-0 min-w-0 rounded-bakin-surface p-0 hover:bg-transparent"
+                  onClick={() => onSelect(result)}
+                />
+              ) : null}
+              {content}
             </Card>
           </li>
         )
       })}
     </ul>
-  )
-}
-
-/**
- * Per-result score breakdown overlay — matches the pattern used on the
- * messaging session list and asset cards. RRF is the merged rank, SEM is
- * the `embeddings` semantic index, BM25 is whichever full-text index key
- * the adapter attached. Some adapters use absolute filesystem paths for
- * index keys, so it can't be hardcoded.
- */
-function ScoreBreakdown({ result }: { result: SearchResult }) {
-  const scores = result.indexScores ?? {}
-  const semKey = 'embeddings'
-  const bm25Key = Object.keys(scores).find(
-    (k) => k !== semKey && /bleve|full_text/.test(k),
-  ) ?? Object.keys(scores).find((k) => k !== semKey)
-  const bm25 = bm25Key !== undefined ? scores[bm25Key] : undefined
-  const sem = scores[semKey]
-  return (
-    <>
-      <span className="text-amber-400">RRF {formatScore(result.score)}</span>
-      <span className="text-cyan-400">BM25 {bm25 !== undefined ? bm25.toFixed(3) : '—'}</span>
-      <span className="text-purple-400">SEM {sem !== undefined ? sem.toFixed(3) : '—'}</span>
-    </>
   )
 }

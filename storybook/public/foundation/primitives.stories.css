@@ -297,6 +297,10 @@
   padding: 0;
 }
 
+.bakin-primitive-story__overlay-body--sections {
+  gap: var(--bakin-layout-gap-section);
+}
+
 .bakin-primitive-story__overlay-callout {
   padding: var(--bakin-layout-space-3);
   border-left: 2px solid var(--bakin-color-signal-highlight);

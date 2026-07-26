@@ -4,7 +4,7 @@ import { describe, expect, it, mock } from 'bun:test'
 import { fireEvent, render, screen } from '@testing-library/react'
 import '../../rtl-settle'
 
-import { PageNavigator } from '../../../plugins/team/components/page-navigator'
+import { PageNavigator } from '@makinbakin/sdk/patterns'
 
 describe('PageNavigator', () => {
   it('moves between bounded pages and exposes an explicit show-all mode', () => {

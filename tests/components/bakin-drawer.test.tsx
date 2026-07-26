@@ -156,6 +156,7 @@ describe('BakinDrawer', () => {
     expect(layout?.className).toContain('sm:px-bakin-6')
     expect(layout?.className).toContain('pt-bakin-4')
     expect(layout?.className).toContain('pb-bakin-8')
+    expect(layout?.className).toContain('gap-bakin-6')
     expect(layout?.className).toContain('shrink-0')
     expect(layout?.className).not.toContain('px-bakin-7')
     const content = container.querySelector('[data-slot="bakin-drawer-content"]')
@@ -164,7 +165,9 @@ describe('BakinDrawer', () => {
     expect(content?.className).not.toContain('flex-1')
     expect(screen.getByRole('heading', { level: 2, name: 'Task detail' }).closest('[data-inset]')?.getAttribute('data-inset')).toBe('none')
     expect(screen.getByRole('heading', { level: 3, name: 'Details' })).toBeTruthy()
-    expect(container.querySelector('[data-slot="bakin-drawer-section-content"]')?.className).toContain('px-bakin-2')
+    const sectionContent = container.querySelector('[data-slot="bakin-drawer-section-content"]')
+    expect(sectionContent?.className).toContain('px-bakin-2')
+    expect(sectionContent?.closest('[data-slot="bakin-drawer-section"]')?.className).toContain('gap-bakin-3')
   })
 
   it('supports per-context storage keys and clamps invalid stored widths', () => {

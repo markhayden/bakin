@@ -3,7 +3,7 @@
 import { MessageCircle } from 'lucide-react'
 import { MarkdownContent } from '@makinbakin/sdk/content'
 import { Section } from '@makinbakin/sdk/layout'
-import { StatusBadge } from '@makinbakin/sdk/patterns'
+import { PageNavigator, StatusBadge } from '@makinbakin/sdk/patterns'
 import {
   Alert,
   AlertDescription,
@@ -12,7 +12,6 @@ import {
 } from '@makinbakin/sdk/ui'
 import { useJsonFetch, useQueryState } from '@makinbakin/sdk/hooks'
 import type { SessionMessage, SessionTranscript } from '../types'
-import { PageNavigator } from './page-navigator'
 
 export interface ActiveContextTabProps {
   agentId: string

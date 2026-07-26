@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { useState } from 'react'
+import { MarkdownContent } from '@makinbakin/sdk/content'
 import { Badge, BakinDrawer, BakinDrawerSection, Button, Input, Label, Textarea } from '@makinbakin/sdk/ui'
 import { expect, waitFor, within } from 'storybook/test'
 
@@ -21,13 +22,16 @@ type Story = StoryObj<typeof meta>
 
 function DrawerContents() {
   return (
-    <div className="bakin-primitive-story__overlay-body bakin-primitive-story__overlay-body--flush">
+    <div className="bakin-primitive-story__overlay-body bakin-primitive-story__overlay-body--flush bakin-primitive-story__overlay-body--sections">
       <BakinDrawerSection title="Status">
         <div className="bakin-primitive-story__cluster"><Badge tone="attention">Needs attention</Badge><Badge variant="outline">Workflow</Badge></div>
       </BakinDrawerSection>
       <BakinDrawerSection title="Details">
         <div className="bakin-primitive-story__field"><Label htmlFor="drawer-title">Task title</Label><Input id="drawer-title" defaultValue="Review plugin migration evidence" /></div>
         <div className="bakin-primitive-story__field"><Label htmlFor="drawer-context">Context</Label><Textarea id="drawer-context" defaultValue="Confirm the SDK-only imports, responsive behavior, and route-state contract before marking this task complete." /></div>
+      </BakinDrawerSection>
+      <BakinDrawerSection title="Content">
+        <MarkdownContent content={'# Migration evidence\n\nUse rendered content without adding another outer section margin.'} />
       </BakinDrawerSection>
     </div>
   )
@@ -42,8 +46,15 @@ export const Default = {
     const page = within(document.body)
     const title = await page.findByRole('heading', { name: 'Task detail' })
     const content = document.querySelector<HTMLElement>('[data-slot="bakin-drawer-content"]')
+    const dialog = page.getByRole('dialog', { name: 'Task detail' })
+    const drawer = within(dialog)
     await expect(content).toBeTruthy()
     await expect(Math.abs(title.getBoundingClientRect().left - content!.getBoundingClientRect().left)).toBeLessThan(1)
+    await expect(drawer.getAllByRole('region')).toHaveLength(3)
+    await expect(drawer.getByRole('heading', { name: 'Migration evidence' })).toBeVisible()
+    const firstMarkdownBlock = dialog.querySelector<HTMLElement>('[data-markdown-content] > :first-child')
+    await expect(firstMarkdownBlock).toBeTruthy()
+    await expect(getComputedStyle(firstMarkdownBlock!).marginTop).toBe('0px')
   },
 } satisfies Story
 

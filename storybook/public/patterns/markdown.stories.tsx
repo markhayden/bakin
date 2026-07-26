@@ -40,6 +40,14 @@ const route = defineRoute({ path: '/reviews/$reviewId' })
 const reviewId = route.useParams().reviewId
 \`\`\`
 
+\`\`\`json
+{
+  "state": "ready",
+  "checks": 268,
+  "degraded": false
+}
+\`\`\`
+
 | Check | Result | Owner |
 | --- | --- | --- |
 | Public routes | 268 passed | Release |
@@ -72,7 +80,8 @@ export const ReadingAndCode = {
   ),
   play: async ({ canvas }) => {
     await expect(canvas.getByRole('heading', { name: 'Release evidence', level: 1 })).toBeVisible()
-    await expect(canvas.getByRole('button', { name: 'Copy code' })).toBeVisible()
+    await expect(canvas.getAllByRole('button', { name: 'Copy code' })).toHaveLength(2)
+    await expect(canvas.getByText('json')).toBeVisible()
     await expect(canvas.getByRole('table')).toBeVisible()
     await expect(canvas.getByRole('region', { name: 'Managed section: release' })).toBeVisible()
   },

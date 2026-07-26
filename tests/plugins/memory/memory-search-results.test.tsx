@@ -4,7 +4,7 @@
  * Tests for plugins/memory/components/memory-search-results.tsx.
  *
  * The component renders rows from the `bakin_memory` unified table. Each
- * row must show the tier badge (the whole point of cross-tier search) and
+ * row must show the tier status label (the whole point of cross-tier search) and
  * enough identity — agent, title, snippet — to be useful at a glance.
  * Selection is optional: a page without an onSelect handler still renders,
  * but the callback fires with the full SearchResult when provided.
@@ -41,16 +41,6 @@ mock.module('../../../packages/core/src/content-dir', () => {
   }
 })
 
-mock.module('@/components/ui/badge', () => ({
-  Badge: ({ children, ...props }: Record<string, unknown>) => (
-    <span data-testid="badge" {...props}>{children as React.ReactNode}</span>
-  ),
-}))
-mock.module('@/components/ui/card', () => ({
-  Card: ({ children, onClick, ...props }: Record<string, unknown>) => (
-    <div data-testid="card" onClick={onClick as () => void} {...props}>{children as React.ReactNode}</div>
-  ),
-}))
 import { MemorySearchResults } from '../../../plugins/memory/components/memory-search-results'
 import type { SearchResult } from '../../../src/hooks/use-search'
 
@@ -79,7 +69,8 @@ describe('MemorySearchResults', () => {
       <MemorySearchResults results={[]} loading={false} error={null} query="" />,
     )
     expect(container.textContent).not.toMatch(/no results/i)
-    expect(container.querySelectorAll('[data-testid="card"]').length).toBe(0)
+    expect(container.querySelectorAll('[data-memory-result]').length).toBe(0)
+    expect(container.querySelector('[data-scope="page"]')).not.toBeNull()
   })
 
   it('shows loading skeletons while fetching', () => {
@@ -100,7 +91,7 @@ describe('MemorySearchResults', () => {
     expect(screen.getByText(/needle/)).toBeDefined()
   })
 
-  it('renders one card per result with title, tier badge, and agent', () => {
+  it('renders one low-chrome row per result with title, tier status, and agent', () => {
     render(
       <MemorySearchResults
         results={[
@@ -108,12 +99,17 @@ describe('MemorySearchResults', () => {
           row({ id: 'daily_note:b', tier: 'daily_note', agent: 'chef', title: 'Daily B' }),
           row({ id: 'audit:c', tier: 'audit', agent: 'explorer', title: 'Audit C' }),
         ]}
+        agents={[
+          { id: 'explorer', name: 'Explorer', imageSrc: '/agents/explorer.png' },
+          { id: 'chef', name: 'Chef' },
+        ]}
         loading={false}
         error={null}
         query="q"
       />,
     )
-    expect(screen.getAllByTestId('card').length).toBe(3)
+    expect(document.querySelectorAll('[data-memory-result]').length).toBe(3)
+    expect(document.querySelectorAll('[data-status-badge]').length).toBe(3)
     expect(screen.getByText('Session A')).toBeDefined()
     expect(screen.getByText('Daily B')).toBeDefined()
     expect(screen.getByText('Audit C')).toBeDefined()
@@ -122,8 +118,37 @@ describe('MemorySearchResults', () => {
     expect(screen.getByText(/daily note/i)).toBeDefined()
     expect(screen.getAllByText(/audit/i).length).toBeGreaterThan(0)
     // Agents surface somewhere in the output.
-    expect(screen.getAllByText(/explorer/i).length).toBeGreaterThan(0)
-    expect(screen.getByText(/chef/)).toBeDefined()
+    expect(screen.getAllByText('Explorer').length).toBeGreaterThan(0)
+    expect(screen.getByText('Chef')).toBeDefined()
+    expect(document.querySelectorAll('[data-agent-avatar]').length).toBe(3)
+    expect(document.querySelectorAll('[data-agent-id="explorer"]').length).toBe(2)
+
+    // Memory tier taxonomy keeps its established color families.
+    expect(screen.getByText('Session').closest('[data-status-badge]')?.className).toContain('blue')
+    expect(screen.getByText('Daily Note').closest('[data-status-badge]')?.className).toContain('emerald')
+    expect(screen.getByText('Audit').closest('[data-status-badge]')?.className).toContain('rose')
+  })
+
+  it('uses the shared small-card row treatment to separate adjacent results', () => {
+    render(
+      <MemorySearchResults
+        results={[
+          row({ id: 'session:a', title: 'First bounded row' }),
+          row({ id: 'session:b', title: 'Second bounded row' }),
+        ]}
+        loading={false}
+        error={null}
+        query=""
+      />,
+    )
+
+    const rows = document.querySelectorAll('[data-memory-result]')
+    expect(rows).toHaveLength(2)
+    for (const result of rows) {
+      const card = result.closest('[data-slot="card"]')
+      expect(card).not.toBeNull()
+      expect(card?.getAttribute('data-size')).toBe('sm')
+    }
   })
 
   it('renders the snippet for each result', () => {
@@ -143,6 +168,30 @@ describe('MemorySearchResults', () => {
     expect(screen.getByText(/unique-snippet-phrase/)).toBeDefined()
   })
 
+  it('turns markdown-heavy source content into a quiet one-line summary', () => {
+    render(
+      <MemorySearchResults
+        results={[
+          row({
+            id: 'durable:markdown',
+            fields: {
+              tier: 'durable',
+              agent: 'pixel',
+              title: 'Image generation',
+              snippet: '## Image Generation\n\n**Always** use the approved prompt. `internal-only`',
+            },
+          }),
+        ]}
+        loading={false}
+        error={null}
+        query=""
+      />,
+    )
+
+    expect(screen.getByText('Always use the approved prompt. internal-only')).toBeDefined()
+    expect(document.querySelector('[data-memory-summary]')?.className).toContain('line-clamp-1')
+  })
+
   it('fires onSelect with the full SearchResult when a row is clicked', () => {
     const onSelect = mock()
     const target = row({ id: 'session:a', title: 'Clickable' })
@@ -155,9 +204,23 @@ describe('MemorySearchResults', () => {
         onSelect={onSelect}
       />,
     )
-    fireEvent.click(screen.getByText('Clickable'))
+    const resultButton = screen.getByRole('button', { name: /open clickable/i })
+    fireEvent.click(resultButton)
     expect(onSelect).toHaveBeenCalledTimes(1)
     expect(onSelect).toHaveBeenCalledWith(target)
+  })
+
+  it('uses native non-interactive rows when selection is unavailable', () => {
+    render(
+      <MemorySearchResults
+        results={[row({ id: 'session:a', title: 'Read only' })]}
+        loading={false}
+        error={null}
+        query="q"
+      />,
+    )
+    expect(screen.queryByRole('button', { name: /open read only/i })).toBeNull()
+    expect(document.querySelector('[data-memory-result]')?.tagName).toBe('DIV')
   })
 
   it('falls back gracefully when fields are missing', () => {
@@ -177,7 +240,7 @@ describe('MemorySearchResults', () => {
       />,
     )
     // Should still render without throwing; tier badge still there.
-    expect(screen.getAllByTestId('card').length).toBe(1)
+    expect(document.querySelectorAll('[data-memory-result]').length).toBe(1)
     expect(screen.getByText(/durable/i)).toBeDefined()
   })
 })

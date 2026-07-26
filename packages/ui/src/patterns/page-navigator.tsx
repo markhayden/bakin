@@ -1,25 +1,29 @@
 'use client'
 
-import { Button } from '@makinbakin/sdk/ui'
+import { Button } from '../primitives/button'
 
 export interface PageNavigatorProps {
   page: number
   pageSize: number
   showAll: boolean
   total: number
+  ariaLabel?: string
   onPageChange: (page: number) => void
   onShowAllChange: (showAll: boolean) => void
 }
 
 /**
- * Team-internal pagination controls. The consuming tab keeps the page in URL
- * state so diagnostic and transcript views remain shareable.
+ * Compact pagination for long repeated-content regions.
+ *
+ * The consumer owns URL state and the visible slice so pagination remains
+ * shareable, browser-history aware, and independent of domain data fetching.
  */
 export function PageNavigator({
   page,
   pageSize,
   showAll,
   total,
+  ariaLabel = 'Pagination',
   onPageChange,
   onShowAllChange,
 }: PageNavigatorProps) {
@@ -32,7 +36,7 @@ export function PageNavigator({
 
   return (
     <nav
-      aria-label="Pagination"
+      aria-label={ariaLabel}
       data-slot="page-navigator"
       className="flex min-w-0 flex-wrap items-center gap-bakin-2 border-t border-bakin-border-subtle pt-bakin-3"
     >

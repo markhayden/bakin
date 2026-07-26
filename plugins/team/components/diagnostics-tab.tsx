@@ -22,7 +22,7 @@ import { AlertTriangle, Loader2, RefreshCw } from 'lucide-react'
 import { ChartExplainer, Sparkline } from '@makinbakin/sdk/charts'
 import { usePluginEvent, useJsonFetch, useQueryState } from '@makinbakin/sdk/hooks'
 import { Grid, Section, Stack } from '@makinbakin/sdk/layout'
-import { SegmentedControl, StatusBadge } from '@makinbakin/sdk/patterns'
+import { PageNavigator, SegmentedControl, StatusBadge } from '@makinbakin/sdk/patterns'
 import {
   Alert,
   AlertDescription,
@@ -37,7 +37,6 @@ import {
 import { formatDuration } from '@makinbakin/sdk/utils'
 import type { HealthReport } from '@makinbakin/sdk/types'
 import type { ScanFinding, TimelineEventView } from '../types'
-import { PageNavigator } from './page-navigator'
 
 // ── Small shared bits ────────────────────────────────────────────────────────
 

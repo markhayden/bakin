@@ -10,8 +10,8 @@
     "entrypoints": 8,
     "supportedEntrypoints": 7,
     "frozenLegacyEntrypoints": 1,
-    "valueExports": 343,
-    "typeExports": 407
+    "valueExports": 344,
+    "typeExports": 408
   },
   "entrypoints": [
     {
@@ -395,6 +395,7 @@
         "ListPageControls",
         "ModelSelect",
         "PageHeader",
+        "PageNavigator",
         "PluginSettingsRenderer",
         "SaveBar",
         "ScoreOverlay",
@@ -481,6 +482,7 @@
         "NumberSettingsField",
         "PageHeaderMeasure",
         "PageHeaderProps",
+        "PageNavigatorProps",
         "PluginSettingsFeedback",
         "PluginSettingsRendererProps",
         "PluginSettingsSchema",

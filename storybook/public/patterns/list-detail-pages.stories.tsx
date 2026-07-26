@@ -12,6 +12,7 @@ import {
   ListPage,
   ListPageContent,
   ListPageControls,
+  PageNavigator,
   PageHeader,
   SearchInput,
   SegmentedControl,
@@ -239,6 +240,76 @@ export const ListIndex = {
     await expect(canvas.getByRole('listitem')).toHaveTextContent('Reconcile partner usage')
     await expect(canvas.getByRole('region', { name: 'Task results' })).toHaveAttribute('data-content-state', 'ready')
     await userEvent.click(canvas.getByRole('button', { name: 'All' }))
+  },
+} satisfies Story
+
+const paginatedRecords = Array.from({ length: 13 }, (_, index) => {
+  const task = tasks[index % tasks.length]!
+  return {
+    ...task,
+    id: `${task.id}-${index + 1}`,
+    title: `${task.title} ${String(index + 1).padStart(2, '0')}`,
+  }
+})
+
+function ListPaginationExample() {
+  const pageSize = 5
+  const [page, setPage] = useState(1)
+  const [showAll, setShowAll] = useState(false)
+  const visible = showAll
+    ? paginatedRecords
+    : paginatedRecords.slice((page - 1) * pageSize, page * pageSize)
+
+  return (
+    <ListPage className="bakin-archetype-story">
+      <PageHeader
+        eyebrow="Memory / indexed records"
+        title="Keep long result sets scannable"
+        description="Paginate repeated content by default. Keep the page in routed URL state and reserve Show all for deliberate inspection."
+        meta={<Badge tone="neutral" variant="outline">{visible.length} shown</Badge>}
+      />
+      <ListPageContent label="Indexed memory records">
+        <ul className="bakin-archetype-story__list bakin-archetype-story__list--separated" aria-label="Memory records">
+          {visible.map((record) => (
+            <li key={record.id}>
+              <div className="bakin-archetype-story__task-copy">
+                <strong>{record.title}</strong>
+                <span>{record.target}</span>
+              </div>
+              <div className="bakin-archetype-story__task-meta">
+                <Badge tone="neutral" variant="solid">Durable</Badge>
+                <span>{record.owner} · {record.updated}</span>
+              </div>
+              <Button variant="outline" size="sm" aria-label={`Open ${record.title}`}>Open</Button>
+            </li>
+          ))}
+        </ul>
+        <PageNavigator
+          ariaLabel="Memory record pagination"
+          page={page}
+          pageSize={pageSize}
+          showAll={showAll}
+          total={paginatedRecords.length}
+          onPageChange={setPage}
+          onShowAllChange={(nextShowAll) => {
+            setShowAll(nextShowAll)
+            setPage(1)
+          }}
+        />
+      </ListPageContent>
+    </ListPage>
+  )
+}
+
+export const ListPagination = {
+  render: () => <ListPaginationExample />,
+  play: async ({ canvas, userEvent }) => {
+    await expect(canvas.getByText('Showing 1–5 of 13')).toBeVisible()
+    await expect(canvas.getByRole('list', { name: 'Memory records' }).children).toHaveLength(5)
+    await userEvent.click(canvas.getByRole('button', { name: 'Next' }))
+    await expect(canvas.getByText('Showing 6–10 of 13')).toBeVisible()
+    await userEvent.click(canvas.getByRole('button', { name: 'Show all' }))
+    await expect(canvas.getByText('Showing 1–13 of 13')).toBeVisible()
   },
 } satisfies Story
 

@@ -30,7 +30,7 @@ export function BakinDrawerSection({
       {...props}
       aria-labelledby={headingId}
       data-slot="bakin-drawer-section"
-      className={cn('flex min-w-0 flex-col gap-bakin-2', className)}
+      className={cn('flex min-w-0 flex-col gap-bakin-3', className)}
     >
       <div className="flex min-w-0 items-center gap-bakin-2">
         <Heading

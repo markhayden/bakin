@@ -4,9 +4,9 @@
  * MemoryDetailDrawer — full-row detail view for /memory results.
  *
  * Reuses the shared BakinDrawer (same slideover used by schedule, workflows,
- * messaging). The header shows tier/agent badges + title; the body shows
- * timestamps, source ref, and renders `content` through MemoryContentRenderer
- * so JSON / markdown / plain text each get the right formatting.
+ * messaging). The header names the record and its owning agent; the body keeps
+ * readable record facts, content, database identifiers, and raw metadata in
+ * consistently labeled drawer sections.
  *
  * For turn rows we also parse `meta.eventType` to force the JSON renderer on
  * `tool_call` rows — their content is a JSON-stringified toolCall block and
@@ -14,19 +14,27 @@
  * itself contains markdown.
  */
 import { useMemo } from 'react'
-import { BakinDrawer } from "@makinbakin/sdk/components"
-import { Badge } from "@makinbakin/sdk/ui"
-import type { SearchResult } from "@makinbakin/sdk/hooks"
+import {
+  BakinDrawer,
+  BakinDrawerSection,
+} from '@makinbakin/sdk/ui'
+import {
+  AgentAvatar,
+  StatusBadge,
+  type AgentIdentity,
+} from '@makinbakin/sdk/patterns'
+import type { SearchResult } from '@makinbakin/sdk/hooks'
 import { MemoryContentRenderer, type ContentFormat } from './memory-content-renderer'
 import { tierStyle } from './tier-colors'
 
 interface Props {
   result: SearchResult | null
+  agents?: readonly AgentIdentity[]
   open: boolean
   onOpenChange: (open: boolean) => void
 }
 
-export function MemoryDetailDrawer({ result, open, onOpenChange }: Props) {
+export function MemoryDetailDrawer({ result, agents = [], open, onOpenChange }: Props) {
   const parsedMeta = useMemo(() => {
     if (!result) return null
     const raw = result.fields.meta
@@ -52,6 +60,9 @@ export function MemoryDetailDrawer({ result, open, onOpenChange }: Props) {
   const updatedAt = num(result.fields.updated_at)
   const createdAt = num(result.fields.created_at)
   const style = tierStyle(tier)
+  const agentIdentity = agent
+    ? agents.find((candidate) => candidate.id === agent) ?? { id: agent, name: agent }
+    : null
 
   const forcedFormat = resolveFormat(tier, parsedMeta)
 
@@ -60,97 +71,133 @@ export function MemoryDetailDrawer({ result, open, onOpenChange }: Props) {
       open={open}
       onOpenChange={onOpenChange}
       storageKey="memory"
-      title={
-        <span className="flex items-center gap-2 min-w-0">
-          <Badge variant="outline" className={`text-[10px] uppercase tracking-wide shrink-0 ${style.badge}`}>
+      title={title}
+      description={
+        <span className="flex min-w-0 flex-wrap items-center gap-bakin-2">
+          <StatusBadge
+            tone="neutral"
+            variant="soft"
+            size="xs"
+            className={`shrink-0 ${style.badge}`}
+          >
             {style.label}
-          </Badge>
-          {agent && <Badge variant="secondary" className="text-[10px] shrink-0">{agent}</Badge>}
-          <span className="truncate">{title}</span>
+          </StatusBadge>
+          {agentIdentity ? (
+            <span className="flex min-w-0 items-center gap-bakin-1">
+              <AgentAvatar agent={agentIdentity} size="xs" decorative />
+              <span className="truncate">{agentIdentity.name}</span>
+            </span>
+          ) : null}
         </span>
       }
     >
-      <div className="flex flex-col gap-5">
-        <MetaGrid
-          createdAt={createdAt}
-          updatedAt={updatedAt}
-          sourceBackend={sourceBackend}
-          sourcePath={sourcePath}
-          score={result.score}
-          rowId={result.id}
-        />
+      <div className="flex min-w-0 flex-col gap-bakin-6">
+        <BakinDrawerSection title="Source">
+          <SourceDetails
+            createdAt={createdAt}
+            updatedAt={updatedAt}
+            sourcePath={sourcePath}
+          />
+        </BakinDrawerSection>
 
-        {content ? (
-          <section className="flex flex-col gap-2">
-            <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Content</div>
+        <BakinDrawerSection title="Content">
+          {content ? (
             <MemoryContentRenderer content={content} format={forcedFormat} />
-          </section>
-        ) : (
-          <div className="text-sm text-muted-foreground italic">No content body.</div>
-        )}
+          ) : (
+            <p className="m-0 text-bakin-typography-size-body text-bakin-text-muted">
+              No content body.
+            </p>
+          )}
+        </BakinDrawerSection>
 
-        {parsedMeta && (
-          <section className="flex flex-col gap-2">
-            <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Meta</div>
-            <MemoryContentRenderer content={JSON.stringify(parsedMeta, null, 2)} format="json" />
-          </section>
-        )}
+        <BakinDrawerSection title="Index metadata">
+          <div className="grid min-w-0 gap-bakin-4">
+            <IndexMetadata
+              sourceBackend={sourceBackend}
+              score={result.score}
+              rowId={result.id}
+            />
+            {parsedMeta ? (
+              <MemoryContentRenderer
+                content={JSON.stringify(parsedMeta, null, 2)}
+                format="json"
+              />
+            ) : null}
+          </div>
+        </BakinDrawerSection>
       </div>
     </BakinDrawer>
   )
 }
 
-function MetaGrid({
+function SourceDetails({
   createdAt,
   updatedAt,
-  sourceBackend,
   sourcePath,
-  score,
-  rowId,
 }: {
   createdAt: number
   updatedAt: number
-  sourceBackend: string
   sourcePath: string
+}) {
+  return (
+    <dl
+      data-memory-record-details=""
+      className="m-0 grid min-w-0 text-bakin-typography-size-body"
+    >
+      <DetailRow label="Updated" value={formatTs(updatedAt)} />
+      {createdAt > 0 && createdAt !== updatedAt ? (
+        <DetailRow label="Created" value={formatTs(createdAt)} />
+      ) : null}
+      {sourcePath ? (
+        <DetailRow label="Source" value={sourcePath} mono />
+      ) : null}
+    </dl>
+  )
+}
+
+function IndexMetadata({
+  sourceBackend,
+  score,
+  rowId,
+}: {
+  sourceBackend: string
   score: number
   rowId: string
 }) {
   return (
-    <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-xs">
-      <dt className="text-muted-foreground">Row ID</dt>
-      <dd className="font-mono truncate">{rowId}</dd>
-
-      <dt className="text-muted-foreground">Updated</dt>
-      <dd>{formatTs(updatedAt)}</dd>
-
-      {createdAt > 0 && createdAt !== updatedAt && (
-        <>
-          <dt className="text-muted-foreground">Created</dt>
-          <dd>{formatTs(createdAt)}</dd>
-        </>
-      )}
-
-      {sourceBackend && (
-        <>
-          <dt className="text-muted-foreground">Backend</dt>
-          <dd>{sourceBackend}</dd>
-        </>
-      )}
-
-      {sourcePath && (
-        <>
-          <dt className="text-muted-foreground">Source</dt>
-          <dd className="font-mono break-all">{sourcePath}</dd>
-        </>
-      )}
-
-      {Number.isFinite(score) && (
-        <>
-          <dt className="text-muted-foreground">Score</dt>
-          <dd className="font-mono">{score.toFixed(3)}</dd>
-        </>
-      )}
+    <dl className="m-0 grid min-w-0 text-bakin-typography-size-meta">
+      <DetailRow label="Row ID" value={rowId} mono />
+      {sourceBackend ? <DetailRow label="Backend" value={sourceBackend} /> : null}
+      {Number.isFinite(score) ? (
+        <DetailRow label="Score" value={score.toFixed(3)} mono />
+      ) : null}
     </dl>
+  )
+}
+
+function DetailRow({
+  label,
+  mono = false,
+  value,
+}: {
+  label: string
+  mono?: boolean
+  value: string
+}) {
+  return (
+    <div
+      data-memory-record-detail=""
+      className="grid min-w-0 gap-bakin-1 border-t border-bakin-border-subtle py-bakin-3 sm:grid-cols-[minmax(7rem,0.45fr)_minmax(0,1fr)] sm:gap-bakin-4"
+    >
+      <dt className="text-bakin-typography-size-meta text-bakin-text-muted">{label}</dt>
+      <dd
+        className={`m-0 min-w-0 [overflow-wrap:anywhere] text-bakin-text-primary ${
+          mono ? 'font-bakin-typography-family-mono' : ''
+        }`}
+      >
+        {value}
+      </dd>
+    </div>
   )
 }
 

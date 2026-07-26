@@ -70,7 +70,7 @@ const badgeStyles = cva(
     },
     compoundVariants: [
       { tone: 'neutral', variant: 'soft', className: 'border-bakin-border-subtle/40 bg-bakin-surface-default text-bakin-text-muted' },
-      { tone: 'neutral', variant: 'solid', className: 'border-bakin-border-subtle bg-bakin-border-subtle text-bakin-text-primary' },
+      { tone: 'neutral', variant: 'solid', className: 'border-bakin-text-muted bg-bakin-text-muted text-bakin-canvas-default' },
       { tone: 'neutral', variant: ['outline', 'ghost', 'link'], className: 'border-bakin-border-subtle text-bakin-text-muted' },
       { tone: 'primary', variant: 'soft', className: 'border-bakin-action-primary-background/50 bg-bakin-action-primary-background/15 text-bakin-text-primary' },
       { tone: 'primary', variant: 'solid', className: 'border-bakin-action-primary-background bg-bakin-action-primary-background text-bakin-action-primary-foreground' },

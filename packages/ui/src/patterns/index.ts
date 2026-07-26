@@ -27,6 +27,9 @@ export type {
   ListPageWidth,
 } from './list-page'
 
+export { PageNavigator } from './page-navigator'
+export type { PageNavigatorProps } from './page-navigator'
+
 export { DetailPage, DetailPageAside, DetailPageBody, DetailPageMain } from './detail-page'
 export type {
   DetailPageAsideProps,

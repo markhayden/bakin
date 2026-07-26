@@ -1,35 +1,37 @@
 'use client'
 
 /**
- * TierOverviewCards — landing-page snapshot of indexed row counts per tier.
+ * Compact landing-page snapshot of indexed rows per memory tier.
  *
- * Pulls from GET /api/plugins/memory/status once on mount. Seven cards,
- * ordered by tier hierarchy (audit first, dream last). Shows skeletons
- * while loading and a compact error banner on failure. Missing tiers in
- * the response surface as zero rather than absent cards — the card-grid
- * geometry stays stable even on partial responses.
+ * Everyday memory tiers remain visible by default; high-volume system logs
+ * are opt-in. Missing tiers surface as zero so the group stays stable when
+ * the status response is partial.
  */
-import { Microscope } from 'lucide-react'
-import { Card } from "@makinbakin/sdk/ui"
-import { Skeleton } from "@makinbakin/sdk/ui"
-import { ErrorBanner } from "@makinbakin/sdk/components"
-import { useJsonFetch } from "@makinbakin/sdk/hooks"
-import { tierStyle } from './tier-colors'
+import {
+  Bookmark,
+  Calendar,
+  ClipboardList,
+  CornerDownRight,
+  Database,
+  MessagesSquare,
+  Moon,
+} from 'lucide-react'
+import { StatGroup, StatTile } from '@makinbakin/sdk/patterns'
+import { Skeleton, SystemState } from '@makinbakin/sdk/ui'
+import { useJsonFetch } from '@makinbakin/sdk/hooks'
 
-// Tiers that only surface under the page-local "System Logs" toggle. The
-// Microscope glyph on their overview card tells the user at a glance that
-// the number belongs to the opt-in group, not the default feed.
-const SYSTEM_LOG_TIERS = new Set(['turn', 'audit'])
+const TIERS = [
+  { key: 'session', label: 'Sessions', icon: MessagesSquare },
+  { key: 'daily_note', label: 'Daily Notes', icon: Calendar },
+  { key: 'dream', label: 'Dreams', icon: Moon },
+  { key: 'durable', label: 'Durable', icon: Database },
+  { key: 'checkpoint', label: 'Checkpoints', icon: Bookmark },
+] as const
 
-const TIERS: Array<{ key: string; label: string }> = [
-  { key: 'session', label: 'Sessions' },
-  { key: 'daily_note', label: 'Daily Notes' },
-  { key: 'dream', label: 'Dreams' },
-  { key: 'durable', label: 'Durable' },
-  { key: 'checkpoint', label: 'Checkpoints' },
-  { key: 'audit', label: 'Audit' },
-  { key: 'turn', label: 'Turns' },
-]
+const SYSTEM_LOG_TIERS = [
+  { key: 'audit', label: 'Audit', icon: ClipboardList },
+  { key: 'turn', label: 'Turns', icon: CornerDownRight },
+] as const
 
 interface StatusResponse {
   countsByTier: Record<string, number>
@@ -38,47 +40,43 @@ interface StatusResponse {
   lastUpdated: number
 }
 
-export function TierOverviewCards() {
+export function TierOverviewCards({ includeSystemLogs = false }: { includeSystemLogs?: boolean }) {
   const { data, error } = useJsonFetch<StatusResponse>('/api/plugins/memory/status')
+  const visibleTiers = includeSystemLogs ? [...TIERS, ...SYSTEM_LOG_TIERS] : TIERS
 
   if (error) {
-    return <ErrorBanner message={`Failed to load memory status: ${error}`} />
+    return (
+      <SystemState
+        kind="error"
+        recovery="unavailable"
+        scope="inline"
+        title="Memory totals could not be loaded"
+        description={error}
+      />
+    )
   }
 
   if (!data) {
     return (
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-7">
-        {TIERS.map((t) => (
-          <Skeleton key={t.key} className="h-24 w-full" />
+      <StatGroup label="Memory totals" aria-busy="true">
+        {visibleTiers.map((tier) => (
+          <Skeleton key={tier.key} className="h-bakin-16 w-bakin-32" />
         ))}
-      </div>
+      </StatGroup>
     )
   }
 
   return (
-    <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-7">
-      {TIERS.map((t) => {
-        const count = data.countsByTier[t.key] ?? 0
-        const style = tierStyle(t.key)
-        return (
-          <Card key={t.key} className="flex flex-col gap-1 p-4">
-            <div className="flex items-center gap-1.5 text-xs uppercase tracking-wide text-muted-foreground">
-              <span
-                className={`inline-block size-2 rounded-full shrink-0 ${style.dot}`}
-                aria-hidden
-              />
-              {t.label}
-              {SYSTEM_LOG_TIERS.has(t.key) && (
-                <Microscope
-                  className="size-3 ml-auto shrink-0"
-                  aria-label="System log tier"
-                />
-              )}
-            </div>
-            <div className="text-2xl font-semibold tabular-nums">{count}</div>
-          </Card>
-        )
-      })}
-    </div>
+    <StatGroup label="Memory totals">
+      {visibleTiers.map((tier) => (
+        <StatTile
+          key={tier.key}
+          icon={tier.icon}
+          label={tier.label}
+          value={data.countsByTier[tier.key] ?? 0}
+          className="min-w-bakin-32"
+        />
+      ))}
+    </StatGroup>
   )
 }
