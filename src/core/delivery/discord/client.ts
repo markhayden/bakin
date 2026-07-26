@@ -11,6 +11,7 @@ import type { APIEmbed } from 'discord-api-types/v10'
 import { createLogger } from '@/core/logger'
 import type { ApiChannelLike } from './channel-info'
 import type { SendApi } from './send'
+import type { ApprovalApi, RawInteraction } from './approvals'
 
 const log = createLogger('delivery-discord')
 
@@ -116,4 +117,30 @@ export function sendApiFromTransport(transport: DiscordTransport): SendApi {
       return { id: channel.id }
     },
   }
+}
+
+/** Bind the interaction-response surface (see approvals.ts) to the transport. */
+export function approvalApiFromTransport(transport: DiscordTransport): ApprovalApi {
+  return {
+    async replyEphemeral(interactionId, token, content) {
+      // 64 = MessageFlags.Ephemeral
+      await transport.api.interactions.reply(interactionId, token, { content, flags: 64 })
+    },
+    async updateComponentMessage(interactionId, token, payload) {
+      await transport.api.interactions.updateMessage(interactionId, token, payload as never)
+    },
+    async openModal(interactionId, token, modal) {
+      await transport.api.interactions.createModal(interactionId, token, modal as never)
+    },
+    async editMessage(channelId, messageId, payload) {
+      await transport.api.channels.editMessage(channelId, messageId, payload as never)
+    },
+  }
+}
+
+/** Forward raw INTERACTION_CREATE payloads (buttons + modal submits). */
+export function subscribeInteractions(transport: DiscordTransport, handler: (raw: RawInteraction) => void): void {
+  transport.client.on(GatewayDispatchEvents.InteractionCreate, ({ data }) => {
+    handler(data as unknown as RawInteraction)
+  })
 }

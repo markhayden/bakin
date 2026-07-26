@@ -11,7 +11,7 @@ Plan: `.claude/specs/discord-bridge/PLAN.md`
 - [x] A2 settings.integrations.discord + config module + System & Alerts fields
 - [x] A3 Discord client lifecycle + boot gating + arch confinement
 - [x] A4 Send surface (embeds/content/threads/edits/DM/chunking/retry) + audit
-- [ ] A5 Approval cards + modal reject + allowlist → ApprovalResolveEvent
+- [x] A5 Approval cards + modal reject + allowlist → ApprovalResolveEvent
 - [ ] A6 adapter-pi delegation ('shimmed') + conformance pin + gate round-trip test
 - [ ] A7 delivery.discord doctor check + Integrations & Keys token entry
 - [ ] A8 Docs sweep (delivery-bridge.md, pi-adapter fix, CLAUDE.md, README, §10.1)

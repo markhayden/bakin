@@ -8,7 +8,7 @@
  * services). The transport module is dynamically imported at boot so CLI and
  * doctor paths never pay for (or evaluate) @discordjs.
  */
-import type { CapabilityMode } from '@bakin/core/adapters/runtime'
+import type { ApprovalResolveEvent, CapabilityMode } from '@bakin/core/adapters/runtime'
 import type { ChannelBridge, ChannelSurface } from '@bakin/core/delivery'
 import { createLogger } from '@/core/logger'
 import { isDiscordConfigured, readDiscordConfig } from './config'
@@ -16,6 +16,7 @@ import { auditDelivery } from './audit'
 import type { DiscordTransport } from './discord/client'
 import type { ChannelCache } from './discord/channel-cache'
 import type { SendSurface } from './discord/send'
+import type { ApprovalSurface } from './discord/approvals'
 
 const log = createLogger('delivery')
 
@@ -23,7 +24,16 @@ export interface BridgeState {
   transport: DiscordTransport
   cache: ChannelCache
   send: SendSurface
+  approvals: ApprovalSurface
 }
+
+/**
+ * Approval-response handlers registered by consumers (workflows wires these
+ * at plugin activation). Kept OUTSIDE BridgeState so subscribing is always
+ * safe — a configured-but-unbootable bridge must never crash a plugin's
+ * activate(); events simply never fire until the transport connects.
+ */
+const approvalHandlers = new Set<(event: ApprovalResolveEvent) => void>()
 
 let state: BridgeState | null = null
 
@@ -32,21 +42,19 @@ function requireState(): BridgeState {
   return state
 }
 
-/** Placeholder until the send (A4) and approval (A5) surfaces land. */
-function notImplemented(surface: string): never {
-  throw new Error(`Discord delivery bridge: ${surface} not implemented yet`)
-}
-
 const channels: ChannelSurface = {
   list: async () => requireState().cache.list(),
   sendNotification: async (args) => requireState().send.sendNotification(args),
   sendMessage: async (args) => requireState().send.sendMessage(args),
   deliverContent: async (args) => requireState().send.deliverContent(args),
-  createApproval: async () => notImplemented('createApproval'),
-  editApproval: async () => notImplemented('editApproval'),
-  cancelApproval: async () => notImplemented('cancelApproval'),
-  resolveApproval: async () => notImplemented('resolveApproval'),
-  subscribeApprovalResponses: () => notImplemented('subscribeApprovalResponses'),
+  createApproval: async (args) => requireState().approvals.createApproval(args),
+  editApproval: async (args) => requireState().approvals.editApproval(args),
+  cancelApproval: async (args) => requireState().approvals.cancelApproval(args),
+  resolveApproval: async (args) => requireState().approvals.resolveApproval(args),
+  subscribeApprovalResponses: (handler) => {
+    approvalHandlers.add(handler)
+    return () => approvalHandlers.delete(handler)
+  },
   createThread: async (args) => requireState().send.createThread(args),
   editMessage: async (args) => requireState().send.editMessage(args),
 }
@@ -58,9 +66,11 @@ const bridge: ChannelBridge = {
     if (state) return
     const { settings, token } = readDiscordConfig()
     if (!isDiscordConfigured() || !token) return
-    const { createDiscordTransport, sendApiFromTransport } = await import('./discord/client')
+    const { createDiscordTransport, sendApiFromTransport, approvalApiFromTransport, subscribeInteractions } = await import('./discord/client')
     const { createChannelCache } = await import('./discord/channel-cache')
     const { createSendSurface } = await import('./discord/send')
+    const { createApprovalSurface } = await import('./discord/approvals')
+    const { parseDiscordRef } = await import('./discord/refs')
     const transport = createDiscordTransport(token)
     await transport.connect()
     const cache = createChannelCache({
@@ -74,8 +84,34 @@ const bridge: ChannelBridge = {
     } catch (err) {
       log.warn('Discord channel enumeration failed at boot', err)
     }
-    const send = createSendSurface({ api: sendApiFromTransport(transport) })
-    state = { transport, cache, send }
+    const sendApi = sendApiFromTransport(transport)
+    const send = createSendSurface({ api: sendApi })
+    const approvals = createApprovalSurface({
+      api: approvalApiFromTransport(transport),
+      sendApi,
+      // Live read: approver edits take effect without a restart.
+      approvers: () => readDiscordConfig().settings.approvers,
+      resolveChannelId: async (ref) => {
+        const parsed = parseDiscordRef(ref)
+        if (parsed.kind === 'user') return (await sendApi.createDM(parsed.id)).id
+        return parsed.id
+      },
+    })
+    approvals.subscribe((event) => {
+      for (const handler of approvalHandlers) {
+        try {
+          handler(event)
+        } catch (err) {
+          log.error('Approval response handler failed', err, { approvalId: event.approvalId })
+        }
+      }
+    })
+    subscribeInteractions(transport, (raw) => {
+      void approvals.handleInteraction(raw).catch((err) => {
+        log.error('Discord interaction handling failed', err)
+      })
+    })
+    state = { transport, cache, send, approvals }
     auditDelivery('delivery.connected', { guilds: settings.guildIds.length })
   },
 
