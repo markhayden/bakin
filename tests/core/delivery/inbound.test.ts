@@ -1,0 +1,179 @@
+import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
+import fs from 'fs'
+import { join } from 'path'
+import { tmpdir } from 'os'
+
+const testDir = join(tmpdir(), `bakin-test-delivery-inbound-${Date.now()}`)
+const auditEvents: Array<{ event: string; data: Record<string, unknown> }> = []
+
+mock.module('../../../src/core/content-dir', () => ({ getContentDir: () => testDir }))
+mock.module('../../../packages/core/src/content-dir', () => ({ getContentDir: () => testDir }))
+mock.module('../../../src/core/logger', () => ({
+  createLogger: () => ({ info: () => {}, warn: () => {}, error: () => {}, debug: () => {} }),
+}))
+mock.module('../../../src/core/audit', () => ({
+  appendAudit: (_dir: string, event: string, _agent: string, data: Record<string, unknown>) => {
+    auditEvents.push({ event, data })
+  },
+}))
+
+import type { InboundChannelMessage } from '../../../packages/core/src/adapters/runtime/channels'
+import { createInboundSurface, type InboundSurfaceDeps } from '../../../src/core/delivery/discord/inbound'
+
+const BOT_ID = 'bot-1'
+const OWNER = 'owner-9'
+
+function makeSurface(overrides: Partial<InboundSurfaceDeps> = {}) {
+  const received: InboundChannelMessage[] = []
+  const surface = createInboundSurface({
+    botUserId: () => BOT_ID,
+    settings: () => ({
+      enabled: true,
+      inbound: { enabled: true, agentId: 'main', requireMention: true, allowFrom: [OWNER] },
+    }),
+    download: async () => Buffer.from('img-bytes'),
+    tmpDir: testDir,
+    ...overrides,
+  })
+  surface.subscribe(message => received.push(message))
+  return { surface, received }
+}
+
+function guildMessage(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'msg-1',
+    channel_id: 'chan-5',
+    guild_id: 'guild-1',
+    content: 'hey bot',
+    author: { id: OWNER, username: 'mark' },
+    mentions: [{ id: BOT_ID }],
+    attachments: [],
+    ...overrides,
+  }
+}
+
+describe('discord inbound gating', () => {
+  beforeEach(() => {
+    auditEvents.length = 0
+    fs.rmSync(testDir, { recursive: true, force: true })
+    fs.mkdirSync(testDir, { recursive: true })
+  })
+  afterAll(() => fs.rmSync(testDir, { recursive: true, force: true }))
+
+  it('emits a neutral message for a mentioned, allowlisted guild message', async () => {
+    const { surface, received } = makeSurface()
+    await surface.handleMessage(guildMessage())
+    expect(received).toHaveLength(1)
+    expect(received[0]).toMatchObject({
+      platform: 'discord',
+      channelRef: 'discord:channel:chan-5',
+      authorId: OWNER,
+      authorName: 'mark',
+      text: 'hey bot',
+      messageRef: 'message:msg-1',
+    })
+  })
+
+  it('ignores guild messages without an @mention (requireMention)', async () => {
+    const { surface, received } = makeSurface()
+    await surface.handleMessage(guildMessage({ mentions: [] }))
+    expect(received).toHaveLength(0)
+    expect(auditEvents).toHaveLength(0) // not a denial — just not addressed to the bot
+  })
+
+  it('allows unmentioned guild messages when requireMention is off', async () => {
+    const { surface, received } = makeSurface({
+      settings: () => ({
+        enabled: true,
+        inbound: { enabled: true, agentId: 'main', requireMention: false, allowFrom: [OWNER] },
+      }),
+    })
+    await surface.handleMessage(guildMessage({ mentions: [] }))
+    expect(received).toHaveLength(1)
+  })
+
+  it('DMs (no guild_id) need no mention', async () => {
+    const { surface, received } = makeSurface()
+    await surface.handleMessage(guildMessage({ guild_id: undefined, mentions: [] }))
+    expect(received).toHaveLength(1)
+  })
+
+  it('denies non-allowlisted senders with an audit, never an emit', async () => {
+    const { surface, received } = makeSurface()
+    await surface.handleMessage(guildMessage({ author: { id: 'stranger', username: 'x' } }))
+    expect(received).toHaveLength(0)
+    expect(auditEvents.some(e => e.event === 'delivery.inbound_denied')).toBe(true)
+  })
+
+  it('fails closed on an empty allowlist', async () => {
+    const { surface, received } = makeSurface({
+      settings: () => ({
+        enabled: true,
+        inbound: { enabled: true, agentId: 'main', requireMention: true, allowFrom: [] },
+      }),
+    })
+    await surface.handleMessage(guildMessage())
+    expect(received).toHaveLength(0)
+    expect(auditEvents.some(e => e.event === 'delivery.inbound_denied')).toBe(true)
+  })
+
+  it('ignores bot/self messages silently', async () => {
+    const { surface, received } = makeSurface()
+    await surface.handleMessage(guildMessage({ author: { id: BOT_ID, username: 'roscoe', bot: true } }))
+    await surface.handleMessage(guildMessage({ author: { id: 'other-bot', username: 'b', bot: true } }))
+    expect(received).toHaveLength(0)
+    expect(auditEvents).toHaveLength(0)
+  })
+
+  it('ignores everything when inbound (or the bridge) is disabled', async () => {
+    const { surface, received } = makeSurface({
+      settings: () => ({
+        enabled: true,
+        inbound: { enabled: false, agentId: 'main', requireMention: true, allowFrom: [OWNER] },
+      }),
+    })
+    await surface.handleMessage(guildMessage())
+    expect(received).toHaveLength(0)
+  })
+
+  it('strips the bot mention from the text', async () => {
+    const { surface, received } = makeSurface()
+    await surface.handleMessage(guildMessage({ content: `<@${BOT_ID}> write a haiku` }))
+    expect(received[0].text).toBe('write a haiku')
+  })
+
+  it('downloads image attachments to local temp files; skips non-images and oversize', async () => {
+    const { surface, received } = makeSurface()
+    await surface.handleMessage(guildMessage({
+      attachments: [
+        { id: 'a1', filename: 'shot.png', url: 'https://cdn.example/shot.png', content_type: 'image/png', size: 1000 },
+        { id: 'a2', filename: 'notes.pdf', url: 'https://cdn.example/notes.pdf', content_type: 'application/pdf', size: 1000 },
+        { id: 'a3', filename: 'huge.png', url: 'https://cdn.example/huge.png', content_type: 'image/png', size: 999_999_999 },
+      ],
+    }))
+    const attachments = received[0].attachments ?? []
+    expect(attachments).toHaveLength(1)
+    expect(attachments[0].name).toBe('shot.png')
+    expect(fs.readFileSync(attachments[0].path).toString()).toBe('img-bytes')
+  })
+
+  it('a failed attachment download degrades to text-only, never a dropped message', async () => {
+    const { surface, received } = makeSurface({
+      download: async () => { throw new Error('cdn down') },
+    })
+    await surface.handleMessage(guildMessage({
+      attachments: [{ id: 'a1', filename: 'shot.png', url: 'https://cdn.example/shot.png', content_type: 'image/png', size: 10 }],
+    }))
+    expect(received).toHaveLength(1)
+    expect(received[0].attachments ?? []).toHaveLength(0)
+  })
+
+  it('unsubscribe stops delivery', async () => {
+    const { surface } = makeSurface()
+    const late: InboundChannelMessage[] = []
+    const unsubscribe = surface.subscribe(m => late.push(m))
+    unsubscribe()
+    await surface.handleMessage(guildMessage())
+    expect(late).toHaveLength(0)
+  })
+})

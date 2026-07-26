@@ -263,6 +263,8 @@ export type {
   ResolveApprovalArgs,
   ApprovalResolveEvent,
   DurableApprovalRecord,
+  InboundChannelAttachment,
+  InboundChannelMessage,
   RuntimeChannelSurface,
 } from './channels'
 

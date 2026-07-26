@@ -12,6 +12,7 @@ import { createLogger } from '@/core/logger'
 import type { ApiChannelLike } from './channel-info'
 import type { SendApi } from './send'
 import type { ApprovalApi, RawInteraction } from './approvals'
+import type { RawInboundMessage } from './inbound'
 
 const log = createLogger('delivery-discord')
 
@@ -33,13 +34,15 @@ export function createDiscordTransport(token: string): DiscordTransport {
   const rest = new REST({ version: '10' }).setToken(token)
   const gateway = new WebSocketManager({
     token,
-    // Phase A consumes NO message events: sends are REST, buttons/modals
-    // arrive as INTERACTION_CREATE (intent-free). Requesting the privileged
-    // MessageContent intent here would 4014-close the whole bridge for any
-    // bot missing the portal toggle — for features that don't need it.
-    // Inbound chat (B1) adds GuildMessages | DirectMessages | MessageContent
-    // when a consumer actually exists.
-    intents: GatewayIntentBits.Guilds,
+    // Message intents exist for the inbound-chat consumer (B1). NOTE:
+    // MessageContent is PRIVILEGED — a bot without the portal toggle gets a
+    // 4014 close at identify and the whole bridge fails; the delivery.discord
+    // doctor remediation names the toggle.
+    intents:
+      GatewayIntentBits.Guilds |
+      GatewayIntentBits.GuildMessages |
+      GatewayIntentBits.DirectMessages |
+      GatewayIntentBits.MessageContent,
     rest,
   })
   const client = new Client({ rest, gateway })
@@ -164,4 +167,18 @@ export function subscribeInteractions(transport: DiscordTransport, handler: (raw
   transport.client.on(GatewayDispatchEvents.InteractionCreate, ({ data }) => {
     handler(data as unknown as RawInteraction)
   })
+}
+
+/** Forward raw MESSAGE_CREATE payloads to the inbound surface (B1). */
+export function subscribeMessages(transport: DiscordTransport, handler: (raw: RawInboundMessage) => void): void {
+  transport.client.on(GatewayDispatchEvents.MessageCreate, ({ data }) => {
+    handler(data as unknown as RawInboundMessage)
+  })
+}
+
+/** Fetch an attachment URL to bytes — CDN semantics stay confined here. */
+export async function downloadAttachment(url: string): Promise<Buffer> {
+  const response = await fetch(url)
+  if (!response.ok) throw new Error(`attachment fetch failed: ${response.status}`)
+  return Buffer.from(await response.arrayBuffer())
 }

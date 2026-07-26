@@ -23,7 +23,7 @@ Plan: `.claude/specs/discord-bridge/PLAN.md`
       modal-reason assertion. Five-axis code review running → PR 1 next.
 
 ## Phase B — Inbound chat (branch: feat/discord-inbound-chat)
-- [ ] B1 subscribeInboundMessages contract + bridge inbound gating + attachments
+- [x] B1 subscribeInboundMessages contract + bridge inbound gating + attachments
 - [ ] B2 Chat plugin wiring: channel↔chat map, turn engine, typing, reply
 - [ ] B3 Docs + #669 close-out comment
 - [ ] CHECKPOINT 2: live validation + owner sign-off + PR 2 merged
