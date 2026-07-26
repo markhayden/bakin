@@ -263,3 +263,57 @@ describe('Settings', () => {
     })
   })
 })
+
+describe('integrations settings (#669)', () => {
+  // Reuses the file-level TEST_CONTENT_DIR: getContentDir() caches its first
+  // resolution per process, so a different BAKIN_HOME here would be ignored.
+  beforeEach(() => {
+    resetSettingsCache()
+    process.env.BAKIN_HOME = TEST_CONTENT_DIR
+    if (fs.existsSync(TEST_CONTENT_DIR)) fs.rmSync(TEST_CONTENT_DIR, { recursive: true })
+  })
+  afterEach(() => {
+    delete process.env.BAKIN_HOME
+    if (fs.existsSync(TEST_CONTENT_DIR)) fs.rmSync(TEST_CONTENT_DIR, { recursive: true })
+  })
+
+  function write(integrations: unknown): void {
+    fs.mkdirSync(TEST_CONTENT_DIR, { recursive: true })
+    fs.writeFileSync(SETTINGS_FILE, JSON.stringify({ integrations }))
+    resetSettingsCache()
+  }
+
+  it('defaults: disabled, empty lists, inbound main + requireMention + fail-closed allowFrom', () => {
+    const d = getSettings().integrations.discord
+    expect(d.enabled).toBe(false)
+    expect(d.guildIds).toEqual([])
+    expect(d.approvers).toEqual([])
+    expect(d.inbound.enabled).toBe(true)
+    expect(d.inbound.agentId).toBe('main')
+    expect(d.inbound.requireMention).toBe(true)
+    expect(d.inbound.allowFrom).toEqual([])
+  })
+
+  it('normalizes CSV strings into trimmed, deduped string arrays', () => {
+    write({ discord: { enabled: true, guildIds: 'g1, g2,,g1 ', approvers: '111', inbound: { allowFrom: ' 222 ,333' } } })
+    const d = getSettings().integrations.discord
+    expect(d.guildIds).toEqual(['g1', 'g2'])
+    expect(d.approvers).toEqual(['111'])
+    expect(d.inbound.allowFrom).toEqual(['222', '333'])
+  })
+
+  it('normalizes arrays: trims entries, drops empties/non-strings, dedupes', () => {
+    write({ discord: { guildIds: [' g1 ', '', 'g1', 42, 'g2'], approvers: null } })
+    const d = getSettings().integrations.discord
+    expect(d.guildIds).toEqual(['g1', 'g2'])
+    expect(d.approvers).toEqual([])
+  })
+
+  it('coerces invalid shapes back to defaults', () => {
+    write({ discord: { enabled: 'yes', inbound: { agentId: 7, requireMention: 'nope' } } })
+    const d = getSettings().integrations.discord
+    expect(d.enabled).toBe(false)
+    expect(d.inbound.agentId).toBe('main')
+    expect(d.inbound.requireMention).toBe(true)
+  })
+})

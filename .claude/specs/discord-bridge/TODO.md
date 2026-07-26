@@ -8,7 +8,7 @@ Plan: `.claude/specs/discord-bridge/PLAN.md`
       12 guild channels, clean shutdown; all 4 intents accepted (MESSAGE_CONTENT
       enabled); zero native optional deps. D2 stands, no fallback needed.
 - [x] A1 Neutral ChannelBridge contract + AdapterInitOpts.channelBridge
-- [ ] A2 settings.integrations.discord + config module + System & Alerts fields
+- [x] A2 settings.integrations.discord + config module + System & Alerts fields
 - [ ] A3 Discord client lifecycle + boot gating + arch confinement
 - [ ] A4 Send surface (embeds/content/threads/edits/DM/chunking/retry) + audit
 - [ ] A5 Approval cards + modal reject + allowlist → ApprovalResolveEvent
