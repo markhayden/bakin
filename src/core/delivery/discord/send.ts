@@ -47,6 +47,8 @@ export interface MessagePayload {
   content?: string
   embeds?: Array<Record<string, unknown>>
   files?: OutgoingFile[]
+  /** Interactive component rows (approval cards) — must survive the transport binding. */
+  components?: Array<Record<string, unknown>>
 }
 
 /** Minimal REST surface the send paths need — injectable for tests. */

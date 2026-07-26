@@ -96,6 +96,7 @@ export function sendApiFromTransport(transport: DiscordTransport): SendApi {
       const message = await transport.api.channels.createMessage(channelId, {
         ...(payload.content ? { content: payload.content } : {}),
         ...(payload.embeds ? { embeds: payload.embeds as APIEmbed[] } : {}),
+        ...(payload.components ? { components: payload.components as never } : {}),
         ...(payload.files?.length
           ? { files: payload.files.map(file => ({ name: file.name, data: file.data, contentType: file.contentType })) }
           : {}),
