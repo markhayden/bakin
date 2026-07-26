@@ -125,6 +125,13 @@ export interface RuntimeConformanceSuiteOptions {
    * pin (the round-trip still runs whenever the member exists).
    */
   cron?: 'present' | 'absent'
+  /**
+   * sessions.contextStats optional-member declaration (#737). 'present'
+   * pins the member to exist AND to report sane, null-honest values after
+   * a session-producing turn; 'absent' pins true omission (undefined
+   * member, never a throwing stub). Omit to skip the declaration pin.
+   */
+  contextStats?: 'present' | 'absent'
 }
 
 function fail(message: string): never {
@@ -157,6 +164,73 @@ export const runtimeConformanceChecks = {
     }
     if (options.cron === 'present' && member === undefined) {
       fail('cron declared present but the adapter omits the member')
+    }
+  },
+
+  /**
+   * contextStats optional-member honesty (#737): presence is the contract,
+   * mirroring cron — absence must be member omission, never a throwing stub.
+   */
+  async contextStatsMemberMatchesDeclaration(target: RuntimeConformanceTarget, options?: RuntimeConformanceSuiteOptions): Promise<void> {
+    if (options?.contextStats === undefined) return
+    const member = target.runtime.sessions.contextStats
+    if (options.contextStats === 'absent' && member !== undefined) {
+      fail('contextStats declared absent but the adapter exposes the member — absence must be member omission')
+    }
+    if (options.contextStats === 'present' && member === undefined) {
+      fail('contextStats declared present but the adapter omits the member')
+    }
+  },
+
+  /**
+   * contextStats sanity (#737), for adapters that declare it present: after
+   * a session-producing threaded turn, the reading must be non-null and
+   * NULL-HONEST — tokens within [0, window] when both are present, a
+   * threshold never above the window, and never fabricated zeros standing
+   * in for unknowns. A context reading that exceeds the window is the
+   * billing-aggregate bug class (the 109% incident) and must fail here.
+   */
+  async contextStatsReportsSaneValues(target: RuntimeConformanceTarget, options?: RuntimeConformanceSuiteOptions): Promise<void> {
+    if (options?.contextStats !== 'present') return
+    const member = target.runtime.sessions.contextStats
+    if (member === undefined) return // the declaration check already failed the run
+    await target.prepareOkTurn?.()
+    const threadId = target.newThreadId()
+    await target.runtime.messaging.send({
+      agentId: target.agentId,
+      content: 'conformance: context-stats-producing turn',
+      threadId,
+    })
+    const stats = await member.call(target.runtime.sessions, { agentId: target.agentId, threadId })
+    if (stats === null) {
+      fail('contextStats returned null for the session a threaded turn just created — declared-present must reflect real turns')
+    }
+    if (stats.tokens !== null && (!Number.isFinite(stats.tokens) || stats.tokens < 0)) {
+      fail(`contextStats.tokens must be null or a non-negative finite number (got ${stats.tokens})`)
+    }
+    if (stats.contextWindow !== null && (!Number.isFinite(stats.contextWindow) || stats.contextWindow <= 0)) {
+      fail(`contextStats.contextWindow must be null or a positive finite number (got ${stats.contextWindow})`)
+    }
+    if (stats.tokens !== null && stats.contextWindow !== null && stats.tokens > stats.contextWindow) {
+      fail(
+        `contextStats.tokens (${stats.tokens}) exceeds contextWindow (${stats.contextWindow}) — a context reading can never exceed the window; billing aggregates are a banned source (the 109% class)`,
+      )
+    }
+    if (stats.compactionThreshold !== null) {
+      if (!Number.isFinite(stats.compactionThreshold) || stats.compactionThreshold <= 0) {
+        fail(`contextStats.compactionThreshold must be null or positive (got ${stats.compactionThreshold})`)
+      }
+      if (stats.contextWindow !== null && stats.compactionThreshold > stats.contextWindow) {
+        fail(`contextStats.compactionThreshold (${stats.compactionThreshold}) exceeds the window (${stats.contextWindow})`)
+      }
+    }
+    // An unmapped thread must read as null — never a throw, never zeros.
+    const missing = await member.call(target.runtime.sessions, {
+      agentId: target.agentId,
+      threadId: `conformance-missing-${Date.now()}`,
+    })
+    if (missing !== null) {
+      fail('contextStats for a never-used thread must be null (honest absence), not a fabricated reading')
     }
   },
 
@@ -796,6 +870,14 @@ export function runRuntimeConformanceSuite(
 
     it('cron CRUD round-trips against the real store (when the member exists)', async () => {
       await runtimeConformanceChecks.cronCrudRoundTrip(getTarget())
+    })
+
+    it('contextStats member matches its declaration (presence is the contract)', async () => {
+      await runtimeConformanceChecks.contextStatsMemberMatchesDeclaration(getTarget(), options)
+    })
+
+    it('contextStats reports sane, null-honest values after a real turn (when declared present)', async () => {
+      await runtimeConformanceChecks.contextStatsReportsSaneValues(getTarget(), options)
     })
 
     it('initialize() is write-free (provisioning owns home writes)', async () => {

@@ -102,6 +102,8 @@ export type {
   TurnTimestampProps,
   UserMessageProps,
 } from '@bakin/ui/conversation'
+export { formatTokenCount, formatUsageCost } from '@bakin/ui/conversation'
+export type { ConversationTurnUsage } from '@bakin/ui/conversation'
 
 /** Document-first conversation timeline and honest zero-message state. */
 export {

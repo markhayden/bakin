@@ -407,6 +407,28 @@ export interface RuntimeSession {
   metadata?: RuntimeMetadata
 }
 
+/**
+ * A session's context reading (#737) — runtime truth only, read AT REST.
+ * Null-honesty is the contract: `tokens: null` means honestly unknown
+ * (e.g. immediately after a compaction before the next assistant reply,
+ * or a stale store entry) — NEVER a stale or derived number; billing
+ * aggregates (which sum across a turn's internal tool-loop requests) are
+ * banned as a source. `compactionThreshold: null` when the runtime owns
+ * compaction opaquely (e.g. codex-native).
+ */
+export interface RuntimeSessionContextStats {
+  /** Current context tokens; null = honestly unknown. */
+  tokens: number | null
+  /** The model's context window; null when unknown. */
+  contextWindow: number | null
+  /** Auto-compaction trigger point in tokens; null when unknowable. */
+  compactionThreshold: number | null
+  /** Last compaction, when detectable from durable runtime records. */
+  lastCompaction?: { at?: string; tokensBefore?: number; reason?: string }
+  /** Model the stats describe (`provider/modelId` form), when known. */
+  model?: string
+}
+
 export interface RuntimeSessionStoreStats {
   agentId: string
   /** Live entries in the runtime's session store for this agent. */
@@ -954,6 +976,15 @@ export interface AgentRuntimeAdapter {
      * as "stats unavailable" — skip, never error.
      */
     storeStats?(): Promise<RuntimeSessionStoreStats[]>
+    /**
+     * Context stats for one Bakin thread's session (#737), read AT REST —
+     * no gateway calls, no turn, no session mutation, no thread locks.
+     * Keyed on {agentId, threadId} because the thread→session mapping is
+     * adapter-private on every runtime. Optional: runtimes that cannot
+     * answer omit the member; callers treat absence as unavailable —
+     * skip, never error. Null = no session / nothing honest to report.
+     */
+    contextStats?(opts: { agentId: string; threadId: string }): Promise<RuntimeSessionContextStats | null>
   }
 
   memory: {

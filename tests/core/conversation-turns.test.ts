@@ -921,4 +921,169 @@ describe('conversation turn service — pending queue', () => {
     await service.waitFor('q10')
     await waitUntil(() => !service.isInFlight('q10') && service.listQueued('q10').length === 0, 'drained')
   })
+
+  test('terminalMarkerRows: the drained combined turn gets its own marker — one done row per settled turn (#735)', async () => {
+    const { h, service, scripts } = makeQueueHarness({ terminalMarkerRows: true })
+    const release = gatedScript(scripts)
+    scripts.push(async function* () {
+      yield { type: 'text', content: 'combined reply' } as ChatChunk
+      yield { type: 'done' } as ChatChunk
+    })
+    expect(await service.start(h.ctx, 'qm1', 'first')).toBe('accepted')
+    expect(await service.start(h.ctx, 'qm1', 'follow-up', { queueIfBusy: true })).toMatchObject({ queued: true })
+    release()
+    await service.waitFor('qm1')
+    await waitUntil(() => h.events.filter((e) => e.event === 'test.done').length === 2, 'drained turn done')
+    await waitUntil(() => !service.isInFlight('qm1'), 'settled')
+
+    const rows = h.rows.get('qm1') ?? []
+    const dones = rows.filter((r) => r.kind === 'done') as Array<{ turnId?: string }>
+    expect(dones).toHaveLength(2)
+    expect(dones[0].turnId).not.toBe(dones[1].turnId)
+    expect(rows[rows.length - 1]?.kind).toBe('done')
+  })
+
+  test('terminalMarkerRows: abort in the drained turn\'s async prefix — aborted terminal, never a done row for that turn (#735)', async () => {
+    let releaseResolve!: () => void
+    const resolveGate = new Promise<void>((r) => { releaseResolve = r })
+    let drainResolves = 0
+    const { h, service, scripts } = makeQueueHarness({
+      terminalMarkerRows: true,
+      resolveThread: async () => {
+        drainResolves += 1
+        if (drainResolves === 3) await resolveGate
+        return { agentId: 'main' }
+      },
+    })
+    const releaseTurn = gatedScript(scripts)
+    scripts.push(() => {
+      throw Object.assign(new Error('turn aborted before start'), { kind: 'aborted' })
+    })
+
+    expect(await service.start(h.ctx, 'qm2', 'first')).toBe('accepted')
+    expect(await service.start(h.ctx, 'qm2', 'correction', { queueIfBusy: true })).toMatchObject({ queued: true })
+    releaseTurn()
+    await service.waitFor('qm2')
+    await waitUntil(() => service.isInFlight('qm2'), 'drain slot reserved')
+    expect(service.abort('qm2')).toBe(true)
+    releaseResolve()
+    await service.waitFor('qm2')
+    await waitUntil(() => !service.isInFlight('qm2'), 'drain settled')
+
+    const rows = h.rows.get('qm2') ?? []
+    // First turn completed cleanly → exactly one done marker; the aborted
+    // drain's terminal is its aborted row, never a done row.
+    expect(rows.filter((r) => r.kind === 'done')).toHaveLength(1)
+    expect(rows[rows.length - 1]?.kind).toBe('aborted')
+    expect(rows.some((r) => r.kind === 'error')).toBe(false)
+  })
+})
+
+/**
+ * Terminal marker rows (#735): with `terminalMarkerRows` on, EVERY settle
+ * shape leaves the transcript ending on a terminal row (done | aborted |
+ * error) — the boot-sweep evidence chat uses to stamp partial-output deaths
+ * without ever falsely marking a completed turn. A new settle path added to
+ * runTurn MUST keep this invariant and extend these tests.
+ */
+describe('conversation turn service — terminal marker rows (#735)', () => {
+  test('clean success: the done row lands LAST, after all content rows, carrying the turn id', async () => {
+    const h = makeHarness()
+    const service = makeService(h, { terminalMarkerRows: true })
+    h.setStream(async function* () {
+      yield { type: 'text', content: 'reply' } as ChatChunk
+      yield { type: 'tool', data: { phase: 'result', toolName: 'bash', status: 'completed' } } as ChatChunk
+      yield { type: 'done' } as ChatChunk
+    })
+    expect(await service.start(h.ctx, 'm1', 'go')).toBe('accepted')
+    await service.waitFor('m1')
+
+    const rows = h.rows.get('m1') ?? []
+    const last = rows[rows.length - 1] as { kind: string; turnId?: string }
+    expect(last.kind).toBe('done')
+    const assistant = rows.find((r) => r.kind === 'assistant') as { turnId?: string }
+    expect(typeof last.turnId).toBe('string')
+    expect(last.turnId).toBe(assistant.turnId)
+    expect(rows.filter((r) => r.kind === 'done')).toHaveLength(1)
+  })
+
+  test('the done row persists AFTER final content rows and BEFORE onTurnComplete and the done event', async () => {
+    const h = makeHarness()
+    const order: string[] = []
+    const service = makeService(h, {
+      terminalMarkerRows: true,
+      appendRow: (_key, row) => { order.push(`row:${row.kind}`) },
+      hooks: { onTurnComplete: ({ aborted }) => { order.push(`complete:${aborted}`) } },
+    })
+    h.setStream(async function* () {
+      yield { type: 'text', content: 'reply' } as ChatChunk
+      yield { type: 'done' } as ChatChunk
+    })
+    h.ctx.events.emit = ((event: string, data?: Record<string, unknown>) => {
+      order.push(`event:${event}`)
+      h.events.push({ event, data: data ?? {} })
+    }) as typeof h.ctx.events.emit
+
+    expect(await service.start(h.ctx, 'm2', 'go')).toBe('accepted')
+    await service.waitFor('m2')
+    expect(order).toEqual(['row:user', 'event:test.chunk', 'row:assistant', 'row:done', 'complete:false', 'event:test.done'])
+  })
+
+  test('error settles never write a done row — the error row is the terminal (both error shapes)', async () => {
+    const h = makeHarness()
+    const service = makeService(h, { terminalMarkerRows: true })
+    h.setStream(async function* () {
+      yield { type: 'text', content: 'partial' } as ChatChunk
+      yield { type: 'error', content: 'session died', data: { kind: 'session_lost' } } as ChatChunk
+    })
+    expect(await service.start(h.ctx, 'm3', 'go')).toBe('accepted')
+    await service.waitFor('m3')
+    let rows = h.rows.get('m3') ?? []
+    expect(rows[rows.length - 1]?.kind).toBe('error')
+    expect(rows.some((r) => r.kind === 'done')).toBe(false)
+
+    h.setStream(async function* () {
+      yield { type: 'text', content: 'partial' } as ChatChunk
+      throw new Error('socket torn')
+    })
+    expect(await service.start(h.ctx, 'm4', 'go')).toBe('accepted')
+    await service.waitFor('m4')
+    rows = h.rows.get('m4') ?? []
+    expect(rows[rows.length - 1]?.kind).toBe('error')
+    expect(rows.some((r) => r.kind === 'done')).toBe(false)
+  })
+
+  test('abort during the stream: the aborted row is the terminal, no done row', async () => {
+    const h = makeHarness()
+    const service = makeService(h, { terminalMarkerRows: true })
+    let release: () => void = () => {}
+    const gate = new Promise<void>((r) => { release = r })
+    h.setStream(async function* () {
+      yield { type: 'text', content: 'partial reply' } as ChatChunk
+      await gate
+      yield { type: 'done' } as ChatChunk
+    })
+    expect(await service.start(h.ctx, 'm5', 'go')).toBe('accepted')
+    expect(service.abort('m5')).toBe(true)
+    release()
+    await service.waitFor('m5')
+
+    const rows = h.rows.get('m5') ?? []
+    expect(rows[rows.length - 1]?.kind).toBe('aborted')
+    expect(rows.some((r) => r.kind === 'done')).toBe(false)
+  })
+
+  test('flag absent: no done row ever (bounded/foreign stores stay clean)', async () => {
+    const h = makeHarness()
+    const service = makeService(h)
+    h.setStream(async function* () {
+      yield { type: 'text', content: 'reply' } as ChatChunk
+      yield { type: 'done' } as ChatChunk
+    })
+    expect(await service.start(h.ctx, 'm6', 'go')).toBe('accepted')
+    await service.waitFor('m6')
+    const rows = h.rows.get('m6') ?? []
+    expect(rows.some((r) => r.kind === 'done')).toBe(false)
+    expect(rows[rows.length - 1]?.kind).toBe('assistant')
+  })
 })

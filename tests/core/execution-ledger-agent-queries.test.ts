@@ -40,6 +40,7 @@ import {
   completionsByAgentSince,
   runTokensByAgentSince,
   listRunCostsSince,
+  listRunCostsByPrefix,
 } from '../../src/core/execution-ledger'
 import { closeDb } from '../../packages/core/src/storage/db'
 
@@ -267,6 +268,56 @@ describe('runTokensByAgentSince', () => {
       tokenMeteredRuns: 1,
       costedRuns: 0,
     })
+  })
+})
+
+describe('listRunCostsByPrefix (#733)', () => {
+  it('returns exactly the prefix rows in time order, with lane + token columns', () => {
+    const chatId = 'aaaa1111-2222-3333-4444-555566667777'
+    recordRunCost({
+      workClass: 'chat',
+      runId: `chat:${chatId}:turn:t-one`,
+      agent: 'main',
+      model: 'anthropic/claude-sonnet-5',
+      lane: 'metered',
+      inputTokens: 14_200,
+      outputTokens: 890,
+      totalTokens: 15_090,
+      cacheReadTokens: 9_000,
+      costUsdMicros: 30_000,
+      occurredAt: T0 + 2000,
+    })
+    recordRunCost({
+      workClass: 'chat',
+      runId: `chat:${chatId}:turn:t-two`,
+      agent: 'main',
+      model: 'pi/pi-local',
+      lane: 'subscription',
+      totalTokens: 23_300,
+      occurredAt: T0 + 1000,
+    })
+    // The auto-title run and another chat must NEVER match the prefix.
+    recordRunCost({ workClass: 'auto-title', runId: `chat:${chatId}:title`, agent: 'main', totalTokens: 50, occurredAt: T0 + 500 })
+    recordRunCost({ workClass: 'chat', runId: 'chat:other-chat:turn:t-x', agent: 'main', totalTokens: 5, occurredAt: T0 + 100 })
+
+    const rows = listRunCostsByPrefix(`chat:${chatId}:turn:`)
+    expect(rows.map((r) => r.runId)).toEqual([`chat:${chatId}:turn:t-two`, `chat:${chatId}:turn:t-one`])
+    expect(rows[1]).toMatchObject({
+      model: 'anthropic/claude-sonnet-5',
+      lane: 'metered',
+      inputTokens: 14_200,
+      outputTokens: 890,
+      cacheReadTokens: 9_000,
+      costUsdMicros: 30_000,
+    })
+    expect(rows[0]).toMatchObject({ lane: 'subscription', totalTokens: 23_300, costUsdMicros: null })
+  })
+
+  it('treats LIKE wildcards in the prefix literally', () => {
+    recordRunCost({ workClass: null, runId: 'weird:pre%fix:hit', agent: 'main', totalTokens: 1, occurredAt: T0 + 1 })
+    recordRunCost({ workClass: null, runId: 'weird:preXfix:decoy', agent: 'main', totalTokens: 2, occurredAt: T0 + 2 })
+    const rows = listRunCostsByPrefix('weird:pre%fix:')
+    expect(rows.map((r) => r.runId)).toEqual(['weird:pre%fix:hit'])
   })
 })
 

@@ -147,6 +147,29 @@ describe('openclaw streaming over the mock gateway (e2e)', () => {
     expect(partial).not.toContain('[[slow]]')
   })
 
+  it('contextStats grows across turns and [[stale-context]] reads tokens null (#737 e2e)', async () => {
+    harness = await createImitationCrabHarness({ chatMode: 'canned' })
+    mockHome = harness.env.home
+    const threadId = 'chat:e2e-context-stats'
+
+    await collect(harness.services.runtime.messaging.stream({ agentId: 'rolo', content: 'turn one', threadId }))
+    const first = await harness.services.runtime.sessions.contextStats?.({ agentId: 'rolo', threadId })
+    expect(first).not.toBeNull()
+    expect(first!.tokens).toBeGreaterThan(0)
+    expect(first!.contextWindow).toBe(272_000)
+
+    await collect(harness.services.runtime.messaging.stream({ agentId: 'rolo', content: 'turn two', threadId }))
+    const second = await harness.services.runtime.sessions.contextStats?.({ agentId: 'rolo', threadId })
+    // The mock grows totals per turn — the bar visibly fills.
+    expect(second!.tokens!).toBeGreaterThan(first!.tokens!)
+
+    // The scripted stale case: fresh flag off → honest unknown, window kept.
+    await collect(harness.services.runtime.messaging.stream({ agentId: 'rolo', content: 'go stale [[stale-context]]', threadId }))
+    const stale = await harness.services.runtime.sessions.contextStats?.({ agentId: 'rolo', threadId })
+    expect(stale!.tokens).toBeNull()
+    expect(stale!.contextWindow).toBe(272_000)
+  })
+
   it('self-heals a dropped delta from cumulative text', async () => {
     harness = await createImitationCrabHarness({ chatMode: 'echo' })
     mockHome = harness.env.home

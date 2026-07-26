@@ -51,6 +51,9 @@ const service = createConversationTurnService({
   appendRow: (chatId, row) => appendTranscriptRow(chatId, row as ChatTranscriptRow),
   threadId: (chatId) => `chat:${chatId}`,
   framing: CHAT_TURN_FRAMING,
+  // Every settled turn ends on a terminal row (done | aborted | error) —
+  // the boot sweep's evidence for stamping partial-output deaths (#735).
+  terminalMarkerRows: true,
   // Pending follow-ups (#729): durable snapshots under chat/queue/, the
   // enqueue announced as chat.queued for open tabs.
   queue: {

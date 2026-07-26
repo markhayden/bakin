@@ -13,6 +13,11 @@ import type {
   TurnItem,
 } from './fold'
 import { CopyButton, TurnTimestamp } from './turn-controls'
+import {
+  formatTokenCount,
+  usageFooterLines,
+  type ConversationTurnUsage,
+} from './turn-usage'
 
 /** Presentation-ready identity for a conversation author. */
 export interface ConversationAgent {
@@ -156,6 +161,10 @@ export interface AgentTurnProps {
   transformText?: ConversationTextTransform
   /** Optional compatibility formatter for runtime-specific tool summaries. */
   formatToolSummary?: (summary: string) => string
+  /** Recorded usage for this settled turn. Unknown values remain absent. */
+  usage?: ConversationTurnUsage
+  /** Approximate output tokens while this turn is streaming. */
+  liveOutEstimate?: number
   className?: string
 }
 
@@ -169,9 +178,17 @@ export function AgentTurn({
   renderText,
   transformText,
   formatToolSummary,
+  usage,
+  liveOutEstimate,
   className,
 }: AgentTurnProps) {
   const copyText = turnText(turn.items)
+  const streaming = turn.status === 'streaming'
+  const toolCallCount = turn.items.reduce(
+    (count, item) => count + (item.type === 'activity' ? item.calls.length : 0),
+    0,
+  )
+  const usageLines = usage && !streaming ? usageFooterLines(usage, toolCallCount) : []
   const resolvedAgent: ConversationAgent = {
     ...agent,
     ...(turn.agentId ? { id: turn.agentId } : {}),
@@ -239,7 +256,20 @@ export function AgentTurn({
           )
         })}
 
-        {turn.status === 'streaming' ? <ThinkingStatus label={turn.statusLabel ?? 'thinking'} /> : null}
+        {streaming ? (
+          <div className="flex min-w-0 items-center justify-between gap-bakin-3">
+            <ThinkingStatus label={turn.statusLabel ?? 'thinking'} />
+            {(liveOutEstimate ?? 0) > 0 ? (
+              <span
+                data-conv-usage-live=""
+                title="Estimated from text streamed so far; recorded counts arrive when the reply finishes"
+                className="shrink-0 text-[length:var(--bakin-typography-size-meta)] text-bakin-text-muted"
+              >
+                ~{formatTokenCount(liveOutEstimate!)} out…
+              </span>
+            ) : null}
+          </div>
+        ) : null}
 
         {turn.status === 'aborted' ? (
           <div className="flex items-center gap-bakin-2 text-[length:var(--bakin-typography-size-meta)] text-bakin-text-muted">
@@ -251,6 +281,15 @@ export function AgentTurn({
           <Button type="button" variant="outline" size="xs" onClick={onRetry} className="justify-self-start">
             <RetryIcon /> Try again
           </Button>
+        ) : null}
+
+        {usageLines.length ? (
+          <div
+            data-conv-usage=""
+            className="text-[length:var(--bakin-typography-size-meta)] leading-relaxed text-bakin-text-muted"
+          >
+            {usageLines.map((line) => <div key={line}>{line}</div>)}
+          </div>
         ) : null}
       </div>
     </article>

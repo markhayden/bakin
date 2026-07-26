@@ -314,6 +314,200 @@ describe('ChatView', () => {
     cleanup()
   })
 
+  it('renders per-turn usage footers and the Σ header total (#733)', async () => {
+    mockFetch({
+      [`/chats/${CHAT_A}/seen`]: {},
+      capabilities: { imageInput: false },
+      [`/chats/${CHAT_A}`]: {
+        chat: summary(),
+        messages: [
+          { kind: 'user', ts: '2026-07-11T10:00:00.000Z', content: 'how do burn buckets work?' },
+          { kind: 'assistant', ts: '2026-07-11T10:00:05.000Z', turnId: 't1', content: 'Like this.' },
+          { kind: 'assistant', ts: '2026-07-11T10:01:00.000Z', turnId: 't2', content: 'Subscription reply.' },
+        ],
+        usage: {
+          t1: { inputTokens: 14_200, outputTokens: 890, costUsd: 0.03, model: 'anthropic/claude-sonnet-5', lane: 'metered' },
+          t2: { inputTokens: 22_100, outputTokens: 1_200, model: 'pi/pi-local', lane: 'subscription' },
+        },
+        usageTotals: { turns: 2, inputTokens: 36_300, outputTokens: 2_090, totalTokens: 38_390, costUsd: 0.03 },
+      },
+    })
+    const { container } = render(<ChatView chatId={CHAT_A} onChanged={() => {}} />)
+    await waitFor(() => {
+      expect(container.querySelectorAll('[data-conv-usage]').length).toBe(2)
+    })
+    const footers = [...container.querySelectorAll('[data-conv-usage]')].map((el) => el.textContent)
+    // Billed-first cost explainer (#737): in+out fallback bill, no-tool
+    // turns collapse to one line.
+    expect(footers[0]).toContain('15.1k billed')
+    expect(footers[0]).toContain('$0.03')
+    expect(footers[0]).toContain('claude-sonnet-5')
+    // Subscription lane: tokens only.
+    expect(footers[1]).toContain('23.3k billed')
+    expect(footers[1]).not.toContain('$')
+    // The totals chip in the header — plain words, no Σ sigil (review:
+    // "nobody will understand that").
+    const chip = container.querySelector('[data-chat-usage-totals]')
+    expect(chip).not.toBeNull()
+    expect(chip!.textContent).toContain('38.4k tokens')
+    expect(chip!.textContent).not.toContain('Σ')
+    expect(chip!.textContent).toContain('$0.03')
+    cleanup()
+  })
+
+  it('while streaming, the live output estimate rides the streaming TURN (far right of the shimmer) — the header chip stays recorded-only', async () => {
+    mockFetch({
+      [`/chats/${CHAT_A}/seen`]: {},
+      capabilities: { imageInput: false },
+      [`/chats/${CHAT_A}`]: {
+        chat: summary({ streaming: true }),
+        messages: [{ kind: 'user', ts: '2026-07-11T10:00:00.000Z', content: 'long job' }],
+        usage: { t0: { inputTokens: 10_000, outputTokens: 500, costUsd: 0.02, lane: 'metered' } },
+        usageTotals: { turns: 1, totalTokens: 10_500, costUsd: 0.02 },
+        // 400 chars streamed so far → ~100 tokens at chars÷4.
+        streamingText: 'x'.repeat(400),
+      },
+    })
+    const { container } = render(<ChatView chatId={CHAT_A} onChanged={() => {}} />)
+    await waitFor(() => {
+      const live = container.querySelector('[data-conv-usage-live]')
+      expect(live).not.toBeNull()
+      expect(live!.textContent).toContain('~100 out…')
+    })
+    // The estimate sits on the shimmer row of the streaming turn.
+    const shimmerRow = container.querySelector('[data-conv-usage-live]')!.parentElement!
+    expect(shimmerRow.textContent).toContain('thinking')
+    // The header chip stays recorded-only — no estimate blended in.
+    const chip = container.querySelector('[data-chat-usage-totals]')!
+    expect(chip.textContent).toContain('10.5k tokens')
+    expect(chip.textContent).not.toContain('~')
+    cleanup()
+  })
+
+  it('renders the compaction bar in the header from GET contextStats (#737)', async () => {
+    mockFetch({
+      [`/chats/${CHAT_A}/seen`]: {},
+      capabilities: { imageInput: false },
+      [`/chats/${CHAT_A}`]: {
+        chat: summary(),
+        messages: [{ kind: 'user', ts: '2026-07-11T10:00:00.000Z', content: 'hi' }],
+        usage: {},
+        contextStats: { tokens: 45_300, contextWindow: 272_000, compactionThreshold: 255_616, model: 'gpt-5.5' },
+      },
+    })
+    const { container } = render(<ChatView chatId={CHAT_A} onChanged={() => {}} />)
+    await waitFor(() => {
+      const meter = container.querySelector('[data-context-meter]')
+      expect(meter).not.toBeNull()
+      expect(meter!.textContent).toContain('45.3k / 272k (16%)')
+    })
+    expect(container.querySelector('[data-context-tick]')).not.toBeNull()
+    cleanup()
+  })
+
+  it('truthy stats that render NOTHING (stale store, no compaction) leave no dangling separator', async () => {
+    mockFetch({
+      [`/chats/${CHAT_A}/seen`]: {},
+      capabilities: { imageInput: false },
+      [`/chats/${CHAT_A}`]: {
+        chat: summary(),
+        messages: [{ kind: 'user', ts: '2026-07-11T10:00:00.000Z', content: 'hi' }],
+        usage: { t1: { totalTokens: 10_000, costUsd: 0.02, lane: 'metered' } },
+        usageTotals: { turns: 1, totalTokens: 10_000, costUsd: 0.02 },
+        // The stale-store shape: truthy object, meter draws nothing.
+        contextStats: { tokens: null, contextWindow: 272_000, compactionThreshold: null },
+      },
+    })
+    const { container } = render(<ChatView chatId={CHAT_A} onChanged={() => {}} />)
+    await waitFor(() => {
+      expect(container.querySelector('[data-chat-usage-totals]')).not.toBeNull()
+    })
+    expect(container.querySelector('[data-context-meter]')).toBeNull()
+    const chip = container.querySelector('[data-chat-usage-totals]')!
+    expect(chip.textContent!.trimStart().startsWith('·')).toBe(false)
+    cleanup()
+  })
+
+  it('a post-compaction gap renders the honest "context —" bar (#737 e2e)', async () => {
+    mockFetch({
+      [`/chats/${CHAT_A}/seen`]: {},
+      capabilities: { imageInput: false },
+      [`/chats/${CHAT_A}`]: {
+        chat: summary(),
+        messages: [{ kind: 'user', ts: '2026-07-11T10:00:00.000Z', content: 'hi' }],
+        usage: {},
+        contextStats: {
+          tokens: null,
+          contextWindow: 272_000,
+          compactionThreshold: null,
+          lastCompaction: { at: new Date(Date.now() - 120_000).toISOString(), tokensBefore: 253_000 },
+        },
+      },
+    })
+    const { container } = render(<ChatView chatId={CHAT_A} onChanged={() => {}} />)
+    await waitFor(() => {
+      const meter = container.querySelector('[data-context-meter]')
+      expect(meter).not.toBeNull()
+      expect(meter!.textContent).toContain('context —')
+      expect(meter!.textContent!.toLowerCase()).toContain('compacted')
+    })
+    cleanup()
+  })
+
+  it('the header carries agent identity only as the avatar tooltip; the working ticker is gone', async () => {
+    mockFetch({
+      [`/chats/${CHAT_A}/seen`]: {},
+      capabilities: { imageInput: false },
+      [`/chats/${CHAT_A}`]: {
+        chat: summary({ streaming: true }),
+        messages: [],
+        usage: {},
+      },
+    })
+    const { container } = render(<ChatView chatId={CHAT_A} onChanged={() => {}} />)
+    await waitFor(() => expect(container.querySelector('[data-chat-title]')).not.toBeNull())
+    const avatarWrap = container.querySelector('span[title="main"]')
+    expect(avatarWrap).not.toBeNull()
+    // The name never renders as visible header text …
+    const headerLine = container.querySelector('.min-h-4')
+    expect(headerLine?.textContent).not.toContain('main')
+    // … and the removed working ticker stays removed.
+    expect(container.querySelector('[data-chat-header-working]')).toBeNull()
+    cleanup()
+  })
+
+  it('no contextStats from the server → no bar (capability absent = honest absence)', async () => {
+    mockFetch({
+      [`/chats/${CHAT_A}/seen`]: {},
+      capabilities: { imageInput: false },
+      [`/chats/${CHAT_A}`]: { chat: summary(), messages: [], usage: {} },
+    })
+    const { container } = render(<ChatView chatId={CHAT_A} onChanged={() => {}} />)
+    await settleReact()
+    expect(container.querySelector('[data-context-meter]')).toBeNull()
+    cleanup()
+  })
+
+  it('no recorded usage → no footers, no header chip (absence, never zeros)', async () => {
+    mockFetch({
+      [`/chats/${CHAT_A}/seen`]: {},
+      capabilities: { imageInput: false },
+      [`/chats/${CHAT_A}`]: {
+        chat: summary(),
+        messages: [
+          { kind: 'user', ts: '2026-07-11T10:00:00.000Z', content: 'hi' },
+          { kind: 'assistant', ts: '2026-07-11T10:00:05.000Z', turnId: 't1', content: 'hello' },
+        ],
+        usage: {},
+      },
+    })
+    const { container } = render(<ChatView chatId={CHAT_A} onChanged={() => {}} />)
+    await waitFor(() => expect(container.textContent).toContain('hello'))
+    expect(container.querySelector('[data-conv-usage]')).toBeNull()
+    expect(container.querySelector('[data-chat-usage-totals]')).toBeNull()
+    cleanup()
+  })
+
   it('renders the queued strip while streaming; remove restores the text into the empty composer (#729)', async () => {
     mockFetch({
       [`/chats/${CHAT_A}/queued/q1`]: { removed: true },

@@ -199,5 +199,8 @@ export function createSessionsSurface(): AgentRuntimeAdapter['sessions'] {
         }
       })
     },
+    // contextStats is wired at runtime assembly (runtime.ts), NOT here:
+    // context-stats imports messaging (settings manager) which imports
+    // this module — wiring it here closed an import cycle (CI check).
   }
 }

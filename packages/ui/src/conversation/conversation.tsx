@@ -13,6 +13,7 @@ import {
 } from './agent-turn'
 import type { ConversationToolCall, ConversationTurn } from './fold'
 import { dayKey, formatAbsoluteTime, formatDayLabel } from './relative-time'
+import type { ConversationTurnUsage } from './turn-usage'
 import {
   UserMessage,
   type ConversationAttachmentRenderer,
@@ -39,6 +40,10 @@ export interface ConversationProps {
   renderAttachment?: ConversationAttachmentRenderer
   transformText?: AgentTurnProps['transformText']
   formatToolSummary?: AgentTurnProps['formatToolSummary']
+  /** Recorded usage keyed by the durable turn id. */
+  turnUsage?: Record<string, ConversationTurnUsage>
+  /** Approximate output tokens for the active streaming turn. */
+  liveOutEstimate?: number
   className?: string
 }
 
@@ -82,6 +87,8 @@ export function Conversation({
   renderAttachment,
   transformText,
   formatToolSummary,
+  turnUsage,
+  liveOutEstimate,
   className,
 }: ConversationProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null)
@@ -138,7 +145,7 @@ export function Conversation({
           </div>
         ) : (
           <div className="grid min-w-0 gap-bakin-5 px-bakin-4 py-bakin-4">
-            {turns.map((turn) => {
+            {turns.map((turn, index) => {
               const day = dayKey(turn.ts)
               const separator = day && day !== previousDay ? (
                 <div
@@ -168,12 +175,18 @@ export function Conversation({
                     <AgentTurn
                       turn={turn}
                       agent={fallbackAgent(turn.agentId, agent, resolveAgent)}
-                      onRetry={turn.status === 'error' ? onRetry : undefined}
+                      onRetry={
+                        turn.status === 'error' && index === turns.length - 1
+                          ? onRetry
+                          : undefined
+                      }
                       onOpenCall={onOpenCall}
                       renderAvatar={renderAvatar}
                       renderText={renderText}
                       transformText={transformText}
                       formatToolSummary={formatToolSummary}
+                      usage={turn.turnId ? turnUsage?.[turn.turnId] : undefined}
+                      liveOutEstimate={turn.status === 'streaming' ? liveOutEstimate : undefined}
                     />
                   )}
                 </div>

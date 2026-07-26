@@ -85,7 +85,8 @@ describe('chat plugin on the Pi runtime', () => {
     expect(events.at(-1)).toBe('chat.done')
 
     const rows = readTranscript(chat.id)
-    expect(rows.map((r) => r.kind)).toEqual(['user', 'assistant'])
+    // Trailing done marker: every settled chat turn ends terminal (#735).
+    expect(rows.map((r) => r.kind)).toEqual(['user', 'assistant', 'done'])
     expect(rows[1]).toMatchObject({ content: 'Hello from Pi, via the chat plugin.' })
 
     // The runtime session persisted under the chat thread mapping.

@@ -152,13 +152,23 @@ export type { ActivityGroupProps } from '@/components/conversation/activity-grou
 export { ToolCallDrawer } from '@/components/conversation/tool-call-drawer'
 export type { ToolCallDrawerProps } from '@/components/conversation/tool-call-drawer'
 /** Legacy composer adapter; use `@makinbakin/sdk/conversation` for new consumers. */
-export { Composer } from '@/components/conversation/composer'
+export { Composer, writeComposerDraft } from '@/components/conversation/composer'
 export type {
   ComposerAttachmentItem,
   ComposerAttachmentStatus,
   ComposerAttachments,
+  ComposerHandle,
   ComposerProps,
 } from '@/components/conversation/composer'
+export { QueuedMessageList } from '@/components/conversation/queued-message-list'
+export type { ConversationQueuedItem } from '@/components/conversation/queued-message-list'
+// The footer LINE BUILDERS (usageFooterParts/usageFooterLines) are
+// deliberately NOT exported — they freeze a display format and stay
+// kit-internal until a second real consumer appears.
+export { formatTokenCount, formatUsageCost } from '@makinbakin/sdk/conversation'
+export type { ConversationTurnUsage } from '@makinbakin/sdk/conversation'
+export { ContextMeter, contextMeterHasContent } from '@/components/conversation/context-meter'
+export type { ContextMeterStats } from '@/components/conversation/context-meter'
 export { ConversationPanel } from '@/components/conversation/conversation-panel'
 export type { ConversationPanelProps } from '@/components/conversation/conversation-panel'
 export { useConversationThread } from '@makinbakin/sdk/conversation'

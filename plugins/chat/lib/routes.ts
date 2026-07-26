@@ -23,6 +23,7 @@ import {
   setPinned,
   setTitle,
 } from './store'
+import { chatContextStats, chatTurnUsage } from './usage'
 import {
   abortChatTurn,
   clearChatQueue,
@@ -102,16 +103,26 @@ export const chatRoutes = [
     summary: 'Get a chat with its transcript',
     params: chatIdParams,
     responses: { 200: passthrough, 404: errorResponse },
-    handler: async (_req, _ctx, { params }) => {
+    handler: async (_req, ctx, { params }) => {
       const chat = getChatSummary(params.chatId)
       if (!chat) return Response.json({ error: 'chat not found' }, { status: 404 })
       // Flag first: if the turn settles between the two reads we return
       // streaming:false with no text (honest), never text without the flag.
       const streaming = isTurnInFlight(params.chatId)
       const preview = streaming ? inflightTurnPreview(params.chatId) : null
+      // Per-turn usage (#733): a read-time join over run_costs — ledger
+      // failure serves the transcript WITHOUT usage, never a 500.
+      const usageDecoration = chatTurnUsage(params.chatId)
+      // Compaction bar (#737): the runtime's own context reading —
+      // feature-detected; absent member/null/throwing all omit the field.
+      const contextStats = await chatContextStats(ctx.runtime.sessions, chat.agentId, params.chatId)
       return Response.json({
         chat: { ...chat, streaming },
         messages: readTranscript(params.chatId),
+        ...(usageDecoration
+          ? { usage: usageDecoration.usage, ...(usageDecoration.totals ? { usageTotals: usageDecoration.totals } : {}) }
+          : {}),
+        ...(contextStats ? { contextStats } : {}),
         // Pending follow-ups (#729) — clients hydrate their queue strip.
         queued: listQueuedMessages(params.chatId).map(({ id, ts, content, attachments }) => ({
           id, ts, content, ...(attachments?.length ? { attachments } : {}),

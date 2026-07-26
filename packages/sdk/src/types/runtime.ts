@@ -205,6 +205,41 @@ export interface AgentRuntimeAdapter {
   models?: {
     listAvailable(opts?: { includeUnavailable?: boolean }): Promise<AvailableModel[]>
   }
+  /**
+   * Runtime session reads (declares the surface the host facade already
+   * forwards — previously reachable but undeclared). `contextStats?` is
+   * itself optional within the member (the cron pattern): feature-detect,
+   * never bare-deref; null = no session / nothing honest to report.
+   */
+  sessions?: {
+    list(agentId?: string): Promise<RuntimeSessionInfo[]>
+    get(sessionId: string): Promise<RuntimeSessionInfo | null>
+    contextStats?(opts: { agentId: string; threadId: string }): Promise<RuntimeSessionContextStats | null>
+  }
+}
+
+export interface RuntimeSessionInfo {
+  id: string
+  agentId: string
+  title?: string
+  startedAt?: string
+  updatedAt?: string
+  metadata?: Record<string, unknown>
+}
+
+/**
+ * A session's context reading (#737) — runtime truth only. Null-honesty
+ * is the contract: `tokens: null` = honestly unknown (e.g. a
+ * post-compaction gap before the next reply); `compactionThreshold:
+ * null` when the runtime owns compaction opaquely. Context is NEVER
+ * derived from billing aggregates.
+ */
+export interface RuntimeSessionContextStats {
+  tokens: number | null
+  contextWindow: number | null
+  compactionThreshold: number | null
+  lastCompaction?: { at?: string; tokensBefore?: number; reason?: string }
+  model?: string
 }
 
 // ---------------------------------------------------------------------------

@@ -11,6 +11,7 @@ import {
 import { useAgentStore } from '@makinbakin/sdk/hooks'
 
 import { formatLegacySummary, LegacyAvatar, renderLegacyText } from './agent-turn'
+import type { ConversationTurnUsage } from '@makinbakin/sdk/conversation'
 
 export interface ConversationProps {
   turns: readonly ConversationTurn[]
@@ -21,6 +22,10 @@ export interface ConversationProps {
   onRetry?: FocusedConversationProps['onRetry']
   onOpenCall?: FocusedConversationProps['onOpenCall']
   transformText?: AgentTurnProps['transformText']
+  /** Per-turn recorded usage keyed by turnId (#733) — opt-in footers. */
+  turnUsage?: Record<string, ConversationTurnUsage>
+  /** ~tokens streamed so far — handed only to the streaming turn. */
+  liveOutEstimate?: number
   className?: string
 }
 
@@ -32,6 +37,8 @@ export function Conversation({
   onRetry,
   onOpenCall,
   transformText,
+  turnUsage,
+  liveOutEstimate,
   className,
 }: ConversationProps) {
   const agentMap = useAgentStore((state) => state.agentMap)
@@ -61,6 +68,8 @@ export function Conversation({
       renderText={renderLegacyText}
       renderAvatar={LegacyAvatar}
       formatToolSummary={formatLegacySummary}
+      turnUsage={turnUsage}
+      liveOutEstimate={liveOutEstimate}
       className={`flex-1 ${className ?? ''}`}
     />
   )

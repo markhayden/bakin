@@ -35,6 +35,13 @@ export interface ChatSummary {
   lastMessageAt?: string
   /** First line of the newest message, for list rows + notifications. */
   lastMessagePreview?: string
+  /**
+   * True for chats created since #735: every settled turn ends on a
+   * terminal row (done | aborted | error), so the boot sweep may stamp a
+   * non-terminal tail turn as interrupted. Pre-#735 chats parse as false
+   * (zod default) until their transcript shows a done row.
+   */
+  markerEra: boolean
 }
 
 /** A user-sent attachment as persisted (path-addressed; served by GET route). */
@@ -72,6 +79,7 @@ export type ChatTranscriptRow =
     }
   | { kind: 'error'; ts: string; turnId?: string; message: string; errorKind?: string }
   | { kind: 'aborted'; ts: string; turnId?: string }
+  | { kind: 'done'; ts: string; turnId?: string }
 
 /** SSE payloads broadcast on the global bus while a turn streams. */
 export interface ChatChunkEvent {

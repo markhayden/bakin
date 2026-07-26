@@ -52,6 +52,9 @@ export type {
 export { Conversation } from './conversation'
 export type { ConversationMode, ConversationProps } from './conversation'
 
+export { formatTokenCount, formatUsageCost } from './turn-usage'
+export type { ConversationTurnUsage } from './turn-usage'
+
 export { ConversationEmptyState } from './conversation-empty-state'
 export type { ConversationEmptyStateProps } from './conversation-empty-state'
 

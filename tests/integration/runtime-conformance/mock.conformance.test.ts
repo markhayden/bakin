@@ -99,7 +99,7 @@ afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })
 })
 
-runRuntimeConformanceSuite('dev mock', () => target, { cron: 'absent' })
+runRuntimeConformanceSuite('dev mock', () => target, { cron: 'absent', contextStats: 'absent' })
 
 // The minimal mock omits cron; the opt-in surface must still honor the CRUD
 // contract so schedule tests exercising it inherit pinned behavior.

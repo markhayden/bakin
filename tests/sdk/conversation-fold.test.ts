@@ -190,6 +190,16 @@ describe('foldConversation — persisted rows', () => {
     expect(turns.map((t) => t.kind)).toEqual(['user', 'agent', 'user', 'agent'])
     const agent1 = turns[1]
     if (agent1.kind !== 'agent') throw new Error('expected agent turn')
+    // Agent turns expose their turnId (#733 — the usage-footer join key);
+    // legacy rows without one fold to an undefined turnId.
+    expect(agent1.turnId).toBe('t1')
+    const agent2 = turns[3]
+    if (agent2.kind !== 'agent') throw new Error('expected agent turn')
+    expect(agent2.turnId).toBe('t2')
+    const legacy = foldConversation([user('hi'), { kind: 'assistant', ts: '2026-07-11T10:00:01.000Z', content: 'no turn id' }])
+    const legacyAgent = legacy[1]
+    if (legacyAgent.kind !== 'agent') throw new Error('expected agent turn')
+    expect(legacyAgent.turnId).toBeUndefined()
     expect(agent1.status).toBe('complete')
     expect(agent1.items.map((i) => i.type)).toEqual(['activity', 'text'])
     const activity = agent1.items[0]
@@ -220,6 +230,43 @@ describe('foldConversation — persisted rows', () => {
     const agent = turns[1]
     if (agent.kind !== 'agent') throw new Error('expected agent turn')
     expect(agent.items.map((i) => i.type)).toEqual(['activity', 'text'])
+  })
+
+  it('done marker rows are invisible: never split a turn, never open a phantom one (#735)', () => {
+    // Mid-transcript and trailing markers across two turns — the fold must
+    // produce exactly the turns the content rows describe.
+    const turns = foldConversation([
+      user('q1'),
+      { kind: 'assistant', ts: '2026-07-26T10:00:01.000Z', turnId: 'a', content: 'answer one' },
+      { kind: 'done', ts: '2026-07-26T10:00:02.000Z', turnId: 'a' },
+      user('q2'),
+      { kind: 'assistant', ts: '2026-07-26T10:01:01.000Z', turnId: 'b', content: 'answer two' },
+      { kind: 'done', ts: '2026-07-26T10:01:02.000Z', turnId: 'b' },
+    ] as ConversationMessage[])
+    expect(turns.map((t) => t.kind)).toEqual(['user', 'agent', 'user', 'agent'])
+    const second = turns[3]
+    if (second.kind !== 'agent') throw new Error('expected agent turn')
+    // Trailing marker: the turn still folds complete with its turnId intact.
+    expect(second.status).toBe('complete')
+    expect(second.turnId).toBe('b')
+    expect(second.items).toEqual([{ type: 'text', format: 'markdown', content: 'answer two' }])
+
+    // A done row wedged between two turnIds must not merge or split them —
+    // the split comes from the content rows alone.
+    const backToBack = foldConversation([
+      user('go'),
+      { kind: 'assistant', ts: '2026-07-26T10:00:01.000Z', turnId: 'a', content: 'first' },
+      { kind: 'done', ts: '2026-07-26T10:00:02.000Z', turnId: 'a' },
+      { kind: 'assistant', ts: '2026-07-26T10:00:03.000Z', turnId: 'b', content: 'second' },
+    ] as ConversationMessage[])
+    expect(backToBack.map((t) => t.kind)).toEqual(['user', 'agent', 'agent'])
+
+    // A done row with no open builder must not open a phantom agent turn.
+    const bare = foldConversation([
+      user('hi'),
+      { kind: 'done', ts: '2026-07-26T10:00:01.000Z', turnId: 'x' },
+    ] as ConversationMessage[])
+    expect(bare.map((t) => t.kind)).toEqual(['user'])
   })
 
   it('error and aborted rows mark the turn status and render as items/footers', () => {

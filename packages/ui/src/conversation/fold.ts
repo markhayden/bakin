@@ -55,6 +55,7 @@ export type ConversationMessage =
     }
   | { kind: 'error'; ts: string; turnId?: string; message: string; errorKind?: string }
   | { kind: 'aborted'; ts: string; turnId?: string }
+  | { kind: 'done'; ts: string; turnId?: string }
 
 /** One tool invocation inside an activity group. */
 export interface ConversationToolCall {
@@ -88,6 +89,8 @@ export type ConversationTurn =
       ts?: string
       /** Author agent, when known. */
       agentId?: string
+      /** Durable join key for per-turn usage and related metadata. */
+      turnId?: string
       items: TurnItem[]
       status: TurnStatus
       /** Latest runtime status label, meaningful while streaming. */
@@ -215,12 +218,17 @@ function foldLiveChunks(chunks: readonly ConversationChunk[]): AgentTurnBuilder 
   return builder
 }
 
-function finishAgentTurn(builder: AgentTurnBuilder, key: string): ConversationTurn {
+function finishAgentTurn(
+  builder: AgentTurnBuilder,
+  key: string,
+  turnId?: string,
+): ConversationTurn {
   return {
     kind: 'agent',
     key,
     ...(builder.ts ? { ts: builder.ts } : {}),
     ...(builder.agentId ? { agentId: builder.agentId } : {}),
+    ...(turnId !== undefined ? { turnId } : {}),
     items: builder.items,
     status: builder.status,
     ...(builder.statusLabel ? { statusLabel: builder.statusLabel } : {}),
@@ -243,7 +251,7 @@ export function foldConversation(
 
   const flush = () => {
     if (!current) return
-    turns.push(finishAgentTurn(current, `agent-${agentTurnIndex++}`))
+    turns.push(finishAgentTurn(current, `agent-${agentTurnIndex++}`, currentTurnId))
     current = null
     currentTurnId = undefined
   }
@@ -260,6 +268,9 @@ export function foldConversation(
       })
       continue
     }
+
+    // Terminal markers are persistence evidence, not visible turn content.
+    if (row.kind === 'done') continue
 
     const rowTurnId = row.turnId
     if (current && rowTurnId !== undefined && currentTurnId !== undefined && rowTurnId !== currentTurnId) {

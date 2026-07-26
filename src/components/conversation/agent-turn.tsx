@@ -17,6 +17,7 @@ import { useAgent } from '@makinbakin/sdk/hooks'
 
 import { AgentAvatar } from '../agent-avatar'
 import { MarkdownContent } from '../markdown-content'
+import type { ConversationTurnUsage } from '@makinbakin/sdk/conversation'
 
 function parseWholeJson(content: string): unknown {
   const trimmed = content.trim()
@@ -91,10 +92,17 @@ export interface AgentTurnProps {
   onOpenCall?: (call: ConversationToolCall) => void
   /** Preserve established host post-processing before markdown rendering. */
   transformText?: FocusedAgentTurnProps['transformText']
+  /** Recorded usage for this settled turn (#733) — renders the muted
+   *  footer. Absent/empty = no footer (unknown is absent, never zero). */
+  usage?: ConversationTurnUsage
+  /** ~tokens of the reply streamed so far — rendered ONLY while this turn
+   *  is streaming, always ~-labeled (an estimate, never a recorded
+   *  number); the real footer replaces it at settle. */
+  liveOutEstimate?: number
 }
 
 /** @deprecated Import `AgentTurn` from `@makinbakin/sdk/conversation`. */
-export function AgentTurn({ turn, agentId, onRetry, onOpenCall, transformText }: AgentTurnProps) {
+export function AgentTurn({ turn, agentId, onRetry, onOpenCall, transformText, usage, liveOutEstimate }: AgentTurnProps) {
   const author = turn.agentId ?? agentId
   const resolved = useAgent(author ?? '')
   const agent: ConversationAgent = {
@@ -113,6 +121,8 @@ export function AgentTurn({ turn, agentId, onRetry, onOpenCall, transformText }:
       renderText={renderLegacyText}
       renderAvatar={LegacyAvatar}
       formatToolSummary={formatLegacySummary}
+      usage={usage}
+      liveOutEstimate={liveOutEstimate}
     />
   )
 }
