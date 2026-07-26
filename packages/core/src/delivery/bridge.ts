@@ -15,10 +15,10 @@
  * whether `capabilities().delivery.mode` reports `'shimmed'` or
  * `'unavailable'`.
  */
-import type { AgentRuntimeAdapter } from '../adapters/runtime/concepts'
+import type { RuntimeChannelSurface } from '../adapters/runtime/channels'
 
 /** The full channel surface, contract-identical to a native adapter's. */
-export type ChannelSurface = NonNullable<AgentRuntimeAdapter['channels']>
+export type ChannelSurface = RuntimeChannelSurface
 
 export interface ChannelBridge {
   /**
