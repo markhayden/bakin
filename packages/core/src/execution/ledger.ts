@@ -1107,6 +1107,9 @@ export interface RunCostByPrefixRow {
  * append-forever table on a per-GET path — review finding), and the
  * pragma fix would silently change every other LIKE in this file. The
  * range also makes any prefix byte-literal — no wildcard escaping.
+ * Upper bound assumes suffixes sort below U+FFFF (true for every run-id
+ * scheme: UUID/ASCII suffixes) — an astral-leading suffix would fall
+ * outside the range.
  */
 export function listRunCostsByPrefix(prefix: string): RunCostByPrefixRow[] {
   return guard('listRunCostsByPrefix', () => {

@@ -76,7 +76,7 @@ describe('AgentTurn billed-first cost explainer (#737)', () => {
     )
     const footer = container.querySelector('[data-conv-usage]')!
     expect(footer.textContent).toContain('133.8k billed')
-    expect(footer.textContent).toContain('78% cached')
+    expect(footer.textContent).toContain('77% cached') // 77.66 floors
     expect(footer.textContent).toContain('~3 requests') // 2 tool calls + 1
     expect(footer.textContent).toContain('$0.04')
     expect(footer.textContent).toContain('gpt-5.5')
@@ -94,7 +94,7 @@ describe('AgentTurn billed-first cost explainer (#737)', () => {
     )
     const footer = container.querySelector('[data-conv-usage]')!
     expect(footer.textContent).toContain('45.5k billed')
-    expect(footer.textContent).toContain('96% cached')
+    expect(footer.textContent).toContain('95% cached') // 95.7 floors
     expect(footer.textContent).toContain('<$0.01')
     expect(footer.textContent).not.toContain('requests')
     expect(footer.textContent).not.toContain(' in')

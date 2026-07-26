@@ -90,7 +90,9 @@ export async function sessionContextStats(opts: {
   if (!file) return null
 
   // mtime+size cache: turns only ever APPEND to session files, so an
-  // unchanged stat means an unchanged reading.
+  // unchanged stat means an unchanged reading. Known bound: threshold/
+  // window inputs (compaction settings, model catalog) aren't cache keys —
+  // a settings edit surfaces on the next session append.
   let mtimeMs: number
   let size: number
   try {

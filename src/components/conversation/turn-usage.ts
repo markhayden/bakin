@@ -74,7 +74,7 @@ export function usageFooterLines(usage: ConversationTurnUsage, toolCallCount: nu
   // cacheRead above the (possibly in+out-fallback) bill would print an
   // impossible ">100% cached" (never fabricate; omit).
   if (usage.cacheReadTokens !== undefined && billed > 0 && usage.cacheReadTokens <= billed) {
-    parts.push(`${Math.round((usage.cacheReadTokens / billed) * 100)}% cached`)
+    parts.push(`${Math.floor((usage.cacheReadTokens / billed) * 100)}% cached`)
   }
   if (toolCallCount > 0) parts.push(`~${toolCallCount + 1} requests`)
   if (usage.costUsd !== undefined) parts.push(formatUsageCost(usage.costUsd))

@@ -23,14 +23,20 @@ import '../rtl-settle'
 
 import { ContextMeter, contextMeterHasContent, type ContextMeterStats } from '@makinbakin/sdk/components'
 import type { RuntimeSessionContextStats } from '../../packages/core/src/adapters/runtime'
+import type { RuntimeSessionContextStats as SdkContextStats } from '@makinbakin/sdk/types'
 
-// Contract-parity pin: the kit's DTO mirror and the runtime contract must
-// stay mutually assignable — a field added on one side fails compile here
-// instead of drifting silently.
+// Contract-parity pins: the kit DTO, the core contract, and the SDK mirror
+// must stay mutually assignable — a field added on one side fails compile
+// here instead of drifting silently (three copies exist by design: SDK
+// self-containment).
 const _toContract: RuntimeSessionContextStats = {} as ContextMeterStats
 const _toKit: ContextMeterStats = {} as RuntimeSessionContextStats
+const _toSdk: SdkContextStats = {} as RuntimeSessionContextStats
+const _fromSdk: RuntimeSessionContextStats = {} as SdkContextStats
 void _toContract
 void _toKit
+void _toSdk
+void _fromSdk
 
 describe('ContextMeter', () => {
   it('renders fill + reading + threshold tick when everything is known', () => {

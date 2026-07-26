@@ -47,6 +47,12 @@ describe('no billing-derived context (the 109% ban)', () => {
       // files legitimately DOCUMENT the ban in prose.
       const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
       expect(BILLING_SOURCES.test(code), `${file} reaches a billing source`).toBe(false)
+      // Belt: the comment strip can be blinded by an unterminated /* inside
+      // a string literal — raw import/require lines are scanned unstripped.
+      const importLines = source.split('\n').filter((l) => /^\s*(import|export)\b.*from|require\(/.test(l))
+      for (const line of importLines) {
+        expect(BILLING_SOURCES.test(line), `${file} imports a billing source: ${line.trim()}`).toBe(false)
+      }
     }
   })
 
