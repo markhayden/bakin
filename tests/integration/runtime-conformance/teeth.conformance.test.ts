@@ -98,6 +98,41 @@ afterAll(() => {
 })
 
 describe('conformance suite teeth (broken adapter must fail every check)', () => {
+  it('fails the contextStats sanity check when a reading exceeds the window (the 109% class)', async () => {
+    const base = createMockRuntimeAdapter()
+    const lying = {
+      ...base,
+      sessions: {
+        ...base.sessions,
+        // The billing-aggregate lie: tokens over the window, and a
+        // never-used thread that "reads" instead of returning null.
+        contextStats: async () => ({
+          tokens: 296_551,
+          contextWindow: 272_000,
+          compactionThreshold: null,
+        }),
+      },
+    }
+    const target: RuntimeConformanceTarget = {
+      runtime: lying,
+      agentId: 'main',
+      newThreadId: () => `teeth-ctx:${randomUUID()}`,
+      failingSend: () => Promise.reject(new Error('unused')),
+      startAbortableTurn: () => ({ settled: Promise.resolve({ id: 'unused' }) }),
+      prepareToolTurn: () => 'teeth-ctx: [[tool]]',
+      failingStream: async function* (): AsyncIterable<ChatChunk> {
+        yield { type: 'text', content: 'unused' }
+      },
+    }
+    await expect(
+      runtimeConformanceChecks.contextStatsReportsSaneValues(target, { contextStats: 'present' }),
+    ).rejects.toThrow(/exceeds contextWindow/)
+    // And a throwing-stub "absence" must fail the declaration check.
+    await expect(
+      runtimeConformanceChecks.contextStatsMemberMatchesDeclaration(target, { contextStats: 'absent' }),
+    ).rejects.toThrow(/member omission/)
+  })
+
   it('fails the threaded-sessionId check', async () => {
     await expect(runtimeConformanceChecks.threadedSendReturnsSessionId(brokenTarget()))
       .rejects.toThrow(/conformance violation: threaded send returned no metadata.sessionId/)
