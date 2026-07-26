@@ -1,11 +1,18 @@
 // @vitest-environment jsdom
+/**
+ * Out-of-band gate decisions (Discord bridge buttons, the fallback page,
+ * another tab) must refresh the open task drawer's workflow instance —
+ * otherwise the pending-approval callout lingers until an unrelated action
+ * refetches (#669 live-validation finding). Uses the REAL plugin-event bus.
+ */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { render, screen } from '@testing-library/react'
+import { act, render } from '@testing-library/react'
 import '../../rtl-settle'
+import { settleReact } from '../../rtl-settle'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
-const testDir = join(tmpdir(), `bakin-test-task-detail-${Date.now()}`)
+const testDir = join(tmpdir(), `bakin-test-gate-refresh-${Date.now()}`)
 
 mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
@@ -23,20 +30,19 @@ mock.module('@makinbakin/sdk/components', () => ({
   MarkdownContent: ({ content }: { content: string }) => <div>{content}</div>,
   AgentAvatar: ({ agentId }: { agentId: string }) => <span>{agentId}</span>,
   AgentSelect: () => <div />,
+  TEAM_VALUE_PREFIX: 'team:',
+  isTeamValue: () => false,
+  teamIdFromValue: () => '',
 }))
+mock.module('@makinbakin/sdk/slots', () => ({ Slot: () => null }))
 
-mock.module('@makinbakin/sdk/slots', () => ({
-  Slot: () => null,
-}))
-
+// Real event bus, stubbed data hooks.
+import { usePluginEvent, emitPluginEvent } from '../../../src/hooks/use-plugin-event'
 mock.module('@makinbakin/sdk/hooks', () => ({
   useAgent: (agentId: string) => agentId ? { id: agentId, name: agentId } : null,
   toast: mock(),
-  // useTaskDetail migrated the workflow-definitions load to useJsonFetch (WS3);
-  // stub the standard lifecycle shape (no data — this test drives no workflow).
   useJsonFetch: () => ({ data: null, loading: false, error: null, refresh: () => {} }),
-  // Inert here — the gate-refresh behavior has its own focused test.
-  usePluginEvent: () => {},
+  usePluginEvent,
 }))
 
 mock.module('@makinbakin/sdk/ui', () => ({
@@ -61,63 +67,66 @@ mock.module('@makinbakin/sdk/ui', () => ({
 import { TaskDetailDrawer } from '../../../plugins/tasks/components/task-detail-dialog'
 import type { Task } from '../../../plugins/tasks/types'
 
-function makeTask(overrides?: Partial<Task>): Task {
+const TASK_ID = 'task-gate-1'
+let instanceFetches = 0
+
+function makeTask(): Task {
   return {
-    id: 'task1234',
-    title: 'Provider failure task',
+    id: TASK_ID,
+    title: 'Gated task',
     checked: false,
     agent: 'main',
+    workflowId: 'messaging-blog-prep',
     log: [],
-    ...overrides,
-  }
+  } as Task
 }
 
 beforeEach(() => {
-  ;(globalThis as { fetch: typeof fetch }).fetch = (mock(async () => {
-    throw new Error('workflow definitions unavailable in this test')
+  instanceFetches = 0
+  ;(globalThis as { fetch: typeof fetch }).fetch = (mock(async (url: string) => {
+    if (String(url).includes(`/instances/${TASK_ID}`)) {
+      instanceFetches += 1
+      return new Response(JSON.stringify({
+        instance: {
+          instanceId: 'wf_1',
+          workflowId: 'messaging-blog-prep',
+          taskId: TASK_ID,
+          currentStepId: 'review',
+          status: instanceFetches === 1 ? 'pending_approval' : 'in_progress',
+          stepStates: { review: { status: instanceFetches === 1 ? 'pending_approval' : 'in_progress' } },
+        },
+      }), { headers: { 'content-type': 'application/json' } })
+    }
+    return new Response(JSON.stringify({}), { headers: { 'content-type': 'application/json' } })
   })) as unknown as typeof fetch
 })
 
-describe('TaskDetailDrawer dispatch failure context', () => {
-  it('renders specific provider failure details from structured log data', () => {
-    render(
-      <TaskDetailDrawer
-        task={makeTask({
-          log: [
-            {
-              timestamp: '2026-06-03T00:01:00Z',
-              author: 'system',
-              message: 'Dispatch failed',
-              data: {
-                dispatchFailure: {
-                  category: 'model_provider_unavailable',
-                  reasonCode: 'auth_profile_unavailable',
-                  summary: 'Dispatch failed: model provider unavailable',
-                  specificReason: 'Auth profile unavailable',
-                  provider: 'openai-codex',
-                  model: 'openai-codex/gpt-5.5',
-                  retryable: true,
-                  rawError: 'No available auth profile for openai-codex',
-                },
-              },
-            },
-          ],
-        })}
-        columnId="todo"
-        open
-        editing={false}
-        onClose={() => {}}
-        onEdit={() => {}}
-        onCancelEdit={() => {}}
-      />,
-    )
+afterEach(() => {
+  // rtl-settle unmounts; nothing else to clean.
+})
 
-    expect(screen.getByText('Dispatch failed: model provider unavailable')).toBeDefined()
-    expect(screen.getAllByText('Auth profile unavailable').length).toBeGreaterThan(0)
-    expect(screen.getByText('openai-codex')).toBeDefined()
-    expect(screen.getByText('openai-codex/gpt-5.5')).toBeDefined()
-    expect(screen.getByText('Yes')).toBeDefined()
-    expect(screen.getByText('Technical details')).toBeDefined()
-    expect(screen.getByText('No available auth profile for openai-codex')).toBeDefined()
+describe('task drawer gate refresh on plugin events', () => {
+  it('refetches the workflow instance when the open task gate resolves out-of-band', async () => {
+    render(<TaskDetailDrawer task={makeTask()} columnId="review" open editing={false} onClose={() => {}} onEdit={() => {}} onCancelEdit={() => {}} />)
+    await settleReact()
+    expect(instanceFetches).toBe(1)
+
+    await act(async () => {
+      emitPluginEvent({ event: 'workflow.gate_approved', taskId: TASK_ID })
+    })
+    await settleReact()
+    expect(instanceFetches).toBe(2)
+  })
+
+  it("ignores gate events for OTHER tasks", async () => {
+    render(<TaskDetailDrawer task={makeTask()} columnId="review" open editing={false} onClose={() => {}} onEdit={() => {}} onCancelEdit={() => {}} />)
+    await settleReact()
+    expect(instanceFetches).toBe(1)
+
+    await act(async () => {
+      emitPluginEvent({ event: 'workflow.gate_approved', taskId: 'someone-else' })
+    })
+    await settleReact()
+    expect(instanceFetches).toBe(1)
   })
 })
