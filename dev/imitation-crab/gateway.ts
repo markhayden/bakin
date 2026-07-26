@@ -223,6 +223,11 @@ function recordSessionStoreEntry(agentId: string, sessionKey: string, sessionId:
   const existing = store[sessionKey]
   const now = Date.now()
   const resolvedSessionId = sessionId ?? (typeof existing?.sessionId === 'string' ? existing.sessionId : randomUUID())
+  // Context accounting (#737): mirror the real gateway's per-session
+  // context fields so sessions.contextStats is exercisable end-to-end —
+  // the "prompt" grows a fixed amount per turn against the mock window,
+  // and totalTokensFresh gates the reading exactly like the real wire.
+  const priorTotal = typeof existing?.totalTokens === 'number' ? existing.totalTokens : 1_000
   store[sessionKey] = {
     ...existing,
     sessionId: resolvedSessionId,
@@ -234,6 +239,9 @@ function recordSessionStoreEntry(agentId: string, sessionKey: string, sessionId:
     updatedAt: now,
     model: 'mock-model',
     chatType: 'direct',
+    contextTokens: 272_000,
+    totalTokens: priorTotal + 500,
+    totalTokensFresh: true,
   }
   writeFileSync(path, JSON.stringify(store, null, 2))
 }

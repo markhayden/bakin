@@ -169,4 +169,4 @@ const target: RuntimeConformanceTarget = {
   },
 }
 
-runRuntimeConformanceSuite('openclaw (imitation crab)', () => target, { sessionsPin: SESSIONS_PIN_ENABLED, cron: 'present' })
+runRuntimeConformanceSuite('openclaw (imitation crab)', () => target, { sessionsPin: SESSIONS_PIN_ENABLED, cron: 'present', contextStats: 'present' })
