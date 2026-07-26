@@ -13,7 +13,7 @@ Plan: `.claude/specs/discord-bridge/PLAN.md`
 - [x] A4 Send surface (embeds/content/threads/edits/DM/chunking/retry) + audit
 - [x] A5 Approval cards + modal reject + allowlist → ApprovalResolveEvent
 - [x] A6 adapter-pi delegation ('shimmed') + conformance pin + gate round-trip test
-- [ ] A7 delivery.discord doctor check + Integrations & Keys token entry
+- [x] A7 delivery.discord doctor check (Integrations & Keys already handles named secrets — no UI change needed)
 - [ ] A8 Docs sweep (delivery-bridge.md, pi-adapter fix, CLAUDE.md, README, §10.1)
 - [ ] CHECKPOINT 1: live validation runbook + owner sign-off + PR 1 merged
 

@@ -130,6 +130,11 @@ export function getDeliveryBridge(): ChannelBridge {
   return bridge
 }
 
+/** Live transport status for the delivery.discord doctor check. */
+export function isDeliveryBridgeConnected(): boolean {
+  return state !== null
+}
+
 /** Exposed for A4/A5 surface modules; throws until boot() connects. */
 export function getBridgeState(): BridgeState {
   return requireState()
