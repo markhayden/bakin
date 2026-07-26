@@ -508,6 +508,7 @@ export const DetailUnavailable = {
         state={(
           <SystemState
             kind="permission-denied"
+            scope="page"
             title="Workflow definition is restricted"
             description="Your workspace role can see this workflow's identity but cannot inspect its execution inputs."
             action={<Button variant="outline">Request access</Button>}

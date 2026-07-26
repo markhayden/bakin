@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { expect } from 'storybook/test'
 import { Inline, PageShell, Stack } from '@makinbakin/sdk/layout'
 import { PageHeader } from '@makinbakin/sdk/patterns'
 import { Badge, Button, Separator } from '@makinbakin/sdk/ui'
@@ -13,7 +14,7 @@ const meta = {
     layout: 'fullscreen',
     docs: {
       description: {
-        component: 'PageShell supplies bounded page width, container-responsive insets, and one page rhythm. PageHeader owns page identity and the stable controls/action row. Stack owns vertical content flow; Inline owns wrapping peer content. All choices map to the finite Bakin layout scale.',
+        component: 'PageShell supplies bounded page width, container-responsive insets, one page rhythm, and protected bottom clearance above the owning scroll boundary. PageHeader owns page identity and the stable controls/action row. Stack owns vertical content flow; Inline owns wrapping peer content. All choices map to the finite Bakin layout scale.',
       },
     },
   },
@@ -57,4 +58,33 @@ export const ResponsivePage = {
       </Stack>
     </PageShell>
   ),
+} satisfies Story
+
+export const ProtectedScrollEnd = {
+  render: () => (
+    <PageShell width="content" className="bakin-layout-story">
+      <PageHeader
+        eyebrow="Agents / active context"
+        title="Long interior page"
+        description="The page shell owns clearance after the final result, even when content grows beyond the viewport."
+      />
+      <Stack gap="section">
+        {Array.from({ length: 12 }, (_, index) => (
+          <Stack key={index} gap="dense" className="bakin-layout-story__stat">
+            <strong>Result {index + 1}</strong>
+            <span>Operational content remains in the host-owned page flow.</span>
+          </Stack>
+        ))}
+      </Stack>
+      <p data-testid="protected-scroll-end">End of results</p>
+    </PageShell>
+  ),
+  play: async ({ canvas }) => {
+    const finalContent = canvas.getByTestId('protected-scroll-end')
+    const shellContent = finalContent.closest('[data-slot="page-shell-content"]')
+    await expect(shellContent).toBeTruthy()
+    const shellTop = shellContent!.getBoundingClientRect().top
+    const protectedGap = shellTop + shellContent!.scrollHeight - finalContent.getBoundingClientRect().bottom
+    await expect(protectedGap).toBeGreaterThanOrEqual(32)
+  },
 } satisfies Story

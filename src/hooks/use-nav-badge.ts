@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect } from 'react'
-import { setNavBadge, type NavBadge } from '@makinbakin/sdk'
+import type { NavBadge } from '@makinbakin/sdk/types'
+import { setNavBadge } from '../../packages/sdk/src/register'
 
 /**
  * Sync a nav item's badge to the value passed each render. Calls

@@ -147,7 +147,7 @@ export function PageHeader({
                 role="group"
                 aria-label={actionsLabel}
                 data-slot="page-header-actions"
-                className="flex min-w-0 shrink-0 flex-col items-stretch gap-bakin-2 @lg/page-header:flex-row @lg/page-header:items-center [&>[data-slot=button]]:w-full @lg/page-header:[&>[data-slot=button]]:w-auto"
+                className="flex min-w-0 shrink-0 flex-col items-stretch gap-bakin-2 @lg/page-header:flex-row @lg/page-header:items-center [&>[data-slot=button]:not([data-size^=icon])]:w-full @lg/page-header:[&>[data-slot=button]:not([data-size^=icon])]:w-auto"
               >
                 {actions}
               </div>

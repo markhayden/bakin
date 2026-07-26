@@ -21,8 +21,12 @@ describe('public layout primitives', () => {
     expect(shell?.getAttribute('data-width')).toBe('content')
     expect(shell?.getAttribute('data-padding')).toBe('compact')
     expect(shell?.className).toContain('@container/page-shell')
+    expect(shell?.className).toContain('flex-col')
     expect(content?.className).toContain('max-w-3xl')
-    expect(content?.className).toContain('@md/page-shell:p-bakin-4')
+    expect(content?.className).toContain('@md/page-shell:px-bakin-4')
+    expect(content?.className).toContain('pb-bakin-8')
+    expect(content?.className).toContain('shrink-0')
+    expect(content?.className).not.toMatch(/\bflex-1\b/)
   })
 
   it('maps Stack rhythm and alignment onto a semantic wrapper', () => {

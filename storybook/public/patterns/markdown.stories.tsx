@@ -91,8 +91,11 @@ function EditorExample() {
             <h1>Keep editing controls outside the content contract</h1>
             <p>The host owns mode state and persistence. The editor owns a labeled exact input and canonical preview presentation.</p>
           </header>
-          <div className="bakin-markdown-story__toolbar">
-            <h2>Release handoff</h2>
+          <div className="bakin-markdown-story__file-header">
+            <div>
+              <h2>RELEASE.md</h2>
+              <p>Rendered from the current workspace file.</p>
+            </div>
             <SegmentedControl
               ariaLabel="Markdown editor mode"
               options={[{ value: 'edit', label: 'Edit' }, { value: 'preview', label: 'Preview' }]}

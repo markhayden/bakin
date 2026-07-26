@@ -165,7 +165,11 @@ describe('detail page recipe', () => {
     const page = container.querySelector('[data-archetype="detail"]')
     expect(page?.getAttribute('data-width')).toBe('wide')
     expect(container.querySelectorAll('main')).toHaveLength(0)
-    expect(container.querySelector('[data-slot="detail-page-grid"]')?.getAttribute('data-layout')).toBe('main-aside')
+    const gridRegion = container.querySelector('[data-slot="detail-page-grid"]')
+    expect(gridRegion?.getAttribute('data-layout')).toBe('main-aside')
+    expect(gridRegion?.className).toContain('flex-1')
+    expect(gridRegion?.className).toContain('[&>[data-slot=grid-container]]:flex-1')
+    expect(gridRegion?.className).toContain('[&>[data-slot=grid-container]>[data-slot=grid]]:flex-1')
     expect(screen.getByRole('complementary', { name: 'Workflow context' })).toBeTruthy()
     expect(container.querySelector('[data-slot="detail-page-feedback"]')?.textContent).toBe('Draft changes')
   })
@@ -188,7 +192,7 @@ describe('detail page recipe', () => {
   })
 
   it('replaces the body while preserving page identity and navigation', () => {
-    render(
+    const { container } = render(
       <DetailPage width="content">
         <PageHeader navigation={<a href="/workflows">Back</a>} title="Launch approval" />
         <DetailPageBody state={<SystemState kind="permission-denied" />}>
@@ -201,5 +205,8 @@ describe('detail page recipe', () => {
     expect(screen.getByRole('link', { name: 'Back' })).toBeTruthy()
     expect(screen.getByText('Access restricted')).toBeTruthy()
     expect(screen.queryByText('Restricted definition')).toBeNull()
+    expect(container.querySelector('[data-slot="detail-page-state"]')?.className).toContain(
+      '[&>[data-slot=system-state]]:flex-1',
+    )
   })
 })

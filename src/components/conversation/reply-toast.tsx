@@ -7,7 +7,8 @@
  * navigates to the thread. Chat, projects, and messaging all render this
  * from their `renderToast` config.
  */
-import { useAgent, useRouter } from '@makinbakin/sdk/hooks'
+import { useAgent } from '@makinbakin/sdk/hooks'
+import { useRouter } from '@makinbakin/sdk/navigation'
 
 import { AgentAvatar } from '../agent-avatar'
 

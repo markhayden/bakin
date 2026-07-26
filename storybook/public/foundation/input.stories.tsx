@@ -9,7 +9,7 @@ const meta = {
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',
-    docs: { description: { component: 'Input is the low-level single-line text control. Preserve native type, inputMode, autoComplete, required, readOnly, disabled, and aria-invalid attributes. Prefer the SDK field pattern for routine form composition; a raw native input is reserved for documented domain-interface exceptions.' } },
+    docs: { description: { component: 'Input is the low-level native input contract, including text-like fields and file selection. Preserve type, inputMode, autoComplete, required, readOnly, disabled, accept, multiple, and aria-invalid attributes. Prefer the SDK field pattern for routine form composition; a raw native input is reserved for documented domain-interface exceptions.' } },
   },
 } satisfies Meta<typeof Input>
 
@@ -29,6 +29,7 @@ export const StatesAndMobileModes = {
           <div className="bakin-primitive-story__field"><Label htmlFor="input-readonly">Read-only identifier</Label><Input id="input-readonly" readOnly value="plugin://research/collector/production" /></div>
           <div className="bakin-primitive-story__field"><Label htmlFor="input-disabled">Disabled source</Label><Input id="input-disabled" disabled value="Managed by core" /></div>
           <div className="bakin-primitive-story__field"><Label htmlFor="input-invalid">Invalid URL</Label><Input id="input-invalid" type="url" inputMode="url" value="internal-host" aria-invalid="true" aria-describedby="input-invalid-error" readOnly /><p className="bakin-primitive-story__error" id="input-invalid-error">Enter a complete HTTPS URL.</p></div>
+          <div className="bakin-primitive-story__field"><Label htmlFor="input-file">Image file</Label><Input id="input-file" type="file" accept="image/jpeg,image/png,image/webp" aria-describedby="input-file-help" /><p id="input-file-help">Use a canonical Button to activate a visually hidden file Input when the picker needs a custom trigger.</p></div>
         </div>
       </section>
       <section className="bakin-primitive-story__section" aria-labelledby="input-long-heading">

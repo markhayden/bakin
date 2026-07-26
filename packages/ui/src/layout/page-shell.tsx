@@ -19,8 +19,8 @@ const widthClasses: Record<PageShellWidth, string> = {
 }
 
 const paddingClasses: Record<PageShellPadding, string> = {
-  default: 'p-bakin-4 @md/page-shell:p-bakin-6 @xl/page-shell:p-bakin-8',
-  compact: 'p-bakin-3 @md/page-shell:p-bakin-4 @xl/page-shell:p-bakin-6',
+  default: 'px-bakin-4 pt-bakin-4 pb-bakin-8 @md/page-shell:px-bakin-6 @md/page-shell:pt-bakin-6 @xl/page-shell:px-bakin-8 @xl/page-shell:pt-bakin-8 @xl/page-shell:pb-[calc(var(--bakin-layout-space-8)*2)]',
+  compact: 'px-bakin-3 pt-bakin-3 pb-bakin-8 @md/page-shell:px-bakin-4 @md/page-shell:pt-bakin-4 @xl/page-shell:px-bakin-6 @xl/page-shell:pt-bakin-6 @xl/page-shell:pb-[calc(var(--bakin-layout-space-8)*2)]',
   none: '',
 }
 
@@ -47,12 +47,12 @@ export function PageShell({
       data-gap={gap}
       data-padding={padding}
       data-width={width}
-      className={layoutClassName('@container/page-shell flex min-h-full w-full min-w-0 flex-1', className)}
+      className={layoutClassName('@container/page-shell flex min-h-full w-full min-w-0 flex-1 flex-col', className)}
     >
       <div
         data-slot="page-shell-content"
         className={layoutClassName(
-          'mx-auto flex min-h-full w-full min-w-0 flex-1 flex-col',
+          'mx-auto flex min-h-full w-full min-w-0 shrink-0 flex-col',
           widthClasses[width],
           paddingClasses[padding],
           gapClasses[gap],

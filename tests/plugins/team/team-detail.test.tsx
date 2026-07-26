@@ -114,7 +114,7 @@ describe('TeamDetail', () => {
     await waitFor(() => expect(screen.getByLabelText('Shared context content')).toBeDefined())
 
     fireEvent.change(screen.getByLabelText('Shared context content'), { target: { value: '# Media Team v2' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
 
     await waitFor(() => {
       const put = fetchCalls.find((c) => c.init?.method === 'PUT')
@@ -130,8 +130,8 @@ describe('TeamDetail', () => {
     fireEvent.click(screen.getByRole('button', { name: /Sync team/ }))
     await waitFor(() => expect(fetchCalls.some((c) => c.url.endsWith('/teams/media/sync'))).toBe(true))
 
-    await waitFor(() => expect(screen.getByText(/1 block\(s\)/)).toBeDefined())
-    expect(screen.getByText(/Skipped \(user-edited; preserved\)/)).toBeDefined()
+    await waitFor(() => expect(screen.getByText(/Synced · 1 updated/)).toBeDefined())
+    expect(screen.getByText('User-edited content was preserved')).toBeDefined()
   })
 
   it('renders the global pseudo-team from the roster + global.md', async () => {

@@ -89,6 +89,21 @@ describe('SystemState public contract', () => {
     expect(state?.getAttribute('aria-busy')).toBe('true')
     expect(state?.querySelector('[data-slot="system-state-preview"] [data-slot="skeleton"]')?.getAttribute('aria-hidden')).toBe('true')
   })
+
+  it('gives page-scoped replacement states a useful vertical region', () => {
+    render(
+      <SystemState
+        kind="initial-empty"
+        scope="page"
+        title="No memory yet"
+        description="The first durable lesson will appear here."
+      />,
+    )
+
+    const state = screen.getByText('No memory yet').closest('[data-slot="system-state"]')
+    expect(state?.className).toContain('min-h-[calc(var(--bakin-layout-space-8)*12)]')
+    expect(state?.className).toContain('flex-1')
+  })
 })
 
 describe('Banner public contract', () => {

@@ -41,6 +41,15 @@ describe('Button public contract', () => {
     expect(button.getAttribute('data-size')).toBe('icon-md')
   })
 
+  it('keeps icon controls square when a parent action layout changes width', () => {
+    render(<Button size="icon-sm" aria-label="Delete" />)
+    const button = screen.getByRole('button', { name: 'Delete' })
+
+    expect(button.className).toContain('size-bakin-8')
+    expect(button.className).toContain('min-h-bakin-8')
+    expect(button.className).toContain('min-w-bakin-8')
+  })
+
   it('retains native activation and disabled semantics', () => {
     let activations = 0
     const { rerender } = render(<Button onClick={() => { activations += 1 }}>Run</Button>)

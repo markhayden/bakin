@@ -40,18 +40,25 @@
   background: var(--bakin-color-surface-default);
 }
 
-.bakin-markdown-story__toolbar {
+.bakin-markdown-story__file-header {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: var(--bakin-layout-gap-item);
   max-width: 52rem;
+  padding-bottom: var(--bakin-layout-space-4);
+  border-bottom: 1px solid var(--bakin-color-border-subtle);
 }
 
-.bakin-markdown-story__toolbar h2 {
+.bakin-markdown-story__file-header h2 {
   font-size: var(--bakin-typography-size-section-title);
   font-weight: var(--bakin-typography-weight-semibold);
+}
+
+.bakin-markdown-story__file-header p {
+  margin-top: var(--bakin-layout-space-1);
+  color: var(--bakin-color-text-muted);
 }
 
 @media (max-width: 30rem) {

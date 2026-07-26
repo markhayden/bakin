@@ -26,9 +26,9 @@
  * and load/post throws are contained (no unhandled rejections).
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { ChatChunk as RuntimeChatChunk } from '@bakin/core/adapters/runtime'
 import type { ConversationMessage } from '@bakin/ui/conversation'
-import { usePluginEvent } from '@makinbakin/sdk/hooks'
+import { usePluginEvent } from '@/hooks/use-plugin-event'
+import type { RuntimeChatChunk } from '../types/runtime'
 
 export interface ConversationThreadLoad<Meta> {
   messages: ConversationMessage[]

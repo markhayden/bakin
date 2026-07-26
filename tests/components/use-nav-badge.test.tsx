@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import type { NavBadge } from '@makinbakin/sdk'
+import type { NavBadge } from '@makinbakin/sdk/types'
 
 const testDir = join(tmpdir(), `bakin-test-use-nav-badge-${Date.now()}`)
 
@@ -17,7 +17,7 @@ mock.module('../../packages/core/src/content-dir', () => ({
 }))
 
 const setNavBadge = mock()
-mock.module('@makinbakin/sdk', () => ({ setNavBadge }))
+mock.module('../../packages/sdk/src/register', () => ({ setNavBadge }))
 
 import { render } from '@testing-library/react'
 import '../rtl-settle'

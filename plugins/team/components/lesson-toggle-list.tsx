@@ -1,8 +1,9 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { Loader2, Package } from 'lucide-react'
-import { Switch } from '@makinbakin/sdk/ui'
+import { FileText, Loader2 } from 'lucide-react'
+import { Section, Stack } from '@makinbakin/sdk/layout'
+import { Button, Label, Switch, SystemState } from '@makinbakin/sdk/ui'
 import { useQueryState } from '@makinbakin/sdk/hooks'
 
 /**
@@ -30,12 +31,13 @@ export function LessonToggleList({ agentId }: LessonToggleListProps) {
   const [error, setError] = useState<string | null>(null)
   const [packageId, setPackageId] = useState<string | null>(null)
   const [pendingId, setPendingId] = useState<string | null>(null)
+  const [retryNonce, setRetryNonce] = useState(0)
   // ⌘K lesson hits deep-link here as ?tab=lessons&lessonId=<id>; the
   // matching card gets a highlight ring and scrolls into view ONCE per
   // highlight id — `lessons` also changes on every optimistic toggle
   // update, and re-scrolling mid-interaction would yank the viewport.
   const [highlightId] = useQueryState('lessonId', '')
-  const highlightRef = useRef<HTMLElement | null>(null)
+  const highlightRef = useRef<HTMLLIElement | null>(null)
   const scrolledForRef = useRef<string | null>(null)
 
   useEffect(() => {
@@ -58,6 +60,8 @@ export function LessonToggleList({ agentId }: LessonToggleListProps) {
   useEffect(() => {
     let cancelled = false
     async function load() {
+      setLessons(null)
+      setError(null)
       try {
         const res = await fetch(`/api/agent-packages/${encodeURIComponent(agentId)}/lessons`)
         const body = (await res.json()) as {
@@ -81,7 +85,7 @@ export function LessonToggleList({ agentId }: LessonToggleListProps) {
     return () => {
       cancelled = true
     }
-  }, [agentId])
+  }, [agentId, retryNonce])
 
   const toggle = async (lessonId: string, nextEnabled: boolean) => {
     if (!lessons) return
@@ -119,76 +123,119 @@ export function LessonToggleList({ agentId }: LessonToggleListProps) {
 
   if (error) {
     return (
-      <div className="rounded border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
-        {error}
-      </div>
+      <SystemState
+        kind="error"
+        scope="page"
+        headingLevel={3}
+        title="Lessons could not be loaded"
+        description={error}
+        action={(
+          <Button variant="outline" size="sm" onClick={() => setRetryNonce((value) => value + 1)}>
+            Retry
+          </Button>
+        )}
+      />
     )
   }
   if (lessons === null) {
     return (
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Loader2 className="h-4 w-4 animate-spin" />
-        Loading lessons...
-      </div>
+      <SystemState
+        kind="loading"
+        scope="page"
+        headingLevel={3}
+        title="Loading lessons"
+        description="Package lessons will appear when they are ready."
+      />
     )
   }
   if (lessons.length === 0) {
-    return <p className="text-sm text-muted-foreground">No lessons available from this package.</p>
+    return (
+      <SystemState
+        kind="initial-empty"
+        scope="page"
+        headingLevel={3}
+        title="No lessons available"
+        description="This package does not currently provide lessons for the agent."
+      />
+    )
   }
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-      {lessons.map((lesson) => {
-        const highlighted = highlightId !== '' && lesson.lessonId === highlightId
-        return (
-        <article
-          key={lesson.lessonId}
-          ref={highlighted ? highlightRef : undefined}
-          data-highlighted={highlighted ? 'true' : undefined}
-          className={`group relative flex flex-col gap-3 rounded-xl border p-5 transition-colors ${
-            lesson.enabled
-              ? 'border-border bg-muted/20 hover:bg-muted/30'
-              : 'border-border/60 bg-muted/5 hover:bg-muted/15'
-          } ${highlighted ? 'ring-2 ring-primary' : ''}`}
-        >
-          <header className="flex items-start justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              <div className="text-sm font-semibold text-foreground leading-snug">{lesson.title}</div>
-              <code className="text-[11px] text-muted-foreground/70 font-mono break-all">{lesson.lessonId}</code>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              {pendingId === lesson.lessonId && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
-              <Switch
-                checked={lesson.enabled}
-                onCheckedChange={(next: boolean) => toggle(lesson.lessonId, next)}
-                disabled={pendingId !== null}
-                aria-label={`Toggle ${lesson.title}`}
-              />
-            </div>
-          </header>
+    <Section spacing="compact" aria-labelledby="package-lessons-heading">
+      <Stack gap="dense">
+        <div className="flex min-w-0 flex-wrap items-start justify-between gap-bakin-3">
+          <div className="min-w-0">
+            <h2 id="package-lessons-heading" className="m-0">Lessons</h2>
+            <p className="m-0 mt-bakin-1 max-w-prose text-bakin-text-muted">
+              Learned from real tasks — the most relevant lessons are recalled automatically per task.
+              Hard rules belong in Identity and AGENTS.md instead.
+            </p>
+          </div>
+          {packageId ? (
+            <code
+              className="max-w-full truncate font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted"
+              title={packageId}
+            >
+              {packageId}
+            </code>
+          ) : null}
+        </div>
 
-          {lesson.tags.length > 0 && (
-            <div className="flex flex-wrap gap-1">
-              {lesson.tags.map((tag) => (
-                <span
-                  key={tag}
-                  className="rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground"
+        <ul className="m-0 grid gap-bakin-2 p-0">
+          {lessons.map((lesson) => {
+            const highlighted = highlightId !== '' && lesson.lessonId === highlightId
+            const switchId = `lesson-${agentId}-${lesson.lessonId}`
+            return (
+              <li
+                key={lesson.lessonId}
+                ref={highlighted ? highlightRef : undefined}
+                data-highlighted={highlighted ? 'true' : undefined}
+                className={`flex min-w-0 flex-col gap-bakin-3 rounded-bakin-surface border bg-bakin-surface-default px-bakin-3 py-bakin-3 sm:flex-row sm:items-center ${
+                  highlighted
+                    ? 'border-bakin-signal-accent bg-bakin-signal-accent/10'
+                    : 'border-bakin-border-subtle'
+                } ${lesson.enabled ? '' : 'opacity-60'}`}
+              >
+                <Label
+                  htmlFor={switchId}
+                  className="flex min-w-0 flex-1 cursor-pointer items-start gap-bakin-2"
                 >
-                  {tag}
-                </span>
-              ))}
-            </div>
-          )}
+                  <FileText aria-hidden="true" className="mt-bakin-1 size-bakin-4 shrink-0 text-bakin-text-muted" />
+                  <span className="min-w-0">
+                    <span className="block truncate font-bakin-typography-family-mono text-bakin-typography-size-body text-bakin-text-primary">
+                      {lesson.lessonId}
+                    </span>
+                    <span className="mt-bakin-1 block truncate text-bakin-typography-size-meta font-normal text-bakin-text-muted">
+                      {lesson.title}
+                      {lesson.tags.length > 0 ? ` · ${lesson.tags.join(', ')}` : ''}
+                    </span>
+                  </span>
+                </Label>
 
-          {packageId && (
-            <footer className="mt-auto pt-2 border-t border-border/40 flex items-center gap-1.5 text-[11px] text-muted-foreground/70">
-              <Package className="size-3" />
-              <span className="font-mono truncate" title={packageId}>{packageId}</span>
-            </footer>
-          )}
-        </article>
-        )
-      })}
-    </div>
+                <div className="flex items-center justify-between gap-bakin-3 sm:justify-end">
+                  {pendingId === lesson.lessonId ? (
+                    <Loader2
+                      aria-label={`Updating ${lesson.title}`}
+                      className="size-bakin-4 animate-spin text-bakin-text-muted motion-reduce:animate-none"
+                    />
+                  ) : null}
+                  <Label htmlFor={switchId} className="text-bakin-typography-size-meta text-bakin-text-muted">
+                    {lesson.enabled ? 'Active' : 'Inactive'}
+                  </Label>
+                  <Switch
+                    id={switchId}
+                    size="sm"
+                    checked={lesson.enabled}
+                    onCheckedChange={(next: boolean) => void toggle(lesson.lessonId, next)}
+                    disabled={pendingId !== null}
+                    aria-label={`Toggle ${lesson.title}`}
+                  />
+                </div>
+              </li>
+            )
+          })}
+        </ul>
+      </Stack>
+    </Section>
   )
 }

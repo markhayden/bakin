@@ -148,7 +148,7 @@ describe('PackageCard — Adopt flow', () => {
     fireEvent.change(screen.getByLabelText('Package source'), {
       target: { value: 'github:examples/pixel@v0.1.0' },
     })
-    fireEvent.click(screen.getByRole('button', { name: 'Adopt' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Adopt agent' }))
 
     await waitFor(() => expect(installCalls.length).toBe(1))
     const call = installCalls[0]
@@ -164,7 +164,7 @@ describe('PackageCard — Adopt flow', () => {
     fireEvent.change(screen.getByLabelText('Package source'), {
       target: { value: 'github:examples/pixel' },
     })
-    fireEvent.click(screen.getByRole('button', { name: 'Adopt' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Adopt agent' }))
 
     // After successful adopt the store should pick up the new state
     // from /api/agent-packages?check=1 (which our mock returns as managed).

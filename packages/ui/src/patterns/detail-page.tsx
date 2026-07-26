@@ -56,20 +56,26 @@ export function DetailPageBody({
       data-content-state={hasState ? 'replaced' : 'ready'}
       data-layout={layout}
       data-slot="detail-page-body"
-      className={cn('flex min-w-0 flex-col gap-bakin-6', className)}
+      className={cn('flex min-w-0 flex-1 flex-col gap-bakin-6', className)}
     >
       {feedback ? <div data-slot="detail-page-feedback">{feedback}</div> : null}
       {hasState ? (
-        <div data-slot="detail-page-state">{state}</div>
+        <div
+          data-slot="detail-page-state"
+          className="flex min-h-0 min-w-0 flex-1 flex-col [&>[data-slot=system-state]]:flex-1"
+        >
+          {state}
+        </div>
       ) : (
         <div
           data-slot="detail-page-grid"
           data-layout={layout === 'aside' ? 'main-aside' : 'single'}
+          className="flex min-h-0 min-w-0 flex-1 flex-col [&>[data-slot=grid-container]]:flex [&>[data-slot=grid-container]]:min-h-0 [&>[data-slot=grid-container]]:flex-1 [&>[data-slot=grid-container]]:flex-col [&>[data-slot=grid-container]>[data-slot=grid]]:min-h-0 [&>[data-slot=grid-container]>[data-slot=grid]]:flex-1"
         >
           <Grid
             layout={layout === 'aside' ? 'main-aside' : 'single'}
             gap="section"
-            align="start"
+            align={layout === 'aside' ? 'start' : 'stretch'}
           >
             {children}
           </Grid>
@@ -87,7 +93,7 @@ export function DetailPageMain({ className, ...props }: DetailPageMainProps) {
     <div
       {...props}
       data-slot="detail-page-main"
-      className={cn('flex min-w-0 flex-col gap-bakin-6', className)}
+      className={cn('flex min-w-0 flex-1 flex-col gap-bakin-6', className)}
     />
   )
 }

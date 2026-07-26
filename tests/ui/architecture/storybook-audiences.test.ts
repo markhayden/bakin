@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'bun:test'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -27,6 +27,11 @@ afterEach(() => {
 })
 
 describe('Storybook catalog audiences', () => {
+  it('resolves the cross-plugin sources exported through public SDK entrypoints', () => {
+    const config = readFileSync(join(import.meta.dir, '../../../.storybook/main.ts'), 'utf8')
+    expect(config).toContain("'@bakin/team'")
+  })
+
   it('mechanically excludes internal stories from the public build', () => {
     expect(storyGlobsForAudience('public')).toEqual([
       '../storybook/public/**/*.stories.@(ts|tsx)',

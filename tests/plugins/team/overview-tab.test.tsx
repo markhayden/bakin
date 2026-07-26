@@ -12,6 +12,7 @@
  */
 import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import '../../rtl-settle'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -31,15 +32,6 @@ mock.module('../../../packages/adapter-openclaw/src/home', () => ({
   getOpenClawHome: () => join(testDir, 'openclaw'),
   getOpenClawPath: (...parts: string[]) => join(testDir, 'openclaw', ...parts),
   resetOpenClawHome: () => {},
-}))
-
-mock.module('@makinbakin/sdk/components', () => ({
-  ModelSelect: ({ value, onChange, models }: { value: string; onChange: (id: string) => void; models: { id: string; label: string }[] }) => (
-    <select data-testid="model-select" value={value} onChange={(e) => onChange(e.target.value)}>
-      {models.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
-    </select>
-  ),
-  MarkdownContent: ({ content }: { content: string }) => <div data-testid="markdown">{content}</div>,
 }))
 
 import { useAgentStore } from '../../../plugins/team/hooks/use-agent-store'
@@ -112,7 +104,12 @@ describe('OverviewTab', () => {
     )
   }
 
+  function holdUnrelatedPanelFetches() {
+    global.fetch = mock(() => new Promise<Response>(() => {})) as unknown as typeof global.fetch
+  }
+
   it('does NOT render identity (name/role/emoji) — header owns that surface', () => {
+    holdUnrelatedPanelFetches()
     renderTab()
     // OverviewTab is rendered standalone in this test (no AgentDetail
     // header), so the identity strings should be entirely absent.
@@ -122,18 +119,21 @@ describe('OverviewTab', () => {
   })
 
   it('renders the model selector pre-set to the agent\'s model', () => {
+    holdUnrelatedPanelFetches()
     renderTab()
-    const select = screen.getByTestId('model-select') as HTMLSelectElement
-    expect(select.value).toBe('claude-opus-4-7')
+    const select = screen.getByRole('combobox', { name: 'Model' })
+    expect(select.textContent).toContain('Opus 4.7')
   })
 
   it('renders the team selector with the current team', () => {
+    holdUnrelatedPanelFetches()
     renderTab()
-    const teamSelect = screen.getAllByRole('combobox').find((s) => (s as HTMLSelectElement).value === 'team-design')
-    expect(teamSelect).toBeDefined()
+    const teamSelect = screen.getByRole('combobox', { name: 'Team' })
+    expect(teamSelect.textContent).toContain('Design')
   })
 
   it('does NOT render the workspace path — header owns that surface now', () => {
+    holdUnrelatedPanelFetches()
     renderTab()
     expect(screen.queryByText('/tmp/openclaw/workspaces/pixel')).toBeNull()
   })
@@ -256,16 +256,18 @@ describe('OverviewTab', () => {
   })
 
   it('writes /team on team select change', async () => {
+    const user = userEvent.setup()
     renderTab()
-    const teamSelect = screen.getAllByRole('combobox').find((s) => (s as HTMLSelectElement).value === 'team-design') as HTMLSelectElement
-    fireEvent.change(teamSelect, { target: { value: '' } })
+    await user.click(screen.getByRole('combobox', { name: 'Team' }))
+    await user.click(screen.getByRole('option', { name: 'No team' }))
     await waitFor(() => {
       const teamWrites = teamRoutes.filter((c) => c.url === '/api/plugins/team/pixel/team' && c.init?.method === 'PUT')
       expect(teamWrites.length).toBeGreaterThan(0)
     })
   })
 
-  it('renders the embedded PackageCard for the agent (delegating to its own surface)', async () => {
+  it('renders the embedded PackageCard for the agent (delegating to its own surface)', () => {
+    holdUnrelatedPanelFetches()
     renderTab({ agentId: 'pixel', state: 'managed', packageId: 'examples/pixel@0.1.0' })
     expect(screen.getByText('managed')).toBeDefined()
   })

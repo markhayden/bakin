@@ -354,6 +354,10 @@ export function ModelSelect({
     return groups
   }, {})
   const providers = Object.keys(grouped).sort((left, right) => left.localeCompare(right))
+  const selectedModel = models.find((model) => model.id === value)
+  const selectedLabel = value === defaultValue
+    ? defaultLabel
+    : selectedModel?.name ?? (value || undefined)
 
   return (
     <Select
@@ -371,7 +375,7 @@ export function ModelSelect({
         aria-invalid={ariaInvalid}
         className={className ?? 'w-full'}
       >
-        <SelectValue placeholder={placeholder} />
+        <SelectValue placeholder={placeholder}>{selectedLabel}</SelectValue>
       </SelectTrigger>
       <SelectContent>
         {defaultLabel ? <SelectItem value={defaultValue}>{defaultLabel}</SelectItem> : null}

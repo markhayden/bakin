@@ -86,6 +86,7 @@ test('public story keeps keyboard, focus, console, and responsive contracts', as
   })
   page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
   page.on('requestfailed', (request) => {
+    if (isCancelledStorybookA11yInstrumentation(request)) return
     browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
   })
 

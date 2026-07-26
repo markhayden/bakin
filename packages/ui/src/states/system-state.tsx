@@ -115,7 +115,7 @@ const signalClasses: Record<SystemStateKind, string> = {
 const scopeClasses: Record<SystemStateScope, string> = {
   inline: 'grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-bakin-3 gap-y-bakin-2 rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default px-bakin-4 py-bakin-3 text-left',
   section: 'flex flex-col items-center justify-center gap-bakin-3 rounded-bakin-surface bg-bakin-surface-default/55 px-bakin-6 py-bakin-8 text-center',
-  page: 'flex min-h-full flex-1 flex-col items-center justify-center gap-bakin-3 px-bakin-6 py-bakin-8 text-center',
+  page: 'flex min-h-[calc(var(--bakin-layout-space-8)*12)] flex-1 flex-col items-center justify-center gap-bakin-3 px-bakin-6 py-bakin-8 text-center',
 }
 
 const actionClasses: Record<SystemStateScope, string> = {

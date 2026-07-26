@@ -175,7 +175,7 @@ describe('AgentDetail — tab URL contract', () => {
     const tablist = await screen.findByRole('tablist', { name: 'Agent sections' })
     const sharedTabs = tablist.closest('[data-slot="underline-tabs"]')
     expect(sharedTabs).not.toBeNull()
-    expect(sharedTabs?.className).toContain('overflow-x-auto')
+    expect(tablist.className).toContain('overflow-x-auto')
 
     const overview = screen.getByRole('tab', { name: 'Overview' })
     expect(overview.getAttribute('aria-controls')).toBe('agent-detail-panel-overview')
@@ -190,5 +190,16 @@ describe('AgentDetail — tab URL contract', () => {
 
     expect(await screen.findByRole('button', { name: 'Back to agents' })).toBeDefined()
     expect(screen.getByRole('button', { name: 'Delete Explorer' })).toBeDefined()
+  })
+
+  it('keeps image and delete actions together in one responsive header row', async () => {
+    render(<AgentDetail agentId="explorer" />)
+
+    const changeImage = await screen.findByRole('button', { name: 'Change image' })
+    const deleteAgent = screen.getByRole('button', { name: 'Delete Explorer' })
+    const actionRow = changeImage.closest('[data-agent-header-actions]')
+
+    expect(actionRow).not.toBeNull()
+    expect(actionRow?.contains(deleteAgent)).toBe(true)
   })
 })

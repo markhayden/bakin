@@ -32,9 +32,21 @@ mock.module('../../../packages/adapter-openclaw/src/home', () => ({
   resetOpenClawHome: () => {},
 }))
 
-// MarkdownContent renders raw text in tests so we can assert on content.
-mock.module('@makinbakin/sdk/components', () => ({
-  MarkdownContent: ({ content }: { content: string }) => <div data-testid="markdown">{content}</div>,
+// Keep the test focused on host-owned persistence and mode state.
+mock.module('@makinbakin/sdk/content', () => ({
+  MarkdownEditor: ({
+    label,
+    content,
+    mode,
+    onChange,
+  }: {
+    label: string
+    content: string
+    mode: 'edit' | 'preview'
+    onChange: (content: string) => void
+  }) => mode === 'edit'
+    ? <textarea aria-label={label} value={content} onChange={(event) => onChange(event.target.value)} />
+    : <div role="region" aria-label={`${label} preview`} data-testid="markdown">{content}</div>,
 }))
 
 import { MarkdownEditTab } from '../../../plugins/team/components/markdown-edit-tab'
@@ -65,37 +77,55 @@ describe('MarkdownEditTab', () => {
     expect(screen.queryByLabelText('Save changes')).toBeNull()
   })
 
+  it('keeps the edit action beside the filename and the description below them', () => {
+    render(<MarkdownEditTab agentId="pixel" filename="SOUL.md" initialContent="# Pixel persona" />)
+
+    const header = screen.getByRole('heading', { level: 2, name: 'SOUL.md' })
+      .closest('[data-slot="markdown-file-header"]')
+    const titleRow = screen.getByRole('heading', { level: 2, name: 'SOUL.md' })
+      .closest('[data-slot="markdown-file-title-row"]')
+    const description = screen.getByText('Rendered from the current workspace file.')
+    const edit = screen.getByLabelText('Edit markdown')
+
+    expect(header).not.toBeNull()
+    expect(titleRow).not.toBeNull()
+    expect(titleRow?.contains(edit)).toBe(true)
+    expect(header?.contains(description)).toBe(true)
+    expect(titleRow?.contains(description)).toBe(false)
+    expect(description.getAttribute('data-slot')).toBe('markdown-file-description')
+  })
+
   it('shows the empty-state message when initialContent is null', () => {
     render(<MarkdownEditTab agentId="pixel" filename="SOUL.md" initialContent={null} />)
     expect(screen.getByText(/does not exist/)).toBeDefined()
     expect(screen.queryByLabelText('Edit markdown')).toBeNull()
   })
 
-  it('switches to edit mode and shows save+cancel when pencil is clicked', () => {
+  it('switches to edit mode and reveals draft actions after a change', () => {
     render(<MarkdownEditTab agentId="pixel" filename="SOUL.md" initialContent="hello" />)
     fireEvent.click(screen.getByLabelText('Edit markdown'))
-    expect(screen.getByLabelText('Save changes')).toBeDefined()
-    expect(screen.getByLabelText('Cancel edit')).toBeDefined()
     expect(screen.queryByLabelText('Edit markdown')).toBeNull()
-    // Textarea is the edit surface
     const textarea = screen.getByRole('textbox') as HTMLTextAreaElement
     expect(textarea.value).toBe('hello')
+    expect(screen.queryByRole('button', { name: 'Save changes' })).toBeNull()
+    fireEvent.change(textarea, { target: { value: 'hello world' } })
+    expect(screen.getByRole('button', { name: 'Save changes' })).toBeDefined()
+    expect(screen.getByRole('button', { name: 'Cancel edit' })).toBeDefined()
   })
 
-  it('save button stays disabled until the user types something different', () => {
+  it('keeps save actions hidden until the user types something different', () => {
     render(<MarkdownEditTab agentId="pixel" filename="SOUL.md" initialContent="hello" />)
     fireEvent.click(screen.getByLabelText('Edit markdown'))
-    const save = screen.getByLabelText('Save changes') as HTMLButtonElement
-    expect(save.disabled).toBe(true)
+    expect(screen.queryByRole('button', { name: 'Save changes' })).toBeNull()
     fireEvent.change(screen.getByRole('textbox'), { target: { value: 'hello world' } })
-    expect((screen.getByLabelText('Save changes') as HTMLButtonElement).disabled).toBe(false)
+    expect((screen.getByRole('button', { name: 'Save changes' }) as HTMLButtonElement).disabled).toBe(false)
   })
 
   it('POSTs the new content to /api/plugins/team/:agentId/files/:filename', async () => {
     render(<MarkdownEditTab agentId="pixel" filename="SOUL.md" initialContent="hello" />)
     fireEvent.click(screen.getByLabelText('Edit markdown'))
     fireEvent.change(screen.getByRole('textbox'), { target: { value: 'updated body' } })
-    fireEvent.click(screen.getByLabelText('Save changes'))
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
 
     await waitFor(() => expect(fetchCalls.length).toBe(1))
     const call = fetchCalls[0]
@@ -108,7 +138,7 @@ describe('MarkdownEditTab', () => {
     render(<MarkdownEditTab agentId="pixel" filename="SOUL.md" initialContent="hello" />)
     fireEvent.click(screen.getByLabelText('Edit markdown'))
     fireEvent.change(screen.getByRole('textbox'), { target: { value: 'updated body' } })
-    fireEvent.click(screen.getByLabelText('Save changes'))
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
 
     await waitFor(() => expect(screen.queryByRole('textbox')).toBeNull())
     expect(screen.getByTestId('markdown').textContent).toBe('updated body')
@@ -119,7 +149,7 @@ describe('MarkdownEditTab', () => {
     render(<MarkdownEditTab agentId="pixel" filename="SOUL.md" initialContent="hello" />)
     fireEvent.click(screen.getByLabelText('Edit markdown'))
     fireEvent.change(screen.getByRole('textbox'), { target: { value: 'never persisted' } })
-    fireEvent.click(screen.getByLabelText('Cancel edit'))
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel edit' }))
 
     expect(screen.queryByRole('textbox')).toBeNull()
     expect(screen.getByTestId('markdown').textContent).toBe('hello')

@@ -28,7 +28,7 @@ const meta = {
     layout: 'fullscreen',
     docs: {
       description: {
-        component: 'ConfirmDialog, SaveBar, DangerZone, and UnsavedChangesDialog make consequences, retry, and exit decisions consistent without taking ownership of domain mutations or routing. Consumers own open, dirty, busy, error, persistence, and navigation state; the canonical patterns own presentation, semantics, focus, and responsive action placement.',
+        component: 'ConfirmDialog, SaveBar, DangerZone, and UnsavedChangesDialog make consequences, retry, and exit decisions consistent without taking ownership of domain mutations or routing. Consumers own open, dirty, busy, error, persistence, and navigation state; the canonical patterns own presentation, semantics, focus, and responsive action placement. SaveBar stays low-profile on desktop, stacks only when the viewport needs it, and keeps the draft context beside the unsaved state.',
       },
     },
     bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'overflow', 'interaction', 'busy', 'error-retry', 'typed-confirmation', 'focus-return', 'mobile-action-order', 'routing-boundary'],
@@ -136,7 +136,7 @@ function FailedSaveExample() {
     <PatternStage
       eyebrow="Draft / retryable save"
       title="Keep unsaved work and recovery together"
-      description="The page owns its staged value and persistence. SaveBar reflects that state without adding a second set of page actions."
+      description="The page owns its staged value and persistence. SaveBar reflects that state in a compact sticky row without adding a second set of page actions."
     >
       <Section spacing="compact" aria-labelledby="workflow-details-heading">
         <Stack gap="item">

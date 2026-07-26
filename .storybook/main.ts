@@ -4,6 +4,7 @@ import type { StorybookConfig } from '@storybook/react-vite'
 import { storyGlobsForAudience, type StorybookAudience } from './audiences.ts'
 
 const sourceRoot = fileURLToPath(new URL('../src', import.meta.url))
+const teamRoot = fileURLToPath(new URL('../plugins/team', import.meta.url))
 const audience: StorybookAudience = process.env.BAKIN_STORYBOOK_AUDIENCE === 'public'
   ? 'public'
   : 'maintainer'
@@ -25,6 +26,7 @@ const config: StorybookConfig = {
       resolve: {
         alias: {
           '@': sourceRoot,
+          '@bakin/team': teamRoot,
         },
       },
     })

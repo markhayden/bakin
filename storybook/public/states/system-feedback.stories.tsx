@@ -21,7 +21,7 @@ const meta = {
     layout: 'fullscreen',
     docs: {
       description: {
-        component: 'SystemState distinguishes first-use emptiness, filtered no-results, loading, recoverable or terminal errors, and permission boundaries. Banner carries persistent context. Toast presents transient shell-owned feedback. Urgency is semantic, not inferred from color alone.',
+        component: 'SystemState distinguishes first-use emptiness, filtered no-results, loading, recoverable or terminal errors, and permission boundaries. Page scope fills a useful replacement region; inline and section scopes stay content-sized. Banner carries persistent context. Toast presents transient shell-owned feedback. Urgency is semantic, not inferred from color alone.',
       },
     },
   },

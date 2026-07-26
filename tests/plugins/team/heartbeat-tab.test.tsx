@@ -7,7 +7,7 @@
  * last-updated formatting, absence of any edit/save affordance.
  */
 import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import '../../rtl-settle'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -29,7 +29,7 @@ mock.module('../../../packages/adapter-openclaw/src/home', () => ({
   resetOpenClawHome: () => {},
 }))
 
-mock.module('@makinbakin/sdk/components', () => ({
+mock.module('@makinbakin/sdk/content', () => ({
   MarkdownContent: ({ content }: { content: string }) => <div data-testid="markdown">{content}</div>,
 }))
 
@@ -46,7 +46,7 @@ afterAll(() => {
 })
 
 describe('HeartbeatTab', () => {
-  it('shows the loading state before the fetch resolves', () => {
+  it('shows the loading state before the fetch resolves', async () => {
     let resolveFetch: (value: Response) => void
     global.fetch = mock(
       () => new Promise<Response>((res) => { resolveFetch = res }),
@@ -54,14 +54,17 @@ describe('HeartbeatTab', () => {
 
     render(<HeartbeatTab agentId="pixel" />)
     expect(screen.getByText(/Loading heartbeat/)).toBeDefined()
-    // Resolve so the test doesn't dangle
-    resolveFetch!({ ok: true, json: () => Promise.resolve({ ok: true, heartbeat: null }) } as Response)
+    await act(async () => {
+      resolveFetch!({ ok: true, json: () => Promise.resolve({ ok: true, heartbeat: null }) } as Response)
+    })
+    await waitFor(() => expect(screen.getByText(/No heartbeat yet/)).toBeDefined())
   })
 
   it('renders the empty state when heartbeat is null', async () => {
     setupFetch({ ok: true, heartbeat: null })
     render(<HeartbeatTab agentId="pixel" />)
-    await waitFor(() => expect(screen.getByText(/No heartbeat yet/)).toBeDefined())
+    const title = await screen.findByText(/No heartbeat yet/)
+    expect(title.closest('[data-slot="system-state"]')?.getAttribute('data-scope')).toBe('page')
   })
 
   it('renders the markdown content + last updated badge for a populated heartbeat', async () => {
