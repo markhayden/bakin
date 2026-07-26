@@ -330,6 +330,7 @@ describe('ChatView', () => {
           t2: { inputTokens: 22_100, outputTokens: 1_200, model: 'pi/pi-local', lane: 'subscription' },
         },
         usageTotals: { turns: 2, inputTokens: 36_300, outputTokens: 2_090, totalTokens: 38_390, costUsd: 0.03 },
+        usageContext: { tokens: 22_100, model: 'pi/pi-local', window: 200_000 },
       },
     })
     const { container } = render(<ChatView chatId={CHAT_A} onChanged={() => {}} />)
@@ -350,6 +351,8 @@ describe('ChatView', () => {
     expect(chip!.textContent).toContain('38.4k tokens')
     expect(chip!.textContent).not.toContain('Σ')
     expect(chip!.textContent).toContain('$0.03')
+    // The context monitor leads the chip: last turn's prompt vs the window.
+    expect(chip!.textContent).toContain('context 22.1k / 200k (11%)')
     cleanup()
   })
 

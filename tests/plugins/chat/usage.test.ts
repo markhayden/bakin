@@ -110,6 +110,64 @@ describe('GET /chats/:chatId usage decoration', () => {
     })
   })
 
+  test('usageContext reports the LAST settled turn\'s prompt size + the model\'s numeric window via the models hook', async () => {
+    const chat = await createChat({ agentId: 'main' })
+    recordRunCost({
+      workClass: 'chat',
+      runId: `chat:${chat.id}:turn:t-old`,
+      agent: 'main',
+      model: 'gpt-5.5',
+      lane: 'metered',
+      inputTokens: 10_000,
+      outputTokens: 200,
+      occurredAt: T0 + 1000,
+    })
+    recordRunCost({
+      workClass: 'chat',
+      runId: `chat:${chat.id}:turn:t-last`,
+      agent: 'main',
+      model: 'gpt-5.5',
+      lane: 'metered',
+      inputTokens: 40_000,
+      cacheReadTokens: 9_500,
+      outputTokens: 700,
+      occurredAt: T0 + 2000,
+    })
+    // The harness hooks are inert mocks — stub the invoker the route hands
+    // to the usage join.
+    activated.ctx.hooks.has = ((name: string) => name === 'models.getAvailableModels') as typeof activated.ctx.hooks.has
+    activated.ctx.hooks.invoke = (async (name: string) =>
+      name === 'models.getAvailableModels'
+        ? [
+            { id: 'gpt-5.5', contextWindow: 200_000 },
+            { id: 'other-model', contextWindow: 1_000_000 },
+          ]
+        : undefined) as typeof activated.ctx.hooks.invoke
+
+    const get = findRoute(activated.routes, 'GET', '/chats/:chatId')!
+    const res = await callRoute(get, activated.ctx, { path: `/chats/${chat.id}` })
+    // Prompt size = input + cache reads of the LAST turn (compaction shows
+    // up as this number dropping); window from the models hook.
+    expect(res.body.usageContext).toMatchObject({ tokens: 49_500, model: 'gpt-5.5', window: 200_000 })
+  })
+
+  test('unknown model window → usageContext carries tokens only (no fabricated window)', async () => {
+    const chat = await createChat({ agentId: 'main' })
+    recordRunCost({
+      workClass: 'chat',
+      runId: `chat:${chat.id}:turn:t-1`,
+      agent: 'main',
+      model: 'mystery-model',
+      lane: 'subscription',
+      inputTokens: 12_000,
+      occurredAt: T0 + 1000,
+    })
+    const get = findRoute(activated.routes, 'GET', '/chats/:chatId')!
+    const res = await callRoute(get, activated.ctx, { path: `/chats/${chat.id}` })
+    expect(res.body.usageContext).toMatchObject({ tokens: 12_000, model: 'mystery-model' })
+    expect((res.body.usageContext as Record<string, unknown>).window).toBeUndefined()
+  })
+
   test('a chat with no recorded turns gets an empty map and NO totals field', async () => {
     const chat = await createChat({ agentId: 'main' })
     const get = findRoute(activated.routes, 'GET', '/chats/:chatId')!
@@ -138,8 +196,8 @@ describe('buildTurnUsage (pure mapping)', () => {
     expect(usage.t1.inputTokens).toBe(10)
   })
 
-  test('a throwing loader yields honest absence — undefined, never zeros', () => {
-    const result = chatTurnUsage('c-down', () => {
+  test('a throwing loader yields honest absence — undefined, never zeros', async () => {
+    const result = await chatTurnUsage('c-down', undefined, () => {
       throw new Error('ledger unavailable')
     })
     expect(result).toBeUndefined()

@@ -67,6 +67,15 @@ export interface ChatUsageTotals {
   costUsd?: number
 }
 
+/** Context monitor (GET /chats/:id `usageContext`): the last settled
+ *  turn's prompt size (input + cache reads — drops after a compaction)
+ *  plus the model's numeric window when the runtime reports one. */
+export interface ChatUsageContext {
+  tokens: number
+  model?: string
+  window?: number
+}
+
 /** Server queued-message DTO (GET /chats/:id `queued`). */
 export interface ChatQueuedDto {
   id: string
@@ -236,6 +245,8 @@ export interface ChatStreamState {
   turnUsage: Record<string, ConversationTurnUsage>
   /** Chat-level usage sums; null when nothing is recorded (no chip). */
   usageTotals: ChatUsageTotals | null
+  /** Context monitor; null when no settled turn reported input tokens. */
+  usageContext: ChatUsageContext | null
   send: (content: string, attachments?: Array<{ name: string; mimeType: string; path: string }>) => Promise<void>
   abort: () => void
   /** Re-send the newest user message (error-turn "Try again"). */
@@ -251,9 +262,11 @@ export function useChatStream(chatId: string): ChatStreamState {
   // lastUserRef): the kit's load contract stays usage-agnostic.
   const [turnUsage, setTurnUsage] = useState<Record<string, ConversationTurnUsage>>({})
   const [usageTotals, setUsageTotals] = useState<ChatUsageTotals | null>(null)
+  const [usageContext, setUsageContext] = useState<ChatUsageContext | null>(null)
   useEffect(() => {
     setTurnUsage({})
     setUsageTotals(null)
+    setUsageContext(null)
   }, [chatId])
   // Guards the lastUserRef side effect below: a slow load for a PREVIOUS
   // chat must never overwrite the retry payload after a switch (the kit's
@@ -278,6 +291,7 @@ export function useChatStream(chatId: string): ChatStreamState {
         queued?: ChatQueuedDto[]
         usage?: Record<string, ConversationTurnUsage>
         usageTotals?: ChatUsageTotals
+        usageContext?: ChatUsageContext
         streamingText?: string
       }
       if (key === chatIdRef.current) {
@@ -285,6 +299,7 @@ export function useChatStream(chatId: string): ChatStreamState {
         if (lastUser?.kind === 'user') lastUserRef.current = { content: lastUser.content, attachments: lastUser.attachments }
         setTurnUsage(body.usage ?? {})
         setUsageTotals(body.usageTotals ?? null)
+        setUsageContext(body.usageContext ?? null)
       }
       return {
         messages: body.messages.map((row) => rowToMessage(key, row)),
@@ -375,6 +390,7 @@ export function useChatStream(chatId: string): ChatStreamState {
     removeQueued: thread.removeQueued,
     turnUsage,
     usageTotals,
+    usageContext,
     send,
     abort,
     retry,
