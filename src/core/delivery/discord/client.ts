@@ -33,11 +33,13 @@ export function createDiscordTransport(token: string): DiscordTransport {
   const rest = new REST({ version: '10' }).setToken(token)
   const gateway = new WebSocketManager({
     token,
-    intents:
-      GatewayIntentBits.Guilds |
-      GatewayIntentBits.GuildMessages |
-      GatewayIntentBits.DirectMessages |
-      GatewayIntentBits.MessageContent,
+    // Phase A consumes NO message events: sends are REST, buttons/modals
+    // arrive as INTERACTION_CREATE (intent-free). Requesting the privileged
+    // MessageContent intent here would 4014-close the whole bridge for any
+    // bot missing the portal toggle — for features that don't need it.
+    // Inbound chat (B1) adds GuildMessages | DirectMessages | MessageContent
+    // when a consumer actually exists.
+    intents: GatewayIntentBits.Guilds,
     rest,
   })
   const client = new Client({ rest, gateway })
@@ -56,19 +58,37 @@ export function createDiscordTransport(token: string): DiscordTransport {
 
     async connect() {
       if (connected) return
+      let readyTimeout: ReturnType<typeof setTimeout> | undefined
       const ready = new Promise<void>((resolve, reject) => {
-        const timeout = setTimeout(
+        readyTimeout = setTimeout(
           () => reject(new Error(`Discord gateway not READY within ${READY_TIMEOUT_MS}ms`)),
           READY_TIMEOUT_MS,
         )
         client.once(GatewayDispatchEvents.Ready, () => {
-          clearTimeout(timeout)
+          clearTimeout(readyTimeout)
           resolve()
         })
       })
-      await gateway.connect()
-      await ready
-      connected = true
+      // Observe the rejection even when gateway.connect() throws first —
+      // otherwise the orphaned timeout fires 30s later as an unhandled
+      // promise rejection.
+      ready.catch(() => {})
+      try {
+        await gateway.connect()
+        await ready
+        connected = true
+      } catch (err) {
+        // A failed/timed-out connect must not leave a zombie WebSocketManager
+        // retrying in the background (it would hold an identify session while
+        // the doctor honestly reports "not connected").
+        clearTimeout(readyTimeout)
+        try {
+          await gateway.destroy()
+        } catch (destroyErr) {
+          log.warn('Gateway teardown after failed connect also failed', destroyErr)
+        }
+        throw err
+      }
     },
 
     async destroy() {

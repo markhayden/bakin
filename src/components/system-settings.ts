@@ -68,7 +68,7 @@ export const SYSTEM_SETTINGS_SCHEMA: PluginSettingsSchema = {
       key: 'integrations.discord.enabled',
       type: 'boolean',
       label: 'Discord bridge enabled',
-      description: 'Master switch for the Discord delivery bridge (Pi runtime). Also requires a bot token (Integrations & Keys) and at least one guild ID below. Only boots when the active runtime lacks native channels — stop the OpenClaw daemon if the bot ever answers twice.',
+      description: 'Master switch for the Discord delivery bridge (Pi runtime). Also requires a bot token (Integrations & Keys) and at least one guild ID below. Only boots when the active runtime lacks native channels — stop the OpenClaw daemon if the bot ever answers twice. Turning this OFF stops approval decisions immediately, but the gateway stays connected until the next server restart.',
       default: false,
     },
     {
@@ -89,8 +89,8 @@ export const SYSTEM_SETTINGS_SCHEMA: PluginSettingsSchema = {
       key: 'integrations.discord.inbound.enabled',
       type: 'boolean',
       label: 'Discord inbound chat',
-      description: 'Let allowed users chat with a Bakin agent from Discord. Messages become real Bakin chats.',
-      default: true,
+      description: 'NOT BUILT YET (ships with the inbound-chat phase): will let allowed users chat with a Bakin agent from Discord. Has no effect today.',
+      default: false,
     },
     {
       key: 'integrations.discord.inbound.agentId',

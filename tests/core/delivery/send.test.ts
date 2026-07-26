@@ -8,6 +8,7 @@ const testDir = join(tmpdir(), `bakin-test-delivery-send-${Date.now()}`)
 const auditEvents: Array<{ event: string; data: Record<string, unknown> }> = []
 const idempotencyRows = new Map<string, unknown>()
 let hookResults: Record<string, unknown> = {}
+let ledgerThrows = false
 
 mock.module('../../../src/core/content-dir', () => ({ getContentDir: () => testDir }))
 mock.module('../../../packages/core/src/content-dir', () => ({ getContentDir: () => testDir }))
@@ -20,8 +21,14 @@ mock.module('../../../src/core/audit', () => ({
   },
 }))
 mock.module('../../../src/core/execution-ledger', () => ({
-  getIdempotent: (key: string) => (idempotencyRows.has(key) ? { kind: 'delivery', result: idempotencyRows.get(key) } : null),
-  putIdempotent: (key: string, _kind: string, result: unknown) => { idempotencyRows.set(key, result) },
+  getIdempotent: (key: string) => {
+    if (ledgerThrows) throw new Error('ledger unavailable')
+    return idempotencyRows.has(key) ? { kind: 'delivery', result: idempotencyRows.get(key) } : null
+  },
+  putIdempotent: (key: string, _kind: string, result: unknown) => {
+    if (ledgerThrows) throw new Error('ledger unavailable')
+    idempotencyRows.set(key, result)
+  },
 }))
 mock.module('../../../packages/core/src/hooks/hook-registry-singleton', () => ({
   getHookRegistry: () => ({
@@ -234,5 +241,84 @@ describe('chunkDiscordText', () => {
   it('hard-splits a single overlong line', () => {
     const chunks = chunkDiscordText('x'.repeat(4100), 2000)
     expect(chunks.map(c => c.length)).toEqual([2000, 2000, 100])
+  })
+})
+
+describe('review-hardening regressions', () => {
+  beforeEach(() => {
+    auditEvents.length = 0
+    idempotencyRows.clear()
+  })
+
+  it('fails fast on deterministic 4xx errors (no retry)', async () => {
+    let attempts = 0
+    const { api } = makeApi({
+      createMessage: async () => {
+        attempts += 1
+        const err = new Error('Missing Access') as Error & { status: number }
+        err.status = 403
+        throw err
+      },
+    })
+    const surface = makeSurface(api)
+    await expect(surface.sendMessage({ channels: ['channel:1'], message: { body: 'x' } })).rejects.toThrow('Missing Access')
+    expect(attempts).toBe(1)
+  })
+
+  it('per-channel idempotency: a retry after partial failure re-sends only the failed channel', async () => {
+    let failSecond = true
+    const posted: string[] = []
+    const { api } = makeApi({
+      createMessage: async (channelId) => {
+        if (failSecond && channelId === '2') {
+          const err = new Error('unknown channel') as Error & { status: number }
+          err.status = 404
+          throw err
+        }
+        posted.push(channelId)
+        return { id: `m-${channelId}-${posted.length}` }
+      },
+    })
+    const surface = makeSurface(api)
+    const args = {
+      channels: ['channel:1', 'channel:2'],
+      message: { body: 'multi', metadata: { idempotencyKey: 'multi-1' } },
+    }
+    await expect(surface.sendMessage(args)).rejects.toThrow('unknown channel')
+    expect(posted).toEqual(['1'])
+
+    failSecond = false
+    const result = await surface.sendMessage(args)
+    // channel:1 suppressed by its recorded delivery; only channel:2 posts.
+    expect(posted).toEqual(['1', '2'])
+    expect(result.deliveries).toHaveLength(2)
+  })
+
+  it('a failed idempotency write never converts a delivered send into a failure', async () => {
+    const { api, sent } = makeApi()
+    const surface = makeSurface(api)
+    ledgerThrows = true
+    try {
+      const result = await surface.sendMessage({
+        channels: ['channel:1'],
+        message: { body: 'x', metadata: { idempotencyKey: 'k1' } },
+      })
+      expect(result.deliveries).toHaveLength(1)
+      expect(sent).toHaveLength(1)
+    } finally {
+      ledgerThrows = false
+    }
+  })
+
+  it('unreadable path files degrade to a visible omission, not a failed delivery', async () => {
+    const { api, sent } = makeApi()
+    const surface = makeSurface(api)
+    await surface.deliverContent({
+      channels: ['channel:1'],
+      content: { title: 'Doc', files: [{ name: 'gone.txt', path: join(testDir, 'does-not-exist.txt') }] },
+    })
+    expect(sent).toHaveLength(1)
+    expect(String(sent[0].payload.content)).toContain('gone.txt')
+    expect(String(sent[0].payload.content)).toContain('could not be read')
   })
 })

@@ -74,6 +74,22 @@ export interface SendSurface {
   editMessage(args: EditChannelMessageArgs): Promise<void>
 }
 
+/**
+ * Resolve a neutral channel ref (`discord:channel:<id>` / `discord:user:<id>`)
+ * to a postable Discord channel id — the ONE resolver shared by the send and
+ * approval surfaces.
+ */
+export function createChannelIdResolver(api: Pick<SendApi, 'createDM'>): (ref: string) => Promise<string> {
+  return async (ref: string) => {
+    const parsed = parseDiscordRef(ref)
+    if (parsed.kind === 'user') {
+      const dm = await api.createDM(parsed.id)
+      return dm.id
+    }
+    return parsed.id
+  }
+}
+
 export function chunkDiscordText(text: string, limit: number): string[] {
   if (text.length <= limit) return [text]
   const chunks: string[] = []
@@ -106,6 +122,16 @@ export function createSendSurface(deps: SendSurfaceDeps): SendSurface {
   const maxUploadBytes = deps.maxUploadBytes ?? DISCORD_UPLOAD_LIMIT_BYTES
   const sleep = deps.sleep ?? ((ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms)))
 
+  /**
+   * Deterministic client errors (unknown channel, missing permission) can't
+   * succeed on retry — fail fast. 429s never reach here (@discordjs/rest
+   * queues and honors rate limits internally).
+   */
+  function isNonRetryable(err: unknown): boolean {
+    const status = (err as { status?: unknown }).status
+    return typeof status === 'number' && status >= 400 && status < 500 && status !== 429
+  }
+
   async function withRetry<T>(label: string, channel: string, fn: () => Promise<T>): Promise<T> {
     let lastErr: unknown
     for (let attempt = 1; attempt <= RETRY_ATTEMPTS; attempt++) {
@@ -113,6 +139,7 @@ export function createSendSurface(deps: SendSurfaceDeps): SendSurface {
         return await fn()
       } catch (err) {
         lastErr = err
+        if (isNonRetryable(err)) break
         if (attempt < RETRY_ATTEMPTS) {
           log.warn(`Discord ${label} failed (attempt ${attempt}/${RETRY_ATTEMPTS}) — retrying`, err, { channel })
           await sleep(RETRY_BASE_DELAY_MS * attempt)
@@ -129,15 +156,7 @@ export function createSendSurface(deps: SendSurfaceDeps): SendSurface {
     throw lastErr
   }
 
-  /** Resolve a neutral channel ref to a postable Discord channel id. */
-  async function resolveChannelId(ref: string): Promise<string> {
-    const parsed = parseDiscordRef(ref)
-    if (parsed.kind === 'user') {
-      const dm = await deps.api.createDM(parsed.id)
-      return dm.id
-    }
-    return parsed.id
-  }
+  const resolveChannelId = createChannelIdResolver(deps.api)
 
   /**
    * Post payload to one neutral channel ref, chunking content. The FIRST
@@ -165,22 +184,48 @@ export function createSendSurface(deps: SendSurfaceDeps): SendSurface {
     return delivery
   }
 
-  async function withIdempotency(
-    metadata: RuntimeMetadata | undefined,
+  /**
+   * Post to every requested channel with optional PER-CHANNEL idempotency:
+   * a multi-channel retry after a partial failure re-sends only the channels
+   * that never recorded a delivery. Ledger read/write failures degrade to
+   * best-effort (warn, send anyway / report success anyway) — a delivered
+   * message must never be converted into a reported failure by bookkeeping,
+   * and blocking an alert on ledger availability inverts the priority
+   * (duplicates are recoverable; silence is not).
+   */
+  async function postChannels(
     surface: string,
-    run: () => Promise<DeliveryResult>,
+    channelRefs: string[],
+    metadata: RuntimeMetadata | undefined,
+    post: (channelRef: string) => Promise<DeliveryResult['deliveries'][number]>,
   ): Promise<DeliveryResult> {
     const key = metadataIdempotencyKey(metadata)
-    if (!key) return run()
-    const ledgerKey = `delivery:${surface}:${key}`
-    const existing = getIdempotent(ledgerKey)
-    if (existing) {
-      log.info('Duplicate delivery suppressed by idempotency key', { surface, key })
-      return existing.result as DeliveryResult
+    const deliveries: DeliveryResult['deliveries'] = []
+    for (const channelRef of channelRefs) {
+      const ledgerKey = key ? `delivery:${surface}:${key}:${channelRef}` : null
+      if (ledgerKey) {
+        try {
+          const existing = getIdempotent(ledgerKey)
+          if (existing) {
+            log.info('Duplicate delivery suppressed by idempotency key', { surface, key, channel: channelRef })
+            deliveries.push(existing.result as DeliveryResult['deliveries'][number])
+            continue
+          }
+        } catch (err) {
+          log.warn('Idempotency read failed — sending without dedupe', err, { surface, key })
+        }
+      }
+      const delivery = await post(channelRef)
+      if (ledgerKey) {
+        try {
+          putIdempotent(ledgerKey, 'delivery', delivery)
+        } catch (err) {
+          log.warn('Idempotency record failed after a successful send', err, { surface, key })
+        }
+      }
+      deliveries.push(delivery)
     }
-    const result = await run()
-    putIdempotent(ledgerKey, 'delivery', result)
-    return result
+    return { deliveries }
   }
 
   async function resolveFiles(
@@ -207,7 +252,16 @@ export function createSendSurface(deps: SendSurfaceDeps): SendSurface {
         path = file.path
         contentType = file.contentType
       }
-      const data = readFileSync(path)
+      let data: Buffer
+      try {
+        data = readFileSync(path)
+      } catch (err) {
+        // A vanished/unreadable file degrades to a visible omission — one bad
+        // attachment must not fail the whole delivery.
+        log.warn('Attachment unreadable — omitted from delivery', err, { name })
+        omitted.push(`${name} (file could not be read)`)
+        continue
+      }
       if (data.byteLength > maxUploadBytes) {
         const mb = (data.byteLength / (1024 * 1024)).toFixed(1)
         omitted.push(`${name} (${mb} MB — too large to attach; stored in Bakin)`)
@@ -219,16 +273,13 @@ export function createSendSurface(deps: SendSurfaceDeps): SendSurface {
   }
 
   return {
-    sendMessage: (args) => withIdempotency(args.message.metadata, 'message', async () => {
+    sendMessage: (args) => {
       const content = [args.message.title, args.message.body].filter(Boolean).join('\n\n')
-      const deliveries = []
-      for (const channel of args.channels) {
-        deliveries.push(await postToChannel('message', channel, content))
-      }
-      return { deliveries }
-    }),
+      return postChannels('message', args.channels, args.message.metadata,
+        (channel) => postToChannel('message', channel, content))
+    },
 
-    sendNotification: (args) => withIdempotency(args.notification.metadata, 'notification', async () => {
+    sendNotification: (args) => {
       const { severity, title, body, fields } = args.notification
       const description = body.length > DISCORD_EMBED_DESCRIPTION_LIMIT
         ? `${body.slice(0, DISCORD_EMBED_DESCRIPTION_LIMIT - 1)}…`
@@ -241,14 +292,11 @@ export function createSendSurface(deps: SendSurfaceDeps): SendSurface {
           ? { fields: fields.map(field => ({ name: field.label, value: field.value, inline: true })) }
           : {}),
       }
-      const deliveries = []
-      for (const channel of args.channels) {
-        deliveries.push(await postToChannel('notification', channel, '', { embeds: [embed] }))
-      }
-      return { deliveries }
-    }),
+      return postChannels('notification', args.channels, args.notification.metadata,
+        (channel) => postToChannel('notification', channel, '', { embeds: [embed] }))
+    },
 
-    deliverContent: (args) => withIdempotency(args.content.metadata, 'content', async () => {
+    deliverContent: async (args) => {
       const { outgoing, omitted } = args.content.files?.length
         ? await resolveFiles(args.content.files)
         : { outgoing: [], omitted: [] }
@@ -257,12 +305,9 @@ export function createSendSurface(deps: SendSurfaceDeps): SendSurface {
         args.content.url,
         ...omitted.map(entry => `📎 ${entry}`),
       ].filter(Boolean)
-      const deliveries = []
-      for (const channel of args.channels) {
-        deliveries.push(await postToChannel('content', channel, contentParts.join('\n\n'), outgoing.length ? { files: outgoing } : {}))
-      }
-      return { deliveries }
-    }),
+      return postChannels('content', args.channels, args.content.metadata,
+        (channel) => postToChannel('content', channel, contentParts.join('\n\n'), outgoing.length ? { files: outgoing } : {}))
+    },
 
     createThread: async (args) => {
       const parsed = parseDiscordRef(args.channel)

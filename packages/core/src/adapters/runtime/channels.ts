@@ -48,6 +48,12 @@ export interface ContentDeliveryArgs {
     title: string
     body?: string
     url?: string
+    /**
+     * Path files are read from disk (trusted plugin/core callers only). For
+     * `{ kind: 'asset' }` refs, `filename` is the ASSET ID — providers
+     * resolve it through the `assets.resolveServe` hook; an unresolvable id
+     * degrades to a visible omission, never a failed delivery.
+     */
     files?: Array<{ name: string; path: string; contentType?: string } | { kind: 'asset'; filename: string; mimeType?: string }>
     metadata?: RuntimeMetadata
   }

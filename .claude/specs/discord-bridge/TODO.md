@@ -27,3 +27,10 @@ Plan: `.claude/specs/discord-bridge/PLAN.md`
 - [ ] B2 Chat plugin wiring: channel↔chat map, turn engine, typing, reply
 - [ ] B3 Docs + #669 close-out comment
 - [ ] CHECKPOINT 2: live validation + owner sign-off + PR 2 merged
+
+## Deferred (review suggestions, non-blocking)
+- [ ] Channel cache on-demand refresh (new channels invisible until restart)
+- [ ] editApproval body patch drops embed title/color (latent — no in-tree caller)
+- [ ] delivery:* idempotency rows have no TTL/GC (opt-in keys, no callers yet)
+- [ ] Settings-change-driven bridge teardown (today: interactions stop live, gateway disconnects at restart)
+- [ ] Streaming replies via message edits (SPEC non-goal, revisit after B)

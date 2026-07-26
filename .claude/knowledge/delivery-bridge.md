@@ -21,8 +21,13 @@ delivery layer (Pi) a full `runtime.channels` surface over Discord. Spec:
     token && guildIds.
   - `discord/client.ts` — `@discordjs/core`+`rest`+`ws` transport (D2: no
     full discord.js, no native optional deps — pure-JS paths survive
-    `bun build --compile`; verified by the A0 spike). Intents: GUILDS,
-    GUILD_MESSAGES, DIRECT_MESSAGES, MESSAGE_CONTENT.
+    `bun build --compile`; verified by the A0 spike). Intents: **Guilds
+    only** in Phase A — sends are REST and buttons/modals are intent-free
+    INTERACTION_CREATE; the privileged MessageContent intent joins in
+    Phase B with the actual inbound consumer (requesting it unconsumed
+    would 4014-close the whole bridge on bots missing the portal toggle).
+    A failed/timed-out connect tears the gateway down (no zombie retry
+    loop) and connect/boot are single-flighted.
   - `discord/channel-cache.ts` + `channel-info.ts` — guild text channels
     enumerated at boot (D3), cached, stale-beats-broken refresh. Channel ids
     are `discord:channel:<id>`; DM sends accept `discord:user:<id>`.
@@ -30,8 +35,15 @@ delivery layer (Pi) a full `runtime.channels` surface over Discord. Spec:
     with attachments (path files + `{kind:'asset'}` via `assets.resolveServe`;
     oversize degrades to an honest note) / threads / edits; 2000-char
     chunking; bounded retry → `delivery.send_failed` audit (D13 — NO durable
-    outbox by design; approval rehydration + in-app attention cover outages);
-    optional `metadata.idempotencyKey` dedupe via the execution ledger.
+    outbox by design; approval rehydration + in-app attention cover
+    outages); deterministic 4xx errors fail fast (no retry; 429s are
+    handled inside @discordjs/rest); optional `metadata.idempotencyKey`
+    dedupe via the execution ledger — **per channel**
+    (`delivery:<surface>:<key>:<channelRef>`), so a retry after a partial
+    multi-channel failure re-sends only the channels that never recorded a
+    delivery. Ledger read/write failures degrade to best-effort with a warn:
+    bookkeeping must never convert a delivered send into a reported failure,
+    and an alert is never blocked on ledger availability.
   - `discord/approvals.ts` — buttoned cards. The embed FOOTER carries the
     approvalId (approvalIds exceed the 100-char custom_id cap) so clicks are
     stateless across restarts. Approver allowlist FAILS CLOSED (D4);
@@ -74,8 +86,11 @@ AND `'shimmed'` ⇒ surface present (teeth-proven).
 list fields render as comma-separated strings, normalized to arrays):
 `{ enabled, guildIds[], approvers[], inbound: { enabled, agentId,
 requireMention, allowFrom[] } }`. Empty `approvers`/`allowFrom` = deny all.
-Token: Settings → Integrations & Keys → integration `discord`, secret
-`botToken`.
+`inbound.enabled` defaults FALSE and is inert until Phase B ships. Flipping
+`enabled` off stops approval decisions immediately (live guard on the
+interaction handler); the gateway stays connected until the next restart —
+the setting description says so. Token: Settings → Integrations & Keys →
+integration `discord`, secret `botToken`.
 
 ## Health
 

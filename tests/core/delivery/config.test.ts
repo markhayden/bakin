@@ -14,6 +14,9 @@ mock.module('../../../packages/core/src/content-dir', () => ({
 mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({ info: () => {}, warn: () => {}, error: () => {}, debug: () => {} }),
 }))
+mock.module('../../../packages/core/src/logger', () => ({
+  createLogger: () => ({ info: () => {}, warn: () => {}, error: () => {}, debug: () => {} }),
+}))
 
 import { readDiscordConfig, isDiscordConfigured } from '../../../src/core/delivery/config'
 import { resetSettingsCache } from '../../../packages/core/src/settings'

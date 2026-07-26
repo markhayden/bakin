@@ -482,7 +482,9 @@ export const DEFAULT_SETTINGS: BakinSettings = {
       guildIds: [],
       approvers: [],
       inbound: {
-        enabled: true,
+        // Ships OFF until the inbound feature exists (Phase B flips the
+        // default) — a default must never describe behavior that isn't built.
+        enabled: false,
         agentId: 'main',
         requireMention: true,
         allowFrom: [],

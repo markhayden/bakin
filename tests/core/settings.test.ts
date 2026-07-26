@@ -288,7 +288,7 @@ describe('integrations settings (#669)', () => {
     expect(d.enabled).toBe(false)
     expect(d.guildIds).toEqual([])
     expect(d.approvers).toEqual([])
-    expect(d.inbound.enabled).toBe(true)
+    expect(d.inbound.enabled).toBe(false)
     expect(d.inbound.agentId).toBe('main')
     expect(d.inbound.requireMention).toBe(true)
     expect(d.inbound.allowFrom).toEqual([])

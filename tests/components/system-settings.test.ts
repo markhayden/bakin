@@ -34,7 +34,7 @@ describe('system settings — integrations.discord (#669)', () => {
     })
     expect(flat['integrations.discord.guildIds']).toBe('g1, g2')
     expect(flat['integrations.discord.approvers']).toBe('111')
-    expect(flat['integrations.discord.allowFrom'] ?? flat['integrations.discord.inbound.allowFrom']).toBe('')
+    expect(flat['integrations.discord.inbound.allowFrom']).toBe('')
     expect(flat['integrations.discord.enabled']).toBe(true)
   })
 

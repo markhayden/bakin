@@ -59,18 +59,46 @@ const channels: ChannelSurface = {
   editMessage: async (args) => requireState().send.editMessage(args),
 }
 
+let bootInFlight: Promise<void> | null = null
+
 const bridge: ChannelBridge = {
   isConfigured: () => isDiscordConfigured(),
 
   async boot() {
+    // Single-flight: concurrent boots share one connect; a failed boot
+    // clears the memo so a later explicit boot can retry.
+    if (!bootInFlight) {
+      bootInFlight = bootOnce().catch((err) => {
+        bootInFlight = null
+        throw err
+      })
+    }
+    return bootInFlight
+  },
+
+  async shutdown() {
+    // Wait out an in-flight boot so a racing shutdown can't leak the
+    // transport (state assigned after shutdown already ran).
+    if (bootInFlight) await bootInFlight.catch(() => {})
+    bootInFlight = null
+    if (!state) return
+    const closing = state
+    state = null
+    await closing.transport.destroy()
+    auditDelivery('delivery.disconnected', {})
+  },
+
+  channels,
+}
+
+async function bootOnce(): Promise<void> {
     if (state) return
     const { settings, token } = readDiscordConfig()
     if (!isDiscordConfigured() || !token) return
     const { createDiscordTransport, sendApiFromTransport, approvalApiFromTransport, subscribeInteractions } = await import('./discord/client')
     const { createChannelCache } = await import('./discord/channel-cache')
-    const { createSendSurface } = await import('./discord/send')
+    const { createSendSurface, createChannelIdResolver } = await import('./discord/send')
     const { createApprovalSurface } = await import('./discord/approvals')
-    const { parseDiscordRef } = await import('./discord/refs')
     const transport = createDiscordTransport(token)
     await transport.connect()
     const cache = createChannelCache({
@@ -91,11 +119,7 @@ const bridge: ChannelBridge = {
       sendApi,
       // Live read: approver edits take effect without a restart.
       approvers: () => readDiscordConfig().settings.approvers,
-      resolveChannelId: async (ref) => {
-        const parsed = parseDiscordRef(ref)
-        if (parsed.kind === 'user') return (await sendApi.createDM(parsed.id)).id
-        return parsed.id
-      },
+      resolveChannelId: createChannelIdResolver(sendApi),
     })
     approvals.subscribe((event) => {
       for (const handler of approvalHandlers) {
@@ -107,23 +131,16 @@ const bridge: ChannelBridge = {
       }
     })
     subscribeInteractions(transport, (raw) => {
+      // Live master-switch guard: flipping integrations.discord.enabled off
+      // stops decisions immediately even though the gateway stays connected
+      // until the next restart (the setting description says so).
+      if (!readDiscordConfig().settings.enabled) return
       void approvals.handleInteraction(raw).catch((err) => {
         log.error('Discord interaction handling failed', err)
       })
     })
     state = { transport, cache, send, approvals }
     auditDelivery('delivery.connected', { guilds: settings.guildIds.length })
-  },
-
-  async shutdown() {
-    if (!state) return
-    const closing = state
-    state = null
-    await closing.transport.destroy()
-    auditDelivery('delivery.disconnected', {})
-  },
-
-  channels,
 }
 
 export function getDeliveryBridge(): ChannelBridge {

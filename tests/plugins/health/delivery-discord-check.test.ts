@@ -79,14 +79,15 @@ describe('delivery.discord doctor check', () => {
     expect(result.observations?.[0]?.incident?.key).toBe('bridge-down')
   })
 
-  it('warns fail-closed when connected with empty allowlists', async () => {
-    writeSettings({ enabled: true, guildIds: ['g1'], approvers: [], inbound: { enabled: true, allowFrom: [] } })
+  it('warns fail-closed when connected with an empty approver list', async () => {
+    writeSettings({ enabled: true, guildIds: ['g1'], approvers: [] })
     setStoredSecret('discord', 'botToken', 'tok')
     connected = true
     const result = await checkDeliveryDiscord(runtimeWith('shimmed')) as ObservedLike
     const keys = result.observations?.map(r => r.incident?.key)
     expect(keys).toContain('empty-approvers')
-    expect(keys).toContain('empty-inbound-allowlist')
+    // No inbound notice until the inbound feature exists (Phase B).
+    expect(keys).not.toContain('empty-inbound-allowlist')
     expect(result.observations?.every(r => r.incident?.class === 'policy_denial')).toBe(true)
   })
 
