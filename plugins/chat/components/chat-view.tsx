@@ -4,7 +4,7 @@
  * Draft mode renders the same shell before a chat exists; the chat is
  * created on first send.
  */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, Check, Loader2, Pencil, Pin } from 'lucide-react'
 import { toast } from '@makinbakin/sdk/hooks'
 import {
@@ -171,6 +171,7 @@ function ViewHeader({
   chat,
   streaming,
   usageTotals,
+  streamingOutEstimate = 0,
   onChanged,
   refreshChat,
 }: {
@@ -178,15 +179,22 @@ function ViewHeader({
   chat: ChatSummaryDto | null
   streaming: boolean
   usageTotals?: ChatUsageTotals | null
+  /** ~tokens of the in-flight reply streamed so far (0 when idle). */
+  streamingOutEstimate?: number
   onChanged: () => void
   refreshChat?: () => Promise<void>
 }) {
   const agent = useAgent(agentId)
-  // Σ chip (#733): the chat's recorded usage sum — hidden entirely when
+  // Usage totals chip (#733): the chat's recorded sum in PLAIN WORDS (the
+  // Σ sigil confused people — review feedback) — hidden entirely when
   // nothing is recorded (absence, never zeros). Metered spend adds $.
+  // While a reply streams, a clearly-marked estimate of the output so far
+  // (~ + ellipsis) rides along and reconciles to the real number at settle;
+  // it is NEVER blended into the recorded total.
   const totalParts: string[] = []
-  if (usageTotals?.totalTokens !== undefined) totalParts.push(`Σ ${formatTokenCount(usageTotals.totalTokens)} tok`)
+  if (usageTotals?.totalTokens !== undefined) totalParts.push(`${formatTokenCount(usageTotals.totalTokens)} tokens`)
   if (usageTotals?.costUsd !== undefined) totalParts.push(formatUsageCost(usageTotals.costUsd))
+  if (streaming && streamingOutEstimate > 0) totalParts.push(`+~${formatTokenCount(streamingOutEstimate)} out…`)
   return (
     <div className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-2.5">
       <AgentAvatar agentId={agentId} size="sm" />
@@ -199,7 +207,11 @@ function ViewHeader({
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <span>{agent?.name ?? agentId}</span>
           {totalParts.length ? (
-            <span data-chat-usage-totals className="text-muted-foreground/80">
+            <span
+              data-chat-usage-totals
+              title="Total recorded usage for this chat"
+              className="text-muted-foreground/80"
+            >
               · {totalParts.join(' · ')}
             </span>
           ) : null}
@@ -349,6 +361,18 @@ export function ChatView({ chatId, onChanged }: { chatId: string; onChanged: () 
   const attachments = useComposerAttachments(chatId, chat?.agentId ?? '')
   const composerHandle = useRef<ComposerHandle | null>(null)
 
+  // Rough output-so-far for the streaming reply (~4 chars/token) — shown
+  // ONLY as a ~-labeled estimate on the header chip; real numbers arrive
+  // at settle. Input tokens are unknowable mid-turn, so no input estimate.
+  const streamingOutEstimate = useMemo(() => {
+    if (!liveChunks?.length) return 0
+    const chars = liveChunks.reduce(
+      (n, c) => n + (c.type === 'text' ? (c.content?.length ?? 0) : 0),
+      0,
+    )
+    return Math.round(chars / 4)
+  }, [liveChunks])
+
   // Queue-remove restore (spec D8): an EMPTY composer gets the removed
   // message back — text and still-uploaded attachments — for editing.
   // "Empty" means no text AND no staged attachments (review finding:
@@ -373,7 +397,7 @@ export function ChatView({ chatId, onChanged }: { chatId: string; onChanged: () 
 
   return (
     <div className="flex min-w-0 flex-1 flex-col">
-      <ViewHeader agentId={chat.agentId} chat={chat} streaming={streaming} usageTotals={usageTotals} onChanged={onChanged} refreshChat={refreshChat} />
+      <ViewHeader agentId={chat.agentId} chat={chat} streaming={streaming} usageTotals={usageTotals} streamingOutEstimate={streamingOutEstimate} onChanged={onChanged} refreshChat={refreshChat} />
 
       <Conversation
         turns={turns}

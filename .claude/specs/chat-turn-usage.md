@@ -11,7 +11,7 @@ Show real token usage (and cost, where honestly known) per settled turn directly
 | # | Decision | Choice |
 |---|---|---|
 | D1 | Context-window display | **Absolute tokens only.** Per-turn `in` tokens are the honest window-growth signal. NO percentage gauge: the catalog's context field is a display string, and session runtimes (caching/compaction) make provider context ≠ transcript tokens — a gauge would be confidently wrong. Revisit only if a runtime ever reports true context size. |
-| D2 | Surfaces | **Per-turn footer + chat-total in header.** Small muted always-visible footer on settled assistant turns (`14.2k in / 890 out · $0.03 · sonnet`); compact running total by the chat title (`Σ 182k · $0.41`). Both from one GET decoration. |
+| D2 | Surfaces | **Per-turn footer + chat-total in header.** Small muted always-visible footer on settled assistant turns (`14.2k in / 890 out · $0.03 · sonnet`); compact running total by the chat title. AMENDED after live testing: plain words (`500.4k tokens · $0.41`), no Σ sigil (nobody read it); while streaming, a ~-labeled output-so-far estimate (`+~320 out…`) rides the chip and reconciles at settle — the only estimate anywhere, never blended into recorded totals. Both from one GET decoration. |
 | D3 | Unit-per-lane (standing rule) | `lane='metered'` → tokens + $; `lane='subscription'` or NULL → tokens only. Dollars are NEVER fabricated. |
 | D4 | Unknown is absent | A turn with no recorded row, or a row with no displayable numbers, renders NO footer — never zero. Aborted turns billed partial usage DO show their footer; error turns (never metered) don't. |
 

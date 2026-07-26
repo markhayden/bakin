@@ -343,11 +343,37 @@ describe('ChatView', () => {
     // Subscription lane: tokens only.
     expect(footers[1]).toContain('22.1k in')
     expect(footers[1]).not.toContain('$')
-    // The Σ chip in the header.
+    // The totals chip in the header — plain words, no Σ sigil (review:
+    // "nobody will understand that").
     const chip = container.querySelector('[data-chat-usage-totals]')
     expect(chip).not.toBeNull()
-    expect(chip!.textContent).toContain('38.4k tok')
+    expect(chip!.textContent).toContain('38.4k tokens')
+    expect(chip!.textContent).not.toContain('Σ')
     expect(chip!.textContent).toContain('$0.03')
+    cleanup()
+  })
+
+  it('while streaming, the totals chip appends a clearly-labeled output estimate (#733 live piece)', async () => {
+    mockFetch({
+      [`/chats/${CHAT_A}/seen`]: {},
+      capabilities: { imageInput: false },
+      [`/chats/${CHAT_A}`]: {
+        chat: summary({ streaming: true }),
+        messages: [{ kind: 'user', ts: '2026-07-11T10:00:00.000Z', content: 'long job' }],
+        usage: { t0: { inputTokens: 10_000, outputTokens: 500, costUsd: 0.02, lane: 'metered' } },
+        usageTotals: { turns: 1, totalTokens: 10_500, costUsd: 0.02 },
+        // 400 chars streamed so far → ~100 tokens at chars÷4.
+        streamingText: 'x'.repeat(400),
+      },
+    })
+    const { container } = render(<ChatView chatId={CHAT_A} onChanged={() => {}} />)
+    await waitFor(() => {
+      const chip = container.querySelector('[data-chat-usage-totals]')
+      expect(chip).not.toBeNull()
+      expect(chip!.textContent).toContain('+~100 out…')
+    })
+    // The settled total still reads alongside the estimate, un-blended.
+    expect(container.querySelector('[data-chat-usage-totals]')!.textContent).toContain('10.5k tokens')
     cleanup()
   })
 
