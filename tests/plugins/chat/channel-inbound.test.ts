@@ -119,7 +119,7 @@ describe('chat channel inbound wiring', () => {
   afterAll(() => fs.rmSync(testDir, { recursive: true, force: true }))
 
   it('creates a bound chat (channel-label title) and starts a turn', async () => {
-    const { ctx, inbound, typing } = makeCtx()
+    const { ctx, inbound } = makeCtx()
     wireChannelInbound(ctx)
     inbound(inboundMessage())
     await settle()
@@ -128,7 +128,48 @@ describe('chat channel inbound wiring', () => {
     expect(chat).not.toBeNull()
     expect(chat!.title).toBe('#lounge · Discord')
     expect(startedTurns).toEqual([{ chatId: chat!.id, content: 'hello agent', attachments: [] }])
+  })
+
+  it('typing rides the engine lifecycle: pulses on chat.started, stops on chat.done', async () => {
+    const { ctx, emit, typing } = makeCtx()
+    wireChannelInbound(ctx)
+    const chat = await createChat({ agentId: 'main', title: 't', externalKey: 'discord:channel:77' })
+    emit('chat.started', { chatId: chat.id, agentId: 'main' })
+    await settle()
     expect(typing.length).toBeGreaterThanOrEqual(1)
+    const pulses = typing.length
+    emit('chat.done', { chatId: chat.id, agentId: 'main', aborted: true })
+    await new Promise(resolve => setTimeout(resolve, 30))
+    expect(typing.length).toBe(pulses) // interval cleared — no further pulses
+  })
+
+  it('a burst of first-contact messages binds exactly ONE chat (creation race)', async () => {
+    const { ctx, inbound } = makeCtx()
+    wireChannelInbound(ctx)
+    inbound(inboundMessage({ text: 'one' }))
+    inbound(inboundMessage({ text: 'two' }))
+    await settle()
+    expect(listChats()).toHaveLength(1)
+    expect(new Set(startedTurns.map(t => t.chatId)).size).toBe(1)
+  })
+
+  it('uniquifies colliding attachment names instead of overwriting earlier rows', async () => {
+    const fileA = join(testDir, 'a-image.png')
+    const fileB = join(testDir, 'b-image.png')
+    fs.writeFileSync(fileA, 'first-bytes')
+    fs.writeFileSync(fileB, 'second-bytes')
+    const { ctx, inbound } = makeCtx({ imageInput: true })
+    wireChannelInbound(ctx)
+    inbound(inboundMessage({ attachments: [{ name: 'image.png', path: fileA, contentType: 'image/png' }] }))
+    await settle()
+    inbound(inboundMessage({ text: 'second', attachments: [{ name: 'image.png', path: fileB, contentType: 'image/png' }] }))
+    await settle()
+
+    const chat = findChatByExternalKey('discord:channel:77')!
+    const dir = attachmentsDir(chat.id)
+    const files = fs.readdirSync(dir).sort()
+    expect(files).toHaveLength(2)
+    expect(fs.readFileSync(join(dir, 'image.png')).toString()).toBe('first-bytes') // original untouched
   })
 
   it('reuses the bound chat for the same channel', async () => {
@@ -275,5 +316,13 @@ describe('extractReplyText', () => {
 
   it('returns empty for turns with no assistant output', () => {
     expect(extractReplyText([{ kind: 'user', ts: '1', content: 'q' }])).toBe('')
+  })
+
+  it('handles drained combined turns (consecutive user rows before the reply)', () => {
+    expect(extractReplyText([
+      { kind: 'user', ts: '1', content: 'first queued' },
+      { kind: 'user', ts: '2', content: 'second queued' },
+      { kind: 'assistant', ts: '3', content: 'combined answer' },
+    ])).toBe('combined answer')
   })
 })

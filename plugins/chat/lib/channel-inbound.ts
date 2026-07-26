@@ -16,7 +16,8 @@
  * BOUND chat post back to its channel regardless of where the user message
  * came from — that is the point, not a bug.
  */
-import { copyFileSync, mkdirSync, rmSync } from 'fs'
+import { copyFileSync, existsSync, mkdirSync, rmSync } from 'fs'
+import { randomUUID } from 'crypto'
 import { join, basename } from 'path'
 import type { PluginContext } from '@bakin/core/plugin-types'
 import type { InboundChannelMessage } from '@bakin/core/adapters/runtime'
@@ -100,18 +101,32 @@ export function wireChannelInbound(ctx: WireContext): () => void {
     }
   }
 
-  async function findOrCreateChat(message: InboundChannelMessage): Promise<{ id: string; agentId: string }> {
+  // One creation per channel at a time: a burst of first-contact messages
+  // would otherwise race past findChatByExternalKey (channelLabel suspends)
+  // and bind TWO chats to one channel (review finding).
+  const chatCreations = new Map<string, Promise<{ id: string; agentId: string }>>()
+
+  function findOrCreateChat(message: InboundChannelMessage): Promise<{ id: string; agentId: string }> {
     const existing = findChatByExternalKey(message.channelRef)
-    if (existing) return existing
-    // Deterministic zero-cost title from the channel label (guild channels)
-    // or the sender (DMs — not enumerable via list()).
-    const label = await channelLabel(message.channelRef)
-    const title = label
-      ? `${label} · Discord`
-      : `DM · ${message.authorName ?? message.authorId} · Discord`
-    const created = await createChat({ agentId: inboundAgentId(), title, externalKey: message.channelRef })
-    log.info('Bound new chat to channel', { chatId: created.id, channel: message.channelRef })
-    return created
+    if (existing) return Promise.resolve(existing)
+    let pending = chatCreations.get(message.channelRef)
+    if (!pending) {
+      pending = (async () => {
+        // Deterministic zero-cost title from the channel label (guild
+        // channels) or the sender (DMs — not enumerable via list()).
+        const label = await channelLabel(message.channelRef)
+        const rebound = findChatByExternalKey(message.channelRef)
+        if (rebound) return rebound
+        const title = label
+          ? `${label} · Discord`
+          : `DM · ${message.authorName ?? message.authorId} · Discord`
+        const created = await createChat({ agentId: inboundAgentId(), title, externalKey: message.channelRef })
+        log.info('Bound new chat to channel', { chatId: created.id, channel: message.channelRef })
+        return created
+      })().finally(() => chatCreations.delete(message.channelRef))
+      chatCreations.set(message.channelRef, pending)
+    }
+    return pending
   }
 
   /**
@@ -139,7 +154,12 @@ export function wireChannelInbound(ctx: WireContext): () => void {
     const notes: string[] = []
     for (const file of incoming) {
       try {
-        const name = basename(file.name)
+        // Uniquify on collision (mirrors the web upload route): Discord
+        // clipboard pastes are all named image.png — an overwrite would
+        // silently swap the image under EARLIER transcript rows (they are
+        // path-addressed by name).
+        let name = basename(file.name)
+        if (existsSync(join(dir, name))) name = `${randomUUID().slice(0, 8)}-${name}`
         const target = join(dir, name)
         copyFileSync(file.path, target)
         rmSync(file.path, { force: true })
@@ -180,15 +200,25 @@ export function wireChannelInbound(ctx: WireContext): () => void {
       const { attachments, notes } = await adoptAttachments(chat.id, chat.agentId, message)
       const content = [message.text, ...notes].filter(Boolean).join('\n\n')
       if (!content && attachments.length === 0) return
-      startTyping(chat.id, message.channelRef)
+      // Typing starts on chat.started (event-driven below) — drained queued
+      // turns pulse too, and a failed start can never leak a timer.
       const result = await startChatTurn(ctx as Parameters<typeof startChatTurn>[0], chat.id, content || '(image)', attachments, { queueIfBusy: true })
       if (result === 'not_found' || result === 'busy') {
-        stopTyping(chat.id)
         log.warn('Inbound turn not accepted', { chatId: chat.id, result })
       }
     })().catch((err) => {
       log.error('Inbound channel message handling failed', err, { channel: message.channelRef })
     })
+  })
+
+  // Typing rides the ENGINE lifecycle, not inbound arrival: chat.started
+  // fires for every turn on the chat — including drained queued turns —
+  // and a turn that never starts never starts a timer (review finding).
+  const unsubscribeStarted = ctx.events.on('chat.started', (_event: string, payload: Record<string, unknown>) => {
+    const chatId = typeof payload.chatId === 'string' ? payload.chatId : null
+    if (!chatId) return
+    const summary = getChatSummary(chatId)
+    if (summary?.externalKey) startTyping(chatId, summary.externalKey)
   })
 
   // Reply relay: ANY settled turn on a bound chat posts back to its channel
@@ -229,6 +259,7 @@ export function wireChannelInbound(ctx: WireContext): () => void {
 
   return () => {
     unsubscribeInbound()
+    unsubscribeStarted()
     unsubscribeDone()
     unsubscribeError()
     for (const timer of typingTimers.values()) clearInterval(timer)

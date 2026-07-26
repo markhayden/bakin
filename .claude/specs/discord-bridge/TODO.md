@@ -34,3 +34,6 @@ Plan: `.claude/specs/discord-bridge/PLAN.md`
 - [ ] delivery:* idempotency rows have no TTL/GC (opt-in keys, no callers yet)
 - [ ] Settings-change-driven bridge teardown (today: interactions stop live, gateway disconnects at restart)
 - [ ] Streaming replies via message edits (SPEC non-goal, revisit after B)
+- [ ] Reply relay: resolve /api/assets image markdown into real Discord attachments (deliverContent path exists; first live complaint candidate)
+- [ ] Bridge-down reply loss: chat.done relay failure is audited via send_failed only when the transport is up; add an audit for the not-connected path
+- [ ] Neutral inbound-config surface if a second chat platform arrives (agentId currently read from integrations.discord)

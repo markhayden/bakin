@@ -98,10 +98,17 @@ describe('discord inbound gating', () => {
     expect(received).toHaveLength(1)
   })
 
-  it('denies non-allowlisted senders with an audit, never an emit', async () => {
-    const { surface, received } = makeSurface()
-    await surface.handleMessage(guildMessage({ author: { id: 'stranger', username: 'x' } }))
+  it('denies non-allowlisted senders with an audit, never an emit — and never a download', async () => {
+    let downloads = 0
+    const { surface, received } = makeSurface({
+      download: async () => { downloads += 1; return Buffer.from('x') },
+    })
+    await surface.handleMessage(guildMessage({
+      author: { id: 'stranger', username: 'x' },
+      attachments: [{ id: 'a1', filename: 'shot.png', url: 'https://cdn.example/shot.png', content_type: 'image/png', size: 10 }],
+    }))
     expect(received).toHaveLength(0)
+    expect(downloads).toBe(0) // denied senders cost zero CDN fetches
     expect(auditEvents.some(e => e.event === 'delivery.inbound_denied')).toBe(true)
   })
 
