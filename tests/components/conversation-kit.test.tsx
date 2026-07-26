@@ -46,6 +46,116 @@ const userTurn = (over: Partial<Extract<ConversationTurn, { kind: 'user' }>> = {
   ...over,
 })
 
+describe('AgentTurn usage footer (#733)', () => {
+  it('metered lane shows tokens + $ + model tail; sub-cent costs floor at <$0.01', () => {
+    const { container } = render(
+      <AgentTurn
+        agentId="main"
+        turn={agentTurn({ items: [{ type: 'text', format: 'markdown', content: 'done' }] })}
+        usage={{ inputTokens: 14_200, outputTokens: 890, costUsd: 0.03, model: 'anthropic/claude-sonnet-5', lane: 'metered' }}
+      />,
+    )
+    const footer = container.querySelector('[data-conv-usage]')
+    expect(footer).not.toBeNull()
+    expect(footer!.textContent).toContain('14.2k in')
+    expect(footer!.textContent).toContain('890 out')
+    expect(footer!.textContent).toContain('$0.03')
+    expect(footer!.textContent).toContain('claude-sonnet-5')
+    cleanup()
+
+    const subCent = render(
+      <AgentTurn agentId="main" turn={agentTurn()} usage={{ inputTokens: 100, outputTokens: 5, costUsd: 0.0004, lane: 'metered' }} />,
+    )
+    expect(subCent.container.querySelector('[data-conv-usage]')!.textContent).toContain('<$0.01')
+    cleanup()
+  })
+
+  it('subscription lane shows tokens only — never dollars; empty usage renders no footer', () => {
+    const { container } = render(
+      <AgentTurn
+        agentId="main"
+        turn={agentTurn()}
+        usage={{ inputTokens: 22_100, outputTokens: 1_200, model: 'pi/pi-local', lane: 'subscription' }}
+      />,
+    )
+    const footer = container.querySelector('[data-conv-usage]')!
+    expect(footer.textContent).toContain('22.1k in')
+    expect(footer.textContent).not.toContain('$')
+    cleanup()
+
+    const empty = render(<AgentTurn agentId="main" turn={agentTurn()} usage={{}} />)
+    expect(empty.container.querySelector('[data-conv-usage]')).toBeNull()
+    cleanup()
+
+    const none = render(<AgentTurn agentId="main" turn={agentTurn()} />)
+    expect(none.container.querySelector('[data-conv-usage]')).toBeNull()
+    cleanup()
+  })
+
+  it('a streaming turn never shows a RECORDED usage footer — usage exists only at settle', () => {
+    const { container } = render(
+      <AgentTurn
+        agentId="main"
+        turn={agentTurn({ status: 'streaming', items: [{ type: 'text', format: 'markdown', content: 'typing…' }] })}
+        usage={{ inputTokens: 1_000, outputTokens: 50, costUsd: 0.01, lane: 'metered' }}
+      />,
+    )
+    expect(container.querySelector('[data-conv-usage]')).toBeNull()
+    cleanup()
+  })
+
+  it('a streaming turn shows the ~-labeled live output estimate; settled turns ignore it', () => {
+    const live = render(
+      <AgentTurn
+        agentId="main"
+        turn={agentTurn({ status: 'streaming', items: [{ type: 'text', format: 'markdown', content: 'typing…' }] })}
+        liveOutEstimate={320}
+      />,
+    )
+    const el = live.container.querySelector('[data-conv-usage-live]')
+    expect(el).not.toBeNull()
+    expect(el!.textContent).toContain('~320 out…')
+    cleanup()
+
+    const settled = render(
+      <AgentTurn agentId="main" turn={agentTurn()} usage={{ inputTokens: 100, outputTokens: 10 }} liveOutEstimate={320} />,
+    )
+    expect(settled.container.querySelector('[data-conv-usage-live]')).toBeNull()
+    expect(settled.container.querySelector('[data-conv-usage]')).not.toBeNull()
+    cleanup()
+  })
+
+  it('Conversation hands liveOutEstimate only to the streaming turn', () => {
+    const { container } = render(
+      <Conversation
+        agentId="main"
+        turns={[
+          agentTurn({ key: 'done-turn', turnId: 'done-turn', items: [{ type: 'text', format: 'markdown', content: 'settled' }] }),
+          agentTurn({ key: 'live-turn', status: 'streaming', items: [{ type: 'text', format: 'markdown', content: 'going…' }] }),
+        ]}
+        liveOutEstimate={128}
+      />,
+    )
+    const liveEls = container.querySelectorAll('[data-conv-usage-live]')
+    expect(liveEls.length).toBe(1)
+    expect(liveEls[0].textContent).toContain('~128 out…')
+  })
+
+  it('Conversation plumbs turnUsage to agent turns by turnId', () => {
+    const { container } = render(
+      <Conversation
+        agentId="main"
+        turns={[
+          userTurn(),
+          agentTurn({ key: 'turn-a', turnId: 'turn-a', items: [{ type: 'text', format: 'markdown', content: 'reply' }] }),
+        ]}
+        turnUsage={{ 'turn-a': { inputTokens: 5_000, outputTokens: 300, costUsd: 0.02, lane: 'metered' } }}
+      />,
+    )
+    expect(container.querySelector('[data-conv-usage]')!.textContent).toContain('5k in')
+  })
+})
+
 describe('AgentTurn', () => {
   it('always shows the avatar — including the streaming/thinking state with no items', () => {
     const { container } = render(<AgentTurn turn={agentTurn({ status: 'streaming', statusLabel: 'thinking' })} agentId="main" />)

@@ -91,7 +91,10 @@ run_costs     run_id PK ← per-turn/-op cost attribution (#464, migration v3);
               (local-day bucketing lives in TypeScript, ONE place),
               recentRunsByAgent(agent, {sinceMs?, limit?}) — newest-first,
               `run_id LIKE 'task:%'` only (context-report grounding, #357)
-              — null costs coalesce to 0 (counted as runs, never dropped).
+              — null costs coalesce to 0 (counted as runs, never dropped),
+              listRunCostsByPrefix(prefix) — oldest-first rows whose run_id
+              starts with the prefix, LIKE wildcards escaped (chat's
+              per-turn usage join over `chat:<id>:turn:`, #733).
               The old GROUP-BY verbs spendTotal/spendByAgent/spendByModel
               are DELETED — their COALESCE(SUM,0) fabricated $0 for
               unpriced rows; `tests/architecture/no-legacy-spend-rollups.

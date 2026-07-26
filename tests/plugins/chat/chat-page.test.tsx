@@ -314,6 +314,94 @@ describe('ChatView', () => {
     cleanup()
   })
 
+  it('renders per-turn usage footers and the Σ header total (#733)', async () => {
+    mockFetch({
+      [`/chats/${CHAT_A}/seen`]: {},
+      capabilities: { imageInput: false },
+      [`/chats/${CHAT_A}`]: {
+        chat: summary(),
+        messages: [
+          { kind: 'user', ts: '2026-07-11T10:00:00.000Z', content: 'how do burn buckets work?' },
+          { kind: 'assistant', ts: '2026-07-11T10:00:05.000Z', turnId: 't1', content: 'Like this.' },
+          { kind: 'assistant', ts: '2026-07-11T10:01:00.000Z', turnId: 't2', content: 'Subscription reply.' },
+        ],
+        usage: {
+          t1: { inputTokens: 14_200, outputTokens: 890, costUsd: 0.03, model: 'anthropic/claude-sonnet-5', lane: 'metered' },
+          t2: { inputTokens: 22_100, outputTokens: 1_200, model: 'pi/pi-local', lane: 'subscription' },
+        },
+        usageTotals: { turns: 2, inputTokens: 36_300, outputTokens: 2_090, totalTokens: 38_390, costUsd: 0.03 },
+      },
+    })
+    const { container } = render(<ChatView chatId={CHAT_A} onChanged={() => {}} />)
+    await waitFor(() => {
+      expect(container.querySelectorAll('[data-conv-usage]').length).toBe(2)
+    })
+    const footers = [...container.querySelectorAll('[data-conv-usage]')].map((el) => el.textContent)
+    expect(footers[0]).toContain('14.2k in / 890 out')
+    expect(footers[0]).toContain('$0.03')
+    expect(footers[0]).toContain('claude-sonnet-5')
+    // Subscription lane: tokens only.
+    expect(footers[1]).toContain('22.1k in')
+    expect(footers[1]).not.toContain('$')
+    // The totals chip in the header — plain words, no Σ sigil (review:
+    // "nobody will understand that").
+    const chip = container.querySelector('[data-chat-usage-totals]')
+    expect(chip).not.toBeNull()
+    expect(chip!.textContent).toContain('38.4k tokens')
+    expect(chip!.textContent).not.toContain('Σ')
+    expect(chip!.textContent).toContain('$0.03')
+    cleanup()
+  })
+
+  it('while streaming, the live output estimate rides the streaming TURN (far right of the shimmer) — the header chip stays recorded-only', async () => {
+    mockFetch({
+      [`/chats/${CHAT_A}/seen`]: {},
+      capabilities: { imageInput: false },
+      [`/chats/${CHAT_A}`]: {
+        chat: summary({ streaming: true }),
+        messages: [{ kind: 'user', ts: '2026-07-11T10:00:00.000Z', content: 'long job' }],
+        usage: { t0: { inputTokens: 10_000, outputTokens: 500, costUsd: 0.02, lane: 'metered' } },
+        usageTotals: { turns: 1, totalTokens: 10_500, costUsd: 0.02 },
+        // 400 chars streamed so far → ~100 tokens at chars÷4.
+        streamingText: 'x'.repeat(400),
+      },
+    })
+    const { container } = render(<ChatView chatId={CHAT_A} onChanged={() => {}} />)
+    await waitFor(() => {
+      const live = container.querySelector('[data-conv-usage-live]')
+      expect(live).not.toBeNull()
+      expect(live!.textContent).toContain('~100 out…')
+    })
+    // The estimate sits on the shimmer row of the streaming turn.
+    const shimmerRow = container.querySelector('[data-conv-usage-live]')!.parentElement!
+    expect(shimmerRow.textContent).toContain('thinking')
+    // The header chip stays recorded-only — no estimate blended in.
+    const chip = container.querySelector('[data-chat-usage-totals]')!
+    expect(chip.textContent).toContain('10.5k tokens')
+    expect(chip.textContent).not.toContain('~')
+    cleanup()
+  })
+
+  it('no recorded usage → no footers, no header chip (absence, never zeros)', async () => {
+    mockFetch({
+      [`/chats/${CHAT_A}/seen`]: {},
+      capabilities: { imageInput: false },
+      [`/chats/${CHAT_A}`]: {
+        chat: summary(),
+        messages: [
+          { kind: 'user', ts: '2026-07-11T10:00:00.000Z', content: 'hi' },
+          { kind: 'assistant', ts: '2026-07-11T10:00:05.000Z', turnId: 't1', content: 'hello' },
+        ],
+        usage: {},
+      },
+    })
+    const { container } = render(<ChatView chatId={CHAT_A} onChanged={() => {}} />)
+    await waitFor(() => expect(container.textContent).toContain('hello'))
+    expect(container.querySelector('[data-conv-usage]')).toBeNull()
+    expect(container.querySelector('[data-chat-usage-totals]')).toBeNull()
+    cleanup()
+  })
+
   it('renders the queued strip while streaming; remove restores the text into the empty composer (#729)', async () => {
     mockFetch({
       [`/chats/${CHAT_A}/queued/q1`]: { removed: true },

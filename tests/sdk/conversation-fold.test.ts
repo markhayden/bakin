@@ -201,6 +201,16 @@ describe('foldConversation — persisted rows', () => {
     expect(turns.map((t) => t.kind)).toEqual(['user', 'agent', 'user', 'agent'])
     const agent1 = turns[1]
     if (agent1.kind !== 'agent') throw new Error('expected agent turn')
+    // Agent turns expose their turnId (#733 — the usage-footer join key);
+    // legacy rows without one fold to an undefined turnId.
+    expect(agent1.turnId).toBe('t1')
+    const agent2 = turns[3]
+    if (agent2.kind !== 'agent') throw new Error('expected agent turn')
+    expect(agent2.turnId).toBe('t2')
+    const legacy = foldConversation([user('hi'), { kind: 'assistant', ts: '2026-07-11T10:00:01.000Z', content: 'no turn id' }])
+    const legacyAgent = legacy[1]
+    if (legacyAgent.kind !== 'agent') throw new Error('expected agent turn')
+    expect(legacyAgent.turnId).toBeUndefined()
     expect(agent1.status).toBe('complete')
     expect(agent1.items.map((i) => i.type)).toEqual(['activity', 'text'])
     const activity = agent1.items[0]

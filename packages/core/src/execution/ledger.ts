@@ -1086,6 +1086,51 @@ export function listRunCostsSince(sinceMs: number): RunCostSpendRow[] {
   })
 }
 
+export interface RunCostByPrefixRow {
+  runId: string
+  model: string | null
+  lane: 'metered' | 'subscription' | null
+  inputTokens: number | null
+  outputTokens: number | null
+  totalTokens: number | null
+  cacheReadTokens: number | null
+  costUsdMicros: number | null
+  occurredAt: number
+}
+
+/**
+ * Cost rows whose run_id starts with `prefix`, oldest first (#733) — the
+ * per-turn usage join for conversational threads (chat passes
+ * `chat:<chatId>:turn:`). PK-index prefix scan; LIKE wildcards in the
+ * prefix are escaped so they match literally.
+ */
+export function listRunCostsByPrefix(prefix: string): RunCostByPrefixRow[] {
+  return guard('listRunCostsByPrefix', () => {
+    const escaped = prefix.replace(/[\\%_]/g, (c) => `\\${c}`)
+    return ledger()
+      .prepare<{
+        run_id: string; model: string | null; lane: string | null
+        input_tokens: number | null; output_tokens: number | null; total_tokens: number | null
+        cache_read_tokens: number | null; cost_usd_micros: number | null; occurred_at: number
+      }, [string]>(
+        `SELECT run_id, model, lane, input_tokens, output_tokens, total_tokens, cache_read_tokens, cost_usd_micros, occurred_at
+           FROM run_costs WHERE run_id LIKE ? ESCAPE '\\' ORDER BY occurred_at ASC`,
+      )
+      .all(`${escaped}%`)
+      .map((r) => ({
+        runId: r.run_id,
+        model: r.model,
+        lane: r.lane === 'metered' || r.lane === 'subscription' ? r.lane : null,
+        inputTokens: r.input_tokens,
+        outputTokens: r.output_tokens,
+        totalTokens: r.total_tokens,
+        cacheReadTokens: r.cache_read_tokens,
+        costUsdMicros: r.cost_usd_micros,
+        occurredAt: r.occurred_at,
+      }))
+  })
+}
+
 // ---------------------------------------------------------------------------
 // budget incidents (durable breach records — cost-control v2)
 // ---------------------------------------------------------------------------

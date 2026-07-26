@@ -128,6 +128,8 @@ export { Composer, writeComposerDraft } from '@/components/conversation/composer
 export type { ComposerProps, ComposerAttachments, ComposerAttachmentItem, ComposerHandle } from '@/components/conversation/composer'
 export { QueuedMessageList } from '@/components/conversation/queued-message-list'
 export type { ConversationQueuedItem } from '@/components/conversation/queued-message-list'
+export { formatTokenCount, formatUsageCost, usageFooterParts } from '@/components/conversation/turn-usage'
+export type { ConversationTurnUsage } from '@/components/conversation/turn-usage'
 export { ConversationPanel } from '@/components/conversation/conversation-panel'
 export type { ConversationPanelProps } from '@/components/conversation/conversation-panel'
 export { useConversationThread } from '@/components/conversation/use-conversation-thread'

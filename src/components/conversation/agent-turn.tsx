@@ -17,6 +17,7 @@ import { MarkdownContent } from '../markdown-content'
 import { ActivityGroup } from './activity-group'
 import type { ConversationToolCall, ConversationTurn, TurnItem } from './fold'
 import { formatAbsoluteTime, formatRelativeTime } from './relative-time'
+import { formatTokenCount, usageFooterParts, type ConversationTurnUsage } from './turn-usage'
 
 export function TurnTimestamp({ ts }: { ts?: string }) {
   if (!ts) return null
@@ -155,14 +156,22 @@ export interface AgentTurnProps {
    * proposal stripper). Returns the text to render plus optional extra nodes.
    */
   transformText?: (text: string) => { text: string; extras?: React.ReactNode }
+  /** Recorded usage for this settled turn (#733) — renders the muted
+   *  footer. Absent/empty = no footer (unknown is absent, never zero). */
+  usage?: ConversationTurnUsage
+  /** ~tokens of the reply streamed so far — rendered ONLY while this turn
+   *  is streaming, always ~-labeled (an estimate, never a recorded
+   *  number); the real footer replaces it at settle. */
+  liveOutEstimate?: number
 }
 
-export function AgentTurn({ turn, agentId, onRetry, onOpenCall, transformText }: AgentTurnProps) {
+export function AgentTurn({ turn, agentId, onRetry, onOpenCall, transformText, usage, liveOutEstimate }: AgentTurnProps) {
   const author = turn.agentId ?? agentId
   const agent = useAgent(author ?? '')
   const name = agent?.name ?? author ?? 'Agent'
   const streaming = turn.status === 'streaming'
   const copyText = turnText(turn.items)
+  const usageParts = usage && !streaming ? usageFooterParts(usage) : []
 
   return (
     <div className="group/turn relative flex items-start gap-3" data-conv-turn>
@@ -204,7 +213,23 @@ export function AgentTurn({ turn, agentId, onRetry, onOpenCall, transformText }:
           )
         })}
 
-        {streaming ? <ShimmerLabel label={turn.statusLabel ?? 'thinking'} /> : null}
+        {streaming ? (
+          // Shimmer left, live output estimate far right on the SAME row —
+          // the ~ and ellipsis mark it as an estimate of the text streamed
+          // so far; the real recorded footer replaces it at settle.
+          <div className="flex items-center justify-between gap-3">
+            <ShimmerLabel label={turn.statusLabel ?? 'thinking'} />
+            {(liveOutEstimate ?? 0) > 0 ? (
+              <span
+                data-conv-usage-live
+                title="Estimated from the text streamed so far — real counts arrive when the reply finishes"
+                className="shrink-0 text-[11px] text-muted-foreground/60"
+              >
+                ~{formatTokenCount(liveOutEstimate!)} out…
+              </span>
+            ) : null}
+          </div>
+        ) : null}
 
         {turn.status === 'aborted' ? (
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -220,6 +245,12 @@ export function AgentTurn({ turn, agentId, onRetry, onOpenCall, transformText }:
           >
             <RotateCcw className="size-3" /> Try again
           </button>
+        ) : null}
+
+        {usageParts.length ? (
+          <div data-conv-usage className="pt-0.5 text-[11px] text-muted-foreground/70">
+            {usageParts.join(' · ')}
+          </div>
         ) : null}
       </div>
 

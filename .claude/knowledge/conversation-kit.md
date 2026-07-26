@@ -21,7 +21,7 @@ Client side: `useConversationThread` (below) is the matching hook; `useConversat
 
 ## The turn model (fold.ts)
 
-`foldConversation(messages: ConversationMessage[], {liveChunks, liveAgentId}?) → ConversationTurn[]` — pure, exhaustively tested (`tests/sdk/conversation-fold.test.ts`).
+`foldConversation(messages: ConversationMessage[], {liveChunks, liveAgentId}?) → ConversationTurn[]` — pure, exhaustively tested (`tests/sdk/conversation-fold.test.ts`). Agent turns expose their `turnId` (#733 — the per-turn usage join key; undefined on legacy adjacency-grouped rows and live turns). Usage display helpers (`ConversationTurnUsage`, `formatTokenCount`, `formatUsageCost`, `usageFooterParts`) live in `turn-usage.ts`, SDK-exported.
 
 - `ConversationMessage` — the storable row union (`user ± attachments | assistant | tool | error | aborted`, agent rows carry `turnId` + optional `agentId`). Chat's transcript v2 IS this shape; embedded surfaces map their storage onto it.
 - Item ORDER inside a turn is preserved (text/activity interleave in arrival order); consecutive tool chunks group into ONE activity item; call/result pairing by `callId` works ACROSS group boundaries; callId-less results close the most recent running same-tool call; orphan results settle standalone.
@@ -31,8 +31,8 @@ Client side: `useConversationThread` (below) is the matching hook; `useConversat
 
 | Export | Role |
 |---|---|
-| `Conversation` | Scroll container: stick-to-bottom, jump pill, day separators, hover timestamps |
-| `AgentTurn` | Avatar ALWAYS present (incl. thinking), name header, items in order, error footer + `onRetry`, aborted notice, copy |
+| `Conversation` | Scroll container: stick-to-bottom, jump pill, day separators, hover timestamps; `turnUsage` (turnId → `ConversationTurnUsage`) plumbs opt-in usage footers (#733) |
+| `AgentTurn` | Avatar ALWAYS present (incl. thinking), name header, items in order, error footer + `onRetry`, aborted notice, copy; opt-in `usage` prop → muted footer (`14.2k in / 890 out · $0.03 · model-tail`; costUsd is server-gated to metered lanes, absent = no footer, never while streaming) |
 | `UserMessage` | Right-aligned contrast-safe bubble, attachment thumbnails, copy |
 | `ActivityGroup` | Collapsed header (`humanizeActivity`: 'Searched the web · 3 calls · 12s', spinner live, failed marker) → inline rows → `onOpenCall` |
 | `ToolCallDrawer` | BakinDrawer: status/duration/callId + pretty-printed copyable input/output/metadata (+ honest truncated marker) |

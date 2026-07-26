@@ -9,6 +9,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowDown } from 'lucide-react'
 
 import { AgentTurn, type AgentTurnProps } from './agent-turn'
+import type { ConversationTurnUsage } from './turn-usage'
 import { UserMessage } from './user-message'
 import type { ConversationTurn } from './fold'
 import { dayKey, formatDayLabel } from './relative-time'
@@ -24,6 +25,10 @@ export interface ConversationProps {
   onRetry?: AgentTurnProps['onRetry']
   onOpenCall?: AgentTurnProps['onOpenCall']
   transformText?: AgentTurnProps['transformText']
+  /** Per-turn recorded usage keyed by turnId (#733) — opt-in footers. */
+  turnUsage?: Record<string, ConversationTurnUsage>
+  /** ~tokens streamed so far — handed only to the streaming turn. */
+  liveOutEstimate?: number
   className?: string
 }
 
@@ -34,6 +39,8 @@ export function Conversation({
   onRetry,
   onOpenCall,
   transformText,
+  turnUsage,
+  liveOutEstimate,
   className,
 }: ConversationProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null)
@@ -92,6 +99,8 @@ export function Conversation({
                       onRetry={turn.status === 'error' ? onRetry : undefined}
                       onOpenCall={onOpenCall}
                       transformText={transformText}
+                      usage={turn.turnId ? turnUsage?.[turn.turnId] : undefined}
+                      liveOutEstimate={turn.status === 'streaming' ? liveOutEstimate : undefined}
                     />
                   )}
                 </div>
