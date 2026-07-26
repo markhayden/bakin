@@ -12,14 +12,17 @@ import type { CapabilityMode } from '@bakin/core/adapters/runtime'
 import type { ChannelBridge, ChannelSurface } from '@bakin/core/delivery'
 import { createLogger } from '@/core/logger'
 import { isDiscordConfigured, readDiscordConfig } from './config'
+import { auditDelivery } from './audit'
 import type { DiscordTransport } from './discord/client'
 import type { ChannelCache } from './discord/channel-cache'
+import type { SendSurface } from './discord/send'
 
 const log = createLogger('delivery')
 
 export interface BridgeState {
   transport: DiscordTransport
   cache: ChannelCache
+  send: SendSurface
 }
 
 let state: BridgeState | null = null
@@ -36,14 +39,16 @@ function notImplemented(surface: string): never {
 
 const channels: ChannelSurface = {
   list: async () => requireState().cache.list(),
-  sendNotification: async () => notImplemented('sendNotification'),
-  sendMessage: async () => notImplemented('sendMessage'),
-  deliverContent: async () => notImplemented('deliverContent'),
+  sendNotification: async (args) => requireState().send.sendNotification(args),
+  sendMessage: async (args) => requireState().send.sendMessage(args),
+  deliverContent: async (args) => requireState().send.deliverContent(args),
   createApproval: async () => notImplemented('createApproval'),
   editApproval: async () => notImplemented('editApproval'),
   cancelApproval: async () => notImplemented('cancelApproval'),
   resolveApproval: async () => notImplemented('resolveApproval'),
   subscribeApprovalResponses: () => notImplemented('subscribeApprovalResponses'),
+  createThread: async (args) => requireState().send.createThread(args),
+  editMessage: async (args) => requireState().send.editMessage(args),
 }
 
 const bridge: ChannelBridge = {
@@ -53,8 +58,9 @@ const bridge: ChannelBridge = {
     if (state) return
     const { settings, token } = readDiscordConfig()
     if (!isDiscordConfigured() || !token) return
-    const { createDiscordTransport } = await import('./discord/client')
+    const { createDiscordTransport, sendApiFromTransport } = await import('./discord/client')
     const { createChannelCache } = await import('./discord/channel-cache')
+    const { createSendSurface } = await import('./discord/send')
     const transport = createDiscordTransport(token)
     await transport.connect()
     const cache = createChannelCache({
@@ -68,7 +74,9 @@ const bridge: ChannelBridge = {
     } catch (err) {
       log.warn('Discord channel enumeration failed at boot', err)
     }
-    state = { transport, cache }
+    const send = createSendSurface({ api: sendApiFromTransport(transport) })
+    state = { transport, cache, send }
+    auditDelivery('delivery.connected', { guilds: settings.guildIds.length })
   },
 
   async shutdown() {
@@ -76,6 +84,7 @@ const bridge: ChannelBridge = {
     const closing = state
     state = null
     await closing.transport.destroy()
+    auditDelivery('delivery.disconnected', {})
   },
 
   channels,

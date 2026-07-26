@@ -10,7 +10,7 @@ Plan: `.claude/specs/discord-bridge/PLAN.md`
 - [x] A1 Neutral ChannelBridge contract + AdapterInitOpts.channelBridge
 - [x] A2 settings.integrations.discord + config module + System & Alerts fields
 - [x] A3 Discord client lifecycle + boot gating + arch confinement
-- [ ] A4 Send surface (embeds/content/threads/edits/DM/chunking/retry) + audit
+- [x] A4 Send surface (embeds/content/threads/edits/DM/chunking/retry) + audit
 - [ ] A5 Approval cards + modal reject + allowlist → ApprovalResolveEvent
 - [ ] A6 adapter-pi delegation ('shimmed') + conformance pin + gate round-trip test
 - [ ] A7 delivery.discord doctor check + Integrations & Keys token entry

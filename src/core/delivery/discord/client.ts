@@ -7,8 +7,10 @@
 import { Client, GatewayDispatchEvents, GatewayIntentBits } from '@discordjs/core'
 import { REST } from '@discordjs/rest'
 import { WebSocketManager } from '@discordjs/ws'
+import type { APIEmbed } from 'discord-api-types/v10'
 import { createLogger } from '@/core/logger'
 import type { ApiChannelLike } from './channel-info'
+import type { SendApi } from './send'
 
 const log = createLogger('delivery-discord')
 
@@ -82,6 +84,36 @@ export function createDiscordTransport(token: string): DiscordTransport {
         name: 'name' in channel ? channel.name : null,
         type: channel.type as number,
       }))
+    },
+  }
+}
+
+/** Bind the neutral SendApi (see send.ts) to the live transport. */
+export function sendApiFromTransport(transport: DiscordTransport): SendApi {
+  return {
+    async createMessage(channelId, payload) {
+      const message = await transport.api.channels.createMessage(channelId, {
+        ...(payload.content ? { content: payload.content } : {}),
+        ...(payload.embeds ? { embeds: payload.embeds as APIEmbed[] } : {}),
+        ...(payload.files?.length
+          ? { files: payload.files.map(file => ({ name: file.name, data: file.data, contentType: file.contentType })) }
+          : {}),
+      })
+      return { id: message.id }
+    },
+    async editMessage(channelId, messageId, body) {
+      await transport.api.channels.editMessage(channelId, messageId, { content: body })
+    },
+    async startThread(channelId, name, messageId) {
+      // 11 = PublicThread (required when the thread is not anchored to a message).
+      const thread = messageId
+        ? await transport.api.channels.createThread(channelId, { name }, messageId)
+        : await transport.api.channels.createThread(channelId, { name, type: 11 })
+      return { id: thread.id }
+    },
+    async createDM(userId) {
+      const channel = await transport.api.users.createDM(userId)
+      return { id: channel.id }
     },
   }
 }
