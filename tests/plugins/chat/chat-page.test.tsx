@@ -337,11 +337,13 @@ describe('ChatView', () => {
       expect(container.querySelectorAll('[data-conv-usage]').length).toBe(2)
     })
     const footers = [...container.querySelectorAll('[data-conv-usage]')].map((el) => el.textContent)
-    expect(footers[0]).toContain('14.2k in / 890 out')
+    // Billed-first cost explainer (#737): in+out fallback bill, no-tool
+    // turns collapse to one line.
+    expect(footers[0]).toContain('15.1k billed')
     expect(footers[0]).toContain('$0.03')
     expect(footers[0]).toContain('claude-sonnet-5')
     // Subscription lane: tokens only.
-    expect(footers[1]).toContain('22.1k in')
+    expect(footers[1]).toContain('23.3k billed')
     expect(footers[1]).not.toContain('$')
     // The totals chip in the header — plain words, no Σ sigil (review:
     // "nobody will understand that").
@@ -379,6 +381,110 @@ describe('ChatView', () => {
     const chip = container.querySelector('[data-chat-usage-totals]')!
     expect(chip.textContent).toContain('10.5k tokens')
     expect(chip.textContent).not.toContain('~')
+    cleanup()
+  })
+
+  it('renders the compaction bar in the header from GET contextStats (#737)', async () => {
+    mockFetch({
+      [`/chats/${CHAT_A}/seen`]: {},
+      capabilities: { imageInput: false },
+      [`/chats/${CHAT_A}`]: {
+        chat: summary(),
+        messages: [{ kind: 'user', ts: '2026-07-11T10:00:00.000Z', content: 'hi' }],
+        usage: {},
+        contextStats: { tokens: 45_300, contextWindow: 272_000, compactionThreshold: 255_616, model: 'gpt-5.5' },
+      },
+    })
+    const { container } = render(<ChatView chatId={CHAT_A} onChanged={() => {}} />)
+    await waitFor(() => {
+      const meter = container.querySelector('[data-context-meter]')
+      expect(meter).not.toBeNull()
+      expect(meter!.textContent).toContain('45.3k / 272k (16%)')
+    })
+    expect(container.querySelector('[data-context-tick]')).not.toBeNull()
+    cleanup()
+  })
+
+  it('truthy stats that render NOTHING (stale store, no compaction) leave no dangling separator', async () => {
+    mockFetch({
+      [`/chats/${CHAT_A}/seen`]: {},
+      capabilities: { imageInput: false },
+      [`/chats/${CHAT_A}`]: {
+        chat: summary(),
+        messages: [{ kind: 'user', ts: '2026-07-11T10:00:00.000Z', content: 'hi' }],
+        usage: { t1: { totalTokens: 10_000, costUsd: 0.02, lane: 'metered' } },
+        usageTotals: { turns: 1, totalTokens: 10_000, costUsd: 0.02 },
+        // The stale-store shape: truthy object, meter draws nothing.
+        contextStats: { tokens: null, contextWindow: 272_000, compactionThreshold: null },
+      },
+    })
+    const { container } = render(<ChatView chatId={CHAT_A} onChanged={() => {}} />)
+    await waitFor(() => {
+      expect(container.querySelector('[data-chat-usage-totals]')).not.toBeNull()
+    })
+    expect(container.querySelector('[data-context-meter]')).toBeNull()
+    const chip = container.querySelector('[data-chat-usage-totals]')!
+    expect(chip.textContent!.trimStart().startsWith('·')).toBe(false)
+    cleanup()
+  })
+
+  it('a post-compaction gap renders the honest "context —" bar (#737 e2e)', async () => {
+    mockFetch({
+      [`/chats/${CHAT_A}/seen`]: {},
+      capabilities: { imageInput: false },
+      [`/chats/${CHAT_A}`]: {
+        chat: summary(),
+        messages: [{ kind: 'user', ts: '2026-07-11T10:00:00.000Z', content: 'hi' }],
+        usage: {},
+        contextStats: {
+          tokens: null,
+          contextWindow: 272_000,
+          compactionThreshold: null,
+          lastCompaction: { at: new Date(Date.now() - 120_000).toISOString(), tokensBefore: 253_000 },
+        },
+      },
+    })
+    const { container } = render(<ChatView chatId={CHAT_A} onChanged={() => {}} />)
+    await waitFor(() => {
+      const meter = container.querySelector('[data-context-meter]')
+      expect(meter).not.toBeNull()
+      expect(meter!.textContent).toContain('context —')
+      expect(meter!.textContent!.toLowerCase()).toContain('compacted')
+    })
+    cleanup()
+  })
+
+  it('the header carries agent identity only as the avatar tooltip; the working ticker is gone', async () => {
+    mockFetch({
+      [`/chats/${CHAT_A}/seen`]: {},
+      capabilities: { imageInput: false },
+      [`/chats/${CHAT_A}`]: {
+        chat: summary({ streaming: true }),
+        messages: [],
+        usage: {},
+      },
+    })
+    const { container } = render(<ChatView chatId={CHAT_A} onChanged={() => {}} />)
+    await waitFor(() => expect(container.querySelector('[data-chat-title]')).not.toBeNull())
+    const avatarWrap = container.querySelector('span[title="main"]')
+    expect(avatarWrap).not.toBeNull()
+    // The name never renders as visible header text …
+    const headerLine = container.querySelector('.min-h-4')
+    expect(headerLine?.textContent).not.toContain('main')
+    // … and the removed working ticker stays removed.
+    expect(container.querySelector('[data-chat-header-working]')).toBeNull()
+    cleanup()
+  })
+
+  it('no contextStats from the server → no bar (capability absent = honest absence)', async () => {
+    mockFetch({
+      [`/chats/${CHAT_A}/seen`]: {},
+      capabilities: { imageInput: false },
+      [`/chats/${CHAT_A}`]: { chat: summary(), messages: [], usage: {} },
+    })
+    const { container } = render(<ChatView chatId={CHAT_A} onChanged={() => {}} />)
+    await settleReact()
+    expect(container.querySelector('[data-context-meter]')).toBeNull()
     cleanup()
   })
 

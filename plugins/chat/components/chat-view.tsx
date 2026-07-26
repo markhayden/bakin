@@ -5,7 +5,7 @@
  * created on first send.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, Check, Loader2, Pencil, Pin } from 'lucide-react'
+import { AlertTriangle, Check, Pencil, Pin } from 'lucide-react'
 import { toast } from '@makinbakin/sdk/hooks'
 import {
   AgentAvatar,
@@ -21,7 +21,7 @@ import {
 } from '@makinbakin/sdk/components'
 import { useAgent } from '@makinbakin/sdk/hooks'
 
-import { formatTokenCount, formatUsageCost } from '@makinbakin/sdk/components'
+import { ContextMeter, contextMeterHasContent, formatTokenCount, formatUsageCost, type ContextMeterStats } from '@makinbakin/sdk/components'
 
 import {
   patchChatRequest,
@@ -169,15 +169,15 @@ function InlineTitle({ chat, onChanged }: { chat: ChatSummaryDto; onChanged: () 
 function ViewHeader({
   agentId,
   chat,
-  streaming,
   usageTotals,
+  contextStats,
   onChanged,
   refreshChat,
 }: {
   agentId: string
   chat: ChatSummaryDto | null
-  streaming: boolean
   usageTotals?: ChatUsageTotals | null
+  contextStats?: ContextMeterStats | null
   onChanged: () => void
   refreshChat?: () => Promise<void>
 }) {
@@ -192,27 +192,34 @@ function ViewHeader({
   if (usageTotals?.costUsd !== undefined) totalParts.push(formatUsageCost(usageTotals.costUsd))
   return (
     <div className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-2.5">
-      <AgentAvatar agentId={agentId} size="sm" />
+      {/* The avatar carries the agent identity (name in its tooltip +
+          aria-label) — same convention as agent turns; no redundant name
+          text. */}
+      <span title={agent?.name ?? agentId} aria-label={`Agent: ${agent?.name ?? agentId}`}>
+        <AgentAvatar agentId={agentId} size="sm" />
+      </span>
       <div className="min-w-0 flex-1">
         {chat ? (
           <InlineTitle chat={chat} onChanged={onChanged} />
         ) : (
           <span className="text-sm font-medium">New chat</span>
         )}
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <span>{agent?.name ?? agentId}</span>
+        {/* min-h keeps the header height stable while the GET is in
+            flight (the line used to be filled by the agent name). */}
+        <div className="flex min-h-4 items-center gap-1.5 text-xs text-muted-foreground">
+          {/* The compaction bar (#737) leads — runtime truth only; renders
+              nothing when there's nothing honest to show. */}
+          <ContextMeter stats={contextStats} />
           {totalParts.length ? (
             <span
               data-chat-usage-totals
               title="Total recorded usage for this chat"
               className="text-muted-foreground/80"
             >
-              · {totalParts.join(' · ')}
-            </span>
-          ) : null}
-          {streaming ? (
-            <span className="flex items-center gap-1" data-chat-header-working>
-              · <Loader2 className="size-3 animate-spin" /> working…
+              {/* Separator only when the meter actually RENDERED — a
+                  truthy stats object can still draw nothing (predicate
+                  is the kit's single source of truth). */}
+              {contextMeterHasContent(contextStats) ? '· ' : ''}{totalParts.join(' · ')}
             </span>
           ) : null}
         </div>
@@ -303,7 +310,7 @@ export function DraftChatView({
 
   return (
     <div className="flex min-w-0 flex-1 flex-col" data-chat-draft>
-      <ViewHeader agentId={agentId} chat={null} streaming={false} onChanged={() => {}} />
+      <ViewHeader agentId={agentId} chat={null} onChanged={() => {}} />
       <div className="flex flex-1 items-center justify-center p-6">
         <ConversationEmptyState
           title={`Chat with ${name}`}
@@ -351,7 +358,7 @@ export function DraftChatView({
 }
 
 export function ChatView({ chatId, onChanged }: { chatId: string; onChanged: () => void }) {
-  const { chat, messages, liveChunks, streaming, sendError, queued, removeQueued, turnUsage, usageTotals, send, abort, retry, refreshChat } = useChatStream(chatId)
+  const { chat, messages, liveChunks, streaming, sendError, queued, removeQueued, turnUsage, usageTotals, contextStats, send, abort, retry, refreshChat } = useChatStream(chatId)
   const [openCall, setOpenCall] = useState<ConversationToolCall | null>(null)
   const attachments = useComposerAttachments(chatId, chat?.agentId ?? '')
   const composerHandle = useRef<ComposerHandle | null>(null)
@@ -392,7 +399,7 @@ export function ChatView({ chatId, onChanged }: { chatId: string; onChanged: () 
 
   return (
     <div className="flex min-w-0 flex-1 flex-col">
-      <ViewHeader agentId={chat.agentId} chat={chat} streaming={streaming} usageTotals={usageTotals} onChanged={onChanged} refreshChat={refreshChat} />
+      <ViewHeader agentId={chat.agentId} chat={chat} usageTotals={usageTotals} contextStats={contextStats} onChanged={onChanged} refreshChat={refreshChat} />
 
       <Conversation
         turns={turns}

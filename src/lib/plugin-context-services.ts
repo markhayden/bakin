@@ -268,6 +268,11 @@ export function createPluginRuntimeFacade(runtime: AgentRuntimeAdapter): AgentRu
     sessions: {
       list: runtime.sessions.list.bind(runtime.sessions),
       get: runtime.sessions.get.bind(runtime.sessions),
+      // Optional members pass through ONLY when the adapter exposes them —
+      // absence stays absence (feature-detection contract, #737).
+      ...(runtime.sessions.contextStats
+        ? { contextStats: runtime.sessions.contextStats.bind(runtime.sessions) }
+        : {}),
     },
     memory: {
       listTiers: runtime.memory.listTiers.bind(runtime.memory),

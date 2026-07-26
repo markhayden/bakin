@@ -24,6 +24,7 @@ import { createExtensionsSurface } from './extensions'
 import { codexImageAuth } from './codex-images'
 import { resolveProviderApiKeySource } from '@bakin/core/media'
 import { createSessionsSurface } from './sessions'
+import { sessionContextStats } from './context-stats'
 import { createSkillsSurface } from './skills'
 
 export interface PiRuntimeAdapterOptions {
@@ -221,7 +222,13 @@ export class PiRuntimeAdapter implements AgentRuntimeAdapter {
 
   skills: AgentRuntimeAdapter['skills'] = createSkillsSurface()
 
-  sessions: AgentRuntimeAdapter['sessions'] = createSessionsSurface()
+  // contextStats joins the surface HERE (not in sessions.ts) — the
+  // context-stats module imports messaging's settings manager, and a
+  // sessions.ts import would close a cycle (CI check:cycles).
+  sessions: AgentRuntimeAdapter['sessions'] = {
+    ...createSessionsSurface(),
+    contextStats: sessionContextStats,
+  }
 
   memory: AgentRuntimeAdapter['memory'] = createMemorySurface()
 

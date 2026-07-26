@@ -110,12 +110,66 @@ describe('GET /chats/:chatId usage decoration', () => {
     })
   })
 
+  test('an all-subscription chat sums tokens with NO costUsd on totals (unit-per-lane, negative direction)', async () => {
+    const chat = await createChat({ agentId: 'main' })
+    recordRunCost({
+      workClass: 'chat', runId: `chat:${chat.id}:turn:s1`, agent: 'main', model: 'pi/pi-local',
+      lane: 'subscription', inputTokens: 10_000, outputTokens: 500, totalTokens: 10_500, occurredAt: T0 + 1,
+    })
+    recordRunCost({
+      workClass: 'chat', runId: `chat:${chat.id}:turn:s2`, agent: 'main', model: 'pi/pi-local',
+      lane: 'subscription', inputTokens: 12_000, outputTokens: 700, totalTokens: 12_700, occurredAt: T0 + 2,
+    })
+    const get = findRoute(activated.routes, 'GET', '/chats/:chatId')!
+    const res = await callRoute(get, activated.ctx, { path: `/chats/${chat.id}` })
+    const totals = res.body.usageTotals as Record<string, unknown>
+    expect(totals).toMatchObject({ turns: 2, totalTokens: 23_200 })
+    expect(totals.costUsd).toBeUndefined()
+  })
+
   test('a chat with no recorded turns gets an empty map and NO totals field', async () => {
     const chat = await createChat({ agentId: 'main' })
     const get = findRoute(activated.routes, 'GET', '/chats/:chatId')!
     const res = await callRoute(get, activated.ctx, { path: `/chats/${chat.id}` })
     expect(res.body.usage).toEqual({})
     expect(res.body.usageTotals).toBeUndefined()
+  })
+})
+
+describe('GET /chats/:chatId contextStats decoration (#737)', () => {
+  test('decorates from the adapter member with the chat threadId; throwing member omits honestly', async () => {
+    const chat = await createChat({ agentId: 'main' })
+    const calls: Array<{ agentId: string; threadId: string }> = []
+    ;(activated.ctx.runtime.sessions as { contextStats?: unknown }).contextStats = async (opts: { agentId: string; threadId: string }) => {
+      calls.push(opts)
+      return { tokens: 45_300, contextWindow: 272_000, compactionThreshold: 255_616, model: 'gpt-5.5' }
+    }
+    const get = findRoute(activated.routes, 'GET', '/chats/:chatId')!
+    const res = await callRoute(get, activated.ctx, { path: `/chats/${chat.id}` })
+    expect(res.body.contextStats).toMatchObject({ tokens: 45_300, contextWindow: 272_000 })
+    expect(calls[0]).toEqual({ agentId: 'main', threadId: `chat:${chat.id}` })
+
+    // A throwing member serves the transcript WITHOUT the field.
+    ;(activated.ctx.runtime.sessions as { contextStats?: unknown }).contextStats = async () => {
+      throw new Error('adapter exploded')
+    }
+    const res2 = await callRoute(get, activated.ctx, { path: `/chats/${chat.id}` })
+    expect(res2.status).toBe(200)
+    expect(res2.body.contextStats).toBeUndefined()
+
+    // Absent member (capability off) → field absent.
+    delete (activated.ctx.runtime.sessions as { contextStats?: unknown }).contextStats
+    const res3 = await callRoute(get, activated.ctx, { path: `/chats/${chat.id}` })
+    expect(res3.body.contextStats).toBeUndefined()
+  })
+
+  test('a null adapter reading (no session yet) omits the field', async () => {
+    const chat = await createChat({ agentId: 'main' })
+    ;(activated.ctx.runtime.sessions as { contextStats?: unknown }).contextStats = async () => null
+    const get = findRoute(activated.routes, 'GET', '/chats/:chatId')!
+    const res = await callRoute(get, activated.ctx, { path: `/chats/${chat.id}` })
+    expect(res.body.contextStats).toBeUndefined()
+    delete (activated.ctx.runtime.sessions as { contextStats?: unknown }).contextStats
   })
 })
 

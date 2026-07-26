@@ -10,6 +10,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { emitPluginEvent, usePluginEvent } from '@makinbakin/sdk/hooks'
 import {
   useConversationThread,
+  type ContextMeterStats,
   type ConversationMessage,
   type ConversationQueuedItem,
   type ConversationTurnUsage,
@@ -236,6 +237,8 @@ export interface ChatStreamState {
   turnUsage: Record<string, ConversationTurnUsage>
   /** Chat-level usage sums; null when nothing is recorded (no chip). */
   usageTotals: ChatUsageTotals | null
+  /** Runtime context reading (#737); null = no bar (honest absence). */
+  contextStats: ContextMeterStats | null
   send: (content: string, attachments?: Array<{ name: string; mimeType: string; path: string }>) => Promise<void>
   abort: () => void
   /** Re-send the newest user message (error-turn "Try again"). */
@@ -251,9 +254,18 @@ export function useChatStream(chatId: string): ChatStreamState {
   // lastUserRef): the kit's load contract stays usage-agnostic.
   const [turnUsage, setTurnUsage] = useState<Record<string, ConversationTurnUsage>>({})
   const [usageTotals, setUsageTotals] = useState<ChatUsageTotals | null>(null)
+  const [contextStats, setContextStats] = useState<ContextMeterStats | null>(null)
+  // Last-started-wins guard for the decoration side-effects: overlapping
+  // GETs for the SAME chat are routine (mount + queued/started refetch +
+  // settle refetch), and the kit's own staleness guard protects only its
+  // state — without this, an earlier-started GET resolving late regresses
+  // the bar/footers to pre-turn numbers (review finding: a bar that moves
+  // backwards).
+  const decorSeqRef = useRef(0)
   useEffect(() => {
     setTurnUsage({})
     setUsageTotals(null)
+    setContextStats(null)
   }, [chatId])
   // Guards the lastUserRef side effect below: a slow load for a PREVIOUS
   // chat must never overwrite the retry payload after a switch (the kit's
@@ -270,6 +282,7 @@ export function useChatStream(chatId: string): ChatStreamState {
     events: { chunk: 'chat.chunk', done: 'chat.done', error: 'chat.error' },
     keyOf: (payload) => payload.chatId,
     load: async (key) => {
+      const decorSeq = ++decorSeqRef.current
       const res = await pluginFetch('chat', `chats/${key}`)
       if (!res.ok) return null
       const body = (await res.json()) as {
@@ -278,13 +291,15 @@ export function useChatStream(chatId: string): ChatStreamState {
         queued?: ChatQueuedDto[]
         usage?: Record<string, ConversationTurnUsage>
         usageTotals?: ChatUsageTotals
+        contextStats?: ContextMeterStats
         streamingText?: string
       }
-      if (key === chatIdRef.current) {
+      if (key === chatIdRef.current && decorSeq === decorSeqRef.current) {
         const lastUser = [...body.messages].reverse().find((r) => r.kind === 'user')
         if (lastUser?.kind === 'user') lastUserRef.current = { content: lastUser.content, attachments: lastUser.attachments }
         setTurnUsage(body.usage ?? {})
         setUsageTotals(body.usageTotals ?? null)
+        setContextStats(body.contextStats ?? null)
       }
       return {
         messages: body.messages.map((row) => rowToMessage(key, row)),
@@ -375,6 +390,7 @@ export function useChatStream(chatId: string): ChatStreamState {
     removeQueued: thread.removeQueued,
     turnUsage,
     usageTotals,
+    contextStats,
     send,
     abort,
     retry,

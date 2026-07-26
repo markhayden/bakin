@@ -98,6 +98,7 @@ import {
 } from './approval-helpers'
 import { openClawCliSessionId, openClawExplicitSessionKey } from './session-store'
 import { getOpenClawSession, listOpenClawSessions } from './sessions'
+import { openClawSessionContextStats } from './context-stats'
 import {
   streamOpenClawTurnChunks,
   tapOpenClawTurnActivity,
@@ -937,6 +938,9 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   sessions = {
     list: async (agentId?: string) => listOpenClawSessions(agentId),
     get: async (sessionId: string) => getOpenClawSession(sessionId),
+    // The honest context reading (#737) — pure store read, null-honest;
+    // see context-stats.ts for the freshness/threshold gates.
+    contextStats: openClawSessionContextStats,
     storeStats: async (): Promise<RuntimeSessionStoreStats[]> => {
       const agentsDir = getOpenClawPath('agents')
       if (!existsSync(agentsDir)) return []

@@ -320,6 +320,79 @@ describe('useAgentImageInput stale-while-revalidate (#731)', () => {
   })
 })
 
+describe('usage decoration staleness (#737 review)', () => {
+  it('the settle refetch updates totals + bar (chat.done → fresh GET body applies)', async () => {
+    const stub = stubFetch()
+    let phase = 0
+    stub.routes.set(`GET chats/${CHAT_A}`, () => {
+      phase++
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            chat: summary(CHAT_A),
+            messages: [],
+            usage: {},
+            usageTotals: { turns: phase, totalTokens: phase === 1 ? 10_000 : 25_000 },
+            contextStats: { tokens: phase === 1 ? 40_000 : 66_000, contextWindow: 272_000, compactionThreshold: null },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      )
+    })
+    const { result } = renderHook(() => useChatStream(CHAT_A))
+    await waitFor(() => expect(result.current.usageTotals?.totalTokens).toBe(10_000))
+    // A turn settles → the kit refetches → the fresh decoration applies.
+    act(() => { emitPluginEvent({ event: 'chat.done', chatId: CHAT_A }) })
+    await waitFor(() => expect(result.current.usageTotals?.totalTokens).toBe(25_000))
+    expect(result.current.contextStats?.tokens).toBe(66_000)
+  })
+
+  it('an earlier-started GET resolving late never regresses the bar/totals (last-started wins)', async () => {
+    const stub = stubFetch()
+    const bodies = [
+      // First-started (stale) snapshot: pre-turn numbers.
+      {
+        chat: summary(CHAT_A),
+        messages: [],
+        usage: {},
+        usageTotals: { turns: 1, totalTokens: 10_000 },
+        contextStats: { tokens: 40_000, contextWindow: 272_000, compactionThreshold: null },
+      },
+      // Second-started (fresh) snapshot: post-turn numbers.
+      {
+        chat: summary(CHAT_A),
+        messages: [],
+        usage: {},
+        usageTotals: { turns: 2, totalTokens: 25_000 },
+        contextStats: { tokens: 66_000, contextWindow: 272_000, compactionThreshold: null },
+      },
+    ]
+    const resolvers: Array<(r: Response) => void> = []
+    let calls = 0
+    stub.routes.set(`GET chats/${CHAT_A}`, () => {
+      const idx = Math.min(calls++, 1)
+      return new Promise<Response>((resolve) => {
+        resolvers[idx] = (r) => resolve(r)
+      })
+    })
+    const { result } = renderHook(() => useChatStream(CHAT_A))
+    await act(async () => {}) // mount load pending (call 0)
+    act(() => { void result.current.refreshChat() }) // second load pending (call 1)
+    await act(async () => {})
+
+    const asResponse = (b: unknown) =>
+      new Response(JSON.stringify(b), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    // Fresh resolves FIRST…
+    await act(async () => { resolvers[1]?.(asResponse(bodies[1])) })
+    await waitFor(() => expect(result.current.contextStats?.tokens).toBe(66_000))
+    // …then the stale one lands late. It must NOT move the bar backwards.
+    await act(async () => { resolvers[0]?.(asResponse(bodies[0])) })
+    await act(async () => {})
+    expect(result.current.contextStats?.tokens).toBe(66_000)
+    expect(result.current.usageTotals?.totalTokens).toBe(25_000)
+  })
+})
+
 describe('queued follow-ups (#729 client)', () => {
   it('send while streaming posts and records a queued row — no busy error, live turn untouched', async () => {
     const stub = stubFetch()

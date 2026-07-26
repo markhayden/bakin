@@ -9,6 +9,8 @@
  * fabricated dollars); missing numbers are ABSENT, never zero; a ledger
  * failure yields undefined (the transcript still serves).
  */
+import type { AgentRuntimeAdapter, RuntimeSessionContextStats } from '@bakin/core/adapters/runtime'
+
 import {
   listRunCostsByPrefix,
   type RunCostByPrefixRow,
@@ -92,6 +94,28 @@ export function buildTurnUsage(rows: RunCostByPrefixRow[]): ChatUsageDecoration 
           },
         }
       : {}),
+  }
+}
+
+/**
+ * The compaction-bar source (#737): the runtime's own context reading for
+ * this chat's session, feature-detected. Absent member, null reading, or
+ * a throwing adapter all yield undefined — the GET omits the field and
+ * the UI renders no bar (honest absence; the transcript still serves).
+ */
+export async function chatContextStats(
+  sessions: AgentRuntimeAdapter['sessions'],
+  agentId: string,
+  chatId: string,
+): Promise<RuntimeSessionContextStats | undefined> {
+  const member = sessions.contextStats
+  if (!member) return undefined
+  try {
+    const stats = await member.call(sessions, { agentId, threadId: `chat:${chatId}` })
+    return stats ?? undefined
+  } catch (err) {
+    log.error(`context-stats read failed for chat ${chatId} — serving without the bar`, err as Error)
+    return undefined
   }
 }
 

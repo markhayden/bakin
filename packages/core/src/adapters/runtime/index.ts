@@ -94,6 +94,7 @@ export type {
   RawCronSnapshot,
   RuntimeSession,
   RuntimeSessionStoreStats,
+  RuntimeSessionContextStats,
   RuntimeSkill,
   UpdateCronJobInput,
   UpdateRuntimeAgentInput,
