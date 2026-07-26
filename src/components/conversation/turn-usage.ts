@@ -70,7 +70,10 @@ export function usageFooterLines(usage: ConversationTurnUsage, toolCallCount: nu
     return legacy.length ? [legacy.join(' · ')] : []
   }
   const parts: string[] = [`${formatTokenCount(billed)} billed`]
-  if (usage.cacheReadTokens !== undefined && billed > 0) {
+  // cached% only when it's a coherent share of THIS billed base — a
+  // cacheRead above the (possibly in+out-fallback) bill would print an
+  // impossible ">100% cached" (never fabricate; omit).
+  if (usage.cacheReadTokens !== undefined && billed > 0 && usage.cacheReadTokens <= billed) {
     parts.push(`${Math.round((usage.cacheReadTokens / billed) * 100)}% cached`)
   }
   if (toolCallCount > 0) parts.push(`~${toolCallCount + 1} requests`)

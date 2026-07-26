@@ -21,7 +21,7 @@ import {
 } from '@makinbakin/sdk/components'
 import { useAgent } from '@makinbakin/sdk/hooks'
 
-import { ContextMeter, formatTokenCount, formatUsageCost, type ContextMeterStats } from '@makinbakin/sdk/components'
+import { ContextMeter, contextMeterHasContent, formatTokenCount, formatUsageCost, type ContextMeterStats } from '@makinbakin/sdk/components'
 
 import {
   patchChatRequest,
@@ -192,9 +192,10 @@ function ViewHeader({
   if (usageTotals?.costUsd !== undefined) totalParts.push(formatUsageCost(usageTotals.costUsd))
   return (
     <div className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-2.5">
-      {/* The avatar carries the agent identity (name in its tooltip) —
-          same convention as agent turns; no redundant name text. */}
-      <span title={agent?.name ?? agentId}>
+      {/* The avatar carries the agent identity (name in its tooltip +
+          aria-label) — same convention as agent turns; no redundant name
+          text. */}
+      <span title={agent?.name ?? agentId} aria-label={`Agent: ${agent?.name ?? agentId}`}>
         <AgentAvatar agentId={agentId} size="sm" />
       </span>
       <div className="min-w-0 flex-1">
@@ -203,7 +204,9 @@ function ViewHeader({
         ) : (
           <span className="text-sm font-medium">New chat</span>
         )}
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        {/* min-h keeps the header height stable while the GET is in
+            flight (the line used to be filled by the agent name). */}
+        <div className="flex min-h-4 items-center gap-1.5 text-xs text-muted-foreground">
           {/* The compaction bar (#737) leads — runtime truth only; renders
               nothing when there's nothing honest to show. */}
           <ContextMeter stats={contextStats} />
@@ -213,7 +216,10 @@ function ViewHeader({
               title="Total recorded usage for this chat"
               className="text-muted-foreground/80"
             >
-              {contextStats ? '· ' : ''}{totalParts.join(' · ')}
+              {/* Separator only when the meter actually RENDERED — a
+                  truthy stats object can still draw nothing (predicate
+                  is the kit's single source of truth). */}
+              {contextMeterHasContent(contextStats) ? '· ' : ''}{totalParts.join(' · ')}
             </span>
           ) : null}
         </div>

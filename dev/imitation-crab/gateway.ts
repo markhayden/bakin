@@ -209,7 +209,7 @@ function postAbortFinal(run: ActiveRun): GatewayRpcResponse {
  * Written at run acceptance like the real wire; sessionStartedAt is
  * preserved across turns on the same key, updatedAt refreshes.
  */
-function recordSessionStoreEntry(agentId: string, sessionKey: string, sessionId: string | null): void {
+function recordSessionStoreEntry(agentId: string, sessionKey: string, sessionId: string | null, opts?: { staleContext?: boolean }): void {
   const dir = join(getMockHome(), 'agents', agentId, 'sessions')
   mkdirSync(dir, { recursive: true })
   const path = join(dir, 'sessions.json')
@@ -241,7 +241,7 @@ function recordSessionStoreEntry(agentId: string, sessionKey: string, sessionId:
     chatType: 'direct',
     contextTokens: 272_000,
     totalTokens: priorTotal + 500,
-    totalTokensFresh: true,
+    totalTokensFresh: opts?.staleContext !== true,
   }
   writeFileSync(path, JSON.stringify(store, null, 2))
 }
@@ -406,7 +406,11 @@ export async function handleGatewayRpcRequest(method: string, params: Record<str
     // the combined drain. Per-message, unlike OPENCLAW_MOCK_CHAT_MODE=slow
     // which parks BEFORE streaming and slows every turn globally.
     const wantsSlow = userMessage.includes('[[slow]]')
-    const cleanMessage = userMessage.replace(/ ?\[\[(tool|dropped-delta|slow)\]\]/g, '')
+    // [[stale-context]] — the honest-absence showcase (#737): the store
+    // entry writes totalTokensFresh: false, so sessions.contextStats reads
+    // tokens null and the chat bar renders nothing for this session.
+    const wantsStaleContext = userMessage.includes('[[stale-context]]')
+    const cleanMessage = userMessage.replace(/ ?\[\[(tool|dropped-delta|slow|stale-context)\]\]/g, '')
 
     // Acknowledge inbound attachments (the real gateway's native `attachments`
     // param) so chat-attachment e2e drives can assert the pixels arrived.
@@ -460,7 +464,7 @@ export async function handleGatewayRpcRequest(method: string, params: Record<str
       payloadSeq: 0,
     }
     if (abortRegistered) activeRuns.set(runId, run)
-    recordSessionStoreEntry(agentId, sessionKey, sessionId)
+    recordSessionStoreEntry(agentId, sessionKey, sessionId, { staleContext: wantsStaleContext })
     const observed: ObservedAgentRun = { runId, sessionKey, agentId }
     observedAgentRuns.push(observed)
     console.log(`  → rpc=agent agent=${agentId} run=${runId} registered=${abortRegistered} message=${userMessage.slice(0, 80)}${userMessage.length > 80 ? '...' : ''}`)

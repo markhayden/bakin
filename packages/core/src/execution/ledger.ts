@@ -1101,22 +1101,25 @@ export interface RunCostByPrefixRow {
 /**
  * Cost rows whose run_id starts with `prefix`, oldest first (#733) — the
  * per-turn usage join for conversational threads (chat passes
- * `chat:<chatId>:turn:`). PK-index prefix scan; LIKE wildcards in the
- * prefix are escaped so they match literally.
+ * `chat:<chatId>:turn:`). A RANGE predicate over the run_id PK, not
+ * LIKE: SQLite's default case-insensitive LIKE cannot use the
+ * BINARY-collated PK index (EXPLAIN showed a full scan of an
+ * append-forever table on a per-GET path — review finding), and the
+ * pragma fix would silently change every other LIKE in this file. The
+ * range also makes any prefix byte-literal — no wildcard escaping.
  */
 export function listRunCostsByPrefix(prefix: string): RunCostByPrefixRow[] {
   return guard('listRunCostsByPrefix', () => {
-    const escaped = prefix.replace(/[\\%_]/g, (c) => `\\${c}`)
     return ledger()
       .prepare<{
         run_id: string; model: string | null; lane: string | null
         input_tokens: number | null; output_tokens: number | null; total_tokens: number | null
         cache_read_tokens: number | null; cost_usd_micros: number | null; occurred_at: number
-      }, [string]>(
+      }, [string, string]>(
         `SELECT run_id, model, lane, input_tokens, output_tokens, total_tokens, cache_read_tokens, cost_usd_micros, occurred_at
-           FROM run_costs WHERE run_id LIKE ? ESCAPE '\\' ORDER BY occurred_at ASC`,
+           FROM run_costs WHERE run_id >= ?1 AND run_id < ?2 ORDER BY occurred_at ASC`,
       )
-      .all(`${escaped}%`)
+      .all(prefix, `${prefix}￿`)
       .map((r) => ({
         runId: r.run_id,
         model: r.model,

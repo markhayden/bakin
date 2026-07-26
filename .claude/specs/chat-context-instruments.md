@@ -58,7 +58,7 @@ Keyed on `{agentId, threadId}` — the thread→session mapping is adapter-priva
 ### OpenClaw (`packages/adapter-openclaw/`) — store-only implementation (NOT the trajectory)
 - The trajectory is the WRONG source (embedded path accumulates usage across API calls; OpenClaw's own types say so). The RIGHT source is `sessions.json`: `totalTokens` (last-call prompt) gated on `totalTokensFresh === true`, `contextTokens` (window), `compactionCount`/`compactionCheckpoints[]` (`createdAt`/`reason`/`tokensBefore|After`). Copy OpenClaw's own `buildSessionUsageSnapshot` gate verbatim. Verified live: 182/184 Bakin sessions carry all three fields; 2 null → unknown.
 - Lookup is pure: `openClawCliSessionId(agentId, threadId)` (deterministic uuid) → store key `agent:<id>:explicit:<cliSessionId>` → `readSessionStoreCached` (mtime-guarded LRU — already exists). No RPC, no scan.
-- Threshold: embedded runtime only — `contextTokens − reserveTokensFloor(20000 default) − softThresholdTokens(4000)` from `agents.defaults.compaction`; **codex-native compaction → `compactionThreshold: null`** (OpenClaw skips its own compactor there). Window fallback: `models.listAvailable()` contextWindow.
+- Threshold: ONLY from a runtime-written `contextBudgetStatus` entry (embedded compactor persists it; deriving from `agents.defaults.compaction` config is BANNED — config guessing), with a coherence guard (threshold > window → null; the budget status and contextTokens can be written against different models). **Codex-native compaction → `compactionThreshold: null`.** Window comes only from the stored `contextTokens` — no fabricated fallbacks. AMENDED post-review: an over-window `totalTokens` (the 109% shape) reads `tokens: null` — incoherent data is unknown, NEVER clamped to a calm 100%.
 - Store entries exist only after the first accepted run; `sessions cleanup` can prune → null, honest.
 
 ### Instrument 2 — cost explainer (CLIENT-ONLY; zero server change)
@@ -68,7 +68,7 @@ Keyed on `{agentId, threadId}` — the thread→session mapping is adapter-priva
 
 ## Mock & conformance
 
-- **Imitation Crab:** `recordSessionStoreEntry` gains `contextTokens` (272000 mock window), `totalTokens` (grows per turn), `totalTokensFresh: true`; a scripted stale case (`[[stale-context]]` marker or fresh:false on error mode) pins honest absence. This alone makes OpenClaw `contextStats` testable end-to-end (dev:mock demo included).
+- **Imitation Crab:** `recordSessionStoreEntry` gains `contextTokens` (272000 mock window), `totalTokens` (grows per turn), `totalTokensFresh: true`; the `[[stale-context]]` per-message marker writes `totalTokensFresh: false`, pinning honest absence end-to-end (integration test). This alone makes OpenClaw `contextStats` testable end-to-end (dev:mock demo included).
 - **Conformance** (clone the `cron` optional-member pattern exactly): option `contextStats?: 'present' | 'absent'`; declared-present ⇒ after a session-producing turn, `contextStats` returns sane values (`tokens ≤ contextWindow` when both present; never negative; null-honesty respected); declared-absent ⇒ member is `undefined`, never a throwing stub. Runners: openclaw 'present', pi 'present', mock 'absent' (default mock stays minimal).
 - **Plumbing:** `src/lib/plugin-context-services.ts` narrows sessions to list/get — add the optional `contextStats` bind or plugins can't reach it.
 
@@ -97,5 +97,5 @@ Keyed on `{agentId, threadId}` — the thread→session mapping is adapter-priva
 
 ## Boundaries
 
-- **Never:** context numbers derived from billing aggregates (the 109% class — pinned); gateway RPCs or session mutation on the GET path (no `SessionManager.create`/`createAgentSession`/thread locks); fabricated zeros, windows, or thresholds; percent without both tokens and window.
+- **Never:** context numbers derived from billing aggregates (the 109% class — enforced by `tests/architecture/no-billing-derived-context.test.ts`, not just convention); gateway RPCs or session mutation on the GET path (no `SessionManager.create`/`createAgentSession`/thread locks); fabricated zeros, windows, or thresholds; percent without both tokens and window.
 - **Out of scope:** brands/bits adoption of the meter; live mid-turn bar updates (settle cadence only; the turn's `~N out…` estimate covers in-flight growth); compaction *prediction*; surfacing contextStats anywhere beyond chat.

@@ -1,9 +1,16 @@
 /**
  * adapter-pi sessions.contextStats (#737) — the honest context reading,
  * file-only at rest, mirroring the Pi SDK's own getContextUsage
- * semantics: last VALID assistant usage.totalTokens (+ chars÷4 for
- * entries after it), a post-compaction gap reads tokens: null, the
- * threshold is window − reserveTokens, and unmapped threads read null.
+ * semantics: last VALID assistant usage anchors the exact reading
+ * (+ chars÷4 for entries after it), a post-compaction gap reads
+ * tokens: null, the threshold is window − reserveTokens, and unmapped
+ * threads read null.
+ *
+ * FIXTURE REALISM MATTERS (review finding): real Pi message timestamps
+ * are epoch-ms NUMBERS (compaction entries carry ISO strings), message
+ * content is an array of {type:'text',text} parts, and the session
+ * header's version is numeric. ISO-string fixture timestamps masked a
+ * dead compaction guard once — keep these shapes true to disk.
  */
 import { tmpdir } from 'os'
 import { join as pathJoin } from 'path'
@@ -13,8 +20,8 @@ const testDir = pathJoin(tmpdir(), `bakin-test-pi-context-stats-${Date.now()}-${
 process.env.PI_HOME = pathJoin(testDir, 'pi')
 process.env.BAKIN_HOME = testDir
 
-import { afterAll, describe, expect, it, mock } from 'bun:test'
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { afterAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { appendFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
 
 mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
@@ -34,16 +41,26 @@ mock.module('../../src/core/logger', () => ({
 }))
 
 import { resetPiHome, getAgentSessionsDir, getAgentWorkspaceDir } from '../../packages/adapter-pi/src/home'
-import { sessionContextStats } from '../../packages/adapter-pi/src/context-stats'
+import { sessionContextStats, __resetContextStatsCacheForTest } from '../../packages/adapter-pi/src/context-stats'
+import { findPiModel } from '../../packages/adapter-pi/src/models'
 
 resetPiHome()
 
 const AGENT = 'main'
 const MODEL_PROVIDER = 'anthropic'
-const MODEL_ID = 'claude-sonnet-4-5' // a catalog model with a known numeric window
+const MODEL_ID = 'claude-sonnet-4-5'
+/** Resolve the expected window from the live catalog — a hardcoded number
+ *  would fail confusingly on an SDK catalog bump. */
+const CATALOG_WINDOW = findPiModel(`${MODEL_PROVIDER}/${MODEL_ID}`)?.contextWindow ?? 0
+
+const T_BASE = 1_785_000_000_000 // epoch ms — the REAL message timestamp shape
 
 afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })
+})
+
+beforeEach(() => {
+  __resetContextStatsCacheForTest()
 })
 
 interface FixtureEntry { [key: string]: unknown }
@@ -55,38 +72,47 @@ function eid(): string {
 }
 
 function sessionHeader(id: string): FixtureEntry {
-  return { type: 'session', version: '3', id, timestamp: '2026-07-26T00:00:00.000Z', cwd: getAgentWorkspaceDir(AGENT) }
+  return { type: 'session', version: 3, id, timestamp: new Date(T_BASE).toISOString(), cwd: getAgentWorkspaceDir(AGENT) }
 }
 
-function modelChange(parentId: string | null): FixtureEntry {
-  return { type: 'model_change', id: eid(), parentId, timestamp: '2026-07-26T00:00:01.000Z', provider: MODEL_PROVIDER, modelId: MODEL_ID }
+function modelChange(provider = MODEL_PROVIDER, modelId = MODEL_ID): FixtureEntry {
+  return { type: 'model_change', id: eid(), parentId: null, timestamp: new Date(T_BASE + 1).toISOString(), provider, modelId }
 }
 
-function userMessage(parentId: string, text: string): FixtureEntry {
+function thinkingLevelChange(): FixtureEntry {
+  return { type: 'thinking_level_change', id: eid(), parentId: null, timestamp: new Date(T_BASE + 2).toISOString(), thinkingLevel: 'medium' }
+}
+
+function userMessage(text: string): FixtureEntry {
   return {
     type: 'message',
     id: eid(),
-    parentId,
-    timestamp: '2026-07-26T00:00:02.000Z',
-    message: { role: 'user', content: text, timestamp: '2026-07-26T00:00:02.000Z' },
+    parentId: null,
+    timestamp: new Date(T_BASE + 3).toISOString(),
+    message: { role: 'user', content: [{ type: 'text', text }], timestamp: T_BASE + 3 },
   }
 }
 
-function assistantMessage(
-  parentId: string,
-  opts: { totalTokens: number; stopReason?: string; text?: string; ts?: string },
-): FixtureEntry {
+function assistantMessage(opts: {
+  totalTokens: number
+  stopReason?: string
+  text?: string
+  tsMs?: number
+  provider?: string
+  model?: string
+}): FixtureEntry {
+  const tsMs = opts.tsMs ?? T_BASE + 4
   return {
     type: 'message',
     id: eid(),
-    parentId,
-    timestamp: opts.ts ?? '2026-07-26T00:00:03.000Z',
+    parentId: null,
+    timestamp: new Date(tsMs).toISOString(),
     message: {
       role: 'assistant',
       content: [{ type: 'text', text: opts.text ?? 'a reply' }],
       api: 'anthropic-messages',
-      provider: MODEL_PROVIDER,
-      model: MODEL_ID,
+      provider: opts.provider ?? MODEL_PROVIDER,
+      model: opts.model ?? MODEL_ID,
       usage: {
         input: Math.max(0, Math.floor(opts.totalTokens * 0.1)),
         output: 100,
@@ -97,26 +123,28 @@ function assistantMessage(
         cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
       },
       stopReason: opts.stopReason ?? 'stop',
-      timestamp: opts.ts ?? '2026-07-26T00:00:03.000Z',
+      // REAL shape: epoch-ms number, NOT an ISO string.
+      timestamp: tsMs,
     },
   }
 }
 
-function compactionEntry(parentId: string, opts: { tokensBefore: number; ts: string }): FixtureEntry {
+function compactionEntry(opts: { tokensBefore: number; tsMs: number }): FixtureEntry {
   return {
     type: 'compaction',
     id: eid(),
-    parentId,
-    timestamp: opts.ts,
+    parentId: null,
+    timestamp: new Date(opts.tsMs).toISOString(),
     summary: 'compacted summary of the earlier conversation',
-    firstKeptEntryId: parentId,
+    firstKeptEntryId: 'kept',
     tokensBefore: opts.tokensBefore,
+    details: { readFiles: [], modifiedFiles: [] },
     fromHook: false,
   }
 }
 
 /** Write a session file + thread mapping, return the threadId. */
-function seedSession(entries: FixtureEntry[]): string {
+function seedSession(entries: FixtureEntry[]): { threadId: string; file: string } {
   const sessionsDir = getAgentSessionsDir(AGENT)
   mkdirSync(getAgentWorkspaceDir(AGENT), { recursive: true })
   mkdirSync(sessionsDir, { recursive: true })
@@ -131,13 +159,12 @@ function seedSession(entries: FixtureEntry[]): string {
   } catch {
     // first seed — start fresh
   }
-  map.threads[threadId] = { sessionId, file, createdAt: '2026-07-26T00:00:00.000Z', updatedAt: '2026-07-26T00:00:00.000Z' }
+  map.threads[threadId] = { sessionId, file, createdAt: new Date(T_BASE).toISOString(), updatedAt: new Date(T_BASE).toISOString() }
   writeFileSync(mapPath, JSON.stringify(map))
-  return threadId
+  return { threadId, file }
 }
 
 function chain(entries: FixtureEntry[]): FixtureEntry[] {
-  // Fix up parentId chaining: each entry's parentId = previous entry's id.
   let prev: string | null = null
   for (const e of entries) {
     if (e.type === 'session') continue
@@ -148,76 +175,89 @@ function chain(entries: FixtureEntry[]): FixtureEntry[] {
 }
 
 describe('pi sessions.contextStats', () => {
-  it('reads the last VALID assistant usage.totalTokens as the context (+ tail estimate), with window + threshold', async () => {
-    const sid = randomUUID()
-    const threadId = seedSession(chain([
-      sessionHeader(sid),
-      modelChange(null),
-      userMessage('x', 'first question'),
-      assistantMessage('x', { totalTokens: 45_300 }),
+  it('reads the last VALID assistant usage.totalTokens as the context, with window + threshold from the catalog', async () => {
+    expect(CATALOG_WINDOW).toBeGreaterThan(0) // catalog sanity for this suite
+    const { threadId } = seedSession(chain([
+      sessionHeader(randomUUID()),
+      modelChange(),
+      thinkingLevelChange(),
+      userMessage('first question'),
+      assistantMessage({ totalTokens: 45_300 }),
     ]))
     const stats = await sessionContextStats({ agentId: AGENT, threadId })
     expect(stats).not.toBeNull()
-    // No entries after the usage-bearing assistant → exact reading.
     expect(stats!.tokens).toBe(45_300)
-    expect(stats!.contextWindow).toBeGreaterThan(45_300)
-    // Threshold = window − reserveTokens (SDK default 16384, enabled).
-    expect(stats!.compactionThreshold).toBe(stats!.contextWindow! - 16_384)
+    expect(stats!.contextWindow).toBe(CATALOG_WINDOW)
+    expect(stats!.compactionThreshold).toBe(CATALOG_WINDOW - 16_384)
     expect(stats!.model).toBe(`${MODEL_PROVIDER}/${MODEL_ID}`)
   })
 
-  it('adds a chars÷4 estimate for user entries after the last valid usage', async () => {
+  it('adds a chars÷4 estimate for entries after the last valid usage', async () => {
     const trailing = 'x'.repeat(4_000) // ~1000 estimated tokens
-    const threadId = seedSession(chain([
+    const { threadId } = seedSession(chain([
       sessionHeader(randomUUID()),
-      modelChange(null),
-      userMessage('x', 'q'),
-      assistantMessage('x', { totalTokens: 10_000 }),
-      userMessage('x', trailing),
+      modelChange(),
+      userMessage('q'),
+      assistantMessage({ totalTokens: 10_000 }),
+      userMessage(trailing),
     ]))
     const stats = await sessionContextStats({ agentId: AGENT, threadId })
     expect(stats!.tokens).toBeGreaterThan(10_500)
     expect(stats!.tokens).toBeLessThan(12_500)
   })
 
-  it('skips aborted/error assistant usage (the valid-usage predicate)', async () => {
-    const threadId = seedSession(chain([
+  it('a toolUse-stopReason assistant anchors the reading (the common mid-loop shape)', async () => {
+    const { threadId } = seedSession(chain([
       sessionHeader(randomUUID()),
-      modelChange(null),
-      userMessage('x', 'q'),
-      assistantMessage('x', { totalTokens: 20_000 }),
-      assistantMessage('x', { totalTokens: 99_999, stopReason: 'aborted', ts: '2026-07-26T00:00:04.000Z' }),
+      modelChange(),
+      userMessage('q'),
+      assistantMessage({ totalTokens: 30_000, stopReason: 'toolUse' }),
     ]))
     const stats = await sessionContextStats({ agentId: AGENT, threadId })
-    // The aborted message's usage is invalid — the valid 20k reading wins,
-    // plus the estimate for the aborted message's text tail.
+    expect(stats!.tokens).toBe(30_000)
+  })
+
+  it('skips aborted AND error assistant usage (the valid-usage predicate)', async () => {
+    const { threadId } = seedSession(chain([
+      sessionHeader(randomUUID()),
+      modelChange(),
+      userMessage('q'),
+      assistantMessage({ totalTokens: 20_000 }),
+      assistantMessage({ totalTokens: 99_999, stopReason: 'aborted', tsMs: T_BASE + 10 }),
+      assistantMessage({ totalTokens: 88_888, stopReason: 'error', tsMs: T_BASE + 11 }),
+    ]))
+    const stats = await sessionContextStats({ agentId: AGENT, threadId })
     expect(stats!.tokens).toBeGreaterThanOrEqual(20_000)
     expect(stats!.tokens).toBeLessThan(21_000)
   })
 
-  it('post-compaction gap: tokens null + lastCompaction, never the stale pre-compaction number', async () => {
-    const threadId = seedSession(chain([
+  it('post-compaction gap: tokens null + lastCompaction — the guard works on REAL numeric message timestamps', async () => {
+    const { threadId } = seedSession(chain([
       sessionHeader(randomUUID()),
-      modelChange(null),
-      userMessage('x', 'long conversation'),
-      assistantMessage('x', { totalTokens: 250_000, ts: '2026-07-26T00:00:03.000Z' }),
-      compactionEntry('x', { tokensBefore: 253_352, ts: '2026-07-26T00:10:00.000Z' }),
+      modelChange(),
+      userMessage('long conversation'),
+      assistantMessage({ totalTokens: 250_000, tsMs: T_BASE + 100 }),
+      compactionEntry({ tokensBefore: 253_352, tsMs: T_BASE + 600_000 }),
     ]))
     const stats = await sessionContextStats({ agentId: AGENT, threadId })
     expect(stats).not.toBeNull()
+    // The pre-compaction 250k anchor must NOT leak as the current reading.
     expect(stats!.tokens).toBeNull()
-    expect(stats!.lastCompaction).toMatchObject({ at: '2026-07-26T00:10:00.000Z', tokensBefore: 253_352 })
+    expect(stats!.lastCompaction).toMatchObject({
+      at: new Date(T_BASE + 600_000).toISOString(),
+      tokensBefore: 253_352,
+    })
   })
 
   it('after a compaction, a NEW valid assistant reading takes over (the visible drop)', async () => {
-    const threadId = seedSession(chain([
+    const { threadId } = seedSession(chain([
       sessionHeader(randomUUID()),
-      modelChange(null),
-      userMessage('x', 'long conversation'),
-      assistantMessage('x', { totalTokens: 250_000, ts: '2026-07-26T00:00:03.000Z' }),
-      compactionEntry('x', { tokensBefore: 253_352, ts: '2026-07-26T00:10:00.000Z' }),
-      userMessage('x', 'continue'),
-      assistantMessage('x', { totalTokens: 32_000, ts: '2026-07-26T00:11:00.000Z' }),
+      modelChange(),
+      userMessage('long conversation'),
+      assistantMessage({ totalTokens: 250_000, tsMs: T_BASE + 100 }),
+      compactionEntry({ tokensBefore: 253_352, tsMs: T_BASE + 600_000 }),
+      userMessage('continue'),
+      assistantMessage({ totalTokens: 32_000, tsMs: T_BASE + 700_000 }),
     ]))
     const stats = await sessionContextStats({ agentId: AGENT, threadId })
     expect(stats!.tokens).toBe(32_000)
@@ -230,23 +270,45 @@ describe('pi sessions.contextStats', () => {
   })
 
   it('an unknown model yields tokens without window/threshold (never fabricated)', async () => {
-    const sid = randomUUID()
-    const entries = chain([
-      sessionHeader(sid),
-      { type: 'model_change', id: eid(), parentId: null, timestamp: '2026-07-26T00:00:01.000Z', provider: 'mystery', modelId: 'unknown-model' },
-      userMessage('x', 'q'),
-      {
-        ...assistantMessage('x', { totalTokens: 12_000 }),
-      },
-    ])
-    // Point the assistant message at the unknown model too.
-    const last = entries[entries.length - 1] as { message: { provider: string; model: string } }
-    last.message.provider = 'mystery'
-    last.message.model = 'unknown-model'
-    const threadId = seedSession(entries)
+    const { threadId } = seedSession(chain([
+      sessionHeader(randomUUID()),
+      modelChange('mystery', 'unknown-model'),
+      userMessage('q'),
+      assistantMessage({ totalTokens: 12_000, provider: 'mystery', model: 'unknown-model' }),
+    ]))
     const stats = await sessionContextStats({ agentId: AGENT, threadId })
     expect(stats!.tokens).toBe(12_000)
     expect(stats!.contextWindow).toBeNull()
     expect(stats!.compactionThreshold).toBeNull()
+  })
+
+  it('a session with NO valid usage reads tokens null (deliberate SDK divergence: absence over unanchored estimate)', async () => {
+    const { threadId } = seedSession(chain([
+      sessionHeader(randomUUID()),
+      modelChange(),
+      userMessage('question with no reply yet'),
+    ]))
+    const stats = await sessionContextStats({ agentId: AGENT, threadId })
+    expect(stats).not.toBeNull()
+    expect(stats!.tokens).toBeNull()
+  })
+
+  it('caches per file on mtime+size and refreshes when the session grows', async () => {
+    const entries = chain([
+      sessionHeader(randomUUID()),
+      modelChange(),
+      userMessage('q'),
+      assistantMessage({ totalTokens: 10_000 }),
+    ])
+    const { threadId, file } = seedSession(entries)
+    expect((await sessionContextStats({ agentId: AGENT, threadId }))!.tokens).toBe(10_000)
+    // Repeat read (cache hit) — same honest value.
+    expect((await sessionContextStats({ agentId: AGENT, threadId }))!.tokens).toBe(10_000)
+    // The session grows (append is the ONLY mutation turns perform) —
+    // chained onto the current leaf, exactly like a real turn.
+    const grown = assistantMessage({ totalTokens: 22_000, tsMs: T_BASE + 900_000 })
+    grown.parentId = entries[entries.length - 1].id
+    appendFileSync(file, JSON.stringify(grown) + '\n')
+    expect((await sessionContextStats({ agentId: AGENT, threadId }))!.tokens).toBe(22_000)
   })
 })

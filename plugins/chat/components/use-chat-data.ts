@@ -255,6 +255,13 @@ export function useChatStream(chatId: string): ChatStreamState {
   const [turnUsage, setTurnUsage] = useState<Record<string, ConversationTurnUsage>>({})
   const [usageTotals, setUsageTotals] = useState<ChatUsageTotals | null>(null)
   const [contextStats, setContextStats] = useState<ContextMeterStats | null>(null)
+  // Last-started-wins guard for the decoration side-effects: overlapping
+  // GETs for the SAME chat are routine (mount + queued/started refetch +
+  // settle refetch), and the kit's own staleness guard protects only its
+  // state — without this, an earlier-started GET resolving late regresses
+  // the bar/footers to pre-turn numbers (review finding: a bar that moves
+  // backwards).
+  const decorSeqRef = useRef(0)
   useEffect(() => {
     setTurnUsage({})
     setUsageTotals(null)
@@ -275,6 +282,7 @@ export function useChatStream(chatId: string): ChatStreamState {
     events: { chunk: 'chat.chunk', done: 'chat.done', error: 'chat.error' },
     keyOf: (payload) => payload.chatId,
     load: async (key) => {
+      const decorSeq = ++decorSeqRef.current
       const res = await pluginFetch('chat', `chats/${key}`)
       if (!res.ok) return null
       const body = (await res.json()) as {
@@ -286,7 +294,7 @@ export function useChatStream(chatId: string): ChatStreamState {
         contextStats?: ContextMeterStats
         streamingText?: string
       }
-      if (key === chatIdRef.current) {
+      if (key === chatIdRef.current && decorSeq === decorSeqRef.current) {
         const lastUser = [...body.messages].reverse().find((r) => r.kind === 'user')
         if (lastUser?.kind === 'user') lastUserRef.current = { content: lastUser.content, attachments: lastUser.attachments }
         setTurnUsage(body.usage ?? {})

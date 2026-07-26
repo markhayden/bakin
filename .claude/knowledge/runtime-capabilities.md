@@ -239,14 +239,27 @@ owns compaction opaquely (codex-native), null result for unmapped threads.
 turn's internal tool-loop requests (the 109% incident; post-mortem in
 `.claude/specs/chat-turn-usage.md` D1). Pi: file-only SDK-parity read
 (`packages/adapter-pi/src/context-stats.ts` — last valid assistant
-usage.totalTokens + chars÷4 tail, compaction guard, threshold = window −
-reserveTokens). OpenClaw: pure sessions.json read
+usage.totalTokens + chars÷4 tail, INDEX-based compaction guard (never
+timestamp comparison: real message timestamps are epoch-ms numbers,
+compaction entries ISO strings — a string/number compare was the one
+Critical caught in review), threshold = window − reserveTokens, results
+mtime+size-cached per file — session JSONL grows forever and this runs
+per chat GET). Pi SDK upgrade checklist: the adapter re-implements the
+SDK's unexported estimateContextTokens — re-verify against
+getContextUsage on every pi-coding-agent bump. OpenClaw: pure sessions.json read
 (`packages/adapter-openclaw/src/context-stats.ts` — totalTokens gated on
-totalTokensFresh, window from contextTokens, threshold ONLY from a
-runtime-written contextBudgetStatus; the trajectory is never read).
+totalTokensFresh, an over-window total reads null (incoherent — never a
+clamped 100%), window from contextTokens, threshold ONLY from a
+runtime-written contextBudgetStatus with a ≤-window coherence guard; the
+trajectory is never read).
 Conformance pins declaration honesty + sane values (tokens ≤ window; a
-lying adapter fails the teeth); mock declares 'absent', Imitation Crab
-writes the store fields so the OpenClaw runner exercises it end-to-end.
+lying adapter fails the teeth) and
+`tests/architecture/no-billing-derived-context.test.ts` scans every
+adapter context-stats module for spend-source imports; mock declares
+'absent', Imitation Crab writes the store fields (+ the
+`[[stale-context]]` marker for the fresh:false path) so the OpenClaw
+runner exercises it end-to-end. External plugins see the surface via the
+SDK's optional `sessions` declaration (packages/sdk/src/types/runtime.ts).
 Consumer: chat's compaction bar (kit `ContextMeter`).
 
 **Specified contract semantics (T29/T30):** `ping()` = "can serve a turn,

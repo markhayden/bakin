@@ -101,6 +101,36 @@ describe('AgentTurn billed-first cost explainer (#737)', () => {
     cleanup()
   })
 
+  it('cacheRead above the billed base omits cached% — never an impossible >100% share', () => {
+    const { container } = render(
+      <AgentTurn
+        agentId="main"
+        turn={agentTurn()}
+        // No totalTokens → billed falls back to in+out (15.1k); cacheRead
+        // is far larger — a coherent share cannot be computed.
+        usage={{ inputTokens: 14_200, outputTokens: 890, cacheReadTokens: 628_000, model: 'gpt-5.5', lane: 'metered' }}
+      />,
+    )
+    const footer = container.querySelector('[data-conv-usage]')!
+    expect(footer.textContent).toContain('15.1k billed')
+    expect(footer.textContent).not.toContain('cached')
+    cleanup()
+  })
+
+  it('an aborted turn billed partial usage still shows its recorded footer (D4)', () => {
+    const { container } = render(
+      <AgentTurn
+        agentId="main"
+        turn={agentTurn({ status: 'aborted', items: [{ type: 'text', format: 'markdown', content: 'partial' }] })}
+        usage={{ totalTokens: 9_800, inputTokens: 9_000, outputTokens: 210, costUsd: 0.01, lane: 'metered' }}
+      />,
+    )
+    expect(container.querySelector('[data-conv-usage]')).not.toBeNull()
+    expect(container.textContent).toContain('Stopped')
+    expect(container.textContent).toContain('9.8k billed')
+    cleanup()
+  })
+
   it('in+out fallback bills without a fabricated cached share; a lone-out legacy row keeps the old line', () => {
     const fallback = render(
       <AgentTurn

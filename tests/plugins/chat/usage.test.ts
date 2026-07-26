@@ -110,6 +110,23 @@ describe('GET /chats/:chatId usage decoration', () => {
     })
   })
 
+  test('an all-subscription chat sums tokens with NO costUsd on totals (unit-per-lane, negative direction)', async () => {
+    const chat = await createChat({ agentId: 'main' })
+    recordRunCost({
+      workClass: 'chat', runId: `chat:${chat.id}:turn:s1`, agent: 'main', model: 'pi/pi-local',
+      lane: 'subscription', inputTokens: 10_000, outputTokens: 500, totalTokens: 10_500, occurredAt: T0 + 1,
+    })
+    recordRunCost({
+      workClass: 'chat', runId: `chat:${chat.id}:turn:s2`, agent: 'main', model: 'pi/pi-local',
+      lane: 'subscription', inputTokens: 12_000, outputTokens: 700, totalTokens: 12_700, occurredAt: T0 + 2,
+    })
+    const get = findRoute(activated.routes, 'GET', '/chats/:chatId')!
+    const res = await callRoute(get, activated.ctx, { path: `/chats/${chat.id}` })
+    const totals = res.body.usageTotals as Record<string, unknown>
+    expect(totals).toMatchObject({ turns: 2, totalTokens: 23_200 })
+    expect(totals.costUsd).toBeUndefined()
+  })
+
   test('a chat with no recorded turns gets an empty map and NO totals field', async () => {
     const chat = await createChat({ agentId: 'main' })
     const get = findRoute(activated.routes, 'GET', '/chats/:chatId')!

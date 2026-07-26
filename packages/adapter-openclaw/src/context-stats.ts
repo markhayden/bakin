@@ -60,22 +60,30 @@ export async function openClawSessionContextStats(opts: {
   const contextWindow = finitePositive(entry.contextTokens)
 
   // The gateway's last-call prompt snapshot — honest ONLY when fresh.
+  // An over-window total is INCOHERENT data (the 109% shape), not a
+  // reading to clamp: silently pinning the bar at 100% would both lie
+  // and permanently mask the conformance over-window detector. Unknown.
   let tokens: number | null = null
   if (entry.totalTokensFresh === true) {
     const total = typeof entry.totalTokens === 'number' && Number.isFinite(entry.totalTokens) ? entry.totalTokens : null
-    if (total !== null && total >= 0) {
-      tokens = contextWindow !== null ? Math.min(Math.floor(total), contextWindow) : Math.floor(total)
+    if (total !== null && total >= 0 && (contextWindow === null || total <= contextWindow)) {
+      tokens = Math.floor(total)
     }
   }
 
   // Threshold: only from the runtime's OWN persisted budget status
   // (embedded compactor). Codex-native sessions never get one — null.
+  // Coherence guard: the budget status and contextTokens are written at
+  // different times against possibly different models (a real 1M-budget
+  // entry coexists with a 272k window on this box) — a threshold above
+  // the window is incoherent and reads as unknown.
   let compactionThreshold: number | null = null
   const budget = entry.contextBudgetStatus
   const budgetWindow = finitePositive(budget?.contextTokenBudget)
   const reserve = finitePositive(budget?.reserveTokens)
   if (budgetWindow !== null && reserve !== null && reserve < budgetWindow) {
-    compactionThreshold = budgetWindow - reserve
+    const derived = budgetWindow - reserve
+    if (contextWindow === null || derived <= contextWindow) compactionThreshold = derived
   }
 
   // Newest compaction checkpoint, when the gateway recorded any.

@@ -138,6 +138,39 @@ describe('OpenClaw sessions.contextStats', () => {
     })
   })
 
+  it('an over-window total (the 109% shape) reads tokens null — never a clamped 100% lie', async () => {
+    const threadId = 'chat:66666666-6666-6666-6666-666666666666'
+    seedStore('main', {
+      [entryKeyFor('main', threadId)]: {
+        sessionId: openClawCliSessionId('main', threadId),
+        totalTokens: 296_551,
+        totalTokensFresh: true,
+        contextTokens: 272_000,
+      },
+    })
+    const stats = await openClawSessionContextStats({ agentId: 'main', threadId })
+    expect(stats!.tokens).toBeNull()
+    expect(stats!.contextWindow).toBe(272_000)
+  })
+
+  it('a budget-status threshold above the window is incoherent → null (cross-model store shapes)', async () => {
+    const threadId = 'chat:77777777-7777-7777-7777-777777777777'
+    seedStore('main', {
+      [entryKeyFor('main', threadId)]: {
+        sessionId: openClawCliSessionId('main', threadId),
+        totalTokens: 100_000,
+        totalTokensFresh: true,
+        contextTokens: 272_000,
+        // Real-world shape: a 1M-budget status written against a later
+        // model than the 272k contextTokens snapshot.
+        contextBudgetStatus: { contextTokenBudget: 1_048_576, reserveTokens: 16_384 },
+      },
+    })
+    const stats = await openClawSessionContextStats({ agentId: 'main', threadId })
+    expect(stats!.compactionThreshold).toBeNull()
+    expect(stats!.tokens).toBe(100_000)
+  })
+
   it('window absent from the store → contextWindow null (never fabricated), tokens still honest', async () => {
     const threadId = 'chat:55555555-5555-5555-5555-555555555555'
     seedStore('main', {
