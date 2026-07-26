@@ -15,6 +15,7 @@ import { z } from 'zod'
 import { SessionManager } from '@earendil-works/pi-coding-agent'
 
 import type { AgentRuntimeAdapter, RuntimeSession, RuntimeSessionStoreStats } from '@bakin/core/adapters/runtime'
+import { sessionContextStats } from './context-stats'
 import { getAgentSessionsDir, getAgentWorkspaceDir } from './home'
 import { readRegistry } from './registry'
 
@@ -199,5 +200,9 @@ export function createSessionsSurface(): AgentRuntimeAdapter['sessions'] {
         }
       })
     },
+
+    // The honest context reading (#737) — file-only, null-honest; see
+    // context-stats.ts for the SDK-parity semantics.
+    contextStats: sessionContextStats,
   }
 }
