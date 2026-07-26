@@ -190,6 +190,19 @@ describe('conformance suite teeth (broken adapter must fail every check)', () =>
       .rejects.toThrow(/conformance violation: capabilities\(\) declares delivery 'native' but the channels surface is absent/)
   })
 
+  it("fails capability honesty when delivery is 'shimmed' without a channels surface", async () => {
+    const runtime = createMockRuntimeAdapter({
+      // Lie: delivery shimmed (bridge-configured claim) — but no channels.
+      capabilities: async () => ({
+        ...(await createMockRuntimeAdapter().capabilities()),
+        delivery: { mode: 'shimmed' as const },
+      }),
+    })
+    const target = { ...honestTargetShell(runtime) }
+    await expect(runtimeConformanceChecks.capabilitiesAreHonest(target))
+      .rejects.toThrow(/conformance violation: capabilities\(\) declares delivery 'shimmed' but the channels surface is absent/)
+  })
+
   it('fails capability honesty on a lying-but-non-empty sessions stub', async () => {
     const runtime = createMockRuntimeAdapter()
     // Lie: list returns SOMETHING, but never the session the turn created —

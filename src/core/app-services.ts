@@ -9,6 +9,7 @@ import { getContentDir } from './content-dir'
 import { createLogger } from './logger'
 import { createRuntimeExecToolProvider } from './exec-tools/provider'
 import { createRuntimeAdapter, createRuntimeAdapterHealthChecks } from './runtime-adapter-factory'
+import { getDeliveryBridge } from './delivery'
 import { createSearchAdapter } from './search-adapter-factory'
 import { createRuntimeToolUsageRecorder } from './runtime-tool-usage'
 import { createRuntimeTurnUsageRecorder } from './runtime-turn-usage'
@@ -102,6 +103,11 @@ export async function createAppServices(): Promise<AppServices> {
     onToolActivity,
     onTurnActivity,
     bakinMcpBaseUrl: resolveBakinMcpBaseUrl(),
+    // Handle only (#669): runtimes without native delivery expose
+    // runtime.channels by delegating to this when configured. Boot/shutdown
+    // stay server-owned (server.ts / lifecycle.ts) — createAppServices is
+    // also called by read-only CLI paths and must never connect transports.
+    channelBridge: getDeliveryBridge(),
   })
   await search.initialize({ ...adapterInit, settings: withAntflyAuthSecret(settings.search.settings) })
 

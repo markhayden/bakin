@@ -129,8 +129,9 @@ export class PiRuntimeAdapter implements AgentRuntimeAdapter {
   /** Full capability set; input modality is a conservative model probe. */
   capabilities = async (opts?: { agentId?: string }): Promise<CapabilitySet> => ({
     toolCalling: { mode: 'native', access: this.describeToolAccess() },
-    // Pi has no channel layer (honest-empty until the in-app channel shim).
-    delivery: { mode: 'unavailable' },
+    // Pi has no channel layer of its own; a configured delivery bridge
+    // (AdapterInitOpts.channelBridge, #669) serves `channels` by delegation.
+    delivery: { mode: this.initOpts?.channelBridge?.isConfigured() ? 'shimmed' : 'unavailable' },
     imageGen: { mode: await this.imageGenMode() },
     memory: { mode: 'native' },
     sessions: { mode: 'native' },
@@ -216,9 +217,20 @@ export class PiRuntimeAdapter implements AgentRuntimeAdapter {
     return createExtensionsSurface(() => this.settingsNow())
   }
 
-  // channels/cron are OMITTED (P2.1): Pi has no delivery layer and no
-  // runtime-native cron. Absence — not a throwing stub — is the contract's
-  // honest signal; consumers feature-detect and degrade.
+  // cron is OMITTED (P2.1): Pi has no runtime-native cron. Absence — not a
+  // throwing stub — is the contract's honest signal; consumers
+  // feature-detect and degrade.
+
+  /**
+   * channels by DELEGATION (#669): present only when a delivery bridge was
+   * threaded at initialize AND it is configured — otherwise undefined, the
+   * same honest absence as before. Pure passthrough: the bridge owns every
+   * Discord semantic; Pi knows only the neutral surface.
+   */
+  get channels(): AgentRuntimeAdapter['channels'] {
+    const bridge = this.initOpts?.channelBridge
+    return bridge?.isConfigured() ? bridge.channels : undefined
+  }
 
   skills: AgentRuntimeAdapter['skills'] = createSkillsSurface()
 
