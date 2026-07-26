@@ -5,7 +5,7 @@
  * created on first send.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, Check, Loader2, Pencil, Pin } from 'lucide-react'
+import { AlertTriangle, Check, Pencil, Pin } from 'lucide-react'
 import { toast } from '@makinbakin/sdk/hooks'
 import {
   AgentAvatar,
@@ -169,7 +169,6 @@ function InlineTitle({ chat, onChanged }: { chat: ChatSummaryDto; onChanged: () 
 function ViewHeader({
   agentId,
   chat,
-  streaming,
   usageTotals,
   contextStats,
   onChanged,
@@ -177,7 +176,6 @@ function ViewHeader({
 }: {
   agentId: string
   chat: ChatSummaryDto | null
-  streaming: boolean
   usageTotals?: ChatUsageTotals | null
   contextStats?: ContextMeterStats | null
   onChanged: () => void
@@ -216,11 +214,6 @@ function ViewHeader({
               className="text-muted-foreground/80"
             >
               {contextStats ? '· ' : ''}{totalParts.join(' · ')}
-            </span>
-          ) : null}
-          {streaming ? (
-            <span className="flex items-center gap-1" data-chat-header-working>
-              <Loader2 className="size-3 animate-spin" /> working…
             </span>
           ) : null}
         </div>
@@ -311,7 +304,7 @@ export function DraftChatView({
 
   return (
     <div className="flex min-w-0 flex-1 flex-col" data-chat-draft>
-      <ViewHeader agentId={agentId} chat={null} streaming={false} onChanged={() => {}} />
+      <ViewHeader agentId={agentId} chat={null} onChanged={() => {}} />
       <div className="flex flex-1 items-center justify-center p-6">
         <ConversationEmptyState
           title={`Chat with ${name}`}
@@ -400,7 +393,7 @@ export function ChatView({ chatId, onChanged }: { chatId: string; onChanged: () 
 
   return (
     <div className="flex min-w-0 flex-1 flex-col">
-      <ViewHeader agentId={chat.agentId} chat={chat} streaming={streaming} usageTotals={usageTotals} contextStats={contextStats} onChanged={onChanged} refreshChat={refreshChat} />
+      <ViewHeader agentId={chat.agentId} chat={chat} usageTotals={usageTotals} contextStats={contextStats} onChanged={onChanged} refreshChat={refreshChat} />
 
       <Conversation
         turns={turns}
