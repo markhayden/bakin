@@ -103,7 +103,7 @@ export const chatRoutes = [
     summary: 'Get a chat with its transcript',
     params: chatIdParams,
     responses: { 200: passthrough, 404: errorResponse },
-    handler: async (_req, ctx, { params }) => {
+    handler: async (_req, _ctx, { params }) => {
       const chat = getChatSummary(params.chatId)
       if (!chat) return Response.json({ error: 'chat not found' }, { status: 404 })
       // Flag first: if the turn settles between the two reads we return
@@ -112,16 +112,12 @@ export const chatRoutes = [
       const preview = streaming ? inflightTurnPreview(params.chatId) : null
       // Per-turn usage (#733): a read-time join over run_costs — ledger
       // failure serves the transcript WITHOUT usage, never a 500.
-      const usageDecoration = await chatTurnUsage(params.chatId, ctx.hooks)
+      const usageDecoration = chatTurnUsage(params.chatId)
       return Response.json({
         chat: { ...chat, streaming },
         messages: readTranscript(params.chatId),
         ...(usageDecoration
-          ? {
-              usage: usageDecoration.usage,
-              ...(usageDecoration.totals ? { usageTotals: usageDecoration.totals } : {}),
-              ...(usageDecoration.context ? { usageContext: usageDecoration.context } : {}),
-            }
+          ? { usage: usageDecoration.usage, ...(usageDecoration.totals ? { usageTotals: usageDecoration.totals } : {}) }
           : {}),
         // Pending follow-ups (#729) — clients hydrate their queue strip.
         queued: listQueuedMessages(params.chatId).map(({ id, ts, content, attachments }) => ({

@@ -35,26 +35,9 @@ export interface ChatUsageTotalsDto {
   costUsd?: number
 }
 
-export interface ChatUsageContextDto {
-  /** Prompt size of the LAST settled turn: input + cache-read tokens —
-   *  the provider's own report; drops after a runtime compaction. */
-  tokens: number
-  model?: string
-  /** The model's numeric context window (models hook); absent = unknown. */
-  window?: number
-}
-
 export interface ChatUsageDecoration {
   usage: Record<string, ChatTurnUsageDto>
   totals?: ChatUsageTotalsDto
-  context?: ChatUsageContextDto
-}
-
-/** ctx.hooks slice the window lookup needs (invoke may resolve undefined
- *  when no handler answers — matches PluginContext's HookAPI). */
-export interface UsageHookInvoker {
-  has(name: string): boolean
-  invoke<R>(name: string, data: unknown): Promise<R | undefined>
 }
 
 const TURN_MARKER = ':turn:'
@@ -112,53 +95,18 @@ export function buildTurnUsage(rows: RunCostByPrefixRow[]): ChatUsageDecoration 
   }
 }
 
-/** Pure: the last settled turn's prompt size (input + cache reads). */
-export function lastTurnContext(rows: RunCostByPrefixRow[]): Omit<ChatUsageContextDto, 'window'> | undefined {
-  for (let i = rows.length - 1; i >= 0; i--) {
-    const row = rows[i]
-    if (row.inputTokens !== null) {
-      return {
-        tokens: row.inputTokens + (row.cacheReadTokens ?? 0),
-        ...(row.model !== null ? { model: row.model } : {}),
-      }
-    }
-  }
-  return undefined
-}
-
-/** The model's numeric context window via the models hook; undefined =
- *  unknown (hook absent, model unlisted, or lookup failed) — never guessed. */
-async function resolveContextWindow(hooks: UsageHookInvoker | undefined, model: string): Promise<number | undefined> {
-  if (!hooks?.has('models.getAvailableModels')) return undefined
-  try {
-    const models = await hooks.invoke<Array<{ id?: string; contextWindow?: number }>>('models.getAvailableModels', {})
-    const hit = Array.isArray(models) ? models.find((m) => m?.id === model) : undefined
-    return typeof hit?.contextWindow === 'number' && hit.contextWindow > 0 ? hit.contextWindow : undefined
-  } catch (err) {
-    log.error(`context-window lookup failed for model ${model}`, err as Error)
-    return undefined
-  }
-}
-
 /**
  * The route-facing join. A ledger failure returns undefined — the caller
  * omits the fields entirely (honest absence; the transcript still serves).
  */
-export async function chatTurnUsage(
+export function chatTurnUsage(
   chatId: string,
-  hooks?: UsageHookInvoker,
   load: (prefix: string) => RunCostByPrefixRow[] = listRunCostsByPrefix,
-): Promise<ChatUsageDecoration | undefined> {
-  let rows: RunCostByPrefixRow[]
+): ChatUsageDecoration | undefined {
   try {
-    rows = load(`chat:${chatId}${TURN_MARKER}`)
+    return buildTurnUsage(load(`chat:${chatId}${TURN_MARKER}`))
   } catch (err) {
     log.error(`turn-usage join failed for chat ${chatId} — serving without usage`, err as Error)
     return undefined
   }
-  const decoration = buildTurnUsage(rows)
-  const context = lastTurnContext(rows)
-  if (!context) return decoration
-  const window = context.model ? await resolveContextWindow(hooks, context.model) : undefined
-  return { ...decoration, context: { ...context, ...(window !== undefined ? { window } : {}) } }
 }

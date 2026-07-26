@@ -29,7 +29,6 @@ import {
   useAgentImageInput,
   useChatStream,
   type ChatSummaryDto,
-  type ChatUsageContext,
   type ChatUsageTotals,
   type UploadedAttachment,
 } from './use-chat-data'
@@ -172,7 +171,6 @@ function ViewHeader({
   chat,
   streaming,
   usageTotals,
-  usageContext,
   onChanged,
   refreshChat,
 }: {
@@ -180,26 +178,16 @@ function ViewHeader({
   chat: ChatSummaryDto | null
   streaming: boolean
   usageTotals?: ChatUsageTotals | null
-  usageContext?: ChatUsageContext | null
   onChanged: () => void
   refreshChat?: () => Promise<void>
 }) {
   const agent = useAgent(agentId)
-  // Usage chip (#733), plain words (the Σ sigil confused people). Leads
-  // with the CONTEXT MONITOR — the last settled turn's prompt size vs the
-  // model's numeric window ('context 49.5k / 200k (25%)'; tokens-only when
-  // the window is unknown; drops after a runtime compaction) — then the
-  // chat's recorded totals. Hidden entirely when nothing is recorded.
-  // The live streaming estimate lives on the TURN, not here.
+  // Usage totals chip (#733): the chat's recorded sum in PLAIN WORDS (the
+  // Σ sigil confused people — review feedback) — hidden entirely when
+  // nothing is recorded (absence, never zeros). Metered spend adds $.
+  // The live streaming estimate lives on the TURN (beside the shimmer),
+  // not here — recorded numbers only in the header.
   const totalParts: string[] = []
-  if (usageContext) {
-    const pct = usageContext.window ? Math.round((usageContext.tokens / usageContext.window) * 100) : undefined
-    totalParts.push(
-      usageContext.window
-        ? `context ${formatTokenCount(usageContext.tokens)} / ${formatTokenCount(usageContext.window)} (${pct}%)`
-        : `context ${formatTokenCount(usageContext.tokens)}`,
-    )
-  }
   if (usageTotals?.totalTokens !== undefined) totalParts.push(`${formatTokenCount(usageTotals.totalTokens)} tokens`)
   if (usageTotals?.costUsd !== undefined) totalParts.push(formatUsageCost(usageTotals.costUsd))
   return (
@@ -216,7 +204,7 @@ function ViewHeader({
           {totalParts.length ? (
             <span
               data-chat-usage-totals
-              title="context = last reply's prompt size vs the model's window (the runtime may compact before the limit) · then this chat's total recorded tokens and cost"
+              title="Total recorded usage for this chat"
               className="text-muted-foreground/80"
             >
               · {totalParts.join(' · ')}
@@ -363,7 +351,7 @@ export function DraftChatView({
 }
 
 export function ChatView({ chatId, onChanged }: { chatId: string; onChanged: () => void }) {
-  const { chat, messages, liveChunks, streaming, sendError, queued, removeQueued, turnUsage, usageTotals, usageContext, send, abort, retry, refreshChat } = useChatStream(chatId)
+  const { chat, messages, liveChunks, streaming, sendError, queued, removeQueued, turnUsage, usageTotals, send, abort, retry, refreshChat } = useChatStream(chatId)
   const [openCall, setOpenCall] = useState<ConversationToolCall | null>(null)
   const attachments = useComposerAttachments(chatId, chat?.agentId ?? '')
   const composerHandle = useRef<ComposerHandle | null>(null)
@@ -404,7 +392,7 @@ export function ChatView({ chatId, onChanged }: { chatId: string; onChanged: () 
 
   return (
     <div className="flex min-w-0 flex-1 flex-col">
-      <ViewHeader agentId={chat.agentId} chat={chat} streaming={streaming} usageTotals={usageTotals} usageContext={usageContext} onChanged={onChanged} refreshChat={refreshChat} />
+      <ViewHeader agentId={chat.agentId} chat={chat} streaming={streaming} usageTotals={usageTotals} onChanged={onChanged} refreshChat={refreshChat} />
 
       <Conversation
         turns={turns}
