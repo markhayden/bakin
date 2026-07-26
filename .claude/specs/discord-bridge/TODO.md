@@ -15,7 +15,12 @@ Plan: `.claude/specs/discord-bridge/PLAN.md`
 - [x] A6 adapter-pi delegation ('shimmed') + conformance pin + gate round-trip test
 - [x] A7 delivery.discord doctor check (Integrations & Keys already handles named secrets — no UI change needed)
 - [x] A8 Docs sweep (delivery-bridge.md, pi-adapter fix, CLAUDE.md, §10.1; README has no channel claims — no change needed)
-- [~] CHECKPOINT 1: runbook written + isolated smoke PASSED (boot, doctor healthy, real embed delivered); live config staged (token in secret store, settings.integrations.discord set, backup kept). AWAITING owner live test on 3737 + sign-off before PR 1
+- [~] CHECKPOINT 1: isolated smoke PASSED; owner ran BOTH runbook scenarios
+      (approve + reject modal) live 2026-07-26 — PASS. Live validation caught
+      + fixed 4 real issues on the branch: missing buttons (transport binding
+      dropped components), channel-aliases check id-shape, stale
+      needs-approval callout (drawer now event-subscribed), gate harness
+      modal-reason assertion. Five-axis code review running → PR 1 next.
 
 ## Phase B — Inbound chat (branch: feat/discord-inbound-chat)
 - [ ] B1 subscribeInboundMessages contract + bridge inbound gating + attachments
