@@ -23,10 +23,21 @@ import type { InboundChannelMessage } from '@bakin/core/adapters/runtime'
 import { createLogger } from '../../../src/core/logger'
 import { getSettings } from '../../../src/core/settings'
 import type { ChatAttachment, ChatTranscriptRow } from '../types'
-import { attachmentsDir, createChat, findChatByExternalKey, getChatSummary, readTranscript } from './store'
+import { attachmentsDir, clearExternalKey, createChat, findChatByExternalKey, getChatSummary, readTranscript } from './store'
 import { startChatTurn } from './stream-bridge'
 
 const log = createLogger('chat-channel-inbound')
+
+/**
+ * RASTER types ride the model's image-input lane. `image/*` is NOT enough:
+ * Discord reports SVGs as image/svg+xml, small files skip downscaling, and
+ * an svg+xml data URL is rejected by model providers — worse, the poisoned
+ * item stays in the chat session and fails EVERY later turn
+ * (live-validation finding, 2026-07-26). Everything non-raster lands as a
+ * FILE in the chat's attachment dir with its path in the message — the
+ * agent reads it with its file tools.
+ */
+const RASTER_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
 
 /** Discord's typing state expires after ~10s — pulse well inside that. */
 const TYPING_PULSE_MS = 8_000
@@ -122,12 +133,6 @@ export function wireChannelInbound(ctx: WireContext): () => void {
     } catch {
       imageInput = false // conservative — same as the composer probe
     }
-    if (!imageInput) {
-      return {
-        attachments: [],
-        notes: [`[${incoming.length} image attachment${incoming.length === 1 ? '' : 's'} omitted — the agent's model has no image input]`],
-      }
-    }
     const dir = attachmentsDir(chatId)
     mkdirSync(dir, { recursive: true })
     const attachments: ChatAttachment[] = []
@@ -138,7 +143,16 @@ export function wireChannelInbound(ctx: WireContext): () => void {
         const target = join(dir, name)
         copyFileSync(file.path, target)
         rmSync(file.path, { force: true })
-        attachments.push({ name, mimeType: file.contentType ?? 'image/png', path: target })
+        const isRasterImage = Boolean(file.contentType && RASTER_IMAGE_TYPES.has(file.contentType))
+        if (isRasterImage && imageInput) {
+          attachments.push({ name, mimeType: file.contentType!, path: target })
+        } else if (isRasterImage) {
+          notes.push(`[image ${name} saved at ${target} — the agent's model has no image input; it can still read the file with its tools]`)
+        } else {
+          // Non-raster (SVG, PDF, CSV, …): the file lane — never the image
+          // lane (an svg+xml data URL poisons the whole session).
+          notes.push(`[file ${name} from Discord saved at ${target} — open it with your file tools]`)
+        }
       } catch (err) {
         log.warn('Inbound attachment adoption failed — noted, not fatal', err, { name: file.name })
         notes.push(`[attachment ${file.name} could not be processed]`)
@@ -149,6 +163,19 @@ export function wireChannelInbound(ctx: WireContext): () => void {
 
   const unsubscribeInbound = subscribeInbound((message) => {
     void (async () => {
+      if (message.command) {
+        // /new-chat: unbind — the next message starts a fresh chat (and a
+        // fresh runtime session). The old chat keeps its history in the UI.
+        if (message.command.name === 'new-chat') {
+          const bound = findChatByExternalKey(message.channelRef)
+          if (bound) {
+            stopTyping(bound.id)
+            await clearExternalKey(bound.id)
+            log.info('Channel unbound by /new-chat', { chatId: bound.id, channel: message.channelRef })
+          }
+        }
+        return
+      }
       const chat = await findOrCreateChat(message)
       const { attachments, notes } = await adoptAttachments(chat.id, chat.agentId, message)
       const content = [message.text, ...notes].filter(Boolean).join('\n\n')

@@ -197,7 +197,10 @@ export const chatRoutes = [
         return Response.json({ error: 'No file provided — use the "file" form field' }, { status: 400 })
       }
       const file = value as File
-      if (!file.type.startsWith('image/')) {
+      // Raster set, NOT image/*: an image/svg+xml upload skips downscaling
+      // and its data URL is rejected by model providers — and the poisoned
+      // item stays in the session, failing every later turn (#669 finding).
+      if (!['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(file.type)) {
         return Response.json({ error: `Only image attachments are supported (got ${file.type || 'unknown'})` }, { status: 400 })
       }
       if (file.size === 0) return Response.json({ error: 'File is empty' }, { status: 400 })

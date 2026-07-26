@@ -142,7 +142,7 @@ describe('discord inbound gating', () => {
     expect(received[0].text).toBe('write a haiku')
   })
 
-  it('downloads image attachments to local temp files; skips non-images and oversize', async () => {
+  it('materializes attachments of ANY type; oversize is skipped with a visible note', async () => {
     const { surface, received } = makeSurface()
     await surface.handleMessage(guildMessage({
       attachments: [
@@ -152,9 +152,10 @@ describe('discord inbound gating', () => {
       ],
     }))
     const attachments = received[0].attachments ?? []
-    expect(attachments).toHaveLength(1)
-    expect(attachments[0].name).toBe('shot.png')
+    expect(attachments.map(a => a.name)).toEqual(['shot.png', 'notes.pdf'])
     expect(fs.readFileSync(attachments[0].path).toString()).toBe('img-bytes')
+    expect(received[0].text).toContain('huge.png')
+    expect(received[0].text).toContain('skipped')
   })
 
   it('a failed attachment download degrades to text-only, never a dropped message', async () => {

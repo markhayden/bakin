@@ -25,6 +25,8 @@ export interface DiscordTransport {
   client: Client
   /** Bot's own user id (known after READY) — self-message filtering. */
   botUserId(): string | null
+  /** Application id (known after READY) — slash-command registration. */
+  applicationId(): string | null
   connect(): Promise<void>
   destroy(): Promise<void>
   fetchGuildChannels(guildId: string): Promise<ApiChannelLike[]>
@@ -47,10 +49,12 @@ export function createDiscordTransport(token: string): DiscordTransport {
   })
   const client = new Client({ rest, gateway })
   let botUserId: string | null = null
+  let applicationId: string | null = null
   let connected = false
 
   client.once(GatewayDispatchEvents.Ready, ({ data }) => {
     botUserId = data.user.id
+    applicationId = data.application.id
     log.info('Discord gateway ready', { user: data.user.username, guilds: data.guilds.length })
   })
 
@@ -58,6 +62,7 @@ export function createDiscordTransport(token: string): DiscordTransport {
     api: client.api,
     client,
     botUserId: () => botUserId,
+    applicationId: () => applicationId,
 
     async connect() {
       if (connected) return
@@ -184,4 +189,28 @@ export async function downloadAttachment(url: string): Promise<Buffer> {
   const response = await fetch(url)
   if (!response.ok) throw new Error(`attachment fetch failed: ${response.status}`)
   return Buffer.from(await response.arrayBuffer())
+}
+
+/**
+ * Register the bridge's guild slash commands (idempotent bulk overwrite).
+ * Non-fatal: a registration failure degrades to "no slash commands", never
+ * a failed boot.
+ */
+export async function registerGuildCommands(transport: DiscordTransport, guildIds: string[], commands: Array<{ name: string; description: string }>): Promise<void> {
+  const applicationId = transport.applicationId()
+  if (!applicationId) {
+    log.warn('Slash-command registration skipped — application id unknown (no READY yet)')
+    return
+  }
+  for (const guildId of guildIds) {
+    try {
+      await transport.api.applicationCommands.bulkOverwriteGuildCommands(
+        applicationId,
+        guildId,
+        commands.map(command => ({ ...command, type: 1 })),
+      )
+    } catch (err) {
+      log.warn('Slash-command registration failed for guild', err, { guildId })
+    }
+  }
 }

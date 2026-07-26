@@ -196,7 +196,7 @@ describe('chat channel inbound wiring', () => {
     expect(fs.existsSync(tempFile)).toBe(false) // temp file consumed
   })
 
-  it('degrades attachments to a visible note when the agent lacks image input', async () => {
+  it('degrades images to a saved-file note when the agent lacks image input', async () => {
     const tempFile = join(testDir, 'incoming.png')
     fs.writeFileSync(tempFile, 'png-bytes')
     const { ctx, inbound } = makeCtx({ imageInput: false })
@@ -204,7 +204,44 @@ describe('chat channel inbound wiring', () => {
     inbound(inboundMessage({ attachments: [{ name: 'incoming.png', path: tempFile, contentType: 'image/png' }] }))
     await settle()
     expect(startedTurns[0].attachments).toEqual([])
-    expect(startedTurns[0].content).toContain('omitted')
+    expect(startedTurns[0].content).toContain('saved at')
+    expect(startedTurns[0].content).toContain('no image input')
+  })
+
+  it('routes non-raster files (svg, pdf) to the FILE lane — never the image lane', async () => {
+    const svgFile = join(testDir, 'logo.svg')
+    fs.writeFileSync(svgFile, '<svg/>')
+    const { ctx, inbound } = makeCtx({ imageInput: true })
+    wireChannelInbound(ctx)
+    inbound(inboundMessage({ attachments: [{ name: 'logo.svg', path: svgFile, contentType: 'image/svg+xml' }] }))
+    await settle()
+
+    const chat = findChatByExternalKey('discord:channel:77')!
+    // The file lands in the chat's dir with its path noted for tool access —
+    // an svg+xml data URL in the session would poison every later turn.
+    expect(startedTurns[0].attachments).toEqual([])
+    expect(startedTurns[0].content).toContain('logo.svg')
+    expect(startedTurns[0].content).toContain('file tools')
+    expect(fs.existsSync(join(attachmentsDir(chat.id), 'logo.svg'))).toBe(true)
+  })
+
+  it('/new-chat unbinds the chat so the next message starts fresh', async () => {
+    const { ctx, inbound } = makeCtx()
+    wireChannelInbound(ctx)
+    inbound(inboundMessage())
+    await settle()
+    const first = findChatByExternalKey('discord:channel:77')!
+
+    inbound(inboundMessage({ text: '', messageRef: 'interaction:i1', command: { name: 'new-chat' } }))
+    await settle()
+    expect(findChatByExternalKey('discord:channel:77')).toBeNull()
+    expect(startedTurns).toHaveLength(1) // the command itself never starts a turn
+
+    inbound(inboundMessage({ text: 'fresh start' }))
+    await settle()
+    const second = findChatByExternalKey('discord:channel:77')!
+    expect(second.id).not.toBe(first.id)
+    expect(listChats()).toHaveLength(2) // old chat keeps its history
   })
 
   it('is inert on runtimes without an inbound stream', () => {

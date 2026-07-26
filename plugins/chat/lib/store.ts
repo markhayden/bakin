@@ -268,6 +268,24 @@ export function findChatByExternalKey(externalKey: string): ChatSummary | null {
   return readIndex().chats.find((c) => c.externalKey === externalKey) ?? null
 }
 
+/**
+ * Unbind a chat from its external channel (#669 /new-chat): the chat keeps
+ * its history in the UI; the channel's next inbound message binds a fresh
+ * chat (and with it a fresh runtime session — the escape hatch for a
+ * poisoned or overgrown conversation).
+ */
+export function clearExternalKey(chatId: string): Promise<boolean> {
+  return serialized(() => {
+    const index = readIndex()
+    const chat = index.chats.find((c) => c.id === chatId)
+    if (!chat?.externalKey) return false
+    delete chat.externalKey
+    chat.updatedAt = new Date().toISOString()
+    writeIndexAtomic(index)
+    return true
+  })
+}
+
 export function createChat(input: { agentId: string; title?: string; externalKey?: string }): Promise<ChatSummary> {
   return serialized(() => {
     const now = new Date().toISOString()

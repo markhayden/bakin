@@ -189,6 +189,13 @@ export interface InboundChannelMessage {
   attachments?: InboundChannelAttachment[]
   /** Provider message ref (e.g. "message:<id>"). */
   messageRef: string
+  /**
+   * Structured control command (e.g. a slash command) instead of chat text —
+   * when present, `text` is empty and consumers act on the verb ("new-chat"
+   * unbinds the channel's chat so the next message starts fresh). The
+   * provider has already acked the command UI-side.
+   */
+  command?: { name: string }
 }
 
 /**
