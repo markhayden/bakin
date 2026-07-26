@@ -50,14 +50,14 @@ Pi is a minimal single-session coding harness — it has no agent roster, channe
 
 | Surface | Behavior on Pi |
 |---|---|
-| channels | `list() → []`; sends/approvals throw typed `runtime_failed` ("not supported by the pi runtime"); the Chat plugin is the conversational surface. Pending workflow gates are NEVER silent: the workflows nav badge + toast/OS notification (`nav-badge-providers` slot) deliver approval attention in-app on every runtime |
+| channels | Member OMITTED unless the Discord delivery bridge is configured (#669) — then served by DELEGATION (`delivery: 'shimmed'`, full surface incl. buttoned approvals; see `.claude/knowledge/delivery-bridge.md`). Unconfigured: absent member, `delivery: 'unavailable'`, consumers feature-detect and degrade. Pending workflow gates are NEVER silent either way: the workflows nav badge + toast/OS notification (`nav-badge-providers` slot) deliver approval attention in-app on every runtime |
 | cron | omitted entirely (optional contract member — consumers feature-detect). Agents self-schedule via `bakin_exec_schedule_*` (Bakin-owned scheduler); a switch OFF a cron-bearing runtime can adopt its native jobs into Bakin schedules (`--adopt-cron`, opt-in) |
 | images | **FULLY SUPPORTED, ZERO KEYS** (`images.ts` + `codex-images.ts`): the existing openai-codex OAuth drives the ChatGPT backend's hosted `image_generation` tool (gpt-image-2) — generation AND edits with input images (probed live 2026-07-07; full create/edit/multi-ref battery re-verified 2026-07-14, pi-ecosystem WS3). `providers()` reports `openai-codex` configured → plugin routes `servedBy: 'runtime'`. Explicit `provider: openai/google` routes ride the shared direct-provider shim with a Bakin key — since WS3 the shim takes input images too (OpenAI `/v1/images/edits` multipart, Gemini inline_data parts), so the keyed lane has FULL parity: generate, edit, multi-reference. `providers()` advertises the keyed rows (model ids mirror the plugin catalog) so the routing engine routes to them; the plugin's reference gate accepts `servedBy: 'shim'`. Caveats: the hosted tool takes no size params (`sizingHonored: false` — plugin probes real dims, exports own geometry); the endpoint is reverse-engineered (`chatgpt.com/backend-api/codex/responses`), so failures classify typed and the shim remains the keyed escape hatch |
-| media / createThread / editMessage | members genuinely absent — callers skip |
+| media / createThread / editMessage | media absent — callers skip. createThread/editMessage ride the channels surface: present (bridge-served) when the Discord delivery bridge is configured, absent otherwise |
 | per-agent subagent models | `routingSupport().perAgentSubagentModel` stays FALSE (Pi has no native subagents) — but a switch onto Pi PRESERVES carried values in agent metadata (`carriedSubagentModel`, reconciler-owned) and restores them on the switch back; report line "preserved (not active on pi)" |
 | web search / browser / per-turn capabilities | capability packs (skill-packs) via agent-packages — see `.claude/knowledge/capability-packs.md`; Bakin ships no tool wrappers |
 
-Fast-follows on record: Discord bridge (reuse existing bot token), in-app approval channel.
+Fast-follows on record: Discord bridge SHIPPED (#669 Phase A — `.claude/knowledge/delivery-bridge.md`; reuses the existing bot token via secret-store `discord.botToken`); in-app approval channel still open.
 
 ## Codex image generation — burn + stability
 
