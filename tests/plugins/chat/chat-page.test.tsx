@@ -384,6 +384,39 @@ describe('ChatView', () => {
     cleanup()
   })
 
+  it('renders the compaction bar in the header from GET contextStats (#737)', async () => {
+    mockFetch({
+      [`/chats/${CHAT_A}/seen`]: {},
+      capabilities: { imageInput: false },
+      [`/chats/${CHAT_A}`]: {
+        chat: summary(),
+        messages: [{ kind: 'user', ts: '2026-07-11T10:00:00.000Z', content: 'hi' }],
+        usage: {},
+        contextStats: { tokens: 45_300, contextWindow: 272_000, compactionThreshold: 255_616, model: 'gpt-5.5' },
+      },
+    })
+    const { container } = render(<ChatView chatId={CHAT_A} onChanged={() => {}} />)
+    await waitFor(() => {
+      const meter = container.querySelector('[data-context-meter]')
+      expect(meter).not.toBeNull()
+      expect(meter!.textContent).toContain('45.3k / 272k (17%)')
+    })
+    expect(container.querySelector('[data-context-tick]')).not.toBeNull()
+    cleanup()
+  })
+
+  it('no contextStats from the server → no bar (capability absent = honest absence)', async () => {
+    mockFetch({
+      [`/chats/${CHAT_A}/seen`]: {},
+      capabilities: { imageInput: false },
+      [`/chats/${CHAT_A}`]: { chat: summary(), messages: [], usage: {} },
+    })
+    const { container } = render(<ChatView chatId={CHAT_A} onChanged={() => {}} />)
+    await settleReact()
+    expect(container.querySelector('[data-context-meter]')).toBeNull()
+    cleanup()
+  })
+
   it('no recorded usage → no footers, no header chip (absence, never zeros)', async () => {
     mockFetch({
       [`/chats/${CHAT_A}/seen`]: {},

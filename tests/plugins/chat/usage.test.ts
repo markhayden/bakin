@@ -119,6 +119,43 @@ describe('GET /chats/:chatId usage decoration', () => {
   })
 })
 
+describe('GET /chats/:chatId contextStats decoration (#737)', () => {
+  test('decorates from the adapter member with the chat threadId; throwing member omits honestly', async () => {
+    const chat = await createChat({ agentId: 'main' })
+    const calls: Array<{ agentId: string; threadId: string }> = []
+    ;(activated.ctx.runtime.sessions as { contextStats?: unknown }).contextStats = async (opts: { agentId: string; threadId: string }) => {
+      calls.push(opts)
+      return { tokens: 45_300, contextWindow: 272_000, compactionThreshold: 255_616, model: 'gpt-5.5' }
+    }
+    const get = findRoute(activated.routes, 'GET', '/chats/:chatId')!
+    const res = await callRoute(get, activated.ctx, { path: `/chats/${chat.id}` })
+    expect(res.body.contextStats).toMatchObject({ tokens: 45_300, contextWindow: 272_000 })
+    expect(calls[0]).toEqual({ agentId: 'main', threadId: `chat:${chat.id}` })
+
+    // A throwing member serves the transcript WITHOUT the field.
+    ;(activated.ctx.runtime.sessions as { contextStats?: unknown }).contextStats = async () => {
+      throw new Error('adapter exploded')
+    }
+    const res2 = await callRoute(get, activated.ctx, { path: `/chats/${chat.id}` })
+    expect(res2.status).toBe(200)
+    expect(res2.body.contextStats).toBeUndefined()
+
+    // Absent member (capability off) → field absent.
+    delete (activated.ctx.runtime.sessions as { contextStats?: unknown }).contextStats
+    const res3 = await callRoute(get, activated.ctx, { path: `/chats/${chat.id}` })
+    expect(res3.body.contextStats).toBeUndefined()
+  })
+
+  test('a null adapter reading (no session yet) omits the field', async () => {
+    const chat = await createChat({ agentId: 'main' })
+    ;(activated.ctx.runtime.sessions as { contextStats?: unknown }).contextStats = async () => null
+    const get = findRoute(activated.routes, 'GET', '/chats/:chatId')!
+    const res = await callRoute(get, activated.ctx, { path: `/chats/${chat.id}` })
+    expect(res.body.contextStats).toBeUndefined()
+    delete (activated.ctx.runtime.sessions as { contextStats?: unknown }).contextStats
+  })
+})
+
 describe('buildTurnUsage (pure mapping)', () => {
   test('a metered row with a cost but unknown lane shows tokens only (unknown never fabricates)', () => {
     const { usage } = buildTurnUsage([

@@ -21,7 +21,7 @@ import {
 } from '@makinbakin/sdk/components'
 import { useAgent } from '@makinbakin/sdk/hooks'
 
-import { formatTokenCount, formatUsageCost } from '@makinbakin/sdk/components'
+import { ContextMeter, formatTokenCount, formatUsageCost, type ContextMeterStats } from '@makinbakin/sdk/components'
 
 import {
   patchChatRequest,
@@ -171,6 +171,7 @@ function ViewHeader({
   chat,
   streaming,
   usageTotals,
+  contextStats,
   onChanged,
   refreshChat,
 }: {
@@ -178,6 +179,7 @@ function ViewHeader({
   chat: ChatSummaryDto | null
   streaming: boolean
   usageTotals?: ChatUsageTotals | null
+  contextStats?: ContextMeterStats | null
   onChanged: () => void
   refreshChat?: () => Promise<void>
 }) {
@@ -201,6 +203,9 @@ function ViewHeader({
         )}
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <span>{agent?.name ?? agentId}</span>
+          {/* The compaction bar (#737) leads — runtime truth only; renders
+              nothing when there's nothing honest to show. */}
+          <ContextMeter stats={contextStats} />
           {totalParts.length ? (
             <span
               data-chat-usage-totals
@@ -351,7 +356,7 @@ export function DraftChatView({
 }
 
 export function ChatView({ chatId, onChanged }: { chatId: string; onChanged: () => void }) {
-  const { chat, messages, liveChunks, streaming, sendError, queued, removeQueued, turnUsage, usageTotals, send, abort, retry, refreshChat } = useChatStream(chatId)
+  const { chat, messages, liveChunks, streaming, sendError, queued, removeQueued, turnUsage, usageTotals, contextStats, send, abort, retry, refreshChat } = useChatStream(chatId)
   const [openCall, setOpenCall] = useState<ConversationToolCall | null>(null)
   const attachments = useComposerAttachments(chatId, chat?.agentId ?? '')
   const composerHandle = useRef<ComposerHandle | null>(null)
@@ -392,7 +397,7 @@ export function ChatView({ chatId, onChanged }: { chatId: string; onChanged: () 
 
   return (
     <div className="flex min-w-0 flex-1 flex-col">
-      <ViewHeader agentId={chat.agentId} chat={chat} streaming={streaming} usageTotals={usageTotals} onChanged={onChanged} refreshChat={refreshChat} />
+      <ViewHeader agentId={chat.agentId} chat={chat} streaming={streaming} usageTotals={usageTotals} contextStats={contextStats} onChanged={onChanged} refreshChat={refreshChat} />
 
       <Conversation
         turns={turns}
