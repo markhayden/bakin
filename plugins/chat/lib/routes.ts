@@ -180,8 +180,8 @@ export const chatRoutes = [
   defineRoute({
     path: '/chats/:chatId/attachments',
     method: 'POST',
-    summary: 'Upload an image attachment for this chat',
-    description: 'Multipart (field "file", image/* only, ≤25 MB). Stored under the chat — never auto-imported as an asset. Reference the returned attachment in POST /messages.',
+    summary: 'Upload a chat attachment (image or PDF)',
+    description: 'Multipart (field "file", raster images + application/pdf, ≤25 MB). Stored under the chat — never auto-imported as an asset. Reference the returned attachment in POST /messages.',
     params: chatIdParams,
     responses: { 201: passthrough, 400: errorResponse, 404: errorResponse },
     handler: async (req, _ctx, { params }) => {
@@ -197,11 +197,13 @@ export const chatRoutes = [
         return Response.json({ error: 'No file provided — use the "file" form field' }, { status: 400 })
       }
       const file = value as File
-      // Raster set, NOT image/*: an image/svg+xml upload skips downscaling
-      // and its data URL is rejected by model providers — and the poisoned
-      // item stays in the session, failing every later turn (#669 finding).
-      if (!['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(file.type)) {
-        return Response.json({ error: `Only image attachments are supported (got ${file.type || 'unknown'})` }, { status: 400 })
+      // Raster set + PDF, NOT image/*: an image/svg+xml upload skips
+      // downscaling and its data URL is rejected by model providers — and the
+      // poisoned item stays in the session, failing every later turn (#669
+      // finding). PDFs (#742) never enter the model-attachment lane: the turn
+      // engine routes them down the file lane (path note + pdf exec tools).
+      if (!['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'application/pdf'].includes(file.type)) {
+        return Response.json({ error: `Only image and PDF attachments are supported (got ${file.type || 'unknown'})` }, { status: 400 })
       }
       if (file.size === 0) return Response.json({ error: 'File is empty' }, { status: 400 })
       if (file.size > ATTACHMENT_MAX_BYTES) {

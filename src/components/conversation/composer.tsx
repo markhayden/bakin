@@ -83,13 +83,25 @@ export interface ComposerAttachmentItem {
 }
 
 export interface ComposerAttachments {
-  /** Whether this agent/model accepts image input (capability-gated by the caller). */
+  /** Whether the attach affordance is available at all on this surface. */
   enabled: boolean
-  /** Honest explanation shown on the disabled affordance. */
+  /**
+   * Whether image files are accepted (capability-gated by the caller on the
+   * agent's imageInput). When false, PDFs still attach — tools read those,
+   * not the model's eyes — and image files are filtered with the
+   * disabledReason surfaced on the affordance. Default true.
+   */
+  acceptImages?: boolean
+  /** Honest explanation shown on the disabled/image-refusing affordance. */
   disabledReason?: string
   items: ComposerAttachmentItem[]
   onAdd: (files: File[]) => void
   onRemove: (id: string) => void
+}
+
+/** PDFs always pass (#742 file lane); images only when the model can see. */
+function isAcceptedFile(file: File, acceptImages: boolean): boolean {
+  return file.type === 'application/pdf' || (acceptImages && file.type.startsWith('image/'))
 }
 
 /** Imperative surface for queue-remove restore (spec D8): the surface can
@@ -273,9 +285,11 @@ export function Composer({
     }
   }
 
+  const acceptImages = attachments?.acceptImages ?? true
+
   const onPaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     if (!attachments?.enabled) return
-    const files = Array.from(e.clipboardData?.files ?? []).filter((f) => f.type.startsWith('image/'))
+    const files = Array.from(e.clipboardData?.files ?? []).filter((f) => isAcceptedFile(f, acceptImages))
     if (!files.length) return
     e.preventDefault()
     attachments.onAdd(files)
@@ -283,7 +297,7 @@ export function Composer({
 
   const onDrop = (e: React.DragEvent) => {
     if (!attachments?.enabled) return
-    const files = Array.from(e.dataTransfer?.files ?? []).filter((f) => f.type.startsWith('image/'))
+    const files = Array.from(e.dataTransfer?.files ?? []).filter((f) => isAcceptedFile(f, acceptImages))
     if (!files.length) return
     e.preventDefault()
     attachments.onAdd(files)
@@ -377,7 +391,13 @@ export function Composer({
                     type="button"
                     data-composer-attach
                     disabled={!attachments.enabled || disabled}
-                    title={attachments.enabled ? 'Add photos & files' : attachments.disabledReason ?? 'Attachments unavailable'}
+                    title={
+                      !attachments.enabled
+                        ? attachments.disabledReason ?? 'Attachments unavailable'
+                        : acceptImages
+                          ? 'Add photos & files'
+                          : `Add PDFs${attachments.disabledReason ? ` — ${attachments.disabledReason}` : ''}`
+                    }
                     aria-label="Add photos & files"
                     onClick={() => fileRef.current?.click()}
                     className="flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
@@ -387,11 +407,13 @@ export function Composer({
                   <input
                     ref={fileRef}
                     type="file"
-                    accept="image/*"
+                    accept={acceptImages ? 'image/*,application/pdf' : 'application/pdf'}
                     multiple
                     className="hidden"
                     onChange={(e) => {
-                      const files = Array.from(e.target.files ?? [])
+                      // The accept attr is advisory — re-filter (Finder's
+                      // "All Files" override would smuggle types through).
+                      const files = Array.from(e.target.files ?? []).filter((f) => isAcceptedFile(f, acceptImages))
                       if (files.length) attachments.onAdd(files)
                       e.target.value = ''
                     }}

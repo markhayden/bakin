@@ -223,16 +223,19 @@ describe('DraftChatView', () => {
     }
   })
 
-  it('hides the attach affordance for a text-only agent', async () => {
+  it('text-only agent: attach stays ENABLED for PDFs, images filtered via accept (#742)', async () => {
     mockFetch({ capabilities: { imageInput: false } })
     const { container } = render(
       <DraftChatView agentId="texty" onCreated={() => {}} createAndSend={async () => ({ chatId: CHAT_A, sent: true })} />,
     )
     await settleReact()
     const attach = container.querySelector('[data-composer-attach]') as HTMLButtonElement | null
-    // Affordance renders disabled with the honest reason (existing gating pattern).
+    // PDFs ride the file lane (tools read them) — only image acceptance is
+    // gated on the model's eyes, surfaced honestly on the affordance title.
     expect(attach).not.toBeNull()
-    expect(attach!.disabled).toBe(true)
+    expect(attach!.disabled).toBe(false)
+    expect(attach!.getAttribute('title')).toContain("can't see images")
+    expect(container.querySelector('input[type="file"]')?.getAttribute('accept')).toBe('application/pdf')
     cleanup()
   })
 })

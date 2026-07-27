@@ -33,7 +33,7 @@ export function QueuedMessageList({
             {item.attachments?.length ? (
               <div className="flex flex-wrap gap-1.5 pb-1.5">
                 {item.attachments.map((a) =>
-                  a.url ? (
+                  a.url && a.mimeType.startsWith('image/') ? (
                     <img key={a.name} src={a.url} alt={a.name} className="h-12 w-12 rounded-md border border-border object-cover" />
                   ) : (
                     <span key={a.name} className="rounded-md border border-border bg-muted/40 px-1.5 py-0.5 text-[10px] text-muted-foreground">
