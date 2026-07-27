@@ -70,6 +70,8 @@ import { join } from 'path'
 import { validatePackageContributionIntegrity } from './package-integrity'
 import { installManifestRequirements } from './requirements-installer'
 import { withoutSharedArtifacts } from './uninstaller'
+import { binPlatformKey } from './bin-installer'
+import { getSettings } from '../settings'
 
 const log = createLogger('agent-pkg:install')
 
@@ -157,6 +159,45 @@ function preflightCollisions(
   // Note: this function returns [] for V1 — the actual check is done at
   // projection time by the projector's overwrite-replace logic. Phase H-4
   // adds path-level pre-flight; structuring it here gives us the seam.
+}
+
+/**
+ * D14 (#687): runtimes/platforms declarations are enforced at install, not
+ * just badged in Explore. A pack that can't work here refuses honestly
+ * before any projection. Audited so refusals are visible after the fact.
+ */
+function assertRuntimePlatformCompatible(manifest: Manifest): void {
+  const runtimes = 'runtimes' in manifest ? manifest.runtimes : undefined
+  if (runtimes && runtimes.length > 0 && !runtimes.includes('*')) {
+    const active = getSettings().runtime.adapter
+    if (!runtimes.includes(active)) {
+      appendAudit(getContentDir(), 'pkg.install_refused', manifest.id, {
+        packageId: manifest.id,
+        reason: 'runtime-incompatible',
+        activeAdapter: active,
+        runtimes,
+      }, 'cli')
+      throw new Error(
+        `Package "${manifest.id}" is not for the active runtime (${active}) — compatible: ${runtimes.join(', ')}.`,
+      )
+    }
+  }
+
+  const platforms = 'platforms' in manifest ? manifest.platforms : undefined
+  if (platforms && platforms.length > 0) {
+    const platform = binPlatformKey()
+    if (!platform || !platforms.includes(platform)) {
+      appendAudit(getContentDir(), 'pkg.install_refused', manifest.id, {
+        packageId: manifest.id,
+        reason: 'platform-incompatible',
+        platform: platform ?? 'unknown',
+        platforms,
+      }, 'cli')
+      throw new Error(
+        `Package "${manifest.id}" is not available on this platform — needs ${platforms.join(' or ')}.`,
+      )
+    }
+  }
 }
 
 interface AdapterCreateAgentInput {
@@ -293,6 +334,7 @@ export async function installPackage(options: InstallOptions): Promise<InstallRe
     }
 
     const resolvedTopId = options.installAs ?? manifest.id
+    assertRuntimePlatformCompatible(manifest)
     validatePackageContributionIntegrity({
       manifest,
       stagingDir: topFetched.stagingDir,
@@ -353,6 +395,7 @@ export async function installPackage(options: InstallOptions): Promise<InstallRe
     const resolved = await resolveDependenciesAsync(manifest)
     for (const r of resolved) depFetched.push(r.fetched)
     for (const r of resolved) {
+      assertRuntimePlatformCompatible(r.manifest)
       validatePackageContributionIntegrity({
         manifest: r.manifest,
         stagingDir: r.fetched.stagingDir,
