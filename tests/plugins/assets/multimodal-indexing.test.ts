@@ -8,7 +8,7 @@
  *     via extractAssetContent, not provider-side file fetch helpers
  */
 import { describe, it, expect, beforeAll, afterAll, mock } from 'bun:test'
-import { mkdirSync, rmSync, writeFileSync, existsSync } from 'fs'
+import { mkdirSync, rmSync, writeFileSync, existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { activatePlugin } from '../test-helpers'
@@ -62,23 +62,6 @@ mock.module('../../../src/core/watcher', () => ({
   registerSyncHook: mock(),
 }))
 
-// Mock pdf-parse so PDF tests don't require a real PDF — the extractor
-// lazy-imports the module, and this mock replaces it. pdf-parse v2
-// exports a PDFParse class, not a default function.
-mock.module('pdf-parse', () => {
-  class MockPDFParse {
-    private byteLen: number
-    constructor(options: { data: Uint8Array }) {
-      this.byteLen = options.data.length
-    }
-    async getText() {
-      return { text: `MOCK PDF CONTENT: ${this.byteLen} bytes extracted` }
-    }
-    async destroy() {}
-  }
-  return { PDFParse: MockPDFParse }
-})
-
 import assetsPlugin from '@bakin/assets'
 
 // ---------------------------------------------------------------------------
@@ -91,7 +74,7 @@ function seedVersioned(
   type: string,
   file: string,
   mimeType: string,
-  body: string,
+  body: string | Buffer,
   description: string,
   tags: string[],
 ) {
@@ -115,8 +98,8 @@ function setupFixtures() {
   if (existsSync(testDir)) rmSync(testDir, { recursive: true })
   mkdirSync(STORE_DIR, { recursive: true })
 
-  // PDF asset (mocked pdf-parse returns synthetic content)
-  seedVersioned(PDF_ID, 'pdf', 'v1.pdf', 'application/pdf', 'fake-pdf-bytes', 'Wyoming LLC operating agreement', ['legal', 'llc'])
+  // PDF asset — real fixture bytes; the core engine extracts the sentinels
+  seedVersioned(PDF_ID, 'pdf', 'v1.pdf', 'application/pdf', readFileSync(join(import.meta.dir, '../../fixtures/pdf/text.pdf')), 'Wyoming LLC operating agreement', ['legal', 'llc'])
   // Raster image asset
   seedVersioned(IMG_ID, 'images', 'v1.png', 'image/png', 'png-bytes', 'Kafka pipeline diagram', ['architecture'])
   // SVG asset — vector, should be excluded from image_url
@@ -205,12 +188,12 @@ describe('assets multimodal indexing', () => {
     expect(mdDoc.media_url).toBe('')
   })
 
-  it('reindex populates content from PDF body via pdf-parse', async () => {
+  it('reindex populates content from PDF body via the core engine', async () => {
     const pdfDoc = (await reindexDocs())[PDF_ID]
     expect(pdfDoc).toBeDefined()
-    // The mocked pdf-parse returns synthetic content — presence proves the
-    // extractor was called, not just that metadata was copied.
-    expect(pdfDoc.content).toContain('MOCK PDF CONTENT')
+    // Real fixture text — presence proves the extractor was called, not
+    // just that metadata was copied.
+    expect(pdfDoc.content).toContain('alpha-7291')
     expect(pdfDoc.media_url).toBe('')
   })
 
