@@ -12,6 +12,7 @@ import { createLogger } from '@/core/logger'
 import type { ApiChannelLike } from './channel-info'
 import type { SendApi } from './send'
 import type { ApprovalApi, RawInteraction } from './approvals'
+import type { RawInboundMessage } from './inbound'
 
 const log = createLogger('delivery-discord')
 
@@ -24,6 +25,8 @@ export interface DiscordTransport {
   client: Client
   /** Bot's own user id (known after READY) — self-message filtering. */
   botUserId(): string | null
+  /** Application id (known after READY) — slash-command registration. */
+  applicationId(): string | null
   connect(): Promise<void>
   destroy(): Promise<void>
   fetchGuildChannels(guildId: string): Promise<ApiChannelLike[]>
@@ -33,21 +36,25 @@ export function createDiscordTransport(token: string): DiscordTransport {
   const rest = new REST({ version: '10' }).setToken(token)
   const gateway = new WebSocketManager({
     token,
-    // Phase A consumes NO message events: sends are REST, buttons/modals
-    // arrive as INTERACTION_CREATE (intent-free). Requesting the privileged
-    // MessageContent intent here would 4014-close the whole bridge for any
-    // bot missing the portal toggle — for features that don't need it.
-    // Inbound chat (B1) adds GuildMessages | DirectMessages | MessageContent
-    // when a consumer actually exists.
-    intents: GatewayIntentBits.Guilds,
+    // Message intents exist for the inbound-chat consumer (B1). NOTE:
+    // MessageContent is PRIVILEGED — a bot without the portal toggle gets a
+    // 4014 close at identify and the whole bridge fails; the delivery.discord
+    // doctor remediation names the toggle.
+    intents:
+      GatewayIntentBits.Guilds |
+      GatewayIntentBits.GuildMessages |
+      GatewayIntentBits.DirectMessages |
+      GatewayIntentBits.MessageContent,
     rest,
   })
   const client = new Client({ rest, gateway })
   let botUserId: string | null = null
+  let applicationId: string | null = null
   let connected = false
 
   client.once(GatewayDispatchEvents.Ready, ({ data }) => {
     botUserId = data.user.id
+    applicationId = data.application.id
     log.info('Discord gateway ready', { user: data.user.username, guilds: data.guilds.length })
   })
 
@@ -55,6 +62,7 @@ export function createDiscordTransport(token: string): DiscordTransport {
     api: client.api,
     client,
     botUserId: () => botUserId,
+    applicationId: () => applicationId,
 
     async connect() {
       if (connected) return
@@ -137,6 +145,9 @@ export function sendApiFromTransport(transport: DiscordTransport): SendApi {
       const channel = await transport.api.users.createDM(userId)
       return { id: channel.id }
     },
+    async showTyping(channelId) {
+      await transport.api.channels.showTyping(channelId)
+    },
   }
 }
 
@@ -164,4 +175,66 @@ export function subscribeInteractions(transport: DiscordTransport, handler: (raw
   transport.client.on(GatewayDispatchEvents.InteractionCreate, ({ data }) => {
     handler(data as unknown as RawInteraction)
   })
+}
+
+/** Forward raw MESSAGE_CREATE payloads to the inbound surface (B1). */
+export function subscribeMessages(transport: DiscordTransport, handler: (raw: RawInboundMessage) => void): void {
+  transport.client.on(GatewayDispatchEvents.MessageCreate, ({ data }) => {
+    handler(data as unknown as RawInboundMessage)
+  })
+}
+
+/** Fetch an attachment URL to bytes — CDN semantics stay confined here. */
+export async function downloadAttachment(url: string): Promise<Buffer> {
+  const response = await fetch(url)
+  if (!response.ok) throw new Error(`attachment fetch failed: ${response.status}`)
+  return Buffer.from(await response.arrayBuffer())
+}
+
+/**
+ * Register the bridge's slash commands GLOBALLY (upsert by name — never a
+ * bulk overwrite, so OpenClaw's own registered commands survive for a
+ * switch back). Global scope is required: guild commands are invisible in
+ * DMs, and DM chats need /new-chat the most. Guild registrations from
+ * earlier boots are cleared (they were bridge-owned only). Non-fatal: a
+ * registration failure degrades to "no slash commands", never a failed boot.
+ */
+export async function registerGlobalCommands(transport: DiscordTransport, guildIds: string[], commands: Array<{ name: string; description: string }>): Promise<void> {
+  const applicationId = transport.applicationId()
+  if (!applicationId) {
+    log.warn('Slash-command registration skipped — application id unknown (no READY yet)')
+    return
+  }
+  // GET-then-diff: skip creates when already registered (createGlobalCommand
+  // upserts, but every boot-create counts against Discord's daily limits).
+  let existingGlobal = new Set<string>()
+  try {
+    existingGlobal = new Set((await transport.api.applicationCommands.getGlobalCommands(applicationId)).map(c => c.name))
+  } catch (err) {
+    log.warn('Global slash-command listing failed — will upsert blindly', err)
+  }
+  for (const command of commands) {
+    if (existingGlobal.has(command.name)) continue
+    try {
+      await transport.api.applicationCommands.createGlobalCommand(applicationId, { ...command, type: 1 })
+    } catch (err) {
+      log.warn('Global slash-command registration failed', err, { command: command.name })
+    }
+  }
+  // Remove the bridge's earlier per-guild registrations (they would render
+  // as duplicates beside the global command) — SURGICALLY, by name: a
+  // blanket overwrite could clobber guild commands another consumer of this
+  // application (OpenClaw) registered (review finding).
+  const bridgeNames = new Set(commands.map(c => c.name))
+  for (const guildId of guildIds) {
+    try {
+      const guildCommands = await transport.api.applicationCommands.getGuildCommands(applicationId, guildId)
+      for (const guildCommand of guildCommands) {
+        if (!bridgeNames.has(guildCommand.name)) continue
+        await transport.api.applicationCommands.deleteGuildCommand(applicationId, guildId, guildCommand.id)
+      }
+    } catch (err) {
+      log.warn('Guild slash-command cleanup failed', err, { guildId })
+    }
+  }
 }

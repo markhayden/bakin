@@ -166,6 +166,38 @@ export interface DurableApprovalRecord {
   resolvedAt?: string
 }
 
+/** An inbound attachment already materialized to a LOCAL file by the provider. */
+export interface InboundChannelAttachment {
+  name: string
+  path: string
+  contentType?: string
+  size?: number
+}
+
+/**
+ * A human message arriving FROM a channel (#669 Phase B). The provider has
+ * already applied its gating (allowlists, mention requirements) — a handler
+ * receiving this may treat the sender as authorized. `channelRef` is
+ * provider-qualified and directly usable as a send target for the reply.
+ */
+export interface InboundChannelMessage {
+  platform: string
+  channelRef: string
+  authorId: string
+  authorName?: string
+  text: string
+  attachments?: InboundChannelAttachment[]
+  /** Provider message ref (e.g. "message:<id>"). */
+  messageRef: string
+  /**
+   * Structured control command (e.g. a slash command) instead of chat text —
+   * when present, `text` is empty and consumers act on the verb ("new-chat"
+   * unbinds the channel's chat so the next message starts fresh). The
+   * provider has already acked the command UI-side.
+   */
+  command?: { name: string }
+}
+
 /**
  * The full channel surface a delivering runtime exposes (see
  * `AgentRuntimeAdapter.channels` for the capability semantics — the member
@@ -188,4 +220,17 @@ export interface RuntimeChannelSurface {
    */
   createThread?(args: CreateThreadArgs): Promise<CreatedThread | null>
   editMessage?(args: EditChannelMessageArgs): Promise<void>
+  /**
+   * OPTIONAL inbound stream (#669 Phase B): human messages from the channel
+   * platform, pre-gated by the provider (allowlists fail closed; guild
+   * messages mention-gated). Runtimes that handle inbound themselves
+   * (OpenClaw) OMIT this member — consumers feature-detect.
+   */
+  subscribeInboundMessages?(handler: (message: InboundChannelMessage) => void): () => void
+  /**
+   * OPTIONAL ephemeral typing/activity signal (#669 Phase B, D10). Providers
+   * without the concept omit it; callers feature-detect and repeat while
+   * work runs (platform typing states expire — Discord's after ~10s).
+   */
+  sendTyping?(args: { channel: string }): Promise<void>
 }

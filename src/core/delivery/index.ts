@@ -8,7 +8,7 @@
  * services). The transport module is dynamically imported at boot so CLI and
  * doctor paths never pay for (or evaluate) @discordjs.
  */
-import type { ApprovalResolveEvent, CapabilityMode } from '@bakin/core/adapters/runtime'
+import type { ApprovalResolveEvent, CapabilityMode, InboundChannelMessage } from '@bakin/core/adapters/runtime'
 import type { ChannelBridge, ChannelSurface } from '@bakin/core/delivery'
 import { createLogger } from '@/core/logger'
 import { isDiscordConfigured, readDiscordConfig } from './config'
@@ -28,12 +28,14 @@ export interface BridgeState {
 }
 
 /**
- * Approval-response handlers registered by consumers (workflows wires these
- * at plugin activation). Kept OUTSIDE BridgeState so subscribing is always
- * safe — a configured-but-unbootable bridge must never crash a plugin's
- * activate(); events simply never fire until the transport connects.
+ * Approval-response and inbound-message handlers registered by consumers
+ * (workflows / chat wire these at plugin activation). Kept OUTSIDE
+ * BridgeState so subscribing is always safe — a configured-but-unbootable
+ * bridge must never crash a plugin's activate(); events simply never fire
+ * until the transport connects.
  */
 const approvalHandlers = new Set<(event: ApprovalResolveEvent) => void>()
+const inboundHandlers = new Set<(message: InboundChannelMessage) => void>()
 
 let state: BridgeState | null = null
 
@@ -55,8 +57,13 @@ const channels: ChannelSurface = {
     approvalHandlers.add(handler)
     return () => approvalHandlers.delete(handler)
   },
+  subscribeInboundMessages: (handler) => {
+    inboundHandlers.add(handler)
+    return () => inboundHandlers.delete(handler)
+  },
   createThread: async (args) => requireState().send.createThread(args),
   editMessage: async (args) => requireState().send.editMessage(args),
+  sendTyping: async (args) => requireState().send.sendTyping(args),
 }
 
 let bootInFlight: Promise<void> | null = null
@@ -113,9 +120,10 @@ async function bootOnce(): Promise<void> {
       log.warn('Discord channel enumeration failed at boot', err)
     }
     const sendApi = sendApiFromTransport(transport)
+    const approvalApi = approvalApiFromTransport(transport)
     const send = createSendSurface({ api: sendApi })
     const approvals = createApprovalSurface({
-      api: approvalApiFromTransport(transport),
+      api: approvalApi,
       sendApi,
       // Live read: approver edits take effect without a restart.
       approvers: () => readDiscordConfig().settings.approvers,
@@ -130,15 +138,51 @@ async function bootOnce(): Promise<void> {
         }
       }
     })
+    const { createInboundSurface } = await import('./discord/inbound')
+    const { subscribeMessages, downloadAttachment } = await import('./discord/client')
+    const inbound = createInboundSurface({
+      botUserId: transport.botUserId,
+      // Live view — enabled/allowlist edits apply without restart (the
+      // surface itself re-checks enabled + inbound.enabled per message).
+      settings: () => readDiscordConfig().settings,
+      download: downloadAttachment,
+      replyEphemeral: approvalApi.replyEphemeral,
+    })
+    inbound.subscribe((message) => {
+      for (const handler of inboundHandlers) {
+        try {
+          handler(message)
+        } catch (err) {
+          log.error('Inbound message handler failed', err, { channel: message.channelRef })
+        }
+      }
+    })
     subscribeInteractions(transport, (raw) => {
       // Live master-switch guard: flipping integrations.discord.enabled off
       // stops decisions immediately even though the gateway stays connected
       // until the next restart (the setting description says so).
       if (!readDiscordConfig().settings.enabled) return
+      // 2 = APPLICATION_COMMAND (slash commands) → inbound; buttons/modals → approvals.
+      if ((raw as { type?: number }).type === 2) {
+        void inbound.handleCommandInteraction(raw as never).catch((err) => {
+          log.error('Discord command handling failed', err)
+        })
+        return
+      }
       void approvals.handleInteraction(raw).catch((err) => {
         log.error('Discord interaction handling failed', err)
       })
     })
+    subscribeMessages(transport, (raw) => {
+      void inbound.handleMessage(raw).catch((err) => {
+        log.error('Discord inbound handling failed', err)
+      })
+    })
+    const { registerGlobalCommands } = await import('./discord/client')
+    const { NEW_CHAT_COMMAND } = await import('./discord/inbound')
+    await registerGlobalCommands(transport, settings.guildIds, [
+      { name: NEW_CHAT_COMMAND, description: 'Start a fresh Bakin chat for this channel (the old one stays in Bakin)' },
+    ])
     state = { transport, cache, send, approvals }
     auditDelivery('delivery.connected', { guilds: settings.guildIds.length })
 }

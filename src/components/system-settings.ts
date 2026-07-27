@@ -89,7 +89,7 @@ export const SYSTEM_SETTINGS_SCHEMA: PluginSettingsSchema = {
       key: 'integrations.discord.inbound.enabled',
       type: 'boolean',
       label: 'Discord inbound chat',
-      description: 'NOT BUILT YET (ships with the inbound-chat phase): will let allowed users chat with a Bakin agent from Discord. Has no effect today.',
+      description: 'Let allowlisted users chat with a Bakin agent from Discord (@mention in guild channels, DMs directly). Messages become real Bakin chats; replies post back to the channel. Requires the bridge to be enabled and allowFrom below.',
       default: false,
     },
     {

@@ -55,6 +55,8 @@ export type {
   DurableApprovalRecord,
   EditApprovalArgs,
   EditChannelMessageArgs,
+  InboundChannelAttachment,
+  InboundChannelMessage,
   MessageArgs,
   MessageAttachment,
   MessageResult,

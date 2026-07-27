@@ -1,9 +1,9 @@
 {
   "id": "chat",
   "name": "Chat",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "bakin": ">=1.0.0",
-  "description": "Direct conversations with your agents — streamed multi-chat sessions from the Bakin UI, runtime-agnostic via the adapter layer",
+  "description": "Direct conversations with your agents \u2014 streamed multi-chat sessions from the Bakin UI, runtime-agnostic via the adapter layer",
   "contentFiles": [],
   "secrets": [],
   "dependencies": [],
@@ -14,6 +14,7 @@
     "runtime.read",
     "runtime.agents",
     "runtime.messaging",
+    "runtime.channels",
     "search.write"
   ],
   "contributes": {
