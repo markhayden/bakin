@@ -121,7 +121,10 @@ the `chat.done` bus event posts the assistant reply back to the channel —
 including for turns started from the web UI on a bound chat
 (interchangeable conversation is the D7 point, not a bug). `chat.error`
 posts an honest failure line; aborted turns stay silent. Unsupported
-image input degrades to a visible note in the message.
+image input degrades to a visible note in the message; non-raster files
+(PDF, …) pass through as attachments and the turn engine's `fileLaneNote`
+points the agent at `bakin_exec_pdf_read`/file tools (#742 — inbound and
+the web composer share ONE note generator).
 
 Facade note: `src/lib/plugin-context-services.ts` forwards the optional
 channel members (subscribeInboundMessages, sendTyping, createThread,

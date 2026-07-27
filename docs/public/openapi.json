@@ -4668,7 +4668,7 @@
     "/api/plugins/chat/chats/{chatId}/attachments": {
       "post": {
         "operationId": "chat.post.chats-chat-id-attachments",
-        "summary": "Upload an image attachment for this chat",
+        "summary": "Upload a chat attachment (image or PDF)",
         "responses": {
           "201": {
             "description": "Created.",
@@ -4724,7 +4724,7 @@
         "tags": [
           "Chat"
         ],
-        "description": "Multipart (field \"file\", image/* only, ≤25 MB). Stored under the chat — never auto-imported as an asset. Reference the returned attachment in POST /messages.",
+        "description": "Multipart (field \"file\", raster images + application/pdf, ≤25 MB). Stored under the chat — never auto-imported as an asset. Reference the returned attachment in POST /messages.",
         "parameters": [
           {
             "name": "chatId",
