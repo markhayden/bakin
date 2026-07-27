@@ -14,7 +14,7 @@ Plan: `tasks/plan.md` · Spec: `SPEC.md`
 - [ ] CP-B Gate: per exit — PR/merge or docs commit + close #746 with findings
 
 ## Phase C (after CP-B — PARK-LEAN, consumer = linux-hosted server)
-- [ ] GATE FIRST Mark decision with in-hand findings: park now (recommended) or spike
-- [ ] C1  (on "spike") static tesseract spike (sandbox-rig; ocrs fallback) → second gate
-- [ ] C2  (on "ship") bits mirror release + pack 0.2.0 + sandbox rig verify + PRs
+- [x] GATE  Mark decision: PARK — #745 closed with findings + reopen criteria
+- [-] C1  (n/a — parked)
+- [-] C2  (n/a — parked)
 - [ ] CP-C Close #745 (shipped or parked) · memory update · delete SPEC.md + tasks files · summary comments
