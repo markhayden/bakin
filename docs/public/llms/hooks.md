@@ -143,7 +143,7 @@ const result = await ctx.hooks.invoke(
 
 Label: chat.resolveActiveTurn
 Kind: rpc
-Source: plugins/chat/index.ts:37
+Source: plugins/chat/index.ts:48
 
 Example:
 
@@ -163,7 +163,7 @@ Health hooks expose registered readiness and diagnostic checks so other surfaces
 Label: Get a health check.
 Purpose: Returns canonical metadata for one registered Health check by stable id without executing it.
 Kind: rpc
-Source: plugins/health/index.ts:795
+Source: plugins/health/index.ts:847
 
 Example:
 
@@ -181,7 +181,7 @@ const result = await ctx.hooks.invoke(
 Label: List health checks.
 Purpose: Returns canonical metadata for registered Health checks without executing them.
 Kind: rpc
-Source: plugins/health/index.ts:794
+Source: plugins/health/index.ts:846
 
 Example:
 
@@ -201,7 +201,7 @@ Model hooks expose the effective model configuration and notify dependent surfac
 Label: Model config changed.
 Purpose: Notifies listeners after an agent model assignment changes. Use it to refresh dependent state, update UI, or invalidate plugin caches that depend on model routing.
 Kind: event
-Source: plugins/models/lib/register-hooks.ts:23
+Source: plugins/models/lib/register-hooks.ts:24
 
 Example:
 
@@ -221,7 +221,7 @@ await ctx.hooks.callAll(
 Label: List available models.
 Purpose: Returns the model catalog available from the currently configured providers. Use it to populate pickers, validate assignments, or compare model options before saving config.
 Kind: rpc
-Source: plugins/models/lib/register-hooks.ts:39
+Source: plugins/models/lib/register-hooks.ts:40
 
 Example:
 
@@ -237,7 +237,7 @@ const result = await ctx.hooks.invoke(
 Label: Get budget policy.
 Purpose: Returns the spend-cap rule list that dispatch consults before each turn (legacy shapes migrate on read). Use it to read the current budget limits.
 Kind: rpc
-Source: plugins/models/lib/register-hooks.ts:138
+Source: plugins/models/lib/register-hooks.ts:167
 
 Example:
 
@@ -253,7 +253,7 @@ const result = await ctx.hooks.invoke(
 Label: Get effective model.
 Purpose: Resolves the model an agent will actually use after defaults, overrides, and provider settings are applied. Use it when a plugin needs runtime-ready model information for one agent.
 Kind: rpc
-Source: plugins/models/lib/register-hooks.ts:27
+Source: plugins/models/lib/register-hooks.ts:28
 
 Example:
 
@@ -271,7 +271,7 @@ const result = await ctx.hooks.invoke(
 Label: Get routing config.
 Purpose: Returns the per-turn model/thinking routing policy (work classes + tag overrides) applied before each routable agent turn. Use it to read the current routing rules.
 Kind: rpc
-Source: plugins/models/lib/register-hooks.ts:124
+Source: plugins/models/lib/register-hooks.ts:153
 
 Example:
 
@@ -287,7 +287,7 @@ const result = await ctx.hooks.invoke(
 Label: Mark config dirty.
 Purpose: Marks model configuration as changed so the runtime knows a refresh is needed. Use it after writing model settings that should not be treated as live yet.
 Kind: event
-Source: plugins/models/lib/register-hooks.ts:35
+Source: plugins/models/lib/register-hooks.ts:36
 
 Example:
 
@@ -303,7 +303,7 @@ await ctx.hooks.callAll(
 Label: Mark runtime refreshed.
 Purpose: Records that the runtime has picked up the latest model configuration. Use it after restart or reload flows so stale dirty-state warnings can clear.
 Kind: event
-Source: plugins/models/lib/register-hooks.ts:37
+Source: plugins/models/lib/register-hooks.ts:38
 
 Example:
 
@@ -319,7 +319,7 @@ await ctx.hooks.callAll(
 Label: Price an image.
 Purpose: Returns billing attribution plus an estimated cost in micro-dollars for an image generation (count × the model’s flat per-image rate), or null cost when the model is provider-priced or the provider is overridden to the subscription lane. The agent’s chat auth never affects image billing.
 Kind: rpc
-Source: plugins/models/lib/register-hooks.ts:79
+Source: plugins/models/lib/register-hooks.ts:108
 
 Example:
 
@@ -335,7 +335,7 @@ const result = await ctx.hooks.invoke(
 Label: Price a turn.
 Purpose: Resolves the model an agent turn ran on and returns billing attribution (provider, metered/subscription lane) plus an estimated micro-dollar cost from the catalog pricing. Cost is null when the model is unpriced or the lane is subscription (tokens are the unit there).
 Kind: rpc
-Source: plugins/models/lib/register-hooks.ts:50
+Source: plugins/models/lib/register-hooks.ts:79
 
 Example:
 
@@ -346,18 +346,50 @@ const result = await ctx.hooks.invoke(
 )
 ```
 
+### models.refreshAvailableModels
+
+Label: Refresh the model catalog.
+Purpose: Bypasses caches and re-fetches the model catalog (with pricing) live from the configured providers. Use it when pricing is stale or missing — e.g. the spend-evidence repair — instead of waiting on the Models page to trigger a refresh.
+Kind: rpc
+Source: plugins/models/lib/register-hooks.ts:68
+
+Example:
+
+```ts
+const result = await ctx.hooks.invoke(
+  'models.refreshAvailableModels',
+  {},
+)
+```
+
 ### models.resolveBilling
 
 Label: Resolve billing.
 Purpose: Returns the provider, billing lane (metered vs subscription), lane source, and normalized model for an agent/model pair — falling back to the agent’s effective model when none is given, unless prospective:false marks the attribution as historical. Use it to attribute or gate spend before a turn or billed media call.
 Kind: rpc
-Source: plugins/models/lib/register-hooks.ts:102
+Source: plugins/models/lib/register-hooks.ts:131
 
 Example:
 
 ```ts
 const result = await ctx.hooks.invoke(
   'models.resolveBilling',
+  {},
+)
+```
+
+### models.updateBudgetPolicy
+
+Label: Update budget policy.
+Purpose: Applies a narrow budget-policy patch — currently the accept-unattributed-history cutoff written by the Health repair. Money policy never changes without an explicit, validated write.
+Kind: rpc
+Source: plugins/models/lib/register-hooks.ts:45
+
+Example:
+
+```ts
+const result = await ctx.hooks.invoke(
+  'models.updateBudgetPolicy',
   {},
 )
 ```
@@ -405,7 +437,7 @@ Task hooks let plugins enrich task details and react to task lifecycle changes.
 Label: Add project task context.
 Purpose: Adds project title, status, progress, and excerpt data to task detail payloads. Use it when a task surface wants project context without depending on project storage.
 Kind: waterfall
-Source: bakin-bits-official/plugins/projects/index.ts:313
+Source: bakin-bits-official/plugins/projects/index.ts:316
 
 Example:
 
@@ -426,7 +458,7 @@ const next = await ctx.hooks.call(
 Label: Sync project task state.
 Purpose: Updates linked project checklist items when a task moves into a completed state. Use it to keep project progress in sync with task lifecycle events.
 Kind: event
-Source: bakin-bits-official/plugins/projects/index.ts:302
+Source: bakin-bits-official/plugins/projects/index.ts:305
 
 Example:
 

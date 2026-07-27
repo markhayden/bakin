@@ -240,9 +240,9 @@ bakin trash [list|restore|empty] ...
 <p class="cli-section-description">Diagnostics commands expose the information needed when something is not behaving as expected: logs, resolved paths, health checks, API docs, and generated agent rules.</p>
 
 <div class="cli-command-list">
-<CliCommandCard id="doctor" name="doctor" summary="Run health checks." description="Runs local offline diagnostics by default. Pass --full to include server-backed plugin, task, workflow, search, and runtime checks. Pass --notify-agent with --full to send fresh action-required incidents to the runtime main agent. Pass --fix to plan deterministic repairs or --delegate to create a linked repair task for the main agent; add --yes to execute either repair path.">
+<CliCommandCard id="doctor" name="doctor" summary="Run health checks." description="Runs local offline diagnostics by default. Pass --full to include server-backed plugin, task, workflow, search, and runtime checks. Pass --notify-agent with --full to send fresh action-required incidents to the runtime main agent. Pass --fix to plan deterministic repairs or --delegate to create a linked repair task for the main agent; add --yes to execute either repair path. Ack verbs quiet an incident you have seen without hiding it (action_required incidents are snooze-only and re-fire on any evidence change).">
 ```sh frame="terminal"
-bakin doctor [--json] [--full] [--notify-agent] [--fix|--delegate] [--yes]
+bakin doctor [--json] [--full] [--notify-agent] [--fix|--delegate] [--yes] | doctor acks | doctor ack <incidentId> | doctor snooze <incidentId> [--for 24h|7d] | doctor unack <incidentId>
 ```
   <table class="cli-command__args">
     <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
@@ -253,6 +253,22 @@ bakin doctor [--json] [--full] [--notify-agent] [--fix|--delegate] [--yes]
       <tr><td><code>[--fix]</code></td><td>option</td><td>no</td><td>Optional flag.</td></tr>
       <tr><td><code>[--delegate]</code></td><td>option</td><td>no</td><td>Optional flag.</td></tr>
       <tr><td><code>[--yes]</code></td><td>option</td><td>no</td><td>Accept all defaults non-interactively.</td></tr>
+      <tr><td><code>value</code><span class="cli-command__choices"><span></span><span></span></span></td><td>choice</td><td>no</td><td>Choose one of these values.</td></tr>
+      <tr><td><code>doctor</code></td><td>argument</td><td>no</td><td>Optional value.</td></tr>
+      <tr><td><code>acks</code></td><td>argument</td><td>no</td><td>Optional value.</td></tr>
+      <tr><td><code>value</code><span class="cli-command__choices"><span></span><span></span></span></td><td>choice</td><td>no</td><td>Choose one of these values.</td></tr>
+      <tr><td><code>doctor</code></td><td>argument</td><td>no</td><td>Optional value.</td></tr>
+      <tr><td><code>ack</code></td><td>argument</td><td>no</td><td>Optional value.</td></tr>
+      <tr><td><code>&lt;incidentId&gt;</code></td><td>argument</td><td>yes</td><td>Required value.</td></tr>
+      <tr><td><code>value</code><span class="cli-command__choices"><span></span><span></span></span></td><td>choice</td><td>no</td><td>Choose one of these values.</td></tr>
+      <tr><td><code>doctor</code></td><td>argument</td><td>no</td><td>Optional value.</td></tr>
+      <tr><td><code>snooze</code></td><td>argument</td><td>no</td><td>Optional value.</td></tr>
+      <tr><td><code>&lt;incidentId&gt;</code></td><td>argument</td><td>yes</td><td>Required value.</td></tr>
+      <tr><td><code>[value]</code><span class="cli-command__choices"><span>--for 24h</span><span>7d</span></span></td><td>choice</td><td>no</td><td>Choose one of these values.</td></tr>
+      <tr><td><code>value</code><span class="cli-command__choices"><span></span><span></span></span></td><td>choice</td><td>no</td><td>Choose one of these values.</td></tr>
+      <tr><td><code>doctor</code></td><td>argument</td><td>no</td><td>Optional value.</td></tr>
+      <tr><td><code>unack</code></td><td>argument</td><td>no</td><td>Optional value.</td></tr>
+      <tr><td><code>&lt;incidentId&gt;</code></td><td>argument</td><td>yes</td><td>Required value.</td></tr>
     </tbody>
   </table>
 </CliCommandCard>
@@ -937,6 +953,17 @@ bakin budget [show|set|rm|pause|resume|incidents] ... (set: --scope global|agent
     </tbody>
   </table>
 </CliCommandCard>
+<CliCommandCard id="search-reset" name="search:reset" summary="Reset the search engine clean." description="Stops the engine, wipes its derived index data (content and models untouched), starts it clean, and repair-reindexes every table from source. The recovery verb for a corrupted or wedged engine that survives restarts.">
+```sh frame="terminal"
+bakin search:reset [--yes]
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>[--yes]</code></td><td>option</td><td>no</td><td>Accept all defaults non-interactively.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
 <CliCommandCard id="brands-list" name="brands list" summary="List brand records." description="Lists all brands (drafts flagged) plus honestly-surfaced invalid records.">
 ```sh frame="terminal"
 bakin brands list
@@ -1003,5 +1030,5 @@ bakin brands remove <id> [--yes]
 </div>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Jul 20, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Jul 26, 2026 · Bakin 0.0.0-dev</span>
 </aside>

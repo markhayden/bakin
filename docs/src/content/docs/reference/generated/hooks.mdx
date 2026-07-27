@@ -85,7 +85,7 @@ const result = await ctx.hooks.invoke(
 <p class="hook-section-description">Hooks discovered from source registration audit.</p>
 
 <div class="hook-card-list">
-<HookCard id="chat-resolveactiveturn" name="chat.resolveActiveTurn" label="chat.resolveActiveTurn" source="plugins/chat/index.ts:37">
+<HookCard id="chat-resolveactiveturn" name="chat.resolveActiveTurn" label="chat.resolveActiveTurn" source="plugins/chat/index.ts:48">
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'chat.resolveActiveTurn',
@@ -100,7 +100,7 @@ const result = await ctx.hooks.invoke(
 <p class="hook-section-description">Health hooks expose registered readiness and diagnostic checks so other surfaces can list or inspect them.</p>
 
 <div class="hook-card-list">
-<HookCard id="health-getcheck" name="health.getCheck" label="Get a health check." summary="Returns canonical metadata for one registered Health check by stable id without executing it." source="plugins/health/index.ts:795" badges={["rpc"]}>
+<HookCard id="health-getcheck" name="health.getCheck" label="Get a health check." summary="Returns canonical metadata for one registered Health check by stable id without executing it." source="plugins/health/index.ts:847" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'health.getCheck',
@@ -110,7 +110,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="health-list" name="health.list" label="List health checks." summary="Returns canonical metadata for registered Health checks without executing them." source="plugins/health/index.ts:794" badges={["rpc"]}>
+<HookCard id="health-list" name="health.list" label="List health checks." summary="Returns canonical metadata for registered Health checks without executing them." source="plugins/health/index.ts:846" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'health.list',
@@ -125,7 +125,7 @@ const result = await ctx.hooks.invoke(
 <p class="hook-section-description">Model hooks expose the effective model configuration and notify dependent surfaces when runtime model state changes.</p>
 
 <div class="hook-card-list">
-<HookCard id="models-configchanged" name="models.configChanged" label="Model config changed." summary="Notifies listeners after an agent model assignment changes. Use it to refresh dependent state, update UI, or invalidate plugin caches that depend on model routing." source="plugins/models/lib/register-hooks.ts:23" badges={["event"]}>
+<HookCard id="models-configchanged" name="models.configChanged" label="Model config changed." summary="Notifies listeners after an agent model assignment changes. Use it to refresh dependent state, update UI, or invalidate plugin caches that depend on model routing." source="plugins/models/lib/register-hooks.ts:24" badges={["event"]}>
 ```ts frame="terminal"
 await ctx.hooks.callAll(
   'models.configChanged',
@@ -137,7 +137,7 @@ await ctx.hooks.callAll(
 )
 ```
 </HookCard>
-<HookCard id="models-getavailablemodels" name="models.getAvailableModels" label="List available models." summary="Returns the model catalog available from the currently configured providers. Use it to populate pickers, validate assignments, or compare model options before saving config." source="plugins/models/lib/register-hooks.ts:39" badges={["rpc"]}>
+<HookCard id="models-getavailablemodels" name="models.getAvailableModels" label="List available models." summary="Returns the model catalog available from the currently configured providers. Use it to populate pickers, validate assignments, or compare model options before saving config." source="plugins/models/lib/register-hooks.ts:40" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'models.getAvailableModels',
@@ -145,7 +145,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="models-getbudgetpolicy" name="models.getBudgetPolicy" label="Get budget policy." summary="Returns the spend-cap rule list that dispatch consults before each turn (legacy shapes migrate on read). Use it to read the current budget limits." source="plugins/models/lib/register-hooks.ts:138" badges={["rpc"]}>
+<HookCard id="models-getbudgetpolicy" name="models.getBudgetPolicy" label="Get budget policy." summary="Returns the spend-cap rule list that dispatch consults before each turn (legacy shapes migrate on read). Use it to read the current budget limits." source="plugins/models/lib/register-hooks.ts:167" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'models.getBudgetPolicy',
@@ -153,7 +153,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="models-geteffectivemodel" name="models.getEffectiveModel" label="Get effective model." summary="Resolves the model an agent will actually use after defaults, overrides, and provider settings are applied. Use it when a plugin needs runtime-ready model information for one agent." source="plugins/models/lib/register-hooks.ts:27" badges={["rpc"]}>
+<HookCard id="models-geteffectivemodel" name="models.getEffectiveModel" label="Get effective model." summary="Resolves the model an agent will actually use after defaults, overrides, and provider settings are applied. Use it when a plugin needs runtime-ready model information for one agent." source="plugins/models/lib/register-hooks.ts:28" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'models.getEffectiveModel',
@@ -163,7 +163,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="models-getroutingconfig" name="models.getRoutingConfig" label="Get routing config." summary="Returns the per-turn model/thinking routing policy (work classes + tag overrides) applied before each routable agent turn. Use it to read the current routing rules." source="plugins/models/lib/register-hooks.ts:124" badges={["rpc"]}>
+<HookCard id="models-getroutingconfig" name="models.getRoutingConfig" label="Get routing config." summary="Returns the per-turn model/thinking routing policy (work classes + tag overrides) applied before each routable agent turn. Use it to read the current routing rules." source="plugins/models/lib/register-hooks.ts:153" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'models.getRoutingConfig',
@@ -171,7 +171,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="models-markconfigdirty" name="models.markConfigDirty" label="Mark config dirty." summary="Marks model configuration as changed so the runtime knows a refresh is needed. Use it after writing model settings that should not be treated as live yet." source="plugins/models/lib/register-hooks.ts:35" badges={["event"]}>
+<HookCard id="models-markconfigdirty" name="models.markConfigDirty" label="Mark config dirty." summary="Marks model configuration as changed so the runtime knows a refresh is needed. Use it after writing model settings that should not be treated as live yet." source="plugins/models/lib/register-hooks.ts:36" badges={["event"]}>
 ```ts frame="terminal"
 await ctx.hooks.callAll(
   'models.markConfigDirty',
@@ -179,7 +179,7 @@ await ctx.hooks.callAll(
 )
 ```
 </HookCard>
-<HookCard id="models-markruntimerestarted" name="models.markRuntimeRestarted" label="Mark runtime refreshed." summary="Records that the runtime has picked up the latest model configuration. Use it after restart or reload flows so stale dirty-state warnings can clear." source="plugins/models/lib/register-hooks.ts:37" badges={["event"]}>
+<HookCard id="models-markruntimerestarted" name="models.markRuntimeRestarted" label="Mark runtime refreshed." summary="Records that the runtime has picked up the latest model configuration. Use it after restart or reload flows so stale dirty-state warnings can clear." source="plugins/models/lib/register-hooks.ts:38" badges={["event"]}>
 ```ts frame="terminal"
 await ctx.hooks.callAll(
   'models.markRuntimeRestarted',
@@ -187,7 +187,7 @@ await ctx.hooks.callAll(
 )
 ```
 </HookCard>
-<HookCard id="models-priceimage" name="models.priceImage" label="Price an image." summary="Returns billing attribution plus an estimated cost in micro-dollars for an image generation (count × the model’s flat per-image rate), or null cost when the model is provider-priced or the provider is overridden to the subscription lane. The agent’s chat auth never affects image billing." source="plugins/models/lib/register-hooks.ts:79" badges={["rpc"]}>
+<HookCard id="models-priceimage" name="models.priceImage" label="Price an image." summary="Returns billing attribution plus an estimated cost in micro-dollars for an image generation (count × the model’s flat per-image rate), or null cost when the model is provider-priced or the provider is overridden to the subscription lane. The agent’s chat auth never affects image billing." source="plugins/models/lib/register-hooks.ts:108" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'models.priceImage',
@@ -195,7 +195,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="models-priceturn" name="models.priceTurn" label="Price a turn." summary="Resolves the model an agent turn ran on and returns billing attribution (provider, metered/subscription lane) plus an estimated micro-dollar cost from the catalog pricing. Cost is null when the model is unpriced or the lane is subscription (tokens are the unit there)." source="plugins/models/lib/register-hooks.ts:50" badges={["rpc"]}>
+<HookCard id="models-priceturn" name="models.priceTurn" label="Price a turn." summary="Resolves the model an agent turn ran on and returns billing attribution (provider, metered/subscription lane) plus an estimated micro-dollar cost from the catalog pricing. Cost is null when the model is unpriced or the lane is subscription (tokens are the unit there)." source="plugins/models/lib/register-hooks.ts:79" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'models.priceTurn',
@@ -203,10 +203,26 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="models-resolvebilling" name="models.resolveBilling" label="Resolve billing." summary="Returns the provider, billing lane (metered vs subscription), lane source, and normalized model for an agent/model pair — falling back to the agent’s effective model when none is given, unless prospective:false marks the attribution as historical. Use it to attribute or gate spend before a turn or billed media call." source="plugins/models/lib/register-hooks.ts:102" badges={["rpc"]}>
+<HookCard id="models-refreshavailablemodels" name="models.refreshAvailableModels" label="Refresh the model catalog." summary="Bypasses caches and re-fetches the model catalog (with pricing) live from the configured providers. Use it when pricing is stale or missing — e.g. the spend-evidence repair — instead of waiting on the Models page to trigger a refresh." source="plugins/models/lib/register-hooks.ts:68" badges={["rpc"]}>
+```ts frame="terminal"
+const result = await ctx.hooks.invoke(
+  'models.refreshAvailableModels',
+  {},
+)
+```
+</HookCard>
+<HookCard id="models-resolvebilling" name="models.resolveBilling" label="Resolve billing." summary="Returns the provider, billing lane (metered vs subscription), lane source, and normalized model for an agent/model pair — falling back to the agent’s effective model when none is given, unless prospective:false marks the attribution as historical. Use it to attribute or gate spend before a turn or billed media call." source="plugins/models/lib/register-hooks.ts:131" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'models.resolveBilling',
+  {},
+)
+```
+</HookCard>
+<HookCard id="models-updatebudgetpolicy" name="models.updateBudgetPolicy" label="Update budget policy." summary="Applies a narrow budget-policy patch — currently the accept-unattributed-history cutoff written by the Health repair. Money policy never changes without an explicit, validated write." source="plugins/models/lib/register-hooks.ts:45" badges={["rpc"]}>
+```ts frame="terminal"
+const result = await ctx.hooks.invoke(
+  'models.updateBudgetPolicy',
   {},
 )
 ```
@@ -241,7 +257,7 @@ const result = await ctx.hooks.invoke(
 <p class="hook-section-description">Task hooks let plugins enrich task details and react to task lifecycle changes.</p>
 
 <div class="hook-card-list">
-<HookCard id="tasks-enrichdetails" name="tasks.enrichDetails" label="Add project task context." summary="Adds project title, status, progress, and excerpt data to task detail payloads. Use it when a task surface wants project context without depending on project storage." source="bakin-bits-official/plugins/projects/index.ts:313" badges={["waterfall"]}>
+<HookCard id="tasks-enrichdetails" name="tasks.enrichDetails" label="Add project task context." summary="Adds project title, status, progress, and excerpt data to task detail payloads. Use it when a task surface wants project context without depending on project storage." source="bakin-bits-official/plugins/projects/index.ts:316" badges={["waterfall"]}>
 ```ts frame="terminal"
 const next = await ctx.hooks.call(
   'tasks.enrichDetails',
@@ -254,7 +270,7 @@ const next = await ctx.hooks.call(
 )
 ```
 </HookCard>
-<HookCard id="tasks-statuschanged" name="tasks.statusChanged" label="Sync project task state." summary="Updates linked project checklist items when a task moves into a completed state. Use it to keep project progress in sync with task lifecycle events." source="bakin-bits-official/plugins/projects/index.ts:302" badges={["event"]}>
+<HookCard id="tasks-statuschanged" name="tasks.statusChanged" label="Sync project task state." summary="Updates linked project checklist items when a task moves into a completed state. Use it to keep project progress in sync with task lifecycle events." source="bakin-bits-official/plugins/projects/index.ts:305" badges={["event"]}>
 ```ts frame="terminal"
 await ctx.hooks.callAll(
   'tasks.statusChanged',
@@ -617,5 +633,5 @@ const result = await ctx.hooks.invoke(
 </div>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Jul 20, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Jul 26, 2026 · Bakin 0.0.0-dev</span>
 </aside>
