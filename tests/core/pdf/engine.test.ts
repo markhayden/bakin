@@ -166,6 +166,29 @@ describe('capPageTexts', () => {
   })
 })
 
+describe('canvas-less stubs (#746 exit b)', () => {
+  test('installs only missing globals and never clobbers existing ones', async () => {
+    const { installCanvaslessStubs } = await import('../../../src/core/pdf/engine')
+    const g: Record<string, unknown> = { DOMMatrix: 'existing' }
+    installCanvaslessStubs(g)
+    expect(g.DOMMatrix).toBe('existing') // ??= never clobbers
+    expect(typeof g.ImageData).toBe('function')
+    expect(typeof g.Path2D).toBe('function')
+    const M = g.DOMMatrix as unknown
+    const fresh: Record<string, unknown> = {}
+    installCanvaslessStubs(fresh)
+    const m = new (fresh.DOMMatrix as new () => { scale(): unknown; a: number })()
+    expect(m.a).toBe(1)
+    expect(m.scale()).toBe(m)
+    void M
+  })
+
+  test('isCompiledBinary is false under bun test (repo-tree run)', async () => {
+    const { isCompiledBinary } = await import('../../../src/core/pdf/engine')
+    expect(isCompiledBinary()).toBe(false)
+  })
+})
+
 describe('PdfError', () => {
   test('is an Error with a kind', () => {
     const err = new PdfError('not_found', 'nope')

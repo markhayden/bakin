@@ -9,11 +9,15 @@
  * subsetting, CID fonts, and text matrices — the three features every
  * design-tool PDF uses; pdfjs handles all of them. See Bakin issue #72.
  *
- * Compiled-binary caveat (#742 T0 spike): `bun build --compile` does not
- * embed pdf-parse's @napi-rs/canvas native addon, and without its DOMMatrix
- * polyfill the pdf-parse IMPORT itself throws. Repo-tree runs are unaffected.
- * The lazy import wraps that failure as a typed `pdf_unavailable` error so
- * callers degrade honestly instead of surfacing a cryptic DOMMatrix crash.
+ * Compiled-binary story (#746, spike-proven): `bun build --compile` cannot
+ * deliver @napi-rs/canvas (its platform loader breaks under $bunfs), but
+ * TEXT extraction needs no canvas at all — in a compiled binary this module
+ * installs minimal DOMMatrix/ImageData/Path2D stubs before the pdf-parse
+ * import and points pdfjs at the EMBEDDED data-URL worker
+ * (`pdf-parse/worker` getData()), so readPdf works everywhere. RENDERING
+ * genuinely requires the native canvas: renderPdfPages throws a typed
+ * `pdf_unavailable` in compiled binaries — honest, never a cryptic crash.
+ * Repo-tree runs (the production box) use the real canvas polyfills.
  */
 import { existsSync, mkdtempSync, openSync, readSync, closeSync, readFileSync, statSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
@@ -149,17 +153,50 @@ function assertReadablePdf(path: string): void {
 
 type PdfParseModule = typeof import('pdf-parse')
 
+/** True inside a `bun build --compile` single-file binary. */
+export function isCompiledBinary(): boolean {
+  // Bun.main isn't in the app tsconfig's Bun typings — structural access.
+  const main = typeof Bun !== 'undefined' ? (Bun as unknown as { main?: string }).main : undefined
+  return typeof main === 'string' && main.startsWith('/$bunfs/')
+}
+
+/**
+ * Minimal canvas-less globals for pdfjs module-init + text extraction —
+ * ONLY installed in compiled binaries, where @napi-rs/canvas can't load
+ * (repo-tree runs get the real polyfills). Text extraction never draws;
+ * these exist to satisfy module-scope construction. Exported for tests.
+ */
+export function installCanvaslessStubs(g: Record<string, unknown> = globalThis as unknown as Record<string, unknown>): void {
+  class StubDOMMatrix {
+    a = 1; b = 0; c = 0; d = 1; e = 0; f = 0
+    scale() { return this }
+    translate() { return this }
+    multiply() { return this }
+    transformPoint(p: { x: number; y: number }) { return p }
+  }
+  g.DOMMatrix ??= StubDOMMatrix
+  g.ImageData ??= class { constructor(readonly width: number, readonly height: number) {} }
+  g.Path2D ??= class { addPath() {} moveTo() {} lineTo() {} closePath() {} }
+}
+
 let modulePromise: Promise<PdfParseModule> | undefined
 
 async function loadPdfParse(): Promise<PdfParseModule> {
-  modulePromise ??= import('pdf-parse').catch((err: unknown) => {
+  modulePromise ??= (async () => {
+    const compiled = isCompiledBinary()
+    if (compiled) installCanvaslessStubs()
+    const mod = await import('pdf-parse')
+    if (compiled) {
+      // pdfjs's default fake-worker load is a computed dynamic import that
+      // cannot survive bundling — point it at the EMBEDDED data-URL worker.
+      const { getData } = await import('pdf-parse/worker')
+      ;(mod.PDFParse as unknown as { setWorker: (src: string) => void }).setWorker(getData())
+    }
+    return mod
+  })().catch((err: unknown) => {
     modulePromise = undefined
     log.error('pdf-parse failed to load — PDF features unavailable', err as Error)
-    throw new PdfError(
-      'pdf_unavailable',
-      'PDF support failed to load. This is expected inside a compiled single-file binary ' +
-        '(native canvas addon not embedded); run from a source checkout for PDF features.',
-    )
+    throw new PdfError('pdf_unavailable', `PDF support failed to load: ${(err as Error).message}`)
   })
   return modulePromise
 }
@@ -207,6 +244,16 @@ export async function readPdf(path: string, pages?: number[]): Promise<PdfTextRe
 /** Render pages to PNGs in a fresh tmpdir. Output is ephemeral by design —
  * the OS owns cleanup (mirrors the image-downscale pipeline; no GC system). */
 export async function renderPdfPages(path: string, pages?: number[]): Promise<PdfRenderResult> {
+  if (isCompiledBinary()) {
+    // Rendering draws through @napi-rs/canvas, whose native addon cannot be
+    // delivered inside a single-file binary (#746 spike). Text extraction
+    // (readPdf) works everywhere — say exactly that.
+    throw new PdfError(
+      'pdf_unavailable',
+      'PDF page rendering is unavailable inside a compiled binary (native canvas cannot be embedded). ' +
+        'Text extraction still works; for rendering, run from a source checkout.',
+    )
+  }
   if (pages && pages.length > RENDER_MAX_PAGES) {
     throw new PdfError(
       'over_limit',

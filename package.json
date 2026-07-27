@@ -29,6 +29,7 @@
     "lint": "eslint src packages plugins tests scripts dev cli server.ts bakin.config.ts eslint.config.mjs",
     "lint:home-bypasses": "bun run scripts/bin/check-home-bypasses.mjs",
     "typecheck": "tsc -p tsconfig.app.json --noEmit",
+    "verify:compiled-pdf": "bun run scripts/verify-compiled-pdf.ts",
     "check:cycles": "bun scripts/check-cycles.ts",
     "test": "bun test --parallel=4 --isolate --timeout 15000 --path-ignore-patterns \"dev/**\"",
     "test:components": "bun test --isolate tests/components",
