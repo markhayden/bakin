@@ -4,7 +4,7 @@
  * missing capability records `skipped`, and nothing ever blocks a write.
  */
 import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
-import { mkdirSync, rmSync, writeFileSync } from 'fs'
+import { mkdirSync, rmSync, writeFileSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
@@ -36,10 +36,21 @@ mock.module('../../../src/core/watcher', () => ({
 }))
 
 // Partial-mock the media barrel: real registry/schemas, fake billed call.
-const visionCall = mock(async () => ({ caption: 'a red square', suggestedTags: ['red'] }))
+// Loosely typed on purpose: per-test implementations inspect the request
+// and return different enrichment shapes (image/document/scanned-page).
+type VisionReq = { kind: string; mediaPath?: string; mediaMime?: string }
+const visionCall = mock(
+  async (_req: VisionReq): Promise<Record<string, unknown>> => ({ caption: 'a red square', suggestedTags: ['red'] }),
+)
 mock.module('@bakin/core/media', () => ({
   ...require('../../../packages/core/src/media/index'),
   callDirectVisionProvider: visionCall,
+}))
+
+// The direct engine meters spend (#747 rider) — keep the ledger out of
+// these tests; metering itself is covered by enrichment-direct-metering.
+mock.module('../../../src/core/agent-cost', () => ({
+  meterAgentTurn: async () => {},
 }))
 
 import { createAsset, getAsset, getAssetSummary } from '@bakin/assets/lib/asset-core'
@@ -155,6 +166,91 @@ describe('enrichment queue', () => {
     await drainEnrichmentQueue()
     expect(visionCall).not.toHaveBeenCalled()
     expect(getAsset(assetId)?.enrichment).toBeUndefined()
+  })
+})
+
+describe('scanned-PDF vision OCR (#747)', () => {
+  const FIXTURES = join(import.meta.dir, '../../fixtures/pdf')
+
+  async function makePdfAsset(fixture: string): Promise<string> {
+    const src = join(testDir, `doc-${Date.now()}-${Math.random().toString(36).slice(2)}.pdf`)
+    writeFileSync(src, readFileSync(join(FIXTURES, fixture)))
+    const created = await createAsset({ sourceFilePath: src, type: 'pdf', agent: 'user', op: 'upload', taskId: null, description: 'a pdf' })
+    return created.assetId
+  }
+
+  it('scanned PDF: renders pages, one image call per page, page-labeled ocrText merge', async () => {
+    const calls: Array<{ kind: string; mediaPath?: string; mediaMime?: string }> = []
+    visionCall.mockImplementation(async (req: VisionReq) => {
+      calls.push({ kind: req.kind, mediaPath: req.mediaPath, mediaMime: req.mediaMime })
+      return { caption: 'a scanned page', ocrText: `text of call ${calls.length}`, suggestedTags: ['scan'] }
+    })
+    const assetId = await makePdfAsset('scanned.pdf') // 2 image-only pages
+    enqueueEnrichment(assetId)
+    await drainEnrichmentQueue()
+    const e = getAsset(assetId)?.enrichment
+    expect(e?.status).toBe('done')
+    expect(calls).toHaveLength(2)
+    expect(calls.every((c) => c.kind === 'image' && c.mediaMime === 'image/png')).toBe(true)
+    expect(e?.ocrText).toContain('[page 1]')
+    expect(e?.ocrText).toContain('text of call 1')
+    expect(e?.ocrText).toContain('[page 2]')
+    expect(e?.ocrText).toContain('text of call 2')
+    expect(e?.ocrText).not.toContain('not OCR')
+    expect(e?.caption).toBe('a scanned page')
+  })
+
+  it('caps at 3 pages with a visible not-OCRd marker for the rest', async () => {
+    let n = 0
+    visionCall.mockImplementation(async () => ({ caption: 'p', ocrText: `page-text-${++n}`, suggestedTags: ['scan'] }))
+    const assetId = await makePdfAsset('scanned-4p.pdf') // 4 image-only pages
+    enqueueEnrichment(assetId)
+    await drainEnrichmentQueue()
+    const e = getAsset(assetId)?.enrichment
+    expect(e?.status).toBe('done')
+    expect(n).toBe(3)
+    expect(e?.ocrText).toContain('[page 3]')
+    expect(e?.ocrText).toContain('[page 4 of 4 not OCR')
+  })
+
+  it('a mid-loop page failure fails the WHOLE job — no partial done', async () => {
+    let n = 0
+    visionCall.mockImplementation(async () => {
+      n++
+      if (n >= 2) throw new Error('vision 429')
+      return { caption: 'p1', ocrText: 'page one text' }
+    })
+    const assetId = await makePdfAsset('scanned.pdf')
+    enqueueEnrichment(assetId)
+    await drainEnrichmentQueue()
+    const e = getAsset(assetId)?.enrichment
+    expect(e?.status).toBe('failed')
+    expect(e?.ocrText).toBeUndefined()
+  })
+
+  it('text PDFs keep the pure-text path: zero renders, one document call', async () => {
+    const kinds: string[] = []
+    visionCall.mockImplementation(async (req: VisionReq) => {
+      kinds.push(req.kind)
+      return { summary: 'a text document', suggestedTags: ['doc'] }
+    })
+    const assetId = await makePdfAsset('text.pdf')
+    enqueueEnrichment(assetId)
+    await drainEnrichmentQueue()
+    const e = getAsset(assetId)?.enrichment
+    expect(e?.status).toBe('done')
+    expect(kinds).toEqual(['document'])
+  })
+
+  it('non-PDF empty documents keep the honest skip', async () => {
+    const src = join(testDir, `empty-${Date.now()}.md`)
+    writeFileSync(src, '   ')
+    const created = await createAsset({ sourceFilePath: src, type: 'text', agent: 'user', op: 'upload', taskId: null, description: 'empty' })
+    enqueueEnrichment(created.assetId)
+    await drainEnrichmentQueue()
+    const e = getAsset(created.assetId)?.enrichment
+    expect(e?.status).toBe('skipped')
+    expect(visionCall).not.toHaveBeenCalled()
   })
 })
 
