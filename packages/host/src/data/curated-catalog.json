@@ -489,6 +489,33 @@
       "screenshots": []
     },
     {
+      "id": "ocr",
+      "kind": "skill-pack",
+      "name": "OCR (Apple Vision)",
+      "emoji": "🔍",
+      "description": "Lets your agents read text out of images, screenshots, and scanned PDFs — receipts, forms, whiteboard photos — fully local via Apple's Vision framework. No API key, nothing leaves the box.",
+      "category": "Productivity",
+      "tags": [
+        "capability",
+        "ocr",
+        "documents"
+      ],
+      "useCases": [
+        "Read a scanned PDF or receipt a chat attachment points at",
+        "Pull exact text (amounts, serial numbers) out of screenshots",
+        "Make photographed documents quotable without vision tokens"
+      ],
+      "source": "github:markhayden/bakin-bits-official#packs/ocr",
+      "ref": null,
+      "trust": "official",
+      "capability": "ocr",
+      "runtimes": [
+        "*"
+      ],
+      "defaultSelected": false,
+      "screenshots": []
+    },
+    {
       "id": "browser-tools",
       "kind": "skill-pack",
       "name": "Browser Tools",

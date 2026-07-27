@@ -35,6 +35,19 @@ function renderInvocation(agentId: string): string {
   }
 }
 
+/** When the ocr capability pack is installed and ready, scanned-page guidance
+ * also offers the bash lane — ocrit reads PDFs directly (no render step).
+ * Guidance-only by design (#742 D9): the engine never spawns the binary. */
+async function ocrLaneHint(path: string): Promise<string> {
+  try {
+    const { listCapabilities } = await import('@/core/agent-packages/capability-readiness')
+    const ocr = (await listCapabilities()).find((c) => c.capability === 'ocr')
+    return ocr?.ready ? ` For machine-exact text, you can also run \`ocrit ${path}\` in bash (local OCR; reads PDFs directly).` : ''
+  } catch {
+    return '' // readiness unknown — offer nothing rather than a broken lane
+  }
+}
+
 export async function pdfReadTool(
   params: { path: string; pages?: number[] },
   agent: string,
@@ -50,7 +63,8 @@ export async function pdfReadTool(
         ? {
             guidance:
               `Page(s) ${scanned.join(', ')} look scanned or image-only (little/no text layer). ` +
-              `Render them with \`${renderInvocation(agent)}\` and view the PNGs with your image-capable file tools.`,
+              `Render them with \`${renderInvocation(agent)}\` and view the PNGs with your image-capable file tools.` +
+              (await ocrLaneHint(params.path)),
           }
         : {}),
     })

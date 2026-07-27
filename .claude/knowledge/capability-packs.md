@@ -145,6 +145,15 @@ sha256-pinned brave-search-cli binaries. Keep packs à-la-carte: one
 capability per pack. `bakin packages upgrade` re-pins deliberately;
 upstream drift never lands silently.
 
+The `ocr` pack (#742 Phase 2) pins `ocrit` (Apple Vision OCR, BSD-2-Clause)
+via a **binary-mirror release** in the bits repo (`ocrit-v1.1` tag — upstream
+ships a .pkg, which the bin installer can't extract; the mirrored tar.gz
+carries the upstream LICENSE). darwin-only via `platforms` (transcribe
+precedent); the linux leg (tesseract) is a filed follow-up. Integration is
+**guidance-only** by design: `bakin_exec_pdf_read` mentions the `ocrit` bash
+lane when `listCapabilities()` reports the capability ready — the server
+never spawns the binary.
+
 ## Gotchas
 
 - **Bun caches modules by path, ignoring import attributes**: the
