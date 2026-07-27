@@ -3,9 +3,9 @@
 Plan: `tasks/plan.md` · Spec: `SPEC.md`
 
 ## Phase A (branch feat/scanned-pdf-enrichment-747)
-- [ ] A1  Direct-vision path writes run_costs (usage from transports, ONE recorder)  [commit 1]
-- [ ] A2  Scanned-PDF vision-OCR loop (3 pages, labeled merge, whole-job-fail) + scanned-4p fixture  [commit 2]
-- [ ] A3  Docs — assets-plugin.md, models-plugin.md, CLAUDE.md line, README check  [commit 3]
+- [x] A1  Direct-vision path writes run_costs (usage from transports, ONE recorder)  [commit 1]
+- [x] A2  Scanned-PDF vision-OCR loop (3 pages, labeled merge, whole-job-fail) + scanned-4p fixture  [commit 2]
+- [x] A3  Docs — assets-plugin.md, models-plugin.md, CLAUDE.md line, README check  [commit 3]
 - [ ] CP-A Gate: full suite + lint + cycles → Mark live-test (scanned PDF → searchable + Spend rows) → PR → merge → close #747
 
 ## Phase B (after CP-A; branch only for exits a/b)
