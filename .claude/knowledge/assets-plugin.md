@@ -70,6 +70,20 @@ forVersion, error?, userEdited?}`.
 - **Never blocks creation; never fabricates:** enqueue is fire-and-forget;
   provider output is Zod-strict (invalid ⇒ `failed` + error, fields absent).
   No configured key / unsupported modality ⇒ `skipped` with a reason.
+- **Scanned PDFs (#747):** a PDF whose extraction yields no text (trimmed)
+  does NOT skip — the first 3 pages render through the core PDF engine
+  (`enrichment/scanned-pdf.ts`, budget `SCANNED_OCR_MAX_PAGES`) and each runs
+  through the single-image vision pipeline: `ocrText` = page-labeled merge +
+  a visible `[pages 4–N not OCR'd]` marker; caption/tags from page 1; ANY
+  page failure fails the whole job (partials never apply as `done`). Engine
+  resolution uses kind `image` for these jobs (needs vision, not a document
+  summarizer). Deliberately vision-LLM, not the ocr pack — enrichment can't
+  depend on optional packs, and D9 (server never spawns pack binaries) stands.
+  Non-PDF documents with only whitespace still skip honestly.
+- **Direct-path spend is on the ledger (#747 rider):** the direct engine
+  writes the same work-class-`enrichment` `run_costs` row the runtime engine
+  writes (agent `system`, provider-reported usage verbatim, absent usage =
+  null tokens). ONE recorder — `meterAgentTurn`.
 - **Providers:** `packages/core/src/media/direct-vision-provider.ts`
   (Anthropic/OpenAI/Google; audio input via Gemini). Default model = cheapest
   vision-capable tier whose provider has a configured key (env → secret
