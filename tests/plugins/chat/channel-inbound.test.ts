@@ -110,6 +110,9 @@ function inboundMessage(overrides: Partial<InboundChannelMessage> = {}): Inbound
 
 const settle = () => new Promise(resolve => setTimeout(resolve, 20))
 
+/** Minimal real-PNG-magic payload — the image lane sniffs bytes now. */
+const pngBytes = (tag: string) => Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from(tag)])
+
 describe('chat channel inbound wiring', () => {
   beforeEach(() => {
     startedTurns.length = 0
@@ -156,8 +159,8 @@ describe('chat channel inbound wiring', () => {
   it('uniquifies colliding attachment names instead of overwriting earlier rows', async () => {
     const fileA = join(testDir, 'a-image.png')
     const fileB = join(testDir, 'b-image.png')
-    fs.writeFileSync(fileA, 'first-bytes')
-    fs.writeFileSync(fileB, 'second-bytes')
+    fs.writeFileSync(fileA, pngBytes('first'))
+    fs.writeFileSync(fileB, pngBytes('second'))
     const { ctx, inbound } = makeCtx({ imageInput: true })
     wireChannelInbound(ctx)
     inbound(inboundMessage({ attachments: [{ name: 'image.png', path: fileA, contentType: 'image/png' }] }))
@@ -169,7 +172,7 @@ describe('chat channel inbound wiring', () => {
     const dir = attachmentsDir(chat.id)
     const files = fs.readdirSync(dir).sort()
     expect(files).toHaveLength(2)
-    expect(fs.readFileSync(join(dir, 'image.png')).toString()).toBe('first-bytes') // original untouched
+    expect(fs.readFileSync(join(dir, 'image.png')).equals(pngBytes('first'))).toBe(true) // original untouched
   })
 
   it('reuses the bound chat for the same channel', async () => {
@@ -223,7 +226,7 @@ describe('chat channel inbound wiring', () => {
 
   it('adopts image attachments into the chat attachment dir when the agent supports images', async () => {
     const tempFile = join(testDir, 'incoming.png')
-    fs.writeFileSync(tempFile, 'png-bytes')
+    fs.writeFileSync(tempFile, pngBytes('one'))
     const { ctx, inbound } = makeCtx({ imageInput: true })
     wireChannelInbound(ctx)
     inbound(inboundMessage({ attachments: [{ name: 'incoming.png', path: tempFile, contentType: 'image/png' }] }))
@@ -233,13 +236,13 @@ describe('chat channel inbound wiring', () => {
     const attachments = startedTurns[0].attachments as Array<{ name: string; path: string }>
     expect(attachments).toHaveLength(1)
     expect(attachments[0].path).toBe(join(attachmentsDir(chat.id), 'incoming.png'))
-    expect(fs.readFileSync(attachments[0].path).toString()).toBe('png-bytes')
+    expect(fs.readFileSync(attachments[0].path).equals(pngBytes('one'))).toBe(true)
     expect(fs.existsSync(tempFile)).toBe(false) // temp file consumed
   })
 
   it('degrades images to a saved-file note when the agent lacks image input', async () => {
     const tempFile = join(testDir, 'incoming.png')
-    fs.writeFileSync(tempFile, 'png-bytes')
+    fs.writeFileSync(tempFile, pngBytes('one'))
     const { ctx, inbound } = makeCtx({ imageInput: false })
     wireChannelInbound(ctx)
     inbound(inboundMessage({ attachments: [{ name: 'incoming.png', path: tempFile, contentType: 'image/png' }] }))
@@ -264,6 +267,30 @@ describe('chat channel inbound wiring', () => {
     expect(startedTurns[0].content).toContain('logo.svg')
     expect(startedTurns[0].content).toContain('file tools')
     expect(fs.existsSync(join(attachmentsDir(chat.id), 'logo.svg'))).toBe(true)
+  })
+
+  it('sniffs bytes: a non-image labeled image/png goes to the FILE lane, not the model', async () => {
+    const fake = join(testDir, 'fake.png')
+    fs.writeFileSync(fake, 'MZ-this-is-not-a-png')
+    const { ctx, inbound } = makeCtx({ imageInput: true })
+    wireChannelInbound(ctx)
+    inbound(inboundMessage({ attachments: [{ name: 'fake.png', path: fake, contentType: 'image/png' }] }))
+    await settle()
+    expect(startedTurns[0].attachments).toEqual([])
+    expect(startedTurns[0].content).toContain('file tools')
+  })
+
+  it('sanitizes hostile filenames before they hit the attachment dir', async () => {
+    const src = join(testDir, 'src-file')
+    fs.writeFileSync(src, '<svg/>')
+    const { ctx, inbound } = makeCtx({ imageInput: true })
+    wireChannelInbound(ctx)
+    inbound(inboundMessage({ attachments: [{ name: 'evil.svg+xml', path: src, contentType: 'image/svg+xml' }] }))
+    await settle()
+    const chat = findChatByExternalKey('discord:channel:77')!
+    const files = fs.readdirSync(attachmentsDir(chat.id))
+    expect(files).toHaveLength(1)
+    expect(files[0]).toBe('evil.svg_xml') // '+' sanitized — no image/svg+xml mintable from the extension
   })
 
   it('/new-chat unbinds the chat so the next message starts fresh', async () => {

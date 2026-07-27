@@ -127,13 +127,18 @@ export function createInboundSurface(deps: InboundSurfaceDeps): InboundSurface {
       const settings = deps.settings()
       const user = raw.member?.user ?? raw.user
       const channelRef = discordChannelRef(raw.channel_id ?? '')
-      if (!settings.enabled || !settings.inbound.enabled) return
+      if (!settings.enabled || !settings.inbound.enabled) {
+        // The KNOWN command must never ghost either (the whole point of the
+        // honest-ack change): disabled is an answerable state.
+        await deps.replyEphemeral?.(raw.id, raw.token, 'Inbound Discord chat is disabled in Bakin\'s settings (integrations.discord.inbound).')
+        return
+      }
       if (!user?.id || !settings.inbound.allowFrom.includes(user.id)) {
         auditDelivery('delivery.inbound_denied', { actor: user?.id ?? 'unknown', channel: channelRef, command: NEW_CHAT_COMMAND })
         await deps.replyEphemeral?.(raw.id, raw.token, 'You are not authorized to manage this chat.')
         return
       }
-      await deps.replyEphemeral?.(raw.id, raw.token, '✨ Fresh chat — the next message here starts a new conversation (the old one stays in Bakin).')
+      await deps.replyEphemeral?.(raw.id, raw.token, '✨ Fresh chat — the next message here starts a new conversation. The old one (and any reply still in flight) stays in Bakin.')
       const message: InboundChannelMessage = {
         platform: 'discord',
         channelRef,

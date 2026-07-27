@@ -205,7 +205,16 @@ export async function registerGlobalCommands(transport: DiscordTransport, guildI
     log.warn('Slash-command registration skipped — application id unknown (no READY yet)')
     return
   }
+  // GET-then-diff: skip creates when already registered (createGlobalCommand
+  // upserts, but every boot-create counts against Discord's daily limits).
+  let existingGlobal = new Set<string>()
+  try {
+    existingGlobal = new Set((await transport.api.applicationCommands.getGlobalCommands(applicationId)).map(c => c.name))
+  } catch (err) {
+    log.warn('Global slash-command listing failed — will upsert blindly', err)
+  }
   for (const command of commands) {
+    if (existingGlobal.has(command.name)) continue
     try {
       await transport.api.applicationCommands.createGlobalCommand(applicationId, { ...command, type: 1 })
     } catch (err) {
@@ -213,10 +222,17 @@ export async function registerGlobalCommands(transport: DiscordTransport, guildI
     }
   }
   // Remove the bridge's earlier per-guild registrations (they would render
-  // as duplicates beside the global command in guild pickers).
+  // as duplicates beside the global command) — SURGICALLY, by name: a
+  // blanket overwrite could clobber guild commands another consumer of this
+  // application (OpenClaw) registered (review finding).
+  const bridgeNames = new Set(commands.map(c => c.name))
   for (const guildId of guildIds) {
     try {
-      await transport.api.applicationCommands.bulkOverwriteGuildCommands(applicationId, guildId, [])
+      const guildCommands = await transport.api.applicationCommands.getGuildCommands(applicationId, guildId)
+      for (const guildCommand of guildCommands) {
+        if (!bridgeNames.has(guildCommand.name)) continue
+        await transport.api.applicationCommands.deleteGuildCommand(applicationId, guildId, guildCommand.id)
+      }
     } catch (err) {
       log.warn('Guild slash-command cleanup failed', err, { guildId })
     }

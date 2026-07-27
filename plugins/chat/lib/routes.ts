@@ -233,9 +233,22 @@ export const chatRoutes = [
       if (name !== basename(name)) return Response.json({ error: 'invalid attachment name' }, { status: 400 })
       const path = join(attachmentsDir(params.chatId), name)
       if (!existsSync(path)) return Response.json({ error: 'attachment not found' }, { status: 404 })
+      // Raster extensions render inline; EVERYTHING else downloads as an
+      // opaque blob. Never mint image/<ext> from an arbitrary extension — an
+      // svg-ish name would be served same-origin as scriptable XML (#669
+      // review finding), and file-lane attachments (pdf/csv/...) live in
+      // this dir now too.
       const ext = extname(name).slice(1).toLowerCase()
-      const mime = ext === 'jpg' ? 'image/jpeg' : `image/${ext || 'png'}`
-      return new Response(readFileSync(path), { headers: { 'Content-Type': mime, 'Cache-Control': 'private, max-age=3600' } })
+      const rasterMime: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif' }
+      const mime = rasterMime[ext]
+      return new Response(readFileSync(path), {
+        headers: {
+          'Content-Type': mime ?? 'application/octet-stream',
+          'X-Content-Type-Options': 'nosniff',
+          ...(mime ? {} : { 'Content-Disposition': `attachment; filename="${name.replaceAll('"', '')}"` }),
+          'Cache-Control': 'private, max-age=3600',
+        },
+      })
     },
   }),
 

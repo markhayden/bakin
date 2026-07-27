@@ -224,6 +224,22 @@ describe('slash command handling', () => {
     expect(auditEvents.some(e => e.event === 'delivery.inbound_denied')).toBe(true)
   })
 
+  it('acks the KNOWN command honestly when inbound is disabled (no ghost)', async () => {
+    replies.length = 0
+    const received: InboundChannelMessage[] = []
+    const surface = createInboundSurface({
+      botUserId: () => BOT_ID,
+      settings: () => ({ enabled: true, inbound: { enabled: false, agentId: 'main', requireMention: true, allowFrom: [OWNER] } }),
+      download: async () => Buffer.from('x'),
+      replyEphemeral: async (_id, _token, content) => { replies.push(content) },
+      tmpDir: testDir,
+    })
+    surface.subscribe(m => received.push(m))
+    await surface.handleCommandInteraction(interaction('new-chat'))
+    expect(received).toHaveLength(0)
+    expect(replies.some(r => r.includes('disabled'))).toBe(true)
+  })
+
   it("acks UNKNOWN commands honestly instead of Discord's did-not-respond ghost", async () => {
     replies.length = 0
     const { surface, received } = commandSurface()
