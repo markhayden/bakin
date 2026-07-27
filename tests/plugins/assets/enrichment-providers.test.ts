@@ -99,6 +99,41 @@ describe('callDirectVisionProvider', () => {
     expect(result.transcript).toBe('hello world')
   })
 
+  it('surfaces provider token usage from all three transports (#747 metering rider)', async () => {
+    const anthropic = await callDirectVisionProvider(req({
+      fetchImpl: jsonFetch({
+        content: [{ type: 'text', text: '{"caption":"a"}' }],
+        usage: { input_tokens: 1200, output_tokens: 45 },
+      }),
+    }))
+    expect(anthropic.usage).toEqual({ inputTokens: 1200, outputTokens: 45 })
+
+    const openai = await callDirectVisionProvider(req({
+      provider: 'openai', model: 'gpt-4o',
+      fetchImpl: jsonFetch({
+        choices: [{ message: { content: '{"caption":"b"}' } }],
+        usage: { prompt_tokens: 900, completion_tokens: 30 },
+      }),
+    }))
+    expect(openai.usage).toEqual({ inputTokens: 900, outputTokens: 30 })
+
+    const google = await callDirectVisionProvider(req({
+      provider: 'google', model: 'gemini-2.0-flash',
+      fetchImpl: jsonFetch({
+        candidates: [{ content: { parts: [{ text: '{"caption":"c"}' }] } }],
+        usageMetadata: { promptTokenCount: 700, candidatesTokenCount: 25 },
+      }),
+    }))
+    expect(google.usage).toEqual({ inputTokens: 700, outputTokens: 25 })
+  })
+
+  it('usage absent from the response → usage undefined, never fabricated', async () => {
+    const result = await callDirectVisionProvider(req({
+      fetchImpl: jsonFetch({ content: [{ type: 'text', text: '{"caption":"no usage"}' }] }),
+    }))
+    expect(result.usage).toBeUndefined()
+  })
+
   it('anthropic/openai REJECT audio input (no guessing at unsupported transports)', async () => {
     writeFileSync(join(testDir, 'memo.mp3'), 'audio-bytes')
     const audio = { kind: 'audio' as const, mediaPath: join(testDir, 'memo.mp3'), mediaMime: 'audio/mpeg' }

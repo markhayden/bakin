@@ -1,0 +1,20 @@
+# TODO — #742 follow-ups (#747 → #746 → #745)
+
+Plan: `tasks/plan.md` · Spec: `SPEC.md`
+
+## Phase A (branch feat/scanned-pdf-enrichment-747)
+- [ ] A1  Direct-vision path writes run_costs (usage from transports, ONE recorder)  [commit 1]
+- [ ] A2  Scanned-PDF vision-OCR loop (3 pages, labeled merge, whole-job-fail) + scanned-4p fixture  [commit 2]
+- [ ] A3  Docs — assets-plugin.md, models-plugin.md, CLAUDE.md line, README check  [commit 3]
+- [ ] CP-A Gate: full suite + lint + cycles → Mark live-test (scanned PDF → searchable + Spend rows) → PR → merge → close #747
+
+## Phase B (after CP-A; branch only for exits a/b)
+- [ ] B1  Spike ladder: addon-in-binary → polyfill-stub text → unpdf swap (timeboxed; findings recorded here)
+- [ ] B2  Exit implementation: (a) full fix / (b) text-only + honest render → branch+PR; (c) docs-only wontfix → main directly
+- [ ] CP-B Gate: per exit — PR/merge or docs commit + close #746 with findings
+
+## Phase C (after CP-B — PARK-LEAN, consumer = linux-hosted server)
+- [ ] GATE FIRST Mark decision with in-hand findings: park now (recommended) or spike
+- [ ] C1  (on "spike") static tesseract spike (sandbox-rig; ocrs fallback) → second gate
+- [ ] C2  (on "ship") bits mirror release + pack 0.2.0 + sandbox rig verify + PRs
+- [ ] CP-C Close #745 (shipped or parked) · memory update · delete SPEC.md + tasks files · summary comments
