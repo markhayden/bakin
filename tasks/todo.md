@@ -9,8 +9,8 @@ Plan: `tasks/plan.md` · Spec: `SPEC.md`
 - [ ] CP-A Gate: full suite + lint + cycles → Mark live-test (scanned PDF → searchable + Spend rows) → PR → merge → close #747
 
 ## Phase B (after CP-A; branch only for exits a/b)
-- [ ] B1  Spike ladder: addon-in-binary → polyfill-stub text → unpdf swap (timeboxed; findings recorded here)
-- [ ] B2  Exit implementation: (a) full fix / (b) text-only + honest render → branch+PR; (c) docs-only wontfix → main directly
+- [x] B1  Spike: .node addons DO embed (r1c) but canvas loader breaks under $bunfs; TEXT works canvas-less via DOMMatrix/ImageData/Path2D stubs + PDFParse.setWorker(pdf-parse/worker getData()) — exit (b); unpdf unnecessary
+- [x] B2  Exit (b) SHIPPED: canvas-less text in binaries + honest render degrade + verify:compiled-pdf smoke
 - [ ] CP-B Gate: per exit — PR/merge or docs commit + close #746 with findings
 
 ## Phase C (after CP-B — PARK-LEAN, consumer = linux-hosted server)
