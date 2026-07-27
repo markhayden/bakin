@@ -50,6 +50,7 @@ import './exec-tools/tools/post-channel'
 import './exec-tools/tools/get-paths'
 import './exec-tools/tools/heartbeat'
 import './exec-tools/tools/search-tools'
+import './exec-tools/tools/pdf'
 
 const log = createLogger('mcp')
 
