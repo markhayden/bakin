@@ -1,38 +1,21 @@
-# TODO — Search Trust & Speed
+# TODO — #742 PDF attachments + OCR pack
 
-Plan: `tasks/plan-search-trust-and-speed.md` · Spec: `.claude/specs/search-trust-and-speed.md`
+Plan: `tasks/plan.md` · Spec: `SPEC.md`
 
-## P0
-- [x] T1 fix(host): ⌘K debug-toggle bug + RTL test
+## Phase 1 (branch feat/pdf-attachments-742)
+- [ ] T0  Spike: getScreenshot under bun build --compile (record outcome, no commit)
+- [ ] T1  Engine + fixtures — src/core/pdf/{engine,limits}.ts, tests/fixtures/pdf/  [commit 1]
+- [ ] T2  Assets delegation — content-extractor uses core engine, PDF code deleted  [commit 2]
+- [ ] T3  Exec tools — pdf_read/pdf_render + mcp-server import + docs:generate  [commit 3]
+- [ ] T4  Turn-engine kind split + file-lane note generator + placeholder  [commit 4]
+- [ ] T5  Chat web lane — allowlist, composer decoupled gating, file chips  [commit 5]
+- [ ] T6  Channel-inbound delegates notes to the engine  [commit 6]
+- [ ] T7  Docs sweep — knowledge files, CLAUDE.md, README check  [commit 7]
+- [ ] CP-1 Gate: bun run test + lint + check:cycles + /verify + Mark live-test → PR → merge
 
-## P1 — engine upgrade (live ops)
-- [x] T2 chore(search): pin antfly v0.2.0-rc.18 (+ delete tasks/antfly-main-local-patches.diff)
-- [x] T3 ops: backup settings.json + search.db + version note (rollback point)
-- [x] T4 ops: bakin install search → rc.18 live, tables queryable
-- [x] T5 fix(search): orphan registry-row sweep + team-migration restart + projects rebuild + full clean rebuild
-- [ ] **GATE A:** all legs ready, CPU ≤5% idle 10 min, registry==engine, #319 verdict recorded
-
-## P2 — shims
-- [x] T6 canary sweep vs rc.18 → **GATE B** per-shim verdicts in evidence file
-- [x] T7 refactor(adapter-antfly): sort — NOT ADOPTED (needs schema-mapped sortable fields; no Bakin sort surface). Canary stays → order_by (if landed)
-- [x] T8 refactor(adapter-antfly): server-side query deadlines (landed — adopted via Query.deadlineMs → timeout_ms)
-- [x] T9 refactor(adapter-antfly): totals count-twin made concurrent (still needed upstream)
-- [x] T10 refactor(adapter-antfly): lookup/filter_query — still broken upstream, shims stay body / filter_query removals (if flipped)
-- [x] T11 refactor(assets): WebP — still broken upstream (#322), shim stays: WebP EMBED_SAFE_RE removal (if #338 covers)
-
-## P3 — latency contract
-- [x] T12 feat(search): queryBudgetMs + per-table degrade/omit + metadata + telemetry
-- [x] T13 feat(host): ⌘K progress stages + partial-results chip (SDK-shared)
-
-## P4 — observability
-- [x] T14 feat(health): backfill-spin watchdog + one-click rebuild repair
-- [x] T15 feat(search): lastIndexedAt/lastRebuildAt + numeric backlog (type+UI+CLI)
-
-## P5 — surface trust
-- [x] T16 fix(plugins): D11 engine-down states — memory, tasks, schedule, workflows
-- [x] T17 feat(search): matched-field debug explanations
-
-## P6 — prove + ship
-- [x] T18 stress test: seed content, 20-query p50/p95, chaos drills, UX sweep → evidence
-- [x] T19 docs(knowledge): search-system.md, search-plugin-guide.md, CLAUDE.md bullet
-- [x] T20 PR → merge → deploy to ../bakin-wt-pi → restart 3737 → live spot-check → ports clean
+## Phase 2 (after CP-1)
+- [ ] P2-T1  Vision CLI binary (ocrit or in-repo Swift) + bits release + sha256
+- [ ] P2-T2  packs/ocr manifest + skill (bits repo), install verified on dev instance
+- [ ] P2-T3  Bakin: readiness-aware pdf_read guidance + catalog entry + docs  [commit 8]
+- [ ] CP-2  Live E2E scanned-PDF OCR · file deferred issues (linux leg, enrichment
+        indexing, docx/xlsx note) · close #742 · remove SPEC.md + tasks/plan.md/todo.md
