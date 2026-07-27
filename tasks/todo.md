@@ -3,14 +3,17 @@
 Plan: `tasks/plan.md` · Spec: `SPEC.md`
 
 ## Phase 1 (branch feat/pdf-attachments-742)
-- [ ] T0  Spike: getScreenshot under bun build --compile (record outcome, no commit)
-- [ ] T1  Engine + fixtures — src/core/pdf/{engine,limits}.ts, tests/fixtures/pdf/  [commit 1]
-- [ ] T2  Assets delegation — content-extractor uses core engine, PDF code deleted  [commit 2]
-- [ ] T3  Exec tools — pdf_read/pdf_render + mcp-server import + docs:generate  [commit 3]
-- [ ] T4  Turn-engine kind split + file-lane note generator + placeholder  [commit 4]
-- [ ] T5  Chat web lane — allowlist, composer decoupled gating, file chips  [commit 5]
-- [ ] T6  Channel-inbound delegates notes to the engine  [commit 6]
-- [ ] T7  Docs sweep — knowledge files, CLAUDE.md, README check  [commit 7]
+- [x] T0  Spike: OUTCOME B — @napi-rs/canvas absent from compiled binary; pdf-parse
+        import itself crashes there (DOMMatrix) ⇒ PRE-EXISTING silent breakage of
+        asset PDF extraction in release binaries. Engine adds typed `pdf_unavailable`;
+        CP-2 files a follow-up issue. Repo-tree runs (the live box) fully work.
+- [x] T1  Engine + fixtures — src/core/pdf/{engine,limits}.ts, tests/fixtures/pdf/  [commit 1]
+- [x] T2  Assets delegation — content-extractor uses core engine, PDF code deleted  [commit 2]
+- [x] T3  Exec tools — pdf_read/pdf_render + mcp-server import + docs:generate  [commit 3]
+- [x] T4  Turn-engine kind split + file-lane note generator + placeholder  [commit 4]
+- [x] T5  Chat web lane — allowlist, composer decoupled gating, file chips  [commit 5]
+- [x] T6  Channel-inbound delegates notes to the engine  [commit 6]
+- [x] T7  Docs sweep — knowledge files, CLAUDE.md, README check  [commit 7]
 - [ ] CP-1 Gate: bun run test + lint + check:cycles + /verify + Mark live-test → PR → merge
 
 ## Phase 2 (after CP-1)
