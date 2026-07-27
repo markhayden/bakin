@@ -230,7 +230,11 @@ export function wireChannelInbound(ctx: WireContext): () => void {
       if (!content && attachments.length === 0) return
       // Typing starts on chat.started (event-driven below) — drained queued
       // turns pulse too, and a failed start can never leak a timer.
-      const result = await startChatTurn(ctx as Parameters<typeof startChatTurn>[0], chat.id, content || '(image)', attachments, { queueIfBusy: true })
+      // Empty content with attachments passes through as-is — the turn
+      // engine's kind-aware placeholder ("See the attached image."/"file.")
+      // owns that case (review finding: a '(image)' fallback here labeled
+      // PDF-only drops as images).
+      const result = await startChatTurn(ctx as Parameters<typeof startChatTurn>[0], chat.id, content, attachments, { queueIfBusy: true })
       if (result === 'not_found' || result === 'busy') {
         log.warn('Inbound turn not accepted', { chatId: chat.id, result })
       }

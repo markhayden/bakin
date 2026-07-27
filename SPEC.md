@@ -71,8 +71,10 @@ src/core/pdf/
   PDF work to the core engine). The CID-font rationale comment moves with the code.
 - `renderPdfPages` uses `PDFParse.getScreenshot()`; output dir via
   `mkdtempSync(join(tmpdir(), 'bakin-pdf-render-'))` (mirrors `media/downscale.ts`).
-- Input validation: file exists, `%PDF` magic-byte sniff (never trust extension alone),
-  clear typed errors (`not_found`, `not_a_pdf`, `encrypted`, `parse_failed`).
+- Input validation: file exists, size cap (100 MB pre-slurp), `%PDF` magic-byte sniff
+  (never trust extension alone), clear typed errors (`not_found`, `not_a_pdf`,
+  `parse_failed`, `over_limit`, `pdf_unavailable`; encrypted PDFs surface as
+  `parse_failed` with the parser's message — no dedicated kind).
 - Page selection: array of 1-indexed page numbers (zod `number[]`), plus text-form
   support is NOT needed — agents can pass arrays.
 - **Low-text page detection (Phase 1):** pages whose extracted text falls under a small

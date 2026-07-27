@@ -24,3 +24,7 @@ export const RENDER_WIDTH = 1568
 /** A page whose extracted text is shorter than this is likely a scanned /
  * image-only page (or blank) — readers surface render-and-view guidance. */
 export const SCANNED_TEXT_THRESHOLD = 32
+
+/** Refuse files bigger than this before slurping them into memory — the
+ * engine reads whole files; a stray multi-GB path would spike the server. */
+export const MAX_PDF_BYTES = 100 * 1024 * 1024

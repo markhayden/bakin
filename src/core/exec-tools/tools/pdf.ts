@@ -67,7 +67,11 @@ export async function pdfRenderTool(
     const result = await renderPdfPages(params.path, params.pages)
     return succeed({
       files: result.files,
-      note: 'Temporary PNGs — read/view them with your image-capable file tools now; the OS owns cleanup.',
+      ...(result.truncated ? { truncated: true } : {}),
+      note:
+        (result.truncated
+          ? `Rendered ${result.files.length} of ${result.totalPages} pages — call again with pages=[${result.files.length + 1}, …] for the rest. `
+          : '') + 'Temporary PNGs — read/view them with your image-capable file tools now; the OS owns cleanup.',
     })
   } catch (err) {
     return failFromError(err)

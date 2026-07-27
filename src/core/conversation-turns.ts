@@ -605,7 +605,8 @@ async function runTurn(
       // testing bundle's graph (same rule as the downscale import above).
       let renderCall: ((tool: string, args: string) => string) | undefined
       try {
-        const [{ renderToolCall }, access] = [await import('./tool-access'), ctx.runtime.describeToolAccess() as RuntimeToolAccess]
+        const { renderToolCall } = await import('./tool-access')
+        const access: RuntimeToolAccess = ctx.runtime.describeToolAccess()
         renderCall = (tool, args) => renderToolCall(access, { agentId, tool, args })
       } catch {
         renderCall = undefined // runtime style unknown — notes fall back to bare tool names

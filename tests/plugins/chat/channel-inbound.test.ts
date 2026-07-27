@@ -284,6 +284,18 @@ describe('chat channel inbound wiring', () => {
     expect(startedTurns[0].attachments![0]).toMatchObject({ mimeType: 'application/octet-stream' })
   })
 
+  it('PDF-only drop passes EMPTY content through — the engine placeholder owns it, never "(image)"', async () => {
+    const pdf = join(testDir, 'only.pdf')
+    fs.writeFileSync(pdf, '%PDF-1.4 tiny')
+    const { ctx, inbound } = makeCtx({ imageInput: true })
+    wireChannelInbound(ctx)
+    inbound(inboundMessage({ text: '', attachments: [{ name: 'only.pdf', path: pdf, contentType: 'application/pdf' }] }))
+    await settle()
+    expect(startedTurns[0].attachments).toHaveLength(1)
+    // Review finding: a '(image)' fallback here mislabeled PDF-only drops.
+    expect(startedTurns[0].content).toBe('')
+  })
+
   it('sanitizes hostile filenames before they hit the attachment dir', async () => {
     const src = join(testDir, 'src-file')
     fs.writeFileSync(src, '<svg/>')

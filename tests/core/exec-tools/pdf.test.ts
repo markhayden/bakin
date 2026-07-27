@@ -93,6 +93,16 @@ describe('bakin_exec_pdf_render', () => {
     rmSync(dirname(r.files[0]!.path), { recursive: true, force: true })
   })
 
+  it('says "rendered N of M" when a default render clamps', async () => {
+    const many = join(import.meta.dir, '../../fixtures/pdf/many-pages.pdf')
+    const result = await pdfRenderTool({ path: many }, 'main')
+    expect(result.ok).toBe(true)
+    const r = result as unknown as { truncated?: boolean; note: string; files: Array<{ path: string }> }
+    expect(r.truncated).toBe(true)
+    expect(r.note).toContain('Rendered 10 of 12')
+    rmSync(dirname(r.files[0]!.path), { recursive: true, force: true })
+  })
+
   it('refuses over-cap page requests with an honest message', async () => {
     const tooMany = Array.from({ length: RENDER_MAX_PAGES + 1 }, (_, i) => i + 1)
     const result = await pdfRenderTool({ path: TEXT_PDF, pages: tooMany }, 'main')

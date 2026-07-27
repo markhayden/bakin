@@ -22,6 +22,7 @@ import { MAX_PDF_PAGES, MAX_CHARS, RENDER_MAX_PAGES, RENDER_WIDTH } from '../../
 
 const TEXT_PDF = join(import.meta.dir, '../../fixtures/pdf/text.pdf')
 const SCANNED_PDF = join(import.meta.dir, '../../fixtures/pdf/scanned.pdf')
+const MANY_PDF = join(import.meta.dir, '../../fixtures/pdf/many-pages.pdf')
 
 const renderDirs: string[] = []
 afterAll(() => {
@@ -59,17 +60,17 @@ describe('readPdf', () => {
   test('rejects a non-PDF file by magic bytes', async () => {
     const fake = join(testDir, 'fake.pdf')
     writeFileSync(fake, 'this is not a pdf at all')
-    expect(readPdf(fake)).rejects.toMatchObject({ kind: 'not_a_pdf' })
+    await expect(readPdf(fake)).rejects.toMatchObject({ kind: 'not_a_pdf' })
   })
 
   test('rejects a missing file', async () => {
-    expect(readPdf(join(testDir, 'missing.pdf'))).rejects.toMatchObject({ kind: 'not_found' })
+    await expect(readPdf(join(testDir, 'missing.pdf'))).rejects.toMatchObject({ kind: 'not_found' })
   })
 
   test('wraps parser failures as parse_failed', async () => {
     const corrupt = join(testDir, 'corrupt.pdf')
     writeFileSync(corrupt, '%PDF-1.4\ngarbage that is not a real document')
-    expect(readPdf(corrupt)).rejects.toMatchObject({ kind: 'parse_failed' })
+    await expect(readPdf(corrupt)).rejects.toMatchObject({ kind: 'parse_failed' })
   })
 })
 
@@ -98,13 +99,38 @@ describe('renderPdfPages', () => {
 
   test('refuses more than RENDER_MAX_PAGES pages per call', async () => {
     const tooMany = Array.from({ length: RENDER_MAX_PAGES + 1 }, (_, i) => i + 1)
-    expect(renderPdfPages(TEXT_PDF, tooMany)).rejects.toMatchObject({ kind: 'over_limit' })
+    await expect(renderPdfPages(TEXT_PDF, tooMany)).rejects.toMatchObject({ kind: 'over_limit' })
+  })
+
+  test('default render of an oversized doc clamps VISIBLY (truncated + totalPages)', async () => {
+    const result = await renderPdfPages(MANY_PDF)
+    renderDirs.push(result.outDir)
+    expect(result.files).toHaveLength(RENDER_MAX_PAGES)
+    expect(result.truncated).toBe(true)
+    expect(result.totalPages).toBe(12)
+  })
+
+  test('small default render reports no truncation', async () => {
+    const result = await renderPdfPages(SCANNED_PDF, [1])
+    renderDirs.push(result.outDir)
+    expect(result.truncated).toBe(false)
+    expect(result.totalPages).toBe(2)
   })
 })
 
 describe('selectPages', () => {
   test('passes explicit pages through', () => {
     expect(selectPages(50, [3, 1])).toEqual({ partial: [3, 1], pagesTruncated: false })
+  })
+
+  test('refuses explicit selections over MAX_PDF_PAGES (parse work stays bounded)', () => {
+    const tooMany = Array.from({ length: MAX_PDF_PAGES + 1 }, (_, i) => i + 1)
+    expect(() => selectPages(5000, tooMany)).toThrow(PdfError)
+    try {
+      selectPages(5000, tooMany)
+    } catch (err) {
+      expect((err as PdfError).kind).toBe('over_limit')
+    }
   })
 
   test('reads everything when under the page cap', () => {

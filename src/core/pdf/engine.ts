@@ -15,12 +15,13 @@
  * The lazy import wraps that failure as a typed `pdf_unavailable` error so
  * callers degrade honestly instead of surfacing a cryptic DOMMatrix crash.
  */
-import { existsSync, mkdtempSync, openSync, readSync, closeSync, readFileSync, writeFileSync } from 'fs'
+import { existsSync, mkdtempSync, openSync, readSync, closeSync, readFileSync, statSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { createLogger } from '../logger'
 import {
   MAX_CHARS,
+  MAX_PDF_BYTES,
   MAX_PDF_PAGES,
   RENDER_MAX_PAGES,
   RENDER_WIDTH,
@@ -70,15 +71,29 @@ export interface PdfRenderedFile {
 export interface PdfRenderResult {
   files: PdfRenderedFile[]
   outDir: string
+  /** Total pages in the document — lets callers say "rendered N of M". */
+  totalPages: number
+  /** true when a default (unselected) render clamped to RENDER_MAX_PAGES —
+   * always visible, never silent. */
+  truncated: boolean
 }
 
-/** Which pages to hand pdf-parse: explicit selection passes through; an
+/** Which pages to hand pdf-parse: explicit selection passes through (capped
+ * — parse work is bounded even when the char cap wouldn't bite); an
  * unselected read of an oversized doc is capped at the first MAX_PDF_PAGES. */
 export function selectPages(
   totalPages: number,
   requested: number[] | undefined,
 ): { partial: number[] | undefined; pagesTruncated: boolean } {
-  if (requested?.length) return { partial: requested, pagesTruncated: false }
+  if (requested?.length) {
+    if (requested.length > MAX_PDF_PAGES) {
+      throw new PdfError(
+        'over_limit',
+        `read is capped at ${MAX_PDF_PAGES} pages per call (got ${requested.length}) — call again with the next batch`,
+      )
+    }
+    return { partial: requested, pagesTruncated: false }
+  }
   if (totalPages > MAX_PDF_PAGES) {
     return { partial: Array.from({ length: MAX_PDF_PAGES }, (_, i) => i + 1), pagesTruncated: true }
   }
@@ -114,6 +129,10 @@ export function capPageTexts(pages: Array<{ page: number; text: string }>): {
 
 function assertReadablePdf(path: string): void {
   if (!existsSync(path)) throw new PdfError('not_found', `no file at ${path}`)
+  const size = statSync(path).size
+  if (size > MAX_PDF_BYTES) {
+    throw new PdfError('over_limit', `${path} is ${size} bytes — the engine caps at ${MAX_PDF_BYTES}`)
+  }
   // Trust bytes, not the extension: %PDF magic within the first 1024 bytes
   // (the spec allows a small preamble before the header).
   const fd = openSync(path, 'r')
@@ -195,9 +214,11 @@ export async function renderPdfPages(path: string, pages?: number[]): Promise<Pd
     )
   }
   return withParser(path, async (parser) => {
+    const total = (await parser.getInfo()).total
     let partial = pages
+    let truncated = false
     if (!partial) {
-      const total = (await parser.getInfo()).total
+      truncated = total > RENDER_MAX_PAGES
       partial = Array.from({ length: Math.min(total, RENDER_MAX_PAGES) }, (_, i) => i + 1)
     }
     const shot = await parser.getScreenshot({
@@ -212,6 +233,6 @@ export async function renderPdfPages(path: string, pages?: number[]): Promise<Pd
       // pdfjs scale math yields floats (1567.9999…) — report integer pixels.
       return { page: p.pageNumber, path: filePath, width: Math.round(p.width), height: Math.round(p.height) }
     })
-    return { files, outDir }
+    return { files, outDir, totalPages: total, truncated }
   })
 }
