@@ -26,6 +26,12 @@ mock.module('../../../src/core/app-services', () => ({
   }),
 }))
 
+// Readiness toggle for the ocr-lane guidance (#742 Phase 2, guidance-only).
+let ocrReady = false
+mock.module('../../../src/core/agent-packages/capability-readiness', () => ({
+  listCapabilities: async () => (ocrReady ? [{ capability: 'ocr', ready: true }] : []),
+}))
+
 import { pdfReadTool, pdfRenderTool } from '../../../src/core/exec-tools/tools/pdf'
 import { getAllExecTools } from '../../../src/core/exec-tools/registry'
 import { RENDER_MAX_PAGES } from '../../../src/core/pdf/limits'
@@ -66,6 +72,22 @@ describe('bakin_exec_pdf_read', () => {
     expect(r.guidance).toContain('scanned')
     // MCP access + agent pixel → server-qualified tool name
     expect(r.guidance).toContain('bakin-pixel.bakin_exec_pdf_render')
+  })
+
+  it('mentions the ocr bash lane ONLY when the capability pack is ready', async () => {
+    ocrReady = false
+    const without = (await pdfReadTool({ path: SCANNED_PDF }, 'main')) as unknown as { guidance?: string }
+    expect(without.guidance).toBeDefined()
+    expect(without.guidance).not.toContain('ocrit')
+
+    ocrReady = true
+    try {
+      const withOcr = (await pdfReadTool({ path: SCANNED_PDF }, 'main')) as unknown as { guidance?: string }
+      expect(withOcr.guidance).toContain(`ocrit ${SCANNED_PDF}`)
+      expect(withOcr.guidance).toContain('reads PDFs directly')
+    } finally {
+      ocrReady = false
+    }
   })
 
   it('fails cleanly on a missing file', async () => {
