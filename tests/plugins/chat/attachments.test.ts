@@ -80,15 +80,37 @@ describe('attachment upload + serving', () => {
     expect(served.status).toBe(200)
   })
 
-  test('rejects non-image mime types and oversized files honestly', async () => {
+  test('rejects unsupported mime types and oversized files honestly', async () => {
     const chat = await createChat({ agentId: 'main' })
     const bad = await upload(chat.id, new File(['hello'], 'notes.txt', { type: 'text/plain' }))
     expect(bad.status).toBe(400)
-    expect(String(bad.body.error)).toContain('image')
 
     const big = await upload(chat.id, pngFile('huge.png', 26 * 1024 * 1024))
     expect(big.status).toBe(400)
     expect(String(big.body.error)).toContain('large')
+  })
+
+  test('SVG stays rejected — the #669 session-poisoning guard survives the PDF lane', async () => {
+    const chat = await createChat({ agentId: 'main' })
+    const svg = await upload(chat.id, new File(['<svg/>'], 'icon.svg', { type: 'image/svg+xml' }))
+    expect(svg.status).toBe(400)
+  })
+
+  test('accepts a PDF upload and serves it as an opaque download (#742)', async () => {
+    const chat = await createChat({ agentId: 'main' })
+    const res = await upload(chat.id, new File(['%PDF-1.4 tiny'], 'report.pdf', { type: 'application/pdf' }))
+    expect(res.status).toBe(201)
+    const attachment = res.body.attachment as { name: string; mimeType: string; path: string }
+    expect(attachment.mimeType).toBe('application/pdf')
+    expect(existsSync(attachment.path)).toBe(true)
+
+    const serve = findRoute(activated.routes, 'GET', '/chats/:chatId/attachments/:name')!
+    const served = await callRoute(serve, activated.ctx, {
+      path: `/chats/${chat.id}/attachments/${encodeURIComponent(attachment.name)}`,
+    })
+    expect(served.status).toBe(200)
+    expect(served.response.headers.get('Content-Type')).toBe('application/octet-stream')
+    expect(served.response.headers.get('Content-Disposition')).toContain('attachment')
   })
 
   test('serving guards against traversal names', async () => {

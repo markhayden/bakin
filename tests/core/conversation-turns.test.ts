@@ -71,6 +71,7 @@ function makeHarness(): Harness {
           return script()
         },
       },
+      describeToolAccess: () => ({ style: 'in-process', perTurnExecToolFiltering: true }),
     },
   } as unknown as TurnContext
   return { ctx, events, rows, seenArgs, setStream: (s) => { script = s } }
@@ -403,6 +404,82 @@ describe('conversation turn service', () => {
     })
     // Small file passes through undownscaled to the runtime call.
     expect(h.seenArgs[0].attachments).toEqual([{ path: filePath, mimeType: 'image/png' }])
+  })
+
+  test('file-lane: non-image attachments never reach the runtime attachments — they ride as path notes (#742)', async () => {
+    mkdirSync(testDir, { recursive: true })
+    const imgPath = join(testDir, 'pic.png')
+    const pdfPath = join(testDir, 'doc.pdf')
+    writeFileSync(imgPath, 'tiny-image-bytes')
+    writeFileSync(pdfPath, 'fake-pdf-bytes')
+    const h = makeHarness()
+    const service = makeService(h)
+    expect(
+      await service.start(h.ctx, 't30', 'what are these?', {
+        attachments: [
+          { name: 'pic.png', mimeType: 'image/png', path: imgPath },
+          { name: 'doc.pdf', mimeType: 'application/pdf', path: pdfPath },
+        ],
+      }),
+    ).toBe('accepted')
+    await service.waitFor('t30')
+    // Runtime gets ONLY the raster image as a model attachment…
+    expect(h.seenArgs[0].attachments).toEqual([{ path: imgPath, mimeType: 'image/png' }])
+    // …and the PDF as a file-lane note pointing at the blessed tool.
+    expect(h.seenArgs[0].content).toContain('what are these?')
+    expect(h.seenArgs[0].content).toContain(`[file doc.pdf saved at ${pdfPath}`)
+    expect(h.seenArgs[0].content).toContain('bakin_exec_pdf_read')
+    // The transcript row keeps BOTH attachments (UI fidelity).
+    const userRow = (h.rows.get('t30') ?? [])[0]
+    expect((userRow as { attachments?: unknown[] }).attachments).toHaveLength(2)
+    // The persisted user content stays clean — notes are runtime-only.
+    expect((userRow as { content: string }).content).toBe('what are these?')
+  })
+
+  test('file-lane: non-PDF files get generic file-tool wording', async () => {
+    mkdirSync(testDir, { recursive: true })
+    const csvPath = join(testDir, 'data.csv')
+    writeFileSync(csvPath, 'a,b\n1,2')
+    const h = makeHarness()
+    const service = makeService(h)
+    await service.start(h.ctx, 't31', 'check this', {
+      attachments: [{ name: 'data.csv', mimeType: 'text/csv', path: csvPath }],
+    })
+    await service.waitFor('t31')
+    expect(h.seenArgs[0].attachments).toBeUndefined()
+    expect(h.seenArgs[0].content).toContain(`[file data.csv saved at ${csvPath} — open it with your file tools]`)
+  })
+
+  test('file-lane: tool reference renders in the active runtime style (mcp)', async () => {
+    mkdirSync(testDir, { recursive: true })
+    const pdfPath = join(testDir, 'mcp.pdf')
+    writeFileSync(pdfPath, 'fake-pdf-bytes')
+    const h = makeHarness()
+    ;(h.ctx.runtime as unknown as { describeToolAccess: () => unknown }).describeToolAccess = () => ({
+      style: 'mcp',
+      mcpServerTemplate: 'bakin-<agent>',
+      perTurnExecToolFiltering: false,
+    })
+    const service = makeService(h)
+    await service.start(h.ctx, 't32', 'read it', {
+      attachments: [{ name: 'mcp.pdf', mimeType: 'application/pdf', path: pdfPath }],
+    })
+    await service.waitFor('t32')
+    expect(h.seenArgs[0].content).toContain('bakin-main.bakin_exec_pdf_read')
+  })
+
+  test('attachment-only placeholder is kind-aware: file wording for non-images', async () => {
+    mkdirSync(testDir, { recursive: true })
+    const pdfPath = join(testDir, 'only.pdf')
+    writeFileSync(pdfPath, 'fake-pdf-bytes')
+    const h = makeHarness()
+    const service = makeService(h)
+    await service.start(h.ctx, 't33', '   ', {
+      attachments: [{ name: 'only.pdf', mimeType: 'application/pdf', path: pdfPath }],
+    })
+    await service.waitFor('t33')
+    const userRow = (h.rows.get('t33') ?? [])[0]
+    expect((userRow as { content: string }).content).toBe('See the attached file.')
   })
 
   test('per-turn agentId override and runtimeContent: runtime sees both, transcript keeps the clean text', async () => {

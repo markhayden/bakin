@@ -18,7 +18,10 @@ lib/
   asset-service.ts           — barrel
   asset-media.ts             — sharp/ffmpeg thumbnails, dimensions
   asset-url.ts               — file:// URL builder (media_url for the visual/audio leg)
-  content-extractor.ts       — text/PDF extraction for search docs
+  content-extractor.ts       — text extraction for search docs; PDFs delegate
+                               to the core engine (src/core/pdf/engine.ts —
+                               ONE engine shared with bakin_exec_pdf_*, #742;
+                               caps in src/core/pdf/limits.ts)
   search-doc.ts              — buildVersionedAssetSearchDoc (manifest → search row)
   import-unmanaged.ts        — classifier + readdir-only scan + importUnmanagedFile
   unmanaged-tracker.ts       — in-memory watcher-fed unmanaged set → asset.unmanaged SSE

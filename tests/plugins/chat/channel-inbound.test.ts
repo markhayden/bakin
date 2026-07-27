@@ -261,23 +261,39 @@ describe('chat channel inbound wiring', () => {
     await settle()
 
     const chat = findChatByExternalKey('discord:channel:77')!
-    // The file lands in the chat's dir with its path noted for tool access —
-    // an svg+xml data URL in the session would poison every later turn.
-    expect(startedTurns[0].attachments).toEqual([])
-    expect(startedTurns[0].content).toContain('logo.svg')
-    expect(startedTurns[0].content).toContain('file tools')
+    // The file lands in the chat's dir and passes through as a NON-raster
+    // attachment — the turn engine's kind split keeps it out of the model
+    // lane and generates the file-lane note (#742 delegation; an svg+xml
+    // data URL in the session would poison every later turn).
+    expect(startedTurns[0].attachments).toEqual([
+      { name: 'logo.svg', mimeType: 'image/svg+xml', path: join(attachmentsDir(chat.id), 'logo.svg') },
+    ])
     expect(fs.existsSync(join(attachmentsDir(chat.id), 'logo.svg'))).toBe(true)
   })
 
-  it('sniffs bytes: a non-image labeled image/png goes to the FILE lane, not the model', async () => {
+  it('sniffs bytes: a non-image labeled image/png reaches the engine with a downgraded mime — never raster', async () => {
     const fake = join(testDir, 'fake.png')
     fs.writeFileSync(fake, 'MZ-this-is-not-a-png')
     const { ctx, inbound } = makeCtx({ imageInput: true })
     wireChannelInbound(ctx)
     inbound(inboundMessage({ attachments: [{ name: 'fake.png', path: fake, contentType: 'image/png' }] }))
     await settle()
-    expect(startedTurns[0].attachments).toEqual([])
-    expect(startedTurns[0].content).toContain('file tools')
+    // The lying image/png label is stripped so the engine's raster check
+    // cannot route the bytes into the model lane.
+    expect(startedTurns[0].attachments).toHaveLength(1)
+    expect(startedTurns[0].attachments![0]).toMatchObject({ mimeType: 'application/octet-stream' })
+  })
+
+  it('PDF-only drop passes EMPTY content through — the engine placeholder owns it, never "(image)"', async () => {
+    const pdf = join(testDir, 'only.pdf')
+    fs.writeFileSync(pdf, '%PDF-1.4 tiny')
+    const { ctx, inbound } = makeCtx({ imageInput: true })
+    wireChannelInbound(ctx)
+    inbound(inboundMessage({ text: '', attachments: [{ name: 'only.pdf', path: pdf, contentType: 'application/pdf' }] }))
+    await settle()
+    expect(startedTurns[0].attachments).toHaveLength(1)
+    // Review finding: a '(image)' fallback here mislabeled PDF-only drops.
+    expect(startedTurns[0].content).toBe('')
   })
 
   it('sanitizes hostile filenames before they hit the attachment dir', async () => {

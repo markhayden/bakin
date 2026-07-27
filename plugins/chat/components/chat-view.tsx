@@ -54,7 +54,9 @@ function useComposerAttachments(chatId: string, agentId: string) {
   const onAdd = (files: File[]) => {
     for (const file of files) {
       const id = `${Date.now()}-${file.name}-${Math.random().toString(36).slice(2, 7)}`
-      const previewUrl = URL.createObjectURL(file)
+      // Non-images (PDFs) stage as a name tile — a blob URL in an <img>
+      // would render a broken thumbnail.
+      const previewUrl = file.type.startsWith('image/') ? URL.createObjectURL(file) : ''
       setStaged((prev) => [...prev, { id, name: file.name, previewUrl, status: 'uploading' }])
       void uploadAttachmentRequest(chatId, file).then((uploaded) => {
         if (uploaded) {
@@ -106,7 +108,10 @@ function useComposerAttachments(chatId: string, agentId: string) {
     take,
     restore,
     composerProps: {
-      enabled: imageInput,
+      // Attach is always available — PDFs ride the file lane (tools read
+      // them); only IMAGE acceptance is gated on the model's eyes (#742).
+      enabled: true,
+      acceptImages: imageInput,
       disabledReason: `${agentId}'s model can't see images`,
       items: staged.map(({ id, name, previewUrl, status }) => ({ id, name, previewUrl, status })),
       onAdd,
@@ -330,7 +335,8 @@ export function DraftChatView({
         handleRef={draftComposer}
         maxLength={CONTENT_MAX}
         attachments={{
-          enabled: imageInput,
+          enabled: true,
+          acceptImages: imageInput,
           disabledReason: `${name}'s model can't see images`,
           items: staged.map(({ id, name: fileName, previewUrl }) => ({ id, name: fileName, previewUrl, status: 'ready' as const })),
           onAdd: (files) => {
@@ -339,7 +345,7 @@ export function DraftChatView({
               ...files.map((file) => ({
                 id: `${Date.now()}-${file.name}-${Math.random().toString(36).slice(2, 7)}`,
                 name: file.name,
-                previewUrl: URL.createObjectURL(file),
+                previewUrl: file.type.startsWith('image/') ? URL.createObjectURL(file) : '',
                 file,
               })),
             ])

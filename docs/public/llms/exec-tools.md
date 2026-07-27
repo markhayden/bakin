@@ -1325,6 +1325,42 @@ bakin_exec_models_list {
 }
 ```
 
+## Pdf
+
+### bakin_exec_pdf_read
+
+Label: Read PDF
+Purpose: Read a PDF file: metadata (page count, title) plus extracted per-page text.
+
+| Argument | Type | Required | Description |
+| --- | --- | --- | --- |
+| `path` | string | yes | Absolute path to the PDF file |
+
+Example:
+
+```sh
+bakin_exec_pdf_read {
+  "path": "value"
+}
+```
+
+### bakin_exec_pdf_render
+
+Label: Render PDF pages
+Purpose: Render PDF pages to PNG images (max 10 per call) and return their paths —
+
+| Argument | Type | Required | Description |
+| --- | --- | --- | --- |
+| `path` | string | yes | Absolute path to the PDF file |
+
+Example:
+
+```sh
+bakin_exec_pdf_render {
+  "path": "value"
+}
+```
+
 ## Post
 
 Publishing tools send completed work to configured channels through Bakin adapters.

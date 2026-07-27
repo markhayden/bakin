@@ -191,9 +191,15 @@ export function wireChannelInbound(ctx: WireContext): () => void {
         } else if (isRasterImage) {
           notes.push(`[image ${name} saved at ${target} — the agent's model has no image input; it can still read the file with its tools]`)
         } else {
-          // Non-raster (SVG, PDF, CSV, …): the file lane — never the image
-          // lane (an svg+xml data URL poisons the whole session).
-          notes.push(`[file ${name} from Discord saved at ${target} — open it with your file tools]`)
+          // Non-raster (SVG, PDF, CSV, …): the file lane — passed through as
+          // an attachment; the turn ENGINE generates the path note
+          // (fileLaneNote, #742) so this lane and the web composer cannot
+          // drift. A raster-labeled file that failed the byte sniff must not
+          // carry its lying mime into the model lane — downgrade it.
+          const mime = file.contentType && !RASTER_IMAGE_TYPES.has(file.contentType)
+            ? file.contentType
+            : 'application/octet-stream'
+          attachments.push({ name, mimeType: mime, path: target })
         }
       } catch (err) {
         log.warn('Inbound attachment adoption failed — noted, not fatal', err, { name: file.name })
@@ -224,7 +230,11 @@ export function wireChannelInbound(ctx: WireContext): () => void {
       if (!content && attachments.length === 0) return
       // Typing starts on chat.started (event-driven below) — drained queued
       // turns pulse too, and a failed start can never leak a timer.
-      const result = await startChatTurn(ctx as Parameters<typeof startChatTurn>[0], chat.id, content || '(image)', attachments, { queueIfBusy: true })
+      // Empty content with attachments passes through as-is — the turn
+      // engine's kind-aware placeholder ("See the attached image."/"file.")
+      // owns that case (review finding: a '(image)' fallback here labeled
+      // PDF-only drops as images).
+      const result = await startChatTurn(ctx as Parameters<typeof startChatTurn>[0], chat.id, content, attachments, { queueIfBusy: true })
       if (result === 'not_found' || result === 'busy') {
         log.warn('Inbound turn not accepted', { chatId: chat.id, result })
       }

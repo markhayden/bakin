@@ -4,11 +4,9 @@
  * extracted text directly via `{{content}}` instead of asking the search
  * provider to read local files during indexing.
  *
- * Motivation: provider-side PDF extraction has failed silently on real-world
- * PDFs with complex font subsetting, CID fonts, and text matrices — the three
- * features every design-tool PDF uses. pdf-parse (built on pdfjs-dist, the
- * same engine Firefox uses) handles all of them. See Bakin issue #72 for the
- * full trace.
+ * PDF extraction delegates to the core PDF engine (`src/core/pdf/engine.ts`)
+ * — the ONE engine shared with the bakin_exec_pdf_* tools; the provider-side
+ * extraction rationale (CID fonts, issue #72) lives on that module.
  *
  * Plain text formats (.md, .txt, .json, .csv, etc.) are read directly
  * with fs.readFileSync — no dependency needed and no provider file fetch.
@@ -18,20 +16,10 @@
  */
 import { readFileSync } from 'fs'
 import { createLogger } from '../../../src/core/logger'
+import { readPdf } from '../../../src/core/pdf/engine'
+import { MAX_CHARS } from '../../../src/core/pdf/limits'
 
 const log = createLogger('assets:content-extractor')
-
-/**
- * Hard cap on extracted content length. A 50K-char doc produces roughly
- * 100 embedding chunks at 200 tokens each — plenty of semantic coverage
- * for notes, recipes, contracts, and most documentation. Files bigger
- * than this get truncated at a safe character boundary.
- */
-const MAX_CHARS = 50_000
-
-/** PDF pages parsed per document. Enough for long-form notes and
- * reasonably long papers; avoids pathological parses on huge PDFs. */
-const MAX_PDF_PAGES = 100
 
 const PLAIN_TEXT_EXTS = new Set([
   '.md', '.txt', '.rtf',
@@ -57,7 +45,9 @@ export async function extractAssetContent(absPath: string, filename: string): Pr
       return truncate(readFileSync(absPath, 'utf-8'))
     }
     if (ext === '.pdf') {
-      return truncate(await extractPdfText(absPath))
+      // Engine enforces the page + char caps (with visible markers).
+      const result = await readPdf(absPath)
+      return result.pages.map((p) => p.text).join('\n')
     }
     return ''
   } catch (err) {
@@ -75,31 +65,4 @@ function truncate(text: string): string {
   const cut = text.slice(0, MAX_CHARS)
   const lastSpace = cut.lastIndexOf(' ')
   return lastSpace > MAX_CHARS - 500 ? cut.slice(0, lastSpace) : cut
-}
-
-/**
- * Extract text from a PDF via pdf-parse. Lazy-imported so the 2MB
- * pdfjs-dist dependency only loads when actually needed — Bakin's
- * startup cost stays zero for workspaces that never index a PDF.
- *
- * pdf-parse v2.x exports a `PDFParse` class (completely different from
- * v1's default-export function). Construct, call getText(), destroy.
- * The concatenated document text comes back as TextResult.text.
- */
-async function extractPdfText(absPath: string): Promise<string> {
-  const mod = await import('pdf-parse') as unknown as {
-    PDFParse: new (options: { data: Uint8Array }) => {
-      getText(params?: { last?: number }): Promise<{ text: string }>
-      destroy(): Promise<void>
-    }
-  }
-  const { PDFParse } = mod
-  const buf = readFileSync(absPath)
-  const parser = new PDFParse({ data: new Uint8Array(buf) })
-  try {
-    const result = await parser.getText({ last: MAX_PDF_PAGES })
-    return result.text ?? ''
-  } finally {
-    await parser.destroy()
-  }
 }

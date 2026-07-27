@@ -205,6 +205,44 @@ description: Generated reference for Bakin core settings defaults.
   </tbody>
 </table>
 
+## Integrations
+
+<table class="settings-defaults-table">
+  <thead>
+    <tr><th>Key</th><th>Default</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>integrations.discord.approvers</code></td>
+      <td><code>[]</code></td>
+    </tr>
+    <tr>
+      <td><code>integrations.discord.enabled</code></td>
+      <td><code>false</code></td>
+    </tr>
+    <tr>
+      <td><code>integrations.discord.guildIds</code></td>
+      <td><code>[]</code></td>
+    </tr>
+    <tr>
+      <td><code>integrations.discord.inbound.agentId</code></td>
+      <td><code>&quot;main&quot;</code></td>
+    </tr>
+    <tr>
+      <td><code>integrations.discord.inbound.allowFrom</code></td>
+      <td><code>[]</code></td>
+    </tr>
+    <tr>
+      <td><code>integrations.discord.inbound.enabled</code></td>
+      <td><code>false</code></td>
+    </tr>
+    <tr>
+      <td><code>integrations.discord.inbound.requireMention</code></td>
+      <td><code>true</code></td>
+    </tr>
+  </tbody>
+</table>
+
 ## Notifications
 
 <table class="settings-defaults-table">
@@ -481,5 +519,5 @@ description: Generated reference for Bakin core settings defaults.
 
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Jul 20, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Jul 26, 2026 · Bakin 0.0.0-dev</span>
 </aside>

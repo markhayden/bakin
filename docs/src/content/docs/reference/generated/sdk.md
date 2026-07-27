@@ -239,9 +239,19 @@ import { PluginHeader, FacetFilter, AgentAvatar } from '@makinbakin/sdk/componen
 | `ToolCallDrawer` | — |
 | `ToolCallDrawerProps` | — |
 | `Composer` | — |
+| `writeComposerDraft` | — |
 | `ComposerProps` | — |
 | `ComposerAttachments` | — |
 | `ComposerAttachmentItem` | — |
+| `ComposerHandle` | — |
+| `QueuedMessageList` | — |
+| `ConversationQueuedItem` | — |
+| `formatTokenCount` | — |
+| `formatUsageCost` | — |
+| `ConversationTurnUsage` | — |
+| `ContextMeter` | — |
+| `contextMeterHasContent` | — |
+| `ContextMeterStats` | — |
 | `ConversationPanel` | — |
 | `ConversationPanelProps` | — |
 | `useConversationThread` | — |
@@ -256,6 +266,7 @@ import { PluginHeader, FacetFilter, AgentAvatar } from '@makinbakin/sdk/componen
 | `ConversationAttentionContext` | — |
 | `ConversationDonePayload` | — |
 | `playReplyChime` | — |
+| `ConversationReplyToast` | — |
 | `useConversationAttention` | — |
 | `ConversationAttentionConfig` | — |
 | `ConversationAttentionTotals` | — |
@@ -389,13 +400,15 @@ Source: `packages/sdk/src/utils/index.ts`.
 
 | Utility | Description |
 | --- | --- |
-| `healthHealthy` | Build a healthy observation. Healthy observations cannot carry incidents. |
-| `healthWarning` | Build a warning observation with an explicit advisory/watch/action disposition. |
-| `healthError` | Build an error observation. Its incident must require operator action. |
-| `healthUnknown` | Build an Unknown verification observation with a watch disposition. |
-| `healthObserved` | Build a successful observed run. Empty diagnostic output is unrepresentable. |
-| `healthNotApplicable` | Build an explicit successful not-applicable run. |
+| `healthError` | `@makinbakin/sdk/utils` — tiny utilities for plugin authors. |
+| `healthHealthy` | `@makinbakin/sdk/utils` — tiny utilities for plugin authors. |
+| `healthNotApplicable` | `@makinbakin/sdk/utils` — tiny utilities for plugin authors. |
+| `healthObserved` | `@makinbakin/sdk/utils` — tiny utilities for plugin authors. |
+| `healthResourceId` | `@makinbakin/sdk/utils` — tiny utilities for plugin authors. |
+| `healthUnknown` | `@makinbakin/sdk/utils` — tiny utilities for plugin authors. |
+| `healthWarning` | `@makinbakin/sdk/utils` — tiny utilities for plugin authors. |
 | `cn` | Tailwind class merger (clsx + tailwind-merge). |
+| `copyToClipboard` | — |
 | `BadgeTone` | Semantic tone for an outline status badge. |
 | `toneBadgeClass` | Classes for an outline status badge of the given tone — the |
 | `isValidAssetId` | Pure assetId shape validators (see ./asset-id). |
@@ -475,5 +488,5 @@ Source: `packages/sdk/src/routing/index.ts`.
 | `DefinePluginInput` | — |
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Jul 20, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Jul 26, 2026 · Bakin 0.0.0-dev</span>
 </aside>

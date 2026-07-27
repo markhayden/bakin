@@ -29,7 +29,7 @@
 import { randomUUID } from 'crypto'
 
 import type { PluginContext } from '@bakin/core/plugin-types'
-import type { ChatChunk, MessageUsage } from '@bakin/core/adapters/runtime'
+import type { ChatChunk, MessageUsage, RuntimeToolAccess } from '@bakin/core/adapters/runtime'
 // Media downscale is imported LAZILY at attachment-prepare time: this module
 // rides into the published SDK testing bundle (harness ctx.conversations),
 // and a static import would pull the sharp loader's module graph into the
@@ -50,6 +50,29 @@ export interface TurnAttachment {
   name: string
   mimeType: string
   path: string
+}
+
+/** The model-attachment lane is raster-only (the #669 SVG-poisoning guard);
+ * everything else rides the file lane as a path note. */
+const RASTER_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
+
+export function isRasterAttachment(a: TurnAttachment): boolean {
+  return RASTER_IMAGE_TYPES.has(a.mimeType)
+}
+
+/**
+ * THE file-lane note generator (#742) — every chat-like surface (web
+ * composer, Discord inbound) converges here; never hand-roll this note.
+ * PDFs point at the blessed pdf tool rendered in the active runtime's
+ * calling style; other files get the generic file-tools wording.
+ */
+export function fileLaneNote(a: TurnAttachment, agentId: string, renderCall?: (tool: string, args: string) => string): string {
+  const isPdf = a.mimeType === 'application/pdf' || a.name.toLowerCase().endsWith('.pdf')
+  if (isPdf) {
+    const call = renderCall?.('bakin_exec_pdf_read', `path=${a.path}`) ?? `bakin_exec_pdf_read path=${a.path}`
+    return `[file ${a.name} saved at ${a.path} — inspect it with \`${call}\`]`
+  }
+  return `[file ${a.name} saved at ${a.path} — open it with your file tools]`
 }
 
 /**
@@ -400,7 +423,9 @@ export function createConversationTurnService(config: ConversationTurnServiceCon
 
     // Attachment-only sends carry a visible placeholder — the transcript
     // (and the queued-bubble UI) shows exactly what the runtime was asked.
-    if (!content.trim() && attachments?.length) content = 'See the attached image.'
+    if (!content.trim() && attachments?.length) {
+      content = attachments.every(isRasterAttachment) ? 'See the attached image.' : 'See the attached file.'
+    }
 
     if (inflight.has(key)) {
       if (!(opts?.queueIfBusy && config.queue)) return 'busy'
@@ -562,16 +587,35 @@ async function runTurn(
   }
 
   try {
-    if (attachments?.length) {
+    // Kind split: raster images ride the model-attachment lane (downscaled);
+    // everything else (PDF, CSV, …) becomes a file-lane path note — a
+    // non-image in `attachments` would make the runtime adapter throw.
+    const images = attachments?.filter(isRasterAttachment) ?? []
+    const files = attachments?.filter((a) => !isRasterAttachment(a)) ?? []
+    if (images.length) {
       const media = await import('@bakin/core/media/downscale')
       cleanupPrepared = media.cleanupPreparedAttachment
-      for (const a of attachments) {
+      for (const a of images) {
         prepared.push(await media.prepareImageAttachment(a.path, a.mimeType))
       }
     }
+    let noteSuffix = ''
+    if (files.length) {
+      // Lazy import — tool-access must stay out of the published SDK
+      // testing bundle's graph (same rule as the downscale import above).
+      let renderCall: ((tool: string, args: string) => string) | undefined
+      try {
+        const { renderToolCall } = await import('./tool-access')
+        const access: RuntimeToolAccess = ctx.runtime.describeToolAccess()
+        renderCall = (tool, args) => renderToolCall(access, { agentId, tool, args })
+      } catch {
+        renderCall = undefined // runtime style unknown — notes fall back to bare tool names
+      }
+      noteSuffix = `\n\n${files.map((f) => fileLaneNote(f, agentId, renderCall)).join('\n')}`
+    }
     for await (const chunk of ctx.runtime.messaging.stream({
       agentId,
-      content: runtimeContent ?? (config.framing ? `${content}\n\n${config.framing}` : content),
+      content: (runtimeContent ?? (config.framing ? `${content}\n\n${config.framing}` : content)) + noteSuffix,
       threadId: config.threadId(key, agentId),
       signal: controller.signal,
       ...(config.ephemeral ? { ephemeral: true } : {}),
