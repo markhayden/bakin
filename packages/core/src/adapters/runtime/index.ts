@@ -107,3 +107,4 @@ export type {
   WorkspaceFileStat,
 } from './concepts'
 export { RUNTIME_MEDIA_URI_SCHEME, DEFAULT_OVERSIZED_OUTPUT_BYTES } from './concepts'
+export { isSafeSkillFilePath, isExecutableSkillFile, readSkillTree } from './skill-files'

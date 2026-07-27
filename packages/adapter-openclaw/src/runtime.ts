@@ -1,4 +1,4 @@
-import { accessSync, constants, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'fs'
+import { accessSync, chmodSync, constants, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'fs'
 import { dirname, join, resolve, sep } from 'path'
 import { execFile } from 'child_process'
 import { createHash, randomUUID } from 'crypto'
@@ -50,7 +50,7 @@ import {
 } from './tool-access-provisioning'
 import { listConfiguredChannels, listLlmCredentials, listLlmCredentialsViaCli, type LlmCredential } from './credential-status'
 import { applyRoutingPolicy, readRoutingPolicy, setAgentModels } from './model-routing'
-import { beginAdapterTurnActivity, RuntimeError, RuntimeTurnError } from '@bakin/core/adapters/runtime'
+import { beginAdapterTurnActivity, RuntimeError, RuntimeTurnError, isSafeSkillFilePath, isExecutableSkillFile, readSkillTree } from '@bakin/core/adapters/runtime'
 import { tryGetMainAgentId } from './main-agent'
 import { buildOpenClawAttachments } from './attachments'
 import { safeFileSize } from './file-utils'
@@ -109,8 +109,7 @@ import {
   writeOpenClawConfig, upsertOpenClawAgentConfig,
   updateOpenClawAgentIdentity, updateAgentAllowlist, removeOpenClawAgentConfig,
   removeOpenClawAgentArtifacts, removeOpenClawAgentCronArtifacts,
-  agentToRuntime, getWorkspacePath, readGatewayToken, isSafeWorkspaceFile, isSafeSkillFilePath,
-  readSkillTree,
+  agentToRuntime, getWorkspacePath, readGatewayToken, isSafeWorkspaceFile,
 } from './agent-config'
 import {
   OPENCLAW_PLUGIN_APPROVAL_TIMEOUT_MS,
@@ -919,6 +918,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
         const target = join(dir, rel)
         mkdirSync(dirname(target), { recursive: true })
         writeFileSync(target, content, 'utf-8')
+        if (isExecutableSkillFile(rel, content)) chmodSync(target, 0o755)
       }
       const installedBy = skill.metadata?.installedBy
       if (installedBy) {

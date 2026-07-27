@@ -194,12 +194,18 @@ describe('models + capabilities', () => {
 })
 
 describe('skills.write atomicity', () => {
-  test('validates every filename BEFORE writing — an invalid nested path leaves NO half-written skill', async () => {
+  test('validates every filename BEFORE writing — a traversal path leaves NO half-written skill', async () => {
     await expect(
-      adapter.skills.write({ name: 'nested-carry', instructions: '# nested', files: { 'ref/aux.md': 'aux' } }, 'main'),
+      adapter.skills.write({ name: 'nested-carry', instructions: '# nested', files: { '../aux.md': 'aux' } }, 'main'),
     ).rejects.toThrow('invalid skill file name')
     // The dir must not exist at all — a half-written SKILL.md would make
     // skills.list report a valid skill that never fully carried.
     expect(await adapter.skills.get('nested-carry', 'main')).toBeNull()
+  })
+
+  test('nested (non-traversal) paths are valid — the OpenClaw carry shape writes cleanly', async () => {
+    await adapter.skills.write({ name: 'nested-ok', instructions: '# nested', files: { 'ref/aux.md': 'aux' } }, 'main')
+    const skill = await adapter.skills.get('nested-ok', 'main')
+    expect(skill?.files?.['ref/aux.md']).toBe('aux')
   })
 })
