@@ -185,3 +185,50 @@ describe('discord inbound gating', () => {
     expect(late).toHaveLength(0)
   })
 })
+
+describe('slash command handling', () => {
+  const replies: string[] = []
+  function commandSurface(allowFrom: string[] = [OWNER]) {
+    const received: InboundChannelMessage[] = []
+    const surface = createInboundSurface({
+      botUserId: () => BOT_ID,
+      settings: () => ({ enabled: true, inbound: { enabled: true, agentId: 'main', requireMention: true, allowFrom } }),
+      download: async () => Buffer.from('x'),
+      replyEphemeral: async (_id, _token, content) => { replies.push(content) },
+      tmpDir: testDir,
+    })
+    surface.subscribe(m => received.push(m))
+    return { surface, received }
+  }
+  const interaction = (name: string, userId = OWNER) => ({
+    id: 'i1', token: 't', type: 2, data: { name }, channel_id: 'chan-9',
+    member: { user: { id: userId, username: 'mark' } },
+  })
+
+  it('new-chat from an allowlisted user acks and emits a command message', async () => {
+    replies.length = 0
+    const { surface, received } = commandSurface()
+    await surface.handleCommandInteraction(interaction('new-chat'))
+    expect(received).toHaveLength(1)
+    expect(received[0].command).toEqual({ name: 'new-chat' })
+    expect(received[0].channelRef).toBe('discord:channel:chan-9')
+    expect(replies.some(r => r.includes('Fresh chat'))).toBe(true)
+  })
+
+  it('denies non-allowlisted users ephemerally with an audit', async () => {
+    replies.length = 0
+    const { surface, received } = commandSurface(['someone-else'])
+    await surface.handleCommandInteraction(interaction('new-chat'))
+    expect(received).toHaveLength(0)
+    expect(replies.some(r => r.includes('not authorized'))).toBe(true)
+    expect(auditEvents.some(e => e.event === 'delivery.inbound_denied')).toBe(true)
+  })
+
+  it("acks UNKNOWN commands honestly instead of Discord's did-not-respond ghost", async () => {
+    replies.length = 0
+    const { surface, received } = commandSurface()
+    await surface.handleCommandInteraction(interaction('new'))
+    expect(received).toHaveLength(0)
+    expect(replies.some(r => r.includes('/new-chat'))).toBe(true)
+  })
+})

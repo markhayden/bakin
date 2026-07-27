@@ -192,25 +192,33 @@ export async function downloadAttachment(url: string): Promise<Buffer> {
 }
 
 /**
- * Register the bridge's guild slash commands (idempotent bulk overwrite).
- * Non-fatal: a registration failure degrades to "no slash commands", never
- * a failed boot.
+ * Register the bridge's slash commands GLOBALLY (upsert by name — never a
+ * bulk overwrite, so OpenClaw's own registered commands survive for a
+ * switch back). Global scope is required: guild commands are invisible in
+ * DMs, and DM chats need /new-chat the most. Guild registrations from
+ * earlier boots are cleared (they were bridge-owned only). Non-fatal: a
+ * registration failure degrades to "no slash commands", never a failed boot.
  */
-export async function registerGuildCommands(transport: DiscordTransport, guildIds: string[], commands: Array<{ name: string; description: string }>): Promise<void> {
+export async function registerGlobalCommands(transport: DiscordTransport, guildIds: string[], commands: Array<{ name: string; description: string }>): Promise<void> {
   const applicationId = transport.applicationId()
   if (!applicationId) {
     log.warn('Slash-command registration skipped — application id unknown (no READY yet)')
     return
   }
+  for (const command of commands) {
+    try {
+      await transport.api.applicationCommands.createGlobalCommand(applicationId, { ...command, type: 1 })
+    } catch (err) {
+      log.warn('Global slash-command registration failed', err, { command: command.name })
+    }
+  }
+  // Remove the bridge's earlier per-guild registrations (they would render
+  // as duplicates beside the global command in guild pickers).
   for (const guildId of guildIds) {
     try {
-      await transport.api.applicationCommands.bulkOverwriteGuildCommands(
-        applicationId,
-        guildId,
-        commands.map(command => ({ ...command, type: 1 })),
-      )
+      await transport.api.applicationCommands.bulkOverwriteGuildCommands(applicationId, guildId, [])
     } catch (err) {
-      log.warn('Slash-command registration failed for guild', err, { guildId })
+      log.warn('Guild slash-command cleanup failed', err, { guildId })
     }
   }
 }

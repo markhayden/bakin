@@ -115,7 +115,15 @@ export function createInboundSurface(deps: InboundSurfaceDeps): InboundSurface {
     },
 
     async handleCommandInteraction(raw) {
-      if (raw.type !== 2 || raw.data?.name !== NEW_CHAT_COMMAND) return
+      if (raw.type !== 2) return
+      if (raw.data?.name !== NEW_CHAT_COMMAND) {
+        // A command this bridge doesn't own (e.g. OpenClaw's, registered on
+        // the same application, whose daemon is stopped). Silence renders
+        // as Discord's "application did not respond" — answer honestly.
+        await deps.replyEphemeral?.(raw.id, raw.token,
+          `This command isn't served while Bakin's delivery bridge owns the bot. Bakin's command here is /${NEW_CHAT_COMMAND}.`)
+        return
+      }
       const settings = deps.settings()
       const user = raw.member?.user ?? raw.user
       const channelRef = discordChannelRef(raw.channel_id ?? '')

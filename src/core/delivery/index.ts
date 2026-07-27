@@ -178,9 +178,9 @@ async function bootOnce(): Promise<void> {
         log.error('Discord inbound handling failed', err)
       })
     })
-    const { registerGuildCommands } = await import('./discord/client')
+    const { registerGlobalCommands } = await import('./discord/client')
     const { NEW_CHAT_COMMAND } = await import('./discord/inbound')
-    await registerGuildCommands(transport, settings.guildIds, [
+    await registerGlobalCommands(transport, settings.guildIds, [
       { name: NEW_CHAT_COMMAND, description: 'Start a fresh Bakin chat for this channel (the old one stays in Bakin)' },
     ])
     state = { transport, cache, send, approvals }
