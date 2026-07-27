@@ -64,6 +64,61 @@ export function injectIntegrationEnv(
 }
 
 /**
+ * Derive EnvSecretMapping[] from installed skill-pack manifests: every
+ * `secrets[]` declaration with a `secretSlot` maps its env-var name to the
+ * store slot. Boot injects these alongside the static list, and the live
+ * injection on secret save (D18, #687) uses the same derivation — one
+ * mapping source, two moments.
+ */
+export function collectPackSecretMappings(): EnvSecretMapping[] {
+  const mappings: EnvSecretMapping[] = []
+  let lock: ReturnType<typeof readLockfile>
+  try {
+    lock = readLockfile()
+  } catch (err) {
+    log.warn('Pack secret mapping collection skipped — lockfile unreadable', { error: err instanceof Error ? err.message : String(err) })
+    return mappings
+  }
+  for (const [key, entry] of Object.entries(lock.packages)) {
+    if (entry.kind !== 'skill-pack') continue
+    const id = key.includes('@') ? key.slice(0, key.lastIndexOf('@')) : key
+    const manifestPath = join(
+      getPackageSourceDir(getContentDir(), entry.kind, id, entry.version),
+      'bakin-package.json',
+    )
+    if (!existsSync(manifestPath)) continue
+    let manifest
+    try {
+      manifest = safeParseManifest(JSON.parse(readFileSync(manifestPath, 'utf-8')))
+    } catch {
+      continue
+    }
+    if (!manifest.success) continue
+    for (const secret of manifest.data.secrets ?? []) {
+      if (!secret.secretSlot) continue
+      const [provider, name] = secret.secretSlot.split('.', 2)
+      if (!provider || !name) continue
+      mappings.push({ envVar: secret.name, provider, name })
+    }
+  }
+  return mappings
+}
+
+/**
+ * Live injection after a secret save (D18, #687): inject any declared env
+ * var backed by exactly this store slot, so the guided-key step takes
+ * effect without a server restart. Unset-only — env still wins. Note the
+ * inverse (secret DELETE) deliberately does not scrub process.env: the
+ * value may have come from the real environment, and un-teaching a running
+ * process a key is a restart-grade operation.
+ */
+export function injectSecretEnvForSlot(provider: string, name: string): string[] {
+  const mappings = [...STATIC_ENV_SECRET_MAPPINGS, ...collectPackSecretMappings()]
+    .filter((m) => m.provider === provider && m.name === name)
+  return injectIntegrationEnv(mappings)
+}
+
+/**
  * Prepend Bakin's bin dir (`~/.bakin/bin`) to PATH so pack-installed
  * binaries resolve in agent shell commands. Idempotent.
  */
