@@ -1,0 +1,28 @@
+{
+  "skill": { "slug": "skillscan", "displayName": "SkillScan" },
+  "version": { "version": "1.1.6", "createdAt": 1776650587310 },
+  "moderation": {
+    "scope": "skill",
+    "sourceVersion": { "version": "1.1.6", "createdAt": 1776650587310 },
+    "matchesRequestedVersion": true,
+    "isPendingScan": false,
+    "isMalwareBlocked": false,
+    "isSuspicious": false,
+    "isHiddenByMod": false,
+    "isRemoved": false
+  },
+  "security": {
+    "status": "suspicious",
+    "hasWarnings": true,
+    "checkedAt": 1780090485057,
+    "model": "gpt-5.5",
+    "hasScanResult": true,
+    "sha256hash": "9018e6c4d17a825015bd2100960042f4446c0619101657e5a0f8564d6e67c7eb",
+    "virustotalUrl": "https://www.virustotal.com/gui/file/9018e6c4d17a825015bd2100960042f4446c0619101657e5a0f8564d6e67c7eb",
+    "scanners": {
+      "vt": { "status": "clean", "verdict": null, "normalizedStatus": "clean", "analysis": null, "source": "engines", "checkedAt": 1780090485057 },
+      "skillspector": { "status": "suspicious", "normalizedStatus": "suspicious", "score": 100, "severity": "CRITICAL", "recommendation": "DO_NOT_INSTALL", "issueCount": 10, "checkedAt": 1779965337342 },
+      "llm": { "status": "suspicious", "verdict": "suspicious", "normalizedStatus": "suspicious", "confidence": "high", "summary": "Plausible security scanner, but it uploads local skill contents, keeps device-linked telemetry, and can silently replace its own code." }
+    }
+  }
+}
