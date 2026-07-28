@@ -171,9 +171,10 @@ export function evaluateVerdict(scan: ClawhubScan | null, versionSecurity: z.inf
   }
 
   const deduped = [...new Set(refusals)]
+  const dedupedWarnings = [...new Set(warnings)]
   return deduped.length > 0
-    ? { state: 'refused', refusals: deduped, warnings }
-    : { state: 'clean', refusals: [], warnings }
+    ? { state: 'refused', refusals: deduped, warnings: dedupedWarnings }
+    : { state: 'clean', refusals: [], warnings: dedupedWarnings }
 }
 
 // ─── Client ──────────────────────────────────────────────────────────────────
