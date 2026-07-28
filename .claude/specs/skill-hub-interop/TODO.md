@@ -3,19 +3,19 @@
 Branch: `feat/skill-hub-interop-687` · Spec: SPEC.md v2 · Plan: PLAN.md v2
 
 ## Phase 0 — Ground truth
-- [ ] T0 fixtures + API-NOTES.md (verdict/versions shapes still to pin; download/409/URL shapes already verified live)
+- [x] T0 fixtures + API-NOTES.md (verdict/versions shapes still to pin; download/409/URL shapes already verified live)
 
 ## Phase A — Standalone fixes (CP-A)
-- [ ] T1 adapter-pi nested skill files + exec bits both adapters (+ switch-carry tests)
-- [ ] T2 `upstream` stanza on skill-pack manifest schema
-- [ ] T3 server-side runtimes/platforms enforcement (D14)
-- [ ] T4 secrets live env injection on save (D18)
+- [x] T1 adapter-pi nested skill files + exec bits both adapters (+ switch-carry tests)
+- [x] T2 `upstream` stanza on skill-pack manifest schema
+- [x] T3 server-side runtimes/platforms enforcement (D14)
+- [x] T4 secrets live env injection on save (D18)
 
 ## Phase B — Engine (CP-B)
-- [ ] T5 ref-normalize.ts (paste-a-link → canonical refs)
-- [ ] T6 skill-synthesis.ts (frontmatter fast-path + FROZEN table + binary refusal + mentions-scan)
-- [ ] T7 raw-bundle installs from github/local (re-install = update)
-- [ ] T8 minimal clawhub client + `clawhub:` scheme (3 endpoints, fail-closed)
+- [x] T5 ref-normalize.ts (paste-a-link → canonical refs)
+- [x] T6 skill-synthesis.ts (frontmatter fast-path + FROZEN table + binary refusal + mentions-scan)
+- [x] T7 raw-bundle installs from github/local (re-install = update)
+- [x] T8 minimal clawhub client + `clawhub:` scheme (3 endpoints, fail-closed)
 
 ## Phase C — Surfaces (CP-C)
 - [ ] T9 trust gate (preview, verdicts, instruction-risk scan, consent tokens)

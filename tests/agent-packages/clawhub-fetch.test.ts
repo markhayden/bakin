@@ -231,6 +231,7 @@ describe('clawhub identifiers stay behind the client/fetcher (arch pin)', () => 
       'src/core/agent-packages/source-fetcher.ts',
       'src/core/agent-packages/ref-normalize.ts',
       'src/core/agent-packages/skill-synthesis.ts',
+      'src/core/agent-packages/skill-trust.ts',
     ])
     const violations = hits.filter((h) => !allowed.has(h))
     expect(violations).toEqual([])
