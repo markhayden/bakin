@@ -15,7 +15,7 @@ bakin skills install github:badlogic/pi-skills#brave-search
 bakin skills install ./my-local-skill
 ```
 
-…or paste the same link into **Explore → Hub Skills** in the dashboard.
+…or paste the same link into **Explore → Capabilities** in the dashboard — the "Install from ClawHub, GitHub, or any skills repo" box sits right above the curated catalog.
 
 Every install shows a full preview first: the files and their sizes, the requirements Bakin recognized (API keys, binaries), the hub's security verdict, and loud warnings for anything that looks like a hidden install step. Nothing from the bundle executes at install time — ever. You approve, it installs, and the skill is available to your agents on the active runtime.
 
@@ -35,7 +35,7 @@ bakin skills list            # managed skills (hub/pack) + unmanaged runtime ski
 bakin skills remove weather  # unprojects and uninstalls, by name
 ```
 
-The Explore → Hub Skills tab shows the same list with one-click removal.
+The Explore → Capabilities tab shows the same list ("From the ecosystem") with one-click removal.
 
 ## When Bakin didn't recognize a requirement
 

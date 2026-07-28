@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 /**
- * T12 (#687): the Hub Skills tab — paste-ref preview dialog with trust
- * signals + risk warnings, consent → install call shape, refusal render,
- * installed list with remove. Stubbed fetch; no server.
+ * #687 unified ecosystem lane (Capabilities tab): paste-ref CTA → trust
+ * preview in a DRAWER (risk warnings, requirements, verdict) → consent →
+ * install call shape; installed ecosystem list with modal-confirmed
+ * removal. Stubbed fetch; no server.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
@@ -20,12 +21,6 @@ mock.module('../../../packages/core/src/content-dir', contentDirMock)
 mock.module('@makinbakin/sdk/ui', () => ({
   Button: ({ children, ...props }: ButtonHTMLAttributes<HTMLButtonElement>) => <button {...props}>{children}</button>,
   Input: (props: InputHTMLAttributes<HTMLInputElement>) => <input {...props} />,
-  Dialog: ({ children, open }: { children: ReactNode; open?: boolean }) => (open ? <div role="dialog">{children}</div> : null),
-  DialogContent: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-  DialogHeader: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-  DialogTitle: ({ children }: { children: ReactNode }) => <h2>{children}</h2>,
-  DialogDescription: ({ children }: { children: ReactNode }) => <p>{children}</p>,
-  DialogFooter: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }))
 
 const toasts: string[] = []
@@ -44,7 +39,13 @@ mock.module('@makinbakin/sdk/hooks', () => ({
 }))
 
 mock.module('@makinbakin/sdk/components', () => ({
-  EmptyState: ({ title }: { title: string }) => <div>{title}</div>,
+  BakinDrawer: ({ children, open, title }: { children: ReactNode; open: boolean; title?: ReactNode }) =>
+    open ? (
+      <div role="dialog" aria-label="drawer">
+        <h2>{title}</h2>
+        {children}
+      </div>
+    ) : null,
   ConfirmDialog: ({ open, title, onConfirm }: { open: boolean; title: string; onConfirm: () => void }) =>
     open ? (
       <div role="alertdialog">
@@ -59,7 +60,7 @@ const refreshCalls: string[] = []
 const fetchCalls: Array<{ url: string; body?: unknown }> = []
 let fetchResponses: Record<string, unknown> = {}
 
-import { HubSkillsTab } from '../../../plugins/explore/components/hub-skills-tab'
+import { HubSkillsSection } from '../../../plugins/explore/components/hub-skills-section'
 
 const PREVIEW = {
   ref: 'clawhub:@steipete/weather',
@@ -97,12 +98,12 @@ afterEach(() => {
   // rtl-settle unmounts; fetch stub replaced per-test.
 })
 
-describe('hub skills tab — install flow', () => {
-  it('paste → preview dialog with trust signals and risk warnings → consent → install', async () => {
+describe('ecosystem lane — install flow (drawer)', () => {
+  it('paste → preview drawer with trust signals and risk warnings → consent → install', async () => {
     fetchResponses['/api/skills/preview'] = { ok: true, preview: PREVIEW }
     fetchResponses['/api/skills/install'] = { ok: true, installed: { packageId: 'hub-weather' }, warnings: [] }
 
-    render(<HubSkillsTab />)
+    render(<HubSkillsSection />)
     fireEvent.change(screen.getByTestId('hub-ref-input'), { target: { value: 'https://clawhub.ai/steipete/skills/weather' } })
     fireEvent.click(screen.getByTestId('hub-preview-button'))
 
@@ -122,9 +123,9 @@ describe('hub skills tab — install flow', () => {
     expect(refreshCalls.length).toBeGreaterThan(0)
   })
 
-  it('refusals render in the box, no dialog opens', async () => {
+  it('refusals render in the CTA box, no drawer opens', async () => {
     fetchResponses['/api/skills/preview'] = { ok: false, refused: true, error: 'ClawHub has blocked this skill as malware' }
-    render(<HubSkillsTab />)
+    render(<HubSkillsSection />)
     fireEvent.change(screen.getByTestId('hub-ref-input'), { target: { value: 'clawhub:@evil/bad' } })
     fireEvent.click(screen.getByTestId('hub-preview-button'))
     await waitFor(() => expect(screen.getByTestId('hub-box-error').textContent).toContain('Refused'))
@@ -132,17 +133,21 @@ describe('hub skills tab — install flow', () => {
   })
 })
 
-describe('hub skills tab — installed list', () => {
-  it('lists managed skills and removes through the confirm modal', async () => {
+describe('ecosystem lane — installed list', () => {
+  it('lists hub-installed skills only and removes through the confirm modal', async () => {
     listData = {
-      managed: [{ skillName: 'weather', packageId: 'hub-weather@2.0.1', version: '2.0.1', source: 'clawhub:@steipete/weather', hub: true }],
+      managed: [
+        { skillName: 'weather', packageId: 'hub-weather@2.0.1', version: '2.0.1', source: 'clawhub:@steipete/weather', hub: true },
+        { skillName: 'catalog-pack-skill', packageId: 'web-search-brave@1.0.0', version: '1.0.0', source: 'github:markhayden/bakin-bits-official#packs/web-search-brave', hub: false },
+      ],
       unmanaged: [{ name: 'hand-rolled', scope: 'global' }],
     }
     fetchResponses[`/api/packages/${encodeURIComponent('hub-weather@2.0.1')}`] = { ok: true }
 
-    render(<HubSkillsTab />)
+    render(<HubSkillsSection />)
     expect(screen.getByText('weather')).toBeTruthy()
-    expect(screen.getByText('hand-rolled')).toBeTruthy()
+    // Curated-pack skills belong to the catalog grid, not this list.
+    expect(screen.queryByText('catalog-pack-skill')).toBeNull()
 
     fireEvent.click(screen.getByLabelText('Remove weather'))
     await waitFor(() => expect(screen.getByRole('alertdialog')).toBeTruthy())

@@ -77,9 +77,11 @@ authed/unavailable). An arch-pin test keeps client imports + raw API URLs inside
 - REST `packages/host/src/api/skills.ts`: `GET /api/skills`,
   `POST /api/skills/{preview,install,map/preview,map/apply}`. Removal rides
   `DELETE /api/packages/{lockKey}`.
-- Explore `plugins/explore/components/hub-skills-tab.tsx`: paste box → preview modal
-  → consent → install; installed list with remove (ConfirmDialog); unmanaged listed
-  for context.
+- Explore `plugins/explore/components/hub-skills-section.tsx`: the ecosystem lane
+  INSIDE the Capabilities tab (unified surface — never a separate tab): paste-a-link
+  CTA → trust preview in a BakinDrawer → consent → install; "From the ecosystem"
+  installed list (hub-installed only) with remove (ConfirmDialog); curated grid
+  follows on the page.
 
 ## Adjacent changes shipped with #687
 

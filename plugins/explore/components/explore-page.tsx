@@ -5,7 +5,7 @@ import { toast, useJsonFetch, useQueryState, useQueryArrayState } from '@makinba
 import { Button, Input } from '@makinbakin/sdk/ui'
 import { CatalogCard } from './catalog-card'
 import { DetailDrawer } from './detail-drawer'
-import { HubSkillsTab } from './hub-skills-tab'
+import { HubSkillsSection } from './hub-skills-section'
 import { InstallDialog } from './install-dialog'
 import type { ExploreCatalogEntry, ExploreCatalogResponse } from '../types'
 
@@ -44,21 +44,15 @@ const TAB_INTROS: Record<string, { title: string; blurb: string }> = {
     title: 'Teach your agents new tricks',
     blurb:
       'Capabilities give your agents real-world powers — web search, browser automation, transcription. ' +
-      'Install one and Bakin handles everything: the skill content, any pinned binaries, and a guided step ' +
-      'for the API key it needs. Works with any runtime unless badged otherwise.',
+      'Install a curated one below and Bakin handles everything: the skill content, any pinned binaries, and a ' +
+      'guided step for the API key it needs. Or bring skills from the wider ecosystem — ClawHub, GitHub skill ' +
+      'repos — the whole ecosystem shares one format, and Bakin installs it onto whichever runtime you run.',
   },
   packs: {
     title: 'Reusable building blocks',
     blurb:
       'Skill and workflow packs bundle proven processes you can drop into your own automations — ' +
       'install once, reuse everywhere.',
-  },
-  skills: {
-    title: 'Bring skills from anywhere',
-    blurb:
-      'The wider ecosystem — ClawHub, Pi, Anthropic — shares one skill format, and Bakin installs it ' +
-      'onto whichever runtime you run. Browse a hub in your browser, paste the link here, review the ' +
-      'trust preview, done. Versions are pinned and hub-flagged malware is refused outright.',
   },
 }
 
@@ -150,7 +144,6 @@ function ExplorePageInner() {
       { id: 'plugins', label: 'Plugins' },
       { id: 'capabilities', label: 'Capabilities' },
       { id: 'lessons', label: 'Lessons' },
-      { id: 'skills', label: 'Hub Skills' },
     ]
     return hasPacks ? [...base, { id: 'packs', label: 'Packs' }] : base
   }, [hasPacks])
@@ -293,10 +286,12 @@ function ExplorePageInner() {
         </div>
       )}
 
-      {/* Hub Skills is a live-state surface (#687), not a catalog grid. */}
-      {tab === 'skills' && <HubSkillsTab />}
+      {/* The ecosystem lane (#687) lives INSIDE Capabilities — one unified
+          "teach your agents" surface: paste-a-link CTA + installed hub
+          skills above the curated grid, never a separate tab. */}
+      {tab === 'capabilities' && <HubSkillsSection />}
 
-      {tab !== 'skills' && loading && (
+      {loading && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {Array.from({ length: 8 }).map((_, i) => (
             <div key={i} className="h-36 animate-pulse rounded-xl border border-border bg-card" />
@@ -304,7 +299,7 @@ function ExplorePageInner() {
         </div>
       )}
 
-      {tab !== 'skills' && !loading && !error && visible.length === 0 && (
+      {!loading && !error && visible.length === 0 && (
         <EmptyState
           icon={Compass}
           title={searchDraft.trim()
@@ -321,7 +316,7 @@ function ExplorePageInner() {
         />
       )}
 
-      {tab !== 'skills' && !loading && visible.length > 0 && (
+      {!loading && visible.length > 0 && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {visible.map((entry) => (
             <CatalogCard

@@ -35,3 +35,6 @@ Branch: `feat/skill-hub-interop-687` · Spec: SPEC.md v2 · Plan: PLAN.md v2
 ## Outside this repo (follow-up, bakin-bits-official)
 - [ ] Port 2–3 blessed skills as native capability packs + catalog entries (D17)
 - [ ] `skill-porter` skill (supersedes the core default mapping prompt)
+
+## Post-live-test feedback (Mark, 2026-07-28)
+- [x] Unify the UI: ecosystem lane moved INSIDE the Capabilities tab (paste-a-link CTA + drawer preview + "From the ecosystem" installed list above the curated grid); Hub Skills tab removed — no per-source tab sprawl
