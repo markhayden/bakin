@@ -34,7 +34,7 @@
  * Pure failure mode: any error inside the fetch path cleans up the
  * staging directory before throwing. Callers never have to clean up.
  */
-import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from 'fs'
+import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'fs'
 import { execFileSync, spawn } from 'child_process'
 import { homedir, tmpdir } from 'os'
 import { isAbsolute, join, resolve } from 'path'
@@ -48,10 +48,17 @@ import {
 import { getStagingDir, getPackagesRoot } from '../../../packages/core/src/agent-packages/package-paths'
 import { checkSubpath } from '../../../packages/core/src/install-core/source-guards'
 import { synthesizeSkillPack, type SynthesisSourceInfo } from './skill-synthesis'
+import {
+  type ClawhubClient,
+  createClawhubClient,
+  evaluateVerdict,
+  sha256Hex,
+} from './clawhub-client'
+import { parseClawhubRef } from './ref-normalize'
 
 const log = createLogger('agent-pkg:fetch')
 
-export type SourceKind = 'local' | 'github'
+export type SourceKind = 'local' | 'github' | 'clawhub'
 
 export interface FetchedSource {
   /** Absolute path to the staging directory containing the package source. */
@@ -64,6 +71,8 @@ export interface FetchedSource {
   ref: string
   /** Present when the source was a raw skill bundle synthesized in staging (#687). */
   synthesis?: { skillName: string; warnings: string[]; mentions: string[] }
+  /** Non-fatal fetch-time warnings (e.g. hub verdict unavailable) for preview surfaces. */
+  fetchWarnings?: string[]
 }
 
 interface ParsedGithubSpec {
@@ -424,6 +433,114 @@ async function fetchGithubAsync(source: string): Promise<FetchedSource> {
   }
 }
 
+// ─── ClawHub fetch (#687) ────────────────────────────────────────────────────
+
+export function isClawhubSource(source: string): boolean {
+  return source.startsWith('clawhub:')
+}
+
+/** Bundle sanity caps — hub skills are text; anything bigger is wrong. */
+const CLAWHUB_MAX_FILES = 512
+const CLAWHUB_MAX_TOTAL_BYTES = 20 * 1024 * 1024
+
+function isSafeBundlePath(path: string): boolean {
+  return Boolean(path)
+    && !path.startsWith('/')
+    && !path.includes('\\')
+    && !path.split('/').some((part) => part === '..' || part === '' || part === '.')
+}
+
+/**
+ * Fetch a ClawHub skill into staging: resolve version, evaluate the hub
+ * verdict (hard refusal on malware/suspicious/moderation flags — D5, no
+ * override), then download each file individually and verify it against the
+ * version manifest's per-file sha256 pin. No archives touch disk. Split out
+ * with an injectable client so unit tests never hit the network.
+ */
+export async function fetchClawhubWithClient(
+  source: string,
+  client: ClawhubClient,
+  staging: string,
+): Promise<FetchedSource> {
+  const ref = parseClawhubRef(source)
+
+  cleanupStaging(staging)
+  mkdirSync(staging, { recursive: true })
+
+  try {
+    // Ambiguous bare slugs throw AmbiguousClawhubSlugError here — surfaces
+    // list the owner-qualified options.
+    const version = ref.version ?? await client.resolveLatestVersion(ref.slug, ref.owner)
+    const detail = await client.getVersionDetail(ref.slug, version, ref.owner)
+
+    // Trust gate teeth, engine-level (preview UX layers on top in T9):
+    const scan = await client.getScan(ref.slug, ref.owner)
+    const verdict = evaluateVerdict(scan, detail.version.security)
+    if (verdict.state === 'refused') {
+      throw new Error(
+        `Refusing to install "${ref.slug}" — ${verdict.refusals.join('; ')}. ` +
+          'There is no override for hub security refusals.',
+      )
+    }
+
+    const files = detail.version.files
+    if (files.length > CLAWHUB_MAX_FILES) {
+      throw new Error(`Skill "${ref.slug}" lists ${files.length} files — over the ${CLAWHUB_MAX_FILES}-file sanity cap`)
+    }
+    const totalBytes = files.reduce((sum, f) => sum + f.size, 0)
+    if (totalBytes > CLAWHUB_MAX_TOTAL_BYTES) {
+      throw new Error(`Skill "${ref.slug}" is ${totalBytes} bytes — over the ${CLAWHUB_MAX_TOTAL_BYTES}-byte sanity cap`)
+    }
+    for (const file of files) {
+      if (!isSafeBundlePath(file.path)) {
+        throw new Error(`Skill "${ref.slug}" lists an unsafe file path "${file.path}" — refusing`)
+      }
+    }
+
+    for (const file of files) {
+      const bytes = await client.getFileBytes(ref.slug, file.path, { owner: ref.owner, version })
+      const actual = sha256Hex(bytes)
+      if (actual !== file.sha256) {
+        throw new Error(
+          `Skill "${ref.slug}" file "${file.path}" failed sha256 verification ` +
+            `(expected ${file.sha256}, got ${actual}) — refusing`,
+        )
+      }
+      const target = join(staging, file.path)
+      mkdirSync(resolve(target, '..'), { recursive: true })
+      writeFileSync(target, bytes)
+    }
+
+    const synthesis = ensureInstallableStaging(staging, {
+      source,
+      ref: version,
+      resolvedSha: detail.version.security?.sha256hash,
+      hubVersion: version,
+    })
+    return {
+      stagingDir: staging,
+      commitSha: detail.version.security?.sha256hash ?? '',
+      kind: 'clawhub',
+      ref: version,
+      ...(synthesis ? { synthesis } : {}),
+      ...(verdict.warnings.length > 0 ? { fetchWarnings: verdict.warnings } : {}),
+    }
+  } catch (err) {
+    cleanupStaging(staging)
+    throw err
+  }
+}
+
+async function fetchClawhub(source: string): Promise<FetchedSource> {
+  const staging = freshStagingDir('clawhub')
+  try {
+    return await fetchClawhubWithClient(source, createClawhubClient(), staging)
+  } catch (err) {
+    cleanupStaging(staging)
+    throw err
+  }
+}
+
 // ─── Public entry point ──────────────────────────────────────────────────────
 
 /**
@@ -436,12 +553,15 @@ export function fetchSource(source: string): FetchedSource {
   if (typeof source !== 'string' || source.length === 0) {
     throw new Error('Source must be a non-empty string')
   }
+  if (isClawhubSource(source)) {
+    throw new Error('clawhub: sources are network-fetched and only supported on the async path')
+  }
   if (isGithubSource(source)) return fetchGithub(source)
   if (isLocalPath(source)) return fetchLocal(source)
 
   // Bare name → explicit error per Q5 of the spec refinement.
   throw new Error(
-    `"${source}" is not a valid source. Use github:user/repo[@ref][#subpath] or a local path (./, ../, /, ~/).`,
+    `"${source}" is not a valid source. Use clawhub:@owner/slug, github:user/repo[@ref][#subpath], or a local path (./, ../, /, ~/).`,
   )
 }
 
@@ -449,10 +569,11 @@ export async function fetchSourceAsync(source: string): Promise<FetchedSource> {
   if (typeof source !== 'string' || source.length === 0) {
     throw new Error('Source must be a non-empty string')
   }
+  if (isClawhubSource(source)) return await fetchClawhub(source)
   if (isGithubSource(source)) return await fetchGithubAsync(source)
   if (isLocalPath(source)) return fetchLocal(source)
 
   throw new Error(
-    `"${source}" is not a valid source. Use github:user/repo[@ref][#subpath] or a local path (./, ../, /, ~/).`,
+    `"${source}" is not a valid source. Use clawhub:@owner/slug, github:user/repo[@ref][#subpath], or a local path (./, ../, /, ~/).`,
   )
 }

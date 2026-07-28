@@ -28,7 +28,7 @@ import {
   type ProjectionEntry,
 } from '../../../packages/core/src/agent-packages/lockfile'
 import { getPackageSourceDir } from '../../../packages/core/src/agent-packages/package-paths'
-import { fetchSource, sourceSpecWithRef, type FetchedSource } from './source-fetcher'
+import { fetchSourceAsync, sourceSpecWithRef, type FetchedSource } from './source-fetcher'
 import { projectPackage, unprojectPackage } from './projector'
 import { installManifestRequirements, modelDest, npmPayloadDir } from './requirements-installer'
 import { withoutSharedArtifacts } from './uninstaller'
@@ -70,7 +70,8 @@ export async function updatePackageById(options: UpdateOptions): Promise<UpdateR
     }
 
     // Re-fetch using the same source + ref the lockfile recorded.
-    fetched = fetchSource(sourceSpecWithRef(entry.source, entry.ref))
+    // Async path — clawhub: sources are network-fetched (#687).
+    fetched = await fetchSourceAsync(sourceSpecWithRef(entry.source, entry.ref))
 
     // No-op when the commit SHA hasn't moved. Local sources have empty
     // commitSha — for those we always re-project (the user just ran
