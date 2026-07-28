@@ -34,7 +34,7 @@
  * Pure failure mode: any error inside the fetch path cleans up the
  * staging directory before throwing. Callers never have to clean up.
  */
-import { cpSync, existsSync, mkdirSync, rmSync, statSync } from 'fs'
+import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from 'fs'
 import { execFileSync, spawn } from 'child_process'
 import { homedir, tmpdir } from 'os'
 import { isAbsolute, join, resolve } from 'path'
@@ -47,6 +47,7 @@ import {
 } from '../github-source-cache'
 import { getStagingDir, getPackagesRoot } from '../../../packages/core/src/agent-packages/package-paths'
 import { checkSubpath } from '../../../packages/core/src/install-core/source-guards'
+import { synthesizeSkillPack, type SynthesisSourceInfo } from './skill-synthesis'
 
 const log = createLogger('agent-pkg:fetch')
 
@@ -61,6 +62,8 @@ export interface FetchedSource {
   kind: SourceKind
   /** The original ref string (tag/branch/sha for github; '' for local). */
   ref: string
+  /** Present when the source was a raw skill bundle synthesized in staging (#687). */
+  synthesis?: { skillName: string; warnings: string[]; mentions: string[] }
 }
 
 interface ParsedGithubSpec {
@@ -222,11 +225,25 @@ function cleanupStaging(stagingDir: string): void {
 
 // ─── Manifest validation (presence only — full zod parse happens in installer) ─
 
-function ensureManifestPresent(stagingDir: string): void {
-  const manifestPath = join(stagingDir, 'bakin-package.json')
-  if (!existsSync(manifestPath)) {
-    throw new Error(`Source is missing bakin-package.json (looked for ${manifestPath})`)
+/**
+ * A staged source must either be a real pack (bakin-package.json) or a raw
+ * Agent-Skills bundle (SKILL.md at root, #687) — the latter is synthesized
+ * IN PLACE into a skill-pack so everything downstream sees a normal pack.
+ * Anything else throws the classic missing-manifest error, with the bundle
+ * shape mentioned so hub users get a hint.
+ */
+function ensureInstallableStaging(stagingDir: string, sourceInfo: SynthesisSourceInfo): FetchedSource['synthesis'] {
+  if (existsSync(join(stagingDir, 'bakin-package.json'))) return undefined
+  const hasSkillMd = readdirSync(stagingDir, { withFileTypes: true })
+    .some((e) => e.isFile() && /^skill\.md$/i.test(e.name))
+  if (!hasSkillMd) {
+    throw new Error(
+      `Source is missing bakin-package.json (and has no SKILL.md, so it is not a raw skill bundle either): ${stagingDir}`,
+    )
   }
+  const result = synthesizeSkillPack(stagingDir, sourceInfo)
+  if (!result.ok) throw new Error(`Cannot install skill bundle: ${result.error}`)
+  return { skillName: result.skillName, warnings: result.warnings, mentions: result.mentions }
 }
 
 function resolveGithubSubpath(cloneDir: string, subpath: string): string {
@@ -243,10 +260,8 @@ function ensureGithubSubpathPackagePresent(cloneDir: string, subpath: string): s
   if (!existsSync(subpathDir) || !statSync(subpathDir).isDirectory()) {
     throw new Error(`Github source subpath "${subpath}" not found in repository`)
   }
-  const manifestPath = join(subpathDir, 'bakin-package.json')
-  if (!existsSync(manifestPath)) {
-    throw new Error(`Github source subpath "${subpath}" is missing bakin-package.json`)
-  }
+  // Manifest OR raw skill bundle — ensureInstallableStaging on the copied
+  // staging decides (raw bundles are synthesized there, #687).
   return subpathDir
 }
 
@@ -263,15 +278,16 @@ function fetchLocal(source: string): FetchedSource {
   }
 
   const stagingDir = freshStagingDir('local')
+  let synthesis: FetchedSource['synthesis']
   try {
     mkdirSync(stagingDir, { recursive: true })
     cpSync(absSource, stagingDir, { recursive: true, dereference: false })
-    ensureManifestPresent(stagingDir)
+    synthesis = ensureInstallableStaging(stagingDir, { source })
   } catch (err) {
     cleanupStaging(stagingDir)
     throw err
   }
-  return { stagingDir, commitSha: '', kind: 'local', ref: '' }
+  return { stagingDir, commitSha: '', kind: 'local', ref: '', ...(synthesis ? { synthesis } : {}) }
 }
 
 // ─── Github fetch ────────────────────────────────────────────────────────────
@@ -340,14 +356,16 @@ export function fetchGithubWithRunner(
     if (spec.subpath) {
       const packageDir = ensureGithubSubpathPackagePresent(cloneTarget, spec.subpath)
       cpSync(packageDir, staging, { recursive: true, dereference: false })
-      ensureManifestPresent(staging)
-    } else {
-      ensureManifestPresent(staging)
     }
 
     const commitSha = git(['-C', cloneTarget, 'rev-parse', 'HEAD']).trim()
+    const synthesis = ensureInstallableStaging(staging, {
+      source,
+      ref: spec.ref ?? undefined,
+      resolvedSha: commitSha,
+    })
     if (spec.subpath) cleanupStaging(cloneTarget)
-    return { stagingDir: staging, commitSha, kind: 'github', ref: spec.ref ?? '' }
+    return { stagingDir: staging, commitSha, kind: 'github', ref: spec.ref ?? '', ...(synthesis ? { synthesis } : {}) }
   } catch (err) {
     cleanupStaging(staging)
     if (spec.subpath) cleanupStaging(cloneTarget)
@@ -374,8 +392,12 @@ export async function fetchGithubWithRunnerAsync(
       subpath: spec.subpath || undefined,
       git,
     })
-    ensureManifestPresent(staging)
-    return { stagingDir: staging, commitSha: checkout.commitSha, kind: 'github', ref: spec.ref ?? '' }
+    const synthesis = ensureInstallableStaging(staging, {
+      source,
+      ref: spec.ref ?? undefined,
+      resolvedSha: checkout.commitSha,
+    })
+    return { stagingDir: staging, commitSha: checkout.commitSha, kind: 'github', ref: spec.ref ?? '', ...(synthesis ? { synthesis } : {}) }
   } catch (err) {
     cleanupStaging(staging)
     throw err
