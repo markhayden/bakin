@@ -18,6 +18,7 @@ import { readLockfile } from '@bakin/core/agent-packages/lockfile'
 import { safeParseManifest } from '@bakin/core/agent-packages/manifest'
 import { getPackageSourceDir } from '@bakin/core/agent-packages/package-paths'
 import { buildSkillPreview, confirmSkillInstall } from '@/core/agent-packages/skill-trust'
+import { applyMapping, buildMappingPreview } from '@/core/agent-packages/skill-mapping'
 import { getAppServices } from '@/core/app-services'
 import { getContentDir } from '@/core/content-dir'
 import { parseJsonBodyWeb } from '@/core/middleware'
@@ -110,6 +111,40 @@ export async function preview(req: Request, _url: URL): Promise<Response> {
     )
   }
   return Response.json({ ok: true, preview: result.preview })
+}
+
+const MapPreviewBodySchema = z.object({ name: z.string().min(1).max(128) })
+const MapApplyBodySchema = z.object({
+  name: z.string().min(1).max(128),
+  mapping: z.object({
+    addSecrets: z.array(z.object({ name: z.string(), secretSlot: z.string(), help: z.string().optional() })),
+    addPrereqs: z.array(z.object({ name: z.string(), kind: z.literal('binary'), probe: z.string(), help: z.string(), optional: z.boolean() })),
+    platforms: z.array(z.string()).optional(),
+    dropped: z.array(z.object({ name: z.string(), reason: z.string() })),
+    notes: z.string().optional(),
+  }),
+})
+
+/** POST /api/skills/map/preview — run the mapping turn, return the verified diff. */
+export async function mapPreview(req: Request, _url: URL): Promise<Response> {
+  const parsed = MapPreviewBodySchema.safeParse(await parseJsonBodyWeb(req))
+  if (!parsed.success) {
+    return Response.json({ ok: false, error: parsed.error.issues[0]?.message ?? 'invalid body' }, { status: 400 })
+  }
+  const result = await buildMappingPreview(parsed.data.name)
+  if (!result.ok) return Response.json({ ok: false, error: result.error }, { status: 400 })
+  return Response.json({ ok: true, preview: result.preview })
+}
+
+/** POST /api/skills/map/apply — re-verify + amend the installed manifest. */
+export async function mapApply(req: Request, _url: URL): Promise<Response> {
+  const parsed = MapApplyBodySchema.safeParse(await parseJsonBodyWeb(req))
+  if (!parsed.success) {
+    return Response.json({ ok: false, error: parsed.error.issues[0]?.message ?? 'invalid body' }, { status: 400 })
+  }
+  const result = applyMapping(parsed.data.name, parsed.data.mapping)
+  if (!result.ok) return Response.json({ ok: false, error: result.error }, { status: 400 })
+  return Response.json({ ok: true, applied: result.applied })
 }
 
 export async function install(req: Request, _url: URL): Promise<Response> {

@@ -31,7 +31,7 @@ export type ThinkingSetting = ThinkingLevel | 'inherit'
 export type DispatchWorkClass = 'scheduled' | 'workflow' | 'adhoc' | 'recovery' | 'decomposition'
 
 /** System classes — declared by the call site that sends the turn. */
-export type SystemWorkClass = 'auto-title' | 'enrichment' | 'relay' | 'team-routing' | 'send' | 'chat'
+export type SystemWorkClass = 'auto-title' | 'enrichment' | 'relay' | 'team-routing' | 'send' | 'chat' | 'skill-mapping'
 
 /** The unified routing + spend-attribution key. */
 export type WorkClass = DispatchWorkClass | SystemWorkClass
@@ -59,6 +59,7 @@ export const WORK_CLASSES: readonly WorkClassMeta[] = [
   { id: 'team-routing', label: 'Team routing', description: 'Team-assignment classification calls', kind: 'system', routable: true, recommendedTier: 'cheap' },
   { id: 'send', label: 'Direct send', description: 'Operator/UI messages sent straight to an agent', kind: 'system', routable: true },
   { id: 'chat', label: 'Chat', description: 'Interactive chat turns (metered only — model choice stays with the operator)', kind: 'system', routable: false },
+  { id: 'skill-mapping', label: 'Skill mapping', description: 'Hub-skill requirement mapping turns (bakin skills map)', kind: 'system', routable: true, recommendedTier: 'cheap' },
 ]
 
 export const DISPATCH_WORK_CLASSES: readonly DispatchWorkClass[] = ['scheduled', 'workflow', 'adhoc', 'recovery', 'decomposition']

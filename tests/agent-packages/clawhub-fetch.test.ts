@@ -219,18 +219,19 @@ describe('fetchClawhubWithClient', () => {
   })
 })
 
-describe('clawhub identifiers stay behind the client/fetcher (arch pin)', () => {
-  it('no clawhub imports outside the sanctioned modules', async () => {
+describe('clawhub API access stays behind the client (arch pin)', () => {
+  it('no clawhub-client imports or raw API URLs outside the sanctioned modules', async () => {
+    // Scheme strings / page URLs in help text are UX copy, not coupling.
+    // What this pins: importing the client module or hitting the API base
+    // from anywhere but the skill-hub feature core.
     const { execSync } = await import('child_process')
     const hits = execSync(
-      `grep -rln "clawhub-client\\|clawhub\\.ai" src/ packages/host/src/api packages/core/src --include="*.ts" || true`,
+      `grep -rlE "clawhub-client|clawhub\\.ai/api" src/ packages/host/src/api packages/core/src --include="*.ts" || true`,
       { cwd: join(import.meta.dir, '..', '..') },
     ).toString().trim().split('\n').filter(Boolean)
     const allowed = new Set([
       'src/core/agent-packages/clawhub-client.ts',
       'src/core/agent-packages/source-fetcher.ts',
-      'src/core/agent-packages/ref-normalize.ts',
-      'src/core/agent-packages/skill-synthesis.ts',
       'src/core/agent-packages/skill-trust.ts',
     ])
     const violations = hits.filter((h) => !allowed.has(h))

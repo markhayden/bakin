@@ -227,6 +227,58 @@ async function cmdRemove(name: string | undefined): Promise<void> {
   console.log(`✓ Removed ${name} (${lockKey})`)
 }
 
+interface MappingWire {
+  addSecrets: Array<{ name: string; secretSlot: string; help?: string }>
+  addPrereqs: Array<{ name: string; kind: 'binary'; probe: string; help: string; optional: boolean }>
+  platforms?: string[]
+  dropped: Array<{ name: string; reason: string }>
+  notes?: string
+}
+
+async function cmdMap(name: string | undefined, yes: boolean): Promise<void> {
+  if (!name) {
+    console.error('Usage: bakin skills map <name> [--yes]')
+    process.exit(1)
+  }
+  console.log(`Dispatching an agent to read "${name}" and propose a requirements mapping…`)
+  const body = await apiPost('/api/skills/map/preview', { name }) as {
+    ok: boolean
+    error?: string
+    preview?: { skillName: string; mapping: MappingWire }
+  }
+  if (!body.ok || !body.preview) {
+    console.error(`Error: ${body.error}`)
+    process.exit(1)
+  }
+  const { mapping } = body.preview
+  if (mapping.notes) console.log(`  Agent notes: ${mapping.notes}`)
+  if (mapping.addSecrets.length + mapping.addPrereqs.length === 0 && !mapping.platforms) {
+    console.log('Nothing verifiable to map — the skill declares everything it needs (or needs nothing).')
+    for (const d of mapping.dropped) console.log(`  dropped ${d.name}: ${d.reason}`)
+    return
+  }
+  console.log('\nProposed requirement mapping (mechanically verified against the bundle):')
+  for (const s of mapping.addSecrets) console.log(`  + key ${s.name}  → slot ${s.secretSlot}${s.help ? `  (${s.help})` : ''}`)
+  for (const p of mapping.addPrereqs) console.log(`  + bin ${p.probe} — checked, never auto-installed`)
+  if (mapping.platforms) console.log(`  + os  ${mapping.platforms.join(', ')}`)
+  for (const d of mapping.dropped) console.log(`  dropped ${d.name}: ${d.reason}`)
+
+  if (!yes) {
+    const proceed = await confirm('\nApply this mapping to the installed manifest?')
+    if (!proceed) {
+      console.log('Aborted — manifest unchanged.')
+      process.exit(0)
+    }
+  }
+  const applied = await apiPost('/api/skills/map/apply', { name, mapping }) as { ok: boolean; error?: string }
+  if (!applied.ok) {
+    console.error(`Error: ${applied.error}`)
+    process.exit(1)
+  }
+  console.log('✓ Mapping applied — readiness now covers these requirements.')
+  await printPostInstallReadiness(`hub-${name}`)
+}
+
 export async function run(args: string[]): Promise<void> {
   const sub = args[1]
   const rest = args.slice(2)
@@ -245,8 +297,7 @@ export async function run(args: string[]): Promise<void> {
       await cmdRemove(positional[0])
       break
     case 'map':
-      console.error('`bakin skills map` is not available yet — it ships with the agent mapping lane (#687 T13).')
-      process.exit(1)
+      await cmdMap(positional[0], yes)
       break
     default:
       console.log(USAGE)

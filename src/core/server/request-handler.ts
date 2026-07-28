@@ -520,6 +520,14 @@ export function createRequestHandler(deps: RequestHandlerDeps): (req: IncomingMe
       dispatchWebHandler(req, res, skillsRoute.install)
       return
     }
+    if (url.pathname === '/api/skills/map/preview' && req.method === 'POST') {
+      dispatchWebHandler(req, res, skillsRoute.mapPreview)
+      return
+    }
+    if (url.pathname === '/api/skills/map/apply' && req.method === 'POST') {
+      dispatchWebHandler(req, res, skillsRoute.mapApply)
+      return
+    }
 
     // Agent avatar route (must be before the agent catch-all; migrated — see Phase B block below)
     if (url.pathname === '/api/agents/avatar' && req.method === 'GET') {
