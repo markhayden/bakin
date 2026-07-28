@@ -133,21 +133,26 @@ describe('ecosystem lane — install flow (drawer)', () => {
   })
 })
 
-describe('ecosystem lane — installed list', () => {
-  it('lists hub-installed skills only and removes through the confirm modal', async () => {
+describe('ecosystem lane — Installed grouping', () => {
+  it('ONE list holds curated packs and hub installs, grouped by installed-ness with source chips', async () => {
     listData = {
       managed: [
         { skillName: 'weather', packageId: 'hub-weather@2.0.1', version: '2.0.1', source: 'clawhub:@steipete/weather', hub: true },
-        { skillName: 'catalog-pack-skill', packageId: 'web-search-brave@1.0.0', version: '1.0.0', source: 'github:markhayden/bakin-bits-official#packs/web-search-brave', hub: false },
+        { skillName: 'brave-search', packageId: 'web-search-brave@1.0.0', version: '1.0.0', source: 'github:markhayden/bakin-bits-official#packs/web-search-brave', hub: false },
       ],
       unmanaged: [{ name: 'hand-rolled', scope: 'global' }],
     }
     fetchResponses[`/api/packages/${encodeURIComponent('hub-weather@2.0.1')}`] = { ok: true }
 
     render(<HubSkillsSection />)
+    expect(screen.getByText('Installed')).toBeTruthy()
+    // Curated installs live in the SAME list as hub installs (live-test
+    // feedback: group by installed vs available, never by source)…
     expect(screen.getByText('weather')).toBeTruthy()
-    // Curated-pack skills belong to the catalog grid, not this list.
-    expect(screen.queryByText('catalog-pack-skill')).toBeNull()
+    expect(screen.getByText('brave-search')).toBeTruthy()
+    // …with source as a chip.
+    expect(screen.getByText('clawhub')).toBeTruthy()
+    expect(screen.getByText('official')).toBeTruthy()
 
     fireEvent.click(screen.getByLabelText('Remove weather'))
     await waitFor(() => expect(screen.getByRole('alertdialog')).toBeTruthy())
@@ -157,5 +162,11 @@ describe('ecosystem lane — installed list', () => {
     const del = fetchCalls.find((c) => c.url.includes('/api/packages/'))
     expect(del?.url).toBe(`/api/packages/${encodeURIComponent('hub-weather@2.0.1')}`)
     expect(toasts.join(' ')).toContain('removed')
+  })
+
+  it('empty install state shows only the get-more section', () => {
+    render(<HubSkillsSection />)
+    expect(screen.queryByText('Installed')).toBeNull()
+    expect(screen.getByText('Get more capabilities')).toBeTruthy()
   })
 })

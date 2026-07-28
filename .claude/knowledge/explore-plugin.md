@@ -18,14 +18,17 @@ removes, syncs, or repairs anything.
   Capabilities | Lessons | Packs), and a per-tab intro (`TAB_INTROS`)
   that explains what the items are for first-time users.
   **The ecosystem lane (#687, `hub-skills-section.tsx`) lives INSIDE the
-  Capabilities tab — deliberately NOT a separate tab** (one unified
-  "teach your agents" surface; don't tack on tabs per source): under the
-  intro, a paste-a-link CTA (clawhub.ai/github.com URLs) opens the trust
-  preview in a **BakinDrawer** (verdict, hub stats, translated
-  requirements, security warnings, file list) → consent → install via
-  `/api/skills/*` only; an "From the ecosystem" installed list
-  (hub-installed only — curated packs stay in the grid) with removal via
-  ConfirmDialog; the curated catalog grid follows. See
+  Capabilities tab — deliberately NOT a separate tab, and the grouping is
+  installed-vs-available, NEVER by source** (live-test rule): an
+  "Installed" list holds curated packs AND hub installs together (source
+  is a chip — official/clawhub/github/local; removal via ConfirmDialog),
+  then a "Get more capabilities" header covering both acquisition paths —
+  the paste-a-link CTA (clawhub.ai/github.com URLs → trust preview in a
+  **BakinDrawer**: verdict, hub stats, translated requirements, security
+  warnings, file list → consent → install via `/api/skills/*` only) and
+  the curated catalog grid, which on THIS tab filters to
+  not-yet-installed entries (installed ones live in the list above; the
+  all-installed empty state points at the paste box). See
   `.claude/knowledge/skill-hub-interop.md`.
   Lessons (lesson-packs) is ALWAYS visible with
   an educational empty state; Packs (skill/workflow packs) auto-hides

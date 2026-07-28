@@ -78,10 +78,11 @@ authed/unavailable). An arch-pin test keeps client imports + raw API URLs inside
   `POST /api/skills/{preview,install,map/preview,map/apply}`. Removal rides
   `DELETE /api/packages/{lockKey}`.
 - Explore `plugins/explore/components/hub-skills-section.tsx`: the ecosystem lane
-  INSIDE the Capabilities tab (unified surface — never a separate tab): paste-a-link
-  CTA → trust preview in a BakinDrawer → consent → install; "From the ecosystem"
-  installed list (hub-installed only) with remove (ConfirmDialog); curated grid
-  follows on the page.
+  INSIDE the Capabilities tab (unified surface — never a separate tab; grouping is
+  installed-vs-available, never by source): one "Installed" list for curated packs
+  AND hub installs (source chips, ConfirmDialog removal), then "Get more
+  capabilities" — paste-a-link CTA (trust preview in a BakinDrawer) + the curated
+  grid filtered to not-yet-installed entries.
 
 ## Adjacent changes shipped with #687
 

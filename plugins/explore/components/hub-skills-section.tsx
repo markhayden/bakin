@@ -43,6 +43,14 @@ function fmtBytes(bytes: number): string {
   return bytes < 1024 ? `${bytes} B` : `${(bytes / 1024).toFixed(1)} KB`
 }
 
+/** Source is a chip on the installed row, never a grouping. */
+function sourceChip(source: string, hub: boolean): string {
+  if (!hub) return 'official'
+  if (source.startsWith('clawhub:')) return 'clawhub'
+  if (source.startsWith('github:')) return 'github'
+  return 'local'
+}
+
 function VerdictLine({ state }: { state: SkillPreviewWire['verdictState'] }) {
   if (state === 'clean') {
     return (
@@ -269,16 +277,49 @@ export function HubSkillsSection() {
     }
   }
 
-  const hubSkills = data?.managed.filter((row) => row.hub) ?? []
+  const installed = data?.managed ?? []
 
   return (
-    <div className="space-y-4">
-      {/* CTA: bring skills from anywhere. Curated cards follow on the page. */}
-      <div className="rounded-lg border p-4">
-        <div className="mb-1 text-sm font-medium">Install from ClawHub, GitHub, or any skills repo</div>
+    <div className="space-y-5">
+      {/* GROUPING RULE (live-test feedback): installed vs. available — never
+          by source. One "Installed" list holds curated packs AND hub
+          installs (same engine underneath); source is just a chip. */}
+      {installed.length > 0 && (
+        <div>
+          <div className="mb-2 text-sm font-semibold">Installed</div>
+          <div className="divide-y rounded-lg border">
+            {installed.map((row) => (
+              <div key={row.packageId + row.skillName} className="flex items-center justify-between gap-2 p-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    {row.skillName} <span className="text-xs text-muted-foreground">v{row.version}</span>
+                    <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase text-muted-foreground">{sourceChip(row.source, row.hub)}</span>
+                  </div>
+                  <div className="truncate font-mono text-xs text-muted-foreground">{row.source}</div>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setRemoving({ skillName: row.skillName, packageId: row.packageId })}
+                  aria-label={`Remove ${row.skillName}`}
+                >
+                  <Trash2 className="size-4" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Everything below this header is "get more" — the official catalog
+          grid follows on the page, and the paste box covers the rest of
+          the ecosystem. */}
+      <div>
+        <div className="mb-1 text-sm font-semibold">Get more capabilities</div>
         <div className="mb-3 text-xs text-muted-foreground">
-          Browse clawhub.ai (or a GitHub skills repo), copy the page link, paste it here. You&apos;ll review a
-          full trust preview before anything installs; nothing from a skill ever runs at install time.
+          Official ones below install with one click and guided setup. Or bring any skill from the wider
+          ecosystem — browse clawhub.ai (or a GitHub skills repo), copy the page link, paste it here.
+          You&apos;ll review a full trust preview before anything installs.
         </div>
         <div className="flex gap-2">
           <Input
@@ -296,32 +337,6 @@ export function HubSkillsSection() {
         {boxError && <div className="mt-2 text-sm text-red-500" data-testid="hub-box-error">{boxError}</div>}
         {error != null && <div className="mt-2 text-xs text-muted-foreground">Installed-skills list unavailable: {String(error)}</div>}
       </div>
-
-      {hubSkills.length > 0 && (
-        <div>
-          <div className="mb-2 text-sm font-medium">From the ecosystem</div>
-          <div className="divide-y rounded-lg border">
-            {hubSkills.map((row) => (
-              <div key={row.packageId + row.skillName} className="flex items-center justify-between gap-2 p-3">
-                <div className="min-w-0">
-                  <div className="text-sm font-medium">
-                    {row.skillName} <span className="text-xs text-muted-foreground">v{row.version}</span>
-                  </div>
-                  <div className="truncate font-mono text-xs text-muted-foreground">{row.source}</div>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setRemoving({ skillName: row.skillName, packageId: row.packageId })}
-                  aria-label={`Remove ${row.skillName}`}
-                >
-                  <Trash2 className="size-4" />
-                </Button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       <BakinDrawer
         open={preview !== null}
