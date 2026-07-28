@@ -28,7 +28,8 @@ Branch: `feat/skill-hub-interop-687` · Spec: SPEC.md v2 · Plan: PLAN.md v2
 
 ## Phase E — Ship (CP-E)
 - [x] T14 docs sweep (knowledge docs, CLAUDE.md, docs site, CHANGELOG, README check)
-- [ ] T15 done bar: full suite + lint + cycles + live dual-runtime E2E (scripts exec, no-restart key, map, switch-carry)
+- [x] T15 done bar (automated legs): suite 8498 pass/0 fail + lint + cycles green; live E2E against real ClawHub + GitHub on an isolated server — the gate refused a real DO_NOT_INSTALL skill (the #1 most-downloaded!), paste-URL install/exec-bits/list/remove/ambiguity-picker/D18-live-injection all verified on Pi
+- [ ] T15 live-LLM legs (Mark's 3737 pass): an agent turn actually exercising an installed skill; a live `bakin skills map` run; OpenClaw-side projection sanity if the adapter gets switched
 - [ ] Mark live-tests on main checkout → PR → merge
 
 ## Outside this repo (follow-up, bakin-bits-official)
