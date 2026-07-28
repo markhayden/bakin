@@ -5,6 +5,7 @@ import { toast, useJsonFetch, useQueryState, useQueryArrayState } from '@makinba
 import { Button, Input } from '@makinbakin/sdk/ui'
 import { CatalogCard } from './catalog-card'
 import { DetailDrawer } from './detail-drawer'
+import { HubSkillsTab } from './hub-skills-tab'
 import { InstallDialog } from './install-dialog'
 import type { ExploreCatalogEntry, ExploreCatalogResponse } from '../types'
 
@@ -51,6 +52,13 @@ const TAB_INTROS: Record<string, { title: string; blurb: string }> = {
     blurb:
       'Skill and workflow packs bundle proven processes you can drop into your own automations — ' +
       'install once, reuse everywhere.',
+  },
+  skills: {
+    title: 'Bring skills from anywhere',
+    blurb:
+      'The wider ecosystem — ClawHub, Pi, Anthropic — shares one skill format, and Bakin installs it ' +
+      'onto whichever runtime you run. Browse a hub in your browser, paste the link here, review the ' +
+      'trust preview, done. Versions are pinned and hub-flagged malware is refused outright.',
   },
 }
 
@@ -142,6 +150,7 @@ function ExplorePageInner() {
       { id: 'plugins', label: 'Plugins' },
       { id: 'capabilities', label: 'Capabilities' },
       { id: 'lessons', label: 'Lessons' },
+      { id: 'skills', label: 'Hub Skills' },
     ]
     return hasPacks ? [...base, { id: 'packs', label: 'Packs' }] : base
   }, [hasPacks])
@@ -284,7 +293,10 @@ function ExplorePageInner() {
         </div>
       )}
 
-      {loading && (
+      {/* Hub Skills is a live-state surface (#687), not a catalog grid. */}
+      {tab === 'skills' && <HubSkillsTab />}
+
+      {tab !== 'skills' && loading && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {Array.from({ length: 8 }).map((_, i) => (
             <div key={i} className="h-36 animate-pulse rounded-xl border border-border bg-card" />
@@ -292,7 +304,7 @@ function ExplorePageInner() {
         </div>
       )}
 
-      {!loading && !error && visible.length === 0 && (
+      {tab !== 'skills' && !loading && !error && visible.length === 0 && (
         <EmptyState
           icon={Compass}
           title={searchDraft.trim()
@@ -309,7 +321,7 @@ function ExplorePageInner() {
         />
       )}
 
-      {!loading && visible.length > 0 && (
+      {tab !== 'skills' && !loading && visible.length > 0 && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {visible.map((entry) => (
             <CatalogCard
