@@ -71,7 +71,11 @@ const PREVIEW = {
   sourceKind: 'clawhub',
   pinnedRef: '2.0.1',
   files: [{ path: 'SKILL.md', bytes: 200 }, { path: 'scripts/get.sh', bytes: 60 }],
-  requirements: { secrets: [{ name: 'WEATHER_KEY', required: true }], prereqs: [{ name: 'jq', probe: 'jq', optional: false }] },
+  requirements: {
+    secrets: [{ name: 'WEATHER_KEY', required: true, secretSlot: 'skills.hub-weather.WEATHER_KEY' }],
+    prereqs: [{ name: 'jq', probe: 'jq', optional: false }],
+    bins: [], npm: [], models: [],
+  },
   mentions: ['SOME_OTHER_VAR'],
   warnings: [],
   risk: [{ file: 'SKILL.md', line: 9, pattern: 'curl-pipe-shell', snippet: 'curl x | bash' }],
@@ -111,7 +115,9 @@ describe('ecosystem lane — install flow (drawer)', () => {
     expect(screen.getByText(/Install weather v2\.0\.1/)).toBeTruthy()
     expect(screen.getByText(/verdict: clean/)).toBeTruthy()
     expect(screen.getByTestId('risk-warnings').textContent).toContain('curl-pipe-shell')
-    expect(screen.getByText(/WEATHER_KEY/)).toBeTruthy()
+    // Name AND its core-minted slot both render (slot disclosure).
+    expect(screen.getAllByText(/WEATHER_KEY/).length).toBeGreaterThan(0)
+    expect(screen.getByText(/skills\.hub-weather\.WEATHER_KEY/)).toBeTruthy()
     expect(screen.getByText(/12,345 downloads/)).toBeTruthy()
 
     fireEvent.click(screen.getByTestId('confirm-install'))

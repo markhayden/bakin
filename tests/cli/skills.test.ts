@@ -38,6 +38,14 @@ mock.module('../../src/cli/http', () => ({
     calls.push({ method: 'POST', path, body })
     return postResponses[path] ?? {}
   },
+  // Mirrors the REAL client: returns {ok, data} rather than throwing, which
+  // is exactly why the command uses it for the refusal/error branches.
+  apiPostJson: async (path: string, body?: unknown) => {
+    calls.push({ method: 'POST', path, body })
+    const data = postResponses[path] ?? {}
+    const okFlag = (data as { ok?: boolean }).ok
+    return { ok: okFlag !== false, data }
+  },
   apiDelete: async (path: string) => {
     calls.push({ method: 'DELETE', path })
     return { ok: true }
@@ -57,7 +65,7 @@ const PREVIEW = {
     sourceKind: 'clawhub',
     pinnedRef: '2.0.1',
     files: [{ path: 'SKILL.md', bytes: 120 }],
-    requirements: { secrets: [], prereqs: [] },
+    requirements: { secrets: [], prereqs: [], bins: [], npm: [], models: [] },
     mentions: [],
     warnings: [],
     risk: [],

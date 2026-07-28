@@ -132,7 +132,14 @@ export async function mapPreview(req: Request, _url: URL): Promise<Response> {
     return Response.json({ ok: false, error: parsed.error.issues[0]?.message ?? 'invalid body' }, { status: 400 })
   }
   const result = await buildMappingPreview(parsed.data.name)
-  if (!result.ok) return Response.json({ ok: false, error: result.error }, { status: 400 })
+  if (!result.ok) {
+    // not-found is the caller's mistake; a failed mapping turn is ours.
+    if (result.reason === 'turn-failed') {
+      log.error('skill mapping turn failed', new Error(result.error), { name: parsed.data.name })
+      return Response.json({ ok: false, error: result.error }, { status: 502 })
+    }
+    return Response.json({ ok: false, error: result.error }, { status: 400 })
+  }
   return Response.json({ ok: true, preview: result.preview })
 }
 
@@ -163,6 +170,9 @@ export async function install(req: Request, _url: URL): Promise<Response> {
     case 'refused':
       return Response.json({ ok: false, refused: true, error: result.error }, { status: 403 })
     case 'error':
+      // The gate already logged the stack; this keeps the 5xx traceable to a
+      // request per the house rule that every 5xx logs server-side.
+      log.error('skill install returned an error', new Error(result.error), { ref: parsed.data.ref })
       return Response.json({ ok: false, error: result.error }, { status: 500 })
   }
 }

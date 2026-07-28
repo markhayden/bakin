@@ -17,7 +17,8 @@
  */
 import { existsSync, readFileSync } from 'fs'
 import { delimiter, join } from 'path'
-import { getStoredSecret } from '@bakin/core/media'
+import { getStoredSecret, parseSecretSlot } from '@bakin/core/media'
+import { SKILL_SECRET_PROVIDER } from '../../packages/core/src/agent-packages/skill-secret-slot'
 import { readLockfile } from '../../packages/core/src/agent-packages/lockfile'
 import { safeParseManifest } from '../../packages/core/src/agent-packages/manifest'
 import { getPackageSourceDir } from '../../packages/core/src/agent-packages/package-paths'
@@ -96,9 +97,20 @@ export function collectPackSecretMappings(): EnvSecretMapping[] {
     if (!manifest.success) continue
     for (const secret of manifest.data.secrets ?? []) {
       if (!secret.secretSlot) continue
-      const [provider, name] = secret.secretSlot.split('.', 2)
-      if (!provider || !name) continue
-      mappings.push({ envVar: secret.name, provider, name })
+      // SECURITY (#687 review): a pack may only bind slots in its OWN
+      // namespace. Without this, a manifest declaring
+      // `secretSlot: "discord.botToken"` would siphon a real credential into
+      // an attacker-named env var its own scripts read. First-party
+      // integrations bind through STATIC_ENV_SECRET_MAPPINGS instead.
+      if (!secret.secretSlot.startsWith(`${SKILL_SECRET_PROVIDER}.`)) {
+        log.warn('Refusing pack secret mapping outside the skills.* namespace', {
+          packageKey: key, envVar: secret.name, slot: secret.secretSlot,
+        })
+        continue
+      }
+      const parsed = parseSecretSlot(secret.secretSlot)
+      if (!parsed) continue
+      mappings.push({ envVar: secret.name, provider: parsed.provider, name: parsed.name })
     }
   }
   return mappings

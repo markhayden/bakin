@@ -5,13 +5,13 @@
  *                                               trust-gate preview + consent
  *   bakin skills list [--json]                  managed + unmanaged skills
  *   bakin skills remove <name>                  uninstall by bare skill name
- *   bakin skills map <name>                     agent requirement mapping (T13)
+ *   bakin skills map <name> [--yes]             agent requirement mapping
  *
  * Thin HTTP client over /api/skills (the same doors Explore uses). Updates
  * have no dedicated verb: re-running `install <ref>` re-runs the whole gate
  * and re-pins.
  */
-import { apiDelete, apiGet, apiPost } from '../http'
+import { apiDelete, apiGet, apiPostJson } from '../http'
 import { print } from '../output'
 import { printCapabilityStatus, promptMissingSecrets, type InstallCapabilityInfo } from './packages'
 
@@ -32,9 +32,12 @@ interface SkillPreviewWire {
   pinnedRef: string
   files: Array<{ path: string; bytes: number }>
   requirements: {
-    secrets: Array<{ name: string; required: boolean; help?: string }>
+    secrets: Array<{ name: string; required: boolean; secretSlot?: string; help?: string }>
     prereqs: Array<{ name: string; probe: string; optional: boolean }>
     platforms?: string[]
+    bins: Array<{ name: string; url?: string; willExecute: boolean }>
+    npm: string[]
+    models: Array<{ name: string; bytes: number }>
   }
   mentions: string[]
   warnings: string[]
@@ -63,7 +66,7 @@ const USAGE = `Usage:
   bakin skills install <url-or-ref> [--yes]   Install a skill from ClawHub, GitHub, or a local path
   bakin skills list [--json]                  List managed and unmanaged skills
   bakin skills remove <name>                  Remove an installed skill by name
-  bakin skills map <name>                     Map unrecognized requirements via an agent
+  bakin skills map <name> [--yes]             Map unrecognized requirements via an agent
 
 Refs: paste a clawhub.ai or github.com URL, or use clawhub:@owner/slug /
 github:owner/repo[@ref]#subpath / a local path. Re-running install on the
@@ -85,6 +88,7 @@ function renderPreview(p: SkillPreviewWire): void {
     if (bits.length > 0) console.log(`  clawhub: ${bits.join(' · ')}`)
   }
   if (p.verdictState === 'clean') console.log('  ✓ ClawHub security verdict: clean')
+  if (p.verdictState === 'unscanned') console.log('  ⚠ ClawHub has NOT scanned this version — treat it as unverified')
   if (p.verdictState === 'unverified') console.log('  ⚠ ClawHub security verdict UNAVAILABLE — content is unverified')
   if (p.verdictState === 'none') console.log('  ⚠ No hub verdict exists for this source — review the files below')
 
@@ -92,12 +96,25 @@ function renderPreview(p: SkillPreviewWire): void {
   for (const file of p.files.slice(0, 20)) console.log(`    ${file.path}  ${fmtBytes(file.bytes)}`)
   if (p.files.length > 20) console.log(`    … and ${p.files.length - 20} more`)
 
-  const { secrets, prereqs, platforms } = p.requirements
+  const { secrets, prereqs, platforms, bins, npm, models } = p.requirements
   if (secrets.length + prereqs.length > 0 || platforms) {
     console.log('\n  Requirements (translated from upstream metadata):')
-    for (const s of secrets) console.log(`    key   ${s.name}${s.required ? '' : ' (optional)'}${s.help ? `  — ${s.help}` : ''}`)
+    for (const s of secrets) {
+      console.log(`    key   ${s.name}${s.required ? '' : ' (optional)'}${s.secretSlot ? ` → ${s.secretSlot}` : ''}${s.help ? `  — ${s.help}` : ''}`)
+    }
     for (const q of prereqs) console.log(`    bin   ${q.probe}${q.optional ? ' (optional)' : ''} — checked, never auto-installed`)
     if (platforms) console.log(`    os    ${platforms.join(', ')}`)
+  }
+
+  // Downloadable legs run code at INSTALL time — the loudest thing here.
+  if (bins.length + npm.length + models.length > 0) {
+    console.log('\n  ⚠⚠ THIS SOURCE DOWNLOADS AND INSTALLS SOFTWARE:')
+    for (const b of bins) {
+      console.log(`    binary  ${b.name}${b.url ? ` from ${b.url}` : ''}${b.willExecute ? '  — WILL BE EXECUTED during install' : ''}`)
+    }
+    for (const n of npm) console.log(`    npm     ${n} — dependencies installed into Bakin`)
+    for (const m of models) console.log(`    model   ${m.name} (${Math.round(m.bytes / 1_000_000)} MB download)`)
+    console.log('  Installed binaries land on your agents\' PATH. Only proceed if you trust this publisher.')
   }
   if (p.mentions.length > 0) {
     console.log(`\n  Mentions env-var-shaped strings (unmapped — no readiness claim): ${p.mentions.join(', ')}`)
@@ -141,37 +158,45 @@ async function cmdInstall(ref: string | undefined, yes: boolean): Promise<void> 
     process.exit(1)
   }
 
-  const previewBody = await apiPost('/api/skills/preview', { ref }) as PreviewBody
-  if (!previewBody.ok || !previewBody.preview) {
-    console.error(previewBody.refused ? `Refused: ${previewBody.error}` : `Error: ${previewBody.error}`)
-    process.exit(previewBody.refused ? 2 : 1)
+  // apiPostJson (not apiPost) — the shared client THROWS on non-2xx, which
+  // would swallow the refusal payload and the exit-2 contract with it.
+  const previewRes = await apiPostJson('/api/skills/preview', { ref })
+  const previewBody = previewRes.data as PreviewBody
+  if (!previewRes.ok || !previewBody?.ok || !previewBody.preview) {
+    const refused = previewBody?.refused === true
+    console.error(refused ? `Refused: ${previewBody.error}` : `Error: ${previewBody?.error ?? 'preview failed'}`)
+    process.exit(refused ? 2 : 1)
   }
 
   let preview = previewBody.preview
   for (let attempt = 0; attempt < 2; attempt++) {
     renderPreview(preview)
-    if (!yes) {
-      const proceed = await confirm('\nInstall this skill?')
+    // Drift is the preview-to-install tamper signal — always confirm it by
+    // hand, even under --yes.
+    if (!yes || attempt > 0) {
+      const proceed = await confirm(attempt > 0 ? '\nInstall the CHANGED skill?' : '\nInstall this skill?')
       if (!proceed) {
         console.log('Aborted — nothing installed.')
         process.exit(0)
       }
     }
 
-    const installBody = await apiPost('/api/skills/install', { ref, consentToken: preview.consentToken }) as InstallBody
-    if (installBody.ok && installBody.installed) {
+    const installRes = await apiPostJson('/api/skills/install', { ref, consentToken: preview.consentToken })
+    const installBody = installRes.data as InstallBody
+    if (installRes.ok && installBody?.ok && installBody.installed) {
       console.log(`\n✓ Installed ${preview.skillName} v${preview.version} (${installBody.installed.packageId})`)
       for (const warning of installBody.warnings ?? []) console.log(`  ⚠ ${warning}`)
       await printPostInstallReadiness(installBody.installed.packageId)
       return
     }
-    if (installBody.drift && installBody.preview) {
+    if (installBody?.drift && installBody.preview) {
       console.log('\n⚠ The skill content CHANGED between preview and install — review again:')
       preview = installBody.preview
       continue
     }
-    console.error(installBody.refused ? `Refused: ${installBody.error}` : `Error: ${installBody.error}`)
-    process.exit(installBody.refused ? 2 : 1)
+    const refused = installBody?.refused === true
+    console.error(refused ? `Refused: ${installBody.error}` : `Error: ${installBody?.error ?? 'install failed'}`)
+    process.exit(refused ? 2 : 1)
   }
   console.error('Content kept changing between preview and install — aborting. Try again later.')
   process.exit(1)
@@ -219,11 +244,9 @@ async function cmdRemove(name: string | undefined): Promise<void> {
     process.exit(1)
   }
   const lockKey = await resolveLockKey(name)
-  const result = await apiDelete(`/api/packages/${encodeURIComponent(lockKey)}`) as { ok?: boolean; error?: string }
-  if (result.ok === false) {
-    console.error(`Error: ${result.error ?? 'remove failed'}`)
-    process.exit(1)
-  }
+  // apiDelete throws on non-2xx; a thrown error surfaces through the router's
+  // COMMAND_FAILED path with the server's message.
+  await apiDelete(`/api/packages/${encodeURIComponent(lockKey)}`)
   console.log(`✓ Removed ${name} (${lockKey})`)
 }
 
@@ -241,13 +264,14 @@ async function cmdMap(name: string | undefined, yes: boolean): Promise<void> {
     process.exit(1)
   }
   console.log(`Dispatching an agent to read "${name}" and propose a requirements mapping…`)
-  const body = await apiPost('/api/skills/map/preview', { name }) as {
-    ok: boolean
+  const previewRes = await apiPostJson('/api/skills/map/preview', { name })
+  const body = previewRes.data as {
+    ok?: boolean
     error?: string
-    preview?: { skillName: string; mapping: MappingWire }
+    preview?: { skillName: string; packageKey: string; mapping: MappingWire }
   }
-  if (!body.ok || !body.preview) {
-    console.error(`Error: ${body.error}`)
+  if (!previewRes.ok || !body?.ok || !body.preview) {
+    console.error(`Error: ${body?.error ?? 'mapping preview failed'}`)
     process.exit(1)
   }
   const { mapping } = body.preview
@@ -270,13 +294,16 @@ async function cmdMap(name: string | undefined, yes: boolean): Promise<void> {
       process.exit(0)
     }
   }
-  const applied = await apiPost('/api/skills/map/apply', { name, mapping }) as { ok: boolean; error?: string }
-  if (!applied.ok) {
-    console.error(`Error: ${applied.error}`)
+  const applyRes = await apiPostJson('/api/skills/map/apply', { name, mapping })
+  const applied = applyRes.data as { ok?: boolean; error?: string }
+  if (!applyRes.ok || !applied?.ok) {
+    console.error(`Error: ${applied?.error ?? 'apply failed'}`)
     process.exit(1)
   }
   console.log('✓ Mapping applied — readiness now covers these requirements.')
-  await printPostInstallReadiness(`hub-${name}`)
+  // Use the server-resolved key, not a `hub-` guess — curated packs and
+  // pack-id inputs resolve here too.
+  await printPostInstallReadiness(body.preview.packageKey)
 }
 
 export async function run(args: string[]): Promise<void> {

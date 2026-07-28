@@ -108,6 +108,14 @@ export type ClawhubVersionDetail = z.infer<typeof VersionDetailSchema>
 export type ClawhubScan = z.infer<typeof ScanSchema>
 export type ClawhubMatch = z.infer<typeof MatchSchema>
 
+/** A received HTTP response with a non-2xx status (reachable, but refusing). */
+export class ClawhubHttpError extends Error {
+  constructor(public readonly status: number, message: string) {
+    super(message)
+    this.name = 'ClawhubHttpError'
+  }
+}
+
 /** Thrown when a bare slug has multiple publishers — surfaces the owner picker. */
 export class AmbiguousClawhubSlugError extends Error {
   constructor(public readonly slug: string, public readonly matches: ClawhubMatch[]) {
@@ -124,16 +132,32 @@ export class AmbiguousClawhubSlugError extends Error {
  * refusal reasons (D5 — no override exists); `warnings` ride to the consent
  * preview; `state` label feeds honest UI copy.
  */
+/**
+ * The verdict state feeds honest UI copy directly — NEVER derived downstream
+ * from warning-string matching. `clean` requires an affirmative positive
+ * signal; the absence of evidence is `unscanned`/`unverified`, never clean.
+ */
+export type ClawhubVerdictState = 'clean' | 'refused' | 'unscanned' | 'unverified'
+
 export interface ClawhubVerdict {
-  state: 'clean' | 'refused' | 'unverified'
+  state: ClawhubVerdictState
   refusals: string[]
   warnings: string[]
 }
 
 /**
- * D5 gate policy over the observed moderation/security shapes. Fail-closed:
- * a present-but-unrecognized security payload REFUSES; only endpoint
- * unreachability earns 'unverified'.
+ * D5 gate policy over the observed moderation/security shapes.
+ *
+ * - `refused` (hard, no override): malware/suspicious/hidden/removed
+ *   moderation, a suspicious/malicious `security.status`, a
+ *   DO_NOT_INSTALL scanner, or a present-but-UNRECOGNIZED status.
+ * - `clean`: at least one AFFIRMATIVE positive signal (moderation object
+ *   with no flags, or `security.status: clean`). Absence of evidence is
+ *   never clean — a contentless `{}` scan or a hub field-rename yields
+ *   `unscanned`, not a green check (the ClawHavoc fresh-upload pattern).
+ * - `unscanned`/`pending`: the hub has not vouched for this version.
+ * - `unverified`: the scan endpoint was unreachable (network/5xx) — passed
+ *   in as `scan === null`.
  */
 export function evaluateVerdict(scan: ClawhubScan | null, versionSecurity: z.infer<typeof SecuritySchema> | null | undefined): ClawhubVerdict {
   if (scan === null && (versionSecurity === null || versionSecurity === undefined)) {
@@ -141,6 +165,8 @@ export function evaluateVerdict(scan: ClawhubScan | null, versionSecurity: z.inf
   }
   const refusals: string[] = []
   const warnings: string[] = []
+  let positiveSignal = false
+  let pendingSignal = false
 
   const moderation = scan?.moderation
   if (moderation) {
@@ -148,7 +174,14 @@ export function evaluateVerdict(scan: ClawhubScan | null, versionSecurity: z.inf
     if (moderation.isSuspicious) refusals.push('ClawHub moderation marks this skill suspicious')
     if (moderation.isHiddenByMod) refusals.push('ClawHub moderators have hidden this skill')
     if (moderation.isRemoved) refusals.push('this skill has been removed from ClawHub')
-    if (moderation.isPendingScan) warnings.push('ClawHub has not finished scanning this version yet')
+    if (moderation.isPendingScan) {
+      pendingSignal = true
+      warnings.push('ClawHub has not finished scanning this version yet')
+    } else {
+      // A moderation object with no adverse flags is an affirmative "the
+      // hub looked and found nothing wrong".
+      positiveSignal = true
+    }
   }
 
   for (const security of [scan?.security, versionSecurity]) {
@@ -156,7 +189,11 @@ export function evaluateVerdict(scan: ClawhubScan | null, versionSecurity: z.inf
     const status = security.status.toLowerCase()
     if (status === 'suspicious' || status === 'malicious') {
       refusals.push(`ClawHub security scan verdict: ${status}`)
-    } else if (status !== 'clean' && status !== 'pending' && status !== 'unscanned') {
+    } else if (status === 'clean') {
+      positiveSignal = true
+    } else if (status === 'pending' || status === 'unscanned') {
+      pendingSignal = true
+    } else {
       // Fail closed on semantics we don't recognize.
       refusals.push(`ClawHub reports an unrecognized security status "${security.status}" — refusing (fail closed)`)
     }
@@ -172,9 +209,14 @@ export function evaluateVerdict(scan: ClawhubScan | null, versionSecurity: z.inf
 
   const deduped = [...new Set(refusals)]
   const dedupedWarnings = [...new Set(warnings)]
-  return deduped.length > 0
-    ? { state: 'refused', refusals: deduped, warnings: dedupedWarnings }
-    : { state: 'clean', refusals: [], warnings: dedupedWarnings }
+  if (deduped.length > 0) return { state: 'refused', refusals: deduped, warnings: dedupedWarnings }
+  if (pendingSignal || !positiveSignal) {
+    // Pending, or a reachable-but-contentless scan — the hub has not
+    // affirmatively cleared this version.
+    dedupedWarnings.push('ClawHub has NOT scanned this version — treat it as unverified.')
+    return { state: 'unscanned', refusals: [], warnings: [...new Set(dedupedWarnings)] }
+  }
+  return { state: 'clean', refusals: [], warnings: dedupedWarnings }
 }
 
 // ─── Client ──────────────────────────────────────────────────────────────────
@@ -185,7 +227,7 @@ export interface ClawhubClient {
   getVersionDetail(slug: string, version: string, owner?: string): Promise<ClawhubVersionDetail>
   /** null = unreachable (honest 'unverified'); parse failures THROW (fail closed). */
   getScan(slug: string, owner?: string): Promise<ClawhubScan | null>
-  getFileBytes(slug: string, path: string, opts: { owner?: string; version?: string }): Promise<Uint8Array>
+  getFileBytes(slug: string, path: string, opts: { owner?: string; version?: string; expectedSize?: number }): Promise<Uint8Array>
 }
 
 export function sha256Hex(bytes: Uint8Array): string {
@@ -206,6 +248,10 @@ export function createClawhubClient(options: ClawhubClientOptions = {}): Clawhub
   }
 
   const getJson = async (url: string): Promise<unknown> => {
+    // A fetch REJECTION here (DNS/timeout/connection) propagates as a
+    // transport error — callers treat that as "hub unreachable". A received
+    // response with a non-2xx status becomes a ClawhubHttpError so callers
+    // can fail closed on it (reachable-but-refusing ≠ unreachable).
     const response = await fetcher(url)
     const text = await response.text()
     let body: unknown = null
@@ -222,7 +268,7 @@ export function createClawhubClient(options: ClawhubClientOptions = {}): Clawhub
       }
     }
     if (!response.ok) {
-      throw new Error(`ClawHub request failed (${response.status}): ${text.slice(0, 200)}`)
+      throw new ClawhubHttpError(response.status, `ClawHub request failed (${response.status}): ${text.slice(0, 200)}`)
     }
     if (body === null) throw new Error(`ClawHub returned non-JSON from ${url}`)
     return body
@@ -259,6 +305,12 @@ export function createClawhubClient(options: ClawhubClientOptions = {}): Clawhub
         body = await getJson(skillUrl(slug, '/scan', { owner }))
       } catch (err) {
         if (err instanceof AmbiguousClawhubSlugError) throw err
+        // Reachable but the hub refused/errored on this slug's scan
+        // (404/403/5xx) → FAIL CLOSED (D5), not "unreachable".
+        if (err instanceof ClawhubHttpError) {
+          throw new Error(`ClawHub scan endpoint returned ${err.status} for "${slug}" — refusing (fail closed)`)
+        }
+        // Transport failure (network/DNS/timeout) → honest 'unverified'.
         log.warn('ClawHub scan endpoint unreachable — verdict is unverified', {
           slug, error: err instanceof Error ? err.message : String(err),
         })
@@ -274,7 +326,16 @@ export function createClawhubClient(options: ClawhubClientOptions = {}): Clawhub
       const url = skillUrl(slug, '/file', { path, owner: opts.owner, version: opts.version })
       const response = await fetcher(url)
       if (!response.ok) throw new Error(`ClawHub file download failed (${response.status}) for "${path}"`)
-      return new Uint8Array(await response.arrayBuffer())
+      const bytes = new Uint8Array(await response.arrayBuffer())
+      // The manifest sha256 catches a size lie eventually, but only after
+      // the bytes are buffered — enforce the CLAIMED size at the boundary so
+      // an 8GB body behind a "100 bytes" claim can't OOM the server first.
+      if (opts.expectedSize !== undefined && bytes.length !== opts.expectedSize) {
+        throw new Error(
+          `ClawHub file "${path}" is ${bytes.length} bytes but the manifest claims ${opts.expectedSize} — refusing`,
+        )
+      }
+      return bytes
     },
   }
 }

@@ -93,6 +93,18 @@ export function isValidSecretName(name: unknown): name is string {
   return typeof name === 'string' && /^[a-z0-9][a-z0-9._-]{0,63}$/i.test(name) && !RESERVED_KEYS.has(name)
 }
 
+/**
+ * Split a `<provider>.<name>` slot on its FIRST dot. Both segments may
+ * themselves contain dots (per-package skill slots are `skills.<pack>.<VAR>`),
+ * so a `split('.', 2)` here silently TRUNCATES the name — this returns the
+ * whole remainder instead.
+ */
+export function parseSecretSlot(slot: string): { provider: string; name: string } | null {
+  const dot = slot.indexOf('.')
+  if (dot <= 0 || dot === slot.length - 1) return null
+  return { provider: slot.slice(0, dot), name: slot.slice(dot + 1) }
+}
+
 /** Read one named secret (store only — does not consult env). */
 export function getStoredSecret(providerId: string, name: string): string | null {
   return nonEmpty(readStore().providers[providerId]?.[name])

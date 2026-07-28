@@ -82,7 +82,7 @@ describe('synthesis — clawhub-style bundle with requirements', () => {
     const secrets = manifest.secrets ?? []
     const primary = secrets.find((s) => s.name === 'EBAY_API_KEY')
     expect(primary?.required).toBe(true)
-    expect(primary?.secretSlot).toBe('skills.EBAY_API_KEY')
+    expect(primary?.secretSlot).toBe('skills.hub-ebay-research.EBAY_API_KEY')
     const optional = secrets.find((s) => s.name === 'EBAY_OPTIONAL_AFFILIATE_ID')
     expect(optional?.required).toBe(false)
 

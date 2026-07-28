@@ -50,7 +50,7 @@ import {
 } from './tool-access-provisioning'
 import { listConfiguredChannels, listLlmCredentials, listLlmCredentialsViaCli, type LlmCredential } from './credential-status'
 import { applyRoutingPolicy, readRoutingPolicy, setAgentModels } from './model-routing'
-import { beginAdapterTurnActivity, RuntimeError, RuntimeTurnError, isSafeSkillFilePath, isExecutableSkillFile, readSkillTree } from '@bakin/core/adapters/runtime'
+import { beginAdapterTurnActivity, RuntimeError, RuntimeTurnError, isSafeSkillFilePath, isExecutableSkillFile, readSkillTree, SKILL_SIDECAR_NAMES } from '@bakin/core/adapters/runtime'
 import { tryGetMainAgentId } from './main-agent'
 import { buildOpenClawAttachments } from './attachments'
 import { safeFileSize } from './file-utils'
@@ -144,6 +144,9 @@ const DEFAULT_SETTINGS: OpenClawSettings = {
 }
 
 const execFileAsync = promisify(execFile)
+
+/** Skill dir names are path segments — validate before building a path. */
+const SKILL_NAME_RE = /^[a-z0-9][a-z0-9-_]{0,63}$/i
 
 const noopLogger: AdapterLogger = {
   debug: () => {},
@@ -908,13 +911,22 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       return null
     },
     write: async (skill: RuntimeSkill, agentId?: string): Promise<void> => {
+      // Validate the name and EVERY path before the first write — a mid-loop
+      // throw would leave a half-written dir that skills.list reports as a
+      // valid skill (the Pi adapter guards this identically).
+      if (!SKILL_NAME_RE.test(skill.name)) throw new Error(`Invalid skill name: ${skill.name}`)
+      const files = Object.entries(skill.files ?? { 'SKILL.md': skill.instructions ?? '' })
+      for (const [rel] of files) {
+        const base = rel.split('/').pop() ?? rel
+        if (!isSafeSkillFilePath(rel) || SKILL_SIDECAR_NAMES.has(base)) {
+          throw new Error(`Invalid skill file path: ${rel}`)
+        }
+      }
       const dir = agentId
         ? join(getWorkspacePath(agentId), 'skills', skill.name)
         : join(getOpenClawPath('skills'), skill.name)
       mkdirSync(dir, { recursive: true })
-      const files = skill.files ?? { 'SKILL.md': skill.instructions ?? '' }
-      for (const [rel, content] of Object.entries(files)) {
-        if (!isSafeSkillFilePath(rel)) throw new Error(`Invalid skill file path: ${rel}`)
+      for (const [rel, content] of files) {
         const target = join(dir, rel)
         mkdirSync(dirname(target), { recursive: true })
         writeFileSync(target, content, 'utf-8')

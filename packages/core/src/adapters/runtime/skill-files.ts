@@ -18,6 +18,9 @@ export function isSafeSkillFilePath(path: string): boolean {
     && !path.split('/').some((part) => part === '..' || part === '')
 }
 
+/** Metadata sidecars — never part of a skill's file map. */
+export const SKILL_SIDECAR_NAMES = new Set(['.installedBy', '.userEdited'])
+
 const SCRIPT_EXTENSIONS = new Set(['sh', 'bash', 'zsh', 'py', 'js', 'mjs', 'cjs', 'rb', 'pl'])
 
 /** Scripts get the executable bit at projection: shebang or a script extension. */

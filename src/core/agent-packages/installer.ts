@@ -30,6 +30,7 @@
 import { existsSync, rmSync, statSync } from 'fs'
 import { commitStaging } from '../install-core/transaction'
 import { createLogger } from '../logger'
+import { SkillRefusalError } from './errors'
 import { getContentDir } from '../content-dir'
 import { appendAudit } from '../audit'
 import {
@@ -98,6 +99,14 @@ export interface InstallOptions {
    * surface routes through a y/N prompt.
    */
   replace?: boolean
+  /**
+   * An already-fetched+staged top-level source to install verbatim, instead
+   * of re-fetching `source` (#687 consent TOCTOU fix): the skills trust gate
+   * verifies staging against the consent sha and hands THAT exact tree here,
+   * so the bytes reviewed are the bytes installed. The installer consumes
+   * the staging dir (moves it into place); the caller must not reuse it.
+   */
+  prefetched?: FetchedSource
 }
 
 export interface InstallResult {
@@ -166,7 +175,7 @@ function preflightCollisions(
  * just badged in Explore. A pack that can't work here refuses honestly
  * before any projection. Audited so refusals are visible after the fact.
  */
-function assertRuntimePlatformCompatible(manifest: Manifest): void {
+export function assertRuntimePlatformCompatible(manifest: Manifest): void {
   const runtimes = 'runtimes' in manifest ? manifest.runtimes : undefined
   if (runtimes && runtimes.length > 0 && !runtimes.includes('*')) {
     const active = getSettings().runtime.adapter
@@ -177,8 +186,9 @@ function assertRuntimePlatformCompatible(manifest: Manifest): void {
         activeAdapter: active,
         runtimes,
       }, 'cli')
-      throw new Error(
+      throw new SkillRefusalError(
         `Package "${manifest.id}" is not for the active runtime (${active}) — compatible: ${runtimes.join(', ')}.`,
+        'runtime',
       )
     }
   }
@@ -193,8 +203,9 @@ function assertRuntimePlatformCompatible(manifest: Manifest): void {
         platform: platform ?? 'unknown',
         platforms,
       }, 'cli')
-      throw new Error(
+      throw new SkillRefusalError(
         `Package "${manifest.id}" is not available on this platform — needs ${platforms.join(' or ')}.`,
+        'platform',
       )
     }
   }
@@ -312,9 +323,14 @@ export async function installPackage(options: InstallOptions): Promise<InstallRe
   let originalLock: Lockfile | null = null
 
   try {
-    // ─── 1. Fetch top-level source ─────────────────────────────────────────
-    log.info('Fetching package source', { source: options.source })
-    topFetched = await fetchSourceAsync(options.source)
+    // ─── 1. Fetch top-level source (or adopt a pre-verified staging dir) ────
+    if (options.prefetched) {
+      log.info('Installing pre-fetched (consent-verified) source', { source: options.source })
+      topFetched = options.prefetched
+    } else {
+      log.info('Fetching package source', { source: options.source })
+      topFetched = await fetchSourceAsync(options.source)
+    }
 
     // ─── 2. Parse + validate manifest ──────────────────────────────────────
     const manifestPath = join(topFetched.stagingDir, 'bakin-package.json')

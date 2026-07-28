@@ -109,7 +109,11 @@ describe('buildSkillPreview', () => {
     const p = result.preview
     expect(p.packageId).toBe('hub-ebay-research')
     expect(p.version).toBe('1.2.0')
-    expect(p.files.map((f) => f.path)).toContain('scripts/fetch.sh')
+    // Whole-staging-tree paths (the preview covers EVERY contributed skill
+    // dir, not just contributions.skills[0]).
+    expect(p.files.map((f) => f.path)).toContain('skills/ebay-research/scripts/fetch.sh')
+    // The synthesized manifest is shown as structured requirements instead.
+    expect(p.files.map((f) => f.path)).not.toContain('bakin-package.json')
     expect(p.files.every((f) => f.bytes > 0)).toBe(true)
     expect(p.requirements.secrets.map((s) => s.name)).toContain('EBAY_API_KEY')
     expect(p.requirements.prereqs.map((q) => q.probe)).toContain('jq')
@@ -182,5 +186,59 @@ describe('confirmSkillInstall', () => {
     const leftovers = (await import('fs')).readdirSync(staging, { recursive: false })
       .filter((entry) => String(entry).startsWith('.staging'))
     expect(leftovers).toEqual([])
+  })
+})
+
+describe('re-install IS the update path (#687 review)', () => {
+  it('installing the same ref twice supersedes — no collision, no duplicate entry', async () => {
+    const src = seedSource('bare-style', 'reinstall')
+
+    const first = await buildSkillPreview(src)
+    if (!first.ok) throw new Error(first.error)
+    expect((await confirmSkillInstall(src, first.preview.consentToken)).status).toBe('installed')
+
+    // Upstream edits the content WITHOUT bumping the version (the common
+    // ClawHub case) — the old code threw "already installed".
+    writeFileSync(join(src, 'SKILL.md'), '---\nname: commit-messages\ndescription: edited\n---\n# edited body\n')
+
+    const second = await buildSkillPreview(src)
+    if (!second.ok) throw new Error(second.error)
+    const result = await confirmSkillInstall(src, second.preview.consentToken)
+    expect(result.status).toBe('installed')
+
+    // Exactly ONE lockfile entry for this skill, holding the new content.
+    const keys = Object.keys(readLockfile().packages).filter((k) => k.startsWith('hub-commit-messages'))
+    expect(keys).toHaveLength(1)
+    expect(skillStore.get('commit-messages')?.files?.['SKILL.md']).toContain('edited body')
+  })
+
+  it('a version bump also leaves exactly one entry', async () => {
+    const src = seedSource('bare-style', 'reinstall-bump')
+    const first = await buildSkillPreview(src)
+    if (!first.ok) throw new Error(first.error)
+    await confirmSkillInstall(src, first.preview.consentToken)
+
+    writeFileSync(join(src, 'SKILL.md'), '---\nname: commit-messages\ndescription: v2\nversion: 2.0.0\n---\n# v2\n')
+    const second = await buildSkillPreview(src)
+    if (!second.ok) throw new Error(second.error)
+    expect((await confirmSkillInstall(src, second.preview.consentToken)).status).toBe('installed')
+
+    const keys = Object.keys(readLockfile().packages).filter((k) => k.startsWith('hub-commit-messages'))
+    expect(keys).toEqual(['hub-commit-messages@2.0.0'])
+  })
+})
+
+describe('consent binds the bytes that get INSTALLED (TOCTOU, #687 review)', () => {
+  it('content swapped after the consent check never lands', async () => {
+    const src = seedSource('bare-style', 'toctou')
+    const preview = await buildSkillPreview(src)
+    if (!preview.ok) throw new Error(preview.error)
+
+    // Tamper between preview and confirm: the gate re-hashes, sees drift,
+    // and bounces instead of installing the swapped content.
+    writeFileSync(join(src, 'SKILL.md'), '---\nname: commit-messages\ndescription: evil\n---\n# malicious payload\n')
+    const result = await confirmSkillInstall(src, preview.preview.consentToken)
+    expect(result.status).toBe('drift')
+    expect(skillStore.get('commit-messages')).toBeUndefined()
   })
 })

@@ -21,13 +21,17 @@ import { readSkillTree } from '@bakin/core/adapters/runtime'
 import { signConsentToken, verifyConsentToken } from '@/core/plugins/consent-token'
 import { computeDirSha } from '../../../packages/core/src/agent-packages/markers'
 import { safeParseManifest } from '../../../packages/core/src/agent-packages/manifest'
+import { readLockfile } from '../../../packages/core/src/agent-packages/lockfile'
 import { appendAudit } from '../audit'
 import { getContentDir } from '../content-dir'
 import { createLogger } from '../logger'
 import { normalizeSkillRef, parseClawhubRef } from './ref-normalize'
 import { fetchSourceAsync, isClawhubSource, type FetchedSource } from './source-fetcher'
 import { createClawhubClient } from './clawhub-client'
+import { binPlatformKey } from './bin-installer'
+import { SkillRefusalError } from './errors'
 import { installPackage, type InstallResult } from './installer'
+import { removePackageById } from './uninstaller'
 
 const log = createLogger('skill-trust')
 
@@ -70,6 +74,15 @@ export interface SkillPreviewRequirements {
   secrets: Array<{ name: string; required: boolean; secretSlot?: string; help?: string }>
   prereqs: Array<{ name: string; probe: string; optional: boolean }>
   platforms?: string[]
+  /**
+   * DOWNLOADABLE legs (#687 security review) — these fetch AND EXECUTE at
+   * install time (`verifyArgs`), so they must be surfaced loudly and bound
+   * into consent. A raw hub bundle never declares them (synthesis can't
+   * produce them); only a source shipping its own bakin-package.json can.
+   */
+  bins: Array<{ name: string; url?: string; willExecute: boolean }>
+  npm: string[]
+  models: Array<{ name: string; bytes: number }>
 }
 
 export interface SkillPreview {
@@ -89,7 +102,8 @@ export interface SkillPreview {
   warnings: string[]
   risk: RiskFinding[]
   hub?: { downloads?: number; stars?: number; installs?: number }
-  verdictState: 'clean' | 'unverified' | 'none'
+  /** 'none' = non-hub source (github/local). Never re-derived from copy. */
+  verdictState: 'clean' | 'unscanned' | 'unverified' | 'none'
   contentSha: string
   consentToken: string
 }
@@ -126,13 +140,23 @@ async function assess(input: string): Promise<StagedAssessment> {
   const manifest = parsed.data
 
   const skillName = fetched.synthesis?.skillName ?? manifest.name
-  const skillDirRel = manifest.kind === 'skill-pack' ? manifest.contributions.skills[0] : undefined
-  const skillDir = skillDirRel ? join(staging, skillDirRel) : staging
-  const files = existsSync(skillDir) ? readSkillTree(skillDir) : {}
+  // Scan the WHOLE staged tree, not just contributions.skills[0]: a pack can
+  // contribute multiple skill dirs, and reading only the first hid a second
+  // payload dir from the file list, risk scan, and mentions scan. Reading our
+  // own staging tree (never join(staging, attacker-path)) also removes the
+  // preview-time traversal surface. bakin-package.json is Bakin's synthesized
+  // manifest, shown as structured requirements instead.
+  const files = readSkillTree(staging)
+  delete (files as Record<string, string>)['bakin-package.json']
 
-  // Untranslated frontmatter metadata, verbatim (preview honesty).
+  // Untranslated frontmatter metadata, verbatim (preview honesty). Locate a
+  // SKILL.md: prefer the first contribution's, else any in the tree.
   let rawMetadata: unknown
-  const skillMd = files['SKILL.md']
+  const skillMdKey = manifest.kind === 'skill-pack' && manifest.contributions.skills[0]
+    ? `${manifest.contributions.skills[0]}/SKILL.md`
+    : undefined
+  const skillMd = (skillMdKey && files[skillMdKey])
+    ?? files[Object.keys(files).find((k) => /(^|\/)SKILL\.md$/i.test(k)) ?? '']
   if (skillMd?.startsWith('---')) {
     const end = skillMd.indexOf('\n---', 3)
     if (end > 0) {
@@ -146,14 +170,22 @@ async function assess(input: string): Promise<StagedAssessment> {
     }
   }
 
+  const requires = manifest.kind === 'skill-pack' ? manifest.requires : undefined
+  const platformKey = binPlatformKey()
   const requirements: SkillPreviewRequirements = {
     secrets: (manifest.secrets ?? []).map((s) => ({
       name: s.name, required: s.required, secretSlot: s.secretSlot, help: s.help,
     })),
-    prereqs: manifest.kind === 'skill-pack'
-      ? (manifest.requires?.prereqs ?? []).map((p) => ({ name: p.name, probe: p.probe, optional: p.optional }))
-      : [],
+    prereqs: (requires?.prereqs ?? []).map((p) => ({ name: p.name, probe: p.probe, optional: p.optional })),
     ...(manifest.kind === 'skill-pack' && manifest.platforms ? { platforms: manifest.platforms } : {}),
+    // Downloadable-and-executable legs, surfaced loudly (security review).
+    bins: (requires?.bins ?? []).map((b) => ({
+      name: b.name,
+      url: platformKey ? b.install[platformKey]?.url : undefined,
+      willExecute: Boolean(b.verifyArgs && b.verifyArgs.length > 0),
+    })),
+    npm: (requires?.npm ?? []).map((n) => n.name),
+    models: (requires?.models ?? []).map((m) => ({ name: m.name, bytes: m.bytes })),
   }
 
   let hub: SkillPreview['hub']
@@ -170,7 +202,7 @@ async function assess(input: string): Promise<StagedAssessment> {
 
   const contentSha = computeDirSha(staging)
   const fileList = Object.entries(files)
-    .map(([path]) => ({ path, bytes: statSync(join(skillDir, path)).size }))
+    .map(([path]) => ({ path, bytes: statSync(join(staging, path)).size }))
     .sort((a, b) => a.path.localeCompare(b.path))
 
   return {
@@ -193,8 +225,11 @@ async function assess(input: string): Promise<StagedAssessment> {
       warnings: [...(fetched.synthesis?.warnings ?? []), ...(fetched.fetchWarnings ?? [])],
       risk: scanInstructionRisk(files),
       ...(hub ? { hub } : {}),
-      verdictState: fetched.kind === 'clawhub'
-        ? ((fetched.fetchWarnings ?? []).some((w) => w.includes('unverified')) ? 'unverified' : 'clean')
+      // Carried verbatim from the fetch layer — NEVER re-derived from copy.
+      // Non-hub sources have no verdict; refused never reaches preview (fetch
+      // throws), so map it defensively to 'unscanned'.
+      verdictState: fetched.verdictState
+        ? (fetched.verdictState === 'refused' ? 'unscanned' : fetched.verdictState)
         : 'none',
       contentSha,
     },
@@ -207,8 +242,8 @@ function teardown(fetched: FetchedSource | null): void {
   }
 }
 
-function isRefusal(message: string): boolean {
-  return /refus|no override|binary files|unsafe file path|sanity cap|not for the active runtime|not available on this platform/i.test(message)
+function isRefusal(err: unknown): boolean {
+  return err instanceof SkillRefusalError
 }
 
 /** Phase 1 — preview + consent token. Staging never survives this call. */
@@ -224,7 +259,7 @@ export async function buildSkillPreview(input: string): Promise<PreviewResult> {
     return { ok: true, preview: { ...staged.preview, consentToken } }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    const refused = isRefusal(message)
+    const refused = isRefusal(err)
     if (refused) {
       appendAudit(getContentDir(), 'skill.hub.refused', input, { ref: input, reason: message }, 'rest')
     }
@@ -236,17 +271,32 @@ export async function buildSkillPreview(input: string): Promise<PreviewResult> {
 
 /** What the user is actually consenting to — rides inside the token. */
 function summarizeConsent(preview: Omit<SkillPreview, 'consentToken'>): string[] {
+  const r = preview.requirements
   return [
-    ...preview.requirements.secrets.map((s) => `secret:${s.name}`),
-    ...preview.requirements.prereqs.map((p) => `prereq:${p.probe}`),
-    ...preview.risk.map((r) => `risk:${r.pattern}`),
+    ...r.secrets.map((s) => `secret:${s.name}@${s.secretSlot ?? 'unbound'}`),
+    ...r.prereqs.map((p) => `prereq:${p.probe}`),
+    // Downloadable/executable legs are part of what's consented to.
+    ...r.bins.map((b) => `bin:${b.name}${b.willExecute ? ':exec' : ''}`),
+    ...r.npm.map((n) => `npm:${n}`),
+    ...r.models.map((m) => `model:${m.name}`),
+    ...preview.risk.map((rf) => `risk:${rf.pattern}`),
   ]
 }
 
+/** Existing installed skill-pack lockfile keys for this manifest id (any version). */
+function existingSkillPackKeys(packageId: string): string[] {
+  const lock = readLockfile()
+  return Object.entries(lock.packages)
+    .filter(([key, entry]) => entry.kind === 'skill-pack' && (key === packageId || key.startsWith(`${packageId}@`)))
+    .map(([key]) => key)
+}
+
 /**
- * Phase 2 — token-validated install. Re-fetches and re-hashes; content
- * drift bounces to a FRESH preview (the plugin-gate pattern), so stale
- * consent never installs changed content.
+ * Phase 2 — token-validated install. Installs the EXACT staging tree whose
+ * sha the consent token bound (no third re-fetch — that was a TOCTOU), and
+ * SUPERSEDES any existing install of the same id (re-install = update, D4).
+ * Content drift bounces to a FRESH preview so stale consent never installs
+ * changed content.
  */
 export async function confirmSkillInstall(input: string, token: string): Promise<ConfirmResult> {
   const normalized = normalizeSkillRef(input)
@@ -270,19 +320,16 @@ export async function confirmSkillInstall(input: string, token: string): Promise
       })
       return { status: 'drift', preview: { ...staged.preview, consentToken: freshToken } }
     }
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    if (isRefusal(message)) {
-      appendAudit(getContentDir(), 'skill.hub.refused', ref, { ref, reason: message }, 'rest')
-      return { status: 'refused', error: message }
-    }
-    return { status: 'error', error: message }
-  } finally {
-    teardown(staged?.fetched ?? null)
-  }
 
-  try {
-    const result = await installPackage({ source: ref })
+    // Re-install-as-update: remove any existing install of this id first, so
+    // the same version doesn't collide and a bumped version doesn't leave a
+    // stale duplicate entry projecting the same runtime skill.
+    for (const key of existingSkillPackKeys(staged.preview.packageId)) {
+      await removePackageById({ packageId: key })
+    }
+
+    // Install the VERIFIED staging verbatim (installer consumes the dir).
+    const result = await installPackage({ source: ref, prefetched: staged.fetched })
     appendAudit(getContentDir(), 'skill.hub.installed', result.packageId, {
       ref,
       packageId: result.packageId,
@@ -293,6 +340,15 @@ export async function confirmSkillInstall(input: string, token: string): Promise
     return { status: 'installed', result, warnings: staged.preview.warnings }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    return isRefusal(message) ? { status: 'refused', error: message } : { status: 'error', error: message }
+    if (isRefusal(err)) {
+      appendAudit(getContentDir(), 'skill.hub.refused', ref, { ref, reason: message }, 'rest')
+      return { status: 'refused', error: message }
+    }
+    log.error('skill install failed', err instanceof Error ? err : new Error(message), { ref })
+    return { status: 'error', error: message }
+  } finally {
+    // No-op after a successful install (installer moved staging into place);
+    // cleans up on drift, refusal, or a failed install.
+    teardown(staged?.fetched ?? null)
   }
 }

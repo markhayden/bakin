@@ -40,7 +40,9 @@ export async function promptMissingSecrets(cap: InstallCapabilityInfo): Promise<
       if (secret.help) console.log(`  ${secret.name}: get one at ${secret.help}`)
       const value = (await rl.question(`  Paste ${secret.name} (Enter to skip): `)).trim()
       if (!value) continue
-      const [provider, name] = secret.secretSlot.split('.', 2)
+      const dot = secret.secretSlot.indexOf('.')
+      const provider = secret.secretSlot.slice(0, dot)
+      const name = secret.secretSlot.slice(dot + 1)
       await apiPost('/api/secrets', { provider, name, value })
       storedAny = true
       console.log(`  ✓ stored as ${secret.secretSlot} (Settings → Integrations & Keys)`)

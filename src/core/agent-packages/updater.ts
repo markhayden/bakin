@@ -37,6 +37,7 @@ import {
   releaseInstallLock,
 } from './install-lock'
 import { validatePackageContributionIntegrity } from './package-integrity'
+import { assertRuntimePlatformCompatible } from './installer'
 
 const log = createLogger('agent-pkg:update')
 
@@ -94,6 +95,10 @@ export async function updatePackageById(options: UpdateOptions): Promise<UpdateR
     // Parse new manifest
     const manifestPath = join(fetched.stagingDir, 'bakin-package.json')
     const manifest: Manifest = parseManifest(JSON.parse(readFileSync(manifestPath, 'utf-8')))
+
+    // D14 also applies on the update path: a new version that dropped the
+    // active runtime/platform must refuse, not install-then-flag.
+    assertRuntimePlatformCompatible(manifest)
 
     // Sanity: id must match. Renaming a package mid-install is too dangerous
     // to allow silently — the user runs remove + install instead.

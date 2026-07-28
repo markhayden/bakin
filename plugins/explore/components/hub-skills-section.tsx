@@ -22,15 +22,18 @@ interface SkillPreviewWire {
   pinnedRef: string
   files: Array<{ path: string; bytes: number }>
   requirements: {
-    secrets: Array<{ name: string; required: boolean; help?: string }>
+    secrets: Array<{ name: string; required: boolean; secretSlot?: string; help?: string }>
     prereqs: Array<{ name: string; probe: string; optional: boolean }>
     platforms?: string[]
+    bins: Array<{ name: string; url?: string; willExecute: boolean }>
+    npm: string[]
+    models: Array<{ name: string; bytes: number }>
   }
   mentions: string[]
   warnings: string[]
   risk: Array<{ file: string; line: number; pattern: string; snippet: string }>
   hub?: { downloads?: number; stars?: number }
-  verdictState: 'clean' | 'unverified' | 'none'
+  verdictState: 'clean' | 'unscanned' | 'unverified' | 'none'
   consentToken: string
 }
 
@@ -43,11 +46,18 @@ function fmtBytes(bytes: number): string {
   return bytes < 1024 ? `${bytes} B` : `${(bytes / 1024).toFixed(1)} KB`
 }
 
-/** Source is a chip on the installed row, never a grouping. */
+/**
+ * Source is a chip on the installed row, never a grouping. Only the curated
+ * bits repo earns "official" — a third-party pack shipping its own manifest
+ * is just a "pack" (labeling it official would overclaim).
+ */
+const OFFICIAL_SOURCE_PREFIX = 'github:markhayden/bakin-bits-official'
+
 function sourceChip(source: string, hub: boolean): string {
-  if (!hub) return 'official'
+  if (source.startsWith(OFFICIAL_SOURCE_PREFIX)) return 'official'
   if (source.startsWith('clawhub:')) return 'clawhub'
   if (source.startsWith('github:')) return 'github'
+  if (!hub) return 'pack'
   return 'local'
 }
 
@@ -59,9 +69,11 @@ function VerdictLine({ state }: { state: SkillPreviewWire['verdictState'] }) {
       </div>
     )
   }
-  const copy = state === 'unverified'
-    ? 'ClawHub security verdict unavailable — content is unverified.'
-    : 'No hub verdict exists for this source — review the files below.'
+  const copy = state === 'unscanned'
+    ? 'ClawHub has NOT scanned this version — treat it as unverified.'
+    : state === 'unverified'
+      ? 'ClawHub security verdict unavailable — content is unverified.'
+      : 'No hub verdict exists for this source — review the files below.'
   return (
     <div className="flex items-center gap-2 text-sm text-amber-500">
       <ShieldAlert className="size-4" /> {copy}
@@ -120,12 +132,33 @@ function PreviewDrawerBody({
         </div>
       )}
 
+      {(requirements.bins.length > 0 || requirements.npm.length > 0 || requirements.models.length > 0) && (
+        <div className="rounded border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-400" data-testid="download-warnings">
+          <div className="mb-1 flex items-center gap-2 font-medium">
+            <ShieldAlert className="size-4" /> This source downloads and installs software:
+          </div>
+          {requirements.bins.map((b) => (
+            <div key={b.name} className="font-mono text-xs">
+              binary {b.name}{b.url ? ` from ${b.url}` : ''}{b.willExecute ? ' — WILL BE EXECUTED during install' : ''}
+            </div>
+          ))}
+          {requirements.npm.map((n) => (
+            <div key={n} className="font-mono text-xs">npm {n} — dependencies installed into Bakin</div>
+          ))}
+          {requirements.models.map((m) => (
+            <div key={m.name} className="font-mono text-xs">model {m.name} ({Math.round(m.bytes / 1_000_000)} MB download)</div>
+          ))}
+          <div className="mt-1 text-xs">Installed binaries land on your agents&apos; PATH. Only proceed if you trust this publisher.</div>
+        </div>
+      )}
+
       {(requirements.secrets.length > 0 || requirements.prereqs.length > 0 || requirements.platforms) && (
         <div className="space-y-1 text-sm">
           <div className="font-medium">Requirements (translated from upstream metadata)</div>
           {requirements.secrets.map((s) => (
             <div key={s.name} className="font-mono text-xs">
               key&nbsp;&nbsp;{s.name}{s.required ? '' : ' (optional)'}
+              {s.secretSlot && <span className="text-muted-foreground"> → {s.secretSlot}</span>}
               {s.help && <span className="text-muted-foreground"> — {s.help}</span>}
             </div>
           ))}
@@ -191,7 +224,8 @@ export function HubSkillsSection() {
 
   const runPreview = async () => {
     const trimmed = ref.trim()
-    if (!trimmed) return
+    // Enter can fire while a preview is already staging server-side.
+    if (!trimmed || previewBusy) return
     setPreviewBusy(true)
     setBoxError(null)
     try {
@@ -325,6 +359,7 @@ export function HubSkillsSection() {
           <Input
             value={ref}
             onChange={(e) => setRef(e.target.value)}
+            aria-label="Skill link or reference to install"
             placeholder="https://clawhub.ai/owner/skills/name · github.com/… · clawhub:@owner/name"
             onKeyDown={(e) => { if (e.key === 'Enter') void runPreview() }}
             data-testid="hub-ref-input"

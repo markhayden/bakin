@@ -21,6 +21,7 @@
 import { mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { load as parseYaml } from 'js-yaml'
+import { mintSkillSecretSlot } from '../../../packages/core/src/agent-packages/skill-secret-slot'
 import { createLogger } from '../logger'
 
 const log = createLogger('skill-synthesis')
@@ -47,6 +48,12 @@ export interface SynthesisSourceInfo {
   resolvedSha?: string
   /** Hub-resolved version, used when the frontmatter has none. */
   hubVersion?: string
+  /**
+   * Name to use when the frontmatter declares none. Computed by the FETCH
+   * site from the already-parsed ref (repo/subpath/slug) — a flat split of
+   * `source` would wrongly pick a trailing `@version`/`#subpath` segment.
+   */
+  fallbackName?: string
 }
 
 export type SynthesisResult =
@@ -178,7 +185,7 @@ interface TranslatedLegs {
   warnings: string[]
 }
 
-function translateOpenClawMetadata(meta: OpenClawMetadata | undefined, help: string): TranslatedLegs | { unsupportedOs: string } {
+function translateOpenClawMetadata(meta: OpenClawMetadata | undefined, help: string, packageId: string): TranslatedLegs | { unsupportedOs: string } {
   const warnings: string[] = []
   const secrets = new Map<string, { name: string; description: string; required: boolean; secretSlot: string; help?: string }>()
   const prereqs = new Map<string, { name: string; kind: 'binary'; probe: string; help: string; optional: boolean }>()
@@ -189,13 +196,15 @@ function translateOpenClawMetadata(meta: OpenClawMetadata | undefined, help: str
       return
     }
     const existing = secrets.get(name)
-    // Core mints the slot — always the skills.* namespace (never an existing
-    // provider slot; that would route real keys into hub-skill env vars).
+    // Core mints the slot, per-package under skills.* — never an existing
+    // provider slot (that would route real keys into hub-skill env vars) and
+    // never shared across skills (that would silently inherit a neighbour's
+    // stored key and report "ready"). See skill-secret-slot.ts.
     secrets.set(name, {
       name,
       description: `Required by this skill (declared upstream)`,
       required: existing?.required || required,
-      secretSlot: `skills.${name}`,
+      secretSlot: mintSkillSecretSlot(packageId, name),
       help,
     })
   }
@@ -271,7 +280,9 @@ export function synthesizeSkillPack(stagingDir: string, sourceInfo: SynthesisSou
   warnings.push(...fmWarnings)
 
   const rawName = fm.name?.trim() || undefined
-  const fallbackName = sourceInfo.source.split(/[/#@]/).filter(Boolean).pop() ?? 'skill'
+  // Prefer the fetch-site fallback (repo/subpath/slug from the parsed ref);
+  // the flat-split legacy path would pick a trailing @version segment.
+  const fallbackName = sourceInfo.fallbackName ?? sourceInfo.source.split(/[/#@]/).filter(Boolean).pop() ?? 'skill'
   const skillName = sanitizeName(rawName ?? fallbackName)
   if (!skillName) {
     return { ok: false, reason: 'invalid-name', error: `cannot derive a usable skill name from "${rawName ?? fallbackName}"` }
@@ -282,7 +293,8 @@ export function synthesizeSkillPack(stagingDir: string, sourceInfo: SynthesisSou
   if (versionWarning) warnings.push(versionWarning)
 
   const help = helpUrl(sourceInfo.source, fm.homepage)
-  const translated = translateOpenClawMetadata(fm.metadata?.openclaw, help)
+  const packageId = `hub-${skillName}`
+  const translated = translateOpenClawMetadata(fm.metadata?.openclaw, help, packageId)
   if ('unsupportedOs' in translated) {
     return { ok: false, reason: 'unsupported-os', error: `skill declares os [${translated.unsupportedOs}] — no supported Bakin platform` }
   }
@@ -301,7 +313,7 @@ export function synthesizeSkillPack(stagingDir: string, sourceInfo: SynthesisSou
   renameSync(holding, join(stagingDir, 'skills', skillName))
 
   const manifest = {
-    id: `hub-${skillName}`,
+    id: packageId,
     name: skillName,
     version,
     kind: 'skill-pack' as const,

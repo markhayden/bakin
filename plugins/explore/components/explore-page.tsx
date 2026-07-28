@@ -310,7 +310,7 @@ function ExplorePageInner() {
             ? 'No matches'
             : tab === 'lessons' ? 'Lesson packs are coming'
               : tab === 'capabilities'
-                ? (tabEntries.length > 0 ? 'All official capabilities installed' : 'Capability packs are coming')
+                ? (tabEntries.length > 0 && activeCategories.length === 0 ? 'All official capabilities installed' : 'Capability packs are coming')
                 : 'Nothing here yet'}
           description={searchDraft.trim()
             ? `Nothing on this tab matches "${searchDraft.trim()}" — try another tab or clear the search.`
@@ -318,7 +318,7 @@ function ExplorePageInner() {
               ? 'No entries match the selected categories.'
               : tab === 'lessons'
                 ? 'Official lesson packs will appear here as they\'re published. Agents you install often ship their own lessons — manage those from the agent\'s Team page.'
-                : tab === 'capabilities' && tabEntries.length > 0
+                : tab === 'capabilities' && tabEntries.length > 0 && activeCategories.length === 0
                   ? 'Every curated capability is already on your team — paste a link above to bring in more from the ecosystem.'
                   : 'The catalog has no entries for this tab yet.'}
         />

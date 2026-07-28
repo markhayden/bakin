@@ -143,6 +143,7 @@ describe('raw-bundle install (local source)', () => {
     // Engine semantics: the lockfile KEY is stable across updates; the
     // version field inside the entry is the truth.
     expect(readLockfile().packages['hub-commit-messages@0.0.0']?.version).toBe('2.0.0')
+    await removePackageById({ packageId: 'hub-commit-messages@0.0.0' })
   })
 
   it('a dir with neither manifest nor SKILL.md still fails with the classic error + hint', async () => {
@@ -169,5 +170,42 @@ describe('raw-bundle install (local source)', () => {
     const result = await installPackage({ source: dir })
     expect(result.packageId).toBe('realpack')
     expect(skillStore.has('real')).toBe(true)
+  })
+})
+
+describe('code-review regressions (#687)', () => {
+  it('a bundle carrying .git installs cleanly — the headline paste-a-repo case', async () => {
+    const src = seedRawBundle('bare-style', 'gitrepo')
+    // Simulate a cloned repo root: binary pack files under .git.
+    mkdirSync(join(src, '.git', 'objects', 'pack'), { recursive: true })
+    writeFileSync(join(src, '.git', 'objects', 'pack', 'pack-1.pack'), Buffer.from([0x50, 0x41, 0x43, 0x4b, 0x00, 0xff, 0xfe, 0x00]))
+    writeFileSync(join(src, '.git', 'HEAD'), 'ref: refs/heads/main\n')
+
+    await installPackage({ source: src })
+    expect(skillStore.has('commit-messages')).toBe(true)
+    // .git never reaches the projected skill.
+    const projected = skillStore.get('commit-messages')
+    expect(Object.keys(projected?.files ?? {}).some((f) => f.startsWith('.git'))).toBe(false)
+    await removePackageById({ packageId: 'hub-commit-messages@0.0.0' })
+  })
+
+  it('the fallback name comes from the repo/slug, never a trailing @version segment', async () => {
+    const src = seedRawBundle('bare-style', 'noname')
+    // Frontmatter without a name → the fetch-site fallback decides.
+    writeFileSync(join(src, 'SKILL.md'), '---\ndescription: no name here\n---\n# anon\n')
+    await installPackage({ source: src })
+    // Local sources fall back to the directory basename.
+    expect(skillStore.has('noname')).toBe(true)
+    await removePackageById({ packageId: 'hub-noname@0.0.0' })
+  })
+
+  it('synthesized secret slots are namespaced per package (no cross-skill key sharing)', async () => {
+    const src = seedRawBundle('clawhub-style', 'slots')
+    await installPackage({ source: src })
+    const manifestPath = join(testDir, 'packages', 'skill-packs', 'hub-ebay-research@1.2.0', 'bakin-package.json')
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'))
+    const slot = manifest.secrets.find((s: { name: string }) => s.name === 'EBAY_API_KEY').secretSlot
+    expect(slot).toBe('skills.hub-ebay-research.EBAY_API_KEY')
+    await removePackageById({ packageId: 'hub-ebay-research@1.2.0' })
   })
 })

@@ -150,7 +150,7 @@ describe('verifyProposal — the trust boundary', () => {
       manifest,
       'https://example.dev',
     )
-    expect(result.addSecrets).toEqual([{ name: 'SERPAPI_KEY', secretSlot: 'skills.SERPAPI_KEY' }])
+    expect(result.addSecrets).toEqual([{ name: 'SERPAPI_KEY', secretSlot: 'skills.hub-x.SERPAPI_KEY' }])
     expect(result.addPrereqs.map((p) => p.probe)).toEqual(['rg'])
     expect(result.dropped.map((d) => d.name).sort()).toEqual(['/usr/bin/evil', 'TOTALLY_INVENTED_KEY', 'made-up-binary', 'not-env-shaped'])
   })
@@ -164,14 +164,14 @@ describe('verifyProposal — the trust boundary', () => {
       manifest,
       'https://example.dev',
     )
-    expect(result.addSecrets[0]!.secretSlot).toBe('skills.SERPAPI_KEY')
+    expect(result.addSecrets[0]!.secretSlot).toBe('skills.hub-x.SERPAPI_KEY')
   })
 
   it('dedupes against already-declared legs', () => {
     const declared = parseManifest({
       id: 'hub-x', name: 'x', version: '1.0.0', kind: 'skill-pack',
       contributions: { skills: ['skills/x'] },
-      secrets: [{ name: 'SERPAPI_KEY', description: 'd', secretSlot: 'skills.SERPAPI_KEY' }],
+      secrets: [{ name: 'SERPAPI_KEY', description: 'd', secretSlot: 'skills.hub-x.SERPAPI_KEY' }],
     }) as SkillPackManifest
     const result = verifyProposal(
       { secrets: [{ name: 'SERPAPI_KEY' }], prereqs: [], platforms: null, notes: null },
@@ -211,7 +211,7 @@ describe('buildMappingPreview + applyMapping', () => {
     const dir = getPackageSourceDir(testDir, 'skill-pack', 'hub-research-helper', '1.0.0')
     const manifest = parseManifest(JSON.parse(readFileSync(join(dir, 'bakin-package.json'), 'utf-8')))
     if (manifest.kind !== 'skill-pack') throw new Error('expected skill-pack')
-    expect(manifest.secrets?.find((s) => s.name === 'SERPAPI_KEY')?.secretSlot).toBe('skills.SERPAPI_KEY')
+    expect(manifest.secrets?.find((s) => s.name === 'SERPAPI_KEY')?.secretSlot).toBe('skills.hub-research-helper.SERPAPI_KEY')
     expect(manifest.requires?.prereqs?.find((p) => p.probe === 'rg')).toBeDefined()
     expect(manifest.capability).toBe('research-helper') // readiness now covers it
     expect(manifest.upstream?.source).toBe('clawhub:@x/research-helper') // provenance survives

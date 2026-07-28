@@ -37,7 +37,7 @@
 import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'fs'
 import { execFileSync, spawn } from 'child_process'
 import { homedir, tmpdir } from 'os'
-import { isAbsolute, join, resolve } from 'path'
+import { basename, isAbsolute, join, resolve } from 'path'
 import { randomUUID } from 'crypto'
 import { createLogger } from '../logger'
 import { getContentDir } from '../content-dir'
@@ -50,11 +50,13 @@ import { checkSubpath } from '../../../packages/core/src/install-core/source-gua
 import { synthesizeSkillPack, type SynthesisSourceInfo } from './skill-synthesis'
 import {
   type ClawhubClient,
+  type ClawhubVerdictState,
   createClawhubClient,
   evaluateVerdict,
   sha256Hex,
 } from './clawhub-client'
 import { parseClawhubRef } from './ref-normalize'
+import { SkillRefusalError } from './errors'
 
 const log = createLogger('agent-pkg:fetch')
 
@@ -73,6 +75,8 @@ export interface FetchedSource {
   synthesis?: { skillName: string; warnings: string[]; mentions: string[] }
   /** Non-fatal fetch-time warnings (e.g. hub verdict unavailable) for preview surfaces. */
   fetchWarnings?: string[]
+  /** ClawHub trust verdict, carried verbatim (never re-derived from warning text). */
+  verdictState?: ClawhubVerdictState
 }
 
 interface ParsedGithubSpec {
@@ -241,6 +245,29 @@ function cleanupStaging(stagingDir: string): void {
  * Anything else throws the classic missing-manifest error, with the bundle
  * shape mentioned so hub users get a hint.
  */
+/** VCS/dependency dirs a raw bundle must never carry into synthesis or projection. */
+const NON_BUNDLE_DIRS = new Set(['.git', 'node_modules'])
+
+/** Raw-bundle sanity caps (github/local); clawhub enforces the same per-manifest. */
+function assertBundleWithinCaps(dir: string, count = { files: 0, bytes: 0 }): void {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (entry.isSymbolicLink()) continue
+    const full = join(dir, entry.name)
+    if (entry.isDirectory()) {
+      assertBundleWithinCaps(full, count)
+    } else if (entry.isFile()) {
+      count.files += 1
+      count.bytes += statSync(full).size
+      if (count.files > CLAWHUB_MAX_FILES) {
+        throw new SkillRefusalError(`Skill bundle has over ${CLAWHUB_MAX_FILES} files — refusing`, 'size-cap')
+      }
+      if (count.bytes > CLAWHUB_MAX_TOTAL_BYTES) {
+        throw new SkillRefusalError(`Skill bundle exceeds ${CLAWHUB_MAX_TOTAL_BYTES} bytes — refusing`, 'size-cap')
+      }
+    }
+  }
+}
+
 function ensureInstallableStaging(stagingDir: string, sourceInfo: SynthesisSourceInfo): FetchedSource['synthesis'] {
   if (existsSync(join(stagingDir, 'bakin-package.json'))) return undefined
   const hasSkillMd = readdirSync(stagingDir, { withFileTypes: true })
@@ -250,9 +277,32 @@ function ensureInstallableStaging(stagingDir: string, sourceInfo: SynthesisSourc
       `Source is missing bakin-package.json (and has no SKILL.md, so it is not a raw skill bundle either): ${stagingDir}`,
     )
   }
+  // A pasted repo root (or a local git clone) stages a .git dir whose pack
+  // files are binary — without this, the headline paste-a-repo flow always
+  // refused with a bogus "bundle contains binary files: .git/objects/…".
+  for (const entry of readdirSync(stagingDir, { withFileTypes: true })) {
+    if (entry.isDirectory() && NON_BUNDLE_DIRS.has(entry.name)) {
+      rmSync(join(stagingDir, entry.name), { recursive: true, force: true })
+    }
+  }
+  // Bound the raw bundle before synthesis reads every file into memory
+  // (clawhub enforces this per-manifest; github/local had no cap).
+  assertBundleWithinCaps(stagingDir)
   const result = synthesizeSkillPack(stagingDir, sourceInfo)
-  if (!result.ok) throw new Error(`Cannot install skill bundle: ${result.error}`)
+  if (!result.ok) {
+    // binary-files / unsupported-os are trust refusals (403 + exit 2);
+    // no-skill-md / has-manifest / invalid-name are plain input errors.
+    if (result.reason === 'binary-files') throw new SkillRefusalError(`Cannot install skill bundle: ${result.error}`, 'binary-files')
+    if (result.reason === 'unsupported-os') throw new SkillRefusalError(`Cannot install skill bundle: ${result.error}`, 'unsupported-os')
+    throw new Error(`Cannot install skill bundle: ${result.error}`)
+  }
   return { skillName: result.skillName, warnings: result.warnings, mentions: result.mentions }
+}
+
+/** Skill-name fallback from a github ref: the subpath basename, else the repo. */
+function githubFallbackName(spec: ParsedGithubSpec): string {
+  const fromSubpath = spec.subpath ? spec.subpath.split('/').filter(Boolean).pop() : undefined
+  return fromSubpath || spec.repo.replace(/\.git$/, '')
 }
 
 function resolveGithubSubpath(cloneDir: string, subpath: string): string {
@@ -291,7 +341,7 @@ function fetchLocal(source: string): FetchedSource {
   try {
     mkdirSync(stagingDir, { recursive: true })
     cpSync(absSource, stagingDir, { recursive: true, dereference: false })
-    synthesis = ensureInstallableStaging(stagingDir, { source })
+    synthesis = ensureInstallableStaging(stagingDir, { source, fallbackName: basename(absSource) })
   } catch (err) {
     cleanupStaging(stagingDir)
     throw err
@@ -372,6 +422,7 @@ export function fetchGithubWithRunner(
       source,
       ref: spec.ref ?? undefined,
       resolvedSha: commitSha,
+      fallbackName: githubFallbackName(spec),
     })
     if (spec.subpath) cleanupStaging(cloneTarget)
     return { stagingDir: staging, commitSha, kind: 'github', ref: spec.ref ?? '', ...(synthesis ? { synthesis } : {}) }
@@ -405,6 +456,7 @@ export async function fetchGithubWithRunnerAsync(
       source,
       ref: spec.ref ?? undefined,
       resolvedSha: checkout.commitSha,
+      fallbackName: githubFallbackName(spec),
     })
     return { stagingDir: staging, commitSha: checkout.commitSha, kind: 'github', ref: spec.ref ?? '', ...(synthesis ? { synthesis } : {}) }
   } catch (err) {
@@ -477,28 +529,29 @@ export async function fetchClawhubWithClient(
     const scan = await client.getScan(ref.slug, ref.owner)
     const verdict = evaluateVerdict(scan, detail.version.security)
     if (verdict.state === 'refused') {
-      throw new Error(
+      throw new SkillRefusalError(
         `Refusing to install "${ref.slug}" — ${verdict.refusals.join('; ')}. ` +
           'There is no override for hub security refusals.',
+        'hub-verdict',
       )
     }
 
     const files = detail.version.files
     if (files.length > CLAWHUB_MAX_FILES) {
-      throw new Error(`Skill "${ref.slug}" lists ${files.length} files — over the ${CLAWHUB_MAX_FILES}-file sanity cap`)
+      throw new SkillRefusalError(`Skill "${ref.slug}" lists ${files.length} files — over the ${CLAWHUB_MAX_FILES}-file sanity cap`, 'size-cap')
     }
     const totalBytes = files.reduce((sum, f) => sum + f.size, 0)
     if (totalBytes > CLAWHUB_MAX_TOTAL_BYTES) {
-      throw new Error(`Skill "${ref.slug}" is ${totalBytes} bytes — over the ${CLAWHUB_MAX_TOTAL_BYTES}-byte sanity cap`)
+      throw new SkillRefusalError(`Skill "${ref.slug}" is ${totalBytes} bytes — over the ${CLAWHUB_MAX_TOTAL_BYTES}-byte sanity cap`, 'size-cap')
     }
     for (const file of files) {
       if (!isSafeBundlePath(file.path)) {
-        throw new Error(`Skill "${ref.slug}" lists an unsafe file path "${file.path}" — refusing`)
+        throw new SkillRefusalError(`Skill "${ref.slug}" lists an unsafe file path "${file.path}" — refusing`, 'unsafe-path')
       }
     }
 
     for (const file of files) {
-      const bytes = await client.getFileBytes(ref.slug, file.path, { owner: ref.owner, version })
+      const bytes = await client.getFileBytes(ref.slug, file.path, { owner: ref.owner, version, expectedSize: file.size })
       const actual = sha256Hex(bytes)
       if (actual !== file.sha256) {
         throw new Error(
@@ -516,12 +569,14 @@ export async function fetchClawhubWithClient(
       ref: version,
       resolvedSha: detail.version.security?.sha256hash,
       hubVersion: version,
+      fallbackName: ref.slug,
     })
     return {
       stagingDir: staging,
       commitSha: detail.version.security?.sha256hash ?? '',
       kind: 'clawhub',
       ref: version,
+      verdictState: verdict.state,
       ...(synthesis ? { synthesis } : {}),
       ...(verdict.warnings.length > 0 ? { fetchWarnings: verdict.warnings } : {}),
     }

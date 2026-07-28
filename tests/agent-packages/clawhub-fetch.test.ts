@@ -238,3 +238,50 @@ describe('clawhub API access stays behind the client (arch pin)', () => {
     expect(violations).toEqual([])
   })
 })
+
+describe('verdict honesty — code-review regressions (#687)', () => {
+  it('an UNSCANNED version is never labeled clean (the ClawHavoc fresh-upload case)', () => {
+    const unscanned = { moderation: null, security: { status: 'unscanned' } }
+    const verdict = evaluateVerdict(unscanned, null)
+    expect(verdict.state).toBe('unscanned')
+    expect(verdict.warnings.join(' ')).toContain('NOT scanned')
+  })
+
+  it('a pending scan is unscanned, not clean', () => {
+    const pending = { moderation: { ...scanClean.moderation, isPendingScan: true }, security: null }
+    expect(evaluateVerdict(pending, null).state).toBe('unscanned')
+  })
+
+  it('a contentless {} scan yields unscanned — absence of evidence is never clean', () => {
+    expect(evaluateVerdict({}, null).state).toBe('unscanned')
+    expect(evaluateVerdict({ moderation: null, security: null }, undefined).state).toBe('unscanned')
+  })
+
+  it('clean still requires an affirmative positive signal', () => {
+    expect(evaluateVerdict(scanClean, scanClean.security).state).toBe('clean')
+  })
+})
+
+describe('download size enforcement (#687 review)', () => {
+  it('refuses a file whose delivered size contradicts the manifest claim', async () => {
+    const lie = 'x'.repeat(5000)
+    const client = makeClient({
+      getVersionDetail: async () => ({
+        version: {
+          version: '2.0.1',
+          // Claims 10 bytes; the origin serves 5000.
+          files: [{ path: 'SKILL.md', size: 10, sha256: sha256Hex(bytesOf(lie)) }],
+          security: scanClean.security,
+        },
+      }),
+      getFileBytes: async (_s, _p, opts) => {
+        const bytes = bytesOf(lie)
+        if (opts.expectedSize !== undefined && bytes.length !== opts.expectedSize) {
+          throw new Error(`ClawHub file is ${bytes.length} bytes but the manifest claims ${opts.expectedSize} — refusing`)
+        }
+        return bytes
+      },
+    })
+    await expect(fetchClawhubWithClient('clawhub:@x/weather', client, freshStaging())).rejects.toThrow(/manifest claims/)
+  })
+})

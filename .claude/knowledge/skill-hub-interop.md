@@ -36,6 +36,41 @@ observed ClawHub API shapes: `.claude/specs/skill-hub-interop/API-NOTES.md`.
 - **Official lane = bits.** Blessed skills get ported into `bakin-bits-official` as
   full capability packs; the paste-ref path is for the long tail.
 
+## Security invariants (code-review hardened, 2026-07-28)
+
+Three siloed reviewers audited the branch; these are the properties that must
+never regress (each has a regression pin):
+
+- **The bytes reviewed are the bytes installed.** `confirmSkillInstall` hands
+  the consent-verified staging dir to `installPackage({ prefetched })` — it
+  does NOT re-fetch. A third fetch was a TOCTOU: an unpinned ref could serve
+  different content after the sha check passed.
+- **Re-install supersedes.** Any existing `hub-<id>@*` entry is removed before
+  install, so re-running install is genuinely the update path (same version =
+  no collision; bumped version = no duplicate entry projecting one skill).
+- **`clean` requires an affirmative positive signal.** `unscanned`/`pending`/
+  a contentless `{}` scan render a WARNING, never a green check — the
+  ClawHavoc pattern is a fresh upload the hub has not looked at. Reachable-
+  but-erroring scan endpoints (404/403/5xx → `ClawhubHttpError`) fail closed;
+  only transport failure earns the soft `unverified`.
+- **Secret slots are core-minted, namespaced per package**
+  (`skills.<packageId>.<ENV_VAR>`, `skill-secret-slot.ts`), and
+  `collectPackSecretMappings` REFUSES to bind anything outside `skills.*`. A
+  manifest declaring `secretSlot: "discord.botToken"` would otherwise siphon a
+  real credential into an attacker-named env var. Per-package namespacing also
+  stops a new skill inheriting a neighbour's stored key and reporting "ready".
+- **Downloadable legs are disclosed, never hidden.** `requires.bins/npm/models`
+  fetch and (via `verifyArgs`) EXECUTE at install time, so the preview renders
+  them loudly (URL + "will be executed") and `summarizeConsent` binds them into
+  the token. Only a source shipping its own `bakin-package.json` can declare
+  them — synthesis cannot produce them.
+- **The preview covers the WHOLE staged tree**, not `contributions.skills[0]`
+  — a second contributed dir was invisible to the file list and risk scan. It
+  reads our own staging root (never `join(staging, attacker-path)`), which also
+  removes a preview-time traversal/disclosure surface.
+- **Refusals are typed** (`SkillRefusalError`), never classified by message
+  regex — a network "Connection refused" must not read as a trust verdict.
+
 ## Trust gate (skill-trust.ts)
 
 Two-phase consent reusing the plugin `consent-token` module: `buildSkillPreview`

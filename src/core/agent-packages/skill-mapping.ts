@@ -24,6 +24,7 @@ import { readSkillTree } from '@bakin/core/adapters/runtime'
 import { readLockfile } from '../../../packages/core/src/agent-packages/lockfile'
 import { parseManifest, safeParseManifest, type SkillPackManifest } from '../../../packages/core/src/agent-packages/manifest'
 import { getPackageSourceDir } from '../../../packages/core/src/agent-packages/package-paths'
+import { mintSkillSecretSlot } from '../../../packages/core/src/agent-packages/skill-secret-slot'
 import { appendAudit } from '../audit'
 import { getAppServices } from '../app-services'
 import { getContentDir } from '../content-dir'
@@ -33,7 +34,7 @@ const log = createLogger('skill-mapping')
 
 const ENV_VAR_RE = /^[A-Z_][A-Z0-9_]*$/
 const PLATFORM_KEYS = new Set(['darwin-arm64', 'darwin-x64', 'linux-x64', 'linux-arm64'])
-const CONTENT_BYTE_CAP = 24 * 1024
+const CONTENT_CHAR_CAP = 24 * 1024
 
 /**
  * Default porter prompt. Bits content (a `skill-porter` skill projected to
@@ -88,7 +89,8 @@ export interface MappingPreview {
 
 export type MappingPreviewResult =
   | { ok: true; preview: MappingPreview }
-  | { ok: false; error: string }
+  /** `not-found` is a client error (400); `turn-failed` is server-side (502). */
+  | { ok: false; error: string; reason: 'not-found' | 'turn-failed' }
 
 // ─── Installed-skill resolution ──────────────────────────────────────────────
 
@@ -100,15 +102,31 @@ interface InstalledHubSkill {
   files: Record<string, string>
 }
 
-function findInstalledSkill(name: string): InstalledHubSkill | null {
+/**
+ * Resolve a bare skill name to its installed pack. Ambiguity is reported,
+ * never silently first-matched: two packs can legitimately ship a skill of
+ * the same name, and mapping the wrong one edits the wrong manifest.
+ */
+function findInstalledSkills(name: string): InstalledHubSkill[] {
   const lock = readLockfile()
+  const matches: InstalledHubSkill[] = []
   for (const [key, entry] of Object.entries(lock.packages)) {
     if (entry.kind !== 'skill-pack') continue
     const id = key.includes('@') ? key.slice(0, key.lastIndexOf('@')) : key
     const sourceDir = getPackageSourceDir(getContentDir(), entry.kind, id, entry.version)
     const manifestPath = join(sourceDir, 'bakin-package.json')
     if (!existsSync(manifestPath)) continue
-    const parsed = safeParseManifest(JSON.parse(readFileSync(manifestPath, 'utf-8')))
+    let parsed: ReturnType<typeof safeParseManifest>
+    try {
+      parsed = safeParseManifest(JSON.parse(readFileSync(manifestPath, 'utf-8')))
+    } catch (err) {
+      // A corrupt installed manifest skips this entry — it must never take
+      // down the whole lookup (matches the other lockfile readers).
+      log.warn('Installed manifest unreadable — skipping for skill lookup', {
+        packageKey: key, error: err instanceof Error ? err.message : String(err),
+      })
+      continue
+    }
     if (!parsed.success || parsed.data.kind !== 'skill-pack') continue
     const manifest = parsed.data
     const skillRel = manifest.contributions.skills.find((rel) => rel.split('/').pop() === name)
@@ -117,15 +135,31 @@ function findInstalledSkill(name: string): InstalledHubSkill | null {
     if (!rel) continue
     const skillDir = join(sourceDir, rel)
     if (!existsSync(skillDir)) continue
-    return {
+    matches.push({
       packageKey: key,
       manifestPath,
       manifest,
       skillName: rel.split('/').pop() ?? name,
       files: readSkillTree(skillDir),
+    })
+  }
+  return matches
+}
+
+/** Single unambiguous match, or a typed reason why not. */
+function resolveInstalledSkill(name: string): { ok: true; skill: InstalledHubSkill } | { ok: false; error: string } {
+  const matches = findInstalledSkills(name)
+  if (matches.length === 0) {
+    return { ok: false, error: `No installed skill named "${name}". Run \`bakin skills list\` to see what's installed.` }
+  }
+  if (matches.length > 1) {
+    return {
+      ok: false,
+      error: `"${name}" matches ${matches.length} installed packages (${matches.map((m) => m.packageKey).join(', ')}). ` +
+        'Pass the package key instead of the bare skill name.',
     }
   }
-  return null
+  return { ok: true, skill: matches[0]! }
 }
 
 // ─── Mechanical verification ─────────────────────────────────────────────────
@@ -158,8 +192,10 @@ export function verifyProposal(
       continue
     }
     const help = secret.help && /^https?:\/\//.test(secret.help) ? secret.help : undefined
-    // Slot is CORE-MINTED — always the skills.* namespace.
-    addSecrets.push({ name, secretSlot: `skills.${name}`, ...(help ? { help } : {}) })
+    // Slot is CORE-MINTED, per-package under skills.* — the agent can never
+    // express a slot, and two skills wanting the same env var never share a
+    // stored credential. See skill-secret-slot.ts.
+    addSecrets.push({ name, secretSlot: mintSkillSecretSlot(manifest.id, name), ...(help ? { help } : {}) })
   }
 
   const addPrereqs: VerifiedMapping['addPrereqs'] = []
@@ -202,13 +238,31 @@ export function verifyProposal(
 /** Extract the first JSON object from an LLM reply (fences tolerated). */
 export function extractProposalJson(reply: string): unknown {
   const trimmed = reply.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')
+  // Whole-string parse first — the common case, and immune to brace
+  // counting entirely.
+  try {
+    return JSON.parse(trimmed)
+  } catch {
+    // Fall through to the brace walk for replies with trailing prose.
+  }
   const start = trimmed.indexOf('{')
   if (start < 0) throw new Error('mapping reply contains no JSON object')
-  // Walk to the matching close brace so trailing prose doesn't break parse.
+  // Walk to the matching close brace, SKIPPING string literals so braces
+  // inside a `notes` value can't truncate the slice.
   let depth = 0
+  let inString = false
+  let escaped = false
   for (let i = start; i < trimmed.length; i++) {
-    if (trimmed[i] === '{') depth++
-    else if (trimmed[i] === '}') {
+    const ch = trimmed[i]
+    if (inString) {
+      if (escaped) escaped = false
+      else if (ch === '\\') escaped = true
+      else if (ch === '"') inString = false
+      continue
+    }
+    if (ch === '"') inString = true
+    else if (ch === '{') depth++
+    else if (ch === '}') {
       depth--
       if (depth === 0) return JSON.parse(trimmed.slice(start, i + 1))
     }
@@ -222,7 +276,7 @@ function bundleContent(files: Record<string, string>): string {
   const parts: string[] = []
   let used = 0
   for (const [path, content] of Object.entries(files)) {
-    const budget = CONTENT_BYTE_CAP - used
+    const budget = CONTENT_CHAR_CAP - used
     if (budget <= 0) {
       parts.push(`\n[…additional files omitted — byte budget reached]`)
       break
@@ -239,10 +293,9 @@ function bundleContent(files: Record<string, string>): string {
  * Never mutates anything.
  */
 export async function buildMappingPreview(name: string): Promise<MappingPreviewResult> {
-  const installed = findInstalledSkill(name)
-  if (!installed) {
-    return { ok: false, error: `No installed skill named "${name}". Run \`bakin skills list\` to see what's installed.` }
-  }
+  const resolved = resolveInstalledSkill(name)
+  if (!resolved.ok) return { ok: false, error: resolved.error, reason: 'not-found' }
+  const installed = resolved.skill
 
   let reply: string
   try {
@@ -272,7 +325,7 @@ export async function buildMappingPreview(name: string): Promise<MappingPreviewR
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     log.warn('Mapping turn failed', { name, error: message })
-    return { ok: false, error: `mapping turn failed: ${message}` }
+    return { ok: false, error: `mapping turn failed: ${message}`, reason: 'turn-failed' }
   }
 
   try {
@@ -284,7 +337,7 @@ export async function buildMappingPreview(name: string): Promise<MappingPreviewR
     return { ok: true, preview: { skillName: installed.skillName, packageKey: installed.packageKey, mapping } }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    return { ok: false, error: `mapping reply was unusable: ${message}` }
+    return { ok: false, error: `mapping reply was unusable: ${message}`, reason: 'turn-failed' }
   }
 }
 
@@ -296,8 +349,9 @@ export async function buildMappingPreview(name: string): Promise<MappingPreviewR
  * (never trust the wire). Atomic write; audit on success.
  */
 export function applyMapping(name: string, mapping: VerifiedMapping): { ok: true; applied: VerifiedMapping } | { ok: false; error: string } {
-  const installed = findInstalledSkill(name)
-  if (!installed) return { ok: false, error: `No installed skill named "${name}".` }
+  const resolved = resolveInstalledSkill(name)
+  if (!resolved.ok) return { ok: false, error: resolved.error }
+  const installed = resolved.skill
 
   const reverified = verifyProposal(
     {

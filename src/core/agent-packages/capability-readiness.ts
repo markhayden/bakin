@@ -17,7 +17,7 @@ import { join } from 'path'
 import { readLockfile } from '../../../packages/core/src/agent-packages/lockfile'
 import { safeParseManifest, type SkillPackManifest } from '../../../packages/core/src/agent-packages/manifest'
 import { getPackageSourceDir } from '../../../packages/core/src/agent-packages/package-paths'
-import { getStoredSecret } from '@bakin/core/media'
+import { getStoredSecret, parseSecretSlot } from '@bakin/core/media'
 import { getContentDir, getBakinPaths } from '@/core/content-dir'
 import { createAppServices, maybeGetAppServices } from '@/core/app-services'
 import { createLogger } from '@/core/logger'
@@ -181,7 +181,9 @@ export async function listCapabilities(): Promise<CapabilityReadiness[]> {
       if (process.env[secret.name]) {
         status = 'env'
       } else if (secret.secretSlot) {
-        const [provider, name] = secret.secretSlot.split('.', 2)
+        const parsedSlot = parseSecretSlot(secret.secretSlot)
+        const provider = parsedSlot?.provider
+        const name = parsedSlot?.name
         if (provider && name && getStoredSecret(provider, name)) status = 'store'
       }
       secrets.push({ name: secret.name, required: secret.required, secretSlot: secret.secretSlot, help: secret.help, status })

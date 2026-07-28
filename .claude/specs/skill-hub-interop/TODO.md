@@ -38,3 +38,19 @@ Branch: `feat/skill-hub-interop-687` · Spec: SPEC.md v2 · Plan: PLAN.md v2
 
 ## Post-live-test feedback (Mark, 2026-07-28)
 - [x] Unify the UI: ecosystem lane moved INSIDE the Capabilities tab (paste-a-link CTA + drawer preview + "From the ecosystem" installed list above the curated grid); Hub Skills tab removed — no per-source tab sprawl
+
+## Code-review fixes (3 siloed reviewers, 2026-07-28) — PR #750
+P0 (security + broken flows):
+- [x] #1 Disclose downloadable legs (bins/npm/models) in preview + bind to consent (Mark: disclose, not refuse)
+- [x] #2 Strip .git/node_modules from staging before synthesis (headline paste-a-repo flow broken)
+- [x] #3 Gate pack secretSlot to skills.* namespace (cross-slot credential exfil) + per-package slot namespace
+- [x] #4 Install the VERIFIED staging (consent TOCTOU: bytes reviewed ≠ installed)
+- [x] #5 Real verdict state through FetchedSource — unscanned/pending/empty never "clean ✓"
+- [x] #6 confirmSkillInstall supersedes existing hub-<id> (update path broken)
+P1 (correctness):
+- [x] CLI error branches dead (apiPost throws) — use apiPostJson, fix exit codes + test mock
+- [x] Typed SkillRefusalError (isRefusal message-text classification)
+- [x] D14 gate in updater; findInstalledSkill guarded parse + ambiguity
+- [x] name fallback from repo/slug not ref segment; whole-tree preview scan (multi-skill + traversal)
+- [x] "official" chip overclaims; 5xx logging; mapPreview 5xx status
+Nits (all done): split('.',2) truncation, byte-cap units, size caps for github, openclaw mid-loop+name, computeDirSha symlinks, previewBusy guard, aria-label, brace-walk strings, drift-under-yes, empty-state title, USAGE --yes
