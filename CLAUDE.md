@@ -78,6 +78,8 @@ Lockfile at `~/.bakin/packages/lock.json` is the canonical install ledger; every
 
 CLI: `bakin agents {install,list,remove,sync,lessons}` and `bakin packages {install,list,remove,sync}` — sync fetches the package source, recomposes managed blocks (global/role/team/package/lessons), re-projects skills/assets, verifies, and writes a receipt (`~/.bakin/packages/receipts/`); `--check` reports without writing; `--reclaim` is the confirmed path past `.userEdited` sentinels. REST: `/api/agent-packages/*` and `/api/packages/*` (top-level, distinct from runtime `/api/agents/*`). Doctor surfaces drift via the `team.agent-sync` check / `bakin check agent-sync` / `bakin install agent-sync`.
 
+**Hub skills (#687):** external Agent-Skills bundles (ClawHub, GitHub skill repos, local dirs) install through the SAME engine — paste-a-link normalization, in-staging manifest synthesis (id `hub-<name>`, `upstream` provenance, FROZEN `metadata.openclaw` requirement translation — never extend the table), a two-phase trust gate (hub verdicts fail closed with no override, deterministic instruction-risk scan, consent tokens), and the `skill-mapping` agent lane for unrecognized requirements (mechanically verified, core-minted `skills.*` slots). Surfaces: `bakin skills {install,list,remove,map}`, `/api/skills/*`, Explore's Hub Skills tab. No update verb — re-install re-pins. Deep reference: `.claude/knowledge/skill-hub-interop.md`.
+
 Deep references: `.claude/knowledge/agent-packages.md`, `docs/src/content/docs/extending/agents/packages.md`.
 
 ## Code Conventions

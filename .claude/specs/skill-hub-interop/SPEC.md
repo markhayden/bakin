@@ -1,6 +1,6 @@
 # Skill Hub Interop — Cross-Runtime Skill Installation (#687)
 
-**Status:** SPEC v2 APPROVED — revised after dual independent review (2026-07-27)
+**Status:** BUILT (T0–T14 complete, 2026-07-28) — E2E validation (T15) pending
 **Issue:** [#687 — Explore Bakin as a compatibility/runtime adapter for OpenClaw/ClawHub skills](https://github.com/markhayden/bakin/issues/687)
 
 ## 1. Objective

@@ -113,7 +113,7 @@ Functions: `injectBlock`, `extractBlock`, `removeBlock`, `listBlocks`, `hasBlock
 `src/core/agent-packages/installer.ts` — `installPackage(options)`:
 
 1. **Acquire `~/.bakin/packages/.lock`** via `install-lock.ts` (PID-tagged advisory file lock with stale-detection)
-2. **Fetch source** via `source-fetcher.ts` → staging dir + commitSha. github: clones with `--depth 1 --branch <ref>` first; on failure (commit SHAs not accepted by `--branch`), falls back to deeper clone + `git checkout`. Local sources copy with `dereference:false`. Bare names refuse.
+2. **Fetch source** via `source-fetcher.ts` → staging dir + commitSha. github: clones with `--depth 1 --branch <ref>` first; on failure (commit SHAs not accepted by `--branch`), falls back to deeper clone + `git checkout`. Local sources copy with `dereference:false`. `clawhub:@owner/slug[@version]` downloads per-file with sha256 verification (async path only). Bare names refuse. **Raw skill bundles (#687):** a fetched dir with `SKILL.md` but no `bakin-package.json` is synthesized IN STAGING into a skill-pack (id `hub-<name>`, `upstream` provenance stanza, frozen `metadata.openclaw` requirement translation) — see `.claude/knowledge/skill-hub-interop.md`; the runtimes/platforms gate (D14) then refuses incompatible packs server-side before any projection.
 3. **Parse + validate manifest** via the zod schema
 4. **Compute install mode** for `kind: "agent"`:
    - state=`absent` + no `--adopt`: `mode=fresh` (creates the runtime agent later)
@@ -311,7 +311,7 @@ Do not confuse this with:
 
 ## V1 explicit non-goals
 
-- **No hosted registry.** Curated catalog is a static JSON file shipped in the binary; bare-name install errors out.
+- **No hosted registry** *(partially superseded by #687)*: the curated catalog is still a static JSON file and Bakin hosts nothing, but external hubs are now first-class install sources (`clawhub:` + raw GitHub skill repos through the `bakin skills` surface, with a trust gate — `.claude/knowledge/skill-hub-interop.md`). Catalog bare names resolve server-side for packs.
 - **No trust levels enforcement.** The catalog has a `trust: "official"|"verified"|"community"` field but it's display-only.
 - **No lesson-pack retrieval.** Dispatch-time retrieval covers installed agent-package lessons only. Lesson-pack lessons are not indexed yet.
 - **No skill scoping enforcement.** Manifests declare `allowedSkills`, but the

@@ -6,6 +6,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+### Added
+
+- **Hub skills (#687)** — install Agent-Skills-format skills from ClawHub, GitHub skill repos, or local dirs onto whichever runtime is active. Paste a clawhub.ai/github.com link into `bakin skills install` or Explore → Hub Skills; every install shows a trust preview (files, translated requirements, hub security verdict, instruction-risk warnings) behind a consent gate — hub-flagged malware is refused with no override, versions are pinned, provenance recorded. `bakin skills {install,list,remove,map}`; `skills map` dispatches an agent to map unrecognized requirements with mechanically verified output. Also: Pi adapter now projects nested skill files with exec bits on scripts, `runtimes`/`platforms` manifest gates are enforced server-side at install, and secret saves live-inject declared env vars (no more restart after the guided key step).
+
 ## [0.0.1-rc.26] - 2026-07-24
 
 The patch that closes the three-release "Git worktree registry could not be verified" mystery (#725) — and with it, the last known way a health check could destroy its own findings.

@@ -18,16 +18,16 @@ Branch: `feat/skill-hub-interop-687` · Spec: SPEC.md v2 · Plan: PLAN.md v2
 - [x] T8 minimal clawhub client + `clawhub:` scheme (3 endpoints, fail-closed)
 
 ## Phase C — Surfaces (CP-C)
-- [ ] T9 trust gate (preview, verdicts, instruction-risk scan, consent tokens)
-- [ ] T10 REST /api/skills/{preview,install,list,map/*} (+ HOST_STATIC_ROUTE_PATHS)
+- [x] T9 trust gate (preview, verdicts, instruction-risk scan, consent tokens)
+- [x] T10 REST /api/skills/{preview,install,list,map/*} (+ HOST_STATIC_ROUTE_PATHS)
 - [ ] T11 `bakin skills {install,list,remove,map}` CLI group (bare names)
 
 ## Phase D — UI + agent lane (CP-D)
-- [ ] T12 Explore paste box + installed hub-skills list (modal flow, version bump)
-- [ ] T13 agent mapping lane (`skills map`: work class, mechanical verification, approval diff)
+- [x] T12 Explore paste box + installed hub-skills list (modal flow, version bump)
+- [x] T13 agent mapping lane (`skills map`: work class, mechanical verification, approval diff)
 
 ## Phase E — Ship (CP-E)
-- [ ] T14 docs sweep (knowledge docs, CLAUDE.md, docs site, CHANGELOG, README check)
+- [x] T14 docs sweep (knowledge docs, CLAUDE.md, docs site, CHANGELOG, README check)
 - [ ] T15 done bar: full suite + lint + cycles + live dual-runtime E2E (scripts exec, no-restart key, map, switch-carry)
 - [ ] Mark live-tests on main checkout → PR → merge
 
