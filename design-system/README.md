@@ -100,6 +100,21 @@ The checked-in baseline must satisfy `performance.schema.json`. The UI budget
 extends the existing size report and issue #423; it does not replace that
 issue's whole-binary and release-artifact ownership.
 
+## Public API freeze
+
+`public-api.json` is the generated inventory of every value and type export
+across the focused SDK UI entrypoints. The check fails on ANY drift — added,
+removed, or renamed exports — so growing the supported surface is always an
+explicit, reviewed operation (`frozenLegacyEntrypoints: 0` also pins the
+deleted `components` barrel against reintroduction). Regenerate only when a
+kit extension has been approved; the diff is the review artifact.
+
+```sh
+bun run ui:public-api:check     # fail on any export drift
+bun run scripts/ui/public-api.ts generate
+                                # intentionally refresh after an approved change
+```
+
 ## Storybook-first governance
 
 Public Storybook is the default browser UI contract. Codex and Claude Code use
