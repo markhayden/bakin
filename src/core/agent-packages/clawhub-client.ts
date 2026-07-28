@@ -177,11 +177,11 @@ export function evaluateVerdict(scan: ClawhubScan | null, versionSecurity: z.inf
     if (moderation.isPendingScan) {
       pendingSignal = true
       warnings.push('ClawHub has not finished scanning this version yet')
-    } else {
-      // A moderation object with no adverse flags is an affirmative "the
-      // hub looked and found nothing wrong".
-      positiveSignal = true
     }
+    // NOTE: a moderation object with no adverse flags is NOT a positive
+    // signal. Every field is optional on a passthrough schema, so `{}` — or
+    // a hub field rename — would otherwise read as "the hub cleared this".
+    // Only an explicit `security.status: clean` below counts as evidence.
   }
 
   for (const security of [scan?.security, versionSecurity]) {
@@ -210,8 +210,16 @@ export function evaluateVerdict(scan: ClawhubScan | null, versionSecurity: z.inf
   const deduped = [...new Set(refusals)]
   const dedupedWarnings = [...new Set(warnings)]
   if (deduped.length > 0) return { state: 'refused', refusals: deduped, warnings: dedupedWarnings }
+
+  if (scan === null) {
+    // The scan endpoint gave us nothing, so no moderation flag was ever
+    // consulted — a `clean` in version-detail alone must not earn a green
+    // check.
+    dedupedWarnings.push('ClawHub moderation state could not be checked for this version — treat it as unverified.')
+    return { state: 'unscanned', refusals: [], warnings: [...new Set(dedupedWarnings)] }
+  }
   if (pendingSignal || !positiveSignal) {
-    // Pending, or a reachable-but-contentless scan — the hub has not
+    // Pending, or a reachable-but-evidence-free scan — the hub has not
     // affirmatively cleared this version.
     dedupedWarnings.push('ClawHub has NOT scanned this version — treat it as unverified.')
     return { state: 'unscanned', refusals: [], warnings: [...new Set(dedupedWarnings)] }
@@ -308,6 +316,16 @@ export function createClawhubClient(options: ClawhubClientOptions = {}): Clawhub
         // Reachable but the hub refused/errored on this slug's scan
         // (404/403/5xx) → FAIL CLOSED (D5), not "unreachable".
         if (err instanceof ClawhubHttpError) {
+          // 404 = the hub has no scan record for this slug (verified live:
+          // real skills answer 200 even with `moderation: null`; 404 is the
+          // "not found" shape). That is an absence of evidence, so it flows
+          // to `unscanned` — a warning, never a green check. Every other
+          // status (403/429/5xx) is a reachable hub refusing to answer:
+          // FAIL CLOSED per D5.
+          if (err.status === 404) {
+            log.warn('ClawHub has no scan record for this skill — treating as unscanned', { slug })
+            return null
+          }
           throw new Error(`ClawHub scan endpoint returned ${err.status} for "${slug}" — refusing (fail closed)`)
         }
         // Transport failure (network/DNS/timeout) → honest 'unverified'.
@@ -326,10 +344,19 @@ export function createClawhubClient(options: ClawhubClientOptions = {}): Clawhub
       const url = skillUrl(slug, '/file', { path, owner: opts.owner, version: opts.version })
       const response = await fetcher(url)
       if (!response.ok) throw new Error(`ClawHub file download failed (${response.status}) for "${path}"`)
+      // Refuse BEFORE buffering when the advertised length already
+      // contradicts the manifest — otherwise an 8GB body behind a "100
+      // bytes" claim OOMs the server before any check can run.
+      if (opts.expectedSize !== undefined) {
+        const advertised = Number(response.headers.get('content-length') ?? Number.NaN)
+        if (Number.isFinite(advertised) && advertised !== opts.expectedSize) {
+          throw new Error(
+            `ClawHub file "${path}" advertises ${advertised} bytes but the manifest claims ${opts.expectedSize} — refusing`,
+          )
+        }
+      }
       const bytes = new Uint8Array(await response.arrayBuffer())
-      // The manifest sha256 catches a size lie eventually, but only after
-      // the bytes are buffered — enforce the CLAIMED size at the boundary so
-      // an 8GB body behind a "100 bytes" claim can't OOM the server first.
+      // Backstop for responses with no/chunked content-length.
       if (opts.expectedSize !== undefined && bytes.length !== opts.expectedSize) {
         throw new Error(
           `ClawHub file "${path}" is ${bytes.length} bytes but the manifest claims ${opts.expectedSize} — refusing`,

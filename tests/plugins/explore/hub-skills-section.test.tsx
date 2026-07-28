@@ -6,7 +6,7 @@
  * removal. Stubbed fetch; no server.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import '../../rtl-settle'
 import { settleReact } from '../../rtl-settle'
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from 'react'
@@ -74,7 +74,7 @@ const PREVIEW = {
   requirements: {
     secrets: [{ name: 'WEATHER_KEY', required: true, secretSlot: 'skills.hub-weather.WEATHER_KEY' }],
     prereqs: [{ name: 'jq', probe: 'jq', optional: false }],
-    bins: [], npm: [], models: [],
+    bins: [], npm: [], models: [], dependencies: [],
   },
   mentions: ['SOME_OTHER_VAR'],
   warnings: [],
@@ -108,8 +108,8 @@ describe('ecosystem lane — install flow (drawer)', () => {
     fetchResponses['/api/skills/install'] = { ok: true, installed: { packageId: 'hub-weather' }, warnings: [] }
 
     render(<HubSkillsSection />)
-    fireEvent.change(screen.getByTestId('hub-ref-input'), { target: { value: 'https://clawhub.ai/steipete/skills/weather' } })
-    fireEvent.click(screen.getByTestId('hub-preview-button'))
+    act(() => { fireEvent.change(screen.getByTestId('hub-ref-input'), { target: { value: 'https://clawhub.ai/steipete/skills/weather' } }) })
+    await act(async () => { fireEvent.click(screen.getByTestId('hub-preview-button')) })
 
     await waitFor(() => expect(screen.getByRole('dialog')).toBeTruthy())
     expect(screen.getByText(/Install weather v2\.0\.1/)).toBeTruthy()
@@ -120,22 +120,26 @@ describe('ecosystem lane — install flow (drawer)', () => {
     expect(screen.getByText(/skills\.hub-weather\.WEATHER_KEY/)).toBeTruthy()
     expect(screen.getByText(/12,345 downloads/)).toBeTruthy()
 
-    fireEvent.click(screen.getByTestId('confirm-install'))
-    await settleReact()
+    await act(async () => { fireEvent.click(screen.getByTestId('confirm-install')) })
 
     const install = fetchCalls.find((c) => c.url === '/api/skills/install')
     expect(install?.body).toMatchObject({ consentToken: 'tok-ui-1' })
     expect(toasts.join(' ')).toContain('add its key')
     expect(refreshCalls.length).toBeGreaterThan(0)
+    await settleReact()
   })
 
   it('refusals render in the CTA box, no drawer opens', async () => {
     fetchResponses['/api/skills/preview'] = { ok: false, refused: true, error: 'ClawHub has blocked this skill as malware' }
     render(<HubSkillsSection />)
-    fireEvent.change(screen.getByTestId('hub-ref-input'), { target: { value: 'clawhub:@evil/bad' } })
-    fireEvent.click(screen.getByTestId('hub-preview-button'))
+    act(() => { fireEvent.change(screen.getByTestId('hub-ref-input'), { target: { value: 'clawhub:@evil/bad' } }) })
+    await act(async () => { fireEvent.click(screen.getByTestId('hub-preview-button')) })
     await waitFor(() => expect(screen.getByTestId('hub-box-error').textContent).toContain('Refused'))
     expect(screen.queryByRole('dialog')).toBeNull()
+    // The finally-phase setPreviewBusy(false) re-render lands after the
+    // assertion — leaving it in flight can pin a React root open past the
+    // test, which hangs the worker on slow CI runners (see tests/rtl-settle).
+    await settleReact()
   })
 })
 
@@ -160,19 +164,20 @@ describe('ecosystem lane — Installed grouping', () => {
     expect(screen.getByText('clawhub')).toBeTruthy()
     expect(screen.getByText('official')).toBeTruthy()
 
-    fireEvent.click(screen.getByLabelText('Remove weather'))
+    await act(async () => { fireEvent.click(screen.getByLabelText('Remove weather')) })
     await waitFor(() => expect(screen.getByRole('alertdialog')).toBeTruthy())
-    fireEvent.click(screen.getByText('confirm-remove'))
-    await settleReact()
+    await act(async () => { fireEvent.click(screen.getByText('confirm-remove')) })
 
     const del = fetchCalls.find((c) => c.url.includes('/api/packages/'))
     expect(del?.url).toBe(`/api/packages/${encodeURIComponent('hub-weather@2.0.1')}`)
     expect(toasts.join(' ')).toContain('removed')
+    await settleReact()
   })
 
-  it('empty install state shows only the get-more section', () => {
+  it('empty install state shows only the get-more section', async () => {
     render(<HubSkillsSection />)
     expect(screen.queryByText('Installed')).toBeNull()
     expect(screen.getByText('Get more capabilities')).toBeTruthy()
+    await settleReact()
   })
 })

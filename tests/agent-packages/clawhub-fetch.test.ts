@@ -285,3 +285,23 @@ describe('download size enforcement (#687 review)', () => {
     await expect(fetchClawhubWithClient('clawhub:@x/weather', client, freshStaging())).rejects.toThrow(/manifest claims/)
   })
 })
+
+describe('verdict evidence — second-pass review regressions (#687)', () => {
+  it('an EMPTY moderation object is not evidence — {} never reads as clean', () => {
+    // Every ScanSchema field is optional on a passthrough object, so a hub
+    // field rename would otherwise turn every pending skill green.
+    expect(evaluateVerdict({ moderation: {}, security: null }, null).state).toBe('unscanned')
+    expect(evaluateVerdict({ moderation: {} }, undefined).state).toBe('unscanned')
+  })
+
+  it('an unreachable scan can never be clean, even when version-detail says clean', () => {
+    // No moderation flag was ever consulted, so a green check would be a lie.
+    const verdict = evaluateVerdict(null, scanClean.security)
+    expect(verdict.state).toBe('unscanned')
+    expect(verdict.warnings.join(' ')).toContain('could not be checked')
+  })
+
+  it('clean requires an explicit security.status: clean', () => {
+    expect(evaluateVerdict({ moderation: scanClean.moderation, security: scanClean.security }, null).state).toBe('clean')
+  })
+})

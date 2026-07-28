@@ -65,6 +65,23 @@ export function injectIntegrationEnv(
 }
 
 /**
+ * Can a pack-declared slot actually be bound to an env var?
+ *
+ * ONE predicate shared by the injection layer (which refuses the rest) and
+ * capability readiness (which must not report an unbindable slot as ready).
+ * Packs may bind their own `skills.*` namespace; first-party integrations
+ * ride the static mapping table instead of declaring cross-provider slots.
+ */
+export function isBindableSecretSlot(envVar: string, slot: string): boolean {
+  if (slot.startsWith(`${SKILL_SECRET_PROVIDER}.`)) return true
+  return STATIC_ENV_SECRET_MAPPINGS.some((m) => {
+    if (m.envVar !== envVar) return false
+    const parsed = parseSecretSlot(slot)
+    return parsed?.provider === m.provider && parsed.name === m.name
+  })
+}
+
+/**
  * Derive EnvSecretMapping[] from installed skill-pack manifests: every
  * `secrets[]` declaration with a `secretSlot` maps its env-var name to the
  * store slot. Boot injects these alongside the static list, and the live
@@ -102,7 +119,7 @@ export function collectPackSecretMappings(): EnvSecretMapping[] {
       // `secretSlot: "discord.botToken"` would siphon a real credential into
       // an attacker-named env var its own scripts read. First-party
       // integrations bind through STATIC_ENV_SECRET_MAPPINGS instead.
-      if (!secret.secretSlot.startsWith(`${SKILL_SECRET_PROVIDER}.`)) {
+      if (!isBindableSecretSlot(secret.name, secret.secretSlot)) {
         log.warn('Refusing pack secret mapping outside the skills.* namespace', {
           packageKey: key, envVar: secret.name, slot: secret.secretSlot,
         })

@@ -242,3 +242,54 @@ describe('consent binds the bytes that get INSTALLED (TOCTOU, #687 review)', () 
     expect(skillStore.get('commit-messages')).toBeUndefined()
   })
 })
+
+describe('a failed re-install never destroys the working install (#687 second review)', () => {
+  it('a refused re-install leaves the previously installed skill intact', async () => {
+    const src = seedSource('bare-style', 'refuse-keeps')
+    const first = await buildSkillPreview(src)
+    if (!first.ok) throw new Error(first.error)
+    expect((await confirmSkillInstall(src, first.preview.consentToken)).status).toBe('installed')
+    const beforeKeys = Object.keys(readLockfile().packages)
+
+    // Upstream ships a manifest the installer will REFUSE (wrong runtime).
+    // The old code removed the working install before discovering this.
+    writeFileSync(join(src, 'bakin-package.json'), JSON.stringify({
+      id: 'hub-commit-messages',
+      name: 'commit-messages',
+      version: '0.0.0',
+      kind: 'skill-pack',
+      contributions: { skills: ['skills/commit-messages'] },
+      runtimes: ['openclaw'],
+    }))
+    mkdirSync(join(src, 'skills', 'commit-messages'), { recursive: true })
+    writeFileSync(join(src, 'skills', 'commit-messages', 'SKILL.md'), '# refused version')
+
+    const preview = await buildSkillPreview(src)
+    if (!preview.ok) throw new Error(preview.error)
+    const result = await confirmSkillInstall(src, preview.preview.consentToken)
+    expect(result.status).toBe('refused')
+
+    // The working skill and its lockfile entry SURVIVE.
+    expect(Object.keys(readLockfile().packages)).toEqual(beforeKeys)
+    expect(skillStore.has('commit-messages')).toBe(true)
+  })
+})
+
+describe('dependency disclosure (#687 second review)', () => {
+  it('declared dependencies are surfaced and bound into consent', async () => {
+    const dir = join(testDir, 'sources', 'dep-bearing')
+    rmSync(dir, { recursive: true, force: true })
+    mkdirSync(join(dir, 'skills', 'depskill'), { recursive: true })
+    writeFileSync(join(dir, 'skills', 'depskill', 'SKILL.md'), '# dep skill')
+    writeFileSync(join(dir, 'bakin-package.json'), JSON.stringify({
+      id: 'depskill', name: 'depskill', version: '1.0.0', kind: 'skill-pack',
+      contributions: { skills: ['skills/depskill'] },
+      // A payload hidden behind one indirection would otherwise be invisible.
+      dependencies: { skills: [{ source: 'github:evil/payload', ref: 'main' }] },
+    }))
+
+    const preview = await buildSkillPreview(dir)
+    if (!preview.ok) throw new Error(preview.error)
+    expect(preview.preview.requirements.dependencies).toEqual(['github:evil/payload@main'])
+  })
+})

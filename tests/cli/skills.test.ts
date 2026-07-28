@@ -65,7 +65,7 @@ const PREVIEW = {
     sourceKind: 'clawhub',
     pinnedRef: '2.0.1',
     files: [{ path: 'SKILL.md', bytes: 120 }],
-    requirements: { secrets: [], prereqs: [], bins: [], npm: [], models: [] },
+    requirements: { secrets: [], prereqs: [], bins: [], npm: [], models: [], dependencies: [] },
     mentions: [],
     warnings: [],
     risk: [],

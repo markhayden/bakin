@@ -25,5 +25,17 @@ export const SKILL_SECRET_PROVIDER = 'skills'
  * `parseSecretSlot`, never `split('.', 2)`).
  */
 export function mintSkillSecretSlot(packageId: string, envVar: string): string {
-  return `${SKILL_SECRET_PROVIDER}.${packageId}.${envVar}`
+  // The NAME segment is `<packageId>.<envVar>` and the secret store caps
+  // names at 64 chars — a long pack id plus a long env var would mint a slot
+  // the manifest schema accepts but `POST /api/secrets` then rejects, leaving
+  // the key unstorable forever. Clamp the pack segment (it is only a
+  // disambiguator; the env var carries the meaning).
+  const budget = MAX_SECRET_NAME_LENGTH - envVar.length - 1
+  const pack = budget >= packageId.length ? packageId : packageId.slice(0, Math.max(budget, 0))
+  return pack.length > 0
+    ? `${SKILL_SECRET_PROVIDER}.${pack}.${envVar}`
+    : `${SKILL_SECRET_PROVIDER}.${envVar}`
 }
+
+/** Mirrors `isValidSecretName`'s bound in packages/core/src/media/secret-store.ts. */
+const MAX_SECRET_NAME_LENGTH = 64

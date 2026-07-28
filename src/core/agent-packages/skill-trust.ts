@@ -21,7 +21,8 @@ import { readSkillTree } from '@bakin/core/adapters/runtime'
 import { signConsentToken, verifyConsentToken } from '@/core/plugins/consent-token'
 import { computeDirSha } from '../../../packages/core/src/agent-packages/markers'
 import { safeParseManifest } from '../../../packages/core/src/agent-packages/manifest'
-import { readLockfile } from '../../../packages/core/src/agent-packages/lockfile'
+import { readLockfile, removePackage, writeLockfile } from '../../../packages/core/src/agent-packages/lockfile'
+import { getPackageSourceDir } from '../../../packages/core/src/agent-packages/package-paths'
 import { appendAudit } from '../audit'
 import { getContentDir } from '../content-dir'
 import { createLogger } from '../logger'
@@ -31,7 +32,6 @@ import { createClawhubClient } from './clawhub-client'
 import { binPlatformKey } from './bin-installer'
 import { SkillRefusalError } from './errors'
 import { installPackage, type InstallResult } from './installer'
-import { removePackageById } from './uninstaller'
 
 const log = createLogger('skill-trust')
 
@@ -83,6 +83,15 @@ export interface SkillPreviewRequirements {
   bins: Array<{ name: string; url?: string; willExecute: boolean }>
   npm: string[]
   models: Array<{ name: string; bytes: number }>
+  /**
+   * Declared package dependencies. The installer fetches, projects, and runs
+   * the requirement legs of EVERY dep — including bin downloads that execute
+   * — so hiding a payload behind one indirection would defeat the bins
+   * disclosure above. Listed loudly and bound into consent; their own
+   * manifests are not fetched at preview time, so the honest statement is
+   * "this also installs these packages, sight unseen".
+   */
+  dependencies: string[]
 }
 
 export interface SkillPreview {
@@ -147,7 +156,7 @@ async function assess(input: string): Promise<StagedAssessment> {
   // preview-time traversal surface. bakin-package.json is Bakin's synthesized
   // manifest, shown as structured requirements instead.
   const files = readSkillTree(staging)
-  delete (files as Record<string, string>)['bakin-package.json']
+  delete files['bakin-package.json']
 
   // Untranslated frontmatter metadata, verbatim (preview honesty). Locate a
   // SKILL.md: prefer the first contribution's, else any in the tree.
@@ -186,6 +195,11 @@ async function assess(input: string): Promise<StagedAssessment> {
     })),
     npm: (requires?.npm ?? []).map((n) => n.name),
     models: (requires?.models ?? []).map((m) => ({ name: m.name, bytes: m.bytes })),
+    dependencies: [
+      ...(manifest.dependencies?.skills ?? []),
+      ...(manifest.dependencies?.workflows ?? []),
+      ...(manifest.dependencies?.lessons ?? []),
+    ].map((d) => (d.ref ? `${d.source}@${d.ref}` : d.source)),
   }
 
   let hub: SkillPreview['hub']
@@ -279,6 +293,7 @@ function summarizeConsent(preview: Omit<SkillPreview, 'consentToken'>): string[]
     ...r.bins.map((b) => `bin:${b.name}${b.willExecute ? ':exec' : ''}`),
     ...r.npm.map((n) => `npm:${n}`),
     ...r.models.map((m) => `model:${m.name}`),
+    ...r.dependencies.map((d) => `dep:${d}`),
     ...preview.risk.map((rf) => `risk:${rf.pattern}`),
   ]
 }
@@ -289,6 +304,41 @@ function existingSkillPackKeys(packageId: string): string[] {
   return Object.entries(lock.packages)
     .filter(([key, entry]) => entry.kind === 'skill-pack' && (key === packageId || key.startsWith(`${packageId}@`)))
     .map(([key]) => key)
+}
+
+/**
+ * Drop superseded lockfile entries AFTER a successful re-install.
+ *
+ * Deliberately does NOT unproject: the old and new entries project the same
+ * runtime skill target, so `removePackageById` here would delete the skill
+ * the new install just wrote. The new entry owns those targets now; this
+ * only forgets the stale bookkeeping and its orphaned source dir. Entries
+ * another package depends on are left alone.
+ */
+function forgetSupersededEntries(keys: string[], keepKey: string): void {
+  let lock = readLockfile()
+  let changed = false
+  for (const key of keys) {
+    if (key === keepKey) continue
+    const entry = lock.packages[key]
+    if (!entry) continue
+    if ((entry.refCount ?? 0) > 0 || (entry.dependents ?? []).length > 0) {
+      log.warn('Superseded skill entry kept — another package depends on it', { key })
+      continue
+    }
+    const id = key.includes('@') ? key.slice(0, key.lastIndexOf('@')) : key
+    const sourceDir = getPackageSourceDir(getContentDir(), 'skill-pack', id, entry.version)
+    lock = removePackage(lock, key)
+    changed = true
+    try {
+      rmSync(sourceDir, { recursive: true, force: true })
+    } catch (err) {
+      log.warn('Superseded skill source dir could not be removed', {
+        key, error: err instanceof Error ? err.message : String(err),
+      })
+    }
+  }
+  if (changed) writeLockfile(lock)
 }
 
 /**
@@ -321,15 +371,18 @@ export async function confirmSkillInstall(input: string, token: string): Promise
       return { status: 'drift', preview: { ...staged.preview, consentToken: freshToken } }
     }
 
-    // Re-install-as-update: remove any existing install of this id first, so
-    // the same version doesn't collide and a bumped version doesn't leave a
-    // stale duplicate entry projecting the same runtime skill.
-    for (const key of existingSkillPackKeys(staged.preview.packageId)) {
-      await removePackageById({ packageId: key })
-    }
-
-    // Install the VERIFIED staging verbatim (installer consumes the dir).
-    const result = await installPackage({ source: ref, prefetched: staged.fetched })
+    // Re-install IS the update path (D4) — install FIRST, sweep after.
+    // NEVER remove-then-install: a refused or failed re-install would have
+    // already destroyed the user's working skill (reviewed regression).
+    // `replace` lets the same-version key overwrite itself; commitStaging
+    // clears the prior install dir.
+    const priorKeys = existingSkillPackKeys(staged.preview.packageId)
+    const result = await installPackage({
+      source: ref,
+      prefetched: staged.fetched,
+      ...(priorKeys.length > 0 ? { replace: true } : {}),
+    })
+    forgetSupersededEntries(priorKeys, `${result.packageId}@${staged.preview.version}`)
     appendAudit(getContentDir(), 'skill.hub.installed', result.packageId, {
       ref,
       packageId: result.packageId,

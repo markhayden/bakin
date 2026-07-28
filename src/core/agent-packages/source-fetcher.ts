@@ -269,6 +269,21 @@ function assertBundleWithinCaps(dir: string, count = { files: 0, bytes: 0 }): vo
 }
 
 function ensureInstallableStaging(stagingDir: string, sourceInfo: SynthesisSourceInfo): FetchedSource['synthesis'] {
+  // A pasted repo root (or a local git clone) stages a .git dir whose pack
+  // files are binary — without this, the headline paste-a-repo flow always
+  // refused with a bogus "bundle contains binary files: .git/objects/…".
+  // Runs for EVERY staged source, not just raw bundles: a manifest-bearing
+  // repo would otherwise carry .git/node_modules into the preview file list,
+  // the content hash, and the committed install dir.
+  for (const entry of readdirSync(stagingDir, { withFileTypes: true })) {
+    if (entry.isDirectory() && NON_BUNDLE_DIRS.has(entry.name)) {
+      rmSync(join(stagingDir, entry.name), { recursive: true, force: true })
+    }
+  }
+  // Bound the tree before anything reads every file into memory (clawhub
+  // enforces this per-manifest; github/local had no cap).
+  assertBundleWithinCaps(stagingDir)
+
   if (existsSync(join(stagingDir, 'bakin-package.json'))) return undefined
   const hasSkillMd = readdirSync(stagingDir, { withFileTypes: true })
     .some((e) => e.isFile() && /^skill\.md$/i.test(e.name))
@@ -277,17 +292,6 @@ function ensureInstallableStaging(stagingDir: string, sourceInfo: SynthesisSourc
       `Source is missing bakin-package.json (and has no SKILL.md, so it is not a raw skill bundle either): ${stagingDir}`,
     )
   }
-  // A pasted repo root (or a local git clone) stages a .git dir whose pack
-  // files are binary — without this, the headline paste-a-repo flow always
-  // refused with a bogus "bundle contains binary files: .git/objects/…".
-  for (const entry of readdirSync(stagingDir, { withFileTypes: true })) {
-    if (entry.isDirectory() && NON_BUNDLE_DIRS.has(entry.name)) {
-      rmSync(join(stagingDir, entry.name), { recursive: true, force: true })
-    }
-  }
-  // Bound the raw bundle before synthesis reads every file into memory
-  // (clawhub enforces this per-manifest; github/local had no cap).
-  assertBundleWithinCaps(stagingDir)
   const result = synthesizeSkillPack(stagingDir, sourceInfo)
   if (!result.ok) {
     // binary-files / unsupported-os are trust refusals (403 + exit 2);

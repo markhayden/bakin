@@ -38,6 +38,7 @@ interface SkillPreviewWire {
     bins: Array<{ name: string; url?: string; willExecute: boolean }>
     npm: string[]
     models: Array<{ name: string; bytes: number }>
+    dependencies: string[]
   }
   mentions: string[]
   warnings: string[]
@@ -96,7 +97,7 @@ function renderPreview(p: SkillPreviewWire): void {
   for (const file of p.files.slice(0, 20)) console.log(`    ${file.path}  ${fmtBytes(file.bytes)}`)
   if (p.files.length > 20) console.log(`    … and ${p.files.length - 20} more`)
 
-  const { secrets, prereqs, platforms, bins, npm, models } = p.requirements
+  const { secrets, prereqs, platforms, bins, npm, models, dependencies } = p.requirements
   if (secrets.length + prereqs.length > 0 || platforms) {
     console.log('\n  Requirements (translated from upstream metadata):')
     for (const s of secrets) {
@@ -104,6 +105,13 @@ function renderPreview(p: SkillPreviewWire): void {
     }
     for (const q of prereqs) console.log(`    bin   ${q.probe}${q.optional ? ' (optional)' : ''} — checked, never auto-installed`)
     if (platforms) console.log(`    os    ${platforms.join(', ')}`)
+  }
+
+  // Declared dependencies install their OWN requirement legs, sight unseen.
+  if (dependencies.length > 0) {
+    console.log('\n  ⚠⚠ THIS SOURCE ALSO INSTALLS OTHER PACKAGES (not previewed):')
+    for (const d of dependencies) console.log(`    package ${d}`)
+    console.log('  Their binaries, npm payloads, and models install with the same trust as this one.')
   }
 
   // Downloadable legs run code at INSTALL time — the loudest thing here.

@@ -28,6 +28,7 @@ interface SkillPreviewWire {
     bins: Array<{ name: string; url?: string; willExecute: boolean }>
     npm: string[]
     models: Array<{ name: string; bytes: number }>
+    dependencies: string[]
   }
   mentions: string[]
   warnings: string[]
@@ -129,6 +130,18 @@ function PreviewDrawerBody({
             </div>
           ))}
           <div className="mt-1 text-xs">Agents WILL execute skill instructions. Only proceed if you trust this source.</div>
+        </div>
+      )}
+
+      {requirements.dependencies.length > 0 && (
+        <div className="rounded border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-400" data-testid="dependency-warnings">
+          <div className="mb-1 flex items-center gap-2 font-medium">
+            <ShieldAlert className="size-4" /> This source also installs other packages (not previewed):
+          </div>
+          {requirements.dependencies.map((d) => (
+            <div key={d} className="font-mono text-xs">{d}</div>
+          ))}
+          <div className="mt-1 text-xs">Their binaries, npm payloads, and models install with the same trust as this one.</div>
         </div>
       )}
 
