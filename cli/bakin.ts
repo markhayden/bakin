@@ -80,6 +80,10 @@ export async function main(): Promise<void> {
         await (await import('../src/cli/commands/packages')).run(args)
         break
 
+      case 'skills':
+        await (await import('../src/cli/commands/skills')).run(args)
+        break
+
       case 'stop':
       case 'logs':
       case 'setup':
