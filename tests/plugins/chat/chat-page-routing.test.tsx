@@ -108,7 +108,7 @@ describe('ChatPage path-based identity', () => {
     await waitFor(() => {
       expect(container.textContent).toContain('Start a chat')
     })
-    expect(container.querySelector('[data-archetype="conversation"]')).not.toBeNull()
+    expect(container.querySelector('[data-archetype="workspace"]')).not.toBeNull()
     expect(container.querySelector('[data-slot="page-header"]')).not.toBeNull()
     expect(container.querySelector('[data-slot="search-input-control"]')).not.toBeNull()
     expect(container.querySelector('[data-chat-workspace]')).not.toBeNull()

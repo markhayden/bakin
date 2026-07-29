@@ -53,7 +53,9 @@ describe('focused conversation composer', () => {
 
     const passive = render(<Composer storageKey="busy-passive" onSend={() => {}} busy />)
     expect(passive.queryByRole('button', { name: 'Stop the reply' })).toBeNull()
-    expect(passive.getByRole('status').textContent).toContain('Reply in progress')
+    const sending = passive.getByRole('button', { name: 'Reply in progress' }) as HTMLButtonElement
+    expect(sending.disabled).toBe(true)
+    expect(passive.container.textContent).toContain('Sending…')
   })
 
   it('restores per-thread drafts and walks sent history without losing the pending draft', () => {
