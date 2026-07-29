@@ -21,7 +21,7 @@ const meta = {
     layout: 'fullscreen',
     docs: {
       description: {
-        component: 'SystemState distinguishes first-use emptiness, filtered no-results, loading, recoverable or terminal errors, and permission boundaries. Page scope fills a useful replacement region; inline and section scopes stay content-sized. Banner carries persistent context. Toast presents transient shell-owned feedback. Urgency is semantic, not inferred from color alone.',
+        component: 'SystemState distinguishes first-use emptiness, filtered no-results, loading, recoverable or terminal errors, and permission boundaries. Inline scope is the compact row treatment with a leading signal; section and page scopes are full replacement states. Page scope fills a useful replacement region. Banner carries persistent context. Toast presents transient shell-owned feedback. Urgency is semantic, not inferred from color alone.',
       },
     },
   },
@@ -147,6 +147,52 @@ export const ScopeAndRecovery = {
       </Section>
     </PageShell>
   ),
+} satisfies Story
+
+export const FullAndCompactEmptyStates = {
+  render: () => (
+    <PageShell width="content" className="bakin-state-story">
+      <StoryHeader
+        title="Match empty-state weight to the available space"
+        description="Use the compact row inside a larger working surface. Use the full treatment only when the empty state replaces the section or page’s primary content."
+      />
+      <Stack gap="section">
+        <Section spacing="compact" aria-labelledby="compact-empty-heading">
+          <div className="bakin-state-story__section-heading">
+            <h2 id="compact-empty-heading">Compact empty state</h2>
+            <p>The signal leads the copy instead of floating above it.</p>
+          </div>
+          <SystemState
+            kind="initial-empty"
+            scope="inline"
+            headingLevel={3}
+            title="No custom workflows yet"
+            description="This section will update when a matching workflow is available."
+          />
+        </Section>
+        <Section spacing="compact" divider="top" aria-labelledby="full-empty-heading">
+          <div className="bakin-state-story__section-heading">
+            <h2 id="full-empty-heading">Full empty state</h2>
+            <p>The centered treatment replaces the unavailable primary region.</p>
+          </div>
+          <SystemState
+            kind="initial-empty"
+            scope="section"
+            headingLevel={3}
+            title="No workflows yet"
+            description="Create the first workflow to coordinate repeatable, multi-step work."
+            action={<Button>Create workflow</Button>}
+          />
+        </Section>
+      </Stack>
+    </PageShell>
+  ),
+  play: async ({ canvas }) => {
+    const compact = canvas.getByText('No custom workflows yet').closest('[data-slot="system-state"]')
+    const full = canvas.getByText('No workflows yet').closest('[data-slot="system-state"]')
+    await expect(compact).toHaveAttribute('data-presentation', 'compact')
+    await expect(full).toHaveAttribute('data-presentation', 'full')
+  },
 } satisfies Story
 
 function FeedbackExample() {

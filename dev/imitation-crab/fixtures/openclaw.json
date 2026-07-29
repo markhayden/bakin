@@ -2,6 +2,12 @@
   "agents": {
     "defaults": {
       "model": { "primary": "anthropic/claude-sonnet-4-20250514" },
+      "models": {
+        "fast": { "alias": "google/gemini-2.5-flash" },
+        "haiku": { "alias": "anthropic/claude-haiku-4-5" },
+        "opus": { "alias": "anthropic/claude-opus-4-6" },
+        "sonnet": { "alias": "anthropic/claude-sonnet-4-6" }
+      },
       "workspace": "~/.openclaw/workspace"
     },
     "list": [

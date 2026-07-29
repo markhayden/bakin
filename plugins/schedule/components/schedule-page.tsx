@@ -9,6 +9,7 @@ import {
   ListPageContent,
   ListPageControls,
   PageHeader,
+  PageNavigator,
   SearchDegradedChip,
   SearchInput,
   SearchPartialChip,
@@ -43,6 +44,7 @@ import { CalendarWeekly } from './calendar-weekly'
 import { CalendarToday } from './calendar-today'
 
 type ViewMode = 'list' | 'today' | 'week' | 'month'
+const LIST_PAGE_SIZE = 10
 
 const VIEWS: SegmentedControlOption<ViewMode>[] = [
   { value: 'list', icon: List, label: 'List', hideLabel: true },
@@ -62,6 +64,7 @@ export function SchedulePage() {
   const [view, setView] = useQueryState('view', 'week')
   const [agentFilter, setAgentFilter] = useQueryState('agent', 'all')
   const [search, setSearch] = useQueryState('q', '')
+  const [pageParam, setPageParam] = useQueryState('page', '1')
   const [jobIdParam, setJobIdParam, pushJobId] = useQueryState('jobId', '')
   const [mode, setMode, pushMode] = useQueryState('mode', '')
 
@@ -136,6 +139,16 @@ export function SchedulePage() {
       ),
     }
   }), [agentIds, agentMap, displaySettings])
+
+  const showAllJobs = pageParam === 'all'
+  const requestedPage = Number.parseInt(pageParam, 10)
+  const pageCount = Math.max(1, Math.ceil(filtered.length / LIST_PAGE_SIZE))
+  const page = Number.isFinite(requestedPage)
+    ? Math.min(Math.max(requestedPage, 1), pageCount)
+    : 1
+  const visibleListJobs = showAllJobs
+    ? filtered
+    : filtered.slice((page - 1) * LIST_PAGE_SIZE, page * LIST_PAGE_SIZE)
 
   // Derive drawer/form visibility from URL state. Deep links resolve
   // against the UNFILTERED list — a ?jobId= must open its job even when the
@@ -347,6 +360,7 @@ export function SchedulePage() {
       <ListPage width="full" className="h-full overflow-auto">
       <PageHeader
         title="Schedule"
+        description="Plan recurring work and see exactly when each agent, workflow, and system event will run."
         meta={loading ? undefined : (
           <Badge data-testid="header-count" size="xs" variant="outline">
             {filtered.length} shown
@@ -405,26 +419,37 @@ export function SchedulePage() {
           className="min-h-0 min-w-0 flex-1 overflow-auto"
         >
           {view === 'list' ? (
-          <JobList
-            jobs={filtered}
-            onSelect={openJob}
-            onPause={(id) => pauseJob(id)}
-            onResume={(id) => resumeJob(id)}
-            onRunNow={(id) => runNow(id)}
-            onDelete={requestDelete}
-            onEdit={openEditFor}
-            onDuplicate={openDuplicateFor}
-            onAdopt={(job) => {
-              const params = new URLSearchParams(searchParams.toString())
-              params.set('jobId', job.id)
-              params.set('mode', 'adopt')
-              router.push(`${pathname}?${params.toString()}`, { scroll: false })
-            }}
-            onRestoreNative={restoreNative}
-            onSkipNext={(id) => skipNext(id)}
-            scoreMap={scoreMap}
-            showScores={debug && !!search.trim()}
-          />
+            <div className="flex min-w-0 flex-col gap-bakin-3">
+              <JobList
+                jobs={visibleListJobs}
+                onSelect={openJob}
+                onPause={(id) => pauseJob(id)}
+                onResume={(id) => resumeJob(id)}
+                onRunNow={(id) => runNow(id)}
+                onDelete={requestDelete}
+                onEdit={openEditFor}
+                onDuplicate={openDuplicateFor}
+                onAdopt={(job) => {
+                  const params = new URLSearchParams(searchParams.toString())
+                  params.set('jobId', job.id)
+                  params.set('mode', 'adopt')
+                  router.push(`${pathname}?${params.toString()}`, { scroll: false })
+                }}
+                onRestoreNative={restoreNative}
+                onSkipNext={(id) => skipNext(id)}
+                scoreMap={scoreMap}
+                showScores={debug && !!search.trim()}
+              />
+              <PageNavigator
+                ariaLabel="Scheduled jobs pagination"
+                page={page}
+                pageSize={LIST_PAGE_SIZE}
+                showAll={showAllJobs}
+                total={filtered.length}
+                onPageChange={(nextPage) => setPageParam(String(nextPage))}
+                onShowAllChange={(nextShowAll) => setPageParam(nextShowAll ? 'all' : '1')}
+              />
+            </div>
         ) : view === 'today' ? (
           <CalendarToday jobs={filtered} onSelectJob={openJob} />
         ) : view === 'month' ? (

@@ -77,8 +77,8 @@ function FolderCard({ folder, onOpen, onRename, onDelete }: {
               <DropdownMenuItem onClick={onRename} data-testid={`folder-rename-${folder.tag}`}>
                 <Pencil className="size-3.5" /> Rename
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={onDelete} className="text-red-400 focus:text-red-300" data-testid={`folder-delete-${folder.tag}`}>
-                <Trash2 className="size-3.5" /> Delete tag
+              <DropdownMenuItem onClick={onDelete} variant="danger" data-testid={`folder-delete-${folder.tag}`}>
+                <Trash2 className="size-3.5" /> Delete
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

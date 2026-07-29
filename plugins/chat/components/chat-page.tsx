@@ -14,9 +14,19 @@
  * previous/next chat, ⇧Esc focus the composer.
  */
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
-import { PluginHeader } from '@makinbakin/sdk/components'
+import { ArrowLeft } from 'lucide-react'
 import { writeComposerDraft } from '@makinbakin/sdk/conversation'
-import { toast, usePluginEvent, useQueryState, useRouter } from '@makinbakin/sdk/hooks'
+import { toast, usePluginEvent } from '@makinbakin/sdk/hooks'
+import { useQueryState, useRouter } from '@makinbakin/sdk/navigation'
+import {
+  ConversationPageBody,
+  PageHeader,
+  SearchInput,
+  WorkspacePage,
+  WorkspacePageBody,
+  WorkspacePageHeader,
+} from '@makinbakin/sdk/patterns'
+import { Badge, Button } from '@makinbakin/sdk/ui'
 import { pluginFetch } from '@makinbakin/sdk/utils'
 
 import { AgentPicker } from './agent-picker'
@@ -171,52 +181,94 @@ function ChatPageInner({ chatId = '', draft = false }: ChatPageProps) {
   }, [chatId, visibleChats, openChat, router, withFilter])
 
   return (
-    <div className="flex h-full flex-col" data-chat-pane>
-      <div className="px-6 pb-2 pt-3 md:pt-4">
-        <PluginHeader
+    <WorkspacePage
+      data-chat-pane
+      data-chat-contained-page
+    >
+      <WorkspacePageHeader className={chatId || draft ? 'hidden md:block' : undefined}>
+        <PageHeader
           title="Chat"
-          count={loading ? undefined : chats.length}
-          search={{ value: search, onChange: setSearch, placeholder: 'Search chats…' }}
+          description="Talk with any agent, revisit recent conversations, and keep tool activity and attachments with the thread."
+          meta={loading ? undefined : (
+            <Badge size="xs" variant="outline">{visibleChats.length} shown</Badge>
+          )}
+          controlsLabel="Chat search"
+          controls={(
+            <SearchInput
+              align="end"
+              label="Chat search"
+              value={search}
+              onValueChange={setSearch}
+              placeholder="Search chats…"
+              busy={loading}
+              mobileFullWidth
+            />
+          )}
+          actionsLabel="Chat actions"
           actions={<AgentPicker onPick={startDraft} />}
         />
-      </div>
-      <div className="flex min-h-0 flex-1 border-t border-border">
-        <ChatRail
-          chats={visibleChats}
-          agentIds={[...new Set(allChats.map((c) => c.agentId))]}
-          loading={loading}
-          selectedId={chatId}
-          agentFilter={agentFilter}
-          streamingIds={streamingIds}
-          collapsed={collapsed}
-          onCollapse={setCollapsed}
-          onSelect={openChat}
-          onAgentFilter={(v) => {
-            // On /chat/new the agent param is the draft agent — a rail
-            // filter click there navigates back to the (filtered) list.
-            if (draft) router.push(v ? `/chat?agent=${encodeURIComponent(v)}` : '/chat')
-            else setAgentParam(v)
-          }}
-          onChanged={() => { void refresh() }}
-        />
-        {chatId ? (
-          <ChatView key={chatId} chatId={chatId} onChanged={() => { void refresh() }} />
-        ) : draftAgent ? (
-          <DraftChatView
-            key={draftAgent}
-            agentId={draftAgent}
-            createAndSend={createAndSend}
-            onCreated={(id) => {
-              // replace — the dead draft URL shouldn't survive in history.
-              router.replace(`/chat/${encodeURIComponent(id)}`)
-              void refresh()
-            }}
-          />
-        ) : (
-          <Launcher chats={chats} loading={loading} onStartChat={startDraft} onOpenChat={openChat} />
-        )}
-      </div>
-    </div>
+      </WorkspacePageHeader>
+      <WorkspacePageBody>
+        <ConversationPageBody
+          mode="contained"
+          className="bg-bakin-canvas-default"
+        >
+          <div className="flex min-h-0 flex-1 overflow-hidden" data-chat-workspace>
+            <div className="hidden min-h-0 md:flex">
+              <ChatRail
+                chats={visibleChats}
+                agentIds={[...new Set(allChats.map((c) => c.agentId))]}
+                loading={loading}
+                selectedId={chatId}
+                agentFilter={agentFilter}
+                streamingIds={streamingIds}
+                collapsed={collapsed}
+                onCollapse={setCollapsed}
+                onSelect={openChat}
+                onAgentFilter={(v) => {
+                  // On /chat/new the agent param is the draft agent — a rail
+                  // filter click there navigates back to the (filtered) list.
+                  if (draft) router.push(v ? `/chat?agent=${encodeURIComponent(v)}` : '/chat')
+                  else setAgentParam(v)
+                }}
+                onChanged={() => { void refresh() }}
+              />
+            </div>
+            <div className="flex min-w-0 flex-1 flex-col">
+              {chatId || draftAgent ? (
+                <div className="relative z-10 shrink-0 border-b border-bakin-border-subtle p-bakin-2 md:hidden">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    data-chat-mobile-back
+                    onClick={() => router.push(withFilter('/chat'))}
+                  >
+                    <ArrowLeft /> Chats
+                  </Button>
+                </div>
+              ) : null}
+              {chatId ? (
+                <ChatView key={chatId} chatId={chatId} onChanged={() => { void refresh() }} />
+              ) : draftAgent ? (
+                <DraftChatView
+                  key={draftAgent}
+                  agentId={draftAgent}
+                  createAndSend={createAndSend}
+                  onCreated={(id) => {
+                    // replace — the dead draft URL shouldn't survive in history.
+                    router.replace(`/chat/${encodeURIComponent(id)}`)
+                    void refresh()
+                  }}
+                />
+              ) : (
+                <Launcher chats={chats} loading={loading} onStartChat={startDraft} onOpenChat={openChat} />
+              )}
+            </div>
+          </div>
+        </ConversationPageBody>
+      </WorkspacePageBody>
+    </WorkspacePage>
   )
 }
 

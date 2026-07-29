@@ -28,7 +28,7 @@ const meta = {
     layout: 'fullscreen',
     docs: {
       description: {
-        component: 'ConfirmDialog, SaveBar, DangerZone, and UnsavedChangesDialog make consequences, retry, and exit decisions consistent without taking ownership of domain mutations or routing. Consumers own open, dirty, busy, error, persistence, and navigation state; the canonical patterns own presentation, semantics, focus, and responsive action placement. SaveBar stays low-profile on desktop, stacks only when the viewport needs it, and keeps the draft context beside the unsaved state.',
+        component: 'ConfirmDialog, SaveBar, DangerZone, and UnsavedChangesDialog make consequences, retry, and exit decisions consistent without taking ownership of domain mutations or routing. Consumers own open, dirty, busy, error, persistence, and navigation state; the canonical patterns own presentation, semantics, focus, and responsive action placement. DangerZone follows the same header, description, content inset, and compact action rhythm as ordinary settings cards while retaining a danger theme. SaveBar stays low-profile on desktop, stacks only when the viewport needs it, and keeps the draft context beside the unsaved state.',
       },
     },
     bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'overflow', 'interaction', 'busy', 'error-retry', 'typed-confirmation', 'focus-return', 'mobile-action-order', 'routing-boundary'],
@@ -221,6 +221,10 @@ function DangerZoneExample() {
 export const ConsequenceFirstDangerZone = {
   render: () => <DangerZoneExample />,
   play: async ({ canvas, userEvent }) => {
+    const zone = canvas.getByRole('region', { name: 'Danger zone' })
+    await expect(zone.querySelector('[data-slot="card-header"]')).toBeTruthy()
+    await expect(zone.querySelector('[data-slot="card-content"]')).toBeTruthy()
+    await expect(canvas.getByRole('button', { name: 'Delete workspace' })).toHaveAttribute('data-size', 'sm')
     await userEvent.click(canvas.getByRole('button', { name: 'Delete workspace' }))
     const page = within(document.body)
     const dialog = await page.findByRole('dialog', { name: 'Delete workspace?' })

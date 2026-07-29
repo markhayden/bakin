@@ -61,6 +61,24 @@ describe('focused tool call drawer', () => {
 })
 
 describe('focused conversation panel', () => {
+  it('supports a top-divider workspace treatment without an outer frame', () => {
+    const { container } = render(
+      <ConversationPanel
+        messages={messages}
+        onSend={() => {}}
+        storageKey="top-divider"
+        chrome="top-divider"
+        showHeader={false}
+      />,
+    )
+
+    const panel = container.querySelector('[data-conv-panel]')
+    expect(panel?.getAttribute('data-chrome')).toBe('top-divider')
+    expect(panel?.className).toContain('border-t')
+    expect(panel?.className).not.toContain('rounded-bakin-overlay')
+    expect(panel?.className).not.toContain(' border ')
+  })
+
   it('fills an explicit host and can omit duplicate chrome', () => {
     const { container } = render(
       <ConversationPanel
@@ -77,6 +95,22 @@ describe('focused conversation panel', () => {
     expect(container.querySelector('[data-conv-panel]')?.className).toContain('h-full')
     expect(container.querySelector('[data-conv-timeline]')?.getAttribute('data-mode')).toBe('contained')
     expect(container.querySelector('textarea')).not.toBeNull()
+  })
+
+  it('can preserve page scroll by opting out of composer autofocus', () => {
+    const { container, unmount } = render(
+      <ConversationPanel
+        messages={messages}
+        onSend={() => {}}
+        storageKey="embedded-no-focus"
+        autoFocus={false}
+      />,
+    )
+
+    const textarea = container.querySelector('textarea')
+    expect(textarea).not.toBeNull()
+    expect(document.activeElement).not.toBe(textarea)
+    unmount()
   })
 
   it('owns presentation-ready identity and accepts a consumer-owned agent control', () => {

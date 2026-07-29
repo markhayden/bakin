@@ -2,8 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { HealthIncident, HealthRepairTarget } from '@makinbakin/sdk/types'
-import { PluginHeader, UnderlineTabs } from '@makinbakin/sdk/components'
 import { usePathname, useQueryState } from '@makinbakin/sdk/hooks'
+import {
+  DashboardPage,
+  DashboardPageContent,
+  PageHeader,
+  UnderlineTabs,
+} from '@makinbakin/sdk/patterns'
 import { Button } from '@makinbakin/sdk/ui'
 import { RefreshCw } from 'lucide-react'
 import { useOverviewData } from '../hooks/use-overview-data'
@@ -181,19 +186,21 @@ export function HealthPage() {
   }, [])
 
   return (
-    <div
-      className="health-page @container/health min-w-0 space-y-5 p-4 sm:space-y-6 sm:p-6"
+    <DashboardPage
+      width="full"
+      className="health-page"
       data-testid="health-page"
     >
-      <PluginHeader
+      <PageHeader
         title="Health"
+        description="Monitor operational readiness, investigate failed work, and repair issues before they block agents."
         meta={announcement ? (
           <span
             className={runningChecks
-              ? 'text-xs font-medium text-muted-foreground'
+              ? 'font-bakin-typography-weight-medium text-bakin-text-muted'
               : announcement === 'Health checks completed.'
-                ? 'text-xs font-medium text-success'
-                : 'text-xs font-medium text-destructive'}
+                ? 'font-bakin-typography-weight-medium text-bakin-action-primary-background'
+                : 'font-bakin-typography-weight-medium text-bakin-signal-danger'}
             data-testid="health-action-visible-status"
             aria-hidden="true"
           >
@@ -221,7 +228,7 @@ export function HealthPage() {
         {announcement}
       </p>
 
-      <div className="min-w-0">
+      <div className="@container/health min-w-0" data-slot="health-tab-frame">
         <UnderlineTabs
           tabs={HEALTH_TABS}
           value={activeTab}
@@ -233,23 +240,29 @@ export function HealthPage() {
           className="min-w-0 overflow-x-auto overflow-y-hidden"
         />
 
-        <div
-          id={`health-panel-${activeTab}`}
-          role="tabpanel"
-          aria-labelledby={`health-tab-${activeTab}`}
-          className="min-w-0 pt-4"
+        <DashboardPageContent
+          label={`${HEALTH_TABS.find((tab) => tab.id === activeTab)?.label ?? 'Health'} health view`}
+          busy={runningChecks}
+          className="pt-bakin-6"
         >
-          {activeTab === 'overview' && (
-            <OverviewPanel
-              onRunChecksReady={registerOverviewRunChecks}
-              onRunChecks={runChecks}
-            />
-          )}
-          {activeTab === 'agents' && <AgentsTab />}
-          {activeTab === 'activity' && <ActivityTab />}
-          {activeTab === 'system' && <SystemTab />}
-        </div>
+          <div
+            id={`health-panel-${activeTab}`}
+            role="tabpanel"
+            aria-labelledby={`health-tab-${activeTab}`}
+            className="min-w-0"
+          >
+            {activeTab === 'overview' && (
+              <OverviewPanel
+                onRunChecksReady={registerOverviewRunChecks}
+                onRunChecks={runChecks}
+              />
+            )}
+            {activeTab === 'agents' && <AgentsTab />}
+            {activeTab === 'activity' && <ActivityTab />}
+            {activeTab === 'system' && <SystemTab />}
+          </div>
+        </DashboardPageContent>
       </div>
-    </div>
+    </DashboardPage>
   )
 }

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { FileText, Loader2 } from 'lucide-react'
 import { Section, Stack } from '@makinbakin/sdk/layout'
+import { ListRow, ListRows } from '@makinbakin/sdk/patterns'
 import { Button, Label, Switch, SystemState } from '@makinbakin/sdk/ui'
 import { useQueryState } from '@makinbakin/sdk/hooks'
 
@@ -181,20 +182,19 @@ export function LessonToggleList({ agentId }: LessonToggleListProps) {
           ) : null}
         </div>
 
-        <ul className="m-0 grid gap-bakin-2 p-0">
+        <ListRows
+          aria-label="Agent lessons"
+          className="[&>[data-highlighted=true]]:border-bakin-signal-accent [&>[data-highlighted=true]]:bg-bakin-signal-accent/10"
+        >
           {lessons.map((lesson) => {
             const highlighted = highlightId !== '' && lesson.lessonId === highlightId
             const switchId = `lesson-${agentId}-${lesson.lessonId}`
             return (
-              <li
+              <ListRow
                 key={lesson.lessonId}
                 ref={highlighted ? highlightRef : undefined}
                 data-highlighted={highlighted ? 'true' : undefined}
-                className={`flex min-w-0 flex-col gap-bakin-3 rounded-bakin-surface border bg-bakin-surface-default px-bakin-3 py-bakin-3 sm:flex-row sm:items-center ${
-                  highlighted
-                    ? 'border-bakin-signal-accent bg-bakin-signal-accent/10'
-                    : 'border-bakin-border-subtle'
-                } ${lesson.enabled ? '' : 'opacity-60'}`}
+                className={`flex flex-col gap-bakin-3 sm:flex-row sm:items-center ${lesson.enabled ? '' : 'opacity-60'}`}
               >
                 <Label
                   htmlFor={switchId}
@@ -231,10 +231,10 @@ export function LessonToggleList({ agentId }: LessonToggleListProps) {
                     aria-label={`Toggle ${lesson.title}`}
                   />
                 </div>
-              </li>
+              </ListRow>
             )
           })}
-        </ul>
+        </ListRows>
       </Stack>
     </Section>
   )

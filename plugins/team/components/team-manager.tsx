@@ -105,7 +105,8 @@ export function TeamManager() {
   return (
     <div className="flex min-w-0 flex-col gap-bakin-6 pb-bakin-6">
       <p className="m-0 text-bakin-text-muted">
-        Teams organize agents into reporting groups and give each group a shared context surface.
+        Teams create smaller reporting groups with their own shared context. Global includes every
+        agent by default.
       </p>
 
       {error ? (
@@ -116,82 +117,81 @@ export function TeamManager() {
       ) : null}
 
       <BakinDrawerSection title="Teams">
-        <p className="m-0 text-bakin-typography-size-meta text-bakin-text-muted">
-          {teams.length + 1} reporting group{teams.length === 0 ? '' : 's'}
-        </p>
-        {teams.length === 0 ? (
-          <SystemState
-            kind="initial-empty"
-            scope="inline"
-            title="No custom teams yet"
-            description="Global context still applies to every agent. Create a team when a smaller reporting group needs its own rules."
-          />
-        ) : null}
+        <div className="grid gap-bakin-2">
+          {teams.length === 0 ? (
+            <SystemState
+              kind="initial-empty"
+              scope="inline"
+              title="No custom teams yet"
+              description="Every agent remains in Global until you create a smaller group with its own shared context."
+            />
+          ) : null}
 
-        <div className="overflow-hidden rounded-bakin-surface border border-bakin-border-subtle bg-bakin-canvas-default">
-          <div className="flex min-w-0 items-center gap-bakin-3 p-bakin-3">
-            <div className="flex size-bakin-8 shrink-0 items-center justify-center rounded-bakin-pill bg-bakin-surface-default">
-              <Users className="size-bakin-4 text-bakin-text-muted" aria-hidden="true" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <Button
-                type="button"
-                variant="link"
-                size="xs"
-                className="justify-start text-bakin-text-primary"
-                onClick={() => router.push('/team/teams/global')}
-              >
-                Global
-              </Button>
-              <p className="m-0 text-bakin-typography-size-meta text-bakin-text-muted">
-                Shared context for every agent
-              </p>
-            </div>
-            <code className="font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
-              global
-            </code>
-          </div>
-
-          {teams.map((team) => (
-            <div
-              key={team.id}
-              className="flex min-w-0 flex-col gap-bakin-3 border-t border-bakin-border-subtle p-bakin-3 sm:flex-row sm:items-center"
-            >
+          <div className="overflow-hidden rounded-bakin-surface border border-bakin-border-subtle bg-bakin-canvas-default">
+            <div className="flex min-w-0 items-center gap-bakin-3 p-bakin-3">
+              <div className="flex size-bakin-8 shrink-0 items-center justify-center rounded-bakin-pill bg-bakin-surface-default">
+                <Users className="size-bakin-4 text-bakin-text-muted" aria-hidden="true" />
+              </div>
               <div className="min-w-0 flex-1">
                 <Button
                   type="button"
                   variant="link"
                   size="xs"
                   className="justify-start text-bakin-text-primary"
-                  onClick={() => router.push(`/team/teams/${encodeURIComponent(team.id)}`)}
+                  onClick={() => router.push('/team/teams/global')}
                 >
-                  {team.label}
+                  Global
                 </Button>
-                <code className="block font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
-                  {team.id}
-                </code>
+                <p className="m-0 text-bakin-typography-size-meta text-bakin-text-muted">
+                  Shared context for every agent
+                </p>
               </div>
-              <div className="min-w-0 sm:w-56">
-                <AgentSelect
-                  ariaLabel={`${team.label} reports to`}
-                  value={team.reportsTo ?? ''}
-                  onValueChange={(value) => void handleUpdate(team.id, { reportsTo: value })}
-                  agents={agentOptions}
-                  placeholder="Select reporting agent"
-                  className="w-full"
-                />
-              </div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                aria-label={`Delete ${team.label}`}
-                onClick={() => setDeleteTarget(team.id)}
-              >
-                <Trash2 aria-hidden="true" />
-              </Button>
+              <code className="font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
+                global
+              </code>
             </div>
-          ))}
+
+            {teams.map((team) => (
+              <div
+                key={team.id}
+                className="flex min-w-0 flex-col gap-bakin-3 border-t border-bakin-border-subtle p-bakin-3 sm:flex-row sm:items-center"
+              >
+                <div className="min-w-0 flex-1">
+                  <Button
+                    type="button"
+                    variant="link"
+                    size="xs"
+                    className="justify-start text-bakin-text-primary"
+                    onClick={() => router.push(`/team/teams/${encodeURIComponent(team.id)}`)}
+                  >
+                    {team.label}
+                  </Button>
+                  <code className="block font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
+                    {team.id}
+                  </code>
+                </div>
+                <div className="min-w-0 sm:w-56">
+                  <AgentSelect
+                    ariaLabel={`${team.label} reports to`}
+                    value={team.reportsTo ?? ''}
+                    onValueChange={(value) => void handleUpdate(team.id, { reportsTo: value })}
+                    agents={agentOptions}
+                    placeholder="Select reporting agent"
+                    className="w-full"
+                  />
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={`Delete ${team.label}`}
+                  onClick={() => setDeleteTarget(team.id)}
+                >
+                  <Trash2 aria-hidden="true" />
+                </Button>
+              </div>
+            ))}
+          </div>
         </div>
       </BakinDrawerSection>
 

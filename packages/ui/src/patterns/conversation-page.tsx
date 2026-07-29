@@ -1,21 +1,43 @@
 'use client'
 
 import * as React from 'react'
-import { PageShell, type PageShellProps } from '../layout/page-shell'
+import {
+  PageShell,
+  type PageShellProps,
+  type PageShellWidth,
+} from '../layout/page-shell'
 import { cn } from '../utils'
 
-export type ConversationPageWidth = 'content' | 'wide'
+export type ConversationPageWidth = PageShellWidth
 export type ConversationPageMode = 'document' | 'contained'
 
 export type ConversationPageProps = Omit<PageShellProps, 'children' | 'gap' | 'padding' | 'width'> & {
   children: React.ReactNode
+  /** Contained conversations fill their owning application pane instead of extending document flow. */
+  mode?: ConversationPageMode
   width?: ConversationPageWidth
 }
 
 /** Page canvas for a routed conversation; message behavior remains in the conversation kit. */
-export function ConversationPage({ children, width = 'content', ...props }: ConversationPageProps) {
+export function ConversationPage({
+  children,
+  className,
+  mode = 'document',
+  width = 'full',
+  ...props
+}: ConversationPageProps) {
   return (
-    <PageShell {...props} data-archetype="conversation" width={width}>
+    <PageShell
+      {...props}
+      className={cn(
+        mode === 'contained'
+          && 'h-full [&>[data-slot=page-shell-content]]:h-full [&>[data-slot=page-shell-content]]:shrink',
+        className,
+      )}
+      data-archetype="conversation"
+      data-mode={mode}
+      width={width}
+    >
       {children}
     </PageShell>
   )
@@ -105,14 +127,14 @@ export function ConversationPageTimeline({
 
 export type ConversationPageComposerProps = React.ComponentPropsWithoutRef<'div'>
 
-/** Stable composer boundary outside the timeline scroller. */
+/** Stable, borderless composer boundary outside the timeline scroller. */
 export function ConversationPageComposer({ className, ...props }: ConversationPageComposerProps) {
   return (
     <div
       {...props}
       data-slot="conversation-page-composer"
       className={cn(
-        'min-w-0 shrink-0 border-t border-bakin-border-subtle pt-bakin-4',
+        'min-w-0 shrink-0 pt-bakin-4',
         className,
       )}
     />

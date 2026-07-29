@@ -230,11 +230,14 @@ describe('OverviewTabView', () => {
     const identity = screen.getByRole('heading', { level: 2, name: 'Overview' })
     expect(identity.className).toContain('sr-only')
     const intro = screen.getByText('See what needs attention, fix it, and confirm Bakin is working.')
-    expect(intro.className).toContain('text-xs')
+    expect(intro.className).toContain('text-bakin-typography-size-meta')
     expect(intro.className).toContain('leading-relaxed')
-    expect(intro.className).toContain('text-muted-foreground/80')
+    expect(intro.className).toContain('text-bakin-text-muted')
 
     const pulse = screen.getByTestId('overview-platform-pulse')
+    expect(pulse.getAttribute('data-layout')).toBe('priority-signal')
+    expect(within(pulse).getByRole('heading', { name: 'Needs attention' })).toBeDefined()
+    expect(within(pulse).getByRole('group', { name: 'Health summary metrics' })).toBeDefined()
     expect(pulse.textContent).toMatch(/Bakin.*Needs attention.*Search.*Healthy.*1 working.*4 sessions.*3 failed/i)
     expect(screen.getByRole('link', { name: /Search: Healthy/i }).getAttribute('href')).toBe('/health?tab=system&section=search')
     expect(within(pulse).getByRole('link', { name: /Recent failures: 3 failed/i }).getAttribute('href'))
@@ -289,6 +292,11 @@ describe('OverviewTabView', () => {
     expect(within(interactions).getByRole('group', { name: /Recorded meaningful Bakin interactions/i })).toBeDefined()
     expect(within(interactions).getByRole('link', { name: 'View recorded interaction activity' }).getAttribute('href'))
       .toBe('/health?tab=activity&activity_window=1h')
+
+    const operations = screen.getByTestId('overview-operations')
+    expect(operations.getAttribute('data-layout')).toBe('operational-telemetry')
+    expect(within(operations).getByRole('heading', { name: 'Operating telemetry' })).toBeDefined()
+    expect(within(operations).getByText('Token use, context pressure, cache efficiency, and recorded interactions.')).toBeDefined()
   })
 
   it('links the interaction failure badge to the one-hour Activity attention section', () => {
@@ -397,7 +405,9 @@ describe('OverviewTabView', () => {
 
     const status = screen.getByTestId('overview-platform-pulse')
     expect(status.textContent).toContain('Checked')
-    expect(status.querySelectorAll('p')).toHaveLength(0)
+    expect(within(status).getByText(
+      'No current conditions require action. Supporting evidence and recent activity remain available below.',
+    )).toBeDefined()
     expect(screen.queryByText('How Search was checked')).toBeNull()
     expect(screen.getByRole('link', { name: /Search: Healthy/i }).getAttribute('href')).toBe('/health?tab=system&section=search')
   })
@@ -637,5 +647,20 @@ describe('OverviewTabView', () => {
     expect(screen.getByRole('link', { name: /Search: Unknown/i })).toBeDefined()
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
     expect(retry).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps a verified snapshot visible inside the canonical persistent feedback banner', () => {
+    const model = buildHealthOverviewViewModel({ report: report(), now: NOW })
+
+    render(
+      <OverviewTabView
+        model={model}
+        backgroundError="Search telemetry timed out"
+      />,
+    )
+
+    const banner = screen.getByText('Showing the last verified snapshot').closest('[data-slot="banner"]')
+    expect(banner?.getAttribute('data-tone')).toBe('attention')
+    expect(banner?.textContent).toContain('Search telemetry timed out')
   })
 })

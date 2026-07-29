@@ -1,0 +1,184 @@
+import * as React from 'react'
+
+import { PageShell, type PageShellProps } from '../layout/page-shell'
+import { cn } from '../utils'
+import { PageHeaderOverflowMenu } from './page-header'
+
+export type WorkspacePageMode = 'contained' | 'immersive'
+
+const WorkspacePageContext =
+  React.createContext<WorkspacePageMode>('contained')
+
+export type WorkspacePageProps = Omit<
+  PageShellProps,
+  'children' | 'gap' | 'padding' | 'width'
+> & {
+  children: React.ReactNode
+  /**
+   * Immersive workspaces let the full mobile identity scroll away, retain a
+   * compact sticky context row, and give the remaining viewport to the canvas.
+   * Desktop geometry is identical in both modes.
+   */
+  mode?: WorkspacePageMode
+}
+
+/**
+ * Full-bleed page geometry for persistent application workspaces.
+ *
+ * The header and body subpatterns deliberately own all insets. Ordinary
+ * list, detail, settings, and dashboard pages should continue to use their
+ * focused page recipes.
+ */
+export function WorkspacePage({
+  children,
+  className,
+  mode = 'contained',
+  ...props
+}: WorkspacePageProps) {
+  return (
+    <WorkspacePageContext.Provider value={mode}>
+      <PageShell
+        {...props}
+        className={cn(
+          'h-full [--bakin-workspace-compact-header-height:3.5rem] [&>[data-slot=page-shell-content]]:h-full',
+          mode === 'immersive'
+            ? 'overflow-y-auto overscroll-y-contain @md/page-shell:overflow-hidden'
+            : 'overflow-hidden',
+          className,
+        )}
+        data-archetype="workspace"
+        data-mode={mode}
+        gap="none"
+        padding="none"
+        width="full"
+      >
+        {children}
+      </PageShell>
+    </WorkspacePageContext.Provider>
+  )
+}
+
+export type WorkspacePageHeaderProps = React.ComponentPropsWithoutRef<'div'>
+
+/** Canonically inset page identity and controls above a full-bleed workspace. */
+export function WorkspacePageHeader({
+  className,
+  ...props
+}: WorkspacePageHeaderProps) {
+  const mode = React.useContext(WorkspacePageContext)
+
+  return (
+    <div
+      {...props}
+      data-slot="workspace-page-header"
+      className={cn(
+        'min-w-0 shrink-0 px-bakin-4 pt-bakin-4 pb-bakin-4 @md/page-shell:px-bakin-6 @md/page-shell:pt-bakin-6 @xl/page-shell:px-bakin-8 @xl/page-shell:pt-bakin-8',
+        mode === 'immersive' &&
+          '[&_[data-slot=page-header-context]]:hidden [&_[data-slot=page-header-trailing]]:hidden @md/page-shell:[&_[data-slot=page-header-context]]:flex @md/page-shell:[&_[data-slot=page-header-trailing]]:flex',
+        className,
+      )}
+    />
+  )
+}
+
+type NativeWorkspacePageCompactHeaderProps = Omit<
+  React.ComponentPropsWithoutRef<'div'>,
+  'title'
+>
+
+export interface WorkspacePageCompactHeaderProps
+  extends NativeWorkspacePageCompactHeaderProps {
+  /** Client-routed back control or other compact navigation. */
+  navigation?: React.ReactNode
+  /** Truncated current workspace identity. */
+  title: React.ReactNode
+  /** One primary action that remains available while the full header is gone. */
+  action?: React.ReactNode
+  /** Secondary actions rendered in the shared circular overflow menu. */
+  overflowActions?: React.ReactNode
+  /** Accessible name for the overflow trigger. */
+  overflowActionsLabel?: string
+}
+
+/**
+ * Mobile-only persistent context for immersive canvases.
+ *
+ * Keep this row intentionally small: navigation, one-line identity, one
+ * primary action, and the shared overflow menu. Place it immediately after
+ * WorkspacePageHeader so the full identity scrolls away before this row
+ * reaches its sticky position.
+ */
+export function WorkspacePageCompactHeader({
+  action,
+  className,
+  navigation,
+  overflowActions,
+  overflowActionsLabel = 'More actions',
+  title,
+  ...props
+}: WorkspacePageCompactHeaderProps) {
+  return (
+    <div
+      {...props}
+      data-slot="workspace-page-compact-header"
+      className={cn(
+        'sticky top-0 z-30 flex h-[var(--bakin-workspace-compact-header-height)] min-w-0 shrink-0 items-center gap-bakin-2 border-b border-bakin-border-subtle bg-bakin-canvas-default px-bakin-4 @md/page-shell:hidden',
+        className,
+      )}
+    >
+      {navigation ? (
+        <div
+          data-slot="workspace-page-compact-navigation"
+          className="min-w-0 shrink-0"
+        >
+          {navigation}
+        </div>
+      ) : null}
+      <div
+        data-slot="workspace-page-compact-title"
+        className="min-w-0 flex-1 truncate text-bakin-typography-size-body font-bakin-typography-weight-bold text-bakin-text-primary"
+      >
+        {title}
+      </div>
+      {action ? (
+        <div
+          data-slot="workspace-page-compact-action"
+          className="min-w-0 shrink-0"
+        >
+          {action}
+        </div>
+      ) : null}
+      {overflowActions ? (
+        <PageHeaderOverflowMenu label={overflowActionsLabel}>
+          {overflowActions}
+        </PageHeaderOverflowMenu>
+      ) : null}
+    </div>
+  )
+}
+
+export type WorkspacePageBodyProps = React.ComponentPropsWithoutRef<'div'>
+
+/**
+ * Flush remaining canvas. The mobile activity trigger lives in the host nav,
+ * so this body only preserves the device safe area.
+ */
+export function WorkspacePageBody({
+  className,
+  ...props
+}: WorkspacePageBodyProps) {
+  const mode = React.useContext(WorkspacePageContext)
+
+  return (
+    <div
+      {...props}
+      data-slot="workspace-page-body"
+      className={cn(
+        'flex min-h-0 min-w-0 flex-1 overflow-hidden pb-[env(safe-area-inset-bottom)] @md/page-shell:pb-0',
+        mode === 'immersive' &&
+          'h-[calc(100%-var(--bakin-workspace-compact-header-height))] min-h-[calc(100%-var(--bakin-workspace-compact-header-height))] flex-none @md/page-shell:h-auto @md/page-shell:min-h-0 @md/page-shell:flex-1',
+        className,
+      )}
+    />
+  )
+}

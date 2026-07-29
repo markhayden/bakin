@@ -1,6 +1,7 @@
 'use client'
 
-import { StatTile } from '@makinbakin/sdk/components'
+import { Grid } from '@makinbakin/sdk/layout'
+import { StatTile } from '@makinbakin/sdk/patterns'
 import { Activity, AlertCircle, Bot, CheckCircle2 } from 'lucide-react'
 import { isAttributedAgentRow } from '../lib/activity-feed-compat'
 import type { UsageFeedData } from '../types'
@@ -16,9 +17,9 @@ function successPercent(data: UsageFeedData): number | null {
   return (data.outcomes.succeeded / data.totals.count) * 100
 }
 
-function successTone(data: UsageFeedData): 'success' | 'warning' | 'destructive' {
-  if (data.totals.errorRate >= 0.1) return 'destructive'
-  if (data.outcomes.failed > 0 || data.outcomes.unverified > 0 || data.outcomes.canceled > 0) return 'warning'
+function successTone(data: UsageFeedData): 'success' | 'attention' | 'danger' {
+  if (data.totals.errorRate >= 0.1) return 'danger'
+  if (data.outcomes.failed > 0 || data.outcomes.unverified > 0 || data.outcomes.canceled > 0) return 'attention'
   return 'success'
 }
 
@@ -48,8 +49,9 @@ export function ActivityMetrics({
       : 'Partial window · retained history'
 
   return (
-    <div
-      className="grid grid-cols-2 gap-3 @[56rem]/health:grid-cols-4"
+    <Grid
+      layout="quarters"
+      gap="dense"
       role="group"
       aria-label="Activity metrics"
       data-testid="activity-metrics"
@@ -64,6 +66,7 @@ export function ActivityMetrics({
         icon={CheckCircle2}
         label="Success rate"
         value={rate === null || compatibilityLimited ? '—' : formatPercent(rate)}
+        valueTone={rate !== null && !compatibilityLimited ? successTone(data) : 'neutral'}
         {...(rate !== null && !compatibilityLimited
           ? { progress: { percent: rate, tone: successTone(data) } }
           : {})}
@@ -76,11 +79,8 @@ export function ActivityMetrics({
       <StatTile
         icon={AlertCircle}
         label="Hiccups"
-        value={
-          <span className={failed > 0 ? 'text-destructive' : unverified > 0 ? 'text-warning' : undefined}>
-            {attention.toLocaleString()}
-          </span>
-        }
+        value={attention.toLocaleString()}
+        valueTone={failed > 0 ? 'danger' : unverified > 0 ? 'attention' : 'neutral'}
         sub={attention > 0
           ? `${failed.toLocaleString()} failed · ${unverified.toLocaleString()} ${unverified === 1 ? 'result' : 'results'} not observed`
           : 'No hiccups in this window'}
@@ -93,6 +93,6 @@ export function ActivityMetrics({
           ? `Busiest: ${busiest.agent} (${busiest.count.toLocaleString()})`
           : 'No agent activity recorded'}
       />
-    </div>
+    </Grid>
   )
 }

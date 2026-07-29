@@ -5,6 +5,7 @@ import {
   BarChart,
   ChartExplainer,
   LineChart,
+  RankedBarChart,
   StackedColumnChart,
   type ChartDatum,
   type ChartSeries,
@@ -82,6 +83,10 @@ export const LineCharts = {
     await userEvent.click(mark)
     await expect(canvas.getByRole('tooltip')).toHaveTextContent('Window 4 — Recovered after retry: 3')
     mark.blur()
+    const ceilingMark = canvas.getByRole('img', { name: 'Current window with a deliberately long exact label — Completed: 42' })
+    await userEvent.click(ceilingMark)
+    await expect(canvas.getByRole('tooltip')).toHaveAttribute('data-placement', 'below')
+    ceilingMark.blur()
     canvas.getByRole('region', { name: 'Workflow outcomes plot' }).scrollLeft = 0
     await expect(canvas.getByRole('status')).toHaveTextContent('No reported data in this window.')
   },
@@ -122,6 +127,48 @@ export const BarCharts = {
     mark.blur()
     canvas.getByRole('region', { name: 'Grouped workflow outcomes plot' }).scrollLeft = 0
     await expect(canvas.getAllByText('Not reported', { selector: '[data-missing="true"]' })).toHaveLength(2)
+  },
+} satisfies Story
+
+const spendRankingData: ChartDatum[] = [
+  { x: 'sonnet', xLabel: 'anthropic/claude-sonnet-4-20250514', values: { cost: 5_840_000 } },
+  { x: 'gpt', xLabel: 'openai/gpt-5.5-codex', values: { cost: 3_120_000 } },
+  { x: 'haiku', xLabel: 'anthropic/claude-haiku-4-5', values: { cost: 740_000 } },
+  {
+    x: 'unpriced',
+    xLabel: 'provider/model-with-a-deliberately-long-unpriced-name',
+    values: {},
+    missingLabels: { cost: 'Cost unavailable' },
+  },
+]
+
+export const RankedBars = {
+  render: () => (
+    <ChartStage
+      eyebrow="Data / ranked comparison"
+      title="Rank long labels without forcing them onto an axis"
+      description="A ranked bar keeps one unit, full entity names, visible exact values, and an exact-data disclosure together. Missing cost stays missing instead of becoming a zero-length bar."
+    >
+      <section aria-labelledby="ranked-bar-heading" className="bakin-chart-story__section">
+        <div>
+          <h2 id="ranked-bar-heading">Estimated model spend</h2>
+          <p>One dollar series · descending rank · one explicitly unpriced model.</p>
+        </div>
+        <RankedBarChart
+          data={spendRankingData}
+          series={{ key: 'cost', label: 'Estimated cost' }}
+          label="Estimated model spend ranking"
+          formatValue={(value) => `$${(value / 1_000_000).toFixed(2)}`}
+        />
+        <ChartExplainer>Use separate ranked views for unlike units such as dollars and subscription tokens.</ChartExplainer>
+      </section>
+    </ChartStage>
+  ),
+  play: async ({ canvas }) => {
+    await expect(canvas.getByRole('group', { name: 'Estimated model spend ranking' })).toBeVisible()
+    await expect(canvas.getByRole('img', { name: 'anthropic/claude-sonnet-4-20250514 — Estimated cost: $5.84' })).toBeVisible()
+    await expect(canvas.getAllByText('Cost unavailable')).toHaveLength(2)
+    await expect(canvas.getByRole('table', { name: 'Estimated model spend ranking data', hidden: true })).toHaveTextContent('openai/gpt-5.5-codex')
   },
 } satisfies Story
 

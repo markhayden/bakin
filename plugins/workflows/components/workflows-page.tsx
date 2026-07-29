@@ -2,12 +2,20 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useRouter } from '@makinbakin/sdk/hooks'
-import { PluginHeader, SearchDegradedChip, SearchPartialChip } from "@makinbakin/sdk/components"
-import { EmptyState } from "@makinbakin/sdk/components"
-import { Skeleton } from "@makinbakin/sdk/ui"
-import { Button } from "@makinbakin/sdk/ui"
-import { Plus, Workflow, Loader2 } from 'lucide-react'
-import { useQueryState } from "@makinbakin/sdk/hooks"
+import { SearchDegradedChip, SearchPartialChip } from "@makinbakin/sdk/components"
+import { Grid } from "@makinbakin/sdk/layout"
+import {
+  FacetFilter,
+  ListPage,
+  ListPageContent,
+  ListPageControls,
+  PageHeader,
+  PageNavigator,
+  SearchInput,
+} from "@makinbakin/sdk/patterns"
+import { Badge, Button, Skeleton, SystemState } from "@makinbakin/sdk/ui"
+import { Plus } from 'lucide-react'
+import { useQueryArrayState, useQueryState } from "@makinbakin/sdk/hooks"
 import { useSearch } from "@makinbakin/sdk/hooks"
 import { useDebug } from "@makinbakin/sdk/hooks"
 import { WorkflowCard } from './workflow-card'
@@ -20,11 +28,18 @@ import {
   type WorkflowDialogFieldErrors,
 } from './workflow-dialog-validation'
 import type { WorkflowTemplate } from '../types'
+import {
+  getWorkflowFeatures,
+  WORKFLOW_FEATURES,
+  workflowMatchesFeatures,
+} from '../lib/workflow-presentation'
 
 interface ScoreInfo {
   score: number
   indexScores?: Record<string, number>
 }
+
+const MANAGED_PAGE_SIZE = 9
 
 function slugify(name: string): string {
   return name
@@ -41,6 +56,8 @@ export function WorkflowsPage() {
   const [templates, setTemplates] = useState<WorkflowTemplate[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useQueryState('q', '')
+  const [features, setFeatures] = useQueryArrayState('features')
+  const [managedPageParam, setManagedPageParam] = useQueryState('page', '1')
   const [debug] = useDebug()
   const [createOpen, setCreateOpen] = useState(false)
   const [creating, setCreating] = useState(false)
@@ -94,7 +111,7 @@ export function WorkflowsPage() {
     return map
   }, [normalizedSearch, searchHook.meta?.query, searchHook.results])
 
-  const filtered = useMemo(() => {
+  const searchFiltered = useMemo(() => {
     if (!normalizedSearch) return templates
     if (scoreMap.size > 0) {
       return templates
@@ -107,9 +124,45 @@ export function WorkflowsPage() {
     )
   }, [templates, normalizedSearch, scoreMap])
 
+  const featureCounts = useMemo(() => {
+    const counts: Record<string, number> = {}
+    for (const feature of WORKFLOW_FEATURES) counts[feature.value] = 0
+    for (const template of searchFiltered) {
+      for (const feature of getWorkflowFeatures(template.definition.steps)) {
+        counts[feature] += 1
+      }
+    }
+    return counts
+  }, [searchFiltered])
+
+  const filtered = useMemo(
+    () => searchFiltered.filter((template) => (
+      workflowMatchesFeatures(template.definition.steps, features)
+    )),
+    [features, searchFiltered],
+  )
+
   const isManagedWorkflow = (template: WorkflowTemplate) => template.source === 'plugin' || template.source === 'agent-package'
   const managedWorkflows = filtered.filter(isManagedWorkflow)
   const customWorkflows = filtered.filter(t => !isManagedWorkflow(t))
+  const showAllManaged = managedPageParam === 'all'
+  const managedPage = showAllManaged
+    ? 1
+    : Math.max(1, Number.parseInt(managedPageParam, 10) || 1)
+  const managedPageCount = Math.max(1, Math.ceil(managedWorkflows.length / MANAGED_PAGE_SIZE))
+  const safeManagedPage = Math.min(managedPage, managedPageCount)
+  const visibleManagedWorkflows = showAllManaged
+    ? managedWorkflows
+    : managedWorkflows.slice(
+      (safeManagedPage - 1) * MANAGED_PAGE_SIZE,
+      safeManagedPage * MANAGED_PAGE_SIZE,
+    )
+
+  useEffect(() => {
+    if (!showAllManaged && managedPage !== safeManagedPage) {
+      setManagedPageParam(String(safeManagedPage))
+    }
+  }, [managedPage, safeManagedPage, setManagedPageParam, showAllManaged])
 
   function openCreateWorkflowDialog() {
     setCreateError(null)
@@ -171,27 +224,32 @@ export function WorkflowsPage() {
     title,
     workflows,
     empty,
+    total = workflows.length,
+    pagination,
   }: {
     title: string
     workflows: WorkflowTemplate[]
     empty: string
+    total?: number
+    pagination?: React.ReactNode
   }) {
     return (
-      <section className="flex flex-col gap-2">
-        <div className="flex items-center gap-2">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+      <section className="flex min-w-0 flex-col gap-bakin-3">
+        <div className="flex min-w-0 items-center gap-bakin-2">
+          <h2 className="m-0 text-bakin-typography-size-meta font-bakin-typography-weight-bold uppercase tracking-[.12em] text-bakin-text-muted">
             {title}
           </h2>
-          <span className="rounded-full border border-border bg-muted/40 px-1.5 py-0.5 text-[10px] text-muted-foreground">
-            {workflows.length}
-          </span>
+          <Badge size="xs" variant="outline">{total}</Badge>
         </div>
         {workflows.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-border bg-card/40 px-3 py-4 text-sm text-muted-foreground">
-            {empty}
-          </div>
+          <SystemState
+            kind="initial-empty"
+            scope="inline"
+            title={empty}
+            description="This section will update when a matching workflow is available."
+          />
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <Grid layout="thirds" gap="item">
             {workflows.map((t) => {
               const scoreInfo = scoreMap.get(t.filename)
               const showScores = debug && normalizedSearch && scoreInfo ? scoreInfo : undefined
@@ -204,52 +262,102 @@ export function WorkflowsPage() {
                 />
               )
             })}
-          </div>
+          </Grid>
         )}
+        {pagination}
       </section>
     )
   }
 
-  return (
-    <div className="p-6 flex flex-col h-full min-h-0 gap-4">
-      <PluginHeader
-        title="Workflows"
-        count={loading ? undefined : filtered.length}
-        search={{ value: search, onChange: setSearch, placeholder: 'Search workflows...' }}
-        actions={
-          <Button size="sm" onClick={openCreateWorkflowDialog}>
-            <Plus className="size-3.5 mr-1" /> New workflow
+  const searchFeedback = searchSignalActive && searchHook.status !== 'loading' ? (
+    <div className="flex min-w-0 flex-wrap items-center gap-bakin-2">
+      {searchHook.status === 'unavailable' ? <SearchDegradedChip testId="workflows-search-degraded" /> : null}
+      {searchHook.meta?.partial ? <SearchPartialChip meta={searchHook.meta} /> : null}
+    </div>
+  ) : undefined
+
+  const resultState = loading ? (
+    <Grid layout="thirds" gap="item">
+      {Array.from({ length: 6 }).map((_, i) => (
+        <Skeleton key={i} className="h-40 w-full" />
+      ))}
+    </Grid>
+  ) : filtered.length === 0 ? (
+    normalizedSearch || features.length > 0 ? (
+      <SystemState
+        kind="no-results"
+        scope="page"
+        title="No workflows match this view"
+        description="Clear the current search and feature filters to return to every workflow."
+        action={(
+          <Button
+            variant="outline"
+            onClick={() => {
+              setSearch('')
+              setFeatures([])
+            }}
+          >
+            Clear filters
           </Button>
-        }
+        )}
+      />
+    ) : (
+      <SystemState
+        kind="initial-empty"
+        scope="page"
+        title="No workflows yet"
+        description="Create a workflow to coordinate repeatable, multi-step work."
+        action={<Button onClick={openCreateWorkflowDialog}><Plus /> New workflow</Button>}
+      />
+    )
+  ) : undefined
+
+  return (
+    <>
+      <ListPage width="full" className="h-full overflow-auto">
+      <PageHeader
+        title="Workflows"
+        description="Build and manage reusable, multi-step agent processes with approvals, branching, skills, and automated handoffs."
+        meta={loading ? undefined : <Badge size="xs" variant="outline">{filtered.length} shown</Badge>}
+        controlsLabel="Workflow search"
+        controls={(
+          <SearchInput
+            align="end"
+            label="Workflow search"
+            value={search}
+            onValueChange={(value) => {
+              setSearch(value)
+              setManagedPageParam('1')
+            }}
+            placeholder="Search workflows…"
+            busy={searchHook.status === 'loading'}
+            mobileFullWidth
+          />
+        )}
+        actionsLabel="Workflow actions"
+        actions={<Button onClick={openCreateWorkflowDialog}><Plus /> New workflow</Button>}
       />
 
-      {searchSignalActive && (
-        <div className="flex items-center gap-2">
-          {searchHook.status === 'loading' && (
-            <span className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground" data-testid="workflows-search-loading">
-              <Loader2 className="size-3 animate-spin" />
-              Searching…
-            </span>
-          )}
-          {searchHook.status === 'unavailable' && <SearchDegradedChip testId="workflows-search-degraded" />}
-          {searchHook.meta?.partial && <SearchPartialChip meta={searchHook.meta} />}
-        </div>
-      )}
+      <ListPageControls label="Workflow filters">
+        <FacetFilter
+          label="Features"
+          options={WORKFLOW_FEATURES}
+          selected={features}
+          counts={featureCounts}
+          onChange={(nextFeatures) => {
+            setFeatures(nextFeatures)
+            setManagedPageParam('1')
+          }}
+        />
+      </ListPageControls>
 
-      <div className="flex-1 min-h-0 overflow-auto">
-        {loading ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <Skeleton key={i} className="h-40 w-full" />
-            ))}
-          </div>
-        ) : filtered.length === 0 ? (
-          <EmptyState
-            icon={Workflow}
-            title={search ? 'No matching workflows' : 'No workflow templates found'}
-          />
-        ) : (
-          <div className="flex flex-col gap-6">
+      <ListPageContent
+        label="Workflow results"
+        busy={!loading && searchHook.status === 'loading'}
+        feedback={searchFeedback}
+        state={resultState}
+      >
+          <div className="flex min-w-0 flex-col gap-bakin-6">
             <WorkflowSection
               title="Custom workflows"
               workflows={customWorkflows}
@@ -257,12 +365,24 @@ export function WorkflowsPage() {
             />
             <WorkflowSection
               title="Managed workflows"
-              workflows={managedWorkflows}
+              workflows={visibleManagedWorkflows}
+              total={managedWorkflows.length}
               empty="No managed workflows match this view."
+              pagination={(
+                <PageNavigator
+                  ariaLabel="Managed workflows pagination"
+                  page={safeManagedPage}
+                  pageSize={MANAGED_PAGE_SIZE}
+                  showAll={showAllManaged}
+                  total={managedWorkflows.length}
+                  onPageChange={(page) => setManagedPageParam(String(page))}
+                  onShowAllChange={(showAll) => setManagedPageParam(showAll ? 'all' : '1')}
+                />
+              )}
             />
           </div>
-        )}
-      </div>
+      </ListPageContent>
+      </ListPage>
 
       <ManagedWorkflowCopyDialog
         open={createOpen}
@@ -305,6 +425,6 @@ export function WorkflowsPage() {
         onCancel={closeCreateWorkflowDialog}
         onCreate={handleCreateWorkflow}
       />
-    </div>
+    </>
   )
 }

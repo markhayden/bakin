@@ -9,6 +9,24 @@
   min-block-size: 100%;
 }
 
+.bakin-archetype-story--contained {
+  block-size: min(42rem, 100vh);
+}
+
+.bakin-archetype-story__contained-scroll {
+  min-block-size: 0;
+  overflow-y: auto;
+}
+
+.bakin-archetype-story__contained-scroll section {
+  padding-block: var(--bakin-layout-space-4);
+  border-block-start: 1px solid var(--bakin-color-border-subtle);
+}
+
+.bakin-archetype-story__contained-scroll section:first-child {
+  border-block-start: 0;
+}
+
 .bakin-archetype-story__search {
   display: grid;
   inline-size: min(100%, 22rem);

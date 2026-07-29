@@ -200,7 +200,7 @@ test('public DropdownMenu visual baseline', async ({ page }) => {
 
   await page.goto('/iframe.html?id=foundation-dropdownmenu--actions&viewMode=story', { waitUntil: 'networkidle' })
   await expect(page.getByRole('menu', { name: 'Task actions' })).toBeVisible()
-  await expect(page.getByRole('menuitem', { name: 'Delete task' })).toHaveAttribute('data-variant', 'danger')
+  await expect(page.getByRole('menuitem', { name: 'Delete' })).toHaveAttribute('data-variant', 'danger')
   await page.evaluate(async () => document.fonts.ready)
   expect(browserErrors).toEqual([])
   await expect(page).toHaveScreenshot('foundation-dropdown-menu.png')

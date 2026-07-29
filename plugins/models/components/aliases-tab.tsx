@@ -1,91 +1,271 @@
 'use client'
 
-import { Button, Input, Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from "@makinbakin/sdk/ui"
-import { ModelSelect } from "@makinbakin/sdk/components"
-import type { ModelsData } from './use-models-data'
-import { InlineEmpty } from './models-page-shared'
+import { useMemo, useRef, useState } from 'react'
+import { Trash2 } from 'lucide-react'
+import {
+  ConfirmDialog,
+  ListPageContent,
+  ModelSelect,
+  PageNavigator,
+} from '@makinbakin/sdk/patterns'
+import {
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  Field,
+  FieldControl,
+  FieldDescription,
+  FieldLabel,
+  Form,
+  FormActions,
+  SubmitButton,
+  SystemState,
+} from '@makinbakin/sdk/ui'
 
-export function AliasesTab({ m }: { m: ModelsData }) {
+import { BrandIcon } from './brand-icon'
+import type { ModelsData } from './use-models-data'
+
+const PAGE_SIZE = 8
+
+export interface AliasesTabProps {
+  m: ModelsData
+  query: string
+  pageValue: string
+  showAllValue: string
+  onQueryChange: (query: string) => void
+  onPageChange: (page: string) => void
+  onShowAllChange: (showAll: string) => void
+}
+
+function humanizeProvider(provider: string): string {
+  return provider.replace(/[-_]/g, ' ')
+}
+
+export function AliasesTab({
+  m,
+  query,
+  pageValue,
+  showAllValue,
+  onQueryChange,
+  onPageChange,
+  onShowAllChange,
+}: AliasesTabProps) {
   const {
-    aliases, modelOptions, modelsReady,
-    newAliasName, setNewAliasName, newAliasTarget, setNewAliasTarget,
-    addAlias, deleteAlias, prepopulateAliases,
+    aliases,
+    modelOptions,
+    modelsReady,
+    newAliasName,
+    setNewAliasName,
+    newAliasTarget,
+    setNewAliasTarget,
+    addAlias,
+    deleteAlias,
+    saving,
   } = m
 
+  const [pendingDelete, setPendingDelete] = useState<{ name: string; target: string } | null>(null)
+  const deleteTriggerRef = useRef<HTMLButtonElement>(null)
+  const aliasBusy = saving === 'aliases'
+  const entries = useMemo(() => Object.entries(aliases)
+    .sort(([left], [right]) => left.localeCompare(right)), [aliases])
+  const normalizedQuery = query.trim().toLocaleLowerCase()
+  const filteredEntries = useMemo(() => entries.filter(([name, target]) => {
+    const model = modelOptions.find((candidate) => candidate.id === target)
+    const searchable = [
+      name,
+      target,
+      model?.name,
+      model?.providerLabel,
+      model?.provider,
+    ].filter(Boolean).join(' ').toLocaleLowerCase()
+    return !normalizedQuery || searchable.includes(normalizedQuery)
+  }), [entries, modelOptions, normalizedQuery])
+
+  const parsedPage = Number.parseInt(pageValue, 10)
+  const requestedPage = Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : 1
+  const pageCount = Math.max(1, Math.ceil(filteredEntries.length / PAGE_SIZE))
+  const page = Math.min(requestedPage, pageCount)
+  const showAll = showAllValue === 'true'
+  const visibleEntries = showAll
+    ? filteredEntries
+    : filteredEntries.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+
+  const state = entries.length === 0 ? (
+    <SystemState
+      kind="initial-empty"
+      title="No aliases yet"
+      description="Create an alias below, or add Bakin’s recommended names from the page header."
+    />
+  ) : filteredEntries.length === 0 ? (
+    <SystemState
+      kind="no-results"
+      title="No aliases match this search"
+      description="Clear the current search to return to every configured alias."
+      action={(
+        <Button type="button" variant="outline" size="sm" onClick={() => onQueryChange('')}>
+          Clear search
+        </Button>
+      )}
+    />
+  ) : undefined
+
   return (
-    <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">
-            Model aliases from <code className="text-xs">agents.defaults.models</code>
-          </p>
-          <Button variant="outline" size="xs" onClick={prepopulateAliases}>
-            Pre-populate Defaults
-          </Button>
+    <>
+      <div className="grid min-w-0 gap-bakin-2">
+        <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-bakin-2">
+          <h2 className="m-0 text-bakin-typography-size-section-title font-bakin-typography-weight-semibold text-bakin-text-primary">
+            Configured aliases
+          </h2>
+          <span className="text-bakin-typography-size-meta text-bakin-text-muted">
+            {entries.length} {entries.length === 1 ? 'alias' : 'aliases'}
+          </span>
         </div>
+        <p className="m-0 max-w-[70ch] text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">
+          Aliases give agents and routing rules a stable short name even when the underlying model changes.
+        </p>
+      </div>
 
-        <div className="overflow-hidden rounded-xl border border-border">
-          <Table>
-            <TableHeader>
-              <TableRow className="bg-card">
-                <TableHead>Alias</TableHead>
-                <TableHead>Target Model</TableHead>
-                <TableHead className="w-[80px]" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {Object.entries(aliases).length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={3}>
-                    <InlineEmpty message="No aliases defined" />
-                  </TableCell>
-                </TableRow>
-              ) : (
-                Object.entries(aliases).map(([name, target]) => (
-                  <TableRow key={name}>
-                    <TableCell>
-                      <code className="text-sm font-medium">{name}</code>
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-sm text-muted-foreground font-mono">{target}</span>
-                    </TableCell>
-                    <TableCell>
-                      <Button
-                        variant="destructive"
-                        size="xs"
-                        onClick={() => deleteAlias(name)}
-                      >
-                        Delete
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </div>
+      <ListPageContent label="Configured model aliases" busy={aliasBusy} state={state}>
+        <ul className="m-0 flex list-none flex-col gap-bakin-2 p-0" aria-label="Configured model aliases">
+          {visibleEntries.map(([name, target]) => {
+            const model = modelOptions.find((candidate) => candidate.id === target)
+            const provider = model?.provider ?? target.split('/')[0] ?? 'model'
+            const providerName = model?.providerLabel ?? humanizeProvider(provider)
 
-        {/* Add alias form */}
-        <div className="flex items-end gap-3 rounded-xl border border-border bg-card p-4">
-          <div className="flex-1 space-y-1">
-            <label className="text-xs font-medium text-muted-foreground">Alias Name</label>
-            <Input
-              value={newAliasName}
-              onChange={(e) => setNewAliasName(e.target.value)}
-              placeholder="e.g. opus"
-            />
-          </div>
-          <div className="flex-1 space-y-1">
-            <label className="text-xs font-medium text-muted-foreground">Target Model</label>
-            <ModelSelect
-              value={newAliasTarget}
-              onChange={setNewAliasTarget}
-              models={modelOptions}
-            />
-          </div>
-          <Button onClick={addAlias} disabled={!newAliasName.trim() || !newAliasTarget.trim() || !modelsReady}>
-            Add
-          </Button>
-        </div>
-    </div>
+            return (
+              <li key={name}>
+                <div
+                  data-alias-row
+                  className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-bakin-3 gap-y-bakin-2 rounded-bakin-surface border border-bakin-border-subtle/40 bg-bakin-surface-default px-bakin-4 py-bakin-3 @lg/page-shell:grid-cols-[minmax(10rem,0.35fr)_minmax(0,1fr)_auto]"
+                >
+                  <code className="min-w-0 truncate font-bakin-typography-family-mono text-bakin-typography-size-body font-bakin-typography-weight-semibold text-bakin-text-primary">
+                    {name}
+                  </code>
+
+                  <div className="col-span-2 flex min-w-0 items-center gap-bakin-3 @lg/page-shell:col-span-1 @lg/page-shell:col-start-2 @lg/page-shell:row-start-1">
+                    <BrandIcon
+                      slug={model?.brandIconSlug ?? model?.providerBrandIconSlug}
+                      fallbackText={providerName}
+                      fallbackColor={model?.providerBrandColor}
+                      size="md"
+                    />
+                    <div className="min-w-0">
+                      <p className="m-0 truncate text-bakin-typography-size-body text-bakin-text-primary">
+                        {model?.name ?? 'Model not in the current catalog'}
+                      </p>
+                      <p className="m-0 mt-bakin-1 truncate font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
+                        {target}
+                      </p>
+                    </div>
+                  </div>
+
+                  <Button
+                    type="button"
+                    variant="danger"
+                    size="icon-sm"
+                    className="col-start-2 row-start-1 @lg/page-shell:col-start-3"
+                    aria-label={`Delete ${name} alias`}
+                    disabled={aliasBusy}
+                    onClick={(event) => {
+                      deleteTriggerRef.current = event.currentTarget
+                      setPendingDelete({ name, target })
+                    }}
+                  >
+                    <Trash2 />
+                  </Button>
+                </div>
+              </li>
+            )
+          })}
+        </ul>
+
+        <PageNavigator
+          ariaLabel="Model alias pagination"
+          page={page}
+          pageSize={PAGE_SIZE}
+          showAll={showAll}
+          total={filteredEntries.length}
+          onPageChange={(nextPage) => onPageChange(String(nextPage))}
+          onShowAllChange={(nextShowAll) => {
+            onShowAllChange(String(nextShowAll))
+            onPageChange('1')
+          }}
+        />
+      </ListPageContent>
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        title={pendingDelete ? `Delete “${pendingDelete.name}” alias?` : 'Delete alias?'}
+        description={pendingDelete
+          ? `This alias currently points to ${pendingDelete.target}. Routing rules and agent settings that reference “${pendingDelete.name}” may stop resolving.`
+          : undefined}
+        confirmLabel="Delete alias"
+        busyLabel="Deleting alias…"
+        confirmTone="danger"
+        busy={aliasBusy}
+        finalFocus={deleteTriggerRef}
+        onConfirm={() => {
+          if (!pendingDelete) return
+          void deleteAlias(pendingDelete.name).then(() => setPendingDelete(null))
+        }}
+        onCancel={() => setPendingDelete(null)}
+      />
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Create alias</CardTitle>
+          <CardDescription>
+            Choose a short, memorable name and the model it should resolve to.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Form<Record<string, string>>
+            aria-label="Create model alias"
+            busy={aliasBusy}
+            onFormSubmit={addAlias}
+          >
+            <div className="grid min-w-0 gap-bakin-4 @lg/form:grid-cols-2">
+              <Field name="aliasName">
+                <FieldLabel>Alias name</FieldLabel>
+                <FieldDescription>Use a short name such as fast, sonnet, or deep.</FieldDescription>
+                <FieldControl
+                  required
+                  value={newAliasName}
+                  onChange={(event) => setNewAliasName(event.target.value)}
+                  placeholder="e.g. opus"
+                />
+              </Field>
+
+              <Field name="targetModel">
+                <FieldLabel htmlFor="alias-target-model">Target model</FieldLabel>
+                <FieldDescription>The model this alias selects wherever the name is used.</FieldDescription>
+                <ModelSelect
+                  id="alias-target-model"
+                  name="targetModel"
+                  ariaLabel="Target model"
+                  required
+                  value={newAliasTarget}
+                  onValueChange={setNewAliasTarget}
+                  models={modelOptions}
+                  disabled={!modelsReady || aliasBusy}
+                />
+              </Field>
+            </div>
+
+            <FormActions>
+              <SubmitButton
+                busyLabel="Adding alias…"
+                disabled={!newAliasName.trim() || !newAliasTarget.trim() || !modelsReady}
+              >
+                Add alias
+              </SubmitButton>
+            </FormActions>
+          </Form>
+        </CardContent>
+      </Card>
+    </>
   )
 }

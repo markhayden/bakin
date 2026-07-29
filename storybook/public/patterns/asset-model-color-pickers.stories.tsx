@@ -254,3 +254,34 @@ export const ModelAndColorChoices = {
     await expect(canvas.getByRole('status')).toHaveTextContent('Model: local-small. Color: series-2.')
   },
 } satisfies Story
+
+export const UnavailableModelCatalog = {
+  render: () => (
+    <main className="bakin-picker-story">
+      <PageShell width="content">
+        <Stack gap="section">
+          <StoryHeader
+            eyebrow="Models and identity"
+            title="Keep the saved model readable when the catalog is unavailable"
+            description="An empty controlled catalog disables the trigger instead of opening an empty popup."
+          />
+          <section className="bakin-picker-story__surface" aria-labelledby="unavailable-model-heading">
+            <h2 id="unavailable-model-heading">Execution defaults</h2>
+            <div className="bakin-picker-story__field">
+              <label htmlFor="unavailable-picker-model">Model</label>
+              <ModelSelect
+                id="unavailable-picker-model"
+                value="acme/saved-model"
+                onValueChange={() => {}}
+                models={[]}
+              />
+            </div>
+          </section>
+        </Stack>
+      </PageShell>
+    </main>
+  ),
+  play: async ({ canvas }) => {
+    await expect(canvas.getByRole('combobox', { name: 'Model' })).toBeDisabled()
+  },
+} satisfies Story

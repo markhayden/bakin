@@ -10,6 +10,7 @@ export {
   CHART_SERIES_COLORS,
   CHART_TOKEN_COLORS,
   LineChart,
+  RankedBarChart,
   Sparkline,
   StackedColumnChart,
 } from '@bakin/ui/charts'
@@ -20,6 +21,7 @@ export type {
   ChartExplainerProps,
   ChartSeries,
   LineChartProps,
+  RankedBarChartProps,
   SparklineProps,
   StackedColumnChartProps,
   StackedColumnDatum,

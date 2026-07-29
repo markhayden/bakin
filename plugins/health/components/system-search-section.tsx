@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from 'react'
 import type { SearchReadiness, SearchStageStatus } from '@makinbakin/sdk/types'
-import { Badge, Button } from '@makinbakin/sdk/ui'
-import { StatTile, StatusBadge as StatusBadgePrimitive, type StatusTone } from '@makinbakin/sdk/components'
+import { Grid } from '@makinbakin/sdk/layout'
+import { StatTile, StatusBadge as StatusBadgePrimitive, type StatusTone } from '@makinbakin/sdk/patterns'
+import { Badge, Banner, Button, type BannerTone } from '@makinbakin/sdk/ui'
 import { Activity, ChevronRight, ListRestart, WandSparkles } from 'lucide-react'
 import type { SearchHealthData, SearchTelemetryData } from '../types'
 import type { SystemMutationState } from '../hooks/use-system-data'
@@ -33,18 +34,18 @@ const STATUS_LABEL: Record<SearchStageStatus, string> = {
 
 const STATUS_TONE: Record<SearchStageStatus, SearchTone> = {
   healthy: 'success',
-  degraded: 'warning',
-  unhealthy: 'destructive',
+  degraded: 'attention',
+  unhealthy: 'danger',
   unknown: 'neutral',
   not_applicable: 'neutral',
 }
 
 const STATUS_SEGMENT: Record<SearchStageStatus, string> = {
-  healthy: 'bg-success',
-  degraded: 'bg-warning',
-  unhealthy: 'bg-destructive',
-  unknown: 'bg-muted-foreground/55',
-  not_applicable: 'bg-muted-foreground/25',
+  healthy: 'bg-bakin-action-primary-background',
+  degraded: 'bg-bakin-signal-highlight',
+  unhealthy: 'bg-bakin-signal-danger',
+  unknown: 'bg-bakin-text-muted',
+  not_applicable: 'bg-bakin-border-subtle',
 }
 
 function StatusBadge({ status }: { status: SearchStageStatus }) {
@@ -68,11 +69,11 @@ function legBacklog(legs: Array<{ pending?: number }>): number {
   return legs.reduce((total, leg) => total + (leg.pending ?? 0), 0)
 }
 
-function mutationTone(status: SystemMutationState['status']): string {
-  if (status === 'error') return 'border-destructive/25 bg-destructive/10 text-destructive'
-  if (status === 'success') return 'border-success/25 bg-success/10 text-success'
-  if (status === 'outcome-unknown') return 'border-warning/25 bg-warning/10 text-warning'
-  return 'border-border bg-muted/40 text-muted-foreground'
+function mutationTone(status: SystemMutationState['status']): BannerTone {
+  if (status === 'error') return 'danger'
+  if (status === 'success') return 'success'
+  if (status === 'outcome-unknown') return 'attention'
+  return 'info'
 }
 
 /** Search trust stays visible; physical indexes and repair controls are opt-in evidence. */
@@ -102,32 +103,32 @@ export function SystemSearchSection({
   }, [technicalDetailsOpen])
 
   return (
-    <section aria-labelledby="search-system-title" className="overflow-hidden rounded-xl border border-border/80 bg-card">
-      <header className="flex min-w-0 flex-wrap items-start justify-between gap-3 border-b border-border/80 px-4 py-3">
+    <section aria-labelledby="search-system-title" className="overflow-hidden rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default">
+      <header className="flex min-w-0 flex-wrap items-start justify-between gap-bakin-3 border-b border-bakin-border-subtle px-bakin-4 py-bakin-3">
         <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <h2 id="search-system-title" className="text-base font-semibold">Search readiness</h2>
+          <div className="flex flex-wrap items-center gap-bakin-2">
+            <h2 id="search-system-title" className="text-bakin-typography-size-section-title font-bakin-typography-weight-semibold">Search readiness</h2>
             <StatusBadge status={readinessStatus} />
           </div>
-          <p className="mt-1 max-w-3xl text-xs leading-relaxed text-muted-foreground">
+          <p className="mt-bakin-1 max-w-3xl text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted">
             {readinessStale
               ? 'Search evidence is stale. Run checks before relying on this status.'
               : readiness?.summary ?? 'Waiting for Search readiness evidence.'}
           </p>
         </div>
         {loading && !status && !telemetry && (
-          <span className="text-xs text-muted-foreground">Loading live Search data…</span>
+          <span className="text-bakin-typography-size-meta text-bakin-text-muted">Loading live Search data…</span>
         )}
       </header>
 
-      <div className="space-y-4 p-4">
+      <div className="space-y-bakin-4 p-bakin-4">
         <div
           data-testid="search-readiness-pipeline"
           role="group"
           aria-label="Search readiness pipeline"
         >
           <div
-            className="flex h-2 gap-1 overflow-hidden rounded-full bg-muted"
+            className="flex h-bakin-1 gap-bakin-1 overflow-hidden rounded-bakin-pill bg-bakin-border-subtle/30"
             role="img"
             aria-label={(readiness?.stages ?? []).map((stage) => `${stage.label}: ${STATUS_LABEL[readinessStale ? 'unknown' : stage.status]}`).join(', ') || 'Search stages unavailable'}
           >
@@ -136,30 +137,34 @@ export function SystemSearchSection({
               return <span key={stage.key} className={`min-w-0 flex-1 ${STATUS_SEGMENT[stageStatus]}`} aria-hidden="true" />
             })}
           </div>
-          <ol className="mt-3 grid gap-2 @[34rem]/health-system:grid-cols-2 @[68rem]/health-system:grid-cols-4">
+          <Grid as="ol" layout="quarters" gap="dense" className="m-0 mt-bakin-3 list-none p-0">
             {(readiness?.stages ?? []).map((stage) => {
               const stageStatus: SearchStageStatus = readinessStale ? 'unknown' : stage.status
               return (
-                <li key={stage.key} role="listitem" className="min-w-0 rounded-lg bg-foreground/[0.025] px-3 py-2.5 ring-1 ring-foreground/10">
-                  <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-                    <span className="font-medium text-foreground">{stage.label}</span>
-                    <StatusBadge status={stageStatus} />
-                  </div>
-                  <p className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
-                    {readinessStale ? `Last reported: ${stage.summary}` : stage.summary}
-                  </p>
+                <li key={stage.key} role="listitem" className="min-w-0">
+                  <StatTile
+                    label={stage.label}
+                    value={STATUS_LABEL[stageStatus]}
+                    valueTone={STATUS_TONE[stageStatus]}
+                    sub={readinessStale ? `Last reported: ${stage.summary}` : stage.summary}
+                  />
                 </li>
               )
             })}
             {!readiness && (
-              <li role="listitem" className="col-span-full rounded-lg border border-dashed border-border p-3 text-sm text-muted-foreground">
-                Search stages will appear after health checks complete.
+              <li role="listitem" className="col-span-full">
+                <Banner
+                  tone="info"
+                  headingLevel={3}
+                  title="Search stages unavailable"
+                  description="Search stages will appear after health checks complete."
+                />
               </li>
             )}
-          </ol>
+          </Grid>
         </div>
 
-        <div className="grid gap-3 @[40rem]/health-system:grid-cols-3" aria-label="Search operational signals">
+        <Grid layout="thirds" gap="dense" aria-label="Search operational signals">
           <StatTile
             icon={Activity}
             label="Queries · 1h"
@@ -192,12 +197,16 @@ export function SystemSearchSection({
                       ? 'Enrichment is not configured'
                       : 'Coverage telemetry unavailable'}
           />
-        </div>
+        </Grid>
 
         {(error || backgroundError) && (
-          <div role="alert" className="rounded-lg border border-warning/25 bg-warning/10 px-3 py-2 text-sm text-warning">
-            Some Search detail could not be refreshed: {error ?? backgroundError}
-          </div>
+          <Banner
+            tone="attention"
+            announce="polite"
+            headingLevel={3}
+            title="Some Search detail could not be refreshed"
+            description={error ?? backgroundError}
+          />
         )}
 
         <details
@@ -269,8 +278,8 @@ export function SystemSearchSection({
                         ? `Migrating · ${table.phase ?? 'running'}`
                         : table.healthy && erroredLegs.length === 0 ? 'Active' : 'Needs attention'
                       const stateTone: SearchTone = table.state === 'migrating'
-                        ? 'warning'
-                        : table.healthy && erroredLegs.length === 0 ? 'success' : 'destructive'
+                        ? 'attention'
+                        : table.healthy && erroredLegs.length === 0 ? 'success' : 'danger'
                       return (
                         <tr key={table.logical} className="align-top">
                           <td className="px-3 py-2.5">
@@ -315,13 +324,13 @@ export function SystemSearchSection({
         </details>
 
         {mutation.status !== 'idle' && mutation.message && (
-          <div
-            role={mutation.status === 'error' ? 'alert' : 'status'}
-            aria-live="polite"
-            className={`rounded-lg border px-3 py-2 text-sm ${mutationTone(mutation.status)}`}
-          >
-            {mutation.message}
-          </div>
+          <Banner
+            tone={mutationTone(mutation.status)}
+            announce={mutation.status === 'error' ? 'assertive' : 'polite'}
+            headingLevel={3}
+            title="Search repair update"
+            description={mutation.message}
+          />
         )}
       </div>
     </section>

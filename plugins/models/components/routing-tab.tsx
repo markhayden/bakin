@@ -1,10 +1,22 @@
 'use client'
 
 import { useState } from 'react'
-import { Plus, Layers, Wand2 } from 'lucide-react'
-import { Button, Input, Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from "@makinbakin/sdk/ui"
-import { ConfirmDialog, EmptyState } from "@makinbakin/sdk/components"
-import { ModelSelect } from "@makinbakin/sdk/components"
+import { Plus, Wand2, X } from 'lucide-react'
+import { Section, Stack } from '@makinbakin/sdk/layout'
+import { ConfirmDialog, ModelSelect } from '@makinbakin/sdk/patterns'
+import {
+  Button,
+  Field,
+  FieldLabel,
+  Input,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  SystemState,
+} from '@makinbakin/sdk/ui'
+
 import { WORK_CLASSES } from '../../../src/core/model-routing'
 import type { ModelsData } from './use-models-data'
 
@@ -19,9 +31,21 @@ const ALL_THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh',
 const DISPATCH_ROWS = WORK_CLASSES.filter((c) => c.kind === 'dispatch' && c.routable)
 const SYSTEM_ROWS = WORK_CLASSES.filter((c) => c.kind === 'system' && c.routable)
 
+const THINKING_LABELS: Record<string, string> = {
+  inherit: 'Inherit agent setting',
+  off: 'Off',
+  minimal: 'Minimal',
+  low: 'Low',
+  medium: 'Medium',
+  high: 'High',
+  xhigh: 'Extra high',
+  adaptive: 'Adaptive',
+  max: 'Maximum',
+}
+
 export function RoutingTab({ m }: { m: ModelsData }) {
   const {
-    pendingRouting, setPendingRouting, saveRouting, saving, displayRouting, routingSupport,
+    displayRouting, routingSupport,
     setRouteField, addTagOverride, updateTagOverride, removeTagOverride, modelOptions, applyRecommendedRoutes,
   } = m
 
@@ -64,75 +88,111 @@ export function RoutingTab({ m }: { m: ModelsData }) {
   const supported = routingSupport?.supportedThinkingLevels
   const thinkingLevels = ['inherit', ...(supported ?? ALL_THINKING_LEVELS)]
 
-  const thinkingSelect = (value: string | undefined, onChange: (v: string) => void) => (
-    <select
-      className="h-8 w-full rounded-md border border-border bg-background px-2 text-sm"
+  const thinkingSelect = (
+    id: string,
+    label: string,
+    value: string | undefined,
+    onChange: (v: string) => void,
+  ) => (
+    <Select
       value={value ?? 'inherit'}
-      onChange={(e) => onChange(e.target.value)}
+      onValueChange={(next) => onChange(next ?? 'inherit')}
     >
-      {thinkingLevels.map((t) => <option key={t} value={t}>{t}</option>)}
-      {value && !thinkingLevels.includes(value) && (
-        <option value={value}>{value} (clamps — not supported by this runtime)</option>
-      )}
-    </select>
+      <SelectTrigger id={id} size="sm" aria-label={label} className="w-full min-w-0">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {thinkingLevels.map((level) => (
+          <SelectItem key={level} value={level}>
+            {THINKING_LABELS[level] ?? level}
+          </SelectItem>
+        ))}
+        {value && !thinkingLevels.includes(value) ? (
+          <SelectItem value={value}>
+            {THINKING_LABELS[value] ?? value} · unsupported by this runtime
+          </SelectItem>
+        ) : null}
+      </SelectContent>
+    </Select>
   )
 
-  const classTable = (rows: typeof DISPATCH_ROWS, header: string) => (
-    <div className="overflow-hidden rounded-xl border border-border">
-      <Table>
-        <TableHeader>
-          <TableRow className="bg-card">
-            <TableHead>{header}</TableHead>
-            <TableHead>Model</TableHead>
-            <TableHead className="w-[160px]">Thinking</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {rows.map((c) => {
-            const route = displayRouting.routes.find((r) => r.workClass === c.id)
-            return (
-              <TableRow key={c.id}>
-                <TableCell>
-                  <div className="font-medium">{c.label}</div>
-                  <div className="text-[11px] text-muted-foreground">{c.description}</div>
-                </TableCell>
-                <TableCell>
-                  <ModelSelect
-                    value={route?.model ?? ''}
-                    onChange={(v) => setRouteField(c.id, 'model', v)}
-                    models={modelOptions}
-                  />
-                </TableCell>
-                <TableCell>
-                  {thinkingSelect(route?.thinking, (v) => setRouteField(c.id, 'thinking', v))}
-                </TableCell>
-              </TableRow>
-            )
-          })}
-        </TableBody>
-      </Table>
+  const routeList = (rows: typeof DISPATCH_ROWS) => (
+    <div
+      role="list"
+      className="overflow-hidden rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default"
+    >
+      {rows.map((workClass) => {
+        const route = displayRouting.routes.find((item) => item.workClass === workClass.id)
+        const modelId = `routing-${workClass.id}-model`
+        const thinkingId = `routing-${workClass.id}-thinking`
+
+        return (
+          <div
+            key={workClass.id}
+            role="listitem"
+            data-routing-row={workClass.id}
+            className="grid min-w-0 gap-bakin-4 border-t border-bakin-border-subtle p-bakin-4 first:border-t-0 @3xl/routing:grid-cols-[minmax(12rem,.7fr)_minmax(0,1fr)_minmax(10rem,.42fr)] @3xl/routing:items-end"
+          >
+            <div className="min-w-0 @3xl/routing:self-center">
+              <h3 className="m-0 text-[length:var(--bakin-typography-size-body)] font-bakin-typography-weight-semibold text-bakin-text-primary">
+                {workClass.label}
+              </h3>
+              <p className="m-0 mt-bakin-1 text-[length:var(--bakin-typography-size-meta)] leading-relaxed text-bakin-text-muted">
+                {workClass.description}
+              </p>
+            </div>
+
+            <Field name={modelId}>
+              <FieldLabel htmlFor={modelId}>
+                <span className="sr-only">{workClass.label} </span>
+                Model
+              </FieldLabel>
+              <ModelSelect
+                id={modelId}
+                value={route?.model ?? ''}
+                onValueChange={(value) => setRouteField(workClass.id, 'model', value)}
+                models={modelOptions}
+                defaultLabel="Use agent model"
+                defaultValue=""
+                ariaLabel={`${workClass.label} model`}
+                className="w-full min-w-0"
+              />
+            </Field>
+
+            <Field name={thinkingId}>
+              <FieldLabel htmlFor={thinkingId}>
+                <span className="sr-only">{workClass.label} </span>
+                Thinking
+              </FieldLabel>
+              {thinkingSelect(
+                thinkingId,
+                `${workClass.label} thinking`,
+                route?.thinking,
+                (value) => setRouteField(workClass.id, 'thinking', value),
+              )}
+            </Field>
+          </div>
+        )
+      })}
     </div>
   )
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
-          Route each work class to a model and thinking level. Leave a row blank to inherit the agent&apos;s configured model. Tag overrides win over class routes. Interactive chat is metered but never routed.
+    <div className="@container/routing flex min-w-0 flex-col gap-bakin-8">
+      <div className="flex min-w-0 flex-col items-stretch gap-bakin-3 @2xl/routing:flex-row @2xl/routing:items-start @2xl/routing:justify-between">
+        <p className="m-0 max-w-prose text-[length:var(--bakin-typography-size-body)] leading-relaxed text-bakin-text-muted">
+          Choose a model and thinking level for each kind of work. Blank routes inherit the agent&apos;s model, while tag overrides take priority over the routes below. Interactive chat always keeps the operator&apos;s selected model.
         </p>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="xs" onClick={openRecommend}>
-            <Wand2 className="h-3 w-3" /> Apply recommended routes
-          </Button>
-          {pendingRouting && (
-            <>
-              <Button variant="outline" size="xs" onClick={() => setPendingRouting(null)}>Discard</Button>
-              <Button size="xs" onClick={saveRouting} disabled={saving === 'routing'}>
-                {saving === 'routing' ? 'Saving...' : 'Save Routing'}
-              </Button>
-            </>
-          )}
-        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="w-full shrink-0 @2xl/routing:w-auto"
+          onClick={() => void openRecommend()}
+        >
+          <Wand2 className="size-4" />
+          Apply recommended routes
+        </Button>
       </div>
 
       <ConfirmDialog
@@ -140,76 +200,178 @@ export function RoutingTab({ m }: { m: ModelsData }) {
         title="Apply recommended routes"
         description={recommend && recommend.proposals.length > 0 ? (
           <span className="block space-y-1">
-            <span className="block">These work classes will route to cheap models (nothing else changes):</span>
-            {recommend.proposals.map((p) => (
-              <span key={p.workClass} className="block font-mono text-xs">{p.workClass} → {p.model} <span className="text-muted-foreground">({p.reason})</span></span>
+            <span className="block">These work classes will use lower-cost models. Existing routes stay unchanged.</span>
+            {recommend.proposals.map((proposal) => (
+              <span key={proposal.workClass} className="block font-bakin-typography-family-mono text-[length:var(--bakin-typography-size-meta)]">
+                {proposal.workClass} → {proposal.model}
+                <span className="text-bakin-text-muted"> ({proposal.reason})</span>
+              </span>
             ))}
-            {recommend.skipped.map((s) => (
-              <span key={s.workClass} className="block text-xs text-muted-foreground">skipped {s.workClass}: {s.reason}</span>
+            {recommend.skipped.map((item) => (
+              <span key={item.workClass} className="block text-[length:var(--bakin-typography-size-meta)] text-bakin-text-muted">
+                Skipped {item.workClass}: {item.reason}
+              </span>
             ))}
           </span>
         ) : (
           <span className="block">
-            Nothing to apply — every recommended class already has a route.
-            {recommend?.skipped.map((s) => (
-              <span key={s.workClass} className="block text-xs text-muted-foreground">skipped {s.workClass}: {s.reason}</span>
+            Nothing to apply. Every recommended work class already has a route.
+            {recommend?.skipped.map((item) => (
+              <span key={item.workClass} className="block text-[length:var(--bakin-typography-size-meta)] text-bakin-text-muted">
+                Skipped {item.workClass}: {item.reason}
+              </span>
             ))}
           </span>
         )}
         confirmLabel={recommend && recommend.proposals.length > 0 ? `Apply ${recommend.proposals.length} route(s)` : 'Close'}
-        confirmVariant="default"
+        confirmTone="primary"
         busy={recommendBusy}
         error={recommendError}
         onConfirm={confirmRecommend}
-        onCancel={() => { setRecommend(null); setRecommendError(null) }}
+        onCancel={() => {
+          setRecommend(null)
+          setRecommendError(null)
+        }}
       />
 
-      {classTable(DISPATCH_ROWS, 'Task dispatch')}
+      <Section spacing="compact" aria-label="Task dispatch routes">
+        <Stack gap="dense">
+          <h2
+            id="task-dispatch-routes-heading"
+            className="m-0 text-[length:var(--bakin-typography-size-section-title)] font-bakin-typography-weight-semibold text-bakin-text-primary"
+          >
+            Task dispatch
+          </h2>
+          <p className="m-0 max-w-prose text-[length:var(--bakin-typography-size-body)] leading-relaxed text-bakin-text-muted">
+            Routes for scheduled, workflow, manually started, recovery, and decomposition work.
+          </p>
+        </Stack>
+        {routeList(DISPATCH_ROWS)}
+      </Section>
 
-      <h3 className="text-sm font-medium">System work</h3>
-      <p className="text-xs text-muted-foreground">
-        Background sends Bakin makes on your behalf — titles, enrichment, relays, team routing. These are the cheap-model wins.
-      </p>
-      {classTable(SYSTEM_ROWS, 'System class')}
+      <Section spacing="compact" divider="top" aria-label="System work routes">
+        <Stack gap="dense">
+          <h2
+            id="system-work-routes-heading"
+            className="m-0 text-[length:var(--bakin-typography-size-section-title)] font-bakin-typography-weight-semibold text-bakin-text-primary"
+          >
+            System work
+          </h2>
+          <p className="m-0 max-w-prose text-[length:var(--bakin-typography-size-body)] leading-relaxed text-bakin-text-muted">
+            Background work Bakin performs for titles, enrichment, relays, team routing, and direct sends.
+          </p>
+        </Stack>
+        {routeList(SYSTEM_ROWS)}
+      </Section>
 
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium">Tag overrides</h3>
-        <Button variant="outline" size="xs" onClick={addTagOverride}><Plus className="h-3 w-3" /> Add override</Button>
-      </div>
-      {displayRouting.tagOverrides.length === 0 ? (
-        <EmptyState icon={Layers} title="No tag overrides" />
-      ) : (
-        <div className="overflow-hidden rounded-xl border border-border">
-          <Table>
-            <TableHeader>
-              <TableRow className="bg-card">
-                <TableHead>Tag</TableHead>
-                <TableHead>Model</TableHead>
-                <TableHead className="w-[160px]">Thinking</TableHead>
-                <TableHead className="w-[60px]" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {displayRouting.tagOverrides.map((row, i) => (
-                <TableRow key={i}>
-                  <TableCell>
-                    <Input value={row.tag} onChange={(e) => updateTagOverride(i, 'tag', e.target.value)} className="h-8 text-sm" placeholder="e.g. heavy" />
-                  </TableCell>
-                  <TableCell>
-                    <ModelSelect value={row.model ?? ''} onChange={(v) => updateTagOverride(i, 'model', v)} models={modelOptions} />
-                  </TableCell>
-                  <TableCell>
-                    {thinkingSelect(row.thinking, (v) => updateTagOverride(i, 'thinking', v))}
-                  </TableCell>
-                  <TableCell>
-                    <Button variant="ghost" size="xs" onClick={() => removeTagOverride(i)} className="text-muted-foreground hover:text-destructive">Remove</Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+      <Section spacing="compact" divider="top" aria-labelledby="tag-overrides-heading">
+        <div className="flex min-w-0 flex-col items-stretch gap-bakin-3 @2xl/routing:flex-row @2xl/routing:items-start @2xl/routing:justify-between">
+          <Stack gap="dense">
+            <h2
+              id="tag-overrides-heading"
+              className="m-0 text-[length:var(--bakin-typography-size-section-title)] font-bakin-typography-weight-semibold text-bakin-text-primary"
+            >
+              Tag overrides
+            </h2>
+            <p className="m-0 max-w-prose text-[length:var(--bakin-typography-size-body)] leading-relaxed text-bakin-text-muted">
+              Match a task tag before its work-class route. The first matching override wins.
+            </p>
+          </Stack>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="w-full shrink-0 @2xl/routing:w-auto"
+            onClick={addTagOverride}
+          >
+            <Plus className="size-4" />
+            Add override
+          </Button>
         </div>
-      )}
+
+        {displayRouting.tagOverrides.length === 0 ? (
+          <SystemState
+            kind="initial-empty"
+            scope="section"
+            title="No tag overrides"
+            description="Add one only when a task tag should take priority over its normal work route."
+          />
+        ) : (
+          <div
+            role="list"
+            aria-label="Tag routing overrides"
+            className="overflow-hidden rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default"
+          >
+            {displayRouting.tagOverrides.map((row, index) => {
+              const tagId = `routing-tag-${index}`
+              const modelId = `routing-tag-${index}-model`
+              const thinkingId = `routing-tag-${index}-thinking`
+
+              return (
+                <div
+                  key={index}
+                  role="listitem"
+                  className="grid min-w-0 gap-bakin-4 border-t border-bakin-border-subtle p-bakin-4 first:border-t-0 @3xl/routing:grid-cols-[minmax(10rem,.7fr)_minmax(0,1fr)_minmax(10rem,.42fr)_auto] @3xl/routing:items-end"
+                >
+                  <Field name={tagId}>
+                    <FieldLabel htmlFor={tagId}>
+                      <span className="sr-only">Tag override {index + 1} </span>
+                      Task tag
+                    </FieldLabel>
+                    <Input
+                      id={tagId}
+                      value={row.tag}
+                      placeholder="e.g. heavy"
+                      onChange={(event) => updateTagOverride(index, 'tag', event.target.value)}
+                    />
+                  </Field>
+
+                  <Field name={modelId}>
+                    <FieldLabel htmlFor={modelId}>
+                      <span className="sr-only">Tag override {index + 1} </span>
+                      Model
+                    </FieldLabel>
+                    <ModelSelect
+                      id={modelId}
+                      value={row.model ?? ''}
+                      onValueChange={(value) => updateTagOverride(index, 'model', value)}
+                      models={modelOptions}
+                      defaultLabel="Use work route"
+                      defaultValue=""
+                      ariaLabel={`Tag override ${index + 1} model`}
+                      className="w-full min-w-0"
+                    />
+                  </Field>
+
+                  <Field name={thinkingId}>
+                    <FieldLabel htmlFor={thinkingId}>
+                      <span className="sr-only">Tag override {index + 1} </span>
+                      Thinking
+                    </FieldLabel>
+                    {thinkingSelect(
+                      thinkingId,
+                      `Tag override ${index + 1} thinking`,
+                      row.thinking,
+                      (value) => updateTagOverride(index, 'thinking', value),
+                    )}
+                  </Field>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon-sm"
+                    aria-label={`Remove tag override ${index + 1}`}
+                    className="justify-self-end text-bakin-text-muted hover:text-bakin-signal-danger @3xl/routing:mb-px"
+                    onClick={() => removeTagOverride(index)}
+                  >
+                    <X className="size-4" />
+                  </Button>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </Section>
     </div>
   )
 }

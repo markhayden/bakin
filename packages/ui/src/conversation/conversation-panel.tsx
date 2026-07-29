@@ -68,10 +68,17 @@ export interface ConversationPanelProps {
   showHeader?: boolean
   /** Fill an explicitly bounded parent instead of owning a persisted height. */
   fitParent?: boolean
+  /**
+   * `panel` is the bounded-card default. `top-divider` joins a conversation
+   * to an existing document or workspace without drawing a second frame.
+   */
+  chrome?: 'panel' | 'top-divider'
   readOnly?: boolean
   readOnlyNotice?: ReactNode
   placeholder?: string
   inputLabel?: string
+  /** Focus the composer when this panel mounts. Disable for panels embedded below page content. */
+  autoFocus?: boolean
   emptyState?: ReactNode
   maxLength?: number
   attachments?: ComposerAttachments
@@ -109,10 +116,12 @@ export function ConversationPanel({
   title,
   showHeader = true,
   fitParent = false,
+  chrome = 'panel',
   readOnly = false,
   readOnlyNotice,
   placeholder = 'Send a message…',
   inputLabel,
+  autoFocus = true,
   emptyState,
   maxLength,
   attachments,
@@ -147,10 +156,14 @@ export function ConversationPanel({
   return (
     <section
       data-conv-panel=""
+      data-chrome={chrome}
       aria-label={typeof title === 'string' ? title : 'Conversation'}
       className={cn(
-        'flex min-h-0 min-w-0 flex-col overflow-hidden rounded-bakin-overlay border border-bakin-border-subtle bg-bakin-canvas-default',
+        'flex min-h-0 min-w-0 flex-col overflow-hidden bg-bakin-canvas-default',
         'font-bakin-typography-family-ui text-[length:var(--bakin-typography-size-body)] text-bakin-text-primary',
+        chrome === 'panel'
+          ? 'rounded-bakin-overlay border border-bakin-border-subtle'
+          : 'border-t border-bakin-border-subtle',
         fitParent && 'h-full',
         className,
       )}
@@ -219,6 +232,7 @@ export function ConversationPanel({
           queuedCount={queuedItems?.length ?? 0}
           placeholder={placeholder}
           inputLabel={inputLabel}
+          autoFocus={autoFocus}
           maxLength={maxLength}
           attachments={attachments}
           leadingSlot={agentControl ? (

@@ -352,6 +352,22 @@ describe('SchedulePage smoke', () => {
     expect(screen.getByTestId('header-count').textContent).toBe('3 shown')
   })
 
+  it('pages long job lists with the shared list navigator', () => {
+    scheduleState.jobs = Array.from({ length: 12 }, (_, index) => makeJob({
+      id: `job-${index + 1}`,
+      displayName: `Scheduled job ${index + 1}`,
+    }))
+    queryStateRefs.view = 'list'
+
+    render(<SchedulePage />)
+
+    expect(screen.getByTestId('job-job-1')).toBeDefined()
+    expect(screen.getByTestId('job-job-10')).toBeDefined()
+    expect(screen.queryByTestId('job-job-11')).toBeNull()
+    expect(screen.getByText('Showing 1–10 of 12')).toBeDefined()
+    expect(screen.getByRole('navigation', { name: 'Scheduled jobs pagination' })).toBeDefined()
+  })
+
   it('filters and reorders by score when useSearch returns hits', () => {
     scheduleState.jobs = [
       makeJob({ id: 'a', displayName: 'Alpha' }),

@@ -33,6 +33,20 @@ const MESSAGES: ConversationMessage[] = [
 ]
 
 describe('ConversationPanel layout modes (bits contract)', () => {
+  it('forwards the document-divider chrome contract to the focused panel', () => {
+    const { container } = render(
+      <ConversationPanel
+        messages={[]}
+        agentId="main"
+        onSend={() => {}}
+        storageKey="divider-panel"
+        chrome="top-divider"
+      />,
+    )
+
+    expect(container.querySelector('[data-conv-panel]')?.getAttribute('data-chrome')).toBe('top-divider')
+  })
+
   it('fitParent + showHeader=false renders no header and fills the host (brainstorm-view mode)', () => {
     const { container } = render(
       <ConversationPanel messages={MESSAGES} agentId="main" onSend={() => {}} storageKey="bs-1" fitParent showHeader={false} />,

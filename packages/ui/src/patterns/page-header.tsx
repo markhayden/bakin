@@ -1,5 +1,11 @@
 import * as React from 'react'
 
+import { Button } from '../primitives/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from '../primitives/dropdown-menu'
 import { cn } from '../utils'
 
 type NativePageHeaderProps = Omit<
@@ -8,6 +14,49 @@ type NativePageHeaderProps = Omit<
 >
 
 export type PageHeaderMeasure = 'standard' | 'wide'
+
+export interface PageHeaderOverflowMenuProps {
+  /** Menu items rendered in the page-level overflow menu. */
+  children: React.ReactNode
+  /** Accessible name for the circular overflow trigger. */
+  label?: string
+}
+
+/** Shared circular overflow trigger for detail headers that cannot use PageHeader directly. */
+export function PageHeaderOverflowMenu({
+  children,
+  label = 'More actions',
+}: PageHeaderOverflowMenuProps) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={(
+          <Button
+            type="button"
+            variant="outline"
+            size="icon-sm"
+            className="ml-auto rounded-bakin-pill"
+            aria-label={label}
+            title={label}
+          />
+        )}
+      >
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 16 16"
+          className="size-bakin-4 fill-current"
+        >
+          <circle cx="3" cy="8" r="1.25" />
+          <circle cx="8" cy="8" r="1.25" />
+          <circle cx="13" cy="8" r="1.25" />
+        </svg>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        {children}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
 
 export interface PageHeaderProps extends NativePageHeaderProps {
   /** Accessible label for the grouped page actions. */
@@ -28,6 +77,10 @@ export interface PageHeaderProps extends NativePageHeaderProps {
   measure?: PageHeaderMeasure
   /** Client-routed back link or breadcrumb supplied by the consumer. */
   navigation?: React.ReactNode
+  /** Secondary page actions shown from the context-row overflow menu. */
+  overflowActions?: React.ReactNode
+  /** Accessible name for the context-row overflow menu trigger. */
+  overflowActionsLabel?: string
   /** The page's single level-one heading. */
   title: React.ReactNode
 }
@@ -44,10 +97,13 @@ export function PageHeader({
   meta,
   measure = 'standard',
   navigation,
+  overflowActions,
+  overflowActionsLabel = 'More actions',
   title,
   ...props
 }: PageHeaderProps) {
   const descriptionId = React.useId()
+  const hasContext = Boolean(navigation || eyebrow || overflowActions)
 
   return (
     <header
@@ -64,26 +120,36 @@ export function PageHeader({
         data-slot="page-header-layout"
         className="grid min-w-0 gap-bakin-3 @3xl/page-header:grid-cols-[minmax(0,1fr)_auto]"
       >
-        {navigation || eyebrow ? (
+        {hasContext ? (
           <div
             data-slot="page-header-context"
-            className="flex min-w-0 flex-wrap items-center gap-bakin-2"
+            className="flex min-w-0 items-center gap-bakin-2 @3xl/page-header:col-span-2"
           >
-            {navigation ? (
-              <div
-                data-slot="page-header-navigation"
-                className="min-w-0 shrink-0 [overflow-wrap:anywhere] text-[length:var(--bakin-typography-size-meta)] text-bakin-text-muted [&_a]:text-bakin-text-primary [&_a]:underline-offset-4 [&_a:hover]:underline"
-              >
-                {navigation}
-              </div>
-            ) : null}
-            {eyebrow ? (
-              <p
-                data-slot="page-header-eyebrow"
-                className="m-0 min-w-0 [overflow-wrap:anywhere] text-[length:var(--bakin-typography-size-meta)] font-bakin-typography-weight-bold uppercase tracking-[.12em] text-bakin-signal-accent"
-              >
-                {eyebrow}
-              </p>
+            <div
+              data-slot="page-header-context-copy"
+              className="flex min-w-0 flex-1 flex-wrap items-center gap-bakin-2"
+            >
+              {navigation ? (
+                <div
+                  data-slot="page-header-navigation"
+                  className="min-w-0 shrink-0 [overflow-wrap:anywhere] text-[length:var(--bakin-typography-size-meta)] text-bakin-text-muted [&_a]:text-bakin-text-primary [&_a]:underline-offset-4 [&_a:hover]:underline"
+                >
+                  {navigation}
+                </div>
+              ) : null}
+              {eyebrow ? (
+                <p
+                  data-slot="page-header-eyebrow"
+                  className="m-0 min-w-0 [overflow-wrap:anywhere] text-[length:var(--bakin-typography-size-meta)] font-bakin-typography-weight-bold uppercase tracking-[.12em] text-bakin-signal-accent"
+                >
+                  {eyebrow}
+                </p>
+              ) : null}
+            </div>
+            {overflowActions ? (
+              <PageHeaderOverflowMenu label={overflowActionsLabel}>
+                {overflowActions}
+              </PageHeaderOverflowMenu>
             ) : null}
           </div>
         ) : null}
@@ -92,7 +158,9 @@ export function PageHeader({
           data-slot="page-header-copy"
           className={cn(
             'grid min-w-0 gap-bakin-2 @3xl/page-header:col-start-1',
-            measure === 'standard' ? 'max-w-3xl' : 'max-w-none',
+            measure === 'standard'
+              ? 'max-w-none @3xl/page-header:max-w-[50cqw]'
+              : 'max-w-none',
           )}
         >
           <h1
@@ -110,7 +178,7 @@ export function PageHeader({
               data-slot="page-header-description"
               className={cn(
                 'm-0 [overflow-wrap:anywhere] text-[length:var(--bakin-typography-size-body)] leading-relaxed text-bakin-text-muted',
-                measure === 'standard' ? 'max-w-prose' : 'max-w-none',
+                'max-w-none',
               )}
             >
               {description}
@@ -130,7 +198,12 @@ export function PageHeader({
         {controls || actions ? (
           <div
             data-slot="page-header-trailing"
-            className="flex w-full min-w-0 flex-col items-stretch gap-bakin-3 @3xl/page-header:col-start-2 @3xl/page-header:row-start-1 @3xl/page-header:ml-auto @3xl/page-header:w-auto @3xl/page-header:flex-row @3xl/page-header:flex-nowrap @3xl/page-header:items-start"
+            className={cn(
+              'flex w-full min-w-0 flex-col items-stretch gap-bakin-3 @3xl/page-header:col-start-2 @3xl/page-header:ml-auto @3xl/page-header:w-auto @3xl/page-header:flex-row @3xl/page-header:flex-nowrap @3xl/page-header:items-start',
+              hasContext
+                ? '@3xl/page-header:row-start-2'
+                : '@3xl/page-header:row-start-1',
+            )}
           >
             {controls ? (
               <div

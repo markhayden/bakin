@@ -2,8 +2,15 @@
 
 import { forwardRef, useImperativeHandle, useMemo, useRef } from 'react'
 import type { HealthCheckState, HealthReport } from '@makinbakin/sdk/types'
-import { Badge, Button, Input } from '@makinbakin/sdk/ui'
-import { StatTile, StatusBadge } from '@makinbakin/sdk/components'
+import { Grid } from '@makinbakin/sdk/layout'
+import {
+  ListRow,
+  ListRows,
+  StatTile,
+  StatusBadge,
+  type StatusTone,
+} from '@makinbakin/sdk/patterns'
+import { Badge, Banner, Button, Input, type BannerTone } from '@makinbakin/sdk/ui'
 import { ChevronRight, Clock3, Cpu, Hash, MemoryStick, Network, Users } from 'lucide-react'
 import { formatAge } from '@makinbakin/sdk/utils'
 import type { HealthSummary } from '../types'
@@ -44,11 +51,18 @@ export interface SystemInventoryHandle {
   revealCheck: (checkId: string) => boolean
 }
 
-function mutationClass(status: SystemMutationState['status']): string {
-  if (status === 'error') return 'border-destructive/25 bg-destructive/10 text-destructive'
-  if (status === 'success') return 'border-success/25 bg-success/10 text-success'
-  if (status === 'confirmation' || status === 'outcome-unknown') return 'border-warning/25 bg-warning/10 text-warning'
-  return 'border-border bg-muted/40 text-muted-foreground'
+function mutationTone(status: SystemMutationState['status']): BannerTone {
+  if (status === 'error') return 'danger'
+  if (status === 'success') return 'success'
+  if (status === 'confirmation' || status === 'outcome-unknown') return 'attention'
+  return 'info'
+}
+
+function canonicalTone(tone: string): StatusTone {
+  if (tone === 'destructive') return 'danger'
+  if (tone === 'warning') return 'attention'
+  if (tone === 'success' || tone === 'accent') return tone
+  return 'neutral'
 }
 
 function revealDisclosure(
@@ -146,30 +160,26 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
   return (
     <div className="space-y-5">
       {pluginMutation.status !== 'idle' && pluginMutation.message && (
-        <div
-          role={pluginMutation.status === 'error' ? 'alert' : 'status'}
-          aria-live="polite"
-          className={`rounded-lg border px-3 py-2 text-sm ${mutationClass(pluginMutation.status)}`}
-        >
-          <p>{pluginMutation.message}</p>
-          {pluginMutation.status === 'confirmation' && pluginMutation.target && (
-            <div className="mt-2">
-              <p className="text-xs">
-                Requested permissions: {pluginMutation.permissions?.length
-                  ? pluginMutation.permissions.join(', ')
-                  : 'No permission names were returned.'}
-              </p>
-              <Button
-                className="mt-2"
-                size="sm"
-                variant="warning"
-                onClick={() => void onUpgrade(pluginMutation.target!, true)}
-              >
-                Approve update
-              </Button>
-            </div>
-          )}
-        </div>
+        <Banner
+          tone={mutationTone(pluginMutation.status)}
+          announce={pluginMutation.status === 'error' ? 'assertive' : 'polite'}
+          headingLevel={3}
+          title={pluginMutation.status === 'confirmation' ? 'Update needs approval' : 'Plugin inventory update'}
+          description={pluginMutation.status === 'confirmation'
+            ? `${pluginMutation.message} Requested permissions: ${pluginMutation.permissions?.length
+              ? pluginMutation.permissions.join(', ')
+              : 'No permission names were returned.'}`
+            : pluginMutation.message}
+          action={pluginMutation.status === 'confirmation' && pluginMutation.target ? (
+            <Button
+              size="sm"
+              variant="warning"
+              onClick={() => void onUpgrade(pluginMutation.target!, true)}
+            >
+              Approve update
+            </Button>
+          ) : undefined}
+        />
       )}
 
       <details ref={pluginsDisclosureRef} data-testid="installed-features-details" className="group overflow-hidden rounded-xl border border-border bg-card">
@@ -195,9 +205,13 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
             </Button>
           </div>
           {(error || backgroundError) && (
-            <div role="alert" className="rounded-lg border border-warning/25 bg-warning/10 px-3 py-2 text-sm text-warning">
-              Plugin inventory could not be refreshed: {error ?? backgroundError}
-            </div>
+            <Banner
+              tone="attention"
+              announce="polite"
+              headingLevel={3}
+              title="Plugin inventory could not be refreshed"
+              description={error ?? backgroundError}
+            />
           )}
           <label className="block max-w-sm text-xs font-medium text-muted-foreground">
             Find a plugin
@@ -259,7 +273,7 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
                         <div className="flex flex-wrap items-center gap-2">
                           <StatusBadge
                             variant="outline"
-                            tone={!pluginInventoryCurrent ? 'neutral' : plugin.status === 'failed' ? 'destructive' : plugin.status === 'unknown' ? 'neutral' : plugin.upgradeAvailable ? 'accent' : 'success'}
+                            tone={!pluginInventoryCurrent ? 'neutral' : plugin.status === 'failed' ? 'danger' : plugin.status === 'unknown' ? 'neutral' : plugin.upgradeAvailable ? 'accent' : 'success'}
                           >
                             {!pluginInventoryCurrent
                               ? `Last loaded · ${plugin.status === 'failed' ? 'Failed' : plugin.status === 'unknown' ? 'Unknown' : plugin.upgradeAvailable ? 'Update available' : 'Active'}`
@@ -300,25 +314,25 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
           </span>
         </summary>
         <div className="border-t border-border p-4">
-          <div className="grid gap-3 @[30rem]/health-system:grid-cols-2 @[50rem]/health-system:grid-cols-3 @[70rem]/health-system:grid-cols-6">
+          <Grid layout="cards" gap="dense" aria-label="Bakin host metrics">
             <StatTile icon={Users} label="Connected sessions" value={sessions === null ? '—' : sessions} sub="Summed across agents" />
             <StatTile icon={Clock3} label="Uptime" value={live?.upSince ? formatUptime(live.upSince) : '—'} sub="Current host process" />
             <StatTile icon={MemoryStick} label="Memory" value={live?.server ? `${live.server.memoryMB} MB` : '—'} sub={live?.server ? `${live.server.totalMemoryMB} MB host total` : 'Host memory unavailable'} />
             <StatTile icon={Network} label="Port" value={live?.server ? live.server.port : '—'} sub="HTTP server" />
             <StatTile icon={Hash} label="PID" value={live?.server ? live.server.pid : '—'} sub="Process id" />
             <StatTile icon={Cpu} label="Node" value={live?.server?.nodeVersion ?? '—'} sub="Runtime version" />
-          </div>
+          </Grid>
           {live?.activeSessions && live.activeSessions.length > 0 && (
             <details className="mt-3 rounded-lg border border-border px-3 py-2">
               <summary className="cursor-pointer text-sm font-medium">Session detail</summary>
-              <ul className="mt-2 divide-y divide-border text-xs">
+              <ListRows variant="separated" className="mt-bakin-2 text-bakin-typography-size-meta">
                 {live.activeSessions.map((session) => (
-                  <li key={`${session.agent}:${session.connectedAt}`} className="flex items-center justify-between gap-3 py-2">
-                    <span className="font-medium">{session.agent}</span>
-                    <span className="text-muted-foreground">{session.sessions} · connected {formatAge(session.connectedAt)}</span>
-                  </li>
+                  <ListRow key={`${session.agent}:${session.connectedAt}`} className="flex items-center justify-between gap-bakin-3">
+                    <span className="font-bakin-typography-weight-medium text-bakin-text-primary">{session.agent}</span>
+                    <span className="text-bakin-text-muted">{session.sessions} · connected {formatAge(session.connectedAt)}</span>
+                  </ListRow>
                 ))}
-              </ul>
+              </ListRows>
             </details>
           )}
         </div>
@@ -336,7 +350,7 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
           </span>
           <span className="flex shrink-0 items-center gap-2">
             {report && checksToReview > 0 && (
-              <StatusBadge tone="warning" variant="outline">{checksToReview} to review</StatusBadge>
+              <StatusBadge tone="attention" variant="outline">{checksToReview} to review</StatusBadge>
             )}
             <Badge variant="secondary">{report ? `${report.checks.length} checks` : 'Unavailable'}</Badge>
             <ChevronRight aria-hidden="true" className="size-4 text-muted-foreground transition-transform group-open:rotate-90 motion-reduce:transition-none" />
@@ -353,8 +367,8 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
                 const presentations = group.checks.map((check) => ({ check, presentation: presentSystemCheck(check) }))
                 const concerning = presentations.filter((row) => row.presentation.concerning).length
                 const concernTone = presentations.some((row) => row.presentation.tone === 'destructive')
-                  ? 'destructive'
-                  : presentations.some((row) => row.presentation.tone === 'warning') ? 'warning' : 'neutral'
+                  ? 'danger'
+                  : presentations.some((row) => row.presentation.tone === 'warning') ? 'attention' : 'neutral'
                 return (
                   <details
                     key={group.key}
@@ -372,9 +386,9 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
                         <Badge variant="secondary">{group.checks.length}</Badge>
                       </span>
                     </summary>
-                    <div className="divide-y divide-border border-t border-border">
+                    <ListRows variant="separated">
                       {presentations.map(({ check, presentation }) => (
-                        <div
+                        <ListRow
                           key={check.checkId}
                           ref={(element) => {
                             if (element) checkRowRefs.current.set(check.checkId, element)
@@ -382,12 +396,12 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
                           }}
                           data-check-id={check.checkId}
                           tabIndex={-1}
-                          className="grid gap-2 px-3 py-3 outline-none focus-visible:bg-accent/[0.06] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring @[40rem]/health-system:grid-cols-[minmax(0,1fr)_auto]"
+                          className="grid gap-bakin-2 outline-none focus-visible:bg-bakin-signal-accent/10 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-bakin-focus-ring @[40rem]/health-system:grid-cols-[minmax(0,1fr)_auto]"
                         >
                           <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-2">
                               <h3 className="font-medium">{check.checkName}</h3>
-                              <StatusBadge variant="outline" tone={presentation.tone}>{presentation.label}</StatusBadge>
+                              <StatusBadge variant="outline" tone={canonicalTone(presentation.tone)}>{presentation.label}</StatusBadge>
                             </div>
                             <p className="mt-1 text-xs text-muted-foreground">{check.description}</p>
                             <p className="mt-1 text-xs text-foreground/80">{presentation.detail}</p>
@@ -396,9 +410,9 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
                             <p>{check.owner.label}</p>
                             <p>{formatAge(check.latestExecution.completedAt)}</p>
                           </div>
-                        </div>
+                        </ListRow>
                       ))}
-                    </div>
+                    </ListRows>
                   </details>
                 )
               })}

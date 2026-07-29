@@ -1483,6 +1483,15 @@ test('visual charts preserve honest marks, exact data, and local plot overflow',
     await expect(page.getByRole('tooltip')).toHaveText('Window 4 — Recovered after retry: 3')
 
     const plot = page.getByRole('region', { name: 'Workflow outcomes plot' })
+    const ceilingMark = page.getByRole('img', { name: 'Current window with a deliberately long exact label — Completed: 42' })
+    await ceilingMark.focus()
+    await expect(page.getByRole('tooltip')).toHaveAttribute('data-placement', 'below')
+    const plotBox = await plot.boundingBox()
+    const tooltipBox = await page.getByRole('tooltip').boundingBox()
+    expect(plotBox).not.toBeNull()
+    expect(tooltipBox).not.toBeNull()
+    expect(tooltipBox!.y).toBeGreaterThanOrEqual(plotBox!.y)
+
     const dimensions = await plot.evaluate((element) => ({ clientWidth: element.clientWidth, scrollWidth: element.scrollWidth }))
     expect(dimensions.scrollWidth).toBeGreaterThan(dimensions.clientWidth)
     await plot.focus()

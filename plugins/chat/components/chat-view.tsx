@@ -8,7 +8,6 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, Check, Pencil, Pin } from 'lucide-react'
 import { toast } from '@makinbakin/sdk/hooks'
 import {
-  AgentAvatar,
   Conversation,
   ConversationEmptyState,
   ToolCallDrawer,
@@ -22,6 +21,8 @@ import {
   type ConversationQueuedItem,
 } from '@makinbakin/sdk/conversation'
 import { useAgent } from '@makinbakin/sdk/hooks'
+import { AgentAvatar, ConversationPageComposer } from '@makinbakin/sdk/patterns'
+import { Button, Input } from '@makinbakin/sdk/ui'
 
 import { ContextMeter, contextMeterHasContent, formatTokenCount, formatUsageCost, type ContextMeterStats } from '@makinbakin/sdk/components'
 
@@ -139,32 +140,34 @@ function InlineTitle({ chat, onChanged }: { chat: ChatSummaryDto; onChanged: () 
         className="flex min-w-0 flex-1 items-center gap-1"
         onSubmit={(e) => { e.preventDefault(); void commit() }}
       >
-        <input
+        <Input
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onBlur={() => void commit()}
           onKeyDown={(e) => { if (e.key === 'Escape') { setDraft(chat.title); setEditing(false) } }}
-          className="min-w-0 flex-1 rounded border border-ring bg-transparent px-1.5 py-0.5 text-sm font-medium focus:outline-none"
+          className="h-bakin-8 min-w-0 flex-1 px-bakin-2 py-bakin-1 font-bakin-typography-weight-semibold"
           aria-label="Chat title"
           autoFocus
         />
-        <button type="submit" aria-label="Save title" className="rounded p-1 text-muted-foreground hover:text-foreground">
+        <Button type="submit" variant="ghost" size="icon-xs" aria-label="Save title">
           <Check className="size-3.5" />
-        </button>
+        </Button>
       </form>
     )
   }
   return (
-    <button
+    <Button
       type="button"
+      variant="ghost"
+      size="xs"
       data-chat-title
       onClick={() => setEditing(true)}
       title="Rename chat"
-      className="group/title flex min-w-0 flex-1 items-center gap-1.5 text-left"
+      className="group/title min-w-0 flex-1 justify-start px-0 hover:bg-transparent"
     >
       <span className="truncate text-sm font-medium">{chat.title || 'New chat'}</span>
       <Pencil className="size-3 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover/title:opacity-100" />
-    </button>
+    </Button>
   )
 }
 
@@ -192,23 +195,59 @@ function ViewHeader({
   const totalParts: string[] = []
   if (usageTotals?.totalTokens !== undefined) totalParts.push(`${formatTokenCount(usageTotals.totalTokens)} tokens`)
   if (usageTotals?.costUsd !== undefined) totalParts.push(formatUsageCost(usageTotals.costUsd))
+  const agentIdentity = {
+    id: agentId,
+    name: agent?.name ?? agentId,
+    imageSrc: agent?.headshot ?? null,
+  }
+  const hasHeaderMeta = contextMeterHasContent(contextStats) || totalParts.length > 0
   return (
-    <div className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-2.5">
+    <div
+      data-chat-header
+      className="grid shrink-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-bakin-2 gap-y-bakin-1 border-b border-bakin-border-subtle px-bakin-4 py-bakin-3"
+    >
       {/* The avatar carries the agent identity (name in its tooltip +
           aria-label) — same convention as agent turns; no redundant name
           text. */}
       <span title={agent?.name ?? agentId} aria-label={`Agent: ${agent?.name ?? agentId}`}>
-        <AgentAvatar agentId={agentId} size="sm" />
+        <AgentAvatar agent={agentIdentity} size="sm" decorative />
       </span>
-      <div className="min-w-0 flex-1">
+      <div data-chat-header-title className="col-start-2 min-w-0">
         {chat ? (
           <InlineTitle chat={chat} onChanged={onChanged} />
         ) : (
           <span className="text-sm font-medium">New chat</span>
         )}
-        {/* min-h keeps the header height stable while the GET is in
-            flight (the line used to be filled by the agent name). */}
-        <div className="flex min-h-4 items-center gap-1.5 text-xs text-muted-foreground">
+      </div>
+      {chat ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          aria-label={chat.pinned ? 'Unpin chat' : 'Pin chat'}
+          title={chat.pinned ? 'Unpin chat' : 'Pin chat'}
+          onClick={() => {
+            // Refresh the view's own chat state too — patching from stale
+            // state made the second click re-pin forever.
+            void patchChatRequest(chat.id, { pinned: !chat.pinned }).then(async () => {
+              await refreshChat?.()
+              onChanged()
+            })
+          }}
+          className={`rounded-bakin-pill ${
+            chat.pinned ? 'text-bakin-signal-accent' : 'text-bakin-text-muted'
+          }`}
+        >
+          <Pin className={`size-4 ${chat.pinned ? 'fill-current' : ''}`} />
+        </Button>
+      ) : null}
+      {/* The avatar and title occupy the same grid row. Usage remains on
+          its own stable line without pulling the title off-center. */}
+      {hasHeaderMeta ? (
+        <div
+          data-chat-header-meta
+          className="col-start-2 col-end-4 flex items-center gap-1.5 text-xs text-muted-foreground"
+        >
           {/* The compaction bar (#737) leads — runtime truth only; renders
               nothing when there's nothing honest to show. */}
           <ContextMeter stats={contextStats} />
@@ -225,26 +264,6 @@ function ViewHeader({
             </span>
           ) : null}
         </div>
-      </div>
-      {chat ? (
-        <button
-          type="button"
-          aria-label={chat.pinned ? 'Unpin chat' : 'Pin chat'}
-          title={chat.pinned ? 'Unpin chat' : 'Pin chat'}
-          onClick={() => {
-            // Refresh the view's own chat state too — patching from stale
-            // state made the second click re-pin forever.
-            void patchChatRequest(chat.id, { pinned: !chat.pinned }).then(async () => {
-              await refreshChat?.()
-              onChanged()
-            })
-          }}
-          className={`rounded p-1.5 transition-colors hover:bg-foreground/10 ${
-            chat.pinned ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          <Pin className={`size-4 ${chat.pinned ? 'fill-current' : ''}`} />
-        </button>
       ) : null}
     </div>
   )
@@ -311,9 +330,9 @@ export function DraftChatView({
   }
 
   return (
-    <div className="flex min-w-0 flex-1 flex-col" data-chat-draft>
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden" data-chat-draft>
       <ViewHeader agentId={agentId} chat={null} onChanged={() => {}} />
-      <div className="flex flex-1 items-center justify-center p-6">
+      <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto p-bakin-6">
         <ConversationEmptyState
           title={`Chat with ${name}`}
           description="Ask anything — the agent keeps its Bakin tools and can create tasks mid-chat."
@@ -324,37 +343,39 @@ export function DraftChatView({
           <AlertTriangle className="size-4" /> {error}
         </div>
       ) : null}
-      <Composer
-        storageKey={`chat-draft:${agentId}`}
-        placeholder={`Message ${name}…`}
-        onSend={(content) => { void handleSend(content) }}
-        busy={sending}
-        handleRef={draftComposer}
-        maxLength={CONTENT_MAX}
-        attachments={{
-          enabled: imageInput,
-          disabledReason: `${name}'s model can't see images`,
-          items: staged.map(({ id, name: fileName, previewUrl }) => ({ id, name: fileName, previewUrl, status: 'ready' as const })),
-          onAdd: (files) => {
-            setStaged((prev) => [
-              ...prev,
-              ...files.map((file) => ({
-                id: `${Date.now()}-${file.name}-${Math.random().toString(36).slice(2, 7)}`,
-                name: file.name,
-                previewUrl: URL.createObjectURL(file),
-                file,
-              })),
-            ])
-          },
-          onRemove: (id) => {
-            setStaged((prev) => {
-              const item = prev.find((s) => s.id === id)
-              if (item) URL.revokeObjectURL(item.previewUrl)
-              return prev.filter((s) => s.id !== id)
-            })
-          },
-        }}
-      />
+      <ConversationPageComposer className="pt-0">
+        <Composer
+          storageKey={`chat-draft:${agentId}`}
+          placeholder={`Message ${name}…`}
+          onSend={(content) => { void handleSend(content) }}
+          busy={sending}
+          handleRef={draftComposer}
+          maxLength={CONTENT_MAX}
+          attachments={{
+            enabled: imageInput,
+            disabledReason: `${name}'s model can't see images`,
+            items: staged.map(({ id, name: fileName, previewUrl }) => ({ id, name: fileName, previewUrl, status: 'ready' as const })),
+            onAdd: (files) => {
+              setStaged((prev) => [
+                ...prev,
+                ...files.map((file) => ({
+                  id: `${Date.now()}-${file.name}-${Math.random().toString(36).slice(2, 7)}`,
+                  name: file.name,
+                  previewUrl: URL.createObjectURL(file),
+                  file,
+                })),
+              ])
+            },
+            onRemove: (id) => {
+              setStaged((prev) => {
+                const item = prev.find((s) => s.id === id)
+                if (item) URL.revokeObjectURL(item.previewUrl)
+                return prev.filter((s) => s.id !== id)
+              })
+            },
+          }}
+        />
+      </ConversationPageComposer>
     </div>
   )
 }
@@ -400,7 +421,7 @@ export function ChatView({ chatId, onChanged }: { chatId: string; onChanged: () 
   const turns = foldConversation(messages, liveChunks != null ? { liveChunks, liveAgentId: chat.agentId } : undefined)
 
   return (
-    <div className="flex min-w-0 flex-1 flex-col">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden" data-chat-view>
       <ViewHeader agentId={chat.agentId} chat={chat} usageTotals={usageTotals} contextStats={contextStats} onChanged={onChanged} refreshChat={refreshChat} />
 
       <Conversation
@@ -418,29 +439,31 @@ export function ChatView({ chatId, onChanged }: { chatId: string; onChanged: () 
         }
       />
 
-      {sendError ? (
-        <div className="flex items-center gap-2 px-4 pb-1 text-sm text-destructive">
-          <AlertTriangle className="size-4" /> {sendError}
-          <button type="button" onClick={retry} className="underline underline-offset-2 hover:text-foreground">
-            Try again
-          </button>
-        </div>
-      ) : null}
+      <ConversationPageComposer className="pt-0">
+        {sendError ? (
+          <div className="flex items-center gap-bakin-2 px-bakin-4 pb-bakin-1 text-sm text-bakin-signal-danger">
+            <AlertTriangle className="size-4" /> {sendError}
+            <Button type="button" variant="link" size="xs" onClick={retry}>
+              Try again
+            </Button>
+          </div>
+        ) : null}
 
-      <QueuedMessageList items={queued} onRemove={(item) => { void handleRemoveQueued(item) }} />
+        <QueuedMessageList items={queued} onRemove={(item) => { void handleRemoveQueued(item) }} />
 
-      <Composer
-        storageKey={`chat:${chatId}`}
-        placeholder="Message the agent…"
-        onSend={(content) => { void send(content, attachments.take()) }}
-        busy={streaming}
-        onAbort={abort}
-        queueMode
-        queuedCount={queued.length}
-        handleRef={composerHandle}
-        maxLength={CONTENT_MAX}
-        attachments={attachments.composerProps}
-      />
+        <Composer
+          storageKey={`chat:${chatId}`}
+          placeholder="Message the agent…"
+          onSend={(content) => { void send(content, attachments.take()) }}
+          busy={streaming}
+          onAbort={abort}
+          queueMode
+          queuedCount={queued.length}
+          handleRef={composerHandle}
+          maxLength={CONTENT_MAX}
+          attachments={attachments.composerProps}
+        />
+      </ConversationPageComposer>
 
       <ToolCallDrawer call={openCall} open={openCall !== null} onOpenChange={(open) => !open && setOpenCall(null)} />
     </div>

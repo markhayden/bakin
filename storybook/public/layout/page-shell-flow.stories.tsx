@@ -14,7 +14,7 @@ const meta = {
     layout: 'fullscreen',
     docs: {
       description: {
-        component: 'PageShell supplies bounded page width, container-responsive insets, one page rhythm, and protected bottom clearance above the owning scroll boundary. PageHeader owns page identity and the stable controls/action row. Stack owns vertical content flow; Inline owns wrapping peer content. All choices map to the finite Bakin layout scale.',
+        component: 'PageShell supplies bounded page width, container-responsive insets, one page rhythm, protected bottom clearance above the owning scroll boundary, and device-safe-area clearance. PageHeader owns page identity and the stable controls/action row; standard descriptions use the available width on narrow canvases and may grow to half of the owned page canvas on desktop. Stack owns vertical content flow; Inline owns wrapping peer content. All choices map to the finite Bakin layout scale.',
       },
     },
   },
@@ -35,7 +35,7 @@ export const ResponsivePage = {
       <PageHeader
         eyebrow="Tasks / live operations"
         title="Coordinate active work"
-        description="Keep owners, timing, and operational context visible without building another one-off page wrapper."
+        description="Create, assign, and track work across your agents while keeping owners, timing, and operational context visible from backlog through completion."
         actions={<><Button variant="outline">Export view</Button><Button>New task</Button></>}
       />
 
@@ -58,6 +58,13 @@ export const ResponsivePage = {
       </Stack>
     </PageShell>
   ),
+  play: async ({ canvas }) => {
+    const header = canvas.getByRole('banner')
+    const description = canvas.getByText(/Create, assign, and track work/)
+    const headerWidth = header.getBoundingClientRect().width
+    await expect(description).toBeVisible()
+    await expect(description.getBoundingClientRect().width).toBeLessThanOrEqual(headerWidth * 0.51)
+  },
 } satisfies Story
 
 export const ProtectedScrollEnd = {

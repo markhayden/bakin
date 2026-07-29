@@ -55,7 +55,7 @@ export function ValidDetailRecipe() {
 
 export function ValidMediaDetailRecipe() {
   return (
-    <DetailPage width="full">
+    <DetailPage width="full" scroll="contained">
       <PageHeader measure="wide" title="Asset detail" />
       <DetailPageBody layout="aside">
         <DetailPageMain>Asset preview</DetailPageMain>

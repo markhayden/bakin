@@ -19,7 +19,10 @@ import {
   AgentAvatar,
   PageHeader,
   StatusBadge,
-  WorkflowPage,
+  WorkspacePage,
+  WorkspacePageBody,
+  WorkspacePageCompactHeader,
+  WorkspacePageHeader,
   WorkflowPageBody,
   WorkflowPageCanvas,
 } from '@makinbakin/sdk/patterns'
@@ -37,6 +40,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DropdownMenuItem,
   SystemState,
 } from '@makinbakin/sdk/ui'
 import { useRuntimeStatus } from '@makinbakin/sdk/hooks'
@@ -54,6 +58,7 @@ import './team-graph.css'
  * the card uncluttered — the convention is "no badge means OK."
  */
 const ATTENTION_STATES: PackageState[] = ['unmanaged', 'drifted', 'update-available']
+const TEAM_PAGE_DESCRIPTION = 'Create and organize agents, choose how they work, and see who is available.'
 
 // ─── Custom Nodes ────────────────────────────────────────────────────────────
 
@@ -283,93 +288,133 @@ export function TeamGrid() {
 
   if (!loaded) {
     return (
-      <WorkflowPage className="h-full overflow-auto">
-        <PageHeader title="Team" />
-        <WorkflowPageBody
-          state={(
-            <SystemState
-              kind="loading"
-              scope="page"
-              title="Loading your team"
-              description="Reporting lines and agent availability will appear here when the roster is ready."
-            />
+      <WorkspacePage mode="immersive">
+        <WorkspacePageHeader>
+          <PageHeader title="Team" description={TEAM_PAGE_DESCRIPTION} />
+        </WorkspacePageHeader>
+        <WorkspacePageCompactHeader
+          title="Team"
+          action={(
+            <Button size="icon-sm" onClick={() => setShowCreate(true)} aria-label="New agent">
+              <Plus aria-hidden="true" />
+            </Button>
+          )}
+          overflowActionsLabel="Team actions"
+          overflowActions={(
+            <DropdownMenuItem onClick={() => setShowTeams(true)}>
+              <Settings2 aria-hidden="true" />
+              Manage teams
+            </DropdownMenuItem>
           )}
         />
-      </WorkflowPage>
+        <WorkspacePageBody>
+          <WorkflowPageBody
+            mode="contained"
+            className="flex-1"
+            state={(
+              <SystemState
+                kind="loading"
+                scope="page"
+                title="Loading your team"
+                description="Reporting lines and agent availability will appear here when the roster is ready."
+              />
+            )}
+          />
+        </WorkspacePageBody>
+      </WorkspacePage>
     )
   }
 
   return (
     <>
-      <WorkflowPage className="h-full overflow-auto">
-        <PageHeader
+      <WorkspacePage mode="immersive">
+        <WorkspacePageHeader>
+          <PageHeader
+            title="Team"
+            description={TEAM_PAGE_DESCRIPTION}
+            meta={<Badge size="xs" variant="outline">{agentsWithStatus.length} agents</Badge>}
+            actions={(
+              <>
+                <Button variant="outline" onClick={() => setShowTeams(true)}>
+                  <Settings2 />
+                  Teams
+                </Button>
+                <Button onClick={() => setShowCreate(true)}>
+                  <Plus />
+                  New Agent
+                </Button>
+              </>
+            )}
+          />
+        </WorkspacePageHeader>
+        <WorkspacePageCompactHeader
           title="Team"
-          meta={<Badge size="xs" variant="outline">{agentsWithStatus.length} agents</Badge>}
-          actions={(
-            <>
-              <Button variant="outline" onClick={() => setShowTeams(true)}>
-                <Settings2 />
-                Teams
-              </Button>
-              <Button onClick={() => setShowCreate(true)}>
-                <Plus />
-                New Agent
-              </Button>
-            </>
+          action={(
+            <Button size="icon-sm" onClick={() => setShowCreate(true)} aria-label="New agent">
+              <Plus aria-hidden="true" />
+            </Button>
+          )}
+          overflowActionsLabel="Team actions"
+          overflowActions={(
+            <DropdownMenuItem onClick={() => setShowTeams(true)}>
+              <Settings2 aria-hidden="true" />
+              Manage teams
+            </DropdownMenuItem>
           )}
         />
-
-        <WorkflowPageBody
-          mode="contained"
-          className="min-h-96"
-          feedback={runtimeStatus.restartNeeded ? (
-            <Alert tone="attention">
-              <AlertTitle>Runtime restart required</AlertTitle>
-              <AlertDescription>
-                Agent configuration changed and is not active in the runtime yet.
-              </AlertDescription>
-              <AlertAction>
-                <Button
-                  onClick={runtimeStatus.restart}
-                  disabled={runtimeStatus.restarting}
-                  variant="warning"
-                  size="sm"
-                >
-                  {runtimeStatus.restarting ? 'Restarting…' : 'Restart runtime'}
-                </Button>
-              </AlertAction>
-            </Alert>
-          ) : undefined}
-        >
-          <WorkflowPageCanvas
-            data-team-graph-canvas=""
-            label="Team reporting graph"
-            orientation="vertical"
-            className="min-h-96 flex-1 overflow-hidden"
+        <WorkspacePageBody>
+          <WorkflowPageBody
+            mode="contained"
+            className="h-full min-h-0 flex-1"
+            feedback={runtimeStatus.restartNeeded ? (
+              <Alert tone="attention">
+                <AlertTitle>Runtime restart required</AlertTitle>
+                <AlertDescription>
+                  Agent configuration changed and is not active in the runtime yet.
+                </AlertDescription>
+                <AlertAction>
+                  <Button
+                    onClick={runtimeStatus.restart}
+                    disabled={runtimeStatus.restarting}
+                    variant="warning"
+                    size="sm"
+                  >
+                    {runtimeStatus.restarting ? 'Restarting…' : 'Restart runtime'}
+                  </Button>
+                </AlertAction>
+              </Alert>
+            ) : undefined}
           >
-            <ReactFlow
-              nodes={nodes}
-              edges={edges}
-              nodeTypes={nodeTypes}
-              onNodeClick={onNodeClick}
-              fitView
-              fitViewOptions={{ padding: 0.3 }}
-              minZoom={0.4}
-              maxZoom={1.5}
-              proOptions={{ hideAttribution: true }}
-              nodesConnectable={false}
+            <WorkflowPageCanvas
+              data-team-graph-canvas=""
+              label="Team reporting graph"
+              orientation="vertical"
+              className="h-full min-h-bakin-32 flex-1 overflow-hidden rounded-none border-x-0 border-b-0"
             >
-              <Background
-                variant={BackgroundVariant.Dots}
-                color="var(--bakin-color-border-subtle)"
-                gap={24}
-                size={1}
-              />
-              <Controls showInteractive={false} />
-            </ReactFlow>
-          </WorkflowPageCanvas>
-        </WorkflowPageBody>
-      </WorkflowPage>
+              <ReactFlow
+                nodes={nodes}
+                edges={edges}
+                nodeTypes={nodeTypes}
+                onNodeClick={onNodeClick}
+                fitView
+                fitViewOptions={{ padding: 0.3 }}
+                minZoom={0.4}
+                maxZoom={1.5}
+                proOptions={{ hideAttribution: true }}
+                nodesConnectable={false}
+              >
+                <Background
+                  variant={BackgroundVariant.Dots}
+                  color="var(--bakin-color-border-subtle)"
+                  gap={24}
+                  size={1}
+                />
+                <Controls showInteractive={false} />
+              </ReactFlow>
+            </WorkflowPageCanvas>
+          </WorkflowPageBody>
+        </WorkspacePageBody>
+      </WorkspacePage>
 
       <BakinDrawer
         open={showCreate}

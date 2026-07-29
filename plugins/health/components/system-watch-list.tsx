@@ -2,13 +2,19 @@
 
 import { useMemo, useState } from 'react'
 import type { HealthReport } from '@makinbakin/sdk/types'
-import { StatusBadge } from '@makinbakin/sdk/components'
-import { Button } from '@makinbakin/sdk/ui'
-import { CheckCircle2, ChevronDown, Puzzle, ShieldCheck } from 'lucide-react'
+import { ListRow, ListRows, StatusBadge, type StatusTone } from '@makinbakin/sdk/patterns'
+import { Banner, Button } from '@makinbakin/sdk/ui'
+import { ChevronDown, Puzzle, ShieldCheck } from 'lucide-react'
 import type { SystemPluginManifestData, SystemRegistryData } from '../hooks/use-system-data'
 import { buildSystemFindings, type SystemFinding } from '../lib/system-view-model'
 
 const DEFAULT_VISIBLE_FINDINGS = 3
+
+function canonicalFindingTone(tone: SystemFinding['tone']): StatusTone {
+  if (tone === 'destructive') return 'danger'
+  if (tone === 'warning') return 'attention'
+  return tone
+}
 
 export function SystemWatchList({
   report,
@@ -52,56 +58,49 @@ export function SystemWatchList({
       </div>
 
       {findings.length === 0 && evidenceState === 'current' ? (
-        <div className="flex items-center gap-3 rounded-xl border border-success/20 bg-success/[0.045] px-4 py-3">
-          <CheckCircle2 className="size-4 shrink-0 text-success" aria-hidden="true" />
-          <div>
-            <p className="text-sm font-medium text-foreground">Nothing needs review</p>
-            <p className="text-xs text-muted-foreground">No health-check or plugin findings are present.</p>
-          </div>
-        </div>
+        <Banner
+          tone="success"
+          title="Nothing needs review"
+          description="No health-check or plugin findings are present."
+        />
       ) : findings.length === 0 ? (
-        <div className="flex items-center gap-3 rounded-xl border border-border/80 bg-card px-4 py-3">
-          <ShieldCheck className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-          <div>
-            <p className="text-sm font-medium text-foreground">
-              {evidenceState === 'checking' ? 'Checking for findings' : 'Review status unavailable'}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              {evidenceState === 'checking'
-                ? 'Waiting for health checks and the plugin inventory.'
-                : 'Health checks and plugin inventory must be current before Bakin can confirm there is nothing to review.'}
-            </p>
-          </div>
-        </div>
+        <Banner
+          tone="info"
+          title={evidenceState === 'checking' ? 'Checking for findings' : 'Review status unavailable'}
+          description={evidenceState === 'checking'
+            ? 'Waiting for health checks and the plugin inventory.'
+            : 'Health checks and plugin inventory must be current before Bakin can confirm there is nothing to review.'}
+        />
       ) : (
-        <div className="overflow-hidden rounded-xl border border-border/80 bg-card">
-          <div className="divide-y divide-border/80">
+        <>
+          <ListRows variant="separated" aria-label="System findings">
             {visibleFindings.map((finding) => {
               const Icon = finding.kind === 'plugin' ? Puzzle : ShieldCheck
+              const tone = canonicalFindingTone(finding.tone)
               return (
-                <article
+                <ListRow
                   key={finding.id}
                   data-system-finding
-                  className="grid min-w-0 gap-3 px-4 py-3 @[34rem]/health-system:grid-cols-[minmax(0,1fr)_auto] @[34rem]/health-system:items-center"
+                  className="grid min-w-0 gap-bakin-3 @[34rem]/health-system:grid-cols-[minmax(0,1fr)_auto] @[34rem]/health-system:items-center"
                 >
-                  <div className="flex min-w-0 items-start gap-3">
+                  <div className="flex min-w-0 items-start gap-bakin-3">
                     <Icon
-                      className={finding.tone === 'destructive'
-                        ? 'mt-0.5 size-4 shrink-0 text-destructive'
-                        : finding.tone === 'warning'
-                          ? 'mt-0.5 size-4 shrink-0 text-warning'
-                          : finding.tone === 'accent'
-                            ? 'mt-0.5 size-4 shrink-0 text-accent'
-                            : 'mt-0.5 size-4 shrink-0 text-muted-foreground'}
+                      className={tone === 'danger'
+                        ? 'mt-0.5 size-bakin-4 shrink-0 text-bakin-signal-danger'
+                        : tone === 'attention'
+                          ? 'mt-0.5 size-bakin-4 shrink-0 text-bakin-signal-highlight'
+                          : tone === 'accent'
+                            ? 'mt-0.5 size-bakin-4 shrink-0 text-bakin-signal-accent'
+                            : 'mt-0.5 size-bakin-4 shrink-0 text-bakin-text-muted'}
                       aria-hidden="true"
                     />
                     <div className="min-w-0">
-                      <div className="flex min-w-0 flex-wrap items-center gap-2">
-                        <h3 className="text-sm font-medium text-foreground">{finding.title}</h3>
-                        <StatusBadge tone={finding.tone} variant="outline">{finding.label}</StatusBadge>
-                        <span className="text-[10px] uppercase tracking-wide text-muted-foreground">{finding.category}</span>
+                      <div className="flex min-w-0 flex-wrap items-center gap-bakin-2">
+                        <h3 className="text-bakin-typography-size-body font-bakin-typography-weight-medium text-bakin-text-primary">{finding.title}</h3>
+                        <StatusBadge tone={tone} variant="outline">{finding.label}</StatusBadge>
+                        <span className="text-bakin-typography-size-meta uppercase tracking-wide text-bakin-text-muted">{finding.category}</span>
                       </div>
-                      <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">{finding.detail}</p>
+                      <p className="mt-bakin-1 line-clamp-2 text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted">{finding.detail}</p>
                     </div>
                   </div>
                   <Button
@@ -113,24 +112,27 @@ export function SystemWatchList({
                   >
                     View evidence
                   </Button>
-                </article>
+                </ListRow>
               )
             })}
-          </div>
+          </ListRows>
 
           {hiddenCount > 0 && (
-            <button
-              type="button"
-              className="flex w-full items-center justify-center gap-1.5 border-t border-border/80 px-4 py-2 text-xs font-medium text-muted-foreground hover:bg-foreground/[0.025] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-              onClick={() => setExpanded((value) => !value)}
-              aria-expanded={expanded}
-              aria-label={expanded ? 'Show fewer system findings' : `Show ${hiddenCount} more system findings`}
-            >
-              {expanded ? 'Show fewer' : `Show ${hiddenCount} more`}
-              <ChevronDown className={expanded ? 'size-3.5 rotate-180' : 'size-3.5'} aria-hidden="true" />
-            </button>
+            <div className="mt-bakin-2 flex justify-center">
+              <Button
+                type="button"
+                size="xs"
+                variant="ghost"
+                onClick={() => setExpanded((value) => !value)}
+                aria-expanded={expanded}
+                aria-label={expanded ? 'Show fewer system findings' : `Show ${hiddenCount} more system findings`}
+              >
+                {expanded ? 'Show fewer' : `Show ${hiddenCount} more`}
+                <ChevronDown className={expanded ? 'size-bakin-4 rotate-180' : 'size-bakin-4'} aria-hidden="true" />
+              </Button>
+            </div>
           )}
-        </div>
+        </>
       )}
     </section>
   )

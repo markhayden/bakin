@@ -377,6 +377,7 @@ function MemoryShellInner() {
     <ListPage className="h-full overflow-auto">
       <PageHeader
         title="Memory"
+        description="Search what your agents remember, inspect saved context, and clean up stale or unnecessary records."
         meta={<Badge size="xs" variant="outline">{visibleResults.length} shown</Badge>}
         controlsLabel="Memory search"
         controls={(

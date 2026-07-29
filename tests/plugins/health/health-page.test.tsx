@@ -137,10 +137,15 @@ describe('HealthPage tab shell', () => {
     const overviewTab = screen.getByRole('tab', { name: 'Overview' })
     const panel = screen.getByRole('tabpanel')
 
-    expect(page.className).toContain('@container/health')
+    expect(page.getAttribute('data-archetype')).toBe('dashboard')
+    expect(page.getAttribute('data-width')).toBe('full')
+    expect(page.getAttribute('data-slot')).toBe('page-shell')
     expect(page.classList.contains('health-page')).toBe(true)
     expect(screen.getByRole('heading', { name: 'Health' })).toBeDefined()
-    expect(within(screen.getByTestId('plugin-header')).queryByText('See what needs attention, fix it, and confirm Bakin is working.')).toBeNull()
+    expect(screen.getByText('Monitor operational readiness, investigate failed work, and repair issues before they block agents.')).toBeDefined()
+    expect(screen.queryByTestId('plugin-header')).toBeNull()
+    expect(page.querySelector('[data-slot="page-header"]')).not.toBeNull()
+    expect(page.querySelector('[data-slot="dashboard-page-content"]')).not.toBeNull()
     expect(screen.getByRole('tablist', { name: 'Health sections' }).closest('[data-slot="underline-tabs"]')).not.toBeNull()
     expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
       'Overview',

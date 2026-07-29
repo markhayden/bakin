@@ -3,9 +3,10 @@
  * conversations. Never a bare "select a chat" line.
  */
 import { MessageCirclePlus } from 'lucide-react'
-import { AgentAvatar, formatRelativeTime } from '@makinbakin/sdk/components'
+import { formatRelativeTime } from '@makinbakin/sdk/conversation'
 import { useAgentList } from '@makinbakin/sdk/hooks'
-import { Skeleton } from '@makinbakin/sdk/ui'
+import { AgentAvatar, ListRow, ListRows } from '@makinbakin/sdk/patterns'
+import { Button, Skeleton } from '@makinbakin/sdk/ui'
 
 import type { ChatSummaryDto } from './use-chat-data'
 
@@ -24,20 +25,21 @@ export function Launcher({
   onOpenChat: (chatId: string) => void
 }) {
   const agents = useAgentList()
+  const agentById = new Map(agents.map((agent) => [agent.id, agent]))
 
   if (loading) {
     return (
-      <div className="mx-auto w-full max-w-2xl space-y-6 p-8" data-chat-launcher-skeleton>
-        <Skeleton className="h-6 w-40" />
-        <div className="grid grid-cols-4 gap-3">
+      <div className="w-full space-y-bakin-6 p-bakin-4 md:p-bakin-6" data-chat-launcher-skeleton>
+        <Skeleton className="h-bakin-6 w-40" />
+        <div className="grid grid-cols-1 gap-bakin-3 sm:grid-cols-2 lg:grid-cols-4">
           {[0, 1, 2, 3].map((i) => (
-            <Skeleton key={i} className="h-24 rounded-lg" />
+            <Skeleton key={i} className="h-24 rounded-bakin-surface" />
           ))}
         </div>
-        <Skeleton className="h-6 w-24" />
-        <div className="space-y-2">
+        <Skeleton className="h-bakin-6 w-24" />
+        <div className="space-y-bakin-2">
           {[0, 1, 2].map((i) => (
-            <Skeleton key={i} className="h-12 rounded-lg" />
+            <Skeleton key={i} className="h-12 rounded-bakin-surface" />
           ))}
         </div>
       </div>
@@ -46,63 +48,80 @@ export function Launcher({
 
   return (
     <div className="flex-1 overflow-y-auto" data-chat-launcher>
-      <div className="mx-auto w-full max-w-2xl space-y-8 p-8">
-        <div className="space-y-3">
-          <h2 className="flex items-center gap-2 text-lg font-medium">
-            <MessageCirclePlus className="size-5 text-muted-foreground" /> Start a chat
+      <div className="w-full space-y-bakin-8 p-bakin-4 md:p-bakin-6">
+        <div className="space-y-bakin-3">
+          <h2 className="flex items-center gap-bakin-2 text-bakin-typography-size-section-title font-bakin-typography-weight-semibold">
+            <MessageCirclePlus className="size-bakin-5 text-bakin-text-muted" /> Start a chat
           </h2>
           {agents.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
+            <p className="text-bakin-typography-size-body text-bakin-text-muted">
               No agents in the runtime roster yet — add one from the Team page and it appears here.
             </p>
           ) : (
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+            <div className="grid grid-cols-1 gap-bakin-3 sm:grid-cols-2 lg:grid-cols-4">
               {agents.slice(0, MAX_AGENT_CARDS).map((agent) => (
-                <button
+                <Button
                   key={agent.id}
                   type="button"
+                  variant="outline"
                   data-chat-agent-card={agent.id}
                   onClick={() => onStartChat(agent.id)}
-                  className="flex flex-col items-center gap-2 rounded-lg border border-border p-4 transition-colors hover:border-ring"
+                  className="h-auto min-w-0 flex-col gap-bakin-2 whitespace-normal p-bakin-4"
                 >
-                  <AgentAvatar agentId={agent.id} size="lg" />
-                  <span className="w-full truncate text-center text-sm font-medium">{agent.name || agent.id}</span>
+                  <AgentAvatar
+                    agent={{ id: agent.id, name: agent.name || agent.id, imageSrc: agent.headshot || null }}
+                    size="lg"
+                    decorative
+                  />
+                  <span className="w-full truncate text-center">{agent.name || agent.id}</span>
                   {agent.role ? (
-                    <span className="line-clamp-2 w-full text-center text-xs leading-snug text-muted-foreground">
+                    <span className="line-clamp-2 w-full text-center text-bakin-typography-size-meta font-bakin-typography-weight-regular leading-snug text-bakin-text-muted">
                       {agent.role}
                     </span>
                   ) : null}
-                </button>
+                </Button>
               ))}
             </div>
           )}
         </div>
 
         {chats.length > 0 ? (
-          <div className="space-y-2">
-            <h3 className="text-sm font-medium text-muted-foreground">Recent</h3>
-            <div className="space-y-1">
+          <section className="space-y-bakin-2" aria-labelledby="chat-recents-heading">
+            <h3 id="chat-recents-heading" className="text-bakin-typography-size-body font-bakin-typography-weight-semibold text-bakin-text-muted">Recent</h3>
+            <ListRows aria-label="Recent chats">
               {chats.slice(0, MAX_RECENTS).map((chat) => (
-                <button
-                  key={chat.id}
-                  type="button"
-                  onClick={() => onOpenChat(chat.id)}
-                  className="flex w-full items-center gap-3 rounded-lg border border-transparent px-3 py-2 text-left transition-colors hover:border-border hover:bg-foreground/5"
-                >
-                  <AgentAvatar agentId={chat.agentId} size="sm" />
-                  <div className="min-w-0 flex-1">
-                    <div className={`truncate text-sm ${chat.unreadCount > 0 ? 'font-semibold' : ''}`}>
-                      {chat.title || 'New chat'}
-                    </div>
-                    <div className="truncate text-xs text-muted-foreground">
-                      {chat.lastMessagePreview || chat.agentId}
-                    </div>
-                  </div>
-                  <span className="shrink-0 text-xs text-muted-foreground">{formatRelativeTime(chat.updatedAt)}</span>
-                </button>
+                <ListRow key={chat.id}>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => onOpenChat(chat.id)}
+                    className="h-auto w-full min-w-0 justify-start gap-bakin-3 whitespace-normal p-bakin-0 text-left"
+                  >
+                    <AgentAvatar
+                      agent={{
+                        id: chat.agentId,
+                        name: agentById.get(chat.agentId)?.name || chat.agentId,
+                        imageSrc: agentById.get(chat.agentId)?.headshot || null,
+                      }}
+                      size="sm"
+                      decorative
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className={`block truncate ${chat.unreadCount > 0 ? 'font-bakin-typography-weight-bold' : ''}`}>
+                        {chat.title || 'New chat'}
+                      </span>
+                      <span className="block truncate text-bakin-typography-size-meta font-bakin-typography-weight-regular text-bakin-text-muted">
+                        {chat.lastMessagePreview || chat.agentId}
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-bakin-typography-size-meta font-bakin-typography-weight-regular text-bakin-text-muted">
+                      {formatRelativeTime(chat.updatedAt)}
+                    </span>
+                  </Button>
+                </ListRow>
               ))}
-            </div>
-          </div>
+            </ListRows>
+          </section>
         ) : null}
       </div>
     </div>

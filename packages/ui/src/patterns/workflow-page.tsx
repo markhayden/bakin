@@ -20,7 +20,13 @@ export type WorkflowPageProps = Omit<
 /** Wide page canvas for workflow graphs, boards, and action workspaces. */
 export function WorkflowPage({ children, width = 'full', ...props }: WorkflowPageProps) {
   return (
-    <PageShell {...props} data-archetype="workflow" width={width}>
+    <PageShell
+      {...props}
+      data-archetype="workflow"
+      gap="content"
+      padding="compact"
+      width={width}
+    >
       {children}
     </PageShell>
   )
@@ -74,18 +80,18 @@ export function WorkflowPageBody({
           data-slot="workflow-page-container"
           className={cn(
             '@container/workflow-page min-w-0',
-            mode === 'contained' && 'min-h-0 flex-1',
+            mode === 'contained' && 'flex min-h-0 flex-1',
           )}
         >
           <div
             data-layout={layout}
             data-slot="workflow-page-grid"
             className={cn(
-              'grid min-w-0 items-start gap-bakin-4',
+              'grid min-w-0 gap-bakin-4',
+              mode === 'document' ? 'items-start' : 'h-full min-h-0 flex-1 items-stretch',
               '[&>[data-slot=workflow-page-actions]]:col-span-full [&>[data-slot=workflow-page-toolbar]]:col-span-full',
               layout === 'inspector'
                 && '@4xl/workflow-page:grid-cols-[minmax(0,1.72fr)_minmax(18rem,.72fr)]',
-              mode === 'contained' && 'min-h-0 flex-1',
             )}
           >
             {children}
@@ -152,7 +158,7 @@ export function WorkflowPageCanvas({
       data-orientation={orientation}
       data-workflow-canvas=""
       className={cn(
-        'min-h-0 min-w-0 rounded-bakin-surface border border-bakin-border-subtle bg-bakin-canvas-default',
+        'grid min-h-0 min-w-0 rounded-bakin-surface border border-bakin-border-subtle bg-bakin-canvas-default',
         className,
       )}
     >

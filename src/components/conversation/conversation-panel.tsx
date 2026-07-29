@@ -31,10 +31,13 @@ export interface ConversationPanelProps {
   title?: ReactNode
   showHeader?: boolean
   fitParent?: boolean
+  /** Use a single top divider when the host page already provides the surface. */
+  chrome?: FocusedConversationPanelProps['chrome']
   readOnly?: boolean
   readOnlyNotice?: ReactNode
   placeholder?: string
   inputLabel?: string
+  autoFocus?: FocusedConversationPanelProps['autoFocus']
   emptyState?: ReactNode
   maxLength?: number
   attachments?: ComposerAttachments
@@ -62,10 +65,12 @@ export function ConversationPanel({
   title,
   showHeader,
   fitParent,
+  chrome,
   readOnly,
   readOnlyNotice,
   placeholder,
   inputLabel,
+  autoFocus,
   emptyState,
   maxLength,
   attachments,
@@ -118,10 +123,12 @@ export function ConversationPanel({
       title={title}
       showHeader={showHeader}
       fitParent={fitParent}
+      chrome={chrome}
       readOnly={readOnly}
       readOnlyNotice={readOnlyNotice}
       placeholder={placeholder}
       inputLabel={inputLabel}
+      autoFocus={autoFocus}
       emptyState={emptyState}
       maxLength={maxLength}
       attachments={attachments}

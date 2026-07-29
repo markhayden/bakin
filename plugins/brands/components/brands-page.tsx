@@ -145,6 +145,7 @@ export function BrandsPage() {
     <ListPage className="h-full overflow-auto">
       <PageHeader
         title="Branding"
+        description="Define the voice, visual identity, rules, and references agents use to keep every output on-brand."
         meta={data ? <Badge size="xs" variant="outline">{visible.length} shown</Badge> : undefined}
         controlsLabel="Brand search"
         controls={(

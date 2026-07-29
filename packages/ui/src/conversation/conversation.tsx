@@ -147,13 +147,14 @@ export function Conversation({
           <div className="grid min-w-0 gap-bakin-5 px-bakin-4 py-bakin-4">
             {turns.map((turn, index) => {
               const day = dayKey(turn.ts)
+              const followsAgent = turn.kind === 'user' && turns[index - 1]?.kind === 'agent'
               const separator = day && day !== previousDay ? (
                 <div
                   key={`day-${day}`}
                   data-conv-day=""
                   className="flex min-w-0 items-center gap-bakin-3 py-bakin-2"
                 >
-                  <span aria-hidden="true" className="h-px flex-1 bg-bakin-border-subtle" />
+                  <span aria-hidden="true" className="h-px flex-1 bg-bakin-border-subtle/60" />
                   <time
                     dateTime={turn.ts}
                     title={formatAbsoluteTime(turn.ts!)}
@@ -161,13 +162,18 @@ export function Conversation({
                   >
                     {formatDayLabel(turn.ts!)}
                   </time>
-                  <span aria-hidden="true" className="h-px flex-1 bg-bakin-border-subtle" />
+                  <span aria-hidden="true" className="h-px flex-1 bg-bakin-border-subtle/60" />
                 </div>
               ) : null
               if (day) previousDay = day
 
               return (
-                <div key={turn.key} className="grid min-w-0 gap-bakin-5">
+                <div
+                  key={turn.key}
+                  data-conv-turn-group=""
+                  data-kind={turn.kind}
+                  className={cn('grid min-w-0 gap-bakin-5', followsAgent && 'pt-bakin-4')}
+                >
                   {separator}
                   {turn.kind === 'user' ? (
                     <UserMessage turn={turn} renderAttachment={renderAttachment} />

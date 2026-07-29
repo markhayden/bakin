@@ -34,6 +34,11 @@ export type ListPageControlsProps = NativeControlsProps & AccessibleRegionName &
   children: React.ReactNode
   /** Optional peer actions such as clearing every active filter. */
   actions?: React.ReactNode
+  /**
+   * Adds a structural divider only when controls begin a genuinely separate
+   * page zone. Top-level list controls stay borderless by default.
+   */
+  divider?: boolean
 }
 
 /** Named, wrapping control region. URL state remains owned by the consuming page. */
@@ -41,6 +46,7 @@ export function ListPageControls({
   actions,
   children,
   className,
+  divider = false,
   label,
   labelledBy,
   ...props
@@ -51,8 +57,10 @@ export function ListPageControls({
       aria-label={label}
       aria-labelledby={labelledBy}
       data-slot="list-page-controls"
+      data-divider={divider ? 'true' : 'false'}
       className={cn(
-        'flex min-w-0 flex-col items-stretch gap-bakin-3 border-t border-bakin-border-subtle pt-bakin-4 @lg/page-shell:flex-row @lg/page-shell:items-center',
+        'flex min-w-0 flex-col items-stretch gap-bakin-3 @lg/page-shell:flex-row @lg/page-shell:items-center',
+        divider && 'border-t border-bakin-border-subtle pt-bakin-4',
         className,
       )}
     >

@@ -128,7 +128,7 @@ async function renderAndSearch(query: string) {
   await waitFor(() => {
     expect(screen.getByTestId('card-content-pipeline')).toBeDefined()
   })
-  fireEvent.change(screen.getByLabelText('search'), { target: { value: query } })
+  fireEvent.change(screen.getByRole('searchbox', { name: 'Workflow search' }), { target: { value: query } })
 }
 
 beforeEach(() => {
@@ -147,16 +147,18 @@ describe('WorkflowsPage — search signals', () => {
 
     await renderAndSearch('onboard')
 
-    // In-flight search → visible loading indicator.
+    // In-flight search → progress stays inside the field so the page does not reflow.
     await waitFor(() => {
-      expect(screen.getByTestId('workflows-search-loading')).toBeDefined()
+      expect(screen.getByRole('searchbox', { name: 'Workflow search' }).getAttribute('aria-busy')).toBe('true')
+      expect(screen.getByRole('status').textContent).toContain('Searching Workflow search')
     })
 
     // Engine down → the honest degraded chip…
     await waitFor(() => {
       expect(screen.getByTestId('workflows-search-degraded')).toBeDefined()
     }, { timeout: 3000 })
-    expect(screen.queryAllByTestId('workflows-search-loading').length).toBe(0)
+    expect(screen.getByRole('searchbox', { name: 'Workflow search' }).getAttribute('aria-busy')).toBeNull()
+    expect(document.querySelector('[data-slot="search-input-progress"]')).toBeNull()
 
     // …while basic text matching keeps the list usable.
     expect(screen.getByTestId('card-onboarding')).toBeDefined()
@@ -197,7 +199,8 @@ describe('WorkflowsPage — search signals', () => {
 
     await waitFor(() => {
       expect(screen.getByTestId('card-onboarding')).toBeDefined()
-      expect(screen.queryAllByTestId('workflows-search-loading').length).toBe(0)
+      expect(screen.getByRole('searchbox', { name: 'Workflow search' }).getAttribute('aria-busy')).toBeNull()
+      expect(document.querySelector('[data-slot="search-input-progress"]')).toBeNull()
     }, { timeout: 3000 })
     expect(screen.queryAllByTestId('workflows-search-degraded').length).toBe(0)
     expect(screen.queryAllByTestId('search-partial-chip').length).toBe(0)

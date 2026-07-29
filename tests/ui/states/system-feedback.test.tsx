@@ -104,6 +104,49 @@ describe('SystemState public contract', () => {
     expect(state?.className).toContain('min-h-[calc(var(--bakin-layout-space-8)*12)]')
     expect(state?.className).toContain('flex-1')
   })
+
+  it('maps inline scope to the compact presentation and keeps full states distinct', () => {
+    const { rerender } = render(
+      <SystemState
+        kind="initial-empty"
+        scope="inline"
+        title="No custom workflows yet"
+        description="Matching workflows will appear here."
+      />,
+    )
+
+    let state = screen.getByText('No custom workflows yet').closest('[data-slot="system-state"]')
+    let signal = state?.querySelector('[data-slot="system-state-signal"]')
+    const copy = state?.querySelector('[data-slot="system-state-copy"]')
+    expect(state?.getAttribute('data-presentation')).toBe('compact')
+    expect(state?.className).toContain('items-center')
+    expect(state?.className).toContain('gap-x-bakin-3')
+    expect(state?.className).toContain('px-bakin-4')
+    expect(signal?.className).not.toContain('mt-bakin-1')
+    expect(signal?.className).toContain('col-start-1')
+    expect(signal?.className).toContain('row-start-1')
+    expect(copy?.className).toContain('col-start-2')
+    expect(copy?.className).toContain('row-start-1')
+    expect(signal).not.toBeNull()
+    expect(copy).not.toBeNull()
+    expect(
+      signal!.compareDocumentPosition(copy!) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0)
+
+    rerender(
+      <SystemState
+        kind="initial-empty"
+        scope="section"
+        title="No workflows yet"
+      />,
+    )
+
+    state = screen.getByText('No workflows yet').closest('[data-slot="system-state"]')
+    signal = state?.querySelector('[data-slot="system-state-signal"]')
+    expect(state?.getAttribute('data-presentation')).toBe('full')
+    expect(signal?.className).toContain('mt-bakin-1')
+  })
 })
 
 describe('Banner public contract', () => {

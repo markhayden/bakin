@@ -391,12 +391,20 @@ describe('ActivityTab', () => {
     expect(within(failure).getByRole('list', { name: 'Failure events for Tools · Older Failure' })).toBeDefined()
 
     const recent = screen.getByRole('region', { name: 'Recent events' })
+    expect(within(recent).getAllByRole('listitem')).toHaveLength(10)
+    expect(within(recent).getByText('Showing 1–10 of 52')).toBeDefined()
+    expect(within(recent).queryByText('Older Failure')).toBeNull()
+    expect(within(recent).queryByText('Older Unverified')).toBeNull()
+
+    fireEvent.click(within(recent).getByRole('button', { name: 'Show all' }))
+
     const rows = within(recent).getAllByRole('listitem')
     expect(rows).toHaveLength(52)
     expect(rows.at(-2)?.textContent).toContain('Older Failure')
     expect(rows.at(-1)?.textContent).toContain('Older Unverified')
     expect(within(recent).getByText('Older Failure')).toBeDefined()
     expect(within(recent).getByText('Older Unverified')).toBeDefined()
+    expect(within(recent).getByText('Showing 1–52 of 52')).toBeDefined()
   })
 
   it('states when the failure list is capped below the total', () => {
@@ -878,6 +886,11 @@ describe('ActivityTab', () => {
     render(<ActivityTab />)
 
     const metrics = screen.getByRole('group', { name: 'Activity metrics' })
+    expect(metrics.getAttribute('data-slot')).toBe('grid')
+    expect(metrics.getAttribute('data-layout')).toBe('quarters')
+    for (const tile of metrics.querySelectorAll('[data-stat-tile]')) {
+      expect(tile.getAttribute('data-variant')).toBe('plain')
+    }
     expect(within(metrics).getByText('Interactions')).toBeDefined()
     expect(within(metrics).getByText('9')).toBeDefined()
     expect(within(metrics).getByText('Success rate')).toBeDefined()
@@ -888,6 +901,8 @@ describe('ActivityTab', () => {
     expect(within(metrics).getByText('Busiest: main (4)')).toBeDefined()
 
     const volume = screen.getByRole('region', { name: 'Activity over time' })
+    expect(volume.getAttribute('data-slot')).toBe('section')
+    expect(volume.getAttribute('data-divider')).toBe('top')
     expect(within(volume).getByText(/Partial history since/)).toBeDefined()
     const volumeTable = within(volume).getByRole('table', { name: 'Activity over time data' })
     expect(within(volumeTable).getByText('Other outcomes')).toBeDefined()
@@ -898,6 +913,9 @@ describe('ActivityTab', () => {
     expect(interactionsTile?.textContent).toContain('Partial window · retained history')
 
     const breakdown = screen.getByRole('region', { name: 'Call breakdown' })
+    expect(breakdown.getAttribute('data-slot')).toBe('section')
+    expect(breakdown.getAttribute('data-divider')).toBe('top')
+    expect(breakdown.querySelector('[data-slot="grid"]')?.getAttribute('data-layout')).toBe('split')
     const destinations = within(breakdown).getByRole('list', { name: 'Top destinations' })
     expect(within(destinations).getAllByRole('listitem')).toHaveLength(4)
     const toolDestination = within(destinations).getByRole('listitem', { name: 'Tools · Search Query' })
@@ -1325,6 +1343,8 @@ describe('ActivityTab', () => {
     expect(within(attention).getByRole('group', { name: 'Failures over time' })).toBeDefined()
 
     const recent = screen.getByRole('region', { name: 'Recent events' })
+    expect(recent.getAttribute('data-slot')).toBe('section')
+    expect(recent.getAttribute('data-divider')).toBe('top')
     const eventList = within(recent).getByRole('list', { name: 'Recent events' })
     expect(within(eventList).getAllByRole('listitem')).toHaveLength(9)
     expect(within(eventList).getAllByText('Failed')).toHaveLength(4)
@@ -1620,6 +1640,8 @@ describe('ActivityTab', () => {
 
     const attention = screen.getByRole('region', { name: 'Hiccups' })
     expect(screen.getAllByRole('region', { name: 'Hiccups' })).toHaveLength(1)
+    expect(attention.getAttribute('data-slot')).toBe('section')
+    expect(attention.getAttribute('data-divider')).toBe('top')
     expect(within(attention).getByRole('group', { name: 'Failures over time' })).toBeDefined()
 
     const highlights = within(attention).getByRole('list', { name: 'Top failure patterns' })
@@ -1682,7 +1704,7 @@ describe('ActivityTab', () => {
     fireEvent.click(review)
     expect(screen.getByRole('group', { name: 'Tools · Failure Pattern 5' })).toBeDefined()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Next failure patterns' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }))
     expect(useActivityDataMock).toHaveBeenLastCalledWith({
       window: '1h',
       kind: 'all',
@@ -1692,6 +1714,8 @@ describe('ActivityTab', () => {
     })
     expect(review.getAttribute('aria-expanded')).toBe('true')
     expect(screen.getByRole('group', { name: 'Tools · Failure Pattern 5' })).toBeDefined()
+    expect(screen.getByText('Showing 26–30 of 30')).toBeDefined()
+    expect(screen.queryByRole('button', { name: 'Show all' })).toBeNull()
 
     fireEvent.click(review)
     expect(useActivityDataMock).toHaveBeenLastCalledWith({ window: '1h', kind: 'all', includeRoutine: true })
@@ -1728,7 +1752,7 @@ describe('ActivityTab', () => {
     try {
       render(<ActivityTab />)
       fireEvent.click(screen.getByRole('button', { name: 'Review failure patterns 1–5 of 30' }))
-      fireEvent.click(screen.getByRole('button', { name: 'Next failure patterns' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }))
 
       const attention = screen.getByRole('region', { name: 'Hiccups' })
       expect(within(attention).getByText('Patterns 26–30 of 30')).toBeDefined()
@@ -1777,7 +1801,7 @@ describe('ActivityTab', () => {
 
     const view = render(<ActivityTab />)
     fireEvent.click(screen.getByRole('button', { name: 'Review failure patterns 1–5 of 30' }))
-    const next = screen.getByRole('button', { name: 'Next failure patterns' })
+    const next = screen.getByRole('button', { name: 'Next' })
     next.focus()
     fireEvent.click(next)
 
@@ -1841,8 +1865,13 @@ describe('ActivityTab', () => {
     fireEvent.click(expand)
 
     expect(expand.getAttribute('aria-expanded')).toBe('true')
+    expect(expand.getAttribute('aria-label')).toBe('Hide 2 failure events for Tools · Search Query')
+    expect(expand.getAttribute('data-size')).toBe('xs')
     const events = within(tools).getByRole('list', { name: 'Failure events for Tools · Search Query' })
+    expect(events.getAttribute('data-list-rows')).toBe('')
+    expect(events.getAttribute('data-variant')).toBe('bordered')
     expect(within(events).getAllByRole('listitem')).toHaveLength(2)
+    expect(within(events).getAllByRole('listitem').every((row) => row.getAttribute('data-slot') === 'list-row')).toBe(true)
     expect(within(events).getByText('Earlier provider timeout')).toBeDefined()
     expect(events.querySelector('time[datetime="2026-07-13T11:40:00.000Z"]')).not.toBeNull()
     expect(events.querySelector('time[datetime="2026-07-13T11:50:00.000Z"]')).not.toBeNull()
@@ -1924,7 +1953,7 @@ describe('ActivityTab', () => {
 
     expect(screen.getByText('Patterns 1–2 of 40')).toBeDefined()
     fireEvent.click(screen.getByRole('button', { name: 'Review failure patterns 1–2 of 40' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Next failure patterns' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }))
     expect(useActivityDataMock).toHaveBeenLastCalledWith({
       window: '1h',
       kind: 'all',
@@ -1952,7 +1981,7 @@ describe('ActivityTab', () => {
 
     render(<ActivityTab />)
     fireEvent.click(screen.getByRole('button', { name: 'Review failure patterns 1–2 of 40' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Next failure patterns' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }))
 
     expect(useActivityDataMock.mock.calls.some(([options]) => (
       (options as { failureGroupOffset?: number }).failureGroupOffset === 25
@@ -1977,9 +2006,9 @@ describe('ActivityTab', () => {
     expect(screen.queryByText('What is Bakin doing?')).toBeNull()
     const intro = screen.getByText(/tool calls?/i)
     expect(intro.textContent ?? '').not.toMatch(/\bevery\b/i)
-    expect(intro.className).toContain('text-xs')
+    expect(intro.className).toContain('text-bakin-typography-size-meta')
+    expect(intro.className).toContain('text-bakin-text-muted')
     expect(intro.className).toContain('leading-relaxed')
-    expect(intro.className).toContain('text-muted-foreground/80')
     expect(screen.getByLabelText('Activity window')).toBeDefined()
     expect(screen.getByLabelText('Activity kind')).toBeDefined()
     expect(screen.getByRole('status').textContent).toContain('Loading activity…')

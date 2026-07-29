@@ -21,7 +21,7 @@ export type GridProps<Element extends LayoutElement = 'div'> = GridPolymorphicPr
 const layoutClasses: Record<GridLayout, string> = {
   single: 'grid-cols-1',
   split: 'grid-cols-1 @lg/layout-grid:grid-cols-2',
-  thirds: 'grid-cols-1 @sm/layout-grid:grid-cols-2 @xl/layout-grid:grid-cols-3',
+  thirds: 'grid-cols-1 @lg/layout-grid:grid-cols-2 @xl/layout-grid:grid-cols-3',
   quarters: 'grid-cols-1 @sm/layout-grid:grid-cols-2 @xl/layout-grid:grid-cols-3 @4xl/layout-grid:grid-cols-4',
   cards: '[grid-template-columns:repeat(auto-fit,minmax(min(100%,15rem),1fr))]',
   'main-aside': 'grid-cols-1 @3xl/layout-grid:grid-cols-[minmax(0,1.6fr)_minmax(16rem,.8fr)]',

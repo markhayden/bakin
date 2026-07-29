@@ -538,6 +538,7 @@ export function KanbanBoard() {
       <ListPage width="full" className="h-full overflow-auto">
         <PageHeader
           title="Tasks"
+          description="Create, assign, and track work across your agents from the backlog through completion."
           meta={boardLoaded ? <Badge size="xs" variant="outline">{resultCount} shown</Badge> : undefined}
           controlsLabel="Task search, view, and actions"
           controls={(
@@ -575,7 +576,7 @@ export function KanbanBoard() {
           <TaskMetrics columns={columns} timestamp={timestamp} />
         </div>
 
-        <ListPageControls label="Task filters">
+        <ListPageControls label="Task filters" divider>
           <TaskFilters
             agentFilter={agentFilter}
             onAgentChange={setAgentFilter}

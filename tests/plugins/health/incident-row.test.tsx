@@ -3,7 +3,7 @@
  * category chip, and a demoted incident says so instead of hiding it.
  */
 // @vitest-environment jsdom
-import { describe, expect, it, mock } from 'bun:test'
+import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
@@ -19,11 +19,13 @@ mock.module('../../../packages/core/src/content-dir', () => ({
   getBakinPaths: () => ({ root: testDir }),
 }))
 
-import { render, screen } from '@testing-library/react'
+import { cleanup, render, screen } from '@testing-library/react'
 import '../../rtl-settle'
 import type { HealthIncident } from '@makinbakin/sdk/types'
 import { IncidentRow } from '@bakin/health/components/incident-row'
 import type { OverviewIncident } from '@bakin/health/lib/health-view-model'
+
+afterEach(cleanup)
 
 function item(overrides: Partial<HealthIncident> = {}): OverviewIncident {
   return {

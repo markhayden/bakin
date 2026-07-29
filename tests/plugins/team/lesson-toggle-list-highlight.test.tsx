@@ -7,7 +7,7 @@
  * Unknown or absent lessonId → no card highlighted, normal render.
  */
 import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, fireEvent } from '@testing-library/react'
 import '../../rtl-settle'
 
 const contentDirMock = () => ({
@@ -52,6 +52,9 @@ beforeEach(() => {
   )
 })
 
+afterEach(() => {
+  cleanup()
+})
 
 describe('LessonToggleList ?lessonId= highlight', () => {
   it('highlights the matching lesson card', async () => {
@@ -61,6 +64,8 @@ describe('LessonToggleList ?lessonId= highlight', () => {
     const highlighted = document.querySelectorAll('[data-highlighted="true"]')
     expect(highlighted.length).toBe(1)
     expect(highlighted[0]!.textContent).toContain('Tone of voice')
+    expect(screen.getByRole('list', { name: 'Agent lessons' }).getAttribute('data-variant')).toBe('bordered')
+    expect(highlighted[0]!.getAttribute('data-slot')).toBe('list-row')
   })
 
   it('highlights nothing when the param is absent', async () => {

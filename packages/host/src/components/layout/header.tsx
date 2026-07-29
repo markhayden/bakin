@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react'
-import { Download, Loader2, Menu, X, PanelLeftClose, PanelLeft, Bug, Search } from 'lucide-react'
+import { Download, Loader2, Menu, X, PanelLeftClose, PanelLeft, Bug, Search, Radio } from 'lucide-react'
 import { ConnectionDot } from './connection-dot'
 import { DispatchTimer } from './dispatch-timer'
 import { NotificationToggle } from './notification-toggle'
 import { AppSidebar } from './app-sidebar'
 import { openGlobalSearch } from '../search/use-search-hotkey'
 import { useSidebarContext } from '@/context/sidebar-context'
+import { useActivityContext } from '@/context/activity-context'
 import { useDebug } from '@makinbakin/sdk/hooks'
 import { usePluginEvent, emitPluginEvent } from '@/hooks/use-plugin-event'
 import { Button } from '@/components/ui/button'
@@ -121,6 +122,7 @@ export function Header() {
   const [updateError, setUpdateError] = useState<string | null>(null)
   const [updateMessage, setUpdateMessage] = useState<string | null>(null)
   const { collapsed, toggle } = useSidebarContext()
+  const { open: activityOpen, toggle: toggleActivity } = useActivityContext()
   const displayUpdateStatus = updateStatus
   const showUpdateBanner = Boolean(updateStatus?.supported && updateStatus.updateAvailable)
   const { paused: dispatchPaused, resuming, resume } = useDispatchPaused()
@@ -260,6 +262,17 @@ export function Header() {
           <div className="hidden md:block"><DebugToggle /></div>
           <div className="hidden sm:block"><NotificationToggle /></div>
           <ConnectionDot />
+          <button
+            type="button"
+            onClick={toggleActivity}
+            aria-label={activityOpen ? 'Close Live Activity' : 'Open Live Activity'}
+            aria-pressed={activityOpen}
+            title="Live Activity"
+            data-testid="mobile-live-activity-button"
+            className="flex h-bakin-8 w-bakin-8 shrink-0 items-center justify-center rounded-md border border-border/60 p-0 text-muted-foreground transition-colors hover:text-foreground md:hidden"
+          >
+            <Radio aria-hidden="true" className="size-3.5" />
+          </button>
         </div>
       </header>
 

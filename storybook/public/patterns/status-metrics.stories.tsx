@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { expect } from 'storybook/test'
 
 import { Grid, PageShell, Stack } from '@makinbakin/sdk/layout'
-import { StatGroup, StatTile, StatusBadge } from '@makinbakin/sdk/patterns'
+import { StatGroup, StatTile, StatusBadge, StatusMarker } from '@makinbakin/sdk/patterns'
 
 import './status-metrics.stories.css'
 
@@ -86,6 +86,19 @@ export const StatusLanguage = {
             <StatusBadge tone="accent" variant="solid" size="xs">Official</StatusBadge>
             <StatusBadge tone="success" variant="solid" size="xs" icon={CheckIcon}>Installed</StatusBadge>
           </div></div>
+          <div><span>Product lifecycle</span><div>
+            <StatusBadge tone="success" variant="solid" size="xs">Active</StatusBadge>
+            <StatusBadge tone="neutral" variant="solid" size="xs">Archived</StatusBadge>
+            <StatusBadge tone="success" variant="solid" size="xs">Accepted</StatusBadge>
+            <StatusBadge tone="attention" variant="solid" size="xs">In production</StatusBadge>
+          </div></div>
+          <div><span>Dense-view markers</span><div>
+            <StatusMarker tone="neutral" label="Draft" />
+            <StatusMarker tone="success" label="Published" />
+            <StatusMarker tone="attention" label="Needs review" />
+            <StatusMarker tone="danger" label="Failed" />
+            <StatusMarker tone="accent" label="Working now" />
+          </div></div>
         </div>
       </section>
     </PatternStage>
@@ -98,6 +111,10 @@ export const StatusLanguage = {
     await expect(canvas.getByText('Official').closest('[data-status-badge]')).toHaveAttribute('data-tone', 'accent')
     await expect(canvas.getByText('Official').closest('[data-status-badge]')).toHaveAttribute('data-variant', 'solid')
     await expect(canvas.getByText('Installed').closest('[data-status-badge]')).toHaveAttribute('data-tone', 'success')
+    await expect(canvas.getByText('Active').closest('[data-status-badge]')).toHaveAttribute('data-tone', 'success')
+    await expect(canvas.getByText('Archived').closest('[data-status-badge]')).toHaveAttribute('data-tone', 'neutral')
+    await expect(canvas.getByText('Accepted').closest('[data-status-badge]')).toHaveAttribute('data-variant', 'solid')
+    await expect(canvas.getByRole('img', { name: 'Published' })).toHaveAttribute('data-tone', 'success')
   },
 } satisfies Story
 

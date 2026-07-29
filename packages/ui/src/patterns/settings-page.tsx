@@ -3,12 +3,12 @@ import * as React from 'react'
 import { PageShell, type PageShellProps } from '../layout/page-shell'
 import { cn } from '../utils'
 
-export type SettingsPageWidth = 'content' | 'wide'
+export type SettingsPageWidth = 'content' | 'wide' | 'full'
 export type SettingsPageLayout = 'single' | 'navigation'
 
 export type SettingsPageProps = Omit<PageShellProps, 'children' | 'gap' | 'padding' | 'width'> & {
   children: React.ReactNode
-  /** Content suits one focused form; wide supports a category navigation rail. */
+  /** Content suits one focused form; wide supports navigation; full supports plugin-wide configuration. */
   width?: SettingsPageWidth
 }
 

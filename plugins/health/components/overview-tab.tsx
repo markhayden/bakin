@@ -1,6 +1,7 @@
 'use client'
 
 import type { HealthIncident } from '@makinbakin/sdk/types'
+import { Banner } from '@makinbakin/sdk/ui'
 import { useOverviewData, type UseOverviewDataResult } from '../hooks/use-overview-data'
 import type { HealthOverviewViewModel } from '../lib/health-view-model'
 import { OverviewAlerts } from './overview-alerts'
@@ -38,7 +39,11 @@ export function OverviewTabView({
   onAck,
 }: OverviewTabViewProps) {
   return (
-    <div className="min-w-0 space-y-4" data-testid="health-overview-tab">
+    <div
+      className="flex min-w-0 flex-col gap-bakin-8"
+      data-layout="priority-dashboard"
+      data-testid="health-overview-tab"
+    >
       <HealthTabIntro
         title="Overview"
         description="See what needs attention, fix it, and confirm Bakin is working."
@@ -53,9 +58,11 @@ export function OverviewTabView({
       />
 
       {backgroundError && model.reportId && (
-        <p className="rounded-lg bg-warning/5 px-3 py-2 text-xs text-warning ring-1 ring-warning/20">
-          Some live data could not refresh. Showing the last verified snapshot: {backgroundError}
-        </p>
+        <Banner
+          tone="attention"
+          title="Showing the last verified snapshot"
+          description={`Some live data could not refresh: ${backgroundError}`}
+        />
       )}
 
       <OverviewAlerts model={model} onRepair={onRepair} onRerun={onRerun} onAck={onAck} />

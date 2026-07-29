@@ -17,7 +17,13 @@ import {
   PageHeader,
 } from '@makinbakin/sdk/patterns'
 import { Section, Stack } from '@makinbakin/sdk/layout'
-import { Badge, Banner, Button, SystemState } from '@makinbakin/sdk/ui'
+import {
+  Badge,
+  Banner,
+  Button,
+  DropdownMenuItem,
+  SystemState,
+} from '@makinbakin/sdk/ui'
 import { ArrowLeft, Download, Pencil, Trash2, Upload, Loader2, X } from 'lucide-react'
 import { AssetMetaSummary, AssetThumb } from './atoms'
 import { AssetEditDrawer } from './AssetEditDrawer'
@@ -247,15 +253,22 @@ export function VersionedAssetDetail() {
         )}
         actionsLabel="Asset actions"
         actions={(
+          <Button variant="primary" onClick={() => setEditOpen(true)} data-testid="edit-asset">
+            <Pencil /> Edit asset
+          </Button>
+        )}
+        overflowActionsLabel="Asset actions"
+        overflowActions={(
           <>
-            <Button variant="primary" onClick={() => setEditOpen(true)} data-testid="edit-asset">
-              <Pencil /> Edit asset
-            </Button>
-            <Button variant="outline" onClick={() => versionInputRef.current?.click()} disabled={addingVersion} data-testid="add-version">
+            <DropdownMenuItem
+              onClick={() => versionInputRef.current?.click()}
+              disabled={addingVersion}
+              data-testid="add-version"
+            >
               {addingVersion ? <Loader2 className="animate-spin" /> : <Upload />}
               {addingVersion ? 'Uploading…' : 'Add version'}
-            </Button>
-            <Button
+            </DropdownMenuItem>
+            <DropdownMenuItem
               variant="danger"
               onClick={() => {
                 setDeleteScope('asset')
@@ -264,8 +277,8 @@ export function VersionedAssetDetail() {
               }}
               data-testid="delete-asset"
             >
-              <Trash2 /> Delete asset
-            </Button>
+              <Trash2 /> Delete
+            </DropdownMenuItem>
           </>
         )}
       />

@@ -8,12 +8,22 @@ import { homedir } from 'os'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
 import { initBakinHome, resetContentDir } from '../../packages/core/src/content-dir'
-import { claimCronFire, attachCronTask, markCronFireSkipped, claimRun, settleRun, loseRun, supersedeStaleRun } from '../../src/core/execution-ledger'
+import {
+  attachCronTask,
+  claimCronFire,
+  claimRun,
+  loseRun,
+  markCronFireSkipped,
+  recordRunCost,
+  settleRun,
+  supersedeStaleRun,
+} from '../../src/core/execution-ledger'
 import { closeDb } from '../../packages/core/src/storage/db'
 import { getMockHome } from './env'
 import { seedUsageSessions } from './seed-usage-sessions'
 import { seedVersionedAssets } from './seed-assets'
 import { seedBrands } from './seed-brands'
+import { seedChats } from './seed-chat'
 import { seedTeamContent } from './seed-team'
 import { seedEnrichAgent } from './seed-enrich'
 import { seedMessagingCalendar } from './seed-messaging'
@@ -93,6 +103,7 @@ export function seed(force = false): void {
   seedUsageSessions(mockHome)
   seedVersionedAssets(mockHome)
   seedBrands(mockHome)
+  seedChats(mockHome)
   seedTeamContent(mockHome)
   seedEnrichAgent(mockHome)
   seedMessagingCalendar(mockHome)
@@ -104,6 +115,7 @@ export function seed(force = false): void {
   seedSchedules(mockHome)
   seedScheduleFires()
   seedTaskRuns()
+  seedModelsSettings(mockHome)
 
   // Create a sample gateway log for today
   seedGatewayLog()
@@ -344,8 +356,73 @@ function seedTaskRuns(): void {
   claimRun({ runId: rid(T, 3), taskId: T, seq: 3, agent: 'rolo', bootId: boot, now: now - 50 * MIN })
   settleRun(rid(T, 3), 'turn-ok', now - 47 * MIN)
 
+  const spendRows = [
+    { runId: 'seed:spend:workflow-sonnet', taskId: 'task-dn-001', agent: 'pixel', model: 'anthropic/claude-sonnet-4-6', provider: 'anthropic', lane: 'metered' as const, workClass: 'workflow', inputTokens: 18_000, outputTokens: 4_000, costUsdMicros: 410_000, ago: 35 },
+    { runId: 'seed:spend:scheduled-haiku', taskId: 'task-ip-001', agent: 'jessica', model: 'anthropic/claude-haiku-4-5', provider: 'anthropic', lane: 'metered' as const, workClass: 'scheduled', inputTokens: 9_000, outputTokens: 1_500, costUsdMicros: 44_000, ago: 70 },
+    { runId: 'seed:spend:manual-gpt', taskId: 'task-ip-003', agent: 'patch', model: 'openai/gpt-5.4', provider: 'openai', lane: 'metered' as const, workClass: 'manual', inputTokens: 22_000, outputTokens: 5_000, costUsdMicros: 520_000, ago: 110 },
+    { runId: 'seed:spend:chat-codex', agent: 'main', model: 'openai-codex/gpt-5.4', provider: 'openai-codex', lane: 'subscription' as const, workClass: 'chat', inputTokens: 14_000, outputTokens: 3_000, costUsdMicros: null, ago: 150 },
+    { runId: 'seed:spend:recovery-gemini', taskId: 'task-ip-003', agent: 'rolo', model: 'google/gemini-2.5-pro', provider: 'google', lane: 'metered' as const, workClass: 'recovery', inputTokens: 28_000, outputTokens: 6_000, costUsdMicros: 350_000, ago: 260 },
+    { runId: 'seed:spend:decomposition-opus', taskId: 'task-bl-001', agent: 'main', model: 'anthropic/claude-opus-4-6', provider: 'anthropic', lane: 'metered' as const, workClass: 'decomposition', inputTokens: 31_000, outputTokens: 8_000, costUsdMicros: 970_000, ago: 420 },
+    { runId: 'seed:spend:title-mini', agent: 'main', model: 'openai/gpt-4.1-mini', provider: 'openai', lane: 'metered' as const, workClass: 'auto-title', inputTokens: 2_000, outputTokens: 300, costUsdMicros: 9_000, ago: 760 },
+    { runId: 'seed:spend:enrichment-flash', agent: 'pixel', model: 'google/gemini-2.5-flash', provider: 'google', lane: 'metered' as const, workClass: 'enrichment', inputTokens: 7_000, outputTokens: 900, costUsdMicros: 12_000, ago: 1_100 },
+    { runId: 'seed:spend:relay-codex', agent: 'patch', model: 'openai-codex/gpt-5.3-codex', provider: 'openai-codex', lane: 'subscription' as const, workClass: 'relay', inputTokens: 24_000, outputTokens: 4_000, costUsdMicros: null, ago: 1_600 },
+    { runId: 'seed:spend:direct-sonnet', agent: 'jessica', model: 'anthropic/claude-sonnet-4', provider: 'anthropic', lane: 'metered' as const, workClass: 'direct-send', inputTokens: 12_000, outputTokens: 2_200, costUsdMicros: 190_000, ago: 2_200 },
+    { runId: 'seed:spend:team-qwen', taskId: 'task-td-004', agent: 'rolo', model: 'openrouter/qwen-2.5-72b', provider: 'openrouter', lane: 'metered' as const, workClass: 'team', inputTokens: 17_000, outputTokens: 2_800, costUsdMicros: 80_000, ago: 5_000 },
+    { runId: 'seed:spend:workflow-older', taskId: 'task-rv-001', agent: 'pixel', model: 'anthropic/claude-sonnet-4-6', provider: 'anthropic', lane: 'metered' as const, workClass: 'workflow', inputTokens: 42_000, outputTokens: 9_000, costUsdMicros: 840_000, ago: 12_000 },
+  ]
+
+  for (const row of spendRows) {
+    recordRunCost({
+      workClass: row.workClass,
+      runId: row.runId,
+      taskId: row.taskId,
+      agent: row.agent,
+      model: row.model,
+      provider: row.provider,
+      lane: row.lane,
+      usageKind: 'tokens',
+      inputTokens: row.inputTokens,
+      outputTokens: row.outputTokens,
+      totalTokens: row.inputTokens + row.outputTokens,
+      costUsdMicros: row.costUsdMicros,
+      occurredAt: now - row.ago * MIN,
+    })
+  }
+
   closeDb()
-  console.log('[seed] Task run history seeded (3 tasks, 5 runs)')
+  console.log(`[seed] Task run history seeded (3 tasks, 5 runs, ${spendRows.length} spend rows)`)
+}
+
+function seedModelsSettings(mockHome: string): void {
+  const settingsDir = join(mockHome, 'plugin-settings')
+  mkdirSync(settingsDir, { recursive: true })
+  writeFileSync(
+    join(settingsDir, 'models.json'),
+    JSON.stringify({
+      budget: {
+        rules: [
+          {
+            scope: 'global',
+            lane: 'metered',
+            dailyCap: 10,
+            monthlyCap: 100,
+            warnPct: 0.8,
+            atCap: 'defer',
+          },
+          {
+            scope: 'agent',
+            scopeId: 'pixel',
+            lane: 'subscription',
+            monthlyCap: 250_000,
+            warnPct: 0.8,
+            atCap: 'defer',
+          },
+        ],
+      },
+    }, null, 2),
+    'utf-8',
+  )
+  console.log('[seed] Models budget settings seeded (2 rules)')
 }
 
 function seedGatewayLog(): void {

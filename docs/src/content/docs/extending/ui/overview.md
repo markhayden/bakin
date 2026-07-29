@@ -111,7 +111,7 @@ Use `@makinbakin/sdk/patterns` once a page is more specific than a general layou
 
 | Need | Component | Contract |
 | --- | --- | --- |
-| Identify any routed page | `PageHeader` | Renders the page's single `h1`; optional navigation and eyebrow share one compact context row, while description, metadata, compact controls, and actions keep one order at every width. Use `measure="wide"` only when a media/editor header should follow its primary-column breadth |
+| Identify any routed page | `PageHeader` | Renders the page's single `h1`; optional navigation and eyebrow share one compact context row, while description, metadata, compact controls, and primary actions keep one order at every width. Pass secondary or destructive detail-page commands as `overflowActions`; the header reserves a circular, labelled menu at the far right of the context row. Standard descriptions use the available narrow width and may grow to half of the owned page canvas on desktop. Use `measure="wide"` only when a media/editor header should follow its primary-column breadth |
 | Build a searchable or filterable index | `ListPage` | Fills the available plugin canvas by default; use `wide` only for a deliberately bounded index |
 | Keep query controls available | `ListPageControls` | Requires an accessible region name and reflows search, filters, sorting, and peer actions without owning their values |
 | Bound list results and replacement states | `ListPageContent` | Requires an accessible region name; `state` replaces only the results and can fill the remaining page canvas, while `feedback` can remain beside stale usable content |
@@ -246,13 +246,37 @@ not introduce a nested vertical scroller merely because the history can grow.
 
 These are compositional recipes, not page controllers. Do not pass them fetchers, route definitions, filter schemas, resource arrays, or plugin-specific callbacks. Do not use `PageHeader` inside a dialog, drawer, or embedded slot, and do not add a second `h1` inside the page body. Domain CSS may style the actual rows or record content under the plugin's ownership root; it should not recreate the recipe's insets, heading scale, action placement, breakpoints, or state spacing.
 
+## Recurring Calendar Density
+
+Use `RecurringDaySummary` from `@makinbakin/sdk/patterns` when one recurring
+series would otherwise render multiple occurrence cards in the same calendar
+day. Group only series with two or more daily occurrences, place the compact
+summary in the day header, and keep single daily or ad-hoc work in its real time
+slot. Fold skipped and pending occurrences into the exact daily counts and set
+the summary to `tone="attention"` so the day is identifiable without relying on
+color or reintroducing every recurring beat into the grid.
+
+```tsx
+import { RecurringDaySummary } from '@makinbakin/sdk/patterns'
+
+<RecurringDaySummary
+  title="Hourly inbox sync"
+  detail="13 of 24 ran · next 1 PM"
+  onClick={openSchedule}
+/>
+```
+
+The consumer owns occurrence grouping, schedule truth, agent identity, and the
+drawer or route opened by the action. Do not infer whether work ran from visual
+placement alone; build the detail copy from the runtime's exact dispositions.
+
 ## Settings and Dashboard Page Recipes
 
 Settings and dashboards share the same `PageHeader`, state selection, and host-owned scroll contract, but they solve different hierarchy problems:
 
 | Need | Component | Contract |
 | --- | --- | --- |
-| Build a focused form or multi-category configuration page | `SettingsPage` | Uses `wide` by default for category navigation; choose `content` for one focused form |
+| Build a focused form or multi-category configuration page | `SettingsPage` | Uses `wide` by default for category navigation; choose `content` for one focused form or `full` when plugin-wide configuration should use the entire owned page canvas |
 | Arrange categories and the active form | `SettingsPageBody` | Choose `single` or `navigation`; category navigation moves above content when the container narrows |
 | Name the settings category chooser | `SettingsPageNavigation` | Requires `label` or `labelledBy`; selected category and routing remain consumer owned |
 | Bound the active settings category | `SettingsPageContent` | Requires an accessible name; `state` replaces only the active form, while `feedback` retains dirty, validation, save, or provider context |
@@ -317,13 +341,30 @@ Keep dashboard view state such as tabs, time ranges, expanded evidence, and sele
 
 Neither recipe owns a `main` landmark, vertical page scroller, fixed height, sticky save behavior, or URL parsing. Wide charts and tables still go inside `BoundedOverflow`. If usable stale dashboard data survives a refresh failure, retain it with `busy` and a `Banner` in `feedback`; use `state` only when the overview has no usable content.
 
+## Full-bleed Workspace Recipe
+
+`WorkspacePage` is the deliberate exception to the normal inset page canvas. It separates a canonically padded page header from a flush, explicitly bounded application workspace:
+
+| Need | Component | Contract |
+| --- | --- | --- |
+| Fill the owning host content area | `WorkspacePage` | Always uses the full width with no inherited outer padding or page gap |
+| Preserve normal page identity and controls | `WorkspacePageHeader` | Applies the same responsive left, right, and top insets as ordinary Bakin pages |
+| Keep mobile canvas context available | `WorkspacePageCompactHeader` | In `mode="immersive"`, provides a sticky mobile-only row for back navigation, a truncated title, one primary action, and secondary overflow actions |
+| Give the persistent workspace every remaining edge | `WorkspacePageBody` | Flush flex boundary with finite height; child rails, canvases, and timelines own their local padding and named scrolling |
+
+Use this recipe only for persistent interaction surfaces that materially benefit from the extra canvas, such as a routed conversation workspace, graph editor, or visual canvas. Do not use it to remove gutters from list, detail, settings, dashboard, or ordinary form pages. `WorkspacePageHeader` is required when the route has page identity or global controls; do not reproduce its responsive padding in a consumer stylesheet. The body must not add a decorative outer card or duplicate page frame merely to recreate the standard page inset.
+
+Use `mode="immersive"` for mobile canvas-heavy detail and edit routes. Keep the complete `PageHeader` as ordinary scroll content and add `WorkspacePageCompactHeader` immediately before it. The compact row must stay intentionally small: client-routed back control, one-line title, one primary action, and `PageHeaderOverflowMenu` actions. Do not animate header height or drive the transition with `ResizeObserver`; the fixed compact-row contract avoids repeated canvas and React Flow resize work. Desktop geometry remains the standard full header plus full-bleed body.
+
+`WorkspacePage` does not own domain state, routing, transport, selection, pan or zoom, message rendering, or a document-level scroller. The consumer must give each necessary internal scroller a finite parent and an accessible name. On narrow screens, hide an inapplicable workspace header by hiding `WorkspacePageHeader` itself so its padding does not leave an empty strip; otherwise prefer immersive mode when the full identity should scroll away but route context and actions must remain.
+
 ## Conversation and Inspector Recipes
 
 `ConversationPage` and `InspectorPanel` establish interaction geometry before the focused conversation kit and domain-specific inspectors add behavior:
 
 | Need | Component | Contract |
 | --- | --- | --- |
-| Bound a routed conversation | `ConversationPage` | Uses a focused content canvas by default; `wide` supports evidence-backed adjacent context |
+| Bound a routed conversation | `ConversationPage` | Uses the full host content width by default; narrower widths are reserved for deliberately reading-focused surfaces |
 | Choose scroll ownership | `ConversationPageBody` | `document` keeps host page scrolling; `contained` gives only the named timeline an internal vertical scroller |
 | Name new message announcements | `ConversationPageTimeline` | Renders a polite `log`; supply `label` or `labelledBy` and place message rendering inside |
 | Keep composition outside the log | `ConversationPageComposer` | Stable boundary for the focused conversation kit's composer and attachments |
@@ -1043,7 +1084,7 @@ export function AttachmentPicker({
 
 For dialog composition, pass controlled `open` and `onOpenChange`. The picker does not close after selection by itself; close it in `onPick` when that matches the owning workflow. Supply upload or other library actions through `toolbarAction`, but keep the file input, validation, request, progress, and result handling in the consumer. Filter unavailable or already-attached records before building the ready collection. Pass a presentation-safe `thumbnailSrc`; authorization and URL lifecycle remain outside the pattern.
 
-`ModelSelect` groups controlled options by provider and can expose a default choice with the stable `DEFAULT_MODEL_VALUE` sentinel. Consumers fetch the catalog, decide availability, translate the sentinel into their API value, and save the result. Associate the trigger with a visible `<label>` through `id`, or supply `ariaLabel` when no visible label exists.
+`ModelSelect` groups controlled options by provider and can expose a default choice with the stable `DEFAULT_MODEL_VALUE` sentinel. Consumers fetch the catalog, decide availability, translate the sentinel into their API value, and save the result. When the controlled catalog has no rendered choices, the trigger keeps the saved value readable but disables interaction instead of opening an empty popup. Associate the trigger with a visible `<label>` through `id`, or supply `ariaLabel` when no visible label exists.
 
 `ColorPicker` is a keyboard-complete radio group. Supply stable option `value` identifiers separately from their presentation `color`, and keep palette definition and persistence in the consumer. Use semantic CSS colors or validated color strings; do not encode meaning in a swatch alone. Each option needs a plain-language `label`, selected state remains available through radio semantics, and arrow, Home, and End keys move among enabled choices.
 
@@ -1153,10 +1194,10 @@ Pass the full entity set to `assignSeriesColors` before filtering or changing ti
 
 Never use color alone to carry series, state, or trend meaning. Keep a visible legend or series label, pair a sparkline with visible current-value and direction copy, and make pointer detail available from keyboard focus. `null`, omitted, and non-finite values are missing data: label them honestly and leave a visual gap instead of drawing through them or coercing them to zero.
 
-Use `LineChart` for change over time, including signed values; missing values break the line. Use `BarChart` for non-negative discrete comparisons, with `stacked` only when the total matters more than peer-to-peer comparison. Use `StackedColumnChart` for a dense composition whose named entities may be toggled. Pass its complete stable set through `series` (custom labels/colors) or `seriesKeys` (key-as-label shorthand), even when the current window omits an entity.
+Use `LineChart` for change over time, including signed values; missing values break the line. Use `BarChart` for non-negative discrete comparisons, with `stacked` only when the total matters more than peer-to-peer comparison. Use `RankedBarChart` for a descending single-unit comparison when entity labels need more room than an x-axis can provide. Use `StackedColumnChart` for a dense composition whose named entities may be toggled. Pass its complete stable set through `series` (custom labels/colors) or `seriesKeys` (key-as-label shorthand), even when the current window omits an entity. Never combine unlike units such as dollars and tokens in one plot.
 
 ```tsx
-import { BarChart, LineChart, StackedColumnChart } from '@makinbakin/sdk/charts'
+import { BarChart, LineChart, RankedBarChart, StackedColumnChart } from '@makinbakin/sdk/charts'
 
 const series = [
   { key: 'completed', label: 'Completed' },
@@ -1172,13 +1213,14 @@ export function OperationalCharts() {
     <>
       <LineChart label="Outcome trend" data={windows} series={series} />
       <BarChart label="Outcome comparison" data={windows} series={series} />
+      <RankedBarChart label="Completed outcome ranking" data={windows} series={series[0]} />
       <StackedColumnChart label="Outcome composition" data={windows} series={series} />
     </>
   )
 }
 ```
 
-Each full chart owns a named, keyboard-scrollable plot boundary at narrow widths and a collapsed exact-data disclosure. Set `showDataTable={false}` on `BarChart` only when the same exact dataset is already rendered beside it; a chart without an equivalent table is not a supported composition. Axis labels may shorten visually to keep the plot readable, while the accessible mark labels and exact table retain the full text.
+Each full chart owns a named plot and a collapsed exact-data disclosure; axis-based charts add a keyboard-scrollable plot boundary at narrow widths. Set `showDataTable={false}` on `BarChart` or `RankedBarChart` only when the same exact dataset is already rendered beside it; a chart without an equivalent table is not a supported composition. Axis labels may shorten visually to keep the plot readable, while the accessible mark labels and exact table retain the full text.
 
 ## Conversation Model and Folding
 

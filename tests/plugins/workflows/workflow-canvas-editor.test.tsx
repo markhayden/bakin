@@ -318,6 +318,26 @@ function nodeData(id: string): Record<string, unknown> {
   return JSON.parse(screen.getByTestId(`node-${id}`).getAttribute('data-node-data') || '{}') as Record<string, unknown>
 }
 
+function getFullWorkspaceHeader(): HTMLElement {
+  const header = document.querySelector('[data-slot="workspace-page-header"]')
+  if (!(header instanceof HTMLElement)) {
+    throw new Error('Expected the full workspace header to be rendered')
+  }
+  return header
+}
+
+function getEditorHeaderButton(name: RegExp): HTMLButtonElement {
+  return within(getFullWorkspaceHeader()).getByRole('button', { name }) as HTMLButtonElement
+}
+
+function getCanvasSaveButton(): HTMLButtonElement {
+  const actions = document.querySelector('[data-workflow-editor-header-actions]')
+  if (!(actions instanceof HTMLElement)) {
+    throw new Error('Expected the workflow editor header actions to be rendered')
+  }
+  return within(actions).getByRole('button', { name: /^save$/i }) as HTMLButtonElement
+}
+
 describe('WorkflowCanvasEditor', () => {
   it('renders the toolbar with the workflow id in edit mode', () => {
     const onCancel = mock()
@@ -330,13 +350,18 @@ describe('WorkflowCanvasEditor', () => {
         onCancel={onCancel}
       />,
     )
-    expect(screen.getByText('Video Script')).toBeDefined()
+    expect(within(getFullWorkspaceHeader()).getByText('Video Script')).toBeDefined()
     expect(screen.getByText('video-script')).toBeDefined()
     expect(screen.getByText('Write a script')).toBeDefined()
-    expect(screen.getByRole('button', { name: /edit workflow details/i })).toBeDefined()
-    fireEvent.click(screen.getByRole('button', { name: /back to workflows/i }))
+    expect(getEditorHeaderButton(/edit workflow details/i)).toBeDefined()
+    const headerActions = document.querySelector('[data-workflow-editor-header-actions]')
+    expect(headerActions).not.toBeNull()
+    expect(within(headerActions as HTMLElement).getByRole('button', { name: /^save$/i })).toBeDefined()
+    expect(getEditorHeaderButton(/workflow actions/i)).toBeDefined()
+    expect(headerActions?.className).toContain('items-center')
+    fireEvent.click(getEditorHeaderButton(/back to workflows/i))
     expect(onCancel).toHaveBeenCalled()
-    expect(screen.getByRole('button', { name: /save/i })).toBeDefined()
+    expect(getCanvasSaveButton()).toBeDefined()
   })
 
   it('labels user workflows that shadow a managed default', () => {
@@ -363,10 +388,10 @@ describe('WorkflowCanvasEditor', () => {
       />,
     )
 
-    const canvasSave = screen.getByRole('button', { name: /^save$/i }) as HTMLButtonElement
+    const canvasSave = getCanvasSaveButton()
     expect(canvasSave.disabled).toBe(false)
 
-    fireEvent.click(screen.getByRole('button', { name: /edit workflow details/i }))
+    fireEvent.click(getEditorHeaderButton(/edit workflow details/i))
     expect(screen.getByText('Workflow details')).toBeDefined()
     expect(canvasSave.disabled).toBe(true)
     const cancel = screen.getByRole('button', { name: /cancel/i })
@@ -383,7 +408,7 @@ describe('WorkflowCanvasEditor', () => {
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled())
     await waitFor(() => expect(canvasSave.disabled).toBe(false))
-    expect(screen.getByText('Video Script Draft')).toBeDefined()
+    expect(within(getFullWorkspaceHeader()).getByText('Video Script Draft')).toBeDefined()
     expect(screen.getByText('Draft and review a video script.')).toBeDefined()
 
     const [url, init] = fetchMock.mock.calls[0]
@@ -404,7 +429,7 @@ describe('WorkflowCanvasEditor', () => {
       />,
     )
 
-    const canvasSave = screen.getByRole('button', { name: /^save$/i }) as HTMLButtonElement
+    const canvasSave = getCanvasSaveButton()
     expect(canvasSave.disabled).toBe(false)
     fireEvent.click(screen.getByTestId('node-write'))
     expect(screen.getByTestId('node-config-drawer')).toBeDefined()
@@ -423,7 +448,7 @@ describe('WorkflowCanvasEditor', () => {
       />,
     )
     fireEvent.click(screen.getByRole('button', { name: /auto-arrange/i }))
-    fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
+    fireEvent.click(getCanvasSaveButton())
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled())
     const [url, init] = fetchMock.mock.calls[0]
@@ -445,7 +470,7 @@ describe('WorkflowCanvasEditor', () => {
         source="user"
       />,
     )
-    fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
+    fireEvent.click(getCanvasSaveButton())
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
@@ -689,7 +714,7 @@ describe('WorkflowCanvasEditor', () => {
       />,
     )
     fireEvent.click(screen.getByRole('button', { name: /auto-arrange/i }))
-    fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
+    fireEvent.click(getCanvasSaveButton())
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled())
     const [, init] = fetchMock.mock.calls[0]
@@ -712,7 +737,7 @@ describe('WorkflowCanvasEditor', () => {
     expect(screen.getByTestId('node-review').getAttribute('data-class-name')).toContain('bakin-workflow-node-selected')
     fireEvent.click(screen.getByRole('button', { name: /move selected step up/i }))
     closeNodeDrawer()
-    fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
+    fireEvent.click(getCanvasSaveButton())
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled())
     const [, init] = fetchMock.mock.calls[0]
@@ -734,7 +759,7 @@ describe('WorkflowCanvasEditor', () => {
     fireEvent.click(screen.getByRole('button', { name: /delete selected step/i }))
     expect(screen.queryByTestId('node-review')).toBeNull()
     expect(screen.getByTestId('edge-__trigger-write')).toBeDefined()
-    fireEvent.click(screen.getByRole('button', { name: /save/i }))
+    fireEvent.click(getCanvasSaveButton())
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled())
     const [, init] = fetchMock.mock.calls[0]
@@ -754,7 +779,7 @@ describe('WorkflowCanvasEditor', () => {
 
     fireEvent.click(screen.getByTestId('insert-__trigger-write'))
     closeNodeDrawer()
-    fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
+    fireEvent.click(getCanvasSaveButton())
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled())
     const [, init] = fetchMock.mock.calls[0]
@@ -831,7 +856,7 @@ describe('WorkflowCanvasEditor', () => {
     expect(screen.getByTestId('node-config-drawer').getAttribute('data-step-id')).toBe('agent')
 
     closeNodeDrawer()
-    fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
+    fireEvent.click(getCanvasSaveButton())
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled())
     const [, init] = fetchMock.mock.calls[0]
@@ -868,7 +893,7 @@ describe('WorkflowCanvasEditor', () => {
     expect(screen.queryByTestId('node-output')).toBeNull()
 
     fireEvent.click(screen.getByRole('button', { name: /auto-arrange/i }))
-    fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
+    fireEvent.click(getCanvasSaveButton())
     await waitFor(() => expect(fetchMock).toHaveBeenCalled())
     const [, init] = fetchMock.mock.calls[0]
     const body = JSON.parse(init.body as string) as WorkflowDefinition
@@ -889,7 +914,7 @@ describe('WorkflowCanvasEditor', () => {
     )
 
     fireEvent.click(screen.getByTestId('insert-review-__append'))
-    fireEvent.click(screen.getByRole('button', { name: /back to workflows/i }))
+    fireEvent.click(getEditorHeaderButton(/back to workflows/i))
 
     expect(onCancel).not.toHaveBeenCalled()
     const dialog = screen.getByRole('dialog')
@@ -1014,14 +1039,16 @@ describe('WorkflowCanvasEditor', () => {
       />,
     )
 
-    fireEvent.click(screen.getByRole('button', { name: /delete workflow/i }))
+    fireEvent.click(getEditorHeaderButton(/workflow actions/i))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete' }))
     expect(fetchMock).not.toHaveBeenCalled()
     let dialog = screen.getByRole('dialog')
     expect(within(dialog).getByText('Delete workflow?')).toBeDefined()
     fireEvent.click(within(dialog).getByRole('button', { name: /cancel/i }))
     expect(screen.queryByRole('dialog')).toBeNull()
 
-    fireEvent.click(screen.getByRole('button', { name: /delete workflow/i }))
+    fireEvent.click(getEditorHeaderButton(/workflow actions/i))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete' }))
     dialog = screen.getByRole('dialog')
     fireEvent.click(within(dialog).getByRole('button', { name: /^delete$/i }))
 
@@ -1059,7 +1086,7 @@ describe('WorkflowCanvasEditor', () => {
     expect(availabilityInit.method).toBe('PATCH')
     expect(JSON.parse(availabilityInit.body as string)).toEqual({ disabled: true })
 
-    await waitFor(() => expect(screen.getByRole('button', { name: /save/i })).toBeDefined())
+    await waitFor(() => expect(getCanvasSaveButton()).toBeDefined())
   })
 
   it('continues into the custom copy when disabling the managed workflow fails', async () => {
@@ -1145,7 +1172,7 @@ describe('WorkflowCanvasEditor', () => {
       />,
     )
     fireEvent.click(screen.getByRole('button', { name: /auto-arrange/i }))
-    fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
+    fireEvent.click(getCanvasSaveButton())
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled())
     const [, init] = fetchMock.mock.calls[0]

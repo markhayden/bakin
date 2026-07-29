@@ -21,7 +21,7 @@ afterEach(() => cleanup())
 describe('conversation page recipe', () => {
   it('names one log and keeps the composer outside its explicit contained scroller', () => {
     const { container } = render(
-      <ConversationPage>
+      <ConversationPage mode="contained">
         <PageHeader title="Conversation with Patch" />
         <ConversationPageBody mode="contained" feedback={<p>Reconnecting</p>}>
           <ConversationPageTimeline label="Conversation with Patch">
@@ -32,11 +32,17 @@ describe('conversation page recipe', () => {
       </ConversationPage>,
     )
 
-    expect(container.querySelector('[data-archetype="conversation"]')?.getAttribute('data-width')).toBe('content')
+    const page = container.querySelector('[data-archetype="conversation"]')
+    expect(page?.getAttribute('data-width')).toBe('full')
+    expect(page?.getAttribute('data-mode')).toBe('contained')
+    expect(page?.className).toContain('h-full')
+    expect(page?.className).toContain('[&>[data-slot=page-shell-content]]:h-full')
     const log = screen.getByRole('log', { name: 'Conversation with Patch' })
     expect(log.getAttribute('aria-live')).toBe('polite')
     expect(log.className).toContain('overflow-y-auto')
-    expect(container.querySelector('[data-slot="conversation-page-composer"]')?.contains(log)).toBe(false)
+    const composer = container.querySelector('[data-slot="conversation-page-composer"]')
+    expect(composer?.contains(log)).toBe(false)
+    expect(composer?.className).not.toContain('border-t')
     expect(container.querySelector('[data-slot="conversation-page-feedback"]')?.textContent).toBe('Reconnecting')
   })
 

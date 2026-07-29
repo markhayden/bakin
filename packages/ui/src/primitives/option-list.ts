@@ -30,7 +30,7 @@ export const optionItemClasses = [
   'data-highlighted:bg-bakin-border-subtle/35 data-highlighted:text-bakin-text-primary',
   'data-selected:bg-bakin-action-primary-background/10',
   'data-disabled:pointer-events-none data-disabled:opacity-[var(--bakin-state-opacity-disabled)]',
-  '[&_svg]:pointer-events-none [&_svg]:shrink-0',
+  '[&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*="size-"])]:size-bakin-4',
 ].join(' ')
 
 export const optionSeparatorClasses = 'pointer-events-none mx-bakin-1 my-bakin-1 h-px bg-bakin-border-subtle'

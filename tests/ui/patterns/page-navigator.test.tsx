@@ -43,4 +43,27 @@ describe('PageNavigator', () => {
     expect(screen.getByText('Showing 1–24 of 24')).toBeDefined()
     expect(screen.getByRole('button', { name: 'Use pages' })).toBeDefined()
   })
+
+  it('supports server-paged lists without offering an unavailable show-all mode', () => {
+    const onPageChange = mock(() => {})
+
+    render(
+      <PageNavigator
+        page={2}
+        pageSize={10}
+        total={24}
+        onPageChange={onPageChange}
+      />,
+    )
+
+    expect(screen.getByText('Showing 11–20 of 24')).toBeDefined()
+    expect(screen.getByText('2 / 3')).toBeDefined()
+    expect(screen.queryByRole('button', { name: 'Show all' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Use pages' })).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Previous' }))
+    expect(onPageChange).toHaveBeenCalledWith(1)
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }))
+    expect(onPageChange).toHaveBeenCalledWith(3)
+  })
 })

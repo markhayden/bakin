@@ -514,6 +514,7 @@ export function VersionedAssetGrid() {
       {fileInput}
       <PageHeader
         title="Assets"
+        description="Keep images, documents, and other deliverables searchable, versioned, and ready to reuse."
         meta={loading || view === 'import' ? undefined : (
           <Badge size="xs" variant="outline">
             {view === 'trash' ? trash.length : view === 'tags' ? folderCount : displayed.length} shown

@@ -8,6 +8,7 @@ import {
   CHART_OTHER_COLOR,
   CHART_SERIES_COLORS,
   LineChart,
+  RankedBarChart,
   StackedColumnChart,
   type ChartDatum,
   type ChartSeries,
@@ -58,6 +59,23 @@ describe('LineChart', () => {
     expect(screen.getByRole('list', { name: 'Run outcomes legend' }).textContent).toContain('Failed')
   })
 
+  it('places tooltips below points at the plot ceiling so bounded overflow cannot clip them', () => {
+    render(
+      <LineChart
+        data={[
+          { x: 'low', values: { completed: 0 } },
+          { x: 'high', values: { completed: 10 } },
+        ]}
+        series={[series[0]!]}
+        label="Ceiling-safe trend"
+      />,
+    )
+
+    fireEvent.focus(screen.getByRole('img', { name: 'high — Completed: 10' }))
+
+    expect(screen.getByRole('tooltip').getAttribute('data-placement')).toBe('below')
+  })
+
   it('anchors boundary labels inside the plot', () => {
     const { container } = render(
       <LineChart
@@ -72,6 +90,46 @@ describe('LineChart', () => {
     const labels = Array.from(container.querySelectorAll('text'))
     expect(labels.find((node) => node.textContent === 'first')?.getAttribute('text-anchor')).toBe('start')
     expect(labels.find((node) => node.textContent?.endsWith('…'))?.getAttribute('text-anchor')).toBe('end')
+  })
+
+  it('attaches responsive measurement when asynchronous data replaces an empty state', () => {
+    const OriginalResizeObserver = globalThis.ResizeObserver
+    let observed = 0
+    class TestResizeObserver {
+      observe() {
+        observed += 1
+      }
+      unobserve() {}
+      disconnect() {}
+    }
+    Object.defineProperty(globalThis, 'ResizeObserver', {
+      configurable: true,
+      value: TestResizeObserver,
+    })
+
+    try {
+      const { rerender } = render(
+        <LineChart data={[]} series={series} label="Async trend" />,
+      )
+      expect(observed).toBe(0)
+
+      rerender(
+        <LineChart
+          data={[
+            { x: 'one', values: { completed: 1 } },
+            { x: 'two', values: { completed: 2 } },
+          ]}
+          series={series}
+          label="Async trend"
+        />,
+      )
+      expect(observed).toBe(1)
+    } finally {
+      Object.defineProperty(globalThis, 'ResizeObserver', {
+        configurable: true,
+        value: OriginalResizeObserver,
+      })
+    }
   })
 })
 
@@ -112,6 +170,45 @@ describe('BarChart', () => {
     fireEvent.focus(failed)
     expect(screen.getByRole('tooltip').textContent).toContain('two — Failed: 1')
     expect(screen.getByRole('table', { name: 'Stacked outcomes data', hidden: true }).textContent).toContain('7')
+  })
+})
+
+describe('RankedBarChart', () => {
+  it('ranks one non-negative unit and preserves missing values', () => {
+    const { container } = render(
+      <RankedBarChart
+        data={[
+          { x: 'zero', xLabel: 'Reported zero', values: { completed: 0 } },
+          { x: 'small', xLabel: 'Long small label', values: { completed: 2 } },
+          { x: 'large', xLabel: 'Long large label', values: { completed: 9 } },
+          { x: 'missing', values: {}, missingLabels: { completed: 'Not priced' } },
+        ]}
+        series={series[0]!}
+        label="Ranked completed work"
+      />,
+    )
+
+    expect(Array.from(container.querySelectorAll('[data-slot="ranked-bar-row"]')).map((row) => row.getAttribute('data-row-key')))
+      .toEqual(['large', 'small', 'zero', 'missing'])
+    expect(screen.getByRole('img', { name: 'Long large label — Completed: 9' })).toBeDefined()
+    expect(screen.getByRole('img', { name: 'Reported zero — Completed: 0' }).children).toHaveLength(0)
+    expect(screen.getAllByText('Not priced')).toHaveLength(2)
+  })
+
+  it('scales fractional units against the reported maximum instead of an invented floor', () => {
+    const { container } = render(
+      <RankedBarChart
+        data={[
+          { x: 'large', values: { completed: 0.2 } },
+          { x: 'small', values: { completed: 0.1 } },
+        ]}
+        series={series[0]!}
+        label="Fractional ranking"
+      />,
+    )
+
+    const bars = Array.from(container.querySelectorAll<HTMLElement>('[data-series="completed"]'))
+    expect(bars.map((bar) => bar.style.width)).toEqual(['100%', '50%'])
   })
 })
 

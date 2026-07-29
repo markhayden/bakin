@@ -1,6 +1,6 @@
 'use client'
 
-import { useId, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 
 import { BoundedOverflow } from '../layout/bounded-overflow'
 import { ChartDataTable, chartSeriesColor, type ChartDatum, type ChartSeries } from './chart-data-table'
@@ -29,7 +29,8 @@ interface ActiveMark extends Point {
   text: string
 }
 
-const WIDTH = 640
+const DEFAULT_WIDTH = 640
+const MIN_WIDTH = 512
 const LEFT = 48
 const RIGHT = 16
 const TOP = 12
@@ -39,8 +40,8 @@ function reportedValue(value: number | undefined): number | null {
   return Number.isFinite(value) ? value! : null
 }
 
-function xPosition(index: number, count: number): number {
-  const plotWidth = WIDTH - LEFT - RIGHT
+function xPosition(index: number, count: number, width: number): number {
+  const plotWidth = width - LEFT - RIGHT
   return count <= 1 ? LEFT + plotWidth / 2 : LEFT + (index / (count - 1)) * plotWidth
 }
 
@@ -84,7 +85,9 @@ export function LineChart({
   emptyLabel = 'No reported data in this window.',
 }: LineChartProps) {
   const tooltipId = useId()
+  const plotRef = useRef<HTMLDivElement>(null)
   const [active, setActive] = useState<ActiveMark | null>(null)
+  const [chartWidth, setChartWidth] = useState(DEFAULT_WIDTH)
   const chartHeight = Math.max(120, height)
   const plotHeight = chartHeight - TOP - BOTTOM
   const reportedValues = useMemo(
@@ -99,11 +102,31 @@ export function LineChart({
     const max = Math.max(0, ...reportedValues)
     return { min, max: max === min ? min + 1 : max }
   }, [reportedValues])
+  const hasRenderableData = data.length > 0 && series.length > 0 && reportedValues.length > 0
+
+  useEffect(() => {
+    if (!hasRenderableData) return
+    const plot = plotRef.current
+    if (!plot) return
+
+    const updateWidth = () => {
+      const width = Math.round(plot.getBoundingClientRect().width)
+      if (width > 0) setChartWidth(Math.max(MIN_WIDTH, width))
+    }
+
+    updateWidth()
+    if (typeof ResizeObserver !== 'undefined') {
+      const observer = new ResizeObserver(updateWidth)
+      observer.observe(plot)
+      return () => observer.disconnect()
+    }
+  }, [hasRenderableData])
+
   const table = (
     <ChartDataTable data={data} series={series} caption={`${label} data`} formatValue={formatValue} />
   )
 
-  if (data.length === 0 || series.length === 0 || reportedValues.length === 0) {
+  if (!hasRenderableData) {
     return (
       <div className="min-w-0" data-slot="line-chart">
         <div role="status" className="py-bakin-6 text-center text-[length:var(--bakin-typography-size-body)] text-bakin-text-muted">
@@ -121,9 +144,9 @@ export function LineChart({
   return (
     <div className="min-w-0" data-slot="line-chart">
       <BoundedOverflow label={`${label} plot`}>
-        <div className="relative w-full" style={{ minWidth: 512 }}>
+        <div ref={plotRef} className="relative w-full" style={{ minWidth: MIN_WIDTH }}>
           <svg
-            viewBox={`0 0 ${WIDTH} ${chartHeight}`}
+            viewBox={`0 0 ${chartWidth} ${chartHeight}`}
             role="group"
             aria-label={label}
             className="block h-auto w-full max-w-full"
@@ -138,7 +161,7 @@ export function LineChart({
               const value = domain.max - ratio * (domain.max - domain.min)
               return (
                 <g key={index}>
-                  <line x1={LEFT} x2={WIDTH - RIGHT} y1={y} y2={y} stroke="var(--bakin-color-border-subtle)" />
+                  <line x1={LEFT} x2={chartWidth - RIGHT} y1={y} y2={y} stroke="var(--bakin-color-border-subtle)" />
                   <text
                     x={LEFT - 6}
                     y={y + 3}
@@ -155,7 +178,7 @@ export function LineChart({
             {data.map((datum, index) => shouldRenderXLabel(index, data.length) ? (
               <text
                 key={datum.x}
-                x={xPosition(index, data.length)}
+                x={xPosition(index, data.length, chartWidth)}
                 y={chartHeight - 6}
                 textAnchor={xLabelAnchor(index, data.length)}
                 fill="var(--bakin-color-text-muted)"
@@ -174,7 +197,7 @@ export function LineChart({
               return value === null ? null : {
                 index: datumIndex,
                 value,
-                x: xPosition(datumIndex, data.length),
+                x: xPosition(datumIndex, data.length, chartWidth),
                 y: yPosition(value),
               }
             })
@@ -237,7 +260,7 @@ export function LineChart({
             <ChartTooltip
               id={tooltipId}
               text={active.text}
-              xPercent={(active.x / WIDTH) * 100}
+              xPercent={(active.x / chartWidth) * 100}
               yPercent={(active.y / chartHeight) * 100}
             />
           ) : null}

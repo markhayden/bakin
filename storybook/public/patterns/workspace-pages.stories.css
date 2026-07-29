@@ -1,0 +1,117 @@
+.bakin-workspace-story,
+.bakin-workspace-story *,
+.bakin-workspace-story *::before,
+.bakin-workspace-story *::after {
+  box-sizing: border-box;
+}
+
+.bakin-workspace-story {
+  block-size: 100vh;
+  background: var(--bakin-color-canvas-default);
+}
+
+.bakin-workspace-story__body {
+  border-block-start: 1px solid var(--bakin-color-border-subtle);
+}
+
+.bakin-workspace-story__rail {
+  display: flex;
+  inline-size: clamp(16rem, 24vw, 22rem);
+  min-inline-size: 0;
+  flex: none;
+  flex-direction: column;
+  gap: var(--bakin-layout-space-3);
+  padding: var(--bakin-layout-space-5);
+  overflow-y: auto;
+  border-inline-end: 1px solid var(--bakin-color-border-subtle);
+}
+
+.bakin-workspace-story__rail button {
+  display: flex;
+  min-inline-size: 0;
+  align-items: start;
+  justify-content: space-between;
+  gap: var(--bakin-layout-space-3);
+  padding: var(--bakin-layout-space-3);
+  border: 0;
+  border-radius: var(--bakin-radius-control);
+  background: transparent;
+  color: inherit;
+  text-align: start;
+}
+
+.bakin-workspace-story__rail button:first-of-type {
+  background: var(--bakin-color-surface-default);
+}
+
+.bakin-workspace-story__rail button > span {
+  display: grid;
+  min-inline-size: 0;
+  gap: var(--bakin-layout-space-1);
+}
+
+.bakin-workspace-story__rail small,
+.bakin-workspace-story__canvas p {
+  color: var(--bakin-color-text-muted);
+}
+
+.bakin-workspace-story__canvas {
+  display: grid;
+  min-inline-size: 0;
+  flex: 1;
+  place-items: center;
+  padding: var(--bakin-layout-space-8);
+  overflow: auto;
+}
+
+.bakin-workspace-story__canvas > div {
+  display: grid;
+  max-inline-size: 42rem;
+  gap: var(--bakin-layout-space-4);
+}
+
+.bakin-workspace-story__canvas h2,
+.bakin-workspace-story__canvas p {
+  margin: 0;
+}
+
+.bakin-workspace-story__canvas p {
+  line-height: 1.6;
+}
+
+.bakin-workspace-story__immersive-body {
+  min-block-size: 38rem;
+  place-items: center;
+  background-color: var(--bakin-color-canvas-default);
+  background-image: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--bakin-color-border-subtle) 72%, transparent) 1px,
+    transparent 1px
+  );
+  background-size: 1.5rem 1.5rem;
+}
+
+.bakin-workspace-story__flow-node {
+  display: grid;
+  inline-size: min(24rem, calc(100% - 2rem));
+  gap: var(--bakin-layout-space-3);
+  padding: var(--bakin-layout-space-5);
+  border: 1px solid var(--bakin-color-border-default);
+  border-radius: var(--bakin-radius-card);
+  background: var(--bakin-color-surface-default);
+}
+
+.bakin-workspace-story__flow-node span {
+  color: var(--bakin-color-text-muted);
+  line-height: 1.5;
+}
+
+@media (max-width: 40rem) {
+  .bakin-workspace-story__rail {
+    display: none;
+  }
+
+  .bakin-workspace-story__canvas {
+    padding: var(--bakin-layout-space-5);
+  }
+}

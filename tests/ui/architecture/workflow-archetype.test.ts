@@ -39,4 +39,31 @@ describe('canonical workflow archetype', () => {
     expect(guide).toContain('existing routing contract')
     expect(guide).toContain('query parameters')
   })
+
+  it('keeps the official Workflows plugin on the canonical list and workflow shells', () => {
+    const list = read('plugins/workflows/components/workflows-page.tsx')
+    const detail = read('plugins/workflows/components/workflow-detail.tsx')
+    const editor = read('plugins/workflows/components/workflow-canvas-editor.tsx')
+
+    expect(list).toContain('ListPage')
+    expect(list).toContain('PageHeader')
+    expect(list).toContain('SearchInput')
+    expect(list).toContain('PageNavigator')
+    expect(list).not.toContain('PluginHeader')
+
+    for (const source of [detail, editor]) {
+      expect(source).toContain('WorkspacePage')
+      expect(source).toContain('WorkspacePageHeader')
+      expect(source).toContain('WorkspacePageBody')
+      expect(source).toContain('PageHeader')
+      expect(source).toContain('WorkflowPageBody')
+      expect(source).toContain('WorkflowPageCanvas')
+      expect(source).toContain('mode="contained"')
+      expect(source).not.toMatch(/<WorkflowPage(?:\s|>)/)
+    }
+
+    expect(detail).toContain('orientation="vertical"')
+    expect(editor).toContain('orientation="vertical"')
+    expect(editor).toContain('<ReactFlow')
+  })
 })

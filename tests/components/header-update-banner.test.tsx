@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import '../rtl-settle'
+import { ActivityContext } from '@/context/activity-context'
 import { SidebarContext } from '@/context/sidebar-context'
 import { Header } from '../../packages/host/src/components/layout/header'
 
@@ -98,6 +99,23 @@ describe('Header update banner', () => {
     await waitFor(() => expect(screen.getByText('v0.0.0-dev')).toBeDefined())
     expect(screen.queryByText(/New Bakin version available/i)).toBeNull()
     expect(document.documentElement.style.getPropertyValue('--bakin-shell-top')).toBe('')
+  })
+
+  it('puts Live Activity at the far right of the mobile header without an unread pulse', () => {
+    const toggleActivity = mock()
+    render(
+      <ActivityContext.Provider value={{ open: false, toggle: toggleActivity, close: mock() }}>
+        <SidebarContext.Provider value={{ collapsed: false, toggle: mock() }}>
+          <Header />
+        </SidebarContext.Provider>
+      </ActivityContext.Provider>,
+    )
+
+    const button = screen.getByRole('button', { name: 'Open Live Activity' })
+    expect(button.className).toContain('md:hidden')
+    expect(button.querySelector('.animate-pulse')).toBeNull()
+    fireEvent.click(button)
+    expect(toggleActivity).toHaveBeenCalledTimes(1)
   })
 
   it('renders the dispatch-paused banner and offsets the header (kill switch, cost-control v2)', async () => {

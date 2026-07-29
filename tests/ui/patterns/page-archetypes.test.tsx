@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from 'bun:test'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import '../../rtl-settle'
 
 import {
@@ -14,7 +14,7 @@ import {
   PageHeader,
   SearchInput,
 } from '@makinbakin/sdk/patterns'
-import { Button, SystemState } from '@makinbakin/sdk/ui'
+import { Button, DropdownMenuItem, SystemState } from '@makinbakin/sdk/ui'
 
 afterEach(() => cleanup())
 
@@ -43,6 +43,8 @@ describe('shared page header recipe', () => {
     ])
     expect(screen.getByText('Coordinates the final publishing decision.').id).toBeTruthy()
     expect(header?.getAttribute('aria-describedby')).toBe(screen.getByText('Coordinates the final publishing decision.').id)
+    expect(container.querySelector('[data-slot="page-header-copy"]')?.className).toContain('@3xl/page-header:max-w-[50cqw]')
+    expect(container.querySelector('[data-slot="page-header-description"]')?.className).toContain('max-w-none')
     expect(container.querySelector('[data-slot="page-header-navigation"] a')?.textContent).toBe('Back to workflows')
     expect(container.querySelector('[data-slot="page-header-navigation"]')?.parentElement).toBe(
       container.querySelector('[data-slot="page-header-eyebrow"]')?.parentElement,
@@ -56,6 +58,38 @@ describe('shared page header recipe', () => {
 
     expect(screen.getByRole('heading', { level: 1, name: 'Task queue' })).toBeTruthy()
     expect(screen.getByRole('group', { name: 'Task queue actions' })).toBeTruthy()
+  })
+
+  it('reserves a circular context-row menu for secondary detail actions', async () => {
+    const { container } = render(
+      <PageHeader
+        navigation={<a href="/workflows">Back to workflows</a>}
+        eyebrow="Workflows / detail"
+        title="Launch approval"
+        overflowActionsLabel="Workflow actions"
+        overflowActions={(
+          <>
+            <DropdownMenuItem>Duplicate workflow</DropdownMenuItem>
+            <DropdownMenuItem variant="danger">Delete</DropdownMenuItem>
+          </>
+        )}
+        actions={<Button>Edit workflow</Button>}
+      />,
+    )
+
+    const context = container.querySelector('[data-slot="page-header-context"]')
+    const trigger = screen.getByRole('button', { name: 'Workflow actions' })
+
+    expect(context?.className).toContain('@3xl/page-header:col-span-2')
+    expect(trigger.getAttribute('data-size')).toBe('icon-sm')
+    expect(trigger.className).toContain('rounded-bakin-pill')
+    expect(container.querySelector('[data-slot="page-header-trailing"]')?.className).toContain(
+      '@3xl/page-header:row-start-2',
+    )
+
+    fireEvent.click(trigger)
+    expect(await screen.findByRole('menuitem', { name: 'Duplicate workflow' })).toBeTruthy()
+    expect(await screen.findByRole('menuitem', { name: 'Delete' })).toBeTruthy()
   })
 
   it('allows media and editor headers to follow the available primary-column measure', () => {
@@ -122,11 +156,29 @@ describe('list/index page recipe', () => {
     expect(page?.getAttribute('data-width')).toBe('full')
     expect(page?.getAttribute('data-gap')).toBe('content')
     expect(page?.querySelector('[data-slot="page-shell-content"]')?.className).toContain('gap-bakin-4')
-    expect(screen.getByRole('region', { name: 'Task filters' })).toBeTruthy()
+    const controls = screen.getByRole('region', { name: 'Task filters' })
+    expect(controls.getAttribute('data-divider')).toBe('false')
+    expect(controls.className).not.toContain('border-t')
     const results = screen.getByRole('region', { name: 'Active task results' })
     expect(results.getAttribute('aria-busy')).toBe('true')
     expect(results.querySelector('[data-slot="list-page-feedback"]')?.textContent).toBe('Refreshing snapshot')
     expect(results.textContent).toContain('Launch approval')
+    expect(page?.querySelector('[data-slot="page-shell-content"]')?.className).toContain(
+      'env(safe-area-inset-bottom)',
+    )
+  })
+
+  it('uses a divider only when controls begin a genuinely separate page zone', () => {
+    render(
+      <ListPageControls label="Separated filters" divider>
+        <button type="button">Filter</button>
+      </ListPageControls>,
+    )
+
+    const controls = screen.getByRole('region', { name: 'Separated filters' })
+    expect(controls.getAttribute('data-divider')).toBe('true')
+    expect(controls.className).toContain('border-t')
+    expect(controls.className).toContain('pt-bakin-4')
   })
 
   it('replaces only the result region when a terminal state is supplied', () => {
@@ -189,6 +241,25 @@ describe('detail page recipe', () => {
     expect(page?.getAttribute('data-width')).toBe('full')
     expect(container.querySelectorAll('main')).toHaveLength(0)
     expect(container.querySelector('[data-slot="detail-page-aside"]')?.className).not.toMatch(/overflow-y-(?:auto|scroll)/)
+  })
+
+  it('bounds contained detail workspaces so named child panes own scrolling', () => {
+    const { container } = render(
+      <DetailPage width="full" scroll="contained">
+        <PageHeader title="Production plan" />
+        <DetailPageBody>
+          <DetailPageMain>Scrollable plan regions</DetailPageMain>
+        </DetailPageBody>
+      </DetailPage>,
+    )
+
+    const page = container.querySelector('[data-archetype="detail"]')
+    expect(page?.getAttribute('data-scroll')).toBe('contained')
+    expect(page?.className).toContain('h-full')
+    expect(page?.className).toContain('min-h-0')
+    expect(page?.className).toContain('overflow-hidden')
+    expect(page?.className).toContain('[&>[data-slot=page-shell-content]]:shrink')
+    expect(page?.className).toContain('[&>[data-slot=page-shell-content]]:overflow-hidden')
   })
 
   it('replaces the body while preserving page identity and navigation', () => {

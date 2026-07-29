@@ -1,5 +1,6 @@
 'use client'
 
+import { Grid, Section } from '@makinbakin/sdk/layout'
 import { ChevronRight } from 'lucide-react'
 import { isAttributedAgentRow } from '../lib/activity-feed-compat'
 import type { UsageFeedData, UsageKind } from '../types'
@@ -45,13 +46,15 @@ function BreakdownPanel({
   const maximum = Math.max(1, ...rows.map((row) => row.count))
 
   return (
-    <div className="min-w-0 bg-card p-4">
-      <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{title}</h4>
-      <p className="mt-1 text-xs text-muted-foreground">{sub}</p>
+    <div className="min-w-0">
+      <h4 className="text-bakin-typography-size-meta font-bakin-typography-weight-semibold uppercase tracking-wide text-bakin-text-muted">
+        {title}
+      </h4>
+      <p className="mt-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted">{sub}</p>
       {rows.length === 0 ? (
-        <p className="mt-4 text-sm text-muted-foreground">{emptyLabel}</p>
+        <p className="mt-bakin-4 text-bakin-typography-size-body text-bakin-text-muted">{emptyLabel}</p>
       ) : (
-        <ul className="mt-3 space-y-2.5" aria-label={title}>
+        <ul className="mt-bakin-3 space-y-bakin-3" aria-label={title}>
           {rows.map((row) => {
             const width = row.count === 0 ? 0 : Math.max(3, (row.count / maximum) * 100)
             const failureWidth = row.count === 0 ? 0 : (row.errors / row.count) * 100
@@ -70,20 +73,20 @@ function BreakdownPanel({
                 {...(sourceAware ? { 'data-source-kind': row.sourceKind ?? 'unknown' } : {})}
                 data-testid="activity-breakdown-row"
               >
-                <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
+                <span className="flex min-w-0 items-center gap-bakin-2 text-bakin-text-muted">
                   {Icon && source && (
                     <>
                       <Icon className={`size-3.5 shrink-0 ${source.iconColorClass}`} aria-hidden="true" />
-                      <span className="shrink-0 font-medium text-foreground/80">{source.label}</span>
+                      <span className="shrink-0 font-bakin-typography-weight-medium text-bakin-text-primary">{source.label}</span>
                       <span aria-hidden="true">·</span>
                     </>
                   )}
                   <span className="min-w-0 truncate" title={row.label}>
                     {row.label}
-                    {row.detail && <span className="text-muted-foreground/70"> · {row.detail}</span>}
+                    {row.detail && <span className="text-bakin-text-muted"> · {row.detail}</span>}
                   </span>
                 </span>
-                <span className="flex items-center justify-end gap-1 whitespace-nowrap text-right font-medium tabular-nums text-foreground">
+                <span className="flex items-center justify-end gap-bakin-1 whitespace-nowrap text-right font-bakin-typography-weight-medium tabular-nums text-bakin-text-primary">
                   <span>{row.count.toLocaleString()}</span>
                   {row.errors > 0 && (
                     <>
@@ -91,7 +94,7 @@ function BreakdownPanel({
                       {failureSelection && onReviewFailures ? (
                         <button
                           type="button"
-                          className="inline-flex cursor-pointer items-center gap-0.5 rounded-sm text-destructive underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          className="inline-flex cursor-pointer items-center gap-bakin-1 rounded-bakin-control text-bakin-signal-danger underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bakin-focus-ring"
                           aria-label={failureLabel}
                           onClick={() => onReviewFailures(failureSelection)}
                         >
@@ -99,19 +102,19 @@ function BreakdownPanel({
                           <ChevronRight className="size-3" aria-hidden="true" />
                         </button>
                       ) : (
-                        <span className="text-destructive">{row.errors.toLocaleString()} failed</span>
+                        <span className="text-bakin-signal-danger">{row.errors.toLocaleString()} failed</span>
                       )}
                     </>
                   )}
                 </span>
-                <span className="col-span-2 h-1.5 overflow-hidden rounded-full bg-foreground/10" aria-hidden="true">
+                <span className="col-span-2 h-1.5 overflow-hidden rounded-bakin-pill bg-bakin-surface-default" aria-hidden="true">
                   <span
-                    className="relative block h-full overflow-hidden rounded-full"
+                    className="relative block h-full overflow-hidden rounded-bakin-pill"
                     style={{ width: `${width}%`, backgroundColor: rowBarColor }}
                     {...(sourceAware ? { 'data-source-bar': true } : {})}
                   >
                     {row.errors > 0 && (
-                      <span className="absolute inset-y-0 right-0 bg-destructive" style={{ width: `${failureWidth}%` }} />
+                      <span className="absolute inset-y-0 right-0 bg-bakin-signal-danger" style={{ width: `${failureWidth}%` }} />
                     )}
                   </span>
                 </span>
@@ -160,15 +163,21 @@ export function ActivityBreakdown({
     }))
 
   return (
-    <section
+    <Section
       aria-labelledby="activity-breakdown-title"
-      className="overflow-hidden rounded-xl border border-border/80 bg-border/70"
+      divider="top"
+      spacing="compact"
       data-testid="activity-breakdown"
     >
-      <div className="bg-card px-4 py-3">
-        <h3 id="activity-breakdown-title" className="font-semibold">Call breakdown</h3>
+      <div>
+        <h3 id="activity-breakdown-title" className="font-bakin-typography-weight-semibold text-bakin-text-primary">
+          Call breakdown
+        </h3>
+        <p className="mt-bakin-1 text-bakin-typography-size-body text-bakin-text-muted">
+          Where recorded calls went and which agents generated them.
+        </p>
       </div>
-      <div className="grid gap-px @[58rem]/health:grid-cols-2">
+      <Grid layout="split" gap="section" align="start">
         <BreakdownPanel
           title="Top destinations"
           sub={data.capabilities?.sourceBalancedActivity === true
@@ -187,7 +196,7 @@ export function ActivityBreakdown({
           barColor="var(--chart-3)"
           emptyLabel="No agent-attributed activity in this window."
         />
-      </div>
-    </section>
+      </Grid>
+    </Section>
   )
 }

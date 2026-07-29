@@ -3,6 +3,13 @@
 import * as React from 'react'
 
 import { Button } from '../primitives/button'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '../primitives/card'
 import { cn } from '../utils'
 import { ConfirmDialog } from './confirm-dialog'
 
@@ -42,38 +49,46 @@ export function DangerZone({
   const Heading = `h${headingLevel}` as 'h2' | 'h3' | 'h4'
 
   return (
-    <section
+    <Card
+      role="region"
       aria-labelledby={headingId}
       data-danger-zone=""
       data-slot="danger-zone"
       className={cn(
-        'grid min-w-0 gap-bakin-3 rounded-bakin-surface border border-bakin-signal-danger/60 bg-bakin-signal-danger/10 p-bakin-4 font-bakin-typography-family-ui text-bakin-text-primary',
+        'border-bakin-signal-danger/60 bg-bakin-signal-danger/10',
         className,
       )}
     >
-      <div className="flex min-w-0 items-start gap-bakin-3">
-        <span
-          aria-hidden="true"
-          data-slot="danger-zone-signal"
-          className="flex size-bakin-6 shrink-0 items-center justify-center rounded-bakin-pill border border-bakin-signal-danger font-bakin-typography-weight-bold"
-        >
-          !
-        </span>
-        <div className="min-w-0">
-          <Heading id={headingId} className="m-0 text-[length:var(--bakin-typography-size-title)] font-bakin-typography-weight-semibold">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-bakin-2 text-base font-bakin-typography-weight-semibold">
+          <span
+            aria-hidden="true"
+            data-slot="danger-zone-signal"
+            className="flex size-bakin-4 shrink-0 items-center justify-center text-bakin-signal-danger"
+          >
+            !
+          </span>
+          <Heading id={headingId} className="m-0 text-inherit font-inherit">
             {title}
           </Heading>
-          <div className="mt-bakin-1 max-w-prose [overflow-wrap:anywhere] leading-relaxed text-bakin-text-muted">
-            {description}
-          </div>
-        </div>
-      </div>
+        </CardTitle>
+        <CardDescription className="mb-bakin-1 mt-bakin-1 max-w-3xl text-sm leading-relaxed">
+          {description}
+        </CardDescription>
+      </CardHeader>
 
-      <div className="flex min-w-0 justify-start sm:justify-end">
-        <Button ref={triggerRef} variant="danger" onClick={() => setOpen(true)} data-danger-zone-trigger="">
+      <CardContent className="flex min-w-0 justify-start">
+        <Button
+          ref={triggerRef}
+          variant="danger"
+          size="sm"
+          className="border-bakin-signal-danger bg-bakin-signal-danger text-bakin-canvas-default hover:bg-bakin-signal-danger hover:brightness-110"
+          onClick={() => setOpen(true)}
+          data-danger-zone-trigger=""
+        >
           {confirmLabel}
         </Button>
-      </div>
+      </CardContent>
 
       <ConfirmDialog
         open={open}
@@ -91,6 +106,6 @@ export function DangerZone({
           if (!busy) setOpen(false)
         }}
       />
-    </section>
+    </Card>
   )
 }

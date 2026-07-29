@@ -21,6 +21,7 @@ describe('focused chart foundation', () => {
     expect(focused).toContain('Sparkline')
     expect(focused).toContain('LineChart')
     expect(focused).toContain('BarChart')
+    expect(focused).toContain('RankedBarChart')
     expect(focused).toContain('StackedColumnChart')
     expect(manifest.exports['./charts']).toBe('./src/charts/index.ts')
     expect(base).not.toMatch(/(?:^|\/)charts(?:\/|')/m)
@@ -33,6 +34,7 @@ describe('focused chart foundation', () => {
       read('packages/ui/src/charts/chart-tooltip.tsx'),
       read('packages/ui/src/charts/line-chart.tsx'),
       read('packages/ui/src/charts/bar-chart.tsx'),
+      read('packages/ui/src/charts/ranked-bar-chart.tsx'),
       read('packages/ui/src/charts/palette.ts'),
       read('packages/ui/src/charts/sparkline.tsx'),
       read('packages/ui/src/charts/stacked-column-chart.tsx'),
@@ -48,6 +50,7 @@ describe('focused chart foundation', () => {
       'chart-explainer.tsx',
       'line-chart.tsx',
       'palette.ts',
+      'ranked-bar-chart.tsx',
       'sparkline.tsx',
       'stacked-column-chart.tsx',
     ]) {

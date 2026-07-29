@@ -113,7 +113,7 @@ const signalClasses: Record<SystemStateKind, string> = {
 }
 
 const scopeClasses: Record<SystemStateScope, string> = {
-  inline: 'grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-bakin-3 gap-y-bakin-2 rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default px-bakin-4 py-bakin-3 text-left',
+  inline: 'grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-bakin-3 gap-y-bakin-2 rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default px-bakin-4 py-bakin-3 text-left',
   section: 'flex flex-col items-center justify-center gap-bakin-3 rounded-bakin-surface bg-bakin-surface-default/55 px-bakin-6 py-bakin-8 text-center',
   page: 'flex min-h-[calc(var(--bakin-layout-space-8)*12)] flex-1 flex-col items-center justify-center gap-bakin-3 px-bakin-6 py-bakin-8 text-center',
 }
@@ -162,6 +162,7 @@ export function SystemState({
       aria-live={resolvedAnnouncement === 'off' ? undefined : resolvedAnnouncement}
       data-announcement={resolvedAnnouncement}
       data-kind={kind}
+      data-presentation={scope === 'inline' ? 'compact' : 'full'}
       data-recovery={resolvedRecovery}
       data-scope={scope}
       data-slot="system-state"
@@ -174,9 +175,16 @@ export function SystemState({
       <span
         aria-hidden="true"
         data-slot="system-state-signal"
-        className={cn('mt-bakin-1 size-bakin-3 shrink-0 rounded-bakin-pill border-2', signalClasses[kind])}
+        className={cn(
+          'size-bakin-3 shrink-0 rounded-bakin-pill border-2',
+          scope === 'inline' ? 'col-start-1 row-start-1' : 'mt-bakin-1',
+          signalClasses[kind],
+        )}
       />
-      <div data-slot="system-state-copy" className={cn('min-w-0', scope === 'inline' && 'row-start-1')}>
+      <div
+        data-slot="system-state-copy"
+        className={cn('min-w-0', scope === 'inline' && 'col-start-2 row-start-1')}
+      >
         <Heading
           id={titleId}
           data-slot="system-state-title"
@@ -187,7 +195,10 @@ export function SystemState({
         <p
           id={descriptionId}
           data-slot="system-state-description"
-          className="m-0 mt-bakin-1 max-w-prose text-[length:var(--bakin-typography-size-body)] leading-relaxed text-bakin-text-muted"
+          className={cn(
+            'm-0 mt-bakin-1 max-w-prose text-[length:var(--bakin-typography-size-body)] text-bakin-text-muted',
+            scope === 'inline' ? 'leading-snug' : 'leading-relaxed',
+          )}
         >
           {description ?? copy.description}
         </p>

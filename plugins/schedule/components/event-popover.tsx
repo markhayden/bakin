@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { CalendarDays, ExternalLink } from 'lucide-react'
+import { PluginLink } from '@makinbakin/sdk/navigation'
 import { ConfirmDialog } from '@makinbakin/sdk/patterns'
 import {
   Button,
@@ -97,28 +98,26 @@ export function EventChip({
             />
           )}
           className={`
-            group/event mb-bakin-1 block h-auto w-full min-w-0 whitespace-normal text-left
-            ${compact ? 'px-bakin-2 py-bakin-1' : 'px-bakin-3 py-bakin-2'}
+            group/event mb-bakin-1 grid !h-auto w-full min-w-0
+            grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-bakin-2
+            overflow-hidden whitespace-normal text-left
+            ${compact ? 'px-bakin-2 py-bakin-2' : 'gap-y-bakin-1 px-bakin-3 py-bakin-2'}
           `}
         >
-          <span className="flex min-w-0 items-center gap-bakin-2">
-            <CalendarDays className={`size-bakin-3 shrink-0 ${due ? 'text-bakin-signal-danger' : 'text-bakin-signal-accent'}`} aria-hidden="true" />
-            <span className={`min-w-0 flex-1 truncate font-bakin-typography-weight-medium leading-tight text-bakin-text-primary ${
-              compact
-                ? 'text-bakin-typography-size-meta'
-                : 'text-bakin-typography-size-body'
-            }`}>
-              {event.title}
-            </span>
-            <span className={`shrink-0 font-bakin-typography-family-mono text-bakin-typography-size-meta tabular-nums ${
-              due ? 'text-bakin-signal-danger' : 'text-bakin-signal-accent'
-            }`}>
-              {time}
-            </span>
-          </span>
-          <span className={`mt-bakin-1 block text-bakin-typography-size-meta uppercase tracking-wider text-bakin-text-muted ${
-            compact ? 'pl-bakin-5' : ''
+          <CalendarDays className={`size-bakin-3 shrink-0 ${due ? 'text-bakin-signal-danger' : 'text-bakin-signal-accent'}`} aria-hidden="true" />
+          <span className={`min-w-0 truncate font-bakin-typography-weight-medium leading-tight text-bakin-text-primary ${
+            compact
+              ? 'text-bakin-typography-size-meta'
+              : 'text-bakin-typography-size-body'
           }`}>
+            {event.title}
+          </span>
+          <span className={`shrink-0 text-right font-bakin-typography-family-mono text-bakin-typography-size-meta tabular-nums ${
+            due ? 'text-bakin-signal-danger' : 'text-bakin-signal-accent'
+          }`}>
+            {time}
+          </span>
+          <span className="col-start-2 col-end-4 block min-w-0 truncate text-bakin-typography-size-meta uppercase tracking-wider text-bakin-text-muted">
             {event.pluginId} · {event.kind}{event.status ? ` · ${event.status}` : ''}
           </span>
         </PopoverTrigger>
@@ -135,12 +134,12 @@ export function EventChip({
           </p>
           <div className="flex items-center gap-bakin-2">
             {event.url && (
-              <a
-                href={event.url}
+              <PluginLink
+                to={event.url}
                 className={buttonVariants({ variant: 'outline', size: 'xs' })}
               >
                 <ExternalLink aria-hidden="true" /> Open
-              </a>
+              </PluginLink>
             )}
             {event.reschedulable && (
               <Button variant="outline" size="xs" onClick={() => { setError(null); setRescheduling(true) }}>

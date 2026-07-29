@@ -468,9 +468,12 @@ describe('ChatView', () => {
     await waitFor(() => expect(container.querySelector('[data-chat-title]')).not.toBeNull())
     const avatarWrap = container.querySelector('span[title="main"]')
     expect(avatarWrap).not.toBeNull()
+    const header = container.querySelector('[data-chat-header]')
+    expect(header?.className).toContain('grid-cols-[auto_minmax(0,1fr)_auto]')
+    expect(container.querySelector('[data-chat-header-title]')?.className).toContain('col-start-2')
+    expect(container.querySelector('[data-chat-header-meta]')).toBeNull()
     // The name never renders as visible header text …
-    const headerLine = container.querySelector('.min-h-4')
-    expect(headerLine?.textContent).not.toContain('main')
+    expect(header?.textContent ?? '').not.toContain('main')
     // … and the removed working ticker stays removed.
     expect(container.querySelector('[data-chat-header-working]')).toBeNull()
     cleanup()

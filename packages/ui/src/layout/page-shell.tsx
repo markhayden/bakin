@@ -19,8 +19,8 @@ const widthClasses: Record<PageShellWidth, string> = {
 }
 
 const paddingClasses: Record<PageShellPadding, string> = {
-  default: 'px-bakin-4 pt-bakin-4 pb-[calc(var(--bakin-layout-space-8)*2)] @md/page-shell:px-bakin-6 @md/page-shell:pt-bakin-6 @xl/page-shell:px-bakin-8 @xl/page-shell:pt-bakin-8',
-  compact: 'px-bakin-3 pt-bakin-3 pb-[calc(var(--bakin-layout-space-8)*2)] @md/page-shell:px-bakin-4 @md/page-shell:pt-bakin-4 @xl/page-shell:px-bakin-6 @xl/page-shell:pt-bakin-6',
+  default: 'px-bakin-4 pt-bakin-4 pb-[calc((var(--bakin-layout-space-8)*2)+env(safe-area-inset-bottom))] @md/page-shell:px-bakin-6 @md/page-shell:pt-bakin-6 @xl/page-shell:px-bakin-8 @xl/page-shell:pt-bakin-8',
+  compact: 'px-bakin-3 pt-bakin-3 pb-[calc((var(--bakin-layout-space-8)*2)+env(safe-area-inset-bottom))] @md/page-shell:px-bakin-4 @md/page-shell:pt-bakin-4 @xl/page-shell:px-bakin-6 @xl/page-shell:pt-bakin-6',
   none: '',
 }
 
@@ -31,7 +31,7 @@ const gapClasses: Record<PageShellGap, string> = {
   page: 'gap-bakin-8',
 }
 
-/** Responsive page canvas for content rendered inside Bakin's owning main landmark. */
+/** Responsive page canvas with protected scroll-end clearance inside Bakin's owning main landmark. */
 export function PageShell({
   children,
   className,

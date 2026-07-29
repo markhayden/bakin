@@ -103,7 +103,6 @@ function DispatchFailureDebug({ data }: { data?: Record<string, unknown> }) {
 export function ActivityFeed() {
   const { open, toggle } = useActivityContext()
   const events = useContentStore((s) => s.activityEvents)
-  const connected = useContentStore((s) => s.sseConnected)
   const debug = useContentStore((s) => s.debug)
   const [, setTick] = useState(0)
 
@@ -115,16 +114,15 @@ export function ActivityFeed() {
 
   return (
     <>
-      {/* Collapsed toggle tab — always visible */}
+      {/* Desktop collapsed toggle; mobile activity lives in the host nav. */}
       {!open && (
         <button
           onClick={toggle}
           aria-label="Open Live Activity"
           title="Live Activity"
-          className="fixed bottom-bakin-4 right-bakin-4 top-auto z-50 flex h-[var(--bakin-layout-size-control)] w-[var(--bakin-layout-size-control)] translate-y-0 items-center justify-center rounded-bakin-pill border border-border bg-card/95 p-0 shadow-bakin-elevation-overlay backdrop-blur-sm transition-colors hover:bg-surface-elevated"
+          className="fixed bottom-bakin-4 right-bakin-4 top-auto z-50 hidden h-[var(--bakin-layout-size-control)] w-[var(--bakin-layout-size-control)] translate-y-0 items-center justify-center rounded-bakin-pill border border-border bg-card/95 p-0 shadow-bakin-elevation-overlay backdrop-blur-sm transition-colors hover:bg-surface-elevated md:flex"
         >
           <Radio aria-hidden="true" className="size-bakin-4 text-muted-foreground" />
-          <span className={`absolute right-bakin-1 top-bakin-1 h-2 w-2 rounded-full ${connected ? 'bg-success animate-pulse' : 'bg-muted-foreground'}`} />
           <span className="sr-only">
             Live Activity
           </span>
@@ -137,8 +135,7 @@ export function ActivityFeed() {
       >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border px-3 py-2">
-          <div className="flex items-center gap-2">
-            <span className={`h-2 w-2 rounded-full ${connected ? 'bg-success animate-pulse' : 'bg-muted-foreground'}`} />
+          <div className="flex items-center">
             <span className="text-sm font-medium text-foreground">Live Activity</span>
           </div>
           <div className="flex items-center gap-1">

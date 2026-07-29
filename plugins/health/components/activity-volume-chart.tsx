@@ -1,6 +1,7 @@
 'use client'
 
-import { BarChart, ChartExplainer } from '@makinbakin/sdk/components'
+import { BarChart, ChartExplainer } from '@makinbakin/sdk/charts'
+import { Grid, Section, Stack } from '@makinbakin/sdk/layout'
 import type { InteractionCoverage, UsageFeedData } from '../types'
 import { coveredActivityBuckets } from './activity-time-buckets'
 
@@ -32,24 +33,25 @@ export function ActivityVolumeChart({
   )
 
   return (
-    <section
+    <Section
       aria-labelledby="activity-volume-title"
-      className="rounded-xl border border-border/80 bg-card p-4"
+      divider="top"
+      spacing="compact"
       data-testid="activity-volume-chart"
       data-chart-layout="split"
     >
-      <div>
+      <Stack gap="dense">
         <h3 id="activity-volume-title" className="font-semibold">Activity over time</h3>
-        <p className="text-sm text-muted-foreground">
+        <p className="text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted">
           Calls recorded in each interval of the selected window, split by result.
         </p>
         {!coverage.hasFullWindow && (
-          <p className="mt-1 text-xs text-warning">
+          <p className="text-bakin-typography-size-meta text-bakin-signal-highlight">
             Partial history since {bucketLabel(coverage.startsAt)}; intervals entirely before that are omitted.
           </p>
         )}
-      </div>
-      <div className="mt-3 grid items-start gap-4 @[52rem]/health:grid-cols-[minmax(0,1.6fr)_minmax(18rem,0.8fr)]">
+      </Stack>
+      <Grid layout="main-aside" gap="section" align="start">
         <div className="min-w-0">
           <BarChart
             stacked
@@ -73,27 +75,27 @@ export function ActivityVolumeChart({
             showDataTable={false}
           />
         </div>
-        <div className="min-w-0 overflow-hidden rounded-lg border border-border/70 bg-background/35">
+        <div className="min-w-0 overflow-hidden rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default">
           <div className="max-h-64 overflow-auto">
-            <table className="w-full text-xs tabular-nums">
+            <table className="w-full text-bakin-typography-size-meta tabular-nums">
               <caption className="sr-only">Activity over time data</caption>
-              <thead className="sticky top-0 bg-card text-muted-foreground">
-                <tr className="border-b border-border/70">
-                  <th scope="col" className="px-3 py-2 text-left font-medium">Interval</th>
-                  <th scope="col" className="px-3 py-2 text-right font-medium">Other outcomes</th>
-                  <th scope="col" className="px-3 py-2 text-right font-medium">Failed</th>
+              <thead className="sticky top-0 bg-bakin-canvas-default text-bakin-text-muted">
+                <tr className="border-b border-bakin-border-subtle">
+                  <th scope="col" className="px-bakin-3 py-bakin-2 text-left font-medium">Interval</th>
+                  <th scope="col" className="px-bakin-3 py-bakin-2 text-right font-medium">Other outcomes</th>
+                  <th scope="col" className="px-bakin-3 py-bakin-2 text-right font-medium">Failed</th>
                 </tr>
               </thead>
               <tbody>
                 {[...visibleBuckets].reverse().map((bucket) => (
-                  <tr key={bucket.start} className="border-b border-border/50 last:border-b-0">
-                    <th scope="row" className="whitespace-nowrap px-3 py-1.5 text-left font-medium text-foreground">
+                  <tr key={bucket.start} className="border-b border-bakin-border-subtle last:border-b-0">
+                    <th scope="row" className="whitespace-nowrap px-bakin-3 py-bakin-2 text-left font-medium text-bakin-text-primary">
                       <time dateTime={bucket.start}>{bucketLabel(bucket.start)}</time>
                     </th>
-                    <td className="px-3 py-1.5 text-right text-foreground">
+                    <td className="px-bakin-3 py-bakin-2 text-right text-bakin-text-primary">
                       {Math.max(0, bucket.count - bucket.failureCount).toLocaleString()}
                     </td>
-                    <td className="px-3 py-1.5 text-right text-foreground">
+                    <td className="px-bakin-3 py-bakin-2 text-right text-bakin-text-primary">
                       {bucket.failureCount.toLocaleString()}
                     </td>
                   </tr>
@@ -102,7 +104,7 @@ export function ActivityVolumeChart({
             </table>
           </div>
         </div>
-      </div>
+      </Grid>
       {visibleBuckets.length > 0 && (
         <ChartExplainer>
           {total.toLocaleString()} {total === 1 ? 'call' : 'calls'} in this window
@@ -112,6 +114,6 @@ export function ActivityVolumeChart({
             : ''}
         </ChartExplainer>
       )}
-    </section>
+    </Section>
   )
 }

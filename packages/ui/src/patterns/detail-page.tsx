@@ -6,17 +6,36 @@ import { cn } from '../utils'
 
 export type DetailPageWidth = 'content' | 'wide' | 'full'
 export type DetailPageLayout = 'single' | 'aside'
+export type DetailPageScroll = 'page' | 'contained'
 
 export type DetailPageProps = Omit<PageShellProps, 'children' | 'gap' | 'padding' | 'width'> & {
   children: React.ReactNode
+  /** Page uses host scrolling by default; contained workspaces bound named child scroll regions. */
+  scroll?: DetailPageScroll
   /** Content suits focused records; wide is routine; full supports media and editor workspaces. */
   width?: DetailPageWidth
 }
 
 /** Page canvas for one identifiable record, resource, or configuration object. */
-export function DetailPage({ children, width = 'wide', ...props }: DetailPageProps) {
+export function DetailPage({
+  children,
+  className,
+  scroll = 'page',
+  width = 'wide',
+  ...props
+}: DetailPageProps) {
   return (
-    <PageShell {...props} data-archetype="detail" width={width}>
+    <PageShell
+      {...props}
+      className={cn(
+        scroll === 'contained' &&
+          'h-full min-h-0 overflow-hidden [&>[data-slot=page-shell-content]]:h-full [&>[data-slot=page-shell-content]]:min-h-0 [&>[data-slot=page-shell-content]]:shrink [&>[data-slot=page-shell-content]]:overflow-hidden',
+        className,
+      )}
+      data-archetype="detail"
+      data-scroll={scroll}
+      width={width}
+    >
       {children}
     </PageShell>
   )

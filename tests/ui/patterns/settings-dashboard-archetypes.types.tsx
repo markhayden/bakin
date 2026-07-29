@@ -26,6 +26,15 @@ export function ValidSettingsRecipe() {
   )
 }
 
+export function ValidFullWidthSettingsRecipe() {
+  return (
+    <SettingsPage width="full">
+      <PageHeader title="Plugin settings" />
+      <SettingsPageContent label="Plugin settings">Configuration</SettingsPageContent>
+    </SettingsPage>
+  )
+}
+
 export function ValidDashboardRecipe() {
   return (
     <DashboardPage width="full">
@@ -39,9 +48,6 @@ export function ValidDashboardRecipe() {
     </DashboardPage>
   )
 }
-
-// @ts-expect-error settings pages intentionally exclude full-bleed canvases
-export const invalidSettingsWidth = <SettingsPage width="full">Invalid</SettingsPage>
 
 // @ts-expect-error dashboards intentionally exclude reading-width canvases
 export const invalidDashboardWidth = <DashboardPage width="content">Invalid</DashboardPage>

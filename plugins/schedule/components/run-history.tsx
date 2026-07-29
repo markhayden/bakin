@@ -1,9 +1,18 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import { useRunHistory } from '@makinbakin/sdk/hooks'
-import { StatusBadge, type StatusTone } from '@makinbakin/sdk/patterns'
+import {
+  ListRow,
+  ListRows,
+  PageNavigator,
+  StatusBadge,
+  type StatusTone,
+} from '@makinbakin/sdk/patterns'
 import { Skeleton, SystemState } from '@makinbakin/sdk/ui'
 import { formatDateTime } from '@makinbakin/sdk/utils'
+
+const RUN_PAGE_SIZE = 8
 
 function runTone(status: string): StatusTone {
   if (status === 'success') return 'success'
@@ -13,6 +22,13 @@ function runTone(status: string): StatusTone {
 
 export function RunHistory({ jobId }: { jobId: string }) {
   const { runs, loading } = useRunHistory(jobId)
+  const [page, setPage] = useState(1)
+  const [showAll, setShowAll] = useState(false)
+
+  useEffect(() => {
+    setPage(1)
+    setShowAll(false)
+  }, [jobId])
 
   if (loading) {
     return (
@@ -45,10 +61,17 @@ export function RunHistory({ jobId }: { jobId: string }) {
     )
   }
 
+  const pageCount = Math.max(1, Math.ceil(runs.length / RUN_PAGE_SIZE))
+  const safePage = Math.min(page, pageCount)
+  const visibleRuns = showAll
+    ? runs
+    : runs.slice((safePage - 1) * RUN_PAGE_SIZE, safePage * RUN_PAGE_SIZE)
+
   return (
-    <ol className="m-0 grid list-none divide-y divide-bakin-border-subtle p-0">
-      {runs.map((run) => (
-        <li key={run.runId} className="flex min-w-0 flex-wrap items-center gap-x-bakin-3 gap-y-bakin-2 py-bakin-2">
+    <div className="grid gap-bakin-3">
+      <ListRows variant="separated" aria-label="Recent scheduled job runs">
+        {visibleRuns.map((run) => (
+          <ListRow key={run.runId} className="flex min-w-0 flex-wrap items-center gap-x-bakin-3 gap-y-bakin-2">
           <time className="w-36 shrink-0 text-bakin-typography-size-meta text-bakin-text-muted">
             {formatDateTime(run.timestamp)}
           </time>
@@ -70,8 +93,21 @@ export function RunHistory({ jobId }: { jobId: string }) {
               {run.error}
             </span>
           ) : null}
-        </li>
-      ))}
-    </ol>
+          </ListRow>
+        ))}
+      </ListRows>
+      <PageNavigator
+        ariaLabel="Run history pagination"
+        page={safePage}
+        pageSize={RUN_PAGE_SIZE}
+        showAll={showAll}
+        total={runs.length}
+        onPageChange={setPage}
+        onShowAllChange={(nextShowAll) => {
+          setShowAll(nextShowAll)
+          setPage(1)
+        }}
+      />
+    </div>
   )
 }

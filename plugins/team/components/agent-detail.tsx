@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState, type ChangeEvent } from 'react'
-import { ArrowLeft, BookOpen, Calendar, Camera, Sparkles, Trash2 } from 'lucide-react'
+import { ArrowLeft, BookOpen, Calendar, Camera, Pencil, Sparkles, Trash2 } from 'lucide-react'
 import { Section } from '@makinbakin/sdk/layout'
 import { useHistoryBack, useRouter } from '@makinbakin/sdk/navigation'
 import {
@@ -20,6 +20,7 @@ import {
   AlertDescription,
   AlertTitle,
   Button,
+  DropdownMenuItem,
   Input,
   Skeleton,
   SystemState,
@@ -208,16 +209,28 @@ export function AgentDetail({ agentId }: { agentId: string }) {
         measure="wide"
         title={(
           <span className="flex min-w-0 items-center gap-bakin-3">
-            <AgentAvatar
-              agent={{
-                id: agentId,
-                name: profile.name,
-                imageSrc: avatarUrl,
-                initials: profile.emoji || undefined,
-              }}
-              size="xl"
-              decorative
-            />
+            <span className="group/avatar relative inline-flex shrink-0">
+              <AgentAvatar
+                agent={{
+                  id: agentId,
+                  name: profile.name,
+                  imageSrc: avatarUrl,
+                  initials: profile.emoji || undefined,
+                }}
+                size="xl"
+                decorative
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Change agent image"
+                onClick={() => avatarInputRef.current?.click()}
+                className="absolute inset-0 size-full rounded-bakin-pill bg-bakin-canvas-default/70 opacity-0 transition-opacity group-hover/avatar:opacity-100 focus-visible:opacity-100"
+              >
+                <Pencil aria-hidden="true" />
+              </Button>
+            </span>
             <span>{profile.name}</span>
           </span>
         )}
@@ -230,41 +243,33 @@ export function AgentDetail({ agentId }: { agentId: string }) {
             {profile.workspacePath}
           </code>
         )}
-        actions={(
-          <div
-            className="flex w-full min-w-0 items-center gap-bakin-2 @3xl/page-header:w-auto"
-            data-agent-header-actions
-          >
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="min-w-0 flex-1 @3xl/page-header:flex-none"
+        overflowActionsLabel="Agent actions"
+        overflowActions={(
+          <>
+            <DropdownMenuItem
               onClick={() => avatarInputRef.current?.click()}
             >
               <Camera aria-hidden="true" />
               Change image
-            </Button>
-            <Input
-              ref={avatarInputRef}
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              className="hidden"
-              onChange={handleAvatarUpload}
-            />
+            </DropdownMenuItem>
             {agentId !== mainAgentId ? (
-              <Button
-                type="button"
+              <DropdownMenuItem
                 variant="danger"
-                size="icon-sm"
                 onClick={() => setDeleteOpen(true)}
-                aria-label={`Delete ${profile.name}`}
               >
                 <Trash2 aria-hidden="true" />
-              </Button>
+                Delete
+              </DropdownMenuItem>
             ) : null}
-          </div>
+          </>
         )}
+      />
+      <Input
+        ref={avatarInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        className="hidden"
+        onChange={handleAvatarUpload}
       />
 
       {runtimeStatus.restartNeeded ? (

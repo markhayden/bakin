@@ -28,6 +28,9 @@ describe('Schedule UI conformance', () => {
 
     expect(contents).not.toContain('@makinbakin/sdk/components')
     expect(contents).not.toContain('<EmptyState')
+    expect(contents).toContain('<ListRows')
+    expect(contents).toContain('<ListRow')
+    expect(contents).toMatch(/className="!h-auto[^"]*py-bakin-4/)
     expect(contents).not.toMatch(/\b(?:w|min-w|max-w)-\[[^\]]+\]/)
   })
 
@@ -68,6 +71,9 @@ describe('Schedule UI conformance', () => {
     expect(badge).toContain("from '@makinbakin/sdk/patterns'")
     expect(event).not.toContain('@makinbakin/sdk/components')
     expect(event).toContain("from '@makinbakin/sdk/patterns'")
+    expect(event).toContain("from '@makinbakin/sdk/navigation'")
+    expect(event).toContain('<PluginLink')
+    expect(event).not.toMatch(/<a\b/)
     expect(event).toContain('<PopoverHeader')
     expect(event).toContain('<Field')
     expect(event).not.toMatch(/\b(?:red|rose|teal|zinc)-\d+/)
@@ -111,6 +117,8 @@ describe('Schedule UI conformance', () => {
 
     expect(contents).toContain('<StatusBadge')
     expect(contents).toContain('<SystemState')
+    expect(contents).toContain('<ListRows')
+    expect(contents).toContain('<PageNavigator')
     expect(contents).not.toContain('toneBadgeClass')
     expect(contents).not.toMatch(/\b(?:red|amber|zinc)-\d+/)
     expect(contents).not.toMatch(/(?:text|w)-\[(?:\d|\.)/)

@@ -358,13 +358,14 @@ export function ModelSelect({
   const selectedLabel = value === defaultValue
     ? defaultLabel
     : selectedModel?.name ?? (value || undefined)
+  const hasOptions = Boolean(defaultLabel) || models.length > 0
 
   return (
     <Select
       name={name}
       value={value}
       onValueChange={(next) => onValueChange(next ?? '')}
-      disabled={disabled}
+      disabled={disabled || !hasOptions}
       required={required}
     >
       <SelectTrigger

@@ -58,14 +58,19 @@ describe('anchored overlay public contracts', () => {
         <DropdownMenuTrigger>Task actions</DropdownMenuTrigger>
         <DropdownMenuContent portalProps={{ container: portalRoot }}>
           <DropdownMenuItem>Duplicate <DropdownMenuShortcut>⌘D</DropdownMenuShortcut></DropdownMenuItem>
-          <DropdownMenuItem variant="danger">Delete task</DropdownMenuItem>
+          <DropdownMenuItem variant="danger">
+            <svg aria-hidden="true" />
+            Delete
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>,
     )
 
     expect(screen.getByRole('menuitem', { name: 'Duplicate' })).toBeTruthy()
     expect(screen.getByText('⌘D').getAttribute('aria-hidden')).toBe('true')
-    expect(screen.getByRole('menuitem', { name: 'Delete task' }).getAttribute('data-variant')).toBe('danger')
+    const deleteItem = screen.getByRole('menuitem', { name: 'Delete' })
+    expect(deleteItem.getAttribute('data-variant')).toBe('danger')
+    expect(deleteItem.className).toContain('[&_svg:not([class*="size-"])]:size-bakin-4')
     expect(portalRoot.querySelector('[data-slot="dropdown-menu-content"]')).toBeTruthy()
     portalRoot.remove()
   })

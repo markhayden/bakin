@@ -189,17 +189,18 @@ describe('AgentDetail — tab URL contract', () => {
     render(<AgentDetail agentId="explorer" />)
 
     expect(await screen.findByRole('button', { name: 'Back to agents' })).toBeDefined()
-    expect(screen.getByRole('button', { name: 'Delete Explorer' })).toBeDefined()
+    const menu = screen.getByRole('button', { name: 'Agent actions' })
+    fireEvent.click(menu)
+    expect(await screen.findByRole('menuitem', { name: 'Delete' })).toBeDefined()
   })
 
-  it('keeps image and delete actions together in one responsive header row', async () => {
+  it('keeps secondary image and delete actions in the shared context menu', async () => {
     render(<AgentDetail agentId="explorer" />)
 
-    const changeImage = await screen.findByRole('button', { name: 'Change image' })
-    const deleteAgent = screen.getByRole('button', { name: 'Delete Explorer' })
-    const actionRow = changeImage.closest('[data-agent-header-actions]')
-
-    expect(actionRow).not.toBeNull()
-    expect(actionRow?.contains(deleteAgent)).toBe(true)
+    expect(await screen.findByRole('button', { name: 'Change agent image' })).toBeDefined()
+    const menu = await screen.findByRole('button', { name: 'Agent actions' })
+    fireEvent.click(menu)
+    expect(await screen.findByRole('menuitem', { name: 'Change image' })).toBeDefined()
+    expect(screen.getByRole('menuitem', { name: 'Delete' })).toBeDefined()
   })
 })

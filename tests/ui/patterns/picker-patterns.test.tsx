@@ -77,6 +77,19 @@ describe('focused asset picker', () => {
 })
 
 describe('focused model and color pickers', () => {
+  it('disables an empty model picker instead of opening an empty popup', () => {
+    render(
+      <ModelSelect
+        ariaLabel="Execution model"
+        value="anthropic/claude-sonnet-4-20250514"
+        onValueChange={() => {}}
+        models={[]}
+      />,
+    )
+
+    expect((screen.getByRole('combobox', { name: 'Execution model' }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
   it('groups models, exposes the default sentinel, and commits a model id', async () => {
     const onValueChange = mock(() => {})
     const user = userEvent.setup()

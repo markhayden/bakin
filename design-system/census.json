@@ -19,14 +19,14 @@
     ]
   },
   "summary": {
-    "total": 314,
+    "total": 326,
     "byKind": {
       "host-route": 26,
       "plugin-route": 10,
       "plugin-slot": 30,
       "plugin-template": 2,
-      "shared-component": 96,
-      "sdk-ui-export": 150
+      "shared-component": 98,
+      "sdk-ui-export": 160
     },
     "nonVisualAliases": 3
   },
@@ -2273,6 +2273,31 @@
       ]
     },
     {
+      "id": "sdk-ui-export:type:ComposerHandle",
+      "kind": "sdk-ui-export",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "identity": {
+        "symbol": "ComposerHandle",
+        "entrypoint": "@makinbakin/sdk/components"
+      },
+      "sourcePath": "src/components/conversation/composer.tsx",
+      "symbols": [
+        "ComposerHandle"
+      ],
+      "exportStatus": "public",
+      "classification": "public-contract",
+      "evidence": [
+        {
+          "type": "public-export",
+          "path": "packages/sdk/src/components/index.ts",
+          "detail": "type ComposerHandle from @/components/conversation/composer (ComposerHandle)"
+        }
+      ]
+    },
+    {
       "id": "sdk-ui-export:type:ComposerProps",
       "kind": "sdk-ui-export",
       "owner": {
@@ -2319,6 +2344,31 @@
           "type": "public-export",
           "path": "packages/sdk/src/components/index.ts",
           "detail": "type ConfirmDialogProps from @/components/confirm-dialog (ConfirmDialogProps)"
+        }
+      ]
+    },
+    {
+      "id": "sdk-ui-export:type:ContextMeterStats",
+      "kind": "sdk-ui-export",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "identity": {
+        "symbol": "ContextMeterStats",
+        "entrypoint": "@makinbakin/sdk/components"
+      },
+      "sourcePath": "src/components/conversation/context-meter.tsx",
+      "symbols": [
+        "ContextMeterStats"
+      ],
+      "exportStatus": "public",
+      "classification": "public-contract",
+      "evidence": [
+        {
+          "type": "public-export",
+          "path": "packages/sdk/src/components/index.ts",
+          "detail": "type ContextMeterStats from @/components/conversation/context-meter (ContextMeterStats)"
         }
       ]
     },
@@ -2523,6 +2573,31 @@
       ]
     },
     {
+      "id": "sdk-ui-export:type:ConversationQueuedItem",
+      "kind": "sdk-ui-export",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "identity": {
+        "symbol": "ConversationQueuedItem",
+        "entrypoint": "@makinbakin/sdk/components"
+      },
+      "sourcePath": "src/components/conversation/queued-message-list.tsx",
+      "symbols": [
+        "ConversationQueuedItem"
+      ],
+      "exportStatus": "public",
+      "classification": "public-contract",
+      "evidence": [
+        {
+          "type": "public-export",
+          "path": "packages/sdk/src/components/index.ts",
+          "detail": "type ConversationQueuedItem from @/components/conversation/queued-message-list (ConversationQueuedItem)"
+        }
+      ]
+    },
+    {
       "id": "sdk-ui-export:type:ConversationThread",
       "kind": "sdk-ui-export",
       "owner": {
@@ -2644,6 +2719,31 @@
           "type": "public-export",
           "path": "packages/sdk/src/components/index.ts",
           "detail": "type ConversationTurn from @makinbakin/sdk/conversation (ConversationTurn)"
+        }
+      ]
+    },
+    {
+      "id": "sdk-ui-export:type:ConversationTurnUsage",
+      "kind": "sdk-ui-export",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "identity": {
+        "symbol": "ConversationTurnUsage",
+        "entrypoint": "@makinbakin/sdk/components"
+      },
+      "sourcePath": "packages/sdk/src/conversation/index.ts",
+      "symbols": [
+        "ConversationTurnUsage"
+      ],
+      "exportStatus": "public",
+      "classification": "public-contract",
+      "evidence": [
+        {
+          "type": "public-export",
+          "path": "packages/sdk/src/components/index.ts",
+          "detail": "type ConversationTurnUsage from @makinbakin/sdk/conversation (ConversationTurnUsage)"
         }
       ]
     },
@@ -4323,6 +4423,56 @@
       ]
     },
     {
+      "id": "sdk-ui-export:value:ContextMeter",
+      "kind": "sdk-ui-export",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "identity": {
+        "symbol": "ContextMeter",
+        "entrypoint": "@makinbakin/sdk/components"
+      },
+      "sourcePath": "src/components/conversation/context-meter.tsx",
+      "symbols": [
+        "ContextMeter"
+      ],
+      "exportStatus": "public",
+      "classification": "public-contract",
+      "evidence": [
+        {
+          "type": "public-export",
+          "path": "packages/sdk/src/components/index.ts",
+          "detail": "value ContextMeter from @/components/conversation/context-meter (ContextMeter)"
+        }
+      ]
+    },
+    {
+      "id": "sdk-ui-export:value:contextMeterHasContent",
+      "kind": "sdk-ui-export",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "identity": {
+        "symbol": "contextMeterHasContent",
+        "entrypoint": "@makinbakin/sdk/components"
+      },
+      "sourcePath": "src/components/conversation/context-meter.tsx",
+      "symbols": [
+        "contextMeterHasContent"
+      ],
+      "exportStatus": "public",
+      "classification": "public-contract",
+      "evidence": [
+        {
+          "type": "public-export",
+          "path": "packages/sdk/src/components/index.ts",
+          "detail": "value contextMeterHasContent from @/components/conversation/context-meter (contextMeterHasContent)"
+        }
+      ]
+    },
+    {
       "id": "sdk-ui-export:value:Conversation",
       "kind": "sdk-ui-export",
       "owner": {
@@ -4698,6 +4848,56 @@
       ]
     },
     {
+      "id": "sdk-ui-export:value:formatTokenCount",
+      "kind": "sdk-ui-export",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "identity": {
+        "symbol": "formatTokenCount",
+        "entrypoint": "@makinbakin/sdk/components"
+      },
+      "sourcePath": "packages/sdk/src/conversation/index.ts",
+      "symbols": [
+        "formatTokenCount"
+      ],
+      "exportStatus": "public",
+      "classification": "public-contract",
+      "evidence": [
+        {
+          "type": "public-export",
+          "path": "packages/sdk/src/components/index.ts",
+          "detail": "value formatTokenCount from @makinbakin/sdk/conversation (formatTokenCount)"
+        }
+      ]
+    },
+    {
+      "id": "sdk-ui-export:value:formatUsageCost",
+      "kind": "sdk-ui-export",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "identity": {
+        "symbol": "formatUsageCost",
+        "entrypoint": "@makinbakin/sdk/components"
+      },
+      "sourcePath": "packages/sdk/src/conversation/index.ts",
+      "symbols": [
+        "formatUsageCost"
+      ],
+      "exportStatus": "public",
+      "classification": "public-contract",
+      "evidence": [
+        {
+          "type": "public-export",
+          "path": "packages/sdk/src/components/index.ts",
+          "detail": "value formatUsageCost from @makinbakin/sdk/conversation (formatUsageCost)"
+        }
+      ]
+    },
+    {
       "id": "sdk-ui-export:value:humanizeActivity",
       "kind": "sdk-ui-export",
       "owner": {
@@ -4969,6 +5169,31 @@
           "type": "public-export",
           "path": "packages/sdk/src/components/index.ts",
           "detail": "value PluginSettingsRenderer from @/components/plugin-settings-renderer (PluginSettingsRenderer)"
+        }
+      ]
+    },
+    {
+      "id": "sdk-ui-export:value:QueuedMessageList",
+      "kind": "sdk-ui-export",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "identity": {
+        "symbol": "QueuedMessageList",
+        "entrypoint": "@makinbakin/sdk/components"
+      },
+      "sourcePath": "src/components/conversation/queued-message-list.tsx",
+      "symbols": [
+        "QueuedMessageList"
+      ],
+      "exportStatus": "public",
+      "classification": "public-contract",
+      "evidence": [
+        {
+          "type": "public-export",
+          "path": "packages/sdk/src/components/index.ts",
+          "detail": "value QueuedMessageList from @/components/conversation/queued-message-list (QueuedMessageList)"
         }
       ]
     },
@@ -5669,6 +5894,31 @@
           "type": "public-export",
           "path": "packages/sdk/src/components/index.ts",
           "detail": "value withUnreadPrefix from @/components/conversation/attention (withUnreadPrefix)"
+        }
+      ]
+    },
+    {
+      "id": "sdk-ui-export:value:writeComposerDraft",
+      "kind": "sdk-ui-export",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "identity": {
+        "symbol": "writeComposerDraft",
+        "entrypoint": "@makinbakin/sdk/components"
+      },
+      "sourcePath": "src/components/conversation/composer.tsx",
+      "symbols": [
+        "writeComposerDraft"
+      ],
+      "exportStatus": "public",
+      "classification": "public-contract",
+      "evidence": [
+        {
+          "type": "public-export",
+          "path": "packages/sdk/src/components/index.ts",
+          "detail": "value writeComposerDraft from @/components/conversation/composer (writeComposerDraft)"
         }
       ]
     },
@@ -6485,6 +6735,30 @@
       ]
     },
     {
+      "id": "shared-component:src/components/charts/ranked-bar-chart",
+      "kind": "shared-component",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "identity": {
+        "component": "src/components/charts/ranked-bar-chart"
+      },
+      "sourcePath": "src/components/charts/ranked-bar-chart.tsx",
+      "symbols": [
+        "RankedBarChart"
+      ],
+      "exportStatus": "private",
+      "classification": "shared-ui",
+      "evidence": [
+        {
+          "type": "source-export",
+          "path": "src/components/charts/ranked-bar-chart.tsx",
+          "detail": "exported values discovered from TSX source"
+        }
+      ]
+    },
+    {
       "id": "shared-component:src/components/charts/sparkline",
       "kind": "shared-component",
       "owner": {
@@ -6693,7 +6967,37 @@
         {
           "type": "public-export",
           "path": "packages/sdk/src/components/index.ts",
-          "detail": "Composer, ComposerAttachmentItem, ComposerAttachmentStatus, ComposerAttachments, ComposerProps"
+          "detail": "Composer, ComposerAttachmentItem, ComposerAttachmentStatus, ComposerAttachments, ComposerHandle, ComposerProps, writeComposerDraft"
+        }
+      ]
+    },
+    {
+      "id": "shared-component:src/components/conversation/context-meter",
+      "kind": "shared-component",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "identity": {
+        "component": "src/components/conversation/context-meter"
+      },
+      "sourcePath": "src/components/conversation/context-meter.tsx",
+      "symbols": [
+        "ContextMeter",
+        "contextMeterHasContent"
+      ],
+      "exportStatus": "public",
+      "classification": "shared-ui",
+      "evidence": [
+        {
+          "type": "source-export",
+          "path": "src/components/conversation/context-meter.tsx",
+          "detail": "exported values discovered from TSX source"
+        },
+        {
+          "type": "public-export",
+          "path": "packages/sdk/src/components/index.ts",
+          "detail": "ContextMeter, ContextMeterStats, contextMeterHasContent"
         }
       ]
     },
@@ -6798,13 +7102,18 @@
       "symbols": [
         "QueuedMessageList"
       ],
-      "exportStatus": "private",
+      "exportStatus": "public",
       "classification": "shared-ui",
       "evidence": [
         {
           "type": "source-export",
           "path": "src/components/conversation/queued-message-list.tsx",
           "detail": "exported values discovered from TSX source"
+        },
+        {
+          "type": "public-export",
+          "path": "packages/sdk/src/components/index.ts",
+          "detail": "ConversationQueuedItem, QueuedMessageList"
         }
       ]
     },

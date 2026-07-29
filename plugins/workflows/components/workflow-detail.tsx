@@ -2,9 +2,17 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from '@makinbakin/sdk/hooks'
-import { AlertTriangle, ArrowLeft, Workflow, Lock, Pencil, GitBranch } from 'lucide-react'
-import { Button } from "@makinbakin/sdk/ui"
-import { Switch } from "@makinbakin/sdk/ui"
+import {
+  PageHeader,
+  WorkspacePage,
+  WorkspacePageBody,
+  WorkspacePageCompactHeader,
+  WorkspacePageHeader,
+  WorkflowPageBody,
+  WorkflowPageCanvas,
+} from '@makinbakin/sdk/patterns'
+import { Badge, Banner, Button, DropdownMenuItem, Skeleton, Switch, SystemState } from '@makinbakin/sdk/ui'
+import { ArrowLeft, Pencil, Trash2 } from 'lucide-react'
 import { WorkflowCanvas } from './workflow-canvas'
 import { StepDetailDrawer } from './step-detail-drawer'
 import { ManagedWorkflowCopyDialog } from './managed-workflow-copy-dialog'
@@ -15,7 +23,7 @@ import {
   validateWorkflowDialogFields,
   type WorkflowDialogFieldErrors,
 } from './workflow-dialog-validation'
-import { WorkflowDeleteAction } from './workflow-delete-action'
+import { WorkflowDeleteDialog } from './workflow-delete-action'
 import type { WorkflowDefinition, WorkflowStep, ParallelStep, NestedWorkflowStep, WorkflowShadowedSource, WorkflowSkillDriftSummary } from '../types'
 
 /** Find a step by ID in the step tree (top-level, parallel children, sub-workflow expansions) */
@@ -114,6 +122,7 @@ export function WorkflowDetail({ workflowId, onBack }: WorkflowDetailProps) {
   const [availabilityError, setAvailabilityError] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
 
   const fetchDefinition = useCallback(async (options: { preserveLoading?: boolean } = {}) => {
     if (!options.preserveLoading) setLoading(true)
@@ -291,59 +300,199 @@ export function WorkflowDetail({ workflowId, onBack }: WorkflowDetailProps) {
 
   if (loading) {
     return (
-      <div className="flex h-full flex-col animate-pulse">
-        <div className="flex items-center gap-3 border-b border-border px-6 py-4">
-          <div className="h-4 w-4 rounded bg-zinc-800" />
-          <div className="h-5 w-48 rounded bg-zinc-800" />
-        </div>
-        <div className="flex-1 bg-zinc-950" />
-      </div>
+      <WorkspacePage>
+        <WorkspacePageHeader>
+          <PageHeader eyebrow="Workflows / detail" title="Workflow" />
+        </WorkspacePageHeader>
+        <WorkspacePageBody className="px-bakin-4 @md/page-shell:px-bakin-6 @xl/page-shell:px-bakin-8">
+          <WorkflowPageBody
+            className="w-full"
+            state={(
+              <SystemState
+                kind="loading"
+                scope="page"
+                title="Loading workflow"
+                description="The workflow graph and step details will appear when ready."
+                preview={<Skeleton className="h-bakin-32 w-full" />}
+              />
+            )}
+          />
+        </WorkspacePageBody>
+      </WorkspacePage>
     )
   }
 
   if (error || !definition) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-3">
-        <p className="text-sm text-muted-foreground">{error || 'Workflow not found'}</p>
-        <Button variant="outline" size="sm" onClick={onBack}>
-          <ArrowLeft className="size-4 mr-1" /> Back to Workflows
-        </Button>
-      </div>
+      <WorkspacePage>
+        <WorkspacePageHeader>
+          <PageHeader
+            navigation={(
+              <Button type="button" variant="ghost" size="icon-sm" onClick={onBack} aria-label="Back to workflows">
+                <ArrowLeft aria-hidden="true" />
+              </Button>
+            )}
+            eyebrow="Workflows / detail"
+            title="Workflow not found"
+          />
+        </WorkspacePageHeader>
+        <WorkspacePageBody className="px-bakin-4 @md/page-shell:px-bakin-6 @xl/page-shell:px-bakin-8">
+          <WorkflowPageBody
+            className="w-full"
+            state={(
+              <SystemState
+                kind="error"
+                recovery="available"
+                scope="page"
+                title="Workflow not found"
+                description={error || 'This workflow may have been removed or is currently unavailable.'}
+                action={<Button variant="outline" onClick={onBack}>Back to Workflows</Button>}
+              />
+            )}
+          />
+        </WorkspacePageBody>
+      </WorkspacePage>
     )
   }
 
+  const hasFeedback = Boolean(
+    availabilityError
+      || isManagedSource
+      || (source === 'user' && shadowedSource)
+      || skillDrift,
+  )
+  const feedback = hasFeedback ? (
+    <>
+      {availabilityError ? (
+        <Banner
+          tone="danger"
+          title="Availability update failed"
+          description={availabilityError}
+          announce="polite"
+        />
+      ) : null}
+      {isManagedSource && workflowDisabled ? (
+        <Banner
+          tone="danger"
+          title="Workflow disabled"
+          description="Matching and automatic starts skip this workflow. Enable it before editing or creating a copy."
+        />
+      ) : null}
+      {isManagedSource ? (
+        <Banner
+          tone="info"
+          title="Managed workflow"
+          description={(
+            <>
+              This workflow is managed by Bakin directly. Select <strong>Edit</strong> to create a custom copy without changing the managed definition.
+            </>
+          )}
+        />
+      ) : null}
+      {source === 'user' && shadowedSource ? (
+        <Banner
+          tone="info"
+          title="Custom override"
+          description="This custom workflow shadows a managed default with the same id."
+        />
+      ) : null}
+      {skillDrift ? (
+        <Banner
+          tone="attention"
+          title={skillDrift.count === 1 ? 'Stale workflow skill' : `${skillDrift.count} stale workflow skills`}
+          description={(
+            <>
+              This workflow uses {skillDrift.count === 1 ? 'a stale workflow skill' : `${skillDrift.count} stale workflow skills`}. Open a highlighted step to review its impact and available repair options.
+            </>
+          )}
+        />
+      ) : null}
+    </>
+  ) : null
+
   return (
-    <div className="flex h-full flex-col">
-      {/* Header */}
-      <div className="flex items-center gap-3 border-b border-border px-6 py-3">
-        <Button variant="ghost" size="icon" onClick={onBack} className="size-8">
-          <ArrowLeft className="size-4" />
-        </Button>
-        <Workflow className="size-4 text-amber-400" />
-        <div className="flex-1 min-w-0">
-          <h1 className="text-sm font-medium truncate">{definition.name}</h1>
-          {definition.description && (
-            <p className="text-xs text-muted-foreground truncate">{definition.description}</p>
-          )}
-        </div>
-        <div className="flex items-center gap-2.5">
-          {isManagedSource && (
-            <div
-              className={`flex items-center gap-2 ${availabilitySaving ? 'cursor-not-allowed' : 'cursor-pointer'}`}
-              title="Controls whether this managed workflow is available for matching and automatic starts"
+    <WorkspacePage mode="immersive">
+      <WorkspacePageHeader>
+        <PageHeader
+        navigation={(
+          <Button type="button" variant="ghost" size="icon-sm" onClick={onBack} aria-label="Back to workflows">
+            <ArrowLeft aria-hidden="true" />
+          </Button>
+        )}
+        eyebrow="Workflows / detail"
+        measure="wide"
+        title={definition.name}
+        description={definition.description || 'Review the workflow sequence and open any step for its configuration and status.'}
+        meta={(
+          <>
+            <Badge tone={isManagedSource ? 'accent' : 'neutral'} variant="solid" size="xs">
+              {isManagedSource ? 'Managed' : 'Custom'}
+            </Badge>
+            <Badge tone="neutral" variant="solid" size="xs">
+              {definition.steps.length} {definition.steps.length === 1 ? 'step' : 'steps'}
+            </Badge>
+            <code className="font-bakin-typography-family-mono">{workflowId}</code>
+          </>
+        )}
+        actions={(
+          <div
+            className="flex w-full min-w-0 items-center gap-bakin-2 @3xl/page-header:w-auto"
+            data-workflow-header-actions
+          >
+            {isManagedSource ? (
+              <div
+                className={`flex min-h-bakin-control shrink-0 items-center gap-bakin-2 ${availabilitySaving ? 'cursor-not-allowed' : ''}`}
+                title="Controls whether this managed workflow is available for matching and automatic starts"
+              >
+                <Switch
+                  size="sm"
+                  checked={!workflowDisabled}
+                  onCheckedChange={handleAvailabilityChange}
+                  disabled={availabilitySaving}
+                  aria-label={workflowDisabled ? 'Enable workflow' : 'Disable workflow'}
+                />
+                <span className={`select-none text-bakin-typography-size-body font-bakin-typography-weight-semibold ${workflowDisabled ? 'text-bakin-text-muted' : 'text-bakin-text-primary'}`}>
+                  {workflowDisabled ? 'Disabled' : 'Enabled'}
+                </span>
+              </div>
+            ) : null}
+            <Button
+              variant="outline"
+              size="sm"
+              className="min-w-0 flex-1 @3xl/page-header:flex-none"
+              onClick={handlePrimaryEditAction}
+              title={isManagedSource ? 'Create an editable copy of this workflow' : 'Edit workflow'}
+              disabled={workflowDisabled}
             >
-              <Switch
-                size="sm"
-                checked={!workflowDisabled}
-                onCheckedChange={handleAvailabilityChange}
-                disabled={availabilitySaving}
-                aria-label={workflowDisabled ? 'Enable workflow' : 'Disable workflow'}
-              />
-              <span className={`select-none text-xs font-medium ${workflowDisabled ? 'text-muted-foreground' : 'text-foreground'}`}>
-                {workflowDisabled ? 'Disabled' : 'Enabled'}
-              </span>
-            </div>
-          )}
+              <Pencil aria-hidden="true" />
+              Edit
+            </Button>
+          </div>
+        )}
+        overflowActionsLabel="Workflow actions"
+        overflowActions={canDelete ? (
+          <DropdownMenuItem
+            variant="danger"
+            disabled={deleting}
+            onClick={() => {
+              setDeleteError(null)
+              setDeleteDialogOpen(true)
+            }}
+          >
+            <Trash2 aria-hidden="true" />
+            Delete
+          </DropdownMenuItem>
+        ) : undefined}
+        />
+      </WorkspacePageHeader>
+      <WorkspacePageCompactHeader
+        navigation={(
+          <Button type="button" variant="ghost" size="icon-sm" onClick={onBack} aria-label="Back to workflows">
+            <ArrowLeft aria-hidden="true" />
+          </Button>
+        )}
+        title={definition.name}
+        action={(
           <Button
             variant="outline"
             size="sm"
@@ -351,73 +500,62 @@ export function WorkflowDetail({ workflowId, onBack }: WorkflowDetailProps) {
             title={isManagedSource ? 'Create an editable copy of this workflow' : 'Edit workflow'}
             disabled={workflowDisabled}
           >
-            <Pencil className="size-3.5 mr-1" />
+            <Pencil aria-hidden="true" />
             Edit
           </Button>
-          {canDelete && (
-            <WorkflowDeleteAction
-              workflowName={definition.name || workflowId}
-              deleting={deleting}
-              error={deleteError}
-              onClearError={() => setDeleteError(null)}
-              onDelete={handleDeleteWorkflow}
+        )}
+        overflowActionsLabel="Workflow actions"
+        overflowActions={canDelete ? (
+          <DropdownMenuItem
+            variant="danger"
+            disabled={deleting}
+            onClick={() => {
+              setDeleteError(null)
+              setDeleteDialogOpen(true)
+            }}
+          >
+            <Trash2 aria-hidden="true" />
+            Delete
+          </DropdownMenuItem>
+        ) : undefined}
+      />
+
+      <WorkflowDeleteDialog
+        open={deleteDialogOpen}
+        onOpenChange={(open) => {
+          setDeleteDialogOpen(open)
+          if (!open) setDeleteError(null)
+        }}
+        workflowName={definition.name || workflowId}
+        deleting={deleting}
+        error={deleteError}
+        onDelete={handleDeleteWorkflow}
+      />
+
+      <WorkspacePageBody>
+        <WorkflowPageBody
+          mode="contained"
+          className="w-full gap-0"
+          feedback={feedback ? (
+            <div className="grid gap-bakin-2 px-bakin-4 pb-bakin-4 @md/page-shell:px-bakin-6 @xl/page-shell:px-bakin-8">
+              {feedback}
+            </div>
+          ) : undefined}
+        >
+          <WorkflowPageCanvas
+            orientation="vertical"
+            className="h-full min-h-bakin-32 overflow-hidden rounded-none border-x-0 border-y-0 @md/page-shell:border-t"
+            label="Workflow graph"
+          >
+            <WorkflowCanvas
+              definition={definition}
+              subWorkflows={subWorkflows}
+              skillDrift={skillDrift}
+              onNodeClick={handleNodeClick}
             />
-          )}
-        </div>
-      </div>
-
-      {availabilityError && (
-        <div className="border-b border-border bg-destructive/10 px-6 py-2 text-xs text-destructive">
-          {availabilityError}
-        </div>
-      )}
-
-      {isManagedSource && workflowDisabled && (
-        <div className="flex items-center gap-2 border-b border-border bg-destructive/10 px-6 py-2 text-xs text-destructive">
-          <Lock className="size-3.5" />
-          <span>
-            Disabled: matching and automatic starts skip this workflow. Enable it before editing or creating a copy.
-          </span>
-        </div>
-      )}
-
-      {/* Read-only banner — managed definitions cannot be edited in place */}
-      {isManagedSource && (
-        <div className="flex items-center gap-2 border-b border-border bg-amber-500/10 px-6 py-2 text-xs text-amber-200">
-          <Lock className="size-3.5" />
-          <span>
-            This workflow is managed by Bakin directly. If you&apos;d like to make changes select &ldquo;Edit&rdquo; and create a copy when prompted. You&apos;ll optionally be able to disable this default workflow as well.
-          </span>
-        </div>
-      )}
-
-      {source === 'user' && shadowedSource && (
-        <div className="flex items-center gap-2 border-b border-border bg-cyan-500/10 px-6 py-2 text-xs text-cyan-200">
-          <GitBranch className="size-3.5" />
-          <span>
-            This custom workflow shadows a managed default with the same id.
-          </span>
-        </div>
-      )}
-
-      {skillDrift && (
-        <div className="flex items-center gap-2 border-b border-border bg-amber-500/10 px-6 py-2 text-xs text-amber-200">
-          <AlertTriangle className="size-3.5" />
-          <span>
-            This workflow uses {skillDrift.count === 1 ? 'a stale workflow skill' : `${skillDrift.count} stale workflow skills`}. Open the highlighted step to review the impact and repair options.
-          </span>
-        </div>
-      )}
-
-      {/* Canvas */}
-      <div className="flex-1 overflow-hidden">
-        <WorkflowCanvas
-          definition={definition}
-          subWorkflows={subWorkflows}
-          skillDrift={skillDrift}
-          onNodeClick={handleNodeClick}
-        />
-      </div>
+          </WorkflowPageCanvas>
+        </WorkflowPageBody>
+      </WorkspacePageBody>
 
       {/* Step detail drawer */}
       <StepDetailDrawer
@@ -465,6 +603,6 @@ export function WorkflowDetail({ workflowId, onBack }: WorkflowDetailProps) {
         onCreate={handleCreateCopy}
       />
 
-    </div>
+    </WorkspacePage>
   )
 }

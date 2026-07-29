@@ -45,6 +45,12 @@ describe('focused conversation timeline', () => {
     expect(container.querySelector('[data-conv-scroller]')?.className).not.toContain('overflow-y-auto')
     expect(getByRole('article', { name: 'Release agent reply' })).not.toBeNull()
     expect(container.querySelectorAll('[data-conv-day]')).toHaveLength(2)
+    expect(
+      container.querySelector('[data-conv-day] [aria-hidden="true"]')?.className,
+    ).toContain('bg-bakin-border-subtle/60')
+    const groups = container.querySelectorAll('[data-conv-turn-group]')
+    expect(groups[1]?.className).not.toContain('pt-bakin-4')
+    expect(groups[2]?.className).toContain('pt-bakin-4')
   })
 
   it('makes contained mode the only internally scrolling timeline', () => {

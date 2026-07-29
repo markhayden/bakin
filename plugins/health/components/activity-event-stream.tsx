@@ -1,6 +1,9 @@
 'use client'
 
-import { formatAbsoluteTime, formatRelativeTime, StatusBadge, type StatusTone } from '@makinbakin/sdk/components'
+import { formatAbsoluteTime, formatRelativeTime } from '@makinbakin/sdk/conversation'
+import { Section } from '@makinbakin/sdk/layout'
+import { PageNavigator, StatusBadge, type StatusTone } from '@makinbakin/sdk/patterns'
+import { SystemState } from '@makinbakin/sdk/ui'
 import { ChevronDown } from 'lucide-react'
 import { useState } from 'react'
 import type { UsageEntry, UsageFeedData } from '../types'
@@ -14,15 +17,17 @@ import {
 } from './activity-row'
 import { INTERACTION_SOURCE_META } from './interaction-source-meta'
 
+const EVENT_PAGE_SIZE = 10
+
 function eventState(entry: UsageEntry): {
   label: string
   tone: StatusTone
   dot: string
 } {
-  if (entry.status === 'error') return { label: 'Failed', tone: 'destructive', dot: 'bg-destructive' }
-  if (isUnverifiedActivity(entry)) return { label: 'Result not observed', tone: 'warning', dot: 'bg-warning' }
-  if (isCanceledActivity(entry)) return { label: 'Canceled', tone: 'neutral', dot: 'bg-muted-foreground' }
-  return { label: 'Succeeded', tone: 'success', dot: 'bg-success' }
+  if (entry.status === 'error') return { label: 'Failed', tone: 'danger', dot: 'bg-bakin-signal-danger' }
+  if (isUnverifiedActivity(entry)) return { label: 'Result not observed', tone: 'attention', dot: 'bg-bakin-signal-highlight' }
+  if (isCanceledActivity(entry)) return { label: 'Canceled', tone: 'neutral', dot: 'bg-bakin-text-muted' }
+  return { label: 'Succeeded', tone: 'success', dot: 'bg-bakin-action-primary-background' }
 }
 
 function relativeEventTime(value: string): string {
@@ -60,24 +65,24 @@ function ActivityEventRow({ entry }: { entry: UsageEntry }) {
   const sourceLabel = INTERACTION_SOURCE_META[entry.kind].label
 
   return (
-    <li className="border-b border-border/70 last:border-b-0">
+    <li className="border-b border-bakin-border-subtle last:border-b-0">
       <button
         type="button"
-        className="grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 px-3 py-2.5 text-left hover:bg-foreground/[0.035] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring @[34rem]/health:grid-cols-[auto_minmax(0,1fr)_auto_auto]"
+        className="grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-bakin-3 gap-y-bakin-1 px-bakin-3 py-bakin-3 text-left hover:bg-bakin-surface-default focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-bakin-focus-ring @[34rem]/health:grid-cols-[auto_minmax(0,1fr)_auto_auto]"
         aria-label={`View ${label} details — ${state.label}, ${sourceLabel}, ${owner}, ${when}`}
         aria-expanded={expanded}
         onClick={() => setExpanded((value) => !value)}
       >
         <span className={`size-2 shrink-0 rounded-full ${state.dot}`} aria-hidden="true" />
         <span className="min-w-0">
-          <strong className="block truncate text-sm font-medium text-foreground" title={entry.name}>{label}</strong>
-          <span className="block truncate text-xs text-muted-foreground">
+          <strong className="block truncate text-bakin-typography-size-body font-bakin-typography-weight-medium text-bakin-text-primary" title={entry.name}>{label}</strong>
+          <span className="block truncate text-bakin-typography-size-meta text-bakin-text-muted">
             {sourceLabel} · <span>{entry.agent ? `Agent: ${entry.agent}` : activityOwner(entry)}</span>
           </span>
-          {context && <span className="mt-0.5 block text-xs text-muted-foreground">{context}</span>}
+          {context && <span className="mt-bakin-1 block text-bakin-typography-size-meta text-bakin-text-muted">{context}</span>}
         </span>
-        <StatusBadge tone={state.tone} variant="outline" className="justify-self-end">{state.label}</StatusBadge>
-        <span className="col-start-2 row-start-2 flex items-center gap-1.5 text-xs text-muted-foreground @[34rem]/health:col-start-4 @[34rem]/health:row-start-1">
+        <StatusBadge tone={state.tone} variant="solid" className="justify-self-end">{state.label}</StatusBadge>
+        <span className="col-start-2 row-start-2 flex items-center gap-bakin-2 text-bakin-typography-size-meta text-bakin-text-muted @[34rem]/health:col-start-4 @[34rem]/health:row-start-1">
           <time dateTime={entry.ts} title={formatAbsoluteTime(entry.ts)}>{when}</time>
           <ChevronDown
             className={expanded ? 'size-3.5 rotate-180 transition-transform motion-reduce:transition-none' : 'size-3.5 transition-transform motion-reduce:transition-none'}
@@ -87,15 +92,15 @@ function ActivityEventRow({ entry }: { entry: UsageEntry }) {
       </button>
 
       {expanded && (
-        <div className="border-t border-border/60 bg-foreground/[0.015] px-4 py-3">
-          <p className="text-sm text-foreground">{failed ? activityFailureReason(entry) : activityImpact(entry)}</p>
-          {failed && <p className="mt-1 text-xs text-muted-foreground">{activityImpact(entry)}</p>}
-          <dl className="mt-3 grid gap-x-4 gap-y-1 text-xs text-muted-foreground @[28rem]/health:grid-cols-[max-content_minmax(0,1fr)]">
-            <dt>Raw name</dt><dd className="break-all font-mono text-foreground">{entry.name}</dd>
-            <dt>Type</dt><dd className="text-foreground">{sourceLabel}</dd>
-            <dt>Agent</dt><dd className="text-foreground">{activityOwner(entry)}</dd>
-            <dt>Duration</dt><dd className="text-foreground">{entry.durationMs === null ? 'Not recorded' : `${entry.durationMs.toLocaleString()} ms`}</dd>
-            {entry.meta && <><dt>Metadata</dt><dd className="min-w-0 overflow-x-auto whitespace-pre-wrap break-all font-mono text-foreground">{JSON.stringify(entry.meta, null, 2)}</dd></>}
+        <div className="border-t border-bakin-border-subtle bg-bakin-surface-default px-bakin-4 py-bakin-3">
+          <p className="text-bakin-typography-size-body text-bakin-text-primary">{failed ? activityFailureReason(entry) : activityImpact(entry)}</p>
+          {failed && <p className="mt-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted">{activityImpact(entry)}</p>}
+          <dl className="mt-bakin-3 grid gap-x-bakin-4 gap-y-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted @[28rem]/health:grid-cols-[max-content_minmax(0,1fr)]">
+            <dt>Raw name</dt><dd className="break-all font-mono text-bakin-text-primary">{entry.name}</dd>
+            <dt>Type</dt><dd className="text-bakin-text-primary">{sourceLabel}</dd>
+            <dt>Agent</dt><dd className="text-bakin-text-primary">{activityOwner(entry)}</dd>
+            <dt>Duration</dt><dd className="text-bakin-text-primary">{entry.durationMs === null ? 'Not recorded' : `${entry.durationMs.toLocaleString()} ms`}</dd>
+            {entry.meta && <><dt>Metadata</dt><dd className="min-w-0 overflow-x-auto whitespace-pre-wrap break-all font-mono text-bakin-text-primary">{JSON.stringify(entry.meta, null, 2)}</dd></>}
           </dl>
         </div>
       )}
@@ -105,32 +110,61 @@ function ActivityEventRow({ entry }: { entry: UsageEntry }) {
 
 export function ActivityEventStream({ data }: { data: UsageFeedData }) {
   const entries = activityStreamEntries(data)
+  const [page, setPage] = useState(1)
+  const [showAll, setShowAll] = useState(false)
+  const pageCount = Math.max(1, Math.ceil(entries.length / EVENT_PAGE_SIZE))
+  const safePage = Math.min(page, pageCount)
+  const visibleEntries = showAll
+    ? entries
+    : entries.slice((safePage - 1) * EVENT_PAGE_SIZE, safePage * EVENT_PAGE_SIZE)
 
   return (
-    <section aria-labelledby="activity-recent-events-title" className="space-y-3">
+    <Section
+      aria-labelledby="activity-recent-events-title"
+      divider="top"
+      spacing="compact"
+    >
       <div className="flex min-w-0 flex-wrap items-end justify-between gap-2">
         <div>
-          <h3 id="activity-recent-events-title" className="font-semibold">Recent events</h3>
-          <p className="mt-1 text-sm text-muted-foreground">
+          <h3 id="activity-recent-events-title" className="font-bakin-typography-weight-semibold text-bakin-text-primary">Recent events</h3>
+          <p className="mt-bakin-1 text-bakin-typography-size-body text-bakin-text-muted">
             {data.capabilities?.sourceBalancedActivity === true
               ? 'Newest visible calls from each source. Open one for details.'
               : 'Newest first. Open a row for the reason and technical evidence.'}
           </p>
         </div>
-        <span className="text-xs tabular-nums text-muted-foreground">
+        <span className="text-bakin-typography-size-meta tabular-nums text-bakin-text-muted">
           {entries.length.toLocaleString()} available · {data.totals.count.toLocaleString()} reported
         </span>
       </div>
 
       {entries.length === 0 ? (
-        <div className="rounded-xl border border-border/80 bg-card px-4 py-8 text-center text-sm text-muted-foreground">
-          No events were recorded in this window.
-        </div>
+        <SystemState
+          kind="initial-empty"
+          scope="section"
+          headingLevel={4}
+          title="No events in this window"
+          description="Activity will appear here as Bakin records calls."
+        />
       ) : (
-        <ul className="max-h-[34rem] overflow-y-auto rounded-xl border border-border/80 bg-card" aria-label="Recent events">
-          {entries.map((entry) => <ActivityEventRow key={eventIdentity(entry)} entry={entry} />)}
-        </ul>
+        <>
+          <ul className="border-y border-bakin-border-subtle" aria-label="Recent events">
+            {visibleEntries.map((entry) => <ActivityEventRow key={eventIdentity(entry)} entry={entry} />)}
+          </ul>
+          <PageNavigator
+            ariaLabel="Recent event pagination"
+            page={safePage}
+            pageSize={EVENT_PAGE_SIZE}
+            showAll={showAll}
+            total={entries.length}
+            onPageChange={setPage}
+            onShowAllChange={(nextShowAll) => {
+              setShowAll(nextShowAll)
+              setPage(1)
+            }}
+          />
+        </>
       )}
-    </section>
+    </Section>
   )
 }

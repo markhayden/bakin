@@ -36,7 +36,7 @@ const meta = {
     layout: 'fullscreen',
     docs: {
       description: {
-        component: 'SettingsPage provides a responsive named category/form frame; DashboardPage provides a prioritized state-aware overview canvas. Both preserve the existing routing contract and leave data, dirty state, saves, telemetry, and domain actions to consumers.',
+        component: 'SettingsPage provides a responsive named category/form frame with content, wide, and full plugin-canvas widths; DashboardPage provides a prioritized state-aware overview canvas. Both preserve the existing routing contract and leave data, dirty state, saves, telemetry, and domain actions to consumers.',
       },
     },
     bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'overflow', 'interaction', 'system-states', 'url-state-guidance'],
@@ -55,7 +55,7 @@ function SettingsCategoriesExample() {
   const dirty = workspaceName !== 'Acme creator operations'
 
   return (
-    <SettingsPage className="bakin-settings-dashboard-story">
+    <SettingsPage width="full" className="bakin-settings-dashboard-story">
       <PageHeader
         eyebrow="Workspace / configuration"
         title="Settings"

@@ -8,6 +8,8 @@ export { ChartTooltip } from './chart-tooltip'
 export type { ChartTooltipProps } from './chart-tooltip'
 export { LineChart } from './line-chart'
 export type { LineChartProps } from './line-chart'
+export { RankedBarChart } from './ranked-bar-chart'
+export type { RankedBarChartProps } from './ranked-bar-chart'
 export {
   assignSeriesColors,
   CHART_MAX_SERIES,

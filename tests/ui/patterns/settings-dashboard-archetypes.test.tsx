@@ -17,6 +17,17 @@ import { Button, SystemState } from '@makinbakin/sdk/ui'
 afterEach(() => cleanup())
 
 describe('settings/form page recipe', () => {
+  it('supports a full-width canvas for plugin-wide configuration', () => {
+    const { container } = render(
+      <SettingsPage width="full">
+        <PageHeader title="Models" />
+        <SettingsPageContent label="Model settings">Configuration</SettingsPageContent>
+      </SettingsPage>,
+    )
+
+    expect(container.querySelector('[data-archetype="settings"]')?.getAttribute('data-width')).toBe('full')
+  })
+
   it('keeps named settings navigation beside a state-aware form region', () => {
     const { container } = render(
       <SettingsPage id="workspace-settings">

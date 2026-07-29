@@ -75,7 +75,6 @@
 
 .bakin-conversation-story__composer-frame [data-slot='conversation-page-composer'] {
   padding-top: 0;
-  border-top: 0;
 }
 
 .bakin-conversation-story__composer-grid {

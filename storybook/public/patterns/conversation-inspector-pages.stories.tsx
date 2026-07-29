@@ -33,7 +33,7 @@ const meta = {
     layout: 'fullscreen',
     docs: {
       description: {
-        component: 'ConversationPage defines document versus explicitly contained timeline scrolling. InspectorPanel defines contextual header/content/footer hierarchy beside a canvas or inside BakinDrawer. Domain rendering and behavior remain outside these recipes.',
+        component: 'ConversationPage defines document versus explicitly contained timeline scrolling. Routed first-party application conversations use the full host content width by default; narrower widths are reserved for deliberately reading-focused surfaces and require a concrete explanation. InspectorPanel defines contextual header/content/footer hierarchy beside a canvas or inside BakinDrawer. Domain rendering and behavior remain outside these recipes.',
       },
     },
     bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'overflow', 'interaction', 'system-states', 'scroll-ownership', 'url-state-guidance'],
@@ -74,7 +74,11 @@ function ConversationExample() {
   }
 
   return (
-    <ConversationPage className="bakin-conversation-inspector-story">
+    <ConversationPage
+      mode="contained"
+      width="full"
+      className="bakin-conversation-inspector-story"
+    >
       <PageHeader
         eyebrow="Chat / active thread"
         title="Conversation with Patch"

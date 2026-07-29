@@ -3,6 +3,7 @@ import {
   ChartDataTable,
   ChartExplainer,
   LineChart,
+  RankedBarChart,
   Sparkline,
   StackedColumnChart,
   type ChartDatum,
@@ -18,6 +19,7 @@ export const validChartFoundation = (
     <Sparkline label="Outcome trend" values={[1, null, 3]} labels={['One', 'Two', 'Three']} />
     <LineChart label="Outcome trend" data={data} series={series} />
     <BarChart label="Outcome comparison" data={data} series={series} stacked />
+    <RankedBarChart label="Outcome ranking" data={data} series={series[0]!} />
     <StackedColumnChart label="Outcome composition" data={data} series={series} />
     <ChartExplainer>Exact values remain available.</ChartExplainer>
   </>

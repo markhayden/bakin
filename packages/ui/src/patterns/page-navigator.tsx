@@ -5,11 +5,18 @@ import { Button } from '../primitives/button'
 export interface PageNavigatorProps {
   page: number
   pageSize: number
-  showAll: boolean
+  /**
+   * Whether the consumer is currently rendering every item.
+   *
+   * Omit this together with `onShowAllChange` for server-paged collections
+   * that cannot truthfully provide a local show-all mode.
+   */
+  showAll?: boolean
   total: number
   ariaLabel?: string
   onPageChange: (page: number) => void
-  onShowAllChange: (showAll: boolean) => void
+  /** Enables the Show all / Use pages control when provided. */
+  onShowAllChange?: (showAll: boolean) => void
 }
 
 /**
@@ -21,7 +28,7 @@ export interface PageNavigatorProps {
 export function PageNavigator({
   page,
   pageSize,
-  showAll,
+  showAll = false,
   total,
   ariaLabel = 'Pagination',
   onPageChange,
@@ -71,14 +78,16 @@ export function PageNavigator({
           </Button>
         </>
       ) : null}
-      <Button
-        type="button"
-        variant="ghost"
-        size="xs"
-        onClick={() => onShowAllChange(!showAll)}
-      >
-        {showAll ? 'Use pages' : 'Show all'}
-      </Button>
+      {onShowAllChange ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="xs"
+          onClick={() => onShowAllChange(!showAll)}
+        >
+          {showAll ? 'Use pages' : 'Show all'}
+        </Button>
+      ) : null}
     </nav>
   )
 }

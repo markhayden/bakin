@@ -4,6 +4,10 @@ import { Fragment, useMemo, useState } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '@makinbakin/sdk/ui'
 import { useOccurrences, type ScheduleJob, type ScheduleOccurrence, type ScheduledDomainEvent } from '@makinbakin/sdk/hooks'
+import {
+  RecurringDaySummary,
+  type RecurringDaySummaryTone,
+} from '@makinbakin/sdk/patterns'
 import { AgentBadge } from './agent-badge'
 import { EventChip, eventInstant } from './event-popover'
 import './schedule-calendar.css'
@@ -48,6 +52,60 @@ export function jobsById(jobs: ScheduleJob[]): Map<string, ScheduleJob> {
   return new Map(jobs.map(job => [job.id, job]))
 }
 
+function localDayKey(value: string | Date): string {
+  const date = value instanceof Date ? value : new Date(value)
+  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`
+}
+
+function occurrenceKey(occurrence: ScheduleOccurrence): string {
+  return `${occurrence.jobId}-${occurrence.at}`
+}
+
+function needsSummaryAttention(occurrence: ScheduleOccurrence): boolean {
+  return occurrence.disposition === 'skipped' || occurrence.disposition === 'pending'
+}
+
+function recurringSummaryDetail(occurrences: ScheduleOccurrence[]): string {
+  const done = occurrences.filter(
+    occurrence => occurrence.disposition === 'created' || occurrence.disposition === 'seeded',
+  ).length
+  const skipped = occurrences.filter(occurrence => occurrence.disposition === 'skipped').length
+  const pending = occurrences.filter(occurrence => occurrence.disposition === 'pending').length
+  const future = occurrences
+    .filter(occurrence => !occurrence.past)
+    .sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime())
+
+  if (skipped > 0 || pending > 0) {
+    return [
+      `${done} done`,
+      skipped > 0 ? `${skipped} skipped` : null,
+      pending > 0 ? `${pending} pending` : null,
+      future.length > 0 ? `${future.length} scheduled` : null,
+    ].filter(Boolean).join(' · ')
+  }
+
+  if (future.length > 0) return `${done} done · ${future.length} scheduled`
+  return `${done} done`
+}
+
+interface DailyRecurringSummary {
+  job: ScheduleJob
+  detail: string
+  tone: RecurringDaySummaryTone
+}
+
+/** Prefer authored copy; suppress runtime command slugs masquerading as descriptions. */
+function calendarDescription(job: ScheduleJob): string | undefined {
+  const description = job.description?.trim()
+  if (description) return description
+
+  const prompt = job.taskPrompt?.trim()
+  if (!prompt) return undefined
+
+  const normalizedPrompt = prompt.replace(/^bakin:schedule:/i, '')
+  return normalizedPrompt.toLowerCase() === job.id.toLowerCase() ? undefined : prompt
+}
+
 /** Fired/skipped marker for past occurrences (ledger disposition). */
 function DispositionDot({ occurrence }: { occurrence: ScheduleOccurrence }) {
   if (!occurrence.past || !occurrence.disposition) return null
@@ -76,6 +134,7 @@ export function OccurrenceCard({
 }) {
   const time = formatInstantTime(occurrence.at)
   const past = occurrence.past
+  const description = calendarDescription(job)
 
   return (
     <Button
@@ -84,40 +143,45 @@ export function OccurrenceCard({
       size="sm"
       onClick={onClick}
       className={`
-        group/card mb-bakin-1 h-auto min-h-bakin-8 w-full min-w-0 justify-start whitespace-normal
-        rounded-bakin-control border-bakin-border-subtle bg-bakin-canvas-default p-0 text-left
+        group/card mb-bakin-1 !h-auto min-h-bakin-8 w-full min-w-0 justify-start overflow-hidden whitespace-normal
+        rounded-bakin-control border-bakin-border-subtle bg-bakin-canvas-default !p-0 text-left
         hover:bg-bakin-surface-default
         ${past ? 'opacity-50 hover:opacity-70' : ''}
       `}
     >
-      <span className={`block w-full min-w-0 ${expanded ? 'px-bakin-3 py-bakin-2' : 'px-bakin-2 py-bakin-1'}`}>
-        <span className="flex min-w-0 items-center gap-bakin-2">
-          <AgentBadge agentId={job.agentId} size="sm" showName={expanded} />
-          <span className={`min-w-0 flex-1 truncate font-bakin-typography-weight-medium leading-tight ${
-            expanded
-              ? 'text-bakin-typography-size-body'
-              : 'text-bakin-typography-size-meta'
-          } ${past ? 'text-bakin-text-muted' : 'text-bakin-text-primary'}`}>
-            {job.displayName || job.id}
-          </span>
+      <span className={`
+        grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-x-bakin-2
+        ${expanded ? 'gap-y-bakin-1 px-bakin-3 py-bakin-2' : 'px-bakin-2 py-bakin-2'}
+      `}>
+        <span className={description ? 'row-span-2 self-start' : 'self-start'}>
+          <AgentBadge agentId={job.agentId} size="md" showName={false} />
+        </span>
+        <span className={`min-w-0 truncate font-bakin-typography-weight-medium leading-tight ${
+          expanded
+            ? 'text-bakin-typography-size-body'
+            : 'text-bakin-typography-size-meta'
+        } ${past ? 'text-bakin-text-muted' : 'text-bakin-text-primary'}`}>
+          {job.displayName || job.id}
+        </span>
+        <span className="flex shrink-0 items-center justify-end gap-bakin-1 text-right">
           <DispositionDot occurrence={occurrence} />
-          <span className="shrink-0 font-bakin-typography-family-mono text-bakin-typography-size-meta tabular-nums text-bakin-text-muted">
+          <span className="text-right font-bakin-typography-family-mono text-bakin-typography-size-meta tabular-nums text-bakin-text-muted">
             {time}
           </span>
         </span>
 
-        {job.taskPrompt && (
-          <span className={`mt-bakin-1 block line-clamp-3 leading-snug text-bakin-text-muted ${
+        {description && (
+          <span className={`col-start-2 col-end-4 min-w-0 leading-tight text-bakin-text-muted ${
             expanded
-              ? 'text-bakin-typography-size-meta'
-              : 'pl-bakin-6 text-bakin-typography-size-meta'
+              ? 'line-clamp-3 text-bakin-typography-size-meta'
+              : 'line-clamp-1 text-bakin-typography-size-meta'
           }`}>
-            {job.taskPrompt}
+            {description}
           </span>
         )}
 
         {expanded && job.humanSchedule && (
-          <span className="mt-bakin-2 block font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
+          <span className="col-start-2 col-end-4 mt-bakin-1 block font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
             {job.humanSchedule}
           </span>
         )}
@@ -146,6 +210,67 @@ export function CalendarWeekly({
   // tz/DST-correct) plus plugin-contributed domain events (#191).
   const { occurrences, events, refresh } = useOccurrences(weekStart.toISOString(), weekEnd.toISOString())
   const byId = useMemo(() => jobsById(jobs), [jobs])
+  const visibleOccurrences = useMemo(() => {
+    const from = weekStart.getTime()
+    const to = weekEnd.getTime()
+    return occurrences.filter((occurrence) => {
+      const instant = new Date(occurrence.at).getTime()
+      return instant >= from && instant < to
+    })
+  }, [occurrences, weekEnd, weekStart])
+  const visibleEvents = useMemo(() => {
+    const from = weekStart.getTime()
+    const to = weekEnd.getTime()
+    return events.filter((event) => {
+      const instant = new Date(eventInstant(event)).getTime()
+      return instant >= from && instant < to
+    })
+  }, [events, weekEnd, weekStart])
+
+  const { recurringByDay, collapsedOccurrenceKeys } = useMemo(() => {
+    const grouped = new Map<string, ScheduleOccurrence[]>()
+
+    for (const occurrence of visibleOccurrences) {
+      const key = `${localDayKey(occurrence.at)}::${occurrence.jobId}`
+      const group = grouped.get(key) ?? []
+      group.push(occurrence)
+      grouped.set(key, group)
+    }
+
+    const summaries: Record<string, DailyRecurringSummary[]> = {}
+    const collapsed = new Set<string>()
+
+    for (const group of grouped.values()) {
+      if (group.length < 2) continue
+
+      const job = byId.get(group[0]!.jobId)
+      if (!job) continue
+
+      const day = localDayKey(group[0]!.at)
+      const summary: DailyRecurringSummary = {
+        job,
+        detail: recurringSummaryDetail(group),
+        tone: group.some(needsSummaryAttention) ? 'attention' : 'neutral',
+      }
+
+      if (!summaries[day]) summaries[day] = []
+      summaries[day]!.push(summary)
+
+      for (const occurrence of group) {
+        collapsed.add(occurrenceKey(occurrence))
+      }
+    }
+
+    for (const day of Object.keys(summaries)) {
+      summaries[day]!.sort((a, b) =>
+        (a.job.displayName || a.job.id).localeCompare(b.job.displayName || b.job.id))
+    }
+
+    return {
+      recurringByDay: summaries,
+      collapsedOccurrenceKeys: collapsed,
+    }
+  }, [byId, visibleOccurrences])
 
   const prev = () => setWeekStart(d => { const n = new Date(d); n.setDate(n.getDate() - 7); return n })
   const next = () => setWeekStart(d => { const n = new Date(d); n.setDate(n.getDate() + 7); return n })
@@ -157,26 +282,27 @@ export function CalendarWeekly({
   // Grid: [localDow-localHour] → occurrences (instants land in browser-local cells)
   const grid = useMemo(() => {
     const map: Record<string, ScheduleOccurrence[]> = {}
-    for (const occurrence of occurrences) {
+    for (const occurrence of visibleOccurrences) {
+      if (collapsedOccurrenceKeys.has(occurrenceKey(occurrence))) continue
       const d = new Date(occurrence.at)
       const key = `${d.getDay()}-${d.getHours()}`
       if (!map[key]) map[key] = []
       map[key]!.push(occurrence)
     }
     return map
-  }, [occurrences])
+  }, [collapsedOccurrenceKeys, visibleOccurrences])
 
   // Domain events land in the same cells, rendered as distinct chips.
   const eventGrid = useMemo(() => {
     const map: Record<string, ScheduledDomainEvent[]> = {}
-    for (const event of events) {
+    for (const event of visibleEvents) {
       const d = new Date(eventInstant(event))
       const key = `${d.getDay()}-${d.getHours()}`
       if (!map[key]) map[key] = []
       map[key]!.push(event)
     }
     return map
-  }, [events])
+  }, [visibleEvents])
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-bakin-3">
@@ -203,7 +329,7 @@ export function CalendarWeekly({
               key={i}
               className={`
                 sticky top-0 z-10 border-l border-bakin-border-subtle bg-bakin-surface-default
-                py-bakin-2 text-center font-bakin-typography-weight-medium tracking-wide
+                px-bakin-1 py-bakin-2 text-center font-bakin-typography-weight-medium tracking-wide
                 ${isToday(d)
                   ? 'text-bakin-signal-accent'
                   : 'text-bakin-text-muted'
@@ -214,6 +340,20 @@ export function CalendarWeekly({
                 {DOW_LABELS[d.getDay()]}
               </span>
               <span className={isToday(d) ? 'text-bakin-signal-accent' : 'text-bakin-text-primary'}>{d.getDate()}</span>
+              {recurringByDay[localDayKey(d)]?.length ? (
+                <span className="mt-bakin-2 grid gap-bakin-1 text-left normal-case tracking-normal">
+                  {recurringByDay[localDayKey(d)]!.map(summary => (
+                    <RecurringDaySummary
+                      key={summary.job.id}
+                      title={summary.job.displayName || summary.job.id}
+                      detail={summary.detail}
+                      tone={summary.tone}
+                      leading={<AgentBadge agentId={summary.job.agentId} size="md" showName={false} />}
+                      onClick={() => onSelectJob(summary.job)}
+                    />
+                  ))}
+                </span>
+              ) : null}
             </div>
           ))}
 

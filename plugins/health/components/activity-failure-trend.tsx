@@ -1,6 +1,6 @@
 'use client'
 
-import { ChartExplainer, LineChart } from '@makinbakin/sdk/components'
+import { ChartExplainer, LineChart } from '@makinbakin/sdk/charts'
 import type { InteractionCoverage, UsageFeedData } from '../types'
 import { coveredActivityBuckets } from './activity-time-buckets'
 
@@ -32,12 +32,12 @@ export function ActivityFailureTrend({
           xLabel: bucketLabel(bucket.start),
           values: { failures: bucket.failureCount },
         }))}
-        series={[{ key: 'failures', label: 'Failures', color: 'var(--destructive)' }]}
+        series={[{ key: 'failures', label: 'Failures', color: 'var(--bakin-color-signal-danger)' }]}
         height={120}
         formatValue={(value) => Math.round(value).toLocaleString()}
       />
       {!coverage.hasFullWindow && (
-        <p className="mt-2 text-xs text-warning">
+        <p className="mt-bakin-2 text-bakin-typography-size-meta text-bakin-signal-highlight">
           Partial history since {bucketLabel(coverage.startsAt)}; intervals entirely before that are omitted.
         </p>
       )}

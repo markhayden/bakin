@@ -19,6 +19,7 @@ mock.module('../../packages/core/src/content-dir', contentDirMock)
 import { StackedColumnChart } from '../../src/components/charts/stacked-column-chart'
 import { LineChart } from '../../src/components/charts/line-chart'
 import { BarChart } from '../../src/components/charts/bar-chart'
+import { RankedBarChart } from '../../src/components/charts/ranked-bar-chart'
 import { Sparkline } from '../../src/components/charts/sparkline'
 import { ChartExplainer } from '../../src/components/charts/chart-explainer'
 import {
@@ -223,6 +224,44 @@ describe('BarChart', () => {
 
     expect(screen.getByRole('group', { name: 'Run outcomes' })).toBeDefined()
     expect(screen.queryByRole('table', { name: 'Run outcomes data', hidden: true })).toBeNull()
+  })
+})
+
+describe('RankedBarChart', () => {
+  it('sorts long labels by value while keeping exact values visible and keyboard readable', () => {
+    const { container } = render(
+      <RankedBarChart
+        data={[
+          { x: 'haiku', xLabel: 'anthropic/claude-haiku-4-5', values: { cost: 1_250_000 } },
+          { x: 'sonnet', xLabel: 'anthropic/claude-sonnet-4-20250514', values: { cost: 4_500_000 } },
+          { x: 'unpriced', xLabel: 'provider/model-with-unpriced-usage', values: {}, missingLabels: { cost: 'Cost unavailable' } },
+        ]}
+        series={{ key: 'cost', label: 'Estimated cost' }}
+        label="Model spend ranking"
+        formatValue={(value) => `$${(value / 1_000_000).toFixed(2)}`}
+      />,
+    )
+
+    const rows = Array.from(container.querySelectorAll('[data-slot="ranked-bar-row"]'))
+    expect(rows.map((row) => row.getAttribute('data-row-key'))).toEqual(['sonnet', 'haiku', 'unpriced'])
+    expect(screen.getByRole('img', { name: 'anthropic/claude-sonnet-4-20250514 — Estimated cost: $4.50' })).toBeDefined()
+    expect(screen.getAllByText('Cost unavailable')).toHaveLength(2)
+    expect(screen.getByRole('table', { name: 'Model spend ranking data', hidden: true }).textContent)
+      .toContain('anthropic/claude-haiku-4-5')
+  })
+
+  it('renders an honest empty state without inventing bars', () => {
+    render(
+      <RankedBarChart
+        data={[]}
+        series={{ key: 'cost', label: 'Estimated cost' }}
+        label="Agent spend ranking"
+        emptyLabel="No priced agent spend in this window."
+      />,
+    )
+
+    expect(screen.getByRole('status').textContent).toBe('No priced agent spend in this window.')
+    expect(screen.queryByRole('group', { name: 'Agent spend ranking' })).toBeNull()
   })
 })
 

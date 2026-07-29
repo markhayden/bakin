@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { useMemo, useState } from 'react'
 import { expect } from 'storybook/test'
-import { ArrowLeft, Download, Sparkles } from 'lucide-react'
+import { ArrowLeft, Download, Sparkles, Trash2 } from 'lucide-react'
 
 import { Inline, Section, Stack } from '@makinbakin/sdk/layout'
 import {
@@ -17,7 +17,15 @@ import {
   SearchInput,
   SegmentedControl,
 } from '@makinbakin/sdk/patterns'
-import { Badge, Banner, Button, Input, Label, SystemState } from '@makinbakin/sdk/ui'
+import {
+  Badge,
+  Banner,
+  Button,
+  DropdownMenuItem,
+  Input,
+  Label,
+  SystemState,
+} from '@makinbakin/sdk/ui'
 import { DEFAULT_STORY_FIXTURE } from '../../fixtures'
 
 import './page-archetypes.stories.css'
@@ -29,7 +37,7 @@ const meta = {
     layout: 'fullscreen',
     docs: {
       description: {
-        component: 'ListPage fills the available plugin canvas by default; use its wide option only for a deliberately bounded index. ListPage and DetailPage codify page identity, action placement, responsive flow, named control/content regions, state replacement, and scroll ownership. Header search, view controls, and primary actions remain deliberately stacked until the container has enough room for complete controls without internal scrolling. Consumers retain domain data and the existing SDK routing/query-state contract.',
+        component: 'ListPage fills the available plugin canvas by default; use its wide option only for a deliberately bounded index. ListPage and DetailPage codify page identity, action placement, responsive flow, named control/content regions, state replacement, and scroll ownership. DetailPage uses host scrolling by default; set scroll="contained" only for a bounded workspace whose named child panes own scrolling. Header search, view controls, and primary actions remain deliberately stacked until the container has enough room for complete controls without internal scrolling. Consumers retain domain data and the existing SDK routing/query-state contract.',
       },
     },
     bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'overflow', 'interaction', 'system-states', 'url-state-guidance'],
@@ -160,7 +168,7 @@ function ListIndexExample() {
       <PageHeader
         eyebrow="Tasks / live operations"
         title="Coordinate active work"
-        description="Keep owners, timing, and operational context visible. Search and filters belong in the URL when this recipe is used in a routed page."
+        description="Keep owners, timing, and operational context visible. Search and filters belong in the URL, and the first control region stays borderless. Add a divider only when controls begin a genuinely separate page zone."
         actions={<><Button variant="outline">Export view</Button><Button>New task</Button></>}
       />
 
@@ -313,6 +321,41 @@ export const ListPagination = {
   },
 } satisfies Story
 
+export const ServerPagination = {
+  render: () => (
+    <ListPage className="bakin-archetype-story">
+      <PageHeader
+        eyebrow="Health / failure patterns"
+        title="Page server-bounded evidence"
+        description="Use the same paginator without Show all when the server only returns one bounded page. Never offer a control the current data contract cannot fulfill."
+      />
+      <ListPageContent label="Failure patterns">
+        <ul className="bakin-archetype-story__list bakin-archetype-story__list--separated" aria-label="Failure patterns">
+          {paginatedRecords.slice(5, 10).map((record) => (
+            <li key={record.id}>
+              <div className="bakin-archetype-story__task-copy">
+                <strong>{record.title}</strong>
+                <span>{record.target}</span>
+              </div>
+            </li>
+          ))}
+        </ul>
+        <PageNavigator
+          ariaLabel="Server result pagination"
+          page={2}
+          pageSize={5}
+          total={13}
+          onPageChange={() => undefined}
+        />
+      </ListPageContent>
+    </ListPage>
+  ),
+  play: async ({ canvas }) => {
+    await expect(canvas.getByText('Showing 6–10 of 13')).toBeVisible()
+    await expect(canvas.queryByRole('button', { name: 'Show all' })).not.toBeInTheDocument()
+  },
+} satisfies Story
+
 export const ListNoResults = {
   render: () => (
     <ListPage className="bakin-archetype-story">
@@ -361,7 +404,14 @@ function DetailExample() {
         title="Launch approval"
         description="Coordinates the final publishing decision without hiding ownership, schedule, or recent execution context."
         meta={<><code>workflow:launch-approval</code><Badge tone="success">Active</Badge></>}
-        actions={<><Button variant="outline">Duplicate</Button><Button>Edit workflow</Button></>}
+        overflowActionsLabel="Workflow actions"
+        overflowActions={(
+          <>
+            <DropdownMenuItem>Duplicate workflow</DropdownMenuItem>
+            <DropdownMenuItem variant="danger"><Trash2 /> Delete</DropdownMenuItem>
+          </>
+        )}
+        actions={<Button>Edit workflow</Button>}
       />
 
       <DetailPageBody layout="aside" feedback={<Banner tone="info" title="Draft-safe editing" description="Changes are reviewed before they replace the active definition." />}>
@@ -416,7 +466,47 @@ export const Detail = {
   play: async ({ canvas }) => {
     await expect(canvas.getByRole('heading', { level: 1, name: 'Launch approval' })).toBeVisible()
     await expect(canvas.getByRole('complementary', { name: 'Workflow context' })).toBeVisible()
+    await expect(canvas.getByRole('button', { name: 'Workflow actions' })).toBeVisible()
     await expect(canvas.queryByRole('main')).not.toBeInTheDocument()
+  },
+} satisfies Story
+
+export const ContainedDetailWorkspace = {
+  render: () => (
+    <DetailPage
+      width="full"
+      scroll="contained"
+      className="bakin-archetype-story bakin-archetype-story--contained"
+      data-testid="contained-detail-page"
+    >
+      <PageHeader
+        eyebrow="Messaging / plan"
+        title="Spring menu launch"
+        description="The page identity remains fixed while the named plan pane owns its long content."
+      />
+      <DetailPageBody className="min-h-0">
+        <DetailPageMain className="min-h-0">
+          <div
+            className="bakin-archetype-story__contained-scroll"
+            data-testid="contained-detail-scroll"
+          >
+            {Array.from({ length: 14 }, (_, index) => (
+              <section key={index}>
+                <h2>Plan section {index + 1}</h2>
+                <p>Long workspace content scrolls here without expanding the page canvas.</p>
+              </section>
+            ))}
+          </div>
+        </DetailPageMain>
+      </DetailPageBody>
+    </DetailPage>
+  ),
+  play: async ({ canvas }) => {
+    const page = canvas.getByTestId('contained-detail-page')
+    const scrollRegion = canvas.getByTestId('contained-detail-scroll')
+
+    await expect(page).toHaveAttribute('data-scroll', 'contained')
+    await expect(scrollRegion.scrollHeight).toBeGreaterThan(scrollRegion.clientHeight)
   },
 } satisfies Story
 
@@ -449,7 +539,14 @@ export const DetailMedia = {
         eyebrow="Assets / detail"
         title="Gourmet seasoned popcorn with rosemary and parmesan"
         meta={<><code>asset:spring-campaign-hero</code><Badge tone="success">v4 · current</Badge></>}
-        actions={<><Button variant="outline">Add version</Button><Button>Edit asset</Button></>}
+        overflowActionsLabel="Asset actions"
+        overflowActions={(
+          <>
+            <DropdownMenuItem>Add version</DropdownMenuItem>
+            <DropdownMenuItem variant="danger"><Trash2 /> Delete</DropdownMenuItem>
+          </>
+        )}
+        actions={<Button>Edit asset</Button>}
       />
 
       <DetailPageBody layout="aside">

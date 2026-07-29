@@ -298,7 +298,7 @@ function ExplorePageInner() {
     <ListPage className="h-full overflow-auto">
       <PageHeader
         title="Explore"
-        description="Discover official agents, plugins, lessons, and capabilities for your Bakin workspace."
+        description="Find and install official agents, plugins, lessons, and capabilities to extend your Bakin workspace."
         meta={catalogState ? <Badge size="xs" variant="outline">{entries.length} available</Badge> : undefined}
         controlsLabel="Catalog search"
         controls={(

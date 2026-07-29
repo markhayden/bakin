@@ -20,7 +20,7 @@ export interface JobScoreInfo {
   indexScores?: Record<string, number>
 }
 
-function JobStatusBadge({ job }: { job: ScheduleJob }) {
+export function JobStatusBadge({ job }: { job: ScheduleJob }) {
   if (job.paused) {
     const label = job.pauseReason === 'auto-failures'
       ? 'Auto-paused'

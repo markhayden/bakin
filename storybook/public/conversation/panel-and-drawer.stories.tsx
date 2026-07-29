@@ -127,6 +127,36 @@ export const ProductPanel = {
   },
 } satisfies Story
 
+export const DocumentDividerPanel = {
+  args: {
+    messages: panelMessages,
+    onSend: () => {},
+    storageKey: 'storybook-document-divider',
+    chrome: 'top-divider',
+    showHeader: false,
+  },
+  render: (args) => (
+    <main className="bakin-conversation-story">
+      <PageShell width="content">
+        <Stack gap="section">
+          <header className="bakin-conversation-story__intro">
+            <p>Conversation / document continuation</p>
+            <h1>Continue a project conversation without another box</h1>
+            <p>The surrounding document owns the surface. A single top divider separates its embedded conversation without adding side or bottom borders.</p>
+          </header>
+          <ConversationPanel {...args} />
+        </Stack>
+      </PageShell>
+    </main>
+  ),
+  play: async ({ canvas }) => {
+    const panel = canvas.getByRole('region', { name: 'Conversation' })
+    await expect(panel).toHaveAttribute('data-chrome', 'top-divider')
+    await expect(panel).toHaveClass('border-x-0')
+    await expect(panel).toHaveClass('border-b-0')
+  },
+} satisfies Story
+
 function ReadOnlyExample() {
   return (
     <main className="bakin-conversation-story">
