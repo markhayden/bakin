@@ -31,7 +31,19 @@
  * the test file itself.
  */
 import { afterEach } from 'bun:test'
-import { act, cleanup } from '@testing-library/react'
+import { act, cleanup, configure } from '@testing-library/react'
+
+/**
+ * waitFor's 1s default is an OBSERVATION window, not a bound under test — it
+ * exists so a hung condition fails fast rather than hanging the run. On a
+ * loaded CI runner the window itself starves: a poll that costs milliseconds
+ * locally has been observed giving up after 8s of wall clock because the
+ * runner never scheduled the retry. Widening the window cannot make a wrong
+ * assertion pass (waitFor still fails when the condition never holds) and no
+ * test in this suite asserts that a waitFor times out. Anything genuinely
+ * hung is caught by bun's per-test --timeout instead.
+ */
+configure({ asyncUtilTimeout: 15_000 })
 
 // Captured at module eval — BEFORE any test can install fake timers (the vi
 // shim replaces globalThis.setTimeout). Yielding through a faked setTimeout
