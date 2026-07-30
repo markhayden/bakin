@@ -27,12 +27,16 @@ describe('canonical conversation and inspector archetypes', () => {
 
   it('makes exceptional nested scrolling explicit and finite', () => {
     const conversation = read('packages/ui/src/patterns/conversation-page.tsx')
+    // The timeline scroller lives in the renamed PageTimeline slot (T5.1);
+    // ConversationPageTimeline remains a byte-equivalent legacy alias over it.
+    const timeline = read('packages/ui/src/patterns/page-timeline.tsx')
     const inspector = read('packages/ui/src/patterns/inspector-panel.tsx')
     expect(conversation).toContain("'document' | 'contained'")
     expect(conversation).toContain('type PageShellWidth')
     expect(conversation).toContain("width = 'full'")
     expect(conversation).toContain("mode === 'contained'")
-    expect(conversation).toContain('overflow-y-auto')
+    expect(timeline).toContain('overflow-y-auto')
+    expect(timeline).toContain("scroll === 'contained'")
     expect(inspector).not.toMatch(/overflow-y-(?:auto|scroll)|h-screen|max-h-/)
     expect(`${conversation}\n${inspector}`).not.toMatch(/(?:messages|thread|streamUrl|selected|node|resource|data)\??:/i)
   })

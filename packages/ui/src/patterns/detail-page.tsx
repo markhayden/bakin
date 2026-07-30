@@ -3,6 +3,7 @@ import * as React from 'react'
 import { Grid } from '../layout/grid'
 import { PageShell, type PageShellProps } from '../layout/page-shell'
 import { cn } from '../utils'
+import { PageAside, type PageAsideProps } from './page-aside'
 
 export type DetailPageWidth = 'content' | 'wide' | 'full'
 export type DetailPageLayout = 'single' | 'aside'
@@ -117,34 +118,12 @@ export function DetailPageMain({ className, ...props }: DetailPageMainProps) {
   )
 }
 
-type AccessibleAsideName =
-  | { label: string; labelledBy?: never }
-  | { label?: never; labelledBy: string }
+export type DetailPageAsideProps = PageAsideProps
 
-type NativeAsideProps = Omit<
-  React.ComponentPropsWithoutRef<'aside'>,
-  'aria-label' | 'aria-labelledby'
->
-
-export type DetailPageAsideProps = NativeAsideProps & AccessibleAsideName
-
-/** Named supporting context that reflows below the primary detail content. */
-export function DetailPageAside({
-  className,
-  label,
-  labelledBy,
-  ...props
-}: DetailPageAsideProps) {
-  return (
-    <aside
-      {...props}
-      aria-label={label}
-      aria-labelledby={labelledBy}
-      data-slot="detail-page-aside"
-      className={cn(
-        'flex min-w-0 flex-col gap-bakin-4 border-t border-bakin-border-subtle pt-bakin-6 @3xl/layout-grid:border-l @3xl/layout-grid:border-t-0 @3xl/layout-grid:pl-bakin-6 @3xl/layout-grid:pt-bakin-0',
-        className,
-      )}
-    />
-  )
+/**
+ * Named supporting context that reflows below the primary detail content.
+ * Legacy alias for PageAside; deleted with the archetype migration slice.
+ */
+export function DetailPageAside(props: DetailPageAsideProps) {
+  return <PageAside data-slot="detail-page-aside" {...props} />
 }

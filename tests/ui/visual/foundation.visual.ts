@@ -694,6 +694,7 @@ const PRIMITIVES_BASELINES = [
   { url: '/iframe.html?id=charts-piechart--donut-fold-and-empty&viewMode=story', png: 'charts-pie-chart.png', text: 'Five slices is the ceiling for part-to-whole' },
   { url: '/iframe.html?id=charts-areachart--stacked-and-missing-data&viewMode=story', png: 'charts-area-chart.png', text: 'The line carries identity; the fill carries magnitude' },
   { url: '/iframe.html?id=charts-compositionbar--composition-strips&viewMode=story', png: 'charts-composition-bar.png', text: 'One strip for how a whole divides' },
+  { url: '/iframe.html?id=pages-page--aside-layout&viewMode=story', png: 'pages-page.png', role: 'complementary' as const, name: 'Workflow context' },
   { url: '/iframe.html?id=agents-agentavatar--sizes-and-presence&viewMode=story', png: 'agents-agent-avatar.png', text: 'Keep identity recognizable at every density' },
   { url: '/iframe.html?id=agents-agentstatus--presence-language&viewMode=story', png: 'agents-agent-status.png', text: 'Say the state in words, not color' },
   { url: '/iframe.html?id=content-markdowncontent--reading-and-code&viewMode=story', png: 'content-markdown-content.png', text: 'Release evidence' },

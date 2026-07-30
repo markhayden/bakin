@@ -20,12 +20,17 @@ describe('canonical workflow archetype', () => {
 
   it('keeps orientation, layout, and scroll choices finite with vertical as the default', () => {
     const source = read('packages/ui/src/patterns/workflow-page.tsx')
-    expect(source).toContain("'vertical' | 'horizontal'")
-    expect(source).toContain("orientation = 'vertical'")
+    // The canvas implementation lives in the renamed PageCanvas slot (T5.1);
+    // WorkflowPageCanvas remains a byte-equivalent legacy alias over it.
+    const canvas = read('packages/ui/src/patterns/page-canvas.tsx')
+    expect(canvas).toContain("'vertical' | 'horizontal'")
+    expect(canvas).toContain("orientation = 'vertical'")
+    expect(canvas).toContain('BoundedOverflow')
     expect(source).toContain("'canvas' | 'inspector'")
     expect(source).toContain("'document' | 'contained'")
-    expect(source).toContain('BoundedOverflow')
+    expect(source).toContain('PageCanvas')
     expect(source).not.toMatch(/h-screen|max-h-|overflow-y-(?:auto|scroll)/)
+    expect(canvas).not.toMatch(/h-screen|max-h-|overflow-y-(?:auto|scroll)/)
   })
 
   it('uses real React Flow in the public evidence while retaining existing routing ownership', () => {

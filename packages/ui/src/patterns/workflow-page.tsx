@@ -1,13 +1,13 @@
 import * as React from 'react'
 
-import { BoundedOverflow, type BoundedOverflowProps } from '../layout/bounded-overflow'
 import { PageShell, type PageShellProps } from '../layout/page-shell'
 import { cn } from '../utils'
+import { PageCanvas, type PageCanvasOrientation, type PageCanvasProps } from './page-canvas'
 
 export type WorkflowPageWidth = 'wide' | 'full'
 export type WorkflowPageLayout = 'canvas' | 'inspector'
 export type WorkflowPageMode = 'document' | 'contained'
-export type WorkflowOrientation = 'vertical' | 'horizontal'
+export type WorkflowOrientation = PageCanvasOrientation
 
 export type WorkflowPageProps = Omit<
   PageShellProps,
@@ -135,36 +135,14 @@ export function WorkflowPageToolbar({
   )
 }
 
-type DistributiveOmit<Value, Keys extends PropertyKey> = Value extends unknown
-  ? Omit<Value, Keys>
-  : never
+export type WorkflowPageCanvasProps = PageCanvasProps
 
-export type WorkflowPageCanvasProps = DistributiveOmit<BoundedOverflowProps, 'children'> & {
-  children: React.ReactNode
-  /** Mirrors the consumer's graph layout; vertical is the product default. */
-  orientation?: WorkflowOrientation
-}
-
-/** Named bounded region around a consumer-owned graph, board, or action canvas. */
-export function WorkflowPageCanvas({
-  children,
-  className,
-  orientation = 'vertical',
-  ...props
-}: WorkflowPageCanvasProps) {
-  return (
-    <BoundedOverflow
-      {...(props as BoundedOverflowProps)}
-      data-orientation={orientation}
-      data-workflow-canvas=""
-      className={cn(
-        'grid min-h-0 min-w-0 rounded-bakin-surface border border-bakin-border-subtle bg-bakin-canvas-default',
-        className,
-      )}
-    >
-      {children}
-    </BoundedOverflow>
-  )
+/**
+ * Named bounded region around a consumer-owned graph, board, or action canvas.
+ * Legacy alias for PageCanvas; deleted with the archetype migration slice.
+ */
+export function WorkflowPageCanvas(props: WorkflowPageCanvasProps) {
+  return <PageCanvas data-workflow-canvas="" {...props} />
 }
 
 type NativeActionsProps = Omit<

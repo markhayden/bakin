@@ -5,6 +5,27 @@ export type {
   PageHeaderProps,
 } from './page-header'
 
+export { Page } from './page'
+export type { PageDensity, PageProps, PageScroll, PageWidth } from './page'
+
+export { PageBody } from './page-body'
+export type { PageBodyGap, PageBodyLayout, PageBodyProps } from './page-body'
+
+export { PageControls } from './page-controls'
+export type { PageControlsAs, PageControlsProps } from './page-controls'
+
+export { PageAside } from './page-aside'
+export type { PageAsideProps } from './page-aside'
+
+export { PageCanvas } from './page-canvas'
+export type { PageCanvasOrientation, PageCanvasProps } from './page-canvas'
+
+export { PageTimeline } from './page-timeline'
+export type { PageTimelineProps } from './page-timeline'
+
+export { PageComposer } from './page-composer'
+export type { PageComposerProps } from './page-composer'
+
 export {
   KanbanBoard,
   KanbanCardSignal,

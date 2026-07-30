@@ -7,6 +7,9 @@ import {
   type PageShellWidth,
 } from '../layout/page-shell'
 import { cn } from '../utils'
+import { PageScrollContext } from './page'
+import { PageComposer, type PageComposerProps } from './page-composer'
+import { PageTimeline, type PageTimelineProps } from './page-timeline'
 
 export type ConversationPageWidth = PageShellWidth
 export type ConversationPageMode = 'document' | 'contained'
@@ -43,8 +46,6 @@ export function ConversationPage({
   )
 }
 
-const ConversationModeContext = React.createContext<ConversationPageMode>('document')
-
 export type ConversationPageBodyProps = Omit<React.ComponentPropsWithoutRef<'div'>, 'aria-busy' | 'children'> & {
   busy?: boolean
   children?: React.ReactNode
@@ -65,7 +66,7 @@ export function ConversationPageBody({
 }: ConversationPageBodyProps) {
   const hasState = state !== undefined && state !== null
   return (
-    <ConversationModeContext.Provider value={mode}>
+    <PageScrollContext.Provider value={mode === 'contained' ? 'contained' : 'page'}>
       <div
         {...props}
         aria-busy={busy || undefined}
@@ -81,62 +82,26 @@ export function ConversationPageBody({
         {feedback ? <div data-slot="conversation-page-feedback">{feedback}</div> : null}
         {hasState ? <div data-slot="conversation-page-state">{state}</div> : children}
       </div>
-    </ConversationModeContext.Provider>
+    </PageScrollContext.Provider>
   )
 }
 
-type AccessibleRegionName =
-  | { label: string; labelledBy?: never }
-  | { label?: never; labelledBy: string }
+export type ConversationPageTimelineProps = PageTimelineProps
 
-type NativeTimelineProps = Omit<
-  React.ComponentPropsWithoutRef<'div'>,
-  'aria-label' | 'aria-labelledby' | 'aria-live'
->
-
-export type ConversationPageTimelineProps = NativeTimelineProps & AccessibleRegionName & {
-  live?: 'off' | 'polite'
+/**
+ * Named conversation log; contained mode is the only recipe-owned vertical scroller.
+ * Legacy alias for PageTimeline; deleted with the archetype migration slice.
+ */
+export function ConversationPageTimeline(props: ConversationPageTimelineProps) {
+  return <PageTimeline data-slot="conversation-page-timeline" {...props} />
 }
 
-/** Named conversation log; contained mode is the only recipe-owned vertical scroller. */
-export function ConversationPageTimeline({
-  className,
-  label,
-  labelledBy,
-  live = 'polite',
-  ...props
-}: ConversationPageTimelineProps) {
-  const mode = React.useContext(ConversationModeContext)
-  return (
-    <div
-      {...props}
-      role="log"
-      aria-label={label}
-      aria-labelledby={labelledBy}
-      aria-live={live}
-      data-slot="conversation-page-timeline"
-      className={cn(
-        'flex min-w-0 flex-col gap-bakin-4',
-        mode === 'contained'
-          && 'min-h-0 flex-1 overflow-y-auto overscroll-contain pr-bakin-2',
-        className,
-      )}
-    />
-  )
-}
+export type ConversationPageComposerProps = PageComposerProps
 
-export type ConversationPageComposerProps = React.ComponentPropsWithoutRef<'div'>
-
-/** Stable, borderless composer boundary outside the timeline scroller. */
-export function ConversationPageComposer({ className, ...props }: ConversationPageComposerProps) {
-  return (
-    <div
-      {...props}
-      data-slot="conversation-page-composer"
-      className={cn(
-        'min-w-0 shrink-0 pt-bakin-4',
-        className,
-      )}
-    />
-  )
+/**
+ * Stable, borderless composer boundary outside the timeline scroller.
+ * Legacy alias for PageComposer; deleted with the archetype migration slice.
+ */
+export function ConversationPageComposer(props: ConversationPageComposerProps) {
+  return <PageComposer data-slot="conversation-page-composer" {...props} />
 }
