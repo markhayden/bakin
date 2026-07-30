@@ -42,7 +42,9 @@ export type FieldLabelProps = Omit<FieldPrimitive.Label.Props, 'children' | 'cla
 }
 
 const fieldLabelClasses = [
-  'inline-flex min-w-0 items-baseline gap-bakin-2 font-bakin-typography-family-ui',
+  'inline-flex min-w-0 flex-wrap items-baseline gap-bakin-2 font-bakin-typography-family-ui',
+  // A single long word must never widen the field column (text-200 at 320px).
+  '[overflow-wrap:anywhere]',
   'text-[length:var(--bakin-typography-size-body)] font-bakin-typography-weight-semibold leading-snug text-bakin-text-primary',
   'select-none data-disabled:pointer-events-none data-disabled:opacity-[var(--bakin-state-opacity-disabled)]',
 ].join(' ')

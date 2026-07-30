@@ -11,11 +11,17 @@ function isCancelledStorybookA11yInstrumentation(request: Request): boolean {
 const responsiveWidths = [1024, 720, 480, 320] as const
 const behaviorStory = '/iframe.html?id=primitives-button--behavior-fixture&viewMode=story'
 const overviewStory = '/iframe.html?id=foundation-action-and-status--overview&viewMode=story'
-const surfaceOverviewStory = '/iframe.html?id=foundation-surface-and-content--overview&viewMode=story'
-const textFieldsOverviewStory = '/iframe.html?id=foundation-text-fields--overview&viewMode=story'
-const selectionOverviewStory = '/iframe.html?id=foundation-selection-controls--overview&viewMode=story'
-const modalOverviewStory = '/iframe.html?id=foundation-modal-and-side-overlays--overview&viewMode=story'
-const anchoredOverviewStory = '/iframe.html?id=foundation-anchored-overlays--overview&viewMode=story'
+const cardStressStory = '/iframe.html?id=primitives-card--content-stress&viewMode=story'
+const collapsibleCanonicalStory = '/iframe.html?id=primitives-collapsible--canonical-usage&viewMode=story'
+const collapsibleBehaviorStory = '/iframe.html?id=primitives-collapsible--behavior&viewMode=story'
+const skeletonLoadingStory = '/iframe.html?id=foundation-skeleton--loading-object&viewMode=story'
+const separatorOrientationStory = '/iframe.html?id=primitives-separator--orientation&viewMode=story'
+const avatarSizesStory = '/iframe.html?id=primitives-avatar--sizes-and-fallbacks&viewMode=story'
+const inputStatesStory = '/iframe.html?id=primitives-input--states-and-mobile-modes&viewMode=story'
+const checkboxStatesStory = '/iframe.html?id=primitives-checkbox--states&viewMode=story'
+const switchStatesStory = '/iframe.html?id=primitives-switch--states&viewMode=story'
+const dialogFocusReturnStory = '/iframe.html?id=overlays-dialog--controlled-focus-return&viewMode=story'
+const anchoredCoexistenceStory = '/iframe.html?id=overlays-popover--anchored-layer-coexistence&viewMode=story'
 const layoutFlowStory = '/iframe.html?id=layout-pageshell-and-flow--responsive-page&viewMode=story'
 const layoutRecipesStory = '/iframe.html?id=layout-grid-section-and-overflow--responsive-composition&viewMode=story'
 const formOverviewStory = '/iframe.html?id=forms-field-and-form-composition--overview&viewMode=story'
@@ -147,7 +153,7 @@ test('action and status family keeps responsive semantics across browsers', asyn
   })
 
   await test.step('interactive badge and alert actions expose keyboard focus', async () => {
-    await page.goto('/iframe.html?id=foundation-badge--interactive&viewMode=story', { waitUntil: 'networkidle' })
+    await page.goto('/iframe.html?id=primitives-badge--interactive&viewMode=story', { waitUntil: 'networkidle' })
     await expect(page.getByRole('link', { name: 'Open 4 filtered tasks' })).toBeFocused()
 
     await page.goto('/iframe.html?id=foundation-alert--with-action&viewMode=story', { waitUntil: 'networkidle' })
@@ -162,7 +168,7 @@ test('action and status family keeps responsive semantics across browsers', asyn
   expect(browserErrors).toEqual([])
 })
 
-test('surface and content family keeps disclosure and loading semantics across browsers', async ({ page }) => {
+test('surface and content primitives keep disclosure and loading semantics across browsers', async ({ page }) => {
   const browserErrors: string[] = []
   page.on('console', (message) => {
     if (message.type() === 'error') browserErrors.push(`console: ${message.text()}`)
@@ -173,10 +179,11 @@ test('surface and content family keeps disclosure and loading semantics across b
   })
 
   for (const width of responsiveWidths) {
-    await test.step(`${width}px surface overview has no document overflow`, async () => {
+    await test.step(`${width}px card content stress has no document overflow`, async () => {
       await page.setViewportSize({ width, height: 900 })
-      await page.goto(surfaceOverviewStory, { waitUntil: 'networkidle' })
-      await expect(page.getByRole('heading', { name: 'Surface and content', exact: true })).toBeVisible()
+      await page.goto(cardStressStory, { waitUntil: 'networkidle' })
+      await expect(page.getByRole('heading', { name: 'Long and technical content', exact: true })).toBeVisible()
+      await expect(page.getByText(/extraordinarily-long-cross-functional-campaign-name/)).toBeVisible()
       const dimensions = await page.evaluate(() => ({
         clientWidth: document.documentElement.clientWidth,
         scrollWidth: document.documentElement.scrollWidth,
@@ -186,21 +193,33 @@ test('surface and content family keeps disclosure and loading semantics across b
   }
 
   await test.step('collapsible retains focus and exact expanded state', async () => {
-    await page.goto(surfaceOverviewStory, { waitUntil: 'networkidle' })
+    await page.goto(collapsibleCanonicalStory, { waitUntil: 'networkidle' })
     const trigger = page.getByRole('button', { name: 'Advanced retry policy', exact: true })
-    await page.keyboard.press('Tab')
+    // The story's play function clicks the trigger open and asserts the expanded contract.
+    await expect(trigger).toHaveAttribute('aria-expanded', 'true')
+    await expect(page.getByText(/Retry twice/)).toBeVisible()
+    await expect(trigger).toBeFocused()
+  })
+
+  await test.step('collapsible keyboard toggle cycle settles collapsed with focus retained', async () => {
+    await page.goto(collapsibleBehaviorStory, { waitUntil: 'networkidle' })
+    const trigger = page.getByRole('button', { name: 'Advanced retry policy', exact: true })
+    // The play function tabs to the trigger and toggles open then closed via Enter;
+    // its terminal state is focused and collapsed, and any play failure surfaces as a console error.
     await expect(trigger).toBeFocused()
     await expect(trigger).toHaveAttribute('aria-expanded', 'false')
-    await page.keyboard.press('Enter')
-    await expect(trigger).toHaveAttribute('aria-expanded', 'true')
-    await expect(page.getByText(/Retry failed dispatches twice/)).toBeVisible()
+    await expect(page.getByText(/Retry twice/)).toBeHidden()
   })
 
   await test.step('loading and meaningful structure remain semantic', async () => {
-    await page.goto(surfaceOverviewStory, { waitUntil: 'networkidle' })
-    await expect(page.locator('section[aria-busy="true"]')).toHaveAttribute('aria-labelledby', 'loading-heading')
+    await page.goto(skeletonLoadingStory, { waitUntil: 'networkidle' })
+    await expect(page.locator('section[aria-busy="true"]')).toHaveAttribute('aria-labelledby', 'loading-object-heading')
+
+    await page.goto(separatorOrientationStory, { waitUntil: 'networkidle' })
     await expect(page.getByRole('separator')).toHaveAttribute('aria-orientation', 'horizontal')
-    await expect(page.getByRole('group', { name: 'Three assigned agents' })).toBeVisible()
+
+    await page.goto(avatarSizesStory, { waitUntil: 'networkidle' })
+    await expect(page.getByRole('group', { name: 'Assigned to Alex, Jordan, Sam, and three more agents' })).toBeVisible()
   })
 
   expect(browserErrors).toEqual([])
@@ -217,10 +236,10 @@ test('text fields keep native state, focus, and mobile-mode contracts across bro
   })
 
   for (const width of responsiveWidths) {
-    await test.step(`${width}px text-field overview has no document overflow`, async () => {
+    await test.step(`${width}px input states story has no document overflow`, async () => {
       await page.setViewportSize({ width, height: 900 })
-      await page.goto(textFieldsOverviewStory, { waitUntil: 'networkidle' })
-      await expect(page.getByRole('heading', { name: 'Text fields', exact: true })).toBeVisible()
+      await page.goto(inputStatesStory, { waitUntil: 'networkidle' })
+      await expect(page.getByRole('heading', { name: 'Input', exact: true })).toBeVisible()
       const dimensions = await page.evaluate(() => ({
         clientWidth: document.documentElement.clientWidth,
         scrollWidth: document.documentElement.scrollWidth,
@@ -230,20 +249,24 @@ test('text fields keep native state, focus, and mobile-mode contracts across bro
   }
 
   await test.step('labels, native states, and explicit descriptions remain associated', async () => {
-    const owner = page.getByLabel('Owner email')
-    await page.getByText('Owner email', { exact: true }).click()
-    await expect(owner).toBeFocused()
-    await expect(owner).toHaveAttribute('required', '')
-    await expect(owner).toHaveAttribute('inputmode', 'email')
-    await expect(owner).toHaveAttribute('autocomplete', 'email')
-    await expect(owner).toHaveAttribute('aria-describedby', 'overview-owner-description')
-    await expect(page.getByLabel('Generated identifier')).toHaveAttribute('readonly', '')
-    await expect(page.getByLabel('Managed source')).toBeDisabled()
-    await expect(page.getByLabel('Webhook URL')).toHaveAttribute('aria-invalid', 'true')
+    // Wait for the story's play function to finish typing before interacting.
+    await expect(page.getByRole('textbox', { name: 'Default' })).toHaveValue('Nightly digest')
+    const email = page.getByLabel('Required email')
+    await page.getByText('Required email', { exact: true }).click()
+    await expect(email).toBeFocused()
+    await expect(email).toHaveAttribute('required', '')
+    await expect(email).toHaveAttribute('inputmode', 'email')
+    await expect(email).toHaveAttribute('autocomplete', 'email')
+    await expect(page.getByLabel('Read-only identifier')).toHaveAttribute('readonly', '')
+    await expect(page.getByLabel('Disabled source')).toBeDisabled()
+    const invalidUrl = page.getByLabel('Invalid URL')
+    await expect(invalidUrl).toHaveAttribute('aria-invalid', 'true')
+    const errorId = await page.getByText('Enter a complete HTTPS URL.').getAttribute('id')
+    expect((await invalidUrl.getAttribute('aria-describedby'))?.split(' ')).toContain(errorId)
   })
 
   await test.step('adornment text focuses the editable control without stealing button semantics', async () => {
-    await page.goto('/iframe.html?id=foundation-inputgroup--adornments&viewMode=story', { waitUntil: 'networkidle' })
+    await page.goto('/iframe.html?id=primitives-inputgroup--adornments&viewMode=story', { waitUntil: 'networkidle' })
     const repository = page.getByLabel('Repository path')
     await page.getByText('github.com/', { exact: true }).click()
     await expect(repository).toBeFocused()
@@ -252,7 +275,7 @@ test('text fields keep native state, focus, and mobile-mode contracts across bro
   })
 
   await test.step('specialized virtual-keyboard hints survive the public component', async () => {
-    await page.goto('/iframe.html?id=foundation-input--states-and-mobile-modes&viewMode=story', { waitUntil: 'networkidle' })
+    await page.goto(inputStatesStory, { waitUntil: 'networkidle' })
     await expect(page.getByLabel('Required email')).toHaveAttribute('inputmode', 'email')
     await expect(page.getByLabel('Numeric mobile mode')).toHaveAttribute('inputmode', 'numeric')
     await expect(page.getByLabel('Numeric mobile mode')).toHaveAttribute('autocomplete', 'one-time-code')
@@ -271,49 +294,63 @@ test('selection controls keep keyboard, state, target, and overflow contracts ac
     browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
   })
 
-  for (const width of responsiveWidths) {
-    await test.step(`${width}px selection overview has no document overflow`, async () => {
-      await page.setViewportSize({ width, height: 900 })
-      await page.goto(selectionOverviewStory, { waitUntil: 'networkidle' })
-      await expect(page.getByRole('heading', { name: 'Selection controls', exact: true })).toBeVisible()
-      const dimensions = await page.evaluate(() => ({
-        clientWidth: document.documentElement.clientWidth,
-        scrollWidth: document.documentElement.scrollWidth,
-      }))
-      expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth)
-    })
+  for (const [story, heading] of [[checkboxStatesStory, 'Checkbox'], [switchStatesStory, 'Switch']] as const) {
+    for (const width of responsiveWidths) {
+      await test.step(`${width}px ${heading} states story has no document overflow`, async () => {
+        await page.setViewportSize({ width, height: 900 })
+        await page.goto(story, { waitUntil: 'networkidle' })
+        await expect(page.getByRole('heading', { name: heading, exact: true })).toBeVisible()
+        const dimensions = await page.evaluate(() => ({
+          clientWidth: document.documentElement.clientWidth,
+          scrollWidth: document.documentElement.scrollWidth,
+        }))
+        expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth)
+      })
+    }
   }
 
   await test.step('long labels remain contained at 200% text sizing', async () => {
     await page.setViewportSize({ width: 320, height: 900 })
-    await page.goto(selectionOverviewStory, { waitUntil: 'networkidle' })
+    await page.goto(checkboxStatesStory, { waitUntil: 'networkidle' })
     await page.evaluate(() => { document.documentElement.style.fontSize = '200%' })
-    await expect(page.getByText('Mirror protected runtime metadata with its complete long-form policy label')).toBeVisible()
-    const dimensions = await page.evaluate(() => ({
+    await expect(page.getByText('Disabled choice with a label long enough to wrap at 200% text zoom')).toBeVisible()
+    const checkboxDimensions = await page.evaluate(() => ({
       clientWidth: document.documentElement.clientWidth,
       scrollWidth: document.documentElement.scrollWidth,
     }))
-    expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth)
+    expect(checkboxDimensions.scrollWidth).toBeLessThanOrEqual(checkboxDimensions.clientWidth)
+
+    await page.goto(switchStatesStory, { waitUntil: 'networkidle' })
+    await page.evaluate(() => { document.documentElement.style.fontSize = '200%' })
+    await expect(page.getByText('Disabled organization-managed setting with a long wrapping label')).toBeVisible()
+    const switchDimensions = await page.evaluate(() => ({
+      clientWidth: document.documentElement.clientWidth,
+      scrollWidth: document.documentElement.scrollWidth,
+    }))
+    expect(switchDimensions.scrollWidth).toBeLessThanOrEqual(switchDimensions.clientWidth)
   })
 
   await test.step('checkbox and switch retain labelled keyboard state', async () => {
-    await page.goto('/iframe.html?id=foundation-checkbox--behavior&viewMode=story', { waitUntil: 'networkidle' })
+    await page.goto('/iframe.html?id=primitives-checkbox--behavior&viewMode=story', { waitUntil: 'networkidle' })
     const checkbox = page.getByRole('checkbox', { name: 'Include archived tasks' })
+    // The play function tabs to the checkbox and toggles it on then off with Space;
+    // its terminal state is focused and unchecked, and any play failure surfaces as a console error.
     await expect(checkbox).toBeFocused()
-    await expect(checkbox).toBeChecked()
+    await expect(checkbox).not.toBeChecked()
     await expect(page.getByRole('checkbox', { name: 'Partially selected workspaces' })).toHaveAttribute('aria-checked', 'mixed')
     expect((await checkbox.boundingBox())?.height).toBeGreaterThanOrEqual(24)
 
-    await page.goto('/iframe.html?id=foundation-switch--behavior&viewMode=story', { waitUntil: 'networkidle' })
+    await page.goto('/iframe.html?id=primitives-switch--behavior&viewMode=story', { waitUntil: 'networkidle' })
     const control = page.getByRole('switch', { name: 'Automatic retry' })
+    // Same terminal-state contract: the play toggles on then off and announces each state.
     await expect(control).toBeFocused()
-    await expect(control).toBeChecked()
-    await expect(page.getByRole('status')).toHaveText('Enabled')
+    await expect(control).not.toBeChecked()
+    await expect(page.getByRole('status')).toHaveText('Disabled')
     expect((await control.boundingBox())?.height).toBeGreaterThanOrEqual(24)
   })
 
   await test.step('select opens, groups, blocks disabled activation, selects, and returns focus', async () => {
-    await page.goto('/iframe.html?id=foundation-select--behavior&viewMode=story', { waitUntil: 'networkidle' })
+    await page.goto('/iframe.html?id=primitives-select--behavior&viewMode=story', { waitUntil: 'networkidle' })
     const trigger = page.getByRole('combobox', { name: 'Execution runtime' })
     await expect(trigger).toBeFocused()
     await expect(trigger).toContainText('Pi')
@@ -353,10 +390,14 @@ test('modal and side overlays keep focus, dismissal, motion, and viewport contra
   })
 
   for (const width of responsiveWidths) {
-    await test.step(`${width}px overlay overview has no document overflow`, async () => {
+    await test.step(`${width}px controlled dialog returns focus without document overflow`, async () => {
       await page.setViewportSize({ width, height: 900 })
-      await page.goto(modalOverviewStory, { waitUntil: 'networkidle' })
-      await expect(page.getByRole('heading', { name: 'Modal and side overlays', exact: true })).toBeVisible()
+      await page.goto(dialogFocusReturnStory, { waitUntil: 'networkidle' })
+      // The play function opens the controlled dialog, dismisses it with Escape, and
+      // requires focus to return to the launching control; waiting on that terminal
+      // state also settles the story before measuring overflow.
+      await expect(page.getByRole('button', { name: 'Open decision dialog' })).toBeFocused()
+      await expect(page.getByRole('dialog', { name: 'Publish workflow?' })).toBeHidden()
       const dimensions = await page.evaluate(() => ({
         clientWidth: document.documentElement.clientWidth,
         scrollWidth: document.documentElement.scrollWidth,
@@ -367,7 +408,7 @@ test('modal and side overlays keep focus, dismissal, motion, and viewport contra
 
   await test.step('nested dialog escape closes one layer at a time and returns focus', async () => {
     await page.setViewportSize({ width: 1024, height: 900 })
-    await page.goto('/iframe.html?id=foundation-dialog--nested-behavior&viewMode=story&bakin-browser-fixture=1', { waitUntil: 'networkidle' })
+    await page.goto('/iframe.html?id=overlays-dialog--nested-behavior&viewMode=story&bakin-browser-fixture=1', { waitUntil: 'networkidle' })
     await expect(page.locator('#storybook-root')).toHaveAttribute('data-story-ready', 'true')
     const outerTrigger = page.getByRole('button', { name: 'Open workflow settings' })
     await page.keyboard.press('Tab')
@@ -386,7 +427,7 @@ test('modal and side overlays keep focus, dismissal, motion, and viewport contra
   })
 
   await test.step('busy dialogs block every dismissal path and expose state', async () => {
-    await page.goto('/iframe.html?id=foundation-dialog--busy&viewMode=story', { waitUntil: 'networkidle' })
+    await page.goto('/iframe.html?id=overlays-dialog--busy&viewMode=story', { waitUntil: 'networkidle' })
     const dialog = page.getByRole('dialog', { name: 'Publishing workflow' })
     await expect(dialog).toHaveAttribute('aria-busy', 'true')
     await expect(page.getByRole('button', { name: 'Close dialog' })).toBeDisabled()
@@ -398,7 +439,7 @@ test('modal and side overlays keep focus, dismissal, motion, and viewport contra
 
   await test.step('mobile side sheets fill the viewport and disable motion', async () => {
     await page.setViewportSize({ width: 320, height: 800 })
-    await page.goto('/iframe.html?id=foundation-sheet--right-panel&viewMode=story', { waitUntil: 'networkidle' })
+    await page.goto('/iframe.html?id=overlays-sheet--right-panel&viewMode=story', { waitUntil: 'networkidle' })
     const sheet = page.getByRole('dialog', { name: 'Edit task' })
     const bounds = await sheet.boundingBox()
     expect(bounds?.width).toBe(320)
@@ -437,10 +478,13 @@ test('anchored overlays keep collision, keyboard, focus, and labelling contracts
   })
 
   for (const width of responsiveWidths) {
-    await test.step(`${width}px anchored overview has no document overflow`, async () => {
+    await test.step(`${width}px anchored layer coexistence has no document overflow`, async () => {
       await page.setViewportSize({ width, height: 900 })
-      await page.goto(anchoredOverviewStory, { waitUntil: 'networkidle' })
-      await expect(page.getByRole('heading', { name: 'Context without disorientation', exact: true })).toBeVisible()
+      await page.goto(anchoredCoexistenceStory, { waitUntil: 'networkidle' })
+      await expect(page.getByRole('heading', { name: 'One collision-safe layer', exact: true })).toBeVisible()
+      // The play function opens a menu above the default-open popover and requires the
+      // popover to survive the nested layer's Escape; the panel stays visible throughout.
+      await expect(page.getByRole('dialog', { name: 'Active filters' })).toBeVisible()
       const dimensions = await page.evaluate(() => ({ clientWidth: document.documentElement.clientWidth, scrollWidth: document.documentElement.scrollWidth }))
       expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth)
     })
@@ -448,8 +492,11 @@ test('anchored overlays keep collision, keyboard, focus, and labelling contracts
 
   await test.step('popover remains viewport-bounded and returns focus on Escape', async () => {
     await page.setViewportSize({ width: 320, height: 800 })
-    await page.goto('/iframe.html?id=foundation-popover--behavior&viewMode=story', { waitUntil: 'networkidle' })
+    await page.goto('/iframe.html?id=overlays-popover--behavior&viewMode=story', { waitUntil: 'networkidle' })
     const trigger = page.getByRole('button', { name: 'Open route context' })
+    // The play function opens and Escape-dismisses the popover itself; wait for its
+    // terminal focus-return state before driving the trigger again.
+    await expect(trigger).toBeFocused()
     await trigger.click()
     const content = page.locator('[data-slot="popover-content"]')
     await expect(content).toBeVisible()
@@ -462,8 +509,11 @@ test('anchored overlays keep collision, keyboard, focus, and labelling contracts
 
   await test.step('menu subnavigation and shortcut naming remain semantic', async () => {
     await page.setViewportSize({ width: 1024, height: 900 })
-    await page.goto('/iframe.html?id=foundation-dropdownmenu--behavior&viewMode=story', { waitUntil: 'networkidle' })
+    await page.goto('/iframe.html?id=overlays-dropdownmenu--behavior&viewMode=story', { waitUntil: 'networkidle' })
     const trigger = page.getByRole('button', { name: 'Task actions' })
+    // The play function walks the same submenu path and ends with focus returned to
+    // the trigger; wait for that terminal state before reopening the menu.
+    await expect(trigger).toBeFocused()
     await trigger.click()
     await expect(page.getByRole('menuitem', { name: 'Duplicate' })).toBeVisible()
     await page.keyboard.press('ArrowDown')
@@ -478,7 +528,7 @@ test('anchored overlays keep collision, keyboard, focus, and labelling contracts
   })
 
   await test.step('tooltip opens from keyboard focus and dismisses without moving focus', async () => {
-    await page.goto('/iframe.html?id=foundation-tooltip--behavior&viewMode=story&bakinCrossBrowser=1', { waitUntil: 'networkidle' })
+    await page.goto('/iframe.html?id=overlays-tooltip--behavior&viewMode=story&bakinCrossBrowser=1', { waitUntil: 'networkidle' })
     const trigger = page.getByRole('button', { name: 'Show retry guidance' })
     await trigger.focus()
     await expect(trigger).toBeFocused()

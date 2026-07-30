@@ -86,16 +86,6 @@
       ]
     },
     {
-      "path": "storybook/public/foundation/anchored-overlays.stories.tsx",
-      "title": "Foundation/Anchored overlays",
-      "missing": [
-        "canonical-usage",
-        "coverage-axes",
-        "play-assertion",
-        "visual-baseline"
-      ]
-    },
-    {
       "path": "storybook/public/foundation/bakin-drawer.stories.tsx",
       "title": "Foundation/BakinDrawer",
       "missing": [
@@ -112,63 +102,12 @@
       ]
     },
     {
-      "path": "storybook/public/foundation/dialog.stories.tsx",
-      "title": "Foundation/Dialog",
-      "missing": [
-        "canonical-usage",
-        "coverage-axes"
-      ]
-    },
-    {
-      "path": "storybook/public/foundation/dropdown-menu.stories.tsx",
-      "title": "Foundation/DropdownMenu",
-      "missing": [
-        "canonical-usage",
-        "coverage-axes"
-      ]
-    },
-    {
-      "path": "storybook/public/foundation/modal-and-side-overlays.stories.tsx",
-      "title": "Foundation/Modal and side overlays",
-      "missing": [
-        "canonical-usage",
-        "coverage-axes",
-        "play-assertion",
-        "visual-baseline"
-      ]
-    },
-    {
-      "path": "storybook/public/foundation/popover.stories.tsx",
-      "title": "Foundation/Popover",
-      "missing": [
-        "canonical-usage",
-        "coverage-axes"
-      ]
-    },
-    {
       "path": "storybook/public/foundation/progress.stories.tsx",
       "title": "Foundation/Progress",
       "missing": [
         "canonical-usage",
         "coverage-axes",
         "visual-baseline"
-      ]
-    },
-    {
-      "path": "storybook/public/foundation/selection-controls.stories.tsx",
-      "title": "Foundation/Selection controls",
-      "missing": [
-        "canonical-usage",
-        "coverage-axes",
-        "play-assertion"
-      ]
-    },
-    {
-      "path": "storybook/public/foundation/sheet.stories.tsx",
-      "title": "Foundation/Sheet",
-      "missing": [
-        "canonical-usage",
-        "coverage-axes"
       ]
     },
     {
@@ -182,24 +121,6 @@
       ]
     },
     {
-      "path": "storybook/public/foundation/surface-content.stories.tsx",
-      "title": "Foundation/Surface and content",
-      "missing": [
-        "canonical-usage",
-        "coverage-axes",
-        "play-assertion"
-      ]
-    },
-    {
-      "path": "storybook/public/foundation/text-fields.stories.tsx",
-      "title": "Foundation/Text fields",
-      "missing": [
-        "canonical-usage",
-        "coverage-axes",
-        "play-assertion"
-      ]
-    },
-    {
       "path": "storybook/public/foundation/tokens.generated.stories.tsx",
       "title": "Foundations/Semantic tokens",
       "missing": [
@@ -208,14 +129,6 @@
         "docs-description",
         "play-assertion",
         "visual-baseline"
-      ]
-    },
-    {
-      "path": "storybook/public/foundation/tooltip.stories.tsx",
-      "title": "Foundation/Tooltip",
-      "missing": [
-        "canonical-usage",
-        "coverage-axes"
       ]
     },
     {

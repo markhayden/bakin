@@ -61,9 +61,13 @@ export const ResponsivePage = {
   play: async ({ canvas }) => {
     const header = canvas.getByRole('banner')
     const description = canvas.getByText(/Create, assign, and track work/)
-    const headerWidth = header.getBoundingClientRect().width
     await expect(description).toBeVisible()
-    await expect(description.getBoundingClientRect().width).toBeLessThanOrEqual(headerWidth * 0.51)
+    // The standard measure caps copy at 50cqw only once the header container
+    // reaches @3xl (48rem); below that the copy deliberately spans full width.
+    const headerWidth = header.getBoundingClientRect().width
+    if (headerWidth >= 768) {
+      await expect(description.getBoundingClientRect().width).toBeLessThanOrEqual(headerWidth * 0.51)
+    }
   },
 } satisfies Story
 

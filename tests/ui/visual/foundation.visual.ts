@@ -54,67 +54,6 @@ test('public action and status family visual baseline', async ({ page }) => {
   await expect(page).toHaveScreenshot('foundation-action-status.png')
 })
 
-test('public surface and content family visual baseline', async ({ page }) => {
-  const browserErrors: string[] = []
-  page.on('console', (message) => {
-    if (message.type() === 'error') browserErrors.push(`console: ${message.text()}`)
-  })
-  page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
-  page.on('requestfailed', (request) => {
-    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
-  })
-
-  await page.goto('/iframe.html?id=foundation-surface-and-content--overview&viewMode=story', { waitUntil: 'networkidle' })
-  await expect(page.getByRole('heading', { name: 'Surface and content', exact: true })).toBeVisible()
-  await expect(page.getByText('Launch review workflow', { exact: true })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Advanced retry policy', exact: true })).toHaveAttribute('aria-expanded', 'false')
-  await page.evaluate(async () => document.fonts.ready)
-
-  expect(browserErrors).toEqual([])
-  await expect(page).toHaveScreenshot('foundation-surface-content.png')
-})
-
-test('public text fields family visual baseline', async ({ page }) => {
-  const browserErrors: string[] = []
-  page.on('console', (message) => {
-    if (message.type() === 'error') browserErrors.push(`console: ${message.text()}`)
-  })
-  page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
-  page.on('requestfailed', (request) => {
-    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
-  })
-
-  await page.goto('/iframe.html?id=foundation-text-fields--overview&viewMode=story', { waitUntil: 'networkidle' })
-  await expect(page.getByRole('heading', { name: 'Text fields', exact: true })).toBeVisible()
-  await expect(page.getByLabel('Owner email')).toHaveAttribute('inputmode', 'email')
-  await expect(page.getByLabel('Generated identifier')).toHaveAttribute('readonly', '')
-  await expect(page.getByLabel('Webhook URL')).toHaveAttribute('aria-invalid', 'true')
-  await page.evaluate(async () => document.fonts.ready)
-
-  expect(browserErrors).toEqual([])
-  await expect(page).toHaveScreenshot('foundation-text-fields.png')
-})
-
-test('public selection controls family visual baseline', async ({ page }) => {
-  const browserErrors: string[] = []
-  page.on('console', (message) => {
-    if (message.type() === 'error') browserErrors.push(`console: ${message.text()}`)
-  })
-  page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
-  page.on('requestfailed', (request) => {
-    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
-  })
-
-  await page.goto('/iframe.html?id=foundation-selection-controls--overview&viewMode=story', { waitUntil: 'networkidle' })
-  await expect(page.getByRole('heading', { name: 'Selection controls', exact: true })).toBeVisible()
-  await expect(page.getByRole('checkbox', { name: 'Apply to selected workspaces' })).toHaveAttribute('aria-checked', 'mixed')
-  await expect(page.getByRole('switch', { name: 'Daily approval digest' })).toHaveAttribute('aria-checked', 'true')
-  await expect(page.getByRole('combobox', { name: 'Fallback owner' })).toHaveAttribute('aria-invalid', 'true')
-  await page.evaluate(async () => document.fonts.ready)
-
-  expect(browserErrors).toEqual([])
-  await expect(page).toHaveScreenshot('foundation-selection-controls.png')
-})
 
 test('public dialog decision visual baseline', async ({ page }) => {
   const browserErrors: string[] = []
@@ -126,13 +65,13 @@ test('public dialog decision visual baseline', async ({ page }) => {
     browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
   })
 
-  await page.goto('/iframe.html?id=foundation-dialog--decision&viewMode=story', { waitUntil: 'networkidle' })
+  await page.goto('/iframe.html?id=overlays-dialog--decision&viewMode=story', { waitUntil: 'networkidle' })
   await expect(page.getByRole('dialog', { name: 'Delete runtime connection?' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Close dialog' })).toBeVisible()
   await page.evaluate(async () => document.fonts.ready)
 
   expect(browserErrors).toEqual([])
-  await expect(page).toHaveScreenshot('foundation-dialog.png')
+  await expect(page).toHaveScreenshot('overlays-dialog.png')
 })
 
 test('public right sheet visual baseline', async ({ page }) => {
@@ -145,13 +84,13 @@ test('public right sheet visual baseline', async ({ page }) => {
     browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
   })
 
-  await page.goto('/iframe.html?id=foundation-sheet--right-panel&viewMode=story', { waitUntil: 'networkidle' })
+  await page.goto('/iframe.html?id=overlays-sheet--right-panel&viewMode=story', { waitUntil: 'networkidle' })
   await expect(page.getByRole('dialog', { name: 'Edit task' })).toBeVisible()
   await expect(page.getByLabel('Title')).toHaveValue('Review routing migration evidence')
   await page.evaluate(async () => document.fonts.ready)
 
   expect(browserErrors).toEqual([])
-  await expect(page).toHaveScreenshot('foundation-sheet.png')
+  await expect(page).toHaveScreenshot('overlays-sheet.png')
 })
 
 test('public BakinDrawer visual baseline', async ({ page }, testInfo) => {
@@ -184,12 +123,12 @@ test('public Popover visual baseline', async ({ page }) => {
   page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
   page.on('requestfailed', (request) => browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`))
 
-  await page.goto('/iframe.html?id=foundation-popover--context&viewMode=story', { waitUntil: 'networkidle' })
+  await page.goto('/iframe.html?id=overlays-popover--context&viewMode=story', { waitUntil: 'networkidle' })
   await expect(page.locator('[data-slot="popover-content"]')).toBeVisible()
   await expect(page.getByText('Active filters', { exact: true })).toBeVisible()
   await page.evaluate(async () => document.fonts.ready)
   expect(browserErrors).toEqual([])
-  await expect(page).toHaveScreenshot('foundation-popover.png')
+  await expect(page).toHaveScreenshot('overlays-popover.png')
 })
 
 test('public DropdownMenu visual baseline', async ({ page }) => {
@@ -198,12 +137,12 @@ test('public DropdownMenu visual baseline', async ({ page }) => {
   page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
   page.on('requestfailed', (request) => browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`))
 
-  await page.goto('/iframe.html?id=foundation-dropdownmenu--actions&viewMode=story', { waitUntil: 'networkidle' })
+  await page.goto('/iframe.html?id=overlays-dropdownmenu--actions&viewMode=story', { waitUntil: 'networkidle' })
   await expect(page.getByRole('menu', { name: 'Task actions' })).toBeVisible()
   await expect(page.getByRole('menuitem', { name: 'Delete' })).toHaveAttribute('data-variant', 'danger')
   await page.evaluate(async () => document.fonts.ready)
   expect(browserErrors).toEqual([])
-  await expect(page).toHaveScreenshot('foundation-dropdown-menu.png')
+  await expect(page).toHaveScreenshot('overlays-dropdown-menu.png')
 })
 
 test('public Tooltip visual baseline', async ({ page }) => {
@@ -212,12 +151,12 @@ test('public Tooltip visual baseline', async ({ page }) => {
   page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
   page.on('requestfailed', (request) => browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`))
 
-  await page.goto('/iframe.html?id=foundation-tooltip--supplemental-help&viewMode=story', { waitUntil: 'networkidle' })
+  await page.goto('/iframe.html?id=overlays-tooltip--supplemental-help&viewMode=story', { waitUntil: 'networkidle' })
   await expect(page.getByRole('tooltip')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Explain blocked state' })).toBeVisible()
   await page.evaluate(async () => document.fonts.ready)
   expect(browserErrors).toEqual([])
-  await expect(page).toHaveScreenshot('foundation-tooltip.png')
+  await expect(page).toHaveScreenshot('overlays-tooltip.png')
 })
 
 test('public Command visual baseline', async ({ page }) => {
