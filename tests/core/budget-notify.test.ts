@@ -42,8 +42,18 @@ const INCIDENT = {
   atCap: 'defer' as const,
 }
 
-async function settle(): Promise<void> {
-  await new Promise((r) => setTimeout(r, 10))
+/**
+ * The relay is detached and sits behind three dynamic imports, so there is no
+ * fixed sleep long enough to be safe — a 10ms settle here passed locally and
+ * failed CI with the send still in flight. Poll for the terminal state; the
+ * deadline only bounds a genuine hang.
+ */
+async function waitFor(predicate: () => boolean, label: string, timeoutMs = 10_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  while (!predicate()) {
+    if (Date.now() > deadline) throw new Error(`timed out waiting for ${label}`)
+    await new Promise((r) => setTimeout(r, 5))
+  }
 }
 
 beforeEach(() => {
@@ -56,7 +66,9 @@ beforeEach(() => {
 describe('notifyBudgetIncidentOpened', () => {
   it('broadcasts one plugin-event and sends one metered main-agent message', async () => {
     notifyBudgetIncidentOpened(INCIDENT, () => stubRuntime)
-    await settle()
+    // Metering is the last step of the relay — waiting on it proves the whole
+    // chain ran, so every assertion below observes a settled state.
+    await waitFor(() => metered.length > 0, 'the relay to be metered')
     expect(broadcasts).toHaveLength(1)
     expect(broadcasts[0]).toMatchObject({ type: 'plugin-event', event: 'budget.incident_opened', incidentId: 7, scope: 'provider', scopeId: 'google' })
     expect(String(broadcasts[0].message)).toContain("provider 'google'")
@@ -70,16 +82,17 @@ describe('notifyBudgetIncidentOpened', () => {
   it('a relay failure is swallowed (never throws into the gate)', async () => {
     sendImpl = async () => { throw new Error('runtime down') }
     expect(() => notifyBudgetIncidentOpened(INCIDENT, () => stubRuntime)).not.toThrow()
-    await settle()
+    // Reaching the send is the last observable step on the failing path;
+    // metering is downstream of a throw, so it can never run from here.
+    await waitFor(() => sends.length > 0, 'the relay send to be attempted')
     expect(broadcasts).toHaveLength(1) // SSE still went out
     expect(metered).toHaveLength(0)
   })
 })
 
 describe('emitBudgetIncidentResolved', () => {
-  it('broadcasts the resolution with no agent message', async () => {
-    emitBudgetIncidentResolved({ incidentId: 7, resolution: 'raised' })
-    await settle()
+  it('broadcasts the resolution with no agent message', () => {
+    emitBudgetIncidentResolved({ incidentId: 7, resolution: 'raised' }) // synchronous — nothing to settle
     expect(broadcasts[0]).toMatchObject({ type: 'plugin-event', event: 'budget.incident_resolved', incidentId: 7, resolution: 'raised' })
     expect(sends).toHaveLength(0)
   })
