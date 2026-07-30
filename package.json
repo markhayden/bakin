@@ -35,6 +35,8 @@
     "ui:conformance": "bun run scripts/ui/conformance.ts",
     "ui:legacy-styles:generate": "bun run scripts/ui/check-legacy-styles.ts generate",
     "ui:legacy-styles:check": "bun run scripts/ui/check-legacy-styles.ts check",
+    "ui:story-compliance:generate": "bun run scripts/ui/story-compliance.ts generate",
+    "ui:story-compliance:check": "bun run scripts/ui/story-compliance.ts check",
     "ui:performance:generate": "bun run scripts/ui/performance.ts generate",
     "ui:performance": "bun run scripts/ui/performance.ts check",
     "ui:dev": "bun run build:css && storybook dev -p 6006 --exact-port --host 127.0.0.1 --no-open --disable-telemetry",
