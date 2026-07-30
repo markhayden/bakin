@@ -27,7 +27,7 @@ import {
 import './conversation-inspector-pages.stories.css'
 
 const meta = {
-  title: 'Patterns/Conversation and inspector',
+  title: 'Recipes/Conversation and inspector pages',
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',

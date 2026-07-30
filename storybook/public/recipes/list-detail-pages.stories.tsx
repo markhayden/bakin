@@ -31,7 +31,7 @@ import { DEFAULT_STORY_FIXTURE } from '../../fixtures'
 import './page-archetypes.stories.css'
 
 const meta = {
-  title: 'Patterns/List and detail pages',
+  title: 'Recipes/List and detail pages',
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',

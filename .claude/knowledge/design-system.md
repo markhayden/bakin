@@ -115,6 +115,31 @@ text-secondary        → var(--secondary) — electric yellow
 border-outline-variant → var(--outline-variant)
 ```
 
+## Storybook taxonomy (refit P2, 2026-07-30)
+
+Public entries are one-component-per-entry under intent sections; every entry
+leads with a `CanonicalUsage` story (minimal, SDK-imports-only). The tree:
+
+`Foundations/` tokens · `Primitives/` button, input, badge, avatar, card, … ·
+`Overlays/` dialog, sheet, drawer, popover, tooltip, dropdown-menu ·
+`Feedback/` system-state, alert, toast, banner, progress, skeleton,
+status-badge/marker, confirm-dialog, danger-zone, search-trust ·
+`Forms/` field composition, settings renderer, save-bar, unsaved-changes,
+asset/model/color pickers · `Navigation/` command, tabs, facet-filter,
+search-input, segmented-control, pagination, sortable-head ·
+`Layout/` page-shell, stack/inline, grid, section, bounded-overflow ·
+`Pages/` archetypes (WorkspacePage now; Page lands in refit P5) ·
+`Lists/` list-rows, kanban (+ P5: data-table, timeline, calendar-grid, …) ·
+`Charts/` line, bar, stacked-column, ranked-bar, sparkline, data-table,
+explainer, stat-tile, stat-group (+ P4: pie, area, composition-bar) ·
+`Conversation/` (sanctioned domain, unchanged) · `Agents/` avatar, select,
+status (sanctioned domain) · `Content/` markdown content/editor ·
+`Recipes/` assembly proofs (CanonicalUsage-exempt) · `Testing/` plugin UI
+fixture host · `Internal/` direction studies + containment (maintainer only).
+
+Shared scaffolding: `storybook/support/` (StoryStage/StorySection/StoryCluster/
+OverlayBackdrop + icons). Visual baselines are named `<section>-<entry>.png`.
+
 ## Storybook refit gates (2026-07-29)
 
 The storybook-refit effort (spec/audit/plan in `.claude/specs/storybook-refit*.md`)

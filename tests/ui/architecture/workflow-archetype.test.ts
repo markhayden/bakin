@@ -29,7 +29,7 @@ describe('canonical workflow archetype', () => {
   })
 
   it('uses real React Flow in the public evidence while retaining existing routing ownership', () => {
-    const story = read('storybook/public/patterns/workflow-pages.stories.tsx')
+    const story = read('storybook/public/recipes/workflow-pages.stories.tsx')
     const graph = read('storybook/public/patterns/workflow-story-graph.tsx')
     const guide = read('docs/src/content/docs/extending/ui/overview.md')
     expect(graph).toContain("from '@xyflow/react'")

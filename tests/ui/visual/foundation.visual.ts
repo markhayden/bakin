@@ -230,7 +230,7 @@ test('public banner feedback visual baseline', async ({ page }) => {
 })
 
 test('public list/index page recipe visual baseline', async ({ page }) => {
-  await page.goto('/iframe.html?id=patterns-list-and-detail-pages--list-index&viewMode=story')
+  await page.goto('/iframe.html?id=recipes-list-and-detail-pages--list-index&viewMode=story')
   await expect(page.getByRole('heading', { level: 1, name: 'Coordinate active work' })).toBeVisible()
   await page.evaluate(async () => document.fonts.ready)
   await expect(page).toHaveScreenshot('foundation-list-page.png', {
@@ -241,7 +241,7 @@ test('public list/index page recipe visual baseline', async ({ page }) => {
 })
 
 test('public page header controls visual baseline', async ({ page }) => {
-  await page.goto('/iframe.html?id=patterns-list-and-detail-pages--list-header-controls&viewMode=story')
+  await page.goto('/iframe.html?id=recipes-list-and-detail-pages--list-header-controls&viewMode=story')
   await expect(page.getByRole('heading', { level: 1, name: 'Tasks' })).toBeVisible()
   await expect(page.getByRole('group', { name: 'Task search, view, and actions' })).toBeVisible()
   await expect(page.locator('[data-slot="search-input-control"]')).toHaveAttribute('data-state', 'empty')
@@ -254,7 +254,7 @@ test('public page header controls visual baseline', async ({ page }) => {
 })
 
 test('public detail page recipe visual baseline', async ({ page }) => {
-  await page.goto('/iframe.html?id=patterns-list-and-detail-pages--detail&viewMode=story')
+  await page.goto('/iframe.html?id=recipes-list-and-detail-pages--detail&viewMode=story')
   await expect(page.getByRole('heading', { level: 1, name: 'Launch approval' })).toBeVisible()
   await expect(page.getByRole('complementary', { name: 'Workflow context' })).toBeVisible()
   await page.evaluate(async () => document.fonts.ready)
@@ -266,7 +266,7 @@ test('public detail page recipe visual baseline', async ({ page }) => {
 })
 
 test('public settings page recipe visual baseline', async ({ page }) => {
-  await page.goto('/iframe.html?id=patterns-settings-and-dashboard-pages--settings-categories&viewMode=story')
+  await page.goto('/iframe.html?id=recipes-settings-and-dashboard-pages--settings-categories&viewMode=story')
   await expect(page.getByRole('heading', { level: 1, name: 'Settings' })).toBeVisible()
   await expect(page.getByRole('navigation', { name: 'Settings categories' })).toBeVisible()
   await page.evaluate(async () => document.fonts.ready)
@@ -278,7 +278,7 @@ test('public settings page recipe visual baseline', async ({ page }) => {
 })
 
 test('public dashboard page recipe visual baseline', async ({ page }) => {
-  await page.goto('/iframe.html?id=patterns-settings-and-dashboard-pages--dashboard-overview&viewMode=story')
+  await page.goto('/iframe.html?id=recipes-settings-and-dashboard-pages--dashboard-overview&viewMode=story')
   await expect(page.getByRole('heading', { level: 1, name: 'Keep Bakin ready to work' })).toBeVisible()
   await expect(page.getByRole('region', { name: 'Health overview' })).toBeVisible()
   await page.evaluate(async () => document.fonts.ready)
@@ -290,7 +290,7 @@ test('public dashboard page recipe visual baseline', async ({ page }) => {
 })
 
 test('public conversation page recipe visual baseline', async ({ page }) => {
-  await page.goto('/iframe.html?id=patterns-conversation-and-inspector--conversation&viewMode=story')
+  await page.goto('/iframe.html?id=recipes-conversation-and-inspector-pages--conversation&viewMode=story')
   await expect(page.getByRole('heading', { level: 1, name: 'Conversation with Patch' })).toBeVisible()
   await expect(page.getByRole('log', { name: 'Conversation with Patch' })).toBeVisible()
   await page.evaluate(async () => document.fonts.ready)
@@ -302,7 +302,7 @@ test('public conversation page recipe visual baseline', async ({ page }) => {
 })
 
 test('public inspector recipe visual baseline', async ({ page }) => {
-  await page.goto('/iframe.html?id=patterns-conversation-and-inspector--inspector&viewMode=story')
+  await page.goto('/iframe.html?id=recipes-conversation-and-inspector-pages--inspector&viewMode=story')
   await expect(page.getByRole('heading', { level: 1, name: 'Launch publishing workflow' })).toBeVisible()
   await expect(page.getByRole('region', { name: 'Assemble social video node inspector' })).toBeVisible()
   await page.evaluate(async () => document.fonts.ready)
@@ -314,7 +314,7 @@ test('public inspector recipe visual baseline', async ({ page }) => {
 })
 
 test('public vertical workflow recipe visual baseline', async ({ page }) => {
-  await page.goto('/iframe.html?id=patterns-workflow-and-action-pages--vertical-workflow&viewMode=story')
+  await page.goto('/iframe.html?id=recipes-workflow-and-action-pages--vertical-workflow&viewMode=story')
   await expect(page.getByRole('heading', { level: 1, name: 'Launch publishing workflow' })).toBeVisible()
   await expect(page.getByRole('region', { name: 'Vertical launch publishing workflow canvas' })).toHaveAttribute('data-orientation', 'vertical')
   await expect(page.locator('.react-flow')).toBeVisible()
@@ -327,7 +327,7 @@ test('public vertical workflow recipe visual baseline', async ({ page }) => {
 })
 
 test('public horizontal workflow recipe visual baseline', async ({ page }) => {
-  await page.goto('/iframe.html?id=patterns-workflow-and-action-pages--horizontal-workflow&viewMode=story')
+  await page.goto('/iframe.html?id=recipes-workflow-and-action-pages--horizontal-workflow&viewMode=story')
   await expect(page.getByRole('heading', { level: 1, name: 'Launch publishing workflow' })).toBeVisible()
   await expect(page.getByRole('region', { name: 'Horizontal launch publishing workflow canvas' })).toHaveAttribute('data-orientation', 'horizontal')
   await expect(page.locator('.react-flow')).toBeVisible()
@@ -687,7 +687,7 @@ const PRIMITIVES_BASELINES = [
   { url: '/iframe.html?id=feedback-dangerzone--consequence-first-placement&viewMode=story', png: 'feedback-danger-zone.png', text: 'Separate dangerous work from routine settings' },
   { url: '/iframe.html?id=forms-unsavedchangesdialog--canonical-usage&viewMode=story', png: 'forms-unsaved-changes-dialog.png', role: 'dialog' as const, name: 'Unsaved changes' },
   { url: '/iframe.html?id=forms-plugin-settings-renderer--messaging-schema-workflow&viewMode=story', png: 'forms-plugin-settings-renderer.png', text: 'Let plugin settings feel native without hiding their rules' },
-  { url: '/iframe.html?id=recipes-destructive-settings-flow--settings-flow&viewMode=story', png: 'recipes-destructive-settings-flow.png', text: 'Destructive settings flow' },
+  { url: '/iframe.html?id=recipes-destructive-settings-flow--settings-flow&viewMode=story', png: 'recipes-destructive-settings-flow.png', text: 'Workspace deletion confirmed' },
   { url: '/iframe.html?id=navigation-pagenavigator--paged-boundaries&viewMode=story', png: 'navigation-page-navigator.png', text: 'Showing 21–40 of 94' },
   { url: '/iframe.html?id=charts-rankedbarchart--ranked-comparison&viewMode=story', png: 'charts-ranked-bar-chart.png', text: 'Rank long labels without forcing them onto an axis' },
   { url: '/iframe.html?id=charts-chartexplainer--canonical-usage&viewMode=story', png: 'charts-chart-explainer.png', role: 'note' as const },
@@ -702,6 +702,8 @@ const PRIMITIVES_BASELINES = [
   { url: '/iframe.html?id=layout-boundedoverflow--wide-operations-table&viewMode=story', png: 'layout-bounded-overflow.png', role: 'region' as const, name: 'Active operation details' },
   { url: '/iframe.html?id=foundations-semantic-tokens--catalog&viewMode=story', png: 'foundations-semantic-tokens.png', text: 'Semantic UI tokens' },
   { url: '/iframe.html?id=testing-plugin-ui-fixture-host--canonical-usage&viewMode=story', png: 'testing-plugin-ui-fixture.png', text: 'Canonical fixture page' },
+  { url: '/iframe.html?id=pages-workspacepage--canonical-usage&viewMode=story', png: 'pages-workspace-page.png', role: 'region' as const, name: 'Workspace canvas' },
+  { url: '/iframe.html?id=lists-listrows--list-varieties&viewMode=story', png: 'lists-list-rows.png', role: 'list' as const, name: 'Bordered lesson rows' },
 ]
 
 for (const baseline of PRIMITIVES_BASELINES) {

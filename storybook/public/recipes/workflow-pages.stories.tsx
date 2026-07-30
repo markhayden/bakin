@@ -13,11 +13,11 @@ import {
 } from '@makinbakin/sdk/patterns'
 import { Badge, Banner, Button, SystemState } from '@makinbakin/sdk/ui'
 
-import { WorkflowStoryWorkspace } from './workflow-story-graph'
+import { WorkflowStoryWorkspace } from '../patterns/workflow-story-graph'
 import './workflow-pages.stories.css'
 
 const meta = {
-  title: 'Patterns/Workflow and action pages',
+  title: 'Recipes/Workflow and action pages',
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',

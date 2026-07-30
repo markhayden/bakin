@@ -6,10 +6,10 @@ import { PageShell, Stack } from '@makinbakin/sdk/layout'
 import { ListRow, ListRows, StatusBadge } from '@makinbakin/sdk/patterns'
 import { Button } from '@makinbakin/sdk/ui'
 
-import './lists.stories.css'
+import './list-rows.stories.css'
 
 const meta = {
-  title: 'Patterns/Lists',
+  title: 'Lists/ListRows',
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',
@@ -24,6 +24,22 @@ const meta = {
 
 export default meta
 type Story = StoryObj<typeof meta>
+
+export const CanonicalUsage = {
+  parameters: { layout: 'padded' },
+  render: () => (
+    <ListRows aria-label="Recent activity">
+      <ListRow>Catalog refreshed</ListRow>
+      <ListRow>Agent package synced</ListRow>
+    </ListRows>
+  ),
+  play: async ({ canvas }) => {
+    const list = canvas.getByRole('list', { name: 'Recent activity' })
+    await expect(list).toBeVisible()
+    await expect(list).toHaveAttribute('data-variant', 'bordered')
+    await expect(canvas.getAllByRole('listitem')).toHaveLength(2)
+  },
+} satisfies Story
 
 function ListPattern({
   title,

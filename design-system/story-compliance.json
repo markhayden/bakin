@@ -11,52 +11,8 @@
       ]
     },
     {
-      "path": "storybook/public/patterns/conversation-inspector-pages.stories.tsx",
-      "title": "Patterns/Conversation and inspector",
-      "missing": [
-        "canonical-usage"
-      ]
-    },
-    {
-      "path": "storybook/public/patterns/list-detail-pages.stories.tsx",
-      "title": "Patterns/List and detail pages",
-      "missing": [
-        "canonical-usage"
-      ]
-    },
-    {
-      "path": "storybook/public/patterns/lists.stories.tsx",
-      "title": "Patterns/Lists",
-      "missing": [
-        "canonical-usage",
-        "visual-baseline"
-      ]
-    },
-    {
       "path": "storybook/public/patterns/schedule-timeline.stories.tsx",
       "title": "Patterns/Schedule and timeline",
-      "missing": [
-        "canonical-usage",
-        "visual-baseline"
-      ]
-    },
-    {
-      "path": "storybook/public/patterns/settings-dashboard-pages.stories.tsx",
-      "title": "Patterns/Settings and dashboard pages",
-      "missing": [
-        "canonical-usage"
-      ]
-    },
-    {
-      "path": "storybook/public/patterns/workflow-pages.stories.tsx",
-      "title": "Patterns/Workflow and action pages",
-      "missing": [
-        "canonical-usage"
-      ]
-    },
-    {
-      "path": "storybook/public/patterns/workspace-pages.stories.tsx",
-      "title": "Patterns/Workspace pages",
       "missing": [
         "canonical-usage",
         "visual-baseline"

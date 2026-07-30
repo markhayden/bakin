@@ -21,7 +21,7 @@ used by Bakin. It imports only `@makinbakin/sdk/*`.
 
 The page starts from the public Storybook recipes, not local styling:
 
-- `Patterns/List and detail pages` owns page identity, list rhythm, and the
+- `Recipes/List and detail pages` owns page identity, list rhythm, and the
   replaceable result region.
 - `Forms/Field and form composition` owns labels, descriptions, validation,
   actions, and busy state.

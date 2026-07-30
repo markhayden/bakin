@@ -30,7 +30,7 @@ import {
 import './settings-dashboard-pages.stories.css'
 
 const meta = {
-  title: 'Patterns/Settings and dashboard pages',
+  title: 'Recipes/Settings and dashboard pages',
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',

@@ -10,10 +10,10 @@ import {
 } from '@makinbakin/sdk/patterns'
 import { Badge, Button, DropdownMenuItem } from '@makinbakin/sdk/ui'
 
-import './workspace-pages.stories.css'
+import './workspace-page.stories.css'
 
 const meta = {
-  title: 'Patterns/Workspace pages',
+  title: 'Pages/WorkspacePage',
   component: WorkspacePage,
   args: {
     children: null,
@@ -32,6 +32,27 @@ const meta = {
 
 export default meta
 type Story = StoryObj<typeof meta>
+
+export const CanonicalUsage = {
+  render: () => (
+    <WorkspacePage data-testid="canonical-workspace-page">
+      <WorkspacePageHeader>
+        <PageHeader title="Conversation workspace" />
+      </WorkspacePageHeader>
+      <WorkspacePageBody>
+        <section aria-label="Workspace canvas">Workspace canvas</section>
+      </WorkspacePageBody>
+    </WorkspacePage>
+  ),
+  play: async ({ canvas }) => {
+    const page = canvas.getByTestId('canonical-workspace-page')
+    await expect(page).toHaveAttribute('data-archetype', 'workspace')
+    await expect(page.querySelector('[data-slot="workspace-page-header"]')).toBeTruthy()
+    await expect(page.querySelector('[data-slot="workspace-page-body"]')).toBeTruthy()
+    await expect(canvas.getByRole('heading', { name: 'Conversation workspace' })).toBeVisible()
+    await expect(canvas.getByRole('region', { name: 'Workspace canvas' })).toBeVisible()
+  },
+} satisfies Story
 
 const conversations = [
   ['Launch plan decisions', 'Margo', '1h'],

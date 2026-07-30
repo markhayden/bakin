@@ -80,7 +80,7 @@ describe('reference plugin UI exemplar', () => {
     const readme = read('examples/reference-plugin/README.md')
 
     expect(readme).toContain('bun run test:ui')
-    expect(readme).toContain('Patterns/List and detail pages')
+    expect(readme).toContain('Recipes/List and detail pages')
     expect(readme).toContain('Forms/Field and form composition')
     expect(readme).toContain('States/System feedback')
     expect(readme).toContain('human-readable explanation')

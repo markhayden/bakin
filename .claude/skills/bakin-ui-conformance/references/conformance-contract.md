@@ -26,13 +26,21 @@ Use the most specific applicable layer:
 
 | UI need | Storybook area | Focused entrypoint |
 | --- | --- | --- |
-| actions, controls, overlays, cards, state feedback | `Foundation/`, `Forms/`, `States/` | `@makinbakin/sdk/ui` |
+| buttons, inputs, cards, badges, selection controls | `Primitives/` | `@makinbakin/sdk/ui` |
+| dialogs, sheets, drawers, popovers, tooltips, menus | `Overlays/` | `@makinbakin/sdk/ui` |
+| system states, alerts, toasts, banners, progress, status language, confirm/danger flows | `Feedback/` | `@makinbakin/sdk/ui`, `@makinbakin/sdk/patterns` |
+| fields, form composition, save/dirty flows, pickers, settings renderer | `Forms/` | `@makinbakin/sdk/ui`, `@makinbakin/sdk/patterns` |
+| tabs, filters, search input, command palette, pagination, sortable heads | `Navigation/` | `@makinbakin/sdk/patterns`, `@makinbakin/sdk/ui` |
 | page rhythm, flow, grid, sections, bounded overflow | `Layout/` | `@makinbakin/sdk/layout` |
-| page archetypes, filters, status, settings, pickers, destructive flows | `Patterns/`, `Forms/`, `Choices/`, `Search/`, `Agents/` | `@makinbakin/sdk/patterns` |
-| exact data plus visual summaries | `Charts/` | `@makinbakin/sdk/charts` |
+| page archetypes (document pages, workspace surfaces) | `Pages/` | `@makinbakin/sdk/patterns` |
+| vetted list types (rows, kanban, …) | `Lists/` | `@makinbakin/sdk/patterns` |
+| exact data plus visual summaries, stat tiles | `Charts/` | `@makinbakin/sdk/charts`, `@makinbakin/sdk/patterns` |
 | messages, turns, composer, streaming, tool detail | `Conversation/` | `@makinbakin/sdk/conversation` |
+| agent identity, presence, assignment | `Agents/` | `@makinbakin/sdk/patterns` |
 | rendered or editable rich text | `Content/` | `@makinbakin/sdk/content` |
-| runtime links, URL state, history, dirty-exit behavior | `Patterns/Destructive and dirty state` | `@makinbakin/sdk/navigation` |
+| runtime links, URL state, history, dirty-exit behavior | `Forms/UnsavedChangesDialog`, `Navigation/` docs notes | `@makinbakin/sdk/navigation` |
+| composed full-page assembly proofs | `Recipes/` | (compose the entries above) |
+| semantic token contract | `Foundations/` | `@makinbakin/sdk/styles.css` |
 
 Archetypes own page composition. Primitives do not grant permission to rebuild an archetype locally.
 
