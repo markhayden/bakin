@@ -22,6 +22,9 @@ export { storyGlobsForAudience }
 const REPO_ROOT = resolve(import.meta.dir, '../..')
 const PUBLIC_ROOT = 'storybook/public'
 const FIXTURE_ROOT = 'storybook/fixtures'
+// Shared story scaffolding (StoryStage, icons). Ships in the public build, so
+// its local graph is walked by the same boundary checks as the stories.
+const SUPPORT_ROOT = 'storybook/support'
 const SOURCE_EXTENSIONS = ['.ts', '.tsx', '.mts', '.js', '.jsx', '.mjs'] as const
 const PUBLIC_VISUAL_SDK_ENTRYPOINTS = new Set([
   '@makinbakin/sdk/ui',
@@ -344,6 +347,8 @@ export function collectPublicStoryViolations(rootDir = REPO_ROOT): PublicStoryVi
   const canonicalRoot = realpathSync(rootDir)
   const publicRoot = realpathSync(join(canonicalRoot, PUBLIC_ROOT))
   const fixtureRoot = realpathSync(join(canonicalRoot, FIXTURE_ROOT))
+  const supportRootPath = join(canonicalRoot, SUPPORT_ROOT)
+  const supportRoot = existsSync(supportRootPath) ? realpathSync(supportRootPath) : null
   const stories = walkSourceFiles(publicRoot).filter((path) => /\.stories\.(?:ts|tsx)$/.test(path))
   const queue = [...stories]
   const visited = new Set<string>()
@@ -384,11 +389,15 @@ export function collectPublicStoryViolations(rootDir = REPO_ROOT): PublicStoryVi
       if (!reference.specifier.startsWith('.')) continue
       const resolved = resolveLocalModule(path, reference.specifier)
       if (!resolved) continue
-      if (!isWithin(resolved, publicRoot) && !isWithin(resolved, fixtureRoot)) {
+      if (
+        !isWithin(resolved, publicRoot)
+        && !isWithin(resolved, fixtureRoot)
+        && !(supportRoot !== null && isWithin(resolved, supportRoot))
+      ) {
         violations.push({
           path: portablePath(canonicalRoot, path),
           line: reference.line,
-          message: `public catalog cannot import ${reference.specifier} (resolves outside ${PUBLIC_ROOT} and ${FIXTURE_ROOT})`,
+          message: `public catalog cannot import ${reference.specifier} (resolves outside ${PUBLIC_ROOT}, ${FIXTURE_ROOT}, and ${SUPPORT_ROOT})`,
         })
         continue
       }

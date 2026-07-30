@@ -55,6 +55,39 @@ describe('Storybook catalog audiences', () => {
     expect(validatePublicStoryBoundary(root)).toEqual([])
   })
 
+  it('accepts public stories importing shared scaffolding from storybook/support', () => {
+    const root = makeFixtureRoot()
+    mkdirSync(join(root, 'storybook/support'), { recursive: true })
+    writeFileSync(join(root, 'storybook/public/staged.stories.tsx'), [
+      "import type { Meta } from '@storybook/react-vite'",
+      "import { StoryStage } from '../support'",
+      "export default { title: 'Foundation/Staged', tags: ['public'] } satisfies Meta",
+    ].join('\n'))
+    writeFileSync(join(root, 'storybook/support/index.tsx'), [
+      "import { PageShell } from '@makinbakin/sdk/layout'",
+      'export function StoryStage() { return PageShell }',
+    ].join('\n'))
+
+    expect(validatePublicStoryBoundary(root)).toEqual([])
+  })
+
+  it('still walks storybook/support imports for banned specifiers', () => {
+    const root = makeFixtureRoot()
+    mkdirSync(join(root, 'storybook/support'), { recursive: true })
+    writeFileSync(join(root, 'storybook/public/staged.stories.tsx'), [
+      "import { StoryStage } from '../support'",
+      "export default { title: 'Foundation/Staged', tags: ['public'] }",
+    ].join('\n'))
+    writeFileSync(join(root, 'storybook/support/index.tsx'), [
+      "import { getSettings } from '@/core/settings'",
+      'export function StoryStage() { return getSettings }',
+    ].join('\n'))
+
+    const violations = validatePublicStoryBoundary(root)
+    expect(violations.length).toBe(1)
+    expect(violations[0]).toContain('@/core/settings')
+  })
+
   it('fails on direct and transitive imports of Bakin internals', () => {
     const root = makeFixtureRoot()
     writeFileSync(join(root, 'storybook/public/direct.stories.tsx'), [
@@ -73,7 +106,7 @@ describe('Storybook catalog audiences', () => {
     writeFileSync(join(root, 'packages/host/src/private-fixture.ts'), 'export const fixture = {}\n')
 
     expect(validatePublicStoryBoundary(root)).toEqual([
-      'storybook/fixtures/private-fixture.ts:1 public catalog cannot import ../../packages/host/src/private-fixture (resolves outside storybook/public and storybook/fixtures)',
+      'storybook/fixtures/private-fixture.ts:1 public catalog cannot import ../../packages/host/src/private-fixture (resolves outside storybook/public, storybook/fixtures, and storybook/support)',
       "storybook/public/direct.stories.tsx:1 public catalog cannot import @/components/ui/button; use @makinbakin/sdk/*",
     ])
   })
