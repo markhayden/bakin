@@ -187,7 +187,7 @@ function OverlayStudy() {
 }
 
 const meta = {
-  title: 'Direction studies/Detail and form',
+  title: 'Internal/Direction studies/Detail and form',
   tags: ['internal'],
   parameters: { layout: 'fullscreen', bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'focus-order', 'validation', 'overlay', 'destructive'] },
 } satisfies Meta

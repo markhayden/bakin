@@ -3,49 +3,6 @@
   "generatedBy": "bun run ui:story-compliance:generate",
   "entries": [
     {
-      "path": "storybook/public/conversation/activity-group.stories.tsx",
-      "title": "Conversation/Tool activity",
-      "missing": [
-        "canonical-usage"
-      ]
-    },
-    {
-      "path": "storybook/public/conversation/composer.stories.tsx",
-      "title": "Conversation/Composer and attachments",
-      "missing": [
-        "canonical-usage"
-      ]
-    },
-    {
-      "path": "storybook/public/conversation/panel-and-drawer.stories.tsx",
-      "title": "Conversation/Panel and tool detail",
-      "missing": [
-        "canonical-usage"
-      ]
-    },
-    {
-      "path": "storybook/public/conversation/timeline.stories.tsx",
-      "title": "Conversation/Timeline and empty state",
-      "missing": [
-        "canonical-usage"
-      ]
-    },
-    {
-      "path": "storybook/public/conversation/turn-output.stories.tsx",
-      "title": "Conversation/Single-turn output",
-      "missing": [
-        "canonical-usage",
-        "visual-baseline"
-      ]
-    },
-    {
-      "path": "storybook/public/conversation/turns.stories.tsx",
-      "title": "Conversation/Turns and messages",
-      "missing": [
-        "canonical-usage"
-      ]
-    },
-    {
       "path": "storybook/public/foundation/bakin-drawer.stories.tsx",
       "title": "Foundation/BakinDrawer",
       "missing": [
@@ -54,53 +11,10 @@
       ]
     },
     {
-      "path": "storybook/public/foundation/tokens.generated.stories.tsx",
-      "title": "Foundations/Semantic tokens",
-      "missing": [
-        "canonical-usage",
-        "coverage-axes",
-        "docs-description",
-        "play-assertion",
-        "visual-baseline"
-      ]
-    },
-    {
-      "path": "storybook/public/layout/grid-section-overflow.stories.tsx",
-      "title": "Layout/Grid, section, and overflow",
-      "missing": [
-        "canonical-usage",
-        "coverage-axes",
-        "play-assertion"
-      ]
-    },
-    {
-      "path": "storybook/public/layout/page-shell-flow.stories.tsx",
-      "title": "Layout/PageShell and flow",
-      "missing": [
-        "canonical-usage",
-        "coverage-axes"
-      ]
-    },
-    {
-      "path": "storybook/public/patterns/agent-identity-assignment.stories.tsx",
-      "title": "Agents/Identity and assignment",
-      "missing": [
-        "canonical-usage"
-      ]
-    },
-    {
       "path": "storybook/public/patterns/conversation-inspector-pages.stories.tsx",
       "title": "Patterns/Conversation and inspector",
       "missing": [
         "canonical-usage"
-      ]
-    },
-    {
-      "path": "storybook/public/patterns/kanban.stories.tsx",
-      "title": "Patterns/Kanban board",
-      "missing": [
-        "canonical-usage",
-        "visual-baseline"
       ]
     },
     {
@@ -113,14 +27,6 @@
     {
       "path": "storybook/public/patterns/lists.stories.tsx",
       "title": "Patterns/Lists",
-      "missing": [
-        "canonical-usage",
-        "visual-baseline"
-      ]
-    },
-    {
-      "path": "storybook/public/patterns/markdown.stories.tsx",
-      "title": "Content/Markdown",
       "missing": [
         "canonical-usage",
         "visual-baseline"
@@ -153,15 +59,6 @@
       "title": "Patterns/Workspace pages",
       "missing": [
         "canonical-usage",
-        "visual-baseline"
-      ]
-    },
-    {
-      "path": "storybook/public/testing/plugin-ui-fixture.stories.tsx",
-      "title": "Testing/Plugin UI fixture host",
-      "missing": [
-        "canonical-usage",
-        "coverage-axes",
         "visual-baseline"
       ]
     }

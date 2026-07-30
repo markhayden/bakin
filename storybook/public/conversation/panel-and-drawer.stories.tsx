@@ -31,6 +31,34 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
+const canonicalAgent = { id: 'release', name: 'Release agent' }
+
+const canonicalMessages: ConversationMessage[] = [
+  { kind: 'user', ts: '2026-01-15T11:54:00.000Z', content: 'Check the routing examples before release.' },
+  { kind: 'assistant', ts: '2026-01-15T11:55:00.000Z', content: 'The route contract is preserved. One archived appendix still needs an owner.' },
+]
+
+export const CanonicalUsage = {
+  parameters: { layout: 'centered' },
+  args: { messages: canonicalMessages, onSend: () => {}, storageKey: 'storybook-canonical-panel' },
+  render: () => (
+    <ConversationPanel
+      messages={canonicalMessages}
+      agent={canonicalAgent}
+      onSend={() => {}}
+      storageKey="storybook-canonical-panel"
+      title="Release review"
+      inputLabel="Message the release agent"
+      autoFocus={false}
+    />
+  ),
+  play: async ({ canvas }) => {
+    await expect(canvas.getByRole('region', { name: 'Release review' })).toBeVisible()
+    await expect(canvas.getByRole('article', { name: 'Release agent reply' })).toBeVisible()
+    await expect(canvas.getByRole('textbox', { name: 'Message the release agent' })).toBeVisible()
+  },
+} satisfies Story
+
 const releaseAgent = { id: 'release', name: 'Release operations agent' }
 
 const toolCall: ConversationToolCall = {

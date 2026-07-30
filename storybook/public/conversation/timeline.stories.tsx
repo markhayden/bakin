@@ -34,6 +34,35 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
+const canonicalAgent = { id: 'release', name: 'Release agent' }
+
+const canonicalTurns: ConversationTurn[] = [
+  {
+    kind: 'user',
+    key: 'canonical-user',
+    ts: '2026-01-15T11:58:00.000Z',
+    content: 'Is the routing guide ready to publish?',
+  },
+  {
+    kind: 'agent',
+    key: 'canonical-agent',
+    ts: '2026-01-15T11:59:00.000Z',
+    status: 'complete',
+    items: [{ type: 'text', format: 'plain', content: 'Yes. The route contract is preserved and every example is current.' }],
+  },
+]
+
+export const CanonicalUsage = {
+  parameters: { layout: 'centered' },
+  args: { turns: canonicalTurns },
+  render: () => <Conversation turns={canonicalTurns} agent={canonicalAgent} />,
+  play: async ({ canvas }) => {
+    await expect(canvas.getByRole('article', { name: 'Your message' })).toBeVisible()
+    await expect(canvas.getByRole('article', { name: 'Release agent reply' })).toBeVisible()
+    await expect(canvas.getByText('Yes. The route contract is preserved and every example is current.')).toBeVisible()
+  },
+} satisfies Story
+
 const releaseAgent = { id: 'release', name: 'Release agent' }
 
 const documentTurns: ConversationTurn[] = [

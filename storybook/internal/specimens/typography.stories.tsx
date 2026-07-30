@@ -404,7 +404,7 @@ function FallbackStudy() {
 }
 
 const meta = {
-  title: 'Direction studies/Typography',
+  title: 'Internal/Direction studies/Typography',
   tags: ['internal'],
   parameters: {
     layout: 'fullscreen',

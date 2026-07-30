@@ -166,9 +166,9 @@ test('public Command visual baseline', async ({ page }) => {
 })
 
 test('public PageShell and flow visual baseline', async ({ page }) => {
-  await page.goto('/iframe.html?id=layout-pageshell-and-flow--responsive-page&viewMode=story')
+  await page.goto('/iframe.html?id=layout-pageshell--responsive-page&viewMode=story')
   await expect(page.getByRole('heading', { name: 'Coordinate active work' })).toBeVisible()
-  await expect(page).toHaveScreenshot('foundation-layout-flow.png', {
+  await expect(page).toHaveScreenshot('layout-page-shell.png', {
     animations: 'disabled',
     caret: 'hide',
     fullPage: true,
@@ -176,9 +176,9 @@ test('public PageShell and flow visual baseline', async ({ page }) => {
 })
 
 test('public responsive layout recipes visual baseline', async ({ page }) => {
-  await page.goto('/iframe.html?id=layout-grid-section-and-overflow--responsive-composition&viewMode=story')
+  await page.goto('/iframe.html?id=layout-grid--responsive-recipes&viewMode=story')
   await expect(page.getByRole('heading', { name: 'Structure changes with available space' })).toBeVisible()
-  await expect(page).toHaveScreenshot('foundation-layout-recipes.png', {
+  await expect(page).toHaveScreenshot('layout-grid.png', {
     animations: 'disabled',
     caret: 'hide',
     fullPage: true,
@@ -396,7 +396,7 @@ test('public compact search behavior visual baseline', async ({ page }) => {
 })
 
 test('public agent filter pattern visual baseline', async ({ page }) => {
-  await page.goto('/iframe.html?id=agents-identity-and-assignment--agent-filtering&viewMode=story')
+  await page.goto('/iframe.html?id=agents-agentselect--agent-filtering&viewMode=story')
   await expect(page.getByRole('heading', { level: 1, name: 'Filter by an agent without losing names' })).toBeVisible()
   await expect(page.getByRole('radiogroup', { name: 'Filter by agent' })).toBeVisible()
   await page.evaluate(async () => document.fonts.ready)
@@ -691,6 +691,17 @@ const PRIMITIVES_BASELINES = [
   { url: '/iframe.html?id=navigation-pagenavigator--paged-boundaries&viewMode=story', png: 'navigation-page-navigator.png', text: 'Showing 21–40 of 94' },
   { url: '/iframe.html?id=charts-rankedbarchart--ranked-comparison&viewMode=story', png: 'charts-ranked-bar-chart.png', text: 'Rank long labels without forcing them onto an axis' },
   { url: '/iframe.html?id=charts-chartexplainer--canonical-usage&viewMode=story', png: 'charts-chart-explainer.png', role: 'note' as const },
+  { url: '/iframe.html?id=agents-agentavatar--sizes-and-presence&viewMode=story', png: 'agents-agent-avatar.png', text: 'Keep identity recognizable at every density' },
+  { url: '/iframe.html?id=agents-agentstatus--presence-language&viewMode=story', png: 'agents-agent-status.png', text: 'Say the state in words, not color' },
+  { url: '/iframe.html?id=content-markdowncontent--reading-and-code&viewMode=story', png: 'content-markdown-content.png', text: 'Release evidence' },
+  { url: '/iframe.html?id=content-markdowneditor--controlled-editor&viewMode=story', png: 'content-markdown-editor.png', role: 'textbox' as const, name: 'Release handoff content' },
+  { url: '/iframe.html?id=lists-kanban--task-board-composition&viewMode=story', png: 'lists-kanban.png', text: 'Keep lanes quiet and tasks scannable' },
+  { url: '/iframe.html?id=conversation-single-turn-output--canonical-usage&viewMode=story', png: 'conversation-turn-output.png', role: 'status' as const },
+  { url: '/iframe.html?id=layout-stack-and-inline--gap-scale-and-wrapping&viewMode=story', png: 'layout-stack-inline.png', text: 'One finite spacing scale' },
+  { url: '/iframe.html?id=layout-section--spacing-and-dividers&viewMode=story', png: 'layout-section.png', text: 'Consistent section separation' },
+  { url: '/iframe.html?id=layout-boundedoverflow--wide-operations-table&viewMode=story', png: 'layout-bounded-overflow.png', role: 'region' as const, name: 'Active operation details' },
+  { url: '/iframe.html?id=foundations-semantic-tokens--catalog&viewMode=story', png: 'foundations-semantic-tokens.png', text: 'Semantic UI tokens' },
+  { url: '/iframe.html?id=testing-plugin-ui-fixture-host--canonical-usage&viewMode=story', png: 'testing-plugin-ui-fixture.png', text: 'Canonical fixture page' },
 ]
 
 for (const baseline of PRIMITIVES_BASELINES) {

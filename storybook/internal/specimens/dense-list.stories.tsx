@@ -275,7 +275,7 @@ function StatesStudy() {
 }
 
 const meta = {
-  title: 'Direction studies/Dense list and data',
+  title: 'Internal/Direction studies/Dense list and data',
   tags: ['internal'],
   parameters: {
     layout: 'fullscreen',

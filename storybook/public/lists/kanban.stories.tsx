@@ -29,7 +29,7 @@ import {
 import './kanban.stories.css'
 
 const meta = {
-  title: 'Patterns/Kanban board',
+  title: 'Lists/Kanban',
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',
@@ -44,6 +44,36 @@ const meta = {
 
 export default meta
 type Story = StoryObj<typeof meta>
+
+export const CanonicalUsage = {
+  parameters: { layout: 'centered' },
+  render: () => (
+    <KanbanBoard label="Task board">
+      <KanbanColumn labelledBy="canonical-todo-heading">
+        <KanbanColumnHeader>
+          <h2 id="canonical-todo-heading">Todo</h2>
+        </KanbanColumnHeader>
+        <KanbanColumnBody>
+          <p>Prepare launch brief</p>
+        </KanbanColumnBody>
+      </KanbanColumn>
+      <KanbanColumn labelledBy="canonical-progress-heading">
+        <KanbanColumnHeader>
+          <h2 id="canonical-progress-heading">In progress</h2>
+        </KanbanColumnHeader>
+        <KanbanColumnBody>
+          <p>Draft campaign launch copy</p>
+        </KanbanColumnBody>
+      </KanbanColumn>
+    </KanbanBoard>
+  ),
+  play: async ({ canvas }) => {
+    const board = canvas.getByRole('region', { name: 'Task board' })
+    await expect(board).toBeVisible()
+    await expect(canvas.getByRole('region', { name: 'Todo' })).toBeVisible()
+    await expect(canvas.getByRole('region', { name: 'In progress' })).toBeVisible()
+  },
+} satisfies Story
 
 interface ExampleTaskProps {
   id: string

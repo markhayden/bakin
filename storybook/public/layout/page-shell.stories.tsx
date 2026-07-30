@@ -4,24 +4,44 @@ import { Inline, PageShell, Stack } from '@makinbakin/sdk/layout'
 import { PageHeader } from '@makinbakin/sdk/patterns'
 import { Badge, Button, Separator } from '@makinbakin/sdk/ui'
 
-import './layout.stories.css'
+import './page-shell.stories.css'
 
 const meta = {
-  title: 'Layout/PageShell and flow',
+  title: 'Layout/PageShell',
   component: PageShell,
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',
     docs: {
       description: {
-        component: 'PageShell supplies bounded page width, container-responsive insets, one page rhythm, protected bottom clearance above the owning scroll boundary, and device-safe-area clearance. PageHeader owns page identity and the stable controls/action row; standard descriptions use the available width on narrow canvases and may grow to half of the owned page canvas on desktop. Stack owns vertical content flow; Inline owns wrapping peer content. All choices map to the finite Bakin layout scale.',
+        component: 'PageShell supplies bounded page width (`content`, `wide`, `full`), container-responsive insets, one page rhythm via `gap`, protected bottom clearance above the owning scroll boundary, and device-safe-area clearance. PageHeader owns page identity and the stable controls/action row; standard descriptions use the available width on narrow canvases and may grow to half of the owned page canvas on desktop. All choices map to the finite Bakin layout scale.',
       },
     },
+    bakinCoverage: ['desktop', 'mobile-320', 'overflow', 'scroll-ownership', 'long-content'],
   },
 } satisfies Meta<typeof PageShell>
 
 export default meta
 type Story = StoryObj<typeof meta>
+
+export const CanonicalUsage = {
+  render: () => (
+    <PageShell width="content">
+      <PageHeader
+        eyebrow="Tasks / live operations"
+        title="Coordinate active work"
+        description="Track work across your agents while keeping owners and timing visible."
+      />
+      <p>Page content joins the shell&apos;s single vertical rhythm.</p>
+    </PageShell>
+  ),
+  play: async ({ canvas, canvasElement }) => {
+    await expect(canvas.getByRole('heading', { level: 1, name: 'Coordinate active work' })).toBeVisible()
+    const shell = canvasElement.querySelector('[data-slot="page-shell"]')
+    await expect(shell).toHaveAttribute('data-width', 'content')
+    await expect(shell!.querySelector('[data-slot="page-shell-content"]')).toBeTruthy()
+  },
+} satisfies Story
 
 const taskStats = [
   { label: 'Active', value: '42', detail: 'Across 8 agents' },

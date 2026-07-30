@@ -194,7 +194,7 @@ function MobileStudy() {
 }
 
 const meta = {
-  title: 'Direction studies/Conversation and workflow',
+  title: 'Internal/Direction studies/Conversation and workflow',
   tags: ['internal'],
   parameters: { layout: 'fullscreen', bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'streaming', 'tool-activity', 'bounded-2d', 'keyboard-non-drag', 'vertical-flow', 'horizontal-flow', 'reduced-motion', 'drawer'] },
 } satisfies Meta

@@ -40,11 +40,33 @@ const meta = {
         component: 'The public browser fixture runs external-style page and slot registrations through the production route matcher, ownership roots, scoped portals, canonical stylesheet, and deterministic runtime—without Bakin accounts or user data. Apply the exported desktop/mobile viewport to the real browser; the host data marker records intent but cannot resize the browser.',
       },
     },
+    bakinCoverage: ['desktop', 'mobile-320', 'interaction', 'system-states', 'isolation'],
   },
 } satisfies Meta<typeof PluginUiFixtureHost>
 
 export default meta
 type Story = StoryObj<typeof meta>
+
+// Passed by value in the registration map — never rendered as story JSX.
+function CanonicalFixturePage() {
+  return <p>Canonical fixture page</p>
+}
+
+export const CanonicalUsage = {
+  parameters: { layout: 'centered' },
+  args: {
+    registrations: [{ id: 'fixture-canonical', routes: { '/fixture/canonical': CanonicalFixturePage } }],
+    fixture: { ...DEFAULT_PLUGIN_UI_FIXTURE, route: '/fixture/canonical' },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    await waitFor(() => expect(canvas.getByText('Canonical fixture page')).toBeVisible())
+    expect(canvasElement.querySelector('[data-bakin-plugin-fixture-host]'))
+      .toHaveAttribute('data-bakin-plugin-fixture-state', 'ready')
+    expect(canvas.getByText('Canonical fixture page').closest('[data-bakin-plugin]'))
+      .toHaveAttribute('data-bakin-plugin', 'fixture-canonical')
+  },
+} satisfies Story
 
 function AlphaPage({ itemId }: { itemId?: string }) {
   const search = useSearchParams()

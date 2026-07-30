@@ -30,6 +30,39 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
+const canonicalAgent = { id: 'main', name: 'Main operations agent' }
+
+const canonicalTurn: Extract<ConversationTurn, { kind: 'agent' }> = {
+  kind: 'agent',
+  key: 'canonical-agent',
+  ts: '2026-07-20T12:01:00.000Z',
+  status: 'complete',
+  items: [{ type: 'text', format: 'plain', content: 'The routing examples are current and ready to publish.' }],
+}
+
+export const CanonicalUsage = {
+  parameters: { layout: 'centered' },
+  args: { turn: canonicalTurn, agent: canonicalAgent },
+  render: () => (
+    <>
+      <UserMessage
+        turn={{
+          kind: 'user',
+          key: 'canonical-user',
+          ts: '2026-07-20T12:00:00.000Z',
+          content: 'Are the routing examples ready to publish?',
+        }}
+      />
+      <AgentTurn agent={canonicalAgent} turn={canonicalTurn} />
+    </>
+  ),
+  play: async ({ canvas }) => {
+    await expect(canvas.getByRole('article', { name: 'Your message' })).toBeVisible()
+    await expect(canvas.getByRole('article', { name: 'Main operations agent reply' })).toBeVisible()
+    await expect(canvas.getByText('The routing examples are current and ready to publish.')).toBeVisible()
+  },
+} satisfies Story
+
 const mainAgent = { id: 'main', name: 'Main operations agent' }
 
 const completeTurn: Extract<ConversationTurn, { kind: 'agent' }> = {

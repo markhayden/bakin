@@ -28,6 +28,22 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
+const canonicalChunks: ConversationChunk[] = [
+  { type: 'tool', data: { phase: 'call', callId: 'read-plan', toolName: 'read_file', summary: 'Reading the current route plan' } },
+  { type: 'status', content: 'reading the route plan' },
+]
+
+export const CanonicalUsage = {
+  parameters: { layout: 'centered' },
+  args: { chunks: canonicalChunks, live: true },
+  render: () => <TurnOutputView chunks={canonicalChunks} live />,
+  play: async ({ canvas }) => {
+    await expect(canvas.getByRole('status')).toHaveTextContent('reading the route plan…')
+    await expect(canvas.getByText('read_file')).toBeVisible()
+    await expect(canvas.getByText('running')).toBeVisible()
+  },
+} satisfies Story
+
 const completedChunks: ConversationChunk[] = [
   { type: 'status', content: 'checking the routing contract' },
   { type: 'tool', data: { phase: 'call', callId: 'read-routes', toolName: 'read_file', summary: 'Read the canonical route plan and compatibility appendix' } },

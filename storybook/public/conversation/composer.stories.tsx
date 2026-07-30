@@ -33,6 +33,28 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
+let canonicalSent = ''
+
+export const CanonicalUsage = {
+  parameters: { layout: 'centered' },
+  args: { storageKey: 'storybook-canonical-composer', onSend: () => {} },
+  render: () => (
+    <Composer
+      storageKey="storybook-canonical-composer"
+      inputLabel="Message the agent"
+      onSend={(content) => { canonicalSent = content }}
+    />
+  ),
+  play: async ({ canvas, userEvent }) => {
+    const input = canvas.getByRole('textbox', { name: 'Message the agent' })
+    await userEvent.clear(input)
+    await userEvent.type(input, 'Check the release plan.')
+    await userEvent.keyboard('{Enter}')
+    await expect(canonicalSent).toBe('Check the release plan.')
+    await expect(input).toHaveValue('')
+  },
+} satisfies Story
+
 function ProductComposerExample() {
   const [sent, setSent] = useState('Nothing sent yet')
 

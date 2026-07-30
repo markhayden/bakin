@@ -16,11 +16,11 @@ describe('canonical kanban composition', () => {
   })
 
   it('documents low-chrome lanes, bounded overflow, bounded task cards, and precise drag feedback', () => {
-    const storyPath = 'storybook/public/patterns/kanban.stories.tsx'
+    const storyPath = 'storybook/public/lists/kanban.stories.tsx'
     expect(existsSync(resolve(ROOT, storyPath))).toBe(true)
     const story = read(storyPath)
     const guide = read('docs/src/content/docs/extending/ui/overview.md')
-    expect(story).toContain("title: 'Patterns/Kanban board'")
+    expect(story).toContain("title: 'Lists/Kanban'")
     expect(story).toContain('StatusBadge')
     expect(story).toContain('Card')
     expect(story).toContain('DragAndDropFeedback')

@@ -28,6 +28,30 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
+const canonicalCalls: ConversationToolCall[] = [
+  {
+    key: 'canonical-search',
+    callId: 'canonical-search',
+    toolName: 'web_search',
+    status: 'completed',
+    summary: 'Found the current routing contract documentation',
+    durationMs: 1240,
+  },
+]
+
+export const CanonicalUsage = {
+  parameters: { layout: 'centered' },
+  args: { calls: canonicalCalls },
+  render: () => <ActivityGroup calls={canonicalCalls} />,
+  play: async ({ canvas, userEvent }) => {
+    const trigger = canvas.getByRole('button', { name: /Searched the web/ })
+    await expect(trigger).toHaveAttribute('aria-expanded', 'false')
+    await userEvent.click(trigger)
+    await expect(trigger).toHaveAttribute('aria-expanded', 'true')
+    await expect(canvas.getByText('Found the current routing contract documentation')).toBeVisible()
+  },
+} satisfies Story
+
 const settledCalls: ConversationToolCall[] = [
   {
     key: 'search-1',

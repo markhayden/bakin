@@ -22,8 +22,9 @@ const checkboxStatesStory = '/iframe.html?id=primitives-checkbox--states&viewMod
 const switchStatesStory = '/iframe.html?id=primitives-switch--states&viewMode=story'
 const dialogFocusReturnStory = '/iframe.html?id=overlays-dialog--controlled-focus-return&viewMode=story'
 const anchoredCoexistenceStory = '/iframe.html?id=overlays-popover--anchored-layer-coexistence&viewMode=story'
-const layoutFlowStory = '/iframe.html?id=layout-pageshell-and-flow--responsive-page&viewMode=story'
-const layoutRecipesStory = '/iframe.html?id=layout-grid-section-and-overflow--responsive-composition&viewMode=story'
+const layoutFlowStory = '/iframe.html?id=layout-pageshell--responsive-page&viewMode=story'
+const layoutRecipesStory = '/iframe.html?id=layout-grid--responsive-recipes&viewMode=story'
+const layoutOverflowStory = '/iframe.html?id=layout-boundedoverflow--wide-operations-table&viewMode=story'
 const formOverviewStory = '/iframe.html?id=forms-field-and-form-composition--overview&viewMode=story'
 const asyncValidationStory = '/iframe.html?id=forms-field-and-form-composition--async-validation&viewMode=story'
 const submissionWorkflowStory = '/iframe.html?id=forms-field-and-form-composition--submission-workflow&viewMode=story'
@@ -54,7 +55,7 @@ const unsavedExitStory = '/iframe.html?id=forms-unsavedchangesdialog--unsaved-ex
 const facetFilterStory = '/iframe.html?id=navigation-facetfilter--facet-filtering&viewMode=story'
 const searchBehaviorStory = '/iframe.html?id=navigation-searchinput--search-behavior&viewMode=story'
 const longQueryStory = '/iframe.html?id=navigation-searchinput--long-query&viewMode=story'
-const agentFilterStory = '/iframe.html?id=agents-identity-and-assignment--agent-filtering&viewMode=story'
+const agentFilterStory = '/iframe.html?id=agents-agentselect--agent-filtering&viewMode=story'
 const segmentedNavigationStory = '/iframe.html?id=navigation-segmentedcontrol--segmented-navigation&viewMode=story'
 const underlineNavigationStory = '/iframe.html?id=navigation-underlinetabs--underline-navigation&viewMode=story'
 const sortableTableStory = '/iframe.html?id=navigation-sortablehead--sortable-table&viewMode=story'
@@ -76,11 +77,11 @@ const conversationComposerStatesStory = '/iframe.html?id=conversation-composer-a
 const conversationProductPanelStory = '/iframe.html?id=conversation-panel-and-tool-detail--product-panel&viewMode=story'
 const conversationReadOnlyPanelStory = '/iframe.html?id=conversation-panel-and-tool-detail--read-only-states&viewMode=story'
 const conversationToolDetailStory = '/iframe.html?id=conversation-panel-and-tool-detail--exact-tool-detail&viewMode=story'
-const markdownReadingStory = '/iframe.html?id=content-markdown--reading-and-code&viewMode=story'
-const markdownEditorStory = '/iframe.html?id=content-markdown--controlled-editor&viewMode=story'
+const markdownReadingStory = '/iframe.html?id=content-markdowncontent--reading-and-code&viewMode=story'
+const markdownEditorStory = '/iframe.html?id=content-markdowneditor--controlled-editor&viewMode=story'
 const searchTrustStory = '/iframe.html?id=feedback-search-trust-states--availability-and-evidence&viewMode=story'
-const agentIdentityStory = '/iframe.html?id=agents-identity-and-assignment--identity-and-presence&viewMode=story'
-const agentAssignmentStory = '/iframe.html?id=agents-identity-and-assignment--assignment-and-filtering&viewMode=story'
+const agentIdentityStory = '/iframe.html?id=agents-agentstatus--presence-language&viewMode=story'
+const agentAssignmentStory = '/iframe.html?id=agents-agentselect--assignment-and-filtering&viewMode=story'
 const assetDialogStory = '/iframe.html?id=forms-assetpicker--dialog-library&viewMode=story'
 const assetInlineStory = '/iframe.html?id=forms-assetpicker--inline-attach-relink-and-states&viewMode=story'
 const modelSelectStory = '/iframe.html?id=forms-modelselect--grouped-catalog&viewMode=story'
@@ -649,7 +650,7 @@ test('grid recipes reflow by container and bound intrinsic overflow', async ({ p
 
   await test.step('wide content remains keyboard reachable inside its labelled boundary', async () => {
     await page.setViewportSize({ width: 320, height: 900 })
-    await page.goto(layoutRecipesStory, { waitUntil: 'networkidle' })
+    await page.goto(layoutOverflowStory, { waitUntil: 'networkidle' })
     const overflow = page.getByRole('region', { name: 'Active operation details' })
     await overflow.focus()
     await expect(overflow).toBeFocused()

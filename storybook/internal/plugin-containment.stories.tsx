@@ -27,7 +27,7 @@ import '../public/foundation/primitives.stories.css'
 import './plugin-containment.stories.css'
 
 const meta = {
-  title: 'Maintainer/Plugin containment',
+  title: 'Internal/Plugin containment',
   tags: ['internal'],
   parameters: {
     layout: 'fullscreen',

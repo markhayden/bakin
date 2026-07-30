@@ -78,6 +78,11 @@ test('public plugin fixture exposes every canonical surface state', async ({ pag
   await page.goto(statesStory, { waitUntil: 'networkidle' })
   const host = page.locator('[data-bakin-plugin-fixture-host]')
 
+  // The story's own play cycles every state and terminates on
+  // permission-denied; wait for that terminal state so our clicks below
+  // never interleave with the play's.
+  await expect(host).toHaveAttribute('data-bakin-plugin-fixture-state', 'permission-denied')
+
   for (const state of ['ready', 'initial-empty', 'no-results', 'loading', 'error', 'permission-denied']) {
     await page.getByRole('button', { name: state, exact: true }).click()
     await expect(host).toHaveAttribute('data-bakin-plugin-fixture-state', state)
