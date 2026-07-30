@@ -60,14 +60,6 @@
       ]
     },
     {
-      "path": "storybook/public/forms/form-composition.stories.tsx",
-      "title": "Forms/Field and form composition",
-      "missing": [
-        "canonical-usage",
-        "coverage-axes"
-      ]
-    },
-    {
       "path": "storybook/public/foundation/bakin-drawer.stories.tsx",
       "title": "Foundation/BakinDrawer",
       "missing": [
@@ -120,23 +112,8 @@
       ]
     },
     {
-      "path": "storybook/public/patterns/asset-model-color-pickers.stories.tsx",
-      "title": "Choices/Asset, model, and color pickers",
-      "missing": [
-        "canonical-usage",
-        "visual-baseline"
-      ]
-    },
-    {
       "path": "storybook/public/patterns/conversation-inspector-pages.stories.tsx",
       "title": "Patterns/Conversation and inspector",
-      "missing": [
-        "canonical-usage"
-      ]
-    },
-    {
-      "path": "storybook/public/patterns/destructive-dirty.stories.tsx",
-      "title": "Patterns/Destructive and dirty state",
       "missing": [
         "canonical-usage"
       ]
@@ -174,14 +151,6 @@
     {
       "path": "storybook/public/patterns/markdown.stories.tsx",
       "title": "Content/Markdown",
-      "missing": [
-        "canonical-usage",
-        "visual-baseline"
-      ]
-    },
-    {
-      "path": "storybook/public/patterns/plugin-settings-renderer.stories.tsx",
-      "title": "Forms/Plugin settings renderer",
       "missing": [
         "canonical-usage",
         "visual-baseline"

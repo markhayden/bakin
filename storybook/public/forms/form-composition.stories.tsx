@@ -38,11 +38,35 @@ const meta = {
         component: 'Field mechanically connects labels, descriptions, validation, and controls. Fieldset groups related choices. FormActions and SubmitButton provide responsive ordering and one busy-state source of truth. Form libraries may manage data, but they do not own this presentation contract.',
       },
     },
+    bakinCoverage: ['desktop', 'mobile-320', 'keyboard', 'validation', 'busy', 'disabled', 'error'],
   },
 } satisfies Meta
 
 export default meta
 type Story = StoryObj<typeof meta>
+
+export const CanonicalUsage = {
+  parameters: { layout: 'centered' },
+  render: () => (
+    <Form aria-label="Workspace settings">
+      <Field name="workspaceName">
+        <FieldLabel requirement="required">Workspace name</FieldLabel>
+        <FieldDescription>Shown in page chrome and plugin-contributed sections.</FieldDescription>
+        <Input required defaultValue="Acme creator operations" />
+      </Field>
+      <FormActions>
+        <Button type="button" variant="outline">Cancel</Button>
+        <SubmitButton>Save settings</SubmitButton>
+      </FormActions>
+    </Form>
+  ),
+  play: async ({ canvas }) => {
+    const input = canvas.getByRole('textbox', { name: 'Workspace name' })
+    await expect(input).toBeVisible()
+    await expect(input).toBeRequired()
+    await expect(canvas.getByRole('button', { name: 'Save settings' })).toBeEnabled()
+  },
+} satisfies Story
 
 function FormStoryHeader({ title, description }: { title: string; description: string }) {
   return (

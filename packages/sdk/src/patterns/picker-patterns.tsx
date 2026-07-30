@@ -410,10 +410,12 @@ export interface ColorPickerProps extends Pick<AriaAttributes, 'aria-describedby
   className?: string
 }
 
-const colorGridClasses: Record<NonNullable<ColorPickerProps['columns']>, string> = {
-  4: 'grid-cols-4',
-  6: 'grid-cols-6',
-  8: 'grid-cols-8',
+/**
+ * `columns` caps swatches per row; the row WRAPS when the container is
+ * narrower than the cap (320px at 200% text zoom must never overflow).
+ */
+function colorRowCap(columns: NonNullable<ColorPickerProps['columns']>): string {
+  return `calc(${columns} * var(--bakin-layout-size-control) + ${columns - 1} * var(--bakin-layout-space-2))`
 }
 
 function adjacentColorIndex(
@@ -457,7 +459,8 @@ export function ColorPicker({
       aria-describedby={ariaDescribedBy}
       aria-invalid={ariaInvalid}
       data-color-picker=""
-      className={classNames('grid min-w-0 gap-bakin-2', colorGridClasses[columns], className)}
+      className={classNames('flex min-w-0 flex-wrap gap-bakin-2', className)}
+      style={{ maxInlineSize: colorRowCap(columns) }}
     >
       {options.map((option, index) => {
         const selected = value === option.value

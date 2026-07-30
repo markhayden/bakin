@@ -340,12 +340,12 @@ test('public horizontal workflow recipe visual baseline', async ({ page }) => {
 })
 
 test('public retryable save pattern visual baseline', async ({ page }) => {
-  await page.goto('/iframe.html?id=patterns-destructive-and-dirty-state--save-failure&viewMode=story')
+  await page.goto('/iframe.html?id=forms-savebar--save-failure&viewMode=story')
   await expect(page.getByRole('heading', { level: 1, name: 'Keep a failed draft actionable' })).toBeVisible()
   await expect(page.getByRole('region', { name: 'Unsaved changes' })).toHaveAttribute('data-savebar-state', 'error')
   await expect(page.getByRole('button', { name: 'Retry save' })).toBeVisible()
   await page.evaluate(async () => document.fonts.ready)
-  await expect(page).toHaveScreenshot('foundation-save-failure.png', {
+  await expect(page).toHaveScreenshot('forms-save-bar.png', {
     animations: 'disabled',
     caret: 'hide',
     fullPage: true,
@@ -353,7 +353,7 @@ test('public retryable save pattern visual baseline', async ({ page }) => {
 })
 
 test('public typed confirmation pattern visual baseline', async ({ page }) => {
-  await page.goto('/iframe.html?id=patterns-destructive-and-dirty-state--typed-confirmation&viewMode=story')
+  await page.goto('/iframe.html?id=feedback-confirmdialog--typed-confirmation&viewMode=story')
   const dialog = page.getByRole('dialog', { name: 'Delete archived workflow?' })
   if (!await dialog.isVisible()) {
     await page.getByRole('button', { name: 'Delete archived workflow' }).click()
@@ -362,7 +362,7 @@ test('public typed confirmation pattern visual baseline', async ({ page }) => {
   await page.getByLabel(/Type launch-publishing to confirm/).fill('launch')
   await expect(dialog.getByRole('button', { name: 'Delete workflow' })).toBeDisabled()
   await page.evaluate(async () => document.fonts.ready)
-  await expect(page).toHaveScreenshot('foundation-typed-confirmation.png', {
+  await expect(page).toHaveScreenshot('feedback-confirm-dialog.png', {
     animations: 'disabled',
     caret: 'hide',
     fullPage: true,
@@ -681,6 +681,13 @@ const PRIMITIVES_BASELINES = [
   { url: '/iframe.html?id=feedback-statusmarker--dense-view-markers&viewMode=story', png: 'feedback-status-marker.png', role: 'img' as const, name: 'Published' },
   { url: '/iframe.html?id=charts-statgroup--compact-metrics&viewMode=story', png: 'charts-stat-group.png', role: 'group' as const, name: 'Task summary metrics' },
   { url: '/iframe.html?id=feedback-search-trust-states--availability-and-evidence&viewMode=story', png: 'feedback-search-trust.png', role: 'note' as const, name: 'Search relevance details' },
+  { url: '/iframe.html?id=forms-assetpicker--inline-attach-relink-and-states&viewMode=story', png: 'forms-asset-picker.png', text: 'Reuse the same chooser inside attach and relink flows' },
+  { url: '/iframe.html?id=forms-modelselect--grouped-catalog&viewMode=story', png: 'forms-model-select.png', text: 'Keep catalog choices explicit' },
+  { url: '/iframe.html?id=forms-colorpicker--palette-choices&viewMode=story', png: 'forms-color-picker.png', text: 'Keep palette choices explicit' },
+  { url: '/iframe.html?id=feedback-dangerzone--consequence-first-placement&viewMode=story', png: 'feedback-danger-zone.png', text: 'Separate dangerous work from routine settings' },
+  { url: '/iframe.html?id=forms-unsavedchangesdialog--canonical-usage&viewMode=story', png: 'forms-unsaved-changes-dialog.png', role: 'dialog' as const, name: 'Unsaved changes' },
+  { url: '/iframe.html?id=forms-plugin-settings-renderer--messaging-schema-workflow&viewMode=story', png: 'forms-plugin-settings-renderer.png', text: 'Let plugin settings feel native without hiding their rules' },
+  { url: '/iframe.html?id=recipes-destructive-settings-flow--settings-flow&viewMode=story', png: 'recipes-destructive-settings-flow.png', text: 'Destructive settings flow' },
 ]
 
 for (const baseline of PRIMITIVES_BASELINES) {

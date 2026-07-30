@@ -48,9 +48,9 @@ const verticalWorkflowStory = '/iframe.html?id=patterns-workflow-and-action-page
 const horizontalWorkflowStory = '/iframe.html?id=patterns-workflow-and-action-pages--horizontal-workflow&viewMode=story'
 const reviewActionStory = '/iframe.html?id=patterns-workflow-and-action-pages--review-action&viewMode=story'
 const workflowUnavailableStory = '/iframe.html?id=patterns-workflow-and-action-pages--workflow-unavailable&viewMode=story'
-const saveFailureStory = '/iframe.html?id=patterns-destructive-and-dirty-state--save-failure&viewMode=story'
-const typedConfirmationStory = '/iframe.html?id=patterns-destructive-and-dirty-state--typed-confirmation&viewMode=story'
-const unsavedExitStory = '/iframe.html?id=patterns-destructive-and-dirty-state--unsaved-exit-decision&viewMode=story'
+const saveFailureStory = '/iframe.html?id=forms-savebar--save-failure&viewMode=story'
+const typedConfirmationStory = '/iframe.html?id=feedback-confirmdialog--typed-confirmation&viewMode=story'
+const unsavedExitStory = '/iframe.html?id=forms-unsavedchangesdialog--unsaved-exit-decision&viewMode=story'
 const facetFilterStory = '/iframe.html?id=patterns-filters-and-navigation--facet-filtering&viewMode=story'
 const searchBehaviorStory = '/iframe.html?id=patterns-filters-and-navigation--search-behavior&viewMode=story'
 const longQueryStory = '/iframe.html?id=patterns-filters-and-navigation--long-query&viewMode=story'
@@ -81,9 +81,10 @@ const markdownEditorStory = '/iframe.html?id=content-markdown--controlled-editor
 const searchTrustStory = '/iframe.html?id=feedback-search-trust-states--availability-and-evidence&viewMode=story'
 const agentIdentityStory = '/iframe.html?id=agents-identity-and-assignment--identity-and-presence&viewMode=story'
 const agentAssignmentStory = '/iframe.html?id=agents-identity-and-assignment--assignment-and-filtering&viewMode=story'
-const assetDialogStory = '/iframe.html?id=choices-asset-model-and-color-pickers--dialog-library&viewMode=story'
-const assetInlineStory = '/iframe.html?id=choices-asset-model-and-color-pickers--inline-attach-relink-and-states&viewMode=story'
-const modelColorStory = '/iframe.html?id=choices-asset-model-and-color-pickers--model-and-color-choices&viewMode=story'
+const assetDialogStory = '/iframe.html?id=forms-assetpicker--dialog-library&viewMode=story'
+const assetInlineStory = '/iframe.html?id=forms-assetpicker--inline-attach-relink-and-states&viewMode=story'
+const modelSelectStory = '/iframe.html?id=forms-modelselect--grouped-catalog&viewMode=story'
+const colorPickerStory = '/iframe.html?id=forms-colorpicker--palette-choices&viewMode=story'
 const pluginSettingsStory = '/iframe.html?id=forms-plugin-settings-renderer--messaging-schema-workflow&viewMode=story'
 const turnOutputStory = '/iframe.html?id=conversation-single-turn-output--embedded-output-states&viewMode=story'
 
@@ -2159,7 +2160,7 @@ test('asset, model, and color pickers preserve controlled state, keyboard, and n
     browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${reason}`)
   })
 
-  for (const story of [assetDialogStory, assetInlineStory, modelColorStory]) {
+  for (const story of [assetDialogStory, assetInlineStory, modelSelectStory, colorPickerStory]) {
     for (const width of responsiveWidths) {
       await test.step(`${story} remains contained at ${width}px`, async () => {
         await page.setViewportSize({ width, height: 1100 })
@@ -2196,23 +2197,28 @@ test('asset, model, and color pickers preserve controlled state, keyboard, and n
     await expect(page.getByText('Attachment candidate: hero-1', { exact: true })).toBeVisible()
   })
 
-  await test.step('model and color choices remain keyboard complete and block disabled options', async () => {
-    await page.goto(modelColorStory, { waitUntil: 'networkidle' })
+  await test.step('model choices remain keyboard complete and block disabled options', async () => {
+    await page.goto(modelSelectStory, { waitUntil: 'networkidle' })
     const model = page.getByRole('combobox', { name: 'Model' })
     await model.focus()
     await page.keyboard.press('Enter')
     await expect(page.getByRole('option', { name: 'Retired preview' })).toHaveAttribute('aria-disabled', 'true')
     await page.getByRole('option', { name: 'Acme Fast' }).click()
+    await expect(page.getByRole('status')).toHaveText('Model: acme-fast.')
+  })
+
+  await test.step('color choices remain keyboard complete', async () => {
+    await page.goto(colorPickerStory, { waitUntil: 'networkidle' })
     const violet = page.getByRole('radio', { name: 'Violet' })
     await violet.focus()
     await page.keyboard.press('ArrowRight')
     await expect(page.getByRole('radio', { name: 'Teal' })).toHaveAttribute('aria-checked', 'true')
-    await expect(page.getByRole('status')).toHaveText('Model: acme-fast. Color: series-3.')
+    await expect(page.getByRole('status')).toHaveText('Color: series-3.')
   })
 
   await test.step('200% text remains horizontally contained', async () => {
     await page.setViewportSize({ width: 320, height: 1100 })
-    await page.goto(modelColorStory, { waitUntil: 'networkidle' })
+    await page.goto(colorPickerStory, { waitUntil: 'networkidle' })
     await page.evaluate(() => { document.documentElement.style.fontSize = '200%' })
     const dimensions = await page.evaluate(() => ({
       clientWidth: document.documentElement.clientWidth,

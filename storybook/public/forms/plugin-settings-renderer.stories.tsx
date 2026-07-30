@@ -9,7 +9,7 @@ import {
   type PluginSettingsSchema,
 } from '@makinbakin/sdk/patterns'
 
-import '../forms/forms.stories.css'
+import './forms.stories.css'
 
 const meta = {
   title: 'Forms/Plugin settings renderer',
@@ -28,6 +28,47 @@ const meta = {
 
 export default meta
 type Story = StoryObj<typeof meta>
+
+const canonicalSchema: PluginSettingsSchema = {
+  fields: [
+    {
+      key: 'workspaceName',
+      type: 'string',
+      label: 'Workspace name',
+      description: 'Shown to collaborators when they plan content.',
+      required: true,
+    },
+    {
+      key: 'requiresApproval',
+      type: 'boolean',
+      label: 'Require approval before publishing',
+      default: true,
+    },
+  ],
+}
+
+export const CanonicalUsage = {
+  args: {
+    schema: canonicalSchema,
+    values: { workspaceName: 'Creator operations', requiresApproval: true },
+    onSubmit: () => {},
+  },
+  parameters: { layout: 'centered' },
+  render: () => (
+    <PluginSettingsRenderer
+      schema={canonicalSchema}
+      values={{ workspaceName: 'Creator operations', requiresApproval: true }}
+      onSubmit={() => {}}
+    />
+  ),
+  play: async ({ canvas, userEvent }) => {
+    const workspace = canvas.getByRole('textbox', { name: 'Workspace name' })
+    await expect(workspace).toHaveValue('Creator operations')
+    await expect(canvas.getByRole('button', { name: 'Save settings' })).toBeDisabled()
+    await userEvent.type(workspace, ' team')
+    await expect(canvas.getByRole('button', { name: 'Save settings' })).toBeEnabled()
+  },
+} satisfies Story
 
 const messagingSchema: PluginSettingsSchema = {
   fields: [
