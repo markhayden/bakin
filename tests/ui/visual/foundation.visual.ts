@@ -10,7 +10,7 @@ test('public Button visual baseline', async ({ page }, testInfo) => {
     browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
   })
 
-  await page.goto('/iframe.html?id=foundation-button--default&viewMode=story', { waitUntil: 'networkidle' })
+  await page.goto('/iframe.html?id=primitives-button--canonical-usage&viewMode=story', { waitUntil: 'networkidle' })
   const button = page.locator('#storybook-root').getByRole('button', { name: 'Continue', exact: true })
   await expect(button).toBeVisible()
   await page.evaluate(async () => document.fonts.ready)
@@ -31,7 +31,7 @@ test('public Button visual baseline', async ({ page }, testInfo) => {
   }
 
   expect(browserErrors).toEqual([])
-  await expect(page).toHaveScreenshot('foundation-button.png')
+  await expect(page).toHaveScreenshot('primitives-button.png')
 })
 
 test('public action and status family visual baseline', async ({ page }) => {
@@ -716,3 +716,37 @@ test('public exact tool detail visual baseline', async ({ page }) => {
     fullPage: true,
   })
 })
+
+// Primitives entries (storybook-refit T2.1): one baseline per migrated entry.
+// Anchors target each story's play end-state; toHaveScreenshot's stability
+// polling absorbs any remaining play settle.
+const PRIMITIVES_BASELINES = [
+  { url: '/iframe.html?id=primitives-input--states-and-mobile-modes&viewMode=story', png: 'primitives-input.png', role: 'textbox' as const, name: 'Invalid URL' },
+  { url: '/iframe.html?id=primitives-textarea--content-and-states&viewMode=story', png: 'primitives-textarea.png', role: 'textbox' as const, name: 'Required rationale' },
+  { url: '/iframe.html?id=primitives-label--association&viewMode=story', png: 'primitives-label.png', text: 'Project name' },
+  { url: '/iframe.html?id=primitives-inputgroup--adornments&viewMode=story', png: 'primitives-inputgroup.png', text: 'Repository path' },
+  { url: '/iframe.html?id=primitives-badge--canonical-usage&viewMode=story', png: 'primitives-badge.png', text: 'Published' },
+  { url: '/iframe.html?id=primitives-avatar--canonical-usage&viewMode=story', png: 'primitives-avatar.png', text: 'MB' },
+  { url: '/iframe.html?id=primitives-card--canonical-usage&viewMode=story', png: 'primitives-card.png', text: 'Resolve launch blockers' },
+  { url: '/iframe.html?id=primitives-separator--orientation&viewMode=story', png: 'primitives-separator.png', text: 'Deployment policy' },
+  { url: '/iframe.html?id=primitives-checkbox--states&viewMode=story', png: 'primitives-checkbox.png', text: 'Partially selected' },
+  { url: '/iframe.html?id=primitives-switch--states&viewMode=story', png: 'primitives-switch.png', text: 'Compact operational setting' },
+  { url: '/iframe.html?id=primitives-select--states&viewMode=story', png: 'primitives-select.png', text: 'Canonical states' },
+  { url: '/iframe.html?id=primitives-collapsible--canonical-usage&viewMode=story', png: 'primitives-collapsible.png', role: 'button' as const },
+]
+
+for (const baseline of PRIMITIVES_BASELINES) {
+  test(`public ${baseline.png.replace('.png', '')} visual baseline`, async ({ page }) => {
+    await page.goto(baseline.url)
+    const anchor = 'text' in baseline && baseline.text
+      ? page.getByText(baseline.text, { exact: true }).first()
+      : page.getByRole(baseline.role!, baseline.name ? { name: baseline.name } : undefined).first()
+    await expect(anchor).toBeVisible()
+    await page.evaluate(async () => document.fonts.ready)
+    await expect(page).toHaveScreenshot(baseline.png, {
+      animations: 'disabled',
+      caret: 'hide',
+      fullPage: true,
+    })
+  })
+}

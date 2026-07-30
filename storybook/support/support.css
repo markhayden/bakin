@@ -42,6 +42,36 @@
   line-height: 1.6;
 }
 
+.bakin-story-stage__section {
+  display: grid;
+  gap: var(--bakin-layout-gap-item);
+  min-width: 0;
+  padding-top: var(--bakin-layout-gap-section);
+  border-top: 1px solid var(--bakin-color-border-subtle);
+}
+
+.bakin-story-stage__section > header {
+  display: grid;
+  gap: var(--bakin-layout-space-1);
+}
+
+.bakin-story-stage__section h2 {
+  font-size: var(--bakin-typography-size-section-title);
+  letter-spacing: -.01em;
+}
+
+.bakin-story-stage__section > header p {
+  color: var(--bakin-color-text-muted);
+  line-height: 1.55;
+}
+
+.bakin-story-stage__cluster {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--bakin-layout-gap-item);
+  align-items: center;
+}
+
 .bakin-story-stage__overlay-workspace {
   display: grid;
   width: min(100%, 68rem);

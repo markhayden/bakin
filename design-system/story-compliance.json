@@ -96,66 +96,11 @@
       ]
     },
     {
-      "path": "storybook/public/foundation/avatar.stories.tsx",
-      "title": "Foundation/Avatar",
-      "missing": [
-        "canonical-usage",
-        "coverage-axes",
-        "play-assertion",
-        "visual-baseline"
-      ]
-    },
-    {
-      "path": "storybook/public/foundation/badge.stories.tsx",
-      "title": "Foundation/Badge",
-      "missing": [
-        "canonical-usage",
-        "coverage-axes",
-        "visual-baseline"
-      ]
-    },
-    {
       "path": "storybook/public/foundation/bakin-drawer.stories.tsx",
       "title": "Foundation/BakinDrawer",
       "missing": [
         "canonical-usage",
         "coverage-axes"
-      ]
-    },
-    {
-      "path": "storybook/public/foundation/button.stories.tsx",
-      "title": "Foundation/Button",
-      "missing": [
-        "canonical-usage",
-        "coverage-axes"
-      ]
-    },
-    {
-      "path": "storybook/public/foundation/card.stories.tsx",
-      "title": "Foundation/Card",
-      "missing": [
-        "canonical-usage",
-        "coverage-axes",
-        "play-assertion",
-        "visual-baseline"
-      ]
-    },
-    {
-      "path": "storybook/public/foundation/checkbox.stories.tsx",
-      "title": "Foundation/Checkbox",
-      "missing": [
-        "canonical-usage",
-        "coverage-axes",
-        "visual-baseline"
-      ]
-    },
-    {
-      "path": "storybook/public/foundation/collapsible.stories.tsx",
-      "title": "Foundation/Collapsible",
-      "missing": [
-        "canonical-usage",
-        "coverage-axes",
-        "visual-baseline"
       ]
     },
     {
@@ -180,35 +125,6 @@
       "missing": [
         "canonical-usage",
         "coverage-axes"
-      ]
-    },
-    {
-      "path": "storybook/public/foundation/input-group.stories.tsx",
-      "title": "Foundation/InputGroup",
-      "missing": [
-        "canonical-usage",
-        "coverage-axes",
-        "visual-baseline"
-      ]
-    },
-    {
-      "path": "storybook/public/foundation/input.stories.tsx",
-      "title": "Foundation/Input",
-      "missing": [
-        "canonical-usage",
-        "coverage-axes",
-        "play-assertion",
-        "visual-baseline"
-      ]
-    },
-    {
-      "path": "storybook/public/foundation/label.stories.tsx",
-      "title": "Foundation/Label",
-      "missing": [
-        "canonical-usage",
-        "coverage-axes",
-        "play-assertion",
-        "visual-baseline"
       ]
     },
     {
@@ -239,31 +155,12 @@
       ]
     },
     {
-      "path": "storybook/public/foundation/select.stories.tsx",
-      "title": "Foundation/Select",
-      "missing": [
-        "canonical-usage",
-        "coverage-axes",
-        "visual-baseline"
-      ]
-    },
-    {
       "path": "storybook/public/foundation/selection-controls.stories.tsx",
       "title": "Foundation/Selection controls",
       "missing": [
         "canonical-usage",
         "coverage-axes",
         "play-assertion"
-      ]
-    },
-    {
-      "path": "storybook/public/foundation/separator.stories.tsx",
-      "title": "Foundation/Separator",
-      "missing": [
-        "canonical-usage",
-        "coverage-axes",
-        "play-assertion",
-        "visual-baseline"
       ]
     },
     {
@@ -294,31 +191,12 @@
       ]
     },
     {
-      "path": "storybook/public/foundation/switch.stories.tsx",
-      "title": "Foundation/Switch",
-      "missing": [
-        "canonical-usage",
-        "coverage-axes",
-        "visual-baseline"
-      ]
-    },
-    {
       "path": "storybook/public/foundation/text-fields.stories.tsx",
       "title": "Foundation/Text fields",
       "missing": [
         "canonical-usage",
         "coverage-axes",
         "play-assertion"
-      ]
-    },
-    {
-      "path": "storybook/public/foundation/textarea.stories.tsx",
-      "title": "Foundation/Textarea",
-      "missing": [
-        "canonical-usage",
-        "coverage-axes",
-        "play-assertion",
-        "visual-baseline"
       ]
     },
     {

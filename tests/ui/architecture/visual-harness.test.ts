@@ -99,7 +99,7 @@ describe('canonical Playwright visual harness', () => {
         'tests/ui/snapshots',
         project,
         'foundation.visual.ts',
-        'foundation-button.png',
+        'primitives-button.png',
       ))).toBe(true)
     }
   })

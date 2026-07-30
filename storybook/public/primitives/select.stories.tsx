@@ -1,6 +1,8 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import {
-  Label,
+  Field,
+  FieldError,
+  FieldLabel,
   Select,
   SelectContent,
   SelectGroup,
@@ -10,35 +12,64 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@makinbakin/sdk/ui'
+import { Grid } from '@makinbakin/sdk/layout'
 import { expect, waitFor, within } from 'storybook/test'
 
-import './primitives.stories.css'
+import { StorySection, StoryStage } from '../../support'
 
 const meta = {
-  title: 'Foundation/Select',
+  title: 'Primitives/Select',
   component: Select,
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',
     docs: { description: { component: 'Use Select for one choice from a bounded, known list. Group labels describe option sets; the field still needs its own visible label. Long options wrap within the viewport, and an empty-value item is an explicit none choice rather than a missing label.' } },
+    bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'keyboard', 'disabled', 'validation', 'overflow'],
   },
 } satisfies Meta<typeof Select>
 
 export default meta
 type Story = StoryObj<typeof meta>
 
+export const CanonicalUsage = {
+  parameters: { layout: 'centered' },
+  render: () => (
+    <Field>
+      <FieldLabel>Execution runtime</FieldLabel>
+      <Select items={{ pi: 'Pi', openclaw: 'OpenClaw' }} defaultValue="openclaw">
+        <SelectTrigger>
+          <SelectValue placeholder="Choose a runtime" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="pi">Pi</SelectItem>
+          <SelectItem value="openclaw">OpenClaw</SelectItem>
+        </SelectContent>
+      </Select>
+    </Field>
+  ),
+  play: async ({ canvas, userEvent }) => {
+    const trigger = canvas.getByRole('combobox', { name: 'Execution runtime' })
+    await expect(trigger).toHaveTextContent('OpenClaw')
+    await userEvent.click(trigger)
+    const page = within(document.body)
+    const option = await page.findByRole('option', { name: 'Pi' })
+    await userEvent.click(option)
+    await waitFor(() => expect(trigger).toHaveTextContent('Pi'))
+  },
+} satisfies Story
+
 function RuntimeSelect({ disabled = false, invalid = false, compact = false }: { disabled?: boolean; invalid?: boolean; compact?: boolean }) {
-  const labelId = `select-${disabled ? 'disabled' : invalid ? 'invalid' : compact ? 'compact' : 'default'}-label`
+  const label = disabled ? 'Managed runtime' : invalid ? 'Required runtime' : compact ? 'Dense-row runtime' : 'Execution runtime'
   return (
-    <div className="bakin-primitive-story__field">
-      <Label id={labelId}>{disabled ? 'Managed runtime' : invalid ? 'Required runtime' : compact ? 'Dense-row runtime' : 'Execution runtime'}</Label>
+    <Field disabled={disabled} invalid={invalid}>
+      <FieldLabel>{label}</FieldLabel>
       <Select
         items={{ '': 'No runtime', pi: 'Pi', openclaw: 'OpenClaw', managed: 'Managed production runtime with an intentionally long descriptive option that wraps safely', unavailable: 'Unavailable runtime' }}
         defaultValue={disabled ? 'managed' : invalid ? null : 'openclaw'}
         disabled={disabled}
         required={invalid}
       >
-        <SelectTrigger aria-labelledby={labelId} aria-invalid={invalid || undefined} size={compact ? 'sm' : 'default'} className="bakin-primitive-story__selection-trigger">
+        <SelectTrigger aria-invalid={invalid || undefined} size={compact ? 'sm' : 'default'} style={{ width: '100%' }}>
           <SelectValue placeholder="Choose a runtime" />
         </SelectTrigger>
         <SelectContent>
@@ -48,25 +79,33 @@ function RuntimeSelect({ disabled = false, invalid = false, compact = false }: {
           <SelectGroup><SelectLabel>Managed</SelectLabel><SelectItem value="managed">Managed production runtime with an intentionally long descriptive option that wraps safely</SelectItem><SelectItem value="unavailable" disabled>Unavailable runtime</SelectItem></SelectGroup>
         </SelectContent>
       </Select>
-      {invalid && <p className="bakin-primitive-story__error">Choose a runtime before continuing.</p>}
-    </div>
+      {invalid && <FieldError match>Choose a runtime before continuing.</FieldError>}
+    </Field>
   )
 }
 
 export const States = {
   render: () => (
-    <main className="bakin-primitive-story">
-      <header className="bakin-primitive-story__intro"><p className="bakin-primitive-story__eyebrow">Bounded choice</p><h1>Select</h1><p>Trigger and option states stay readable under long content and narrow containers.</p></header>
-      <section className="bakin-primitive-story__section" aria-labelledby="select-states-heading">
-        <header><h2 id="select-states-heading">Canonical states</h2></header>
-        <div className="bakin-primitive-story__form-grid"><RuntimeSelect /><RuntimeSelect compact /><RuntimeSelect invalid /><RuntimeSelect disabled /></div>
-      </section>
-    </main>
+    <StoryStage
+      eyebrow="Bounded choice"
+      title="Select"
+      description="Trigger and option states stay readable under long content and narrow containers."
+    >
+      <StorySection title="Canonical states">
+        <Grid layout="split" gap="section">
+          <RuntimeSelect />
+          <RuntimeSelect compact />
+          <RuntimeSelect invalid />
+          <RuntimeSelect disabled />
+        </Grid>
+      </StorySection>
+    </StoryStage>
   ),
 } satisfies Story
 
 export const Behavior = {
-  render: () => <main className="bakin-primitive-story"><RuntimeSelect /></main>,
+  parameters: { layout: 'centered' },
+  render: () => <RuntimeSelect />,
   play: async ({ canvas, userEvent }) => {
     const trigger = canvas.getByRole('combobox', { name: 'Execution runtime' })
     await userEvent.tab()

@@ -1,6 +1,11 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { useState } from 'react'
+import { expect } from 'storybook/test'
+
+import { Stack } from '@makinbakin/sdk/layout'
 import {
+  Field,
+  FieldError,
   InputGroup,
   InputGroupAddon,
   InputGroupButton,
@@ -9,73 +14,97 @@ import {
   InputGroupTextarea,
   Label,
 } from '@makinbakin/sdk/ui'
-import { expect, within } from 'storybook/test'
 
-import './primitives.stories.css'
+import { SendIcon, StorySection, StoryStage } from '../../support'
 
 const meta = {
-  title: 'Foundation/InputGroup',
+  title: 'Primitives/InputGroup',
   component: InputGroup,
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',
     docs: { description: { component: 'InputGroup composes one editable control with contextual text or a local action. A trailing submit action is valid when it operates directly on the entered value, such as adding a note. The editable control still needs its own accessible label. Do not use adornments as a replacement for field descriptions or as a container for unrelated page actions.' } },
+    bakinCoverage: ['desktop', 'mobile-320', 'keyboard', 'disabled', 'error'],
   },
 } satisfies Meta<typeof InputGroup>
 
 export default meta
 type Story = StoryObj<typeof meta>
 
+export const CanonicalUsage = {
+  parameters: { layout: 'centered' },
+  render: () => (
+    <div>
+      <Label htmlFor="repository-path">Repository path</Label>
+      <InputGroup aria-label="Repository address">
+        <InputGroupAddon><InputGroupText>github.com/</InputGroupText></InputGroupAddon>
+        <InputGroupInput id="repository-path" defaultValue="makinbakin/reference-plugin" />
+      </InputGroup>
+    </div>
+  ),
+  play: async ({ canvas }) => {
+    const input = canvas.getByRole('textbox', { name: 'Repository path' })
+    await expect(input).toBeVisible()
+    await expect(input).toHaveValue('makinbakin/reference-plugin')
+  },
+} satisfies Story
+
 export const Adornments = {
   render: () => (
-    <main className="bakin-primitive-story">
-      <header className="bakin-primitive-story__intro"><p className="bakin-primitive-story__eyebrow">Composed entry</p><h1>InputGroup</h1><p>Inline and block adornments share one focus boundary while preserving native control semantics.</p></header>
-      <section className="bakin-primitive-story__section" aria-labelledby="group-inline-heading">
-        <header><h2 id="group-inline-heading">Inline context and action</h2></header>
-        <div className="bakin-primitive-story__field">
+    <StoryStage
+      eyebrow="Composed entry"
+      title="InputGroup"
+      description="Inline and block adornments share one focus boundary while preserving native control semantics."
+    >
+      <StorySection title="Inline context and action">
+        <Stack gap="dense">
           <Label htmlFor="group-path">Repository path</Label>
           <InputGroup aria-label="Repository address">
             <InputGroupAddon><InputGroupText>github.com/</InputGroupText></InputGroupAddon>
             <InputGroupInput id="group-path" defaultValue="makinbakin/reference-plugin" />
             <InputGroupAddon align="inline-end"><InputGroupButton>Copy</InputGroupButton></InputGroupAddon>
           </InputGroup>
-        </div>
-      </section>
-      <section className="bakin-primitive-story__section" aria-labelledby="group-block-heading">
-        <header><h2 id="group-block-heading">Multiline context</h2><p>The invalid control drives the group border; the associated message explains recovery.</p></header>
-        <div className="bakin-primitive-story__field">
+        </Stack>
+      </StorySection>
+      <StorySection
+        title="Multiline context"
+        description="The invalid control drives the group border; the associated message explains recovery."
+      >
+        <Field invalid name="executionPrompt">
           <Label htmlFor="group-prompt">Execution prompt</Label>
           <InputGroup aria-label="Execution prompt editor">
             <InputGroupAddon align="block-start"><InputGroupText>Prompt template</InputGroupText></InputGroupAddon>
             <InputGroupTextarea id="group-prompt" rows={5} aria-invalid="true" aria-describedby="group-prompt-error" defaultValue="Summarize {{missing_input}} for the launch owner." />
             <InputGroupAddon align="block-end"><InputGroupText>Markdown supported</InputGroupText><InputGroupButton>Insert variable</InputGroupButton></InputGroupAddon>
           </InputGroup>
-          <p className="bakin-primitive-story__error" id="group-prompt-error">Replace the unknown variable before saving.</p>
-        </div>
-      </section>
-    </main>
+          <FieldError match id="group-prompt-error">Replace the unknown variable before saving.</FieldError>
+        </Field>
+      </StorySection>
+    </StoryStage>
   ),
+  play: async ({ canvas }) => {
+    await expect(canvas.getByRole('textbox', { name: 'Repository path' })).toHaveValue('makinbakin/reference-plugin')
+    const prompt = canvas.getByRole('textbox', { name: 'Execution prompt' })
+    await expect(prompt).toHaveAttribute('aria-invalid', 'true')
+    await expect(prompt).toHaveAccessibleDescription('Replace the unknown variable before saving.')
+  },
 } satisfies Story
-
-function SendIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 16 16" className="size-bakin-3 fill-none stroke-current stroke-[1.75]">
-      <path d="m2.5 2.5 11 5.5-11 5.5 2-5.5-2-5.5Z" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M4.5 8h5" strokeLinecap="round" />
-    </svg>
-  )
-}
 
 export const LocalSubmitAction = {
   render: function LocalSubmitActionStory() {
     const [note, setNote] = useState('')
     const [submittedNote, setSubmittedNote] = useState('')
     return (
-      <main className="bakin-primitive-story">
-        <header className="bakin-primitive-story__intro"><p className="bakin-primitive-story__eyebrow">Local action</p><h1>Submit from the field</h1><p>Keep one action that operates on the entered value inside the shared input boundary.</p></header>
-        <section className="bakin-primitive-story__section" aria-labelledby="group-submit-heading">
-          <header><h2 id="group-submit-heading">Add a note</h2><p>The compact trailing action matches the field height, supports Enter through native form submission, and remains disabled without a value.</p></header>
-          <div className="bakin-primitive-story__field">
+      <StoryStage
+        eyebrow="Local action"
+        title="Submit from the field"
+        description="Keep one action that operates on the entered value inside the shared input boundary."
+      >
+        <StorySection
+          title="Add a note"
+          description="The compact trailing action matches the field height, supports Enter through native form submission, and remains disabled without a value."
+        >
+          <Stack gap="dense">
             <Label htmlFor="group-note">Task note</Label>
             <form
               onSubmit={(event) => {
@@ -91,14 +120,13 @@ export const LocalSubmitAction = {
                 </InputGroupAddon>
               </InputGroup>
             </form>
-            <p role="status" className="bakin-primitive-story__muted">{submittedNote ? `Submitted: ${submittedNote}` : 'No note submitted.'}</p>
-          </div>
-        </section>
-      </main>
+            <p role="status" className="text-[length:var(--bakin-typography-size-meta)] text-bakin-text-muted">{submittedNote ? `Submitted: ${submittedNote}` : 'No note submitted.'}</p>
+          </Stack>
+        </StorySection>
+      </StoryStage>
     )
   },
-  play: async ({ canvasElement, userEvent }) => {
-    const canvas = within(canvasElement)
+  play: async ({ canvas, userEvent }) => {
     const input = canvas.getByRole('textbox', { name: 'Task note' })
     const submit = canvas.getByRole('button', { name: 'Add note' })
     await expect(submit).toBeDisabled()

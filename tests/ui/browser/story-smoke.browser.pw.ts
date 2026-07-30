@@ -9,7 +9,7 @@ function isCancelledStorybookA11yInstrumentation(request: Request): boolean {
 }
 
 const responsiveWidths = [1024, 720, 480, 320] as const
-const behaviorStory = '/iframe.html?id=foundation-button--behavior-fixture&viewMode=story'
+const behaviorStory = '/iframe.html?id=primitives-button--behavior-fixture&viewMode=story'
 const overviewStory = '/iframe.html?id=foundation-action-and-status--overview&viewMode=story'
 const surfaceOverviewStory = '/iframe.html?id=foundation-surface-and-content--overview&viewMode=story'
 const textFieldsOverviewStory = '/iframe.html?id=foundation-text-fields--overview&viewMode=story'

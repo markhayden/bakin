@@ -55,6 +55,30 @@ export function StoryStage({ eyebrow, title, description, width = 'content', chi
   )
 }
 
+export interface StorySectionProps {
+  title: string
+  description?: string
+  children: ReactNode
+}
+
+/** Titled showcase section: bordered top, heading, optional muted copy. */
+export function StorySection({ title, description, children }: StorySectionProps) {
+  return (
+    <section className="bakin-story-stage__section">
+      <header>
+        <h2>{title}</h2>
+        {description ? <p>{description}</p> : null}
+      </header>
+      {children}
+    </section>
+  )
+}
+
+/** Wrapping inline row for grouped specimens (variants, sizes, states). */
+export function StoryCluster({ children }: { children: ReactNode }) {
+  return <div className="bakin-story-stage__cluster">{children}</div>
+}
+
 /**
  * Muted workspace silhouette rendered behind overlay stories (dialogs,
  * sheets, drawers) so focus, scrim, and elevation read against real chrome.

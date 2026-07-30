@@ -44,7 +44,7 @@ describe('Storybook workbench foundation', () => {
   it('renders a real public SDK component under the canonical compiled stylesheet', () => {
     const manifest = JSON.parse(readRepoFile('package.json')) as PackageManifest
     const preview = readRepoFile('.storybook/preview.tsx')
-    const foundationStory = readRepoFile('storybook/public/foundation/button.stories.tsx')
+    const foundationStory = readRepoFile('storybook/public/primitives/button.stories.tsx')
 
     expect(manifest.scripts['build:css']).toContain('packages/sdk/styles.css')
     expect(manifest.scripts['build:css']).toContain('--minify')

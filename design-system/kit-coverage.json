@@ -11,7 +11,6 @@
     "@makinbakin/sdk/patterns :: AgentDot",
     "@makinbakin/sdk/patterns :: PageHeaderOverflowMenu",
     "@makinbakin/sdk/patterns :: UnsavedChangesDialog",
-    "@makinbakin/sdk/ui :: AvatarImage",
     "@makinbakin/sdk/ui :: DialogOverlay",
     "@makinbakin/sdk/ui :: DialogPortal",
     "@makinbakin/sdk/ui :: DropdownMenuPortal",
