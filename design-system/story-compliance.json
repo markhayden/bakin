@@ -68,24 +68,6 @@
       ]
     },
     {
-      "path": "storybook/public/foundation/action-status.stories.tsx",
-      "title": "Foundation/Action and status",
-      "missing": [
-        "canonical-usage",
-        "coverage-axes",
-        "play-assertion"
-      ]
-    },
-    {
-      "path": "storybook/public/foundation/alert.stories.tsx",
-      "title": "Foundation/Alert",
-      "missing": [
-        "canonical-usage",
-        "coverage-axes",
-        "visual-baseline"
-      ]
-    },
-    {
       "path": "storybook/public/foundation/bakin-drawer.stories.tsx",
       "title": "Foundation/BakinDrawer",
       "missing": [
@@ -99,25 +81,6 @@
       "missing": [
         "canonical-usage",
         "coverage-axes"
-      ]
-    },
-    {
-      "path": "storybook/public/foundation/progress.stories.tsx",
-      "title": "Foundation/Progress",
-      "missing": [
-        "canonical-usage",
-        "coverage-axes",
-        "visual-baseline"
-      ]
-    },
-    {
-      "path": "storybook/public/foundation/skeleton.stories.tsx",
-      "title": "Foundation/Skeleton",
-      "missing": [
-        "canonical-usage",
-        "coverage-axes",
-        "play-assertion",
-        "visual-baseline"
       ]
     },
     {
@@ -233,23 +196,8 @@
       ]
     },
     {
-      "path": "storybook/public/patterns/search-trust.stories.tsx",
-      "title": "Search/Trust states",
-      "missing": [
-        "canonical-usage",
-        "visual-baseline"
-      ]
-    },
-    {
       "path": "storybook/public/patterns/settings-dashboard-pages.stories.tsx",
       "title": "Patterns/Settings and dashboard pages",
-      "missing": [
-        "canonical-usage"
-      ]
-    },
-    {
-      "path": "storybook/public/patterns/status-metrics.stories.tsx",
-      "title": "Patterns/Status and metrics",
       "missing": [
         "canonical-usage"
       ]
@@ -267,14 +215,6 @@
       "missing": [
         "canonical-usage",
         "visual-baseline"
-      ]
-    },
-    {
-      "path": "storybook/public/states/system-feedback.stories.tsx",
-      "title": "States/System state and feedback",
-      "missing": [
-        "canonical-usage",
-        "coverage-axes"
       ]
     },
     {

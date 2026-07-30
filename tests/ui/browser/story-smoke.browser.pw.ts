@@ -10,11 +10,11 @@ function isCancelledStorybookA11yInstrumentation(request: Request): boolean {
 
 const responsiveWidths = [1024, 720, 480, 320] as const
 const behaviorStory = '/iframe.html?id=primitives-button--behavior-fixture&viewMode=story'
-const overviewStory = '/iframe.html?id=foundation-action-and-status--overview&viewMode=story'
+const alertTonesStory = '/iframe.html?id=feedback-alert--tones&viewMode=story'
 const cardStressStory = '/iframe.html?id=primitives-card--content-stress&viewMode=story'
 const collapsibleCanonicalStory = '/iframe.html?id=primitives-collapsible--canonical-usage&viewMode=story'
 const collapsibleBehaviorStory = '/iframe.html?id=primitives-collapsible--behavior&viewMode=story'
-const skeletonLoadingStory = '/iframe.html?id=foundation-skeleton--loading-object&viewMode=story'
+const skeletonLoadingStory = '/iframe.html?id=feedback-skeleton--loading-object&viewMode=story'
 const separatorOrientationStory = '/iframe.html?id=primitives-separator--orientation&viewMode=story'
 const avatarSizesStory = '/iframe.html?id=primitives-avatar--sizes-and-fallbacks&viewMode=story'
 const inputStatesStory = '/iframe.html?id=primitives-input--states-and-mobile-modes&viewMode=story'
@@ -27,8 +27,10 @@ const layoutRecipesStory = '/iframe.html?id=layout-grid-section-and-overflow--re
 const formOverviewStory = '/iframe.html?id=forms-field-and-form-composition--overview&viewMode=story'
 const asyncValidationStory = '/iframe.html?id=forms-field-and-form-composition--async-validation&viewMode=story'
 const submissionWorkflowStory = '/iframe.html?id=forms-field-and-form-composition--submission-workflow&viewMode=story'
-const systemStateStory = '/iframe.html?id=states-system-state-and-feedback--state-matrix&viewMode=story'
-const feedbackStory = '/iframe.html?id=states-system-state-and-feedback--feedback&viewMode=story'
+const systemStateStory = '/iframe.html?id=feedback-systemstate--state-matrix&viewMode=story'
+const toastTonesStory = '/iframe.html?id=feedback-toast--tones-and-actions&viewMode=story'
+const toastDismissStory = '/iframe.html?id=feedback-toast--dismiss-behavior&viewMode=story'
+const bannerTonesStory = '/iframe.html?id=feedback-banner--tones-and-actions&viewMode=story'
 const listPageStory = '/iframe.html?id=patterns-list-and-detail-pages--list-index&viewMode=story'
 const listHeaderControlsStory = '/iframe.html?id=patterns-list-and-detail-pages--list-header-controls&viewMode=story'
 const listNoResultsStory = '/iframe.html?id=patterns-list-and-detail-pages--list-no-results&viewMode=story'
@@ -56,9 +58,9 @@ const agentFilterStory = '/iframe.html?id=patterns-filters-and-navigation--agent
 const segmentedNavigationStory = '/iframe.html?id=patterns-filters-and-navigation--segmented-navigation&viewMode=story'
 const underlineNavigationStory = '/iframe.html?id=patterns-filters-and-navigation--underline-navigation&viewMode=story'
 const sortableTableStory = '/iframe.html?id=patterns-filters-and-navigation--sortable-table&viewMode=story'
-const statusLanguageStory = '/iframe.html?id=patterns-status-and-metrics--status-language&viewMode=story'
-const denseMetricsStory = '/iframe.html?id=patterns-status-and-metrics--dense-metrics&viewMode=story'
-const actionableMetricsStory = '/iframe.html?id=patterns-status-and-metrics--actionable-metrics&viewMode=story'
+const statusLanguageStory = '/iframe.html?id=feedback-statusbadge--status-vocabulary&viewMode=story'
+const denseMetricsStory = '/iframe.html?id=charts-stattile--dense-metrics&viewMode=story'
+const actionableMetricsStory = '/iframe.html?id=charts-stattile--actionable-metrics&viewMode=story'
 const chartExactDataStory = '/iframe.html?id=charts-exact-data-and-compact-trends--exact-data-table&viewMode=story'
 const chartPaletteStory = '/iframe.html?id=charts-exact-data-and-compact-trends--stable-palette&viewMode=story'
 const chartCompactTrendsStory = '/iframe.html?id=charts-exact-data-and-compact-trends--compact-trends&viewMode=story'
@@ -76,7 +78,7 @@ const conversationReadOnlyPanelStory = '/iframe.html?id=conversation-panel-and-t
 const conversationToolDetailStory = '/iframe.html?id=conversation-panel-and-tool-detail--exact-tool-detail&viewMode=story'
 const markdownReadingStory = '/iframe.html?id=content-markdown--reading-and-code&viewMode=story'
 const markdownEditorStory = '/iframe.html?id=content-markdown--controlled-editor&viewMode=story'
-const searchTrustStory = '/iframe.html?id=search-trust-states--availability-and-evidence&viewMode=story'
+const searchTrustStory = '/iframe.html?id=feedback-search-trust-states--availability-and-evidence&viewMode=story'
 const agentIdentityStory = '/iframe.html?id=agents-identity-and-assignment--identity-and-presence&viewMode=story'
 const agentAssignmentStory = '/iframe.html?id=agents-identity-and-assignment--assignment-and-filtering&viewMode=story'
 const assetDialogStory = '/iframe.html?id=choices-asset-model-and-color-pickers--dialog-library&viewMode=story'
@@ -129,14 +131,17 @@ test('action and status family keeps responsive semantics across browsers', asyn
   })
   page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
   page.on('requestfailed', (request) => {
-    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+    const reason = request.failure()?.errorText ?? ''
+    // Navigation cancels in-flight lazy chunks; an abort is not a failed resource.
+    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED') return
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${reason}`)
   })
 
   for (const width of responsiveWidths) {
     await test.step(`${width}px overview has no document overflow`, async () => {
       await page.setViewportSize({ width, height: 900 })
-      await page.goto(overviewStory, { waitUntil: 'networkidle' })
-      await expect(page.getByRole('heading', { name: 'Actions and status', exact: true })).toBeVisible()
+      await page.goto(alertTonesStory, { waitUntil: 'networkidle' })
+      await expect(page.getByRole('alert')).toContainText('Connection failed')
       const dimensions = await page.evaluate(() => ({
         clientWidth: document.documentElement.clientWidth,
         scrollWidth: document.documentElement.scrollWidth,
@@ -146,9 +151,11 @@ test('action and status family keeps responsive semantics across browsers', asyn
   }
 
   await test.step('semantic state remains available without visual inspection', async () => {
-    await expect(page.getByRole('status').first()).toContainText('Saved')
     await expect(page.getByRole('alert')).toContainText('Connection failed')
-    await expect(page.getByRole('progressbar', { name: 'Plugin migration' })).toHaveAttribute('aria-valuenow', '64')
+    await expect(page.getByRole('status')).toHaveCount(4)
+
+    await page.goto('/iframe.html?id=feedback-progress--states&viewMode=story', { waitUntil: 'networkidle' })
+    await expect(page.getByRole('progressbar', { name: 'Generating assets' })).toHaveAttribute('aria-valuenow', '42')
     await expect(page.getByRole('progressbar', { name: 'Connecting to runtime' })).not.toHaveAttribute('aria-valuenow')
   })
 
@@ -156,12 +163,12 @@ test('action and status family keeps responsive semantics across browsers', asyn
     await page.goto('/iframe.html?id=primitives-badge--interactive&viewMode=story', { waitUntil: 'networkidle' })
     await expect(page.getByRole('link', { name: 'Open 4 filtered tasks' })).toBeFocused()
 
-    await page.goto('/iframe.html?id=foundation-alert--with-action&viewMode=story', { waitUntil: 'networkidle' })
+    await page.goto('/iframe.html?id=feedback-alert--with-action&viewMode=story', { waitUntil: 'networkidle' })
     await expect(page.getByRole('button', { name: 'Retry' })).toBeFocused()
   })
 
   await test.step('progress interaction updates the exact accessible value', async () => {
-    await page.goto('/iframe.html?id=foundation-progress--behavior&viewMode=story', { waitUntil: 'networkidle' })
+    await page.goto('/iframe.html?id=feedback-progress--behavior&viewMode=story', { waitUntil: 'networkidle' })
     await expect(page.getByRole('progressbar', { name: 'Migration' })).toHaveAttribute('aria-valuenow', '40')
   })
 
@@ -175,7 +182,10 @@ test('surface and content primitives keep disclosure and loading semantics acros
   })
   page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
   page.on('requestfailed', (request) => {
-    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+    const reason = request.failure()?.errorText ?? ''
+    // Navigation cancels in-flight lazy chunks; an abort is not a failed resource.
+    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED') return
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${reason}`)
   })
 
   for (const width of responsiveWidths) {
@@ -232,7 +242,10 @@ test('text fields keep native state, focus, and mobile-mode contracts across bro
   })
   page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
   page.on('requestfailed', (request) => {
-    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+    const reason = request.failure()?.errorText ?? ''
+    // Navigation cancels in-flight lazy chunks; an abort is not a failed resource.
+    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED') return
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${reason}`)
   })
 
   for (const width of responsiveWidths) {
@@ -291,7 +304,10 @@ test('selection controls keep keyboard, state, target, and overflow contracts ac
   })
   page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
   page.on('requestfailed', (request) => {
-    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+    const reason = request.failure()?.errorText ?? ''
+    // Navigation cancels in-flight lazy chunks; an abort is not a failed resource.
+    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED') return
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${reason}`)
   })
 
   for (const [story, heading] of [[checkboxStatesStory, 'Checkbox'], [switchStatesStory, 'Switch']] as const) {
@@ -386,7 +402,10 @@ test('modal and side overlays keep focus, dismissal, motion, and viewport contra
   })
   page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
   page.on('requestfailed', (request) => {
-    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+    const reason = request.failure()?.errorText ?? ''
+    // Navigation cancels in-flight lazy chunks; an abort is not a failed resource.
+    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED') return
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${reason}`)
   })
 
   for (const width of responsiveWidths) {
@@ -474,7 +493,10 @@ test('anchored overlays keep collision, keyboard, focus, and labelling contracts
   })
   page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
   page.on('requestfailed', (request) => {
-    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+    const reason = request.failure()?.errorText ?? ''
+    // Navigation cancels in-flight lazy chunks; an abort is not a failed resource.
+    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED') return
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${reason}`)
   })
 
   for (const width of responsiveWidths) {
@@ -559,7 +581,10 @@ test('page and flow layout follows its container without document overflow', asy
   })
   page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
   page.on('requestfailed', (request) => {
-    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+    const reason = request.failure()?.errorText ?? ''
+    // Navigation cancels in-flight lazy chunks; an abort is not a failed resource.
+    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED') return
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${reason}`)
   })
 
   const expectedInlinePadding = new Map([[1024, 32], [720, 32], [480, 24], [320, 16]])
@@ -598,7 +623,10 @@ test('grid recipes reflow by container and bound intrinsic overflow', async ({ p
   })
   page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
   page.on('requestfailed', (request) => {
-    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+    const reason = request.failure()?.errorText ?? ''
+    // Navigation cancels in-flight lazy chunks; an abort is not a failed resource.
+    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED') return
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${reason}`)
   })
 
   const expectedColumns = new Map([[1024, 4], [720, 3], [480, 2], [320, 1]])
@@ -640,7 +668,10 @@ test('canonical forms keep association, validation, submission, and mobile actio
   })
   page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
   page.on('requestfailed', (request) => {
-    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+    const reason = request.failure()?.errorText ?? ''
+    // Navigation cancels in-flight lazy chunks; an abort is not a failed resource.
+    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED') return
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${reason}`)
   })
 
   for (const width of responsiveWidths) {
@@ -723,7 +754,10 @@ test('system states keep recovery, announcement, motion, and responsive contract
   })
   page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
   page.on('requestfailed', (request) => {
-    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+    const reason = request.failure()?.errorText ?? ''
+    // Navigation cancels in-flight lazy chunks; an abort is not a failed resource.
+    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED') return
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${reason}`)
   })
 
   for (const width of responsiveWidths) {
@@ -755,15 +789,20 @@ test('system states keep recovery, announcement, motion, and responsive contract
 
   await test.step('feedback roles and dismissal stay operable', async () => {
     await page.setViewportSize({ width: 320, height: 900 })
-    await page.goto(feedbackStory, { waitUntil: 'networkidle' })
-    await expect(page.getByRole('region', { name: 'Example notifications' })).toBeVisible()
+    await page.goto(bannerTonesStory, { waitUntil: 'networkidle' })
     await expect(page.getByRole('status', { name: 'Runtime reconnected' })).toHaveAttribute('aria-live', 'polite')
-    const errorToast = page.getByRole('alert', { name: 'Action failed' })
-    await expect(errorToast).toBeVisible()
-    await page.getByRole('button', { name: 'Dismiss notification' }).click()
-    await expect(errorToast).toBeHidden()
+
+    await page.goto(toastTonesStory, { waitUntil: 'networkidle' })
+    await expect(page.getByRole('region', { name: 'Example notifications' })).toBeVisible()
+    await expect(page.getByRole('alert', { name: 'Action failed' })).toBeVisible()
     const dimensions = await page.evaluate(() => ({ clientWidth: document.documentElement.clientWidth, scrollWidth: document.documentElement.scrollWidth }))
     expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth)
+
+    // The dismiss story's play already exercises the click; assert its
+    // terminal state — the region remains (empty, so zero-size), toast gone.
+    await page.goto(toastDismissStory, { waitUntil: 'networkidle' })
+    await expect(page.getByRole('region', { name: 'Example notifications' })).toBeAttached()
+    await expect(page.getByRole('alert')).toHaveCount(0)
   })
 
   expect(browserErrors).toEqual([])
@@ -776,7 +815,10 @@ test('list and detail recipes preserve page identity, state slots, and responsiv
   })
   page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
   page.on('requestfailed', (request) => {
-    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+    const reason = request.failure()?.errorText ?? ''
+    // Navigation cancels in-flight lazy chunks; an abort is not a failed resource.
+    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED') return
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${reason}`)
   })
 
   for (const [story, heading] of [[listPageStory, 'Coordinate active work'], [detailPageStory, 'Launch approval']] as const) {
@@ -872,7 +914,10 @@ test('settings and dashboard recipes preserve priority, named regions, and respo
   })
   page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
   page.on('requestfailed', (request) => {
-    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+    const reason = request.failure()?.errorText ?? ''
+    // Navigation cancels in-flight lazy chunks; an abort is not a failed resource.
+    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED') return
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${reason}`)
   })
 
   for (const [story, heading] of [[settingsPageStory, 'Settings'], [dashboardPageStory, 'Keep Bakin ready to work']] as const) {
@@ -945,7 +990,10 @@ test('conversation and inspector recipes preserve explicit scroll, state, and ac
   })
   page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
   page.on('requestfailed', (request) => {
-    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+    const reason = request.failure()?.errorText ?? ''
+    // Navigation cancels in-flight lazy chunks; an abort is not a failed resource.
+    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED') return
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${reason}`)
   })
 
   for (const [story, heading] of [[conversationPageStory, 'Conversation with Patch'], [inspectorStory, 'Launch publishing workflow']] as const) {
@@ -1027,7 +1075,10 @@ test('workflow and action recipes preserve real graph interaction, bounded overf
     browserErrors.push(`pageerror: ${error.message}`)
   })
   page.on('requestfailed', (request) => {
-    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+    const reason = request.failure()?.errorText ?? ''
+    // Navigation cancels in-flight lazy chunks; an abort is not a failed resource.
+    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED') return
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${reason}`)
   })
 
   for (const [story, heading] of [[verticalWorkflowStory, 'Launch publishing workflow'], [horizontalWorkflowStory, 'Launch publishing workflow'], [reviewActionStory, 'Review launch publishing workflow']] as const) {
@@ -1114,7 +1165,10 @@ test('destructive and dirty-state patterns preserve focus, exact intent, and mob
   })
   page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
   page.on('requestfailed', (request) => {
-    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+    const reason = request.failure()?.errorText ?? ''
+    // Navigation cancels in-flight lazy chunks; an abort is not a failed resource.
+    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED') return
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${reason}`)
   })
 
   for (const width of responsiveWidths) {
@@ -1195,7 +1249,10 @@ test('filter and navigation patterns preserve keyboard selection, meaning, and b
   })
   page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
   page.on('requestfailed', (request) => {
-    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+    const reason = request.failure()?.errorText ?? ''
+    // Navigation cancels in-flight lazy chunks; an abort is not a failed resource.
+    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED') return
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${reason}`)
   })
 
   for (const width of responsiveWidths) {
@@ -1333,7 +1390,10 @@ test('status and metric patterns preserve visible meaning, exact values, and nat
   })
   page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
   page.on('requestfailed', (request) => {
-    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+    const reason = request.failure()?.errorText ?? ''
+    // Navigation cancels in-flight lazy chunks; an abort is not a failed resource.
+    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED') return
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${reason}`)
   })
 
   for (const [story, heading] of [
@@ -1413,7 +1473,10 @@ test('chart foundation preserves exact data, stable labels, gaps, and bounded ov
   })
   page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
   page.on('requestfailed', (request) => {
-    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+    const reason = request.failure()?.errorText ?? ''
+    // Navigation cancels in-flight lazy chunks; an abort is not a failed resource.
+    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED') return
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${reason}`)
   })
 
   for (const [story, heading] of [
@@ -1500,7 +1563,10 @@ test('visual charts preserve honest marks, exact data, and local plot overflow',
   })
   page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
   page.on('requestfailed', (request) => {
-    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+    const reason = request.failure()?.errorText ?? ''
+    // Navigation cancels in-flight lazy chunks; an abort is not a failed resource.
+    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED') return
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${reason}`)
   })
 
   for (const [story, heading] of [
@@ -1597,7 +1663,10 @@ test('conversation tool activity preserves disclosure, exact status, motion, and
   })
   page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
   page.on('requestfailed', (request) => {
-    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+    const reason = request.failure()?.errorText ?? ''
+    // Navigation cancels in-flight lazy chunks; an abort is not a failed resource.
+    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED') return
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${reason}`)
   })
 
   for (const width of responsiveWidths) {
@@ -1660,7 +1729,10 @@ test('conversation turns preserve identity, lifecycle, attachments, and containm
   })
   page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
   page.on('requestfailed', (request) => {
-    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+    const reason = request.failure()?.errorText ?? ''
+    // Navigation cancels in-flight lazy chunks; an abort is not a failed resource.
+    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED') return
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${reason}`)
   })
 
   for (const width of responsiveWidths) {
@@ -1719,7 +1791,10 @@ test('conversation timeline preserves page scroll ownership, bounded history, an
   })
   page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
   page.on('requestfailed', (request) => {
-    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+    const reason = request.failure()?.errorText ?? ''
+    // Navigation cancels in-flight lazy chunks; an abort is not a failed resource.
+    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED') return
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${reason}`)
   })
 
   for (const [story, heading] of [
@@ -1790,7 +1865,10 @@ test('conversation composer preserves keyboard, persistence, attachment, and bus
   })
   page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
   page.on('requestfailed', (request) => {
-    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+    const reason = request.failure()?.errorText ?? ''
+    // Navigation cancels in-flight lazy chunks; an abort is not a failed resource.
+    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED') return
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${reason}`)
   })
 
   for (const [story, heading] of [
@@ -1862,7 +1940,10 @@ test('conversation panel preserves bounded history, resize, read-only, and exact
   })
   page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
   page.on('requestfailed', (request) => {
-    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+    const reason = request.failure()?.errorText ?? ''
+    // Navigation cancels in-flight lazy chunks; an abort is not a failed resource.
+    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED') return
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${reason}`)
   })
 
   for (const [story, heading] of [
@@ -2009,7 +2090,10 @@ test('agent identity and assignment preserve exact status, keyboard, and narrow-
   })
   page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
   page.on('requestfailed', (request) => {
-    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+    const reason = request.failure()?.errorText ?? ''
+    // Navigation cancels in-flight lazy chunks; an abort is not a failed resource.
+    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED') return
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${reason}`)
   })
 
   for (const story of [agentIdentityStory, agentAssignmentStory]) {
@@ -2069,7 +2153,10 @@ test('asset, model, and color pickers preserve controlled state, keyboard, and n
   })
   page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
   page.on('requestfailed', (request) => {
-    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+    const reason = request.failure()?.errorText ?? ''
+    // Navigation cancels in-flight lazy chunks; an abort is not a failed resource.
+    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED') return
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${reason}`)
   })
 
   for (const story of [assetDialogStory, assetInlineStory, modelColorStory]) {
@@ -2144,7 +2231,10 @@ test('plugin settings and single-turn output preserve validation, evidence, and 
   })
   page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
   page.on('requestfailed', (request) => {
-    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+    const reason = request.failure()?.errorText ?? ''
+    // Navigation cancels in-flight lazy chunks; an abort is not a failed resource.
+    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED') return
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${reason}`)
   })
 
   for (const story of [pluginSettingsStory, turnOutputStory]) {

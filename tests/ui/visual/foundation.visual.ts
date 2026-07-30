@@ -7,7 +7,10 @@ test('public Button visual baseline', async ({ page }, testInfo) => {
   })
   page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
   page.on('requestfailed', (request) => {
-    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+    const reason = request.failure()?.errorText ?? ''
+    // Navigation cancels in-flight lazy chunks; an abort is not a failed resource.
+    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED') return
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${reason}`)
   })
 
   await page.goto('/iframe.html?id=primitives-button--canonical-usage&viewMode=story', { waitUntil: 'networkidle' })
@@ -34,26 +37,6 @@ test('public Button visual baseline', async ({ page }, testInfo) => {
   await expect(page).toHaveScreenshot('primitives-button.png')
 })
 
-test('public action and status family visual baseline', async ({ page }) => {
-  const browserErrors: string[] = []
-  page.on('console', (message) => {
-    if (message.type() === 'error') browserErrors.push(`console: ${message.text()}`)
-  })
-  page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
-  page.on('requestfailed', (request) => {
-    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
-  })
-
-  await page.goto('/iframe.html?id=foundation-action-and-status--overview&viewMode=story', { waitUntil: 'networkidle' })
-  await expect(page.getByRole('heading', { name: 'Actions and status', exact: true })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Create task', exact: true })).toBeVisible()
-  await expect(page.getByRole('progressbar', { name: 'Plugin migration', exact: true })).toHaveAttribute('aria-valuenow', '64')
-  await page.evaluate(async () => document.fonts.ready)
-
-  expect(browserErrors).toEqual([])
-  await expect(page).toHaveScreenshot('foundation-action-status.png')
-})
-
 
 test('public dialog decision visual baseline', async ({ page }) => {
   const browserErrors: string[] = []
@@ -62,7 +45,10 @@ test('public dialog decision visual baseline', async ({ page }) => {
   })
   page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
   page.on('requestfailed', (request) => {
-    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+    const reason = request.failure()?.errorText ?? ''
+    // Navigation cancels in-flight lazy chunks; an abort is not a failed resource.
+    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED') return
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${reason}`)
   })
 
   await page.goto('/iframe.html?id=overlays-dialog--decision&viewMode=story', { waitUntil: 'networkidle' })
@@ -81,7 +67,10 @@ test('public right sheet visual baseline', async ({ page }) => {
   })
   page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
   page.on('requestfailed', (request) => {
-    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+    const reason = request.failure()?.errorText ?? ''
+    // Navigation cancels in-flight lazy chunks; an abort is not a failed resource.
+    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED') return
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${reason}`)
   })
 
   await page.goto('/iframe.html?id=overlays-sheet--right-panel&viewMode=story', { waitUntil: 'networkidle' })
@@ -100,7 +89,10 @@ test('public BakinDrawer visual baseline', async ({ page }, testInfo) => {
   })
   page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
   page.on('requestfailed', (request) => {
-    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+    const reason = request.failure()?.errorText ?? ''
+    // Navigation cancels in-flight lazy chunks; an abort is not a failed resource.
+    if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED') return
+    browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${reason}`)
   })
 
   await page.goto('/iframe.html?id=foundation-bakindrawer--default&viewMode=story', { waitUntil: 'networkidle' })
@@ -205,21 +197,32 @@ test('public canonical form composition visual baseline', async ({ page }) => {
 })
 
 test('public system-state matrix visual baseline', async ({ page }) => {
-  await page.goto('/iframe.html?id=states-system-state-and-feedback--state-matrix&viewMode=story')
+  await page.goto('/iframe.html?id=feedback-systemstate--state-matrix&viewMode=story')
   await expect(page.getByRole('heading', { name: 'Every data surface tells the truth' })).toBeVisible()
   await page.evaluate(async () => document.fonts.ready)
-  await expect(page).toHaveScreenshot('foundation-system-states.png', {
+  await expect(page).toHaveScreenshot('feedback-system-state.png', {
     animations: 'disabled',
     caret: 'hide',
     fullPage: true,
   })
 })
 
-test('public banner and toast feedback visual baseline', async ({ page }) => {
-  await page.goto('/iframe.html?id=states-system-state-and-feedback--feedback&viewMode=story')
-  await expect(page.getByRole('heading', { name: 'Persistent context and transient outcomes' })).toBeVisible()
+test('public toast feedback visual baseline', async ({ page }) => {
+  await page.goto('/iframe.html?id=feedback-toast--tones-and-actions&viewMode=story')
+  await expect(page.getByRole('alert', { name: 'Action failed' })).toBeVisible()
   await page.evaluate(async () => document.fonts.ready)
-  await expect(page).toHaveScreenshot('foundation-system-feedback.png', {
+  await expect(page).toHaveScreenshot('feedback-toast.png', {
+    animations: 'disabled',
+    caret: 'hide',
+    fullPage: true,
+  })
+})
+
+test('public banner feedback visual baseline', async ({ page }) => {
+  await page.goto('/iframe.html?id=feedback-banner--tones-and-actions&viewMode=story')
+  await expect(page.getByRole('status', { name: 'Runtime reconnected' })).toBeVisible()
+  await page.evaluate(async () => document.fonts.ready)
+  await expect(page).toHaveScreenshot('feedback-banner.png', {
     animations: 'disabled',
     caret: 'hide',
     fullPage: true,
@@ -441,11 +444,11 @@ test('public sortable table pattern visual baseline', async ({ page }) => {
 })
 
 test('public status language pattern visual baseline', async ({ page }) => {
-  await page.goto('/iframe.html?id=patterns-status-and-metrics--status-language&viewMode=story')
+  await page.goto('/iframe.html?id=feedback-statusbadge--status-vocabulary&viewMode=story')
   await expect(page.getByRole('heading', { level: 1, name: 'Say what changed, even without color' })).toBeVisible()
   await expect(page.locator('[data-status-badge]').filter({ hasText: 'Published' })).toHaveAttribute('data-tone', 'success')
   await page.evaluate(async () => document.fonts.ready)
-  await expect(page).toHaveScreenshot('foundation-status-language.png', {
+  await expect(page).toHaveScreenshot('feedback-status-badge.png', {
     animations: 'disabled',
     caret: 'hide',
     fullPage: true,
@@ -453,11 +456,11 @@ test('public status language pattern visual baseline', async ({ page }) => {
 })
 
 test('public dense metrics pattern visual baseline', async ({ page }) => {
-  await page.goto('/iframe.html?id=patterns-status-and-metrics--dense-metrics&viewMode=story')
+  await page.goto('/iframe.html?id=charts-stattile--dense-metrics&viewMode=story')
   await expect(page.getByRole('heading', { level: 1, name: 'Keep technical metrics dense and honest' })).toBeVisible()
   await expect(page.getByRole('progressbar', { name: 'Plugin migration coverage' })).toHaveAttribute('aria-valuenow', '91.428')
   await page.evaluate(async () => document.fonts.ready)
-  await expect(page).toHaveScreenshot('foundation-dense-metrics.png', {
+  await expect(page).toHaveScreenshot('charts-stat-tile.png', {
     animations: 'disabled',
     caret: 'hide',
     fullPage: true,
@@ -465,11 +468,11 @@ test('public dense metrics pattern visual baseline', async ({ page }) => {
 })
 
 test('public actionable metrics pattern visual baseline', async ({ page }) => {
-  await page.goto('/iframe.html?id=patterns-status-and-metrics--actionable-metrics&viewMode=story')
+  await page.goto('/iframe.html?id=charts-stattile--actionable-metrics&viewMode=story')
   await expect(page.getByRole('heading', { level: 1, name: 'Use a surface only when the metric is an object' })).toBeVisible()
   await expect(page.getByRole('button', { name: /Needs review 8/ })).toBeVisible()
   await page.evaluate(async () => document.fonts.ready)
-  await expect(page).toHaveScreenshot('foundation-actionable-metrics.png', {
+  await expect(page).toHaveScreenshot('charts-stat-tile-actionable.png', {
     animations: 'disabled',
     caret: 'hide',
     fullPage: true,
@@ -672,6 +675,12 @@ const PRIMITIVES_BASELINES = [
   { url: '/iframe.html?id=primitives-switch--states&viewMode=story', png: 'primitives-switch.png', text: 'Compact operational setting' },
   { url: '/iframe.html?id=primitives-select--states&viewMode=story', png: 'primitives-select.png', text: 'Canonical states' },
   { url: '/iframe.html?id=primitives-collapsible--canonical-usage&viewMode=story', png: 'primitives-collapsible.png', role: 'button' as const },
+  { url: '/iframe.html?id=feedback-skeleton--loading-object&viewMode=story', png: 'feedback-skeleton.png', text: 'Loading assigned workflow' },
+  { url: '/iframe.html?id=feedback-progress--tones&viewMode=story', png: 'feedback-progress.png', text: 'Approaching budget limit' },
+  { url: '/iframe.html?id=feedback-alert--tones&viewMode=story', png: 'feedback-alert.png', text: 'Connection failed' },
+  { url: '/iframe.html?id=feedback-statusmarker--dense-view-markers&viewMode=story', png: 'feedback-status-marker.png', role: 'img' as const, name: 'Published' },
+  { url: '/iframe.html?id=charts-statgroup--compact-metrics&viewMode=story', png: 'charts-stat-group.png', role: 'group' as const, name: 'Task summary metrics' },
+  { url: '/iframe.html?id=feedback-search-trust-states--availability-and-evidence&viewMode=story', png: 'feedback-search-trust.png', role: 'note' as const, name: 'Search relevance details' },
 ]
 
 for (const baseline of PRIMITIVES_BASELINES) {

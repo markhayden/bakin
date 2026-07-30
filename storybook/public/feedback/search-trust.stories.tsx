@@ -13,7 +13,7 @@ import { buttonVariants } from '@makinbakin/sdk/ui'
 import './search-trust.stories.css'
 
 const meta = {
-  title: 'Search/Trust states',
+  title: 'Feedback/Search trust states',
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',
@@ -28,6 +28,17 @@ const meta = {
 
 export default meta
 type Story = StoryObj<typeof meta>
+
+export const CanonicalUsage = {
+  parameters: { layout: 'centered' },
+  render: () => <SearchUnavailable retry={() => {}} healthAction={null} />,
+  play: async ({ canvas }) => {
+    const state = canvas.getByRole('alert', { name: 'Search is unavailable' })
+    await expect(state).toBeVisible()
+    await expect(state).toHaveAttribute('data-recovery', 'available')
+    await expect(canvas.getByRole('button', { name: 'Retry' })).toBeVisible()
+  },
+} satisfies Story
 
 export const AvailabilityAndEvidence = {
   render: () => (
