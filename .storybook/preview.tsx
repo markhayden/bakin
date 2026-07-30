@@ -17,6 +17,10 @@ import {
 } from '../storybook/fixtures'
 
 const preview: Preview = {
+  // Every entry gets an autodocs page: props tables from TS types plus
+  // per-story source panels. Public entries are the contract surface;
+  // internal entries only ever render in the maintainer build.
+  tags: ['autodocs'],
   beforeEach: (context) => installDeterministicBrowserFixture(
     context.parameters.bakinFixture ?? DEFAULT_STORY_FIXTURE,
   ),

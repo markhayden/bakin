@@ -152,8 +152,8 @@ export const DocumentDividerPanel = {
   play: async ({ canvas }) => {
     const panel = canvas.getByRole('region', { name: 'Conversation' })
     await expect(panel).toHaveAttribute('data-chrome', 'top-divider')
-    await expect(panel).toHaveClass('border-x-0')
-    await expect(panel).toHaveClass('border-b-0')
+    await expect(panel).toHaveClass('border-t')
+    await expect(panel).not.toHaveClass('rounded-bakin-overlay')
   },
 } satisfies Story
 

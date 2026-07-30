@@ -487,6 +487,9 @@ export const ContainedDetailWorkspace = {
       <DetailPageBody className="min-h-0">
         <DetailPageMain className="min-h-0">
           <div
+            role="region"
+            aria-label="Plan sections"
+            tabIndex={0}
             className="bakin-archetype-story__contained-scroll"
             data-testid="contained-detail-scroll"
           >

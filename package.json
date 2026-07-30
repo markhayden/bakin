@@ -126,6 +126,7 @@
     "@happy-dom/global-registrator": "^20.9.0",
     "@makinbakin/sdk": "workspace:*",
     "@storybook/addon-a11y": "10.5.2",
+    "@storybook/addon-docs": "10.5.2",
     "@storybook/addon-vitest": "10.5.2",
     "@storybook/react-vite": "10.5.2",
     "@tailwindcss/cli": "^4.2.4",
