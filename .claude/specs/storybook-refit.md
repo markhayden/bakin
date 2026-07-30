@@ -1,6 +1,6 @@
 # Storybook Refit — Audit, Reorganization, Naming, Coverage
 
-Status: DRAFT — pending approval
+Status: APPROVED 2026-07-29 (audit complete; §12 open items resolved in `storybook-refit-audit.md` §9)
 Owner: Mark Hayden
 Date: 2026-07-29
 Companions: `storybook-refit-audit.md` (Phase 0 output), `storybook-refit-plan.md` (task breakdown, written after this spec is approved)
