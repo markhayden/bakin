@@ -78,3 +78,16 @@ forever. Interactions now flush inside act().
 
 Open question for maintainer: harden the three flaky victims (whack-a-mole risk), or accept
 rerun-to-green per the repo's existing convention.
+
+## Live-test findings (Mark, 2026-07-30)
+Installed `clawhub:@buksan1950/reddit-readonly` on the live box — install, projection
+(`~/.pi/agent/skills/reddit-readonly`), provenance marker, and the unified Installed list all
+correct; the agent read SKILL.md and executed the script.
+- Execution hit `HTTP 403` from Reddit. NOT ours: reproduced 3/3 from this machine with the
+  skill's own UA, a browser UA, and no UA. Reddit blocks unauthenticated `.json` access. The
+  agent formatted the skill's own `{ok:false}` error and fell back to `bx-search` — intended
+  behavior. Skill honors `REDDIT_RO_USER_AGENT`, but no UA helps.
+- REAL GAP FOUND + FIXED: the skill declares `requires.bins:["node"]` under the legacy
+  `metadata.clawdbot` alias, so synthesis translated NOTHING (no prereq, no capability). Now
+  reads `openclaw` → `clawdbot` → `clawdis` (documented aliases of the same namespace, from the
+  project's renames). Fixture + pins added. Reinstall that skill to pick up the node prereq.

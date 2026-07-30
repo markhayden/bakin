@@ -39,6 +39,16 @@ export const FROZEN_TRANSLATION_KEYS = [
   'metadata.openclaw.os',
 ] as const
 
+/**
+ * Documented ALIASES for the one namespace above — the upstream project was
+ * renamed Clawdbot → Moltbot → OpenClaw, and skills published before the
+ * rename (including some of the hub's most-downloaded) still carry the old
+ * key. Reading these COMPLETES the single namespace we support; it does not
+ * extend the frozen table to a new dialect, which is why it doesn't add
+ * entries above. First match wins.
+ */
+export const OPENCLAW_METADATA_ALIASES = ['openclaw', 'clawdbot', 'clawdis'] as const
+
 export interface SynthesisSourceInfo {
   /** Canonical source ref (clawhub:@owner/slug, github:…, local path). */
   source: string
@@ -65,7 +75,7 @@ interface Frontmatter {
   description?: string
   version?: string
   homepage?: string
-  metadata?: { openclaw?: OpenClawMetadata }
+  metadata?: Partial<Record<(typeof OPENCLAW_METADATA_ALIASES)[number], OpenClawMetadata>>
 }
 
 interface OpenClawMetadata {
@@ -294,7 +304,8 @@ export function synthesizeSkillPack(stagingDir: string, sourceInfo: SynthesisSou
 
   const help = helpUrl(sourceInfo.source, fm.homepage)
   const packageId = `hub-${skillName}`
-  const translated = translateOpenClawMetadata(fm.metadata?.openclaw, help, packageId)
+  const declared = OPENCLAW_METADATA_ALIASES.map((key) => fm.metadata?.[key]).find((v) => v !== undefined)
+  const translated = translateOpenClawMetadata(declared, help, packageId)
   if ('unsupportedOs' in translated) {
     return { ok: false, reason: 'unsupported-os', error: `skill declares os [${translated.unsupportedOs}] — no supported Bakin platform` }
   }

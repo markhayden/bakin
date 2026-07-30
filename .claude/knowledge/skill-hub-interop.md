@@ -18,7 +18,11 @@ observed ClawHub API shapes: `.claude/specs/skill-hub-interop/API-NOTES.md`.
   `source-fetcher.ts`), so installer, updater, and dependency resolution all inherit
   raw-bundle support.
 - **The frozen table (D12).** `skill-synthesis.ts` translates EXACTLY the
-  `metadata.openclaw` namespace (requires.env/bins/anyBins, envVars, primaryEnv, os)
+  `metadata.openclaw` namespace — read through its documented aliases
+  `metadata.clawdbot` / `metadata.clawdis` (the upstream project was renamed
+  Clawdbot → Moltbot → OpenClaw, and pre-rename skills are common on the hub;
+  first match wins, `openclaw` first). Aliases COMPLETE the one namespace; they
+  are not new dialects, so `FROZEN_TRANSLATION_KEYS` is unchanged (requires.env/bins/anyBins, envVars, primaryEnv, os)
   into Bakin legs: env vars → `secrets[]` with CORE-MINTED `skills.<NAME>` slots;
   binaries → probe-only `prereqs` (never auto-installed — the ClawHavoc vector); os →
   `platforms`. `FROZEN_TRANSLATION_KEYS` is test-pinned — NEVER extend it; new

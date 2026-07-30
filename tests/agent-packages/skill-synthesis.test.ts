@@ -34,6 +34,7 @@ mock.module('../../src/core/logger', () => ({
 
 import {
   FROZEN_TRANSLATION_KEYS,
+  OPENCLAW_METADATA_ALIASES,
   synthesizeSkillPack,
 } from '../../src/core/agent-packages/skill-synthesis'
 import { parseManifest } from '../../packages/core/src/agent-packages/manifest'
@@ -201,5 +202,37 @@ describe('the frozen table is FROZEN', () => {
       'metadata.openclaw.primaryEnv',
       'metadata.openclaw.os',
     ])
+  })
+})
+
+describe('legacy namespace aliases (#687, found by live test)', () => {
+  it('reads requirements from the pre-rename clawdbot alias', () => {
+    // The real clawhub:@buksan1950/reddit-readonly ships its requires under
+    // `metadata.clawdbot` — reading only `openclaw` silently translated
+    // nothing, so a machine without node got no prereq warning.
+    const dir = stage('legacy-alias-style')
+    const result = synthesizeSkillPack(dir, { source: 'clawhub:@buksan1950/reddit-readonly', ref: '1.0.0' })
+    if (!result.ok) throw new Error(result.error)
+    const manifest = parseManifest(JSON.parse(readFileSync(join(dir, 'bakin-package.json'), 'utf-8')))
+    if (manifest.kind !== 'skill-pack') throw new Error('expected skill-pack')
+
+    expect(manifest.requires?.prereqs?.map((p) => p.probe)).toEqual(['node'])
+    expect(manifest.secrets?.map((s) => s.name)).toEqual(['REDDIT_RO_USER_AGENT'])
+    expect(manifest.secrets?.[0]?.secretSlot).toBe('skills.hub-reddit-readonly.REDDIT_RO_USER_AGENT')
+    // Requirement-bearing → readiness covers it.
+    expect(manifest.capability).toBe('reddit-readonly')
+  })
+
+  it('aliases are pinned and ordered — openclaw wins when both are present', () => {
+    expect(OPENCLAW_METADATA_ALIASES).toEqual(['openclaw', 'clawdbot', 'clawdis'])
+    const dir = join(testDir, 'both-namespaces')
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, 'SKILL.md'),
+      '---\nname: both\ndescription: d\nmetadata: {"openclaw":{"requires":{"bins":["jq"]}},"clawdbot":{"requires":{"bins":["ignored"]}}}\n---\n# both')
+    const result = synthesizeSkillPack(dir, { source: './both-namespaces' })
+    if (!result.ok) throw new Error(result.error)
+    const manifest = parseManifest(JSON.parse(readFileSync(join(dir, 'bakin-package.json'), 'utf-8')))
+    if (manifest.kind !== 'skill-pack') throw new Error('expected skill-pack')
+    expect(manifest.requires?.prereqs?.map((p) => p.probe)).toEqual(['jq'])
   })
 })
