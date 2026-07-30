@@ -60,8 +60,14 @@ jobs:
       # 21-60s. 15000 (itself already raised from the 5s default for this
       # reason) still failed them. This bounds genuine hangs, which are
       # unbounded, without failing correct-but-starved tests. See #753.
+      # --parallel=2 (NOT bare --parallel): bare --parallel lets bun spawn
+      # workers unbounded, which on a 4-vCPU runner starved render-heavy
+      # component tests to 21-78s despite taking milliseconds locally, and
+      # sometimes wedged a worker so the job stalled silently. package.json's
+      # own `bun run test` has always pinned a worker count for this reason.
+      # 2 leaves headroom for the OS and GC on a 4-vCPU box. See #753.
       - name: Tests
-        run: bun test --parallel --isolate --timeout 60000
+        run: bun test --parallel=2 --isolate --timeout 60000
 
   # The release pipeline stamps APP_VERSION before testing, which turns on
   # stamped-host-only behavior (the plugin compat gate skips satisfaction on
@@ -94,4 +100,4 @@ jobs:
         run: bun run scripts/stamp-version.ts
 
       - name: Tests
-        run: bun test --parallel --isolate --timeout 60000
+        run: bun test --parallel=2 --isolate --timeout 60000
