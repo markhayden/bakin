@@ -180,8 +180,8 @@ mock.module('@/components/agent-avatar', () => ({
   AgentAvatar: ({ agentId }: { agentId: string }) => <span>{agentId}</span>,
 }))
 
-mock.module('@/components/bakin-drawer', () => ({
-  BakinDrawer: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
+mock.module('@/components/drawer', () => ({
+  Drawer: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
 }))
 
 mock.module('@/components/ui/button', () => ({

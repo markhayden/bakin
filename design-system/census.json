@@ -2073,31 +2073,6 @@
       ]
     },
     {
-      "id": "sdk-ui-export:type:BakinDrawerProps",
-      "kind": "sdk-ui-export",
-      "owner": {
-        "repository": "bakin",
-        "area": "sdk"
-      },
-      "identity": {
-        "symbol": "BakinDrawerProps",
-        "entrypoint": "@makinbakin/sdk/components"
-      },
-      "sourcePath": "src/components/bakin-drawer.tsx",
-      "symbols": [
-        "BakinDrawerProps"
-      ],
-      "exportStatus": "public",
-      "classification": "public-contract",
-      "evidence": [
-        {
-          "type": "public-export",
-          "path": "packages/sdk/src/components/index.ts",
-          "detail": "type BakinDrawerProps from @/components/bakin-drawer (BakinDrawerProps)"
-        }
-      ]
-    },
-    {
       "id": "sdk-ui-export:type:BarChartProps",
       "kind": "sdk-ui-export",
       "owner": {
@@ -2794,6 +2769,31 @@
           "type": "public-export",
           "path": "packages/sdk/src/components/index.ts",
           "detail": "type DisplayAttachment from @makinbakin/sdk/conversation (DisplayAttachment)"
+        }
+      ]
+    },
+    {
+      "id": "sdk-ui-export:type:DrawerProps",
+      "kind": "sdk-ui-export",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "identity": {
+        "symbol": "DrawerProps",
+        "entrypoint": "@makinbakin/sdk/components"
+      },
+      "sourcePath": "src/components/drawer.tsx",
+      "symbols": [
+        "DrawerProps"
+      ],
+      "exportStatus": "public",
+      "classification": "public-contract",
+      "evidence": [
+        {
+          "type": "public-export",
+          "path": "packages/sdk/src/components/index.ts",
+          "detail": "type DrawerProps from @/components/drawer (DrawerProps)"
         }
       ]
     },
@@ -4123,31 +4123,6 @@
       ]
     },
     {
-      "id": "sdk-ui-export:value:BakinDrawer",
-      "kind": "sdk-ui-export",
-      "owner": {
-        "repository": "bakin",
-        "area": "sdk"
-      },
-      "identity": {
-        "symbol": "BakinDrawer",
-        "entrypoint": "@makinbakin/sdk/components"
-      },
-      "sourcePath": "src/components/bakin-drawer.tsx",
-      "symbols": [
-        "BakinDrawer"
-      ],
-      "exportStatus": "public",
-      "classification": "public-contract",
-      "evidence": [
-        {
-          "type": "public-export",
-          "path": "packages/sdk/src/components/index.ts",
-          "detail": "value BakinDrawer from @/components/bakin-drawer (BakinDrawer)"
-        }
-      ]
-    },
-    {
       "id": "sdk-ui-export:value:BarChart",
       "kind": "sdk-ui-export",
       "owner": {
@@ -4619,6 +4594,31 @@
           "type": "public-export",
           "path": "packages/sdk/src/components/index.ts",
           "detail": "value DangerZone from @/components/danger-zone (DangerZone)"
+        }
+      ]
+    },
+    {
+      "id": "sdk-ui-export:value:Drawer",
+      "kind": "sdk-ui-export",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "identity": {
+        "symbol": "Drawer",
+        "entrypoint": "@makinbakin/sdk/components"
+      },
+      "sourcePath": "src/components/drawer.tsx",
+      "symbols": [
+        "Drawer"
+      ],
+      "exportStatus": "public",
+      "classification": "public-contract",
+      "evidence": [
+        {
+          "type": "public-export",
+          "path": "packages/sdk/src/components/index.ts",
+          "detail": "value Drawer from @/components/drawer (Drawer)"
         }
       ]
     },
@@ -6581,42 +6581,6 @@
       ]
     },
     {
-      "id": "shared-component:src/components/bakin-drawer",
-      "kind": "shared-component",
-      "owner": {
-        "repository": "bakin",
-        "area": "sdk"
-      },
-      "identity": {
-        "component": "src/components/bakin-drawer"
-      },
-      "sourcePath": "src/components/bakin-drawer.tsx",
-      "symbols": [
-        "BakinDrawer",
-        "DEFAULT_WIDTH",
-        "DRAWER_WIDTH_STORAGE_KEY",
-        "MAX_WIDTH",
-        "MIN_WIDTH",
-        "clampDrawerWidth",
-        "getDrawerWidthStorageKey",
-        "getStoredDrawerWidth"
-      ],
-      "exportStatus": "public",
-      "classification": "shared-ui",
-      "evidence": [
-        {
-          "type": "source-export",
-          "path": "src/components/bakin-drawer.tsx",
-          "detail": "exported values discovered from TSX source"
-        },
-        {
-          "type": "public-export",
-          "path": "packages/sdk/src/components/index.ts",
-          "detail": "BakinDrawer, BakinDrawerProps"
-        }
-      ]
-    },
-    {
       "id": "shared-component:src/components/charts/bar-chart",
       "kind": "shared-component",
       "owner": {
@@ -7259,6 +7223,42 @@
           "type": "public-export",
           "path": "packages/sdk/src/components/index.ts",
           "detail": "DangerZone, DangerZoneProps"
+        }
+      ]
+    },
+    {
+      "id": "shared-component:src/components/drawer",
+      "kind": "shared-component",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "identity": {
+        "component": "src/components/drawer"
+      },
+      "sourcePath": "src/components/drawer.tsx",
+      "symbols": [
+        "DEFAULT_WIDTH",
+        "DRAWER_WIDTH_STORAGE_KEY",
+        "Drawer",
+        "MAX_WIDTH",
+        "MIN_WIDTH",
+        "clampDrawerWidth",
+        "getDrawerWidthStorageKey",
+        "getStoredDrawerWidth"
+      ],
+      "exportStatus": "public",
+      "classification": "shared-ui",
+      "evidence": [
+        {
+          "type": "source-export",
+          "path": "src/components/drawer.tsx",
+          "detail": "exported values discovered from TSX source"
+        },
+        {
+          "type": "public-export",
+          "path": "packages/sdk/src/components/index.ts",
+          "detail": "Drawer, DrawerProps"
         }
       ]
     },

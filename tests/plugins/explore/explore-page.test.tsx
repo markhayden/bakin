@@ -60,7 +60,7 @@ mock.module('@makinbakin/sdk/layout', () => ({
 
 mock.module('@makinbakin/sdk/ui', () => ({
   Badge: ({ children }: { children: ReactNode }) => <span>{children}</span>,
-  BakinDrawer: ({
+  Drawer: ({
     open,
     children,
     title,
@@ -71,7 +71,7 @@ mock.module('@makinbakin/sdk/ui', () => ({
     title?: ReactNode
     actions?: ReactNode
   }) => open ? <aside data-testid="drawer">{title}{actions}{children}</aside> : null,
-  BakinDrawerSection: ({ children, title }: { children: ReactNode; title: ReactNode }) => (
+  DrawerSection: ({ children, title }: { children: ReactNode; title: ReactNode }) => (
     <section><h3>{title}</h3>{children}</section>
   ),
   Button: ({

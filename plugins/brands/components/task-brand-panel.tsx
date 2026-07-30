@@ -16,7 +16,7 @@ import {
   Alert,
   AlertDescription,
   AlertTitle,
-  BakinDrawerSection,
+  DrawerSection,
   Banner,
   Button,
   Field,
@@ -91,7 +91,7 @@ export function TaskBrandPanel({ taskId }: { taskId?: string }) {
   }
 
   return (
-    <BakinDrawerSection
+    <DrawerSection
       title="Brand context"
       actions={(
         <PluginLink
@@ -281,6 +281,6 @@ export function TaskBrandPanel({ taskId }: { taskId?: string }) {
           </div>
         ) : null}
       </div>
-    </BakinDrawerSection>
+    </DrawerSection>
   )
 }

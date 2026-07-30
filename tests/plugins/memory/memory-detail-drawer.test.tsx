@@ -49,7 +49,7 @@ describe('MemoryDetailDrawer', () => {
     expect(screen.getByRole('heading', { name: 'Index metadata' })).toBeDefined()
     expect(screen.getByText('/workspace/pixel/AGENTS.md')).toBeDefined()
     expect(screen.getByText(/approved prompt/)).toBeDefined()
-    expect(document.querySelectorAll('[data-slot="bakin-drawer-section"]')).toHaveLength(3)
+    expect(document.querySelectorAll('[data-slot="drawer-section"]')).toHaveLength(3)
 
     const factRows = document.querySelectorAll(
       '[data-memory-record-details] [data-memory-record-detail]',

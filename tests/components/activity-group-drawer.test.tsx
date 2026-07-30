@@ -3,7 +3,7 @@
  * ActivityGroup collapse behavior + ToolCallDrawer (T3.2) — the tool-call
  * interaction pattern: collapsed human-readable summary header (spinner
  * while live), inline expand to per-call rows, row click → full-detail
- * drawer built on BakinDrawer.
+ * drawer built on Drawer.
  */
 import { describe, expect, it, mock } from 'bun:test'
 import { join } from 'path'

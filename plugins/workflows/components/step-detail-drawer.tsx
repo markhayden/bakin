@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { BakinDrawer } from "@makinbakin/sdk/components"
+import { Drawer } from "@makinbakin/sdk/components"
 import { Badge } from "@makinbakin/sdk/ui"
 import { Button } from "@makinbakin/sdk/ui"
 import { Separator } from "@makinbakin/sdk/ui"
@@ -645,7 +645,7 @@ export function StepDetailDrawer({
   }
 
   return (
-    <BakinDrawer
+    <Drawer
       open={open}
       onOpenChange={onOpenChange}
       title={
@@ -673,6 +673,6 @@ export function StepDetailDrawer({
           />
         </div>
       )}
-    </BakinDrawer>
+    </Drawer>
   )
 }

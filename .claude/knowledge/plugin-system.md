@@ -940,7 +940,7 @@ Plugin authors import from `@makinbakin/sdk/*`. Full sub-path map:
 | `@makinbakin/sdk` | `registerPlugin`, `getAllNavItems`, `NavItem` type |
 | `@makinbakin/sdk/ui` | shadcn primitives (Button, Card, Dialog, Input, Select, Table, Tabs, Tooltip, ...) |
 | `@makinbakin/sdk/hooks` | React hooks (`useAgent`, `useAgentList`, `useSSE`, `usePluginEvent`, `useJsonFetch`, `useAvailableModels`, `useSearch`, `useQueryState`, `useQueryArrayState`, `useDebug`, `useNotificationChannels`, ...) |
-| `@makinbakin/sdk/components` | Shared components (`PluginHeader`, `FacetFilter`, `AgentAvatar`, `AgentSelect`, `ConfirmDialog`, `EmptyState`, `ChannelIcon`, `BakinDrawer`, ...) |
+| `@makinbakin/sdk/components` | Shared components (`PluginHeader`, `FacetFilter`, `AgentAvatar`, `AgentSelect`, `ConfirmDialog`, `EmptyState`, `ChannelIcon`, `Drawer`, ...) |
 | `@makinbakin/sdk/slots` | `Slot`, `registerSlot`, `__clearSlot` |
 | `@makinbakin/sdk/types` | Canonical, self-contained contract types (`PluginContext`, `BakinPlugin`, `Task`, `WorkflowDefinition`, ...), split into primitives/manifest/runtime/services/registration/context behind a barrel. The single source of truth — `packages/core/src/plugin-types.ts` re-exports the identical leaf types from here and keeps its own fuller internal tier (see repo-architecture.md § two-tier type contract). |
 | `@makinbakin/sdk/utils` | `cn`, `formatAge`, `formatDateTime`, `formatDuration`, `formatSize`, `isStale`, `toneBadgeClass` |

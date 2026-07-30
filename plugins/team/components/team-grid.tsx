@@ -32,7 +32,7 @@ import {
   AlertDescription,
   AlertTitle,
   Badge,
-  BakinDrawer,
+  Drawer,
   Button,
   Dialog,
   DialogContent,
@@ -416,7 +416,7 @@ export function TeamGrid() {
         </WorkspacePageBody>
       </WorkspacePage>
 
-      <BakinDrawer
+      <Drawer
         open={showCreate}
         onOpenChange={(o) => { if (!o) { setShowCreate(false); setPendingCreate(null); setCreateError(null) } }}
         title="New Agent"
@@ -427,7 +427,7 @@ export function TeamGrid() {
           onCancel={() => setShowCreate(false)}
           submitting={submitting}
         />
-      </BakinDrawer>
+      </Drawer>
 
       {/* Confirm agent creation */}
       <Dialog open={!!pendingCreate} onOpenChange={(v) => { if (!v && !submitting) { setPendingCreate(null); setCreateError(null) } }}>
@@ -487,7 +487,7 @@ export function TeamGrid() {
         </DialogContent>
       </Dialog>
 
-      <BakinDrawer
+      <Drawer
         open={showTeams}
         onOpenChange={(o) => { if (!o) setShowTeams(false) }}
         title="Manage Teams"
@@ -495,7 +495,7 @@ export function TeamGrid() {
         storageKey="team-manager"
       >
         <TeamManager />
-      </BakinDrawer>
+      </Drawer>
     </>
   )
 }

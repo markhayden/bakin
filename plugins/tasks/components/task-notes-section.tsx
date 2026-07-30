@@ -4,7 +4,7 @@ import {
   Alert,
   AlertDescription,
   AlertTitle,
-  BakinDrawerSection,
+  DrawerSection,
   Button,
   Collapsible,
   CollapsibleContent,
@@ -118,7 +118,7 @@ export function TaskNotesSection({ task, logMessage, setLogMessage, addingLog, o
   })() : null
 
   return (
-    <BakinDrawerSection title="Notes">
+    <DrawerSection title="Notes">
       <form
         className="mb-bakin-3"
         onSubmit={(event) => {
@@ -149,6 +149,6 @@ export function TaskNotesSection({ task, logMessage, setLogMessage, addingLog, o
         <p className="m-0 text-bakin-typography-size-body text-bakin-text-muted">No notes yet.</p>
       )}
       {notesListJSX}
-    </BakinDrawerSection>
+    </DrawerSection>
   )
 }

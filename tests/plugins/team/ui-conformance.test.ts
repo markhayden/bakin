@@ -96,7 +96,7 @@ describe('Team UI conformance', () => {
     expect(agentForm).toContain('<Form')
     expect(agentForm).toContain('<Field')
     expect(agentForm).toContain('<FormActions')
-    expect(manager).toContain('<BakinDrawerSection')
+    expect(manager).toContain('<DrawerSection')
     expect(manager).toContain('<AgentSelect')
     expect(manager).toContain('<ConfirmDialog')
     expect(adopt).toContain('<Form')

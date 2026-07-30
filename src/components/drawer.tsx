@@ -38,7 +38,7 @@ function getStoredDrawerWidth(defaultWidth: number, storageKey?: string) {
   }
 }
 
-export interface BakinDrawerProps {
+export interface DrawerProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   title?: ReactNode
@@ -58,7 +58,7 @@ export interface BakinDrawerProps {
   busy?: boolean
 }
 
-export function BakinDrawer({
+export function Drawer({
   open,
   onOpenChange,
   title,
@@ -71,7 +71,7 @@ export function BakinDrawer({
   onBack,
   dirty = false,
   busy = false,
-}: BakinDrawerProps) {
+}: DrawerProps) {
   const [width, setWidth] = useState(() => getStoredDrawerWidth(defaultWidth, storageKey))
   const [showDirtyConfirm, setShowDirtyConfirm] = useState(false)
   const dragging = useRef(false)
@@ -199,7 +199,7 @@ export function BakinDrawer({
           />
 
           <div
-            data-slot="bakin-drawer-layout"
+            data-slot="drawer-layout"
             className="flex min-h-full shrink-0 flex-col gap-bakin-6 px-bakin-4 pb-bakin-8 pt-bakin-4 sm:px-bakin-6"
           >
             <SheetHeader inset="none">
@@ -225,7 +225,7 @@ export function BakinDrawer({
               </div>
               {description ? <SheetDescription>{description}</SheetDescription> : null}
             </SheetHeader>
-            <div data-slot="bakin-drawer-content" className="min-w-0">{children}</div>
+            <div data-slot="drawer-content" className="min-w-0">{children}</div>
           </div>
         </SheetContent>
       </Sheet>

@@ -20,7 +20,7 @@ directly from `packages/host/src/components/*`, `packages/ui/*`, or the legacy
 
 ```tsx
 import { AgentAvatar, FacetFilter } from '@makinbakin/sdk/patterns'
-import { BakinDrawer } from '@makinbakin/sdk/ui'
+import { Drawer } from '@makinbakin/sdk/ui'
 import { useSearch, useRuntimeStatus } from '@makinbakin/sdk/hooks'
 
 // Existing consumers only; frozen migration barrel.
@@ -32,11 +32,11 @@ entries in the historical tables below describe compatibility implementations,
 not an authoring contract; verify every current owner in public Storybook and
 `design-system/public-api.json`.
 
-## BakinDrawer
+## Drawer
 
-`src/components/bakin-drawer.tsx` — Historical compatibility implementation of
+`src/components/drawer.tsx` — Historical compatibility implementation of
 the resizable right-side detail drawer. The supported public contract is
-`BakinDrawer` from `@makinbakin/sdk/ui`.
+`Drawer` from `@makinbakin/sdk/ui`.
 
 ### Props
 
@@ -63,7 +63,7 @@ The header renders as a single row: `[Title] ... [actions] [X close]`
 ### Usage with Action Menu
 
 ```tsx
-<BakinDrawer
+<Drawer
   open={isOpen}
   onOpenChange={(open) => { if (!open) onClose() }}
   title="Task Details"
@@ -120,7 +120,7 @@ Always use `min-w-36` on `DropdownMenuContent` to prevent narrow popups from sma
 
 ### Drawer Content Sections
 
-All drawers follow the same section patterns inside `BakinDrawer`:
+All drawers follow the same section patterns inside `Drawer`:
 
 - **Hero card** (first element): `flex items-center gap-4 rounded-lg p-4 border border-border bg-surface` — AgentAvatar left, info right
 - **Metadata grid**: `grid grid-cols-2 gap-3` with `rounded-lg bg-surface p-3 space-y-1` cards. Label: `text-[11px] text-muted-foreground uppercase tracking-wider` with optional icon.
@@ -130,7 +130,7 @@ All drawers follow the same section patterns inside `BakinDrawer`:
 - **Spacing**: `space-y-6` between major sections, `Separator` between groups
 - **Quick actions**: `flex flex-wrap items-center gap-2` with `Button variant="outline" size="sm"`
 
-### Where BakinDrawer Is Used
+### Where Drawer Is Used
 
 | Plugin | Component | Detail |
 |--------|-----------|--------|
@@ -191,7 +191,7 @@ Create mode is derived: `isCreate = editing && !existingItem`
 
 ### Edit Form
 
-- BakinDrawer with `onBack={isCreate ? undefined : onCancelEdit}` and `dirty={dirty}`
+- Drawer with `onBack={isCreate ? undefined : onCancelEdit}` and `dirty={dirty}`
 - Form fields with `bg-surface` inputs
 - Save/Cancel buttons
 
@@ -356,7 +356,7 @@ Set `disabled` while a search is active so the upstream relevance order (e.g. An
 ## Key Files
 
 ```
-src/components/bakin-drawer.tsx          — Resizable drawer shell
+src/components/drawer.tsx          — Resizable drawer shell
 src/components/agent-filter.tsx          — Single-select agent pill strip
 src/components/agent-select.tsx          — Agent picker with avatars
 src/components/model-select.tsx          — Model picker grouped by tier
@@ -368,6 +368,6 @@ src/hooks/use-search.ts                  — Search hook (Antfly-backed) with de
 src/hooks/use-runtime-status.ts          — Runtime restart sync checker
 src/hooks/use-vertical-resize.ts         — Drag-to-resize hook (messaging panels + brainstorm)
 src/components/ui/dropdown-menu.tsx      — Base dropdown (focus: bg-secondary)
-src/components/ui/sheet.tsx              — Sheet primitive (used by BakinDrawer)
+src/components/ui/sheet.tsx              — Sheet primitive (used by Drawer)
 src/core/app-services.ts                 — boot-created runtime/search/task services
 ```

@@ -22,7 +22,7 @@ import {
   AlertDescription,
   AlertTitle,
   Badge,
-  BakinDrawer,
+  Drawer,
   Button,
   SystemState,
 } from '@makinbakin/sdk/ui'
@@ -485,7 +485,7 @@ export function SchedulePage() {
       />
 
       {/* Create / Edit / Duplicate form */}
-      <BakinDrawer
+      <Drawer
         open={showForm}
         onOpenChange={(o) => { if (!o) closeForm() }}
         title={formTitle}
@@ -498,7 +498,7 @@ export function SchedulePage() {
           initial={formInitial}
           mode={mode === 'duplicate' ? 'duplicate' : mode === 'edit' ? 'edit' : mode === 'adopt' ? 'adopt' : 'create'}
         />
-      </BakinDrawer>
+      </Drawer>
     </>
   )
 }

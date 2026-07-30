@@ -5,8 +5,8 @@ import {
   Alert,
   AlertDescription,
   AlertTitle,
-  BakinDrawer,
-  BakinDrawerSection,
+  Drawer,
+  DrawerSection,
   Field,
   FieldControl,
   FieldDescription,
@@ -90,7 +90,7 @@ export function AssetEditDrawer({ assetId, initialDescription, initialTags, sugg
   }
 
   return (
-    <BakinDrawer
+    <Drawer
       open={open}
       onOpenChange={onOpenChange}
       title="Edit asset"
@@ -106,7 +106,7 @@ export function AssetEditDrawer({ assetId, initialDescription, initialTags, sugg
         onFormSubmit={save}
         data-testid="asset-edit-drawer"
       >
-        <BakinDrawerSection title="Metadata">
+        <DrawerSection title="Metadata">
           <FieldGroup>
             <Field name="description">
               <FieldLabel>Description</FieldLabel>
@@ -141,7 +141,7 @@ export function AssetEditDrawer({ assetId, initialDescription, initialTags, sugg
               </FieldDescription>
             </Field>
           </FieldGroup>
-        </BakinDrawerSection>
+        </DrawerSection>
 
         {error ? (
           <Alert tone="danger" data-testid="asset-edit-error">
@@ -160,6 +160,6 @@ export function AssetEditDrawer({ assetId, initialDescription, initialTags, sugg
           </SubmitButton>
         </FormActions>
       </Form>
-    </BakinDrawer>
+    </Drawer>
   )
 }

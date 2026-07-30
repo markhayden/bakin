@@ -22,8 +22,8 @@ export { AgentStatus } from '@/components/agent-status'
 export { AssetPicker } from '@/components/asset-picker'
 export type { AssetPickerProps, AssetPickerAsset } from '@/components/asset-picker'
 /** Right-side slide-out drawer with backdrop and focus trap. */
-export { BakinDrawer } from '@/components/bakin-drawer'
-export type { BakinDrawerProps } from '@/components/bakin-drawer'
+export { Drawer } from '@/components/drawer'
+export type { DrawerProps } from '@/components/drawer'
 /** Color picker swatch grid for tag/agent color assignment. */
 export { ColorPicker } from '@/components/color-picker'
 /** Controlled confirmation dialog for destructive actions (busy/error aware; optional typed confirmation via `confirmValue`). */

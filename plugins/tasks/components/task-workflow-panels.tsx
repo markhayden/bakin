@@ -4,7 +4,7 @@ import {
   Alert,
   AlertDescription,
   AlertTitle,
-  BakinDrawerSection,
+  DrawerSection,
   Button,
   Field,
   FieldControl,
@@ -97,7 +97,7 @@ export function WorkflowProgressPanel({ m }: { m: TaskDetail }) {
   const { activeWorkflowId, wfDefinition, wfInstance } = m
   if (!activeWorkflowId || !wfDefinition) return null
   return (
-    <BakinDrawerSection
+    <DrawerSection
       title="Workflow"
       actions={(
         <span className="max-w-48 truncate font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
@@ -106,7 +106,7 @@ export function WorkflowProgressPanel({ m }: { m: TaskDetail }) {
       )}
     >
       <WorkflowStepList definition={wfDefinition} instance={wfInstance} />
-    </BakinDrawerSection>
+    </DrawerSection>
   )
 }
 
@@ -177,7 +177,7 @@ export function MapChildrenPanel({ m }: { m: TaskDetail }) {
   ].filter(Boolean).join(' · ')
 
   return (
-    <BakinDrawerSection
+    <DrawerSection
       title={mapStepLabel}
       actions={<span className="text-bakin-typography-size-meta text-bakin-text-muted">{rollup}</span>}
     >
@@ -220,7 +220,7 @@ export function MapChildrenPanel({ m }: { m: TaskDetail }) {
           </li>
         ))}
       </ul>
-    </BakinDrawerSection>
+    </DrawerSection>
   )
 }
 
@@ -348,7 +348,7 @@ export function WorkflowPreview({ m }: { m: TaskDetail }) {
   const description = workflows.find(workflow => workflow.filename.replace('.yaml', '') === workflowId)?.description
 
   return (
-    <BakinDrawerSection
+    <DrawerSection
       title="Workflow preview"
       actions={(
         <span className="text-bakin-typography-size-meta text-bakin-text-muted">
@@ -362,6 +362,6 @@ export function WorkflowPreview({ m }: { m: TaskDetail }) {
         ) : null}
         <WorkflowStepList definition={wfDefinition} instance={wfInstance} />
       </div>
-    </BakinDrawerSection>
+    </DrawerSection>
   )
 }

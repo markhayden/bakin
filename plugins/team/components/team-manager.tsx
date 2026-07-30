@@ -8,7 +8,7 @@ import {
   Alert,
   AlertDescription,
   AlertTitle,
-  BakinDrawerSection,
+  DrawerSection,
   Button,
   Field,
   FieldDescription,
@@ -116,7 +116,7 @@ export function TeamManager() {
         </Alert>
       ) : null}
 
-      <BakinDrawerSection title="Teams">
+      <DrawerSection title="Teams">
         <div className="grid gap-bakin-2">
           {teams.length === 0 ? (
             <SystemState
@@ -193,9 +193,9 @@ export function TeamManager() {
             ))}
           </div>
         </div>
-      </BakinDrawerSection>
+      </DrawerSection>
 
-      <BakinDrawerSection title="Create a team">
+      <DrawerSection title="Create a team">
         {showAdd ? (
           <Form busy={submitting} onSubmit={handleSubmit}>
             <FieldGroup>
@@ -258,7 +258,7 @@ export function TeamManager() {
             Add team
           </Button>
         )}
-      </BakinDrawerSection>
+      </DrawerSection>
 
       <ConfirmDialog
         open={Boolean(deleteTarget)}

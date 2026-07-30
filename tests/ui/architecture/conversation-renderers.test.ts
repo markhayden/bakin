@@ -91,7 +91,7 @@ describe('focused conversation renderers', () => {
     expect(focused).toContain('ConversationPanel')
     expect(focused).toContain('ToolCallDrawer')
     expect(panel).not.toMatch(/@\/|@makinbakin\/sdk|@bakin\/core|lucide-react|AgentSelect|useAgentStore|useQueryState|router/)
-    expect(drawer).not.toMatch(/@\/|@makinbakin\/sdk|@bakin\/core|lucide-react|BakinDrawer|useQueryState|router/)
+    expect(drawer).not.toMatch(/@\/|@makinbakin\/sdk|@bakin\/core|lucide-react|\bDrawer\b|useQueryState|router/)
     expect(panel).toContain('This conversation is read-only.')
     expect(drawer).toContain('Captured output was truncated')
   })

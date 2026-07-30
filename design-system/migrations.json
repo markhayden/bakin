@@ -2081,21 +2081,6 @@
       }
     },
     {
-      "path": "src/components/bakin-drawer.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "sdk"
-      },
-      "censusEntryId": "shared-component:src/components/bakin-drawer",
-      "migrationTask": "T21-T35",
-      "archetype": "shared-ui",
-      "target": "focused SDK primitive/pattern and namespaced semantic tokens",
-      "status": "legacy-allowed",
-      "allowances": {
-        "inline-style": 1
-      }
-    },
-    {
       "path": "src/components/color-picker.tsx",
       "owner": {
         "repository": "bakin",
@@ -2172,6 +2157,21 @@
       "allowances": {
         "raw-control": 1,
         "generic-token": 1
+      }
+    },
+    {
+      "path": "src/components/drawer.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "shared-component:src/components/drawer",
+      "migrationTask": "T21-T35",
+      "archetype": "shared-ui",
+      "target": "focused SDK primitive/pattern and namespaced semantic tokens",
+      "status": "legacy-allowed",
+      "allowances": {
+        "inline-style": 1
       }
     },
     {

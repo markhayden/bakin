@@ -12,8 +12,8 @@ import {
   Alert,
   AlertDescription,
   AlertTitle,
-  BakinDrawer,
-  BakinDrawerSection,
+  Drawer,
+  DrawerSection,
   Button,
   Card,
   CardContent,
@@ -201,7 +201,7 @@ export function BrandBuilder({
   )
 
   return (
-    <BakinDrawer
+    <Drawer
       open={open}
       onOpenChange={(o) => { if (!o) close() }}
       title="Build my brand"
@@ -250,7 +250,7 @@ export function BrandBuilder({
         ) : null}
 
         {step === 0 && (
-          <BakinDrawerSection title="Basics" contentClassName="px-0 sm:px-bakin-2">
+          <DrawerSection title="Basics" contentClassName="px-0 sm:px-bakin-2">
             <FieldGroup>
             <Field name="name">
               <FieldLabel htmlFor="builder-name" requirement="required">Brand name</FieldLabel>
@@ -268,11 +268,11 @@ export function BrandBuilder({
               <Textarea id="builder-product" required rows={3} placeholder="e.g. Warm bakery-management software for independent bakers" value={a.product} onChange={(e) => set('product', e.target.value)} />
             </Field>
             </FieldGroup>
-          </BakinDrawerSection>
+          </DrawerSection>
         )}
 
         {step === 1 && (
-          <BakinDrawerSection title="Voice" contentClassName="px-0 sm:px-bakin-2">
+          <DrawerSection title="Voice" contentClassName="px-0 sm:px-bakin-2">
             <FieldGroup>
             <Field name="audience">
               <FieldLabel htmlFor="builder-audience" requirement="optional">Audience</FieldLabel>
@@ -290,11 +290,11 @@ export function BrandBuilder({
               <Input id="builder-competitors" placeholder="e.g. Toast, Square" value={a.competitors} onChange={(e) => set('competitors', e.target.value)} />
             </Field>
             </FieldGroup>
-          </BakinDrawerSection>
+          </DrawerSection>
         )}
 
         {step === 2 && (
-          <BakinDrawerSection title="Sources" contentClassName="px-0 sm:px-bakin-2">
+          <DrawerSection title="Sources" contentClassName="px-0 sm:px-bakin-2">
             <FieldGroup>
             <Field name="logo">
               <FieldLabel requirement="optional">Logo</FieldLabel>
@@ -317,11 +317,11 @@ export function BrandBuilder({
               <Textarea id="builder-notes" rows={3} value={a.notes} onChange={(e) => set('notes', e.target.value)} />
             </Field>
             </FieldGroup>
-          </BakinDrawerSection>
+          </DrawerSection>
         )}
 
         {step === 3 && (
-          <BakinDrawerSection title="Review" contentClassName="px-0 sm:px-bakin-2">
+          <DrawerSection title="Review" contentClassName="px-0 sm:px-bakin-2">
             <div className="grid gap-bakin-4">
             <Card size="sm">
               <CardHeader>
@@ -356,11 +356,11 @@ export function BrandBuilder({
               This creates a <StatusBadge size="xs" tone="accent">Draft</StatusBadge> that stays unavailable to tasks and image tools until you review and publish it.
             </p>
             </div>
-          </BakinDrawerSection>
+          </DrawerSection>
         )}
         {footer}
       </Form>
-    </BakinDrawer>
+    </Drawer>
   )
 }
 

@@ -13,10 +13,10 @@ export type {
   AlertVariantOptions,
   LegacyAlertVariant,
 } from '@bakin/ui'
-export { BakinDrawer } from '@/components/bakin-drawer'
-export type { BakinDrawerProps } from '@/components/bakin-drawer'
-export { BakinDrawerSection } from '@bakin/ui'
-export type { BakinDrawerSectionHeadingLevel, BakinDrawerSectionProps } from '@bakin/ui'
+export { Drawer } from '@/components/drawer'
+export type { DrawerProps } from '@/components/drawer'
+export { DrawerSection } from '@bakin/ui'
+export type { DrawerSectionHeadingLevel, DrawerSectionProps } from '@bakin/ui'
 export {
   Avatar,
   AvatarBadge,

@@ -15,7 +15,7 @@ describe('Explore UI conformance', () => {
     expect(contents).not.toContain('@makinbakin/sdk/components')
     expect(contents).toContain("from '@makinbakin/sdk/navigation'")
     expect(contents).toContain("from '@makinbakin/sdk/ui'")
-    expect(contents).toContain('<BakinDrawerSection')
+    expect(contents).toContain('<DrawerSection')
   })
 
   it('uses canonical form controls and keeps package-source logic inside Explore', () => {

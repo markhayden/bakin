@@ -51,13 +51,13 @@ describe('modal primitive ownership', () => {
     expect(legacySheet.SheetDescription).toBe(privateUi.SheetDescription)
   })
 
-  it('keeps shared modal state private and keeps BakinDrawer on canonical primitives', () => {
+  it('keeps shared modal state private and keeps Drawer on canonical primitives', () => {
     const privateIndex = readRepoFile('packages/ui/src/index.ts')
     const sdkSource = readRepoFile('packages/sdk/src/ui/index.ts')
     expect(privateIndex).not.toContain("from './primitives/modal-context'")
     expect(sdkSource).not.toContain('ModalBusyProvider')
 
-    const drawer = readRepoFile('src/components/bakin-drawer.tsx')
+    const drawer = readRepoFile('src/components/drawer.tsx')
     expect(drawer).toContain("from '@/components/ui/sheet'")
     expect(drawer).toContain("from '@/components/ui/dialog'")
     expect(drawer).not.toContain('<button')

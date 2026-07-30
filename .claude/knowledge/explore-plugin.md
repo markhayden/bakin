@@ -34,7 +34,7 @@ removes, syncs, or repairs anything.
   plugins access to the utility region.
 - Tab, category filter, and selected item all live in URL params
   (`?tab=`, `?category=`, `?item=<kind>:<id>`); detail view is a
-  right-side `BakinDrawer`.
+  right-side `Drawer`.
 
 ## Unified curated catalog (v2)
 

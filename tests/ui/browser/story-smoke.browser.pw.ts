@@ -469,9 +469,9 @@ test('modal and side overlays keep focus, dismissal, motion, and viewport contra
     expect(animations.every((duration) => duration === 0)).toBe(true)
   })
 
-  await test.step('BakinDrawer resize and dirty confirmation remain keyboard operable', async () => {
+  await test.step('Drawer resize and dirty confirmation remain keyboard operable', async () => {
     await page.setViewportSize({ width: 1024, height: 900 })
-    await page.goto('/iframe.html?id=foundation-bakindrawer--dirty-behavior&viewMode=story', { waitUntil: 'networkidle' })
+    await page.goto('/iframe.html?id=overlays-drawer--dirty-behavior&viewMode=story', { waitUntil: 'networkidle' })
     const resizer = page.getByRole('separator', { name: 'Resize panel' })
     const initialWidth = Number(await resizer.getAttribute('aria-valuenow'))
     await resizer.focus()

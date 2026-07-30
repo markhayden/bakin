@@ -1,8 +1,8 @@
 'use client'
 
 import {
-  BakinDrawer,
-  BakinDrawerSection,
+  Drawer,
+  DrawerSection,
   Button,
   DropdownMenu,
   DropdownMenuContent,
@@ -128,7 +128,7 @@ export function TaskDetailForm({ m, task, columnId, open, onClose, onCancelEdit 
   } = m
 
   return (
-    <BakinDrawer
+    <Drawer
       open={open}
       onOpenChange={(o) => { if (!o) onClose() }}
       title={isCreate ? 'New Task' : 'Edit Task'}
@@ -307,7 +307,7 @@ export function TaskDetailForm({ m, task, columnId, open, onClose, onCancelEdit 
           </>
         )}
       </div>
-    </BakinDrawer>
+    </Drawer>
   )
 }
 
@@ -330,7 +330,7 @@ export function TaskDetailView({ m, task, columnId, open, onClose, onEdit, onDel
   } = m
 
   return (
-    <BakinDrawer
+    <Drawer
       open={open}
       onOpenChange={(o) => { if (!o) onClose() }}
       title={task.title}
@@ -388,11 +388,11 @@ export function TaskDetailView({ m, task, columnId, open, onClose, onEdit, onDel
 
         {/* Description */}
         {task.description && (
-          <BakinDrawerSection title="Details">
+          <DrawerSection title="Details">
             <div className="rounded-bakin-surface border-s-2 border-bakin-border-subtle bg-bakin-surface-default p-bakin-4 text-bakin-typography-size-body leading-relaxed text-bakin-text-primary">
               <MarkdownContent content={task.description} />
             </div>
-          </BakinDrawerSection>
+          </DrawerSection>
         )}
 
         <Slot name="task-brand" taskId={task.id} />
@@ -413,6 +413,6 @@ export function TaskDetailView({ m, task, columnId, open, onClose, onEdit, onDel
 
         {task.id && <TaskRunHistory taskId={task.id} />}
       </div>
-    </BakinDrawer>
+    </Drawer>
   )
 }

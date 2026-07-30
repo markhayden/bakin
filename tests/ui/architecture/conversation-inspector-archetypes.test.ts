@@ -44,6 +44,6 @@ describe('canonical conversation and inspector archetypes', () => {
     expect(guide).toContain('Conversation and Inspector Recipes')
     expect(guide).toContain('message rendering')
     expect(guide).toContain('query parameters')
-    expect(guide).toContain('BakinDrawer')
+    expect(guide).toContain('Drawer')
   })
 })

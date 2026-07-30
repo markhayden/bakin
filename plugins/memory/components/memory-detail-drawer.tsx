@@ -3,7 +3,7 @@
 /**
  * MemoryDetailDrawer — full-row detail view for /memory results.
  *
- * Reuses the shared BakinDrawer (same slideover used by schedule, workflows,
+ * Reuses the shared Drawer (same slideover used by schedule, workflows,
  * messaging). The header names the record and its owning agent; the body keeps
  * readable record facts, content, database identifiers, and raw metadata in
  * consistently labeled drawer sections.
@@ -15,8 +15,8 @@
  */
 import { useMemo } from 'react'
 import {
-  BakinDrawer,
-  BakinDrawerSection,
+  Drawer,
+  DrawerSection,
 } from '@makinbakin/sdk/ui'
 import {
   AgentAvatar,
@@ -47,7 +47,7 @@ export function MemoryDetailDrawer({ result, agents = [], open, onOpenChange }: 
   }, [result])
 
   // Caller already guards with `open={selected !== null}`; when there's no
-  // result there's nothing to render. Mounting an empty BakinDrawer here
+  // result there's nothing to render. Mounting an empty Drawer here
   // would keep the slideover portal in the tree with stale props.
   if (!result) return null
 
@@ -67,7 +67,7 @@ export function MemoryDetailDrawer({ result, agents = [], open, onOpenChange }: 
   const forcedFormat = resolveFormat(tier, parsedMeta)
 
   return (
-    <BakinDrawer
+    <Drawer
       open={open}
       onOpenChange={onOpenChange}
       storageKey="memory"
@@ -92,15 +92,15 @@ export function MemoryDetailDrawer({ result, agents = [], open, onOpenChange }: 
       }
     >
       <div className="flex min-w-0 flex-col gap-bakin-6">
-        <BakinDrawerSection title="Source">
+        <DrawerSection title="Source">
           <SourceDetails
             createdAt={createdAt}
             updatedAt={updatedAt}
             sourcePath={sourcePath}
           />
-        </BakinDrawerSection>
+        </DrawerSection>
 
-        <BakinDrawerSection title="Content">
+        <DrawerSection title="Content">
           {content ? (
             <MemoryContentRenderer content={content} format={forcedFormat} />
           ) : (
@@ -108,9 +108,9 @@ export function MemoryDetailDrawer({ result, agents = [], open, onOpenChange }: 
               No content body.
             </p>
           )}
-        </BakinDrawerSection>
+        </DrawerSection>
 
-        <BakinDrawerSection title="Index metadata">
+        <DrawerSection title="Index metadata">
           <div className="grid min-w-0 gap-bakin-4">
             <IndexMetadata
               sourceBackend={sourceBackend}
@@ -124,9 +124,9 @@ export function MemoryDetailDrawer({ result, agents = [], open, onOpenChange }: 
               />
             ) : null}
           </div>
-        </BakinDrawerSection>
+        </DrawerSection>
       </div>
-    </BakinDrawer>
+    </Drawer>
   )
 }
 

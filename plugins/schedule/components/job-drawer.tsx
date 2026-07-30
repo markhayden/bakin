@@ -19,8 +19,8 @@ import {
 } from 'lucide-react'
 import { AgentAvatar, StatusBadge, type StatusTone } from '@makinbakin/sdk/patterns'
 import {
-  BakinDrawer,
-  BakinDrawerSection,
+  Drawer,
+  DrawerSection,
   Button,
   DropdownMenu,
   DropdownMenuContent,
@@ -112,7 +112,7 @@ export function JobDrawer({
       : null
 
   return (
-    <BakinDrawer
+    <Drawer
       open={open}
       onOpenChange={(nextOpen) => {
         if (!nextOpen) onClose()
@@ -192,7 +192,7 @@ export function JobDrawer({
           </div>
         </div>
 
-        <BakinDrawerSection title="Actions" contentClassName="flex flex-wrap gap-bakin-2">
+        <DrawerSection title="Actions" contentClassName="flex flex-wrap gap-bakin-2">
           <Button variant="outline" size="sm" onClick={() => onRunNow(job.id)}>
             <Play aria-hidden="true" /> Run now
           </Button>
@@ -220,9 +220,9 @@ export function JobDrawer({
               <Power aria-hidden="true" /> {job.enabled ? 'Disable' : 'Enable'}
             </Button>
           ) : null}
-        </BakinDrawerSection>
+        </DrawerSection>
 
-        <BakinDrawerSection title="Details">
+        <DrawerSection title="Details">
           <dl className="m-0 grid grid-cols-1 gap-bakin-3 sm:grid-cols-2">
             <MetadataItem
               icon={Clock}
@@ -255,29 +255,29 @@ export function JobDrawer({
               {job.allowOverlap ? <StatusBadge tone="neutral" variant="soft" size="xs">Overlap allowed</StatusBadge> : null}
             </div>
           ) : null}
-        </BakinDrawerSection>
+        </DrawerSection>
 
         {job.taskPrompt ? (
-          <BakinDrawerSection
+          <DrawerSection
             title="Task prompt"
             actions={<Terminal aria-hidden="true" className="size-bakin-4 text-bakin-text-muted" />}
           >
             <div className="whitespace-pre-wrap rounded-bakin-surface border-l-2 border-bakin-signal-accent bg-bakin-surface-default p-bakin-4 leading-relaxed text-bakin-text-primary">
               {job.taskPrompt}
             </div>
-          </BakinDrawerSection>
+          </DrawerSection>
         ) : null}
 
         {job.isBakinJob ? (
-          <BakinDrawerSection title="Pause or resume">
+          <DrawerSection title="Pause or resume">
             <PauseControls job={job} onPause={onPause} onResume={onResume} />
-          </BakinDrawerSection>
+          </DrawerSection>
         ) : null}
 
-        <BakinDrawerSection title="Run history">
+        <DrawerSection title="Run history">
           <RunHistory jobId={job.id} />
-        </BakinDrawerSection>
+        </DrawerSection>
       </div>
-    </BakinDrawer>
+    </Drawer>
   )
 }

@@ -51,7 +51,7 @@ describe('TaskBrandPanel', () => {
     globalThis.fetch = mock(async () => new Response('{}', { status: 200 })) as unknown as typeof fetch
     render(<TaskBrandPanel taskId="task-1" />)
 
-    expect(document.querySelector('[data-slot="bakin-drawer-section"]')).not.toBeNull()
+    expect(document.querySelector('[data-slot="drawer-section"]')).not.toBeNull()
     expect(screen.getByRole('heading', { name: 'Brand context' })).toBeDefined()
     expect(document.querySelector('[data-slot="banner"][data-tone="attention"]')).not.toBeNull()
     expect(screen.getByRole('link', { name: 'Open brand' }).getAttribute('href')).toBe('/brands/harvest-and-hearth')

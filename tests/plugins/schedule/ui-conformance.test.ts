@@ -85,7 +85,7 @@ describe('Schedule UI conformance', () => {
 
     expect(contents).not.toContain('@makinbakin/sdk/components')
     expect(contents).toContain("from '@makinbakin/sdk/patterns'")
-    expect(contents).toContain('<BakinDrawerSection')
+    expect(contents).toContain('<DrawerSection')
     expect(contents).toContain('<StatusBadge')
     expect(contents).not.toMatch(/\bstyle=\{/)
     expect(contents).not.toMatch(/\b(?:red|rose|amber|yellow|green|emerald|teal|cyan|blue|sky|violet|purple|zinc)-\d+/)

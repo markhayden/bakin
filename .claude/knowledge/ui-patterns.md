@@ -106,13 +106,13 @@ Cross-cutting UI lessons distilled from the chat/conversation-kit overhaul (2026
 
 - **One engine per domain; components are thin.** `foldConversation` is THE folding engine — every surface composes the kit, none hand-rolls. Killing the three duplicate folders + the parallel `IntegratedBrainstorm` renderer was the whole win. Look for the existing engine before writing rendering logic.
 - **Design tokens only — no hardcoded palettes.** `IntegratedBrainstorm`'s hardcoded zinc/purple was the anti-pattern. Kit files are token-only (a test greps for `zinc-`/hex leaks).
-- **Human-first, depth on demand.** JSON replies render humanized (`formatStructured`) with raw JSON behind `<details>`; tool calls show a humanized activity summary → expand to rows → `BakinDrawer` for full input/output. "Right amount of detail, deeper one click away."
+- **Human-first, depth on demand.** JSON replies render humanized (`formatStructured`) with raw JSON behind `<details>`; tool calls show a humanized activity summary → expand to rows → `Drawer` for full input/output. "Right amount of detail, deeper one click away."
 - **Reserved control gutters.** Agent turns reserve a right-edge column for time/copy/(future menu) so content never collides and new actions have a home without relayout.
 - **Capability-gated affordances explain themselves.** The attach button enables only per `capabilities().input.imageInput`; disabled state carries an honest tooltip. Never a silently-dead control.
 - **Empty + loading states everywhere.** Launcher (agent cards + recents) instead of "select a chat"; skeletons in rail + launcher; designed empty states with suggestion chips. A blank pane is a bug.
 - **Attention layering.** Nav badge (global `nav-badge-providers` slot → works cross-page) + `(N)` tab-title prefix + toast + sound + OS notification, with suppression (viewing the surface = no fanfare). Read state is SERVER-side (`lastSeenAt`), survives reloads/devices.
 - **URL-back all view/filter state.** `useQueryState`/`useQueryArrayState`, `<Suspense>`-wrapped (mind gotcha #1).
-- **Assemble from the SDK first.** nav badges, `toast()`, `browser-notify`, `useVerticalResize`/`useAutoGrow`, `FacetFilter`/`AgentFilter`, `BakinDrawer`, `EmptyState`, `AgentAvatar`, `MarkdownContent` all already exist. The SSE bus + `usePluginEvent` are global (fire on any page). Check before inventing.
+- **Assemble from the SDK first.** nav badges, `toast()`, `browser-notify`, `useVerticalResize`/`useAutoGrow`, `FacetFilter`/`AgentFilter`, `Drawer`, `EmptyState`, `AgentAvatar`, `MarkdownContent` all already exist. The SSE bus + `usePluginEvent` are global (fire on any page). Check before inventing.
 - **ChatGPT-class input.** One rounded container, `+`/attachments in the left slot, borderless auto-grow textarea, circular send/stop on the right, dedicated attachment strip, drag-to-resize handle, and typing NEVER blocked while streaming (only send waits).
 
 ## Testing / process

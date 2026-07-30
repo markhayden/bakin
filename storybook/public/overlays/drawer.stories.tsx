@@ -1,38 +1,58 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { useState } from 'react'
 import { MarkdownContent } from '@makinbakin/sdk/content'
-import { Badge, BakinDrawer, BakinDrawerSection, Button, Input, Label, Textarea } from '@makinbakin/sdk/ui'
+import { Badge, Button, Drawer, DrawerSection, Input, Label, Textarea } from '@makinbakin/sdk/ui'
 import { expect, waitFor, within } from 'storybook/test'
 
-import './primitives.stories.css'
+import '../foundation/primitives.stories.css'
 
 const meta = {
-  title: 'Foundation/BakinDrawer',
-  component: BakinDrawer,
+  title: 'Overlays/Drawer',
+  component: Drawer,
   args: { open: false, onOpenChange: () => undefined, children: null },
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',
-    docs: { description: { component: 'BakinDrawer is the supported resizable product composition for long contextual detail and edit flows. It uses Sheet semantics, persists width by context, fills mobile viewports, provides keyboard resizing, aligns its title and content to one shared gutter, and owns the nested dirty-confirm path.' } },
+    docs: { description: { component: 'Drawer is the supported resizable product composition for long contextual detail and edit flows. It uses Sheet semantics, persists width by context, fills mobile viewports, provides keyboard resizing, aligns its title and content to one shared gutter, and owns the nested dirty-confirm path.' } },
+    bakinCoverage: ['desktop', 'keyboard', 'resize', 'dirty-confirm'],
   },
-} satisfies Meta<typeof BakinDrawer>
+} satisfies Meta<typeof Drawer>
 
 export default meta
 type Story = StoryObj<typeof meta>
 
+export const CanonicalUsage = {
+  render: function CanonicalDrawer() {
+    const [open, setOpen] = useState(true)
+    return (
+      <Drawer open={open} onOpenChange={setOpen} title="Task detail" description="Task 842 · official workflows plugin">
+        <DrawerSection title="Details">
+          <p>Review the migration evidence before closing the task.</p>
+        </DrawerSection>
+      </Drawer>
+    )
+  },
+  play: async () => {
+    const page = within(document.body)
+    const dialog = await page.findByRole('dialog', { name: 'Task detail' })
+    await expect(dialog).toBeVisible()
+    await expect(within(dialog).getByRole('region', { name: 'Details' })).toBeVisible()
+  },
+} satisfies Story
+
 function DrawerContents() {
   return (
     <div className="bakin-primitive-story__overlay-body bakin-primitive-story__overlay-body--flush bakin-primitive-story__overlay-body--sections">
-      <BakinDrawerSection title="Status">
+      <DrawerSection title="Status">
         <div className="bakin-primitive-story__cluster"><Badge tone="attention">Needs attention</Badge><Badge variant="outline">Workflow</Badge></div>
-      </BakinDrawerSection>
-      <BakinDrawerSection title="Details">
+      </DrawerSection>
+      <DrawerSection title="Details">
         <div className="bakin-primitive-story__field"><Label htmlFor="drawer-title">Task title</Label><Input id="drawer-title" defaultValue="Review plugin migration evidence" /></div>
         <div className="bakin-primitive-story__field"><Label htmlFor="drawer-context">Context</Label><Textarea id="drawer-context" defaultValue="Confirm the SDK-only imports, responsive behavior, and route-state contract before marking this task complete." /></div>
-      </BakinDrawerSection>
-      <BakinDrawerSection title="Content">
+      </DrawerSection>
+      <DrawerSection title="Content">
         <MarkdownContent content={'# Migration evidence\n\nUse rendered content without adding another outer section margin.'} />
-      </BakinDrawerSection>
+      </DrawerSection>
     </div>
   )
 }
@@ -40,12 +60,12 @@ function DrawerContents() {
 export const Default = {
   render: function DefaultDrawer() {
     const [open, setOpen] = useState(true)
-    return <main className="bakin-primitive-story__overlay-stage"><div className="bakin-primitive-story__overlay-workspace" aria-hidden="true"><div /><div /><div /></div><BakinDrawer open={open} onOpenChange={setOpen} title="Task detail" description="Task 842 · official workflows plugin" storageKey="storybook-default"><DrawerContents /></BakinDrawer></main>
+    return <main className="bakin-primitive-story__overlay-stage"><div className="bakin-primitive-story__overlay-workspace" aria-hidden="true"><div /><div /><div /></div><Drawer open={open} onOpenChange={setOpen} title="Task detail" description="Task 842 · official workflows plugin" storageKey="storybook-default"><DrawerContents /></Drawer></main>
   },
   play: async () => {
     const page = within(document.body)
     const title = await page.findByRole('heading', { name: 'Task detail' })
-    const content = document.querySelector<HTMLElement>('[data-slot="bakin-drawer-content"]')
+    const content = document.querySelector<HTMLElement>('[data-slot="drawer-content"]')
     const dialog = page.getByRole('dialog', { name: 'Task detail' })
     const drawer = within(dialog)
     await expect(content).toBeTruthy()
@@ -61,7 +81,7 @@ export const Default = {
 export const DirtyBehavior = {
   render: function DirtyDrawer() {
     const [open, setOpen] = useState(true)
-    return <main className="bakin-primitive-story__overlay-stage"><BakinDrawer open={open} onOpenChange={setOpen} title="Edit task" dirty storageKey="storybook-dirty" actions={<Button size="sm">Save</Button>}><DrawerContents /></BakinDrawer></main>
+    return <main className="bakin-primitive-story__overlay-stage"><Drawer open={open} onOpenChange={setOpen} title="Edit task" dirty storageKey="storybook-dirty" actions={<Button size="sm">Save</Button>}><DrawerContents /></Drawer></main>
   },
   play: async ({ userEvent }) => {
     const page = within(document.body)

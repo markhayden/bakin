@@ -3,14 +3,6 @@
   "generatedBy": "bun run ui:story-compliance:generate",
   "entries": [
     {
-      "path": "storybook/public/foundation/bakin-drawer.stories.tsx",
-      "title": "Foundation/BakinDrawer",
-      "missing": [
-        "canonical-usage",
-        "coverage-axes"
-      ]
-    },
-    {
       "path": "storybook/public/patterns/schedule-timeline.stories.tsx",
       "title": "Patterns/Schedule and timeline",
       "missing": [

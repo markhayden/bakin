@@ -5,15 +5,15 @@ import '../rtl-settle'
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 
 import {
-  BakinDrawer,
+  Drawer,
   DEFAULT_WIDTH,
   DRAWER_WIDTH_STORAGE_KEY,
   MAX_WIDTH,
   MIN_WIDTH,
   getDrawerWidthStorageKey,
   getStoredDrawerWidth,
-} from '@/components/bakin-drawer'
-import { BakinDrawerSection } from '@makinbakin/sdk/ui'
+} from '@/components/drawer'
+import { DrawerSection } from '@makinbakin/sdk/ui'
 
 mock.module('@bakin/core/main-agent', () => ({
   getMainAgentId: () => 'main',
@@ -45,7 +45,7 @@ mock.module('@/components/ui/button', () => ({
   Button: ({ children, variant: _variant, size: _size, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: string; size?: string }) => <button {...props}>{children}</button>,
 }))
 
-describe('BakinDrawer', () => {
+describe('Drawer', () => {
   beforeEach(() => {
     const storage = new Map<string, string>()
 
@@ -74,9 +74,9 @@ describe('BakinDrawer', () => {
     window.localStorage.setItem(DRAWER_WIDTH_STORAGE_KEY, '640')
 
     const { getByTestId } = render(
-      <BakinDrawer open onOpenChange={() => {}}>
+      <Drawer open onOpenChange={() => {}}>
         <div>Body</div>
-      </BakinDrawer>,
+      </Drawer>,
     )
 
     expect(getByTestId('sheet-content').style.getPropertyValue('--bakin-drawer-width')).toBe('640px')
@@ -84,9 +84,9 @@ describe('BakinDrawer', () => {
 
   it('persists the resized width on drag end', async () => {
     const { container, getByTestId } = render(
-      <BakinDrawer open onOpenChange={() => {}}>
+      <Drawer open onOpenChange={() => {}}>
         <div>Body</div>
-      </BakinDrawer>,
+      </Drawer>,
     )
 
     const handle = container.querySelector('[role="separator"]')
@@ -104,9 +104,9 @@ describe('BakinDrawer', () => {
 
   it('supports keyboard resizing and persists each committed width', () => {
     render(
-      <BakinDrawer open onOpenChange={() => {}} defaultWidth={480}>
+      <Drawer open onOpenChange={() => {}} defaultWidth={480}>
         <div>Body</div>
-      </BakinDrawer>,
+      </Drawer>,
     )
 
     const separator = screen.getByRole('separator', { name: 'Resize panel' })
@@ -121,9 +121,9 @@ describe('BakinDrawer', () => {
   it('always provides a labelled close action and blocks it while busy', () => {
     const onOpenChange = mock()
     const { rerender } = render(
-      <BakinDrawer open onOpenChange={onOpenChange}>
+      <Drawer open onOpenChange={onOpenChange}>
         <div>Body</div>
-      </BakinDrawer>,
+      </Drawer>,
     )
 
     expect(screen.getByText('Details').className).toContain('sr-only')
@@ -132,9 +132,9 @@ describe('BakinDrawer', () => {
 
     onOpenChange.mockClear()
     rerender(
-      <BakinDrawer open busy onOpenChange={onOpenChange}>
+      <Drawer open busy onOpenChange={onOpenChange}>
         <div>Body</div>
-      </BakinDrawer>,
+      </Drawer>,
     )
     expect(screen.getByTestId('sheet').getAttribute('data-busy')).toBe('true')
     expect(screen.getByRole('button', { name: 'Close panel' })).toHaveProperty('disabled', true)
@@ -144,14 +144,14 @@ describe('BakinDrawer', () => {
 
   it('uses valid responsive gutters and a reusable nested section inset', () => {
     const { container } = render(
-      <BakinDrawer open onOpenChange={() => {}} title="Task detail">
-        <BakinDrawerSection title="Details">
+      <Drawer open onOpenChange={() => {}} title="Task detail">
+        <DrawerSection title="Details">
           <p>Task evidence</p>
-        </BakinDrawerSection>
-      </BakinDrawer>,
+        </DrawerSection>
+      </Drawer>,
     )
 
-    const layout = container.querySelector('[data-slot="bakin-drawer-layout"]')
+    const layout = container.querySelector('[data-slot="drawer-layout"]')
     expect(layout?.className).toContain('px-bakin-4')
     expect(layout?.className).toContain('sm:px-bakin-6')
     expect(layout?.className).toContain('pt-bakin-4')
@@ -159,15 +159,15 @@ describe('BakinDrawer', () => {
     expect(layout?.className).toContain('gap-bakin-6')
     expect(layout?.className).toContain('shrink-0')
     expect(layout?.className).not.toContain('px-bakin-7')
-    const content = container.querySelector('[data-slot="bakin-drawer-content"]')
+    const content = container.querySelector('[data-slot="drawer-content"]')
     expect(content).toBeTruthy()
     expect(content?.className).not.toContain('min-h-0')
     expect(content?.className).not.toContain('flex-1')
     expect(screen.getByRole('heading', { level: 2, name: 'Task detail' }).closest('[data-inset]')?.getAttribute('data-inset')).toBe('none')
     expect(screen.getByRole('heading', { level: 3, name: 'Details' })).toBeTruthy()
-    const sectionContent = container.querySelector('[data-slot="bakin-drawer-section-content"]')
+    const sectionContent = container.querySelector('[data-slot="drawer-section-content"]')
     expect(sectionContent?.className).toContain('px-bakin-2')
-    expect(sectionContent?.closest('[data-slot="bakin-drawer-section"]')?.className).toContain('gap-bakin-3')
+    expect(sectionContent?.closest('[data-slot="drawer-section"]')?.className).toContain('gap-bakin-3')
   })
 
   it('supports per-context storage keys and clamps invalid stored widths', () => {

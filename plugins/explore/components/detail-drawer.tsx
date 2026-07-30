@@ -1,6 +1,6 @@
 import { ArrowUpRight, Check, Image as ImageIcon } from 'lucide-react'
 import { PluginLink } from '@makinbakin/sdk/navigation'
-import { BakinDrawer, BakinDrawerSection } from '@makinbakin/sdk/ui'
+import { Drawer, DrawerSection } from '@makinbakin/sdk/ui'
 import { StatusBadge } from '@makinbakin/sdk/patterns'
 import { EntryVisual } from './catalog-card'
 import type { ExploreCatalogEntry } from '../types'
@@ -28,7 +28,7 @@ export function DetailDrawer({
 }) {
   if (!entry) return null
   return (
-    <BakinDrawer
+    <Drawer
       open={entry !== null}
       onOpenChange={onOpenChange}
       storageKey="explore-detail"
@@ -45,13 +45,13 @@ export function DetailDrawer({
       actions={actions}
     >
       <div className="flex min-w-0 flex-col gap-bakin-6 pb-bakin-6" data-testid="detail-drawer-body">
-        <BakinDrawerSection title="Overview">
+        <DrawerSection title="Overview">
           <p className="m-0 leading-relaxed text-bakin-text-primary">{entry.description}</p>
-        </BakinDrawerSection>
+        </DrawerSection>
 
         {/* Gallery — real screenshots once the bits-repo catalog ships them;
             placeholder frames until then so the layout is ready. */}
-        <BakinDrawerSection title="Preview">
+        <DrawerSection title="Preview">
           <div data-testid="drawer-gallery" className="grid grid-cols-1 gap-bakin-2 sm:grid-cols-2">
             {entry.screenshots.length > 0
               ? entry.screenshots.slice(0, 6).map((src) => (
@@ -78,10 +78,10 @@ export function DetailDrawer({
               Screenshots coming soon
             </p>
           ) : null}
-        </BakinDrawerSection>
+        </DrawerSection>
 
         {entry.useCases.length > 0 ? (
-          <BakinDrawerSection title="Use cases">
+          <DrawerSection title="Use cases">
             <ul className="m-0 grid list-none gap-bakin-2 p-0">
               {entry.useCases.map((useCase) => (
                 <li key={useCase} className="flex items-start gap-bakin-2 leading-relaxed text-bakin-text-muted">
@@ -90,11 +90,11 @@ export function DetailDrawer({
                 </li>
               ))}
             </ul>
-          </BakinDrawerSection>
+          </DrawerSection>
         ) : null}
 
         {entry.dependencies.length > 0 ? (
-          <BakinDrawerSection title="Requires">
+          <DrawerSection title="Requires">
             <div className="flex flex-wrap gap-bakin-2">
               {entry.dependencies.map((dep) => (
                 <StatusBadge
@@ -108,15 +108,15 @@ export function DetailDrawer({
                 </StatusBadge>
               ))}
             </div>
-          </BakinDrawerSection>
+          </DrawerSection>
         ) : null}
 
         {entry.source ? (
-          <BakinDrawerSection title="Source">
+          <DrawerSection title="Source">
             <code className="block break-all rounded-bakin-control border border-bakin-border-subtle bg-bakin-canvas-default px-bakin-3 py-bakin-2 font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
               {entry.source}
             </code>
-          </BakinDrawerSection>
+          </DrawerSection>
         ) : null}
 
         {entry.updateAvailable === true && entry.kind === 'agent' && (
@@ -128,6 +128,6 @@ export function DetailDrawer({
           </PluginLink>
         )}
       </div>
-    </BakinDrawer>
+    </Drawer>
   )
 }

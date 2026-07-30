@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useTaskRunHistory, type TaskOutcome, type TaskRunEntry } from '@makinbakin/sdk/hooks'
 import {
-  BakinDrawerSection,
+  DrawerSection,
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
@@ -49,7 +49,7 @@ export function TaskRunHistory({ taskId }: { taskId: string }) {
   const summary = `${runs.length} run${runs.length === 1 ? '' : 's'} · last ${last.status}`
 
   return (
-    <BakinDrawerSection
+    <DrawerSection
       title="Run history"
       actions={outcome ? (
         <StatusBadge tone={OUTCOME_TONE[outcome.state]} variant="solid" size="xs">
@@ -111,6 +111,6 @@ export function TaskRunHistory({ taskId }: { taskId: string }) {
           </ol>
         </CollapsibleContent>
       </Collapsible>
-    </BakinDrawerSection>
+    </DrawerSection>
   )
 }

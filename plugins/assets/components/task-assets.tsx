@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { usePluginEvent } from '@makinbakin/sdk/hooks'
-import { BakinDrawerSection } from '@makinbakin/sdk/ui'
+import { DrawerSection } from '@makinbakin/sdk/ui'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { FolderOpen, Plus, X } from 'lucide-react'
 import { AssetThumb } from './versioned/atoms'
@@ -60,7 +60,7 @@ export function TaskAssets({ taskId, readOnly }: TaskAssetsProps) {
   if (loading) return null
 
   return (
-    <BakinDrawerSection
+    <DrawerSection
       title={(
         <span className="inline-flex items-center gap-bakin-1">
           <FolderOpen className="size-bakin-3" aria-hidden="true" />
@@ -110,6 +110,6 @@ export function TaskAssets({ taskId, readOnly }: TaskAssetsProps) {
           </div>
         ))}
       </div>
-    </BakinDrawerSection>
+    </DrawerSection>
   )
 }

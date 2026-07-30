@@ -254,7 +254,7 @@ object-URL cleanup, persistence, and send mutations. Attachment `acceptedTypes`
 apply consistently to picker, paste, and drop. Pending uploads hold send, `busy`
 keeps typing live, and a stop control appears only when `onAbort` exists.
 `InspectorPanel` supplies named header/content/footer hierarchy beside a canvas
-or inside `BakinDrawer`. Transport, server persistence, rich text, routing, selection,
+or inside `Drawer`. Transport, server persistence, rich text, routing, selection,
 drawer focus, and domain mutations remain consumer owned.
 
 Workflow and action workspaces use `WorkflowPage` with a named

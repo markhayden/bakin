@@ -122,7 +122,7 @@ mock.module('@makinbakin/sdk/components', () => ({
   SearchUnavailable: () => <div data-testid="search-unavailable" />,
   ScoreOverlay: () => null,
   AgentAvatar: () => <span />,
-  BakinDrawer: passthrough,
+  Drawer: passthrough,
   ConfirmDialog: () => null,
 }))
 

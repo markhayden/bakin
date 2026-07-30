@@ -9,7 +9,7 @@ mock.module('@makinbakin/sdk/hooks', () => ({
 
 mock.module('@makinbakin/sdk/components', () => ({
   AgentAvatar: ({ agentId }: { agentId: string }) => <span>{agentId}</span>,
-  BakinDrawer: ({
+  Drawer: ({
     open,
     title,
     actions,

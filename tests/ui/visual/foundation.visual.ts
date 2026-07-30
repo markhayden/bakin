@@ -82,7 +82,7 @@ test('public right sheet visual baseline', async ({ page }) => {
   await expect(page).toHaveScreenshot('overlays-sheet.png')
 })
 
-test('public BakinDrawer visual baseline', async ({ page }, testInfo) => {
+test('public Drawer visual baseline', async ({ page }, testInfo) => {
   const browserErrors: string[] = []
   page.on('console', (message) => {
     if (message.type() === 'error') browserErrors.push(`console: ${message.text()}`)
@@ -95,7 +95,7 @@ test('public BakinDrawer visual baseline', async ({ page }, testInfo) => {
     browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${reason}`)
   })
 
-  await page.goto('/iframe.html?id=foundation-bakindrawer--default&viewMode=story', { waitUntil: 'networkidle' })
+  await page.goto('/iframe.html?id=overlays-drawer--default&viewMode=story', { waitUntil: 'networkidle' })
   await expect(page.getByRole('dialog', { name: 'Task detail' })).toBeVisible()
   const resizer = page.locator('[role="separator"][aria-label="Resize panel"]')
   if (testInfo.project.name === 'chromium-desktop') {
@@ -106,7 +106,7 @@ test('public BakinDrawer visual baseline', async ({ page }, testInfo) => {
   await page.evaluate(async () => document.fonts.ready)
 
   expect(browserErrors).toEqual([])
-  await expect(page).toHaveScreenshot('foundation-bakin-drawer.png')
+  await expect(page).toHaveScreenshot('overlays-drawer.png')
 })
 
 test('public Popover visual baseline', async ({ page }) => {
