@@ -115,6 +115,32 @@ text-secondary        → var(--secondary) — electric yellow
 border-outline-variant → var(--outline-variant)
 ```
 
+## Storybook refit gates (2026-07-29)
+
+The storybook-refit effort (spec/audit/plan in `.claude/specs/storybook-refit*.md`)
+added two monotonic ratchets that run inside `ui:conformance --quick`:
+
+- **Story compliance** (`scripts/ui/story-compliance.ts`, baseline
+  `design-system/story-compliance.json`): every public entry needs a
+  `CanonicalUsage` first story (minimal, `@makinbakin/sdk/*`-imports-only JSX;
+  `Recipes/` exempt), ≥1 play assertion, `parameters.bakinCoverage`,
+  `parameters.docs.description.component`, and a `tests/ui/visual` reference.
+  Deleting the baseline flips the gate to absolute mode (planned at refit P5).
+- **Kit growth** (`scripts/ui/kit-growth.ts`, baseline
+  `design-system/kit-coverage.json`): every PascalCase value export of the
+  supported SDK UI entrypoints must be imported by the public catalog —
+  new kit components cannot land without a story (D9).
+
+Shared story scaffolding lives in `storybook/support/` (`StoryStage`,
+`StoryIntro`, `OverlayBackdrop`, inline icons). It is an allowed import root
+for public stories (walked by the same boundary checks), banned inside
+`CanonicalUsage` stories, and banned from app code
+(`tests/architecture/storybook-support-boundary.test.ts`).
+
+Autodocs is on globally (`.storybook/preview.tsx` `tags: ['autodocs']`):
+docs pages + source panels render for every entry; props tables come from
+TS types via react-docgen.
+
 ## Logo
 
 The Bakin logo (`public/bakin-logo.svg`) is `bakin-hop.svg` — a leaping bison rendered in `#ff4d94`. Product chrome pairs it with the approved Space Grotesk family; logo artwork itself remains brand content rather than a UI token.

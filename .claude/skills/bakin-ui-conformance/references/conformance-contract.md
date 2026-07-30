@@ -49,6 +49,8 @@ Archetypes own page composition. Primitives do not grant permission to rebuild a
 | Accessibility suppression | reason, evidence, manual verification, and exact explicit approval |
 | Performance ceiling increase | measured delta, attribution, alternatives, and exact explicit approval |
 | Deliberate design-system deviation | explanation to the user before implementation, explicit approval, then `design-system/exceptions.json` |
+| New public story entry | `CanonicalUsage` first story (minimal, `@makinbakin/sdk/*` imports only; `Recipes/` exempt), a play assertion, `bakinCoverage` axes, docs description, visual baseline — `ui:story-compliance:check` enforces; scaffolding comes from `storybook/support/`, never inside `CanonicalUsage` |
+| New public kit component export | public story demonstrating it + public-api registration — `ui:kit-coverage:check` enforces; adding to the kit is a reviewed act (D9) |
 
 ## Deviation explanation template
 

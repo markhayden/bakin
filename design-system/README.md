@@ -109,6 +109,34 @@ one canonical repository skill at
 the user. The skill must explain any mismatch before implementation; static CI
 does not pretend it can infer design intent.
 
+## Story compliance and kit growth
+
+Two monotonic ratchets (same contract as the legacy style ledger) enforce the
+storybook-refit bar:
+
+`story-compliance.json` — every public story entry must carry a
+`CanonicalUsage` first story (minimal, `@makinbakin/sdk/*`-imports-only JSX;
+`Recipes/` entries exempt), at least one play assertion, declared
+`bakinCoverage` axes, a docs description, and a visual-baseline reference.
+Recorded gaps pass, fresh gaps fail, reductions pass. Deleting the baseline
+file switches the gate to absolute mode — the planned end state once every
+entry complies.
+
+`kit-coverage.json` — every component-shaped value export of the supported
+SDK UI entrypoints must be demonstrated by the public catalog. The public-api
+freeze forces registration of new exports; this gate adds the demonstration
+leg so a new kit component cannot land without a story.
+
+```sh
+bun run ui:story-compliance:generate|check
+bun run ui:kit-coverage:generate|check
+```
+
+Both run inside `ui:conformance --quick`. Shared story scaffolding lives in
+`storybook/support/` (StoryStage, OverlayBackdrop, inline icons) — allowed in
+showcase stories, never in a `CanonicalUsage` story, and never importable
+from app code (architecture-test enforced).
+
 `exceptions.json` is the schema-validated ledger for explicitly approved,
 temporary deviations. Every record is path-scoped, references a real public
 story export, explains why composition is insufficient, records accessibility,
