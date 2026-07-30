@@ -68,14 +68,6 @@
       ]
     },
     {
-      "path": "storybook/public/foundation/command.stories.tsx",
-      "title": "Foundation/Command",
-      "missing": [
-        "canonical-usage",
-        "coverage-axes"
-      ]
-    },
-    {
       "path": "storybook/public/foundation/tokens.generated.stories.tsx",
       "title": "Foundations/Semantic tokens",
       "missing": [
@@ -107,20 +99,12 @@
       "path": "storybook/public/patterns/agent-identity-assignment.stories.tsx",
       "title": "Agents/Identity and assignment",
       "missing": [
-        "canonical-usage",
-        "visual-baseline"
+        "canonical-usage"
       ]
     },
     {
       "path": "storybook/public/patterns/conversation-inspector-pages.stories.tsx",
       "title": "Patterns/Conversation and inspector",
-      "missing": [
-        "canonical-usage"
-      ]
-    },
-    {
-      "path": "storybook/public/patterns/filter-navigation.stories.tsx",
-      "title": "Patterns/Filters and navigation",
       "missing": [
         "canonical-usage"
       ]

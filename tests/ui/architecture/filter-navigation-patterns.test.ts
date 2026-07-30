@@ -41,7 +41,7 @@ describe('canonical filter and navigation patterns', () => {
 
   it('keeps in-flight search feedback inside the canonical field', () => {
     const search = read('packages/ui/src/patterns/search-input.tsx')
-    const story = read('storybook/public/patterns/filter-navigation.stories.tsx')
+    const story = read('storybook/public/navigation/search-input.stories.tsx')
     const guide = read('docs/src/content/docs/extending/ui/overview.md')
 
     expect(search).toContain('busy?: boolean')

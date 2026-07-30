@@ -157,12 +157,12 @@ test('public Command visual baseline', async ({ page }) => {
   page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`))
   page.on('requestfailed', (request) => browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`))
 
-  await page.goto('/iframe.html?id=foundation-command--search&viewMode=story', { waitUntil: 'networkidle' })
+  await page.goto('/iframe.html?id=navigation-command--search&viewMode=story', { waitUntil: 'networkidle' })
   await expect(page.getByRole('combobox', { name: 'Find a task action' })).toBeVisible()
   await expect(page.getByRole('option', { name: 'Open task' })).toBeVisible()
   await page.evaluate(async () => document.fonts.ready)
   expect(browserErrors).toEqual([])
-  await expect(page).toHaveScreenshot('foundation-command.png')
+  await expect(page).toHaveScreenshot('navigation-command.png')
 })
 
 test('public PageShell and flow visual baseline', async ({ page }) => {
@@ -370,12 +370,12 @@ test('public typed confirmation pattern visual baseline', async ({ page }) => {
 })
 
 test('public facet filter pattern visual baseline', async ({ page }) => {
-  await page.goto('/iframe.html?id=patterns-filters-and-navigation--facet-filtering&viewMode=story')
+  await page.goto('/iframe.html?id=navigation-facetfilter--facet-filtering&viewMode=story')
   await expect(page.getByRole('heading', { level: 1, name: 'Keep filter state visible and reversible' })).toBeVisible()
   await expect(page.getByRole('dialog', { name: 'Filter by State' })).toBeVisible()
   await expect(page.getByRole('option', { name: 'Needs attention because a dependency is unavailable Selected 3' })).toBeVisible()
   await page.evaluate(async () => document.fonts.ready)
-  await expect(page).toHaveScreenshot('foundation-facet-filter.png', {
+  await expect(page).toHaveScreenshot('navigation-facet-filter.png', {
     animations: 'disabled',
     caret: 'hide',
     fullPage: true,
@@ -383,12 +383,12 @@ test('public facet filter pattern visual baseline', async ({ page }) => {
 })
 
 test('public compact search behavior visual baseline', async ({ page }) => {
-  await page.goto('/iframe.html?id=patterns-filters-and-navigation--long-query&viewMode=story')
+  await page.goto('/iframe.html?id=navigation-searchinput--long-query&viewMode=story')
   await expect(page.getByRole('heading', { level: 1, name: 'Expand search without moving the page' })).toBeVisible()
   await expect(page.locator('[data-slot="search-input-control"]')).toHaveAttribute('data-state', 'filled')
   await expect(page.getByRole('status')).toContainText('blocked launch approval tasks')
   await page.evaluate(async () => document.fonts.ready)
-  await expect(page).toHaveScreenshot('foundation-search-input.png', {
+  await expect(page).toHaveScreenshot('navigation-search-input.png', {
     animations: 'disabled',
     caret: 'hide',
     fullPage: true,
@@ -396,11 +396,11 @@ test('public compact search behavior visual baseline', async ({ page }) => {
 })
 
 test('public agent filter pattern visual baseline', async ({ page }) => {
-  await page.goto('/iframe.html?id=patterns-filters-and-navigation--agent-filtering&viewMode=story')
+  await page.goto('/iframe.html?id=agents-identity-and-assignment--agent-filtering&viewMode=story')
   await expect(page.getByRole('heading', { level: 1, name: 'Filter by an agent without losing names' })).toBeVisible()
   await expect(page.getByRole('radiogroup', { name: 'Filter by agent' })).toBeVisible()
   await page.evaluate(async () => document.fonts.ready)
-  await expect(page).toHaveScreenshot('foundation-agent-filter.png', {
+  await expect(page).toHaveScreenshot('agents-agent-filter.png', {
     animations: 'disabled',
     caret: 'hide',
     fullPage: true,
@@ -408,11 +408,11 @@ test('public agent filter pattern visual baseline', async ({ page }) => {
 })
 
 test('public segmented navigation pattern visual baseline', async ({ page }) => {
-  await page.goto('/iframe.html?id=patterns-filters-and-navigation--segmented-navigation&viewMode=story')
+  await page.goto('/iframe.html?id=navigation-segmentedcontrol--segmented-navigation&viewMode=story')
   await expect(page.getByRole('heading', { level: 1, name: 'Switch modes with one compact control' })).toBeVisible()
   await expect(page.getByRole('tablist', { name: 'Task view' })).toBeVisible()
   await page.evaluate(async () => document.fonts.ready)
-  await expect(page).toHaveScreenshot('foundation-segmented-navigation.png', {
+  await expect(page).toHaveScreenshot('navigation-segmented-control.png', {
     animations: 'disabled',
     caret: 'hide',
     fullPage: true,
@@ -420,11 +420,11 @@ test('public segmented navigation pattern visual baseline', async ({ page }) => 
 })
 
 test('public underline navigation pattern visual baseline', async ({ page }) => {
-  await page.goto('/iframe.html?id=patterns-filters-and-navigation--underline-navigation&viewMode=story')
+  await page.goto('/iframe.html?id=navigation-underlinetabs--underline-navigation&viewMode=story')
   await expect(page.getByRole('heading', { level: 1, name: 'Keep page sections anchored to their content' })).toBeVisible()
   await expect(page.getByRole('tablist', { name: 'Runtime sections' })).toBeVisible()
   await page.evaluate(async () => document.fonts.ready)
-  await expect(page).toHaveScreenshot('foundation-underline-navigation.png', {
+  await expect(page).toHaveScreenshot('navigation-underline-tabs.png', {
     animations: 'disabled',
     caret: 'hide',
     fullPage: true,
@@ -432,11 +432,11 @@ test('public underline navigation pattern visual baseline', async ({ page }) => 
 })
 
 test('public sortable table pattern visual baseline', async ({ page }) => {
-  await page.goto('/iframe.html?id=patterns-filters-and-navigation--sortable-table&viewMode=story')
+  await page.goto('/iframe.html?id=navigation-sortablehead--sortable-table&viewMode=story')
   await expect(page.getByRole('heading', { level: 1, name: 'Put sort meaning on the column header' })).toBeVisible()
   await expect(page.getByRole('columnheader', { name: 'Updated' })).toHaveAttribute('aria-sort', 'descending')
   await page.evaluate(async () => document.fonts.ready)
-  await expect(page).toHaveScreenshot('foundation-sortable-table.png', {
+  await expect(page).toHaveScreenshot('navigation-sortable-head.png', {
     animations: 'disabled',
     caret: 'hide',
     fullPage: true,
@@ -688,6 +688,7 @@ const PRIMITIVES_BASELINES = [
   { url: '/iframe.html?id=forms-unsavedchangesdialog--canonical-usage&viewMode=story', png: 'forms-unsaved-changes-dialog.png', role: 'dialog' as const, name: 'Unsaved changes' },
   { url: '/iframe.html?id=forms-plugin-settings-renderer--messaging-schema-workflow&viewMode=story', png: 'forms-plugin-settings-renderer.png', text: 'Let plugin settings feel native without hiding their rules' },
   { url: '/iframe.html?id=recipes-destructive-settings-flow--settings-flow&viewMode=story', png: 'recipes-destructive-settings-flow.png', text: 'Destructive settings flow' },
+  { url: '/iframe.html?id=navigation-pagenavigator--paged-boundaries&viewMode=story', png: 'navigation-page-navigator.png', text: 'Showing 21–40 of 94' },
 ]
 
 for (const baseline of PRIMITIVES_BASELINES) {

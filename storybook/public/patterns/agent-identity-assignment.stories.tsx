@@ -151,6 +151,60 @@ function AssignmentExample() {
   )
 }
 
+const filterAgents = [
+  { id: 'patch', name: 'Patch', color: '#f97316' },
+  { id: 'pixel', name: 'Pixel', color: '#8b5cf6' },
+  { id: 'rolo', name: 'Rolo', color: '#14b8a6' },
+] as const satisfies readonly AgentIdentity[]
+
+function AgentFilteringExample() {
+  const [agent, setAgent] = useState('all')
+  const label = agent === 'all' ? 'all agents' : filterAgents.find((option) => option.id === agent)?.name
+
+  return (
+    <main className="bakin-agent-pattern-story">
+      <PageShell width="content">
+        <Stack gap="section">
+          <StoryHeader
+            eyebrow="Agents / one owner"
+            title="Filter by an agent without losing names"
+            description="The public pattern accepts presentation-ready options. Official surfaces can keep using the app-aware compatibility adapter for registered agent metadata and avatars."
+          />
+          <section aria-labelledby="agent-filter-heading" className="bakin-agent-pattern-story__surface">
+            <h2 id="agent-filter-heading">Assigned agent</h2>
+            <p>Arrow keys move and select within one horizontal radio group.</p>
+            <AgentFilter
+              options={filterAgents.map((option) => ({
+                value: option.id,
+                label: option.name,
+                visual: <AgentAvatar agent={option} size="xs" decorative />,
+              }))}
+              value={agent}
+              onValueChange={setAgent}
+              compact
+            />
+            <p role="status" className="bakin-agent-pattern-story__result">Showing work for {label}</p>
+          </section>
+        </Stack>
+      </PageShell>
+    </main>
+  )
+}
+
+export const AgentFiltering = {
+  render: () => <AgentFilteringExample />,
+  play: async ({ canvasElement, userEvent }) => {
+    const canvas = within(canvasElement)
+    const all = canvas.getByRole('radio', { name: 'All' })
+    all.focus()
+    await userEvent.keyboard('{ArrowRight}')
+    await expect(canvas.getByRole('radio', { name: 'Patch' })).toHaveAttribute('aria-checked', 'true')
+    await expect(canvas.getByRole('status')).toHaveTextContent('Patch')
+    await userEvent.keyboard('{Home}')
+    await expect(all).toHaveAttribute('aria-checked', 'true')
+  },
+} satisfies Story
+
 export const AssignmentAndFiltering = {
   render: () => <AssignmentExample />,
   play: async ({ canvasElement }) => {

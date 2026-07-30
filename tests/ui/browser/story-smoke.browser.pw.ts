@@ -51,13 +51,13 @@ const workflowUnavailableStory = '/iframe.html?id=patterns-workflow-and-action-p
 const saveFailureStory = '/iframe.html?id=forms-savebar--save-failure&viewMode=story'
 const typedConfirmationStory = '/iframe.html?id=feedback-confirmdialog--typed-confirmation&viewMode=story'
 const unsavedExitStory = '/iframe.html?id=forms-unsavedchangesdialog--unsaved-exit-decision&viewMode=story'
-const facetFilterStory = '/iframe.html?id=patterns-filters-and-navigation--facet-filtering&viewMode=story'
-const searchBehaviorStory = '/iframe.html?id=patterns-filters-and-navigation--search-behavior&viewMode=story'
-const longQueryStory = '/iframe.html?id=patterns-filters-and-navigation--long-query&viewMode=story'
-const agentFilterStory = '/iframe.html?id=patterns-filters-and-navigation--agent-filtering&viewMode=story'
-const segmentedNavigationStory = '/iframe.html?id=patterns-filters-and-navigation--segmented-navigation&viewMode=story'
-const underlineNavigationStory = '/iframe.html?id=patterns-filters-and-navigation--underline-navigation&viewMode=story'
-const sortableTableStory = '/iframe.html?id=patterns-filters-and-navigation--sortable-table&viewMode=story'
+const facetFilterStory = '/iframe.html?id=navigation-facetfilter--facet-filtering&viewMode=story'
+const searchBehaviorStory = '/iframe.html?id=navigation-searchinput--search-behavior&viewMode=story'
+const longQueryStory = '/iframe.html?id=navigation-searchinput--long-query&viewMode=story'
+const agentFilterStory = '/iframe.html?id=agents-identity-and-assignment--agent-filtering&viewMode=story'
+const segmentedNavigationStory = '/iframe.html?id=navigation-segmentedcontrol--segmented-navigation&viewMode=story'
+const underlineNavigationStory = '/iframe.html?id=navigation-underlinetabs--underline-navigation&viewMode=story'
+const sortableTableStory = '/iframe.html?id=navigation-sortablehead--sortable-table&viewMode=story'
 const statusLanguageStory = '/iframe.html?id=feedback-statusbadge--status-vocabulary&viewMode=story'
 const denseMetricsStory = '/iframe.html?id=charts-stattile--dense-metrics&viewMode=story'
 const actionableMetricsStory = '/iframe.html?id=charts-stattile--actionable-metrics&viewMode=story'
@@ -562,7 +562,7 @@ test('anchored overlays keep collision, keyboard, focus, and labelling contracts
   })
 
   await test.step('command filtering and dialog focus restoration remain keyboard operable', async () => {
-    await page.goto('/iframe.html?id=foundation-command--dialog-behavior&viewMode=story', { waitUntil: 'networkidle' })
+    await page.goto('/iframe.html?id=navigation-command--dialog-behavior&viewMode=story', { waitUntil: 'networkidle' })
     const trigger = page.getByRole('button', { name: 'Open command palette' })
     await trigger.click()
     const input = page.getByRole('combobox', { name: 'Find a task action' })
