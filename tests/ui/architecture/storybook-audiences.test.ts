@@ -32,6 +32,16 @@ describe('Storybook catalog audiences', () => {
     expect(config).toContain("'@bakin/team'")
   })
 
+  it('runs exactly the public tag in the story test project — internal stays excluded, and the exclusion cannot silently widen', () => {
+    // The vitest storybook project deliberately skips internal direction
+    // studies (they are historical specimens, not contract). This pin makes
+    // that a declared fact: changing the include/exclude/skip sets is a
+    // reviewed edit here, never a quiet config drift.
+    const config = readFileSync(join(import.meta.dir, '../../../vitest.config.ts'), 'utf8')
+    const tags = config.match(/tags:\s*\{([^}]*)\}/)?.[1] ?? ''
+    expect(tags.replace(/\s+/g, ' ').trim()).toBe("include: ['public'], exclude: ['internal'], skip: [],")
+  })
+
   it('mechanically excludes internal stories from the public build', () => {
     expect(storyGlobsForAudience('public')).toEqual([
       '../storybook/public/**/*.stories.@(ts|tsx)',
