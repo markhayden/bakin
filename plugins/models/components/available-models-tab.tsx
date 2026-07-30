@@ -6,7 +6,7 @@ import {
   FacetFilter,
   ListPageContent,
   ListPageControls,
-  PageNavigator,
+  Pagination,
 } from '@makinbakin/sdk/patterns'
 import { Badge, Button, SystemState } from '@makinbakin/sdk/ui'
 
@@ -306,7 +306,7 @@ export function AvailableModelsTab({
             />
           ))}
         </ul>
-        <PageNavigator
+        <Pagination
           ariaLabel="Available model pagination"
           page={page}
           pageSize={PAGE_SIZE}

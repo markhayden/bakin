@@ -9,7 +9,7 @@ import {
   ListPageContent,
   ListPageControls,
   PageHeader,
-  PageNavigator,
+  Pagination,
   SearchDegradedChip,
   SearchInput,
   SearchPartialChip,
@@ -440,7 +440,7 @@ export function SchedulePage() {
                 scoreMap={scoreMap}
                 showScores={debug && !!search.trim()}
               />
-              <PageNavigator
+              <Pagination
                 ariaLabel="Scheduled jobs pagination"
                 page={page}
                 pageSize={LIST_PAGE_SIZE}

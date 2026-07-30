@@ -2,7 +2,7 @@
 
 import { formatAbsoluteTime, formatRelativeTime } from '@makinbakin/sdk/conversation'
 import { Grid, Section } from '@makinbakin/sdk/layout'
-import { ListRows, PageNavigator, StatusBadge } from '@makinbakin/sdk/patterns'
+import { ListRows, Pagination, StatusBadge } from '@makinbakin/sdk/patterns'
 import { Button } from '@makinbakin/sdk/ui'
 import { AlertCircle, ChevronDown } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -480,7 +480,7 @@ export function ActivityFailureGroups({
               </div>
 
               {showPaging && page && onPageChange && (
-                <PageNavigator
+                <Pagination
                   ariaLabel="Failure pattern pages"
                   page={Math.floor(page.offset / page.limit) + 1}
                   pageSize={page.limit}

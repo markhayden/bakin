@@ -382,7 +382,7 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 | `ListPage` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `ListPageContent` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `ListPageControls` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
-| `PageNavigator` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `Pagination` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `PageHeader` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `PageHeaderOverflowMenu` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `RecurringDaySummary` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
@@ -498,7 +498,7 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 | `PageHeaderMeasure` | — |
 | `PageHeaderOverflowMenuProps` | — |
 | `PageHeaderProps` | — |
-| `PageNavigatorProps` | — |
+| `PaginationProps` | — |
 | `RecurringDaySummaryProps` | — |
 | `RecurringDaySummaryTone` | — |
 | `SettingsPageBodyProps` | — |

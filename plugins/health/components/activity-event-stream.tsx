@@ -2,7 +2,7 @@
 
 import { formatAbsoluteTime, formatRelativeTime } from '@makinbakin/sdk/conversation'
 import { Section } from '@makinbakin/sdk/layout'
-import { PageNavigator, StatusBadge, type StatusTone } from '@makinbakin/sdk/patterns'
+import { Pagination, StatusBadge, type StatusTone } from '@makinbakin/sdk/patterns'
 import { SystemState } from '@makinbakin/sdk/ui'
 import { ChevronDown } from 'lucide-react'
 import { useState } from 'react'
@@ -151,7 +151,7 @@ export function ActivityEventStream({ data }: { data: UsageFeedData }) {
           <ul className="border-y border-bakin-border-subtle" aria-label="Recent events">
             {visibleEntries.map((entry) => <ActivityEventRow key={eventIdentity(entry)} entry={entry} />)}
           </ul>
-          <PageNavigator
+          <Pagination
             ariaLabel="Recent event pagination"
             page={safePage}
             pageSize={EVENT_PAGE_SIZE}

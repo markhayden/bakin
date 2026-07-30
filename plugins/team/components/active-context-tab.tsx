@@ -3,7 +3,7 @@
 import { MessageCircle } from 'lucide-react'
 import { MarkdownContent } from '@makinbakin/sdk/content'
 import { Section } from '@makinbakin/sdk/layout'
-import { PageNavigator, StatusBadge } from '@makinbakin/sdk/patterns'
+import { Pagination, StatusBadge } from '@makinbakin/sdk/patterns'
 import {
   Alert,
   AlertDescription,
@@ -211,7 +211,7 @@ export function ActiveContextTab({ agentId }: ActiveContextTabProps) {
           </li>
         ))}
       </ol>
-      <PageNavigator
+      <Pagination
         page={page}
         pageSize={pageSize}
         showAll={showAll}

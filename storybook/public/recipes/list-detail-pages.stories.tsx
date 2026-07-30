@@ -12,7 +12,7 @@ import {
   ListPage,
   ListPageContent,
   ListPageControls,
-  PageNavigator,
+  Pagination,
   PageHeader,
   SearchInput,
   SegmentedControl,
@@ -292,7 +292,7 @@ function ListPaginationExample() {
             </li>
           ))}
         </ul>
-        <PageNavigator
+        <Pagination
           ariaLabel="Memory record pagination"
           page={page}
           pageSize={pageSize}
@@ -340,7 +340,7 @@ export const ServerPagination = {
             </li>
           ))}
         </ul>
-        <PageNavigator
+        <Pagination
           ariaLabel="Server result pagination"
           page={2}
           pageSize={5}

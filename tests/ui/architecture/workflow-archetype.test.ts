@@ -48,7 +48,7 @@ describe('canonical workflow archetype', () => {
     expect(list).toContain('ListPage')
     expect(list).toContain('PageHeader')
     expect(list).toContain('SearchInput')
-    expect(list).toContain('PageNavigator')
+    expect(list).toContain('Pagination')
     expect(list).not.toContain('PluginHeader')
 
     for (const source of [detail, editor]) {

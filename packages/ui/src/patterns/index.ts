@@ -34,8 +34,8 @@ export type {
 export { ListRow, ListRows } from './list-rows'
 export type { ListRowProps, ListRowsProps, ListRowsVariant } from './list-rows'
 
-export { PageNavigator } from './page-navigator'
-export type { PageNavigatorProps } from './page-navigator'
+export { Pagination } from './pagination'
+export type { PaginationProps } from './pagination'
 
 export { DetailPage, DetailPageAside, DetailPageBody, DetailPageMain } from './detail-page'
 export type {

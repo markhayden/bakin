@@ -2,18 +2,18 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 import { useState } from 'react'
 import { expect } from 'storybook/test'
 
-import { PageNavigator } from '@makinbakin/sdk/patterns'
+import { Pagination } from '@makinbakin/sdk/patterns'
 
 import { StorySection, StoryStage } from '../../support'
 
 const meta = {
-  title: 'Navigation/PageNavigator',
+  title: 'Navigation/Pagination',
   tags: ['public'],
   parameters: {
     layout: 'fullscreen',
     docs: {
       description: {
-        component: 'PageNavigator is the compact pagination row for long repeated-content regions: an exact "Showing X–Y of Z" range, Previous/Next with honest disabled boundaries, and an optional Show all / Use pages toggle (provide `onShowAllChange` only when the consumer can truthfully render every item — omit it for server-paged collections). It renders nothing when the collection fits on one page. The control is fully controlled: the consumer owns `page` (and `showAll`) and, on a routed page, keeps them shareable through the URL-state hooks in `@makinbakin/sdk/navigation`.',
+        component: 'Pagination is the compact pagination row for long repeated-content regions: an exact "Showing X–Y of Z" range, Previous/Next with honest disabled boundaries, and an optional Show all / Use pages toggle (provide `onShowAllChange` only when the consumer can truthfully render every item — omit it for server-paged collections). It renders nothing when the collection fits on one page. The control is fully controlled: the consumer owns `page` (and `showAll`) and, on a routed page, keeps them shareable through the URL-state hooks in `@makinbakin/sdk/navigation`.',
       },
     },
     bakinCoverage: ['desktop', 'interaction', 'disabled', 'url-state-guidance'],
@@ -27,7 +27,7 @@ export const CanonicalUsage = {
   parameters: { layout: 'centered' },
   render: () => (
     <div style={{ inlineSize: 'min(90vw, 36rem)' }}>
-      <PageNavigator
+      <Pagination
         page={2}
         pageSize={20}
         total={94}
@@ -66,7 +66,7 @@ function PagedRunHistoryExample() {
         <p role="status" style={{ margin: 0, maxInlineSize: '64ch', color: 'var(--bakin-color-text-muted)', lineHeight: 1.6 }}>
           Rendering runs {first}–{last}.
         </p>
-        <PageNavigator
+        <Pagination
           ariaLabel="Run history pages"
           page={page}
           pageSize={runs.pageSize}

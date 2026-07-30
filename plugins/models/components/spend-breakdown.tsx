@@ -3,7 +3,7 @@
 import { useMemo } from 'react'
 import { RankedBarChart, type ChartDatum } from '@makinbakin/sdk/charts'
 import { Section, Stack } from '@makinbakin/sdk/layout'
-import { PageNavigator, SegmentedControl } from '@makinbakin/sdk/patterns'
+import { Pagination, SegmentedControl } from '@makinbakin/sdk/patterns'
 import { SystemState } from '@makinbakin/sdk/ui'
 
 import type { SpendResponse } from './use-models-data'
@@ -235,7 +235,7 @@ export function SpendBreakdown({
               </div>
             </div>
           </div>
-          <PageNavigator
+          <Pagination
             page={safePage}
             pageSize={pageSize}
             showAll={showAll}

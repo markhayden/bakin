@@ -10,7 +10,7 @@ import {
   ListPageContent,
   ListPageControls,
   PageHeader,
-  PageNavigator,
+  Pagination,
   SearchInput,
 } from "@makinbakin/sdk/patterns"
 import { Badge, Button, Skeleton, SystemState } from "@makinbakin/sdk/ui"
@@ -369,7 +369,7 @@ export function WorkflowsPage() {
               total={managedWorkflows.length}
               empty="No managed workflows match this view."
               pagination={(
-                <PageNavigator
+                <Pagination
                   ariaLabel="Managed workflows pagination"
                   page={safeManagedPage}
                   pageSize={MANAGED_PAGE_SIZE}

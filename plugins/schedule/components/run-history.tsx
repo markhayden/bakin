@@ -5,7 +5,7 @@ import { useRunHistory } from '@makinbakin/sdk/hooks'
 import {
   ListRow,
   ListRows,
-  PageNavigator,
+  Pagination,
   StatusBadge,
   type StatusTone,
 } from '@makinbakin/sdk/patterns'
@@ -96,7 +96,7 @@ export function RunHistory({ jobId }: { jobId: string }) {
           </ListRow>
         ))}
       </ListRows>
-      <PageNavigator
+      <Pagination
         ariaLabel="Run history pagination"
         page={safePage}
         pageSize={RUN_PAGE_SIZE}

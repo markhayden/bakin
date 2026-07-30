@@ -6,7 +6,7 @@ import {
   ConfirmDialog,
   ListPageContent,
   ModelSelect,
-  PageNavigator,
+  Pagination,
 } from '@makinbakin/sdk/patterns'
 import {
   Button,
@@ -182,7 +182,7 @@ export function AliasesTab({
           })}
         </ul>
 
-        <PageNavigator
+        <Pagination
           ariaLabel="Model alias pagination"
           page={page}
           pageSize={PAGE_SIZE}

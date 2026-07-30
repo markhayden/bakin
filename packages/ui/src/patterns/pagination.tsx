@@ -2,7 +2,7 @@
 
 import { Button } from '../primitives/button'
 
-export interface PageNavigatorProps {
+export interface PaginationProps {
   page: number
   pageSize: number
   /**
@@ -25,7 +25,7 @@ export interface PageNavigatorProps {
  * The consumer owns URL state and the visible slice so pagination remains
  * shareable, browser-history aware, and independent of domain data fetching.
  */
-export function PageNavigator({
+export function Pagination({
   page,
   pageSize,
   showAll = false,
@@ -33,7 +33,7 @@ export function PageNavigator({
   ariaLabel = 'Pagination',
   onPageChange,
   onShowAllChange,
-}: PageNavigatorProps) {
+}: PaginationProps) {
   if (total <= pageSize) return null
 
   const pageCount = Math.max(1, Math.ceil(total / pageSize))
@@ -44,7 +44,7 @@ export function PageNavigator({
   return (
     <nav
       aria-label={ariaLabel}
-      data-slot="page-navigator"
+      data-slot="pagination"
       className="flex min-w-0 flex-wrap items-center gap-bakin-2 border-t border-bakin-border-subtle pt-bakin-3"
     >
       <span className="mr-auto text-bakin-typography-size-meta tabular-nums text-bakin-text-muted">

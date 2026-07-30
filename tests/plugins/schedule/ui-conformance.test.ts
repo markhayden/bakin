@@ -118,7 +118,7 @@ describe('Schedule UI conformance', () => {
     expect(contents).toContain('<StatusBadge')
     expect(contents).toContain('<SystemState')
     expect(contents).toContain('<ListRows')
-    expect(contents).toContain('<PageNavigator')
+    expect(contents).toContain('<Pagination')
     expect(contents).not.toContain('toneBadgeClass')
     expect(contents).not.toMatch(/\b(?:red|amber|zinc)-\d+/)
     expect(contents).not.toMatch(/(?:text|w)-\[(?:\d|\.)/)

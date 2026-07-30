@@ -46,7 +46,7 @@ import {
   ListPage,
   ListPageContent,
   ListPageControls,
-  PageNavigator,
+  Pagination,
   PageHeader,
   SearchInput,
   SearchUnavailable,
@@ -472,7 +472,7 @@ function MemoryShellInner() {
               onClear={() => setQuery('')}
               onSelect={record.open}
             />
-            <PageNavigator
+            <Pagination
               ariaLabel="Memory results pagination"
               page={page}
               pageSize={pageSize}

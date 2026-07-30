@@ -22,7 +22,7 @@ import { AlertTriangle, Loader2, RefreshCw } from 'lucide-react'
 import { ChartExplainer, Sparkline } from '@makinbakin/sdk/charts'
 import { usePluginEvent, useJsonFetch, useQueryState } from '@makinbakin/sdk/hooks'
 import { Grid, Section, Stack } from '@makinbakin/sdk/layout'
-import { PageNavigator, SegmentedControl, StatusBadge } from '@makinbakin/sdk/patterns'
+import { Pagination, SegmentedControl, StatusBadge } from '@makinbakin/sdk/patterns'
 import {
   Alert,
   AlertDescription,
@@ -1107,7 +1107,7 @@ function TimelinePanel({ agentId }: { agentId: string }) {
               </li>
             ))}
           </ol>
-          <PageNavigator
+          <Pagination
             page={page}
             pageSize={pageSize}
             showAll={showAll}

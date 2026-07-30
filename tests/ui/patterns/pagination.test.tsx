@@ -4,15 +4,15 @@ import { describe, expect, it, mock } from 'bun:test'
 import { fireEvent, render, screen } from '@testing-library/react'
 import '../../rtl-settle'
 
-import { PageNavigator } from '@makinbakin/sdk/patterns'
+import { Pagination } from '@makinbakin/sdk/patterns'
 
-describe('PageNavigator', () => {
+describe('Pagination', () => {
   it('moves between bounded pages and exposes an explicit show-all mode', () => {
     const onPageChange = mock(() => {})
     const onShowAllChange = mock(() => {})
 
     const { rerender } = render(
-      <PageNavigator
+      <Pagination
         page={1}
         pageSize={10}
         showAll={false}
@@ -31,7 +31,7 @@ describe('PageNavigator', () => {
     expect(onShowAllChange).toHaveBeenCalledWith(true)
 
     rerender(
-      <PageNavigator
+      <Pagination
         page={1}
         pageSize={10}
         showAll
@@ -48,7 +48,7 @@ describe('PageNavigator', () => {
     const onPageChange = mock(() => {})
 
     render(
-      <PageNavigator
+      <Pagination
         page={2}
         pageSize={10}
         total={24}
