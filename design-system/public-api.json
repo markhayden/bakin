@@ -10,8 +10,8 @@
     "entrypoints": 8,
     "supportedEntrypoints": 7,
     "frozenLegacyEntrypoints": 1,
-    "valueExports": 360,
-    "typeExports": 423
+    "valueExports": 359,
+    "typeExports": 421
   },
   "entrypoints": [
     {
@@ -400,7 +400,6 @@
         "PageHeaderOverflowMenu",
         "Pagination",
         "PluginSettingsRenderer",
-        "RecurringDaySummary",
         "SaveBar",
         "ScoreOverlay",
         "SearchDegradedChip",
@@ -499,8 +498,6 @@
         "PluginSettingsFeedback",
         "PluginSettingsRendererProps",
         "PluginSettingsSchema",
-        "RecurringDaySummaryProps",
-        "RecurringDaySummaryTone",
         "SaveBarProps",
         "ScoreOverlayInfo",
         "ScoreOverlayProps",

@@ -1,7 +1,7 @@
 import { forwardRef } from 'react'
 import type { ComponentPropsWithoutRef, ReactNode } from 'react'
 
-import { cn } from '../utils'
+import { cn } from '@makinbakin/sdk/utils'
 
 export type RecurringDaySummaryTone = 'neutral' | 'attention'
 

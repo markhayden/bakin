@@ -4,11 +4,8 @@ import { Fragment, useMemo, useState } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '@makinbakin/sdk/ui'
 import { useOccurrences, type ScheduleJob, type ScheduleOccurrence, type ScheduledDomainEvent } from '@makinbakin/sdk/hooks'
-import {
-  RecurringDaySummary,
-  type RecurringDaySummaryTone,
-} from '@makinbakin/sdk/patterns'
 import { AgentBadge } from './agent-badge'
+import { RecurringDaySummary, type RecurringDaySummaryTone } from './recurring-day-summary'
 import { EventChip, eventInstant } from './event-popover'
 import './schedule-calendar.css'
 

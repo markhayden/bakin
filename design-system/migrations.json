@@ -19,11 +19,11 @@
     "private-import"
   ],
   "summary": {
-    "paths": 137,
+    "paths": 138,
     "totals": {
       "raw-palette": 749,
-      "arbitrary-size": 338,
-      "raw-control": 118,
+      "arbitrary-size": 339,
+      "raw-control": 119,
       "inline-style": 39,
       "generic-token": 1162,
       "unscoped-css": 0,
@@ -1611,6 +1611,23 @@
       "status": "legacy-allowed",
       "allowances": {
         "arbitrary-size": 1
+      }
+    },
+    {
+      "path": "plugins/schedule/components/recurring-day-summary.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "plugin",
+        "pluginId": "schedule"
+      },
+      "censusEntryId": "plugin-slot:schedule:page:/schedule",
+      "migrationTask": "T55-T56",
+      "archetype": "list-index",
+      "target": "schedule list/calendar/form archetypes and supported SDK UI",
+      "status": "legacy-allowed",
+      "allowances": {
+        "arbitrary-size": 1,
+        "raw-control": 1
       }
     },
     {

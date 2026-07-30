@@ -188,8 +188,3 @@ export type {
 export { StatGroup } from './stat-group'
 export type { StatGroupProps } from './stat-group'
 
-export { RecurringDaySummary } from './recurring-day-summary'
-export type {
-  RecurringDaySummaryProps,
-  RecurringDaySummaryTone,
-} from './recurring-day-summary'

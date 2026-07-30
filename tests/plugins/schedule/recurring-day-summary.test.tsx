@@ -4,7 +4,7 @@ import { fireEvent, render, screen } from '@testing-library/react'
 
 import '../../rtl-settle'
 
-import { RecurringDaySummary } from '@makinbakin/sdk/patterns'
+import { RecurringDaySummary } from '../../../plugins/schedule/components/recurring-day-summary'
 
 describe('RecurringDaySummary', () => {
   it('presents a compact recurring-series summary as one named action', () => {
