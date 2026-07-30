@@ -20,7 +20,7 @@ Branch: `feat/skill-hub-interop-687` · Spec: SPEC.md v2 · Plan: PLAN.md v2
 ## Phase C — Surfaces (CP-C)
 - [x] T9 trust gate (preview, verdicts, instruction-risk scan, consent tokens)
 - [x] T10 REST /api/skills/{preview,install,list,map/*} (+ HOST_STATIC_ROUTE_PATHS)
-- [ ] T11 `bakin skills {install,list,remove,map}` CLI group (bare names)
+- [x] T11 `bakin skills {install,list,remove,map}` CLI group (bare names) — `src/cli/commands/skills.ts`, dispatched from `cli/bakin.ts`
 
 ## Phase D — UI + agent lane (CP-D)
 - [x] T12 Explore paste box + installed hub-skills list (modal flow, version bump)
@@ -29,12 +29,35 @@ Branch: `feat/skill-hub-interop-687` · Spec: SPEC.md v2 · Plan: PLAN.md v2
 ## Phase E — Ship (CP-E)
 - [x] T14 docs sweep (knowledge docs, CLAUDE.md, docs site, CHANGELOG, README check)
 - [x] T15 done bar (automated legs): suite 8498 pass/0 fail + lint + cycles green; live E2E against real ClawHub + GitHub on an isolated server — the gate refused a real DO_NOT_INSTALL skill (the #1 most-downloaded!), paste-URL install/exec-bits/list/remove/ambiguity-picker/D18-live-injection all verified on Pi
-- [ ] T15 live-LLM legs (Mark's 3737 pass): an agent turn actually exercising an installed skill; a live `bakin skills map` run; OpenClaw-side projection sanity if the adapter gets switched
-- [ ] Mark live-tests on main checkout → PR → merge
+- [x] T15 live-LLM legs (Mark's 3737 pass)
+- [x] Mark live-tests on main checkout → PR → merge — **PR #750 merged 2026-07-30** (`53af28cc1`), Main CI green
 
-## Outside this repo (follow-up, bakin-bits-official)
-- [ ] Port 2–3 blessed skills as native capability packs + catalog entries (D17)
-- [ ] `skill-porter` skill (supersedes the core default mapping prompt)
+## Outside this repo (follow-up, bakin-bits-official) — DONE
+Both landed in **bakin-bits-official PR #94**, merged 2026-07-30 (`00e0afe5f`).
+- [x] Blessed skills as native capability packs + catalog entries (D17) — `github`, `google-workspace`, `notion`, `office-docs`
+- [x] `skill-porter` skill (supersedes the core default mapping prompt)
+- [x] `packs/pack-contract.test.ts` — packs had no contract coverage at all (unplanned; added because these five packs doubled the count)
+
+**What the survey changed.** D17 assumed blessed hub skills were worth porting.
+A survey of ClawHub's top 40 by downloads found the opposite: the most-installed
+skills ship no install legs — steipete's `github`, `gog`, `notion`, `obsidian`,
+`nano-pdf`, `weather`, `sonoscli`, `mcporter` are each two files of prose
+assuming a CLI already exists, and almost none carry a license. Copying them
+adds nothing the paste-a-link path does not already handle. So the packs are
+Bakin-**authored** and supply the leg those skills lack. D17's "official lane =
+bits" intent holds; "port" was the wrong verb.
+
+**Binary policy (Mark, 2026-07-30):** packs declare PATH prerequisites with a
+help link rather than mirroring third-party binaries into bits releases —
+re-cutting on every upstream release is a maintenance treadmill, and a missing
+prereq already reports honestly. An xterm.js terminal in the Bakin UI was
+floated as a possible future answer to guided manual installs.
+
+**Bug the live test caught:** `notion` first shipped `secretSlot: "notion.token"`,
+which the injection layer refuses (packs may only bind their own `skills.*`
+namespace — the #687 review fix working against our own pack). Readiness said so
+verbatim instead of reporting a false green. Minted `skills.<pack>.<ENV_VAR>`
+slots are now enforced by the pack contract test.
 
 ## Post-live-test feedback (Mark, 2026-07-28)
 - [x] Unify the UI: ecosystem lane moved INSIDE the Capabilities tab (paste-a-link CTA + drawer preview + "From the ecosystem" installed list above the curated grid); Hub Skills tab removed — no per-source tab sprawl
