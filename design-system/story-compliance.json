@@ -3,20 +3,6 @@
   "generatedBy": "bun run ui:story-compliance:generate",
   "entries": [
     {
-      "path": "storybook/public/charts/chart-foundation.stories.tsx",
-      "title": "Charts/Exact data and compact trends",
-      "missing": [
-        "canonical-usage"
-      ]
-    },
-    {
-      "path": "storybook/public/charts/chart-visuals.stories.tsx",
-      "title": "Charts/Line, bar, and stacked charts",
-      "missing": [
-        "canonical-usage"
-      ]
-    },
-    {
       "path": "storybook/public/conversation/activity-group.stories.tsx",
       "title": "Conversation/Tool activity",
       "missing": [

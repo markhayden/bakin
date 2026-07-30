@@ -480,11 +480,11 @@ test('public actionable metrics pattern visual baseline', async ({ page }) => {
 })
 
 test('public exact chart data visual baseline', async ({ page }) => {
-  await page.goto('/iframe.html?id=charts-exact-data-and-compact-trends--exact-data-table&viewMode=story')
+  await page.goto('/iframe.html?id=charts-chartdatatable--exact-data-disclosure&viewMode=story')
   await expect(page.getByRole('heading', { level: 1, name: 'A chart summary never hides the evidence' })).toBeVisible()
   await expect(page.getByRole('table', { name: 'Run outcomes exact data' })).toBeVisible()
   await page.evaluate(async () => document.fonts.ready)
-  await expect(page).toHaveScreenshot('foundation-chart-exact-data.png', {
+  await expect(page).toHaveScreenshot('charts-chart-data-table.png', {
     animations: 'disabled',
     caret: 'hide',
     fullPage: true,
@@ -492,11 +492,11 @@ test('public exact chart data visual baseline', async ({ page }) => {
 })
 
 test('public chart palette visual baseline', async ({ page }) => {
-  await page.goto('/iframe.html?id=charts-exact-data-and-compact-trends--stable-palette&viewMode=story')
+  await page.goto('/iframe.html?id=charts-stackedcolumnchart--stable-palette&viewMode=story')
   await expect(page.getByRole('heading', { level: 1, name: 'Color follows the entity, not the filter' })).toBeVisible()
   await expect(page.getByText('Slot 1')).toBeVisible()
   await page.evaluate(async () => document.fonts.ready)
-  await expect(page).toHaveScreenshot('foundation-chart-palette.png', {
+  await expect(page).toHaveScreenshot('charts-stacked-column-palette.png', {
     animations: 'disabled',
     caret: 'hide',
     fullPage: true,
@@ -504,11 +504,11 @@ test('public chart palette visual baseline', async ({ page }) => {
 })
 
 test('public compact chart trends visual baseline', async ({ page }) => {
-  await page.goto('/iframe.html?id=charts-exact-data-and-compact-trends--compact-trends&viewMode=story')
+  await page.goto('/iframe.html?id=charts-sparkline--compact-trends&viewMode=story')
   await expect(page.getByRole('heading', { level: 1, name: 'Shape supports the number; it does not replace it' })).toBeVisible()
   await expect(page.getByRole('group', { name: 'Completed tasks across the last six reporting windows' })).toBeVisible()
   await page.evaluate(async () => document.fonts.ready)
-  await expect(page).toHaveScreenshot('foundation-chart-compact-trends.png', {
+  await expect(page).toHaveScreenshot('charts-sparkline.png', {
     animations: 'disabled',
     caret: 'hide',
     fullPage: true,
@@ -516,13 +516,13 @@ test('public compact chart trends visual baseline', async ({ page }) => {
 })
 
 test('public line chart visual baseline', async ({ page }) => {
-  await page.goto('/iframe.html?id=charts-line-bar-and-stacked-charts--line-charts&viewMode=story')
+  await page.goto('/iframe.html?id=charts-linechart--missing-data-and-empty&viewMode=story')
   await expect(page.getByRole('heading', { level: 1, name: 'A missing point is a gap, not a collapse to zero' })).toBeVisible()
   await expect(page.getByRole('group', { name: 'Workflow outcomes' })).toBeVisible()
   await expect(page.getByRole('tooltip')).toHaveCount(0)
   await expect.poll(() => page.getByRole('region', { name: 'Workflow outcomes plot' }).evaluate((element) => element.scrollLeft)).toBe(0)
   await page.evaluate(async () => document.fonts.ready)
-  await expect(page).toHaveScreenshot('foundation-chart-line.png', {
+  await expect(page).toHaveScreenshot('charts-line-chart.png', {
     animations: 'disabled',
     caret: 'hide',
     fullPage: true,
@@ -530,12 +530,12 @@ test('public line chart visual baseline', async ({ page }) => {
 })
 
 test('public bar chart visual baseline', async ({ page }) => {
-  await page.goto('/iframe.html?id=charts-line-bar-and-stacked-charts--bar-charts&viewMode=story')
+  await page.goto('/iframe.html?id=charts-barchart--grouped-and-stacked&viewMode=story')
   await expect(page.getByRole('heading', { level: 1, name: 'Choose grouped bars for peers and stacked bars for totals' })).toBeVisible()
   await expect(page.getByRole('group', { name: 'Grouped workflow outcomes' })).toBeVisible()
   await expect(page.getByRole('tooltip')).toHaveCount(0)
   await page.evaluate(async () => document.fonts.ready)
-  await expect(page).toHaveScreenshot('foundation-chart-bar.png', {
+  await expect(page).toHaveScreenshot('charts-bar-chart.png', {
     animations: 'disabled',
     caret: 'hide',
     fullPage: true,
@@ -543,12 +543,12 @@ test('public bar chart visual baseline', async ({ page }) => {
 })
 
 test('public stacked column chart visual baseline', async ({ page }) => {
-  await page.goto('/iframe.html?id=charts-line-bar-and-stacked-charts--stacked-columns&viewMode=story')
+  await page.goto('/iframe.html?id=charts-stackedcolumnchart--dense-composition&viewMode=story')
   await expect(page.getByRole('heading', { level: 1, name: 'Stable entities stay legible as the series count grows' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'agent-01' })).toHaveAttribute('aria-pressed', 'true')
   await expect(page.getByRole('tooltip')).toHaveCount(0)
   await page.evaluate(async () => document.fonts.ready)
-  await expect(page).toHaveScreenshot('foundation-chart-stacked-column.png', {
+  await expect(page).toHaveScreenshot('charts-stacked-column-chart.png', {
     animations: 'disabled',
     caret: 'hide',
     fullPage: true,
@@ -689,6 +689,8 @@ const PRIMITIVES_BASELINES = [
   { url: '/iframe.html?id=forms-plugin-settings-renderer--messaging-schema-workflow&viewMode=story', png: 'forms-plugin-settings-renderer.png', text: 'Let plugin settings feel native without hiding their rules' },
   { url: '/iframe.html?id=recipes-destructive-settings-flow--settings-flow&viewMode=story', png: 'recipes-destructive-settings-flow.png', text: 'Destructive settings flow' },
   { url: '/iframe.html?id=navigation-pagenavigator--paged-boundaries&viewMode=story', png: 'navigation-page-navigator.png', text: 'Showing 21–40 of 94' },
+  { url: '/iframe.html?id=charts-rankedbarchart--ranked-comparison&viewMode=story', png: 'charts-ranked-bar-chart.png', text: 'Rank long labels without forcing them onto an axis' },
+  { url: '/iframe.html?id=charts-chartexplainer--canonical-usage&viewMode=story', png: 'charts-chart-explainer.png', role: 'note' as const },
 ]
 
 for (const baseline of PRIMITIVES_BASELINES) {
