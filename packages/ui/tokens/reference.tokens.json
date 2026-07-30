@@ -144,8 +144,8 @@
         "magenta": {
           "$value": {
             "colorSpace": "srgb",
-            "components": [0.835294, 0.317647, 0.505882],
-            "hex": "#d55181"
+            "components": [0.662745, 0.294118, 0.658824],
+            "hex": "#a94ba8"
           }
         },
         "orange": {

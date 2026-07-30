@@ -50,7 +50,9 @@ const selectTriggerClasses = [
   'data-placeholder:text-bakin-text-muted data-popup-open:border-bakin-focus-ring',
   'disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-[var(--bakin-state-opacity-disabled)]',
   'aria-invalid:border-bakin-signal-danger',
-  '[&_[data-slot=select-value]]:truncate [&_svg]:pointer-events-none [&_svg]:size-bakin-4 [&_svg]:shrink-0',
+  // Size only unsized svgs (the chevron) — an avatar identity ring inside
+  // SelectValue carries its own size-full and must keep it (Button precedent).
+  '[&_[data-slot=select-value]]:truncate [&_svg]:pointer-events-none [&_svg:not([class*="size-"])]:size-bakin-4 [&_svg]:shrink-0',
   'motion-reduce:transition-none',
 ].join(' ')
 

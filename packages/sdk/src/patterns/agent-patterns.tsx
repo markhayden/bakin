@@ -243,13 +243,16 @@ export function AgentSelect({
   const selectedTeam = isTeamValue(value)
     ? teams.find((team) => team.id === teamIdFromValue(value))
     : undefined
+  // A select with nothing to choose is not interactive — an empty popup
+  // would be a dishonest control.
+  const hasChoices = agents.length > 0 || teams.length > 0 || allowNone || includeAssigned
 
   return (
     <Select
       name={name}
       value={value}
       onValueChange={(next) => onValueChange(next ?? '')}
-      disabled={disabled}
+      disabled={disabled || !hasChoices}
       required={required}
     >
       <SelectTrigger

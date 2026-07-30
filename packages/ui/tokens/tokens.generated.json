@@ -343,11 +343,11 @@
       "value": {
         "colorSpace": "srgb",
         "components": [
-          0.835294,
-          0.317647,
-          0.505882
+          0.662745,
+          0.294118,
+          0.658824
         ],
-        "hex": "#d55181"
+        "hex": "#a94ba8"
       }
     },
     {
@@ -1331,16 +1331,16 @@
       "value": {
         "colorSpace": "srgb",
         "components": [
-          0.835294,
-          0.317647,
-          0.505882
+          0.662745,
+          0.294118,
+          0.658824
         ],
-        "hex": "#d55181"
+        "hex": "#a94ba8"
       },
       "contrast": {
         "against": "semantic.color.canvas.default",
         "role": "non-text",
-        "ratio": 4.89,
+        "ratio": 3.91,
         "minimum": 3,
         "standard": "WCAG AA non-text UI",
         "status": "pass"

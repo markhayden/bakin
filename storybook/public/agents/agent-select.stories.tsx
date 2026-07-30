@@ -179,5 +179,7 @@ export const AssignmentAndFiltering = {
     await userEvent.keyboard('{ArrowRight}')
     await expect(canvas.getByRole('radio', { name: 'Maya Chen' })).toHaveAttribute('aria-checked', 'true')
     await expect(canvas.getByRole('combobox', { name: 'Locked owner' })).toBeDisabled()
+    // An agent-less select has nothing to offer and must not open an empty popup.
+    await expect(canvas.getByRole('combobox', { name: 'No available agents' })).toBeDisabled()
   },
 } satisfies Story
