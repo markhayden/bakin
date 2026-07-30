@@ -254,10 +254,20 @@ import { PluginHeader, FacetFilter, AgentAvatar } from '@makinbakin/sdk/componen
 | `ToolCallDrawer` | — |
 | `ToolCallDrawerProps` | — |
 | `Composer` | Legacy composer adapter; use `@makinbakin/sdk/conversation` for new consumers. |
-| `ComposerProps` | — |
-| `ComposerAttachments` | — |
+| `writeComposerDraft` | Legacy composer adapter; use `@makinbakin/sdk/conversation` for new consumers. |
 | `ComposerAttachmentItem` | — |
 | `ComposerAttachmentStatus` | — |
+| `ComposerAttachments` | — |
+| `ComposerHandle` | — |
+| `ComposerProps` | — |
+| `QueuedMessageList` | — |
+| `ConversationQueuedItem` | — |
+| `formatTokenCount` | — |
+| `formatUsageCost` | — |
+| `ConversationTurnUsage` | — |
+| `ContextMeter` | — |
+| `contextMeterHasContent` | — |
+| `ContextMeterStats` | — |
 | `ConversationPanel` | — |
 | `ConversationPanelProps` | — |
 | `useConversationThread` | — |
@@ -367,10 +377,15 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 | `KanbanColumn` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `KanbanColumnBody` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `KanbanColumnHeader` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `ListRow` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `ListRows` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `ListPage` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `ListPageContent` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `ListPageControls` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `PageNavigator` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `PageHeader` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `PageHeaderOverflowMenu` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `RecurringDaySummary` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `SettingsPage` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `SettingsPageBody` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `SettingsPageContent` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
@@ -380,6 +395,10 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 | `WorkflowPageBody` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `WorkflowPageCanvas` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `WorkflowPageToolbar` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `WorkspacePage` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `WorkspacePageBody` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `WorkspacePageCompactHeader` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `WorkspacePageHeader` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `ConfirmDialog` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `DangerZone` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `FacetFilter` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
@@ -391,6 +410,7 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 | `StatGroup` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `StatTile` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `StatusBadge` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `StatusMarker` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `UnderlineTabs` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `UnsavedChangesDialog` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `SearchUnavailable` | Replace an affected result region when search returns no trustworthy result. |
@@ -457,6 +477,7 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 | `DetailPageLayout` | — |
 | `DetailPageMainProps` | — |
 | `DetailPageProps` | — |
+| `DetailPageScroll` | — |
 | `DetailPageWidth` | — |
 | `InspectorPanelContentProps` | — |
 | `InspectorPanelFooterProps` | — |
@@ -471,8 +492,15 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 | `ListPageControlsProps` | — |
 | `ListPageProps` | — |
 | `ListPageWidth` | — |
+| `ListRowProps` | — |
+| `ListRowsProps` | — |
+| `ListRowsVariant` | — |
 | `PageHeaderMeasure` | — |
+| `PageHeaderOverflowMenuProps` | — |
 | `PageHeaderProps` | — |
+| `PageNavigatorProps` | — |
+| `RecurringDaySummaryProps` | — |
+| `RecurringDaySummaryTone` | — |
 | `SettingsPageBodyProps` | — |
 | `SettingsPageContentProps` | — |
 | `SettingsPageLayout` | — |
@@ -488,6 +516,11 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 | `WorkflowPageProps` | — |
 | `WorkflowPageToolbarProps` | — |
 | `WorkflowPageWidth` | — |
+| `WorkspacePageBodyProps` | — |
+| `WorkspacePageCompactHeaderProps` | — |
+| `WorkspacePageHeaderProps` | — |
+| `WorkspacePageMode` | — |
+| `WorkspacePageProps` | — |
 | `ConfirmDialogCancelVariant` | — |
 | `ConfirmDialogProps` | — |
 | `ConfirmDialogTone` | — |
@@ -510,6 +543,7 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 | `StatTileVariant` | — |
 | `StatusBadgeProps` | — |
 | `StatusBadgeVariant` | — |
+| `StatusMarkerProps` | — |
 | `StatusTone` | — |
 | `UnderlineTab` | — |
 | `UnderlineTabsProps` | — |
@@ -531,6 +565,7 @@ Isolated data-visualization components and contracts. Source: `packages/sdk/src/
 | `CHART_SERIES_COLORS` | `@makinbakin/sdk/charts` — opt-in, accessible data visualization. |
 | `CHART_TOKEN_COLORS` | `@makinbakin/sdk/charts` — opt-in, accessible data visualization. |
 | `LineChart` | `@makinbakin/sdk/charts` — opt-in, accessible data visualization. |
+| `RankedBarChart` | `@makinbakin/sdk/charts` — opt-in, accessible data visualization. |
 | `Sparkline` | `@makinbakin/sdk/charts` — opt-in, accessible data visualization. |
 | `StackedColumnChart` | `@makinbakin/sdk/charts` — opt-in, accessible data visualization. |
 | `BarChartProps` | — |
@@ -539,6 +574,7 @@ Isolated data-visualization components and contracts. Source: `packages/sdk/src/
 | `ChartExplainerProps` | — |
 | `ChartSeries` | — |
 | `LineChartProps` | — |
+| `RankedBarChartProps` | — |
 | `SparklineProps` | — |
 | `StackedColumnChartProps` | — |
 | `StackedColumnDatum` | — |
@@ -572,6 +608,7 @@ Isolated conversation UI and models. Source: `packages/sdk/src/conversation/inde
 | `ConversationPanelProps` | — |
 | `ToolCallDrawerProps` | — |
 | `useConversationThread` | Durable bus-driven thread state for server-owned conversational turns. |
+| `ConversationQueuedItem` | — |
 | `ConversationThread` | — |
 | `ConversationThreadLoad` | — |
 | `ConversationThreadOptions` | — |
@@ -612,16 +649,23 @@ Isolated conversation UI and models. Source: `packages/sdk/src/conversation/inde
 | `ThinkingIndicatorProps` | — |
 | `TurnTimestampProps` | — |
 | `UserMessageProps` | — |
+| `formatTokenCount` | — |
+| `formatUsageCost` | — |
+| `ConversationTurnUsage` | — |
 | `Conversation` | Document-first conversation timeline and honest zero-message state. |
 | `ConversationEmptyState` | Document-first conversation timeline and honest zero-message state. |
 | `ConversationEmptyStateProps` | — |
 | `ConversationMode` | — |
 | `ConversationProps` | — |
 | `Composer` | Persistent, IME-safe composer with consumer-owned attachment mutations. |
+| `writeComposerDraft` | Persistent, IME-safe composer with consumer-owned attachment mutations. |
 | `ComposerAttachmentItem` | — |
 | `ComposerAttachments` | — |
 | `ComposerAttachmentStatus` | — |
+| `ComposerHandle` | — |
 | `ComposerProps` | — |
+| `QueuedMessageList` | Accepted follow-ups waiting behind an active turn. |
+| `QueuedMessageListProps` | — |
 
 ## `@makinbakin/sdk/content`
 
@@ -744,6 +788,7 @@ Source: `packages/sdk/src/utils/index.ts`.
 | `healthUnknown` | `@makinbakin/sdk/utils` — tiny utilities for plugin authors. |
 | `healthWarning` | `@makinbakin/sdk/utils` — tiny utilities for plugin authors. |
 | `cn` | Tailwind class merger (clsx + tailwind-merge). |
+| `copyToClipboard` | — |
 | `BadgeTone` | Semantic tone for an outline status badge. |
 | `toneBadgeClass` | Classes for an outline status badge of the given tone — the |
 | `isValidAssetId` | Pure assetId shape validators (see ./asset-id). |
@@ -846,5 +891,5 @@ Source: `packages/sdk/src/navigation/index.ts`.
 | `UnsavedChangesGuardResult` | Inputs and result contract for complete unsaved-change protection. |
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Jul 24, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Jul 29, 2026 · Bakin 0.0.0-dev</span>
 </aside>

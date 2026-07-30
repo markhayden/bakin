@@ -977,6 +977,14 @@ curl -sS \
 ```
 </OpenApiReference>
 
+<OpenApiReference operationId="chat.delete.chats-chat-id-queued-queue-id">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X DELETE \
+  'http://localhost:3737/api/plugins/chat/chats/<chatId>/queued/<queueId>'
+```
+</OpenApiReference>
+
 <OpenApiReference operationId="chat.post.chats-chat-id-seen">
 ```sh frame="terminal" showLineNumbers
 curl -sS \
@@ -2256,5 +2264,5 @@ curl -sS \
 </OpenApiReference>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Jul 24, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Jul 29, 2026 · Bakin 0.0.0-dev</span>
 </aside>

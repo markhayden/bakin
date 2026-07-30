@@ -143,7 +143,7 @@ const result = await ctx.hooks.invoke(
 
 Label: chat.resolveActiveTurn
 Kind: rpc
-Source: plugins/chat/index.ts:41
+Source: plugins/chat/index.ts:45
 
 Example:
 

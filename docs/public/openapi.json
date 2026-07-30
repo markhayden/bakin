@@ -4576,25 +4576,6 @@
               }
             }
           },
-          "409": {
-            "description": "Conflict.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
           "415": {
             "description": "Unsupported Media Type — body content type does not match the declared content type.",
             "content": {
@@ -4622,7 +4603,7 @@
         "tags": [
           "Chat"
         ],
-        "description": "Returns 202 immediately; the reply streams as chat.chunk SSE events, closed by chat.done or chat.error. One in-flight turn per chat (409 otherwise).",
+        "description": "Returns 202 immediately; the reply streams as chat.chunk SSE events, closed by chat.done or chat.error. One turn runs at a time — a send while a turn streams is QUEUED (202 { queued: true }) and drains as one combined turn when the reply settles (#729).",
         "parameters": [
           {
             "name": "chatId",
@@ -5075,6 +5056,93 @@
           }
         ],
         "x-bakin-full-path": "/api/plugins/chat/chats/:chatId/abort"
+      }
+    },
+    "/api/plugins/chat/chats/{chatId}/queued/{queueId}": {
+      "delete": {
+        "operationId": "chat.delete.chats-chat-id-queued-queue-id",
+        "summary": "Remove a queued follow-up message",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input — params, query, or body did not match the declared schema.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "issues": {
+                      "type": "array",
+                      "items": {}
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Chat"
+        ],
+        "description": "Removes one pending queued message before it drains. The client may restore its text into an empty composer.",
+        "parameters": [
+          {
+            "name": "chatId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "queueId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "x-bakin-full-path": "/api/plugins/chat/chats/:chatId/queued/:queueId"
       }
     },
     "/api/plugins/explore/catalog": {
