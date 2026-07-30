@@ -54,3 +54,27 @@ P1 (correctness):
 - [x] name fallback from repo/slug not ref segment; whole-tree preview scan (multi-skill + traversal)
 - [x] "official" chip overclaims; 5xx logging; mapPreview 5xx status
 Nits (all done): split('.',2) truncation, byte-cap units, size caps for github, openclaw mid-loop+name, computeDirSha symlinks, previewBusy guard, aria-label, brace-walk strings, drift-under-yes, empty-state title, USAGE --yes
+
+## CI investigation (2026-07-29/30) — evidence, for whoever picks this up
+Bisected with two throwaway PRs (both closed, branches deleted):
+- Control PR from an UNMODIFIED main tree, same window → **fully green**. CI itself is healthy.
+- Bisect PR: all #687 source changes, 14 new test files parked as `.disabled` → **fully green**.
+- Same branch + the 6 heavy fs/install test files re-enabled → **failed**.
+
+Each failing run trips a DIFFERENT pre-existing timing-sensitive test, never one of ours:
+- `OverviewTab > a failed repair surfaces the reason` (timed out at 37s, limit 15s)
+- `createRuntimeToolUsageRecorder > records result-only Bakin observations…` (asserts an exact global usage count)
+- `PluginHost > bounds a hung hot-swap import…` (a timeout-bounding test)
+Some runs instead STALL outright (~6800/8520 tests, ~190 files never start, zero failures logged).
+
+Not reproducible locally: 5 full macOS runs green (stamped and unstamped), a 4-CPU/7GB Linux
+container run green, and victims+our files run together 3× green. Our files are cheap
+(83–340 ms each, ~1.6 s total), so this is scheduling perturbation tipping latent flakes on
+GitHub's runners, not added load.
+
+One REAL hang of ours was found and fixed: hub-skills-section.test.tsx fired async click
+handlers whose state updates landed outside act(); under --isolate that pins a worker open
+forever. Interactions now flush inside act().
+
+Open question for maintainer: harden the three flaky victims (whack-a-mole risk), or accept
+rerun-to-green per the repo's existing convention.
