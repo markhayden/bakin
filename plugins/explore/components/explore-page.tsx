@@ -9,7 +9,6 @@ import {
   ListPageControls,
   PageHeader,
   SearchInput,
-  UnderlineTabs,
 } from '@makinbakin/sdk/patterns'
 import {
   Badge,
@@ -20,6 +19,9 @@ import {
   CardHeader,
   Skeleton,
   SystemState,
+  Tabs,
+  TabsList,
+  TabsTrigger,
 } from '@makinbakin/sdk/ui'
 import { toast, useJsonFetch } from '@makinbakin/sdk/hooks'
 import { CatalogCard } from './catalog-card'
@@ -326,13 +328,20 @@ function ExplorePageInner() {
         )}
       />
 
-      <UnderlineTabs
-        idPrefix="explore"
-        ariaLabel="Catalog sections"
-        tabs={tabs}
-        value={tab}
-        onValueChange={setTab}
-      />
+      <Tabs value={tab} onValueChange={(value) => setTab(value as string)}>
+        <TabsList variant="underline" activateOnFocus aria-label="Catalog sections">
+          {tabs.map((item) => (
+            <TabsTrigger
+              key={item.id}
+              value={item.id}
+              id={`explore-tab-${item.id}`}
+              aria-controls={`explore-panel-${item.id}`}
+            >
+              {item.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
 
       <ListPageControls
         label="Catalog filters and maintenance"

@@ -219,9 +219,6 @@ import { PluginHeader, FacetFilter, AgentAvatar } from '@makinbakin/sdk/componen
 | `SortableHead` | Sortable table column header with ascending/descending indicator. |
 | `SortableHeadProps` | — |
 | `SortDir` | — |
-| `UnderlineTabs` | Tab list with animated underline indicator. |
-| `UnderlineTab` | — |
-| `UnderlineTabsProps` | — |
 | `TurnOutputView` | THE single renderer for normalized turn chunks (text/tool/status/error) — turn-output surfaces consume this, never hand-rolled format heuristics. |
 | `TurnToolChip` | THE single renderer for normalized turn chunks (text/tool/status/error) — turn-output surfaces consume this, never hand-rolled format heuristics. |
 | `foldTurnChunks` | THE single renderer for normalized turn chunks (text/tool/status/error) — turn-output surfaces consume this, never hand-rolled format heuristics. |
@@ -411,7 +408,6 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 | `StatTile` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `StatusBadge` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `StatusMarker` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
-| `UnderlineTabs` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `UnsavedChangesDialog` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `SearchUnavailable` | Replace an affected result region when search returns no trustworthy result. |
 | `ScoreOverlay` | Show fused and per-leg search relevance as exact, non-color-dependent evidence. |
@@ -545,8 +541,6 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 | `StatusBadgeVariant` | — |
 | `StatusMarkerProps` | — |
 | `StatusTone` | — |
-| `UnderlineTab` | — |
-| `UnderlineTabsProps` | — |
 | `UnsavedChangesDialogProps` | — |
 
 ## `@makinbakin/sdk/charts`

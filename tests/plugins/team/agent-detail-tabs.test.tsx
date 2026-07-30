@@ -11,7 +11,7 @@
  * stays the source of truth.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import '../../rtl-settle'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -173,16 +173,15 @@ describe('AgentDetail — tab URL contract', () => {
     render(<AgentDetail agentId="explorer" />)
 
     const tablist = await screen.findByRole('tablist', { name: 'Agent sections' })
-    const sharedTabs = tablist.closest('[data-slot="underline-tabs"]')
-    expect(sharedTabs).not.toBeNull()
+    expect(tablist.getAttribute('data-variant')).toBe('underline')
     expect(tablist.className).toContain('overflow-x-auto')
 
     const overview = screen.getByRole('tab', { name: 'Overview' })
     expect(overview.getAttribute('aria-controls')).toBe('agent-detail-panel-overview')
-    overview.focus()
+    act(() => { overview.focus() })
     fireEvent.keyDown(overview, { key: 'ArrowRight' })
 
-    expect(setTabSpy).toHaveBeenCalledWith('diagnostics')
+    await waitFor(() => expect(setTabSpy).toHaveBeenCalledWith('diagnostics'))
   })
 
   it('gives icon-only back and delete controls accessible names', async () => {

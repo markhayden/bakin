@@ -8,9 +8,8 @@ import {
   SegmentedControl,
   SettingsPage,
   SettingsPageContent,
-  UnderlineTabs,
 } from '@makinbakin/sdk/patterns'
-import { Banner, Button } from '@makinbakin/sdk/ui'
+import { Banner, Button, Tabs, TabsList, TabsTrigger } from '@makinbakin/sdk/ui'
 
 import { useModelsData } from './use-models-data'
 import { AgentsTab } from './agents-tab'
@@ -218,13 +217,20 @@ export function ModelsPage() {
         />
       )}
 
-      <UnderlineTabs
-        tabs={TABS}
-        value={tab}
-        onValueChange={(id) => setTab(id as typeof tab)}
-        ariaLabel="Model settings"
-        idPrefix="models"
-      />
+      <Tabs value={tab} onValueChange={(id) => setTab(id as typeof tab)}>
+        <TabsList variant="underline" activateOnFocus aria-label="Model settings">
+          {TABS.map((item) => (
+            <TabsTrigger
+              key={item.id}
+              value={item.id}
+              id={`models-tab-${item.id}`}
+              aria-controls={`models-panel-${item.id}`}
+            >
+              {item.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
 
       <SettingsPageContent
         id={`models-panel-${tab}`}

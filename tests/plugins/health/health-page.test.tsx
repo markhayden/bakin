@@ -146,7 +146,7 @@ describe('HealthPage tab shell', () => {
     expect(screen.queryByTestId('plugin-header')).toBeNull()
     expect(page.querySelector('[data-slot="page-header"]')).not.toBeNull()
     expect(page.querySelector('[data-slot="dashboard-page-content"]')).not.toBeNull()
-    expect(screen.getByRole('tablist', { name: 'Health sections' }).closest('[data-slot="underline-tabs"]')).not.toBeNull()
+    expect(screen.getByRole('tablist', { name: 'Health sections' }).getAttribute('data-variant')).toBe('underline')
     expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
       'Overview',
       'Agents',

@@ -9,7 +9,6 @@ import {
   FacetFilter,
   SegmentedControl,
   SortableHead,
-  UnderlineTabs,
 } from '@makinbakin/sdk/patterns'
 
 afterEach(cleanup)
@@ -115,30 +114,6 @@ describe('filter and navigation patterns', () => {
     fireEvent.keyDown(board, { key: 'ArrowRight' })
     expect(onValueChange).toHaveBeenCalledWith('operational-log')
     expect(document.activeElement).toBe(screen.getByRole('tab', { name: 'Operational log with preserved context' }))
-  })
-
-  it('links underline tabs to panels and supports Home/End without optional behavior flags', () => {
-    const onValueChange = mock()
-    render(
-      <UnderlineTabs
-        ariaLabel="Runtime sections"
-        idPrefix="runtime"
-        value="overview"
-        onValueChange={onValueChange}
-        tabs={[
-          { id: 'overview', label: 'Overview' },
-          { id: 'activity', label: 'Activity and recent operational history' },
-          { id: 'system', label: 'System', disabled: true },
-        ]}
-      />,
-    )
-
-    const overview = screen.getByRole('tab', { name: 'Overview' })
-    expect(overview.getAttribute('aria-controls')).toBe('runtime-panel-overview')
-    overview.focus()
-    fireEvent.keyDown(overview, { key: 'End' })
-    expect(onValueChange).toHaveBeenCalledWith('activity')
-    expect(document.activeElement).toBe(screen.getByRole('tab', { name: 'Activity and recent operational history' }))
   })
 
   it('puts the active sort direction on the column header and keeps the button actionable', () => {

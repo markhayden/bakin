@@ -23,12 +23,12 @@ import {
   StatGroup,
   StatTile,
   StatusBadge,
-  UnderlineTabs,
 } from '@makinbakin/sdk/patterns'
 import { AssetPicker, EmptyState, SectionCard } from '@makinbakin/sdk/components'
 import {
   Banner, Button, Input, Textarea, Switch, Label, Skeleton, Progress, SystemState,
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+  Tabs, TabsList, TabsTrigger,
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
 } from '@makinbakin/sdk/ui'
 import { useQueryState, usePluginEvent, toast } from '@makinbakin/sdk/hooks'
@@ -410,13 +410,20 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
         />
       )}
 
-      <UnderlineTabs
-        tabs={TABS}
-        value={tab}
-        onValueChange={(id) => setTab(id as typeof tab)}
-        ariaLabel={`${b.name} sections`}
-        idPrefix="brand-detail"
-      />
+      <Tabs value={tab} onValueChange={(id) => setTab(id as typeof tab)}>
+        <TabsList variant="underline" activateOnFocus aria-label={`${b.name} sections`}>
+          {TABS.map((item) => (
+            <TabsTrigger
+              key={item.id}
+              value={item.id}
+              id={`brand-detail-tab-${item.id}`}
+              aria-controls={`brand-detail-panel-${item.id}`}
+            >
+              {item.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
 
       <DetailPageBody>
         <DetailPageMain

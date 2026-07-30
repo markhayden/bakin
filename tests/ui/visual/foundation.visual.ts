@@ -420,11 +420,11 @@ test('public segmented navigation pattern visual baseline', async ({ page }) => 
 })
 
 test('public underline navigation pattern visual baseline', async ({ page }) => {
-  await page.goto('/iframe.html?id=navigation-underlinetabs--underline-navigation&viewMode=story')
+  await page.goto('/iframe.html?id=navigation-tabs--underline-navigation&viewMode=story')
   await expect(page.getByRole('heading', { level: 1, name: 'Keep page sections anchored to their content' })).toBeVisible()
   await expect(page.getByRole('tablist', { name: 'Runtime sections' })).toBeVisible()
   await page.evaluate(async () => document.fonts.ready)
-  await expect(page).toHaveScreenshot('navigation-underline-tabs.png', {
+  await expect(page).toHaveScreenshot('navigation-tabs.png', {
     animations: 'disabled',
     caret: 'hide',
     fullPage: true,

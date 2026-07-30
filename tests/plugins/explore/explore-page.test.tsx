@@ -3,7 +3,7 @@
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import '../../rtl-settle'
-import type { ReactNode } from 'react'
+import { createContext, useContext, type ReactNode } from 'react'
 
 // Pure client-component test — the isolation mocks are belt-and-braces per
 // the repo's test rules.
@@ -58,8 +58,26 @@ mock.module('@makinbakin/sdk/layout', () => ({
   Grid: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }))
 
+const TabsMockContext = createContext<{ onValueChange?: (value: unknown) => void }>({})
+
 mock.module('@makinbakin/sdk/ui', () => ({
   Badge: ({ children }: { children: ReactNode }) => <span>{children}</span>,
+  Tabs: ({ children, onValueChange }: { children: ReactNode; value?: string; onValueChange?: (value: unknown) => void }) => (
+    <TabsMockContext.Provider value={{ onValueChange }}>
+      <div>{children}</div>
+    </TabsMockContext.Provider>
+  ),
+  TabsList: ({ children }: { children: ReactNode; variant?: string; activateOnFocus?: boolean }) => (
+    <div role="tablist">{children}</div>
+  ),
+  TabsTrigger: ({ children, value }: { children: ReactNode; value: string }) => {
+    const { onValueChange } = useContext(TabsMockContext)
+    return (
+      <button data-testid={`tab-${value}`} onClick={() => onValueChange?.(value)}>
+        {children}
+      </button>
+    )
+  },
   Drawer: ({
     open,
     children,
@@ -189,15 +207,6 @@ mock.module('@makinbakin/sdk/patterns', () => ({
     feedback?: ReactNode
     state?: ReactNode
   }) => <main>{feedback}{state ?? children}</main>,
-  UnderlineTabs: ({ tabs, onValueChange }: { tabs: Array<{ id: string; label: string }>; onValueChange: (id: string) => void }) => (
-    <div>
-      {tabs.map((tab) => (
-        <button key={tab.id} data-testid={`tab-${tab.id}`} onClick={() => onValueChange(tab.id)}>
-          {tab.label}
-        </button>
-      ))}
-    </div>
-  ),
   FacetFilter: ({ options, onChange }: { options: Array<{ value: string; label: string }>; onChange: (v: string[]) => void }) => (
     <div>
       {options.map((option) => (

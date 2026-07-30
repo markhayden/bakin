@@ -63,7 +63,7 @@ describe('Team UI conformance', () => {
 
     expect(contents).toContain('<DetailPage width="full"')
     expect(contents).toContain('<PageHeader')
-    expect(contents).toContain('<UnderlineTabs')
+    expect(contents).toContain('<TabsList variant="underline"')
     expect(contents).toContain('<DetailPageBody')
     expect(contents).toContain('<SystemState')
     expect(contents).toContain('<ConfirmDialog')

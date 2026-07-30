@@ -22,7 +22,7 @@
     "paths": 137,
     "totals": {
       "raw-palette": 749,
-      "arbitrary-size": 337,
+      "arbitrary-size": 338,
       "raw-control": 118,
       "inline-style": 39,
       "generic-token": 1162,
@@ -2342,7 +2342,7 @@
       "target": "focused SDK primitive/pattern and namespaced semantic tokens",
       "status": "legacy-allowed",
       "allowances": {
-        "arbitrary-size": 2,
+        "arbitrary-size": 3,
         "generic-token": 15
       }
     }

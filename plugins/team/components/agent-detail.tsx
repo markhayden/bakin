@@ -12,7 +12,6 @@ import {
   DetailPageMain,
   PageHeader,
   StatusBadge,
-  UnderlineTabs,
 } from '@makinbakin/sdk/patterns'
 import {
   Alert,
@@ -24,6 +23,9 @@ import {
   Input,
   Skeleton,
   SystemState,
+  Tabs,
+  TabsList,
+  TabsTrigger,
 } from '@makinbakin/sdk/ui'
 import {
   useAgentStore,
@@ -290,13 +292,20 @@ export function AgentDetail({ agentId }: { agentId: string }) {
         </Alert>
       ) : null}
 
-      <UnderlineTabs
-        tabs={TABS}
-        value={activeTab}
-        onValueChange={(tabId) => setTabParam(tabId)}
-        ariaLabel="Agent sections"
-        idPrefix="agent-detail"
-      />
+      <Tabs value={activeTab} onValueChange={(tabId) => setTabParam(tabId as Tab)}>
+        <TabsList variant="underline" activateOnFocus aria-label="Agent sections">
+          {TABS.map((item) => (
+            <TabsTrigger
+              key={item.id}
+              value={item.id}
+              id={`agent-detail-tab-${item.id}`}
+              aria-controls={`agent-detail-panel-${item.id}`}
+            >
+              {item.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
 
       <DetailPageBody>
         <DetailPageMain>

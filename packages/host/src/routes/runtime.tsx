@@ -13,8 +13,8 @@ import { createRoute } from '@tanstack/react-router'
 import { Suspense, useCallback, useEffect, useState } from 'react'
 import { RefreshCw } from 'lucide-react'
 import { PluginHeader } from '@/components/plugin-header'
-import { UnderlineTabs } from '@/components/underline-tabs'
 import { Button } from '@/components/ui/button'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ErrorBanner } from '@/components/error-banner'
 import { useQueryState } from '@/hooks/use-query-state'
@@ -85,7 +85,15 @@ function RuntimePage() {
         }
       />
       <div className="flex-1 space-y-6">
-        <UnderlineTabs tabs={TABS} value={activeTab} onValueChange={setTab} />
+        <Tabs value={activeTab} onValueChange={(id) => setTab(id as string)}>
+          <TabsList variant="underline" activateOnFocus>
+            {TABS.map((item) => (
+              <TabsTrigger key={item.id} value={item.id}>
+                {item.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
 
         {reportError && (
           <ErrorBanner message={`The runtime report failed to load: ${reportError}`} onRetry={refresh} />

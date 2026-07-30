@@ -14,7 +14,6 @@ describe('canonical filter and navigation patterns', () => {
       'packages/ui/src/patterns/segmented-control.tsx',
       'packages/ui/src/patterns/selection-navigation.ts',
       'packages/ui/src/patterns/sortable-head.tsx',
-      'packages/ui/src/patterns/underline-tabs.tsx',
     ].map(read).join('\n')
     expect(sources).not.toMatch(/@\/|@makinbakin\/sdk|lucide-react|useQueryState|window\.|document\./)
     expect(sources).not.toMatch(/(?:bg|text|border)-(?:red|yellow|green|blue|gray|zinc|slate)-/)
@@ -31,7 +30,6 @@ describe('canonical filter and navigation patterns', () => {
     const sources = [
       read('packages/ui/src/patterns/facet-filter.tsx'),
       read('packages/ui/src/patterns/segmented-control.tsx'),
-      read('packages/ui/src/patterns/underline-tabs.tsx'),
     ].join('\n')
     const guide = read('docs/src/content/docs/extending/ui/overview.md')
     expect(sources).not.toMatch(/URLSearchParams|history\.|location\.|useQuery/)

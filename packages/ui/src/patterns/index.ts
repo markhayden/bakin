@@ -164,12 +164,6 @@ export type {
   SegmentedControlProps,
 } from './segmented-control'
 
-export { UnderlineTabs } from './underline-tabs'
-export type {
-  UnderlineTab,
-  UnderlineTabsProps,
-} from './underline-tabs'
-
 export { SortableHead } from './sortable-head'
 export type { SortableHeadProps, SortDir } from './sortable-head'
 

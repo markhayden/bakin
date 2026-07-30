@@ -57,7 +57,7 @@ const searchBehaviorStory = '/iframe.html?id=navigation-searchinput--search-beha
 const longQueryStory = '/iframe.html?id=navigation-searchinput--long-query&viewMode=story'
 const agentFilterStory = '/iframe.html?id=agents-agentselect--agent-filtering&viewMode=story'
 const segmentedNavigationStory = '/iframe.html?id=navigation-segmentedcontrol--segmented-navigation&viewMode=story'
-const underlineNavigationStory = '/iframe.html?id=navigation-underlinetabs--underline-navigation&viewMode=story'
+const underlineNavigationStory = '/iframe.html?id=navigation-tabs--underline-navigation&viewMode=story'
 const sortableTableStory = '/iframe.html?id=navigation-sortablehead--sortable-table&viewMode=story'
 const statusLanguageStory = '/iframe.html?id=feedback-statusbadge--status-vocabulary&viewMode=story'
 const denseMetricsStory = '/iframe.html?id=charts-stattile--dense-metrics&viewMode=story'
@@ -1359,10 +1359,16 @@ test('filter and navigation patterns preserve keyboard selection, meaning, and b
     await page.goto(underlineNavigationStory, { waitUntil: 'networkidle' })
     const overview = page.getByRole('tab', { name: 'Overview' })
     await overview.focus()
-    await overview.press('End')
+    await overview.press('ArrowRight')
     const activity = page.getByRole('tab', { name: 'Activity and recent operational history' })
     await expect(activity).toHaveAttribute('aria-controls', 'runtime-panel-activity')
+    await expect(activity).toHaveAttribute('aria-selected', 'true')
     await expect(page.getByRole('tabpanel')).toContainText('Activity and recent operational history')
+    // End reaches the disabled last tab, which stays focusable but never
+    // activates (APG semantics — the merged Tabs delta from UnderlineTabs).
+    await activity.press('End')
+    await expect(page.getByRole('tab', { name: 'System-managed details' })).toHaveAttribute('aria-disabled', 'true')
+    await expect(activity).toHaveAttribute('aria-selected', 'true')
 
     await page.goto(sortableTableStory, { waitUntil: 'networkidle' })
     const updated = page.getByRole('columnheader', { name: 'Updated' })

@@ -4,7 +4,6 @@ import {
   SearchInput,
   SegmentedControl,
   SortableHead,
-  UnderlineTabs,
 } from '@makinbakin/sdk/patterns'
 
 export const validFilterNavigationPatterns = (
@@ -13,7 +12,6 @@ export const validFilterNavigationPatterns = (
     <SearchInput label="Search tasks" value="" onValueChange={() => {}} busy />
     <AgentFilter ariaLabel="Agent" options={[]} value="all" onValueChange={() => {}} />
     <SegmentedControl ariaLabel="View" options={[{ value: 'board', label: 'Board' }]} value="board" onValueChange={() => {}} />
-    <UnderlineTabs tabs={[{ id: 'overview', label: 'Overview' }]} value="overview" onValueChange={() => {}} />
     <table><thead><tr><SortableHead field="name" current="name" dir="asc" onSort={() => {}}>Name</SortableHead></tr></thead></table>
   </>
 )

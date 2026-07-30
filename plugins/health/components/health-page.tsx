@@ -7,9 +7,8 @@ import {
   DashboardPage,
   DashboardPageContent,
   PageHeader,
-  UnderlineTabs,
 } from '@makinbakin/sdk/patterns'
-import { Button } from '@makinbakin/sdk/ui'
+import { Button, Tabs, TabsList, TabsTrigger } from '@makinbakin/sdk/ui'
 import { RefreshCw } from 'lucide-react'
 import { useOverviewData } from '../hooks/use-overview-data'
 import {
@@ -229,16 +228,30 @@ export function HealthPage() {
       </p>
 
       <div className="@container/health min-w-0" data-slot="health-tab-frame">
-        <UnderlineTabs
-          tabs={HEALTH_TABS}
+        <Tabs
           value={activeTab}
           onValueChange={(value) => {
             if (isHealthTab(value)) setTabParam(value)
           }}
-          ariaLabel="Health sections"
-          idPrefix="health"
-          className="min-w-0 overflow-x-auto overflow-y-hidden"
-        />
+        >
+          <TabsList
+            variant="underline"
+            activateOnFocus
+            aria-label="Health sections"
+            className="min-w-0 overflow-x-auto overflow-y-hidden"
+          >
+            {HEALTH_TABS.map((tab) => (
+              <TabsTrigger
+                key={tab.id}
+                value={tab.id}
+                id={`health-tab-${tab.id}`}
+                aria-controls={`health-panel-${tab.id}`}
+              >
+                {tab.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
 
         <DashboardPageContent
           label={`${HEALTH_TABS.find((tab) => tab.id === activeTab)?.label ?? 'Health'} health view`}

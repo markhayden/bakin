@@ -40,7 +40,6 @@ export {
   StatTile,
   StatusBadge,
   StatusMarker,
-  UnderlineTabs,
   UnsavedChangesDialog,
 } from '@bakin/ui/patterns'
 export type {
@@ -112,7 +111,5 @@ export type {
   StatusBadgeVariant,
   StatusMarkerProps,
   StatusTone,
-  UnderlineTab,
-  UnderlineTabsProps,
   UnsavedChangesDialogProps,
 } from '@bakin/ui/patterns'

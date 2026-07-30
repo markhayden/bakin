@@ -10,8 +10,8 @@
     "entrypoints": 8,
     "supportedEntrypoints": 7,
     "frozenLegacyEntrypoints": 1,
-    "valueExports": 362,
-    "typeExports": 427
+    "valueExports": 360,
+    "typeExports": 423
   },
   "entrypoints": [
     {
@@ -419,7 +419,6 @@
         "StatusMarker",
         "TEAM_VALUE_PREFIX",
         "teamIdFromValue",
-        "UnderlineTabs",
         "UnsavedChangesDialog",
         "WorkflowPage",
         "WorkflowPageActions",
@@ -532,8 +531,6 @@
         "StatusMarkerProps",
         "StatusTone",
         "StringSettingsField",
-        "UnderlineTab",
-        "UnderlineTabsProps",
         "UnsavedChangesDialogProps",
         "WorkflowOrientation",
         "WorkflowPageActionsProps",
@@ -809,7 +806,6 @@
         "TurnOutputView",
         "TurnTimestamp",
         "TurnToolChip",
-        "UnderlineTabs",
         "useConversationAttention",
         "useConversationThread",
         "UserMessage",
@@ -893,8 +889,6 @@
         "TurnStatus",
         "TurnTextSegment",
         "TurnToolChipState",
-        "UnderlineTab",
-        "UnderlineTabsProps",
         "UnsavedChangesGuardOptions",
         "UserMessageProps"
       ]

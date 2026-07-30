@@ -970,7 +970,7 @@ This is the exact artifact used by Bakin and the public component catalog. It su
 
 UI composition does not redefine routing. Follow the existing presentation-based routing contract: paths identify pages, while query parameters represent overlays, tabs, filters, and other composable view state. Import `PluginLink`, `useRouter()`, and the query-state hooks from `@makinbakin/sdk/navigation`.
 
-`FacetFilter`, `SegmentedControl`, and `UnderlineTabs` are controlled presentation patterns. Connect them to the shipped query-state hooks when their state should survive refreshes, participate in history, or be linkable:
+`FacetFilter`, `SegmentedControl`, and the underline `Tabs` variant (`<TabsList variant="underline">` from `@makinbakin/sdk/ui`) are controlled presentation patterns. Connect them to the shipped query-state hooks when their state should survive refreshes, participate in history, or be linkable:
 
 ```tsx
 import { FacetFilter, SegmentedControl } from '@makinbakin/sdk/patterns'
