@@ -26,7 +26,7 @@ mock.module('@tanstack/react-router', () => ({
   createRoute: () => ({}),
 }))
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import '../rtl-settle'
 import { settleReact } from '../rtl-settle'
 
@@ -137,7 +137,10 @@ describe('OverviewTab', () => {
     )
     fireEvent.click(screen.getByTestId('setup-fix-plugin-assets'))
     await settleReact()
-    fireEvent.click(screen.getByTestId('setup-repair-confirm'))
+    // Flush the repair fetch inside act instead of polling for it: leaning on
+    // waitFor's default budget made this the first test to starve under CI
+    // contention (observed at 37s against a 15s limit).
+    await act(async () => { fireEvent.click(screen.getByTestId('setup-repair-confirm')) })
     // The failure surfaces INSIDE the still-open dialog (retry or cancel),
     // not in a detached banner.
     await waitFor(() => expect(screen.getByText(/Repair failed: runtime unreachable/)).toBeTruthy())

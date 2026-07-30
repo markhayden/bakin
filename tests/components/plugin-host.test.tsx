@@ -551,7 +551,10 @@ describe('PluginHost — hot-swap unregisters synchronously', () => {
             () => 'resolved' as const,
             () => 'rejected' as const,
           ),
-          new Promise<'still-pending'>((resolve) => setTimeout(() => resolve('still-pending'), 200)),
+          // Observation window only — the bound under test is importMs above.
+          // 200ms left just 4x headroom, so a busy runner reported
+          // 'still-pending' for a timeout that had in fact fired.
+          new Promise<'still-pending'>((resolve) => setTimeout(() => resolve('still-pending'), 5000)),
         ])
         expect(outcome).toBe('rejected')
       })
