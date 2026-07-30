@@ -49,6 +49,7 @@ const QUICK_COMMANDS: readonly UiConformanceStep[] = [
   { label: 'Official core and Bits census', command: ['bun', 'run', 'ui:census:check'] },
   { label: 'Legacy style ratchet', command: ['bun', 'run', 'ui:legacy-styles:check'] },
   { label: 'Story compliance ratchet', command: ['bun', 'run', 'ui:story-compliance:check'] },
+  { label: 'Kit-growth gate', command: ['bun', 'run', 'ui:kit-coverage:check'] },
   { label: 'UI architecture contracts', command: ['bun', 'test', 'tests/ui/architecture', '--isolate'] },
   { label: 'TypeScript', command: ['bun', 'run', 'typecheck'] },
 ] as const
