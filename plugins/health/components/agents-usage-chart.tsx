@@ -1,7 +1,11 @@
 'use client'
 
 import { useState } from 'react'
-import { ChartExplainer, EmptyState, ErrorState, PluginLink, SectionCard, SegmentedControl, StackedColumnChart } from '@makinbakin/sdk/components'
+import { ChartExplainer, StackedColumnChart } from '@makinbakin/sdk/charts'
+// EmptyState/ErrorState/SectionCard are frozen-barrel legacy; they die at the P6 health slice.
+import { EmptyState, ErrorState, SectionCard } from '@makinbakin/sdk/components'
+import { PluginLink } from '@makinbakin/sdk/navigation'
+import { SegmentedControl } from '@makinbakin/sdk/patterns'
 import { Skeleton } from '@makinbakin/sdk/ui'
 import { ArrowUpRight, TrendingUp } from 'lucide-react'
 import type { UsageHistoryData } from '../types'

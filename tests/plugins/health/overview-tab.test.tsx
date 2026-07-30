@@ -349,7 +349,7 @@ describe('OverviewTabView', () => {
     render(<OverviewTabView model={buildHealthOverviewViewModel({ report: report(), now: NOW })} telemetry={telemetry} />)
 
     const badge = within(screen.getByTestId('overview-interactions')).getByText('1 result not observed')
-    expect(badge.closest('[data-status-badge]')?.getAttribute('data-status-badge')).toBe('warning')
+    expect(badge.closest('[data-status-badge]')?.getAttribute('data-status-badge')).toBe('attention')
   })
 
   it('keeps result-observation gaps visible when failures take badge priority', () => {
@@ -359,7 +359,7 @@ describe('OverviewTabView', () => {
     render(<OverviewTabView model={buildHealthOverviewViewModel({ report: report(), now: NOW })} telemetry={telemetry} />)
 
     const badge = within(screen.getByTestId('overview-interactions')).getByText('2 failed · 1 result not observed')
-    expect(badge.closest('[data-status-badge]')?.getAttribute('data-status-badge')).toBe('destructive')
+    expect(badge.closest('[data-status-badge]')?.getAttribute('data-status-badge')).toBe('danger')
   })
 
   it('uses recorded meaningful wording for an empty interaction window', () => {

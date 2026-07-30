@@ -1,6 +1,8 @@
 'use client'
 
-import { PluginLink, Sparkline, StatusBadge } from '@makinbakin/sdk/components'
+import { Sparkline } from '@makinbakin/sdk/charts'
+import { PluginLink } from '@makinbakin/sdk/navigation'
+import { StatusBadge } from '@makinbakin/sdk/patterns'
 import { Button, Skeleton } from '@makinbakin/sdk/ui'
 import { ArrowUpRight, Waypoints } from 'lucide-react'
 import type {
@@ -142,13 +144,13 @@ export function OverviewInteractions({
                   to="/health?tab=activity&activity_window=1h#activity-needs-attention"
                   className="mt-1 inline-flex rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
-                  <StatusBadge tone="destructive" variant="outline">
+                  <StatusBadge tone="danger" variant="outline">
                     {`${data.totals.errors.toLocaleString()} failed${data.totals.unverified > 0 ? ` · ${unverifiedLabel(data.totals.unverified)}` : ''}`}
                   </StatusBadge>
                 </PluginLink>
               ) : (
                 <StatusBadge
-                  tone={data.totals.unverified > 0 ? 'warning' : 'success'}
+                  tone={data.totals.unverified > 0 ? 'attention' : 'success'}
                   variant="outline"
                   className="mt-1"
                 >

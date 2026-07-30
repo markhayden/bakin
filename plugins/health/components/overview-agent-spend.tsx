@@ -1,13 +1,8 @@
 'use client'
 
-import {
-  assignSeriesColors,
-  CHART_MAX_SERIES,
-  formatAbsoluteTime,
-  formatRelativeTime,
-  PluginLink,
-  StackedColumnChart,
-} from '@makinbakin/sdk/components'
+import { assignSeriesColors, CHART_MAX_SERIES, StackedColumnChart } from '@makinbakin/sdk/charts'
+import { formatAbsoluteTime, formatRelativeTime } from '@makinbakin/sdk/conversation'
+import { PluginLink } from '@makinbakin/sdk/navigation'
 import { Button, Skeleton } from '@makinbakin/sdk/ui'
 import { ArrowUpRight, Coins } from 'lucide-react'
 import type { HealthOverviewViewModel } from '../lib/health-view-model'
