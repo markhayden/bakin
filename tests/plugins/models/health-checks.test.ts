@@ -168,6 +168,7 @@ describe('checkModelRouting', () => {
       { workClass: 'enrichment', model: 'anthropic/claude-haiku-4-5' },
       { workClass: 'relay', model: 'anthropic/claude-haiku-4-5' },
       { workClass: 'team-routing', model: 'anthropic/claude-haiku-4-5' },
+      { workClass: 'skill-mapping', model: 'anthropic/claude-haiku-4-5' },
     ]
     const result = await checkModelRouting(deps({ getRoutingConfig: () => ({ routes, tagOverrides: [] }) }))
     if (result.outcome !== 'observed') throw new Error('expected observed')
@@ -191,7 +192,7 @@ describe('recommendedRoutesRepair', () => {
   it('plans nothing when every class is routed', async () => {
     const repair = recommendedRoutesRepair(deps({
       getRoutingConfig: () => ({
-        routes: ['auto-title', 'enrichment', 'relay', 'team-routing'].map((workClass) => ({ workClass, model: 'anthropic/claude-haiku-4-5' })) as WorkClassRoute[],
+        routes: ['auto-title', 'enrichment', 'relay', 'team-routing', 'skill-mapping'].map((workClass) => ({ workClass, model: 'anthropic/claude-haiku-4-5' })) as WorkClassRoute[],
         tagOverrides: [],
       }),
     }), () => {})

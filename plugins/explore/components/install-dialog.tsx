@@ -222,7 +222,12 @@ export function InstallDialog({
       for (const secret of keyStep.secrets) {
         const value = (keyDrafts[secret.name] ?? '').trim()
         if (!value) continue
-        const [provider, name] = secret.secretSlot.split('.', 2)
+        // Split on the FIRST dot only — skill slots are
+        // `skills.<packageId>.<ENV_VAR>`, so split('.', 2) would truncate the
+        // name and store the key where nothing can read it.
+        const dot = secret.secretSlot.indexOf('.')
+        const provider = secret.secretSlot.slice(0, dot)
+        const name = secret.secretSlot.slice(dot + 1)
         const res = await fetch('/api/secrets', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

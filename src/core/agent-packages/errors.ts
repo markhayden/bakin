@@ -13,6 +13,23 @@ export class PackageNotInstalledError extends Error {
   }
 }
 
+/**
+ * A skill install was REFUSED by the trust gate (#687) — hub verdict, binary
+ * files, unsafe path, size cap, or runtime/platform incompatibility. The
+ * skills lane maps this to HTTP 403 + a `skill.hub.refused` audit + CLI exit
+ * 2. Typed so classification never depends on message text (a network
+ * "Connection refused" must not read as a trust refusal).
+ */
+export class SkillRefusalError extends Error {
+  constructor(
+    message: string,
+    public readonly reason: 'hub-verdict' | 'binary-files' | 'unsafe-path' | 'size-cap' | 'platform' | 'runtime' | 'unsupported-os',
+  ) {
+    super(message)
+    this.name = 'SkillRefusalError'
+  }
+}
+
 /** Removal refused: other installed packages still depend on it (→ 409). */
 export class PackageStillRequiredError extends Error {
   constructor(

@@ -52,6 +52,7 @@ import * as contextReportRoute from '../../../packages/host/src/api/context-repo
 import * as execToolsRoute from '../../../packages/host/src/api/exec-tools/[toolName]'
 import * as packagesListRoute from '../../../packages/host/src/api/packages/list'
 import * as packagesInstallRoute from '../../../packages/host/src/api/packages/install'
+import * as skillsRoute from '../../../packages/host/src/api/skills'
 import * as packagesDynamicRoute from '../../../packages/host/src/api/packages/dynamic'
 import * as packagesCapabilitiesRoute from '../../../packages/host/src/api/packages/capabilities'
 import * as pluginsMemoryAuditRoute from '../../../packages/host/src/api/plugins/memory/audit'
@@ -503,6 +504,28 @@ export function createRequestHandler(deps: RequestHandlerDeps): (req: IncomingMe
     }
     if (url.pathname.startsWith('/api/packages/') && url.pathname !== '/api/packages/install') {
       dispatchWebHandler(req, res, packagesDynamicRoute.handler)
+      return
+    }
+
+    // ─── Hub skills routes (#687) ───────────────────────────────────────────
+    if (url.pathname === '/api/skills' && req.method === 'GET') {
+      dispatchWebHandler(req, res, skillsRoute.get)
+      return
+    }
+    if (url.pathname === '/api/skills/preview' && req.method === 'POST') {
+      dispatchWebHandler(req, res, skillsRoute.preview)
+      return
+    }
+    if (url.pathname === '/api/skills/install' && req.method === 'POST') {
+      dispatchWebHandler(req, res, skillsRoute.install)
+      return
+    }
+    if (url.pathname === '/api/skills/map/preview' && req.method === 'POST') {
+      dispatchWebHandler(req, res, skillsRoute.mapPreview)
+      return
+    }
+    if (url.pathname === '/api/skills/map/apply' && req.method === 'POST') {
+      dispatchWebHandler(req, res, skillsRoute.mapApply)
       return
     }
 

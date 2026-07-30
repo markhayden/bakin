@@ -10,6 +10,7 @@
  * workspace-local skills.
  */
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   readdirSync,
@@ -18,9 +19,10 @@ import {
   statSync,
   writeFileSync,
 } from 'fs'
-import { join } from 'path'
+import { dirname, join } from 'path'
 
 import type { AgentRuntimeAdapter, RuntimeSkill } from '@bakin/core/adapters/runtime'
+import { isExecutableSkillFile, isSafeSkillFilePath, readSkillTree } from '@bakin/core/adapters/runtime'
 import { getAgentWorkspaceDir, getPiPath } from './home'
 import { assertValidAgentId } from './registry'
 
@@ -64,15 +66,12 @@ function readSkill(name: string, agentId?: string): RuntimeSkill | null {
   const dir = skillDir(name, agentId)
   const skillMd = join(dir, 'SKILL.md')
   if (!existsSync(skillMd)) return null
-  const files: Record<string, string> = {}
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    // SKILL.md rides the files map (OpenClaw parity): consumers that hash,
-    // snapshot, or carry skill.files get the COMPLETE skill — excluding it
-    // made every Pi-hosted skill read permanently drifted in the sync
-    // scanner and dropped instructions from uninstall snapshots.
-    if (!entry.isFile() || SKILL_SIDECARS.has(entry.name)) continue
-    files[entry.name] = readFileSync(join(dir, entry.name), 'utf-8')
-  }
+  // SKILL.md rides the files map (OpenClaw parity): consumers that hash,
+  // snapshot, or carry skill.files get the COMPLETE skill — excluding it
+  // made every Pi-hosted skill read permanently drifted in the sync
+  // scanner and dropped instructions from uninstall snapshots. The tree
+  // read is recursive (scripts/, references/) and sidecar-excluding.
+  const files = readSkillTree(dir)
   const installedBy = readInstalledBy(dir)
   return {
     name,
@@ -108,20 +107,24 @@ export function createSkillsSurface(): AgentRuntimeAdapter['skills'] {
 
     async write(skill: RuntimeSkill, agentId?: string): Promise<void> {
       const dir = skillDir(skill.name, agentId)
-      // Validate EVERY filename before the first write: a mid-loop throw
+      // Validate EVERY file path before the first write: a mid-loop throw
       // used to leave a half-written directory that skills.list would then
-      // report as a valid skill (observed via the runtime-switch skill
-      // carry, where OpenClaw skills may carry nested file paths).
+      // report as a valid skill. Nested paths (scripts/, references/) are
+      // allowed; traversal/absolute/sidecar names are not.
       const files = Object.entries(skill.files ?? {})
       for (const [fileName] of files) {
-        if (fileName.includes('/') || fileName.includes('..') || SKILL_SIDECARS.has(fileName)) {
+        const base = fileName.split('/').pop() ?? fileName
+        if (!isSafeSkillFilePath(fileName) || SKILL_SIDECARS.has(base)) {
           throw new Error(`adapter-pi: invalid skill file name "${fileName}"`)
         }
       }
       mkdirSync(dir, { recursive: true })
       writeFileSync(join(dir, 'SKILL.md'), skill.instructions ?? '')
       for (const [fileName, content] of files) {
-        writeFileSync(join(dir, fileName), content)
+        const target = join(dir, fileName)
+        mkdirSync(dirname(target), { recursive: true })
+        writeFileSync(target, content)
+        if (isExecutableSkillFile(fileName, content)) chmodSync(target, 0o755)
       }
       const installedBy = skill.metadata?.installedBy
       if (installedBy !== undefined && installedBy !== null) {

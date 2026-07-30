@@ -5,7 +5,7 @@
  * and skills methods own the exec/validation and import these; reads/writes go
  * through the config + home + cron-store siblings, so no cycle back to runtime.
  */
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'fs'
 import { join, resolve, sep } from 'path'
 import type { RuntimeAgent } from '@bakin/core/adapters/runtime'
 import { RuntimeError } from '@bakin/core/adapters/runtime'
@@ -215,36 +215,6 @@ export function readGatewayToken(): string | null {
 
 export function isSafeWorkspaceFile(path: string): boolean {
   return !path.includes('..') && !path.startsWith('/') && !path.includes('\\')
-}
-
-export function isSafeSkillFilePath(path: string): boolean {
-  return Boolean(path)
-    && !path.startsWith('/')
-    && !path.includes('\\')
-    && !path.split('/').some((part) => part === '..' || part === '')
-}
-
-export function readSkillTree(root: string): Record<string, string> {
-  const files: Record<string, string> = {}
-  const walk = (dir: string, prefix = ''): void => {
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      if (entry.isSymbolicLink()) continue
-      const rel = prefix ? `${prefix}/${entry.name}` : entry.name
-      const abs = join(dir, entry.name)
-      if (entry.isDirectory()) {
-        walk(abs, rel)
-      } else if (entry.isFile()) {
-        if (entry.name === '.installedBy' || entry.name === '.userEdited') continue
-        files[rel] = readFileSync(abs, 'utf-8')
-      }
-    }
-  }
-  try {
-    walk(root)
-  } catch {
-    return {}
-  }
-  return files
 }
 
 export function readWorkspaceRootFile(agentId: string, filename: string): string | null {

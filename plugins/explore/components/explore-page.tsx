@@ -5,6 +5,7 @@ import { toast, useJsonFetch, useQueryState, useQueryArrayState } from '@makinba
 import { Button, Input } from '@makinbakin/sdk/ui'
 import { CatalogCard } from './catalog-card'
 import { DetailDrawer } from './detail-drawer'
+import { HubSkillsSection } from './hub-skills-section'
 import { InstallDialog } from './install-dialog'
 import type { ExploreCatalogEntry, ExploreCatalogResponse } from '../types'
 
@@ -43,8 +44,9 @@ const TAB_INTROS: Record<string, { title: string; blurb: string }> = {
     title: 'Teach your agents new tricks',
     blurb:
       'Capabilities give your agents real-world powers — web search, browser automation, transcription. ' +
-      'Install one and Bakin handles everything: the skill content, any pinned binaries, and a guided step ' +
-      'for the API key it needs. Works with any runtime unless badged otherwise.',
+      'Install a curated one below and Bakin handles everything: the skill content, any pinned binaries, and a ' +
+      'guided step for the API key it needs. Or bring skills from the wider ecosystem — ClawHub, GitHub skill ' +
+      'repos — the whole ecosystem shares one format, and Bakin installs it onto whichever runtime you run.',
   },
   packs: {
     title: 'Reusable building blocks',
@@ -168,16 +170,20 @@ function ExplorePageInner() {
   )
 
   const visible = useMemo(() => {
+    // Capabilities groups by installed-vs-available (live-test feedback):
+    // installed packs live in HubSkillsSection's "Installed" list, so the
+    // grid here is strictly "what you can get".
+    const pool = tab === 'capabilities' ? tabEntries.filter((entry) => !entry.installed) : tabEntries
     const byCategory = activeCategories.length === 0
-      ? tabEntries
-      : tabEntries.filter((entry) => activeCategories.includes(entry.category))
+      ? pool
+      : pool.filter((entry) => activeCategories.includes(entry.category))
     const needle = searchDraft.trim().toLowerCase()
     if (!needle) return byCategory
     return byCategory.filter((entry) =>
       [entry.name, entry.description, entry.category, ...entry.tags, ...entry.useCases]
         .some((haystack) => haystack.toLowerCase().includes(needle)),
     )
-  }, [tabEntries, activeCategories, searchDraft])
+  }, [tab, tabEntries, activeCategories, searchDraft])
 
   const selected = useMemo(
     () => entries.find((entry) => `${entry.kind}:${entry.id}` === selectedKey) ?? null,
@@ -284,6 +290,11 @@ function ExplorePageInner() {
         </div>
       )}
 
+      {/* The ecosystem lane (#687) lives INSIDE Capabilities — one unified
+          "teach your agents" surface: paste-a-link CTA + installed hub
+          skills above the curated grid, never a separate tab. */}
+      {tab === 'capabilities' && <HubSkillsSection />}
+
       {loading && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {Array.from({ length: 8 }).map((_, i) => (
@@ -298,14 +309,18 @@ function ExplorePageInner() {
           title={searchDraft.trim()
             ? 'No matches'
             : tab === 'lessons' ? 'Lesson packs are coming'
-              : tab === 'capabilities' ? 'Capability packs are coming' : 'Nothing here yet'}
+              : tab === 'capabilities'
+                ? (tabEntries.length > 0 && activeCategories.length === 0 ? 'All official capabilities installed' : 'Capability packs are coming')
+                : 'Nothing here yet'}
           description={searchDraft.trim()
             ? `Nothing on this tab matches "${searchDraft.trim()}" — try another tab or clear the search.`
             : activeCategories.length > 0
               ? 'No entries match the selected categories.'
               : tab === 'lessons'
                 ? 'Official lesson packs will appear here as they\'re published. Agents you install often ship their own lessons — manage those from the agent\'s Team page.'
-                : 'The catalog has no entries for this tab yet.'}
+                : tab === 'capabilities' && tabEntries.length > 0 && activeCategories.length === 0
+                  ? 'Every curated capability is already on your team — paste a link above to bring in more from the ecosystem.'
+                  : 'The catalog has no entries for this tab yet.'}
         />
       )}
 

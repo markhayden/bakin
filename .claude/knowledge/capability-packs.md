@@ -135,6 +135,23 @@ the point; the keys are given to agents deliberately. Future 1Password
 integration = `op://` references resolved at the single read chokepoint
 (spec §13).
 
+**D18 (#687):** injection is no longer boot-only. Boot collects
+PACK-declared secretSlot mappings from installed manifests
+(`collectPackSecretMappings` — previously only the static list injected),
+and every secret save through `POST /api/secrets` live-injects the
+declared env vars for that slot (`injectSecretEnvForSlot`, unset-only,
+env wins) — the guided-key journey works without a server restart.
+Secret DELETE deliberately does not scrub `process.env`.
+
+**Translated-requirements variant (#687):** hub-installed skills
+(`hub-<name>` packs synthesized from raw SKILL.md bundles) declare
+secrets/prereqs via the frozen `metadata.openclaw` translation or the
+`bakin skills map` agent lane — slots always minted in the `skills.*`
+namespace, bins always probe-only prereqs (never pinned downloads).
+They ride this same readiness engine when requirement-bearing (a
+capability slug is synthesized only then). See
+`.claude/knowledge/skill-hub-interop.md`.
+
 ## Curation (bakin-bits-official)
 
 Packs live at `packs/<id>/` with the catalog entry in both the bits

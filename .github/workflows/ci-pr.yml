@@ -53,10 +53,42 @@ jobs:
           BAKIN_DOCS_EXTERNAL_SOURCES: ${{ runner.workspace }}/external/bakin-bits-official/plugins
         run: bun run docs:check
 
-      # --timeout 15000: worker contention on the 4-core runner can push
-      # render-heavy component tests past the 5s default (observed 5.4-7.2s).
-      - name: Tests
-        run: bun test --parallel --isolate --timeout 15000
+  # Tests are SHARDED across runners, and the static checks above no longer
+  # run alongside them. This suite (842 files, ~8.5k tests) exceeds what a
+  # single 4-vCPU runner absorbs: unsharded, contention starved tests that
+  # cost milliseconds locally out to 21-78s, and periodically wedged a worker
+  # so a job stalled silently with zero failures logged. Some tests are
+  # genuinely heavy — build-sdk-package spawns real builds and costs 8.4s even
+  # on a fast local box — so the fix is capacity, not ever-longer timeouts.
+  # Each shard gets a whole runner for a third of the files. Bisect record and
+  # the ruled-out hypotheses: issue #753.
+  #
+  # --timeout 60000 still bounds genuine hangs (which are unbounded) without
+  # failing correct-but-slow tests on a loaded runner.
+  test:
+    name: Tests
+    if: ${{ github.event.pull_request.draft == false }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Tests (shard ${{ matrix.shard }}/3)
+        run: bun test --parallel=4 --isolate --timeout 60000 --shard=${{ matrix.shard }}/3
 
   # The release pipeline stamps APP_VERSION before testing, which turns on
   # stamped-host-only behavior (the plugin compat gate skips satisfaction on
@@ -69,6 +101,10 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     steps:
       # Full history + tags so stamp-version.ts resolves a real
       # describe-stamped version (v0.0.1-rc.N-M-g<sha>) instead of 0.0.0-dev.
@@ -88,5 +124,5 @@ jobs:
       - name: Stamp release version
         run: bun run scripts/stamp-version.ts
 
-      - name: Tests
-        run: bun test --parallel --isolate --timeout 15000
+      - name: Tests (shard ${{ matrix.shard }}/3)
+        run: bun test --parallel=4 --isolate --timeout 60000 --shard=${{ matrix.shard }}/3

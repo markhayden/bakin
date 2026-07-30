@@ -306,12 +306,17 @@ describe('capability readiness — new legs', () => {
     expect(cap!.missing.join('\n')).toContain('https://example.dev')
   })
 
-  it('a platforms-gated pack on the wrong platform reports platform, not per-leg noise', async () => {
+  it('a pack whose platforms become incompatible AFTER install reports platform, not per-leg noise', async () => {
+    // D14 refuses wrong-platform installs outright, so readiness's platform
+    // leg now guards the post-install drift case: the INSTALLED manifest
+    // (e.g. edited by an update fetched on another machine) excludes this
+    // platform.
     const src = seedPack('1.0.0', { npm: false, model: false })
-    const manifest = JSON.parse(readFileSync(join(src, 'bakin-package.json'), 'utf-8'))
-    manifest.platforms = process.platform === 'darwin' ? ['linux-x64'] : ['darwin-arm64']
-    writeFileSync(join(src, 'bakin-package.json'), JSON.stringify(manifest))
     await installPackage({ source: src })
+    const installedManifest = join(testDir, 'packages', 'skill-packs', 'toolpack@1.0.0', 'bakin-package.json')
+    const manifest = JSON.parse(readFileSync(installedManifest, 'utf-8'))
+    manifest.platforms = process.platform === 'darwin' ? ['linux-x64'] : ['darwin-arm64']
+    writeFileSync(installedManifest, JSON.stringify(manifest))
 
     const { listCapabilities } = await import('../../src/core/agent-packages/capability-readiness')
     const [cap] = await listCapabilities()
@@ -355,13 +360,13 @@ describe('review hardening pins', () => {
     expect(readFileSync(join(testDir, 'models', 'shared', 'model.gguf'), 'utf-8')).toBe(bytesBefore)
   })
 
-  it('a platforms-gated pack on the wrong platform installs NO requirement legs', async () => {
+  it('a platforms-gated pack on the wrong platform REFUSES install — no legs, no downloads (D14)', async () => {
     const src = seedPack('1.0.0', {})
     const m = JSON.parse(readFileSync(join(src, 'bakin-package.json'), 'utf-8'))
     // Whatever platform runs this test, declare the OTHER one.
     m.platforms = [process.platform === 'darwin' ? 'linux-arm64' : 'darwin-arm64']
     writeFileSync(join(src, 'bakin-package.json'), JSON.stringify(m))
-    await installPackage({ source: src })
+    await expect(installPackage({ source: src })).rejects.toThrow(/not available on this platform/)
     expect(existsSync(payloadDir())).toBe(false)
     expect(existsSync(modelFile())).toBe(false)
     expect(hits['/model.gguf'] ?? 0).toBe(0) // no pointless download

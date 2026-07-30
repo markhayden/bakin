@@ -30,6 +30,7 @@
 import { existsSync, rmSync, statSync } from 'fs'
 import { commitStaging } from '../install-core/transaction'
 import { createLogger } from '../logger'
+import { SkillRefusalError } from './errors'
 import { getContentDir } from '../content-dir'
 import { appendAudit } from '../audit'
 import {
@@ -70,6 +71,8 @@ import { join } from 'path'
 import { validatePackageContributionIntegrity } from './package-integrity'
 import { installManifestRequirements } from './requirements-installer'
 import { withoutSharedArtifacts } from './uninstaller'
+import { binPlatformKey } from './bin-installer'
+import { getSettings } from '../settings'
 
 const log = createLogger('agent-pkg:install')
 
@@ -96,6 +99,14 @@ export interface InstallOptions {
    * surface routes through a y/N prompt.
    */
   replace?: boolean
+  /**
+   * An already-fetched+staged top-level source to install verbatim, instead
+   * of re-fetching `source` (#687 consent TOCTOU fix): the skills trust gate
+   * verifies staging against the consent sha and hands THAT exact tree here,
+   * so the bytes reviewed are the bytes installed. The installer consumes
+   * the staging dir (moves it into place); the caller must not reuse it.
+   */
+  prefetched?: FetchedSource
 }
 
 export interface InstallResult {
@@ -157,6 +168,47 @@ function preflightCollisions(
   // Note: this function returns [] for V1 — the actual check is done at
   // projection time by the projector's overwrite-replace logic. Phase H-4
   // adds path-level pre-flight; structuring it here gives us the seam.
+}
+
+/**
+ * D14 (#687): runtimes/platforms declarations are enforced at install, not
+ * just badged in Explore. A pack that can't work here refuses honestly
+ * before any projection. Audited so refusals are visible after the fact.
+ */
+export function assertRuntimePlatformCompatible(manifest: Manifest): void {
+  const runtimes = 'runtimes' in manifest ? manifest.runtimes : undefined
+  if (runtimes && runtimes.length > 0 && !runtimes.includes('*')) {
+    const active = getSettings().runtime.adapter
+    if (!runtimes.includes(active)) {
+      appendAudit(getContentDir(), 'pkg.install_refused', manifest.id, {
+        packageId: manifest.id,
+        reason: 'runtime-incompatible',
+        activeAdapter: active,
+        runtimes,
+      }, 'cli')
+      throw new SkillRefusalError(
+        `Package "${manifest.id}" is not for the active runtime (${active}) — compatible: ${runtimes.join(', ')}.`,
+        'runtime',
+      )
+    }
+  }
+
+  const platforms = 'platforms' in manifest ? manifest.platforms : undefined
+  if (platforms && platforms.length > 0) {
+    const platform = binPlatformKey()
+    if (!platform || !platforms.includes(platform)) {
+      appendAudit(getContentDir(), 'pkg.install_refused', manifest.id, {
+        packageId: manifest.id,
+        reason: 'platform-incompatible',
+        platform: platform ?? 'unknown',
+        platforms,
+      }, 'cli')
+      throw new SkillRefusalError(
+        `Package "${manifest.id}" is not available on this platform — needs ${platforms.join(' or ')}.`,
+        'platform',
+      )
+    }
+  }
 }
 
 interface AdapterCreateAgentInput {
@@ -271,9 +323,14 @@ export async function installPackage(options: InstallOptions): Promise<InstallRe
   let originalLock: Lockfile | null = null
 
   try {
-    // ─── 1. Fetch top-level source ─────────────────────────────────────────
-    log.info('Fetching package source', { source: options.source })
-    topFetched = await fetchSourceAsync(options.source)
+    // ─── 1. Fetch top-level source (or adopt a pre-verified staging dir) ────
+    if (options.prefetched) {
+      log.info('Installing pre-fetched (consent-verified) source', { source: options.source })
+      topFetched = options.prefetched
+    } else {
+      log.info('Fetching package source', { source: options.source })
+      topFetched = await fetchSourceAsync(options.source)
+    }
 
     // ─── 2. Parse + validate manifest ──────────────────────────────────────
     const manifestPath = join(topFetched.stagingDir, 'bakin-package.json')
@@ -293,6 +350,7 @@ export async function installPackage(options: InstallOptions): Promise<InstallRe
     }
 
     const resolvedTopId = options.installAs ?? manifest.id
+    assertRuntimePlatformCompatible(manifest)
     validatePackageContributionIntegrity({
       manifest,
       stagingDir: topFetched.stagingDir,
@@ -353,6 +411,7 @@ export async function installPackage(options: InstallOptions): Promise<InstallRe
     const resolved = await resolveDependenciesAsync(manifest)
     for (const r of resolved) depFetched.push(r.fetched)
     for (const r of resolved) {
+      assertRuntimePlatformCompatible(r.manifest)
       validatePackageContributionIntegrity({
         manifest: r.manifest,
         stagingDir: r.fetched.stagingDir,

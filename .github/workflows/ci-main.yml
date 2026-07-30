@@ -50,14 +50,45 @@ jobs:
           BAKIN_DOCS_EXTERNAL_SOURCES: ${{ runner.workspace }}/external/bakin-bits-official/plugins
         run: bun run docs:check
 
-      # --timeout 15000: worker contention on the 4-core runner can push
-      # render-heavy component tests past the 5s default (observed 5.4-7.2s).
-      - name: Tests
-        run: bun test --parallel --isolate --timeout 15000
-
       - name: Build (host + plugins, no binary compile)
         run: |
           bun run build:css
           bun run build:vendors
           bun run build:plugins
           bun run build:host-shell
+
+  # Tests are SHARDED across runners, and no longer share a runner with the
+  # static checks and build above. This suite (842 files, ~8.5k tests) exceeds
+  # what a single 4-vCPU runner absorbs: unsharded, contention starved tests
+  # that cost milliseconds locally out to 21-78s, and periodically wedged a
+  # worker so a job stalled silently with zero failures logged. Some tests are
+  # genuinely heavy — build-sdk-package spawns real builds and costs 8.4s even
+  # on a fast local box — so the fix is capacity, not ever-longer timeouts.
+  # Each shard gets a whole runner for a third of the files. Bisect record and
+  # the ruled-out hypotheses: issue #753.
+  #
+  # --timeout 60000 still bounds genuine hangs (which are unbounded) without
+  # failing correct-but-slow tests on a loaded runner.
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Tests (shard ${{ matrix.shard }}/3)
+        run: bun test --parallel=4 --isolate --timeout 60000 --shard=${{ matrix.shard }}/3

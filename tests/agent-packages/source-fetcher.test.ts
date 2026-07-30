@@ -468,7 +468,8 @@ describe('fetchSource — github (mock runner)', () => {
         mockGit,
         stagingDir,
       ),
-    ).toThrow(/subpath.*missing bakin-package\.json/i)
+    // #687: the message now also rules out the raw-skill-bundle shape.
+    ).toThrow(/missing bakin-package\.json.*no SKILL\.md/i)
   })
 
   it('throws when bakin-package.json is missing after clone', () => {

@@ -26,7 +26,7 @@ mock.module('@tanstack/react-router', () => ({
   createRoute: () => ({}),
 }))
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import '../rtl-settle'
 import { settleReact } from '../rtl-settle'
 
@@ -62,7 +62,7 @@ afterEach(() => {
 })
 
 describe('OverviewTab', () => {
-  it('speaks plain language: honest unavailable copy, legend, credential tiles, setup rows', () => {
+  it('speaks plain language: honest unavailable copy, legend, credential tiles, setup rows', async () => {
     render(
       <OverviewTab
         report={report}
@@ -106,11 +106,11 @@ describe('OverviewTab', () => {
       />,
     )
     useToastStore.setState({ toasts: [] })
-    fireEvent.click(screen.getByTestId('setup-fix-agent-sync'))
+    await act(async () => { fireEvent.click(screen.getByTestId('setup-fix-agent-sync')) })
     await settleReact()
     // Confirmation first — nothing posted yet.
     expect(posts).toEqual([])
-    fireEvent.click(screen.getByTestId('setup-repair-confirm'))
+    await act(async () => { fireEvent.click(screen.getByTestId('setup-repair-confirm')) })
     await waitFor(() => expect(posts).toEqual([{ component: 'agent-sync' }]))
     await waitFor(() => expect(refreshed.length).toBe(1))
     // Success feedback reaches the REAL toast store (the one the shell
@@ -135,9 +135,12 @@ describe('OverviewTab', () => {
         onboarding={[{ name: 'plugin-assets', status: 'warn', message: '1 drifted' }]}
       />,
     )
-    fireEvent.click(screen.getByTestId('setup-fix-plugin-assets'))
+    await act(async () => { fireEvent.click(screen.getByTestId('setup-fix-plugin-assets')) })
     await settleReact()
-    fireEvent.click(screen.getByTestId('setup-repair-confirm'))
+    // Flush the repair fetch inside act instead of polling for it: leaning on
+    // waitFor's default budget made this the first test to starve under CI
+    // contention (observed at 37s against a 15s limit).
+    await act(async () => { fireEvent.click(screen.getByTestId('setup-repair-confirm')) })
     // The failure surfaces INSIDE the still-open dialog (retry or cancel),
     // not in a detached banner.
     await waitFor(() => expect(screen.getByText(/Repair failed: runtime unreachable/)).toBeTruthy())
@@ -165,7 +168,7 @@ describe('CapabilitiesTab', () => {
       ],
     }), { status: 200 })) as unknown as typeof fetch
 
-    render(<CapabilitiesTab />)
+    await act(async () => { render(<CapabilitiesTab />) })
     await waitFor(() => screen.getByText('Web Search (Brave)'))
     expect(screen.getByText(/Give your agents real web search/)).toBeTruthy()
     expect(screen.getByText('Needs attention')).toBeTruthy()
@@ -178,7 +181,7 @@ describe('CapabilitiesTab', () => {
 
   it('empty state invites the user to Explore', async () => {
     globalThis.fetch = (async () => new Response(JSON.stringify({ capabilities: [] }), { status: 200 })) as unknown as typeof fetch
-    render(<CapabilitiesTab />)
+    await act(async () => { render(<CapabilitiesTab />) })
     await waitFor(() => screen.getByText('No capabilities installed yet'))
     expect(screen.getByText('Browse capabilities')).toBeTruthy()
   })
@@ -219,10 +222,10 @@ describe('RuntimesTab', () => {
   it('preview posts a dry run with the chosen options and renders grouped result cards', async () => {
     render(<RuntimesTab report={report} onSwitched={() => {}} />)
     // Clicking a runtime card opens the dialog — options + preview live THERE.
-    fireEvent.click(screen.getByTestId('switch-target-openclaw'))
+    await act(async () => { fireEvent.click(screen.getByTestId('switch-target-openclaw')) })
     await settleReact()
-    fireEvent.click(screen.getByTestId('switch-adopt-cron'))
-    fireEvent.click(screen.getByTestId('switch-preview'))
+    await act(async () => { fireEvent.click(screen.getByTestId('switch-adopt-cron')) })
+    await act(async () => { fireEvent.click(screen.getByTestId('switch-preview')) })
 
     await waitFor(() => screen.getByTestId('switch-result'))
     expect(posts).toEqual([{ target: 'openclaw', dryRun: true, adoptCron: true }])
@@ -234,12 +237,12 @@ describe('RuntimesTab', () => {
     expect(screen.getByText('Stays behind')).toBeTruthy()
     // A dry-run result funnels back into the confirm dialog — the only
     // path to a real switch.
-    fireEvent.click(screen.getByTestId('switch-execute'))
+    await act(async () => { fireEvent.click(screen.getByTestId('switch-execute')) })
     await settleReact()
     expect(screen.getByTestId('switch-confirm')).toBeTruthy()
   })
 
-  it('the active runtime is marked and not selectable', () => {
+  it('the active runtime is marked and not selectable', async () => {
     render(<RuntimesTab report={report} onSwitched={() => {}} />)
     expect(screen.getByText('Active')).toBeTruthy()
     expect((screen.getByTestId('switch-target-pi') as HTMLButtonElement).disabled).toBe(true)
@@ -248,7 +251,7 @@ describe('RuntimesTab', () => {
 
   it('the real switch is gated behind a TYPED confirm dialog', async () => {
     render(<RuntimesTab report={report} onSwitched={() => {}} />)
-    fireEvent.click(screen.getByTestId('switch-target-openclaw'))
+    await act(async () => { fireEvent.click(screen.getByTestId('switch-target-openclaw')) })
     await settleReact()
 
     // Consequences live in the dialog; nothing posted; confirm stays
@@ -256,8 +259,8 @@ describe('RuntimesTab', () => {
     expect(screen.getByText(/Agents start fresh sessions on openclaw/)).toBeTruthy()
     expect(posts).toEqual([])
     expect((screen.getByTestId('switch-confirm') as HTMLButtonElement).disabled).toBe(true)
-    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'openclaw' } })
-    fireEvent.click(screen.getByTestId('switch-confirm'))
+    await act(async () => { fireEvent.change(screen.getByRole('textbox'), { target: { value: 'openclaw' } }) })
+    await act(async () => { fireEvent.click(screen.getByTestId('switch-confirm')) })
     await waitFor(() => expect(posts).toEqual([{ target: 'openclaw' }]))
   })
 })
@@ -274,7 +277,9 @@ describe('ExtensionsSection', () => {
   it('shows an error state (not a hidden section) when discovery fails', async () => {
     globalThis.fetch = (async () => new Response('boom', { status: 500 })) as unknown as typeof fetch
     const { ExtensionsSection } = await import('../../packages/host/src/components/runtime/extensions-section')
-    render(<ExtensionsSection />)
+    // Flush the mount fetch — its resolution otherwise lands outside act
+    // and leaves React work in flight when the test ends.
+    await act(async () => { render(<ExtensionsSection />) })
     await waitFor(() => screen.getByTestId('runtime-extensions-error'))
     expect(screen.getByText(/Couldn't load extensions/i)).toBeTruthy()
   })
@@ -282,7 +287,9 @@ describe('ExtensionsSection', () => {
   it('renders nothing when the runtime has no extension mechanism', async () => {
     globalThis.fetch = (async () => new Response(JSON.stringify({ supported: false, mode: 'allowlist', extensions: [] }), { status: 200 })) as unknown as typeof fetch
     const { ExtensionsSection } = await import('../../packages/host/src/components/runtime/extensions-section')
-    render(<ExtensionsSection />)
+    // Flush the mount fetch — its resolution otherwise lands outside act
+    // and leaves React work in flight when the test ends.
+    await act(async () => { render(<ExtensionsSection />) })
     await settleReact()
     expect(screen.queryByTestId('runtime-extensions')).toBeNull()
   })
@@ -299,19 +306,24 @@ describe('ExtensionsSection', () => {
     }) as unknown as typeof fetch
 
     const { ExtensionsSection } = await import('../../packages/host/src/components/runtime/extensions-section')
-    render(<ExtensionsSection />)
+    // Flush the mount fetch — its resolution otherwise lands outside act
+    // and leaves React work in flight when the test ends.
+    await act(async () => { render(<ExtensionsSection />) })
     await waitFor(() => screen.getByTestId('ext-allow-npm:pi-image-gen'))
     expect(screen.getByText('Awaiting approval')).toBeTruthy()
 
-    fireEvent.click(screen.getByTestId('ext-allow-npm:pi-image-gen'))
+    await act(async () => { fireEvent.click(screen.getByTestId('ext-allow-npm:pi-image-gen')) })
     await settleReact()
     // Nothing posted before confirm; disclosure present in the dialog.
     expect(posts).toEqual([])
     expect(screen.getByText(/full system permissions/i)).toBeTruthy()
     expect(screen.getByText(/OUTSIDE Bakin's budget caps/i)).toBeTruthy()
 
-    fireEvent.click(screen.getByTestId('ext-confirm'))
+    await act(async () => { fireEvent.click(screen.getByTestId('ext-confirm')) })
     await waitFor(() => screen.getByText('Allowed'))
     expect(posts).toEqual([{ url: expect.stringContaining('/api/runtime/extensions/allow'), body: { id: EXT_PATH } }])
+    // Approval triggers a follow-up re-fetch; drain it so nothing is left in
+    // flight when the test ends (that residue is what stalls the settle hook).
+    await settleReact()
   })
 })

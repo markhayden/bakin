@@ -26,11 +26,12 @@ import {
 const EMPTY: RoutingConfig = { routes: [], tagOverrides: [] }
 
 describe('WORK_CLASSES taxonomy', () => {
-  it('contains the 5 dispatch classes and 6 system classes', () => {
+  it('contains the 5 dispatch classes and 7 system classes', () => {
     const ids = WORK_CLASSES.map((c) => c.id)
     expect(ids).toEqual([
       'scheduled', 'workflow', 'adhoc', 'recovery', 'decomposition',
       'auto-title', 'enrichment', 'relay', 'team-routing', 'send', 'chat',
+      'skill-mapping',
     ])
   })
 
