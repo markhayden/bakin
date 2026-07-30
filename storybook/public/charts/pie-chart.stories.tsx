@@ -1,0 +1,103 @@
+import type { Meta, StoryObj } from '@storybook/react-vite'
+import { expect } from 'storybook/test'
+
+import { ChartExplainer, PieChart, type PieChartDatum } from '@makinbakin/sdk/charts'
+
+import { ChartStage } from './chart-story-stage'
+
+const meta = {
+  title: 'Charts/PieChart',
+  tags: ['public'],
+  parameters: {
+    layout: 'fullscreen',
+    docs: {
+      description: {
+        component: 'PieChart shows one part-to-whole relationship with at most five slices. Entity colors come from the fixed color-vision-deficiency-checked palette in stable slot order — never by rank — and a sixth or later slice folds into one visibly named Other group while the exact-data table keeps every original row. Adjacent slices are separated by surface-colored gaps, larger slices carry a direct outside label, and an always-visible legend lists every slice with its chip, exact value, and share, so identity never rests on color alone. A zero value is omitted from the ring but retained in the table, a negative value renders a named error state instead of a broken ring, and an empty dataset is a named state. When entities need ranking or exceed five, use RankedBarChart; when composition changes across windows, use StackedColumnChart; for change over time, use LineChart.',
+      },
+    },
+    bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'long-labels', 'empty', 'cvd', 'non-color', 'keyboard'],
+  },
+} satisfies Meta
+
+export default meta
+type Story = StoryObj<typeof meta>
+
+const canonicalData: PieChartDatum[] = [
+  { key: 'writer', label: 'Writer', value: 24 },
+  { key: 'reviewer', label: 'Reviewer', value: 12 },
+  { key: 'publisher', label: 'Publisher', value: 8 },
+]
+
+export const CanonicalUsage = {
+  parameters: { layout: 'centered' },
+  render: () => (
+    <PieChart
+      data={canonicalData}
+      label="Runs by agent"
+      description="How the last 44 runs split across three agents."
+    />
+  ),
+  play: async ({ canvas }) => {
+    await expect(canvas.getByRole('group', { name: 'Runs by agent' })).toBeVisible()
+    await expect(canvas.getByRole('list', { name: 'Runs by agent legend' })).toHaveTextContent('Reviewer')
+    const slice = canvas.getByRole('img', { name: 'Writer: 24 (55%)' })
+    slice.focus()
+    await expect(slice).toHaveFocus()
+    await expect(canvas.getByRole('tooltip')).toHaveTextContent('Writer: 24 (55%)')
+    slice.blur()
+    await expect(canvas.getByRole('table', { name: 'Runs by agent data', hidden: true })).toHaveTextContent('Publisher')
+  },
+} satisfies Story
+
+const pluginRuns: PieChartDatum[] = [
+  { key: 'assets', label: 'Assets', value: 340 },
+  { key: 'chat', label: 'Chat', value: 220 },
+  { key: 'health', label: 'Health', value: 180 },
+  { key: 'workflows', label: 'Workflow orchestration with a deliberately long label', value: 120 },
+  { key: 'brands', label: 'Brands', value: 40 },
+  { key: 'memory', label: 'Memory', value: 30 },
+  { key: 'schedule', label: 'Schedule', value: 20 },
+  { key: 'explore', label: 'Explore', value: 0 },
+]
+
+export const DonutFoldAndEmpty = {
+  render: () => (
+    <ChartStage
+      eyebrow="Data / part-to-whole"
+      title="Five slices is the ceiling for part-to-whole"
+      description="The smallest entities fold into one visibly named Other slice, a zero value never invents a sliver, and the exact-data table keeps every original row. Colors follow the entity through the fixed palette order, never its rank."
+    >
+      <section aria-labelledby="plugin-share-heading" className="bakin-chart-story__section">
+        <div>
+          <h2 id="plugin-share-heading">Run share by plugin</h2>
+          <p>Eight entities · three folded into Other · one zero value kept to the table · donut variant.</p>
+        </div>
+        <PieChart
+          data={pluginRuns}
+          label="Runs by plugin"
+          description="How 950 runs split across plugins; the three smallest are folded into Other."
+          donut
+        />
+        <ChartExplainer>Slices below a readable share drop their direct label and rely on the legend and the exact table. The fold is visual only — every original row stays in the table.</ChartExplainer>
+      </section>
+      <section aria-labelledby="empty-pie-heading" className="bakin-chart-story__section bakin-chart-story__section--quiet">
+        <div>
+          <h2 id="empty-pie-heading">No observed runs</h2>
+          <p>An empty dataset stays a named state and retains its exact-data path.</p>
+        </div>
+        <PieChart data={[]} label="Unobserved runs" />
+      </section>
+    </ChartStage>
+  ),
+  play: async ({ canvas }) => {
+    await expect(canvas.getByRole('group', { name: 'Runs by plugin' })).toBeVisible()
+    const other = canvas.getByRole('img', { name: 'Other (3): 90 (9%)' })
+    await expect(other).toHaveAttribute('data-other', 'true')
+    await expect(canvas.queryByRole('img', { name: /Explore/ })).not.toBeInTheDocument()
+    const legend = canvas.getByRole('list', { name: 'Runs by plugin legend' })
+    await expect(legend).toHaveTextContent('Other (3)')
+    await expect(legend).not.toHaveTextContent('Explore')
+    await expect(canvas.getByRole('table', { name: 'Runs by plugin data', hidden: true })).toHaveTextContent('Explore')
+    await expect(canvas.getByRole('status')).toHaveTextContent('No reported data in this window.')
+  },
+} satisfies Story

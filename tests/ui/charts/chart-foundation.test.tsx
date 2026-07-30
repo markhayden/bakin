@@ -86,6 +86,63 @@ describe('ChartDataTable', () => {
     expect(screen.getByRole('cell').textContent).toBe('No usage recorded yet.')
   })
 
+  it('lets renderTable replace the table region while the disclosure chrome and reachability stay kit-owned', () => {
+    const { container } = render(
+      <ChartDataTable
+        caption="Interval outcomes data"
+        data={[
+          { x: 'a', xLabel: 'First', values: { completed: 1 } },
+          { x: 'b', xLabel: 'Second', values: { completed: 2 } },
+        ]}
+        series={[{ key: 'completed', label: 'Completed' }]}
+        defaultOpen
+        renderTable={({ caption, data, series: tableSeries }) => (
+          <table data-testid="custom-region">
+            <caption className="sr-only">{caption}</caption>
+            <tbody>
+              {[...data].reverse().map((datum) => (
+                <tr key={datum.x}>
+                  <th scope="row">{datum.xLabel}</th>
+                  {tableSeries.map((item) => <td key={item.key}>{datum.values[item.key]}</td>)}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      />,
+    )
+
+    expect(screen.getByText('View Interval outcomes data')).toBeTruthy()
+    const table = screen.getByRole('table', { name: 'Interval outcomes data' })
+    expect(table.getAttribute('data-testid')).toBe('custom-region')
+    expect(container.querySelector('[data-slot="chart-exact-table"]')).toBeNull()
+    expect(screen.getAllByRole('rowheader')[0]?.textContent).toBe('Second')
+    const region = screen.getByRole('region', { name: 'Interval outcomes data table' })
+    expect(region.getAttribute('tabindex')).toBe('0')
+    expect(region.contains(table)).toBe(true)
+  })
+
+  it('applies renderTable to the visually hidden variant too', () => {
+    render(
+      <ChartDataTable
+        caption="Compact custom data"
+        data={[{ x: 'latest', values: { value: 4 } }]}
+        series={[{ key: 'value', label: 'Value' }]}
+        visuallyHidden
+        renderTable={({ caption }) => (
+          <table data-testid="hidden-custom-region">
+            <caption>{caption}</caption>
+            <tbody><tr><td>4</td></tr></tbody>
+          </table>
+        )}
+      />,
+    )
+
+    expect(screen.getByRole('table', { name: 'Compact custom data', hidden: true }).getAttribute('data-testid'))
+      .toBe('hidden-custom-region')
+    expect(screen.queryByText('View Compact custom data')).toBeNull()
+  })
+
   it('can preserve an exact table for compact visuals without adding a disclosure', () => {
     render(
       <ChartDataTable
@@ -143,6 +200,33 @@ describe('Sparkline', () => {
     render(<Sparkline values={[3]} labels={['Latest']} label="Latest task count" />)
     expect(screen.getByText('Not enough data for a trend')).toBeTruthy()
     expect(screen.getByRole('table', { name: 'Latest task count data', hidden: true }).textContent).toContain('3')
+  })
+
+  it('stays fill-free by default and only marks the area variant when requested', () => {
+    const { container } = render(<Sparkline values={[4, 7, 5]} label="Default trend" />)
+    expect(container.querySelector('path')).toBeNull()
+    expect(container.querySelector('[data-slot="sparkline"]')?.hasAttribute('data-area')).toBe(false)
+  })
+
+  it('draws a soft same-color fill per reported segment so area gaps mirror line gaps', () => {
+    const { container } = render(
+      <Sparkline
+        area
+        values={[4, null, 9, 12]}
+        labels={['Run 1', 'Run 2', 'Run 3', 'Run 4']}
+        label="Filled trend with an unreported run"
+      />,
+    )
+
+    expect(container.querySelector('[data-slot="sparkline"]')?.getAttribute('data-area')).toBe('true')
+    // Only the [Run 3, Run 4] segment can trend; the lone leading point gets no fill.
+    const fills = container.querySelectorAll('path[data-series-fill="value"]')
+    expect(fills).toHaveLength(1)
+    expect(fills[0]!.getAttribute('fill')).toBe(CHART_SERIES_COLORS[0])
+    expect(fills[0]!.getAttribute('fill-opacity')).toBe('0.2')
+    expect(fills[0]!.getAttribute('d')?.trim().endsWith('Z')).toBe(true)
+    expect(container.querySelectorAll('polyline')).toHaveLength(1)
+    expect(screen.queryByRole('img', { name: /Run 2:/ })).toBeNull()
   })
 })
 

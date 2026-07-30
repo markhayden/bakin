@@ -8,6 +8,14 @@ export interface RankedBarChartProps {
   data: readonly ChartDatum[]
   /** Ranked bars intentionally compare one unit at a time. */
   series: ChartSeries
+  /**
+   * Optional highlighted sub-segment of each bar (e.g. the failed portion of a
+   * call total). Its value is read from `datum.values[secondary.key]`, must
+   * share the primary unit, and renders as a full-opacity inset segment over a
+   * muted total; the legend, per-bar accessible label, and exact table carry
+   * both numbers. Color defaults to the second categorical slot.
+   */
+  secondary?: ChartSeries
   /** Accessible name for the chart and basis for its exact-data caption. */
   label: string
   description?: string
@@ -16,6 +24,8 @@ export interface RankedBarChartProps {
   /** Disable only when an equivalent exact table is rendered beside the chart. */
   showDataTable?: boolean
 }
+
+const MUTED_TOTAL_OPACITY = 0.45
 
 function reportedValue(value: number | undefined): number | null {
   return Number.isFinite(value) && value! >= 0 ? value! : null
@@ -29,6 +39,7 @@ function reportedValue(value: number | undefined): number | null {
 export function RankedBarChart({
   data,
   series,
+  secondary,
   label,
   description,
   formatValue = (value) => value.toLocaleString(),
@@ -61,7 +72,7 @@ export function RankedBarChart({
     ? (
         <ChartDataTable
           data={ranked}
-          series={[series]}
+          series={secondary ? [series, secondary] : [series]}
           caption={`${label} data`}
           formatValue={formatValue}
         />
@@ -95,6 +106,15 @@ export function RankedBarChart({
             ? datum.missingLabels?.[series.key] ?? 'Not reported'
             : formatValue(value)
           const width = value === null || max === 0 ? 0 : (value / max) * 100
+          const secondaryValue = secondary ? reportedValue(datum.values[secondary.key]) : null
+          const secondaryValueLabel = secondary
+            ? secondaryValue === null
+              ? datum.missingLabels?.[secondary.key] ?? 'Not reported'
+              : formatValue(secondaryValue)
+            : null
+          const secondaryWidth = secondaryValue !== null && value !== null && value > 0
+            ? Math.min(100, (secondaryValue / value) * 100)
+            : 0
 
           return (
             <div
@@ -111,28 +131,85 @@ export function RankedBarChart({
                 className="whitespace-nowrap font-bakin-typography-family-mono text-[length:var(--bakin-typography-size-meta)] tabular-nums text-bakin-text-muted"
               >
                 {valueLabel}
+                {secondary && secondaryValue !== null && secondaryValue > 0
+                  ? ` · ${secondaryValueLabel} ${secondary.label}`
+                  : ''}
               </span>
               <div
                 role={value === null ? undefined : 'img'}
                 tabIndex={value === null ? undefined : 0}
-                aria-label={value === null ? undefined : `${datumLabel} — ${series.label}: ${valueLabel}`}
+                aria-label={value === null
+                  ? undefined
+                  : secondary
+                    ? `${datumLabel} — ${series.label}: ${valueLabel}, ${secondary.label}: ${secondaryValueLabel}`
+                    : `${datumLabel} — ${series.label}: ${valueLabel}`}
                 className="col-span-2 h-bakin-3 overflow-hidden rounded-bakin-control bg-bakin-surface-subtle outline-none focus-visible:ring-2 focus-visible:ring-bakin-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-bakin-surface-default"
               >
                 {value !== null && value > 0 ? (
-                  <div
-                    data-series={series.key}
-                    className="h-full min-w-px rounded-bakin-control"
-                    style={{
-                      backgroundColor: chartSeriesColor(series, 0),
-                      width: `${width}%`,
-                    }}
-                  />
+                  secondary ? (
+                    <div
+                      data-series={series.key}
+                      className="relative h-full min-w-px overflow-hidden rounded-bakin-control"
+                      style={{ width: `${width}%` }}
+                    >
+                      <span
+                        aria-hidden="true"
+                        className="absolute inset-0 rounded-bakin-control"
+                        style={{
+                          backgroundColor: chartSeriesColor(series, 0),
+                          opacity: MUTED_TOTAL_OPACITY,
+                        }}
+                      />
+                      {secondaryValue !== null && secondaryValue > 0 ? (
+                        <span
+                          data-series-secondary={secondary.key}
+                          aria-hidden="true"
+                          className="absolute inset-y-0 right-0 min-w-px rounded-r-bakin-control"
+                          style={{
+                            backgroundColor: chartSeriesColor(secondary, 1),
+                            width: `${secondaryWidth}%`,
+                          }}
+                        />
+                      ) : null}
+                    </div>
+                  ) : (
+                    <div
+                      data-series={series.key}
+                      className="h-full min-w-px rounded-bakin-control"
+                      style={{
+                        backgroundColor: chartSeriesColor(series, 0),
+                        width: `${width}%`,
+                      }}
+                    />
+                  )
                 ) : null}
               </div>
             </div>
           )
         })}
       </div>
+      {secondary ? (
+        <ul className="mt-bakin-2 flex flex-wrap gap-x-bakin-3 gap-y-bakin-1" aria-label={`${label} legend`}>
+          <li className="flex items-center gap-bakin-2 text-[length:var(--bakin-typography-size-meta)] text-bakin-text-muted">
+            <span
+              data-slot="chart-legend-swatch"
+              className="inline-block size-bakin-2 rounded-bakin-control"
+              style={{ backgroundColor: chartSeriesColor(series, 0), opacity: MUTED_TOTAL_OPACITY }}
+              aria-hidden="true"
+            />
+            {series.label}
+          </li>
+          <li className="flex items-center gap-bakin-2 text-[length:var(--bakin-typography-size-meta)] text-bakin-text-muted">
+            <span
+              data-slot="chart-legend-swatch"
+              className="inline-block size-bakin-2 rounded-bakin-control"
+              style={{ backgroundColor: chartSeriesColor(secondary, 1) }}
+              aria-hidden="true"
+            />
+            {secondary.label}
+          </li>
+        </ul>
+      ) : null}
       {table}
     </div>
   )

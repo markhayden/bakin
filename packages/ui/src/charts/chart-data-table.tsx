@@ -22,6 +22,16 @@ export interface ChartSeries {
   color?: string
 }
 
+/** Everything the default exact table renders from, handed to `renderTable`. */
+export interface ChartDataTableRenderContext {
+  caption: string
+  data: readonly ChartDatum[]
+  series: readonly ChartSeries[]
+  formatValue: (value: number) => ReactNode
+  missingValue: ReactNode
+  emptyLabel: ReactNode
+}
+
 export interface ChartDataTableProps {
   data: readonly ChartDatum[]
   series: readonly ChartSeries[]
@@ -36,6 +46,15 @@ export interface ChartDataTableProps {
   defaultOpen?: boolean
   /** Visually hide the exact table when the owning visual is intentionally compact. */
   visuallyHidden?: boolean
+  /**
+   * Escape hatch: replaces the table region's markup when the default
+   * label-plus-series grid cannot express the dataset (derived columns, row
+   * ordering, per-row structure). The disclosure chrome, the `View {caption}`
+   * summary, and the keyboard-reachable overflow region stay kit-owned; the
+   * returned markup MUST render a table (or equivalent structure) named by
+   * `context.caption` and must not turn absent values into zeros.
+   */
+  renderTable?: (context: ChartDataTableRenderContext) => ReactNode
   className?: string
 }
 
@@ -124,18 +143,21 @@ export function ChartDataTable({
   emptyLabel = 'No data available.',
   defaultOpen = false,
   visuallyHidden = false,
+  renderTable,
   className,
 }: ChartDataTableProps) {
-  const table = (
-    <ExactTable
-      caption={caption}
-      data={data}
-      emptyLabel={emptyLabel}
-      formatValue={formatValue}
-      missingValue={missingValue}
-      series={series}
-    />
-  )
+  const table = renderTable
+    ? renderTable({ caption, data, series, formatValue, missingValue, emptyLabel })
+    : (
+        <ExactTable
+          caption={caption}
+          data={data}
+          emptyLabel={emptyLabel}
+          formatValue={formatValue}
+          missingValue={missingValue}
+          series={series}
+        />
+      )
 
   if (visuallyHidden) {
     return <div className={cn('sr-only', className)} data-slot="chart-data-table">{table}</div>

@@ -116,3 +116,74 @@ export const ExactDataDisclosure = {
     await expect(canvas.getByText('No completed runs have been observed yet.')).toBeVisible()
   },
 } satisfies Story
+
+const intervalSeries: ChartSeries[] = [
+  { key: 'other', label: 'Other outcomes' },
+  { key: 'failed', label: 'Failed' },
+]
+
+const intervalData: ChartDatum[] = [
+  { x: '2026-07-29T14:00:00Z', xLabel: '2:00 PM', values: { other: 41, failed: 2 } },
+  { x: '2026-07-29T15:00:00Z', xLabel: '3:00 PM', values: { other: 36, failed: 0 } },
+  { x: '2026-07-29T16:00:00Z', xLabel: '4:00 PM', values: { other: 52, failed: 5 } },
+]
+
+export const CustomTableRegion = {
+  render: () => (
+    <ChartStage
+      eyebrow="Data / escape hatch"
+      title="Customize the table region, keep the disclosure contract"
+      description="renderTable replaces the exact table's markup — derived ordering, semantic time cells — while the kit keeps the disclosure chrome, the caption naming, and the keyboard-reachable overflow region."
+    >
+      <section aria-labelledby="custom-table-region-heading" className="bakin-chart-story__section">
+        <div>
+          <h2 id="custom-table-region-heading">Interval outcomes</h2>
+          <p>Latest interval first with semantic time headers — a shape the default label-plus-series grid cannot express.</p>
+        </div>
+        <ChartDataTable
+          caption="Interval outcomes exact data"
+          data={intervalData}
+          series={intervalSeries}
+          defaultOpen
+          renderTable={({ caption, data, series, formatValue }) => (
+            <table className="min-w-full border-collapse text-left" data-testid="custom-table-region">
+              <caption className="sr-only">{caption}</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Interval</th>
+                  {series.map((item) => (
+                    <th key={item.key} scope="col" style={{ textAlign: 'right' }}>{item.label}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {[...data].reverse().map((datum) => (
+                  <tr key={datum.x}>
+                    <th scope="row">
+                      <time dateTime={datum.x}>{datum.xLabel ?? datum.x}</time>
+                    </th>
+                    {series.map((item) => (
+                      <td key={item.key} style={{ textAlign: 'right' }}>
+                        {formatValue(datum.values[item.key] ?? 0)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        />
+        <ChartExplainer>The consumer owns the rows; the kit still owns how the table is disclosed, named, and reached.</ChartExplainer>
+      </section>
+    </ChartStage>
+  ),
+  play: async ({ canvas }) => {
+    await expect(canvas.getByText('View Interval outcomes exact data')).toBeVisible()
+    const table = canvas.getByRole('table', { name: 'Interval outcomes exact data' })
+    await expect(table).toBeVisible()
+    await expect(table).toHaveAttribute('data-testid', 'custom-table-region')
+    const rowHeaders = canvas.getAllByRole('rowheader')
+    await expect(rowHeaders[0]).toHaveTextContent('4:00 PM')
+    await expect(canvas.getByRole('region', { name: 'Interval outcomes exact data table' })).toHaveAttribute('tabindex', '0')
+  },
+} satisfies Story

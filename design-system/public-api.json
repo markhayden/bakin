@@ -10,8 +10,8 @@
     "entrypoints": 8,
     "supportedEntrypoints": 7,
     "frozenLegacyEntrypoints": 1,
-    "valueExports": 359,
-    "typeExports": 421
+    "valueExports": 362,
+    "typeExports": 427
   },
   "entrypoints": [
     {
@@ -553,6 +553,7 @@
       "status": "supported-prerelease",
       "newConsumerPolicy": "supported",
       "values": [
+        "AreaChart",
         "assignSeriesColors",
         "BarChart",
         "CHART_MAX_SERIES",
@@ -562,18 +563,26 @@
         "ChartDataTable",
         "ChartExplainer",
         "chartSeriesColor",
+        "CompositionBar",
         "LineChart",
+        "PieChart",
         "RankedBarChart",
         "Sparkline",
         "StackedColumnChart"
       ],
       "types": [
+        "AreaChartProps",
         "BarChartProps",
         "ChartDataTableProps",
+        "ChartDataTableRenderContext",
         "ChartDatum",
         "ChartExplainerProps",
         "ChartSeries",
+        "CompositionBarProps",
+        "CompositionBarSegment",
         "LineChartProps",
+        "PieChartDatum",
+        "PieChartProps",
         "RankedBarChartProps",
         "SparklineProps",
         "StackedColumnChartProps",

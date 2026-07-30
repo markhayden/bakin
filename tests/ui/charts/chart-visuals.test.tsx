@@ -195,6 +195,53 @@ describe('RankedBarChart', () => {
     expect(screen.getAllByText('Not priced')).toHaveLength(2)
   })
 
+  it('renders a highlighted sub-segment over a muted total with both numbers in aria, legend, and table', () => {
+    const { container } = render(
+      <RankedBarChart
+        data={[
+          { x: 'tasks', xLabel: 'POST /api/tasks', values: { count: 120, failures: 30 } },
+          { x: 'clean', xLabel: 'GET /api/search', values: { count: 60, failures: 0 } },
+          { x: 'missing', xLabel: 'Unreported destination', values: {}, missingLabels: { count: 'Not recorded', failures: 'Not recorded' } },
+        ]}
+        series={{ key: 'count', label: 'Calls' }}
+        secondary={{ key: 'failures', label: 'Failed', color: 'var(--bakin-color-signal-danger)' }}
+        label="Calls by destination"
+      />,
+    )
+
+    const bar = screen.getByRole('img', { name: 'POST /api/tasks — Calls: 120, Failed: 30' })
+    const overlay = bar.querySelector<HTMLElement>('[data-series-secondary="failures"]')
+    expect(overlay?.style.width).toBe('25%')
+    expect(overlay?.style.backgroundColor).toBe('var(--bakin-color-signal-danger)')
+    expect(screen.getByRole('img', { name: 'GET /api/search — Calls: 60, Failed: 0' })
+      .querySelector('[data-series-secondary]')).toBeNull()
+    expect(container.textContent).toContain('120 · 30 Failed')
+
+    const legend = screen.getByRole('list', { name: 'Calls by destination legend' })
+    expect(legend.textContent).toContain('Calls')
+    expect(legend.textContent).toContain('Failed')
+
+    const table = screen.getByRole('table', { name: 'Calls by destination data', hidden: true })
+    expect(table.textContent).toContain('Failed')
+    expect(table.textContent).toContain('30')
+    expect(screen.getAllByText('Not recorded').length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('keeps the render without a secondary series free of overlays and legend', () => {
+    const { container } = render(
+      <RankedBarChart
+        data={[{ x: 'only', values: { completed: 4 } }]}
+        series={series[0]!}
+        label="Plain ranking"
+      />,
+    )
+
+    expect(container.querySelector('[data-series-secondary]')).toBeNull()
+    expect(screen.queryByRole('list', { name: 'Plain ranking legend' })).toBeNull()
+    expect(container.querySelector<HTMLElement>('[data-series="completed"]')?.style.backgroundColor)
+      .toBe(CHART_SERIES_COLORS[0])
+  })
+
   it('scales fractional units against the reported maximum instead of an invented floor', () => {
     const { container } = render(
       <RankedBarChart

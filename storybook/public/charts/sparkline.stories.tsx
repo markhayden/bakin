@@ -97,3 +97,38 @@ export const CompactTrends = {
     await expect(medianChart.querySelectorAll('[role="img"]')).toHaveLength(5)
   },
 } satisfies Story
+
+export const AreaFill = {
+  render: () => (
+    <ChartStage
+      eyebrow="Data / compact trend"
+      title="An area fill emphasizes magnitude without changing the contract"
+      description="The soft fill rides under the same line: gaps stay gaps, every reported point stays keyboard focusable, and the exact table is unchanged."
+    >
+      <article className="bakin-chart-story__trend">
+        <div>
+          <h2>Assets generated</h2>
+          <strong>42</strong>
+          <p>Up 8 from the prior window</p>
+        </div>
+        <Sparkline
+          area
+          label="Assets generated across the last six reporting windows"
+          labels={['Window 1', 'Window 2', 'Window 3', 'Window 4', 'Window 5', 'Window 6']}
+          values={[18, 24, null, 31, 34, 42]}
+        />
+      </article>
+      <ChartExplainer>Use the fill when accumulated magnitude is the message; the default line remains the neutral choice.</ChartExplainer>
+    </ChartStage>
+  ),
+  play: async ({ canvas }) => {
+    const chart = canvas.getByRole('group', { name: 'Assets generated across the last six reporting windows' })
+    await expect(chart.querySelectorAll('path[data-series-fill="value"]')).toHaveLength(2)
+    await expect(canvas.queryByRole('img', { name: /Window 3/ })).not.toBeInTheDocument()
+    const point = canvas.getByRole('img', { name: 'Window 5: 34' })
+    point.focus()
+    await expect(point).toHaveFocus()
+    await expect(canvas.getByRole('tooltip')).toHaveTextContent('Window 5: 34')
+    point.blur()
+  },
+} satisfies Story

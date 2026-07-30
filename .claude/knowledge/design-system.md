@@ -130,8 +130,8 @@ search-input, segmented-control, pagination, sortable-head ·
 `Layout/` page-shell, stack/inline, grid, section, bounded-overflow ·
 `Pages/` archetypes (WorkspacePage now; Page lands in refit P5) ·
 `Lists/` list-rows, kanban (+ P5: data-table, timeline, calendar-grid, …) ·
-`Charts/` line, bar, stacked-column, ranked-bar, sparkline, data-table,
-explainer, stat-tile, stat-group (+ P4: pie, area, composition-bar) ·
+`Charts/` line, area, bar, stacked-column, ranked-bar, pie, composition-bar,
+sparkline, data-table, explainer, stat-tile, stat-group ·
 `Conversation/` (sanctioned domain, unchanged) · `Agents/` avatar, select,
 status (sanctioned domain) · `Content/` markdown content/editor ·
 `Recipes/` assembly proofs (CanonicalUsage-exempt) · `Testing/` plugin UI
@@ -150,7 +150,7 @@ added two monotonic ratchets that run inside `ui:conformance --quick`:
   `CanonicalUsage` first story (minimal, `@makinbakin/sdk/*`-imports-only JSX;
   `Recipes/` exempt), ≥1 play assertion, `parameters.bakinCoverage`,
   `parameters.docs.description.component`, and a `tests/ui/visual` reference.
-  Deleting the baseline flips the gate to absolute mode (planned at refit P5).
+  The baseline was deleted 2026-07-30 (refit P3) — the gate runs in ABSOLUTE mode; every gap fails immediately.
 - **Kit growth** (`scripts/ui/kit-growth.ts`, baseline
   `design-system/kit-coverage.json`): every PascalCase value export of the
   supported SDK UI entrypoints must be imported by the public catalog —
