@@ -11,7 +11,7 @@ import { Button } from "@makinbakin/sdk/ui"
 import { Input } from "@makinbakin/sdk/ui"
 import { Textarea } from "@makinbakin/sdk/ui"
 import { Label } from "@makinbakin/sdk/ui"
-import { AgentSelect } from "@makinbakin/sdk/components"
+import { WorkflowAgentSelect } from './workflow-agent-identity'
 
 import {
   type ParallelChildRow,
@@ -58,9 +58,9 @@ export function ParallelChildrenEditor({
   }
 
   return (
-    <div className="border-t border-border pt-5">
+    <div className="border-t border-bakin-border-subtle pt-5">
       <div className="mb-4 flex items-center justify-between gap-2">
-        <span className="text-sm font-medium">Parallel child steps</span>
+        <span className="text-bakin-typography-size-body font-bakin-typography-weight-medium">Parallel child steps</span>
         <Button
           type="button"
           variant="ghost"
@@ -76,15 +76,15 @@ export function ParallelChildrenEditor({
           const childId = child.id || `child-${index + 1}`
           if (child.type !== 'agent') {
             return (
-              <div key={`${childId}-${index}`} className="rounded border border-amber-500/40 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-200">
+              <div key={`${childId}-${index}`} className="rounded-bakin-control border border-bakin-signal-highlight/40 bg-bakin-signal-highlight/10 p-3 text-bakin-typography-size-meta leading-relaxed text-bakin-signal-highlight">
                 Child {childId} has unsupported type {child.type}; it is preserved read-only.
               </div>
             )
           }
           return (
-            <div key={`${childId}-${index}`} className="rounded border border-border p-4">
+            <div key={`${childId}-${index}`} className="rounded-bakin-control border border-bakin-border-subtle p-4">
               <div className="mb-4 flex items-center justify-between gap-2">
-                <span className="min-w-0 truncate text-sm font-medium">{child.label || childId}</span>
+                <span className="min-w-0 truncate text-bakin-typography-size-body font-bakin-typography-weight-medium">{child.label || childId}</span>
                 <div className="flex items-center gap-1">
                   <Button
                     type="button"
@@ -152,11 +152,10 @@ export function ParallelChildrenEditor({
                 </div>
                 <div className={FIELD_GROUP_CLASS}>
                   <Label className={FIELD_LABEL_CLASS}>Agent</Label>
-                  <AgentSelect
+                  <WorkflowAgentSelect
                     value={typeof child.agent === 'string' ? child.agent : ''}
                     onValueChange={(v) => updateChild(index, { agent: v || '' })}
                     includeAssigned
-                    includeTeams
                     allowNone={false}
                     className={CONTROL_CLASS}
                   />
@@ -202,7 +201,7 @@ export function ParallelChildrenEditor({
           )
         })}
         {childrenRows.length === 0 && (
-          <div className="rounded border border-border p-3 text-xs leading-relaxed text-muted-foreground">
+          <div className="rounded-bakin-control border border-bakin-border-subtle p-3 text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted">
             Add at least one child agent before saving this parallel step.
           </div>
         )}

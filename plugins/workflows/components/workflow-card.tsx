@@ -20,7 +20,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@makinbakin/sdk/ui'
-import { AgentAvatar } from '@makinbakin/sdk/components'
+import { WorkflowAgentAvatar } from './workflow-agent-identity'
 import type { WorkflowTemplate, WorkflowStep } from '../types'
 import {
   collectWorkflowAssignments,
@@ -126,7 +126,7 @@ function WorkflowStepPreview({
           <TooltipContent
             side="top"
             align="start"
-            className="w-80 max-w-[90vw] items-stretch"
+            className="w-80 max-w-full items-stretch"
           >
             <div className="min-w-0">
               <p className="m-0 font-bakin-typography-weight-bold">Workflow steps</p>
@@ -199,11 +199,11 @@ export function WorkflowCard({
       />
       {scoreInfo && (
         <div className="pointer-events-none absolute right-bakin-3 top-bakin-3 z-10 flex flex-col items-end gap-0.5 rounded-bakin-control bg-bakin-canvas-default/90 px-bakin-2 py-bakin-1 text-right font-bakin-typography-family-mono text-bakin-typography-size-meta">
-          <span className="text-amber-400">RRF {scoreInfo.score.toFixed(3)}</span>
-          <span className="text-cyan-400">
+          <span className="text-bakin-data-series-3">RRF {scoreInfo.score.toFixed(3)}</span>
+          <span className="text-bakin-data-series-2">
             BM25 {(bm25Key ? scoreInfo.indexScores?.[bm25Key] ?? 0 : 0).toFixed(3)}
           </span>
-          <span className="text-purple-400">
+          <span className="text-bakin-data-series-5">
             SEM {(scoreInfo.indexScores?.[semKey] ?? 0).toFixed(3)}
           </span>
         </div>
@@ -301,7 +301,7 @@ export function WorkflowCard({
             ))}
             <div className="flex -space-x-1.5">
             {assignments.agentIds.slice(0, 5).map(id => (
-              <AgentAvatar key={id} agentId={id} size="sm" />
+              <WorkflowAgentAvatar key={id} agentId={id} size="sm" />
             ))}
             {assignments.agentIds.length > 5 && (
               <span className="ml-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted">+{assignments.agentIds.length - 5}</span>

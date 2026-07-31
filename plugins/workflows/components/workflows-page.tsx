@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useRouter } from '@makinbakin/sdk/hooks'
-import { SearchDegradedChip, SearchPartialChip } from "@makinbakin/sdk/components"
 import { Grid } from "@makinbakin/sdk/layout"
 import {
   FacetFilter,
@@ -11,7 +10,9 @@ import {
   PageControls,
   PageHeader,
   Pagination,
+  SearchDegradedChip,
   SearchInput,
+  SearchPartialChip,
 } from "@makinbakin/sdk/patterns"
 import { Badge, Button, Skeleton, SystemState } from "@makinbakin/sdk/ui"
 import { Plus } from 'lucide-react'
@@ -236,7 +237,7 @@ export function WorkflowsPage() {
     return (
       <section className="flex min-w-0 flex-col gap-bakin-3">
         <div className="flex min-w-0 items-center gap-bakin-2">
-          <h2 className="m-0 text-bakin-typography-size-meta font-bakin-typography-weight-bold uppercase tracking-[.12em] text-bakin-text-muted">
+          <h2 className="m-0 text-bakin-typography-size-meta font-bakin-typography-weight-bold uppercase tracking-widest text-bakin-text-muted">
             {title}
           </h2>
           <Badge size="xs" variant="outline">{total}</Badge>

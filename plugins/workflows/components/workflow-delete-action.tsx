@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { Trash2 } from 'lucide-react'
 import { Button } from "@makinbakin/sdk/ui"
-import { ConfirmDialog } from "@makinbakin/sdk/components"
+import { ConfirmDialog } from "@makinbakin/sdk/patterns"
 
 interface WorkflowDeleteDialogProps {
   workflowName: string

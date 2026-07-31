@@ -5,8 +5,8 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import userEvent from '@testing-library/user-event'
 import '../../rtl-settle'
 
-mock.module('@makinbakin/sdk/components', () => ({
-  AgentAvatar: ({ agentId, size }: { agentId: string; size: string }) => (
+mock.module('../../../plugins/workflows/components/workflow-agent-identity', () => ({
+  WorkflowAgentAvatar: ({ agentId, size }: { agentId: string; size: string }) => (
     <span data-testid={`agent-${agentId}`} data-size={size}>{agentId}</span>
   ),
 }))

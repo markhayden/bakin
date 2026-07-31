@@ -3,6 +3,7 @@
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { AlertTriangle, Radio } from 'lucide-react'
 import { AgentAssignmentLabel } from './agent-assignment-label'
+import { StaleSkillChip } from './stale-skill-chip'
 
 interface OutputNodeData extends Record<string, unknown> {
   label: string
@@ -18,34 +19,31 @@ export function OutputNode({ data }: NodeProps) {
   const channelText = channels && channels.length > 0 ? channels.join(', ') : undefined
 
   return (
-    <div className={`flex h-full w-full flex-col overflow-hidden rounded-lg border bg-zinc-900 px-4 py-3 shadow-lg ${hasSkillDrift ? 'border-amber-500/70 ring-1 ring-amber-500/25' : 'border-purple-500/50'}`}>
+    <div className={`flex h-full w-full flex-col overflow-hidden rounded-bakin-surface border bg-bakin-surface-default px-4 py-3 shadow-lg ${hasSkillDrift ? 'border-bakin-signal-highlight/70 ring-1 ring-bakin-signal-highlight/25' : 'border-bakin-signal-accent/50'}`}>
       <div className="mb-2 flex items-center justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-2 text-xs font-bold uppercase tracking-wider text-purple-400">
-          <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-md bg-purple-500/10">
+        <div className="flex min-w-0 items-center gap-2 text-bakin-typography-size-meta font-bakin-typography-weight-bold uppercase tracking-wider text-bakin-signal-accent">
+          <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-bakin-control bg-bakin-signal-accent/10">
             <Radio className="size-3.5" />
           </span>
           <span className="truncate">Completion</span>
         </div>
         {hasSkillDrift && (
-          <span
-            className="inline-flex shrink-0 items-center gap-1 rounded border border-amber-500/35 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium leading-none text-amber-200"
-            title="This step uses a stale workflow skill"
-          >
+          <StaleSkillChip title="This step uses a stale workflow skill">
             <AlertTriangle className="size-3" />
             Stale
-          </span>
+          </StaleSkillChip>
         )}
       </div>
-      <div className="truncate text-sm font-medium leading-5 text-zinc-100">{label}</div>
+      <div className="truncate text-bakin-typography-size-body font-bakin-typography-weight-medium leading-5 text-bakin-text-primary">{label}</div>
       {agent && <AgentAssignmentLabel agent={agent} className="mt-1" />}
       {channelText ? (
-        <div className={`${agent ? 'mt-0.5' : 'mt-1'} truncate text-[11px] text-zinc-400`}>
+        <div className={`${agent ? 'mt-0.5' : 'mt-1'} truncate text-bakin-typography-size-meta text-bakin-text-muted`}>
           Channels: {channelText}
         </div>
       ) : description ? (
-        <p className="mt-1 line-clamp-2 text-[11px] leading-snug text-zinc-500">{description}</p>
+        <p className="mt-1 line-clamp-2 text-bakin-typography-size-meta leading-snug text-bakin-text-muted">{description}</p>
       ) : null}
-      <Handle type="target" position={Position.Top} className="!bg-zinc-500" />
+      <Handle type="target" position={Position.Top} className="!bg-bakin-text-muted" />
     </div>
   )
 }

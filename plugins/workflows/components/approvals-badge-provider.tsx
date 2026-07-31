@@ -15,7 +15,7 @@ import { useNavBadge, usePluginEvent, useRouter, toast, useToastStore } from '@m
 import { pluginFetch } from '@makinbakin/sdk/utils'
 import { useState } from 'react'
 
-import { sendBrowserNotification } from '../../../src/lib/browser-notify'
+import { sendBrowserNotification } from '../lib/browser-notify'
 import { attentionForGate, gateBadge, gateUrl, type GateReachedPayload } from './attention'
 
 interface PendingGatesResponse {
@@ -33,8 +33,8 @@ function GateToast({ url, title, body, onNavigate }: { url: string; title: strin
         router.push(url)
       }}
     >
-      <span className="font-medium">{title}</span>
-      <span className="block text-xs text-muted-foreground">{body}</span>
+      <span className="font-bakin-typography-weight-medium">{title}</span>
+      <span className="block text-bakin-typography-size-meta text-bakin-text-muted">{body}</span>
     </button>
   )
 }

@@ -101,10 +101,10 @@ const RESET_NODE_STYLES = `
     border-radius: 0 !important;
   }
   .react-flow__node.bakin-workflow-node-selected > div {
-    box-shadow: 0 0 0 2px rgb(96 165 250 / 0.9), 0 18px 48px rgb(0 0 0 / 0.35) !important;
+    box-shadow: 0 0 0 2px var(--bakin-color-focus-ring), var(--bakin-elevation-overlay) !important;
   }
   .react-flow__node {
-    transition: transform 160ms ease, opacity 160ms ease;
+    transition: transform var(--bakin-motion-duration-transition, 160ms) ease, opacity var(--bakin-motion-duration-transition, 160ms) ease;
   }
 `
 
@@ -176,7 +176,6 @@ function InsertableEdge({
   targetY,
   sourcePosition,
   targetPosition,
-  style,
   markerEnd,
   data,
 }: EdgeProps) {
@@ -193,17 +192,17 @@ function InsertableEdge({
 
   return (
     <>
-      <BaseEdge path={edgePath} markerEnd={markerEnd} style={style} />
+      <BaseEdge path={edgePath} markerEnd={markerEnd} />
       {insertData && (
         <EdgeLabelRenderer>
           <button
             type="button"
             aria-label="Drop node here"
             title="Drop a node here"
-            className={`nodrag nopan pointer-events-auto flex items-center justify-center rounded-full border transition ${
+            className={`nodrag nopan pointer-events-auto flex items-center justify-center rounded-bakin-pill border transition ${
               isDragOver
-                ? 'size-8 border-blue-300/80 bg-blue-500/20 shadow-[0_0_0_4px_rgba(59,130,246,0.16)]'
-                : 'size-5 border-transparent bg-transparent hover:border-blue-400/40 hover:bg-blue-500/10'
+                ? 'size-8 border-bakin-signal-info/80 bg-bakin-signal-info/20 ring-4 ring-bakin-signal-info/15'
+                : 'size-5 border-transparent bg-transparent hover:border-bakin-signal-info/40 hover:bg-bakin-signal-info/10'
             }`}
             style={{
               position: 'absolute',
@@ -239,10 +238,10 @@ function InsertableEdge({
             }}
           >
             <span
-              className={`rounded-full transition-all ${
+              className={`rounded-bakin-pill transition-all ${
                 isDragOver
-                  ? 'size-4 bg-blue-300'
-                  : 'size-2.5 bg-zinc-500 hover:bg-blue-300'
+                  ? 'size-4 bg-bakin-signal-info'
+                  : 'size-2.5 bg-bakin-text-muted hover:bg-bakin-signal-info'
               }`}
             />
           </button>
@@ -1048,7 +1047,7 @@ export function WorkflowCanvasEditor({
               onCollapsedChange={setPaletteCollapsed}
             />
 
-            <div className="relative min-h-0 min-w-0 flex-1 bg-bakin-canvas-default">
+            <div className="relative min-h-0 min-w-0 flex-1 bg-bakin-canvas-default [--xy-edge-stroke:var(--bakin-color-border-subtle)] [--xy-edge-stroke-width:2]">
           <style dangerouslySetInnerHTML={{ __html: RESET_NODE_STYLES }} />
           <ReactFlow
             nodes={nodes}
@@ -1078,9 +1077,6 @@ export function WorkflowCanvasEditor({
             proOptions={{ hideAttribution: true }}
             nodesDraggable={true}
             nodesConnectable={false}
-            defaultEdgeOptions={{
-              style: { stroke: 'var(--bakin-color-border-subtle)', strokeWidth: 2 },
-            }}
           >
             {selectedStep && (
               <NodeToolbar
@@ -1089,7 +1085,7 @@ export function WorkflowCanvasEditor({
                 position={Position.Top}
                 align="end"
                 offset={8}
-                className="flex items-center gap-1 rounded-md border border-border bg-card/95 p-1 shadow-lg backdrop-blur"
+                className="flex items-center gap-1 rounded-bakin-control border border-bakin-border-subtle bg-bakin-surface-default/95 p-1 shadow-lg backdrop-blur"
               >
                 <Button
                   aria-label="Move selected step up"
@@ -1146,7 +1142,7 @@ export function WorkflowCanvasEditor({
             <MiniMap
               className="hidden md:block"
               nodeColor="var(--bakin-color-border-subtle)"
-              maskColor="rgb(15 14 14 / 0.78)"
+              maskColor="color-mix(in srgb, var(--bakin-color-canvas-default) 78%, transparent)"
             />
           </ReactFlow>
             </div>
