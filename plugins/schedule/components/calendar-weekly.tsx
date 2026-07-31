@@ -1,16 +1,13 @@
 'use client'
 
-import { Fragment, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '@makinbakin/sdk/ui'
+import { CalendarGrid } from '@makinbakin/sdk/patterns'
 import { useOccurrences, type ScheduleJob, type ScheduleOccurrence, type ScheduledDomainEvent } from '@makinbakin/sdk/hooks'
 import { AgentBadge } from './agent-badge'
 import { RecurringDaySummary, type RecurringDaySummaryTone } from './recurring-day-summary'
 import { EventChip, eventInstant } from './event-popover'
-import './schedule-calendar.css'
-
-export const CALENDAR_HOURS = Array.from({ length: 24 }, (_, i) => i)
-const DOW_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 function getWeekStart(date: Date): Date {
   const d = new Date(date)
@@ -25,13 +22,6 @@ function getWeekDates(weekStart: Date): Date[] {
     d.setDate(d.getDate() + i)
     return d
   })
-}
-
-export function formatHour(h: number): string {
-  if (h === 0) return '12 AM'
-  if (h < 12) return `${h} AM`
-  if (h === 12) return '12 PM'
-  return `${h - 12} PM`
 }
 
 /** Local wall-clock label of an occurrence instant ("11:05pm"). */
@@ -187,6 +177,11 @@ export function OccurrenceCard({
   )
 }
 
+/** Occurrence or domain event flattened into the shared CalendarGrid item shape. */
+type WeekCalendarItem =
+  | { kind: 'occurrence'; key: string; date: string; occurrence: ScheduleOccurrence; job: ScheduleJob }
+  | { kind: 'event'; key: string; date: string; event: ScheduledDomainEvent }
+
 export function CalendarWeekly({
   jobs,
   onSelectJob,
@@ -273,33 +268,32 @@ export function CalendarWeekly({
   const next = () => setWeekStart(d => { const n = new Date(d); n.setDate(n.getDate() + 7); return n })
   const goToday = () => setWeekStart(getWeekStart(now))
 
-  const isToday = (d: Date) =>
-    d.getDate() === now.getDate() && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
-
-  // Grid: [localDow-localHour] → occurrences (instants land in browser-local cells)
-  const grid = useMemo(() => {
-    const map: Record<string, ScheduleOccurrence[]> = {}
+  // Occurrences (minus collapsed recurring series) and domain events flow
+  // into the shared CalendarGrid; the kit owns hour-by-day placement.
+  const items = useMemo<WeekCalendarItem[]>(() => {
+    const list: WeekCalendarItem[] = []
     for (const occurrence of visibleOccurrences) {
       if (collapsedOccurrenceKeys.has(occurrenceKey(occurrence))) continue
-      const d = new Date(occurrence.at)
-      const key = `${d.getDay()}-${d.getHours()}`
-      if (!map[key]) map[key] = []
-      map[key]!.push(occurrence)
+      const job = byId.get(occurrence.jobId)
+      if (!job) continue
+      list.push({
+        kind: 'occurrence',
+        key: `occurrence-${occurrenceKey(occurrence)}`,
+        date: occurrence.at,
+        occurrence,
+        job,
+      })
     }
-    return map
-  }, [collapsedOccurrenceKeys, visibleOccurrences])
-
-  // Domain events land in the same cells, rendered as distinct chips.
-  const eventGrid = useMemo(() => {
-    const map: Record<string, ScheduledDomainEvent[]> = {}
     for (const event of visibleEvents) {
-      const d = new Date(eventInstant(event))
-      const key = `${d.getDay()}-${d.getHours()}`
-      if (!map[key]) map[key] = []
-      map[key]!.push(event)
+      list.push({
+        kind: 'event',
+        key: `event-${event.pluginId}-${event.id}`,
+        date: eventInstant(event),
+        event,
+      })
     }
-    return map
-  }, [visibleEvents])
+    return list
+  }, [byId, collapsedOccurrenceKeys, visibleEvents, visibleOccurrences])
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-bakin-3">
@@ -318,82 +312,40 @@ export function CalendarWeekly({
         <Button variant="outline" size="xs" className="ml-bakin-2" onClick={goToday}>Today</Button>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto rounded-bakin-surface border border-bakin-border-subtle bg-bakin-canvas-default">
-        <div className="grid" data-schedule-week-grid>
-          <div className="sticky top-0 z-10 bg-bakin-surface-default" />
-          {weekDates.map((d, i) => (
-            <div
-              key={i}
-              className={`
-                sticky top-0 z-10 border-l border-bakin-border-subtle bg-bakin-surface-default
-                px-bakin-1 py-bakin-2 text-center font-bakin-typography-weight-medium tracking-wide
-                ${isToday(d)
-                  ? 'text-bakin-signal-accent'
-                  : 'text-bakin-text-muted'
-                }
-              `}
-            >
-              <span className="mb-bakin-1 block text-bakin-typography-size-meta uppercase leading-none tracking-widest">
-                {DOW_LABELS[d.getDay()]}
-              </span>
-              <span className={isToday(d) ? 'text-bakin-signal-accent' : 'text-bakin-text-primary'}>{d.getDate()}</span>
-              {recurringByDay[localDayKey(d)]?.length ? (
-                <span className="mt-bakin-2 grid gap-bakin-1 text-left normal-case tracking-normal">
-                  {recurringByDay[localDayKey(d)]!.map(summary => (
-                    <RecurringDaySummary
-                      key={summary.job.id}
-                      title={summary.job.displayName || summary.job.id}
-                      detail={summary.detail}
-                      tone={summary.tone}
-                      leading={<AgentBadge agentId={summary.job.agentId} size="md" showName={false} />}
-                      onClick={() => onSelectJob(summary.job)}
-                    />
-                  ))}
-                </span>
-              ) : null}
-            </div>
-          ))}
-
-          {CALENDAR_HOURS.map(hour => (
-            <Fragment key={hour}>
-              <div className="border-t border-bakin-border-subtle pr-bakin-2 pt-bakin-3 text-right font-bakin-typography-family-mono text-bakin-typography-size-meta tabular-nums text-bakin-text-muted">
-                {formatHour(hour)}
-              </div>
-              {Array.from({ length: 7 }, (_, dow) => {
-                const cellOccurrences = grid[`${dow}-${hour}`] || []
-                const cellEvents = eventGrid[`${dow}-${hour}`] || []
-                const today = isToday(weekDates[dow]!)
-                return (
-                  <div
-                    key={`${dow}-${hour}`}
-                    className={`
-                      min-h-bakin-12 border-l border-t border-bakin-border-subtle p-bakin-1
-                      ${today ? 'bg-bakin-signal-accent/5' : ''}
-                      ${cellOccurrences.length + cellEvents.length === 0 ? 'hover:bg-bakin-surface-default' : ''}
-                    `}
-                  >
-                    {cellOccurrences.map(occurrence => {
-                      const job = byId.get(occurrence.jobId)
-                      if (!job) return null
-                      return (
-                        <OccurrenceCard
-                          key={`${occurrence.jobId}-${occurrence.at}`}
-                          occurrence={occurrence}
-                          job={job}
-                          onClick={() => onSelectJob(job)}
-                        />
-                      )
-                    })}
-                    {cellEvents.map(event => (
-                      <EventChip key={`${event.pluginId}-${event.id}`} event={event} compact onRescheduled={refresh} />
-                    ))}
-                  </div>
-                )
-              })}
-            </Fragment>
-          ))}
-        </div>
-      </div>
+      <CalendarGrid
+        view="week"
+        date={weekStart}
+        label="Weekly schedule"
+        items={items}
+        className="min-h-0 flex-1"
+        renderDayHeader={(day) => {
+          const summaries = recurringByDay[localDayKey(day)]
+          if (!summaries?.length) return null
+          return (
+            <span className="mt-bakin-2 grid gap-bakin-1 text-left normal-case tracking-normal">
+              {summaries.map(summary => (
+                <RecurringDaySummary
+                  key={summary.job.id}
+                  title={summary.job.displayName || summary.job.id}
+                  detail={summary.detail}
+                  tone={summary.tone}
+                  leading={<AgentBadge agentId={summary.job.agentId} size="md" showName={false} />}
+                  onClick={() => onSelectJob(summary.job)}
+                />
+              ))}
+            </span>
+          )
+        }}
+        renderItem={(item) => item.kind === 'occurrence' ? (
+          <OccurrenceCard
+            occurrence={item.occurrence}
+            job={item.job}
+            onClick={() => onSelectJob(item.job)}
+          />
+        ) : (
+          <EventChip event={item.event} compact onRescheduled={refresh} />
+        )}
+      />
     </div>
   )
 }

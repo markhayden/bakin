@@ -14,7 +14,7 @@ const meta = {
     layout: 'fullscreen',
     docs: {
       description: {
-        component: 'Grid provides named responsive recipes — `single`, `split`, `thirds`, `quarters`, `cards`, `main-aside` — that reflow with the available container, never a viewport breakpoint sequence. Builders choose the layout intent; the component owns when columns divide. Gaps map to the finite semantic scale and `as` renders semantic list elements.',
+        component: 'Grid provides named responsive recipes — `single`, `split`, `thirds`, `quarters`, `cards`, `auto-fill`, `main-aside` — that reflow with the available container, never a viewport breakpoint sequence. Builders choose the layout intent; the component owns when columns divide. `cards` (auto-fit) stretches items into the available width, while `auto-fill` keeps empty tracks so sparse card grids hold a fixed 250px minimum card width. Gaps map to the finite semantic scale and `as` renders semantic list elements.',
       },
     },
     bakinCoverage: ['desktop', 'mobile-320', 'dense-data'],
@@ -140,6 +140,72 @@ export const ResponsiveRecipes = {
     await expect(canvas.getByTestId('comfortable-split')).toHaveAttribute('data-layout', 'split')
     await expect(canvas.getByTestId('main-aside')).toHaveAttribute('data-layout', 'main-aside')
     await expect(canvas.getByTestId('responsive-grid').closest('[data-slot="grid-container"]')).toBeTruthy()
+    await expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(document.documentElement.clientWidth)
+  },
+} satisfies Story
+
+const assets = [
+  'Launch hero',
+  'Brand palette sheet',
+  'Q3 recap deck',
+  'Onboarding walkthrough',
+  'Voice sample pack',
+  'Social banner set',
+]
+
+export const AutoFill = {
+  render: () => (
+    <StoryStage
+      eyebrow="Layout / auto-fill"
+      title="Card grids keep their card width"
+      description="auto-fill reserves empty tracks, so a sparse grid holds its minimum card width instead of stretching a few items across the container."
+      width="wide"
+    >
+      <StorySection
+        title="Asset cards"
+        description="Cards flow into as many tracks as the container fits at the default 250px minimum."
+      >
+        <Grid as="ul" layout="auto-fill" gap="item" data-testid="auto-fill-grid" className="bakin-grid-story__cards">
+          {assets.map((name) => (
+            <li key={name}>
+              <Card size="sm">
+                <CardHeader>
+                  <CardTitle>{name}</CardTitle>
+                  <CardDescription>Versioned asset</CardDescription>
+                </CardHeader>
+              </Card>
+            </li>
+          ))}
+        </Grid>
+      </StorySection>
+
+      <StorySection
+        title="Sparse content"
+        description="Two cards: empty tracks hold the layout, so the cards keep their width instead of stretching."
+      >
+        <Grid as="ul" layout="auto-fill" gap="item" data-testid="auto-fill-sparse" className="bakin-grid-story__cards">
+          {assets.slice(0, 2).map((name) => (
+            <li key={name}>
+              <Card size="sm">
+                <CardHeader>
+                  <CardTitle>{name}</CardTitle>
+                  <CardDescription>Versioned asset</CardDescription>
+                </CardHeader>
+              </Card>
+            </li>
+          ))}
+        </Grid>
+      </StorySection>
+    </StoryStage>
+  ),
+  play: async ({ canvas }) => {
+    const grid = canvas.getByTestId('auto-fill-grid')
+    await expect(grid).toHaveAttribute('data-layout', 'auto-fill')
+    await expect(getComputedStyle(grid).gridTemplateColumns.split(' ').length).toBeGreaterThan(1)
+
+    const sparse = canvas.getByTestId('auto-fill-sparse')
+    // auto-fill keeps empty tracks: more resolved tracks than the two items.
+    await expect(getComputedStyle(sparse).gridTemplateColumns.split(' ').length).toBeGreaterThan(2)
     await expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(document.documentElement.clientWidth)
   },
 } satisfies Story

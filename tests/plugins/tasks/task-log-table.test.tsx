@@ -125,7 +125,9 @@ describe('TaskLogTable', () => {
       />,
     )
 
-    const titleAction = await screen.findByRole('button', { name: 'Open Publish launch announcement' })
+    // The narrow list render repeats the title action, so scope to the table.
+    const table = await screen.findByRole('table', { name: 'Task log' })
+    const titleAction = within(table).getByRole('button', { name: 'Open Publish launch announcement' })
     const row = titleAction.closest('tr')
     expect(row).toBeTruthy()
 

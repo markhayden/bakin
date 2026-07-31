@@ -12,7 +12,7 @@ const meta = {
     layout: 'fullscreen',
     docs: {
       description: {
-        component: 'AreaChart is the dependency-free trend chart for cumulative magnitude over time: reach for it when how much has accumulated is the message, for LineChart when only the trajectory matters, and for StackedColumnChart when discrete buckets should be compared side by side. The solid 2px series line carries identity while the reduced-opacity fill carries magnitude, colors follow the fixed CVD-checked palette order, and stacked bands are separated by a surface-color stroke so adjacent fills never touch. A missing value in a single-series area breaks the fill into a gap — never a collapse to zero. A stacked column cannot honestly render a gap mid-stack, so the missing series is omitted from that column’s band boundaries and the omission is surfaced through the exact-data table’s per-cell missing labels — the deliberate trade-off of stacking. Every mark mirrors pointer detail through keyboard focus and a tooltip, the exact-data table stays reachable behind the chart, and an empty dataset is a named state, not invented marks.',
+        component: 'AreaChart is the dependency-free trend chart for cumulative magnitude over time: reach for it when how much has accumulated is the message, for LineChart when only the trajectory matters, and for StackedColumnChart when discrete buckets should be compared side by side. The solid 2px series line carries identity while the reduced-opacity fill carries magnitude, colors follow the fixed CVD-checked palette order, and stacked bands are separated by a surface-color stroke so adjacent fills never touch. A missing value in a single-series area breaks the fill into a gap — never a collapse to zero. A stacked column cannot honestly render a gap mid-stack, so the missing series is omitted from that column’s band boundaries and the omission is surfaced through the exact-data table’s per-cell missing labels — the deliberate trade-off of stacking. Every mark mirrors pointer detail through keyboard focus and a tooltip, the exact-data table renders expanded below the chart by default so the evidence stays visible — `compactData` collapses it behind its disclosure for space-tight contexts — and an empty dataset is a named state, not invented marks.',
       },
     },
     bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'long-labels', 'empty', 'overflow', 'multi-series', 'cvd', 'non-color', 'keyboard', 'missing-data'],
@@ -53,7 +53,9 @@ export const CanonicalUsage = {
     await expect(mark).toHaveFocus()
     await expect(canvas.getByRole('tooltip')).toHaveTextContent('Jul 27 — Failed: 3')
     mark.blur()
-    await expect(canvas.getByRole('table', { name: 'Task volume data', hidden: true })).toHaveTextContent('Not reported')
+    const table = canvas.getByRole('table', { name: 'Task volume data' })
+    await expect(table).toBeVisible()
+    await expect(table).toHaveTextContent('Not reported')
   },
 } satisfies Story
 

@@ -19,6 +19,8 @@ export interface BarChartProps {
   emptyLabel?: string
   /** Disable only when an equivalent exact table is rendered beside the chart. */
   showDataTable?: boolean
+  /** Collapse the exact-data table behind its disclosure for space-tight contexts. */
+  compactData?: boolean
 }
 
 interface ActiveBar {
@@ -58,6 +60,7 @@ export function BarChart({
   formatValue = (value) => value.toLocaleString(),
   emptyLabel = 'No reported data in this window.',
   showDataTable = true,
+  compactData = false,
 }: BarChartProps) {
   const tooltipId = useId()
   const [active, setActive] = useState<ActiveBar | null>(null)
@@ -81,7 +84,7 @@ export function BarChart({
     return Math.max(1, ...reportedValues)
   }, [data, reportedValues, series, stacked])
   const table = showDataTable
-    ? <ChartDataTable data={data} series={series} caption={`${label} data`} formatValue={formatValue} />
+    ? <ChartDataTable data={data} series={series} caption={`${label} data`} formatValue={formatValue} defaultOpen={!compactData} />
     : null
 
   if (data.length === 0 || series.length === 0 || reportedValues.length === 0) {

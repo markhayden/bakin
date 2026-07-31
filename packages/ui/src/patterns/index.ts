@@ -44,8 +44,26 @@ export type {
 export { SearchInput } from './search-input'
 export type { SearchInputProps } from './search-input'
 
-export { ListRow, ListRows } from './list-rows'
-export type { ListRowProps, ListRowsProps, ListRowsVariant } from './list-rows'
+export { CalendarGrid } from './calendar-grid'
+export type {
+  CalendarGridItem,
+  CalendarGridProps,
+  CalendarGridView,
+} from './calendar-grid'
+
+export { NavList } from './nav-list'
+export type { NavListItem, NavListProps, NavListSection } from './nav-list'
+
+export { ListRow, ListRowGroup, ListRowLabels, ListRows } from './list-rows'
+export type {
+  ListRowGroupProps,
+  ListRowLabelsProps,
+  ListRowProps,
+  ListRowsColumnsAlign,
+  ListRowsColumnsAt,
+  ListRowsProps,
+  ListRowsVariant,
+} from './list-rows'
 
 export { Pagination } from './pagination'
 export type { PaginationProps } from './pagination'
@@ -133,4 +151,16 @@ export type {
 
 export { StatGroup } from './stat-group'
 export type { StatGroupProps } from './stat-group'
+
+export { DataTable } from './data-table'
+export type {
+  DataTableAlign,
+  DataTableCollapse,
+  DataTableColumn,
+  DataTableProps,
+  DataTableSort,
+} from './data-table'
+
+export { Timeline, TimelineEntry } from './timeline'
+export type { TimelineEntryProps, TimelineProps } from './timeline'
 

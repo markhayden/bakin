@@ -55,7 +55,7 @@ describe('public layout ownership', () => {
 
     expect(source).toContain("'dense' | 'item' | 'section' | 'page'")
     expect(source).toContain("'content' | 'wide' | 'full'")
-    expect(source).toContain("'single' | 'split' | 'thirds' | 'quarters' | 'cards' | 'main-aside'")
+    expect(source).toContain("'single' | 'split' | 'thirds' | 'quarters' | 'cards' | 'auto-fill' | 'main-aside'")
     expect(source).not.toMatch(/gap\??:\s*(?:string|number)/)
     expect(source).not.toMatch(/width\??:\s*(?:string|number)/)
     expect(source).not.toMatch(/(?:columns|breakpoint|minItemWidth)\??:\s*(?:string|number)/)

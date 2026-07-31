@@ -99,3 +99,23 @@
     justify-content: space-between;
   }
 }
+
+.bakin-lists-story__cell {
+  display: grid;
+  min-inline-size: 0;
+  gap: var(--bakin-layout-space-1);
+}
+
+.bakin-lists-story__cell strong,
+.bakin-lists-story__cell--muted {
+  overflow-wrap: anywhere;
+}
+
+.bakin-lists-story__cell--muted {
+  color: var(--bakin-color-text-muted);
+  font-size: var(--bakin-typography-size-meta);
+}
+
+.bakin-lists-story__narrow {
+  max-inline-size: 20rem;
+}

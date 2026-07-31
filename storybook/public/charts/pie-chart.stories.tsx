@@ -12,7 +12,7 @@ const meta = {
     layout: 'fullscreen',
     docs: {
       description: {
-        component: 'PieChart shows one part-to-whole relationship with at most five slices. Entity colors come from the fixed color-vision-deficiency-checked palette in stable slot order — never by rank — and a sixth or later slice folds into one visibly named Other group while the exact-data table keeps every original row. Adjacent slices are separated by surface-colored gaps, larger slices carry a direct outside label, and an always-visible legend lists every slice with its chip, exact value, and share, so identity never rests on color alone. A zero value is omitted from the ring but retained in the table, a negative value renders a named error state instead of a broken ring, and an empty dataset is a named state. When entities need ranking or exceed five, use RankedBarChart; when composition changes across windows, use StackedColumnChart; for change over time, use LineChart.',
+        component: 'PieChart shows one part-to-whole relationship with at most five slices. Entity colors come from the fixed color-vision-deficiency-checked palette in stable slot order — never by rank — and a sixth or later slice folds into one visibly named Other group while the exact-data table keeps every original row. Adjacent slices are separated by surface-colored gaps, larger slices carry a direct outside label, and an always-visible legend lists every slice with its chip, exact value, and share, so identity never rests on color alone. A zero value is omitted from the ring but retained in the table, a negative value renders a named error state instead of a broken ring, and an empty dataset is a named state. The exact-data table renders expanded by default so the evidence stays visible; `compactData` collapses it behind its disclosure for space-tight contexts. When entities need ranking or exceed five, use RankedBarChart; when composition changes across windows, use StackedColumnChart; for change over time, use LineChart.',
       },
     },
     bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'long-labels', 'empty', 'cvd', 'non-color', 'keyboard'],
@@ -45,7 +45,9 @@ export const CanonicalUsage = {
     await expect(slice).toHaveFocus()
     await expect(canvas.getByRole('tooltip')).toHaveTextContent('Writer: 24 (55%)')
     slice.blur()
-    await expect(canvas.getByRole('table', { name: 'Runs by agent data', hidden: true })).toHaveTextContent('Publisher')
+    const table = canvas.getByRole('table', { name: 'Runs by agent data' })
+    await expect(table).toBeVisible()
+    await expect(table).toHaveTextContent('Publisher')
   },
 } satisfies Story
 

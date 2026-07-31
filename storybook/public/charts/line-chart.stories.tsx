@@ -12,7 +12,7 @@ const meta = {
     layout: 'fullscreen',
     docs: {
       description: {
-        component: 'LineChart is the dependency-free multi-series trend chart for change over time. Series take the fixed CVD-checked data palette with dash treatment and visible legend labels, so no cue rests on color alone. A missing value is preserved as a gap — never collapsed to zero — every mark mirrors pointer detail through keyboard focus and a tooltip, an exact-data table stays reachable behind the chart, and an empty dataset is a named state, not invented marks.',
+        component: 'LineChart is the dependency-free multi-series trend chart for change over time. Series take the fixed CVD-checked data palette with dash treatment and visible legend labels, so no cue rests on color alone. A missing value is preserved as a gap — never collapsed to zero — every mark mirrors pointer detail through keyboard focus and a tooltip, the exact-data table renders expanded below the chart by default so the evidence stays visible — `compactData` collapses it behind its disclosure for space-tight contexts — and an empty dataset is a named state, not invented marks.',
       },
     },
     bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'long-labels', 'empty', 'overflow', 'multi-series', 'cvd', 'non-color', 'keyboard', 'missing-data'],
@@ -53,7 +53,9 @@ export const CanonicalUsage = {
     await expect(mark).toHaveFocus()
     await expect(canvas.getByRole('tooltip')).toHaveTextContent('Jul 27 — Failed: 3')
     mark.blur()
-    await expect(canvas.getByRole('table', { name: 'Task outcomes data', hidden: true })).toHaveTextContent('Not reported')
+    const table = canvas.getByRole('table', { name: 'Task outcomes data' })
+    await expect(table).toBeVisible()
+    await expect(table).toHaveTextContent('Not reported')
   },
 } satisfies Story
 

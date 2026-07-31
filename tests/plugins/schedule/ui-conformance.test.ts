@@ -23,15 +23,19 @@ describe('Schedule UI conformance', () => {
     expect(contents).not.toMatch(/<button\b/)
   })
 
-  it('uses canonical list states rather than the frozen empty-state adapter', () => {
+  it('composes the kit DataTable dual render rather than hand-rolled table/list branches', () => {
     const contents = source('plugins/schedule/components/job-list.tsx')
 
     expect(contents).not.toContain('@makinbakin/sdk/components')
     expect(contents).not.toContain('<EmptyState')
-    expect(contents).toContain('<ListRows')
+    expect(contents).toContain('<DataTable')
+    expect(contents).toContain('renderRow=')
+    expect(contents).toContain('renderTableRow=')
     expect(contents).toContain('<ListRow')
     expect(contents).toMatch(/className="!h-auto[^"]*py-bakin-4/)
     expect(contents).not.toMatch(/\b(?:w|min-w|max-w)-\[[^\]]+\]/)
+    // The dual render is container-query driven inside DataTable — no viewport branches.
+    expect(contents).not.toContain('md:hidden')
   })
 
   it('uses canonical status and action semantics for keyboard-accessible rows', () => {

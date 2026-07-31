@@ -235,6 +235,15 @@ describe('PieChart', () => {
     expect(screen.getByRole('table', { name: 'Invalid shares data', hidden: true }).textContent).toContain('-2')
   })
 
+  it('renders the exact-data table expanded by default and collapses it with compactData', () => {
+    const open = render(<PieChart data={runs} label="Open shares" />)
+    expect(open.container.querySelector('details[data-slot="chart-data-table"]')?.hasAttribute('open')).toBe(true)
+    open.unmount()
+
+    const compact = render(<PieChart data={runs} label="Compact shares" compactData />)
+    expect(compact.container.querySelector('details[data-slot="chart-data-table"]')?.hasAttribute('open')).toBe(false)
+  })
+
   it('renders the named empty state for no data and for all-zero data', () => {
     const empty = render(<PieChart data={[]} label="No shares" />)
     expect(screen.getByRole('status').textContent).toBe('No reported data in this window.')

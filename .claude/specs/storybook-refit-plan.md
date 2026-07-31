@@ -179,6 +179,21 @@ leaves zero references; ratchet deleted; full visual suite intentionally updated
 **Docs in-phase:** knowledge `design-system.md`/`shared-ui-patterns.md`/`ui-patterns.md`,
 docs site, conformance skill pattern list, CLAUDE.md.
 
+## P5.9 — Controls pass + LineChart smoothing (added 2026-07-30, Mark's review)
+
+Also: `LineChart` gains `smooth?: boolean` (default false) — monotone cubic
+interpolation (no overshoot; a smoothed line never implies values outside the
+data). Story + controls + unit tests + baseline note ride this slice.
+
+Adopt Storybook controls where prop exploration genuinely helps: convert
+CanonicalUsage stories to `args`-based form (with `argTypes` select/boolean
+controls) for prop-matrix components — Button, Badge, Progress, Avatar, Page
+(width/scroll/density), Tabs (variant), charts (donut/stacked/compactData,
+CompositionBar size), DataTable (collapseBelow), and peers where the API is
+args-friendly. Render-function stories stay for composition-shaped components
+where controls would mislead. One commit; no gate changes needed (the
+compliance checker already accepts args-based canonical stories).
+
 ## P6 — App conformance (ledger burndown; one commit per slice)
 
 Order (audit §8): **T6.1** sdk-legacy deletion (`src/components/` PageLayout,
@@ -190,7 +205,10 @@ Timeline adoption) → **T6.4** models (grid-as-table → ListRows columns; spen
 area chart) → **T6.5** memory, assets, brands, chat, tasks, schedule leftovers
 → **T6.6** workflows (drawers, canvas chrome, Timeline) → **T6.7** Bits projects
 (ProjectsPageFrame → Page; delete local ProgressBar + hand-rolled AssetPicker)
-→ **T6.8** Bits messaging (content-calendar → CalendarGrid; plan rows; brainstorm).
+→ **T6.8** Bits messaging (content-calendar → CalendarGrid — resolve the six
+on-paper gaps from the T5.7 report first: outsideDays rendering, all-day-only
+week hours, flat today list, day-header count slot, past-day dimming knob,
+and the UTC date-string parsing footgun; plan rows; brainstorm).
 
 Every slice: surfaces map to a vetted pattern or get an explicit exceptions.json
 entry (expected: none); `ui:legacy-styles:generate` strictly lower; behavioral

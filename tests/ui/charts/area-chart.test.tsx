@@ -124,6 +124,21 @@ describe('AreaChart', () => {
     expect(container.querySelector('path[data-series-fill="alpha"]')?.getAttribute('fill')).toBe(CHART_SERIES_COLORS[0])
   })
 
+  it('renders the exact-data table expanded by default and collapses it with compactData', () => {
+    const data: ChartDatum[] = [
+      { x: 'one', values: { completed: 4 } },
+      { x: 'two', values: { completed: 6 } },
+    ]
+    const open = render(<AreaChart data={data} series={[series[0]!]} label="Open volume" />)
+    expect(open.container.querySelector('details[data-slot="chart-data-table"]')?.hasAttribute('open')).toBe(true)
+    open.unmount()
+
+    const compact = render(
+      <AreaChart data={data} series={[series[0]!]} label="Compact volume" compactData />,
+    )
+    expect(compact.container.querySelector('details[data-slot="chart-data-table"]')?.hasAttribute('open')).toBe(false)
+  })
+
   it('renders a named empty state that retains the exact-data path', () => {
     render(<AreaChart data={[]} series={series} label="Unobserved work" />)
     expect(screen.getByRole('status').textContent).toBe('No reported data in this window.')

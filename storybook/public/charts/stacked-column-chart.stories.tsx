@@ -19,7 +19,7 @@ const meta = {
     layout: 'fullscreen',
     docs: {
       description: {
-        component: 'StackedColumnChart shows dense composition across windows for a stable set of entities. Colors come from the fixed color-vision-deficiency-checked palette and follow the entity, not the filter: the first eight entity slots stay stable, later entities fold into one visibly named Other group, and visible names plus slot copy preserve meaning without color. A missing window renders as Not reported — never zero — an in-progress window is labelled, the interactive legend never hides the last visible series, keyboard focus mirrors pointer tooltips per column, and an exact-data table stays reachable. An empty dataset is a named state without invented marks.',
+        component: 'StackedColumnChart shows dense composition across windows for a stable set of entities. Colors come from the fixed color-vision-deficiency-checked palette and follow the entity, not the filter: the first eight entity slots stay stable, later entities fold into one visibly named Other group, and visible names plus slot copy preserve meaning without color. A missing window renders as Not reported — never zero — an in-progress window is labelled, the interactive legend never hides the last visible series, keyboard focus mirrors pointer tooltips per column, and the exact-data table renders expanded by default so the evidence stays visible — `compactData` collapses it behind its disclosure for space-tight contexts. An empty dataset is a named state without invented marks.',
       },
     },
     bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'long-labels', 'empty', 'overflow', 'multi-series', 'cvd', 'non-color', 'keyboard', 'interaction', 'missing-data'],
@@ -58,7 +58,9 @@ export const CanonicalUsage = {
     await expect(column).toHaveFocus()
     await expect(canvas.getByRole('tooltip')).toHaveTextContent('Total 11')
     column.blur()
-    await expect(canvas.getByRole('table', { name: 'Agent runs by day data', hidden: true })).toHaveTextContent('Not reported')
+    const table = canvas.getByRole('table', { name: 'Agent runs by day data' })
+    await expect(table).toBeVisible()
+    await expect(table).toHaveTextContent('Not reported')
   },
 } satisfies Story
 

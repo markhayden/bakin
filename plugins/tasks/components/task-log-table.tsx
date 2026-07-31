@@ -1,20 +1,12 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import {
-  Button,
-  SystemState,
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
-} from '@makinbakin/sdk/ui'
+import { Button, SystemState } from '@makinbakin/sdk/ui'
 import {
   AgentAvatar,
-  SortableHead,
+  DataTable,
   StatusBadge,
+  type DataTableColumn,
   type SortDir,
   type StatusTone,
 } from '@makinbakin/sdk/patterns'
@@ -81,6 +73,17 @@ function getCompletedAt(t: TaskRow): string | undefined {
 }
 
 type SortField = 'title' | 'agent' | 'status' | 'createdAt' | 'completedAt'
+
+function formatDate(d?: string) {
+  return d ? formatDateTime(d) : '—'
+}
+
+function taskDuration(created?: string, completed?: string) {
+  if (!created || !completed) return '—'
+  const ms = new Date(completed).getTime() - new Date(created).getTime()
+  if (!Number.isFinite(ms) || ms < 0) return '—'
+  return formatDuration(ms) ?? '—'
+}
 
 interface TaskLogTableProps {
   /** Pre-filtered tasks from the parent (search + agent already applied) */
@@ -183,16 +186,92 @@ export function TaskLogTable({ currentTasks, statusFilter, isSearching, scoreMap
     }
   }, [sortField])
 
-  function formatDate(d?: string) {
-    return d ? formatDateTime(d) : '—'
-  }
-
-  function taskDuration(created?: string, completed?: string) {
-    if (!created || !completed) return '—'
-    const ms = new Date(completed).getTime() - new Date(created).getTime()
-    if (!Number.isFinite(ms) || ms < 0) return '—'
-    return formatDuration(ms) ?? '—'
-  }
+  const columns = useMemo((): ReadonlyArray<DataTableColumn<TaskRow, SortField>> => [
+    {
+      key: 'id',
+      header: 'ID',
+      cellClassName: 'font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted',
+      cell: (task) => task.id.slice(0, 8),
+    },
+    {
+      key: 'title',
+      header: 'Title',
+      sortable: true,
+      cellClassName: 'max-w-sm',
+      cell: (task) => {
+        const drawerTask = taskForDrawer(task)
+        const scoreInfo = scoreMap?.get(task.id)
+        const semKey = 'embeddings'
+        const bm25Key = scoreInfo?.indexScores
+          ? Object.keys(scoreInfo.indexScores).find(k => k !== semKey)
+          : undefined
+        return (
+          <div className="flex min-w-0 items-center gap-bakin-2">
+            <Button
+              type="button"
+              variant="link"
+              size="xs"
+              aria-label={`Open ${task.title}`}
+              className="!h-auto min-w-0 max-w-full !justify-start !p-0 text-left font-bakin-typography-weight-semibold text-bakin-text-primary"
+              onClick={(event) => {
+                event.stopPropagation()
+                onTaskOpen(drawerTask, task.status)
+              }}
+            >
+              <span className="truncate">{task.title}</span>
+            </Button>
+            {scoreInfo && (
+              <span className="flex shrink-0 items-center gap-bakin-2 font-bakin-typography-family-mono text-bakin-typography-size-meta">
+                <span className="text-bakin-signal-highlight">RRF {scoreInfo.score.toFixed(3)}</span>
+                <span className="text-bakin-data-series-1">
+                  BM25 {(bm25Key ? scoreInfo.indexScores?.[bm25Key] ?? 0 : 0).toFixed(3)}
+                </span>
+                <span className="text-bakin-data-series-5">
+                  SEM {(scoreInfo.indexScores?.[semKey] ?? 0).toFixed(3)}
+                </span>
+              </span>
+            )}
+          </div>
+        )
+      },
+    },
+    {
+      key: 'agent',
+      header: 'Agent',
+      sortable: true,
+      cell: (task) => task.agent
+        ? <AgentCell agentId={task.agent} />
+        : <span className="text-bakin-typography-size-meta text-bakin-text-muted">—</span>,
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      sortable: true,
+      cell: (task) => (
+        <StatusBadge tone={STATUS_TONES[task.status]}>{COLUMN_CONFIG[task.status].label}</StatusBadge>
+      ),
+    },
+    {
+      key: 'createdAt',
+      header: 'Created',
+      sortable: true,
+      cellClassName: 'text-bakin-typography-size-meta text-bakin-text-muted',
+      cell: (task) => formatDate(getCreatedAt(task)),
+    },
+    {
+      key: 'completedAt',
+      header: 'Completed',
+      sortable: true,
+      cellClassName: 'text-bakin-typography-size-meta text-bakin-text-muted',
+      cell: (task) => formatDate(getCompletedAt(task)),
+    },
+    {
+      key: 'duration',
+      header: 'Duration',
+      cellClassName: 'font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted',
+      cell: (task) => taskDuration(getCreatedAt(task), getCompletedAt(task)),
+    },
+  ], [scoreMap, onTaskOpen])
 
   return (
     <div className="min-w-0" data-task-log="">
@@ -212,86 +291,19 @@ export function TaskLogTable({ currentTasks, statusFilter, isSearching, scoreMap
             description="This task view has no current or historical rows to display."
           />
         ) : (
-          <Table aria-label="Task log">
-            <TableHeader>
-              <TableRow>
-                <TableHead>ID</TableHead>
-                <SortableHead field="title" current={sortField} dir={sortDir} onSort={toggleSort}>Title</SortableHead>
-                <SortableHead field="agent" current={sortField} dir={sortDir} onSort={toggleSort}>Agent</SortableHead>
-                <SortableHead field="status" current={sortField} dir={sortDir} onSort={toggleSort}>Status</SortableHead>
-                <SortableHead field="createdAt" current={sortField} dir={sortDir} onSort={toggleSort}>Created</SortableHead>
-                <SortableHead field="completedAt" current={sortField} dir={sortDir} onSort={toggleSort}>Completed</SortableHead>
-                <TableHead>Duration</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {sorted.map(task => {
-                const created = getCreatedAt(task)
-                const completed = getCompletedAt(task)
-                const drawerTask = taskForDrawer(task)
-                const scoreInfo = scoreMap?.get(task.id)
-                const semKey = 'embeddings'
-                const bm25Key = scoreInfo?.indexScores
-                  ? Object.keys(scoreInfo.indexScores).find(k => k !== semKey)
-                  : undefined
-                return (
-                  <TableRow
-                    key={task.id}
-                    data-task-log-row=""
-                    className="cursor-pointer"
-                    onClick={() => onTaskOpen(drawerTask, task.status)}
-                  >
-                    <TableCell className="font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
-                      {task.id.slice(0, 8)}
-                    </TableCell>
-                    <TableCell className="max-w-sm">
-                      <div className="flex min-w-0 items-center gap-bakin-2">
-                        <Button
-                          type="button"
-                          variant="link"
-                          size="xs"
-                          aria-label={`Open ${task.title}`}
-                          className="!h-auto min-w-0 max-w-full !justify-start !p-0 text-left font-bakin-typography-weight-semibold text-bakin-text-primary"
-                          onClick={(event) => {
-                            event.stopPropagation()
-                            onTaskOpen(drawerTask, task.status)
-                          }}
-                        >
-                          <span className="truncate">{task.title}</span>
-                        </Button>
-                        {scoreInfo && (
-                          <span className="flex shrink-0 items-center gap-bakin-2 font-bakin-typography-family-mono text-bakin-typography-size-meta">
-                            <span className="text-bakin-signal-highlight">RRF {scoreInfo.score.toFixed(3)}</span>
-                            <span className="text-bakin-data-series-1">
-                              BM25 {(bm25Key ? scoreInfo.indexScores?.[bm25Key] ?? 0 : 0).toFixed(3)}
-                            </span>
-                            <span className="text-bakin-data-series-5">
-                              SEM {(scoreInfo.indexScores?.[semKey] ?? 0).toFixed(3)}
-                            </span>
-                          </span>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {task.agent ? (
-                        <AgentCell agentId={task.agent} />
-                      ) : (
-                        <span className="text-bakin-typography-size-meta text-bakin-text-muted">—</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <StatusBadge tone={STATUS_TONES[task.status]}>{COLUMN_CONFIG[task.status].label}</StatusBadge>
-                    </TableCell>
-                    <TableCell className="text-bakin-typography-size-meta text-bakin-text-muted">{formatDate(created)}</TableCell>
-                    <TableCell className="text-bakin-typography-size-meta text-bakin-text-muted">{formatDate(completed)}</TableCell>
-                    <TableCell className="font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
-                      {taskDuration(created, completed)}
-                    </TableCell>
-                  </TableRow>
-                )
-              })}
-            </TableBody>
-          </Table>
+          <DataTable
+            label="Task log"
+            columns={columns}
+            rows={sorted}
+            rowKey={(task) => task.id}
+            sort={{ field: sortField, dir: sortDir }}
+            onSortChange={toggleSort}
+            rowProps={(task) => ({
+              'data-task-log-row': '',
+              className: 'cursor-pointer',
+              onClick: () => onTaskOpen(taskForDrawer(task), task.status),
+            })}
+          />
         )}
       </div>
     </div>

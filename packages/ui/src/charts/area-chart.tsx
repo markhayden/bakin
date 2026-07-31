@@ -18,6 +18,8 @@ export interface AreaChartProps {
   stacked?: boolean
   formatValue?: (value: number) => string
   emptyLabel?: string
+  /** Collapse the exact-data table behind its disclosure for space-tight contexts. */
+  compactData?: boolean
 }
 
 interface Point {
@@ -116,6 +118,7 @@ export function AreaChart({
   stacked = false,
   formatValue = (value) => value.toLocaleString(),
   emptyLabel = 'No reported data in this window.',
+  compactData = false,
 }: AreaChartProps) {
   const tooltipId = useId()
   const plotRef = useRef<HTMLDivElement>(null)
@@ -165,7 +168,7 @@ export function AreaChart({
   }, [hasRenderableData])
 
   const table = (
-    <ChartDataTable data={data} series={series} caption={`${label} data`} formatValue={formatValue} />
+    <ChartDataTable data={data} series={series} caption={`${label} data`} formatValue={formatValue} defaultOpen={!compactData} />
   )
 
   if (!hasRenderableData) {

@@ -1,11 +1,19 @@
 'use client'
 
 import { ShieldAlert } from 'lucide-react'
-import { ListRow, ListRows } from '@makinbakin/sdk/patterns'
-import { Button, Table, TableBody, TableHead, TableHeader, TableRow } from '@makinbakin/sdk/ui'
+import { DataTable, ListRow, type DataTableColumn } from '@makinbakin/sdk/patterns'
+import { Button } from '@makinbakin/sdk/ui'
 import { AgentBadge } from './agent-badge'
 import { JobRow, JobStatusBadge, type JobScoreInfo } from './job-row'
 import type { ScheduleJob } from "@makinbakin/sdk/hooks"
+
+const JOB_COLUMNS: ReadonlyArray<DataTableColumn<ScheduleJob>> = [
+  { key: 'name', header: 'Name', headClassName: 'min-w-64' },
+  { key: 'agent', header: 'Agent', headClassName: 'min-w-36' },
+  { key: 'schedule', header: 'Schedule', headClassName: 'min-w-48' },
+  { key: 'status', header: 'Status', headClassName: 'min-w-28' },
+  { key: 'actions', header: 'Actions', hideLabel: true, headClassName: 'w-12' },
+]
 
 function MobileJobRow({
   job,
@@ -116,50 +124,38 @@ export function JobList({
   showScores?: boolean
 }) {
   return (
-    <>
-      <ListRows className="md:hidden" aria-label="Scheduled jobs">
-        {jobs.map(job => (
-          <MobileJobRow
-            key={job.id}
-            job={job}
-            onSelect={() => onSelect(job)}
-            scoreInfo={showScores ? scoreMap?.get(job.id) : undefined}
-          />
-        ))}
-      </ListRows>
-
-      <div className="hidden md:block">
-        <Table data-testid="job-list" className="min-w-max">
-          <TableHeader>
-            <TableRow>
-              <TableHead className="min-w-64">Name</TableHead>
-              <TableHead className="min-w-36">Agent</TableHead>
-              <TableHead className="min-w-48">Schedule</TableHead>
-              <TableHead className="min-w-28">Status</TableHead>
-              <TableHead className="w-12"><span className="sr-only">Actions</span></TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {jobs.map(job => (
-              <JobRow
-                key={job.id}
-                job={job}
-                onClick={() => onSelect(job)}
-                onPause={() => onPause(job.id)}
-                onResume={() => onResume(job.id)}
-                onRunNow={() => onRunNow(job.id)}
-                onDelete={() => onDelete(job.id)}
-                onEdit={() => onEdit(job)}
-                onDuplicate={() => onDuplicate(job)}
-                onAdopt={() => onAdopt(job)}
-                onRestoreNative={() => onRestoreNative(job.id)}
-                onSkipNext={() => onSkipNext(job.id)}
-                scoreInfo={showScores ? scoreMap?.get(job.id) : undefined}
-              />
-            ))}
-          </TableBody>
-        </Table>
-      </div>
-    </>
+    <DataTable
+      label="Scheduled jobs"
+      columns={JOB_COLUMNS}
+      rows={jobs}
+      rowKey={job => job.id}
+      listVariant="bordered"
+      tableProps={{ 'data-testid': 'job-list', className: 'min-w-max' }}
+      renderTableRow={job => (
+        <JobRow
+          key={job.id}
+          job={job}
+          onClick={() => onSelect(job)}
+          onPause={() => onPause(job.id)}
+          onResume={() => onResume(job.id)}
+          onRunNow={() => onRunNow(job.id)}
+          onDelete={() => onDelete(job.id)}
+          onEdit={() => onEdit(job)}
+          onDuplicate={() => onDuplicate(job)}
+          onAdopt={() => onAdopt(job)}
+          onRestoreNative={() => onRestoreNative(job.id)}
+          onSkipNext={() => onSkipNext(job.id)}
+          scoreInfo={showScores ? scoreMap?.get(job.id) : undefined}
+        />
+      )}
+      renderRow={job => (
+        <MobileJobRow
+          key={job.id}
+          job={job}
+          onSelect={() => onSelect(job)}
+          scoreInfo={showScores ? scoreMap?.get(job.id) : undefined}
+        />
+      )}
+    />
   )
 }

@@ -1,3 +1,0 @@
-[data-bakin-plugin="schedule"] [data-schedule-week-grid] {
-  grid-template-columns: 3.5rem repeat(7, minmax(15.625rem, 1fr));
-}

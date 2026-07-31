@@ -1,4 +1,5 @@
 export type HorizontalSelectionKey = 'ArrowLeft' | 'ArrowRight' | 'Home' | 'End'
+export type VerticalSelectionKey = 'ArrowUp' | 'ArrowDown' | 'Home' | 'End'
 
 export function horizontalSelectionIndex(
   disabled: readonly boolean[],
@@ -21,4 +22,20 @@ export function horizontalSelectionIndex(
     if (!disabled[index]) return index
   }
   return undefined
+}
+
+const VERTICAL_TO_HORIZONTAL: Record<VerticalSelectionKey, HorizontalSelectionKey> = {
+  ArrowUp: 'ArrowLeft',
+  ArrowDown: 'ArrowRight',
+  Home: 'Home',
+  End: 'End',
+}
+
+/** Vertical twin of `horizontalSelectionIndex` — same wrap and disabled-skip rules. */
+export function verticalSelectionIndex(
+  disabled: readonly boolean[],
+  currentIndex: number,
+  key: VerticalSelectionKey,
+): number | undefined {
+  return horizontalSelectionIndex(disabled, currentIndex, VERTICAL_TO_HORIZONTAL[key])
 }

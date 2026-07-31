@@ -3,7 +3,7 @@ import * as React from 'react'
 import type { LayoutElement, LayoutGap } from './flow'
 import { layoutClassName } from './utils'
 
-export type GridLayout = 'single' | 'split' | 'thirds' | 'quarters' | 'cards' | 'main-aside'
+export type GridLayout = 'single' | 'split' | 'thirds' | 'quarters' | 'cards' | 'auto-fill' | 'main-aside'
 export type GridAlign = 'stretch' | 'start' | 'center' | 'end'
 
 interface GridOwnProps {
@@ -24,6 +24,9 @@ const layoutClasses: Record<GridLayout, string> = {
   thirds: 'grid-cols-1 @lg/layout-grid:grid-cols-2 @xl/layout-grid:grid-cols-3',
   quarters: 'grid-cols-1 @sm/layout-grid:grid-cols-2 @xl/layout-grid:grid-cols-3 @4xl/layout-grid:grid-cols-4',
   cards: '[grid-template-columns:repeat(auto-fit,minmax(min(100%,15rem),1fr))]',
+  // Unlike `cards` (auto-fit), auto-fill keeps empty tracks: a sparse grid
+  // holds its 15.625rem (250px) card width instead of stretching a few items.
+  'auto-fill': '[grid-template-columns:repeat(auto-fill,minmax(min(100%,15.625rem),1fr))]',
   'main-aside': 'grid-cols-1 @3xl/layout-grid:grid-cols-[minmax(0,1.6fr)_minmax(16rem,.8fr)]',
 }
 

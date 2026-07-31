@@ -1214,7 +1214,7 @@ export function OperationalCharts() {
 }
 ```
 
-Each full chart owns a named plot and a collapsed exact-data disclosure; axis-based charts add a keyboard-scrollable plot boundary at narrow widths. Set `showDataTable={false}` on `BarChart` or `RankedBarChart` only when the same exact dataset is already rendered beside it; a chart without an equivalent table is not a supported composition. Axis labels may shorten visually to keep the plot readable, while the accessible mark labels and exact table retain the full text.
+Each full chart owns a named plot and its exact-data table, rendered expanded below the chart by default so the evidence stays visible; pass `compactData` to collapse the table behind its "View {caption}" disclosure only in genuinely space-tight contexts. Axis-based charts add a keyboard-scrollable plot boundary at narrow widths. Set `showDataTable={false}` on `BarChart` or `RankedBarChart` only when the same exact dataset is already rendered beside it; a chart without an equivalent table is not a supported composition. Axis labels may shorten visually to keep the plot readable, while the accessible mark labels and exact table retain the full text.
 
 ## Conversation Model and Folding
 

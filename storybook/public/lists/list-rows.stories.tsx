@@ -1,9 +1,9 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { AlertTriangle, CheckCircle2, FileText } from 'lucide-react'
-import { expect } from 'storybook/test'
+import { expect, within } from 'storybook/test'
 
 import { PageShell, Stack } from '@makinbakin/sdk/layout'
-import { ListRow, ListRows, StatusBadge } from '@makinbakin/sdk/patterns'
+import { ListRow, ListRowGroup, ListRowLabels, ListRows, StatusBadge } from '@makinbakin/sdk/patterns'
 import { Button } from '@makinbakin/sdk/ui'
 
 import './list-rows.stories.css'
@@ -165,5 +165,180 @@ export const ListVarieties = {
     await expect(canvas.getByRole('list', { name: 'Separated activity rows' })).toHaveAttribute('data-variant', 'separated')
     await expect(canvas.getByRole('list', { name: 'Plain supporting facts' })).toHaveAttribute('data-variant', 'plain')
     await expect(canvas.getAllByRole('listitem')).toHaveLength(6)
+  },
+} satisfies Story
+
+const groupedChats = [
+  {
+    group: 'Pinned',
+    chats: [
+      { title: 'Release checklist', preview: 'main-agent · 2 days ago' },
+    ],
+  },
+  {
+    group: 'Today',
+    chats: [
+      { title: 'Brand kit review', preview: 'pixel · 12 minutes ago' },
+      { title: 'Search outage triage', preview: 'main-agent · 3 hours ago' },
+    ],
+  },
+]
+
+function GroupedExample() {
+  return (
+    <main className="bakin-lists-story">
+      <PageShell width="content">
+        <Stack gap="section">
+          <header className="bakin-lists-story__intro">
+            <p>Grouped rows</p>
+            <h1>Each group is its own labelled list</h1>
+            <p>
+              Date- or section-grouped rows wrap one ListRows per group in a
+              ListRowGroup. The heading names the nested list automatically, so
+              assistive technology hears an accurate name and item count per
+              group.
+            </p>
+          </header>
+
+          <Stack gap="item" data-testid="grouped-rows">
+            {groupedChats.map((section) => (
+              <ListRowGroup key={section.group} label={section.group}>
+                <ListRows variant="plain">
+                  {section.chats.map((chat) => (
+                    <ListRow key={chat.title} className="bakin-lists-story__row">
+                      <span className="bakin-lists-story__identity">
+                        <span>
+                          <strong>{chat.title}</strong>
+                          <small>{chat.preview}</small>
+                        </span>
+                      </span>
+                      <Button size="sm" variant="ghost">Open</Button>
+                    </ListRow>
+                  ))}
+                </ListRows>
+              </ListRowGroup>
+            ))}
+          </Stack>
+        </Stack>
+      </PageShell>
+    </main>
+  )
+}
+
+export const Grouped = {
+  render: () => <GroupedExample />,
+  play: async ({ canvas }) => {
+    const pinned = canvas.getByRole('list', { name: 'Pinned' })
+    const today = canvas.getByRole('list', { name: 'Today' })
+    await expect(pinned).toBeVisible()
+    await expect(within(pinned).getAllByRole('listitem')).toHaveLength(1)
+    await expect(within(today).getAllByRole('listitem')).toHaveLength(2)
+    const group = pinned.closest('[data-slot=list-row-group]')
+    await expect(group).toBeTruthy()
+    const label = group!.querySelector('[data-slot=list-row-group-label]')
+    await expect(label).toBeVisible()
+    await expect(label!.textContent).toBe('Pinned')
+    // The heading labels the list; it is not itself a list item.
+    await expect(within(group as HTMLElement).getAllByRole('listitem')).toHaveLength(1)
+  },
+} satisfies Story
+
+const routeRows = [
+  { name: 'Subagent work', summary: 'Deep multi-step build and research tasks', status: 'Routed', tone: 'success' as const },
+  { name: 'Triage', summary: 'Quick classification passes over incoming work', status: 'Inherit', tone: 'neutral' as const },
+  { name: 'Relay', summary: 'Notification relays to the operator', status: 'Routed', tone: 'success' as const },
+]
+
+function ColumnsList({ label, testId }: { label: string; testId: string }) {
+  return (
+    <ListRows
+      aria-label={label}
+      data-testid={testId}
+      variant="separated"
+      columns="minmax(9rem,.7fr) minmax(0,1fr) minmax(6rem,.4fr)"
+      columnsAt="2xl"
+    >
+      <ListRowLabels>
+        <span>Work class</span>
+        <span>Summary</span>
+        <span>Status</span>
+      </ListRowLabels>
+      {routeRows.map((route) => (
+        <ListRow key={route.name}>
+          <span className="bakin-lists-story__cell">
+            <strong>{route.name}</strong>
+          </span>
+          <span className="bakin-lists-story__cell bakin-lists-story__cell--muted">
+            {route.summary}
+          </span>
+          <span className="bakin-lists-story__cell">
+            <StatusBadge tone={route.tone}>{route.status}</StatusBadge>
+          </span>
+        </ListRow>
+      ))}
+    </ListRows>
+  )
+}
+
+function ColumnsExample() {
+  return (
+    <main className="bakin-lists-story">
+      <PageShell width="content">
+        <Stack gap="section">
+          <header className="bakin-lists-story__intro">
+            <p>Columns</p>
+            <h1>Rows share one grid template, then stack</h1>
+            <p>
+              The consumer passes a single grid-template track list. Every row
+              aligns to it once the list container is wide enough; below the
+              breakpoint each row stacks its cells vertically. Cells stay
+              self-describing — columns are visual alignment, not table
+              semantics.
+            </p>
+          </header>
+
+          <ListPattern
+            title="Aligned"
+            description="At a wide container every row adopts the shared template and the label row appears."
+          >
+            <ColumnsList label="Dispatch routes" testId="columns-wide" />
+          </ListPattern>
+
+          <ListPattern
+            title="Stacked"
+            description="A narrow container stacks each row's cells; the label row disappears with the columns."
+          >
+            <div className="bakin-lists-story__narrow">
+              <ColumnsList label="Dispatch routes (narrow)" testId="columns-narrow" />
+            </div>
+          </ListPattern>
+        </Stack>
+      </PageShell>
+    </main>
+  )
+}
+
+export const Columns = {
+  render: () => <ColumnsExample />,
+  play: async ({ canvas }) => {
+    const wide = canvas.getByTestId('columns-wide')
+    await expect(wide).toHaveAttribute('data-columns', '')
+    const rows = Array.from(wide.querySelectorAll('[data-slot=list-row]'))
+    await expect(rows).toHaveLength(3)
+    const templates = rows.map((row) => getComputedStyle(row).gridTemplateColumns)
+    // Three resolved tracks, identical across every row — the alignment contract.
+    await expect(templates[0]!.split(' ')).toHaveLength(3)
+    await expect(new Set(templates).size).toBe(1)
+    const labels = wide.querySelector('[data-slot=list-row-labels]')
+    await expect(labels).toHaveAttribute('aria-hidden', 'true')
+    await expect(getComputedStyle(labels as Element).display).toBe('grid')
+
+    const narrow = canvas.getByTestId('columns-narrow')
+    const narrowRow = narrow.querySelector('[data-slot=list-row]')
+    // Below the breakpoint the shared template is inactive: cells stack into
+    // a single column (Chromium reports the one implicit track).
+    await expect(getComputedStyle(narrowRow as Element).gridTemplateColumns.split(' ')).toHaveLength(1)
+    await expect(getComputedStyle(narrow.querySelector('[data-slot=list-row-labels]') as Element).display).toBe('none')
+    await expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(document.documentElement.clientWidth)
   },
 } satisfies Story

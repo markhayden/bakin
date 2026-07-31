@@ -92,6 +92,21 @@ describe('LineChart', () => {
     expect(labels.find((node) => node.textContent?.endsWith('…'))?.getAttribute('text-anchor')).toBe('end')
   })
 
+  it('renders the exact-data table expanded by default and collapses it with compactData', () => {
+    const data: ChartDatum[] = [
+      { x: 'one', values: { completed: 4 } },
+      { x: 'two', values: { completed: 6 } },
+    ]
+    const open = render(<LineChart data={data} series={[series[0]!]} label="Open trend" />)
+    expect(open.container.querySelector('details[data-slot="chart-data-table"]')?.hasAttribute('open')).toBe(true)
+    open.unmount()
+
+    const compact = render(
+      <LineChart data={data} series={[series[0]!]} label="Compact trend" compactData />,
+    )
+    expect(compact.container.querySelector('details[data-slot="chart-data-table"]')?.hasAttribute('open')).toBe(false)
+  })
+
   it('attaches responsive measurement when asynchronous data replaces an empty state', () => {
     const OriginalResizeObserver = globalThis.ResizeObserver
     let observed = 0
@@ -170,6 +185,22 @@ describe('BarChart', () => {
     fireEvent.focus(failed)
     expect(screen.getByRole('tooltip').textContent).toContain('two — Failed: 1')
     expect(screen.getByRole('table', { name: 'Stacked outcomes data', hidden: true }).textContent).toContain('7')
+  })
+
+  it('renders the exact-data table expanded by default, collapses it with compactData, and lets showDataTable win entirely', () => {
+    const data: ChartDatum[] = [{ x: 'one', values: { completed: 4 } }]
+    const open = render(<BarChart data={data} series={[series[0]!]} label="Open bars" />)
+    expect(open.container.querySelector('details[data-slot="chart-data-table"]')?.hasAttribute('open')).toBe(true)
+    open.unmount()
+
+    const compact = render(<BarChart data={data} series={[series[0]!]} label="Compact bars" compactData />)
+    expect(compact.container.querySelector('details[data-slot="chart-data-table"]')?.hasAttribute('open')).toBe(false)
+    compact.unmount()
+
+    const withoutTable = render(
+      <BarChart data={data} series={[series[0]!]} label="Tableless bars" showDataTable={false} />,
+    )
+    expect(withoutTable.container.querySelector('[data-slot="chart-data-table"]')).toBeNull()
   })
 })
 
@@ -257,6 +288,18 @@ describe('RankedBarChart', () => {
     const bars = Array.from(container.querySelectorAll<HTMLElement>('[data-series="completed"]'))
     expect(bars.map((bar) => bar.style.width)).toEqual(['100%', '50%'])
   })
+
+  it('renders the exact-data table expanded by default and collapses it with compactData', () => {
+    const data: ChartDatum[] = [{ x: 'one', values: { completed: 4 } }]
+    const open = render(<RankedBarChart data={data} series={series[0]!} label="Open ranking" />)
+    expect(open.container.querySelector('details[data-slot="chart-data-table"]')?.hasAttribute('open')).toBe(true)
+    open.unmount()
+
+    const compact = render(
+      <RankedBarChart data={data} series={series[0]!} label="Compact ranking" compactData />,
+    )
+    expect(compact.container.querySelector('details[data-slot="chart-data-table"]')?.hasAttribute('open')).toBe(false)
+  })
 })
 
 describe('StackedColumnChart', () => {
@@ -294,5 +337,17 @@ describe('StackedColumnChart', () => {
     fireEvent.focus(missing)
     expect(screen.getByRole('tooltip').textContent).toContain('Not reported')
     expect(screen.getByRole('table', { name: 'Reported work data', hidden: true }).textContent).toContain('Awaiting report')
+  })
+
+  it('renders the exact-data table expanded by default and collapses it with compactData', () => {
+    const data: ChartDatum[] = [{ x: 'one', values: { completed: 3 } }]
+    const open = render(<StackedColumnChart data={data} seriesKeys={['completed']} label="Open composition" />)
+    expect(open.container.querySelector('details[data-slot="chart-data-table"]')?.hasAttribute('open')).toBe(true)
+    open.unmount()
+
+    const compact = render(
+      <StackedColumnChart data={data} seriesKeys={['completed']} label="Compact composition" compactData />,
+    )
+    expect(compact.container.querySelector('details[data-slot="chart-data-table"]')?.hasAttribute('open')).toBe(false)
   })
 })

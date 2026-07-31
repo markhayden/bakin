@@ -30,6 +30,8 @@ export interface StackedColumnChartProps {
   missingBucketLabel?: string
   /** Shown when no buckets exist. */
   emptyLabel?: string
+  /** Collapse the exact-data table behind its disclosure for space-tight contexts. */
+  compactData?: boolean
 }
 
 const OTHER_KEY = '__bakin_other__'
@@ -99,6 +101,7 @@ export function StackedColumnChart({
   missingValue = 'Not reported',
   missingBucketLabel = 'Not reported',
   emptyLabel = 'No reported data in this window.',
+  compactData = false,
 }: StackedColumnChartProps) {
   const tooltipId = useId()
   const [hidden, setHidden] = useState<Set<string>>(new Set())
@@ -134,6 +137,7 @@ export function StackedColumnChart({
       formatValue={formatValue}
       missingValue={missingValue}
       emptyLabel={emptyLabel}
+      defaultOpen={!compactData}
     />
   )
 

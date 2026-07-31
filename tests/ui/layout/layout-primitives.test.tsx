@@ -83,6 +83,24 @@ describe('public layout primitives', () => {
     expect(grid?.className).toContain('@3xl/layout-grid:grid-cols-[minmax(0,1.6fr)_minmax(16rem,.8fr)]')
   })
 
+  it('fills the container with fixed-minimum tracks in the auto-fill recipe', () => {
+    const { container } = render(
+      <Grid as="ul" layout="auto-fill" aria-label="Asset cards">
+        <li>Launch hero</li>
+        <li>Brand palette sheet</li>
+      </Grid>,
+    )
+
+    const grid = container.querySelector('[data-slot="grid"]')
+    expect(grid?.getAttribute('data-layout')).toBe('auto-fill')
+    // auto-fill (not auto-fit) keeps empty tracks so sparse grids hold the
+    // fixed 250px card width instead of stretching a few items.
+    expect(grid?.className).toContain(
+      '[grid-template-columns:repeat(auto-fill,minmax(min(100%,15.625rem),1fr))]',
+    )
+    expect(grid?.className).not.toContain('auto-fit')
+  })
+
   it('keeps a split grid single-column until each item has comfortable width', () => {
     const { container } = render(
       <Grid layout="split">

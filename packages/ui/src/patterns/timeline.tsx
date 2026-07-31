@@ -1,0 +1,200 @@
+'use client'
+
+import type { ComponentPropsWithoutRef, ReactNode } from 'react'
+
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../primitives/collapsible'
+import { cn } from '../utils'
+import type { StatusTone } from './status-badge'
+import { StatusMarker } from './status-marker'
+
+export interface TimelineProps extends ComponentPropsWithoutRef<'ol'> {
+  /**
+   * Tightens spacing when a Timeline is composed inside a parent entry's body
+   * (related events subordinate to a dispatch run, sub-steps of a workflow).
+   */
+  nested?: boolean
+}
+
+/**
+ * Ordered chronological feed: an `<ol>` whose entries share a StatusMarker
+ * rail and a timestamp gutter. Entry order is the meaning — newest-first or
+ * oldest-first stays a consumer decision.
+ *
+ * Wide containers (container-query driven, never the viewport) move each
+ * entry's timestamp into an aligned left gutter; narrow containers keep it
+ * inline with the entry title.
+ */
+export function Timeline({ nested = false, className, ...props }: TimelineProps) {
+  return (
+    <ol
+      {...props}
+      data-slot="timeline"
+      data-nested={nested ? '' : undefined}
+      className={cn(
+        'm-0 grid min-w-0 list-none p-0',
+        nested ? 'mt-bakin-2' : '@container/timeline',
+        className,
+      )}
+    />
+  )
+}
+
+function Chevron() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 16 16"
+      data-slot="timeline-chevron"
+      className="ml-auto size-bakin-4 shrink-0 fill-none stroke-current stroke-[1.75] text-bakin-text-muted transition-transform group-data-[panel-open]/timeline-trigger:rotate-90 motion-reduce:transition-none"
+    >
+      <path d="m6 4.5 3.5 3.5L6 11.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+export interface TimelineEntryProps extends Omit<ComponentPropsWithoutRef<'li'>, 'title'> {
+  /** Display timestamp. Rendered in the gutter on wide containers, inline when narrow. */
+  timestamp?: ReactNode
+  /** Machine-readable timestamp for the `<time>` element. */
+  dateTime?: string
+  /** Colors the StatusMarker on the rail. */
+  tone?: StatusTone
+  /** Required when the marker alone communicates status (no adjacent status copy). */
+  markerLabel?: string
+  /** Replaces the StatusMarker dot — e.g. a numbered step. */
+  marker?: ReactNode
+  title: ReactNode
+  /** Inline chips beside the title (StatusBadge, counts, owners). */
+  meta?: ReactNode
+  /** Collapse `children` behind the header as a keyboard-accessible disclosure. */
+  expandable?: boolean
+  defaultExpanded?: boolean
+  expanded?: boolean
+  onExpandedChange?: (expanded: boolean) => void
+  /** Entry detail: free content, and/or a nested `<Timeline nested>`. */
+  children?: ReactNode
+}
+
+const HEADER_LAYOUT = 'flex min-w-0 flex-wrap items-center gap-x-bakin-3 gap-y-bakin-1'
+
+/**
+ * One event on the Timeline: timestamp + status marker + title + optional
+ * meta chips, optional detail body, optional disclosure (Collapsible
+ * composition), and optional nested child entries via a `<Timeline nested>`
+ * inside `children`.
+ */
+export function TimelineEntry({
+  timestamp,
+  dateTime,
+  tone = 'neutral',
+  markerLabel,
+  marker,
+  title,
+  meta,
+  expandable = false,
+  defaultExpanded,
+  expanded,
+  onExpandedChange,
+  children,
+  className,
+  ...props
+}: TimelineEntryProps) {
+  const inlineTime = timestamp != null ? (
+    <time
+      dateTime={dateTime}
+      data-slot="timeline-timestamp"
+      className="shrink-0 font-bakin-typography-family-mono text-[length:var(--bakin-typography-size-meta)] tabular-nums text-bakin-text-muted @2xl/timeline:hidden"
+    >
+      {timestamp}
+    </time>
+  ) : null
+
+  const header = (
+    <>
+      {inlineTime}
+      <span
+        data-slot="timeline-title"
+        className="min-w-0 break-words text-bakin-typography-size-body font-bakin-typography-weight-semibold text-bakin-text-primary"
+      >
+        {title}
+      </span>
+      {meta != null ? (
+        <span data-slot="timeline-meta" className="flex min-w-0 flex-wrap items-center gap-bakin-2">
+          {meta}
+        </span>
+      ) : null}
+    </>
+  )
+
+  const body = children != null ? (
+    <div
+      data-slot="timeline-entry-body"
+      className="mt-bakin-1 min-w-0 text-[length:var(--bakin-typography-size-meta)] leading-relaxed text-bakin-text-muted"
+    >
+      {children}
+    </div>
+  ) : null
+
+  return (
+    <li
+      {...props}
+      data-slot="timeline-entry"
+      data-tone={tone}
+      className={cn(
+        'group/timeline-entry grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-bakin-3',
+        '@2xl/timeline:grid-cols-[minmax(7rem,auto)_auto_minmax(0,1fr)]',
+        className,
+      )}
+    >
+      <span
+        data-slot="timeline-gutter"
+        className="hidden pt-bakin-1 text-right font-bakin-typography-family-mono text-[length:var(--bakin-typography-size-meta)] tabular-nums text-bakin-text-muted @2xl/timeline:block"
+      >
+        {timestamp != null ? <time dateTime={dateTime}>{timestamp}</time> : null}
+      </span>
+
+      <span data-slot="timeline-rail" className="relative flex flex-col items-center pt-bakin-1">
+        {marker ?? <StatusMarker tone={tone} size="md" label={markerLabel} />}
+        <span
+          aria-hidden="true"
+          data-slot="timeline-rail-line"
+          className="mt-bakin-1 w-px flex-1 bg-bakin-border-subtle group-last/timeline-entry:hidden"
+        />
+      </span>
+
+      <div
+        data-slot="timeline-entry-content"
+        className="min-w-0 pb-bakin-4 group-last/timeline-entry:pb-bakin-0"
+      >
+        {expandable ? (
+          <Collapsible
+            className="border-y-0"
+            defaultOpen={defaultExpanded}
+            open={expanded}
+            // Normalized to exactly (expanded: boolean) — the underlying
+            // disclosure's event details stay an implementation detail.
+            onOpenChange={onExpandedChange ? (open) => onExpandedChange(open) : undefined}
+          >
+            <CollapsibleTrigger
+              className={cn(
+                'group/timeline-trigger min-h-0 justify-start py-bakin-0 font-bakin-typography-weight-regular',
+                HEADER_LAYOUT,
+              )}
+            >
+              {header}
+              <Chevron />
+            </CollapsibleTrigger>
+            <CollapsibleContent className="pb-bakin-0">{body}</CollapsibleContent>
+          </Collapsible>
+        ) : (
+          <>
+            <div data-slot="timeline-entry-header" className={HEADER_LAYOUT}>
+              {header}
+            </div>
+            {body}
+          </>
+        )}
+      </div>
+    </li>
+  )
+}

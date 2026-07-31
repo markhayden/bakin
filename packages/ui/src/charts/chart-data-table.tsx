@@ -147,7 +147,14 @@ export function ChartDataTable({
   className,
 }: ChartDataTableProps) {
   const table = renderTable
-    ? renderTable({ caption, data, series, formatValue, missingValue, emptyLabel })
+    ? (
+        // The default table's cells carry their own padding; custom-rendered
+        // regions get the inset from the kit so content never touches the
+        // region border.
+        <div data-slot="chart-data-table-custom" className="px-bakin-3 py-bakin-2">
+          {renderTable({ caption, data, series, formatValue, missingValue, emptyLabel })}
+        </div>
+      )
     : (
         <ExactTable
           caption={caption}

@@ -364,8 +364,12 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 | `KanbanColumn` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `KanbanColumnBody` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `KanbanColumnHeader` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `CalendarGrid` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `ListRow` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `ListRowGroup` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `ListRowLabels` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `ListRows` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `NavList` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `Page` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `PageAside` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `PageBody` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
@@ -382,6 +386,7 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 | `WorkspacePageHeader` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `ConfirmDialog` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `DangerZone` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `DataTable` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `FacetFilter` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `AgentFilter` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `SaveBar` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
@@ -392,6 +397,8 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 | `StatTile` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `StatusBadge` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `StatusMarker` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `Timeline` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `TimelineEntry` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `UnsavedChangesDialog` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `SearchUnavailable` | Replace an affected result region when search returns no trustworthy result. |
 | `ScoreOverlay` | Show fused and per-leg search relevance as exact, non-color-dependent evidence. |
@@ -452,9 +459,19 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 | `KanbanColumnBodyProps` | — |
 | `KanbanColumnHeaderProps` | — |
 | `KanbanColumnProps` | — |
+| `CalendarGridItem` | — |
+| `CalendarGridProps` | — |
+| `CalendarGridView` | — |
+| `ListRowGroupProps` | — |
+| `ListRowLabelsProps` | — |
 | `ListRowProps` | — |
+| `ListRowsColumnsAlign` | — |
+| `ListRowsColumnsAt` | — |
 | `ListRowsProps` | — |
 | `ListRowsVariant` | — |
+| `NavListItem` | — |
+| `NavListProps` | — |
+| `NavListSection` | — |
 | `PageAsideProps` | — |
 | `PageBodyGap` | — |
 | `PageBodyLayout` | — |
@@ -483,6 +500,11 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 | `ConfirmDialogTone` | — |
 | `DangerZoneHeadingLevel` | — |
 | `DangerZoneProps` | — |
+| `DataTableAlign` | — |
+| `DataTableCollapse` | — |
+| `DataTableColumn` | — |
+| `DataTableProps` | — |
+| `DataTableSort` | — |
 | `FacetFilterProps` | — |
 | `FacetOption` | — |
 | `AgentFilterOption` | — |
@@ -502,6 +524,8 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 | `StatusBadgeVariant` | — |
 | `StatusMarkerProps` | — |
 | `StatusTone` | — |
+| `TimelineEntryProps` | — |
+| `TimelineProps` | — |
 | `UnsavedChangesDialogProps` | — |
 
 ## `@makinbakin/sdk/charts`

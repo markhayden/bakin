@@ -23,6 +23,8 @@ export interface RankedBarChartProps {
   emptyLabel?: string
   /** Disable only when an equivalent exact table is rendered beside the chart. */
   showDataTable?: boolean
+  /** Collapse the exact-data table behind its disclosure for space-tight contexts. */
+  compactData?: boolean
 }
 
 const MUTED_TOTAL_OPACITY = 0.45
@@ -45,6 +47,7 @@ export function RankedBarChart({
   formatValue = (value) => value.toLocaleString(),
   emptyLabel = 'No reported data in this window.',
   showDataTable = true,
+  compactData = false,
 }: RankedBarChartProps) {
   const descriptionId = useId()
   const ranked = useMemo(
@@ -75,6 +78,7 @@ export function RankedBarChart({
           series={secondary ? [series, secondary] : [series]}
           caption={`${label} data`}
           formatValue={formatValue}
+          defaultOpen={!compactData}
         />
       )
     : null

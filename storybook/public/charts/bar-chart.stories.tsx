@@ -13,7 +13,7 @@ const meta = {
     layout: 'fullscreen',
     docs: {
       description: {
-        component: 'BarChart is the dependency-free comparison chart for non-negative quantities across discrete windows. Grouped bars compare series within each window; `stacked` emphasizes window totals while focus preserves each segment value. Both forms share the fixed data palette in the same series order, visible legend labels, keyboard-focusable marks that mirror pointer tooltips, an intentionally absent value that stays missing instead of becoming zero, and a reachable exact-data table. Use a line chart when signed values or change around zero matters.',
+        component: 'BarChart is the dependency-free comparison chart for non-negative quantities across discrete windows. Grouped bars compare series within each window; `stacked` emphasizes window totals while focus preserves each segment value. Both forms share the fixed data palette in the same series order, visible legend labels, keyboard-focusable marks that mirror pointer tooltips, an intentionally absent value that stays missing instead of becoming zero, and an exact-data table that renders expanded by default so the evidence stays visible — `compactData` collapses it behind its disclosure for space-tight contexts. Use a line chart when signed values or change around zero matters.',
       },
     },
     bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'long-labels', 'overflow', 'multi-series', 'non-color', 'keyboard', 'missing-data'],
@@ -54,7 +54,36 @@ export const CanonicalUsage = {
     await expect(mark).toHaveFocus()
     await expect(canvas.getByRole('tooltip')).toHaveTextContent('Jul 27 — Failed: 3')
     mark.blur()
-    await expect(canvas.getByRole('table', { name: 'Task outcomes data', hidden: true })).toHaveTextContent('Not reported')
+    const table = canvas.getByRole('table', { name: 'Task outcomes data' })
+    await expect(table).toBeVisible()
+    await expect(table).toHaveTextContent('Not reported')
+  },
+} satisfies Story
+
+export const CompactData = {
+  parameters: {
+    layout: 'centered',
+    docs: {
+      description: {
+        story: 'The space-saving opt-in: `compactData` collapses the exact-data table behind its "View {caption}" disclosure. The evidence is never removed — it stays one activation away. Reserve this for genuinely space-tight contexts; the default keeps the table expanded.',
+      },
+    },
+  },
+  render: () => (
+    <BarChart
+      data={canonicalData}
+      series={canonicalSeries}
+      label="Task outcomes"
+      description="Completed and failed tasks across four days."
+      compactData
+    />
+  ),
+  play: async ({ canvas, userEvent }) => {
+    const table = canvas.getByRole('table', { name: 'Task outcomes data', hidden: true })
+    await expect(table).not.toBeVisible()
+    await userEvent.click(canvas.getByText('View Task outcomes data'))
+    await expect(table).toBeVisible()
+    await expect(table).toHaveTextContent('Not reported')
   },
 } satisfies Story
 

@@ -25,6 +25,8 @@ export interface PieChartProps {
   emptyLabel?: string
   /** Disable only when an equivalent exact table is rendered beside the chart. */
   showDataTable?: boolean
+  /** Collapse the exact-data table behind its disclosure for space-tight contexts. */
+  compactData?: boolean
 }
 
 /** A pie renders at most this many slices; later entities fold into Other. */
@@ -199,6 +201,7 @@ export function PieChart({
   formatValue = (value) => value.toLocaleString(),
   emptyLabel = 'No reported data in this window.',
   showDataTable = true,
+  compactData = false,
 }: PieChartProps) {
   const tooltipId = useId()
   const [active, setActive] = useState<ActiveSlice | null>(null)
@@ -212,7 +215,7 @@ export function PieChart({
     [data],
   )
   const table = showDataTable
-    ? <ChartDataTable data={tableData} series={TABLE_SERIES} caption={`${label} data`} formatValue={formatValue} />
+    ? <ChartDataTable data={tableData} series={TABLE_SERIES} caption={`${label} data`} formatValue={formatValue} defaultOpen={!compactData} />
     : null
 
   if (model.hasNegative) {

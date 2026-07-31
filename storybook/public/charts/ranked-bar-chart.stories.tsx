@@ -12,7 +12,7 @@ const meta = {
     layout: 'fullscreen',
     docs: {
       description: {
-        component: 'RankedBarChart ranks one series of like-unit values without forcing long entity names onto an axis: each row keeps its full name, a visible exact value, and a keyboard-focusable bar. A missing value stays missing — visibly labelled, never a zero-length bar — and the exact-data disclosure stays reachable behind the ranking. Use separate ranked views for unlike units such as dollars and subscription tokens.',
+        component: 'RankedBarChart ranks one series of like-unit values without forcing long entity names onto an axis: each row keeps its full name, a visible exact value, and a keyboard-focusable bar. A missing value stays missing — visibly labelled, never a zero-length bar — and the exact-data table renders expanded below the ranking by default so the evidence stays visible; `compactData` collapses it behind its disclosure for space-tight contexts. Use separate ranked views for unlike units such as dollars and subscription tokens.',
       },
     },
     bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'long-labels', 'non-color', 'keyboard', 'missing-data', 'multi-series'],
@@ -45,7 +45,9 @@ export const CanonicalUsage = {
     bar.blur()
     await expect(canvas.queryByRole('img', { name: /publisher-agent/ })).not.toBeInTheDocument()
     await expect(canvas.getAllByText('Not reported')).toHaveLength(2)
-    await expect(canvas.getByRole('table', { name: 'Completed runs by agent data', hidden: true })).toHaveTextContent('reviewer-agent')
+    const table = canvas.getByRole('table', { name: 'Completed runs by agent data' })
+    await expect(table).toBeVisible()
+    await expect(table).toHaveTextContent('reviewer-agent')
   },
 } satisfies Story
 

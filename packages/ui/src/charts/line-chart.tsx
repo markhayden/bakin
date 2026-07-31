@@ -15,6 +15,8 @@ export interface LineChartProps {
   height?: number
   formatValue?: (value: number) => string
   emptyLabel?: string
+  /** Collapse the exact-data table behind its disclosure for space-tight contexts. */
+  compactData?: boolean
 }
 
 interface Point {
@@ -83,6 +85,7 @@ export function LineChart({
   height = 200,
   formatValue = (value) => value.toLocaleString(),
   emptyLabel = 'No reported data in this window.',
+  compactData = false,
 }: LineChartProps) {
   const tooltipId = useId()
   const plotRef = useRef<HTMLDivElement>(null)
@@ -123,7 +126,7 @@ export function LineChart({
   }, [hasRenderableData])
 
   const table = (
-    <ChartDataTable data={data} series={series} caption={`${label} data`} formatValue={formatValue} />
+    <ChartDataTable data={data} series={series} caption={`${label} data`} formatValue={formatValue} defaultOpen={!compactData} />
   )
 
   if (!hasRenderableData) {
