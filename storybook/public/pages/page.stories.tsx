@@ -34,23 +34,36 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const CanonicalUsage = {
-  render: () => (
-    <Page data-testid="canonical-page">
-      <PageHeader title="Active tasks" />
-      <PageBody label="Active task results">
-        <ul>
-          <li>Launch approval</li>
-          <li>Campaign artwork review</li>
-        </ul>
-      </PageBody>
-    </Page>
+  args: {
+    width: 'full',
+    scroll: 'page',
+    density: 'default',
+  },
+  argTypes: {
+    children: { control: false },
+  },
+  // Page children are composition, so the story wrapper keeps them fixed while
+  // width/scroll/density stay honest controls. Contained scroll only means
+  // anything inside a bounded pane, so the wrapper supplies one on demand.
+  render: ({ children: _children, ...args }) => (
+    <div style={args.scroll === 'contained' ? { height: '30rem' } : undefined}>
+      <Page {...args} data-testid="canonical-page">
+        <PageHeader title="Active tasks" />
+        <PageBody label="Active task results">
+          <ul>
+            <li>Launch approval</li>
+            <li>Campaign artwork review</li>
+          </ul>
+        </PageBody>
+      </Page>
+    </div>
   ),
-  play: async ({ canvas }) => {
+  play: async ({ canvas, args }) => {
     const page = canvas.getByTestId('canonical-page')
     await expect(page).toHaveAttribute('data-archetype', 'page')
-    await expect(page).toHaveAttribute('data-width', 'full')
-    await expect(page).toHaveAttribute('data-scroll', 'page')
-    await expect(page).toHaveAttribute('data-density', 'default')
+    await expect(page).toHaveAttribute('data-width', args.width === 'standard' ? 'content' : 'full')
+    await expect(page).toHaveAttribute('data-scroll', args.scroll ?? 'page')
+    await expect(page).toHaveAttribute('data-density', args.density ?? 'default')
     await expect(canvas.getByRole('heading', { name: 'Active tasks' })).toBeVisible()
     const body = page.querySelector('[data-slot="page-body"]')
     await expect(body).toBeTruthy()

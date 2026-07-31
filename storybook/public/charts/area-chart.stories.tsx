@@ -5,23 +5,6 @@ import { AreaChart, ChartExplainer, type ChartDatum, type ChartSeries } from '@m
 
 import { ChartStage } from './chart-story-stage'
 
-const meta = {
-  title: 'Charts/AreaChart',
-  tags: ['public'],
-  parameters: {
-    layout: 'fullscreen',
-    docs: {
-      description: {
-        component: 'AreaChart is the dependency-free trend chart for cumulative magnitude over time: reach for it when how much has accumulated is the message, for LineChart when only the trajectory matters, and for StackedColumnChart when discrete buckets should be compared side by side. The solid 2px series line carries identity while the reduced-opacity fill carries magnitude, colors follow the fixed CVD-checked palette order, and stacked bands are separated by a surface-color stroke so adjacent fills never touch. A missing value in a single-series area breaks the fill into a gap — never a collapse to zero. A stacked column cannot honestly render a gap mid-stack, so the missing series is omitted from that column’s band boundaries and the omission is surfaced through the exact-data table’s per-cell missing labels — the deliberate trade-off of stacking. Every mark mirrors pointer detail through keyboard focus and a tooltip, the exact-data table renders expanded below the chart by default so the evidence stays visible — `compactData` collapses it behind its disclosure for space-tight contexts — and an empty dataset is a named state, not invented marks.',
-      },
-    },
-    bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'long-labels', 'empty', 'overflow', 'multi-series', 'cvd', 'non-color', 'keyboard', 'missing-data'],
-  },
-} satisfies Meta
-
-export default meta
-type Story = StoryObj<typeof meta>
-
 const canonicalSeries: ChartSeries[] = [
   { key: 'completed', label: 'Completed' },
   { key: 'failed', label: 'Failed' },
@@ -34,17 +17,37 @@ const canonicalData: ChartDatum[] = [
   { x: 'jul-27', xLabel: 'Jul 27', values: { completed: 31, failed: 3 } },
 ]
 
+const meta = {
+  title: 'Charts/AreaChart',
+  component: AreaChart,
+  tags: ['public'],
+  args: {
+    data: canonicalData,
+    series: canonicalSeries,
+    label: 'Task volume',
+    description: 'Completed and failed task volume across four days.',
+  },
+  parameters: {
+    layout: 'fullscreen',
+    docs: {
+      description: {
+        component: 'AreaChart is the dependency-free trend chart for cumulative magnitude over time: reach for it when how much has accumulated is the message, for LineChart when only the trajectory matters, and for StackedColumnChart when discrete buckets should be compared side by side. The solid 2px series line carries identity while the reduced-opacity fill carries magnitude, colors follow the fixed CVD-checked palette order, and stacked bands are separated by a surface-color stroke so adjacent fills never touch. A missing value in a single-series area breaks the fill into a gap — never a collapse to zero. A stacked column cannot honestly render a gap mid-stack, so the missing series is omitted from that column’s band boundaries and the omission is surfaced through the exact-data table’s per-cell missing labels — the deliberate trade-off of stacking. Every mark mirrors pointer detail through keyboard focus and a tooltip, the exact-data table renders expanded below the chart by default so the evidence stays visible — `compactData` collapses it behind its disclosure for space-tight contexts — and an empty dataset is a named state, not invented marks.',
+      },
+    },
+    bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'long-labels', 'empty', 'overflow', 'multi-series', 'cvd', 'non-color', 'keyboard', 'missing-data'],
+  },
+} satisfies Meta<typeof AreaChart>
+
+export default meta
+type Story = StoryObj<typeof meta>
+
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => (
-    <AreaChart
-      data={canonicalData}
-      series={canonicalSeries}
-      label="Task volume"
-      description="Completed and failed task volume across four days."
-    />
-  ),
-  play: async ({ canvas }) => {
+  args: {
+    stacked: false,
+    compactData: false,
+  },
+  play: async ({ canvas, args }) => {
     await expect(canvas.getByRole('group', { name: 'Task volume' })).toBeVisible()
     await expect(canvas.getByRole('list', { name: 'Task volume legend' })).toHaveTextContent('Failed')
     await expect(canvas.queryByRole('img', { name: /Jul 26 — Failed/ })).not.toBeInTheDocument()
@@ -53,8 +56,9 @@ export const CanonicalUsage = {
     await expect(mark).toHaveFocus()
     await expect(canvas.getByRole('tooltip')).toHaveTextContent('Jul 27 — Failed: 3')
     mark.blur()
-    const table = canvas.getByRole('table', { name: 'Task volume data' })
-    await expect(table).toBeVisible()
+    const table = canvas.getByRole('table', { name: 'Task volume data', hidden: true })
+    if (args.compactData) await expect(table).not.toBeVisible()
+    else await expect(table).toBeVisible()
     await expect(table).toHaveTextContent('Not reported')
   },
 } satisfies Story

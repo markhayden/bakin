@@ -25,19 +25,33 @@ type Story = StoryObj<typeof meta>
 
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => (
-    <Banner
-      tone="success"
-      title="Runtime reconnected"
-      description="Queued workflows will resume automatically."
-      announce="polite"
-    />
+  args: {
+    tone: 'success',
+    title: 'Runtime reconnected',
+    description: 'Queued workflows will resume automatically.',
+    announce: 'polite',
+  },
+  // Width frame: Banner's container-type zeroes its intrinsic width, so the
+  // centered (shrink-to-fit) canvas would collapse it. In the app it sits in
+  // block flow where width is inherited; the frame reproduces that.
+  render: (args) => (
+    <div style={{ inlineSize: '40rem', maxInlineSize: '100%' }}>
+      <Banner {...args} />
+    </div>
   ),
-  play: async ({ canvas }) => {
-    const banner = canvas.getByRole('status', { name: 'Runtime reconnected' })
+  play: async ({ canvas, args }) => {
+    const banner = args.announce === 'off'
+      ? canvas.getByText(String(args.title)).closest('[data-slot="banner"]')! as HTMLElement
+      : canvas.getByRole(args.announce === 'assertive' ? 'alert' : 'status', { name: String(args.title) })
     await expect(banner).toBeVisible()
-    await expect(banner).toHaveAttribute('aria-live', 'polite')
-    await expect(banner).toHaveAttribute('data-tone', 'success')
+    if (args.announce !== 'off') await expect(banner).toHaveAttribute('aria-live', args.announce)
+    await expect(banner).toHaveAttribute('data-tone', args.tone ?? 'info')
+    // The width frame must hold: a collapsed banner renders the copy column
+    // at min-content (~46px total observed) — assert real prose width.
+    await expect(banner.getBoundingClientRect().width).toBeGreaterThan(300)
+    const title = banner.querySelector<HTMLElement>('[data-slot="banner-title"]')
+    await expect(title).toBeTruthy()
+    await expect(title!.getBoundingClientRect().width).toBeGreaterThan(120)
   },
 } satisfies Story
 

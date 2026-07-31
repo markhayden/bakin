@@ -34,16 +34,27 @@ type Story = StoryObj<typeof meta>
 
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => (
-    <Progress value={42} style={{ width: '20rem' }}>
-      <ProgressLabel>Generating assets</ProgressLabel>
-      <ProgressValue />
-    </Progress>
-  ),
-  play: async ({ canvas }) => {
+  args: {
+    value: 42,
+    children: (
+      <>
+        <ProgressLabel>Generating assets</ProgressLabel>
+        <ProgressValue />
+      </>
+    ),
+  },
+  argTypes: {
+    children: { control: false },
+  },
+  render: (args) => <Progress {...args} style={{ width: '20rem' }} />,
+  play: async ({ canvas, args }) => {
     const progress = canvas.getByRole('progressbar', { name: 'Generating assets' })
-    await expect(progress).toHaveAttribute('aria-valuenow', '42')
-    await expect(canvas.getByText('42%')).toBeVisible()
+    if (typeof args.value === 'number') {
+      await expect(progress).toHaveAttribute('aria-valuenow', String(args.value))
+      await expect(canvas.getByText(`${args.value}%`)).toBeVisible()
+    } else {
+      await expect(progress).not.toHaveAttribute('aria-valuenow')
+    }
   },
 } satisfies Story
 

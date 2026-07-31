@@ -24,10 +24,14 @@ type Story = StoryObj<typeof meta>
 
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => <Badge tone="success" variant="solid">Published</Badge>,
-  play: async ({ canvas }) => {
+  args: {
+    tone: 'success',
+    variant: 'solid',
+    children: 'Published',
+  },
+  play: async ({ canvas, args }) => {
     // The visible label is the non-color cue: the status reads without the tone.
-    const badge = canvas.getByText('Published')
+    const badge = canvas.getByText(String(args.children))
     await expect(badge).toBeVisible()
     await expect(badge).toHaveTextContent(/\S/)
   },

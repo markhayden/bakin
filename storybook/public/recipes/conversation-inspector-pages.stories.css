@@ -109,7 +109,7 @@
 }
 
 .bakin-conversation-inspector-story [data-slot='inspector-panel'] {
-  padding: var(--bakin-layout-space-5);
+  padding: var(--bakin-layout-space-4);
   border: 1px solid var(--bakin-color-border-subtle);
   border-radius: var(--bakin-radius-surface);
   background: var(--bakin-color-surface-default);

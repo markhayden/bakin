@@ -85,7 +85,7 @@
 
 .bakin-story-stage__overlay-workspace > div {
   border: 1px solid var(--bakin-color-border-subtle);
-  border-radius: var(--bakin-shape-radius-card);
+  border-radius: var(--bakin-radius-surface);
   background: var(--bakin-color-surface-default);
 }
 

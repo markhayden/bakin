@@ -62,18 +62,20 @@ export type {
   SubmitButtonProps,
 } from './forms'
 
-export { Banner, SystemState, Toast, ToastRegion, systemStateDefaults } from './states'
+export { Banner, SystemState, Toast, ToastAction, ToastRegion, systemStateDefaults } from './states'
 export { PluginPortalOwnershipProvider } from './primitives/portal-ownership'
 export type { PluginPortalOwnershipProviderProps } from './primitives/portal-ownership'
 export type {
   BannerProps,
   BannerTone,
   FeedbackAnnouncement,
+  SystemStateAlign,
   SystemStateContent,
   SystemStateHeadingLevel,
   SystemStateKind,
   SystemStateProps,
   SystemStateScope,
+  ToastActionProps,
   ToastProps,
   ToastRegionProps,
   ToastTone,

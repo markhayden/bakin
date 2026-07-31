@@ -15,7 +15,7 @@ const meta = {
     layout: 'fullscreen',
     docs: {
       description: {
-        component: 'SystemState is the one contract for asynchronous and data-driven surface states. Choose `kind` by cause — first-use emptiness, filtered no-results, loading, recoverable or terminal errors, and permission boundaries are different states with different next actions. Inline scope is the compact row treatment with a leading signal for surfaces whose nearby content remains useful; section and page scopes replace only the region that is unavailable. No-results and recoverable errors require an action at the type boundary, and urgency is semantic, not inferred from color alone.',
+        component: 'SystemState is the one contract for asynchronous and data-driven surface states. Choose `kind` by cause — first-use emptiness, filtered no-results, loading, recoverable or terminal errors, and permission boundaries are different states with different next actions. Every state centers by default; `align` overrides it and `icon` places a meaningful glyph above the copy (empty kinds render no status dot). Inline scope is the compact row treatment for surfaces whose nearby content remains useful; section and page scopes replace only the region that is unavailable. No-results and recoverable errors require an action at the type boundary, and urgency is semantic, not inferred from color alone.',
       },
     },
     bakinCoverage: ['desktop', 'loading', 'empty', 'error', 'non-color'],
@@ -45,7 +45,7 @@ export const CanonicalUsage = {
 
 function LoadingPreview() {
   return (
-    <div style={{ display: 'grid', gap: 'var(--bakin-layout-space-2)', inlineSize: 'min(100%, 24rem)' }}>
+    <div style={{ display: 'grid', gap: 'var(--bakin-layout-space-2)', inlineSize: 'min(100%, 24rem)', marginInline: 'auto' }}>
       {[0, 1].map((row) => (
         <div
           key={row}
@@ -165,7 +165,7 @@ export const FullAndCompactEmptyStates = {
       title="Match empty-state weight to the available space"
       description="Use the compact row inside a larger working surface. Use the full treatment only when the empty state replaces the section or page’s primary content."
     >
-      <StorySection title="Compact empty state" description="The signal leads the copy instead of floating above it.">
+      <StorySection title="Compact empty state" description="Empty states carry no status dot — the copy is the message, centered inside the row.">
         <SystemState
           kind="initial-empty"
           scope="inline"
@@ -191,5 +191,51 @@ export const FullAndCompactEmptyStates = {
     const full = canvas.getByText('No workflows yet').closest('[data-slot="system-state"]')
     await expect(compact).toHaveAttribute('data-presentation', 'compact')
     await expect(full).toHaveAttribute('data-presentation', 'full')
+    await expect(compact?.querySelector('[data-slot="system-state-signal"]')).toBeNull()
+    await expect(full?.querySelector('[data-slot="system-state-signal"]')).toBeNull()
+  },
+} satisfies Story
+
+export const AlignmentAndIcon = {
+  render: () => (
+    <StoryStage
+      eyebrow="States / honest feedback"
+      title="Override alignment and glyph deliberately"
+      description="Every state centers by default. Use `align` when the surrounding surface reads left-to-right, and `icon` to place a meaningful glyph above the copy — it replaces any status dot."
+    >
+      <StorySection title="Left-aligned empty state" description="Match a left-anchored surface such as a settings panel.">
+        <SystemState
+          kind="initial-empty"
+          align="left"
+          headingLevel={3}
+          title="No lessons recorded"
+          description="Lessons appear here after the first corrective sync."
+        />
+      </StorySection>
+      <StorySection title="Custom icon" description="The sanctioned path for richer empty-state art. The glyph is decorative; the title carries the meaning.">
+        <SystemState
+          kind="initial-empty"
+          headingLevel={3}
+          icon={
+            <svg viewBox="0 0 24 24" width="32" height="32" aria-hidden="true" style={{ color: 'var(--bakin-color-text-muted)' }}>
+              <path d="M4 7.5 12 3l8 4.5v9L12 21l-8-4.5v-9Z" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+              <path d="M4 7.5 12 12l8-4.5M12 12v9" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+            </svg>
+          }
+          title="No assets yet"
+          description="Generated and imported files will appear here as versioned assets."
+          action={<Button variant="outline">Import files</Button>}
+        />
+      </StorySection>
+    </StoryStage>
+  ),
+  play: async ({ canvas }) => {
+    const left = canvas.getByText('No lessons recorded').closest('[data-slot="system-state"]')
+    await expect(left).toHaveAttribute('data-align', 'left')
+    const withIcon = canvas.getByText('No assets yet').closest('[data-slot="system-state"]')
+    await expect(withIcon).toHaveAttribute('data-align', 'center')
+    const icon = withIcon?.querySelector('[data-slot="system-state-icon"]')
+    await expect(icon).not.toBeNull()
+    await expect(icon).toHaveAttribute('aria-hidden', 'true')
   },
 } satisfies Story

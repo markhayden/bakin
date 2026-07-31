@@ -5,6 +5,7 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { BoundedOverflow } from '../layout/bounded-overflow'
 import { ChartDataTable, chartSeriesColor, type ChartDatum, type ChartSeries } from './chart-data-table'
 import { ChartTooltip } from './chart-tooltip'
+import { monotonePathD } from './monotone-curve'
 
 export interface LineChartProps {
   data: readonly ChartDatum[]
@@ -17,6 +18,13 @@ export interface LineChartProps {
   emptyLabel?: string
   /** Collapse the exact-data table behind its disclosure for space-tight contexts. */
   compactData?: boolean
+  /**
+   * Draw each contiguous segment as a monotone cubic (Fritsch–Carlson)
+   * instead of straight lines. The curve passes exactly through every data
+   * point and never overshoots, so it cannot imply values outside the data.
+   * Marks, tooltips, and the exact-data table are unaffected.
+   */
+  smooth?: boolean
 }
 
 interface Point {
@@ -86,6 +94,7 @@ export function LineChart({
   formatValue = (value) => value.toLocaleString(),
   emptyLabel = 'No reported data in this window.',
   compactData = false,
+  smooth = false,
 }: LineChartProps) {
   const tooltipId = useId()
   const plotRef = useRef<HTMLDivElement>(null)
@@ -211,7 +220,9 @@ export function LineChart({
                 {segments.filter((segment) => segment.length > 1).map((segment) => (
                   <path
                     key={`${segment[0]!.index}-${segment.at(-1)!.index}`}
-                    d={segment.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ')}
+                    d={smooth
+                      ? monotonePathD(segment)
+                      : segment.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ')}
                     fill="none"
                     stroke={color}
                     strokeWidth="2"

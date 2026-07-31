@@ -43,6 +43,38 @@ const signalClasses: Record<ToastTone, string> = {
   error: 'bg-bakin-signal-danger',
 }
 
+const actionToneClasses: Record<ToastTone, string> = {
+  info: 'border-bakin-signal-info/50 hover:bg-bakin-signal-info/15',
+  success: 'border-bakin-action-primary-background/50 hover:bg-bakin-action-primary-background/15',
+  error: 'border-bakin-signal-danger/50 hover:bg-bakin-signal-danger/15',
+}
+
+const ToastToneContext = React.createContext<ToastTone>('info')
+
+export type ToastActionProps = React.ComponentPropsWithoutRef<'button'>
+
+/**
+ * Small in-toast action styled in the owning toast's tone. Text stays in
+ * primary ink; the tone-colored border ties it to the toast, never an accent
+ * link. Reads its tone from the surrounding Toast.
+ */
+export function ToastAction({ className, type = 'button', ...props }: ToastActionProps) {
+  const tone = React.useContext(ToastToneContext)
+  return (
+    <button
+      {...props}
+      type={type}
+      data-slot="toast-action"
+      data-tone={tone}
+      className={cn(
+        'inline-flex h-bakin-6 shrink-0 items-center justify-center gap-bakin-1 rounded-bakin-control border px-bakin-2 text-[length:var(--bakin-typography-size-meta)] font-bakin-typography-weight-semibold text-bakin-text-primary transition-colors focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring',
+        actionToneClasses[tone],
+        className,
+      )}
+    />
+  )
+}
+
 /** Owning collection for shell-rendered notifications. Placement and portal ownership stay with the host. */
 export function ToastRegion({ children, className, label = 'Notifications', ...props }: ToastRegionProps) {
   return (
@@ -85,7 +117,12 @@ export function Toast({
       data-slot="toast"
       data-tone={tone}
       className={cn(
-        '@container/toast pointer-events-auto grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-x-bakin-3 gap-y-bakin-2 rounded-bakin-surface border px-bakin-4 py-bakin-3 text-left text-bakin-text-primary shadow-bakin-elevation-overlay animate-in fade-in slide-in-from-bottom-2 motion-reduce:animate-none',
+        // No @container here: container-type would zero the toast's intrinsic
+        // width, and the copy column must contribute real width so
+        // shrink-to-fit parents (centered canvases, flex rows) cannot collapse
+        // the toast to its dot + close button. The region's max-w caps the
+        // contribution; overflow-wrap on the copy keeps min-content harmless.
+        'pointer-events-auto grid w-full min-w-0 grid-cols-[auto_minmax(min-content,1fr)_auto] items-start gap-x-bakin-3 gap-y-bakin-2 rounded-bakin-surface border px-bakin-4 py-bakin-3 text-left text-bakin-text-primary shadow-bakin-elevation-overlay animate-in fade-in slide-in-from-bottom-2 motion-reduce:animate-none',
         toneClasses[tone],
         className,
       )}
@@ -95,7 +132,7 @@ export function Toast({
         data-slot="toast-signal"
         className={cn('mt-bakin-1 size-bakin-3 shrink-0 rounded-bakin-pill', signalClasses[tone])}
       />
-      <div data-slot="toast-copy" className="min-w-0">
+      <div data-slot="toast-copy" className="min-w-0 [overflow-wrap:anywhere]">
         <div
           id={titleId}
           data-slot="toast-title"
@@ -124,7 +161,7 @@ export function Toast({
       ) : <span aria-hidden="true" />}
       {action ? (
         <div data-slot="toast-actions" className="col-start-2 flex min-w-0 flex-wrap items-center gap-bakin-2">
-          {action}
+          <ToastToneContext.Provider value={tone}>{action}</ToastToneContext.Provider>
         </div>
       ) : null}
     </div>

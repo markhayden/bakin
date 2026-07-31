@@ -54,7 +54,7 @@ export function ConversationEmptyState({
         {icon ?? <MessageIcon />}
       </div>
       <div className="grid gap-bakin-1">
-        <h3 className="text-[length:var(--bakin-typography-size-heading-3)] font-bakin-typography-weight-semibold text-bakin-text-primary">
+        <h3 className="text-[length:var(--bakin-typography-size-title)] font-bakin-typography-weight-semibold text-bakin-text-primary">
           {title}
         </h3>
         {description ? <p className="leading-relaxed text-bakin-text-muted">{description}</p> : null}

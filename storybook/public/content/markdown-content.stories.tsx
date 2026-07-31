@@ -78,7 +78,7 @@ export const ReadingAndCode = {
         style={{
           minWidth: 0,
           maxWidth: '52rem',
-          padding: 'var(--bakin-layout-space-5)',
+          padding: 'var(--bakin-layout-space-6)',
           border: '1px solid var(--bakin-color-border-subtle)',
           borderRadius: 'var(--bakin-radius-overlay)',
           background: 'var(--bakin-color-surface-default)',

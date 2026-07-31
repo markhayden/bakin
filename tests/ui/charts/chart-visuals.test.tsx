@@ -92,6 +92,38 @@ describe('LineChart', () => {
     expect(labels.find((node) => node.textContent?.endsWith('…'))?.getAttribute('text-anchor')).toBe('end')
   })
 
+  it('draws straight segments by default and monotone cubics with smooth, leaving marks and table untouched', () => {
+    const data: ChartDatum[] = [
+      { x: 'one', values: { completed: 4 } },
+      { x: 'two', values: { completed: 9 } },
+      { x: 'three', values: { completed: 5 } },
+      { x: 'four', values: { completed: 8 } },
+    ]
+
+    const linear = render(<LineChart data={data} series={[series[0]!]} label="Linear trend" />)
+    const linearPath = linear.container.querySelector('path[data-series="completed"]')?.getAttribute('d') ?? ''
+    expect(linearPath.startsWith('M ')).toBe(true)
+    expect(linearPath).toContain('L ')
+    expect(linearPath).not.toContain('C ')
+    linear.unmount()
+
+    const smooth = render(<LineChart data={data} series={[series[0]!]} label="Smooth trend" smooth />)
+    const smoothPath = smooth.container.querySelector('path[data-series="completed"]')?.getAttribute('d') ?? ''
+    expect(smoothPath.startsWith('M ')).toBe(true)
+    expect(smoothPath).toContain('C ')
+    expect(smoothPath).not.toContain('L ')
+    // The curve passes exactly through every data mark: each mark's cx/cy
+    // appears as an on-curve endpoint in the path.
+    const marks = Array.from(smooth.container.querySelectorAll('circle[role="img"]'))
+    expect(marks).toHaveLength(4)
+    for (const mark of marks) {
+      expect(smoothPath).toContain(`${mark.getAttribute('cx')} ${mark.getAttribute('cy')}`)
+    }
+    // Data-facing surfaces are unchanged by smoothing.
+    expect(smooth.getByRole('table', { name: 'Smooth trend data', hidden: true })).toBeTruthy()
+    smooth.unmount()
+  })
+
   it('renders the exact-data table expanded by default and collapses it with compactData', () => {
     const data: ChartDatum[] = [
       { x: 'one', values: { completed: 4 } },

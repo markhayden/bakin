@@ -47,23 +47,29 @@ type Story = StoryObj<typeof meta>
 
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
+  // Width frame: Form's container-type zeroes its intrinsic width, so the
+  // centered (shrink-to-fit) canvas would collapse it to min-content. In the
+  // app forms sit in block flow where width is inherited.
   render: () => (
-    <Form aria-label="Workspace settings">
-      <Field name="workspaceName">
-        <FieldLabel requirement="required">Workspace name</FieldLabel>
-        <FieldDescription>Shown in page chrome and plugin-contributed sections.</FieldDescription>
-        <Input required defaultValue="Acme creator operations" />
-      </Field>
-      <FormActions>
-        <Button type="button" variant="outline">Cancel</Button>
-        <SubmitButton>Save settings</SubmitButton>
-      </FormActions>
-    </Form>
+    <div style={{ inlineSize: '40rem', maxInlineSize: '100%' }}>
+      <Form aria-label="Workspace settings">
+        <Field name="workspaceName">
+          <FieldLabel requirement="required">Workspace name</FieldLabel>
+          <FieldDescription>Shown in page chrome and plugin-contributed sections.</FieldDescription>
+          <Input required defaultValue="Acme creator operations" />
+        </Field>
+        <FormActions>
+          <Button type="button" variant="outline">Cancel</Button>
+          <SubmitButton>Save settings</SubmitButton>
+        </FormActions>
+      </Form>
+    </div>
   ),
   play: async ({ canvas }) => {
     const input = canvas.getByRole('textbox', { name: 'Workspace name' })
     await expect(input).toBeVisible()
     await expect(input).toBeRequired()
+    await expect(input.getBoundingClientRect().width).toBeGreaterThan(300)
     await expect(canvas.getByRole('button', { name: 'Save settings' })).toBeEnabled()
   },
 } satisfies Story

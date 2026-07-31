@@ -51,6 +51,17 @@ interface SystemStateBaseProps extends NativeStateProps {
   description?: React.ReactNode
   headingLevel?: SystemStateHeadingLevel
   scope?: SystemStateScope
+  /**
+   * Horizontal alignment of the whole state (glyph, copy, actions).
+   * Centered by default in every scope, including compact.
+   */
+  align?: SystemStateAlign
+  /**
+   * Custom glyph rendered above the text — the sanctioned path for richer
+   * empty-state art. Rendered aria-hidden; the title carries the meaning.
+   * When present it replaces the status dot entirely.
+   */
+  icon?: React.ReactNode
   title?: React.ReactNode
 }
 
@@ -112,16 +123,29 @@ const signalClasses: Record<SystemStateKind, string> = {
   'permission-denied': 'border-bakin-signal-highlight bg-bakin-signal-highlight',
 }
 
+export type SystemStateAlign = 'center' | 'left' | 'right'
+
+// Empty kinds carry no status dot: a gray circle adds nothing to "there is
+// nothing here". Loading/error/permission dots stay until a richer glyph
+// arrives via `icon`.
+const DOTLESS_KINDS: ReadonlySet<string> = new Set(['initial-empty', 'no-results'])
+
 const scopeClasses: Record<SystemStateScope, string> = {
-  inline: 'grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-bakin-3 gap-y-bakin-2 rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default px-bakin-4 py-bakin-3 text-left',
-  section: 'flex flex-col items-center justify-center gap-bakin-3 rounded-bakin-surface bg-bakin-surface-default/55 px-bakin-6 py-bakin-8 text-center',
-  page: 'flex min-h-[calc(var(--bakin-layout-space-8)*12)] flex-1 flex-col items-center justify-center gap-bakin-3 px-bakin-6 py-bakin-8 text-center',
+  inline: 'flex flex-col gap-bakin-1 rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default px-bakin-4 py-bakin-3',
+  section: 'flex flex-col justify-center gap-bakin-3 rounded-bakin-surface bg-bakin-surface-default/55 px-bakin-6 py-bakin-8',
+  page: 'flex min-h-[calc(var(--bakin-layout-space-8)*12)] flex-1 flex-col justify-center gap-bakin-3 px-bakin-6 py-bakin-8',
 }
 
-const actionClasses: Record<SystemStateScope, string> = {
-  inline: 'col-start-2 flex min-w-0 flex-wrap items-center gap-bakin-2',
-  section: 'flex min-w-0 flex-wrap items-center justify-center gap-bakin-2',
-  page: 'flex min-w-0 flex-wrap items-center justify-center gap-bakin-2',
+const alignClasses: Record<SystemStateAlign, string> = {
+  center: 'items-center text-center',
+  left: 'items-start text-left',
+  right: 'items-end text-right',
+}
+
+const actionClasses: Record<SystemStateAlign, string> = {
+  center: 'flex min-w-0 flex-wrap items-center justify-center gap-bakin-2',
+  left: 'flex min-w-0 flex-wrap items-center justify-start gap-bakin-2',
+  right: 'flex min-w-0 flex-wrap items-center justify-end gap-bakin-2',
 }
 
 /**
@@ -138,6 +162,8 @@ export function SystemState({
   preview,
   recovery,
   scope = 'section',
+  align = 'center',
+  icon,
   title,
   ...props
 }: SystemStateProps) {
@@ -164,31 +190,35 @@ export function SystemState({
       data-kind={kind}
       data-presentation={scope === 'inline' ? 'compact' : 'full'}
       data-recovery={resolvedRecovery}
+      data-align={align}
       data-scope={scope}
       data-slot="system-state"
       className={cn(
-        '@container/system-state min-w-0 font-bakin-typography-family-ui text-bakin-text-primary',
+        // w-full, and no @container: container-type would zero the intrinsic
+        // width, letting shrink-to-fit parents (flex rows, centered canvases)
+        // collapse the surface to min-content.
+        'w-full min-w-0 font-bakin-typography-family-ui text-bakin-text-primary',
         scopeClasses[scope],
+        alignClasses[align],
         className,
       )}
     >
-      <span
-        aria-hidden="true"
-        data-slot="system-state-signal"
-        className={cn(
-          'size-bakin-3 shrink-0 rounded-bakin-pill border-2',
-          scope === 'inline' ? 'col-start-1 row-start-1' : 'mt-bakin-1',
-          signalClasses[kind],
-        )}
-      />
-      <div
-        data-slot="system-state-copy"
-        className={cn('min-w-0', scope === 'inline' && 'col-start-2 row-start-1')}
-      >
+      {icon ? (
+        <span aria-hidden="true" data-slot="system-state-icon" className="shrink-0">
+          {icon}
+        </span>
+      ) : DOTLESS_KINDS.has(kind) ? null : (
+        <span
+          aria-hidden="true"
+          data-slot="system-state-signal"
+          className={cn('size-bakin-3 shrink-0 rounded-bakin-pill border-2', signalClasses[kind])}
+        />
+      )}
+      <div data-slot="system-state-copy" className="min-w-0">
         <Heading
           id={titleId}
           data-slot="system-state-title"
-          className="m-0 text-[length:var(--bakin-typography-size-body)] font-bakin-typography-weight-semibold leading-snug text-bakin-text-primary"
+          className="m-0 text-balance text-[length:var(--bakin-typography-size-body)] font-bakin-typography-weight-semibold leading-snug text-bakin-text-primary"
         >
           {title ?? copy.title}
         </Heading>
@@ -196,8 +226,12 @@ export function SystemState({
           id={descriptionId}
           data-slot="system-state-description"
           className={cn(
-            'm-0 mt-bakin-1 max-w-prose text-[length:var(--bakin-typography-size-body)] text-bakin-text-muted',
+            // text-pretty kills widows; the centered scopes also cap the
+            // measure so long copy wraps at a readable width.
+            'm-0 mt-bakin-1 max-w-[52ch] text-pretty text-[length:var(--bakin-typography-size-body)] text-bakin-text-muted',
             scope === 'inline' ? 'leading-snug' : 'leading-relaxed',
+            align === 'center' && 'mx-auto',
+            align === 'right' && 'ml-auto',
           )}
         >
           {description ?? copy.description}
@@ -206,13 +240,13 @@ export function SystemState({
       {preview ? (
         <div
           data-slot="system-state-preview"
-          className={cn('w-full max-w-xl', scope === 'inline' && 'col-span-2')}
+          className="w-full max-w-xl"
         >
           {preview}
         </div>
       ) : null}
       {action ? (
-        <div data-slot="system-state-actions" className={actionClasses[scope]}>
+        <div data-slot="system-state-actions" className={actionClasses[align]}>
           {action}
         </div>
       ) : null}

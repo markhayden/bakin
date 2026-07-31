@@ -23,12 +23,28 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
+interface TabsCanonicalArgs {
+  /** Styling variant on TabsList: the compact filled control or the quieter page-section underline. */
+  variant: 'default' | 'underline'
+}
+
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => (
+  args: {
+    variant: 'default',
+  },
+  argTypes: {
+    // `variant` styles TabsList, not the Tabs root, so docgen cannot infer it.
+    variant: {
+      control: 'select',
+      options: ['default', 'underline'],
+      description: 'TabsList variant: `default` filled control or `underline` page-section treatment.',
+    },
+  },
+  render: (args: TabsCanonicalArgs) => (
     <div style={{ inlineSize: 'min(90vw, 36rem)' }}>
       <Tabs defaultValue="overview">
-        <TabsList aria-label="Runtime sections">
+        <TabsList variant={args.variant} aria-label="Runtime sections">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="activity">Activity</TabsTrigger>
         </TabsList>
@@ -43,7 +59,7 @@ export const CanonicalUsage = {
     await expect(canvas.getByRole('tab', { name: 'Activity' })).toHaveAttribute('aria-selected', 'false')
     await expect(canvas.getByRole('tabpanel')).toHaveTextContent('Overview content')
   },
-} satisfies Story
+} satisfies StoryObj<TabsCanonicalArgs>
 
 const sections: ReadonlyArray<{ id: string; label: string; disabled?: boolean }> = [
   { id: 'overview', label: 'Overview' },

@@ -7,6 +7,7 @@ import {
   createDeterministicIdFactory,
   createDeterministicRandom,
   createFixtureFetch,
+  installDeterministicBrowserFixture,
   normalizeFixtureRoute,
 } from '../../../storybook/fixtures'
 
@@ -32,7 +33,7 @@ describe('deterministic Storybook fixtures', () => {
         mobile: { width: 320, height: 800 },
       },
       colorScheme: 'dark',
-      reducedMotion: true,
+      reducedMotion: 'system',
       network: 'reject-unhandled',
     })
     expect(DEFAULT_STORY_FIXTURE.network).toEqual([])
@@ -48,6 +49,43 @@ describe('deterministic Storybook fixtures', () => {
         type: 'mobile',
       },
     })
+  })
+
+  it("resolves the 'system' motion default from the real environment before shimming matchMedia", () => {
+    const makeTarget = (prefersReduced: boolean, webdriver = false) => {
+      const target = {
+        Date,
+        Math: { random: Math.random },
+        fetch: globalThis.fetch,
+        navigator: { webdriver },
+        matchMedia: (query: string) => ({ matches: prefersReduced, media: query }) as MediaQueryList,
+      }
+      return target as unknown as typeof globalThis
+    }
+
+    // A human browsing session keeps real motion.
+    const interactive = makeTarget(false)
+    const cleanupInteractive = installDeterministicBrowserFixture({}, interactive)
+    expect(interactive.matchMedia('(prefers-reduced-motion: reduce)').matches).toBe(false)
+    cleanupInteractive()
+
+    // A human who prefers reduced motion keeps reduced motion.
+    const reduced = makeTarget(true)
+    const cleanupReduced = installDeterministicBrowserFixture({}, reduced)
+    expect(reduced.matchMedia('(prefers-reduced-motion: reduce)').matches).toBe(true)
+    cleanupReduced()
+
+    // Automation (visual harness, story-test runner) is always deterministic.
+    const automated = makeTarget(false, true)
+    const cleanupAutomated = installDeterministicBrowserFixture({}, automated)
+    expect(automated.matchMedia('(prefers-reduced-motion: reduce)').matches).toBe(true)
+    cleanupAutomated()
+
+    // Stories pinning an explicit boolean override the environment entirely.
+    const pinned = makeTarget(true, true)
+    const cleanupPinned = installDeterministicBrowserFixture({ reducedMotion: false }, pinned)
+    expect(pinned.matchMedia('(prefers-reduced-motion: reduce)').matches).toBe(false)
+    cleanupPinned()
   })
 
   it('normalizes only root-relative routes from the shipped routing taxonomy', () => {

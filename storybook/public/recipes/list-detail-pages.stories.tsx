@@ -19,8 +19,6 @@ import {
   Banner,
   Button,
   DropdownMenuItem,
-  Input,
-  Label,
   SystemState,
 } from '@makinbakin/sdk/ui'
 import { DEFAULT_STORY_FIXTURE } from '../../fixtures'
@@ -165,24 +163,31 @@ function ListIndexExample() {
       <PageHeader
         eyebrow="Tasks / live operations"
         title="Coordinate active work"
-        description="Keep owners, timing, and operational context visible. Search and filters belong in the URL, and the first control region stays borderless. Add a divider only when controls begin a genuinely separate page zone."
-        actions={<><Button variant="outline">Export view</Button><Button>New task</Button></>}
+        description="Keep owners, timing, and operational context visible. Search lives in the header control region — labelled for assistive tech, never visibly. Search and filters belong in the URL, and the filter row stays borderless."
+        controlsLabel="Task search and actions"
+        controls={(
+          <div className="grid w-full min-w-0 gap-bakin-2 @3xl/page-header:flex @3xl/page-header:items-start">
+            <SearchInput
+              align="end"
+              label="Search tasks"
+              value={query}
+              onValueChange={setQuery}
+              placeholder="Title, owner, or target"
+              mobileFullWidth
+              className="@3xl/page-header:w-[22rem] @3xl/page-header:shrink-0"
+            />
+            <div className="flex min-w-0 flex-wrap items-center gap-bakin-2 @3xl/page-header:shrink-0 @3xl/page-header:flex-nowrap">
+              <Button variant="outline" className="flex-1 @3xl/page-header:flex-none">Export view</Button>
+              <Button className="min-w-[7rem] flex-1 @3xl/page-header:flex-none">New task</Button>
+            </div>
+          </div>
+        )}
       />
 
       <PageControls
-        label="Task list controls"
+        label="Task filters"
         actions={filtered ? <Button variant="ghost" onClick={clear}>Clear all</Button> : undefined}
       >
-        <div className="bakin-archetype-story__search">
-          <Label htmlFor="task-index-search">Search tasks</Label>
-          <Input
-            id="task-index-search"
-            type="search"
-            value={query}
-            placeholder="Title, owner, or target"
-            onChange={(event) => setQuery(event.currentTarget.value)}
-          />
-        </div>
         <div className="bakin-archetype-story__filters" role="group" aria-label="Task status">
           {filters.map((filter) => (
             <Button
@@ -239,6 +244,10 @@ function ListIndexExample() {
 export const ListIndex = {
   render: () => <ListIndexExample />,
   play: async ({ canvas, userEvent }) => {
+    // Search is header-owned and aria-labelled — no visible label element.
+    const search = canvas.getByRole('searchbox', { name: 'Search tasks' })
+    await expect(search).toBeVisible()
+    await expect(canvas.queryByText('Search tasks')).not.toBeInTheDocument()
     const filter = canvas.getByRole('button', { name: 'Needs attention' })
     await userEvent.click(filter)
     await expect(filter).toHaveAttribute('aria-pressed', 'true')
@@ -359,12 +368,30 @@ export const ListNoResults = {
       <PageHeader
         eyebrow="Tasks / live operations"
         title="Coordinate active work"
-        description="Page identity and controls remain available when only the result region changes state."
-        actions={<Button>New task</Button>}
+        description="Page identity and controls remain available when only the result region changes state. The search and filter that caused the empty result stay visible and editable."
+        controlsLabel="Task search and actions"
+        controls={(
+          <div className="grid w-full min-w-0 gap-bakin-2 @3xl/page-header:flex @3xl/page-header:items-start">
+            <SearchInput
+              align="end"
+              label="Search tasks"
+              value="archived partner invoice"
+              onValueChange={() => undefined}
+              placeholder="Title, owner, or target"
+              mobileFullWidth
+              className="@3xl/page-header:w-[22rem] @3xl/page-header:shrink-0"
+            />
+            <Button className="min-w-[7rem] @3xl/page-header:flex-none">New task</Button>
+          </div>
+        )}
       />
-      <PageControls label="Task list controls">
-        <div className="bakin-archetype-story__active-query"><span>Search</span><strong>archived partner invoice</strong></div>
-        <Button variant="secondary" aria-pressed="true">Blocked</Button>
+      <PageControls
+        label="Task filters"
+        actions={<Button variant="ghost">Clear all</Button>}
+      >
+        <div className="bakin-archetype-story__filters" role="group" aria-label="Task status">
+          <Button size="sm" variant="secondary" aria-pressed="true">Blocked</Button>
+        </div>
       </PageControls>
       <PageBody
         label="Task results"
@@ -380,6 +407,12 @@ export const ListNoResults = {
       />
     </Page>
   ),
+  play: async ({ canvas }) => {
+    // The empty state points back at controls the reader can actually see.
+    await expect(canvas.getByRole('searchbox', { name: 'Search tasks' })).toHaveValue('archived partner invoice')
+    await expect(canvas.getByRole('button', { name: 'Blocked' })).toHaveAttribute('aria-pressed', 'true')
+    await expect(canvas.getByRole('button', { name: 'Clear search and filters' })).toBeVisible()
+  },
 } satisfies Story
 
 function DetailExample() {
@@ -653,7 +686,7 @@ export const DetailMedia = {
 
 export const DetailUnavailable = {
   render: () => (
-    <Page width="standard" className="bakin-archetype-story">
+    <Page className="bakin-archetype-story">
       <PageHeader
         navigation={(
           <Button

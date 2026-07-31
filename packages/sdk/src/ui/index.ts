@@ -170,16 +170,18 @@ export type {
   FormProps,
   SubmitButtonProps,
 } from '@bakin/ui'
-export { Banner, SystemState, Toast, ToastRegion, systemStateDefaults } from '@bakin/ui'
+export { Banner, SystemState, Toast, ToastAction, ToastRegion, systemStateDefaults } from '@bakin/ui'
 export type {
   BannerProps,
   BannerTone,
   FeedbackAnnouncement,
+  SystemStateAlign,
   SystemStateContent,
   SystemStateHeadingLevel,
   SystemStateKind,
   SystemStateProps,
   SystemStateScope,
+  ToastActionProps,
   ToastProps,
   ToastRegionProps,
   ToastTone,

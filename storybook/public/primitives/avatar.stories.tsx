@@ -27,12 +27,20 @@ type Story = StoryObj<typeof meta>
 
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => (
-    <Avatar>
-      <AvatarImage src="/avatars/mark-baker.png" alt="" />
-      <AvatarFallback>MB</AvatarFallback>
-    </Avatar>
-  ),
+  args: {
+    size: 'md',
+    // Identity content is composition, not a control: the image never
+    // resolves in stories, so the initials fallback must take over.
+    children: (
+      <>
+        <AvatarImage src="/avatars/mark-baker.png" alt="" />
+        <AvatarFallback>MB</AvatarFallback>
+      </>
+    ),
+  },
+  argTypes: {
+    children: { control: false },
+  },
   play: async ({ canvas }) => {
     // The image never resolves here, so the initials fallback must take over.
     const fallback = await canvas.findByText('MB')

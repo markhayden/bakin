@@ -21,7 +21,7 @@
   flex: none;
   flex-direction: column;
   gap: var(--bakin-layout-space-3);
-  padding: var(--bakin-layout-space-5);
+  padding: var(--bakin-layout-space-4);
   overflow-y: auto;
   border-inline-end: 1px solid var(--bakin-color-border-subtle);
 }
@@ -95,9 +95,9 @@
   display: grid;
   inline-size: min(24rem, calc(100% - 2rem));
   gap: var(--bakin-layout-space-3);
-  padding: var(--bakin-layout-space-5);
-  border: 1px solid var(--bakin-color-border-default);
-  border-radius: var(--bakin-radius-card);
+  padding: var(--bakin-layout-space-4);
+  border: 1px solid var(--bakin-color-border-subtle);
+  border-radius: var(--bakin-radius-surface);
   background: var(--bakin-color-surface-default);
 }
 
@@ -112,6 +112,6 @@
   }
 
   .bakin-workspace-story__canvas {
-    padding: var(--bakin-layout-space-5);
+    padding: var(--bakin-layout-space-4);
   }
 }

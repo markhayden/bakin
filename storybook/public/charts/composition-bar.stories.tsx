@@ -7,7 +7,16 @@ import { ChartStage } from './chart-story-stage'
 
 const meta = {
   title: 'Charts/CompositionBar',
+  component: CompositionBar,
   tags: ['public'],
+  args: {
+    label: 'Task outcomes',
+    data: [
+      { key: 'succeeded', label: 'Succeeded', value: 18 },
+      { key: 'failed', label: 'Failed', value: 4 },
+      { key: 'canceled', label: 'Canceled', value: 2 },
+    ],
+  },
   parameters: {
     layout: 'fullscreen',
     docs: {
@@ -17,33 +26,38 @@ const meta = {
     },
     bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'empty', 'non-color', 'keyboard'],
   },
-} satisfies Meta
+} satisfies Meta<typeof CompositionBar>
 
 export default meta
 type Story = StoryObj<typeof meta>
 
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => (
+  args: {
+    size: 'default',
+    legend: true,
+  },
+  render: (args) => (
     <div style={{ width: 360 }}>
-      <CompositionBar
-        label="Task outcomes"
-        data={[
-          { key: 'succeeded', label: 'Succeeded', value: 18 },
-          { key: 'failed', label: 'Failed', value: 4 },
-          { key: 'canceled', label: 'Canceled', value: 2 },
-        ]}
-      />
+      <CompositionBar {...args} />
     </div>
   ),
-  play: async ({ canvas }) => {
+  play: async ({ canvas, args }) => {
     await expect(
       canvas.getByRole('img', { name: 'Task outcomes: Succeeded 18 (75%), Failed 4 (17%), Canceled 2 (8%)' }),
     ).toBeVisible()
-    const legend = canvas.getByRole('list', { name: 'Task outcomes legend' })
-    await expect(legend).toHaveTextContent('Succeeded')
-    await expect(legend).toHaveTextContent('18')
-    await expect(legend).toHaveTextContent('Canceled')
+    // The legend is the exact data at default size; inline strips (and an
+    // explicit legend opt-out) speak entirely through the accessible summary.
+    const legendExpected = args.size !== 'inline' && args.legend !== false
+    const legend = canvas.queryByRole('list', { name: 'Task outcomes legend' })
+    if (legendExpected) {
+      await expect(legend).toBeVisible()
+      await expect(legend).toHaveTextContent('Succeeded')
+      await expect(legend).toHaveTextContent('18')
+      await expect(legend).toHaveTextContent('Canceled')
+    } else {
+      await expect(legend).not.toBeInTheDocument()
+    }
   },
 } satisfies Story
 

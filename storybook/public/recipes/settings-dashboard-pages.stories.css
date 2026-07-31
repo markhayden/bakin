@@ -27,7 +27,7 @@
 .bakin-settings-dashboard-story__settings-content h3,
 .bakin-settings-dashboard-story__overview h3 {
   color: var(--bakin-color-text-primary);
-  font-size: var(--bakin-typography-size-heading-sm);
+  font-size: var(--bakin-typography-size-section-title);
   line-height: 1.25;
 }
 
@@ -124,7 +124,9 @@
 
 .bakin-settings-dashboard-story__pulse h2 {
   max-inline-size: 28ch;
-  font-size: var(--bakin-typography-size-heading-lg) !important;
+  /* size-title, not page-title: at 200% text on a 320px viewport the
+     page-title step overflows the document. */
+  font-size: var(--bakin-typography-size-title) !important;
 }
 
 .bakin-settings-dashboard-story__pulse p:not(.bakin-settings-dashboard-story__kicker) {

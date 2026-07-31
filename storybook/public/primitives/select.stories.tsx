@@ -33,19 +33,24 @@ type Story = StoryObj<typeof meta>
 
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
+  // Width frame: the centered (shrink-to-fit) canvas collapses the full-width
+  // trigger to min-content. In the app selects sit in field layouts with
+  // inherited width.
   render: () => (
-    <Field>
-      <FieldLabel>Execution runtime</FieldLabel>
-      <Select items={{ pi: 'Pi', openclaw: 'OpenClaw' }} defaultValue="openclaw">
-        <SelectTrigger>
-          <SelectValue placeholder="Choose a runtime" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="pi">Pi</SelectItem>
-          <SelectItem value="openclaw">OpenClaw</SelectItem>
-        </SelectContent>
-      </Select>
-    </Field>
+    <div style={{ inlineSize: '20rem', maxInlineSize: '100%' }}>
+      <Field>
+        <FieldLabel>Execution runtime</FieldLabel>
+        <Select items={{ pi: 'Pi', openclaw: 'OpenClaw' }} defaultValue="openclaw">
+          <SelectTrigger style={{ width: '100%' }}>
+            <SelectValue placeholder="Choose a runtime" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="pi">Pi</SelectItem>
+            <SelectItem value="openclaw">OpenClaw</SelectItem>
+          </SelectContent>
+        </Select>
+      </Field>
+    </div>
   ),
   play: async ({ canvas, userEvent }) => {
     const trigger = canvas.getByRole('combobox', { name: 'Execution runtime' })

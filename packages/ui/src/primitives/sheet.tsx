@@ -79,7 +79,7 @@ export function SheetOverlay({ className, ...props }: SheetOverlayProps) {
 const sheetContentClasses = [
   'fixed z-50 flex max-w-full flex-col gap-bakin-4 overflow-hidden border-bakin-border-subtle bg-bakin-surface-default',
   'font-bakin-typography-family-ui text-[length:var(--bakin-typography-size-body)] text-bakin-text-primary shadow-bakin-elevation-overlay outline-none',
-  'transition-[opacity,transform] duration-[var(--bakin-motion-duration-deliberate)] ease-bakin-standard',
+  'transition-[opacity,transform] duration-[var(--bakin-motion-duration-transition)] ease-bakin-standard',
   'data-starting-style:opacity-0 data-ending-style:opacity-0 motion-reduce:transition-none',
   'data-[side=right]:inset-y-0 data-[side=right]:right-0 data-[side=right]:h-dvh data-[side=right]:w-full data-[side=right]:border-l data-[side=right]:sm:w-3/4 data-[side=right]:sm:max-w-xl',
   'data-[side=right]:data-starting-style:translate-x-bakin-10 data-[side=right]:data-ending-style:translate-x-bakin-10',

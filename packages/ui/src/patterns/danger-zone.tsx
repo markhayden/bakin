@@ -66,7 +66,10 @@ export function DangerZone({
             data-slot="danger-zone-signal"
             className="flex size-bakin-4 shrink-0 items-center justify-center text-bakin-signal-danger"
           >
-            !
+            <svg viewBox="0 0 16 16" className="size-full fill-none stroke-current stroke-[1.5]">
+              <circle cx="8" cy="8" r="6.25" />
+              <path strokeLinecap="round" d="M8 4.5v4M8 11.5h.01" />
+            </svg>
           </span>
           <Heading id={headingId} className="m-0 text-inherit font-inherit">
             {title}

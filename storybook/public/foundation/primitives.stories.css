@@ -234,7 +234,7 @@
   gap: var(--bakin-layout-gap-item);
   padding: var(--bakin-layout-space-6);
   border: 1px solid var(--bakin-color-border-subtle);
-  border-radius: var(--bakin-shape-radius-card);
+  border-radius: var(--bakin-radius-surface);
   background: var(--bakin-color-surface-default);
 }
 
@@ -277,7 +277,7 @@
 
 .bakin-primitive-story__overlay-workspace > div {
   border: 1px solid var(--bakin-color-border-subtle);
-  border-radius: var(--bakin-shape-radius-card);
+  border-radius: var(--bakin-radius-surface);
   background: var(--bakin-color-surface-default);
 }
 

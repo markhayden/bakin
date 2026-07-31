@@ -49,7 +49,7 @@ export function FieldsetLegend({ className, ...props }: FieldsetLegendProps) {
     <FieldsetPrimitive.Legend
       data-slot="fieldset-legend"
       className={mergeClassName(
-        'text-[length:var(--bakin-typography-size-heading-sm)] font-bakin-typography-weight-semibold leading-tight text-bakin-text-primary',
+        'text-[length:var(--bakin-typography-size-section-title)] font-bakin-typography-weight-semibold leading-tight text-bakin-text-primary',
         className,
       )}
       {...props}

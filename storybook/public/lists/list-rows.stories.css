@@ -14,7 +14,7 @@
   color: var(--bakin-color-signal-accent);
   font-size: var(--bakin-typography-size-meta);
   font-weight: var(--bakin-typography-weight-semibold);
-  letter-spacing: var(--bakin-typography-tracking-wide);
+  letter-spacing: 0.12em;
   text-transform: uppercase;
 }
 

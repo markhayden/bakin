@@ -879,7 +879,7 @@ test('list and detail recipes preserve page identity, state slots, and responsiv
 
   await test.step('replacement states retain identity and their controlling region', async () => {
     await page.goto(listNoResultsStory, { waitUntil: 'networkidle' })
-    await expect(page.getByRole('region', { name: 'Task list controls' })).toBeVisible()
+    await expect(page.getByRole('region', { name: 'Task filters' })).toBeVisible()
     await expect(page.getByRole('region', { name: 'Task results' })).toHaveAttribute('data-content-state', 'replaced')
     await expect(page.getByRole('status', { name: 'No tasks match this view' })).toBeVisible()
 

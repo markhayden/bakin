@@ -84,7 +84,10 @@ describe('destructive and dirty-state patterns', () => {
     )
 
     expect(screen.getByRole('heading', { level: 2, name: 'Danger zone' })).toBeTruthy()
-    expect(document.querySelector('[data-slot="danger-zone-signal"]')?.textContent).toBe('!')
+    const signal = document.querySelector('[data-slot="danger-zone-signal"]')
+    expect(signal?.querySelector('svg circle')).toBeTruthy()
+    expect(signal?.querySelector('svg path')).toBeTruthy()
+    expect(signal?.className).toContain('text-bakin-signal-danger')
     expect(screen.getByRole('region', { name: 'Danger zone' }).querySelector('[data-slot="card-header"]')).toBeTruthy()
     expect(screen.getByRole('region', { name: 'Danger zone' }).querySelector('[data-slot="card-content"]')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Delete this workflow' }).getAttribute('data-size')).toBe('sm')

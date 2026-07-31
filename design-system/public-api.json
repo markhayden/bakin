@@ -10,8 +10,8 @@
     "entrypoints": 8,
     "supportedEntrypoints": 7,
     "frozenLegacyEntrypoints": 1,
-    "valueExports": 354,
-    "typeExports": 423
+    "valueExports": 355,
+    "typeExports": 425
   },
   "entrypoints": [
     {
@@ -157,6 +157,7 @@
         "TabsTrigger",
         "Textarea",
         "Toast",
+        "ToastAction",
         "ToastRegion",
         "Tooltip",
         "TooltipContent",
@@ -296,12 +297,14 @@
         "SubmitButtonProps",
         "SwitchProps",
         "SwitchSize",
+        "SystemStateAlign",
         "SystemStateContent",
         "SystemStateHeadingLevel",
         "SystemStateKind",
         "SystemStateProps",
         "SystemStateScope",
         "TextareaProps",
+        "ToastActionProps",
         "ToastProps",
         "ToastRegionProps",
         "ToastTone",

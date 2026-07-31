@@ -54,16 +54,21 @@ export const CanonicalUsage = {
     onSubmit: () => {},
   },
   parameters: { layout: 'centered' },
+  // Width frame: the renderer's settings rows are container-typed, zeroing
+  // intrinsic width — the centered (shrink-to-fit) canvas would collapse them.
   render: () => (
-    <PluginSettingsRenderer
-      schema={canonicalSchema}
-      values={{ workspaceName: 'Creator operations', requiresApproval: true }}
-      onSubmit={() => {}}
-    />
+    <div style={{ inlineSize: '40rem', maxInlineSize: '100%' }}>
+      <PluginSettingsRenderer
+        schema={canonicalSchema}
+        values={{ workspaceName: 'Creator operations', requiresApproval: true }}
+        onSubmit={() => {}}
+      />
+    </div>
   ),
   play: async ({ canvas, userEvent }) => {
     const workspace = canvas.getByRole('textbox', { name: 'Workspace name' })
     await expect(workspace).toHaveValue('Creator operations')
+    await expect(workspace.getBoundingClientRect().width).toBeGreaterThan(250)
     await expect(canvas.getByRole('button', { name: 'Save settings' })).toBeDisabled()
     await userEvent.type(workspace, ' team')
     await expect(canvas.getByRole('button', { name: 'Save settings' })).toBeEnabled()

@@ -63,7 +63,7 @@
   min-width: 0;
   overflow: hidden;
   border-radius: var(--bakin-radius-overlay);
-  box-shadow: var(--bakin-elevation-raised);
+  box-shadow: var(--bakin-elevation-overlay);
 }
 
 .bakin-conversation-story__panel-grid {
@@ -87,7 +87,7 @@
 .bakin-conversation-story__transcript {
   display: grid;
   min-width: 0;
-  gap: var(--bakin-layout-space-5);
+  gap: var(--bakin-layout-space-4);
   padding: var(--bakin-layout-space-4);
   border: 1px solid var(--bakin-color-border-subtle);
   border-radius: var(--bakin-radius-surface);
@@ -100,7 +100,7 @@
 }
 
 .bakin-conversation-story__section h2 {
-  font-size: var(--bakin-typography-size-heading-3);
+  font-size: var(--bakin-typography-size-title);
 }
 
 .bakin-conversation-story__section--quiet {

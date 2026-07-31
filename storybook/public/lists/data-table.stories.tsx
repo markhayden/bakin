@@ -29,11 +29,38 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
+interface DataTableCanonicalArgs {
+  /** Container breakpoint below which the table renders its rows as ListRows. */
+  collapseBelow: 'xl' | '2xl' | '3xl' | 'none'
+  /** ListRows presentation used by the collapsed narrow render. */
+  listVariant: 'bordered' | 'separated' | 'plain'
+}
+
 export const CanonicalUsage = {
   parameters: { layout: 'padded' },
-  render: () => (
+  args: {
+    collapseBelow: '2xl',
+    listVariant: 'separated',
+  },
+  argTypes: {
+    // DataTable is generic, so docgen inference is weak; declare the two
+    // presentation controls explicitly.
+    collapseBelow: {
+      control: 'select',
+      options: ['xl', '2xl', '3xl', 'none'],
+      description: 'Container width below which the dual render switches from table to ListRows.',
+    },
+    listVariant: {
+      control: 'select',
+      options: ['bordered', 'separated', 'plain'],
+      description: 'ListRows variant for the collapsed narrow render.',
+    },
+  },
+  render: (args: DataTableCanonicalArgs) => (
     <DataTable
       label="Recent runs"
+      collapseBelow={args.collapseBelow}
+      listVariant={args.listVariant}
       columns={[
         { key: 'task', header: 'Task' },
         { key: 'agent', header: 'Agent' },
@@ -47,12 +74,14 @@ export const CanonicalUsage = {
     />
   ),
   play: async ({ canvas }) => {
+    // Every collapseBelow option keeps the table render active at the
+    // desktop runner width; narrow behavior is covered by the dual-render story.
     const table = canvas.getByRole('table', { name: 'Recent runs' })
     await expect(table).toBeVisible()
     await expect(canvas.getAllByRole('columnheader')).toHaveLength(3)
     await expect(canvas.getAllByRole('row')).toHaveLength(3)
   },
-} satisfies Story
+} satisfies StoryObj<DataTableCanonicalArgs>
 
 interface RunRow {
   id: string

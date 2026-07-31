@@ -5,9 +5,21 @@ import { ChartExplainer, PieChart, type PieChartDatum } from '@makinbakin/sdk/ch
 
 import { ChartStage } from './chart-story-stage'
 
+const canonicalData: PieChartDatum[] = [
+  { key: 'writer', label: 'Writer', value: 24 },
+  { key: 'reviewer', label: 'Reviewer', value: 12 },
+  { key: 'publisher', label: 'Publisher', value: 8 },
+]
+
 const meta = {
   title: 'Charts/PieChart',
+  component: PieChart,
   tags: ['public'],
+  args: {
+    data: canonicalData,
+    label: 'Runs by agent',
+    description: 'How the last 44 runs split across three agents.',
+  },
   parameters: {
     layout: 'fullscreen',
     docs: {
@@ -17,27 +29,18 @@ const meta = {
     },
     bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'long-labels', 'empty', 'cvd', 'non-color', 'keyboard'],
   },
-} satisfies Meta
+} satisfies Meta<typeof PieChart>
 
 export default meta
 type Story = StoryObj<typeof meta>
 
-const canonicalData: PieChartDatum[] = [
-  { key: 'writer', label: 'Writer', value: 24 },
-  { key: 'reviewer', label: 'Reviewer', value: 12 },
-  { key: 'publisher', label: 'Publisher', value: 8 },
-]
-
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => (
-    <PieChart
-      data={canonicalData}
-      label="Runs by agent"
-      description="How the last 44 runs split across three agents."
-    />
-  ),
-  play: async ({ canvas }) => {
+  args: {
+    donut: false,
+    compactData: false,
+  },
+  play: async ({ canvas, args }) => {
     await expect(canvas.getByRole('group', { name: 'Runs by agent' })).toBeVisible()
     await expect(canvas.getByRole('list', { name: 'Runs by agent legend' })).toHaveTextContent('Reviewer')
     const slice = canvas.getByRole('img', { name: 'Writer: 24 (55%)' })
@@ -45,8 +48,9 @@ export const CanonicalUsage = {
     await expect(slice).toHaveFocus()
     await expect(canvas.getByRole('tooltip')).toHaveTextContent('Writer: 24 (55%)')
     slice.blur()
-    const table = canvas.getByRole('table', { name: 'Runs by agent data' })
-    await expect(table).toBeVisible()
+    const table = canvas.getByRole('table', { name: 'Runs by agent data', hidden: true })
+    if (args.compactData) await expect(table).not.toBeVisible()
+    else await expect(table).toBeVisible()
     await expect(table).toHaveTextContent('Publisher')
   },
 } satisfies Story

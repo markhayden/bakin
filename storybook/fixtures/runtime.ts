@@ -18,7 +18,17 @@ export interface StoryFixture {
   route: string
   randomSeed: string
   colorScheme: 'dark' | 'light'
-  reducedMotion: boolean
+  /**
+   * `'system'` (the default) gives a human browsing Storybook real motion
+   * (their `prefers-reduced-motion` preference wins) while every automated
+   * context — the visual harness, the story-test runner, anything driving
+   * the page via WebDriver — resolves to frozen motion and stays
+   * deterministic. Real motion in the story-test runner proved flaky:
+   * overlay plays assert visibility mid-transition and axe scans catch
+   * base-ui transition states. Stories that depend on a specific motion
+   * state keep pinning an explicit boolean.
+   */
+  reducedMotion: boolean | 'system'
   network: readonly StoryFixtureNetworkResponse[]
 }
 
@@ -48,7 +58,7 @@ export const STORY_FIXTURE_MANIFEST = {
   },
   viewports: BAKIN_STORY_VIEWPORTS,
   colorScheme: DEFAULT_PLUGIN_UI_FIXTURE.colorScheme,
-  reducedMotion: DEFAULT_PLUGIN_UI_FIXTURE.reducedMotion,
+  reducedMotion: 'system',
   network: 'reject-unhandled',
 } as const
 
@@ -76,9 +86,18 @@ export function installDeterministicBrowserFixture(
   target: typeof globalThis = globalThis,
 ): () => void {
   const fixture: StoryFixture = { ...DEFAULT_STORY_FIXTURE, ...overrides }
+  // Resolve 'system' before the fixture shims matchMedia: automation
+  // (navigator.webdriver — the visual harness and the story-test runner) is
+  // always deterministic reduced motion; a human browsing session follows
+  // their real prefers-reduced-motion preference, so spinners actually spin.
+  const automated = Boolean((target as { navigator?: { webdriver?: boolean } }).navigator?.webdriver)
+  const reducedMotion = fixture.reducedMotion === 'system'
+    ? automated || (target.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false)
+    : fixture.reducedMotion
   const cleanup = installPluginUiFixture({
     ...DEFAULT_PLUGIN_UI_FIXTURE,
     ...fixture,
+    reducedMotion,
     viewport: 'desktop',
   }, target)
   void target.document?.fonts?.load('400 16px Space Grotesk')

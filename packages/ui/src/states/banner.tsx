@@ -68,7 +68,7 @@ export function Banner({
       data-slot="banner"
       data-tone={tone}
       className={cn(
-        '@container/banner grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-start gap-x-bakin-3 gap-y-bakin-2 rounded-bakin-surface border px-bakin-4 py-bakin-3 font-bakin-typography-family-ui text-bakin-text-primary @lg/banner:grid-cols-[auto_minmax(0,1fr)_auto]',
+        '@container/banner grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)] items-start gap-x-bakin-3 gap-y-bakin-2 rounded-bakin-surface border px-bakin-4 py-bakin-3 font-bakin-typography-family-ui text-bakin-text-primary @lg/banner:grid-cols-[auto_minmax(0,1fr)_auto]',
         toneClasses[tone],
         className,
       )}

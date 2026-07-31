@@ -9,6 +9,7 @@ import {
   Skeleton,
   SystemState,
   Toast,
+  ToastAction,
   ToastRegion,
 } from '@makinbakin/sdk/ui'
 
@@ -116,23 +117,14 @@ describe('SystemState public contract', () => {
     )
 
     let state = screen.getByText('No custom workflows yet').closest('[data-slot="system-state"]')
-    let signal = state?.querySelector('[data-slot="system-state-signal"]')
     const copy = state?.querySelector('[data-slot="system-state-copy"]')
     expect(state?.getAttribute('data-presentation')).toBe('compact')
+    expect(state?.getAttribute('data-align')).toBe('center')
+    expect(state?.className.split(' ')).toContain('w-full')
     expect(state?.className).toContain('items-center')
-    expect(state?.className).toContain('gap-x-bakin-3')
+    expect(state?.className).toContain('text-center')
     expect(state?.className).toContain('px-bakin-4')
-    expect(signal?.className).not.toContain('mt-bakin-1')
-    expect(signal?.className).toContain('col-start-1')
-    expect(signal?.className).toContain('row-start-1')
-    expect(copy?.className).toContain('col-start-2')
-    expect(copy?.className).toContain('row-start-1')
-    expect(signal).not.toBeNull()
     expect(copy).not.toBeNull()
-    expect(
-      signal!.compareDocumentPosition(copy!) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).not.toBe(0)
 
     rerender(
       <SystemState
@@ -143,9 +135,74 @@ describe('SystemState public contract', () => {
     )
 
     state = screen.getByText('No workflows yet').closest('[data-slot="system-state"]')
-    signal = state?.querySelector('[data-slot="system-state-signal"]')
     expect(state?.getAttribute('data-presentation')).toBe('full')
-    expect(signal?.className).toContain('mt-bakin-1')
+  })
+
+  it('drops the status dot on empty kinds and keeps it for dynamic states', () => {
+    const { rerender } = render(
+      <SystemState kind="initial-empty" title="No workflows yet" />,
+    )
+
+    let state = screen.getByText('No workflows yet').closest('[data-slot="system-state"]')
+    expect(state?.querySelector('[data-slot="system-state-signal"]')).toBeNull()
+
+    rerender(
+      <SystemState
+        kind="no-results"
+        title="No workflows match"
+        action={<Button variant="outline">Clear filters</Button>}
+      />,
+    )
+    state = screen.getByText('No workflows match').closest('[data-slot="system-state"]')
+    expect(state?.querySelector('[data-slot="system-state-signal"]')).toBeNull()
+
+    rerender(<SystemState kind="loading" title="Loading workflows" />)
+    state = screen.getByText('Loading workflows').closest('[data-slot="system-state"]')
+    expect(state?.querySelector('[data-slot="system-state-signal"]')).not.toBeNull()
+
+    rerender(
+      <SystemState kind="error" title="Refresh failed" action={<Button>Try again</Button>} />,
+    )
+    state = screen.getByText('Refresh failed').closest('[data-slot="system-state"]')
+    expect(state?.querySelector('[data-slot="system-state-signal"]')).not.toBeNull()
+  })
+
+  it('supports alignment overrides and a custom icon above the copy', () => {
+    const { rerender } = render(
+      <SystemState
+        kind="initial-empty"
+        align="left"
+        title="No lessons yet"
+        icon={<svg data-testid="empty-glyph" viewBox="0 0 16 16" />}
+      />,
+    )
+
+    let state = screen.getByText('No lessons yet').closest('[data-slot="system-state"]')
+    expect(state?.getAttribute('data-align')).toBe('left')
+    expect(state?.className).toContain('items-start')
+    expect(state?.className).toContain('text-left')
+
+    const icon = state?.querySelector('[data-slot="system-state-icon"]')
+    const copy = state?.querySelector('[data-slot="system-state-copy"]')
+    expect(icon).not.toBeNull()
+    expect(icon?.getAttribute('aria-hidden')).toBe('true')
+    expect(icon?.querySelector('[data-testid="empty-glyph"]')).not.toBeNull()
+    expect(
+      icon!.compareDocumentPosition(copy!) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0)
+
+    rerender(
+      <SystemState
+        kind="loading"
+        align="right"
+        title="Loading lessons"
+        icon={<svg data-testid="loading-glyph" viewBox="0 0 16 16" />}
+      />,
+    )
+    state = screen.getByText('Loading lessons').closest('[data-slot="system-state"]')
+    expect(state?.getAttribute('data-align')).toBe('right')
+    expect(state?.querySelector('[data-slot="system-state-icon"]')).not.toBeNull()
+    expect(state?.querySelector('[data-slot="system-state-signal"]')).toBeNull()
   })
 })
 
@@ -178,6 +235,12 @@ describe('Banner public contract', () => {
     expect(banner.getAttribute('aria-describedby')).toBe(screen.getByText('Reconnect before starting more work.').id)
     expect(screen.getByRole('button', { name: 'Reconnect' })).toBeTruthy()
   })
+
+  it('claims full width so shrink-to-fit parents cannot collapse the minmax(0,1fr) copy column', () => {
+    render(<Banner tone="info" title="Scheduled maintenance" />)
+    const banner = screen.getByText('Scheduled maintenance').closest('[data-slot="banner"]')
+    expect(banner?.className.split(' ')).toContain('w-full')
+  })
 })
 
 describe('Toast presentation contract', () => {
@@ -200,5 +263,38 @@ describe('Toast presentation contract', () => {
     expect(error.getAttribute('aria-live')).toBe('assertive')
     fireEvent.click(screen.getByRole('button', { name: 'Dismiss notification' }))
     expect(dismiss).toHaveBeenCalled()
+  })
+
+  it('claims full width and gives the copy column an intrinsic contribution', () => {
+    render(
+      <ToastRegion label="Notifications">
+        <Toast tone="info" title="Agent replied" description="Patch added routing evidence." />
+      </ToastRegion>,
+    )
+
+    const toast = screen.getByRole('status', { name: 'Agent replied' })
+    expect(toast.className.split(' ')).toContain('w-full')
+    expect(toast.className).toContain('minmax(min-content,1fr)')
+  })
+
+  it('styles in-toast actions in the owning toast tone', () => {
+    const open = mock(() => {})
+    render(
+      <ToastRegion label="Notifications">
+        <Toast
+          tone="error"
+          description="The workflow could not be started."
+          action={<ToastAction onClick={open}>Retry</ToastAction>}
+        />
+      </ToastRegion>,
+    )
+
+    const action = screen.getByRole('button', { name: 'Retry' })
+    expect(action.getAttribute('data-slot')).toBe('toast-action')
+    expect(action.getAttribute('data-tone')).toBe('error')
+    expect(action.getAttribute('type')).toBe('button')
+    expect(action.className).toContain('text-bakin-text-primary')
+    fireEvent.click(action)
+    expect(open).toHaveBeenCalled()
   })
 })

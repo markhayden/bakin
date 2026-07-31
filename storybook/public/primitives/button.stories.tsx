@@ -55,11 +55,14 @@ type Story = StoryObj<typeof meta>
 
 export const CanonicalUsage = {
   parameters: { layout: 'centered' },
-  render: () => <Button variant="primary">Continue</Button>,
-  play: async ({ canvas }) => {
-    const button = canvas.getByRole('button', { name: 'Continue' })
+  args: {
+    variant: 'primary',
+    children: 'Continue',
+  },
+  play: async ({ canvas, args }) => {
+    const button = canvas.getByRole('button', { name: String(args.children) })
     await expect(button).toBeVisible()
-    await expect(button).toHaveAttribute('data-variant', 'primary')
+    await expect(button).toHaveAttribute('data-variant', args.variant ?? 'primary')
   },
 } satisfies Story
 
