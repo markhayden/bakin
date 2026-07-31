@@ -1,5 +1,331 @@
 {
   "schemaVersion": 1,
   "policy": "Storybook is the default UI contract. Every temporary deviation requires concrete rationale, explicit user approval, safeguards, and a dated review.",
-  "exceptions": []
+  "exceptions": [
+    {
+      "id": "assets-media-scrim-and-lightbox-viewport-caps",
+      "status": "approved-temporary",
+      "scope": [
+        "plugins/assets/components/versioned/AssetPreview.tsx",
+        "plugins/assets/components/versioned/VersionedAssetDetail.tsx"
+      ],
+      "allowances": {
+        "plugins/assets/components/versioned/AssetPreview.tsx": {
+          "arbitrary-size": 7
+        },
+        "plugins/assets/components/versioned/VersionedAssetDetail.tsx": {
+          "raw-palette": 3,
+          "arbitrary-size": 2
+        }
+      },
+      "closestPattern": {
+        "storyPath": "storybook/public/layout/bounded-overflow.stories.tsx",
+        "storyExport": "CanonicalUsage"
+      },
+      "mismatch": "Asset previews and the full-screen lightbox must size media against the live viewport (vh/vw caps) and float readable chrome over arbitrary user imagery via a neutral black scrim; BoundedOverflow constrains scroll regions, not media-to-viewport fitting, and no semantic token can guarantee contrast over unknown image pixels.",
+      "compositionLimit": "The layout kit has no media-fit primitive: viewport-relative caps cannot be expressed with scale utilities, and a token-driven scrim would tint with the theme instead of staying neutral over photographs, losing legibility on bright media.",
+      "alternative": "Keep the vh/vw arbitrary caps and the black media-scrim classes strictly inside the two asset preview/lightbox components; everything else in the asset surfaces composes supported SDK patterns and bakin-* tokens.",
+      "safeguards": {
+        "accessibility": "Scrim overlays keep white-on-black text at maximum contrast over media; lightbox controls remain keyboard-reachable buttons with focus-visible rings from the shared kit styles.",
+        "responsiveness": "The caps are viewport-relative by construction (min()/vh/vw), so previews scale down on narrow screens instead of overflowing; verified in the plugin UI fixture.",
+        "routing": "No routing behavior is affected; the lightbox opens from in-page state and the components use SDK navigation for any links.",
+        "isolation": "The classes live only in the assets plugin's own components; no shared kit component or other plugin consumes them."
+      },
+      "approvedBy": "Mark Hayden",
+      "approvedOn": "2026-07-31",
+      "approvalEvidence": "Storybook-refit T7.2 final-sweep decision E: user explicitly approved converting the documented assets media-scrim and viewport-cap keeps into formal exceptions.",
+      "reviewBy": "2026-10-30",
+      "removalCondition": "Remove when the layout kit ships a supported media-fit/lightbox pattern with viewport sizing and a neutral scrim, and the asset surfaces migrate to it."
+    },
+    {
+      "id": "overlay-viewport-caps",
+      "status": "approved-temporary",
+      "scope": [
+        "packages/host/src/components/search/global-search-overlay.tsx",
+        "src/components/tasks/activity-feed.tsx",
+        "plugins/health/components/repair-dialog.tsx",
+        "plugins/health/components/overview-alerts.tsx"
+      ],
+      "allowances": {
+        "packages/host/src/components/search/global-search-overlay.tsx": {
+          "arbitrary-size": 5
+        },
+        "src/components/tasks/activity-feed.tsx": {
+          "arbitrary-size": 1
+        },
+        "plugins/health/components/repair-dialog.tsx": {
+          "arbitrary-size": 3
+        },
+        "plugins/health/components/overview-alerts.tsx": {
+          "arbitrary-size": 1
+        }
+      },
+      "closestPattern": {
+        "storyPath": "storybook/public/navigation/command.stories.tsx",
+        "storyExport": "CanonicalUsage"
+      },
+      "mismatch": "The global command-palette overlay and the live-activity popover must cap their geometry against the viewport (80vh/80vw and min(360px,100vw)) so they stay usable on small screens; the Command and popover patterns own content behavior but not host-level overlay geometry. Health repair dialog max-heights and the alerts popover width are the same viewport-fit family: overlays sized against the live viewport with rem ceilings.",
+      "compositionLimit": "Viewport-relative caps have no scale-utility equivalents, and moving host overlay geometry into the shared kit would freeze a host-shell concern into the public contract prematurely.",
+      "alternative": "Keep the handful of viewport-cap arbitrary values on the overlay containers only; the overlay content itself is composed from the supported Command, list, and state patterns.",
+      "safeguards": {
+        "accessibility": "Caps only bound geometry; focus management, roles, and keyboard behavior come from the shared overlay primitives underneath.",
+        "responsiveness": "The values are viewport-derived (vw/vh/min()), so the overlays shrink with the window rather than clipping on mobile widths.",
+        "routing": "The search overlay dispatches through supported navigation APIs; deep-linking and URL state are unaffected by the geometry classes.",
+        "isolation": "Scoped to one host shell component and one shared activity feed component; no plugin copies the values."
+      },
+      "approvedBy": "Mark Hayden",
+      "approvedOn": "2026-07-31",
+      "approvalEvidence": "Storybook-refit T7.2 final-sweep decision E: user explicitly approved the global-search-overlay and activity-feed viewport-cap keeps as formal exceptions.",
+      "reviewBy": "2026-10-30",
+      "removalCondition": "Remove when overlay archetypes gain supported viewport-cap sizing options and both components migrate to them."
+    },
+    {
+      "id": "data-driven-colors-and-inline-geometry",
+      "status": "approved-temporary",
+      "scope": [
+        "plugins/brands/components/brand-card.tsx",
+        "plugins/brands/components/brand-detail.tsx",
+        "plugins/brands/components/new-brand-flows.tsx",
+        "plugins/health/components/overview-agent-spend.tsx",
+        "src/components/tasks/activity-feed.tsx",
+        "packages/sdk/src/patterns/picker-patterns.tsx",
+        "src/components/drawer.tsx",
+        "plugins/workflows/components/workflow-canvas-editor.tsx",
+        "packages/host/src/providers/AgentThemeProvider.tsx",
+        "packages/host/src/globals.css"
+      ],
+      "allowances": {
+        "plugins/brands/components/brand-card.tsx": {
+          "inline-style": 3
+        },
+        "plugins/brands/components/brand-detail.tsx": {
+          "inline-style": 1
+        },
+        "plugins/brands/components/new-brand-flows.tsx": {
+          "inline-style": 1
+        },
+        "plugins/health/components/overview-agent-spend.tsx": {
+          "inline-style": 1
+        },
+        "src/components/tasks/activity-feed.tsx": {
+          "inline-style": 1
+        },
+        "packages/sdk/src/patterns/picker-patterns.tsx": {
+          "inline-style": 1
+        },
+        "src/components/drawer.tsx": {
+          "inline-style": 1
+        },
+        "plugins/workflows/components/workflow-canvas-editor.tsx": {
+          "inline-style": 1
+        },
+        "packages/host/src/providers/AgentThemeProvider.tsx": {
+          "raw-palette": 1
+        },
+        "packages/host/src/globals.css": {
+          "raw-palette": 4
+        }
+      },
+      "closestPattern": {
+        "storyPath": "storybook/public/foundations/tokens.generated.stories.tsx",
+        "storyExport": "Catalog"
+      },
+      "mismatch": "These sites render values that only exist at runtime in user data: brand palette swatches and strips, per-series chart swatches, per-agent identity colors (including the #a1a1aa neutral fallback seeded in AgentThemeProvider and the --agent-* variables in globals.css), the data-driven agent color in the activity feed, the computed color-row cap in picker patterns, the user-resizable drawer width variable, and the React Flow edge-label transform. Semantic tokens are a fixed vocabulary and cannot name colors or geometry that arrive from data.",
+      "compositionLimit": "Class utilities cannot carry runtime values; the only mechanisms are inline style properties or runtime-written CSS custom properties, both of which are exactly what these sites use, each fed by validated data.",
+      "alternative": "Keep one inline style (or runtime CSS variable seed) per data-driven value, scoped to the component that owns the data; every static color around them uses bakin-* semantic tokens.",
+      "safeguards": {
+        "accessibility": "Data-driven colors are presentational identity/swatch marks, never the only carrier of meaning; adjacent text labels and tokens carry the information, and the #a1a1aa fallback keeps non-text contrast on the dark canvas.",
+        "responsiveness": "Inline values are single colors or clamped geometry (drawer width, color-row cap) that do not fight fluid layout; containers remain token-spaced and responsive.",
+        "routing": "None of the inline styles participate in navigation; links and history behavior stay on SDK navigation APIs.",
+        "isolation": "Each inline style is owned by the component whose data drives it; the --agent-* seeds live only in the host globals and are overridden by AgentThemeProvider at runtime."
+      },
+      "approvedBy": "Mark Hayden",
+      "approvedOn": "2026-07-31",
+      "approvalEvidence": "Storybook-refit T7.2 final-sweep decision E: user explicitly approved the data-driven colors and inline-style keeps (brand swatches, chart swatch, agent identity colors with the #a1a1aa fallback, meters, drawer width variable, React Flow edge-label transform) as formal exceptions; decision D kept the agent-* seed variables as data-driven.",
+      "reviewBy": "2026-10-30",
+      "removalCondition": "Remove per-site as supported data-driven primitives (swatch, identity color, resizable panel) land in the kit and each site migrates."
+    },
+    {
+      "id": "semantic-raw-controls",
+      "status": "approved-temporary",
+      "scope": [
+        "src/components/conversation/reply-toast.tsx",
+        "packages/sdk/src/slots/index.tsx",
+        "src/components/provider-keys-tab.tsx",
+        "packages/host/src/components/layout/sidebar-nav-item.tsx",
+        "packages/host/src/components/runtime/runtimes-tab.tsx",
+        "plugins/workflows/components/workflow-card.tsx",
+        "plugins/workflows/components/workflow-canvas-editor.tsx",
+        "plugins/workflows/components/approvals-badge-provider.tsx",
+        "plugins/brands/components/brand-builder.tsx"
+      ],
+      "allowances": {
+        "src/components/conversation/reply-toast.tsx": {
+          "raw-control": 1
+        },
+        "packages/sdk/src/slots/index.tsx": {
+          "raw-control": 1
+        },
+        "src/components/provider-keys-tab.tsx": {
+          "raw-control": 1
+        },
+        "packages/host/src/components/layout/sidebar-nav-item.tsx": {
+          "raw-control": 1
+        },
+        "packages/host/src/components/runtime/runtimes-tab.tsx": {
+          "raw-control": 1
+        },
+        "plugins/workflows/components/workflow-card.tsx": {
+          "raw-control": 2
+        },
+        "plugins/workflows/components/workflow-canvas-editor.tsx": {
+          "raw-control": 1
+        },
+        "plugins/workflows/components/approvals-badge-provider.tsx": {
+          "raw-control": 1
+        },
+        "plugins/brands/components/brand-builder.tsx": {
+          "raw-control": 2
+        }
+      },
+      "closestPattern": {
+        "storyPath": "storybook/public/primitives/button.stories.tsx",
+        "storyExport": "CanonicalUsage"
+      },
+      "mismatch": "Each of these is a native interactive element whose semantics the Button primitive cannot express without fighting its styling contract: whole-toast click targets (reply toast, gate toast), the SDK error-boundary retry that must render with zero kit dependencies, a key-chip dismiss affordance, card-as-button surfaces (workflow card stretched links and tooltip trigger, runtime roster card), the sidebar disclosure chevron, the canvas drop-target, and visually hidden file inputs behind kit-styled pickers in the brand builder.",
+      "compositionLimit": "Button imposes control chrome (height, padding, background) that these targets must not have; unstyled native elements with focused local classes are the documented escape hatch for click semantics without control chrome, and the slots error boundary cannot import kit UI at all without creating a dependency cycle.",
+      "alternative": "Keep one bare native control per site, styled with bakin-* tokens and focus-visible treatment, with the surrounding surface composed from kit patterns.",
+      "safeguards": {
+        "accessibility": "Native button/input elements retain correct roles, names, and keyboard activation for free; each site carries aria labels and focus-visible outlines using the focus-ring token.",
+        "responsiveness": "The raw controls inherit their parent surfaces' token-based layout; none of them hardcode fixed widths beyond content sizing.",
+        "routing": "Stretched-link cards use real links or router pushes from SDK navigation; raw buttons never emulate navigation with window.location.",
+        "isolation": "Each control is private to its component; none are exported as reusable primitives, so the kit remains the only public control surface."
+      },
+      "approvedBy": "Mark Hayden",
+      "approvedOn": "2026-07-31",
+      "approvalEvidence": "Storybook-refit T7.2 final-sweep decision E: user explicitly approved the enumerated semantic raw-control keeps (reply-toast, slots error-boundary retry, provider-keys chip dismiss, workflow-card stretched links and tooltip trigger, canvas drop-target, gate-toast, sidebar disclosure, runtime roster card, brand-builder hidden file inputs) as formal exceptions.",
+      "reviewBy": "2026-10-30",
+      "removalCondition": "Remove per-site as the kit ships unstyled control primitives (ghost pressable, stretched-link card, hidden-file-input picker) and each site migrates."
+    },
+    {
+      "id": "tabs-legacy-pill-geometry",
+      "status": "approved-temporary",
+      "scope": [
+        "src/components/ui/tabs.tsx"
+      ],
+      "allowances": {
+        "src/components/ui/tabs.tsx": {
+          "arbitrary-size": 2
+        }
+      },
+      "closestPattern": {
+        "storyPath": "storybook/public/navigation/tabs.stories.tsx",
+        "storyExport": "CanonicalUsage"
+      },
+      "mismatch": "The legacy pill-tab variant preserves its original shadcn geometry (p-[3px] list inset and h-[calc(100%-1px)] trigger height) so existing consumers keep pixel-identical rendering; the supported underline variant is fully tokenized, but the pill geometry has no exact token equivalents.",
+      "compositionLimit": "Re-expressing 3px and calc(100%-1px) with the token scale would shift the pill visuals for every existing consumer; the variant is migration-frozen rather than restyled.",
+      "alternative": "Keep the two arbitrary geometry values inside the frozen pill variant only; new surfaces use the underline variant, which is the documented supported style.",
+      "safeguards": {
+        "accessibility": "Geometry only; roles, keyboard interaction, and focus-visible treatment are shared across variants and tested by the tabs stories.",
+        "responsiveness": "The values are internal insets that do not constrain container width; tab lists still wrap and scroll per the navigation pattern.",
+        "routing": "Tab state continues to ride the supported URL-state hooks; the geometry has no routing effect.",
+        "isolation": "Confined to the legacy variant map in one shared component; no plugin re-declares the values."
+      },
+      "approvedBy": "Mark Hayden",
+      "approvedOn": "2026-07-31",
+      "approvalEvidence": "Storybook-refit T7.2 final-sweep decision E: user explicitly approved the legacy pill-tab geometry keep as a formal exception.",
+      "reviewBy": "2026-10-30",
+      "removalCondition": "Remove when the last pill-variant consumer migrates to the underline variant and the frozen geometry is deleted."
+    },
+    {
+      "id": "sdk-tone-badge-idiom",
+      "status": "approved-temporary",
+      "scope": [
+        "packages/sdk/src/utils/index.ts"
+      ],
+      "allowances": {
+        "packages/sdk/src/utils/index.ts": {
+          "raw-palette": 15
+        }
+      },
+      "closestPattern": {
+        "storyPath": "storybook/public/feedback/status-badge.stories.tsx",
+        "storyExport": "CanonicalUsage"
+      },
+      "mismatch": "toneBadgeClass maps five status tones onto the codebase-wide bg-X-500/10 text-X-400 border-X-500/20 outline-badge idiom; the strings must be full literals so Tailwind's content scanner emits the utilities, and the five-hue ramp (green/amber/red/zinc/blue) predates equivalent semantic tone tokens.",
+      "compositionLimit": "Template-constructed class names would defeat the Tailwind scanner, and the semantic palette does not yet define the translucent tone ramp triplets these badges render; StatusBadge consumes this exact map, so moving the literals would only relocate the debt.",
+      "alternative": "Keep the fifteen palette utilities as one frozen literal map in the SDK utils, consumed only through toneBadgeClass and the StatusBadge pattern.",
+      "safeguards": {
+        "accessibility": "Tone colors are paired with text labels via StatusBadge; the 400-series text on translucent 10% fills keeps AA contrast on the dark canvas.",
+        "responsiveness": "Badges are content-sized pills; no fixed dimensions are introduced by the class map.",
+        "routing": "Purely presentational classes with no navigation involvement.",
+        "isolation": "The idiom lives in one exported helper; consumers call toneBadgeClass rather than re-declaring palette classes."
+      },
+      "approvedBy": "Mark Hayden",
+      "approvedOn": "2026-07-31",
+      "approvalEvidence": "Storybook-refit T7.2 final-sweep decision E: user explicitly approved the sdk utils tone-badge idiom keep as a formal exception.",
+      "reviewBy": "2026-10-30",
+      "removalCondition": "Remove when semantic tone-ramp tokens (success/pending/error/muted/info fills and borders) land in the token pipeline and toneBadgeClass re-points to them."
+    },
+    {
+      "id": "models-routing-tab-work-classes-import",
+      "status": "approved-temporary",
+      "scope": [
+        "plugins/models/components/routing-tab.tsx"
+      ],
+      "allowances": {
+        "plugins/models/components/routing-tab.tsx": {
+          "private-import": 1
+        }
+      },
+      "closestPattern": {
+        "storyPath": "storybook/public/forms/plugin-settings-renderer.stories.tsx",
+        "storyExport": "CanonicalUsage"
+      },
+      "mismatch": "The routing tab renders the work-class routing matrix and must enumerate the canonical WorkClass list from src/core/model-routing.ts; duplicating the list in the plugin would create a second routing vocabulary, which the model-routing architecture explicitly forbids.",
+      "compositionLimit": "The SDK does not publish the work-class enumeration, and CLAUDE.md's routing rule (one routing key, never a parallel config) outweighs the plugin-import boundary until the SDK exposes the type.",
+      "alternative": "Keep the single private import of the WORK_CLASSES constant in the models plugin's routing tab, as a core plugin inside the same repository.",
+      "safeguards": {
+        "accessibility": "Not affected; the import carries data only and the tab renders through supported form patterns.",
+        "responsiveness": "Not affected by the import; layout composes supported patterns.",
+        "routing": "No effect on browser routing; the import concerns model routing configuration only.",
+        "isolation": "Core plugins are compiled in-repo, so the private import cannot break external plugin authors; external plugins never see this path."
+      },
+      "approvedBy": "Mark Hayden",
+      "approvedOn": "2026-07-31",
+      "approvalEvidence": "Storybook-refit T7.2 final-sweep decision E: user explicitly approved the routing-tab WORK_CLASSES private import keep as a formal exception.",
+      "reviewBy": "2026-10-30",
+      "removalCondition": "Remove when the work-class enumeration is published through a supported SDK entrypoint and the routing tab imports it from there."
+    },
+    {
+      "id": "brands-hex-literal-copy",
+      "status": "approved-temporary",
+      "scope": [
+        "plugins/brands/components/brand-detail.tsx"
+      ],
+      "allowances": {
+        "plugins/brands/components/brand-detail.tsx": {
+          "raw-palette": 3
+        }
+      },
+      "closestPattern": {
+        "storyPath": "storybook/public/forms/color-input.stories.tsx",
+        "storyExport": "CanonicalUsage"
+      },
+      "mismatch": "Brand detail shows hex strings as user-facing content: the #FF5A00 example copy in the palette editor placeholders and the #888888 fallback for a color input before the user picks a value. These are literal document values in a color-editing domain, not styling decisions.",
+      "compositionLimit": "Tokens describe Bakin's own chrome, not the user's brand data; a color editor must display and accept raw hex values, so the literals cannot be replaced by semantic tokens without changing product behavior.",
+      "alternative": "Keep the three hex literals as data (placeholder examples and input fallback) inside the brand color editor; all chrome around them uses bakin-* tokens and the ColorInput pattern.",
+      "safeguards": {
+        "accessibility": "Hex values appear as text content and input values with labels; they are never the sole visual indicator of state.",
+        "responsiveness": "The literals are short inline strings inside labeled fields, so they impose no layout constraints at any viewport width.",
+        "routing": "The literals are field content only and play no part in navigation, URL state, or deep-linking behavior.",
+        "isolation": "Scoped to the brands plugin's color editing surface; nothing else consumes the literals."
+      },
+      "approvedBy": "Mark Hayden",
+      "approvedOn": "2026-07-31",
+      "approvalEvidence": "Storybook-refit T7.2 final-sweep decision E: user explicitly approved the brands hex-literal user-facing copy and color-input fallback keep as a formal exception.",
+      "reviewBy": "2026-10-30",
+      "removalCondition": "Remove if the color editor moves example/fallback values into data files or the scanner learns to distinguish content literals from styling literals."
+    }
+  ]
 }

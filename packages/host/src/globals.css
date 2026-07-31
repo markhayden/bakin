@@ -44,14 +44,8 @@
   --color-destructive: var(--destructive);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-muted: var(--muted);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-secondary: var(--secondary);
   --color-primary-foreground: var(--primary-foreground);
   --color-primary: var(--primary);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
   --radius-sm: calc(var(--radius) * 0.6);
@@ -63,27 +57,10 @@
   --radius-4xl: calc(var(--radius) * 2.6);
   --color-surface: var(--surface);
   --color-surface-low: var(--surface-low);
-  --color-surface-container: var(--surface-container);
-  --color-surface-high: var(--surface-high);
-  --color-surface-highest: var(--surface-highest);
-  --color-surface-bright: var(--surface-bright);
-  --color-surface-elevated: var(--surface-elevated);
-  --color-outline: var(--outline);
   --color-outline-variant: var(--outline-variant);
-  --color-accent-dim: var(--accent-dim);
-  --color-accent-container: var(--accent-container);
   --color-selection: var(--selection);
-  --color-selection-foreground: var(--selection-foreground);
   --color-success-foreground: var(--success-foreground);
-  --color-warning-foreground: var(--warning-foreground);
-  --color-info-foreground: var(--info-foreground);
   --color-success: var(--success);
-  --color-warning: var(--warning);
-  --color-info: var(--info);
-  --color-status-backlog: var(--status-backlog);
-  --color-status-todo: var(--status-todo);
-  --color-status-in-progress: var(--status-in-progress);
-  --color-status-review: var(--status-review);
   --color-status-done: var(--status-done);
   --color-status-blocked: var(--status-blocked);
 }
@@ -92,9 +69,10 @@
  * Legacy generic tokens (migration-only compat layer). Values reference the
  * namespaced --bakin-* semantic tokens wherever an exact-value token exists;
  * translucent washes derive from the same tokens via color-mix so every
- * computed value stays byte-identical to the pre-token stylesheet. Raw values
- * that remain have no equal-valued semantic token yet (extended surface
- * ladder, warning/info ramps, task-status and agent data colors).
+ * computed value stays byte-identical to the pre-token stylesheet. Variables
+ * with zero consumers (verified across bakin + bakin-bits-official) were
+ * removed in the T7.2 sweep; what remains is still consumed by rendered UI
+ * (base @apply rules, shadcn-derived primitives, or runtime code).
  */
 :root {
   /* Shell chrome geometry — the Header raises these while banners are active
@@ -106,47 +84,26 @@
   --background: var(--bakin-color-canvas-default);
   --surface: var(--bakin-color-canvas-default);
   --surface-low: var(--bakin-color-surface-default);
-  --surface-container: #1b1919;
-  --surface-high: #211f1f;
-  --surface-highest: #272525;
-  --surface-bright: #2e2b2b;
-  --surface-elevated: #1b1919;
 
   --foreground: var(--bakin-color-text-primary);
   --card: var(--bakin-color-surface-default);
   --card-foreground: var(--bakin-color-text-primary);
-  --popover: #1b1919;
-  --popover-foreground: var(--bakin-color-text-primary);
 
   /* Primary — Green (default CTA) */
   --primary: var(--bakin-color-action-primary-background);
   --primary-foreground: var(--bakin-color-action-primary-foreground);
 
-  /* Secondary — Subtle surface action */
-  --secondary: #272525;
-  --secondary-foreground: var(--bakin-color-text-primary);
-
   /* Accent — Neon Pink (branding, links, highlights) */
   --accent: var(--bakin-color-signal-accent);
   --accent-foreground: var(--bakin-color-text-primary);
-  --accent-dim: #e30071;
-  --accent-container: #ff709e;
 
   /* Selection — Electric Yellow */
   --selection: var(--bakin-color-signal-highlight);
-  --selection-foreground: #555500;
 
-  --muted: #1b1919;
-  --muted-foreground: var(--bakin-color-text-muted);
   --destructive: var(--bakin-color-signal-danger);
-  --warning: #f59e0b;
-  --warning-foreground: #451a03;
-  --info: #38bdf8;
-  --info-foreground: #082f49;
 
   /* Outline */
   --border: color-mix(in srgb, var(--bakin-color-border-subtle) 30%, transparent);
-  --outline: #787574;
   --outline-variant: var(--bakin-color-border-subtle);
   --input: color-mix(in srgb, var(--bakin-color-border-subtle) 30%, transparent);
   --ring: var(--bakin-color-focus-ring);
@@ -172,10 +129,6 @@
   --chart-4: var(--bakin-color-signal-danger);
   --chart-5: var(--bakin-color-text-muted);
   /* Status colors for task board */
-  --status-backlog: #71717a;
-  --status-todo: #a855f7;
-  --status-in-progress: #3b82f6;
-  --status-review: #f59e0b;
   --status-done: var(--bakin-color-action-primary-background);
   --status-blocked: var(--bakin-color-signal-danger);
   /* Agent accent colors (overridden at runtime by AgentThemeProvider) */
@@ -304,12 +257,14 @@
   border: 1px solid var(--border);
 }
 .react-flow .react-flow__controls-button {
-  background: var(--surface-container);
+  background: var(--bakin-color-surface-elevated);
   border-bottom-color: var(--border);
-  color: var(--muted-foreground);
+  color: var(--bakin-color-text-muted);
 }
 .react-flow .react-flow__controls-button:hover {
-  background: var(--surface-high);
+  /* One tint above the elevated surface; pinned raw for output preservation —
+     the elevation ladder deliberately has no solid step above surface-elevated. */
+  background: #211f1f;
   color: var(--foreground);
 }
 .react-flow .react-flow__controls-button svg,
@@ -317,7 +272,7 @@
   fill: currentColor;
 }
 .react-flow .react-flow__minimap {
-  background: var(--surface-container);
+  background: var(--bakin-color-surface-elevated);
   border: 1px solid var(--border);
   border-radius: calc(var(--radius) * 0.6);
   overflow: hidden;

@@ -4,9 +4,11 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
 import {
+  applyLegacyStyleExceptions,
   collectLegacyStyleSources,
   diffLegacyStyleReport,
   scanLegacyStyles,
+  type LegacyStyleExceptionDocument,
   type LegacyStyleMigrations,
   type LegacyStyleSource,
 } from '../../../scripts/ui/check-legacy-styles'
@@ -151,6 +153,67 @@ describe('diffLegacyStyleReport', () => {
       'new legacy style debt: plugins/example/components/card.tsx inline-style (1)',
       'new legacy style debt: plugins/example/components/new-card.tsx raw-control (1)',
     ])
+  })
+})
+
+describe('applyLegacyStyleExceptions', () => {
+  const path = 'plugins/example/components/card.tsx'
+  const exceptions = (
+    allowances: Record<string, Record<string, number>> | undefined,
+    scope = [path],
+  ): LegacyStyleExceptionDocument => ({
+    schemaVersion: 1,
+    policy: 'Storybook is the default UI contract; deviations require approval.',
+    exceptions: [{ id: 'example-exception', scope, allowances }],
+  })
+
+  it('subtracts exactly the recorded per-path counts and leaves the remainder as debt', () => {
+    const { remaining, excepted, errors } = applyLegacyStyleExceptions(
+      { totals: { 'raw-palette': 3, 'raw-control': 1 }, byPath: { [path]: { 'raw-palette': 3, 'raw-control': 1 } } },
+      exceptions({ [path]: { 'raw-palette': 2 } }),
+    )
+    expect(errors).toEqual([])
+    expect(excepted).toBe(2)
+    expect(remaining.byPath).toEqual({ [path]: { 'raw-palette': 1, 'raw-control': 1 } })
+    expect(remaining.totals['raw-palette']).toBe(1)
+    expect(remaining.totals['raw-control']).toBe(1)
+  })
+
+  it('drops a fully covered path from the remaining report', () => {
+    const { remaining, errors } = applyLegacyStyleExceptions(
+      { totals: { 'inline-style': 1 }, byPath: { [path]: { 'inline-style': 1 } } },
+      exceptions({ [path]: { 'inline-style': 1 } }),
+    )
+    expect(errors).toEqual([])
+    expect(remaining.byPath).toEqual({})
+  })
+
+  it('fails on stale allowances instead of silently over-covering', () => {
+    const { errors } = applyLegacyStyleExceptions(
+      { totals: { 'raw-control': 1 }, byPath: { [path]: { 'raw-control': 1 } } },
+      exceptions({ [path]: { 'raw-control': 2 } }),
+    )
+    expect(errors.some((error) => error.includes('stale exception allowance') && error.includes(path))).toBe(true)
+
+    const orphaned = applyLegacyStyleExceptions(
+      { totals: {}, byPath: {} },
+      exceptions({ [path]: { 'raw-control': 1 } }),
+    )
+    expect(orphaned.errors.some((error) => error.includes('finds none'))).toBe(true)
+  })
+
+  it('rejects allowances outside the recorded scope and unknown rules', () => {
+    const outside = applyLegacyStyleExceptions(
+      { totals: {}, byPath: {} },
+      exceptions({ 'plugins/other/components/x.tsx': { 'raw-control': 1 } }),
+    )
+    expect(outside.errors.some((error) => error.includes('outside its scope'))).toBe(true)
+
+    const unknown = applyLegacyStyleExceptions(
+      { totals: {}, byPath: {} },
+      exceptions({ [path]: { 'not-a-rule': 1 } as Record<string, number> }),
+    )
+    expect(unknown.errors.some((error) => error.includes('unknown legacy-style rule'))).toBe(true)
   })
 })
 

@@ -162,7 +162,7 @@ export function RankedBarChart({
                   : secondary
                     ? `${datumLabel} — ${series.label}: ${valueLabel}, ${secondary.label}: ${secondaryValueLabel}`
                     : `${datumLabel} — ${series.label}: ${valueLabel}`}
-                className="col-span-2 h-bakin-3 overflow-hidden rounded-bakin-control bg-bakin-surface-subtle outline-none focus-visible:ring-2 focus-visible:ring-bakin-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-bakin-surface-default"
+                className="col-span-2 h-bakin-3 overflow-hidden rounded-bakin-control bg-bakin-border-subtle/35 outline-none focus-visible:ring-2 focus-visible:ring-bakin-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-bakin-surface-default"
               >
                 {value !== null && value > 0 ? (
                   secondary ? (

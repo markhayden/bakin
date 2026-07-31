@@ -30,6 +30,16 @@
               "contrastRole": "normal-text"
             }
           }
+        },
+        "elevated": {
+          "$description": "The raised surface step above the default surface: nested panels, hover targets, and emphasized cards. The top solid step of the elevation ladder; anything higher floats on the overlay shadow.",
+          "$value": "{reference.color.warm.850}",
+          "$extensions": {
+            "dev.bakin.tokens": {
+              "contrastAgainst": "semantic.color.text.primary",
+              "contrastRole": "normal-text"
+            }
+          }
         }
       },
       "text": {

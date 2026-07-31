@@ -507,6 +507,28 @@ export const BAKIN_SEMANTIC_TOKENS = [
     "sourcePointer": "#/semantic/color/surface/default"
   },
   {
+    "name": "semantic.color.surface.elevated",
+    "family": "Color",
+    "type": "color",
+    "visibility": "public",
+    "cssVariable": "--bakin-color-surface-elevated",
+    "cssValue": "#1b1919",
+    "tailwindVariable": "--color-bakin-surface-elevated",
+    "description": "The raised surface step above the default surface: nested panels, hover targets, and emphasized cards. The top solid step of the elevation ladder; anything higher floats on the overlay shadow.",
+    "contrast": {
+      "against": "semantic.color.text.primary",
+      "role": "normal-text",
+      "ratio": 17.5,
+      "minimum": 4.5,
+      "standard": "WCAG AA normal text",
+      "status": "pass",
+      "againstCssVariable": "--bakin-color-text-primary"
+    },
+    "source": "packages/ui/tokens/semantic.tokens.json#/semantic/color/surface/elevated",
+    "sourceUrl": "https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json",
+    "sourcePointer": "#/semantic/color/surface/elevated"
+  },
+  {
     "name": "semantic.color.text.muted",
     "family": "Color",
     "type": "color",

@@ -22,6 +22,8 @@ export interface UiExceptionDocument {
     id: string
     status: 'approved-temporary'
     scope: string[]
+    /** Per-path scanner findings covered by this exception (see check-legacy-styles.ts). */
+    allowances?: Record<string, Partial<Record<string, number>>>
     closestPattern: {
       storyPath: string
       storyExport: string

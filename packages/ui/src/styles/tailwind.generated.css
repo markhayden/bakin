@@ -23,6 +23,7 @@
   --color-bakin-signal-highlight: var(--bakin-color-signal-highlight);
   --color-bakin-signal-info: var(--bakin-color-signal-info);
   --color-bakin-surface-default: var(--bakin-color-surface-default);
+  --color-bakin-surface-elevated: var(--bakin-color-surface-elevated);
   --color-bakin-text-muted: var(--bakin-color-text-muted);
   --color-bakin-text-primary: var(--bakin-color-text-primary);
   --shadow-bakin-elevation-overlay: var(--bakin-elevation-overlay);

@@ -53,6 +53,26 @@
           "uniqueItems": true,
           "items": { "$ref": "#/definitions/repositoryPath" }
         },
+        "allowances": {
+          "description": "Per-path legacy-style scanner findings this exception covers. Keys must be scope paths; the style ratchet subtracts exactly these counts and fails when a recorded count is stale.",
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": { "$ref": "#/definitions/repositoryPath" },
+          "additionalProperties": {
+            "type": "object",
+            "minProperties": 1,
+            "additionalProperties": false,
+            "properties": {
+              "raw-palette": { "type": "integer", "minimum": 1 },
+              "arbitrary-size": { "type": "integer", "minimum": 1 },
+              "raw-control": { "type": "integer", "minimum": 1 },
+              "inline-style": { "type": "integer", "minimum": 1 },
+              "generic-token": { "type": "integer", "minimum": 1 },
+              "unscoped-css": { "type": "integer", "minimum": 1 },
+              "private-import": { "type": "integer", "minimum": 1 }
+            }
+          }
+        },
         "closestPattern": {
           "type": "object",
           "additionalProperties": false,

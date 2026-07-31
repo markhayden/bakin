@@ -37,7 +37,7 @@ function FeedAvatar({ agent }: { agent: string }) {
   if (SYSTEM_SOURCES.has(agent)) {
     const Icon = SYSTEM_ICONS[agent] || Zap
     return (
-      <span className="size-6 rounded-full bg-muted flex items-center justify-center shrink-0">
+      <span className="size-6 rounded-full bg-bakin-surface-elevated flex items-center justify-center shrink-0">
         <Icon className="size-3.5 text-bakin-text-muted" />
       </span>
     )
@@ -80,7 +80,7 @@ function DispatchFailureDebug({ data }: { data?: Record<string, unknown> }) {
   if (rows.length === 0 && !rawError) return null
 
   return (
-    <div className="mt-2 rounded-md bg-muted/40 px-2 py-1.5 text-bakin-typography-size-meta text-bakin-text-muted">
+    <div className="mt-2 rounded-md bg-bakin-surface-elevated/40 px-2 py-1.5 text-bakin-typography-size-meta text-bakin-text-muted">
       {rows.length > 0 && (
         <div className="grid grid-cols-2 gap-x-2 gap-y-1">
           {rows.map(([label, value]) => (
@@ -124,7 +124,7 @@ export function ActivityFeed() {
           onClick={toggle}
           aria-label="Open Live Activity"
           title="Live Activity"
-          className="fixed bottom-bakin-4 right-bakin-4 top-auto z-50 hidden translate-y-0 rounded-bakin-pill border-bakin-border-subtle/30 bg-bakin-surface-default/95 shadow-bakin-elevation-overlay backdrop-blur-sm hover:bg-surface-elevated active:not-aria-[haspopup]:translate-y-0 md:inline-flex"
+          className="fixed bottom-bakin-4 right-bakin-4 top-auto z-50 hidden translate-y-0 rounded-bakin-pill border-bakin-border-subtle/30 bg-bakin-surface-default/95 shadow-bakin-elevation-overlay backdrop-blur-sm hover:bg-bakin-surface-elevated active:not-aria-[haspopup]:translate-y-0 md:inline-flex"
         >
           <Radio aria-hidden="true" className="size-bakin-4 text-bakin-text-muted" />
           <span className="sr-only">
@@ -164,8 +164,8 @@ export function ActivityFeed() {
           {events.filter((evt) => debug || !evt.duplicate).map((evt, i) => (
             <div
               key={`${evt.id}-${i}`}
-              className={`flex gap-2.5 px-3 py-2.5 hover:bg-muted/50 transition-colors border-b border-bakin-border-subtle/18 last:border-0 ${
-                evt.type === 'alert' ? 'bg-warning/10' : ''
+              className={`flex gap-2.5 px-3 py-2.5 hover:bg-bakin-surface-elevated/50 transition-colors border-b border-bakin-border-subtle/18 last:border-0 ${
+                evt.type === 'alert' ? 'bg-bakin-signal-highlight/10' : ''
               }`}
             >
               <FeedAvatar agent={evt.agent} />
@@ -178,7 +178,7 @@ export function ActivityFeed() {
                   <p className="text-bakin-typography-size-meta text-bakin-text-muted mb-0.5 truncate">{evt.taskTitle}</p>
                 )}
                 <p className={`text-bakin-typography-size-body leading-snug break-words ${
-                  evt.type === 'alert' ? 'text-warning' : 'text-bakin-text-primary/80'
+                  evt.type === 'alert' ? 'text-bakin-signal-highlight' : 'text-bakin-text-primary/80'
                 }`}>{evt.message}</p>
                 {evt.eventName && (
                   <p className="text-bakin-typography-size-meta text-bakin-text-muted/60 mt-0.5 truncate font-mono">{evt.eventName}</p>

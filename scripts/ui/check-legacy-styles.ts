@@ -13,6 +13,7 @@ const REPO_ROOT = resolve(import.meta.dir, '../..')
 const MIGRATIONS_PATH = join(REPO_ROOT, 'design-system/migrations.json')
 const MIGRATIONS_SCHEMA_PATH = join(REPO_ROOT, 'design-system/migrations.schema.json')
 const CENSUS_PATH = join(REPO_ROOT, 'design-system/census.json')
+const EXCEPTIONS_PATH = join(REPO_ROOT, 'design-system/exceptions.json')
 
 export const LEGACY_STYLE_RULES = [
   'raw-palette',
@@ -321,6 +322,106 @@ export function collectLegacyStyleSources(root: string, bitsPluginsRoot: string)
   return sources.sort((left, right) => left.path.localeCompare(right.path))
 }
 
+export interface LegacyStyleExceptionDocument {
+  schemaVersion: 1
+  policy: string
+  exceptions: Array<{
+    id: string
+    scope: string[]
+    allowances?: Record<string, LegacyStyleCounts>
+  }>
+}
+
+/**
+ * Approved deviations are validated against their RECORDED scope — never
+ * ignored wholesale. Each exception may pin per-path, per-rule finding counts
+ * (`allowances`); the scanner subtracts exactly those counts before the
+ * migrations ratchet applies. A finding above the recorded count is new debt;
+ * a recorded count above the actual findings is a stale exception and fails,
+ * so the ledger can only tell the truth.
+ */
+export function applyLegacyStyleExceptions(
+  report: LegacyStyleReport,
+  document: LegacyStyleExceptionDocument,
+): { remaining: LegacyStyleReport; excepted: number; errors: string[] } {
+  const errors: string[] = []
+  const exceptedByPath = new Map<string, Map<LegacyStyleRule, { count: number; ids: Set<string> }>>()
+
+  for (const exception of document.exceptions ?? []) {
+    if (!exception.allowances) continue
+    for (const [path, counts] of Object.entries(exception.allowances)) {
+      if (!exception.scope?.includes(path)) {
+        errors.push(`exception ${exception.id} records allowances for a path outside its scope: ${path}`)
+        continue
+      }
+      for (const [rule, count] of Object.entries(counts) as Array<[LegacyStyleRule, number]>) {
+        if (!LEGACY_STYLE_RULES.includes(rule)) {
+          errors.push(`exception ${exception.id} records an unknown legacy-style rule "${rule}" for ${path}`)
+          continue
+        }
+        if (!Number.isInteger(count) || count <= 0) {
+          errors.push(`exception ${exception.id} records a non-positive allowance for ${path} ${rule}`)
+          continue
+        }
+        const byRule = exceptedByPath.get(path) ?? new Map()
+        const entry = byRule.get(rule) ?? { count: 0, ids: new Set<string>() }
+        entry.count += count
+        entry.ids.add(exception.id)
+        byRule.set(rule, entry)
+        exceptedByPath.set(path, byRule)
+      }
+    }
+  }
+
+  const remainingByPath: Record<string, LegacyStyleCounts> = {}
+  const remainingTotals = zeroCounts()
+  let excepted = 0
+  const consumedPaths = new Set<string>()
+
+  for (const [path, counts] of Object.entries(report.byPath)) {
+    consumedPaths.add(path)
+    const byRule = exceptedByPath.get(path)
+    const remaining: LegacyStyleCounts = {}
+    for (const rule of LEGACY_STYLE_RULES) {
+      const actual = counts[rule] ?? 0
+      const allowance = byRule?.get(rule)
+      const covered = allowance?.count ?? 0
+      if (covered > actual) {
+        errors.push(
+          `stale exception allowance: ${path} ${rule} records ${covered} but only ${actual} remain `
+          + `(${[...(allowance?.ids ?? [])].sort().join(', ')}); update design-system/exceptions.json`,
+        )
+      }
+      excepted += Math.min(covered, actual)
+      const left = actual - Math.min(covered, actual)
+      if (left > 0) {
+        remaining[rule] = left
+        remainingTotals[rule] += left
+      }
+    }
+    if (Object.keys(remaining).length > 0) remainingByPath[path] = remaining
+  }
+
+  for (const [path, byRule] of exceptedByPath) {
+    if (consumedPaths.has(path)) continue
+    for (const [rule, allowance] of byRule) {
+      errors.push(
+        `stale exception allowance: ${path} ${rule} records ${allowance.count} but the scanner finds none `
+        + `(${[...allowance.ids].sort().join(', ')}); update design-system/exceptions.json`,
+      )
+    }
+  }
+
+  return { remaining: { totals: remainingTotals, byPath: remainingByPath }, excepted, errors }
+}
+
+function readLegacyStyleExceptions(): LegacyStyleExceptionDocument {
+  if (!existsSync(EXCEPTIONS_PATH)) {
+    return { schemaVersion: 1, policy: '', exceptions: [] }
+  }
+  return JSON.parse(readFileSync(EXCEPTIONS_PATH, 'utf-8')) as LegacyStyleExceptionDocument
+}
+
 export function diffLegacyStyleReport(
   migrations: LegacyStyleMigrations,
   actual: LegacyStyleReport,
@@ -543,13 +644,20 @@ function validateAgainstSchema(value: unknown): string[] {
 
 function generate(): void {
   const census = readCensus()
-  const report = scanLegacyStyles(collectLegacyStyleSources(REPO_ROOT, officialBitsPluginsRoot()))
-  const migrations = buildLegacyStyleMigrations(census, report)
+  const scanned = scanLegacyStyles(collectLegacyStyleSources(REPO_ROOT, officialBitsPluginsRoot()))
+  const applied = applyLegacyStyleExceptions(scanned, readLegacyStyleExceptions())
+  if (applied.errors.length > 0) {
+    throw new Error(`Invalid legacy-style exception coverage:\n- ${applied.errors.join('\n- ')}`)
+  }
+  const migrations = buildLegacyStyleMigrations(census, applied.remaining)
   const errors = [...validateLegacyStyleMigrations(migrations, census), ...validateAgainstSchema(migrations)]
   if (errors.length > 0) throw new Error(`Invalid generated legacy-style ratchet:\n- ${errors.join('\n- ')}`)
   mkdirSync(dirname(MIGRATIONS_PATH), { recursive: true })
   writeFileSync(MIGRATIONS_PATH, `${JSON.stringify(migrations, null, 2)}\n`)
-  console.log(`Generated ${relative(REPO_ROOT, MIGRATIONS_PATH)} with ${migrations.entries.length} path allowances`)
+  console.log(
+    `Generated ${relative(REPO_ROOT, MIGRATIONS_PATH)} with ${migrations.entries.length} path allowances `
+    + `(${applied.excepted} findings covered by approved exceptions)`,
+  )
 }
 
 function check(): void {
@@ -558,14 +666,19 @@ function check(): void {
   }
   const migrations = JSON.parse(readFileSync(MIGRATIONS_PATH, 'utf-8')) as LegacyStyleMigrations
   const census = readCensus()
-  const actual = scanLegacyStyles(collectLegacyStyleSources(REPO_ROOT, officialBitsPluginsRoot()))
+  const scanned = scanLegacyStyles(collectLegacyStyleSources(REPO_ROOT, officialBitsPluginsRoot()))
+  const applied = applyLegacyStyleExceptions(scanned, readLegacyStyleExceptions())
   const errors = [
+    ...applied.errors,
     ...validateLegacyStyleMigrations(migrations, census),
     ...validateAgainstSchema(migrations),
-    ...diffLegacyStyleReport(migrations, actual),
+    ...diffLegacyStyleReport(migrations, applied.remaining),
   ]
   if (errors.length > 0) throw new Error(`Legacy UI style ratchet failed:\n- ${[...new Set(errors)].join('\n- ')}`)
-  console.log(`Legacy UI style ratchet valid: ${migrations.entries.length} paths; no new or increased debt`)
+  console.log(
+    `Legacy UI style ratchet valid: ${migrations.entries.length} paths; `
+    + `${applied.excepted} findings covered by approved exceptions; no new or increased debt`,
+  )
 }
 
 function main(): void {

@@ -24,6 +24,13 @@
             "hex": "#151313"
           }
         },
+        "850": {
+          "$value": {
+            "colorSpace": "srgb",
+            "components": [0.105882, 0.098039, 0.098039],
+            "hex": "#1b1919"
+          }
+        },
         "500": {
           "$value": {
             "colorSpace": "srgb",

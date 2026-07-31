@@ -121,7 +121,7 @@ export function CompositionBar({
         <div
           role="img"
           aria-label={summary}
-          className={total > 0 ? 'flex w-full' : 'flex w-full rounded-bakin-pill bg-bakin-surface-subtle'}
+          className={total > 0 ? 'flex w-full' : 'flex w-full rounded-bakin-pill bg-bakin-border-subtle/35'}
           style={{ height: STRIP_HEIGHT[size], gap: SEGMENT_GAP }}
         >
           {visible.map((segment, index) => {

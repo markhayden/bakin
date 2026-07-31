@@ -216,14 +216,14 @@ export function StackedColumnChart({
                 {isPartial && total > 0 ? (
                   <span
                     aria-hidden="true"
-                    className="pointer-events-none absolute inset-x-0 bottom-0 rounded-bakin-control border border-dashed border-bakin-text-secondary"
+                    className="pointer-events-none absolute inset-x-0 bottom-0 rounded-bakin-control border border-dashed border-bakin-text-muted"
                     style={{ height: Math.max(4, (total / max) * (height - 8)) }}
                   />
                 ) : null}
                 {isMissing ? (
                   <span
                     aria-hidden="true"
-                    className="pointer-events-none absolute inset-x-bakin-1 bottom-bakin-2 flex h-bakin-row-dense items-center justify-center rounded-bakin-control border border-dashed border-bakin-border-strong text-[length:var(--bakin-typography-size-meta)] text-bakin-text-muted"
+                    className="pointer-events-none absolute inset-x-bakin-1 bottom-bakin-2 flex h-bakin-row-dense items-center justify-center rounded-bakin-control border border-dashed border-bakin-text-muted text-[length:var(--bakin-typography-size-meta)] text-bakin-text-muted"
                   >
                     —
                   </span>

@@ -5,7 +5,7 @@ description: Generated public semantic token contract for Bakin product and plug
 
 This reference is generated from the DTCG token source. Use the namespaced CSS properties through [`@makinbakin/sdk/styles.css`](/docs/extending/ui/overview/); internal reference values, component aliases, and Tailwind mappings are not plugin-author contracts.
 
-The approved foundation contains **60 public tokens** across **8 semantic families**. Contrast ratios are calculated during generation. A declared WCAG role below its threshold fails generation and CI.
+The approved foundation contains **61 public tokens** across **8 semantic families**. Contrast ratios are calculated during generation. A declared WCAG role below its threshold fails generation and CI.
 
 ## Color
 
@@ -34,6 +34,7 @@ The approved foundation contains **60 public tokens** across **8 semantic famili
 | `semantic.color.signal.highlight` | High-attention non-text highlight on the canvas. | `#eaea00` | `--bakin-color-signal-highlight` | Public semantic | 14.93:1 vs `--bakin-color-canvas-default`; WCAG AA non-text UI ≥ 3:1; pass | [semantic.tokens.json](https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json) `#/semantic/color/signal/highlight` |
 | `semantic.color.signal.info` | Informational guidance and non-urgent progress signals on the canvas. | `#3987e5` | `--bakin-color-signal-info` | Public semantic | 5.3:1 vs `--bakin-color-canvas-default`; WCAG AA non-text UI ≥ 3:1; pass | [semantic.tokens.json](https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json) `#/semantic/color/signal/info` |
 | `semantic.color.surface.default` | The default bounded surface placed above the application canvas. | `#151313` | `--bakin-color-surface-default` | Public semantic | 18.51:1 vs `--bakin-color-text-primary`; WCAG AA normal text ≥ 4.5:1; pass | [semantic.tokens.json](https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json) `#/semantic/color/surface/default` |
+| `semantic.color.surface.elevated` | The raised surface step above the default surface: nested panels, hover targets, and emphasized cards. The top solid step of the elevation ladder; anything higher floats on the overlay shadow. | `#1b1919` | `--bakin-color-surface-elevated` | Public semantic | 17.5:1 vs `--bakin-color-text-primary`; WCAG AA normal text ≥ 4.5:1; pass | [semantic.tokens.json](https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json) `#/semantic/color/surface/elevated` |
 | `semantic.color.text.muted` | Secondary copy, metadata, and helper text on the application canvas. | `#aeaaaa` | `--bakin-color-text-muted` | Public semantic | 8.38:1 vs `--bakin-color-canvas-default`; WCAG AA normal text ≥ 4.5:1; pass | [semantic.tokens.json](https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json) `#/semantic/color/text/muted` |
 | `semantic.color.text.primary` | Primary copy, labels, and high-emphasis interface text on the application canvas. | `#ffffff` | `--bakin-color-text-primary` | Public semantic | 19.28:1 vs `--bakin-color-canvas-default`; WCAG AA normal text ≥ 4.5:1; pass | [semantic.tokens.json](https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json) `#/semantic/color/text/primary` |
 

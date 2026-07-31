@@ -30,7 +30,7 @@ const tabsListVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-muted",
+        default: "bg-bakin-surface-elevated",
         line: "gap-1 bg-transparent",
         underline:
           "flex w-full min-w-0 max-w-full items-end justify-start gap-bakin-1 overflow-x-auto overscroll-x-contain rounded-none border-b border-bakin-border-subtle bg-transparent p-0 font-bakin-typography-family-ui group-data-horizontal/tabs:h-auto",
@@ -69,7 +69,7 @@ const tabsTriggerVariants = cva("", {
       default: [
         "relative inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center gap-1.5 rounded-md border border-transparent px-1.5 py-0.5 text-sm font-medium whitespace-nowrap text-bakin-text-primary/60 transition-all group-data-vertical/tabs:w-full group-data-vertical/tabs:justify-start hover:text-bakin-text-primary focus-visible:border-bakin-focus-ring focus-visible:ring-[3px] focus-visible:ring-bakin-focus-ring/50 focus-visible:outline-1 focus-visible:outline-solid focus-visible:outline-bakin-focus-ring disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 dark:text-bakin-text-muted dark:hover:text-bakin-text-primary group-data-[variant=default]/tabs-list:data-active:shadow-sm group-data-[variant=line]/tabs-list:data-active:shadow-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         "group-data-[variant=line]/tabs-list:bg-transparent group-data-[variant=line]/tabs-list:data-active:bg-transparent dark:group-data-[variant=line]/tabs-list:data-active:border-transparent dark:group-data-[variant=line]/tabs-list:data-active:bg-transparent",
-        "data-active:bg-bakin-canvas-default data-active:text-bakin-text-primary dark:data-active:border-bakin-border-subtle/30 dark:data-active:bg-input/30 dark:data-active:text-bakin-text-primary",
+        "data-active:bg-bakin-canvas-default data-active:text-bakin-text-primary dark:data-active:border-bakin-border-subtle/30 dark:data-active:bg-bakin-border-subtle/10 dark:data-active:text-bakin-text-primary",
         "after:absolute after:bg-bakin-text-primary after:opacity-0 after:transition-opacity group-data-horizontal/tabs:after:inset-x-0 group-data-horizontal/tabs:after:bottom-[-5px] group-data-horizontal/tabs:after:h-0.5 group-data-vertical/tabs:after:inset-y-0 group-data-vertical/tabs:after:-right-1 group-data-vertical/tabs:after:w-0.5 group-data-[variant=line]/tabs-list:data-active:after:opacity-100",
       ].join(" "),
       underline:

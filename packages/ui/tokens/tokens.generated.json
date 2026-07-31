@@ -6,11 +6,11 @@
   "layers": {
     "reference": {
       "visibility": "internal",
-      "tokens": 56
+      "tokens": 57
     },
     "semantic": {
       "visibility": "public",
-      "tokens": 60
+      "tokens": 61
     },
     "component": {
       "visibility": "internal",
@@ -637,6 +637,23 @@
           0.278431
         ],
         "hex": "#4a4747"
+      }
+    },
+    {
+      "path": "reference.color.warm.850",
+      "layer": "reference",
+      "visibility": "internal",
+      "type": "color",
+      "source": "packages/ui/tokens/reference.tokens.json#/reference/color/warm/850",
+      "references": [],
+      "value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.105882,
+          0.098039,
+          0.098039
+        ],
+        "hex": "#1b1919"
       }
     },
     {
@@ -1717,6 +1734,34 @@
         "against": "semantic.color.text.primary",
         "role": "normal-text",
         "ratio": 18.51,
+        "minimum": 4.5,
+        "standard": "WCAG AA normal text",
+        "status": "pass"
+      }
+    },
+    {
+      "path": "semantic.color.surface.elevated",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "color",
+      "description": "The raised surface step above the default surface: nested panels, hover targets, and emphasized cards. The top solid step of the elevation ladder; anything higher floats on the overlay shadow.",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/color/surface/elevated",
+      "references": [
+        "reference.color.warm.850"
+      ],
+      "value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.105882,
+          0.098039,
+          0.098039
+        ],
+        "hex": "#1b1919"
+      },
+      "contrast": {
+        "against": "semantic.color.text.primary",
+        "role": "normal-text",
+        "ratio": 17.5,
         "minimum": 4.5,
         "standard": "WCAG AA normal text",
         "status": "pass"
