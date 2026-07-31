@@ -26,8 +26,9 @@ const RUNTIME_SET_VARS: Record<string, string> = {
   '--bakin-grid-columns': 'Internal candidate-ui specimen grid sets its column count per instance (storybook/internal/specimens/candidate-ui.tsx)',
   '--bakin-drawer-width': 'Page drawer sets its persisted resize width; the name is assembled from a string constant, invisible to static scans',
   '--bakin-list-row-columns': 'ListRows consumers set the shared column template per list via inline style (packages/ui/src/patterns/list-rows.tsx contract)',
-  '--bakin-header-top': 'Host header sets the banner-stack offset via style.setProperty (packages/host/src/components/layout/header.tsx)',
-  '--bakin-shell-top': 'Host header sets the shell sticky offset via style.setProperty (packages/host/src/components/layout/header.tsx)',
+  // --bakin-header-top / --bakin-shell-top left this list on the T44 shell
+  // sweep: globals.css now declares their defaults statically and the host
+  // header raises them via style.setProperty while banners are active.
 }
 
 const SCAN_ROOTS = [

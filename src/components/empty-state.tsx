@@ -24,13 +24,13 @@ export function EmptyState({ icon: Icon, title, description, action, className, 
     return (
       <div
         className={cn(
-          'flex min-h-24 flex-col items-center justify-center gap-2 rounded-lg bg-foreground/[0.03] px-8 py-8 text-center text-sm text-muted-foreground',
+          'flex min-h-24 flex-col items-center justify-center gap-2 rounded-lg bg-bakin-text-primary/[0.03] px-8 py-8 text-center text-sm text-bakin-text-muted',
           className,
         )}
         data-section-empty
       >
         <p className="max-w-md">{title}</p>
-        {description && <p className="max-w-md text-xs text-muted-foreground/80">{description}</p>}
+        {description && <p className="max-w-md text-xs text-bakin-text-muted/80">{description}</p>}
         {action}
       </div>
     )
@@ -46,24 +46,24 @@ export function EmptyState({ icon: Icon, title, description, action, className, 
     >
       {Icon &&
         (panel ? (
-          <div className="size-14 rounded-2xl bg-muted/40 border border-border flex items-center justify-center mb-4">
-            <Icon className="size-6 text-muted-foreground" />
+          <div className="size-14 rounded-2xl bg-muted/40 border border-bakin-border-subtle/30 flex items-center justify-center mb-4">
+            <Icon className="size-6 text-bakin-text-muted" />
           </div>
         ) : (
           <div className="mb-4 rounded-full bg-muted p-3">
-            <Icon className="size-6 text-muted-foreground" />
+            <Icon className="size-6 text-bakin-text-muted" />
           </div>
         ))}
       {panel ? (
-        <div className="text-base font-semibold text-foreground mb-1">{title}</div>
+        <div className="text-base font-semibold text-bakin-text-primary mb-1">{title}</div>
       ) : (
-        <h3 className="text-sm font-medium text-foreground">{title}</h3>
+        <h3 className="text-sm font-medium text-bakin-text-primary">{title}</h3>
       )}
       {description &&
         (panel ? (
-          <div className="text-sm text-muted-foreground max-w-md leading-relaxed">{description}</div>
+          <div className="text-sm text-bakin-text-muted max-w-md leading-relaxed">{description}</div>
         ) : (
-          <p className="mt-1 text-sm text-muted-foreground max-w-sm">{description}</p>
+          <p className="mt-1 text-sm text-bakin-text-muted max-w-sm">{description}</p>
         ))}
       {action && <div className="mt-4">{action}</div>}
     </div>

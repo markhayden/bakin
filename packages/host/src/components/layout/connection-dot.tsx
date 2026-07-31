@@ -13,11 +13,11 @@ export function ConnectionDot() {
         aria-hidden="true"
         className={`size-2 rounded-full ${
           connected
-            ? 'bg-success animate-pulse-dot'
-            : 'bg-destructive'
+            ? 'bg-bakin-action-primary-background animate-pulse-dot'
+            : 'bg-bakin-signal-danger'
         }`}
       />
-      <span className="sr-only text-muted-foreground sm:not-sr-only">
+      <span className="sr-only text-bakin-text-muted sm:not-sr-only">
         {connected ? 'LIVE' : 'OFFLINE'}
       </span>
     </div>

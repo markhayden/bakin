@@ -37,12 +37,12 @@ export function TurnOutputView({ renderText, ...props }: TurnOutputViewProps) {
           role="region"
           tabIndex={0}
           aria-label="Code output"
-          className="max-w-full overflow-x-auto rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default p-bakin-3 font-bakin-typography-family-mono text-[length:var(--bakin-typography-size-meta)] leading-relaxed text-bakin-text-primary focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring"
+          className="max-w-full overflow-x-auto rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default p-bakin-3 font-bakin-typography-family-mono text-bakin-typography-size-meta leading-relaxed text-bakin-text-primary focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring"
         >
           {content}
         </pre>
       ) : (
-        <pre className="whitespace-pre-wrap break-words font-bakin-typography-family-mono text-[length:var(--bakin-typography-size-meta)] leading-relaxed text-bakin-text-primary">
+        <pre className="whitespace-pre-wrap break-words font-bakin-typography-family-mono text-bakin-typography-size-meta leading-relaxed text-bakin-text-primary">
           {content}
         </pre>
       ))}

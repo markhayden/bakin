@@ -47,10 +47,10 @@ describe('ErrorBanner', () => {
     expect(onRetry).toHaveBeenCalledTimes(1)
   })
 
-  it('uses destructive styling on the container', () => {
+  it('uses danger styling on the container', () => {
     const { container } = render(<ErrorBanner message="oops" />)
     const root = container.firstChild as HTMLElement
-    expect(root.className).toContain('border-destructive')
-    expect(root.className).toContain('bg-destructive')
+    expect(root.className).toContain('border-bakin-signal-danger')
+    expect(root.className).toContain('bg-bakin-signal-danger')
   })
 })

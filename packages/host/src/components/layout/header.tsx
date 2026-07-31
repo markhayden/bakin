@@ -8,16 +8,16 @@ import { openGlobalSearch } from '../search/use-search-hotkey'
 import { useSidebarContext } from '@/context/sidebar-context'
 import { useActivityContext } from '@/context/activity-context'
 import { useDebug } from '@makinbakin/sdk/hooks'
-import { usePluginEvent, emitPluginEvent } from '@/hooks/use-plugin-event'
-import { Button } from '@/components/ui/button'
 import {
+  Button,
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog'
+} from '@makinbakin/sdk/ui'
+import { usePluginEvent, emitPluginEvent } from '@/hooks/use-plugin-event'
 
 interface BakinUpdateStatus {
   supported: boolean
@@ -85,17 +85,20 @@ function DispatchPausedBanner({ offset, resuming, resume }: { offset: boolean; r
   return (
     <div
       role="status"
-      className={`fixed left-0 right-0 z-50 flex h-9 items-center gap-3 border-b border-red-500/40 bg-red-500/15 px-4 text-xs text-foreground ${offset ? 'top-9' : 'top-0'}`}
+      className={`fixed left-0 right-0 z-50 flex h-9 items-center gap-3 border-b border-bakin-signal-danger/40 bg-bakin-signal-danger/15 px-4 text-xs text-bakin-text-primary ${offset ? 'top-9' : 'top-0'}`}
     >
-      <span className="font-medium text-red-500">Dispatch paused</span>
-      <span className="min-w-0 truncate text-muted-foreground">Kill switch is on — no task dispatch or billed media until resumed.</span>
-      <button
+      <span className="font-medium text-bakin-signal-danger">Dispatch paused</span>
+      <span className="min-w-0 truncate text-bakin-text-muted">Kill switch is on — no task dispatch or billed media until resumed.</span>
+      <Button
+        type="button"
+        size="xs"
+        variant="danger"
+        className="ml-auto"
         onClick={resume}
         disabled={resuming}
-        className="ml-auto rounded border border-red-500/40 px-2 py-0.5 text-xs hover:bg-red-500/20 disabled:opacity-50"
       >
         {resuming ? 'Resuming…' : 'Resume'}
-      </button>
+      </Button>
     </div>
   )
 }
@@ -103,13 +106,18 @@ function DispatchPausedBanner({ offset, resuming, resume }: { offset: boolean; r
 function DebugToggle() {
   const [debug, toggleDebug] = useDebug()
   return (
-    <button
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon-sm"
       onClick={toggleDebug}
       title="Debug mode"
-      className={`transition-colors p-1 rounded-md hover:bg-[rgba(255,255,255,0.06)] ${debug ? 'text-foreground' : 'text-muted-foreground'}`}
+      aria-pressed={debug}
+      aria-label="Debug mode"
+      className={debug ? 'text-bakin-text-primary' : 'text-bakin-text-muted hover:text-bakin-text-primary'}
     >
       <Bug className="size-4" />
-    </button>
+    </Button>
   )
 }
 
@@ -201,9 +209,9 @@ export function Header() {
       {showUpdateBanner && (
         <div
           role="status"
-          className="fixed top-0 left-0 right-0 z-50 flex h-9 items-center gap-3 border-b border-info/30 bg-info/10 px-4 text-xs text-foreground"
+          className="fixed top-0 left-0 right-0 z-50 flex h-9 items-center gap-3 border-b border-bakin-signal-info/30 bg-bakin-signal-info/10 px-4 text-xs text-bakin-text-primary"
         >
-          <Download className="size-3.5 shrink-0 text-info" />
+          <Download className="size-3.5 shrink-0 text-bakin-signal-info" />
           <span className="min-w-0 truncate">
             New Bakin version available: v{displayUpdateStatus?.currentVersion} to v{displayUpdateStatus?.latestVersion ?? displayUpdateStatus?.latestTag}
           </span>
@@ -219,19 +227,25 @@ export function Header() {
         </div>
       )}
 
-      <header className="fixed top-[var(--bakin-header-top,0px)] left-0 right-0 z-50 h-14 border-b border-border bg-background flex items-center px-4">
-        <button
-          className="md:hidden mr-3 text-muted-foreground hover:text-foreground"
+      <header className="fixed top-(--bakin-header-top) left-0 right-0 z-50 h-14 border-b border-bakin-border-subtle/30 bg-bakin-canvas-default flex items-center px-4">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          className="md:hidden mr-3 text-bakin-text-muted hover:text-bakin-text-primary"
           onClick={() => setMobileOpen(!mobileOpen)}
           aria-label={mobileOpen ? 'Close navigation' : 'Open navigation'}
           aria-expanded={mobileOpen}
           aria-controls="mobile-navigation-drawer"
         >
           {mobileOpen ? <X className="size-5" /> : <Menu className="size-5" />}
-        </button>
-        <button
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
           onClick={toggle}
-          className="hidden md:flex text-muted-foreground hover:text-foreground transition-colors p-1 rounded-md hover:bg-[rgba(255,255,255,0.06)] mr-2"
+          className="hidden md:inline-flex text-bakin-text-muted hover:text-bakin-text-primary mr-2"
           aria-label={collapsed ? 'Expand navigation' : 'Collapse navigation'}
         >
           {collapsed ? (
@@ -239,55 +253,60 @@ export function Header() {
           ) : (
             <PanelLeftClose className="size-4" />
           )}
-        </button>
+        </Button>
         <div className="flex items-center gap-2">
           <img src="/bakin-logo.svg" alt="Bakin" className="h-7 w-7" />
-          <span className="text-base font-bold tracking-widest text-foreground uppercase italic">Bakin</span>
-          {version && <span className="hidden text-[10px] font-mono text-muted-foreground md:inline">v{version}</span>}
+          <span className="text-base font-bold tracking-widest text-bakin-text-primary uppercase italic">Bakin</span>
+          {version && <span className="hidden text-bakin-typography-size-meta font-mono text-bakin-text-muted md:inline">v{version}</span>}
         </div>
         <div className="ml-auto flex min-w-0 items-center gap-2 sm:gap-3 md:gap-4">
-          <button
+          <Button
             type="button"
+            variant="outline"
+            size="icon-sm"
             onClick={() => openGlobalSearch()}
             aria-label="Search everything"
-            className="flex h-bakin-8 w-bakin-8 shrink-0 items-center justify-center gap-2 rounded-md border border-border/60 p-0 text-xs text-muted-foreground transition-colors hover:text-foreground sm:h-auto sm:w-auto sm:px-2.5 sm:py-1"
+            className="gap-2 border-bakin-border-subtle/60 text-xs font-bakin-typography-weight-regular text-bakin-text-muted hover:text-bakin-text-primary sm:h-auto sm:w-auto sm:min-w-0 sm:px-2.5 sm:py-1"
             title="Search everything (⌘K)"
             data-testid="global-search-button"
           >
             <Search className="size-3.5" />
             <span className="hidden sm:inline">Search</span>
-            <kbd className="hidden rounded border border-border/60 px-1 font-mono text-[10px] sm:inline">⌘K</kbd>
-          </button>
+            <kbd className="hidden rounded border border-bakin-border-subtle/60 px-1 font-mono text-bakin-typography-size-meta sm:inline">⌘K</kbd>
+          </Button>
           <div className="hidden md:block"><DispatchTimer /></div>
           <div className="hidden md:block"><DebugToggle /></div>
           <div className="hidden sm:block"><NotificationToggle /></div>
           <ConnectionDot />
-          <button
+          <Button
             type="button"
+            variant="outline"
+            size="icon-sm"
             onClick={toggleActivity}
             aria-label={activityOpen ? 'Close Live Activity' : 'Open Live Activity'}
             aria-pressed={activityOpen}
             title="Live Activity"
             data-testid="mobile-live-activity-button"
-            className="flex h-bakin-8 w-bakin-8 shrink-0 items-center justify-center rounded-md border border-border/60 p-0 text-muted-foreground transition-colors hover:text-foreground md:hidden"
+            className="border-bakin-border-subtle/60 text-bakin-text-muted hover:text-bakin-text-primary md:hidden"
           >
             <Radio aria-hidden="true" className="size-3.5" />
-          </button>
+          </Button>
         </div>
       </header>
 
       {/* Mobile sidebar overlay */}
       {mobileOpen && (
         <div className="fixed inset-0 z-40 md:hidden">
-          <button
+          <Button
             type="button"
-            className="absolute inset-0 bg-black/50"
+            variant="ghost"
+            className="absolute inset-0 h-auto w-auto rounded-none border-0 bg-bakin-canvas-default/75 p-0 hover:bg-bakin-canvas-default/75 active:not-aria-[haspopup]:translate-y-0"
             onClick={() => setMobileOpen(false)}
             aria-label="Close navigation"
           />
           <div
             id="mobile-navigation-drawer"
-            className="absolute bottom-0 left-0 top-[var(--bakin-shell-top,3.5rem)] w-52 overflow-hidden border-r border-border bg-background"
+            className="absolute bottom-0 left-0 top-(--bakin-shell-top) w-52 overflow-hidden border-r border-bakin-border-subtle/30 bg-bakin-canvas-default"
           >
             <AppSidebar forceExpanded onNavigate={() => setMobileOpen(false)} />
           </div>
@@ -303,12 +322,12 @@ export function Header() {
             </DialogDescription>
           </DialogHeader>
           {updateError && (
-            <div className="rounded-md border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            <div className="rounded-md border border-bakin-signal-danger/20 bg-bakin-signal-danger/10 px-3 py-2 text-sm text-bakin-signal-danger">
               {updateError}
             </div>
           )}
           {updateMessage && (
-            <div className="rounded-md border border-success/20 bg-success/10 px-3 py-2 text-sm text-success">
+            <div className="rounded-md border border-bakin-action-primary-background/20 bg-bakin-action-primary-background/10 px-3 py-2 text-sm text-bakin-action-primary-background">
               {updateMessage}
             </div>
           )}

@@ -36,12 +36,12 @@ export function SectionCard({
     <Card className={className} data-section-card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base font-semibold">
-          {Icon && <Icon className="size-4 text-muted-foreground" />}
+          {Icon && <Icon className="size-4 text-bakin-text-muted" />}
           {title}
         </CardTitle>
         {/* Caption tier, not body copy — the description must never compete with the section's content. */}
         {description && (
-          <CardDescription className="mb-1.5 mt-1 max-w-3xl text-sm leading-relaxed text-muted-foreground">
+          <CardDescription className="mb-1.5 mt-1 max-w-3xl text-sm leading-relaxed text-bakin-text-muted">
             {description}
           </CardDescription>
         )}

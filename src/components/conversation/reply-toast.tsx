@@ -39,7 +39,7 @@ export function ConversationReplyToast({ agentId, title, preview, to, onNavigate
       <AgentAvatar agentId={agentId} size="xs" />
       <span className="min-w-0">
         <span className="block text-sm font-medium">{agent?.name ?? agentId} {title}</span>
-        {preview ? <span className="block truncate text-xs text-muted-foreground">{preview}</span> : null}
+        {preview ? <span className="block truncate text-xs text-bakin-text-muted">{preview}</span> : null}
       </span>
     </button>
   )

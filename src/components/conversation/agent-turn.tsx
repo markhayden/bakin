@@ -47,17 +47,17 @@ function JsonReply({ parsed }: { parsed: unknown }) {
     <div
       data-conv-json=""
       className={`rounded-md border px-3 py-2 ${
-        isError ? 'border-destructive/40 bg-destructive/5' : 'border-border/60 bg-muted/20'
+        isError ? 'border-bakin-signal-danger/40 bg-bakin-signal-danger/5' : 'border-bakin-border-subtle/18 bg-muted/20'
       }`}
     >
       {isError ? (
-        <div className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-destructive">
+        <div className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-bakin-signal-danger">
           <AlertTriangle className="size-3.5" /> The agent reported a problem
         </div>
       ) : null}
       <MarkdownContent content={prose} />
       <details className="mt-1.5">
-        <summary className="cursor-pointer select-none text-[11px] text-muted-foreground hover:text-foreground">
+        <summary className="cursor-pointer select-none text-bakin-typography-size-meta text-bakin-text-muted hover:text-bakin-text-primary">
           Raw JSON
         </summary>
         <MarkdownContent content={fenced} />

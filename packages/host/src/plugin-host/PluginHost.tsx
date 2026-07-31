@@ -45,6 +45,7 @@ import {
   unregisterPlugin,
 } from '@makinbakin/sdk/internal'
 import { Slot } from '@makinbakin/sdk/slots'
+import { Button } from '@makinbakin/sdk/ui'
 import { assertReactInstance } from '../lib/react-identity'
 import { findShadowingHostPaths } from '../lib/route-shadow'
 import { checkPluginDrift } from './drift-check'
@@ -590,9 +591,9 @@ function releasePluginBoot(): void {
 
 function AppBootLoader() {
   return (
-    <div className="fixed inset-0 flex items-center justify-center bg-background text-foreground" role="status" aria-live="polite">
-      <div className="flex items-center gap-3.5 text-sm text-muted-foreground">
-        <span className="size-7 animate-spin rounded-full border-[3px] border-[#ff4d94]/20 border-t-[#ff4d94]" aria-hidden="true" />
+    <div className="fixed inset-0 flex items-center justify-center bg-bakin-canvas-default text-bakin-text-primary" role="status" aria-live="polite">
+      <div className="flex items-center gap-3.5 text-sm text-bakin-text-muted">
+        <span className="size-7 animate-spin rounded-full border-3 border-bakin-signal-accent/20 border-t-bakin-signal-accent" aria-hidden="true" />
         <span className="leading-none">
           Loading plugins
         </span>
@@ -603,20 +604,16 @@ function AppBootLoader() {
 
 function BootErrorPanel({ onRetry }: { onRetry: () => void }) {
   return (
-    <div className="fixed inset-0 flex items-center justify-center bg-background text-foreground" role="alert" data-testid="plugin-boot-error">
+    <div className="fixed inset-0 flex items-center justify-center bg-bakin-canvas-default text-bakin-text-primary" role="alert" data-testid="plugin-boot-error">
       <div className="flex max-w-md flex-col items-center gap-4 text-center">
         <div className="text-sm font-medium">Couldn&apos;t load plugins</div>
-        <p className="text-sm text-muted-foreground">
+        <p className="text-sm text-bakin-text-muted">
           The server didn&apos;t answer the plugin manifest request. It may be
           restarting — retry in a moment, or check that Bakin is running.
         </p>
-        <button
-          type="button"
-          onClick={onRetry}
-          className="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-accent"
-        >
+        <Button type="button" variant="outline" size="sm" onClick={onRetry}>
           Retry
-        </button>
+        </Button>
       </div>
     </div>
   )
@@ -625,31 +622,29 @@ function BootErrorPanel({ onRetry }: { onRetry: () => void }) {
 function PluginFailureBanner({ pluginIds, onDismiss }: { pluginIds: string[]; onDismiss: () => void }) {
   return (
     <div
-      className="fixed inset-x-0 bottom-0 z-50 flex items-center justify-between gap-4 border-t border-border bg-background px-4 py-2.5 text-sm"
+      className="fixed inset-x-0 bottom-0 z-50 flex items-center justify-between gap-4 border-t border-bakin-border-subtle/30 bg-bakin-canvas-default px-4 py-2.5 text-sm"
       role="alert"
       data-testid="plugin-boot-failures"
     >
-      <span className="text-muted-foreground">
+      <span className="text-bakin-text-muted">
         {pluginIds.length === 1 ? 'A plugin' : `${pluginIds.length} plugins`} failed to load:{' '}
-        <span className="font-medium text-foreground">{pluginIds.join(', ')}</span> — features they
+        <span className="font-medium text-bakin-text-primary">{pluginIds.join(', ')}</span> — features they
         provide are missing. See the browser console for details.
       </span>
       <span className="flex shrink-0 items-center gap-2">
-        <button
-          type="button"
-          onClick={() => window.location.reload()}
-          className="rounded-md border border-border px-2.5 py-1 hover:bg-accent"
-        >
+        <Button type="button" variant="outline" size="xs" onClick={() => window.location.reload()}>
           Reload
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
+          variant="ghost"
+          size="xs"
           onClick={onDismiss}
           aria-label="Dismiss"
-          className="rounded-md px-2 py-1 text-muted-foreground hover:bg-accent"
+          className="text-bakin-text-muted hover:text-bakin-text-primary"
         >
           Dismiss
-        </button>
+        </Button>
       </span>
     </div>
   )

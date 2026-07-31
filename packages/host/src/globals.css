@@ -88,83 +88,96 @@
   --color-status-blocked: var(--status-blocked);
 }
 
+/*
+ * Legacy generic tokens (migration-only compat layer). Values reference the
+ * namespaced --bakin-* semantic tokens wherever an exact-value token exists;
+ * translucent washes derive from the same tokens via color-mix so every
+ * computed value stays byte-identical to the pre-token stylesheet. Raw values
+ * that remain have no equal-valued semantic token yet (extended surface
+ * ladder, warning/info ramps, task-status and agent data colors).
+ */
 :root {
+  /* Shell chrome geometry — the Header raises these while banners are active
+     (style.setProperty on <html> overrides these stylesheet defaults). */
+  --bakin-header-top: 0px;
+  --bakin-shell-top: 3.5rem;
+
   /* Surface hierarchy (darkest → lightest) */
-  --background: #0f0e0e;
-  --surface: #0f0e0e;
-  --surface-low: #151313;
+  --background: var(--bakin-color-canvas-default);
+  --surface: var(--bakin-color-canvas-default);
+  --surface-low: var(--bakin-color-surface-default);
   --surface-container: #1b1919;
   --surface-high: #211f1f;
   --surface-highest: #272525;
   --surface-bright: #2e2b2b;
   --surface-elevated: #1b1919;
 
-  --foreground: #ffffff;
-  --card: #151313;
-  --card-foreground: #ffffff;
+  --foreground: var(--bakin-color-text-primary);
+  --card: var(--bakin-color-surface-default);
+  --card-foreground: var(--bakin-color-text-primary);
   --popover: #1b1919;
-  --popover-foreground: #ffffff;
+  --popover-foreground: var(--bakin-color-text-primary);
 
   /* Primary — Green (default CTA) */
-  --primary: #22c55e;
-  --primary-foreground: #052e16;
+  --primary: var(--bakin-color-action-primary-background);
+  --primary-foreground: var(--bakin-color-action-primary-foreground);
 
   /* Secondary — Subtle surface action */
   --secondary: #272525;
-  --secondary-foreground: #ffffff;
+  --secondary-foreground: var(--bakin-color-text-primary);
 
   /* Accent — Neon Pink (branding, links, highlights) */
-  --accent: #ff007f;
-  --accent-foreground: #ffffff;
+  --accent: var(--bakin-color-signal-accent);
+  --accent-foreground: var(--bakin-color-text-primary);
   --accent-dim: #e30071;
   --accent-container: #ff709e;
 
   /* Selection — Electric Yellow */
-  --selection: #eaea00;
+  --selection: var(--bakin-color-signal-highlight);
   --selection-foreground: #555500;
 
   --muted: #1b1919;
-  --muted-foreground: #aeaaaa;
-  --destructive: #ef4444;
+  --muted-foreground: var(--bakin-color-text-muted);
+  --destructive: var(--bakin-color-signal-danger);
   --warning: #f59e0b;
   --warning-foreground: #451a03;
   --info: #38bdf8;
   --info-foreground: #082f49;
 
   /* Outline */
-  --border: rgba(74, 71, 71, 0.3);
+  --border: color-mix(in srgb, var(--bakin-color-border-subtle) 30%, transparent);
   --outline: #787574;
-  --outline-variant: #4a4747;
-  --input: rgba(74, 71, 71, 0.3);
-  --ring: #22c55e;
+  --outline-variant: var(--bakin-color-border-subtle);
+  --input: color-mix(in srgb, var(--bakin-color-border-subtle) 30%, transparent);
+  --ring: var(--bakin-color-focus-ring);
   --radius: 0.5rem;
 
-  --success: #22c55e;
-  --success-foreground: #052e16;
+  --success: var(--bakin-color-action-primary-background);
+  --success-foreground: var(--bakin-color-action-primary-foreground);
 
   /* Sidebar */
-  --sidebar: #0f0e0e;
-  --sidebar-foreground: #aeaaaa;
-  --sidebar-primary: #22c55e;
-  --sidebar-primary-foreground: #052e16;
-  --sidebar-accent: rgba(255, 255, 255, 0.06);
-  --sidebar-accent-foreground: #ffffff;
-  --sidebar-border: rgba(74, 71, 71, 0.2);
-  --sidebar-ring: #22c55e;
+  --sidebar: var(--bakin-color-canvas-default);
+  --sidebar-foreground: var(--bakin-color-text-muted);
+  --sidebar-primary: var(--bakin-color-action-primary-background);
+  --sidebar-primary-foreground: var(--bakin-color-action-primary-foreground);
+  --sidebar-accent: color-mix(in srgb, var(--bakin-color-text-primary) 6%, transparent);
+  --sidebar-accent-foreground: var(--bakin-color-text-primary);
+  --sidebar-border: color-mix(in srgb, var(--bakin-color-border-subtle) 20%, transparent);
+  --sidebar-ring: var(--bakin-color-focus-ring);
 
-  /* Charts */
-  --chart-1: #22c55e;
-  --chart-2: #ff007f;
-  --chart-3: #eaea00;
-  --chart-4: #ef4444;
-  --chart-5: #aeaaaa;
+  /* Charts (legacy shadcn names; values equal the brand tokens they came from) */
+  --chart-1: var(--bakin-color-action-primary-background);
+  --chart-2: var(--bakin-color-signal-accent);
+  --chart-3: var(--bakin-color-signal-highlight);
+  --chart-4: var(--bakin-color-signal-danger);
+  --chart-5: var(--bakin-color-text-muted);
   /* Status colors for task board */
   --status-backlog: #71717a;
   --status-todo: #a855f7;
   --status-in-progress: #3b82f6;
   --status-review: #f59e0b;
-  --status-done: #22c55e;
-  --status-blocked: #ef4444;
+  --status-done: var(--bakin-color-action-primary-background);
+  --status-blocked: var(--bakin-color-signal-danger);
   /* Agent accent colors (overridden at runtime by AgentThemeProvider) */
   --agent-main: #60a5fa;
   --agent-pixel: #a78bfa;
@@ -201,11 +214,11 @@
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
+  background: color-mix(in srgb, var(--bakin-color-text-primary) 10%, transparent);
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: color-mix(in srgb, var(--bakin-color-text-primary) 20%, transparent);
 }
 
 /* Date/time input icons — visible on dark backgrounds */
@@ -215,8 +228,8 @@
 
 /* Kanban drag states */
 .drag-over {
-  background: rgba(255, 0, 127, 0.06) !important;
-  border-color: rgba(255, 0, 127, 0.2) !important;
+  background: color-mix(in srgb, var(--bakin-color-signal-accent) 6%, transparent) !important;
+  border-color: color-mix(in srgb, var(--bakin-color-signal-accent) 20%, transparent) !important;
 }
 .dragging {
   opacity: 0.5;

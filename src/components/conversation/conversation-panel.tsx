@@ -108,7 +108,7 @@ export function ConversationPanel({
           <AgentSelect
             value={agentId ?? ''}
             onValueChange={onAgentChange}
-            className="h-8 w-auto min-w-[130px] text-xs"
+            className="h-8 w-auto min-w-32.5 text-xs"
           />
         </span>
       ) : undefined}
