@@ -5,7 +5,7 @@
  * ordering, path-route navigation.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import '../../rtl-settle'
 import { settleReact } from '../../rtl-settle'
 import { join } from 'path'
@@ -106,7 +106,9 @@ afterEach(() => cleanup())
 
 describe('BrandsPage', () => {
   it('renders header with search + New Brand action and the brand cards', async () => {
-    render(<BrandsPage />)
+    await act(async () => {
+      render(<BrandsPage />)
+    })
     await waitFor(() => expect(screen.getByText('Acme')).toBeDefined())
     expect(screen.getByText('Branding')).toBeDefined()
     expect(document.querySelector('[data-new-brand]')).not.toBeNull()
@@ -116,7 +118,9 @@ describe('BrandsPage', () => {
   })
 
   it('drafts sort before published brands', async () => {
-    render(<BrandsPage />)
+    await act(async () => {
+      render(<BrandsPage />)
+    })
     await waitFor(() => expect(screen.getByText('Acme')).toBeDefined())
     const cards = Array.from(document.querySelectorAll('[data-brand-card]')).map((el) =>
       el.getAttribute('data-brand-card'),
@@ -126,7 +130,9 @@ describe('BrandsPage', () => {
   })
 
   it('cards carry the completeness meter and clicking navigates to the path route', async () => {
-    render(<BrandsPage />)
+    await act(async () => {
+      render(<BrandsPage />)
+    })
     await waitFor(() => expect(screen.getByText('Acme')).toBeDefined())
     expect(document.querySelector('[data-brand-completeness="75"]')).not.toBeNull()
     fireEvent.click(document.querySelector('[data-brand-card="acme"]')!)
@@ -135,7 +141,9 @@ describe('BrandsPage', () => {
   })
 
   it('New Brand opens the three-path chooser; picking Build opens the wizard', async () => {
-    render(<BrandsPage />)
+    await act(async () => {
+      render(<BrandsPage />)
+    })
     await waitFor(() => expect(screen.getByText('Acme')).toBeDefined())
     fireEvent.click(document.querySelector('[data-new-brand]')!)
     await waitFor(() => expect(document.querySelectorAll('[data-create-path]').length).toBe(3))
@@ -145,7 +153,9 @@ describe('BrandsPage', () => {
   })
 
   it('search filters the grid', async () => {
-    render(<BrandsPage />)
+    await act(async () => {
+      render(<BrandsPage />)
+    })
     await waitFor(() => expect(screen.getByText('Acme')).toBeDefined())
     const search = screen.getByPlaceholderText('Search brands...')
     fireEvent.change(search, { target: { value: 'north' } })
@@ -156,16 +166,20 @@ describe('BrandsPage', () => {
 
   it('empty library renders the inline chooser paths, not a bare button', async () => {
     globalThis.fetch = mock(async () => new Response(JSON.stringify({ brands: [], invalid: [] }), { status: 200 })) as unknown as typeof fetch
-    render(<BrandsPage />)
+    await act(async () => {
+      render(<BrandsPage />)
+    })
     await waitFor(() => expect(document.querySelector('[data-brands-empty]')).not.toBeNull())
     expect(document.querySelectorAll('[data-create-path]').length).toBe(3)
     expect(screen.getByText(/Give your agents a brand kit/)).toBeDefined()
     await settleReact()
   })
 
-  it('shows skeletons while loading, never a blank pane', () => {
+  it('shows skeletons while loading, never a blank pane', async () => {
     globalThis.fetch = mock(() => new Promise(() => {})) as unknown as typeof fetch
-    render(<BrandsPage />)
+    await act(async () => {
+      render(<BrandsPage />)
+    })
     expect(document.querySelector('[data-brands-loading]')).not.toBeNull()
   })
 
@@ -174,7 +188,9 @@ describe('BrandsPage', () => {
     const happy = (window as unknown as { happyDOM?: { setURL: (u: string) => void } }).happyDOM
     if (happy) happy.setURL('http://localhost/brands?brand=acme')
     else window.history.replaceState(null, '', '/brands?brand=acme')
-    render(<BrandsPage />)
+    await act(async () => {
+      render(<BrandsPage />)
+    })
     await waitFor(() =>
       expect(navigateMock).toHaveBeenCalledWith(
         expect.objectContaining({ to: '/brands/$brandId', params: { brandId: 'acme' }, replace: true }),

@@ -5,7 +5,7 @@
  */
 import { describe, it, expect, afterEach, mock } from 'bun:test'
 import React from 'react'
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import '../../rtl-settle'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -54,17 +54,19 @@ const mapStep: MapWorkflowStep = {
 }
 
 describe('MapWorkflowNode', () => {
-  it('renders label, child workflow id, and the fan-out source', () => {
-    render(
-      <MapWorkflowNode
-        {...({ data: {
-          label: mapStep.label,
-          workflow_id: mapStep.workflow_id,
-          source: mapStep.source,
-          max_children: mapStep.max_children,
-        } } as unknown as NodeProps)}
-      />,
-    )
+  it('renders label, child workflow id, and the fan-out source', async () => {
+    await act(async () => {
+      render(
+        <MapWorkflowNode
+          {...({ data: {
+            label: mapStep.label,
+            workflow_id: mapStep.workflow_id,
+            source: mapStep.source,
+            max_children: mapStep.max_children,
+          } } as unknown as NodeProps)}
+        />,
+      )
+    })
     expect(screen.getByText('Generate Variants')).toBeTruthy()
     expect(screen.getByText('image-variant')).toBeTruthy()
     expect(screen.getByText(/develop-prompt\.variants/)).toBeTruthy()
@@ -73,14 +75,16 @@ describe('MapWorkflowNode', () => {
 })
 
 describe('StepDetailDrawer — map_workflow', () => {
-  it('shows the definitional map fields', () => {
-    render(
-      <StepDetailDrawer
-        step={mapStep}
-        open={true}
-        onOpenChange={() => {}}
-      />,
-    )
+  it('shows the definitional map fields', async () => {
+    await act(async () => {
+      render(
+        <StepDetailDrawer
+          step={mapStep}
+          open={true}
+          onOpenChange={() => {}}
+        />,
+      )
+    })
     expect(screen.getByText('image-variant')).toBeTruthy()
     expect(screen.getByText('develop-prompt.variants')).toBeTruthy()
     expect(screen.getByText('variant')).toBeTruthy()

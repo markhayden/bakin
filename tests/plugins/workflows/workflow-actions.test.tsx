@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { settleReact } from '../../rtl-settle'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -40,41 +40,47 @@ import { ManagedWorkflowCopyDialog } from '../../../plugins/workflows/components
 import { WorkflowDeleteAction } from '../../../plugins/workflows/components/workflow-delete-action'
 
 describe('workflow action components', () => {
-  it('collects copy metadata before creating a managed workflow copy', () => {
+  it('collects copy metadata before creating a managed workflow copy', async () => {
     const onCopyNameChange = mock()
     const onCopyIdChange = mock()
     const onDisableOriginalChange = mock()
     const onCancel = mock()
     const onCreate = mock()
-    render(
-      <ManagedWorkflowCopyDialog
-        open
-        creating={false}
-        copyName="Video Script Copy"
-        copyId="video-script-copy"
-        disableOriginal
-        onOpenChange={() => {}}
-        onCopyNameChange={onCopyNameChange}
-        onCopyIdChange={onCopyIdChange}
-        onDisableOriginalChange={onDisableOriginalChange}
-        onCancel={onCancel}
-        onCreate={onCreate}
-      />,
-    )
+    await act(async () => {
+      render(
+        <ManagedWorkflowCopyDialog
+          open
+          creating={false}
+          copyName="Video Script Copy"
+          copyId="video-script-copy"
+          disableOriginal
+          onOpenChange={() => {}}
+          onCopyNameChange={onCopyNameChange}
+          onCopyIdChange={onCopyIdChange}
+          onDisableOriginalChange={onDisableOriginalChange}
+          onCancel={onCancel}
+          onCreate={onCreate}
+        />,
+      )
+    })
 
     const dialog = screen.getByRole('dialog')
     expect(within(dialog).getByText('Edit managed workflow')).toBeDefined()
     expect(within(dialog).getByText(/Bakin will create a custom copy/i)).toBeDefined()
 
-    fireEvent.change(within(dialog).getByLabelText(/copy name/i), {
-      target: { value: 'Draft Script Copy' },
+    await act(async () => {
+      fireEvent.change(within(dialog).getByLabelText(/copy name/i), {
+        target: { value: 'Draft Script Copy' },
+      })
     })
-    fireEvent.change(within(dialog).getByLabelText(/workflow id/i), {
-      target: { value: 'draft-script-copy' },
+    await act(async () => {
+      fireEvent.change(within(dialog).getByLabelText(/workflow id/i), {
+        target: { value: 'draft-script-copy' },
+      })
     })
-    fireEvent.click(within(dialog).getByRole('checkbox'))
-    fireEvent.click(within(dialog).getByRole('button', { name: /create copy/i }))
-    fireEvent.click(within(dialog).getByRole('button', { name: /back/i }))
+    await act(async () => { fireEvent.click(within(dialog).getByRole('checkbox')) })
+    await act(async () => { fireEvent.click(within(dialog).getByRole('button', { name: /create copy/i })) })
+    await act(async () => { fireEvent.click(within(dialog).getByRole('button', { name: /back/i })) })
 
     expect(onCopyNameChange).toHaveBeenCalledWith('Draft Script Copy')
     expect(onCopyIdChange).toHaveBeenCalledWith('draft-script-copy')
@@ -86,22 +92,24 @@ describe('workflow action components', () => {
   it('uses a confirmation dialog for workflow deletion and closes after success', async () => {
     const onDelete = mock(() => Promise.resolve(true))
     const onClearError = mock()
-    render(
-      <WorkflowDeleteAction
-        workflowName="Video Script Copy"
-        error="Previous delete failed"
-        onClearError={onClearError}
-        onDelete={onDelete}
-      />,
-    )
+    await act(async () => {
+      render(
+        <WorkflowDeleteAction
+          workflowName="Video Script Copy"
+          error="Previous delete failed"
+          onClearError={onClearError}
+          onDelete={onDelete}
+        />,
+      )
+    })
 
-    fireEvent.click(screen.getByRole('button', { name: /delete workflow/i }))
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /delete workflow/i })) })
     expect(onClearError).toHaveBeenCalled()
     const dialog = screen.getByRole('dialog')
     expect(within(dialog).getByText(/Video Script Copy/)).toBeDefined()
     expect(within(dialog).getByText('Previous delete failed')).toBeDefined()
 
-    fireEvent.click(within(dialog).getByRole('button', { name: /^delete$/i }))
+    await act(async () => { fireEvent.click(within(dialog).getByRole('button', { name: /^delete$/i })) })
 
     expect(onDelete).toHaveBeenCalled()
     // Drain the scheduler before polling: the close re-render resumes via
@@ -114,16 +122,18 @@ describe('workflow action components', () => {
 
   it('keeps the delete confirmation open when deletion reports failure', async () => {
     const onDelete = mock(() => Promise.resolve(false))
-    render(
-      <WorkflowDeleteAction
-        workflowName="Video Script Copy"
-        onDelete={onDelete}
-      />,
-    )
+    await act(async () => {
+      render(
+        <WorkflowDeleteAction
+          workflowName="Video Script Copy"
+          onDelete={onDelete}
+        />,
+      )
+    })
 
-    fireEvent.click(screen.getByRole('button', { name: /delete workflow/i }))
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /delete workflow/i })) })
     const dialog = screen.getByRole('dialog')
-    fireEvent.click(within(dialog).getByRole('button', { name: /^delete$/i }))
+    await act(async () => { fireEvent.click(within(dialog).getByRole('button', { name: /^delete$/i })) })
 
     expect(onDelete).toHaveBeenCalled()
     await settleReact()

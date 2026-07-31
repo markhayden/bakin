@@ -108,11 +108,35 @@ export async function settleReact(rounds = 3): Promise<void> {
   }
 }
 
+/**
+ * Run a render/renderHook inside an async act and return its result.
+ *
+ * The async act window is what lets mount effects — and the fetches they start —
+ * settle before the test body continues, instead of landing loose afterwards.
+ * Generic so `renderHook`'s result type survives: hoisting the value out of the
+ * act callback with an explicit `ReturnType<typeof renderHook>` annotation erases
+ * the hook's type and leaves `result.current` as `unknown`.
+ */
+export async function actRender<T>(render: () => T): Promise<T> {
+  let value!: T
+  await act(async () => {
+    value = render()
+  })
+  return value
+}
+
 afterEach(async () => {
   // No flag juggling here any more — beforeAll set the act environment for the
   // whole file, so this hook simply runs in it.
-  await settleReact()
+  //
+  // The drain runs INSIDE act. It used to run outside, which meant any update
+  // it flushed was — by definition — an update landing outside act, and the
+  // gate would blame the test that had just finished. Under parallel load that
+  // showed up as 6 phantom KanbanBoard warnings that no amount of fixing the
+  // test could remove, because the warning was the teardown's, not the test's.
+  // act still flushes the same work; it just joins it instead of watching it.
   await act(async () => {
+    await settleReact()
     // The unmount runs under act (joins act-visible work) AFTER the
     // scheduler drain above let any yielded render complete — unmounting
     // between paused slices is what React 19 forbids.

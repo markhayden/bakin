@@ -268,14 +268,19 @@ describe('KanbanBoard drag and drop', () => {
   })
 
   async function settleBoard(): Promise<void> {
-    let stableRounds = 0
-    let lastCount = -1
-    for (let i = 0; i < 60 && stableRounds < 4; i++) {
-      await new Promise((r) => setTimeout(r, 0)) // macrotask: fetch json() + scheduler continuation
-      await settleReact(1)                       // let the resulting render slice commit
-      if (fetchCount === lastCount) stableRounds++
-      else { stableRounds = 0; lastCount = fetchCount }
-    }
+    // Inside act: this drain exists to flush the post-persist refetch cascade,
+    // and act is what joins those updates instead of letting them land loose
+    // (which is what the run-wide act gate fails on).
+    await act(async () => {
+      let stableRounds = 0
+      let lastCount = -1
+      for (let i = 0; i < 60 && stableRounds < 4; i++) {
+        await new Promise((r) => setTimeout(r, 0)) // macrotask: fetch json() + scheduler continuation
+        await settleReact(1)                       // let the resulting render slice commit
+        if (fetchCount === lastCount) stableRounds++
+        else { stableRounds = 0; lastCount = fetchCount }
+      }
+    })
   }
 
   // Runs BEFORE the imported rtl-settle afterEach (describe-scoped hooks fire
@@ -712,14 +717,18 @@ describe('TaskCard rendering', () => {
     const { TaskCard } = require('../../plugins/tasks/components/task-card') as typeof import('../../plugins/tasks/components/task-card')
 
     const task = makeTask('task-1', 'Test Task')
-    const { container } = render(
-      <TaskCard
-        task={task}
-        columnId="todo"
-        onDelete={mock()}
-        onClick={mock()}
-      />
-    )
+    let __view0!: ReturnType<typeof render>
+    await act(async () => {
+      __view0 = render(
+        <TaskCard
+          task={task}
+          columnId="todo"
+          onDelete={mock()}
+          onClick={mock()}
+        />
+      )
+    })
+    const { container } = __view0
 
     expect(container.textContent).toContain('Test Task')
     expect(container.querySelector('.ring-\\[var\\(--accent\\)\\]\\/30')).toBeTruthy()
@@ -740,14 +749,18 @@ describe('TaskCard rendering', () => {
     const { TaskCard } = require('../../plugins/tasks/components/task-card') as typeof import('../../plugins/tasks/components/task-card')
 
     const task = makeTask('task-1', 'Test Task')
-    const { container } = render(
-      <TaskCard
-        task={task}
-        columnId="todo"
-        onDelete={mock()}
-        onClick={mock()}
-      />
-    )
+    let __view1!: ReturnType<typeof render>
+    await act(async () => {
+      __view1 = render(
+        <TaskCard
+          task={task}
+          columnId="todo"
+          onDelete={mock()}
+          onClick={mock()}
+        />
+      )
+    })
+    const { container } = __view1
 
     expect(container.textContent).toContain('Test Task')
     expect(container.querySelector('.cursor-grab')).toBeTruthy()

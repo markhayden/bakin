@@ -107,8 +107,11 @@ afterEach(() => {
 
 describe('task drawer gate refresh on plugin events', () => {
   it('refetches the workflow instance when the open task gate resolves out-of-band', async () => {
-    render(<TaskDetailDrawer task={makeTask()} columnId="review" open editing={false} onClose={() => {}} onEdit={() => {}} onCancelEdit={() => {}} />)
-    await settleReact()
+    await act(async () => {
+      await act(async () => {
+        render(<TaskDetailDrawer task={makeTask()} columnId="review" open editing={false} onClose={() => {}} onEdit={() => {}} onCancelEdit={() => {}} />)
+      })
+    })
     expect(instanceFetches).toBe(1)
 
     await act(async () => {
@@ -119,8 +122,11 @@ describe('task drawer gate refresh on plugin events', () => {
   })
 
   it("ignores gate events for OTHER tasks", async () => {
-    render(<TaskDetailDrawer task={makeTask()} columnId="review" open editing={false} onClose={() => {}} onEdit={() => {}} onCancelEdit={() => {}} />)
-    await settleReact()
+    await act(async () => {
+      await act(async () => {
+        render(<TaskDetailDrawer task={makeTask()} columnId="review" open editing={false} onClose={() => {}} onEdit={() => {}} onCancelEdit={() => {}} />)
+      })
+    })
     expect(instanceFetches).toBe(1)
 
     await act(async () => {
