@@ -21,7 +21,7 @@ const meta = {
     layout: 'fullscreen',
     docs: {
       description: {
-        component: 'ChannelIcon renders the glyph for a notification channel (email, Discord, Instagram, …) resolved from the workflows channel registry. Pass `channels` when you already hold the definitions (or in tests); omit it to resolve from the live registry. The icon is decorative — always pair it with the channel\'s visible label. Unknown channels render an honest generic glyph, never a broken image.',
+        component: 'ChannelIcon renders the glyph for a notification channel (email, Discord, Instagram, …) resolved from the workflows channel registry. Pass `channels` when you already hold the definitions (or in tests); omit it to resolve from the live registry. The icon is decorative — always pair it with the channel\'s visible label, and size it to its context: `sm` (12px) beside meta text, `md` (16px, default) beside body text, `lg` (24px) standalone or in legends. Unknown channels render an honest generic glyph, never a broken image.',
       },
     },
     bakinCoverage: ['desktop', 'non-color', 'empty'],
@@ -82,5 +82,37 @@ export const KnownAndUnknownChannels = {
     const fallback = canvasElement.querySelector('[data-channel-icon="carrier-pigeon"]')
     await expect(fallback).not.toBeNull()
     await expect(fallback!.querySelector('circle')).not.toBeNull()
+  },
+} satisfies Story
+
+export const Sizes = {
+  render: () => (
+    <StoryStage
+      eyebrow="Channel identity"
+      title="Size to the context"
+      description="sm rides beside meta text, md is the body-text default, lg stands alone in legends and pickers."
+    >
+      <StorySection title="The ladder">
+        <StoryCluster>
+          {(['sm', 'md', 'lg'] as const).map((size) => (
+            <span key={size} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+              <ChannelIcon channelId="discord" size={size} channels={[{ id: 'discord', icon: 'MessageSquare' }]} />
+              {size}
+            </span>
+          ))}
+        </StoryCluster>
+      </StorySection>
+    </StoryStage>
+  ),
+  play: async ({ canvasElement }) => {
+    const icons = canvasElement.querySelectorAll('[data-channel-icon="discord"]')
+    await expect(icons.length).toBe(3)
+    await expect(icons[0]).toHaveAttribute('data-size', 'sm')
+    await expect(icons[1]).toHaveAttribute('data-size', 'md')
+    await expect(icons[2]).toHaveAttribute('data-size', 'lg')
+    const widths = Array.from(icons).map((icon) => icon.getBoundingClientRect().width)
+    await expect(widths[0]).toBeLessThan(widths[1])
+    await expect(widths[1]).toBeLessThan(widths[2])
+    await expect(Math.round(widths[1])).toBe(16)
   },
 } satisfies Story

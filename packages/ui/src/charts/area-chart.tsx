@@ -18,8 +18,12 @@ export interface AreaChartProps {
   stacked?: boolean
   formatValue?: (value: number) => string
   emptyLabel?: string
+  /** Disable only when an equivalent exact table is rendered beside the chart. */
+  showDataTable?: boolean
   /** Collapse the exact-data table behind its disclosure for space-tight contexts. */
   compactData?: boolean
+  /** When false, the exact-data table renders statically with no disclosure. */
+  dataTableExpandable?: boolean
 }
 
 interface Point {
@@ -119,6 +123,8 @@ export function AreaChart({
   formatValue = (value) => value.toLocaleString(),
   emptyLabel = 'No reported data in this window.',
   compactData = false,
+  showDataTable = true,
+  dataTableExpandable = true,
 }: AreaChartProps) {
   const tooltipId = useId()
   const plotRef = useRef<HTMLDivElement>(null)
@@ -168,7 +174,7 @@ export function AreaChart({
   }, [hasRenderableData])
 
   const table = (
-    <ChartDataTable data={data} series={series} caption={`${label} data`} formatValue={formatValue} defaultOpen={!compactData} />
+    showDataTable ? <ChartDataTable data={data} series={series} caption={`${label} data`} formatValue={formatValue} defaultOpen={!compactData} expandable={dataTableExpandable} /> : null
   )
 
   if (!hasRenderableData) {

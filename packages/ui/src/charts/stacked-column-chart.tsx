@@ -30,8 +30,12 @@ export interface StackedColumnChartProps {
   missingBucketLabel?: string
   /** Shown when no buckets exist. */
   emptyLabel?: string
+  /** Disable only when an equivalent exact table is rendered beside the chart. */
+  showDataTable?: boolean
   /** Collapse the exact-data table behind its disclosure for space-tight contexts. */
   compactData?: boolean
+  /** When false, the exact-data table renders statically with no disclosure. */
+  dataTableExpandable?: boolean
 }
 
 const OTHER_KEY = '__bakin_other__'
@@ -102,6 +106,8 @@ export function StackedColumnChart({
   missingBucketLabel = 'Not reported',
   emptyLabel = 'No reported data in this window.',
   compactData = false,
+  showDataTable = true,
+  dataTableExpandable = true,
 }: StackedColumnChartProps) {
   const tooltipId = useId()
   const [hidden, setHidden] = useState<Set<string>>(new Set())
@@ -129,17 +135,20 @@ export function StackedColumnChart({
     : []
   const activeTotal = activeIndex === null ? 0 : columnTotals[activeIndex] ?? 0
   const activeMissing = activeDatum !== null && !bucketHasValues(activeDatum)
-  const table = (
-    <ChartDataTable
-      data={data}
-      series={series.exact}
-      caption={dataLabel ?? `${label} data`}
-      formatValue={formatValue}
-      missingValue={missingValue}
-      emptyLabel={emptyLabel}
-      defaultOpen={!compactData}
-    />
-  )
+  const table = showDataTable
+    ? (
+        <ChartDataTable
+          data={data}
+          series={series.exact}
+          caption={dataLabel ?? `${label} data`}
+          formatValue={formatValue}
+          missingValue={missingValue}
+          emptyLabel={emptyLabel}
+          defaultOpen={!compactData}
+          expandable={dataTableExpandable}
+        />
+      )
+    : null
 
   if (data.length === 0 || series.exact.length === 0) {
     return (

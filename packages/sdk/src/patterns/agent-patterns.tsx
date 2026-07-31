@@ -13,6 +13,7 @@ import {
   SelectLabel,
   SelectTrigger,
   SelectValue,
+  ShimmerText,
   type AvatarSize,
 } from '@bakin/ui'
 
@@ -27,13 +28,16 @@ export interface AgentIdentity {
 
 export type AgentPresenceStatus = 'online' | 'working' | 'available' | 'offline' | 'error'
 
+// `active` marks presence states describing work in motion right now — only
+// those shimmer. Steady states (Online, Available, Offline, Needs attention)
+// stay static.
 const presence = {
-  online: { label: 'Online', dot: 'bg-bakin-action-primary-background' },
-  working: { label: 'Working', dot: 'bg-bakin-signal-highlight' },
-  available: { label: 'Available', dot: 'bg-bakin-action-primary-background' },
-  offline: { label: 'Offline', dot: 'bg-bakin-text-muted' },
-  error: { label: 'Needs attention', dot: 'bg-bakin-signal-danger' },
-} as const satisfies Record<AgentPresenceStatus, { label: string; dot: string }>
+  online: { label: 'Online', dot: 'bg-bakin-action-primary-background', active: false },
+  working: { label: 'Working', dot: 'bg-bakin-signal-highlight', active: true },
+  available: { label: 'Available', dot: 'bg-bakin-action-primary-background', active: false },
+  offline: { label: 'Offline', dot: 'bg-bakin-text-muted', active: false },
+  error: { label: 'Needs attention', dot: 'bg-bakin-signal-danger', active: false },
+} as const satisfies Record<AgentPresenceStatus, { label: string; dot: string; active: boolean }>
 
 const presentationColor = /^(?:#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})|(?:rgb|hsl)a?\([0-9.,%+\-\s/]+\)|var\(--[a-z0-9][a-z0-9-]*\)|[a-z]+)$/i
 
@@ -143,7 +147,15 @@ export function AgentStatus({ name, status, detail, className }: AgentStatusProp
       <span className="flex min-w-0 flex-col">
         <span className="flex min-w-0 flex-wrap items-center gap-x-bakin-2">
           <span className="min-w-0 truncate font-bakin-typography-weight-semibold text-bakin-text-primary">{name}</span>
-          <span className="text-bakin-text-muted">{presence[status].label}</span>
+          {/* Same visible words either way; ShimmerText adds motion, never semantics.
+              While sweeping, the gradient owns the paint — the muted class applies
+              only to the static states so it can't clash with bg-clip text. */}
+          <ShimmerText
+            active={presence[status].active}
+            className={presence[status].active ? undefined : 'text-bakin-text-muted'}
+          >
+            {presence[status].label}
+          </ShimmerText>
         </span>
         {detail ? <span className="break-words text-bakin-text-muted">{detail}</span> : null}
       </span>

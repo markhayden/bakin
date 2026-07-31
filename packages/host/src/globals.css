@@ -188,6 +188,27 @@
   opacity: 0.5;
 }
 
+/*
+ * Kit motion vocabulary — text luminance sweep (ShimmerText primitive).
+ * Declared via @theme so `animate-shimmer-sweep` is a generated utility and
+ * the keyframes ship only when the utility is used. The sweep animates
+ * background-position over a 300%-wide gradient (muted base, bright band);
+ * reduced motion pins the position mid-sweep via the component's static
+ * `background-position: 50%` declaration.
+ */
+@theme {
+  --animate-shimmer-sweep: shimmer-sweep 2.4s linear infinite;
+
+  @keyframes shimmer-sweep {
+    from {
+      background-position: 100% 50%;
+    }
+    to {
+      background-position: 0% 50%;
+    }
+  }
+}
+
 /* Connection pulse */
 @keyframes pulse-dot {
   0%, 100% { opacity: 1; }

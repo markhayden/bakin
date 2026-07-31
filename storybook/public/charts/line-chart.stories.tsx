@@ -46,6 +46,8 @@ export const CanonicalUsage = {
   args: {
     smooth: false,
     compactData: false,
+    showDataTable: true,
+    dataTableExpandable: true,
   },
   play: async ({ canvas, args }) => {
     await expect(canvas.getByRole('group', { name: 'Task outcomes' })).toBeVisible()

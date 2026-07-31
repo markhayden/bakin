@@ -10,8 +10,8 @@
     "entrypoints": 7,
     "supportedEntrypoints": 7,
     "frozenLegacyEntrypoints": 0,
-    "valueExports": 282,
-    "typeExports": 362
+    "valueExports": 283,
+    "typeExports": 365
   },
   "entrypoints": [
     {
@@ -140,6 +140,7 @@
         "SheetPortal",
         "SheetTitle",
         "SheetTrigger",
+        "ShimmerText",
         "Skeleton",
         "SubmitButton",
         "Switch",
@@ -301,6 +302,8 @@
         "SheetSide",
         "SheetTitleProps",
         "SheetTriggerProps",
+        "ShimmerTextHighlight",
+        "ShimmerTextProps",
         "SkeletonProps",
         "SkeletonShape",
         "SubmitButtonProps",
@@ -461,6 +464,7 @@
         "CalendarGridView",
         "ChannelIconChannel",
         "ChannelIconProps",
+        "ChannelIconSize",
         "ColorInputProps",
         "ColorPickerOption",
         "ColorPickerProps",

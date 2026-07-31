@@ -36,6 +36,8 @@ export interface PieChartProps {
   showDataTable?: boolean
   /** Collapse the exact-data table behind its disclosure for space-tight contexts. */
   compactData?: boolean
+  /** When false, the exact-data table renders statically with no disclosure. */
+  dataTableExpandable?: boolean
 }
 
 /** A pie renders at most this many slices; later entities fold into Other. */
@@ -221,6 +223,7 @@ export function PieChart({
   tones,
   showDataTable = true,
   compactData = false,
+  dataTableExpandable = true,
 }: PieChartProps) {
   const tooltipId = useId()
   const [active, setActive] = useState<ActiveSlice | null>(null)
@@ -234,7 +237,7 @@ export function PieChart({
     [data],
   )
   const table = showDataTable
-    ? <ChartDataTable data={tableData} series={TABLE_SERIES} caption={`${label} data`} formatValue={formatValue} defaultOpen={!compactData} />
+    ? <ChartDataTable data={tableData} series={TABLE_SERIES} caption={`${label} data`} formatValue={formatValue} defaultOpen={!compactData} expandable={dataTableExpandable} />
     : null
 
   if (model.hasNegative) {

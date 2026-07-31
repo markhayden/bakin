@@ -12,7 +12,7 @@ const meta = {
     layout: 'fullscreen',
     docs: {
       description: {
-        component: 'AgentStatus renders an agent name, exact visible presence language (Online, Working, Available, Offline, Needs attention), and optional current-activity detail as one `role="status"` unit. The presence dot is decorative — the words carry the state, never color alone. Heartbeat timing and status derivation remain consumer-owned.',
+        component: 'AgentStatus renders an agent name, exact visible presence language (Online, Working, Available, Offline, Needs attention), and optional current-activity detail as one `role="status"` unit. The presence dot is decorative — the words carry the state, never color alone. The Working label sweeps with the `Primitives/ShimmerText` text-motion pattern (steady states stay static; reduced motion pins the sweep mid-band). Heartbeat timing and status derivation remain consumer-owned.',
       },
     },
     bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'non-color', 'long-content'],

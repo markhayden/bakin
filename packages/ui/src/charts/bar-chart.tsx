@@ -21,6 +21,8 @@ export interface BarChartProps {
   showDataTable?: boolean
   /** Collapse the exact-data table behind its disclosure for space-tight contexts. */
   compactData?: boolean
+  /** When false, the exact-data table renders statically with no disclosure. */
+  dataTableExpandable?: boolean
 }
 
 interface ActiveBar {
@@ -61,6 +63,7 @@ export function BarChart({
   emptyLabel = 'No reported data in this window.',
   showDataTable = true,
   compactData = false,
+  dataTableExpandable = true,
 }: BarChartProps) {
   const tooltipId = useId()
   const [active, setActive] = useState<ActiveBar | null>(null)
@@ -84,7 +87,7 @@ export function BarChart({
     return Math.max(1, ...reportedValues)
   }, [data, reportedValues, series, stacked])
   const table = showDataTable
-    ? <ChartDataTable data={data} series={series} caption={`${label} data`} formatValue={formatValue} defaultOpen={!compactData} />
+    ? <ChartDataTable data={data} series={series} caption={`${label} data`} formatValue={formatValue} defaultOpen={!compactData} expandable={dataTableExpandable} />
     : null
 
   if (data.length === 0 || series.length === 0 || reportedValues.length === 0) {

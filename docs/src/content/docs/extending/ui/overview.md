@@ -503,6 +503,7 @@ The surface/content set covers bounded objects, compact identity, content bounda
 | Show compact identity | `Avatar`, `AvatarFallback`, and group helpers | Pair the visual with a visible or accessible identity name |
 | Reinforce a real content boundary | `Separator` | Decorative by default; opt into separator semantics deliberately |
 | Approximate content while a labelled region loads | `Skeleton` | Silent by default and motion-reduced automatically |
+| Mark a text label as work in motion right now | `ShimmerText` | Closed `highlight` vocabulary; static under reduced motion; adds no semantics |
 | Reveal optional supporting detail | `Collapsible` and its trigger/content | The trigger owns expanded state, focus, and panel association |
 
 ```tsx
@@ -586,6 +587,8 @@ export function ReviewBoard() {
 ```
 
 `Skeleton` does not announce itself. Put `aria-busy="true"` and a useful accessible name on the region being loaded. Use `shape="text"`, `"circle"`, or `"rectangle"` to approximate broad geometry, and keep the loading preview simpler than the final interface.
+
+`ShimmerText` is the kit's text-motion pattern: a left-to-right luminance sweep reserved for labels naming work genuinely in motion right now — an agent's Working presence, a turn being composed — never decoration or emphasis. It wraps the same visible words without adding any role or aria, `active={false}` renders an identical plain span so toggling is markup-stable, and `highlight` is a closed vocabulary (`ink` for the primary text token, `accent` for the brand accent) rather than a color prop. Under reduced motion the sweep stops and the gradient pins mid-band, so the active label still reads slightly brighter than body copy; `AgentStatus` adopts it for its Working state and is the reference consumer.
 
 Collapsible is for supporting detail that can safely start hidden. Required decisions, errors, and primary actions stay visible. Its trigger already supplies button behavior, `aria-expanded`, and the panel relationship; do not recreate that state with a clickable `div`.
 

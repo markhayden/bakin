@@ -16,8 +16,12 @@ export interface LineChartProps {
   height?: number
   formatValue?: (value: number) => string
   emptyLabel?: string
+  /** Disable only when an equivalent exact table is rendered beside the chart. */
+  showDataTable?: boolean
   /** Collapse the exact-data table behind its disclosure for space-tight contexts. */
   compactData?: boolean
+  /** When false, the exact-data table renders statically with no disclosure. */
+  dataTableExpandable?: boolean
   /**
    * Draw each contiguous segment as a monotone cubic (Fritsch–Carlson)
    * instead of straight lines. The curve passes exactly through every data
@@ -94,6 +98,8 @@ export function LineChart({
   formatValue = (value) => value.toLocaleString(),
   emptyLabel = 'No reported data in this window.',
   compactData = false,
+  showDataTable = true,
+  dataTableExpandable = true,
   smooth = false,
 }: LineChartProps) {
   const tooltipId = useId()
@@ -135,7 +141,7 @@ export function LineChart({
   }, [hasRenderableData])
 
   const table = (
-    <ChartDataTable data={data} series={series} caption={`${label} data`} formatValue={formatValue} defaultOpen={!compactData} />
+    showDataTable ? <ChartDataTable data={data} series={series} caption={`${label} data`} formatValue={formatValue} defaultOpen={!compactData} expandable={dataTableExpandable} /> : null
   )
 
   if (!hasRenderableData) {

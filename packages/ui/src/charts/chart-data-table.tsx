@@ -44,6 +44,11 @@ export interface ChartDataTableProps {
   emptyLabel?: ReactNode
   /** Starts the exact-data disclosure open. */
   defaultOpen?: boolean
+  /**
+   * When false, renders the table statically with no disclosure chrome —
+   * always visible, no collapse affordance. `defaultOpen` is ignored.
+   */
+  expandable?: boolean
   /** Visually hide the exact table when the owning visual is intentionally compact. */
   visuallyHidden?: boolean
   /**
@@ -142,6 +147,7 @@ export function ChartDataTable({
   missingValue = 'Not reported',
   emptyLabel = 'No data available.',
   defaultOpen = false,
+  expandable = true,
   visuallyHidden = false,
   renderTable,
   className,
@@ -168,6 +174,23 @@ export function ChartDataTable({
 
   if (visuallyHidden) {
     return <div className={cn('sr-only', className)} data-slot="chart-data-table">{table}</div>
+  }
+
+  if (!expandable) {
+    return (
+      <div
+        className={cn('mt-bakin-3 min-w-0 max-w-full text-[length:var(--bakin-typography-size-meta)] text-bakin-text-muted', className)}
+        data-slot="chart-data-table"
+        data-expandable="false"
+      >
+        <BoundedOverflow
+          label={`${caption} table`}
+          className="w-full rounded-bakin-surface border border-bakin-border-subtle"
+        >
+          {table}
+        </BoundedOverflow>
+      </div>
+    )
   }
 
   return (

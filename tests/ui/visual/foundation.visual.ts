@@ -719,6 +719,7 @@ const PRIMITIVES_BASELINES = [
   { url: '/iframe.html?id=forms-assetlibrarypicker--library-states&viewMode=story', png: 'forms-asset-library-picker.png', text: 'Honest library states' },
   { url: '/iframe.html?id=feedback-progress--markers&viewMode=story', png: 'feedback-progress-markers.png', role: 'progressbar' as const },
   { url: '/iframe.html?id=foundations-elevation--ladder&viewMode=story', png: 'foundations-elevation.png', role: 'heading' as const, name: 'Elevation' },
+  { url: '/iframe.html?id=primitives-shimmertext--states-and-highlights&viewMode=story', png: 'primitives-shimmer-text.png', text: 'Sweep only what is actually in motion' },
 ]
 
 for (const baseline of PRIMITIVES_BASELINES) {

@@ -13,8 +13,20 @@ export interface ChannelIconChannel {
   icon?: string
 }
 
+export type ChannelIconSize = 'sm' | 'md' | 'lg'
+
+// On the icon ladder shared with Button's inline-icon sizing: sm pairs with
+// meta text, md (default) with body text, lg for standalone/legend use.
+const ICON_SIZE_CLASSES: Record<ChannelIconSize, string> = {
+  sm: 'size-bakin-3',
+  md: 'size-bakin-4',
+  lg: 'size-bakin-6',
+}
+
 export interface ChannelIconProps {
   channelId: string
+  /** sm 12px · md 16px (default) · lg 24px. */
+  size?: ChannelIconSize
   className?: string
   /**
    * Channel definitions to resolve the icon from. Omit to resolve from the
@@ -107,7 +119,7 @@ export function __resetChannelIconCache(): void {
  * the workflows channel registry. Decorative by default — pair it with the
  * channel's visible label; it never carries meaning alone.
  */
-export function ChannelIcon({ channelId, className, channels }: ChannelIconProps) {
+export function ChannelIcon({ channelId, size = 'md', className, channels }: ChannelIconProps) {
   const [fetched, setFetched] = useState<ChannelIconChannel[]>(() => cachedChannels ?? [])
 
   useEffect(() => {
@@ -127,10 +139,9 @@ export function ChannelIcon({ channelId, className, channels }: ChannelIconProps
     <svg
       aria-hidden="true"
       viewBox="0 0 24 24"
-      width={24}
-      height={24}
       data-channel-icon={channelId}
-      className={className}
+      data-size={size}
+      className={`shrink-0 ${ICON_SIZE_CLASSES[size]} ${className ?? ''}`}
       fill="none"
       stroke="currentColor"
       strokeWidth="2"

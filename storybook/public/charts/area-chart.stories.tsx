@@ -46,6 +46,8 @@ export const CanonicalUsage = {
   args: {
     stacked: false,
     compactData: false,
+    showDataTable: true,
+    dataTableExpandable: true,
   },
   play: async ({ canvas, args }) => {
     await expect(canvas.getByRole('group', { name: 'Task volume' })).toBeVisible()

@@ -35,6 +35,8 @@ export interface RankedBarChartProps {
   showDataTable?: boolean
   /** Collapse the exact-data table behind its disclosure for space-tight contexts. */
   compactData?: boolean
+  /** When false, the exact-data table renders statically with no disclosure. */
+  dataTableExpandable?: boolean
 }
 
 const MUTED_TOTAL_OPACITY = 0.45
@@ -59,6 +61,7 @@ export function RankedBarChart({
   emptyLabel = 'No reported data in this window.',
   showDataTable = true,
   compactData = false,
+  dataTableExpandable = true,
 }: RankedBarChartProps) {
   const descriptionId = useId()
   const seriesFill = (item: ChartSeries, slot: number): string => {
@@ -94,6 +97,7 @@ export function RankedBarChart({
           caption={`${label} data`}
           formatValue={formatValue}
           defaultOpen={!compactData}
+          expandable={dataTableExpandable}
         />
       )
     : null

@@ -32,7 +32,7 @@ const meta = {
     layout: 'fullscreen',
     docs: {
       description: {
-        component: 'BarChart is the dependency-free comparison chart for non-negative quantities across discrete windows. Grouped bars compare series within each window; `stacked` emphasizes window totals while focus preserves each segment value. Both forms share the fixed data palette in the same series order, visible legend labels, keyboard-focusable marks that mirror pointer tooltips, an intentionally absent value that stays missing instead of becoming zero, and an exact-data table that renders expanded by default so the evidence stays visible — `compactData` collapses it behind its disclosure for space-tight contexts. Use a line chart when signed values or change around zero matters.',
+        component: 'BarChart is the dependency-free comparison chart for non-negative quantities across discrete windows. Grouped bars compare series within each window; `stacked` emphasizes window totals while focus preserves each segment value. Both forms share the fixed data palette in the same series order, visible legend labels, keyboard-focusable marks that mirror pointer tooltips, an intentionally absent value that stays missing instead of becoming zero, and an exact-data table that renders expanded by default so the evidence stays visible. Every table-bearing chart shares the same three knobs: `showDataTable` removes the table (only when an equivalent exact table renders beside the chart), `compactData` collapses it behind its disclosure for space-tight contexts, and `dataTableExpandable={false}` renders it statically with no disclosure chrome. Use a line chart when signed values or change around zero matters.',
       },
     },
     bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'long-labels', 'overflow', 'multi-series', 'non-color', 'keyboard', 'missing-data'],
@@ -47,6 +47,8 @@ export const CanonicalUsage = {
   args: {
     stacked: false,
     compactData: false,
+    showDataTable: true,
+    dataTableExpandable: true,
   },
   play: async ({ canvas, args }) => {
     await expect(canvas.getByRole('group', { name: 'Task outcomes' })).toBeVisible()

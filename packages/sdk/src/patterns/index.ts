@@ -115,7 +115,7 @@ export type { AssetLibraryAsset, AssetLibraryPickerProps } from './asset-library
 
 /** Icon for a notification channel, resolved from the workflows channel registry. */
 export { ChannelIcon, __resetChannelIconCache } from './channel-patterns'
-export type { ChannelIconChannel, ChannelIconProps } from './channel-patterns'
+export type { ChannelIconChannel, ChannelIconProps, ChannelIconSize } from './channel-patterns'
 
 /** Schema-driven settings form with consumer-owned persistence and feedback. */
 export { PluginSettingsRenderer } from './plugin-settings-renderer'
