@@ -57,6 +57,12 @@ export const StatesAndHighlights = {
           <ShimmerText highlight="accent">Accent sweep</ShimmerText>
         </p>
       </StorySection>
+      <StorySection title="Base vocabulary" description="The resting text the band sweeps over: muted for secondary labels, primary for emphasized text.">
+        <p style={{ margin: 0, display: 'grid', gap: 'var(--bakin-layout-space-2)' }}>
+          <ShimmerText base="muted">Muted base</ShimmerText>
+          <ShimmerText base="primary" highlight="accent">Primary base, accent band</ShimmerText>
+        </p>
+      </StorySection>
     </StoryStage>
   ),
   play: async ({ canvas }) => {
@@ -71,5 +77,7 @@ export const StatesAndHighlights = {
 
     await expect(canvas.getByText('Ink sweep')).toHaveAttribute('data-highlight', 'ink')
     await expect(canvas.getByText('Accent sweep')).toHaveAttribute('data-highlight', 'accent')
+    await expect(canvas.getByText('Muted base')).toHaveAttribute('data-base', 'muted')
+    await expect(canvas.getByText('Primary base, accent band')).toHaveAttribute('data-base', 'primary')
   },
 } satisfies Story

@@ -72,3 +72,13 @@ describe('ShimmerText public contract', () => {
     expect(label.getAttribute('aria-hidden')).toBeNull()
   })
 })
+
+it('base vocabulary selects the resting token and defaults to muted', () => {
+  const { container, rerender } = render(<ShimmerText>Working</ShimmerText>)
+  let el = container.querySelector('[data-slot="shimmer-text"]')
+  expect(el?.getAttribute('data-base')).toBe('muted')
+  rerender(<ShimmerText base="primary">Working</ShimmerText>)
+  el = container.querySelector('[data-slot="shimmer-text"]')
+  expect(el?.getAttribute('data-base')).toBe('primary')
+  expect(el?.className).toContain('data-[base=primary]')
+})

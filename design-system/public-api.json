@@ -11,7 +11,7 @@
     "supportedEntrypoints": 7,
     "frozenLegacyEntrypoints": 0,
     "valueExports": 283,
-    "typeExports": 365
+    "typeExports": 366
   },
   "entrypoints": [
     {
@@ -302,6 +302,7 @@
         "SheetSide",
         "SheetTitleProps",
         "SheetTriggerProps",
+        "ShimmerTextBase",
         "ShimmerTextHighlight",
         "ShimmerTextProps",
         "SkeletonProps",

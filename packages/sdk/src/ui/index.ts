@@ -301,7 +301,8 @@ export type {
 export { Skeleton } from '@bakin/ui'
 export type { SkeletonProps, SkeletonShape } from '@bakin/ui'
 export { ShimmerText } from '@bakin/ui'
-export type { ShimmerTextHighlight, ShimmerTextProps } from '@bakin/ui'
+export type { ShimmerTextBase,
+  ShimmerTextHighlight, ShimmerTextProps } from '@bakin/ui'
 export { Switch } from '@bakin/ui'
 export type { SwitchProps, SwitchSize } from '@bakin/ui'
 export * from '@/components/ui/table'

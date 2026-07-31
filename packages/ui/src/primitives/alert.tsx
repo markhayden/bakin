@@ -23,7 +23,7 @@ const alertStyles = cva(
     'font-bakin-typography-family-ui text-left text-[length:var(--bakin-typography-size-body)] text-bakin-text-primary',
     'has-data-[slot=alert-action]:relative has-data-[slot=alert-action]:pr-[calc(var(--bakin-layout-space-8)*3)]',
     'has-[>svg]:grid-cols-[auto_1fr] has-[>svg]:gap-x-bakin-3',
-    '*:[svg]:row-span-2 *:[svg]:translate-y-bakin-1 *:[svg]:text-current *:[svg:not([class*="size-"])]:size-bakin-4',
+    '*:[svg]:row-span-2 *:[svg]:translate-y-0.5 *:[svg]:text-current *:[svg:not([class*="size-"])]:size-bakin-4',
   ],
   {
     variants: {

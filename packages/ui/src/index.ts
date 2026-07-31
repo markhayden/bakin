@@ -154,7 +154,8 @@ export { Skeleton } from './primitives/skeleton'
 export type { SkeletonProps, SkeletonShape } from './primitives/skeleton'
 
 export { ShimmerText } from './primitives/shimmer-text'
-export type { ShimmerTextHighlight, ShimmerTextProps } from './primitives/shimmer-text'
+export type { ShimmerTextBase,
+  ShimmerTextHighlight, ShimmerTextProps } from './primitives/shimmer-text'
 
 export { Collapsible, CollapsibleContent, CollapsibleTrigger } from './primitives/collapsible'
 export type {
