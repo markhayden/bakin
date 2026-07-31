@@ -135,7 +135,7 @@ export function AgentStatus({ name, status, detail, className }: AgentStatusProp
       role="status"
       aria-label={`${name} status`}
       data-agent-status={status}
-      className={`inline-flex min-w-0 max-w-full flex-wrap items-center gap-x-bakin-2 gap-y-bakin-1 font-bakin-typography-family-ui [font-size:var(--bakin-typography-size-meta)] ${className ?? ''}`}
+      className={`inline-flex min-w-0 max-w-full flex-wrap items-center gap-x-bakin-2 gap-y-bakin-0 font-bakin-typography-family-ui [font-size:var(--bakin-typography-size-meta)] ${className ?? ''}`}
     >
       <AgentDot status={status} decorative />
       <span className="min-w-0 truncate font-bakin-typography-weight-semibold text-bakin-text-primary">{name}</span>
