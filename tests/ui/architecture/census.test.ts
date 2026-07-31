@@ -40,11 +40,6 @@ function createFixture(): string {
     'export interface ButtonProps { label: string }',
     'export function Button({ label }: ButtonProps) { return <button>{label}</button> }',
   ].join('\n'))
-  writeFixture(
-    root,
-    'packages/sdk/src/components/index.ts',
-    "export { Button } from '@/components/button'\nexport type { ButtonProps } from '@/components/button'\n",
-  )
   return root
 }
 
@@ -53,7 +48,7 @@ afterEach(() => {
 })
 
 describe('scanCoreCensus', () => {
-  it('discovers routes, manifest slots, shared components, and public SDK exports', () => {
+  it('discovers routes, manifest slots, and shared components', () => {
     const census = scanCoreCensus(createFixture())
 
     expect(census.entries).toEqual(expect.arrayContaining([
@@ -77,24 +72,13 @@ describe('scanCoreCensus', () => {
       expect.objectContaining({
         id: 'shared-component:src/components/button',
         kind: 'shared-component',
-        exportStatus: 'public',
+        exportStatus: 'private',
         symbols: ['Button'],
       }),
-      expect.objectContaining({
-        id: 'sdk-ui-export:value:Button',
-        kind: 'sdk-ui-export',
-        identity: expect.objectContaining({
-          entrypoint: '@makinbakin/sdk/components',
-          symbol: 'Button',
-        }),
-        sourcePath: 'src/components/button.tsx',
-      }),
-      expect.objectContaining({
-        id: 'sdk-ui-export:type:ButtonProps',
-        kind: 'sdk-ui-export',
-        exportStatus: 'public',
-      }),
     ]))
+    // P-final: the frozen components barrel is gone — the census never
+    // produces public sdk-ui-export entries anymore.
+    expect(census.entries.filter((entry) => entry.kind === 'sdk-ui-export')).toEqual([])
     expect(validateCensus(census)).toEqual([])
   })
 
@@ -110,57 +94,6 @@ describe('scanCoreCensus', () => {
       classification: 'non-visual-alias',
       identity: { route: '/' },
     })
-  })
-
-  it('rejects public barrel syntax that the census cannot expand safely', () => {
-    const root = createFixture()
-    writeFixture(root, 'packages/sdk/src/components/index.ts', "export * from '@/components/button'\n")
-
-    expect(() => scanCoreCensus(root)).toThrow('Unsupported public SDK export syntax')
-  })
-
-  it('follows legacy component exports delegated to a focused SDK entrypoint', () => {
-    const root = createFixture()
-    writeFixture(root, 'packages/sdk/src/conversation/index.ts', [
-      'export function foldConversation() { return [] }',
-      'export interface ConversationTurn {}',
-    ].join('\n'))
-    writeFixture(root, 'packages/sdk/src/components/index.ts', [
-      "export { foldConversation } from '@makinbakin/sdk/conversation'",
-      "export type { ConversationTurn } from '@makinbakin/sdk/conversation'",
-    ].join('\n'))
-
-    const entries = scanCoreCensus(root).entries
-    expect(entries).toContainEqual(expect.objectContaining({
-      id: 'sdk-ui-export:value:foldConversation',
-      sourcePath: 'packages/sdk/src/conversation/index.ts',
-    }))
-    expect(entries).toContainEqual(expect.objectContaining({
-      id: 'sdk-ui-export:type:ConversationTurn',
-      sourcePath: 'packages/sdk/src/conversation/index.ts',
-    }))
-  })
-
-  it('follows legacy component exports delegated through a relative sibling entrypoint', () => {
-    const root = createFixture()
-    writeFixture(root, 'packages/sdk/src/patterns/search-patterns.tsx', [
-      'export function SearchUnavailable() { return null }',
-      'export interface SearchUnavailableProps {}',
-    ].join('\n'))
-    writeFixture(root, 'packages/sdk/src/components/index.ts', [
-      "export { SearchUnavailable } from '../patterns/search-patterns'",
-      "export type { SearchUnavailableProps } from '../patterns/search-patterns'",
-    ].join('\n'))
-
-    const entries = scanCoreCensus(root).entries
-    expect(entries).toContainEqual(expect.objectContaining({
-      id: 'sdk-ui-export:value:SearchUnavailable',
-      sourcePath: 'packages/sdk/src/patterns/search-patterns.tsx',
-    }))
-    expect(entries).toContainEqual(expect.objectContaining({
-      id: 'sdk-ui-export:type:SearchUnavailableProps',
-      sourcePath: 'packages/sdk/src/patterns/search-patterns.tsx',
-    }))
   })
 
   it('surfaces a client slot that has no mirrored manifest declaration', () => {
@@ -211,8 +144,8 @@ describe('the Bakin core census', () => {
       id: 'plugin-template:reference-plugin',
       owner: expect.objectContaining({ pluginId: 'reference-bookmarks' }),
     }))
-    expect(byKind('shared-component').length).toBeGreaterThan(80)
-    expect(byKind('sdk-ui-export').length).toBeGreaterThan(80)
+    expect(byKind('shared-component').length).toBeGreaterThan(20)
+    expect(byKind('sdk-ui-export')).toHaveLength(0)
     expect(validateCensus(census)).toEqual([])
   })
 })

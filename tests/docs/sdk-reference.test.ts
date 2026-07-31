@@ -22,12 +22,15 @@ describe('generated SDK Health reference', () => {
     }
   })
 
-  it('documents the focused visual entrypoint foundation and legacy barrel status', () => {
+  it('documents the focused visual entrypoint foundation without the deleted legacy barrel', () => {
     const reference = renderSdkReference()
 
     for (const subpath of ['ui', 'layout', 'patterns', 'charts', 'conversation']) {
       expect(reference).toContain(`## \`@makinbakin/sdk/${subpath}\``)
     }
-    expect(reference.toLowerCase()).toContain('migration-only')
+    // P-final: the frozen components barrel is deleted — the reference must
+    // not resurrect it or its migration-only framing.
+    expect(reference).not.toContain('@makinbakin/sdk/components')
+    expect(reference.toLowerCase()).not.toContain('migration-only')
   })
 })

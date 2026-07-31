@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
 const REPO_ROOT = resolve(import.meta.dir, '../../..')
@@ -30,28 +30,28 @@ describe('anchored overlay primitive ownership', () => {
     expect(sdkSource).not.toContain('optionItemClasses')
   })
 
-  it('routes SDK and legacy paths to one implementation', async () => {
+  it('routes the SDK to one implementation; deleted legacy shims stay gone', async () => {
     const sdkSource = readRepoFile('packages/sdk/src/ui/index.ts')
     const hostBridge = readRepoFile('packages/host/src/ui/anchored-overlays.ts')
     expect(sdkSource).toContain("from '@bakin/ui'")
     expect(hostBridge).toContain("from '@bakin/ui'")
 
-    for (const primitive of PRIMITIVES) {
-      const shim = readRepoFile(`src/components/ui/${primitive}.tsx`)
-      expect(shim).toContain("from '../../../packages/host/src/ui/anchored-overlays'")
+    // P-final: the legacy shims were deleted with the frozen barrel, except
+    // `tooltip`, which the host provider still reaches via `@/components/ui/tooltip`.
+    for (const primitive of ['popover', 'dropdown-menu', 'command']) {
+      expect(existsSync(join(REPO_ROOT, `src/components/ui/${primitive}.tsx`))).toBe(false)
     }
+    expect(readRepoFile('src/components/ui/tooltip.tsx')).toContain("from '../../../packages/host/src/ui/anchored-overlays'")
 
-    const [privateUi, publicUi, legacyPopover, legacyMenu] = await Promise.all([
+    const [privateUi, publicUi, legacyTooltip] = await Promise.all([
       import('@bakin/ui'),
       import('@makinbakin/sdk/ui'),
-      import('../../../src/components/ui/popover'),
-      import('../../../src/components/ui/dropdown-menu'),
+      import('../../../src/components/ui/tooltip'),
     ])
     expect(publicUi.PopoverContent).toBe(privateUi.PopoverContent)
     expect(publicUi.DropdownMenuItem).toBe(privateUi.DropdownMenuItem)
     expect(publicUi.TooltipContent).toBe(privateUi.TooltipContent)
     expect(publicUi.CommandItem).toBe(privateUi.CommandItem)
-    expect(legacyPopover.Popover).toBe(privateUi.Popover)
-    expect(legacyMenu.DropdownMenuContent).toBe(privateUi.DropdownMenuContent)
+    expect(legacyTooltip.TooltipProvider).toBe(privateUi.TooltipProvider)
   })
 })

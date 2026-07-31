@@ -2,7 +2,7 @@
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
-import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'node:path'
+import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import Ajv from 'ajv'
 import ts from 'typescript'
 
@@ -13,9 +13,6 @@ const CENSUS_PATH = join(REPO_ROOT, 'design-system/census.json')
 const SCHEMA_PATH = join(REPO_ROOT, 'design-system/census.schema.json')
 const COMPATIBILITY_PATH = join(REPO_ROOT, 'design-system/compatibility.json')
 const COMPATIBILITY_SCHEMA_PATH = join(REPO_ROOT, 'design-system/compatibility.schema.json')
-const SDK_COMPONENT_ENTRYPOINT = '@makinbakin/sdk/components'
-const SDK_COMPONENT_BARREL = 'packages/sdk/src/components/index.ts'
-
 export type CensusKind =
   | 'host-route'
   | 'plugin-route'
@@ -107,14 +104,6 @@ export interface CompatibilityMatrix {
   }>
 }
 
-interface PublicExport {
-  name: string
-  importedName: string
-  kind: 'type' | 'value'
-  moduleSpecifier: string
-  sourcePath: string
-}
-
 interface ClientSlotRegistration {
   slot: string
   symbol: string
@@ -185,65 +174,6 @@ function exportedValueSymbols(path: string): string[] {
     }
   }
   return [...symbols].sort()
-}
-
-function resolveModuleSource(root: string, moduleSpecifier: string): string | null {
-  let base: string
-  if (moduleSpecifier.startsWith('@/')) {
-    base = join(root, 'src', moduleSpecifier.slice(2))
-  } else if (moduleSpecifier.startsWith('.')) {
-    base = join(root, dirname(SDK_COMPONENT_BARREL), moduleSpecifier)
-  } else if (moduleSpecifier.startsWith('@makinbakin/sdk/')) {
-    base = join(root, 'packages/sdk/src', moduleSpecifier.slice('@makinbakin/sdk/'.length))
-  } else {
-    const pluginMatch = moduleSpecifier.match(/^@bakin\/([^/]+)\/(.+)$/)
-    if (!pluginMatch) return null
-    base = join(root, 'plugins', pluginMatch[1], pluginMatch[2])
-  }
-
-  const candidates = extname(base)
-    ? [base]
-    : [`${base}.tsx`, `${base}.ts`, join(base, 'index.tsx'), join(base, 'index.ts')]
-  return candidates.find((candidate) => existsSync(candidate)) ?? null
-}
-
-function collectPublicExports(root: string): PublicExport[] {
-  const barrelPath = join(root, SDK_COMPONENT_BARREL)
-  if (!existsSync(barrelPath)) return []
-  const exports: PublicExport[] = []
-  for (const statement of sourceFile(barrelPath).statements) {
-    if (!ts.isExportDeclaration(statement)) {
-      if (hasExportModifier(statement)) {
-        throw new Error(`Unsupported public SDK export syntax in ${SDK_COMPONENT_BARREL}: use a named re-export`)
-      }
-      continue
-    }
-    if (
-      !statement.moduleSpecifier
-      || !ts.isStringLiteral(statement.moduleSpecifier)
-      || !statement.exportClause
-      || !ts.isNamedExports(statement.exportClause)
-    ) {
-      throw new Error(`Unsupported public SDK export syntax in ${SDK_COMPONENT_BARREL}: use a named re-export`)
-    }
-
-    const moduleSpecifier = statement.moduleSpecifier.text
-    const resolvedSource = resolveModuleSource(root, moduleSpecifier)
-    if (!resolvedSource) {
-      throw new Error(`Could not resolve public SDK export source ${JSON.stringify(moduleSpecifier)} from ${SDK_COMPONENT_BARREL}`)
-    }
-    const resolvedPath = portablePath(root, resolvedSource)
-    for (const element of statement.exportClause.elements) {
-      exports.push({
-        name: element.name.text,
-        importedName: element.propertyName?.text ?? element.name.text,
-        kind: statement.isTypeOnly || element.isTypeOnly ? 'type' : 'value',
-        moduleSpecifier,
-        sourcePath: resolvedPath,
-      })
-    }
-  }
-  return exports.sort((a, b) => `${a.kind}:${a.name}`.localeCompare(`${b.kind}:${b.name}`))
 }
 
 function readRoutePath(path: string): string {
@@ -667,39 +597,20 @@ function componentOwner(sourcePath: string): CensusEntry['owner'] {
   }
 }
 
-function componentEntries(root: string, publicExports: readonly PublicExport[]): CensusEntry[] {
+function componentEntries(root: string): CensusEntry[] {
   const paths = new Set([
     ...walkFiles(join(root, 'src/components'), (path) => path.endsWith('.tsx')),
     ...walkFiles(join(root, 'packages/host/src/components'), (path) => path.endsWith('.tsx')),
   ])
-  for (const publicExport of publicExports) {
-    const path = join(root, publicExport.sourcePath)
-    if (publicExport.sourcePath.endsWith('.tsx') && existsSync(path)) paths.add(path)
-  }
-
-  const publicByPath = new Map<string, string[]>()
-  for (const item of publicExports) {
-    const current = publicByPath.get(item.sourcePath) ?? []
-    current.push(item.name)
-    publicByPath.set(item.sourcePath, current)
-  }
 
   return [...paths].sort().map((path) => {
     const sourcePath = portablePath(root, path)
     const componentIdentity = sourcePath.replace(/\.tsx$/, '')
-    const publicNames = [...new Set(publicByPath.get(sourcePath) ?? [])].sort()
     const evidence: CensusEvidence[] = [{
       type: 'source-export',
       path: sourcePath,
       detail: 'exported values discovered from TSX source',
     }]
-    if (publicNames.length > 0) {
-      evidence.push({
-        type: 'public-export',
-        path: SDK_COMPONENT_BARREL,
-        detail: publicNames.join(', '),
-      })
-    }
     return {
       id: `shared-component:${componentIdentity}`,
       kind: 'shared-component',
@@ -707,32 +618,11 @@ function componentEntries(root: string, publicExports: readonly PublicExport[]):
       identity: { component: componentIdentity },
       sourcePath,
       symbols: exportedValueSymbols(path),
-      exportStatus: publicNames.length > 0 ? 'public' : 'private',
+      exportStatus: 'private',
       classification: 'shared-ui',
       evidence,
     }
   })
-}
-
-function sdkExportEntries(publicExports: readonly PublicExport[]): CensusEntry[] {
-  return publicExports.map((item) => ({
-    id: `sdk-ui-export:${item.kind}:${item.name}`,
-    kind: 'sdk-ui-export',
-    owner: { repository: 'bakin', area: 'sdk' },
-    identity: {
-      symbol: item.name,
-      entrypoint: SDK_COMPONENT_ENTRYPOINT,
-    },
-    sourcePath: item.sourcePath,
-    symbols: [item.name],
-    exportStatus: 'public',
-    classification: 'public-contract',
-    evidence: [{
-      type: 'public-export',
-      path: SDK_COMPONENT_BARREL,
-      detail: `${item.kind} ${item.name} from ${item.moduleSpecifier} (${item.importedName})`,
-    }],
-  }))
 }
 
 function summarize(entries: readonly CensusEntry[]): CensusDocument['summary'] {
@@ -753,13 +643,11 @@ function summarize(entries: readonly CensusEntry[]): CensusDocument['summary'] {
 }
 
 export function scanCoreCensus(root = REPO_ROOT): CensusDocument {
-  const publicExports = collectPublicExports(root)
   const entries = [
     ...routeEntries(root),
     ...referencePluginTemplateEntries(root),
     ...pluginSlotEntries(root),
-    ...componentEntries(root, publicExports),
-    ...sdkExportEntries(publicExports),
+    ...componentEntries(root),
   ].sort((a, b) => a.id.localeCompare(b.id))
 
   return {
@@ -773,7 +661,6 @@ export function scanCoreCensus(root = REPO_ROOT): CensusDocument {
         'Bakin reference plugin author contract',
         'core plugin page and embedded slots',
         'shared TSX component units',
-        'public @makinbakin/sdk/components exports',
       ],
     },
     summary: summarize(entries),

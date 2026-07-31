@@ -20,7 +20,7 @@ mock.module('../../packages/core/src/content-dir', contentDirMock)
 import { cleanup, fireEvent, render } from '@testing-library/react'
 import '../rtl-settle'
 
-import { ActivityGroup, ToolCallDrawer, humanizeActivity, type ConversationToolCall } from '@makinbakin/sdk/components'
+import { ActivityGroup, ToolCallDrawer, humanizeActivity, type ConversationToolCall } from '@makinbakin/sdk/conversation'
 
 const call = (over: Partial<ConversationToolCall> = {}): ConversationToolCall => ({
   key: over.callId ?? 'c1',

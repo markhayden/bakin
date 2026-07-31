@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 const ROOT = resolve(import.meta.dir, '../../..')
@@ -19,11 +19,8 @@ describe('canonical filter and navigation patterns', () => {
     expect(sources).not.toMatch(/(?:bg|text|border)-(?:red|yellow|green|blue|gray|zinc|slate)-/)
   })
 
-  it('retains app-aware agent lookup only in the compatibility adapter', () => {
-    const adapter = read('src/components/agent-filter.tsx')
-    expect(adapter).toContain("from '@makinbakin/sdk/patterns'")
-    expect(adapter).toContain('useAgentStore')
-    expect(adapter).toContain('AgentAvatar')
+  it('the barrel-era agent-filter compatibility adapter stays deleted (P-final)', () => {
+    expect(existsSync(resolve(ROOT, 'src/components/agent-filter.tsx'))).toBe(false)
   })
 
   it('keeps URL ownership in consumers and examples on the shipped hooks', () => {

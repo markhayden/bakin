@@ -19,7 +19,6 @@ description: Use @makinbakin/sdk to build plugins with supported registration, r
 | `@makinbakin/sdk/conversation` | isolated conversation UI and models |
 | `@makinbakin/sdk/content` | opt-in rich content rendering and editing |
 | `@makinbakin/sdk/hooks` | shared React hooks |
-| `@makinbakin/sdk/components` | migration-only legacy component barrel |
 | `@makinbakin/sdk/slots` | slot registry and `<Slot>` primitive |
 | `@makinbakin/sdk/types` | public TypeScript contract types |
 | `@makinbakin/sdk/utils` | shared utilities |
@@ -78,7 +77,7 @@ Prefer SDK UI components for plugin UI. Custom UI is allowed for domain-specific
 import { Alert, Badge, Button, Progress } from '@makinbakin/sdk/ui'
 ```
 
-Avoid copying host component files into a plugin. If a component is broadly useful, promote it to a focused SDK entrypoint instead. `@makinbakin/sdk/components` remains available only while existing consumers migrate.
+Avoid copying host component files into a plugin. If a component is broadly useful, promote it to a focused SDK entrypoint instead. (The legacy `@makinbakin/sdk/components` barrel was removed once every consumer migrated to the focused entrypoints.)
 
 Use semantic props instead of rebuilding primitive styles: `Button` exposes action variants and sizes, `Badge` separates status `tone` from visual `variant`, `Alert` assigns announcement behavior from its tone, and `Progress` supports exact determinate or indeterminate state. The supported `buttonVariants()` and `badgeVariants()` helpers are reserved for links and render integrations that need the same treatment without changing native semantics. See the [UI style guide](/docs/extending/ui/) and [public component catalog](/docs/ui/) for the complete contracts and states.
 

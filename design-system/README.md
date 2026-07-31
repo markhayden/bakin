@@ -12,9 +12,9 @@ accounts for:
   TanStack routing work;
 - every core plugin page or embedded slot, proven against both
   `bakin-plugin.json` and the matching `registerPlugin({ slots })` binding;
-- shared TSX component units in the legacy SDK/host locations; and
-- every named public export from `@makinbakin/sdk/components`, including its
-  resolved implementation source;
+- shared TSX component units in the legacy SDK/host locations (the frozen
+  `@makinbakin/sdk/components` barrel is deleted, so the census no longer
+  carries public sdk-ui-export entries);
 - every official Bits runtime route from Messaging and Projects, including
   redirect-only aliases and the exact bound client component;
 - official Bits page/embedded slots; and

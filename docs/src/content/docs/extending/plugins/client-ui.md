@@ -216,8 +216,8 @@ Register with `registerSlot()` directly when you need a custom order. Lower orde
 
 Import primitives from `@makinbakin/sdk/ui`, layout from
 `@makinbakin/sdk/layout`, and application patterns from
-`@makinbakin/sdk/patterns`. New UI must not consume the frozen
-`@makinbakin/sdk/components` barrel.
+`@makinbakin/sdk/patterns`. The legacy `@makinbakin/sdk/components`
+barrel has been removed; every import comes from a focused entrypoint.
 
 ```tsx
 import { Button } from '@makinbakin/sdk/ui'

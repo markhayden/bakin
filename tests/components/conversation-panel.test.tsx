@@ -25,7 +25,7 @@ import '../rtl-settle'
 import {
   ConversationPanel,
   type ConversationMessage,
-} from '@makinbakin/sdk/components'
+} from '@makinbakin/sdk/conversation'
 
 const MESSAGES: ConversationMessage[] = [
   { kind: 'user', ts: '2026-07-11T10:00:00.000Z', content: 'brainstorm this' },
@@ -37,7 +37,7 @@ describe('ConversationPanel layout modes (bits contract)', () => {
     const { container } = render(
       <ConversationPanel
         messages={[]}
-        agentId="main"
+        agent={{ id: 'main', name: 'Main' }}
         onSend={() => {}}
         storageKey="divider-panel"
         chrome="top-divider"
@@ -49,7 +49,7 @@ describe('ConversationPanel layout modes (bits contract)', () => {
 
   it('fitParent + showHeader=false renders no header and fills the host (brainstorm-view mode)', () => {
     const { container } = render(
-      <ConversationPanel messages={MESSAGES} agentId="main" onSend={() => {}} storageKey="bs-1" fitParent showHeader={false} />,
+      <ConversationPanel messages={MESSAGES} agent={{ id: 'main', name: 'Main' }} onSend={() => {}} storageKey="bs-1" fitParent showHeader={false} />,
     )
     expect(container.querySelector('[data-conv-panel-header]')).toBeNull()
     expect(container.querySelector('[data-conv-panel]')!.className).toContain('h-full')
@@ -58,7 +58,7 @@ describe('ConversationPanel layout modes (bits contract)', () => {
 
   it('default mode renders the header with title (project-detail mode)', () => {
     const { container } = render(
-      <ConversationPanel messages={[]} agentId="main" onSend={() => {}} storageKey="pd-1" title="Project brainstorm" />,
+      <ConversationPanel messages={[]} agent={{ id: 'main', name: 'Main' }} onSend={() => {}} storageKey="pd-1" title="Project brainstorm" />,
     )
     expect(container.querySelector('[data-conv-panel-header]')!.textContent).toContain('Project brainstorm')
   })
@@ -67,7 +67,7 @@ describe('ConversationPanel layout modes (bits contract)', () => {
     const { container } = render(
       <ConversationPanel
         messages={MESSAGES}
-        agentId="main"
+        agent={{ id: 'main', name: 'Main' }}
         onSend={() => {}}
         storageKey="ro-1"
         readOnly
@@ -82,7 +82,7 @@ describe('ConversationPanel layout modes (bits contract)', () => {
     const { container } = render(
       <ConversationPanel
         messages={MESSAGES}
-        agentId="main"
+        agent={{ id: 'main', name: 'Main' }}
         onSend={() => {}}
         storageKey="tf-1"
         transformText={(text) => ({
@@ -96,11 +96,17 @@ describe('ConversationPanel layout modes (bits contract)', () => {
     expect(container.querySelector('[data-testid="proposal-badge"]')).not.toBeNull()
   })
 
-  it('renders the agent switcher slot when onAgentChange is provided', () => {
+  it('renders the consumer-owned agentControl beside the composer (switcher composes at the consumer)', () => {
     const { container } = render(
-      <ConversationPanel messages={[]} agentId="main" onAgentChange={() => {}} onSend={() => {}} storageKey="ag-1" />,
+      <ConversationPanel
+        messages={[]}
+        agent={{ id: 'main', name: 'Main' }}
+        agentControl={<div data-testid="agent-switcher">switch</div>}
+        onSend={() => {}}
+        storageKey="ag-1"
+      />,
     )
-    expect(container.querySelector('[data-conv-agent-select]')).not.toBeNull()
+    expect(container.querySelector('[data-testid="agent-switcher"]')).not.toBeNull()
     cleanup()
   })
 
@@ -109,7 +115,7 @@ describe('ConversationPanel layout modes (bits contract)', () => {
     const queued = render(
       <ConversationPanel
         messages={MESSAGES}
-        agentId="main"
+        agent={{ id: 'main', name: 'Main' }}
         onSend={(c) => { sent.push(c) }}
         onAbort={() => {}}
         storageKey="qp-1"
@@ -127,7 +133,7 @@ describe('ConversationPanel layout modes (bits contract)', () => {
     cleanup()
 
     const strict = render(
-      <ConversationPanel messages={MESSAGES} agentId="main" onSend={(c) => { sent.push(c) }} onAbort={() => {}} storageKey="qp-2" streaming />,
+      <ConversationPanel messages={MESSAGES} agent={{ id: 'main', name: 'Main' }} onSend={(c) => { sent.push(c) }} onAbort={() => {}} storageKey="qp-2" streaming />,
     )
     const strictTa = strict.container.querySelector('textarea')!
     fireEvent.change(strictTa, { target: { value: 'blocked' } })

@@ -11,7 +11,7 @@ const testDir = join(tmpdir(), 'bakin-test-confirm-dialog')
 mock.module('../../src/core/content-dir', () => ({ getContentDir: () => testDir, getBakinPaths: () => ({ root: testDir }) }))
 mock.module('../../packages/core/src/content-dir', () => ({ getContentDir: () => testDir, getBakinPaths: () => ({ root: testDir }) }))
 
-import { ConfirmDialog } from '../../src/components/confirm-dialog'
+import { ConfirmDialog } from '@makinbakin/sdk/patterns'
 
 afterEach(() => cleanup())
 

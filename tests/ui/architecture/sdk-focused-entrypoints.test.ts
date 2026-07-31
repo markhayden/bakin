@@ -57,13 +57,18 @@ describe('focused public SDK entrypoint contract', () => {
     expect(conversation).toContain("from '@bakin/ui/conversation'")
   })
 
-  it('retains the components barrel only as a separately named legacy surface', () => {
+  it('the frozen components barrel is deleted from every contract surface (P-final)', () => {
     const manifest = readJson('packages/sdk/package.json')
+    const tsconfig = readJson('tsconfig.json')
     const importMap = browserImportMap()
+    const vendorTargets = new Map(SDK_VENDOR_TARGETS.map((entry) => [entry.specifier, entry]))
 
-    expect(manifest.exports['./components']).toBe('./src/components/index.ts')
-    expect(SDK_EXTERNALS).toContain('@makinbakin/sdk/components')
-    expect(importMap['@makinbakin/sdk/components']).toBe('/vendor/sdk-components.js')
+    expect(manifest.exports['./components']).toBeUndefined()
+    expect(tsconfig.compilerOptions.paths['@makinbakin/sdk/components']).toBeUndefined()
+    expect(SDK_EXTERNALS).not.toContain('@makinbakin/sdk/components')
+    expect(vendorTargets.has('@makinbakin/sdk/components')).toBe(false)
+    expect(importMap['@makinbakin/sdk/components']).toBeUndefined()
+    expect(existsSync(join(REPO_ROOT, 'packages/sdk/src/components'))).toBe(false)
     expect(FOCUSED_SUBPATHS).not.toContain('components' as never)
   })
 

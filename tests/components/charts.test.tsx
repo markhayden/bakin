@@ -16,17 +16,19 @@ const contentDirMock = () => ({
 mock.module('../../src/core/content-dir', contentDirMock)
 mock.module('../../packages/core/src/content-dir', contentDirMock)
 
-import { StackedColumnChart } from '../../src/components/charts/stacked-column-chart'
-import { LineChart } from '../../src/components/charts/line-chart'
-import { BarChart } from '../../src/components/charts/bar-chart'
-import { RankedBarChart } from '../../src/components/charts/ranked-bar-chart'
-import { Sparkline } from '../../src/components/charts/sparkline'
-import { ChartExplainer } from '../../src/components/charts/chart-explainer'
+import {
+  BarChart,
+  ChartExplainer,
+  LineChart,
+  RankedBarChart,
+  Sparkline,
+  StackedColumnChart,
+} from '@makinbakin/sdk/charts'
 import {
   assignSeriesColors,
   CHART_SERIES_COLORS,
   CHART_OTHER_COLOR,
-} from '../../src/components/charts/palette'
+} from '@makinbakin/sdk/charts'
 
 
 describe('assignSeriesColors', () => {
@@ -46,7 +48,7 @@ describe('assignSeriesColors', () => {
 })
 
 describe('StackedColumnChart', () => {
-  const data: import('../../src/components/charts/stacked-column-chart').StackedColumnDatum[] = [
+  const data: import('@makinbakin/sdk/charts').StackedColumnDatum[] = [
     { x: '2026-07-01', xLabel: 'Jul 1', values: { pixel: 100, scout: 50 } },
     { x: '2026-07-02', xLabel: 'Jul 2', values: { pixel: 700 } },
   ]

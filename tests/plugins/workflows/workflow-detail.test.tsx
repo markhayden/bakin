@@ -62,10 +62,6 @@ mock.module('@makinbakin/sdk/hooks', () => ({
   }),
 }))
 
-mock.module('@makinbakin/sdk/components', () => ({
-  AgentAvatar: ({ agentId }: { agentId: string }) => <span data-testid={`agent-${agentId}`} />,
-}))
-
 mock.module('../../../plugins/workflows/components/workflow-canvas', () => ({
   WorkflowCanvas: (props: Record<string, unknown>) => {
     workflowCanvasCalls.push(props)

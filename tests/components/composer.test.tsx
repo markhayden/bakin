@@ -20,7 +20,7 @@ mock.module('../../packages/core/src/content-dir', contentDirMock)
 import { cleanup, fireEvent, render } from '@testing-library/react'
 import '../rtl-settle'
 
-import { Composer } from '@makinbakin/sdk/components'
+import { Composer } from '@makinbakin/sdk/conversation'
 
 const getTextarea = (container: HTMLElement) => container.querySelector('textarea')!
 

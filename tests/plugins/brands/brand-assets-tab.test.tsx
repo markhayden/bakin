@@ -30,9 +30,6 @@ mock.module('@/hooks/use-query-state', () => ({
     return React.useState(defaultValue)
   },
 }))
-mock.module('@/components/markdown-content', () => ({
-  MarkdownContent: ({ content }: { content: string }) => <pre>{content}</pre>,
-}))
 
 import { BrandDetail } from '../../../plugins/brands/components/brand-detail'
 

@@ -13,24 +13,25 @@
 > styling API.
 
 Promoted patterns in this document now resolve from focused
-`@makinbakin/sdk/*` entrypoints. `PluginHeader` remains a migration-only
-compatibility adapter; use `PageHeader` for new work. Plugins never import
-directly from `packages/host/src/components/*`, `packages/ui/*`, or the legacy
-`src/components/*` shims:
+`@makinbakin/sdk/*` entrypoints. `PluginHeader` is gone — use `PageHeader`
+from `@makinbakin/sdk/patterns`. Plugins never import directly from
+`packages/host/src/components/*`, `packages/ui/*`, or root `src/components/*`
+(the barrel-era shims there were deleted in storybook-refit P-final; only a
+handful of host-internal bridges remain):
 
 ```tsx
 import { AgentAvatar, FacetFilter } from '@makinbakin/sdk/patterns'
 import { Drawer } from '@makinbakin/sdk/ui'
 import { useSearch, useRuntimeStatus } from '@makinbakin/sdk/hooks'
-
-// Existing consumers only; frozen migration barrel.
-import { PluginHeader } from '@makinbakin/sdk/components'
 ```
 
+The frozen `@makinbakin/sdk/components` migration barrel is REMOVED
+(storybook-refit P-final) — every UI import comes from a focused entrypoint.
+
 Core plugins use the same public imports. Path-style `src/components/*.tsx`
-entries in the historical tables below describe compatibility implementations,
-not an authoring contract; verify every current owner in public Storybook and
-`design-system/public-api.json`.
+entries in the historical tables below describe compatibility implementations
+that have since been DELETED (P-final), not an authoring contract; verify
+every current owner in public Storybook and `design-system/public-api.json`.
 
 ## Drawer
 

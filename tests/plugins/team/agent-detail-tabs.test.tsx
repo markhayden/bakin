@@ -75,8 +75,6 @@ mock.module('../../../plugins/team/hooks/use-agent-store', () => ({
 // Keep the heavy tab content out of the render tree — we only care about the
 // header/tab-bar wiring here.
 mock.module('@/components/agent-avatar', () => ({ AgentAvatar: () => <div /> }))
-mock.module('@/components/markdown-content', () => ({ MarkdownContent: () => <div /> }))
-mock.module('@/components/model-select', () => ({ ModelSelect: () => <div /> }))
 
 import { AgentDetail } from '../../../plugins/team/components/agent-detail'
 import { HEALTHY_TEAM_HEALTH_REPORT } from './health-report-fixture'

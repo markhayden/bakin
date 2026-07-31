@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 const root = join(import.meta.dir, '../../..')
@@ -40,18 +40,9 @@ describe('public asset, model, and color picker patterns', () => {
     expect(adapter).toContain('uploadAsset')
   })
 
-  it('retains catalog compatibility only in root adapters; the frozen asset adapter is a re-export', () => {
-    const asset = read('src/components/asset-picker.tsx')
-    const model = read('src/components/model-select.tsx')
-    const color = read('src/components/color-picker.tsx')
-
-    // The frozen-barrel adapter keeps its historical names but no longer
-    // duplicates the wiring — it aliases the focused AssetLibraryPicker.
-    expect(asset).toContain("from '@makinbakin/sdk/patterns'")
-    expect(asset).toContain('AssetLibraryPicker as AssetPicker')
-    expect(asset).not.toMatch(/fetch\(/)
-    expect(model).toContain("from '@makinbakin/sdk/patterns'")
-    expect(model).toContain('AvailableModel')
-    expect(color).toContain("from '@makinbakin/sdk/patterns'")
+  it('the barrel-era picker compatibility adapters stay deleted (P-final)', () => {
+    for (const file of ['asset-picker.tsx', 'model-select.tsx', 'color-picker.tsx']) {
+      expect(existsSync(join(root, `src/components/${file}`))).toBe(false)
+    }
   })
 })

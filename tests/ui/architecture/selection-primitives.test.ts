@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
 const REPO_ROOT = resolve(import.meta.dir, '../../..')
@@ -25,34 +25,29 @@ describe('selection primitive ownership', () => {
     expect(readRepoFile('packages/ui/src/primitives/option-list.ts')).toContain('optionItemClasses')
   })
 
-  it('routes the public SDK and legacy app paths to one implementation', async () => {
+  it('routes the public SDK to one implementation; deleted legacy shims stay gone', async () => {
     const sdkSource = readRepoFile('packages/sdk/src/ui/index.ts')
     const hostBridge = readRepoFile('packages/host/src/ui/selection.ts')
     expect(sdkSource).toContain("from '@bakin/ui'")
     expect(hostBridge).toContain("from '@bakin/ui'")
 
+    // P-final: the legacy `src/components/ui/*` selection shims were deleted
+    // with the frozen barrel — reintroducing one is a regression.
     for (const primitive of PRIMITIVES) {
-      const shim = readRepoFile(`src/components/ui/${primitive}.tsx`)
-      expect(shim).toContain("from '../../../packages/host/src/ui/selection'")
-      expect(shim).not.toContain('@base-ui/react')
+      expect(existsSync(join(REPO_ROOT, `src/components/ui/${primitive}.tsx`))).toBe(false)
     }
 
-    const [privateUi, publicUi, legacyCheckbox, legacySwitch, legacySelect] = await Promise.all([
+    const [privateUi, publicUi] = await Promise.all([
       import('@bakin/ui'),
       import('@makinbakin/sdk/ui'),
-      import('../../../src/components/ui/checkbox'),
-      import('../../../src/components/ui/switch'),
-      import('../../../src/components/ui/select'),
     ])
 
     expect(publicUi.Checkbox).toBe(privateUi.Checkbox)
     expect(publicUi.Switch).toBe(privateUi.Switch)
     expect(publicUi.Select).toBe(privateUi.Select)
     expect(publicUi.SelectTrigger).toBe(privateUi.SelectTrigger)
-    expect(legacyCheckbox.Checkbox).toBe(privateUi.Checkbox)
-    expect(legacySwitch.Switch).toBe(privateUi.Switch)
-    expect(legacySelect.SelectContent).toBe(privateUi.SelectContent)
-    expect(legacySelect.SelectItem).toBe(privateUi.SelectItem)
+    expect(publicUi.SelectContent).toBe(privateUi.SelectContent)
+    expect(publicUi.SelectItem).toBe(privateUi.SelectItem)
   })
 
   it('keeps shared option presentation private', () => {

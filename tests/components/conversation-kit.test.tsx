@@ -27,7 +27,7 @@ import {
   ThinkingIndicator,
   UserMessage,
   type ConversationTurn,
-} from '@makinbakin/sdk/components'
+} from '@makinbakin/sdk/conversation'
 
 const agentTurn = (over: Partial<Extract<ConversationTurn, { kind: 'agent' }>> = {}): Extract<ConversationTurn, { kind: 'agent' }> => ({
   kind: 'agent',
@@ -50,7 +50,7 @@ describe('AgentTurn billed-first cost explainer (#737)', () => {
   it('a tool turn shows the two-line bill story: billed · cached% · ~requests · $ · model, then in/out', () => {
     const { container } = render(
       <AgentTurn
-        agentId="main"
+        agent={{ id: 'main', name: 'Main' }}
         turn={agentTurn({
           items: [
             {
@@ -87,7 +87,7 @@ describe('AgentTurn billed-first cost explainer (#737)', () => {
   it('a no-tool turn collapses to ONE billed line (no ~requests, no in/out line)', () => {
     const { container } = render(
       <AgentTurn
-        agentId="main"
+        agent={{ id: 'main', name: 'Main' }}
         turn={agentTurn({ items: [{ type: 'text', format: 'markdown', content: 'simple reply' }] })}
         usage={{ totalTokens: 45_476, cacheReadTokens: 43_520, inputTokens: 1_778, outputTokens: 178, costUsd: 0.004, model: 'openai-codex/gpt-5.5', lane: 'metered' }}
       />,
@@ -104,7 +104,7 @@ describe('AgentTurn billed-first cost explainer (#737)', () => {
   it('cacheRead above the billed base omits cached% — never an impossible >100% share', () => {
     const { container } = render(
       <AgentTurn
-        agentId="main"
+        agent={{ id: 'main', name: 'Main' }}
         turn={agentTurn()}
         // No totalTokens → billed falls back to in+out (15.1k); cacheRead
         // is far larger — a coherent share cannot be computed.
@@ -120,7 +120,7 @@ describe('AgentTurn billed-first cost explainer (#737)', () => {
   it('an aborted turn billed partial usage still shows its recorded footer (D4)', () => {
     const { container } = render(
       <AgentTurn
-        agentId="main"
+        agent={{ id: 'main', name: 'Main' }}
         turn={agentTurn({ status: 'aborted', items: [{ type: 'text', format: 'markdown', content: 'partial' }] })}
         usage={{ totalTokens: 9_800, inputTokens: 9_000, outputTokens: 210, costUsd: 0.01, lane: 'metered' }}
       />,
@@ -134,7 +134,7 @@ describe('AgentTurn billed-first cost explainer (#737)', () => {
   it('in+out fallback bills without a fabricated cached share; a lone-out legacy row keeps the old line', () => {
     const fallback = render(
       <AgentTurn
-        agentId="main"
+        agent={{ id: 'main', name: 'Main' }}
         turn={agentTurn()}
         usage={{ inputTokens: 14_200, outputTokens: 890, costUsd: 0.03, model: 'sonnet-5', lane: 'metered' }}
       />,
@@ -146,7 +146,7 @@ describe('AgentTurn billed-first cost explainer (#737)', () => {
 
     // No billed total computable (output only) → the legacy parts line.
     const legacy = render(
-      <AgentTurn agentId="main" turn={agentTurn()} usage={{ outputTokens: 890, model: 'sonnet-5' }} />,
+      <AgentTurn agent={{ id: 'main', name: 'Main' }} turn={agentTurn()} usage={{ outputTokens: 890, model: 'sonnet-5' }} />,
     )
     const legacyFooter = legacy.container.querySelector('[data-conv-usage]')!
     expect(legacyFooter.textContent).toContain('890 out')
@@ -159,7 +159,7 @@ describe('AgentTurn usage footer (#733, billed-first since #737)', () => {
   it('metered lane shows billed total + $ + model tail; sub-cent costs floor at <$0.01', () => {
     const { container } = render(
       <AgentTurn
-        agentId="main"
+        agent={{ id: 'main', name: 'Main' }}
         turn={agentTurn({ items: [{ type: 'text', format: 'markdown', content: 'done' }] })}
         usage={{ inputTokens: 14_200, outputTokens: 890, costUsd: 0.03, model: 'anthropic/claude-sonnet-5', lane: 'metered' }}
       />,
@@ -172,7 +172,7 @@ describe('AgentTurn usage footer (#733, billed-first since #737)', () => {
     cleanup()
 
     const subCent = render(
-      <AgentTurn agentId="main" turn={agentTurn()} usage={{ inputTokens: 100, outputTokens: 5, costUsd: 0.0004, lane: 'metered' }} />,
+      <AgentTurn agent={{ id: 'main', name: 'Main' }} turn={agentTurn()} usage={{ inputTokens: 100, outputTokens: 5, costUsd: 0.0004, lane: 'metered' }} />,
     )
     expect(subCent.container.querySelector('[data-conv-usage]')!.textContent).toContain('<$0.01')
     cleanup()
@@ -181,7 +181,7 @@ describe('AgentTurn usage footer (#733, billed-first since #737)', () => {
   it('subscription lane shows tokens only — never dollars; empty usage renders no footer', () => {
     const { container } = render(
       <AgentTurn
-        agentId="main"
+        agent={{ id: 'main', name: 'Main' }}
         turn={agentTurn()}
         usage={{ inputTokens: 22_100, outputTokens: 1_200, model: 'pi/pi-local', lane: 'subscription' }}
       />,
@@ -191,11 +191,11 @@ describe('AgentTurn usage footer (#733, billed-first since #737)', () => {
     expect(footer.textContent).not.toContain('$')
     cleanup()
 
-    const empty = render(<AgentTurn agentId="main" turn={agentTurn()} usage={{}} />)
+    const empty = render(<AgentTurn agent={{ id: 'main', name: 'Main' }} turn={agentTurn()} usage={{}} />)
     expect(empty.container.querySelector('[data-conv-usage]')).toBeNull()
     cleanup()
 
-    const none = render(<AgentTurn agentId="main" turn={agentTurn()} />)
+    const none = render(<AgentTurn agent={{ id: 'main', name: 'Main' }} turn={agentTurn()} />)
     expect(none.container.querySelector('[data-conv-usage]')).toBeNull()
     cleanup()
   })
@@ -203,7 +203,7 @@ describe('AgentTurn usage footer (#733, billed-first since #737)', () => {
   it('a streaming turn never shows a RECORDED usage footer — usage exists only at settle', () => {
     const { container } = render(
       <AgentTurn
-        agentId="main"
+        agent={{ id: 'main', name: 'Main' }}
         turn={agentTurn({ status: 'streaming', items: [{ type: 'text', format: 'markdown', content: 'typing…' }] })}
         usage={{ inputTokens: 1_000, outputTokens: 50, costUsd: 0.01, lane: 'metered' }}
       />,
@@ -215,7 +215,7 @@ describe('AgentTurn usage footer (#733, billed-first since #737)', () => {
   it('a streaming turn shows the ~-labeled live output estimate; settled turns ignore it', () => {
     const live = render(
       <AgentTurn
-        agentId="main"
+        agent={{ id: 'main', name: 'Main' }}
         turn={agentTurn({ status: 'streaming', items: [{ type: 'text', format: 'markdown', content: 'typing…' }] })}
         liveOutEstimate={320}
       />,
@@ -226,7 +226,7 @@ describe('AgentTurn usage footer (#733, billed-first since #737)', () => {
     cleanup()
 
     const settled = render(
-      <AgentTurn agentId="main" turn={agentTurn()} usage={{ inputTokens: 100, outputTokens: 10 }} liveOutEstimate={320} />,
+      <AgentTurn agent={{ id: 'main', name: 'Main' }} turn={agentTurn()} usage={{ inputTokens: 100, outputTokens: 10 }} liveOutEstimate={320} />,
     )
     expect(settled.container.querySelector('[data-conv-usage-live]')).toBeNull()
     expect(settled.container.querySelector('[data-conv-usage]')).not.toBeNull()
@@ -236,7 +236,7 @@ describe('AgentTurn usage footer (#733, billed-first since #737)', () => {
   it('Conversation hands liveOutEstimate only to the streaming turn', () => {
     const { container } = render(
       <Conversation
-        agentId="main"
+        agent={{ id: 'main', name: 'Main' }}
         turns={[
           agentTurn({ key: 'done-turn', turnId: 'done-turn', items: [{ type: 'text', format: 'markdown', content: 'settled' }] }),
           agentTurn({ key: 'live-turn', status: 'streaming', items: [{ type: 'text', format: 'markdown', content: 'going…' }] }),
@@ -252,7 +252,7 @@ describe('AgentTurn usage footer (#733, billed-first since #737)', () => {
   it('Conversation plumbs turnUsage to agent turns by turnId', () => {
     const { container } = render(
       <Conversation
-        agentId="main"
+        agent={{ id: 'main', name: 'Main' }}
         turns={[
           userTurn(),
           agentTurn({ key: 'turn-a', turnId: 'turn-a', items: [{ type: 'text', format: 'markdown', content: 'reply' }] }),
@@ -266,15 +266,16 @@ describe('AgentTurn usage footer (#733, billed-first since #737)', () => {
 
 describe('AgentTurn', () => {
   it('always shows the avatar — including the streaming/thinking state with no items', () => {
-    const { container } = render(<AgentTurn turn={agentTurn({ status: 'streaming', statusLabel: 'thinking' })} agentId="main" />)
+    const { container } = render(<AgentTurn turn={agentTurn({ status: 'streaming', statusLabel: 'thinking' })} agent={{ id: 'main', name: 'Main' }} />)
     expect(container.querySelector('[data-conv-avatar]')).not.toBeNull()
     expect(container.textContent).toContain('thinking')
   })
 
-  it('renders text items through markdown and activity items as tool rows, in order', () => {
+  it('renders consumer-owned rich text via renderText and activity items as tool rows, in order', () => {
     const { container } = render(
       <AgentTurn
-        agentId="main"
+        agent={{ id: 'main', name: 'Main' }}
+        renderText={(content) => <strong>{content}</strong>}
         turn={agentTurn({
           items: [
             { type: 'activity', calls: [{ key: 'c1', callId: 'c1', toolName: 'web_search', status: 'completed', summary: 'site:reddit.com', durationMs: 1200 }] },
@@ -288,7 +289,7 @@ describe('AgentTurn', () => {
     fireEvent.click(container.querySelector('button[data-conv-activity-header]')!)
     expect(container.textContent).toContain('web_search')
     expect(container.textContent).toContain('site:reddit.com')
-    expect(container.querySelector('strong')?.textContent).toBe('found')
+    expect(container.querySelector('strong')?.textContent).toBe('**found** it')
     // activity renders before text (source order preserved)
     const activity = container.querySelector('[data-conv-activity]')
     const text = container.querySelector('strong')
@@ -296,35 +297,23 @@ describe('AgentTurn', () => {
     expect(activity!.compareDocumentPosition(text!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
-  it('bare-JSON replies render human-first with the raw JSON one disclosure away', () => {
+  it('markdown text without a renderText falls back to safe visible text — never dropped', () => {
     const { container } = render(
       <AgentTurn
-        agentId="enrich"
-        turn={agentTurn({
-          items: [
-            { type: 'text', format: 'markdown', content: '{"error":"no_attached_image","message":"I can\'t see an attached image."}' },
-          ],
-        })}
+        agent={{ id: 'main', name: 'Main' }}
+        turn={agentTurn({ items: [{ type: 'text', format: 'markdown', content: '**found** it' }] })}
       />,
     )
-    const card = container.querySelector('[data-conv-json]')
-    expect(card).not.toBeNull()
-    // humanized labels, not raw braces, are the primary view
-    expect(card!.textContent).toContain('The agent reported a problem')
-    expect(card!.textContent).toContain('Message:')
-    expect(card!.textContent).toContain("I can't see an attached image.")
-    // the raw pretty-printed JSON lives behind a disclosure, highlighted
-    const details = card!.querySelector('details')
-    expect(details).not.toBeNull()
-    expect(details!.textContent).toContain('Raw JSON')
-    expect(details!.querySelector('pre code')?.className ?? '').toContain('hljs')
+    // Rich rendering is consumer-owned (bare-JSON humanizing lives in the
+    // chat plugin now); the kit default keeps the raw content readable.
+    expect(container.textContent).toContain('**found** it')
   })
 
   it('error turns render the message, kind, and a Try again action', () => {
     const retried: string[] = []
     const { container, getByText } = render(
       <AgentTurn
-        agentId="main"
+        agent={{ id: 'main', name: 'Main' }}
         turn={agentTurn({
           status: 'error',
           items: [{ type: 'error', message: 'session died', errorKind: 'session_died' }],
@@ -340,7 +329,7 @@ describe('AgentTurn', () => {
 
   it('aborted turns render a stopped notice; no Try again without onRetry', () => {
     const { container } = render(
-      <AgentTurn agentId="main" turn={agentTurn({ status: 'aborted', items: [{ type: 'text', format: 'markdown', content: 'partial' }] })} />,
+      <AgentTurn agent={{ id: 'main', name: 'Main' }} turn={agentTurn({ status: 'aborted', items: [{ type: 'text', format: 'markdown', content: 'partial' }] })} />,
     )
     expect(container.textContent).toContain('Stopped')
     expect(container.textContent).not.toContain('Try again')
@@ -354,7 +343,7 @@ describe('AgentTurn', () => {
     })
     const { container } = render(
       <AgentTurn
-        agentId="main"
+        agent={{ id: 'main', name: 'Main' }}
         turn={agentTurn({
           items: [
             { type: 'text', format: 'markdown', content: 'part one' },
@@ -390,7 +379,7 @@ describe('Conversation', () => {
   it('renders turns with a day separator between different days and hover timestamps', () => {
     const { container } = render(
       <Conversation
-        agentId="main"
+        agent={{ id: 'main', name: 'Main' }}
         turns={[
           userTurn({ key: 'u1', ts: '2026-07-10T09:00:00.000Z' }),
           agentTurn({ key: 'a1', ts: '2026-07-10T09:00:05.000Z', items: [{ type: 'text', format: 'markdown', content: 'yesterday reply' }] }),
@@ -407,7 +396,7 @@ describe('Conversation', () => {
 
   it('renders the empty state node when there are no turns', () => {
     const { container } = render(
-      <Conversation agentId="main" turns={[]} emptyState={<ConversationEmptyState title="Chat with Main" description="Ask anything." />} />,
+      <Conversation agent={{ id: 'main', name: 'Main' }} turns={[]} emptyState={<ConversationEmptyState title="Chat with Main" description="Ask anything." />} />,
     )
     expect(container.textContent).toContain('Chat with Main')
     expect(container.textContent).toContain('Ask anything.')
@@ -416,7 +405,7 @@ describe('Conversation', () => {
 
 describe('ThinkingIndicator', () => {
   it('renders the status label with the avatar', () => {
-    const { container } = render(<ThinkingIndicator agentId="main" label="brewing" />)
+    const { container } = render(<ThinkingIndicator agent={{ id: 'main', name: 'Main' }} label="brewing" />)
     expect(container.querySelector('[data-conv-avatar]')).not.toBeNull()
     expect(container.textContent).toContain('brewing')
     cleanup()

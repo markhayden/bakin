@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 const ROOT = resolve(import.meta.dir, '../../..')
@@ -8,7 +8,6 @@ const read = (path: string) => readFileSync(resolve(ROOT, path), 'utf8')
 describe('focused conversation foundation', () => {
   it('publishes model, folding, and time utilities only through the isolated entrypoint', () => {
     const focused = read('packages/sdk/src/conversation/index.ts')
-    const legacy = read('packages/sdk/src/components/index.ts')
     const base = [
       read('packages/sdk/src/ui/index.ts'),
       read('packages/sdk/src/layout/index.ts'),
@@ -25,12 +24,8 @@ describe('focused conversation foundation', () => {
     expect(focused).toContain('dayKey')
     expect(manifest.exports['./conversation']).toBe('./src/conversation/index.ts')
     expect(base).not.toMatch(/(?:^|\/)conversation(?:\/|')/m)
-    expect(legacy).toContain("from '@makinbakin/sdk/conversation'")
-    expect(legacy).not.toContain("from '@/components/conversation/fold'")
-    expect(legacy).not.toContain("from '@/components/conversation/relative-time'")
-    expect(legacy).not.toContain('ConversationChunk')
-    expect(legacy).not.toContain('ConversationTextFormat')
-    expect(legacy).not.toContain('ConversationToolActivity')
+    // P-final: the frozen components barrel is gone entirely.
+    expect(existsSync(resolve(ROOT, 'packages/sdk/src/components'))).toBe(false)
   })
 
   it('keeps the pure model package-local and legacy modules as public-SDK adapters', () => {
@@ -43,7 +38,8 @@ describe('focused conversation foundation', () => {
       /@\/|@makinbakin\/sdk|@bakin\/core|\b(?:window|document)\b|from ['"]react['"]/
     )
     expect(read('src/components/conversation/fold.ts')).toContain("@makinbakin/sdk/conversation")
-    expect(read('src/components/conversation/relative-time.ts')).toContain("@makinbakin/sdk/conversation")
+    // P-final: the barrel-era relative-time adapter stays deleted.
+    expect(existsSync(resolve(ROOT, 'src/components/conversation/relative-time.ts'))).toBe(false)
   })
 
   it('documents stable folding, missing data, time, and runtime-chunk compatibility', () => {

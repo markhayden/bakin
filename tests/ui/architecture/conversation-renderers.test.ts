@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 const ROOT = resolve(import.meta.dir, '../../..')
@@ -14,14 +14,12 @@ describe('focused conversation renderers', () => {
     expect(focused).toContain("from '@bakin/ui/conversation'")
   })
 
-  it('keeps activity presentation package-local and the legacy module as an adapter', () => {
+  it('keeps activity presentation package-local; the legacy adapter stays deleted (P-final)', () => {
     const implementation = read('packages/ui/src/conversation/activity-group.tsx')
-    const adapter = read('src/components/conversation/activity-group.tsx')
     expect(implementation).not.toMatch(/@\/|@makinbakin\/sdk|@bakin\/core|lucide-react/)
     expect(implementation).toContain('text-bakin-text-primary')
     expect(implementation).toContain('motion-reduce:animate-none')
-    expect(adapter).toContain("from '@makinbakin/sdk/conversation'")
-    expect(adapter).toContain("from '@bakin/core/format'")
+    expect(existsSync(resolve(ROOT, 'src/components/conversation/activity-group.tsx'))).toBe(false)
   })
 
   it('publishes agent and user turns without host identity or markdown dependencies', () => {
@@ -39,14 +37,9 @@ describe('focused conversation renderers', () => {
     expect(agentTurn).toContain('motion-reduce:animate-none')
   })
 
-  it('keeps host identity, markdown, and structured JSON in compatibility adapters', () => {
-    const agentAdapter = read('src/components/conversation/agent-turn.tsx')
-    const userAdapter = read('src/components/conversation/user-message.tsx')
-    expect(agentAdapter).toContain("from '@makinbakin/sdk/conversation'")
-    expect(agentAdapter).toContain("from '@makinbakin/sdk/hooks'")
-    expect(agentAdapter).toContain("from '@bakin/core/format'")
-    expect(agentAdapter).toContain("from '../markdown-content'")
-    expect(userAdapter).toContain("from '@makinbakin/sdk/conversation'")
+  it('the legacy turn compatibility adapters stay deleted (P-final)', () => {
+    expect(existsSync(resolve(ROOT, 'src/components/conversation/agent-turn.tsx'))).toBe(false)
+    expect(existsSync(resolve(ROOT, 'src/components/conversation/user-message.tsx'))).toBe(false)
   })
 
   it('publishes a document-first timeline and empty state without duplicating routing', () => {
@@ -61,13 +54,9 @@ describe('focused conversation renderers', () => {
     expect(empty).not.toMatch(/@\/|@makinbakin\/sdk|@bakin\/core|lucide-react/)
   })
 
-  it('keeps the legacy conversation timeline as a contained compatibility adapter', () => {
-    const adapter = read('src/components/conversation/conversation.tsx')
-    const emptyAdapter = read('src/components/conversation/conversation-empty-state.tsx')
-    expect(adapter).toContain("from '@makinbakin/sdk/conversation'")
-    expect(adapter).toContain('mode="contained"')
-    expect(adapter).toContain('flex-1')
-    expect(emptyAdapter).toContain("from '@makinbakin/sdk/conversation'")
+  it('the legacy conversation timeline adapter stays deleted (P-final)', () => {
+    expect(existsSync(resolve(ROOT, 'src/components/conversation/conversation.tsx'))).toBe(false)
+    expect(existsSync(resolve(ROOT, 'src/components/conversation/conversation-empty-state.tsx'))).toBe(false)
   })
 
   it('publishes the composer without host routing, agent stores, or upload behavior', () => {
@@ -79,9 +68,8 @@ describe('focused conversation renderers', () => {
     expect(implementation).toContain('onAdd')
   })
 
-  it('keeps the legacy composer as a focused compatibility adapter', () => {
-    const adapter = read('src/components/conversation/composer.tsx')
-    expect(adapter).toContain("from '@makinbakin/sdk/conversation'")
+  it('the legacy composer compatibility adapter stays deleted (P-final)', () => {
+    expect(existsSync(resolve(ROOT, 'src/components/conversation/composer.tsx'))).toBe(false)
   })
 
   it('publishes the panel and tool drawer without host identity, routing, or legacy drawer dependencies', () => {
@@ -102,7 +90,6 @@ describe('focused conversation renderers', () => {
     const replyToast = read('src/components/conversation/reply-toast.tsx')
     const avatarAdapter = read('src/components/agent-avatar.tsx')
     const navBadge = read('src/hooks/use-nav-badge.ts')
-    const adapter = read('src/components/conversation/use-conversation-thread.ts')
     expect(focused).toContain('useConversationThread')
     expect(focused).toContain('useConversationAttention')
     expect(focused).not.toContain('readConversationSseStream')
@@ -121,6 +108,6 @@ describe('focused conversation renderers', () => {
     expect(navBadge).toContain("from '../../packages/sdk/src/register'")
     expect(navBadge).toContain("from '@makinbakin/sdk/types'")
     expect(navBadge).not.toContain("from '@makinbakin/sdk'")
-    expect(adapter).toContain("from '@makinbakin/sdk/conversation'")
+    expect(existsSync(resolve(ROOT, 'src/components/conversation/use-conversation-thread.ts'))).toBe(false)
   })
 })

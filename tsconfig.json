@@ -35,7 +35,6 @@
       "@makinbakin/sdk/conversation": ["./packages/sdk/src/conversation/index.ts"],
       "@makinbakin/sdk/content": ["./packages/sdk/src/content/index.ts"],
       "@makinbakin/sdk/hooks": ["./packages/sdk/src/hooks/index.ts"],
-      "@makinbakin/sdk/components": ["./packages/sdk/src/components/index.ts"],
       "@makinbakin/sdk/slots": ["./packages/sdk/src/slots/index.tsx"],
       "@makinbakin/sdk/types": ["./packages/sdk/src/types/index.ts"],
       "@makinbakin/sdk/utils": ["./packages/sdk/src/utils/index.ts"],

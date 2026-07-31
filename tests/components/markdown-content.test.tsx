@@ -25,7 +25,7 @@ mock.module('../../packages/core/src/content-dir', () => ({
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 import '../rtl-settle'
 
-import { MarkdownContent } from '@makinbakin/sdk/components'
+import { MarkdownContent } from '@makinbakin/sdk/content'
 
 const CODE_MD = '```typescript\nconst x: number = 1\n```'
 const JSON_MD = '```json\n{"state":"ready","count":2}\n```'

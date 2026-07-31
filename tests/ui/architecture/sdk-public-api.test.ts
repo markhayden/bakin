@@ -25,16 +25,13 @@ describe('focused SDK migration API freeze', () => {
     expect(diffPublicApiInventory(expected, actual)).toEqual([])
   })
 
-  it('freezes the migration-only components barrel against new exports', () => {
-    const expected = checkedInventory()
-    const actual = structuredClone(expected)
-    const legacy = actual.entrypoints.find((entry) => entry.specifier === '@makinbakin/sdk/components')
-    if (!legacy) throw new Error('legacy components inventory is missing')
-    legacy.values.push('UnreviewedLegacyExport')
+  it('the frozen components barrel stays deleted from the reviewed inventory (P-final)', () => {
+    const inventory = checkedInventory()
+    const legacy = inventory.entrypoints.find((entry) => entry.specifier === '@makinbakin/sdk/components')
 
-    expect(diffPublicApiInventory(expected, actual)).toContain(
-      '@makinbakin/sdk/components added value exports: UnreviewedLegacyExport',
-    )
+    expect(legacy).toBeUndefined()
+    expect(inventory.summary.frozenLegacyEntrypoints).toBe(0)
+    expect(inventory.entrypoints.some((entry) => entry.status === 'migration-only-frozen')).toBe(false)
   })
 
   it('gives every focused value and type one owning entrypoint', () => {
@@ -51,16 +48,11 @@ describe('focused SDK migration API freeze', () => {
 
   it('keeps focused paths supported and records existing routing and stylesheet ownership', () => {
     const inventory = checkedInventory()
-    const legacy = inventory.entrypoints.find((entry) => entry.specifier === '@makinbakin/sdk/components')
-    const focused = inventory.entrypoints.filter((entry) => entry !== legacy)
+    const focused = inventory.entrypoints
 
     expect(focused).toHaveLength(7)
     expect(focused.every((entry) => entry.status === 'supported-prerelease')).toBe(true)
     expect(focused.every((entry) => entry.newConsumerPolicy === 'supported')).toBe(true)
-    expect(legacy).toMatchObject({
-      status: 'migration-only-frozen',
-      newConsumerPolicy: 'migration-only',
-    })
     expect(inventory.contracts.routing).toContain('@makinbakin/sdk/routing')
     expect(inventory.contracts.routing).toContain('@makinbakin/sdk/navigation')
     expect(inventory.contracts.stylesheet).toBe('@makinbakin/sdk/styles.css')

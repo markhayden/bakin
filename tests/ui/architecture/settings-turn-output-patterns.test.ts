@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 const root = join(import.meta.dir, '../../..')
@@ -39,13 +39,11 @@ describe('public settings and turn-output patterns', () => {
     expect(output).not.toMatch(/@\/|@makinbakin\/sdk|react-markdown|remark-gfm|rehype-highlight|MarkdownContent|lucide-react/)
   })
 
-  it('keeps app feedback and rich Markdown behavior in source-compatible root adapters', () => {
+  it('keeps app feedback in the host settings adapter; the barrel-era turn-output adapter stays deleted (P-final)', () => {
     const settings = read('src/components/plugin-settings-renderer.tsx')
-    const output = read('src/components/turn-output-view.tsx')
 
     expect(settings).toContain("from '@makinbakin/sdk/patterns'")
     expect(settings).toContain('useToastStore')
-    expect(output).toContain("from '@makinbakin/sdk/conversation'")
-    expect(output).toContain('MarkdownContent')
+    expect(existsSync(join(root, 'src/components/turn-output-view.tsx'))).toBe(false)
   })
 })

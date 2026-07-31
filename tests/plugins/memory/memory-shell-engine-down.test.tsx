@@ -96,13 +96,7 @@ mock.module('@bakin/team/hooks/use-agent-store', () => ({
   useAgentDisplayName: () => undefined,
 }))
 
-mock.module('@/components/facet-filter', () => ({
-  FacetFilter: () => null,
-}))
 
-mock.module('@/components/agent-filter', () => ({
-  AgentFilter: () => null,
-}))
 
 mock.module('@bakin/memory/components/tier-overview-cards', () => ({
   TierOverviewCards: () => null,

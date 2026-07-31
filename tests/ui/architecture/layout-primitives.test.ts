@@ -41,7 +41,8 @@ describe('public layout ownership', () => {
     expect(layoutIndex).toContain("from '@bakin/ui/layout'")
     expect(layoutIndex).not.toMatch(/from '@bakin\/ui'/)
     expect(read('packages/ui/package.json')).toContain('"./layout": "./src/layout/index.ts"')
-    expect(read('packages/sdk/src/components/index.ts')).not.toMatch(/export\s+\{[^}]*\b(?:PageShell|Stack|Inline|Grid|Section|BoundedOverflow)\b/)
+    // P-final: the frozen components barrel is gone entirely.
+    expect(existsSync(resolve(REPO_ROOT, 'packages/sdk/src/components'))).toBe(false)
   })
 
   it('keeps layout choices finite instead of exposing arbitrary style values', () => {

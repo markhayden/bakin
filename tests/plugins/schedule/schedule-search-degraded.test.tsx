@@ -119,9 +119,6 @@ mock.module('@bakin/team/hooks/use-agent-store', () => ({
   useAgentList: () => [],
 }))
 
-mock.module('@/components/agent-filter', () => ({
-  AgentFilter: () => null,
-}))
 
 mock.module('@bakin/schedule/components/job-list', () => ({
   JobList: ({ jobs }: { jobs: ScheduleJobStub[] }) => (

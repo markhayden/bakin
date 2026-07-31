@@ -31,7 +31,6 @@ export const SDK_EXTERNALS: string[] = [
   '@makinbakin/sdk/conversation',
   '@makinbakin/sdk/content',
   '@makinbakin/sdk/hooks',
-  '@makinbakin/sdk/components',
   '@makinbakin/sdk/slots',
   '@makinbakin/sdk/types',
   '@makinbakin/sdk/utils',

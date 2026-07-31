@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 const ROOT = resolve(import.meta.dir, '../../..')
@@ -44,18 +44,8 @@ describe('focused chart foundation', () => {
 
     expect(sources).not.toMatch(/var\(--(?:border|ring|card|background|foreground|muted-foreground)\)/)
 
-    for (const file of [
-      'bar-chart.tsx',
-      'chart-data-table.tsx',
-      'chart-explainer.tsx',
-      'line-chart.tsx',
-      'palette.ts',
-      'ranked-bar-chart.tsx',
-      'sparkline.tsx',
-      'stacked-column-chart.tsx',
-    ]) {
-      expect(read(`src/components/charts/${file}`)).toContain("@makinbakin/sdk/charts")
-    }
+    // P-final: the barrel-era chart adapters stay deleted with the barrel.
+    expect(existsSync(resolve(ROOT, 'src/components/charts'))).toBe(false)
   })
 
   it('documents exact data, stable palette assignment, gaps, and non-color meaning', () => {

@@ -25,7 +25,7 @@ import { cleanup, render } from '@testing-library/react'
 import '../rtl-settle'
 import type { RuntimeChatChunk } from '@makinbakin/sdk/types'
 
-import { TurnOutputView, foldTurnChunks } from '@makinbakin/sdk/components'
+import { TurnOutputView, foldTurnChunks } from '@makinbakin/sdk/conversation'
 
 const text = (content: string, format?: 'markdown' | 'plain' | 'code'): RuntimeChatChunk =>
   ({ type: 'text', content, ...(format ? { format } : {}) })
@@ -92,10 +92,16 @@ describe('foldTurnChunks', () => {
 })
 
 describe('TurnOutputView rendering', () => {
-  it('renders markdown text through the markdown renderer', () => {
+  it('renders markdown through a consumer-owned renderText; default keeps the text visible', () => {
+    const rich = render(
+      <TurnOutputView chunks={[text('**bold** move')]} renderText={(content) => <strong>{content}</strong>} />,
+    )
+    expect(rich.container.querySelector('strong')?.textContent).toBe('**bold** move')
+    cleanup()
+
+    // Rich rendering is consumer-owned; the kit default never drops content.
     const { container } = render(<TurnOutputView chunks={[text('**bold** move')]} />)
-    expect(container.querySelector('strong')?.textContent).toBe('bold')
-    expect(container.textContent).toContain('bold move')
+    expect(container.textContent).toContain('**bold** move')
   })
 
   it('renders plain/code text as a mono block, not markdown', () => {

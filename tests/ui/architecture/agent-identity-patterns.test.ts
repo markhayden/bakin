@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 const root = join(import.meta.dir, '../../..')
@@ -24,16 +24,14 @@ describe('public agent identity and assignment patterns', () => {
     expect(agentPatterns).not.toMatch(/(?:bg|text|border)-(?:red|yellow|green|blue|gray|zinc|slate)-/)
   })
 
-  it('retains stores, team loading, and heartbeat timing only in compatibility adapters', () => {
+  it('retains the store-aware avatar adapter; barrel-era adapters stay deleted (P-final)', () => {
+    // Host code still reaches the store-aware avatar via `@/components/agent-avatar`.
     const avatar = read('src/components/agent-avatar.tsx')
-    const select = read('src/components/agent-select.tsx')
-    const status = read('src/components/agent-status.tsx')
-
     expect(avatar).toContain("from '@makinbakin/sdk/patterns'")
     expect(avatar).toContain('useAgent')
-    expect(select).toContain("from '@makinbakin/sdk/patterns'")
-    expect(select).toContain("fetch('/api/plugins/team/teams')")
-    expect(status).toContain("from '@makinbakin/sdk/patterns'")
-    expect(status).toContain('Date.now')
+
+    // Deleted with the frozen components barrel — reintroduction is a regression.
+    expect(existsSync(join(root, 'src/components/agent-select.tsx'))).toBe(false)
+    expect(existsSync(join(root, 'src/components/agent-status.tsx'))).toBe(false)
   })
 })

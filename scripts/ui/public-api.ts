@@ -101,14 +101,6 @@ export const PUBLIC_API_ENTRYPOINTS: readonly EntrypointDefinition[] = [
     status: 'supported-prerelease',
     newConsumerPolicy: 'supported',
   },
-  {
-    specifier: '@makinbakin/sdk/components',
-    sourcePath: 'packages/sdk/src/components/index.ts',
-    domain: 'legacy',
-    purpose: 'Frozen migration-only compatibility barrel for existing consumers.',
-    status: 'migration-only-frozen',
-    newConsumerPolicy: 'migration-only',
-  },
 ] as const
 
 function sorted(values: Iterable<string>): string[] {

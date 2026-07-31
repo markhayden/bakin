@@ -26,8 +26,7 @@ mock.module('@makinbakin/sdk/hooks', () => ({
 import { render } from '@testing-library/react'
 import '../rtl-settle'
 
-import { Conversation } from '../../src/components/conversation/conversation'
-import type { ConversationTurn } from '../../src/components/conversation/fold'
+import { Conversation, type ConversationTurn } from '@makinbakin/sdk/conversation'
 
 const userTurn = (key: string, content: string): ConversationTurn => ({
   kind: 'user',

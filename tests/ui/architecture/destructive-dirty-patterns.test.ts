@@ -2,23 +2,17 @@ import { describe, expect, it } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import * as PrivatePatterns from '@bakin/ui/patterns'
-import * as Components from '@makinbakin/sdk/components'
-import * as Navigation from '@makinbakin/sdk/navigation'
 import * as Patterns from '@makinbakin/sdk/patterns'
 
 const ROOT = resolve(import.meta.dir, '../../..')
 const read = (path: string) => readFileSync(resolve(ROOT, path), 'utf8')
 
 describe('canonical destructive and dirty-state patterns', () => {
-  it('publishes one presentation identity through focused and compatibility entrypoints', () => {
+  it('publishes one presentation identity through the focused entrypoint only', () => {
     expect(Patterns.ConfirmDialog).toBe(PrivatePatterns.ConfirmDialog)
     expect(Patterns.SaveBar).toBe(PrivatePatterns.SaveBar)
     expect(Patterns.DangerZone).toBe(PrivatePatterns.DangerZone)
     expect(Patterns.UnsavedChangesDialog).toBe(PrivatePatterns.UnsavedChangesDialog)
-    expect(Components.ConfirmDialog).toBe(PrivatePatterns.ConfirmDialog)
-    expect(Components.SaveBar).toBe(PrivatePatterns.SaveBar)
-    expect(Components.DangerZone).toBe(PrivatePatterns.DangerZone)
-    expect(Components.useUnsavedChangesGuard).toBe(Navigation.useUnsavedChangesGuard)
   })
 
   it('keeps presentation free of routing, persistence, and legacy host styling', () => {

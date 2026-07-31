@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
 const REPO_ROOT = resolve(import.meta.dir, '../../..')
@@ -21,34 +21,32 @@ describe('text-field primitive ownership', () => {
     }
   })
 
-  it('routes the public SDK and legacy app paths to one implementation', async () => {
+  it('routes the public SDK to one implementation; deleted legacy shims stay gone', async () => {
     const sdkSource = readRepoFile('packages/sdk/src/ui/index.ts')
     const hostBridge = readRepoFile('packages/host/src/ui/text-fields.ts')
     expect(sdkSource).toContain("from '@bakin/ui'")
     expect(hostBridge).toContain("from '@bakin/ui'")
 
-    for (const primitive of PRIMITIVES) {
-      const shim = readRepoFile(`src/components/ui/${primitive}.tsx`)
-      expect(shim).toContain("from '../../../packages/host/src/ui/text-fields'")
-      expect(shim).not.toContain('@base-ui/react')
+    // P-final: the legacy `src/components/ui/*` text-field shims were deleted
+    // with the frozen barrel — reintroducing one is a regression, except the
+    // `input` shim which host code still reaches via `@/components/ui/input`.
+    for (const primitive of ['label', 'textarea', 'input-group']) {
+      expect(existsSync(join(REPO_ROOT, `src/components/ui/${primitive}.tsx`))).toBe(false)
     }
+    const inputShim = readRepoFile('src/components/ui/input.tsx')
+    expect(inputShim).toContain("from '../../../packages/host/src/ui/text-fields'")
+    expect(inputShim).not.toContain('@base-ui/react')
 
-    const [privateUi, publicUi, legacyLabel, legacyInput, legacyTextarea, legacyInputGroup] = await Promise.all([
+    const [privateUi, publicUi, legacyInput] = await Promise.all([
       import('@bakin/ui'),
       import('@makinbakin/sdk/ui'),
-      import('../../../src/components/ui/label'),
       import('../../../src/components/ui/input'),
-      import('../../../src/components/ui/textarea'),
-      import('../../../src/components/ui/input-group'),
     ])
 
     expect(publicUi.Label).toBe(privateUi.Label)
     expect(publicUi.Input).toBe(privateUi.Input)
     expect(publicUi.Textarea).toBe(privateUi.Textarea)
     expect(publicUi.InputGroup).toBe(privateUi.InputGroup)
-    expect(legacyLabel.Label).toBe(privateUi.Label)
     expect(legacyInput.Input).toBe(privateUi.Input)
-    expect(legacyTextarea.Textarea).toBe(privateUi.Textarea)
-    expect(legacyInputGroup.InputGroup).toBe(privateUi.InputGroup)
   })
 })

@@ -30,9 +30,6 @@ mock.module('@/hooks/use-query-state', () => ({
   },
 }))
 // Markdown rendering is its own tested concern.
-mock.module('@/components/markdown-content', () => ({
-  MarkdownContent: ({ content }: { content: string }) => <pre>{content}</pre>,
-}))
 mock.module('@/components/markdown-editor', () => ({
   MarkdownEditor: ({ content }: { content: string }) => <textarea defaultValue={content} />,
 }))

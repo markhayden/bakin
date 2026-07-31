@@ -29,7 +29,6 @@ const BASE_UI_ENTRY = 'packages/sdk/src/ui/index.ts'
 export const UI_PAYLOAD_REVIEW_THRESHOLD_BYTES = 2048
 const UI_VENDOR_NAMES = new Set([
   'sdk-ui',
-  'sdk-components',
   'sdk-layout',
   'sdk-patterns',
   'sdk-charts',

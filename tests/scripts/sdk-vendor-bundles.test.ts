@@ -9,7 +9,7 @@
  *     lands in sdk-shared-*.js chunks exactly once, never inlined into
  *     multiple subpath bundles. Verified with a marker string from the
  *     shadcn form/label primitives, which the pre-splitting layout
- *     duplicated across sdk-ui.js and sdk-components.js.
+ *     duplicated across sdk-ui.js and sdk-patterns.js.
  *     Base UI and React DOM remain single runtime modules as well.
  *  2. The published entry contract holds: every stable sdk-*.js entry
  *     files exist and expose their representative exports, so the import
@@ -17,7 +17,7 @@
  *     @makinbakin/sdk/* specifier without changes.
  */
 import { afterAll, beforeAll, describe, expect, it, mock, setDefaultTimeout } from 'bun:test'
-import { mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 
@@ -38,9 +38,9 @@ mock.module('../../packages/core/src/content-dir', () => ({
 import { SDK_VENDOR_TARGETS, buildSdkVendorBundles } from '../../scripts/build-vendors'
 
 /**
- * A literal from the shadcn form/label primitives. Shared by the ui and
- * components subpaths; before the splitting layout it was inlined into
- * both bundles. If this assertion starts failing because shadcn renamed
+ * A literal from the shadcn form/label primitives. Shared by multiple
+ * subpaths; before the splitting layout it was inlined into
+ * each bundle. If this assertion starts failing because shadcn renamed
  * the class, pick any literal that grep finds in two or more sdk-*.js
  * files after temporarily reverting to per-subpath builds.
  */
@@ -105,9 +105,10 @@ describe('split SDK vendor build', () => {
     expect(typeof slots.registerSlot).toBe('function')
     expect(slots.Slot).toBeDefined()
 
-    const components = await import(join(outDir, 'sdk-components.js'))
-    expect(components.SectionCard).toBeDefined()
-    expect(components.FacetFilter).toBeDefined()
+    // P-final: the frozen components barrel is deleted — no sdk-components.js
+    // bundle exists, and the build target list must not reintroduce it.
+    expect(SDK_VENDOR_TARGETS.some((target) => target.name === 'sdk-components')).toBe(false)
+    expect(existsSync(join(outDir, 'sdk-components.js'))).toBe(false)
 
     const ui = await import(join(outDir, 'sdk-ui.js'))
     expect(ui.Button).toBeDefined()

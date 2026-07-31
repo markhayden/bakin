@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
 const REPO_ROOT = resolve(import.meta.dir, '../../..')
@@ -38,13 +38,11 @@ describe('focused browser navigation contract', () => {
     expect(routing).not.toMatch(/react|PluginLink|useRouter|useUnsaved/)
   })
 
-  it('retains old paths only as compatibility adapters', () => {
+  it('retains surviving compatibility adapters; barrel-era adapters stay deleted (P-final)', () => {
     const adapters = [
       'packages/sdk/src/hooks/router.ts',
-      'packages/sdk/src/components/plugin-link.tsx',
       'src/hooks/use-query-state.ts',
       'src/hooks/use-history-back.ts',
-      'src/components/unsaved-changes-guard.tsx',
     ]
 
     for (const path of adapters) {
@@ -53,7 +51,13 @@ describe('focused browser navigation contract', () => {
       expect(adapter).not.toMatch(/export function|function [A-Z]|function use/)
     }
 
-    const saveBar = source('src/components/save-bar.tsx')
-    expect(saveBar).toContain('@deprecated')
+    // Deleted with the frozen components barrel — reintroduction is a regression.
+    for (const path of [
+      'packages/sdk/src/components/plugin-link.tsx',
+      'src/components/unsaved-changes-guard.tsx',
+      'src/components/save-bar.tsx',
+    ]) {
+      expect(existsSync(join(REPO_ROOT, path))).toBe(false)
+    }
   })
 })

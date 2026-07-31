@@ -19,13 +19,13 @@
     "private-import"
   ],
   "summary": {
-    "paths": 47,
+    "paths": 44,
     "totals": {
-      "raw-palette": 235,
+      "raw-palette": 223,
       "arbitrary-size": 96,
       "raw-control": 49,
       "inline-style": 14,
-      "generic-token": 160,
+      "generic-token": 157,
       "unscoped-css": 0,
       "private-import": 1
     }
@@ -653,36 +653,6 @@
       }
     },
     {
-      "path": "src/components/color-picker.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "sdk"
-      },
-      "censusEntryId": "shared-component:src/components/color-picker",
-      "migrationTask": "T21-T35",
-      "archetype": "shared-ui",
-      "target": "focused SDK primitive/pattern and namespaced semantic tokens",
-      "status": "legacy-allowed",
-      "allowances": {
-        "raw-palette": 12
-      }
-    },
-    {
-      "path": "src/components/conversation/agent-turn.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "sdk"
-      },
-      "censusEntryId": "shared-component:src/components/conversation/agent-turn",
-      "migrationTask": "T34",
-      "archetype": "conversation",
-      "target": "canonical conversation patterns and focused SDK entrypoint",
-      "status": "legacy-allowed",
-      "allowances": {
-        "generic-token": 1
-      }
-    },
-    {
       "path": "src/components/conversation/reply-toast.tsx",
       "owner": {
         "repository": "bakin",
@@ -710,21 +680,6 @@
       "status": "legacy-allowed",
       "allowances": {
         "inline-style": 1
-      }
-    },
-    {
-      "path": "src/components/empty-state.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "sdk"
-      },
-      "censusEntryId": "shared-component:src/components/empty-state",
-      "migrationTask": "T21-T35",
-      "archetype": "shared-ui",
-      "target": "focused SDK primitive/pattern and namespaced semantic tokens",
-      "status": "legacy-allowed",
-      "allowances": {
-        "generic-token": 2
       }
     },
     {

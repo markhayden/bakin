@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 const ROOT = resolve(import.meta.dir, '../../..')
@@ -16,12 +16,9 @@ describe('canonical status and metric patterns', () => {
     expect(sources).not.toMatch(/(?:bg|text|border)-(?:red|yellow|green|blue|gray|zinc|slate)-/)
   })
 
-  it('keeps legacy tone names and surface defaults inside compatibility adapters', () => {
-    const statusAdapter = read('src/components/status-badge.tsx')
-    const statAdapter = read('src/components/stat-tile.tsx')
-    expect(statusAdapter).toContain("warning: 'attention'")
-    expect(statusAdapter).toContain("destructive: 'danger'")
-    expect(statAdapter).toContain('variant="surface"')
+  it('the legacy status and metric compatibility adapters stay deleted (P-final)', () => {
+    expect(existsSync(resolve(ROOT, 'src/components/status-badge.tsx'))).toBe(false)
+    expect(existsSync(resolve(ROOT, 'src/components/stat-tile.tsx'))).toBe(false)
   })
 
   it('documents visible status language, meter labels, and the low-chrome default', () => {

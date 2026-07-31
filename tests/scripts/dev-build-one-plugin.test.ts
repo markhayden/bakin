@@ -39,11 +39,11 @@ const EXTERNAL = [
   'react/jsx-runtime', 'react/jsx-dev-runtime',
   '@tanstack/react-router',
   '@makinbakin/sdk', '@makinbakin/sdk/ui', '@makinbakin/sdk/hooks',
-  '@makinbakin/sdk/components', '@makinbakin/sdk/slots',
+  '@makinbakin/sdk/slots',
   '@makinbakin/sdk/types', '@makinbakin/sdk/utils',
   '@makinbakin/sdk/metadata', '@makinbakin/sdk/routing',
   '@makinbakin/sdk', '@makinbakin/sdk/ui', '@makinbakin/sdk/hooks',
-  '@makinbakin/sdk/components', '@makinbakin/sdk/slots',
+  '@makinbakin/sdk/slots',
   '@makinbakin/sdk/types', '@makinbakin/sdk/utils',
   '@makinbakin/sdk/metadata', '@makinbakin/sdk/routing',
 ]

@@ -25,7 +25,7 @@
       "properties": {
         "entrypoints": { "type": "integer", "minimum": 1 },
         "supportedEntrypoints": { "type": "integer", "minimum": 1 },
-        "frozenLegacyEntrypoints": { "type": "integer", "minimum": 1 },
+        "frozenLegacyEntrypoints": { "type": "integer", "minimum": 0, "maximum": 0 },
         "valueExports": { "type": "integer", "minimum": 1 },
         "typeExports": { "type": "integer", "minimum": 1 }
       }

@@ -48,8 +48,6 @@ mock.module('@/hooks/use-runtime-status', () => ({
   useRuntimeStatus: () => ({ restartNeeded: false, restart: mock(), restarting: false, markDirty: mock() }),
 }))
 mock.module('@/components/agent-avatar', () => ({ AgentAvatar: () => <div /> }))
-mock.module('@/components/markdown-content', () => ({ MarkdownContent: () => <div /> }))
-mock.module('@/components/model-select', () => ({ ModelSelect: () => <div /> }))
 
 import { useAgentStore } from '../../../plugins/team/hooks/use-agent-store'
 import { AgentDetail } from '../../../plugins/team/components/agent-detail'

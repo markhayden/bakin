@@ -467,8 +467,6 @@ export function renderSdkReference(): string {
   renderMainSubpath(lines, bySubpath.get('@makinbakin/sdk'))
   // Hooks
   renderHooks(lines, bySubpath.get('@makinbakin/sdk/hooks'))
-  // Components
-  renderComponents(lines, bySubpath.get('@makinbakin/sdk/components'))
   // UI
   renderUi(lines, bySubpath.get('@makinbakin/sdk/ui'))
   // Focused visual boundaries (populated by their owned migration tasks)
@@ -552,21 +550,6 @@ function renderHooks(lines: string[], sp: SdkSubpath | undefined): void {
     }
     lines.push('')
   }
-}
-
-function renderComponents(lines: string[], sp: SdkSubpath | undefined): void {
-  if (!sp) return
-  lines.push('## `@makinbakin/sdk/components`', '')
-  lines.push(`Migration-only legacy barrel. Existing owned consumers may use it until their scheduled migration; new public stories and integrations use the focused visual entrypoints. Source: \`${sp.source}\`.`, '')
-  lines.push('```ts')
-  lines.push("import { FacetFilter, AgentAvatar } from '@makinbakin/sdk/components'")
-  lines.push('```', '')
-  lines.push('| Component | Description |')
-  lines.push('| --- | --- |')
-  for (const sym of sp.symbols) {
-    lines.push(`| \`${sym.name}\` | ${escapeMd(sym.jsdoc || '—')} |`)
-  }
-  lines.push('')
 }
 
 function renderFocusedVisualEntrypoint(

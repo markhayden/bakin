@@ -33,11 +33,6 @@ mock.module('@makinbakin/sdk/hooks', () => ({
   usePluginEvent: () => {},
 }))
 
-mock.module('@makinbakin/sdk/components', () => ({
-  AgentAvatar: ({ agentId }: { agentId: string }) => <span>{agentId}</span>,
-  MarkdownContent: ({ content }: { content: string }) => <div>{content}</div>,
-}))
-
 const manifest = {
   assetId: '20260704-gourmet-popcorn-f1a2b3c4',
   type: 'images',

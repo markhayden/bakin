@@ -12,32 +12,6 @@ mock.module('../../../packages/core/src/content-dir', () => ({ getContentDir: ()
 
 // DeleteScheduleDialog now delegates to the shared ConfirmDialog (WS3b A3); mock it to a
 // minimal renderer so this test verifies the title/description/labels the component contributes.
-mock.module('@makinbakin/sdk/components', () => ({
-  ConfirmDialog: ({
-    open,
-    title,
-    description,
-    confirmLabel = 'Delete',
-    onConfirm,
-    onCancel,
-  }: {
-    open: boolean
-    title?: React.ReactNode
-    description?: React.ReactNode
-    confirmLabel?: string
-    onConfirm?: () => void
-    onCancel?: () => void
-  }) =>
-    open ? (
-      <div role="dialog">
-        <h2>{title}</h2>
-        <div>{description}</div>
-        <button onClick={onCancel}>Cancel</button>
-        <button onClick={onConfirm}>{confirmLabel}</button>
-      </div>
-    ) : null,
-}))
-
 import { DeleteScheduleDialog } from '../../../plugins/schedule/components/delete-schedule-dialog'
 
 describe('DeleteScheduleDialog', () => {

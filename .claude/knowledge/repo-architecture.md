@@ -140,7 +140,7 @@ Sub-paths are declared via `exports` in `packages/sdk/package.json`:
 `@makinbakin/sdk/ui`, `@makinbakin/sdk/layout`, `@makinbakin/sdk/patterns`,
 `@makinbakin/sdk/charts`, `@makinbakin/sdk/conversation`,
 `@makinbakin/sdk/content`, `@makinbakin/sdk/navigation`,
-`@makinbakin/sdk/hooks`, `@makinbakin/sdk/components`,
+`@makinbakin/sdk/hooks`,
 `@makinbakin/sdk/slots`, `@makinbakin/sdk/types`, `@makinbakin/sdk/utils`,
 `@makinbakin/sdk/metadata`, `@makinbakin/sdk/routing`.
 
@@ -316,7 +316,7 @@ import { getContentDir } from '../../../src/core/content-dir'
 
 // Client files import from the SDK
 import { registerPlugin, type NavItem } from '@makinbakin/sdk'
-import { PluginHeader } from '@makinbakin/sdk/components'
+import { PageHeader } from '@makinbakin/sdk/patterns'
 ```
 
 Plugin authors (outside the repo) never use the `../../src/*` paths —

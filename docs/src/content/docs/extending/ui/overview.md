@@ -18,7 +18,7 @@ The catalog will grow component by component as primitives, layout recipes, syst
 
 ## Authoring Rule
 
-Start with the focused SDK entrypoints: `@makinbakin/sdk/ui`, `@makinbakin/sdk/layout`, `@makinbakin/sdk/patterns`, `@makinbakin/sdk/charts`, `@makinbakin/sdk/conversation`, `@makinbakin/sdk/content`, and `@makinbakin/sdk/navigation`. Use semantic component props and documented composition patterns. The older `@makinbakin/sdk/components` barrel is migration-only and should not gain new consumers. Add plugin-owned, root-scoped CSS only for domain-specific presentation that the SDK does not cover.
+Start with the focused SDK entrypoints: `@makinbakin/sdk/ui`, `@makinbakin/sdk/layout`, `@makinbakin/sdk/patterns`, `@makinbakin/sdk/charts`, `@makinbakin/sdk/conversation`, `@makinbakin/sdk/content`, and `@makinbakin/sdk/navigation`. Use semantic component props and documented composition patterns. The legacy `@makinbakin/sdk/components` barrel has been removed — every import comes from a focused entrypoint. Add plugin-owned, root-scoped CSS only for domain-specific presentation that the SDK does not cover.
 
 :::note[Browser navigation ownership]
 Use `@makinbakin/sdk/navigation` for `PluginLink`, router hooks, URL-backed
@@ -997,7 +997,7 @@ export function TaskControls() {
 
 Keep the owning page path stable while these values change. The patterns intentionally do not read or write the URL themselves, so the same controls also work for local, non-linkable state. `AgentFilter` follows the same controlled contract; official Bakin surfaces may use the compatibility adapter that supplies registered agent metadata, while plugin UI supplies its own public option labels and visuals.
 
-Agent identity and assignment also live in `@makinbakin/sdk/patterns`. `AgentAvatar`, `AgentStatus`, and `AgentSelect` accept presentation-ready identities, exact presence values, and controlled agent/team options. They do not read the agent registry, calculate heartbeat freshness, fetch teams, persist assignment, or own URL state. Existing official surfaces may keep using the migration adapter from `@makinbakin/sdk/components` until the fleet migration; new plugin UI supplies supported focused props:
+Agent identity and assignment also live in `@makinbakin/sdk/patterns`. `AgentAvatar`, `AgentStatus`, and `AgentSelect` accept presentation-ready identities, exact presence values, and controlled agent/team options. They do not read the agent registry, calculate heartbeat freshness, fetch teams, persist assignment, or own URL state. Plugin UI supplies supported focused props:
 
 ```tsx
 import {
@@ -1090,7 +1090,7 @@ For dialog composition, pass controlled `open` and `onOpenChange`. The picker do
 
 `ChannelIcon` renders the glyph for a notification channel (email, Discord, Instagram, …) resolved from the workflows channel registry. Pass `channels` when you already hold the definitions; omit it to resolve from the live registry. The icon is decorative — always pair it with the channel's visible label; unknown channels render an honest generic glyph.
 
-The migration-only `AssetPicker`, `ModelSelect`, and `ColorPicker` adapters in `@makinbakin/sdk/components` preserve existing official consumers while the fleet migration proceeds. New plugin UI should use the focused controlled contracts above. These patterns do not replace the established routing work: keep linkable library queries, overlay state, and selected records in the existing query-state contract when the product requires them.
+Plugin UI uses the focused controlled contracts above (the legacy `@makinbakin/sdk/components` adapters were removed with the barrel). These patterns do not replace the established routing work: keep linkable library queries, overlay state, and selected records in the existing query-state contract when the product requires them.
 
 Use `StatusBadge` for compact state language and `StatTile` for scan-friendly technical metrics. Wrap a short set of peer counters in `StatGroup`; it keeps them packed against the start edge and wraps the group without distributing a handful of values across the full page. A status always needs a visible label such as “Published,” “Needs review,” or “Blocked”; never use a bare colored dot or icon as the only meaning. Status icons are decorative reinforcement. Focused status tones follow the shared semantic vocabulary: `neutral`, `success`, `attention`, `danger`, and `accent`.
 
@@ -1271,7 +1271,7 @@ export function TurnActivity({ calls }: { calls: ConversationToolCall[] }) {
 }
 ```
 
-The consumer owns any exact-detail drawer and receives the original call object through `onOpenCall`; the activity component does not own URL or selection state. Supply presentation-ready summaries. `formatSummary` exists for compatibility adapters that must unwrap an established runtime envelope, not as a general domain-formatting hook. Status remains visible text when color or motion is unavailable, and the disclosure uses native button semantics. New consumers should not import the legacy `@makinbakin/sdk/components` barrel.
+The consumer owns any exact-detail drawer and receives the original call object through `onOpenCall`; the activity component does not own URL or selection state. Supply presentation-ready summaries. `formatSummary` exists for compatibility adapters that must unwrap an established runtime envelope, not as a general domain-formatting hook. Status remains visible text when color or motion is unavailable, and the disclosure uses native button semantics. The legacy `@makinbakin/sdk/components` barrel no longer exists — conversation surfaces import from `@makinbakin/sdk/conversation`.
 
 ## Conversation Turns and Messages
 

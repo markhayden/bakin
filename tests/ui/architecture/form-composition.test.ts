@@ -44,12 +44,8 @@ describe('canonical form ownership', () => {
     expect(sdkSource).toContain("from '@bakin/ui'")
   })
 
-  it('keeps form-library adapters presentation-free', () => {
-    const legacyBridge = read('src/components/ui/form.tsx')
-    expect(legacyBridge).not.toContain('react-hook-form')
-    expect(legacyBridge).not.toContain('Controller')
-    expect(legacyBridge).not.toContain('FormProvider')
-    expect(legacyBridge).toContain("from '../../../packages/host/src/ui/forms'")
+  it('keeps form-library adapters presentation-free; the legacy shim stays deleted (P-final)', () => {
+    expect(existsSync(resolve(REPO_ROOT, 'src/components/ui/form.tsx'))).toBe(false)
 
     const hostBridge = read('packages/host/src/ui/forms.ts')
     expect(hostBridge).toContain("from '@bakin/ui'")

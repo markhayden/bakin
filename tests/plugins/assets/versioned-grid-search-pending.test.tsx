@@ -116,16 +116,6 @@ mock.module('@makinbakin/sdk/ui', () => ({
   DropdownMenuItem: passthrough,
 }))
 
-mock.module('@makinbakin/sdk/components', () => ({
-  PluginHeader: ({ title }: { title?: ReactNode }) => <h1>{title}</h1>,
-  FacetFilter: () => <div data-testid="facet-filter" />,
-  SearchUnavailable: () => <div data-testid="search-unavailable" />,
-  ScoreOverlay: () => null,
-  AgentAvatar: () => <span />,
-  Drawer: passthrough,
-  ConfirmDialog: () => null,
-}))
-
 mock.module('@makinbakin/sdk/patterns', () => ({
   Page: passthrough,
   PageControls: passthrough,

@@ -11,7 +11,7 @@ const testDir = join(tmpdir(), 'bakin-test-danger-zone')
 mock.module('../../src/core/content-dir', () => ({ getContentDir: () => testDir, getBakinPaths: () => ({ root: testDir }) }))
 mock.module('../../packages/core/src/content-dir', () => ({ getContentDir: () => testDir, getBakinPaths: () => ({ root: testDir }) }))
 
-import { DangerZone } from '../../src/components/danger-zone'
+import { DangerZone } from '@makinbakin/sdk/patterns'
 
 afterEach(() => cleanup())
 

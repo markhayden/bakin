@@ -115,7 +115,7 @@ registerPlugin({
 
 ## FacetFilter Component
 
-Located at `src/components/facet-filter.tsx`. Shared multi-select filter component using Popover + Command.
+Exported from `@makinbakin/sdk/patterns` (implementation: `packages/ui/src/patterns/facet-filter.tsx`). Shared multi-select filter component using Popover + Command.
 
 ```tsx
 <FacetFilter

@@ -35,9 +35,6 @@ mock.module('@/hooks/use-query-state', () => ({
     return React.useState(defaultValue)
   },
 }))
-mock.module('@/components/markdown-content', () => ({
-  MarkdownContent: ({ content }: { content: string }) => <pre>{content}</pre>,
-}))
 // The brainstorm panel pulls the conversation kit + agent store — its own concern.
 mock.module('../../../plugins/brands/components/brand-doc-brainstorm', () => ({
   DocBrainstormPanel: () => <div data-testid="brainstorm-panel" />,

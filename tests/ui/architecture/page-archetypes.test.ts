@@ -37,7 +37,8 @@ describe('canonical consolidated page archetype', () => {
     }
     expect(read('packages/sdk/src/patterns/index.ts')).toContain("from '@bakin/ui/patterns'")
     expect(read('packages/ui/src/index.ts')).not.toMatch(/from ['"]\.\/patterns['"]/)
-    expect(read('packages/sdk/src/components/index.ts')).not.toMatch(/export\s+\{[^}]*\b(?:PageHeader|PageBody|PageControls|PageAside|PageCanvas|PageTimeline|PageComposer)\b/)
+    // P-final: the frozen components barrel is gone entirely.
+    expect(existsSync(resolve(REPO_ROOT, 'packages/sdk/src/components'))).toBe(false)
   })
 
   it('retired the six legacy archetype roots without leaving aliases behind', () => {

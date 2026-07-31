@@ -89,10 +89,6 @@ mock.module('@makinbakin/sdk/navigation', () => ({
   ),
 }))
 
-mock.module('@makinbakin/sdk/components', () => ({
-  AgentAvatar: ({ agentId }: { agentId: string }) => <span>{agentId}</span>,
-}))
-
 import { CalendarToday } from '../../../plugins/schedule/components/calendar-today'
 import { CalendarWeekly } from '../../../plugins/schedule/components/calendar-weekly'
 import { CalendarMonthly } from '../../../plugins/schedule/components/calendar-monthly'

@@ -5,8 +5,9 @@
  * so plugin authors can write `import { registerPlugin } from '@makinbakin/sdk'`
  * without having to remember which sub-path it lives at. UI primitives,
  * layout, patterns, charts, conversation UI, rich content, hooks, and slots stay on focused
- * sub-paths to keep the top-level namespace from exploding. `/components` is
- * migration-only and receives no new public API.
+ * sub-paths to keep the top-level namespace from exploding. The legacy
+ * `/components` barrel is REMOVED (storybook-refit P-final) — compose the
+ * focused sub-paths below instead.
  *
  * This entry is AUTHOR API ONLY. The host shell's registry/lazy-loading
  * plumbing lives on `@makinbakin/sdk/internal` and is not a public contract.
@@ -19,7 +20,6 @@
  *   - `@makinbakin/sdk/conversation` — isolated conversation UI and models
  *   - `@makinbakin/sdk/content`    — opt-in rich content rendering and editing
  *   - `@makinbakin/sdk/hooks`      — React hooks (useAgent, useSSE, useSearch, ...)
- *   - `@makinbakin/sdk/components` — migration-only legacy component barrel
  *   - `@makinbakin/sdk/slots`      — Slot + registerSlot primitive
  *   - `@makinbakin/sdk/types`      — full type re-exports
  *   - `@makinbakin/sdk/metadata`   — docs-aware contract helpers

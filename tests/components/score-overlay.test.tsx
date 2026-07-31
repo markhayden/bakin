@@ -14,7 +14,7 @@ const contentDirMock = () => ({
 mock.module('../../src/core/content-dir', contentDirMock)
 mock.module('../../packages/core/src/content-dir', contentDirMock)
 
-import { ScoreOverlay, computeMatchedFields } from '../../src/components/score-overlay'
+import { ScoreOverlay, computeMatchedFields } from '@makinbakin/sdk/patterns'
 
 
 describe('ScoreOverlay', () => {

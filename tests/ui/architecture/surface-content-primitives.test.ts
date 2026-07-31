@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
 const REPO_ROOT = resolve(import.meta.dir, '../../..')
@@ -21,26 +21,25 @@ describe('surface and content primitive ownership', () => {
     }
   })
 
-  it('routes the public SDK and legacy app paths to one implementation', async () => {
+  it('routes the public SDK to one implementation; deleted legacy shims stay gone', async () => {
     const sdkSource = readRepoFile('packages/sdk/src/ui/index.ts')
     const hostBridge = readRepoFile('packages/host/src/ui/surface-content.ts')
     expect(sdkSource).toContain("from '@bakin/ui'")
     expect(hostBridge).toContain("from '@bakin/ui'")
 
-    for (const primitive of PRIMITIVES) {
-      const shim = readRepoFile(`src/components/ui/${primitive}.tsx`)
-      expect(shim).toContain("from '../../../packages/host/src/ui/surface-content'")
-      expect(shim).not.toContain('@base-ui/react')
+    // P-final: the legacy shims were deleted with the frozen barrel, except
+    // `skeleton`, which host code still reaches via `@/components/ui/skeleton`.
+    for (const primitive of ['avatar', 'card', 'separator', 'collapsible']) {
+      expect(existsSync(join(REPO_ROOT, `src/components/ui/${primitive}.tsx`))).toBe(false)
     }
+    const skeletonShim = readRepoFile('src/components/ui/skeleton.tsx')
+    expect(skeletonShim).toContain("from '../../../packages/host/src/ui/surface-content'")
+    expect(skeletonShim).not.toContain('@base-ui/react')
 
-    const [privateUi, publicUi, legacyAvatar, legacyCard, legacySeparator, legacySkeleton, legacyCollapsible] = await Promise.all([
+    const [privateUi, publicUi, legacySkeleton] = await Promise.all([
       import('@bakin/ui'),
       import('@makinbakin/sdk/ui'),
-      import('../../../src/components/ui/avatar'),
-      import('../../../src/components/ui/card'),
-      import('../../../src/components/ui/separator'),
       import('../../../src/components/ui/skeleton'),
-      import('../../../src/components/ui/collapsible'),
     ])
 
     expect(publicUi.Avatar).toBe(privateUi.Avatar)
@@ -48,10 +47,6 @@ describe('surface and content primitive ownership', () => {
     expect(publicUi.Separator).toBe(privateUi.Separator)
     expect(publicUi.Skeleton).toBe(privateUi.Skeleton)
     expect(publicUi.Collapsible).toBe(privateUi.Collapsible)
-    expect(legacyAvatar.Avatar).toBe(privateUi.Avatar)
-    expect(legacyCard.Card).toBe(privateUi.Card)
-    expect(legacySeparator.Separator).toBe(privateUi.Separator)
     expect(legacySkeleton.Skeleton).toBe(privateUi.Skeleton)
-    expect(legacyCollapsible.Collapsible).toBe(privateUi.Collapsible)
   })
 })

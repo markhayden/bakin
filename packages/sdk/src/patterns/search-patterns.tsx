@@ -14,7 +14,7 @@ import {
   type SystemStateScope,
 } from '@bakin/ui'
 
-import { PluginLink } from '../components/plugin-link'
+import { PluginLink } from '../navigation/plugin-link'
 
 /** Search response metadata needed to disclose partial source coverage. */
 export interface SearchPartialMeta {

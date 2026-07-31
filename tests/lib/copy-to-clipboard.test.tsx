@@ -22,7 +22,7 @@ import { fireEvent, render } from '@testing-library/react'
 import '../rtl-settle'
 
 import { copyToClipboard } from '../../src/lib/copy-to-clipboard'
-import { CopyButton } from '../../src/components/conversation/agent-turn'
+import { CopyButton } from '@makinbakin/sdk/conversation'
 
 type NavigatorWithClipboard = Navigator & { clipboard?: unknown }
 
