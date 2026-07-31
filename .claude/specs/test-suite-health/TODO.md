@@ -17,10 +17,41 @@ Posture validation (pre-planning, reverted): global act env ⇒ 31 Ink failures 
 act env scoped to `rtl-settle` ⇒ green, detection preserved (130 / 50). See SPEC §2.3.
 
 ## CP-0 — Foundation
-- [ ] T0 branch + bun 1.3.14 (local + `.bun-version`) + RTL/happy-dom + one 3737 restart + re-baseline
+- [x] T0 branch + toolchain — **bun stays 1.3.13** (see finding F1), happy-dom → 20.11.1, RTL already latest (16.3.2)
 
-**Re-baseline on 1.3.14** (fill in — do not carry the 1.3.13 numbers forward):
-- suite: ___ pass / ___ fail · act warnings: ___ · output lines: ___
+**F1 — bun 1.3.14 is a regression for this suite. Do not upgrade.**
+
+Measured, not inferred. Isolation matrix (`tests/cli/readonly-logs.test.ts`):
+
+| bun | happy-dom | result |
+|---|---|---|
+| 1.3.13 | 20.9.0 | green |
+| 1.3.13 | **20.11.1** | **green** — the bump is safe |
+| **1.3.14** | 20.9.0 | **fail** |
+| **1.3.14** | 20.11.1 | **fail** |
+
+Full suite on 1.3.14: **124 fail / 48 errors**, 8443 tests (88 fewer dispatched) vs
+8522 pass / 0 fail on 1.3.13. Both failure classes are the same root cause — an ESM
+module-initialization (TDZ) regression:
+
+- `Cannot access 'Yoga' before initialization` × **62** — `ink/build/styles.js:3`
+  importing `yoga-layout`. Third-party; nothing of ours involved. Kills the CLI TUI tests.
+- `Cannot access 'NativeResponse' before initialization` × **47** —
+  `tests/integration/pi/fake-provider.ts:25`, which is a **top-level await**
+  (`const NativeResponse = (await nativeFetch(…)).constructor`). 1.3.14 lets module
+  functions execute before the TLA settles, which valid ESM forbids. Surfaces as the Pi
+  "Connection error." family and the runtime-conformance failures.
+
+Consequence for D3: its rationale ("don't build fixes on a version we're about to
+leave") inverts — 1.3.14 is not a version we can move to. `.bun-version` stays 1.3.13
+and is doing exactly the job it exists for. Re-evaluate on 1.3.15+ by re-running the
+matrix above **before** repinning.
+
+Follow-up: report both cases upstream (the `yoga-layout` one is reproducible without any
+Bakin code; the TLA one needs a 5-line repro).
+
+**Baseline carried forward** (bun 1.3.13, happy-dom 20.11.1) — re-verified after the revert:
+- suite: 8522 pass / 9 skip / 0 fail · act warnings: 294–301 · output: 11,885 lines
 
 ## CP-A — Posture
 - [ ] T1 silent logger output + `logger.test.ts` owns its env
