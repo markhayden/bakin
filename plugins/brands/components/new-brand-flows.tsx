@@ -76,7 +76,7 @@ export function CreatePathCards({ onPick, size = 'row' }: { onPick: (path: Creat
           type="button"
           variant="outline"
           className={[
-            'h-auto min-h-[var(--bakin-layout-size-control)] w-full items-start justify-start whitespace-normal',
+            'h-auto w-full items-start justify-start whitespace-normal',
             'gap-bakin-3 p-bakin-4 text-left leading-relaxed',
             size === 'tile' ? 'flex-col' : '',
           ].join(' ')}

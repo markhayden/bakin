@@ -41,18 +41,20 @@ function MobileJobRow({
         aria-label={`Open ${label}`}
         onClick={onSelect}
       >
-        <span className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-x-bakin-3 gap-y-bakin-2">
-          <span className="min-w-0">
-            <span className="block truncate font-bakin-typography-weight-semibold text-bakin-text-primary">
-              {label}
+        <span className="flex w-full min-w-0 flex-col gap-y-bakin-2">
+          <span className="flex min-w-0 items-start gap-x-bakin-3">
+            <span className="min-w-0 flex-1">
+              <span className="block truncate font-bakin-typography-weight-semibold text-bakin-text-primary">
+                {label}
+              </span>
+              <span className="mt-bakin-1 block text-bakin-typography-size-meta uppercase tracking-wider text-bakin-text-muted">
+                {source}
+              </span>
             </span>
-            <span className="mt-bakin-1 block text-bakin-typography-size-meta uppercase tracking-wider text-bakin-text-muted">
-              {source}
-            </span>
+            <JobStatusBadge job={job} />
           </span>
-          <JobStatusBadge job={job} />
 
-          <span className="col-span-2 flex min-w-0 items-center gap-bakin-3">
+          <span className="flex min-w-0 items-center gap-bakin-3">
             <AgentBadge agentId={job.agentId} size="sm" />
             <span className="min-w-0 flex-1">
               <span className="block truncate text-bakin-typography-size-body text-bakin-text-muted">
@@ -77,14 +79,14 @@ function MobileJobRow({
           </span>
 
           {job.toolsAllowMissing ? (
-            <span className="col-span-2 inline-flex items-center gap-bakin-1 text-bakin-typography-size-meta text-bakin-signal-highlight">
+            <span className="inline-flex items-center gap-bakin-1 text-bakin-typography-size-meta text-bakin-signal-highlight">
               <ShieldAlert className="size-bakin-3" aria-hidden="true" />
               Missing cron tools
             </span>
           ) : null}
 
           {scoreInfo ? (
-            <span className="col-span-2 font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-signal-highlight">
+            <span className="font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-signal-highlight">
               RRF {scoreInfo.score.toFixed(3)}
             </span>
           ) : null}

@@ -123,10 +123,11 @@ describe('MemorySearchResults', () => {
     expect(document.querySelectorAll('[data-agent-avatar]').length).toBe(3)
     expect(document.querySelectorAll('[data-agent-id="explorer"]').length).toBe(2)
 
-    // Memory tier taxonomy keeps its established color families.
-    expect(screen.getByText('Session').closest('[data-status-badge]')?.className).toContain('blue')
-    expect(screen.getByText('Daily Note').closest('[data-status-badge]')?.className).toContain('emerald')
-    expect(screen.getByText('Audit').closest('[data-status-badge]')?.className).toContain('rose')
+    // Tier identity rides the badge TEXT on a neutral StatusBadge — the raw
+    // per-tier color families were retired in the storybook refit (T6.5).
+    expect(screen.getByText('Session').closest('[data-status-badge]')?.getAttribute('data-tone')).toBe('neutral')
+    expect(screen.getByText('Daily Note').closest('[data-status-badge]')?.getAttribute('data-tone')).toBe('neutral')
+    expect(screen.getByText('Audit').closest('[data-status-badge]')?.getAttribute('data-tone')).toBe('neutral')
   })
 
   it('uses the shared small-card row treatment to separate adjacent results', () => {

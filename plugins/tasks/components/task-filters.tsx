@@ -1,18 +1,18 @@
 'use client'
 
 import { useMemo } from 'react'
-import { AgentAvatar, AgentFilter, FacetFilter } from '@makinbakin/sdk/patterns'
+import { AgentAvatar, AgentFilter, FacetFilter, StatusMarker } from '@makinbakin/sdk/patterns'
 import { useAgentIds, useAgentStore } from '@makinbakin/sdk/hooks'
 import { Switch } from "@makinbakin/sdk/ui"
 import { Eye, EyeOff } from 'lucide-react'
-import { COLUMN_CONFIG, STATUS_DOT_COLORS } from '../constants'
+import { COLUMN_CONFIG, STATUS_TONES } from '../constants'
 import type { ColumnId } from '../types'
 
 const STATUS_OPTIONS: { value: string; label: string; icon: React.ReactNode }[] =
   (['backlog', 'todo', 'blocked', 'inProgress', 'review', 'done', 'archived'] as ColumnId[]).map(id => ({
     value: id,
     label: COLUMN_CONFIG[id].label,
-    icon: <span className={`size-2 rounded-full ${STATUS_DOT_COLORS[id]}`} />,
+    icon: <StatusMarker tone={STATUS_TONES[id]} />,
   }))
 
 /** Brand-facet sentinel for unbranded tasks — mirrors NO_BRAND in use-task-filters. */

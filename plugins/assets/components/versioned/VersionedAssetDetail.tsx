@@ -451,13 +451,16 @@ export function VersionedAssetDetail() {
           onClick={() => setLightbox(false)}
           data-testid="lightbox"
         >
-          <button
-            className="absolute right-4 top-4 text-zinc-300 hover:text-white"
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            className="absolute right-4 top-4 text-white/80 hover:bg-transparent hover:text-white"
             onClick={() => setLightbox(false)}
             aria-label="Close"
           >
             <X className="size-6" />
-          </button>
+          </Button>
           <img
             src={assetVersionUrl(manifest.assetId, previewVersion)}
             alt={manifest.assetId}
@@ -474,7 +477,7 @@ export function VersionedAssetDetail() {
         description={manifest.versions.length > 1 ? (
           // DialogDescription renders a <p>, so the radio group stays phrasing
           // content: <span>/<label>/<input> only, no block elements.
-          <span className="flex flex-col gap-2 text-sm text-foreground" data-testid="delete-dialog">
+          <span className="flex flex-col gap-2 text-sm text-bakin-text-primary" data-testid="delete-dialog">
             <label className="flex items-center gap-2">
               <input type="radio" name="scope" checked={deleteScope === 'asset'} onChange={() => setDeleteScope('asset')} data-testid="scope-asset" />
               Delete whole asset (all {manifest.versions.length} versions)

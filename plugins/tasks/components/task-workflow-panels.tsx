@@ -53,14 +53,14 @@ function WorkflowStepList({
         const status = state?.status || 'pending'
         const isGate = step.type === 'gate'
         return (
-          <li key={step.id} className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-bakin-3 py-bakin-3">
+          <li key={step.id} className="flex min-w-0 items-start gap-bakin-3 py-bakin-3">
             <span
               aria-hidden="true"
-              className="grid size-bakin-6 place-items-center rounded-bakin-pill border border-bakin-border-subtle bg-bakin-canvas-default font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted"
+              className="grid size-bakin-6 shrink-0 place-items-center rounded-bakin-pill border border-bakin-border-subtle bg-bakin-canvas-default font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted"
             >
               {index + 1}
             </span>
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <div className="flex min-w-0 flex-wrap items-center gap-bakin-2">
                 <span className="font-bakin-typography-weight-semibold text-bakin-text-primary">
                   {step.label || step.id}

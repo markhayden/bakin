@@ -1,6 +1,7 @@
 import { forwardRef } from 'react'
 import type { ComponentPropsWithoutRef, ReactNode } from 'react'
 
+import { Button } from '@makinbakin/sdk/ui'
 import { cn } from '@makinbakin/sdk/utils'
 
 export type RecurringDaySummaryTone = 'neutral' | 'attention'
@@ -77,19 +78,19 @@ export const RecurringDaySummary = forwardRef<HTMLButtonElement, RecurringDaySum
     const accessibleName = `${title}. ${detail}`
 
     return (
-      <button
+      <Button
         ref={ref}
         type={type}
+        variant="ghost"
+        size="sm"
         aria-label={accessibleName}
         data-slot="recurring-day-summary"
         data-tone={tone}
         className={cn(
           [
-            'group grid min-w-0 w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-bakin-2',
+            'group !h-auto w-full min-w-0 justify-start gap-x-bakin-2 whitespace-normal',
             'rounded-bakin-control border px-bakin-2 py-bakin-1',
-            'text-left transition-colors',
-            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bakin-focus-ring focus-visible:ring-offset-2',
-            'focus-visible:ring-offset-bakin-canvas-default',
+            'text-left font-bakin-typography-weight-regular',
             tone === 'attention'
               ? 'border-bakin-signal-highlight/60 bg-bakin-signal-highlight/10 hover:bg-bakin-signal-highlight/15'
               : 'border-bakin-border-subtle bg-bakin-canvas-default hover:bg-bakin-surface-default',
@@ -114,7 +115,7 @@ export const RecurringDaySummary = forwardRef<HTMLButtonElement, RecurringDaySum
             <AttentionIcon />
           </span>
         ) : null}
-      </button>
+      </Button>
     )
   },
 )

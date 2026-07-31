@@ -121,7 +121,8 @@ describe('ChatPage path-based identity', () => {
     await waitFor(() => {
       expect(container.querySelector(`[data-chat-row="${CHAT_A}"]`)).not.toBeNull()
     })
-    fireEvent.click(container.querySelector(`[data-chat-row="${CHAT_A}"]`)!)
+    // The row is a kit ListRow whose full-width ghost Button owns the click (refit T6.5).
+    fireEvent.click(container.querySelector(`[data-chat-row="${CHAT_A}"] button`)!)
     const pushed = navigations.find(
       (n) => (n as { to?: string }).to === `/chat/${CHAT_A}`,
     )

@@ -33,7 +33,9 @@ describe('Chat UI conformance', () => {
     expect(contents).not.toContain('@makinbakin/sdk/components')
     expect(contents).toContain("from '@makinbakin/sdk/conversation'")
     expect(contents).toContain("from '@makinbakin/sdk/patterns'")
-    expect(contents).toContain('grid-cols-1')
+    // Refit T6.5: the card grid rides the layout kit's responsive quarters
+    // preset (single column in narrow containers by definition).
+    expect(contents).toContain('<Grid layout="quarters"')
     expect(contents).not.toContain('grid-cols-2 gap-3 sm:grid-cols-3')
   })
 

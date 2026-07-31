@@ -7,24 +7,26 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, Check, Pencil, Pin } from 'lucide-react'
 import { toast } from '@makinbakin/sdk/hooks'
-import {
-  Conversation,
-  ConversationEmptyState,
-  ToolCallDrawer,
-  foldConversation,
-  type ConversationToolCall,
-} from '@makinbakin/sdk/components'
+import { MarkdownContent } from '@makinbakin/sdk/content'
 import {
   Composer,
+  Conversation,
+  ConversationEmptyState,
   QueuedMessageList,
+  ToolCallDrawer,
+  foldConversation,
   formatTokenCount,
   formatUsageCost,
   type ComposerHandle,
+  type ConversationAgent,
   type ConversationQueuedItem,
+  type ConversationTextFormat,
+  type ConversationToolCall,
 } from '@makinbakin/sdk/conversation'
-import { useAgent } from '@makinbakin/sdk/hooks'
+import { useAgent, useAgentStore } from '@makinbakin/sdk/hooks'
 import { AgentAvatar, PageComposer } from '@makinbakin/sdk/patterns'
 import { Button, Input } from '@makinbakin/sdk/ui'
+import { formatStructured, summarizeStructured, unwrapToolResult } from '@makinbakin/sdk/utils'
 
 import { ContextMeter, contextMeterHasContent, type ContextMeterStats } from './context-meter'
 import {
@@ -44,6 +46,94 @@ interface StagedAttachment {
   status: 'uploading' | 'ready'
   /** Set once the upload lands. */
   uploaded?: UploadedAttachment
+}
+
+// ─── Chat-owned conversation renderers ───────────────────────────────────────
+// The kit's Conversation leaves rich text, tool summaries, and avatars to the
+// consumer (consumer-owned renderer contract). These compose the focused SDK
+// entrypoints — content markdown, patterns avatar, utils structured formatters.
+
+function parseWholeJson(content: string): unknown {
+  const trimmed = content.trim()
+  const looksJson =
+    (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+    (trimmed.startsWith('[') && trimmed.endsWith(']'))
+  if (!looksJson) return undefined
+  try {
+    const parsed: unknown = JSON.parse(trimmed)
+    return parsed && typeof parsed === 'object' ? parsed : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/** Structured (JSON) replies render as prose with the raw payload one disclosure away. */
+function JsonReply({ parsed }: { parsed: unknown }) {
+  const prose = formatStructured(parsed, { markdown: true, cap: 4000 })
+  const isError =
+    !!parsed &&
+    typeof parsed === 'object' &&
+    !Array.isArray(parsed) &&
+    typeof (parsed as { error?: unknown }).error === 'string'
+  const fenced = `\`\`\`json\n${JSON.stringify(parsed, null, 2)}\n\`\`\``
+
+  if (!prose) return <MarkdownContent content={fenced} />
+  return (
+    <div
+      data-conv-json=""
+      className={`rounded-bakin-control border px-bakin-3 py-bakin-2 ${
+        isError
+          ? 'border-bakin-signal-danger/40 bg-bakin-signal-danger/5'
+          : 'border-bakin-border-subtle/60 bg-bakin-surface-default/40'
+      }`}
+    >
+      <MarkdownContent content={prose} />
+      <details className="mt-bakin-1">
+        <summary className="cursor-pointer select-none text-bakin-typography-size-meta text-bakin-text-muted hover:text-bakin-text-primary">
+          Raw JSON
+        </summary>
+        <MarkdownContent content={fenced} />
+      </details>
+    </div>
+  )
+}
+
+function renderChatText(content: string, format: ConversationTextFormat) {
+  if (format !== 'markdown') {
+    return <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed">{content}</pre>
+  }
+  const json = parseWholeJson(content)
+  return json !== undefined ? <JsonReply parsed={json} /> : <MarkdownContent content={content} />
+}
+
+function formatChatToolSummary(summary: string): string {
+  return summarizeStructured(unwrapToolResult(summary))
+}
+
+function ChatAvatar(agent: ConversationAgent) {
+  return (
+    <AgentAvatar
+      agent={{ id: agent.id ?? '', name: agent.name, imageSrc: agent.avatarUrl ?? null }}
+      size="sm"
+      decorative
+    />
+  )
+}
+
+/** Roster-backed identity resolution for conversation turns (display name + headshot). */
+function useConversationAgentResolver(fallbackAgentId?: string) {
+  const agentMap = useAgentStore((state) => state.agentMap)
+  const displaySettings = useAgentStore((state) => state.displaySettings)
+  return (turnAgentId?: string): ConversationAgent | undefined => {
+    const id = turnAgentId ?? fallbackAgentId
+    if (!id) return undefined
+    const resolved = agentMap[id]
+    return {
+      id,
+      name: displaySettings[id]?.displayName ?? resolved?.name ?? id,
+      ...(resolved?.headshot ? { avatarUrl: resolved.headshot } : {}),
+    }
+  }
 }
 
 /**
@@ -167,7 +257,7 @@ function InlineTitle({ chat, onChanged }: { chat: ChatSummaryDto; onChanged: () 
       className="group/title min-w-0 flex-1 justify-start px-0 hover:bg-transparent"
     >
       <span className="truncate text-sm font-medium">{chat.title || 'New chat'}</span>
-      <Pencil className="size-3 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover/title:opacity-100" />
+      <Pencil className="size-3 shrink-0 text-bakin-text-muted opacity-0 transition-opacity group-hover/title:opacity-100" />
     </Button>
   )
 }
@@ -205,7 +295,7 @@ function ViewHeader({
   return (
     <div
       data-chat-header
-      className="grid shrink-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-bakin-2 gap-y-bakin-1 border-b border-bakin-border-subtle px-bakin-4 py-bakin-3"
+      className="flex shrink-0 items-center gap-x-bakin-2 border-b border-bakin-border-subtle px-bakin-4 py-bakin-3"
     >
       {/* The avatar carries the agent identity (name in its tooltip +
           aria-label) — same convention as agent turns; no redundant name
@@ -213,7 +303,9 @@ function ViewHeader({
       <span title={agent?.name ?? agentId} aria-label={`Agent: ${agent?.name ?? agentId}`}>
         <AgentAvatar agent={agentIdentity} size="sm" decorative />
       </span>
-      <div data-chat-header-title className="col-start-2 min-w-0">
+      <div className="flex min-w-0 flex-1 flex-col gap-y-bakin-1">
+      <div className="flex min-w-0 items-center gap-x-bakin-2">
+      <div data-chat-header-title className="min-w-0 flex-1">
         {chat ? (
           <InlineTitle chat={chat} onChanged={onChanged} />
         ) : (
@@ -242,12 +334,13 @@ function ViewHeader({
           <Pin className={`size-4 ${chat.pinned ? 'fill-current' : ''}`} />
         </Button>
       ) : null}
-      {/* The avatar and title occupy the same grid row. Usage remains on
+      </div>
+      {/* The avatar and title occupy the same header row. Usage remains on
           its own stable line without pulling the title off-center. */}
       {hasHeaderMeta ? (
         <div
           data-chat-header-meta
-          className="col-start-2 col-end-4 flex items-center gap-1.5 text-xs text-muted-foreground"
+          className="flex items-center gap-1.5 text-xs text-bakin-text-muted"
         >
           {/* The compaction bar (#737) leads — runtime truth only; renders
               nothing when there's nothing honest to show. */}
@@ -256,7 +349,7 @@ function ViewHeader({
             <span
               data-chat-usage-totals
               title="Total recorded usage for this chat"
-              className="text-muted-foreground/80"
+              className="text-bakin-text-muted/80"
             >
               {/* Separator only when the meter actually RENDERED — a
                   truthy stats object can still draw nothing (predicate
@@ -266,6 +359,7 @@ function ViewHeader({
           ) : null}
         </div>
       ) : null}
+      </div>
     </div>
   )
 }
@@ -340,7 +434,7 @@ export function DraftChatView({
         />
       </div>
       {error ? (
-        <div className="flex items-center gap-2 px-4 pb-2 text-sm text-destructive">
+        <div className="flex items-center gap-2 px-4 pb-2 text-sm text-bakin-signal-danger">
           <AlertTriangle className="size-4" /> {error}
         </div>
       ) : null}
@@ -383,6 +477,7 @@ export function DraftChatView({
 
 export function ChatView({ chatId, onChanged }: { chatId: string; onChanged: () => void }) {
   const { chat, messages, liveChunks, streaming, sendError, queued, removeQueued, turnUsage, usageTotals, contextStats, send, abort, retry, refreshChat } = useChatStream(chatId)
+  const resolveAgent = useConversationAgentResolver(chat?.agentId)
   const [openCall, setOpenCall] = useState<ConversationToolCall | null>(null)
   const attachments = useComposerAttachments(chatId, chat?.agentId ?? '')
   const composerHandle = useRef<ComposerHandle | null>(null)
@@ -427,7 +522,13 @@ export function ChatView({ chatId, onChanged }: { chatId: string; onChanged: () 
 
       <Conversation
         turns={turns}
-        agentId={chat.agentId}
+        mode="contained"
+        agent={resolveAgent(chat.agentId)}
+        resolveAgent={resolveAgent}
+        renderText={renderChatText}
+        renderAvatar={ChatAvatar}
+        formatToolSummary={formatChatToolSummary}
+        className="flex-1"
         turnUsage={turnUsage}
         liveOutEstimate={streamingOutEstimate}
         onRetry={retry}

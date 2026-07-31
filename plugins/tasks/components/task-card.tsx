@@ -22,7 +22,6 @@ import {
   AgentAvatar,
   KanbanCardSignal,
   StatusBadge,
-  type StatusTone,
 } from '@makinbakin/sdk/patterns'
 import {
   Badge,
@@ -35,7 +34,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@makinbakin/sdk/ui'
-import { COLUMN_CONFIG } from '../constants'
+import { COLUMN_CONFIG, STATUS_TONES } from '../constants'
 import { compactDispatchFailureLabel, getLatestDispatchFailure } from '../lib/dispatch-failure'
 import { getTaskAvailableAtMs } from '../lib/scheduled'
 import type { BudgetHold } from '../hooks/use-budget-status'
@@ -89,16 +88,6 @@ function shortId(id: string): string {
 }
 
 const CHILD_HIGHLIGHT_CLASSES = ['ring-2', 'ring-bakin-focus-ring', 'border-bakin-focus-ring']
-
-const STATUS_TONES: Record<ColumnId, StatusTone> = {
-  backlog: 'neutral',
-  todo: 'accent',
-  inProgress: 'accent',
-  review: 'attention',
-  done: 'success',
-  blocked: 'danger',
-  archived: 'neutral',
-}
 
 /** Outline the linked child task's card (matched via data-task-id) while its sub-task signal is hovered. */
 function setChildCardHighlight(childTaskId: string, on: boolean): void {

@@ -2,22 +2,24 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { FileText, Image, Video, Music, Map, Database, Package, Clock } from 'lucide-react'
+import { useAgent } from '@makinbakin/sdk/hooks'
+import { AgentAvatar } from '@makinbakin/sdk/patterns'
 import { Badge } from '@makinbakin/sdk/ui'
-import { AgentAvatar } from '@makinbakin/sdk/components'
 import { formatAge } from '@makinbakin/sdk/utils'
 import { assetThumbUrl, assetCurrentUrl, assetVersionUrl } from './asset-urls'
 
 const TYPE_ICONS: Record<string, typeof FileText> = {
   text: FileText, images: Image, video: Video, audio: Music, plans: Map, data: Database, other: Package,
 }
-const TYPE_COLORS: Record<string, string> = {
-  text: 'text-blue-400', images: 'text-emerald-400', video: 'text-purple-400',
-  audio: 'text-amber-400', plans: 'text-cyan-400', data: 'text-orange-400', other: 'text-muted-foreground',
-}
 
+/**
+ * Type identity is carried by the icon GLYPH, not a color code — the per-type
+ * raw palette was neutralized for parity with the global-search overlay
+ * treatment (storybook refit T6.2/T6.5).
+ */
 export function AssetTypeIcon({ type, className }: { type: string; className?: string }) {
   const Icon = TYPE_ICONS[type] || Package
-  return <Icon className={`${className ?? 'size-4'} ${TYPE_COLORS[type] || 'text-muted-foreground'}`} />
+  return <Icon className={`${className ?? 'size-4'} text-bakin-text-muted`} />
 }
 
 /**
@@ -52,8 +54,23 @@ export function AssetThumb({ assetId, type, version, hasThumb, className }: {
     )
   }
   return (
-    <div className={`flex items-center justify-center bg-zinc-900/50 ${className ?? 'w-full h-full'}`}>
+    <div className={`flex items-center justify-center bg-bakin-surface-default ${className ?? 'w-full h-full'}`}>
       <AssetTypeIcon type={type} className="size-10 opacity-40" />
+    </div>
+  )
+}
+
+/** Avatar + name for the owning agent, resolved from the roster. */
+function AssetAgentIdentity({ agentId }: { agentId: string }) {
+  const agent = useAgent(agentId)
+  return (
+    <div className="flex items-center gap-1">
+      <AgentAvatar
+        agent={{ id: agentId, name: agent?.name ?? agentId, imageSrc: agent?.headshot ?? null }}
+        size="xs"
+        decorative
+      />
+      <span className="text-bakin-typography-size-meta text-bakin-text-muted">{agentId}</span>
     </div>
   )
 }
@@ -74,19 +91,16 @@ export function AssetMetaSummary({ agent, created, taskId, tags, maxTags = 4 }: 
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-center gap-2">
+        <AssetAgentIdentity agentId={agent} />
+        <span className="text-bakin-typography-size-meta text-bakin-text-muted/50">|</span>
         <div className="flex items-center gap-1">
-          <AgentAvatar agentId={agent} size="xs" />
-          <span className="text-[10px] text-muted-foreground">{agent}</span>
-        </div>
-        <span className="text-[10px] text-muted-foreground/50">|</span>
-        <div className="flex items-center gap-1">
-          <Clock className="size-3 text-muted-foreground/50" />
-          <span className="text-[10px] text-muted-foreground">{formatAge(created)}</span>
+          <Clock className="size-3 text-bakin-text-muted/50" />
+          <span className="text-bakin-typography-size-meta text-bakin-text-muted">{formatAge(created)}</span>
         </div>
         {taskId && (
           <>
-            <span className="text-[10px] text-muted-foreground/50">|</span>
-            <Badge variant="outline" className="text-[9px] h-4 px-1">{taskId.slice(0, 6)}</Badge>
+            <span className="text-bakin-typography-size-meta text-bakin-text-muted/50">|</span>
+            <Badge variant="outline" size="xs">{taskId.slice(0, 6)}</Badge>
           </>
         )}
       </div>
@@ -95,9 +109,9 @@ export function AssetMetaSummary({ agent, created, taskId, tags, maxTags = 4 }: 
           {/* Most-recent tags win the cap — tags append chronologically, so a
               freshly added tag must be visible, not hidden behind "+N". */}
           {tags.slice(-maxTags).map(tag => (
-            <Badge key={tag} variant="secondary" className="text-[9px] h-4 px-1.5">{tag}</Badge>
+            <Badge key={tag} variant="secondary" size="xs">{tag}</Badge>
           ))}
-          {tags.length > maxTags && <span className="text-[9px] text-muted-foreground">+{tags.length - maxTags}</span>}
+          {tags.length > maxTags && <span className="text-bakin-typography-size-meta text-bakin-text-muted">+{tags.length - maxTags}</span>}
         </div>
       )}
     </div>
@@ -111,14 +125,15 @@ export function ProvenanceChips({ generation }: {
   if (!generation) return null
   return (
     <div className="flex flex-wrap items-center gap-1">
-      <Badge variant="secondary" className="text-[9px] h-4 px-1.5">{generation.provider}</Badge>
-      <Badge variant="secondary" className="text-[9px] h-4 px-1.5">{generation.model}</Badge>
+      <Badge variant="secondary" size="xs">{generation.provider}</Badge>
+      <Badge variant="secondary" size="xs">{generation.model}</Badge>
       {generation.surface && generation.surface !== 'custom' && (
-        <Badge variant="outline" className="text-[9px] h-4 px-1.5">{generation.surface}</Badge>
+        <Badge variant="outline" size="xs">{generation.surface}</Badge>
       )}
       <Badge
         variant="outline"
-        className={`text-[9px] h-4 px-1.5 ${generation.routeSource === 'shim' ? 'text-amber-400' : 'text-emerald-400'}`}
+        size="xs"
+        tone={generation.routeSource === 'shim' ? 'attention' : 'neutral'}
       >
         {generation.routeSource}
       </Badge>

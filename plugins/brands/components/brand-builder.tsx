@@ -425,9 +425,9 @@ function MaterialsDrop({ files, onChange }: { files: File[]; onChange: (files: F
 function ReviewRow({ label, value }: { label: string; value: string }) {
   if (!value.trim()) return null
   return (
-    <div className="grid min-w-0 grid-cols-[minmax(6rem,auto)_minmax(0,1fr)] gap-bakin-3 text-bakin-typography-size-meta">
+    <div className="grid min-w-0 grid-cols-3 gap-bakin-3 text-bakin-typography-size-meta">
       <dt className="text-bakin-text-muted">{label}</dt>
-      <dd className="min-w-0 break-words text-bakin-text-primary">{value}</dd>
+      <dd className="col-span-2 min-w-0 break-words text-bakin-text-primary">{value}</dd>
     </div>
   )
 }

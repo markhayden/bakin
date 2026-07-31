@@ -5,6 +5,7 @@
 import { MessageCirclePlus } from 'lucide-react'
 import { formatRelativeTime } from '@makinbakin/sdk/conversation'
 import { useAgentList } from '@makinbakin/sdk/hooks'
+import { Grid } from '@makinbakin/sdk/layout'
 import { AgentAvatar, ListRow, ListRows } from '@makinbakin/sdk/patterns'
 import { Button, Skeleton } from '@makinbakin/sdk/ui'
 
@@ -31,11 +32,11 @@ export function Launcher({
     return (
       <div className="w-full space-y-bakin-6 p-bakin-4 md:p-bakin-6" data-chat-launcher-skeleton>
         <Skeleton className="h-bakin-6 w-40" />
-        <div className="grid grid-cols-1 gap-bakin-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Grid layout="quarters" gap="item">
           {[0, 1, 2, 3].map((i) => (
             <Skeleton key={i} className="h-24 rounded-bakin-surface" />
           ))}
-        </div>
+        </Grid>
         <Skeleton className="h-bakin-6 w-24" />
         <div className="space-y-bakin-2">
           {[0, 1, 2].map((i) => (
@@ -58,7 +59,7 @@ export function Launcher({
               No agents in the runtime roster yet — add one from the Team page and it appears here.
             </p>
           ) : (
-            <div className="grid grid-cols-1 gap-bakin-3 sm:grid-cols-2 lg:grid-cols-4">
+            <Grid layout="quarters" gap="item">
               {agents.slice(0, MAX_AGENT_CARDS).map((agent) => (
                 <Button
                   key={agent.id}
@@ -81,7 +82,7 @@ export function Launcher({
                   ) : null}
                 </Button>
               ))}
-            </div>
+            </Grid>
           )}
         </div>
 

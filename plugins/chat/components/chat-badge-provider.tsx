@@ -8,7 +8,7 @@
  * totals from GET /chats, the reply toast, plugin-settings toggles.
  */
 import { useEffect, useRef } from 'react'
-import { ConversationReplyToast, useConversationAttention } from '@makinbakin/sdk/components'
+import { ConversationReplyToast, useConversationAttention } from '@makinbakin/sdk/conversation'
 import { pluginFetch } from '@makinbakin/sdk/utils'
 
 import { visibleChatIdFromLocation } from './attention'

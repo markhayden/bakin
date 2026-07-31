@@ -1,6 +1,6 @@
 'use client'
 
-import { ConfirmDialog } from "@makinbakin/sdk/components"
+import { ConfirmDialog } from "@makinbakin/sdk/patterns"
 import type { ScheduleJob } from "@makinbakin/sdk/hooks"
 
 interface DeleteScheduleDialogProps {

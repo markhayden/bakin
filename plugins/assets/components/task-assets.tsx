@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { usePluginEvent } from '@makinbakin/sdk/hooks'
-import { DrawerSection } from '@makinbakin/sdk/ui'
+import { Button, DrawerSection } from '@makinbakin/sdk/ui'
+import { ListRow, ListRows } from '@makinbakin/sdk/patterns'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { FolderOpen, Plus, X } from 'lucide-react'
 import { AssetThumb } from './versioned/atoms'
@@ -71,45 +72,52 @@ export function TaskAssets({ taskId, readOnly }: TaskAssetsProps) {
           <Link
             to="/assets"
             search={{ linkTo: taskId }}
-            className="ml-auto flex items-center gap-1 text-[11px] font-medium bg-accent text-accent-foreground rounded-md px-2 py-0.5 hover:bg-accent/90 transition-colors"
+            className="ml-auto flex items-center gap-1 rounded-bakin-control bg-bakin-action-primary-background px-2 py-0.5 text-bakin-typography-size-meta font-bakin-typography-weight-medium text-bakin-action-primary-foreground transition-colors hover:brightness-110 motion-reduce:transition-none"
           >
             <Plus className="size-3" />
             Add
           </Link>
       ) : undefined}
     >
-      <div className="flex flex-col gap-1.5">
+      <ListRows variant="bordered" aria-label="Task assets" className="gap-bakin-1">
         {assets.map(asset => (
-          <div
+          <ListRow
             key={asset.assetId}
-            className="flex items-center gap-2 rounded-md border border-border bg-background px-3 py-2 hover:border-[rgba(255,255,255,0.15)] transition-colors group text-left w-full"
+            className="group flex w-full items-center gap-2 px-bakin-3 py-bakin-2 text-left transition-colors hover:border-bakin-border-subtle/80 motion-reduce:transition-none"
           >
-            <button
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
               onClick={() => navigate({ to: '/assets/$assetId', params: { assetId: asset.assetId } })}
-              className="flex items-center gap-2 flex-1 min-w-0"
+              className="!h-auto min-w-0 flex-1 justify-start gap-2 whitespace-normal p-0 text-left font-bakin-typography-weight-regular hover:bg-transparent"
             >
-              <div className="size-8 shrink-0 overflow-hidden rounded">
+              <span className="size-8 shrink-0 overflow-hidden rounded">
                 <AssetThumb assetId={asset.assetId} type={asset.type} version={asset.currentVersion} hasThumb={asset.hasThumb} />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-medium text-foreground truncate">{asset.description || asset.assetId}</p>
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-xs font-medium text-bakin-text-primary">{asset.description || asset.assetId}</span>
                 {asset.versionCount > 1 && (
-                  <p className="text-[10px] text-emerald-400">v{asset.currentVersion} · {asset.versionCount} versions</p>
+                  <span className="block text-bakin-typography-size-meta text-bakin-action-primary-background">v{asset.currentVersion} · {asset.versionCount} versions</span>
                 )}
-              </div>
-            </button>
+              </span>
+            </Button>
             {!readOnly && (
-              <button
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
                 onClick={() => handleUnlink(asset.assetId)}
-                className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground shrink-0 p-1 transition-opacity"
+                className="shrink-0 text-bakin-text-muted opacity-0 transition-opacity hover:text-bakin-text-primary group-hover:opacity-100 focus-visible:opacity-100 motion-reduce:transition-none"
                 title="Remove from task"
+                aria-label={`Remove ${asset.description || asset.assetId} from task`}
               >
                 <X className="size-3.5" />
-              </button>
+              </Button>
             )}
-          </div>
+          </ListRow>
         ))}
-      </div>
+      </ListRows>
     </DrawerSection>
   )
 }

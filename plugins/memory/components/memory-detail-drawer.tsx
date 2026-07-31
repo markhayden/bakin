@@ -25,7 +25,7 @@ import {
 } from '@makinbakin/sdk/patterns'
 import type { SearchResult } from '@makinbakin/sdk/hooks'
 import { MemoryContentRenderer, type ContentFormat } from './memory-content-renderer'
-import { tierStyle } from './tier-colors'
+import { tierDisplayName } from './tier-labels'
 
 interface Props {
   result: SearchResult | null
@@ -59,7 +59,6 @@ export function MemoryDetailDrawer({ result, agents = [], open, onOpenChange }: 
   const sourceBackend = str(result.fields.source_backend)
   const updatedAt = num(result.fields.updated_at)
   const createdAt = num(result.fields.created_at)
-  const style = tierStyle(tier)
   const agentIdentity = agent
     ? agents.find((candidate) => candidate.id === agent) ?? { id: agent, name: agent }
     : null
@@ -74,13 +73,8 @@ export function MemoryDetailDrawer({ result, agents = [], open, onOpenChange }: 
       title={title}
       description={
         <span className="flex min-w-0 flex-wrap items-center gap-bakin-2">
-          <StatusBadge
-            tone="neutral"
-            variant="soft"
-            size="xs"
-            className={`shrink-0 ${style.badge}`}
-          >
-            {style.label}
+          <StatusBadge tone="neutral" variant="soft" size="xs" className="shrink-0">
+            {tierDisplayName(tier)}
           </StatusBadge>
           {agentIdentity ? (
             <span className="flex min-w-0 items-center gap-bakin-1">
@@ -187,11 +181,11 @@ function DetailRow({
   return (
     <div
       data-memory-record-detail=""
-      className="grid min-w-0 gap-bakin-1 border-t border-bakin-border-subtle py-bakin-3 sm:grid-cols-[minmax(7rem,0.45fr)_minmax(0,1fr)] sm:gap-bakin-4"
+      className="grid min-w-0 gap-bakin-1 border-t border-bakin-border-subtle py-bakin-3 sm:grid-cols-3 sm:gap-bakin-4"
     >
       <dt className="text-bakin-typography-size-meta text-bakin-text-muted">{label}</dt>
       <dd
-        className={`m-0 min-w-0 [overflow-wrap:anywhere] text-bakin-text-primary ${
+        className={`m-0 min-w-0 [overflow-wrap:anywhere] text-bakin-text-primary sm:col-span-2 ${
           mono ? 'font-bakin-typography-family-mono' : ''
         }`}
       >

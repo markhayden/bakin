@@ -19,7 +19,7 @@ import {
 import { Button, Card, Skeleton, SystemState } from '@makinbakin/sdk/ui'
 import type { SearchResult } from '@makinbakin/sdk/hooks'
 import { useDebug } from '@makinbakin/sdk/hooks'
-import { tierStyle } from './tier-colors'
+import { tierDisplayName } from './tier-labels'
 
 interface Props {
   results: SearchResult[]
@@ -140,14 +140,13 @@ export function MemorySearchResults({
         const title = str(result.fields.title) || result.id
         const snippet = summarizeSnippet(str(result.fields.snippet), title)
         const clickable = typeof onSelect === 'function'
-        const style = tierStyle(tier)
         const agentIdentity = agent
           ? agentById.get(agent) ?? { id: agent, name: agent }
           : null
         const content = (
           <span className="pointer-events-none relative z-10 grid min-w-0">
-            <span className="grid min-w-0 gap-bakin-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start sm:gap-bakin-4">
-              <span className="grid min-w-0 gap-bakin-1">
+            <span className="flex min-w-0 flex-col gap-bakin-2 sm:flex-row sm:items-start sm:justify-between sm:gap-bakin-4">
+              <span className="grid min-w-0 gap-bakin-1 sm:flex-1">
                 <span className="min-w-0 [overflow-wrap:anywhere] text-bakin-typography-size-body font-bakin-typography-weight-semibold leading-snug text-bakin-text-primary">
                   {title}
                 </span>
@@ -161,8 +160,8 @@ export function MemorySearchResults({
                 ) : null}
               </span>
               <span className="flex min-w-0 items-center gap-bakin-2 sm:justify-end">
-                <StatusBadge tone="neutral" variant="soft" size="xs" className={style.badge}>
-                  {style.label}
+                <StatusBadge tone="neutral" variant="soft" size="xs">
+                  {tierDisplayName(tier)}
                 </StatusBadge>
                 {agentIdentity ? (
                   <span className="flex min-w-0 items-center gap-bakin-1">

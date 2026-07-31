@@ -9,8 +9,11 @@ import {
   useRouter,
   useSearchParams,
 } from '@makinbakin/sdk/navigation'
+import { Grid } from '@makinbakin/sdk/layout'
 import {
   FacetFilter,
+  ListRow,
+  ListRows,
   Page,
   PageBody,
   PageControls,
@@ -72,12 +75,12 @@ const TYPE_OPTIONS = ASSET_TYPES.map((value) => ({
 export interface AssetScoreInfo { score: number; indexScores?: Record<string, number> }
 
 const ENRICHMENT_BADGE: Record<VersionedAssetSummary['enrichment'], { className: string; label: string }> = {
-  done: { className: 'text-emerald-400', label: 'Enriched — searchable by derived caption/tags' },
-  stale: { className: 'text-amber-400', label: 'Enriched for an older version — re-enrich to refresh' },
-  pending: { className: 'text-sky-400 animate-pulse', label: 'Enrichment in progress' },
-  failed: { className: 'text-red-400', label: 'Enrichment failed — see asset detail' },
-  skipped: { className: 'text-zinc-500', label: 'Enrichment skipped (unsupported or no engine)' },
-  none: { className: 'text-zinc-600', label: 'Not enriched yet — select and hit Enrich' },
+  done: { className: 'text-bakin-action-primary-background', label: 'Enriched — searchable by derived caption/tags' },
+  stale: { className: 'text-bakin-signal-highlight', label: 'Enriched for an older version — re-enrich to refresh' },
+  pending: { className: 'text-bakin-signal-accent animate-pulse motion-reduce:animate-none', label: 'Enrichment in progress' },
+  failed: { className: 'text-bakin-signal-danger', label: 'Enrichment failed — see asset detail' },
+  skipped: { className: 'text-bakin-text-muted', label: 'Enrichment skipped (unsupported or no engine)' },
+  none: { className: 'text-bakin-text-muted/60', label: 'Not enriched yet — select and hit Enrich' },
 }
 
 function EnrichmentDot({ status }: { status: VersionedAssetSummary['enrichment'] }) {
@@ -98,10 +101,12 @@ function AssetCard({ asset, onOpen, onEdit, selected, onToggleSelect, scoreInfo 
       className={`relative data-[size=sm]:!gap-0 data-[size=sm]:!py-0 transition-colors duration-[var(--bakin-motion-duration-feedback)] motion-reduce:transition-none ${selected ? 'border-bakin-action-primary-background ring-1 ring-bakin-action-primary-background' : 'hover:border-bakin-border-strong'}`}
       data-testid={`asset-card-${asset.assetId}`}
     >
-      <button
+      <Button
         type="button"
+        variant="ghost"
+        size="icon-xs"
         aria-label={`Open ${label}`}
-        className="absolute inset-0 z-0 rounded-bakin-surface outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring"
+        className="absolute inset-0 z-0 h-auto min-h-0 min-w-0 w-auto rounded-bakin-surface p-0 hover:bg-transparent"
         onClick={onOpen}
       />
       <div className="pointer-events-none relative z-10 aspect-square overflow-hidden bg-bakin-canvas-default">
@@ -126,7 +131,7 @@ function AssetCard({ asset, onOpen, onEdit, selected, onToggleSelect, scoreInfo 
         </Button>
         {scoreInfo && <ScoreOverlay info={scoreInfo} className="absolute left-1.5 top-1.5 z-10" />}
         {asset.versionCount > 1 && (
-          <span className="absolute bottom-bakin-2 left-bakin-2 rounded-bakin-control bg-bakin-canvas-default/85 px-bakin-2 py-bakin-1 text-bakin-typography-size-meta font-bakin-typography-weight-semibold text-bakin-signal-success" data-testid="version-badge">
+          <span className="absolute bottom-bakin-2 left-bakin-2 rounded-bakin-control bg-bakin-canvas-default/85 px-bakin-2 py-bakin-1 text-bakin-typography-size-meta font-bakin-typography-weight-semibold text-bakin-action-primary-background" data-testid="version-badge">
             {asset.versionCount} versions
           </span>
         )}
@@ -156,10 +161,12 @@ function AssetListRow({ asset, onOpen, onEdit, selected, onToggleSelect, scoreIn
       className={`relative flex-row items-center gap-bakin-3 px-bakin-3 transition-colors duration-[var(--bakin-motion-duration-feedback)] motion-reduce:transition-none ${selected ? 'border-bakin-action-primary-background ring-1 ring-bakin-action-primary-background' : 'border-bakin-border-subtle/30 hover:border-bakin-border-subtle'}`}
       data-testid={`asset-row-${asset.assetId}`}
     >
-      <button
+      <Button
         type="button"
+        variant="ghost"
+        size="icon-xs"
         aria-label={`Open ${label}`}
-        className="absolute inset-0 z-0 rounded-bakin-surface outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-bakin-focus-ring"
+        className="absolute inset-0 z-0 h-auto min-h-0 min-w-0 w-auto rounded-bakin-surface p-0 hover:bg-transparent"
         onClick={onOpen}
       />
       <Checkbox
@@ -178,7 +185,7 @@ function AssetListRow({ asset, onOpen, onEdit, selected, onToggleSelect, scoreIn
           <span className="capitalize">{asset.type}</span>
           <span>·</span>
           <span>{asset.agent}</span>
-          {asset.versionCount > 1 && <><span>·</span><span className="text-bakin-signal-success">{asset.versionCount} versions</span></>}
+          {asset.versionCount > 1 && <><span>·</span><span className="text-bakin-action-primary-background">{asset.versionCount} versions</span></>}
         </div>
       </div>
       {scoreInfo && <ScoreOverlay info={scoreInfo} className="pointer-events-none relative z-10 shrink-0" />}
@@ -541,8 +548,8 @@ export function VersionedAssetGrid() {
         )}
       />
 
-      {uploadError && <p className="mb-2 text-xs text-destructive">{uploadError}</p>}
-      {linkTo && view !== 'trash' && <p className="mb-2 text-xs text-muted-foreground">New uploads will be linked to this task.</p>}
+      {uploadError && <p className="mb-2 text-xs text-bakin-signal-danger">{uploadError}</p>}
+      {linkTo && view !== 'trash' && <p className="mb-2 text-xs text-bakin-text-muted">New uploads will be linked to this task.</p>}
 
       <PageControls label="Asset views and filters" data-testid="asset-filters">
         <SegmentedControl
@@ -555,7 +562,7 @@ export function VersionedAssetGrid() {
         />
         {view !== 'trash' && view !== 'tags' ? (
           <>
-          <ListFilter className="size-3.5 shrink-0 text-muted-foreground" />
+          <ListFilter className="size-3.5 shrink-0 text-bakin-text-muted" />
           <FacetFilter label="Type" options={TYPE_OPTIONS} selected={typeFilter} onChange={setTypeFilter} counts={typeCounts} />
           <FacetFilter label="Tags" options={tagOptions} selected={tagFilter} onChange={setTagFilter} counts={tagCounts} />
           </>
@@ -567,16 +574,19 @@ export function VersionedAssetGrid() {
           Clearing the filter happens via the Tags facet; the breadcrumb is
           purely a "go back" affordance. */}
       {view !== 'trash' && view !== 'tags' && tagFilter.length > 0 && (
-        <div className="mb-3 flex items-center gap-1.5 text-xs text-muted-foreground" data-testid="tag-breadcrumb">
-          <button
+        <div className="mb-3 flex items-center gap-1.5 text-xs text-bakin-text-muted" data-testid="tag-breadcrumb">
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
             onClick={goToFolders}
-            className="flex items-center gap-1 rounded px-1 py-0.5 transition-colors hover:text-foreground"
+            className="gap-1 px-1 text-bakin-text-muted hover:text-bakin-text-primary"
             data-testid="breadcrumb-folders"
           >
             <ArrowLeft className="size-3.5" /> Folders
-          </button>
+          </Button>
           <span>/</span>
-          <span className="font-medium text-foreground">
+          <span className="font-medium text-bakin-text-primary">
             {tagFilter.map(t => (t === UNTAGGED ? 'Untagged' : t)).join(', ')}
           </span>
         </div>
@@ -597,18 +607,19 @@ export function VersionedAssetGrid() {
         ) : (
           <div className="flex flex-col gap-2" data-testid="trash-list">
             <div className="mb-1 flex justify-end">
-              <Button size="sm" variant="ghost" className="text-red-400 hover:text-red-300" onClick={emptyTrash} data-testid="empty-trash">
+              <Button size="sm" variant="ghost" className="text-bakin-signal-danger hover:text-bakin-signal-danger/80" onClick={emptyTrash} data-testid="empty-trash">
                 <Trash2 className="size-3.5" /> Empty trash
               </Button>
             </div>
+            <ListRows variant="bordered" aria-label="Trashed assets">
             {trash.map(item => (
-              <div key={item.trashName} className="flex items-center gap-3 rounded-md border border-border bg-card px-3 py-2" data-testid={`trash-row-${item.assetId}`}>
-                <div className="flex size-9 shrink-0 items-center justify-center rounded bg-zinc-900/50">
+              <ListRow key={item.trashName} className="flex items-center gap-3 py-bakin-2" data-testid={`trash-row-${item.assetId}`}>
+                <div className="flex size-9 shrink-0 items-center justify-center rounded-bakin-control bg-bakin-canvas-default">
                   <AssetTypeIcon type={item.type} className="size-4" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-foreground">{item.description || item.assetId}</p>
-                  <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                  <p className="truncate text-sm font-medium text-bakin-text-primary">{item.description || item.assetId}</p>
+                  <div className="flex items-center gap-2 text-bakin-typography-size-meta text-bakin-text-muted">
                     <span className="capitalize">{item.type}</span><span>·</span>
                     <span>{item.versionCount} version{item.versionCount === 1 ? '' : 's'}</span><span>·</span>
                     <span>deleted {formatAge(new Date(item.deletedAt).toISOString())}</span>
@@ -617,11 +628,12 @@ export function VersionedAssetGrid() {
                 <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => restore(item.trashName)} data-testid={`restore-${item.assetId}`}>
                   <RotateCcw className="size-3.5" /> Restore
                 </Button>
-                <Button size="sm" variant="ghost" className="h-7 text-xs text-red-400 hover:text-red-300" onClick={() => permanentDelete(item.trashName)} data-testid={`permanent-delete-${item.assetId}`}>
+                <Button size="sm" variant="ghost" className="h-7 text-xs text-bakin-signal-danger hover:text-bakin-signal-danger/80" onClick={() => permanentDelete(item.trashName)} data-testid={`permanent-delete-${item.assetId}`}>
                   <X className="size-3.5" />
                 </Button>
-              </div>
+              </ListRow>
             ))}
+            </ListRows>
           </div>
         )
       ) : view === 'tags' ? (
@@ -681,7 +693,7 @@ export function VersionedAssetGrid() {
           ))}
         </div>
       ) : (
-        <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(250px,1fr))]" data-testid="assets-grid">
+        <Grid layout="auto-fill" gap="item" data-testid="assets-grid">
           {displayed.map(asset => (
             <AssetCard
               key={asset.assetId}
@@ -693,15 +705,15 @@ export function VersionedAssetGrid() {
               onEdit={() => setEditing(asset)}
             />
           ))}
-        </div>
+        </Grid>
       )}
       </PageBody>
 
       {/* Floating bulk-tag bar while assets are selected. */}
       {selected.size > 0 && (
-        <div className="fixed bottom-4 left-1/2 z-40 flex w-[min(560px,calc(100vw-2rem))] -translate-x-1/2 items-center gap-2 rounded-lg border border-border bg-background/95 px-3 py-2 shadow-lg backdrop-blur" data-testid="bulk-tag-bar">
-          <Tags className="size-4 shrink-0 text-muted-foreground" />
-          <span className="shrink-0 text-xs text-muted-foreground" data-testid="bulk-selected-count">{selected.size} selected</span>
+        <div className="fixed inset-x-4 bottom-4 z-40 mx-auto flex max-w-xl items-center gap-2 rounded-lg border border-bakin-border-subtle bg-bakin-canvas-default/95 px-3 py-2 shadow-bakin-elevation-overlay backdrop-blur" data-testid="bulk-tag-bar">
+          <Tags className="size-4 shrink-0 text-bakin-text-muted" />
+          <span className="shrink-0 text-xs text-bakin-text-muted" data-testid="bulk-selected-count">{selected.size} selected</span>
           <div className="min-w-0 flex-1">
             <TagInput value={bulkTags} onChange={setBulkTags} suggestions={tagOptions.filter(o => o.value !== UNTAGGED).map(o => o.value)} placeholder="Add tags…" />
           </div>
@@ -712,7 +724,7 @@ export function VersionedAssetGrid() {
             {enriching ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />} Enrich
           </Button>
           <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())} data-testid="bulk-clear-selection">Clear</Button>
-          {bulkError && <p className="text-xs text-destructive">{bulkError}</p>}
+          {bulkError && <p className="text-xs text-bakin-signal-danger">{bulkError}</p>}
         </div>
       )}
 

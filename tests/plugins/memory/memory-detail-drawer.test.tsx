@@ -40,7 +40,8 @@ describe('MemoryDetailDrawer', () => {
     const dialog = screen.getByRole('dialog', { name: 'Image Generation vs Editing' })
     expect(dialog).toBeDefined()
     expect(screen.getByRole('heading', { level: 2, name: 'Image Generation vs Editing' })).toBeDefined()
-    expect(screen.getByText('Durable').closest('[data-status-badge]')?.className).toContain('cyan')
+    // Tier pill is a neutral StatusBadge; the label alone carries tier identity (refit T6.5).
+    expect(screen.getByText('Durable').closest('[data-status-badge]')?.getAttribute('data-tone')).toBe('neutral')
     expect(document.querySelector('[data-agent-avatar][data-agent-id="pixel"]')).not.toBeNull()
     expect(screen.getByText('Pixel')).toBeDefined()
 

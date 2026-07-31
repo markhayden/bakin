@@ -13,7 +13,8 @@
 import { useState } from 'react'
 import { Search, Send, CheckCircle2, AlertTriangle, Loader2, Lock } from 'lucide-react'
 import { Button, Input, Textarea, Badge, Label, Checkbox } from '@makinbakin/sdk/ui'
-import { PluginLink } from '@makinbakin/sdk/components'
+import { SegmentedControl } from '@makinbakin/sdk/patterns'
+import { PluginLink } from '@makinbakin/sdk/navigation'
 
 interface CleanupHit {
   rowId: string
@@ -150,7 +151,7 @@ export function MemoryCleanup() {
       </div>
 
       {error && (
-        <div className="flex items-center gap-2 text-sm text-destructive">
+        <div className="flex items-center gap-2 text-sm text-bakin-signal-danger">
           <AlertTriangle className="size-4" /> {error}
         </div>
       )}
@@ -158,11 +159,11 @@ export function MemoryCleanup() {
       {/* Results + selection */}
       {find && (
         <div className="flex flex-col gap-3">
-          <div className="text-sm text-muted-foreground">
+          <div className="text-sm text-bakin-text-muted">
             {find.totalHits} occurrence(s) · {find.actionableHits} editable across {find.groups.length} agent(s)
           </div>
           {find.groups.length === 0 && (
-            <div className="text-sm text-muted-foreground">No occurrences. Nothing to clean up. 🎉</div>
+            <div className="text-sm text-bakin-text-muted">No occurrences. Nothing to clean up. 🎉</div>
           )}
           {find.groups.map((g) => (
             <div key={g.agent} className="rounded-lg border p-3 flex flex-col gap-2">
@@ -182,16 +183,16 @@ export function MemoryCleanup() {
                 {g.hits.map((h) => (
                   <li key={h.rowId} className="text-xs">
                     <span className="flex items-center gap-1.5">
-                      <Badge variant={h.label === 'actionable' ? 'default' : 'outline'} className="text-[10px]">{h.tier}</Badge>
+                      <Badge variant={h.label === 'actionable' ? 'default' : 'outline'} className="text-bakin-typography-size-meta">{h.tier}</Badge>
                       {h.managed && (
                         <span title="package-managed — edit pinned so it survives template refresh">
-                          <Lock className="size-3 text-amber-500" />
+                          <Lock className="size-3 text-bakin-signal-highlight" />
                         </span>
                       )}
-                      <span className="font-mono text-muted-foreground truncate">{h.sourcePath}</span>
+                      <span className="font-mono text-bakin-text-muted truncate">{h.sourcePath}</span>
                     </span>
                     {h.snippets.map((s, i) => (
-                      <div key={i} className="pl-5 text-muted-foreground truncate">› {s}</div>
+                      <div key={i} className="pl-5 text-bakin-text-muted truncate">› {s}</div>
                     ))}
                   </li>
                 ))}
@@ -205,8 +206,16 @@ export function MemoryCleanup() {
       {find && find.actionableHits > 0 && (
         <div className="flex flex-col gap-3 rounded-lg border p-3">
           <div className="flex items-center gap-2">
-            <Button variant={action === 'replace' ? 'default' : 'outline'} size="sm" onClick={() => setAction('replace')}>Rename</Button>
-            <Button variant={action === 'remove' ? 'default' : 'outline'} size="sm" onClick={() => setAction('remove')}>Remove</Button>
+            <SegmentedControl
+              ariaLabel="Cleanup action"
+              size="sm"
+              options={[
+                { value: 'replace', label: 'Rename' },
+                { value: 'remove', label: 'Remove' },
+              ]}
+              value={action}
+              onValueChange={setAction}
+            />
             {action === 'replace' && (
               <Input
                 value={replacement}
@@ -239,15 +248,15 @@ export function MemoryCleanup() {
         <div className="flex flex-col gap-2 rounded-lg border p-3">
           <div className="text-sm font-medium">Dispatched {dispatch.dispatched.length} cleanup task(s)</div>
           {dispatch.dispatched.map((d) => (
-            <div key={d.agent} className="text-xs text-muted-foreground">
+            <div key={d.agent} className="text-xs text-bakin-text-muted">
               {d.agent} → <PluginLink className="underline" to="/tasks">task {d.taskId}</PluginLink> ({d.hitCount} file(s){d.managedCount ? `, ${d.managedCount} pinned` : ''})
             </div>
           ))}
           {dispatch.skipped.map((s) => (
-            <div key={s.agent} className="text-xs text-muted-foreground">{s.agent} — skipped ({s.reason})</div>
+            <div key={s.agent} className="text-xs text-bakin-text-muted">{s.agent} — skipped ({s.reason})</div>
           ))}
           {dispatch.failed?.map((f) => (
-            <div key={f.agent} className="text-xs text-destructive">{f.agent} — failed ({f.reason})</div>
+            <div key={f.agent} className="text-xs text-bakin-signal-danger">{f.agent} — failed ({f.reason})</div>
           ))}
           <div>
             <Button variant="outline" size="sm" onClick={runVerify} disabled={busy === 'verify'}>
@@ -265,10 +274,10 @@ export function MemoryCleanup() {
           {verify.results.map((r) => (
             <div key={r.agent} className="flex items-center gap-2 text-xs">
               {r.clean
-                ? <CheckCircle2 className="size-3.5 text-green-500" />
-                : <AlertTriangle className="size-3.5 text-amber-500" />}
+                ? <CheckCircle2 className="size-3.5 text-bakin-action-primary-background" />
+                : <AlertTriangle className="size-3.5 text-bakin-signal-highlight" />}
               <span>{r.agent}</span>
-              <span className="text-muted-foreground">
+              <span className="text-bakin-text-muted">
                 {r.clean ? 'clean' : `${r.actionableRemaining} editable occurrence(s) remain`}
                 {r.informationalRemaining > 0 ? ` · ${r.informationalRemaining} informational left (self-healing)` : ''}
               </span>

@@ -26,7 +26,9 @@ describe('RecurringDaySummary', () => {
 
     expect(onClick).toHaveBeenCalledTimes(1)
     expect(summary.getAttribute('data-tone')).toBe('neutral')
-    expect(summary.className).toContain('grid-cols-[auto_minmax(0,1fr)_auto]')
+    // Kit-Button row (refit T6.5): the icon/content columns ride the Button's
+    // own flex layout instead of a hand-rolled grid template.
+    expect(summary.className).toContain('w-full')
     expect(summary.className).toContain('gap-x-bakin-2')
     expect(screen.getByText('R').parentElement?.className).toContain('size-bakin-6')
   })

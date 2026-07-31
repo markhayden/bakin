@@ -137,41 +137,45 @@ export function OccurrenceCard({
       `}
     >
       <span className={`
-        grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-x-bakin-2
-        ${expanded ? 'gap-y-bakin-1 px-bakin-3 py-bakin-2' : 'px-bakin-2 py-bakin-2'}
+        flex w-full min-w-0 items-start gap-x-bakin-2
+        ${expanded ? 'px-bakin-3 py-bakin-2' : 'px-bakin-2 py-bakin-2'}
       `}>
-        <span className={description ? 'row-span-2 self-start' : 'self-start'}>
+        <span className="self-start">
           <AgentBadge agentId={job.agentId} size="md" showName={false} />
         </span>
-        <span className={`min-w-0 truncate font-bakin-typography-weight-medium leading-tight ${
-          expanded
-            ? 'text-bakin-typography-size-body'
-            : 'text-bakin-typography-size-meta'
-        } ${past ? 'text-bakin-text-muted' : 'text-bakin-text-primary'}`}>
-          {job.displayName || job.id}
-        </span>
-        <span className="flex shrink-0 items-center justify-end gap-bakin-1 text-right">
-          <DispositionDot occurrence={occurrence} />
-          <span className="text-right font-bakin-typography-family-mono text-bakin-typography-size-meta tabular-nums text-bakin-text-muted">
-            {time}
+        <span className={`flex min-w-0 flex-1 flex-col ${expanded ? 'gap-y-bakin-1' : ''}`}>
+          <span className="flex min-w-0 items-start gap-x-bakin-2">
+            <span className={`min-w-0 flex-1 truncate font-bakin-typography-weight-medium leading-tight ${
+              expanded
+                ? 'text-bakin-typography-size-body'
+                : 'text-bakin-typography-size-meta'
+            } ${past ? 'text-bakin-text-muted' : 'text-bakin-text-primary'}`}>
+              {job.displayName || job.id}
+            </span>
+            <span className="flex shrink-0 items-center justify-end gap-bakin-1 text-right">
+              <DispositionDot occurrence={occurrence} />
+              <span className="text-right font-bakin-typography-family-mono text-bakin-typography-size-meta tabular-nums text-bakin-text-muted">
+                {time}
+              </span>
+            </span>
           </span>
-        </span>
 
-        {description && (
-          <span className={`col-start-2 col-end-4 min-w-0 leading-tight text-bakin-text-muted ${
-            expanded
-              ? 'line-clamp-3 text-bakin-typography-size-meta'
-              : 'line-clamp-1 text-bakin-typography-size-meta'
-          }`}>
-            {description}
-          </span>
-        )}
+          {description && (
+            <span className={`min-w-0 leading-tight text-bakin-text-muted ${
+              expanded
+                ? 'line-clamp-3 text-bakin-typography-size-meta'
+                : 'line-clamp-1 text-bakin-typography-size-meta'
+            }`}>
+              {description}
+            </span>
+          )}
 
-        {expanded && job.humanSchedule && (
-          <span className="col-start-2 col-end-4 mt-bakin-1 block font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
-            {job.humanSchedule}
-          </span>
-        )}
+          {expanded && job.humanSchedule && (
+            <span className="mt-bakin-1 block font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
+              {job.humanSchedule}
+            </span>
+          )}
+        </span>
       </span>
     </Button>
   )

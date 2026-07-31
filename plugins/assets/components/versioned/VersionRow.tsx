@@ -28,11 +28,13 @@ export function VersionRow({ assetId, assetType, version, isCurrent, isSelected,
       data-testid={`version-row-${version.version}`}
       data-selected={isSelected || undefined}
     >
-      <button
+      <Button
         type="button"
+        variant="ghost"
+        size="icon-xs"
         aria-label={`Preview version ${version.version}`}
         aria-pressed={isSelected}
-        className="absolute inset-0 z-0 rounded-bakin-surface outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-bakin-focus-ring"
+        className="absolute inset-0 z-0 h-auto min-h-0 min-w-0 w-auto rounded-bakin-surface p-0 hover:bg-transparent"
         onClick={() => onSelect?.(version.version)}
       />
 

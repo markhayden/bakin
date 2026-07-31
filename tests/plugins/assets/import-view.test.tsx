@@ -4,6 +4,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import '../../rtl-settle'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -59,14 +60,18 @@ describe('ImportView', () => {
     render(<ImportView />)
     await waitFor(() => expect(screen.getByTestId('import-list')).toBeTruthy())
     expect(screen.getByTestId('import-row-pic.png')).toBeTruthy()
-    expect((screen.getByTestId('import-type-pic.png') as HTMLSelectElement).value).toBe('images')
+    // Kit Select (refit T6.5): the trigger surfaces the suggested type as its value text.
+    expect(screen.getByTestId('import-type-pic.png').textContent).toContain('images')
     expect(screen.getByTestId('import-all').textContent).toContain('Import all (2)')
   })
 
   it('imports one file with its type override', async () => {
     render(<ImportView />)
     await waitFor(() => expect(screen.getByTestId('import-list')).toBeTruthy())
-    fireEvent.change(screen.getByTestId('import-type-pic.png'), { target: { value: 'research' } })
+    // Kit Select (refit T6.5): open the trigger, pick the option.
+    const user = userEvent.setup()
+    await user.click(screen.getByTestId('import-type-pic.png'))
+    await user.click(await screen.findByRole('option', { name: 'research' }))
     fireEvent.click(screen.getByTestId('import-pic.png'))
     await waitFor(() => expect(importCalls.length).toBe(1))
     expect(importCalls[0]).toEqual({ paths: ['assets/inbox/pic.png'], type: 'research' })

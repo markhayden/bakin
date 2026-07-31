@@ -19,13 +19,13 @@
     "private-import"
   ],
   "summary": {
-    "paths": 104,
+    "paths": 85,
     "totals": {
-      "raw-palette": 650,
-      "arbitrary-size": 248,
-      "raw-control": 109,
+      "raw-palette": 558,
+      "arbitrary-size": 205,
+      "raw-control": 85,
       "inline-style": 20,
-      "generic-token": 738,
+      "generic-token": 538,
       "unscoped-css": 0,
       "private-import": 7
     }
@@ -508,25 +508,6 @@
       }
     },
     {
-      "path": "plugins/assets/components/task-assets.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "plugin",
-        "pluginId": "assets"
-      },
-      "censusEntryId": "plugin-slot:assets:page:/assets",
-      "migrationTask": "T50-T51",
-      "archetype": "detail",
-      "target": "asset list/detail archetypes and supported SDK UI",
-      "status": "legacy-allowed",
-      "allowances": {
-        "raw-palette": 2,
-        "arbitrary-size": 3,
-        "raw-control": 2,
-        "generic-token": 8
-      }
-    },
-    {
       "path": "plugins/assets/components/versioned/AssetPreview.tsx",
       "owner": {
         "repository": "bakin",
@@ -539,82 +520,7 @@
       "target": "asset list/detail archetypes and supported SDK UI",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-palette": 14,
-        "arbitrary-size": 7,
-        "raw-control": 1,
-        "generic-token": 3
-      }
-    },
-    {
-      "path": "plugins/assets/components/versioned/atoms.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "plugin",
-        "pluginId": "assets"
-      },
-      "censusEntryId": "plugin-slot:assets:page:/assets",
-      "migrationTask": "T50-T51",
-      "archetype": "detail",
-      "target": "asset list/detail archetypes and supported SDK UI",
-      "status": "legacy-allowed",
-      "allowances": {
-        "raw-palette": 9,
-        "arbitrary-size": 11,
-        "generic-token": 8
-      }
-    },
-    {
-      "path": "plugins/assets/components/versioned/ImportView.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "plugin",
-        "pluginId": "assets"
-      },
-      "censusEntryId": "plugin-slot:assets:page:/assets",
-      "migrationTask": "T50-T51",
-      "archetype": "detail",
-      "target": "asset list/detail archetypes and supported SDK UI",
-      "status": "legacy-allowed",
-      "allowances": {
-        "raw-palette": 1,
-        "arbitrary-size": 1,
-        "raw-control": 1,
-        "generic-token": 10
-      }
-    },
-    {
-      "path": "plugins/assets/components/versioned/TagFolderGrid.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "plugin",
-        "pluginId": "assets"
-      },
-      "censusEntryId": "plugin-slot:assets:page:/assets",
-      "migrationTask": "T50-T51",
-      "archetype": "detail",
-      "target": "asset list/detail archetypes and supported SDK UI",
-      "status": "legacy-allowed",
-      "allowances": {
-        "raw-palette": 6,
-        "arbitrary-size": 2,
-        "generic-token": 6
-      }
-    },
-    {
-      "path": "plugins/assets/components/versioned/TagInput.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "plugin",
-        "pluginId": "assets"
-      },
-      "censusEntryId": "plugin-slot:assets:page:/assets",
-      "migrationTask": "T50-T51",
-      "archetype": "detail",
-      "target": "asset list/detail archetypes and supported SDK UI",
-      "status": "legacy-allowed",
-      "allowances": {
-        "raw-control": 2,
-        "generic-token": 6
+        "arbitrary-size": 7
       }
     },
     {
@@ -632,31 +538,11 @@
       "allowances": {
         "raw-palette": 3,
         "arbitrary-size": 2,
-        "raw-control": 4,
-        "generic-token": 1
+        "raw-control": 3
       }
     },
     {
       "path": "plugins/assets/components/versioned/VersionedAssetGrid.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "plugin",
-        "pluginId": "assets"
-      },
-      "censusEntryId": "plugin-slot:assets:page:/assets",
-      "migrationTask": "T50-T51",
-      "archetype": "detail",
-      "target": "asset list/detail archetypes and supported SDK UI",
-      "status": "legacy-allowed",
-      "allowances": {
-        "raw-palette": 11,
-        "arbitrary-size": 2,
-        "raw-control": 4,
-        "generic-token": 15
-      }
-    },
-    {
-      "path": "plugins/assets/components/versioned/VersionRow.tsx",
       "owner": {
         "repository": "bakin",
         "area": "plugin",
@@ -684,7 +570,6 @@
       "target": "brand list/detail/form archetypes and supported SDK UI",
       "status": "legacy-allowed",
       "allowances": {
-        "arbitrary-size": 1,
         "raw-control": 2
       }
     },
@@ -701,10 +586,7 @@
       "target": "brand list/detail/form archetypes and supported SDK UI",
       "status": "legacy-allowed",
       "allowances": {
-        "arbitrary-size": 3,
-        "raw-control": 1,
-        "inline-style": 3,
-        "generic-token": 10
+        "inline-style": 3
       }
     },
     {
@@ -721,10 +603,8 @@
       "status": "legacy-allowed",
       "allowances": {
         "raw-palette": 4,
-        "arbitrary-size": 7,
-        "raw-control": 8,
-        "inline-style": 1,
-        "generic-token": 65
+        "raw-control": 1,
+        "inline-style": 1
       }
     },
     {
@@ -740,43 +620,7 @@
       "target": "brand list/detail/form archetypes and supported SDK UI",
       "status": "legacy-allowed",
       "allowances": {
-        "arbitrary-size": 1,
         "inline-style": 1
-      }
-    },
-    {
-      "path": "plugins/chat/components/chat-rail.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "plugin",
-        "pluginId": "chat"
-      },
-      "censusEntryId": "plugin-slot:chat:page:/chat",
-      "migrationTask": "T63-T64",
-      "archetype": "conversation",
-      "target": "canonical conversation patterns and supported SDK UI",
-      "status": "legacy-allowed",
-      "allowances": {
-        "arbitrary-size": 3,
-        "raw-control": 4,
-        "generic-token": 24
-      }
-    },
-    {
-      "path": "plugins/chat/components/chat-view.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "plugin",
-        "pluginId": "chat"
-      },
-      "censusEntryId": "plugin-slot:chat:page:/chat",
-      "migrationTask": "T63-T64",
-      "archetype": "conversation",
-      "target": "canonical conversation patterns and supported SDK UI",
-      "status": "legacy-allowed",
-      "allowances": {
-        "arbitrary-size": 1,
-        "generic-token": 4
       }
     },
     {
@@ -957,73 +801,6 @@
       }
     },
     {
-      "path": "plugins/memory/components/memory-cleanup.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "plugin",
-        "pluginId": "memory"
-      },
-      "censusEntryId": "plugin-slot:memory:page:/memory",
-      "migrationTask": "T59",
-      "archetype": "list-index",
-      "target": "search/list/detail archetypes and supported SDK UI",
-      "status": "legacy-allowed",
-      "allowances": {
-        "raw-palette": 3,
-        "arbitrary-size": 1,
-        "generic-token": 9
-      }
-    },
-    {
-      "path": "plugins/memory/components/memory-detail-drawer.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "plugin",
-        "pluginId": "memory"
-      },
-      "censusEntryId": "plugin-slot:memory:page:/memory",
-      "migrationTask": "T59",
-      "archetype": "list-index",
-      "target": "search/list/detail archetypes and supported SDK UI",
-      "status": "legacy-allowed",
-      "allowances": {
-        "arbitrary-size": 1
-      }
-    },
-    {
-      "path": "plugins/memory/components/memory-search-results.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "plugin",
-        "pluginId": "memory"
-      },
-      "censusEntryId": "plugin-slot:memory:page:/memory",
-      "migrationTask": "T59",
-      "archetype": "list-index",
-      "target": "search/list/detail archetypes and supported SDK UI",
-      "status": "legacy-allowed",
-      "allowances": {
-        "arbitrary-size": 1
-      }
-    },
-    {
-      "path": "plugins/memory/components/tier-colors.ts",
-      "owner": {
-        "repository": "bakin",
-        "area": "plugin",
-        "pluginId": "memory"
-      },
-      "censusEntryId": "plugin-slot:memory:page:/memory",
-      "migrationTask": "T59",
-      "archetype": "list-index",
-      "target": "search/list/detail archetypes and supported SDK UI",
-      "status": "legacy-allowed",
-      "allowances": {
-        "raw-palette": 42,
-        "generic-token": 5
-      }
-    },
-    {
       "path": "plugins/models/components/routing-tab.tsx",
       "owner": {
         "repository": "bakin",
@@ -1037,120 +814,6 @@
       "status": "legacy-allowed",
       "allowances": {
         "private-import": 1
-      }
-    },
-    {
-      "path": "plugins/schedule/components/calendar-weekly.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "plugin",
-        "pluginId": "schedule"
-      },
-      "censusEntryId": "plugin-slot:schedule:page:/schedule",
-      "migrationTask": "T55-T56",
-      "archetype": "list-index",
-      "target": "schedule list/calendar/form archetypes and supported SDK UI",
-      "status": "legacy-allowed",
-      "allowances": {
-        "arbitrary-size": 1
-      }
-    },
-    {
-      "path": "plugins/schedule/components/event-popover.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "plugin",
-        "pluginId": "schedule"
-      },
-      "censusEntryId": "plugin-slot:schedule:page:/schedule",
-      "migrationTask": "T55-T56",
-      "archetype": "list-index",
-      "target": "schedule list/calendar/form archetypes and supported SDK UI",
-      "status": "legacy-allowed",
-      "allowances": {
-        "arbitrary-size": 1
-      }
-    },
-    {
-      "path": "plugins/schedule/components/job-list.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "plugin",
-        "pluginId": "schedule"
-      },
-      "censusEntryId": "plugin-slot:schedule:page:/schedule",
-      "migrationTask": "T55-T56",
-      "archetype": "list-index",
-      "target": "schedule list/calendar/form archetypes and supported SDK UI",
-      "status": "legacy-allowed",
-      "allowances": {
-        "arbitrary-size": 1
-      }
-    },
-    {
-      "path": "plugins/schedule/components/recurring-day-summary.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "plugin",
-        "pluginId": "schedule"
-      },
-      "censusEntryId": "plugin-slot:schedule:page:/schedule",
-      "migrationTask": "T55-T56",
-      "archetype": "list-index",
-      "target": "schedule list/calendar/form archetypes and supported SDK UI",
-      "status": "legacy-allowed",
-      "allowances": {
-        "arbitrary-size": 1,
-        "raw-control": 1
-      }
-    },
-    {
-      "path": "plugins/tasks/components/block-reason-dialog.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "plugin",
-        "pluginId": "tasks"
-      },
-      "censusEntryId": "plugin-slot:tasks:page:/tasks",
-      "migrationTask": "T48-T49",
-      "archetype": "workflow-action",
-      "target": "task board/detail archetypes and supported SDK UI",
-      "status": "legacy-allowed",
-      "allowances": {
-        "generic-token": 2
-      }
-    },
-    {
-      "path": "plugins/tasks/components/task-workflow-panels.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "plugin",
-        "pluginId": "tasks"
-      },
-      "censusEntryId": "plugin-slot:tasks:page:/tasks",
-      "migrationTask": "T48-T49",
-      "archetype": "workflow-action",
-      "target": "task board/detail archetypes and supported SDK UI",
-      "status": "legacy-allowed",
-      "allowances": {
-        "arbitrary-size": 1
-      }
-    },
-    {
-      "path": "plugins/tasks/constants.ts",
-      "owner": {
-        "repository": "bakin",
-        "area": "plugin",
-        "pluginId": "tasks"
-      },
-      "censusEntryId": "plugin-slot:tasks:page:/tasks",
-      "migrationTask": "T48-T49",
-      "archetype": "workflow-action",
-      "target": "task board/detail archetypes and supported SDK UI",
-      "status": "legacy-allowed",
-      "allowances": {
-        "raw-palette": 4,
-        "generic-token": 24
       }
     },
     {

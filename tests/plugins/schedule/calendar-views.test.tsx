@@ -322,7 +322,8 @@ describe('Schedule calendar views (occurrence-fed)', () => {
     expect(occurrenceButton?.className).toContain('!h-auto')
     expect(occurrenceButton?.className).toContain('overflow-hidden')
     expect(occurrenceButton?.className).toContain('!p-0')
-    expect(occurrenceButton?.firstElementChild?.className).toContain('grid-cols-[auto_minmax(0,1fr)_auto]')
+    // Refit T6.5: icon/content columns ride flex layout, not a grid template.
+    expect(occurrenceButton?.firstElementChild?.className).toContain('flex')
     expect(occurrenceButton?.firstElementChild?.className).toContain('px-bakin-2')
     expect(occurrenceButton?.firstElementChild?.className).toContain('py-bakin-2')
     expect(occurrenceButton?.firstElementChild?.className).not.toContain('gap-y-bakin-1')
@@ -333,7 +334,7 @@ describe('Schedule calendar views (occurrence-fed)', () => {
     expect(occurrenceTime.className).toContain('text-right')
     expect(eventButton?.className).toContain('!h-auto')
     expect(eventButton?.className).toContain('overflow-hidden')
-    expect(eventButton?.className).toContain('grid-cols-[auto_minmax(0,1fr)_auto]')
+    expect(eventButton?.className).toContain('flex')
     expect(eventButton?.className).toContain('px-bakin-2')
     expect(eventButton?.className).toContain('py-bakin-2')
     expect(eventButton?.className).not.toContain('gap-y-bakin-1')
