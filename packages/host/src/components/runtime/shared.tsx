@@ -6,7 +6,7 @@
  * this" / "not available — here's what happens instead"), never as a bare
  * enum. Keep every mode → word mapping HERE so the three tabs can't drift.
  */
-import { Badge } from '@/components/ui/badge'
+import { StatusBadge as StatusBadgePattern, type StatusTone } from '@makinbakin/sdk/patterns'
 
 export type CapabilityMode = 'native' | 'shimmed' | 'unavailable' | string
 
@@ -16,17 +16,17 @@ const MODE_LABEL: Record<string, string> = {
   unavailable: 'Not available',
 }
 
-const MODE_CLASS: Record<string, string> = {
-  native: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
-  shimmed: 'border-sky-500/30 bg-sky-500/10 text-sky-600 dark:text-sky-400',
-  unavailable: 'border-border bg-muted/40 text-muted-foreground',
+const MODE_TONE: Record<string, StatusTone> = {
+  native: 'success',
+  shimmed: 'accent',
+  unavailable: 'neutral',
 }
 
 export function ModeBadge({ mode }: { mode: CapabilityMode }) {
   return (
-    <Badge variant="outline" className={`shrink-0 ${MODE_CLASS[mode] ?? MODE_CLASS.unavailable}`}>
+    <StatusBadgePattern tone={MODE_TONE[mode] ?? 'neutral'} variant="soft" className="shrink-0">
       {MODE_LABEL[mode] ?? mode}
-    </Badge>
+    </StatusBadgePattern>
   )
 }
 
@@ -61,10 +61,10 @@ export function capabilityStateCopy(key: string, mode: CapabilityMode, adapter: 
 export const MODE_LEGEND = 'Native — the runtime provides it. Via Bakin — Bakin fills the gap itself. Not available — degrades honestly, never silently.'
 
 export function StatusBadge({ status }: { status: string }) {
-  const cls = status === 'ok'
-    ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+  const tone: StatusTone = status === 'ok'
+    ? 'success'
     : status === 'warn' || status === 'skipped'
-      ? 'border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400'
-      : 'border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-400'
-  return <Badge variant="outline" className={`shrink-0 ${cls}`}>{status}</Badge>
+      ? 'attention'
+      : 'danger'
+  return <StatusBadgePattern tone={tone} variant="soft" className="shrink-0">{status}</StatusBadgePattern>
 }

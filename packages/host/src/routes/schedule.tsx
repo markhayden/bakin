@@ -1,8 +1,8 @@
 /**
  * /schedule — cron job manager route.
  *
- * Mirrors `src/app/schedule/page.tsx`: same `p-[5px]` edge-hugging
- * padding as the tasks route.
+ * Mirrors the tasks route: a bare flex shell — the plugin-owned page
+ * recipe supplies its own canonical canvas and responsive spacing.
  */
 import { createRoute } from '@tanstack/react-router'
 import { Slot } from '@makinbakin/sdk/slots'
@@ -11,7 +11,7 @@ import { Route as RootRoute } from './__root'
 
 function SchedulePage() {
   return (
-    <div className="p-[5px] flex flex-col h-full min-w-0 overflow-hidden">
+    <div className="flex h-full min-w-0 flex-col overflow-hidden">
       <Suspense>
         <Slot name="page:/schedule" />
       </Suspense>

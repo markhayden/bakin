@@ -7,15 +7,15 @@
  * PluginSettingsRenderer, and a synthetic "System & Alerts" tab backed by
  * /api/settings.
  *
- * Composed on the Page archetype (storybook-refit T6.1): Page +
- * PageHeader own page identity and padding; the consumer-owned category
- * navigation sits beside ONE PageBody region so state replacement touches
- * only the active category (Recipes/Settings and dashboard pages).
+ * Composed on the Page archetype (storybook-refit T6.1/T6.2): Page +
+ * PageHeader own page identity and padding; the NavList master-detail
+ * category navigator sits beside ONE PageBody region so state replacement
+ * touches only the active category (Recipes/Settings and dashboard pages).
  */
 import { createRoute } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
-import { Page, PageBody, PageHeader } from '@makinbakin/sdk/patterns'
-import { Button, Skeleton, SystemState } from '@makinbakin/sdk/ui'
+import { NavList, Page, PageBody, PageHeader } from '@makinbakin/sdk/patterns'
+import { Skeleton, SystemState } from '@makinbakin/sdk/ui'
 import { PluginSettingsRenderer, type PluginSettingsSchema } from '@/components/plugin-settings-renderer'
 import {
   SYSTEM_SETTINGS_TAB_ID,
@@ -169,43 +169,24 @@ function SettingsRoute() {
   }
 
   const grouped = groupAndSortSchemas(plugins)
-  const renderTab = (p: PluginSchemaEntry) => (
-    <Button
-      key={p.id}
-      size="sm"
-      variant={p.id === activePlugin ? 'secondary' : 'ghost'}
-      aria-current={p.id === activePlugin ? 'page' : undefined}
-      className="w-full justify-start"
-      onClick={() => setActivePlugin(p.id)}
-    >
-      {p.name}
-    </Button>
-  )
-  const sectionLabel =
-    'text-bakin-typography-size-meta font-bakin-typography-weight-semibold uppercase tracking-widest text-bakin-text-muted'
+  const toNavItem = (p: PluginSchemaEntry) => ({ id: p.id, label: p.name })
+  const navSections = [
+    ...(grouped.core.length > 0 ? [{ label: 'Core', items: grouped.core.map(toNavItem) }] : []),
+    ...(grouped.extensions.length > 0 ? [{ label: 'Extensions', items: grouped.extensions.map(toNavItem) }] : []),
+  ]
 
   return (
     <SettingsFrame>
       <div className="flex min-w-0 flex-1 flex-col gap-bakin-6 @3xl/page-shell:flex-row @3xl/page-shell:items-start @3xl/page-shell:gap-bakin-8">
-        {/* Consumer-owned category navigation — the active category stays
-            visible while PageBody swaps its state. */}
-        <nav
-          aria-label="Settings categories"
-          className="flex w-full min-w-0 flex-col gap-bakin-6 @3xl/page-shell:w-56 @3xl/page-shell:shrink-0"
-        >
-          {grouped.core.length > 0 && (
-            <div className="flex flex-col gap-bakin-1">
-              <p className={`m-0 ${sectionLabel}`}>Core</p>
-              {grouped.core.map(renderTab)}
-            </div>
-          )}
-          {grouped.extensions.length > 0 && (
-            <div className="flex flex-col gap-bakin-1">
-              <p className={`m-0 ${sectionLabel}`}>Extensions</p>
-              {grouped.extensions.map(renderTab)}
-            </div>
-          )}
-        </nav>
+        {/* Master-detail category navigation (NavList) — the active category
+            stays visible while PageBody swaps its state. */}
+        <NavList
+          label="Settings categories"
+          sections={navSections}
+          selectedId={activePlugin || null}
+          onSelect={setActivePlugin}
+          className="w-full min-w-0 @3xl/page-shell:w-56 @3xl/page-shell:shrink-0"
+        />
 
         {/* Active category — the ONE PageBody region for this page. */}
         <PageBody labelledBy="active-settings-heading" gap="content" className="min-w-0">

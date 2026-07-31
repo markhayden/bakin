@@ -7,10 +7,8 @@
 import { useEffect, useState } from 'react'
 import { Compass, Sparkles } from 'lucide-react'
 import { Link } from '@tanstack/react-router'
-import { Card, CardContent } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Skeleton } from '@/components/ui/skeleton'
-import { EmptyState } from '@/components/empty-state'
+import { StatusBadge } from '@makinbakin/sdk/patterns'
+import { buttonVariants, Card, CardContent, Skeleton, SystemState } from '@makinbakin/sdk/ui'
 import type { CapabilityReadiness } from './types'
 
 /**
@@ -19,8 +17,8 @@ import type { CapabilityReadiness } from './types'
  */
 function Leg({ ok, label }: { ok: boolean; label: string }) {
   return (
-    <span className={`inline-flex items-center gap-1.5 text-xs ${ok ? 'text-muted-foreground' : 'text-amber-600 dark:text-amber-400'}`}>
-      <span className={`size-1.5 shrink-0 rounded-full ${ok ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+    <span className={`inline-flex items-center gap-1.5 text-xs ${ok ? 'text-bakin-text-muted' : 'text-bakin-signal-highlight'}`}>
+      <span className={`size-1.5 shrink-0 rounded-bakin-pill ${ok ? 'bg-bakin-action-primary-background' : 'bg-bakin-signal-highlight'}`} />
       {label}
     </span>
   )
@@ -54,20 +52,21 @@ export function CapabilitiesTab() {
   }
 
   if (capabilities === null) {
-    return <p className="text-sm text-muted-foreground">Capability readiness is unavailable right now — retry with Refresh.</p>
+    return <p className="text-sm text-bakin-text-muted">Capability readiness is unavailable right now — retry with Refresh.</p>
   }
 
   if (capabilities.length === 0) {
     return (
-      <EmptyState
-        icon={Compass}
+      <SystemState
+        kind="initial-empty"
+        icon={<Compass className="size-6" aria-hidden="true" />}
         title="No capabilities installed yet"
         description="Capabilities teach your agents new tricks — web search, browser automation, transcription. Bakin installs everything they need, including the API-key step."
         action={
           <Link
             to="/explore"
             search={{ tab: 'capabilities' }}
-            className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+            className={buttonVariants({ variant: 'primary', size: 'sm' })}
           >
             Browse capabilities
           </Link>
@@ -83,25 +82,25 @@ export function CapabilitiesTab() {
         <Card key={cap.capability}>
           <CardContent className="p-5">
             <div className="flex items-start gap-4">
-              <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted/60">
-                <Sparkles className="size-5 text-muted-foreground" />
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-bakin-control bg-bakin-surface-default">
+                <Sparkles className="size-5 text-bakin-text-muted" />
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="text-base font-semibold">{cap.name}</p>
                   {cap.ready ? (
-                    <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">Installed</Badge>
+                    <StatusBadge tone="success" variant="soft">Installed</StatusBadge>
                   ) : (
-                    <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400">Needs attention</Badge>
+                    <StatusBadge tone="attention" variant="soft">Needs attention</StatusBadge>
                   )}
-                  <span className="ml-auto text-[11px] text-muted-foreground/60">{cap.packageId}@{cap.version}</span>
+                  <span className="ml-auto text-bakin-typography-size-meta text-bakin-text-muted/60">{cap.packageId}@{cap.version}</span>
                 </div>
                 {cap.description && (
-                  <p className="mt-1.5 max-w-3xl text-sm leading-relaxed text-muted-foreground">{cap.description}</p>
+                  <p className="mt-1.5 max-w-3xl text-sm leading-relaxed text-bakin-text-muted">{cap.description}</p>
                 )}
 
                 {!cap.ready && (
-                  <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-border/60 pt-3.5">
+                  <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-bakin-border-subtle/60 pt-3.5">
                     {!cap.platformSupported && <Leg key="platform" ok={false} label="not available on this platform" />}
                     {cap.skills.filter((s) => s.status !== 'ok').map((s) => <Leg key={`s-${s.name}`} ok={false} label={`skill ${s.name} missing`} />)}
                     {cap.bins.filter((b) => b.status !== 'ok').map((b) => <Leg key={`b-${b.name}`} ok={false} label={b.status === 'unsupported-platform' ? `binary ${b.name} not available for this platform` : `binary ${b.name} missing`} />)}
@@ -114,13 +113,13 @@ export function CapabilitiesTab() {
 
                 {!cap.ready && (
                   <div className="mt-3 space-y-2">
-                    <ul className="space-y-1 text-xs text-muted-foreground">
+                    <ul className="space-y-1 text-xs text-bakin-text-muted">
                       {cap.missing.map((line) => <li key={line}>→ {line}</li>)}
                     </ul>
                     {cap.secrets.some((s) => s.status === 'missing') && (
                       <Link
                         to="/settings"
-                        className="inline-flex h-8 items-center rounded-md border border-border px-3 text-sm font-medium hover:bg-muted/40"
+                        className={buttonVariants({ variant: 'outline', size: 'sm' })}
                       >
                         Add the key in Settings
                       </Link>
@@ -133,7 +132,7 @@ export function CapabilitiesTab() {
         </Card>
       ))}
       </div>
-      <p className="text-xs text-muted-foreground">
+      <p className="text-xs text-bakin-text-muted">
         Add more from <Link className="underline" to="/explore" search={{ tab: 'capabilities' }}>Explore → Capabilities</Link>.
       </p>
     </div>

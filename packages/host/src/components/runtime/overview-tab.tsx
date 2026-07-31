@@ -5,11 +5,9 @@
  */
 import { useRef, useState } from 'react'
 import { Wrench } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { ConfirmDialog } from '@/components/confirm-dialog'
-import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from '@makinbakin/sdk/hooks'
+import { ConfirmDialog } from '@makinbakin/sdk/patterns'
+import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Skeleton } from '@makinbakin/sdk/ui'
 import { capabilityRows } from '../../lib/runtime-report'
 import { ModeBadge, MODE_LEGEND, StatusBadge, capabilityStateCopy } from './shared'
 import type { CapabilityReport, OnboardingComponentStatus } from './types'
@@ -25,7 +23,7 @@ function CredentialTiles({ report }: { report: CapabilityReport }) {
           <CardDescription>Active runtime</CardDescription>
           <CardTitle className="text-xl">{report.adapter}</CardTitle>
         </CardHeader>
-        <CardContent className="text-xs text-muted-foreground">
+        <CardContent className="text-xs text-bakin-text-muted">
           {report.runtime.name}@{report.runtime.version}
         </CardContent>
       </Card>
@@ -35,11 +33,11 @@ function CredentialTiles({ report }: { report: CapabilityReport }) {
           <CardTitle className="text-xl">{providers.length}</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-1.5 text-xs">
-          {providers.length === 0 && <span className="text-muted-foreground">None configured — agents cannot run turns.</span>}
+          {providers.length === 0 && <span className="text-bakin-text-muted">None configured — agents cannot run turns.</span>}
           {providers.map((p) => (
-            <span key={p} className="rounded-full border border-border px-2 py-0.5 text-muted-foreground">
+            <Badge key={p} tone="neutral" variant="outline">
               {p}{kinds.get(p) === 'oauth' ? ' · subscription' : kinds.has(p) ? ' · API key' : ''}
-            </span>
+            </Badge>
           ))}
         </CardContent>
       </Card>
@@ -48,7 +46,7 @@ function CredentialTiles({ report }: { report: CapabilityReport }) {
           <CardDescription>Tool access</CardDescription>
           <CardTitle className="text-xl">{report.toolAccess.ok ? 'Healthy' : 'Needs attention'}</CardTitle>
         </CardHeader>
-        <CardContent className="text-xs text-muted-foreground">
+        <CardContent className="text-xs text-bakin-text-muted">
           {report.toolAccess.ok
             ? capabilityStateCopy('toolCalling', 'native', report.adapter, report.toolAccess.style)
             : report.toolAccess.issues.join('; ')}
@@ -65,7 +63,7 @@ function CapabilityGrid({ report }: { report: CapabilityReport }) {
     <section className="space-y-3">
       <div>
         <h2 className="text-sm font-semibold">What this runtime can do</h2>
-        <p className="text-xs text-muted-foreground">{MODE_LEGEND}</p>
+        <p className="text-xs text-bakin-text-muted">{MODE_LEGEND}</p>
       </div>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {rows.map((row) => (
@@ -74,7 +72,7 @@ function CapabilityGrid({ report }: { report: CapabilityReport }) {
               <CardTitle className="text-sm">{row.label}</CardTitle>
               <ModeBadge mode={row.mode} />
             </CardHeader>
-            <CardContent className="text-xs text-muted-foreground">
+            <CardContent className="text-xs text-bakin-text-muted">
               {capabilityStateCopy(row.key, row.mode, report.adapter, row.detail)}
             </CardContent>
           </Card>
@@ -84,7 +82,7 @@ function CapabilityGrid({ report }: { report: CapabilityReport }) {
             <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm">Attachments</CardTitle>
             </CardHeader>
-            <CardContent className="text-xs text-muted-foreground">
+            <CardContent className="text-xs text-bakin-text-muted">
               {input.imageInput ? 'Agents can see images you attach.' : 'The active model cannot take image attachments.'}{' '}
               {input.audioInput ? 'Audio attachments work too.' : ''}
             </CardContent>
@@ -139,7 +137,7 @@ function SetupSection({ onboarding, onFixed }: { onboarding: OnboardingComponent
     <section className="space-y-3" data-testid="onboarding-status">
       <div>
         <h2 className="text-sm font-semibold">Setup checks</h2>
-        <p className="text-xs text-muted-foreground">Live checks against the active runtime — the same ones `bakin check all` runs.</p>
+        <p className="text-xs text-bakin-text-muted">Live checks against the active runtime — the same ones `bakin check all` runs.</p>
       </div>
       {onboarding === undefined && (
         <div className="space-y-2">
@@ -148,20 +146,20 @@ function SetupSection({ onboarding, onFixed }: { onboarding: OnboardingComponent
         </div>
       )}
       {onboarding === null && (
-        <p className="text-sm text-muted-foreground">Setup checks are unavailable right now — retry with Refresh.</p>
+        <p className="text-sm text-bakin-text-muted">Setup checks are unavailable right now — retry with Refresh.</p>
       )}
       {onboarding && (
         <Card>
-          <CardContent className="divide-y divide-border p-0">
+          <CardContent className="divide-y divide-bakin-border-subtle p-0">
             {onboarding.map((component) => {
               const repairable = component.status !== 'ok' && FIXABLE_COMPONENTS.has(component.name)
               return (
                 <div key={component.name} className="flex items-center justify-between gap-3 px-4 py-2.5">
                   <div className="min-w-0">
                     <p className="text-sm font-medium">{component.name}</p>
-                    <p className="truncate text-xs text-muted-foreground" title={component.message}>{component.message}</p>
+                    <p className="truncate text-xs text-bakin-text-muted" title={component.message}>{component.message}</p>
                     {component.remediation && component.status !== 'ok' && (
-                      <p className="mt-0.5 text-xs text-muted-foreground/80">→ {component.remediation}</p>
+                      <p className="mt-0.5 text-xs text-bakin-text-muted/80">→ {component.remediation}</p>
                     )}
                   </div>
                   <div className="flex shrink-0 items-center gap-2">

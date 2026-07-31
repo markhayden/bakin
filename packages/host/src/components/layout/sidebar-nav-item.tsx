@@ -31,8 +31,7 @@ import {
 import { useRef, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import type { NavBadge as NavBadgeData, NavItem } from '@makinbakin/sdk'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Popover, PopoverContent, PopoverTrigger, Tooltip, TooltipContent, TooltipTrigger } from '@makinbakin/sdk/ui'
 import { NavBadge, NavBadgeDot, navBadgeAriaSuffix } from './nav-badge'
 import {
   badgeIsActive,
@@ -87,10 +86,10 @@ interface SidebarNavItemProps {
 }
 
 function navRowClass(active: boolean, collapsed: boolean): string {
-  return `${collapsed ? 'justify-center px-0' : 'px-3'} flex w-full items-center gap-3 rounded-md py-1.5 text-sm transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+  return `${collapsed ? 'justify-center px-0' : 'px-3'} flex w-full items-center gap-3 rounded-bakin-control py-1.5 text-sm transition-colors duration-150 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-bakin-focus-ring ${
     active
-      ? 'bg-foreground/[0.06] text-foreground shadow-[inset_2px_0_0_0_var(--color-pink-500)]'
-      : 'text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground'
+      ? 'bg-bakin-border-subtle/35 text-bakin-text-primary shadow-[inset_2px_0_0_0_var(--bakin-color-signal-accent)]'
+      : 'text-bakin-text-muted hover:bg-bakin-border-subtle/20 hover:text-bakin-text-primary'
   }`
 }
 
@@ -135,7 +134,7 @@ function CollapsedNavGroup({
         {rollupTone && <NavBadgeDot tone={rollupTone} />}
       </PopoverTrigger>
       <PopoverContent side="right" align="start" sideOffset={8} className="w-48 gap-0.5 p-1.5">
-        <div className="px-2 py-1.5 text-xs font-semibold text-foreground">{item.label}</div>
+        <div className="px-2 py-1.5 text-xs font-semibold text-bakin-text-primary">{item.label}</div>
         {item.children!.map((child) => {
           const ChildIcon = resolveNavIcon(child.icon)
           const childActive = isNavActive(pathname, child.href)
@@ -145,10 +144,10 @@ function CollapsedNavGroup({
               key={child.id}
               to={child.href}
               onClick={onNavigate}
-              className={`flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+              className={`flex items-center gap-2 rounded-bakin-control px-2 py-1.5 text-sm transition-colors duration-150 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-bakin-focus-ring ${
                 childActive
-                  ? 'bg-foreground/[0.07] text-foreground'
-                  : 'text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground'
+                  ? 'bg-bakin-border-subtle/35 text-bakin-text-primary'
+                  : 'text-bakin-text-muted hover:bg-bakin-border-subtle/20 hover:text-bakin-text-primary'
               }`}
               aria-current={childActive ? 'page' : undefined}
               aria-label={`${child.label}${navBadgeAriaSuffix(childBadge)}`}
@@ -206,7 +205,7 @@ export function SidebarNavItem({
         {expanded && (
           <div
             id={groupId}
-            className="mx-1 mb-1 mt-1 flex flex-col overflow-hidden rounded-md bg-foreground/[0.035] py-1"
+            className="mx-1 mb-1 mt-1 flex flex-col overflow-hidden rounded-bakin-control bg-bakin-border-subtle/20 py-1"
           >
             {item.children!.map((child) => {
               const ChildIcon = resolveNavIcon(child.icon)
@@ -217,10 +216,10 @@ export function SidebarNavItem({
                   key={child.id}
                   to={child.href}
                   onClick={onNavigate}
-                  className={`flex items-center gap-2.5 px-3 py-1.5 pl-6 text-xs transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${
+                  className={`flex items-center gap-2.5 px-3 py-1.5 pl-6 text-xs transition-colors duration-150 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-bakin-focus-ring ${
                     childActive
-                      ? 'bg-foreground/[0.09] text-foreground'
-                      : 'text-muted-foreground hover:bg-foreground/[0.055] hover:text-foreground'
+                      ? 'bg-bakin-border-subtle/40 text-bakin-text-primary'
+                      : 'text-bakin-text-muted hover:bg-bakin-border-subtle/25 hover:text-bakin-text-primary'
                   }`}
                   aria-current={childActive ? 'page' : undefined}
                   aria-label={`${child.label}${navBadgeAriaSuffix(childBadge)}`}

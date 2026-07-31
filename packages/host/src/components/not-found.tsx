@@ -8,24 +8,25 @@
  */
 import { Link, useLocation } from '@tanstack/react-router'
 import { Compass } from 'lucide-react'
+import { buttonVariants, SystemState } from '@makinbakin/sdk/ui'
 
 export function NotFoundPage() {
   const location = useLocation()
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center" data-testid="not-found">
-      <div className="rounded-full bg-muted p-3">
-        <Compass className="size-6 text-muted-foreground" aria-hidden="true" />
-      </div>
-      <h1 className="text-sm font-medium text-foreground">Page not found</h1>
-      <p className="max-w-sm text-sm text-muted-foreground">
-        <code className="break-all text-xs">{location.pathname}</code> doesn&apos;t match any page or installed plugin route.
-      </p>
-      <Link
-        to="/tasks"
-        className="inline-flex h-8 items-center rounded-md border border-border px-3 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-      >
-        Back to Tasks
-      </Link>
+    <div className="flex h-full flex-col items-center justify-center p-6" data-testid="not-found">
+      <SystemState
+        kind="error"
+        scope="page"
+        announce="off"
+        icon={<Compass className="size-6" aria-hidden="true" />}
+        title="Page not found"
+        description={<><code className="break-all text-xs">{location.pathname}</code> doesn&apos;t match any page or installed plugin route.</>}
+        action={
+          <Link to="/tasks" className={buttonVariants({ variant: 'outline', size: 'sm' })}>
+            Back to Tasks
+          </Link>
+        }
+      />
     </div>
   )
 }

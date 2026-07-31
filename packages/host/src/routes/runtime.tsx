@@ -13,11 +13,9 @@
 import { createRoute } from '@tanstack/react-router'
 import { Suspense, useCallback, useEffect, useState } from 'react'
 import { RefreshCw } from 'lucide-react'
+import { useQueryState } from '@makinbakin/sdk/navigation'
 import { Page, PageBody, PageHeader } from '@makinbakin/sdk/patterns'
-import { Button, Skeleton } from '@makinbakin/sdk/ui'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { ErrorBanner } from '@/components/error-banner'
-import { useQueryState } from '@/hooks/use-query-state'
+import { Banner, Button, Skeleton, Tabs, TabsList, TabsTrigger } from '@makinbakin/sdk/ui'
 import { OverviewTab } from '../components/runtime/overview-tab'
 import { CapabilitiesTab } from '../components/runtime/capabilities-tab'
 import { RuntimesTab } from '../components/runtime/runtimes-tab'
@@ -84,7 +82,7 @@ function RuntimePage() {
       />
       <PageBody label="Runtime report">
         <Tabs value={activeTab} onValueChange={(id) => setTab(id as string)}>
-          <TabsList variant="underline" activateOnFocus>
+          <TabsList variant="underline" activateOnFocus aria-label="Runtime sections">
             {TABS.map((item) => (
               <TabsTrigger key={item.id} value={item.id}>
                 {item.label}
@@ -94,7 +92,13 @@ function RuntimePage() {
         </Tabs>
 
         {reportError && (
-          <ErrorBanner message={`The runtime report failed to load: ${reportError}`} onRetry={refresh} />
+          <Banner
+            tone="danger"
+            announce="polite"
+            title="The runtime report failed to load"
+            description={reportError}
+            action={<Button size="sm" variant="outline" onClick={refresh}>Retry</Button>}
+          />
         )}
 
         {!report && !reportError && (

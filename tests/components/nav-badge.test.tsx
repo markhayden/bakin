@@ -42,29 +42,29 @@ describe('NavBadge', () => {
   })
 
   it('renders a dot (no count) when count is omitted', () => {
-    expect(renderToStaticMarkup(<NavBadge badge={{ tone: 'info' }} />)).toContain('bg-sky-400')
+    expect(renderToStaticMarkup(<NavBadge badge={{ tone: 'info' }} />)).toContain('bg-bakin-signal-info')
   })
 
   it('applies the attention palette by default', () => {
-    expect(renderToStaticMarkup(<NavBadge badge={{ count: 1 }} />)).toContain('bg-amber-500/20')
+    expect(renderToStaticMarkup(<NavBadge badge={{ count: 1 }} />)).toContain('bg-bakin-signal-highlight/20')
   })
 
   it('applies the info palette when tone is info', () => {
-    expect(renderToStaticMarkup(<NavBadge badge={{ count: 1, tone: 'info' }} />)).toContain('bg-sky-500/20')
+    expect(renderToStaticMarkup(<NavBadge badge={{ count: 1, tone: 'info' }} />)).toContain('bg-bakin-signal-info/20')
   })
 
   it('applies the success palette when tone is success', () => {
-    expect(renderToStaticMarkup(<NavBadge badge={{ count: 1, tone: 'success' }} />)).toContain('bg-emerald-500/20')
+    expect(renderToStaticMarkup(<NavBadge badge={{ count: 1, tone: 'success' }} />)).toContain('bg-bakin-action-primary-background/20')
   })
 
   it('applies the error palette (red) when tone is error', () => {
-    expect(renderToStaticMarkup(<NavBadge badge={{ count: 1, tone: 'error' }} />)).toContain('bg-red-500/20')
+    expect(renderToStaticMarkup(<NavBadge badge={{ count: 1, tone: 'error' }} />)).toContain('bg-bakin-signal-danger/20')
   })
 })
 
 describe('NavBadgeDot', () => {
   it('renders a small dot using the given tone', () => {
-    expect(renderToStaticMarkup(<NavBadgeDot tone="attention" />)).toContain('bg-amber-400')
+    expect(renderToStaticMarkup(<NavBadgeDot tone="attention" />)).toContain('bg-bakin-signal-highlight')
   })
 })
 

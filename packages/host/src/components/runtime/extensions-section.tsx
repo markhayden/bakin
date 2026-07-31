@@ -7,9 +7,8 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { Puzzle } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { ConfirmDialog } from '@/components/confirm-dialog'
+import { ConfirmDialog, StatusBadge } from '@makinbakin/sdk/patterns'
+import { Banner, Button } from '@makinbakin/sdk/ui'
 
 interface ExtensionRow {
   id: string
@@ -53,9 +52,14 @@ export function ExtensionsSection() {
     return (
       <section className="space-y-2" data-testid="runtime-extensions-error">
         <h2 className="text-sm font-semibold">Extensions</h2>
-        <p className="text-xs text-destructive">Couldn't load extensions: {loadError}.{' '}
-          <button type="button" className="underline" onClick={() => void load()}>Retry</button>
-        </p>
+        <Banner
+          tone="danger"
+          announce="polite"
+          headingLevel={3}
+          title="Couldn't load extensions"
+          description={loadError}
+          action={<Button size="sm" variant="outline" onClick={() => void load()}>Retry</Button>}
+        />
       </section>
     )
   }
@@ -86,26 +90,26 @@ export function ExtensionsSection() {
     <section className="space-y-3" data-testid="runtime-extensions">
       <div>
         <h2 className="text-sm font-semibold">Extensions</h2>
-        <p className="text-xs text-muted-foreground">
+        <p className="text-xs text-bakin-text-muted">
           Add-ons installed for the runtime (via <code>pi install</code>). They stay inert until you
           approve them here — an approved extension runs inside the Bakin server with full permissions.
         </p>
       </div>
-      <div className="divide-y divide-border/60 rounded-xl border bg-card">
+      <div className="divide-y divide-bakin-border-subtle/60 rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default">
         {report.extensions.map((ext) => (
           <div key={ext.path} className="flex items-center justify-between gap-4 p-4">
             <div className="flex min-w-0 items-center gap-3">
-              <Puzzle className="size-4 shrink-0 text-muted-foreground" />
+              <Puzzle className="size-4 shrink-0 text-bakin-text-muted" />
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium">{ext.label}</p>
                 {/* The path IS the trust identity — always show what would run. */}
-                <p className="truncate text-xs text-muted-foreground" title={ext.path}>{ext.source} · {ext.path}</p>
+                <p className="truncate text-xs text-bakin-text-muted" title={ext.path}>{ext.source} · {ext.path}</p>
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-2">
               {ext.status === 'allowed' && (
                 <>
-                  <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">Allowed</Badge>
+                  <StatusBadge tone="success" variant="soft">Allowed</StatusBadge>
                   <Button size="sm" variant="outline" data-testid={`ext-revoke-${ext.label}`} onClick={() => { setError(null); setTarget({ ext, action: 'revoke' }) }}>
                     Revoke
                   </Button>
@@ -113,14 +117,14 @@ export function ExtensionsSection() {
               )}
               {ext.status === 'pending' && (
                 <>
-                  <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400">Awaiting approval</Badge>
+                  <StatusBadge tone="attention" variant="soft">Awaiting approval</StatusBadge>
                   <Button size="sm" data-testid={`ext-allow-${ext.label}`} onClick={() => { setError(null); setTarget({ ext, action: 'allow' }) }}>
                     Allow
                   </Button>
                 </>
               )}
               {ext.status === 'blocked' && (
-                <Badge variant="outline" className="text-muted-foreground">Blocked (policy: none)</Badge>
+                <StatusBadge tone="neutral" variant="outline">Blocked (policy: none)</StatusBadge>
               )}
             </div>
           </div>

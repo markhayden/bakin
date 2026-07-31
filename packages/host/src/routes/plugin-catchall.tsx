@@ -14,6 +14,7 @@
  */
 import { createRoute, useLocation } from '@tanstack/react-router'
 import { Component, useEffect, useSyncExternalStore, type ReactNode } from 'react'
+import { Button, SystemState } from '@makinbakin/sdk/ui'
 import {
   getLazyPluginsVersion,
   getPluginLoadError,
@@ -55,8 +56,14 @@ class PluginPageBoundary extends Component<
   render(): ReactNode {
     if (this.state.error) {
       return (
-        <div className="p-6 text-sm text-destructive" role="alert">
-          Plugin &quot;{this.props.pluginId}&quot; failed to render this page.
+        <div className="p-6">
+          <SystemState
+            kind="error"
+            recovery="unavailable"
+            scope="page"
+            title="Plugin page crashed"
+            description={`Plugin "${this.props.pluginId}" failed to render this page.`}
+          />
         </div>
       )
     }
@@ -66,9 +73,8 @@ class PluginPageBoundary extends Component<
 
 function PluginLoadingPage() {
   return (
-    <div className="flex h-full items-center justify-center" role="status" aria-live="polite">
-      <span className="size-6 animate-spin rounded-full border-[3px] border-[#ff4d94]/20 border-t-[#ff4d94]" aria-hidden="true" />
-      <span className="sr-only">Loading plugin</span>
+    <div className="flex h-full items-center justify-center p-6">
+      <SystemState kind="loading" scope="page" title="Loading plugin" />
     </div>
   )
 }
@@ -76,18 +82,18 @@ function PluginLoadingPage() {
 function PluginLoadErrorPage({ pluginIds }: { pluginIds: string[] }) {
   const detail = getPluginLoadError(pluginIds[0])
   return (
-    <div className="flex flex-col items-start gap-3 p-6 text-sm" role="alert">
-      <span className="text-destructive">
-        {pluginIds.length === 1 ? `Plugin "${pluginIds[0]}" failed to load` : `Plugins ${pluginIds.map((id) => `"${id}"`).join(', ')} failed to load`}
-        {detail ? ` — ${detail}` : ''}
-      </span>
-      <button
-        type="button"
-        className="rounded border border-destructive/40 px-2 py-1 text-xs text-destructive hover:bg-destructive/10"
-        onClick={() => pluginIds.forEach(retryPluginLoad)}
-      >
-        Retry
-      </button>
+    <div className="p-6">
+      <SystemState
+        kind="error"
+        scope="page"
+        title={pluginIds.length === 1 ? `Plugin "${pluginIds[0]}" failed to load` : `Plugins ${pluginIds.map((id) => `"${id}"`).join(', ')} failed to load`}
+        description={detail ?? undefined}
+        action={
+          <Button size="sm" variant="outline" onClick={() => pluginIds.forEach(retryPluginLoad)}>
+            Retry
+          </Button>
+        }
+      />
     </div>
   )
 }
