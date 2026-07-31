@@ -5,13 +5,18 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { CalendarGrid } from '@makinbakin/sdk/patterns'
 import '../../rtl-settle'
 
+// Pin a NEGATIVE-offset timezone so the UTC date-string footgun would bite:
+// `new Date('2026-07-15')` parses as UTC midnight = July 14 18:00 in Denver.
+// All other fixtures use local Date constructors, which are TZ-neutral here.
+process.env.TZ = 'America/Denver'
+
 // Fixed instants — July 2026; July 15 is a Wednesday.
 const JULY = new Date(2026, 6, 1)
 const NOW = new Date(2026, 6, 15, 10, 30)
 
 interface Item {
   key: string
-  date?: Date
+  date?: Date | string
   allDay?: boolean
   title: string
 }
@@ -43,10 +48,82 @@ describe('CalendarGrid month view', () => {
     expect(today.getAttribute('data-today')).toBe('')
     expect(today.textContent).toContain('Standup')
 
-    // A day before `now` is dimmed as past.
+    // A day before `now` is marked as past (visual dimming is opt-in).
     const past = screen.getByRole('gridcell', { name: 'Friday, July 3, 1 item' })
     expect(past.getAttribute('data-past')).toBe('')
     expect(screen.getByRole('gridcell', { name: 'Thursday, July 16, no items' })).toBeDefined()
+  })
+
+  it('dims past-day item stacks only when dimPastDays is set', () => {
+    const items: Item[] = [{ key: 'old', date: new Date(2026, 6, 3, 9, 0), title: 'Old brief' }]
+    const { unmount } = render(
+      <CalendarGrid view="month" date={JULY} now={NOW} label="July 2026" items={items} renderItem={renderItem} />,
+    )
+    const cell = screen.getByRole('gridcell', { name: 'Friday, July 3, 1 item' })
+    expect(cell.getAttribute('data-past')).toBe('')
+    expect(cell.querySelector('.opacity-50')).toBeNull()
+    unmount()
+
+    render(
+      <CalendarGrid
+        view="month"
+        date={JULY}
+        now={NOW}
+        label="July 2026"
+        items={items}
+        renderItem={renderItem}
+        dimPastDays
+      />,
+    )
+    const dimmed = screen.getByRole('gridcell', { name: 'Friday, July 3, 1 item' })
+    expect(dimmed.querySelector('.opacity-50')).not.toBeNull()
+  })
+
+  it('renders muted, navigable adjacent-month days with items when outsideDays="muted"', () => {
+    render(
+      <CalendarGrid
+        view="month"
+        date={JULY}
+        now={NOW}
+        label="July 2026"
+        items={[{ key: 'retro', date: new Date(2026, 5, 30, 9, 0), title: 'June retro' }]}
+        renderItem={renderItem}
+        outsideDays="muted"
+      />,
+    )
+
+    // July 2026 starts on a Wednesday: June 28–30 lead, August 1 trails.
+    const outside = screen.getByRole('gridcell', { name: 'Tuesday, June 30, 1 item' })
+    expect(outside.getAttribute('data-outside')).toBe('')
+    expect(outside.textContent).toContain('June retro')
+    expect(screen.getByRole('gridcell', { name: 'Saturday, August 1, no items' })).toBeDefined()
+
+    // Outside days are real cells — arrow navigation reaches them.
+    const first = screen.getByRole('gridcell', { name: 'Wednesday, July 1, no items' })
+    first.focus()
+    fireEvent.keyDown(first, { key: 'ArrowLeft' })
+    expect(document.activeElement).toBe(outside)
+  })
+
+  it('renders the renderDayHeader slot beside the month day number', () => {
+    render(
+      <CalendarGrid
+        view="month"
+        date={JULY}
+        now={NOW}
+        label="July 2026"
+        items={[
+          { key: 'a', date: new Date(2026, 6, 15, 9, 0), title: 'Launch post' },
+          { key: 'b', date: new Date(2026, 6, 15, 10, 0), title: 'Thread' },
+          { key: 'c', date: new Date(2026, 6, 15, 11, 0), title: 'Newsletter' },
+        ]}
+        renderItem={renderItem}
+        renderDayHeader={(day) => (day.getDate() === 15 && day.getMonth() === 6 ? <span>3 posts</span> : null)}
+      />,
+    )
+
+    const cell = screen.getByRole('gridcell', { name: 'Wednesday, July 15, 3 items' })
+    expect(cell.querySelector('[data-slot="calendar-day-header"]')?.textContent).toContain('3 posts')
   })
 
   it('collapses beyond maxVisibleItems behind an accessible overflow disclosure', () => {
@@ -237,5 +314,103 @@ describe('CalendarGrid day view', () => {
     )
 
     expect(screen.getByRole('region', { name: 'Yesterday' }).querySelector('[data-current-hour]')).toBeNull()
+  })
+})
+
+describe('CalendarGrid date-string parsing', () => {
+  it('places plain YYYY-MM-DD strings on the LOCAL day, not the UTC day', () => {
+    // Under naive `new Date('2026-07-15')` parsing this is July 14 18:00 in
+    // America/Denver — the item would render one day early and this fails.
+    render(
+      <CalendarGrid
+        view="month"
+        date={JULY}
+        now={NOW}
+        label="July 2026"
+        items={[{ key: 'post', date: '2026-07-15', title: 'Launch post' }]}
+        renderItem={renderItem}
+      />,
+    )
+
+    const cell = screen.getByRole('gridcell', { name: 'Wednesday, July 15, 1 item' })
+    expect(cell.textContent).toContain('Launch post')
+    expect(screen.getByRole('gridcell', { name: 'Tuesday, July 14, no items' })).toBeDefined()
+  })
+
+  it('keeps timestamped strings on instant semantics', () => {
+    render(
+      <CalendarGrid
+        view="week"
+        date={new Date(2026, 6, 15)}
+        now={NOW}
+        label="Week of July 12"
+        items={[{ key: 'sync', date: '2026-07-15T09:00:00', title: 'Sync' }]}
+        renderItem={renderItem}
+      />,
+    )
+
+    const cell = screen.getByRole('gridcell', { name: 'Wednesday, July 15, 9 AM, 1 item' })
+    expect(cell.textContent).toContain('Sync')
+  })
+})
+
+describe('CalendarGrid granularity="day"', () => {
+  it('collapses the week into one lane per day with no hour grid', () => {
+    render(
+      <CalendarGrid
+        view="week"
+        date={new Date(2026, 6, 15)}
+        now={NOW}
+        label="Week of July 12"
+        items={[
+          { key: 'post', date: '2026-07-15', title: 'Launch post' },
+          { key: 'offsite', date: '2026-07-15', allDay: true, title: 'Offsite' },
+          { key: 'thread', date: '2026-07-15', title: 'Thread' },
+          { key: 'recap', date: '2026-07-17', title: 'Recap' },
+        ]}
+        renderItem={renderItem}
+        granularity="day"
+      />,
+    )
+
+    const grid = screen.getByRole('grid', { name: 'Week of July 12' })
+    expect(grid.getAttribute('data-granularity')).toBe('day')
+    // No hour rows, no separate all-day lane, no time gutter.
+    expect(screen.queryByRole('rowheader')).toBeNull()
+    expect(screen.queryByText('12 AM')).toBeNull()
+    expect(screen.getAllByRole('columnheader')).toHaveLength(7)
+
+    // All-day and timed items share the day lane in input order.
+    const lane = screen.getByRole('gridcell', { name: 'Wednesday, July 15, 3 items' })
+    const titles = Array.from(lane.querySelectorAll('button')).map((node) => node.textContent)
+    expect(titles).toEqual(['Launch post', 'Offsite', 'Thread'])
+    expect(screen.getByRole('gridcell', { name: 'Friday, July 17, 1 item' }).textContent).toContain('Recap')
+  })
+
+  it('renders the day view as a flat agenda list of the day in input order', () => {
+    render(
+      <CalendarGrid
+        view="day"
+        date={new Date(2026, 6, 15)}
+        now={NOW}
+        label="Today"
+        items={[
+          { key: 'offsite', date: '2026-07-15', allDay: true, title: 'Offsite' },
+          { key: 'post', date: '2026-07-15', title: 'Launch post' },
+          { key: 'tomorrow', date: '2026-07-16', title: 'Not today' },
+        ]}
+        renderItem={renderItem}
+        granularity="day"
+      />,
+    )
+
+    const region = screen.getByRole('region', { name: 'Today' })
+    expect(region.getAttribute('data-granularity')).toBe('day')
+    expect(screen.queryByText('12 AM')).toBeNull()
+    expect(screen.queryByText('All day')).toBeNull()
+    expect(screen.queryByText('Not today')).toBeNull()
+
+    const titles = Array.from(region.querySelectorAll('button')).map((node) => node.textContent)
+    expect(titles).toEqual(['Offsite', 'Launch post'])
   })
 })

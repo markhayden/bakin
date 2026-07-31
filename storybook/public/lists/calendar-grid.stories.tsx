@@ -12,7 +12,7 @@ const meta = {
     layout: 'fullscreen',
     docs: {
       description: {
-        component: 'CalendarGrid is the shared calendar structure behind month (7-column day grid), week (hour-by-day grid with an all-day lane), and day (hour-row agenda) views. The kit owns grid geometry, day and hour headers, today and current-hour marking, past-day dimming, roving keyboard cell navigation (arrows move, Home/End jump within the row, Enter enters the cell\'s first item), and the month overflow disclosure. Consumers own every item — chips, cards, popovers, drag — via `renderItem`, plus range navigation controls (previous/next/today) and item ordering, which is preserved per cell. Items are placed by their local `date`/`start` instant; `allDay` items land in the week and day all-day lanes. Pass a fixed `now` for deterministic today marking.',
+        component: 'CalendarGrid is the shared calendar structure behind month (7-column day grid), week (hour-by-day grid with an all-day lane), and day (hour-row agenda) views. The kit owns grid geometry, day and hour headers, today and current-hour marking, opt-in past-day dimming (`dimPastDays`), roving keyboard cell navigation (arrows move, Home/End jump within the row, Enter enters the cell\'s first item), and the month overflow disclosure. Consumers own every item — chips, cards, popovers, drag — via `renderItem`, plus range navigation controls (previous/next/today) and item ordering, which is preserved per cell. Items are placed by their local `date`/`start` instant; plain `YYYY-MM-DD` strings parse as LOCAL midnight (never UTC, so a date never shifts a day in negative-offset timezones); `allDay` items land in the week and day all-day lanes. Month view can render adjacent-month days muted with `outsideDays="muted"`, and `renderDayHeader` puts consumer content (per-day counts, summaries) in month and week day headers. Date-scoped consumers set `granularity="day"` to drop the hour grid: week becomes one lane per day and day becomes a flat agenda list. Pass a fixed `now` for deterministic today marking.',
       },
     },
     bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'keyboard', 'interaction', 'overflow', 'dense-data', 'long-labels'],
@@ -182,5 +182,115 @@ export const OverflowAndKeyboard = {
     await expect(canvas.getByRole('gridcell', { name: 'Thursday, July 9, no items' })).toHaveFocus()
     await userEvent.keyboard('{Home}')
     await expect(canvas.getByRole('gridcell', { name: 'Sunday, July 5, no items' })).toHaveFocus()
+  },
+} satisfies Story
+
+// Date-scoped planning items — plain YYYY-MM-DD strings, parsed by the kit as
+// LOCAL midnight (never UTC).
+const planItems = [
+  { key: 'retro', date: '2026-06-30', title: 'June retro recap' },
+  { key: 'teaser', date: '2026-07-03', title: 'Teaser post' },
+  { key: 'launch-post', date: '2026-07-15', title: 'Launch post' },
+  { key: 'thread', date: '2026-07-15', title: 'Behind-the-scenes thread' },
+  { key: 'newsletter', date: '2026-07-15', title: 'Newsletter' },
+  { key: 'recap', date: '2026-07-17', title: 'Launch recap' },
+]
+
+function localDateKey(day: Date): string {
+  return `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`
+}
+
+function PostCount({ day }: { day: Date }) {
+  const count = planItems.filter((item) => item.date === localDateKey(day)).length
+  if (count === 0) return null
+  return (
+    <span
+      style={{ fontSize: 'var(--bakin-typography-size-meta)', color: 'var(--bakin-color-text-primary)' }}
+    >
+      {count === 1 ? '1 post' : `${count} posts`}
+    </span>
+  )
+}
+
+export const DateScopedPlanning = {
+  render: () => (
+    <StoryStage
+      width="wide"
+      eyebrow="Lists / calendar structure"
+      title="Date-scoped calendars: outside days, counts, past dimming, day granularity"
+      description="Content-planning items carry dates, not times. The month view renders adjacent-month days muted with outsideDays, dims elapsed days with the opt-in dimPastDays, and puts per-day counts in the renderDayHeader slot. granularity=day drops the hour grid: the week becomes one lane per day and the day view becomes a flat agenda list."
+    >
+      <StorySection
+        title="Month — outside days, counts, and past dimming"
+        description="Plain YYYY-MM-DD items parse as local dates. June 30 renders as a muted outside day with its item placed; days before the fixed now are dimmed."
+      >
+        <CalendarGrid
+          view="month"
+          date={new Date(2026, 6, 1)}
+          now={new Date(2026, 6, 15, 9, 0)}
+          label="July 2026 content plan"
+          items={planItems}
+          outsideDays="muted"
+          dimPastDays
+          renderDayHeader={(day) => <PostCount day={day} />}
+          renderItem={(item) => <DemoChip title={item.title} />}
+        />
+      </StorySection>
+      <StorySection
+        title="Week — one lane per day"
+        description="granularity=day removes the hour rows and the time gutter; each day is a single lane."
+      >
+        <CalendarGrid
+          view="week"
+          date={new Date(2026, 6, 15)}
+          now={new Date(2026, 6, 15, 9, 0)}
+          label="Week of July 12 plan"
+          items={[
+            { key: 'launch-post', date: '2026-07-15', title: 'Launch post' },
+            { key: 'thread', date: '2026-07-15', title: 'Behind-the-scenes thread' },
+            { key: 'recap', date: '2026-07-17', title: 'Launch recap' },
+          ]}
+          granularity="day"
+          renderItem={(item) => <DemoChip title={item.title} />}
+        />
+      </StorySection>
+      <StorySection
+        title="Today — flat agenda list"
+        description="The day view with granularity=day is a flat list of the day's items in input order."
+      >
+        <CalendarGrid
+          view="day"
+          date={new Date(2026, 6, 15)}
+          now={new Date(2026, 6, 15, 9, 0)}
+          label="Today's plan"
+          items={planItems}
+          granularity="day"
+          renderItem={(item) => <DemoChip title={item.title} />}
+        />
+      </StorySection>
+    </StoryStage>
+  ),
+  play: async ({ canvas }) => {
+    // Outside day rendered muted with its item placed and its count slotted.
+    const outside = canvas.getByRole('gridcell', { name: 'Tuesday, June 30, 1 item' })
+    await expect(outside).toBeVisible()
+    await expect(outside).toHaveAttribute('data-outside')
+    await expect(canvas.getByText('June retro recap')).toBeVisible()
+    // Day-header count slot ("3 posts" on July 15).
+    await expect(canvas.getByText('3 posts')).toBeVisible()
+    // Past day marked; dimming is the opt-in dimPastDays.
+    await expect(canvas.getByRole('gridcell', { name: 'Friday, July 3, 1 item' })).toHaveAttribute('data-past')
+    // '2026-07-15' lands on July 15 — local parsing, never the UTC previous day.
+    await expect(canvas.getByRole('gridcell', { name: 'Wednesday, July 15, 3 items' })).toBeVisible()
+    // Week lanes: no hour grid, one gridcell per day.
+    const week = canvas.getByRole('grid', { name: 'Week of July 12 plan' })
+    await expect(week).toHaveAttribute('data-granularity', 'day')
+    await expect(canvas.queryByRole('rowheader', { name: '12 AM' })).toBeNull()
+    await expect(canvas.getByRole('gridcell', { name: 'Wednesday, July 15, 2 items' })).toBeVisible()
+    // Flat today list keeps only the anchor day's items.
+    const today = canvas.getByRole('region', { name: "Today's plan" })
+    await expect(today).toHaveAttribute('data-granularity', 'day')
+    await expect(today).toHaveTextContent('Newsletter')
+    await expect(today).not.toHaveTextContent('Launch recap')
   },
 } satisfies Story

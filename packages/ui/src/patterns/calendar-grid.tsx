@@ -8,7 +8,12 @@ export type CalendarGridView = 'month' | 'week' | 'day'
 
 export interface CalendarGridItem {
   key: string
-  /** Instant the item occupies. Point items set `date`; range items set `start`. */
+  /**
+   * Instant the item occupies. Point items set `date`; range items set `start`.
+   * Strings parse like `new Date(...)` EXCEPT plain dates (`YYYY-MM-DD`), which
+   * the kit parses as LOCAL midnight — `new Date('2026-07-31')` would read UTC
+   * midnight and shift the item a day in negative-offset timezones.
+   */
   date?: Date | string
   /** Start instant for range-shaped items — placement uses `start` when present. */
   start?: Date | string
@@ -34,8 +39,27 @@ export interface CalendarGridProps<T extends CalendarGridItem> {
   now?: Date
   /** Month view: items shown per day before the overflow disclosure. */
   maxVisibleItems?: number
-  /** Week view: extra consumer content under a day's header (summaries, counts). */
+  /**
+   * Month and week views: extra consumer content in a day's header — counts
+   * ("3 posts"), summaries. Month renders it beside the day number; week
+   * renders it under the day columnheader.
+   */
   renderDayHeader?: (date: Date) => React.ReactNode
+  /**
+   * Month view: leading/trailing days from adjacent months. `'hidden'`
+   * (default) pads with blank cells; `'muted'` renders the real dates dimmed,
+   * with their items placed and their cells keyboard-navigable.
+   */
+  outsideDays?: 'hidden' | 'muted'
+  /**
+   * Week and day views: `'hour'` (default) places items on the hour grid;
+   * `'day'` collapses the hours away for date-scoped items — week becomes one
+   * lane per day, day becomes a flat agenda list of the day's items in input
+   * order (all-day and timed alike). Month view ignores it.
+   */
+  granularity?: 'hour' | 'day'
+  /** Month view: dim the item stacks of days before `now`. Off by default. */
+  dimPastDays?: boolean
   className?: string
 }
 
@@ -43,9 +67,21 @@ const DOW_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const
 const HOURS = Array.from({ length: 24 }, (_, index) => index)
 const NAVIGATION_KEYS = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'] as const
 const WEEK_ROW_TEMPLATE = '[grid-template-columns:3.5rem_repeat(7,minmax(15.625rem,1fr))]'
+const WEEK_LANE_TEMPLATE = '[grid-template-columns:repeat(7,minmax(15.625rem,1fr))]'
+
+const DATE_ONLY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/
 
 function toDate(value: Date | string | undefined): Date | null {
   if (value === undefined) return null
+  if (typeof value === 'string') {
+    // Plain `YYYY-MM-DD` strings parse as LOCAL midnight. `new Date(string)`
+    // reads them as UTC midnight, which shifts the item to the previous day
+    // in every negative-offset timezone.
+    const dateOnly = DATE_ONLY_PATTERN.exec(value)
+    if (dateOnly) {
+      return new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]))
+    }
+  }
   const date = value instanceof Date ? value : new Date(value)
   return Number.isNaN(date.getTime()) ? null : date
 }
@@ -65,18 +101,32 @@ function startOfLocalDay(date: Date): Date {
   return day
 }
 
-/** Leading/trailing blanks pad the month into whole Sunday-start weeks. */
-function monthCells(year: number, month: number): Array<Date | null> {
-  const days: Date[] = []
-  const cursor = new Date(year, month, 1)
+interface MonthCell {
+  date: Date
+  /** The cell belongs to the previous/next month (only emitted when `outsideDays` is `'muted'`). */
+  outside: boolean
+}
+
+/**
+ * Pads the month into whole Sunday-start weeks. `'hidden'` pads with `null`
+ * blanks; `'muted'` pads with the real adjacent-month dates marked `outside`.
+ */
+function monthCells(year: number, month: number, outsideDays: 'hidden' | 'muted'): Array<MonthCell | null> {
+  const cells: Array<MonthCell | null> = []
+  const first = new Date(year, month, 1)
+  for (let lead = first.getDay(); lead > 0; lead -= 1) {
+    cells.push(outsideDays === 'muted' ? { date: new Date(year, month, 1 - lead), outside: true } : null)
+  }
+  const cursor = new Date(first)
   while (cursor.getMonth() === month) {
-    days.push(new Date(cursor))
+    cells.push({ date: new Date(cursor), outside: false })
     cursor.setDate(cursor.getDate() + 1)
   }
-  const cells: Array<Date | null> = []
-  for (let blank = 0; blank < days[0]!.getDay(); blank += 1) cells.push(null)
-  cells.push(...days)
-  while (cells.length % 7 !== 0) cells.push(null)
+  let trailing = 1
+  while (cells.length % 7 !== 0) {
+    cells.push(outsideDays === 'muted' ? { date: new Date(year, month + 1, trailing), outside: true } : null)
+    trailing += 1
+  }
   return cells
 }
 
@@ -207,10 +257,12 @@ function renderItems<T extends CalendarGridItem>(
  * (hour-by-day grid with an all-day lane), and day (hour-row agenda) views.
  *
  * The kit owns grid geometry, day/hour headers, today and current-hour
- * marking, past-day dimming, keyboard cell navigation, and the month
- * overflow disclosure. Consumers own everything rendered for an item —
- * chips, cards, popovers, drag behavior — plus range navigation controls
- * (previous/next/today) and item ordering, which is preserved per cell.
+ * marking, opt-in past-day dimming, outside-day rendering, keyboard cell
+ * navigation, and the month overflow disclosure. Date-scoped consumers set
+ * `granularity="day"` to drop the hour grid entirely. Consumers own
+ * everything rendered for an item — chips, cards, popovers, drag behavior —
+ * plus range navigation controls (previous/next/today) and item ordering,
+ * which is preserved per cell.
  */
 export function CalendarGrid<T extends CalendarGridItem>({
   view,
@@ -221,6 +273,9 @@ export function CalendarGrid<T extends CalendarGridItem>({
   now,
   maxVisibleItems = 3,
   renderDayHeader,
+  outsideDays = 'hidden',
+  granularity = 'hour',
+  dimPastDays = false,
   className,
 }: CalendarGridProps<T>) {
   const currentInstant = now ?? new Date()
@@ -239,11 +294,11 @@ export function CalendarGrid<T extends CalendarGridItem>({
 
   const weeks = React.useMemo(() => {
     if (view !== 'month') return []
-    const cells = monthCells(date.getFullYear(), date.getMonth())
-    const rows: Array<Array<Date | null>> = []
+    const cells = monthCells(date.getFullYear(), date.getMonth(), outsideDays)
+    const rows: Array<Array<MonthCell | null>> = []
     for (let index = 0; index < cells.length; index += 7) rows.push(cells.slice(index, index + 7))
     return rows
-  }, [view, date])
+  }, [view, date, outsideDays])
 
   const weekDates = React.useMemo(
     () => (view === 'week' ? weekDatesFor(date) : []),
@@ -255,10 +310,14 @@ export function CalendarGrid<T extends CalendarGridItem>({
     const byDay = new Map<string, T[]>()
     const byDayHour = new Map<string, T[]>()
     const allDayByDay = new Map<string, T[]>()
+    // Day-granularity lanes: all of a day's items — all-day and timed alike —
+    // in input order.
+    const combinedByDay = new Map<string, T[]>()
     for (const item of items) {
       const instant = itemInstant(item)
       if (!instant) continue
       const dayKey = localDayKey(instant)
+      combinedByDay.set(dayKey, [...(combinedByDay.get(dayKey) ?? []), item])
       if (item.allDay) {
         allDayByDay.set(dayKey, [...(allDayByDay.get(dayKey) ?? []), item])
         continue
@@ -267,7 +326,7 @@ export function CalendarGrid<T extends CalendarGridItem>({
       const hourKey = `${dayKey}:${instant.getHours()}`
       byDayHour.set(hourKey, [...(byDayHour.get(hourKey) ?? []), item])
     }
-    return { byDay, byDayHour, allDayByDay }
+    return { byDay, byDayHour, allDayByDay, combinedByDay }
   }, [items])
 
   /** Month view treats all-day items like any other member of the day stack. */
@@ -276,19 +335,23 @@ export function CalendarGrid<T extends CalendarGridItem>({
     return [...(placement.byDay.get(dayKey) ?? []), ...(placement.allDayByDay.get(dayKey) ?? [])]
   }
 
-  const hasAllDayRow = view === 'week'
+  const hasAllDayRow = view === 'week' && granularity === 'hour'
     && weekDates.some((day) => (placement.allDayByDay.get(localDayKey(day)) ?? []).length > 0)
 
   // One roving grid serves month and week; dimensions depend on the view.
-  const rowCount = view === 'month' ? weeks.length : HOURS.length + (hasAllDayRow ? 1 : 0)
+  const rowCount = view === 'month'
+    ? weeks.length
+    : granularity === 'day'
+      ? 1
+      : HOURS.length + (hasAllDayRow ? 1 : 0)
   const isNavigable = (row: number, column: number): boolean =>
     view === 'month' ? Boolean(weeks[row]?.[column]) : true
   const defaultCell = React.useMemo<CellCoordinate | null>(() => {
     if (view === 'month') {
       for (let row = 0; row < weeks.length; row += 1) {
         for (let column = 0; column < 7; column += 1) {
-          const day = weeks[row]![column]
-          if (day && localDayKey(day) === todayKey) return [row, column]
+          const cell = weeks[row]![column]
+          if (cell && localDayKey(cell.date) === todayKey) return [row, column]
         }
       }
       for (let row = 0; row < weeks.length; row += 1) {
@@ -300,10 +363,11 @@ export function CalendarGrid<T extends CalendarGridItem>({
     }
     if (view === 'week') {
       const todayColumn = weekDates.findIndex((day) => localDayKey(day) === todayKey)
+      if (granularity === 'day') return [0, todayColumn >= 0 ? todayColumn : 0]
       return [hasAllDayRow ? 1 : 0, todayColumn >= 0 ? todayColumn : 0]
     }
     return null
-  }, [view, weeks, weekDates, todayKey, hasAllDayRow])
+  }, [view, weeks, weekDates, todayKey, hasAllDayRow, granularity])
   const { cellProps } = useRovingGrid(rowCount, 7, isNavigable, defaultCell)
 
   if (view === 'month') {
@@ -331,8 +395,8 @@ export function CalendarGrid<T extends CalendarGridItem>({
         </div>
         {weeks.map((week, rowIndex) => (
           <div key={rowIndex} role="row" className="grid grid-cols-7 gap-px">
-            {week.map((day, columnIndex) => {
-              if (!day) {
+            {week.map((cell, columnIndex) => {
+              if (!cell) {
                 return (
                   <div
                     key={`blank-${columnIndex}`}
@@ -341,6 +405,7 @@ export function CalendarGrid<T extends CalendarGridItem>({
                   />
                 )
               }
+              const { date: day, outside } = cell
               const dayKey = localDayKey(day)
               const dayItems = monthItemsFor(day)
               const isToday = dayKey === todayKey
@@ -348,31 +413,47 @@ export function CalendarGrid<T extends CalendarGridItem>({
               const expanded = expandedDays.has(dayKey)
               const visibleItems = expanded ? dayItems : dayItems.slice(0, maxVisibleItems)
               const hiddenCount = dayItems.length - visibleItems.length
+              const dayNumber = (
+                <div
+                  aria-hidden="true"
+                  data-slot="calendar-day-number"
+                  className={cn(
+                    'flex size-bakin-6 items-center justify-center rounded-bakin-pill text-bakin-typography-size-meta',
+                    !renderDayHeader && 'mb-bakin-2',
+                    isToday
+                      ? 'bg-bakin-signal-accent font-bakin-typography-weight-semibold text-bakin-canvas-default'
+                      : 'text-bakin-text-muted',
+                  )}
+                >
+                  {day.getDate()}
+                </div>
+              )
               return (
                 <div
                   key={dayKey}
                   {...cellProps(rowIndex, columnIndex, cellLabel([dayLabel(day)], dayItems.length))}
                   data-today={isToday ? '' : undefined}
                   data-past={isPast ? '' : undefined}
+                  data-outside={outside ? '' : undefined}
                   className={cn(
-                    'min-h-[6rem] bg-bakin-canvas-default p-bakin-2 outline-none transition-colors focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-bakin-focus-ring',
+                    'min-h-[6rem] p-bakin-2 outline-none transition-colors focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-bakin-focus-ring',
+                    outside ? 'bg-bakin-canvas-default/60' : 'bg-bakin-canvas-default',
                     isToday && 'bg-bakin-signal-accent/5',
                     dayItems.length > 0 && 'hover:bg-bakin-surface-default',
                   )}
                 >
-                  <div
-                    aria-hidden="true"
-                    data-slot="calendar-day-number"
-                    className={cn(
-                      'mb-bakin-2 flex size-bakin-6 items-center justify-center rounded-bakin-pill text-bakin-typography-size-meta',
-                      isToday
-                        ? 'bg-bakin-signal-accent font-bakin-typography-weight-semibold text-bakin-canvas-default'
-                        : 'text-bakin-text-muted',
-                    )}
-                  >
-                    {day.getDate()}
-                  </div>
-                  <div className={cn('flex flex-col gap-bakin-1', isPast && 'opacity-50')}>
+                  {renderDayHeader ? (
+                    <div
+                      data-slot="calendar-day-header"
+                      className="mb-bakin-2 flex items-center justify-between gap-bakin-1"
+                    >
+                      {dayNumber}
+                      {renderDayHeader(day)}
+                    </div>
+                  ) : (
+                    dayNumber
+                  )}
+                  <div className={cn('flex flex-col gap-bakin-1', dimPastDays && isPast && 'opacity-50')}>
                     {renderItems(visibleItems, renderItem)}
                     {(hiddenCount > 0 || expanded) && dayItems.length > maxVisibleItems ? (
                       <button
@@ -397,12 +478,15 @@ export function CalendarGrid<T extends CalendarGridItem>({
 
   if (view === 'week') {
     const rowOffset = hasAllDayRow ? 1 : 0
+    const laneMode = granularity === 'day'
+    const rowTemplate = laneMode ? WEEK_LANE_TEMPLATE : WEEK_ROW_TEMPLATE
     return (
       <div
         role="grid"
         aria-label={label}
         data-calendar-grid=""
         data-view="week"
+        data-granularity={laneMode ? 'day' : undefined}
         className={cn(
           'overflow-auto rounded-bakin-surface border border-bakin-border-subtle bg-bakin-canvas-default font-bakin-typography-family-ui',
           className,
@@ -410,11 +494,13 @@ export function CalendarGrid<T extends CalendarGridItem>({
       >
         <div
           role="row"
-          className={cn('sticky top-0 z-10 grid bg-bakin-surface-default', WEEK_ROW_TEMPLATE)}
+          className={cn('sticky top-0 z-10 grid bg-bakin-surface-default', rowTemplate)}
         >
-          <div role="columnheader" className="py-bakin-2">
-            <span className="sr-only">Time</span>
-          </div>
+          {laneMode ? null : (
+            <div role="columnheader" className="py-bakin-2">
+              <span className="sr-only">Time</span>
+            </div>
+          )}
           {weekDates.map((day) => {
             const isToday = localDayKey(day) === todayKey
             return (
@@ -423,7 +509,7 @@ export function CalendarGrid<T extends CalendarGridItem>({
                 role="columnheader"
                 data-today={isToday ? '' : undefined}
                 className={cn(
-                  'border-l border-bakin-border-subtle px-bakin-1 py-bakin-2 text-center font-bakin-typography-weight-medium tracking-wide',
+                  'border-l border-bakin-border-subtle px-bakin-1 py-bakin-2 text-center font-bakin-typography-weight-medium tracking-wide first:border-l-0',
                   isToday ? 'text-bakin-signal-accent' : 'text-bakin-text-muted',
                 )}
               >
@@ -438,6 +524,28 @@ export function CalendarGrid<T extends CalendarGridItem>({
             )
           })}
         </div>
+
+        {laneMode ? (
+          <div role="row" className={cn('grid', WEEK_LANE_TEMPLATE)}>
+            {weekDates.map((day, columnIndex) => {
+              const dayItems = placement.combinedByDay.get(localDayKey(day)) ?? []
+              const isToday = localDayKey(day) === todayKey
+              return (
+                <div
+                  key={localDayKey(day)}
+                  {...cellProps(0, columnIndex, cellLabel([dayLabel(day)], dayItems.length))}
+                  data-today={isToday ? '' : undefined}
+                  className={cn(
+                    'min-h-[10rem] border-l border-t border-bakin-border-subtle p-bakin-2 outline-none first:border-l-0 focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-bakin-focus-ring',
+                    isToday && 'bg-bakin-signal-accent/5',
+                  )}
+                >
+                  <div className="flex flex-col gap-bakin-1">{renderItems(dayItems, renderItem)}</div>
+                </div>
+              )
+            })}
+          </div>
+        ) : null}
 
         {hasAllDayRow ? (
           <div role="row" className={cn('grid', WEEK_ROW_TEMPLATE)}>
@@ -467,7 +575,7 @@ export function CalendarGrid<T extends CalendarGridItem>({
           </div>
         ) : null}
 
-        {HOURS.map((hour) => (
+        {laneMode ? null : HOURS.map((hour) => (
           <div key={hour} role="row" className={cn('grid', WEEK_ROW_TEMPLATE)}>
             <div
               role="rowheader"
@@ -507,6 +615,32 @@ export function CalendarGrid<T extends CalendarGridItem>({
   const anchorKey = localDayKey(date)
   const isCurrentDay = anchorKey === todayKey
   const allDayItems = placement.allDayByDay.get(anchorKey) ?? []
+
+  // Day granularity: a flat agenda list of the day's items in input order —
+  // the "today list" for date-scoped consumers. No hour grid.
+  if (granularity === 'day') {
+    const listItems = placement.combinedByDay.get(anchorKey) ?? []
+    return (
+      <section
+        aria-label={label}
+        data-calendar-grid=""
+        data-view="day"
+        data-granularity="day"
+        className={cn(
+          'overflow-auto rounded-bakin-surface border border-bakin-border-subtle bg-bakin-canvas-default font-bakin-typography-family-ui',
+          className,
+        )}
+      >
+        <div
+          data-slot="calendar-day-list"
+          className="flex flex-col gap-bakin-2 px-bakin-4 py-bakin-3"
+        >
+          {renderItems(listItems, renderItem)}
+        </div>
+      </section>
+    )
+  }
+
   return (
     <section
       aria-label={label}

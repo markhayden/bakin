@@ -96,6 +96,7 @@ export function CalendarMonthly({
         date={monthStart}
         label={`${MONTH_LABELS[month]} ${year} schedule`}
         items={items}
+        dimPastDays
         className="min-h-0 flex-1"
         renderItem={(item) => item.kind === 'occurrence' ? (
           <Button
