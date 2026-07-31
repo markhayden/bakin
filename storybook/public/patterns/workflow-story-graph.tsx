@@ -22,8 +22,8 @@ import {
   InspectorPanelContent,
   InspectorPanelFooter,
   InspectorPanelHeader,
-  WorkflowPageCanvas,
-  type WorkflowOrientation,
+  PageCanvas,
+  type PageCanvasOrientation,
 } from '@makinbakin/sdk/patterns'
 import { Badge, Button, SystemState } from '@makinbakin/sdk/ui'
 
@@ -33,7 +33,7 @@ type WorkflowNodeDomain = 'trigger' | 'agent' | 'transform' | 'output'
 interface WorkflowNodeData extends Record<string, unknown> {
   detail: string
   domain: WorkflowNodeDomain
-  orientation: WorkflowOrientation
+  orientation: PageCanvasOrientation
   title: string
 }
 
@@ -67,7 +67,7 @@ const nodeDefinitions = [
 ] as const
 
 const basePositions: Record<
-  WorkflowOrientation,
+  PageCanvasOrientation,
   Record<WorkflowNodeId, { x: number; y: number }>
 > = {
   vertical: {
@@ -91,7 +91,7 @@ const edges: Edge[] = [
   { id: 'assemble-review', source: 'assemble', target: 'review' },
 ]
 
-function createNodes(orientation: WorkflowOrientation): StoryNode[] {
+function createNodes(orientation: PageCanvasOrientation): StoryNode[] {
   return nodeDefinitions.map((node) => {
     const position = basePositions[orientation][node.id]
     return {
@@ -151,7 +151,7 @@ function miniMapColor(node: Node): string {
 export function WorkflowStoryWorkspace({
   orientation,
 }: {
-  orientation: WorkflowOrientation
+  orientation: PageCanvasOrientation
 }) {
   const [nodes, setNodes] = useState<StoryNode[]>(() => createNodes(orientation))
   const [selectedId, setSelectedId] = useState<WorkflowNodeId | null>('assemble')
@@ -191,7 +191,7 @@ export function WorkflowStoryWorkspace({
 
   return (
     <>
-      <WorkflowPageCanvas
+      <PageCanvas
         label={`${orientation === 'vertical' ? 'Vertical' : 'Horizontal'} launch publishing workflow canvas`}
         orientation={orientation}
       >
@@ -241,7 +241,7 @@ export function WorkflowStoryWorkspace({
             />
           </ReactFlow>
         </div>
-      </WorkflowPageCanvas>
+      </PageCanvas>
 
       <InspectorPanel label="Selected workflow node inspector">
         <InspectorPanelHeader

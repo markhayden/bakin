@@ -12,9 +12,9 @@ export type PageDensity = 'default' | 'compact'
 export type PageProps = Omit<PageShellProps, 'children' | 'gap' | 'padding' | 'width'> & {
   children: React.ReactNode
   /**
-   * Compact carries WorkflowPage's canvas-density contribution — the tighter
-   * PageShell padding scale plus the content gap — for graph, board, and
-   * action workspaces that need more working room.
+   * Compact carries the workflow workspace's canvas-density contribution —
+   * the tighter PageShell padding scale plus the content gap — for graph,
+   * board, and action workspaces that need more working room.
    */
   density?: PageDensity
   /**
@@ -29,8 +29,6 @@ export type PageProps = Omit<PageShellProps, 'children' | 'gap' | 'padding' | 'w
 /**
  * Scroll ownership shared with slot components: PageTimeline reads this to
  * become the page's one internal scroller only inside a contained Page.
- * Legacy archetype bodies bridge their `mode` prop onto this same context
- * until the migration slice removes them.
  */
 export const PageScrollContext = React.createContext<PageScroll>('page')
 
@@ -40,13 +38,13 @@ const widthMap: Record<PageWidth, PageShellProps['width']> = {
 }
 
 /**
- * Contained scroll ownership. Taken from DetailPage's `scroll="contained"`
- * implementation rather than ConversationPage's `mode="contained"`: Detail's
- * version additionally sets `min-h-0` and `overflow-hidden` on both the shell
- * root and the shell content, so a contained page can genuinely shrink inside
- * a height-bound flex parent and never leaks a document-level scrollbar when
- * an inner pane overflows — Conversation's `h-full`-only variant relied on
- * every child bounding itself.
+ * Contained scroll ownership. Taken from the retired detail archetype's
+ * `scroll="contained"` implementation rather than the conversation one: it
+ * additionally sets `min-h-0` and `overflow-hidden` on both the shell root
+ * and the shell content, so a contained page can genuinely shrink inside a
+ * height-bound flex parent and never leaks a document-level scrollbar when an
+ * inner pane overflows — the `h-full`-only variant relied on every child
+ * bounding itself.
  */
 const containedClasses =
   'h-full min-h-0 overflow-hidden [&>[data-slot=page-shell-content]]:h-full [&>[data-slot=page-shell-content]]:min-h-0 [&>[data-slot=page-shell-content]]:shrink [&>[data-slot=page-shell-content]]:overflow-hidden'

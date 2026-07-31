@@ -15,12 +15,7 @@ export type PageCanvasProps = DistributiveOmit<BoundedOverflowProps, 'children'>
   orientation?: PageCanvasOrientation
 }
 
-/**
- * Named bounded region around a consumer-owned graph, board, or action canvas.
- * Renamed from WorkflowPageCanvas; the legacy export wraps this component and
- * adds its historical `data-workflow-canvas` marker until the migration slice
- * removes it.
- */
+/** Named bounded region around a consumer-owned graph, board, or action canvas. */
 export function PageCanvas({
   children,
   className,

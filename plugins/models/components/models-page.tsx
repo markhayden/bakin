@@ -3,11 +3,11 @@
 import { Pause, Play } from 'lucide-react'
 import { useQueryArrayState, useQueryState } from '@makinbakin/sdk/navigation'
 import {
+  Page,
+  PageBody,
   PageHeader,
   SearchInput,
   SegmentedControl,
-  SettingsPage,
-  SettingsPageContent,
 } from '@makinbakin/sdk/patterns'
 import { Banner, Button, Tabs, TabsList, TabsTrigger } from '@makinbakin/sdk/ui'
 
@@ -175,7 +175,7 @@ export function ModelsPage() {
   ) : undefined
 
   return (
-    <SettingsPage width="full">
+    <Page>
       <PageHeader
         title="Models"
         description="Choose which AI models Bakin and each agent use, then set fallbacks, routing rules, and spending limits."
@@ -232,7 +232,7 @@ export function ModelsPage() {
         </TabsList>
       </Tabs>
 
-      <SettingsPageContent
+      <PageBody
         id={`models-panel-${tab}`}
         role="tabpanel"
         labelledBy={`models-tab-${tab}`}
@@ -287,7 +287,7 @@ export function ModelsPage() {
             onShowAllChange={setSpendShowAll}
           />
         )}
-      </SettingsPageContent>
-    </SettingsPage>
+      </PageBody>
+    </Page>
   )
 }

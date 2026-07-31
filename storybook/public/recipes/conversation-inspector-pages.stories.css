@@ -11,8 +11,10 @@
   margin: 0;
 }
 
-.bakin-conversation-inspector-story__conversation {
-  block-size: min(42rem, calc(100vh - 18rem));
+/* The contained conversation Page needs a height-bounded owning pane; the
+   Page then hands scrolling to its named timeline. */
+.bakin-conversation-inspector-story__pane {
+  block-size: min(52rem, 100vh);
 }
 
 .bakin-conversation-inspector-story__message {
@@ -82,7 +84,7 @@
   background: var(--bakin-color-action-primary-background);
 }
 
-.bakin-conversation-inspector-story [data-slot='conversation-page-composer'] {
+.bakin-conversation-inspector-story [data-slot='page-composer'] {
   display: grid;
   gap: var(--bakin-layout-space-3);
   background: var(--bakin-color-canvas-default);
@@ -137,8 +139,8 @@
 }
 
 @media (max-width: 24rem) {
-  .bakin-conversation-inspector-story__conversation {
-    block-size: 34rem;
+  .bakin-conversation-inspector-story__pane {
+    block-size: min(44rem, 100vh);
   }
 
   .bakin-conversation-inspector-story__composer-actions [data-slot='button'],

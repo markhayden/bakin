@@ -10,10 +10,9 @@ import {
 import { usePluginEvent } from '@makinbakin/sdk/hooks'
 import {
   ConfirmDialog,
-  DetailPage,
-  DetailPageAside,
-  DetailPageBody,
-  DetailPageMain,
+  Page,
+  PageAside,
+  PageBody,
   PageHeader,
 } from '@makinbakin/sdk/patterns'
 import { Section, Stack } from '@makinbakin/sdk/layout'
@@ -137,7 +136,7 @@ export function VersionedAssetDetail() {
 
   if (loading) {
     return (
-      <DetailPage width="full" data-testid="asset-detail">
+      <Page data-testid="asset-detail">
         <PageHeader
           navigation={(
             <Button
@@ -155,7 +154,7 @@ export function VersionedAssetDetail() {
           title="Asset detail"
           description={assetId}
         />
-        <DetailPageBody
+        <PageBody
           state={(
             <SystemState
               kind="loading"
@@ -164,13 +163,13 @@ export function VersionedAssetDetail() {
             />
           )}
         />
-      </DetailPage>
+      </Page>
     )
   }
 
   if (!manifest) {
     return (
-      <DetailPage width="full" data-testid="asset-not-found">
+      <Page data-testid="asset-not-found">
         <PageHeader
           navigation={(
             <Button
@@ -188,7 +187,7 @@ export function VersionedAssetDetail() {
           title="Asset detail"
           description={assetId}
         />
-        <DetailPageBody
+        <PageBody
           state={(
             <SystemState
               kind="error"
@@ -198,7 +197,7 @@ export function VersionedAssetDetail() {
             />
           )}
         />
-      </DetailPage>
+      </Page>
     )
   }
 
@@ -216,7 +215,7 @@ export function VersionedAssetDetail() {
   const isImage = manifest.type === 'images'
 
   return (
-    <DetailPage width="full" data-testid="asset-detail">
+    <Page data-testid="asset-detail">
       <input
         ref={versionInputRef}
         type="file"
@@ -283,7 +282,7 @@ export function VersionedAssetDetail() {
         )}
       />
 
-      <DetailPageBody
+      <PageBody
         layout="aside"
         feedback={versionError ? (
           <Banner
@@ -293,7 +292,7 @@ export function VersionedAssetDetail() {
           />
         ) : undefined}
       >
-        <DetailPageMain>
+        <div className="flex min-w-0 flex-1 flex-col gap-bakin-6">
           <Section spacing="compact" aria-labelledby="asset-preview-heading">
             <Stack gap="dense">
               <div className="flex min-w-0 flex-wrap items-center justify-between gap-bakin-2">
@@ -321,9 +320,9 @@ export function VersionedAssetDetail() {
             </div>
           </Section>
 
-        </DetailPageMain>
+        </div>
 
-        <DetailPageAside label="Asset context">
+        <PageAside label="Asset context">
           <section className="flex min-w-0 flex-col gap-bakin-3" aria-labelledby="asset-context-heading">
             <h2
               id="asset-context-heading"
@@ -433,8 +432,8 @@ export function VersionedAssetDetail() {
               ))}
             </div>
           </Section>
-        </DetailPageAside>
-      </DetailPageBody>
+        </PageAside>
+      </PageBody>
 
       <AssetEditDrawer
         assetId={manifest.assetId}
@@ -494,6 +493,6 @@ export function VersionedAssetDetail() {
         onConfirm={doDelete}
         onCancel={() => setConfirmDelete(false)}
       />
-    </DetailPage>
+    </Page>
   )
 }

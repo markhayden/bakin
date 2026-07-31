@@ -5,15 +5,12 @@ import { ArrowLeft, Download, Sparkles, Trash2 } from 'lucide-react'
 
 import { Inline, Section, Stack } from '@makinbakin/sdk/layout'
 import {
-  DetailPage,
-  DetailPageAside,
-  DetailPageBody,
-  DetailPageMain,
-  ListPage,
-  ListPageContent,
-  ListPageControls,
-  Pagination,
+  Page,
+  PageAside,
+  PageBody,
+  PageControls,
   PageHeader,
+  Pagination,
   SearchInput,
   SegmentedControl,
 } from '@makinbakin/sdk/patterns'
@@ -37,7 +34,7 @@ const meta = {
     layout: 'fullscreen',
     docs: {
       description: {
-        component: 'ListPage fills the available plugin canvas by default; use its wide option only for a deliberately bounded index. ListPage and DetailPage codify page identity, action placement, responsive flow, named control/content regions, state replacement, and scroll ownership. DetailPage uses host scrolling by default; set scroll="contained" only for a bounded workspace whose named child panes own scrolling. Header search, view controls, and primary actions remain deliberately stacked until the container has enough room for complete controls without internal scrolling. Consumers retain domain data and the existing SDK routing/query-state contract.',
+        component: 'Index and record scenes compose the one Page archetype. Page fills the available plugin canvas by default; width="standard" is the deliberate bounded content measure for a focused record. PageControls names the query-control region, PageBody names results with explicit busy/feedback/replacement-state slots, and layout="aside" with PageAside is the one primary-column-plus-rail composition. Page uses host scrolling by default; set scroll="contained" only for a bounded workspace whose named child panes own scrolling. Header search, view controls, and primary actions remain deliberately stacked until the container has enough room for complete controls without internal scrolling. Consumers retain domain data and the existing SDK routing/query-state contract.',
       },
     },
     bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'overflow', 'interaction', 'system-states', 'url-state-guidance'],
@@ -57,7 +54,7 @@ function ListHeaderControlsExample() {
   const [view, setView] = useState<'board' | 'log'>('board')
 
   return (
-    <ListPage className="bakin-archetype-story">
+    <Page className="bakin-archetype-story">
       <PageHeader
         title="Tasks"
         controlsLabel="Task search, view, and actions"
@@ -86,15 +83,15 @@ function ListHeaderControlsExample() {
           </div>
         )}
       />
-      <ListPageContent label="Task results">
+      <PageBody label="Task results">
         <div className="bakin-archetype-story__result-heading">
           <Stack gap="dense">
             <h2>{view === 'board' ? 'Board' : 'Operational log'}</h2>
             <p>{query ? `Filtering by “${query}”` : 'Showing all active tasks.'}</p>
           </Stack>
         </div>
-      </ListPageContent>
-    </ListPage>
+      </PageBody>
+    </Page>
   )
 }
 
@@ -108,7 +105,7 @@ export const ListHeaderControls = {
     const board = canvas.getByRole('tab', { name: 'Board' })
     const action = canvas.getByRole('button', { name: 'New task' })
     const control = search.closest('[data-slot="search-input-control"]') as HTMLElement
-    const page = search.closest('[data-archetype="list"]')
+    const page = search.closest('[data-archetype="page"]')
     const boardTop = board.getBoundingClientRect().top
     const actionTop = action.getBoundingClientRect().top
 
@@ -164,7 +161,7 @@ function ListIndexExample() {
   const clear = () => { setActiveFilter('All'); setQuery('') }
 
   return (
-    <ListPage className="bakin-archetype-story">
+    <Page className="bakin-archetype-story">
       <PageHeader
         eyebrow="Tasks / live operations"
         title="Coordinate active work"
@@ -172,7 +169,7 @@ function ListIndexExample() {
         actions={<><Button variant="outline">Export view</Button><Button>New task</Button></>}
       />
 
-      <ListPageControls
+      <PageControls
         label="Task list controls"
         actions={filtered ? <Button variant="ghost" onClick={clear}>Clear all</Button> : undefined}
       >
@@ -199,9 +196,9 @@ function ListIndexExample() {
             </Button>
           ))}
         </div>
-      </ListPageControls>
+      </PageControls>
 
-      <ListPageContent
+      <PageBody
         label="Task results"
         state={visibleTasks.length === 0 ? (
           <SystemState
@@ -234,8 +231,8 @@ function ListIndexExample() {
             </li>
           ))}
         </ul>
-      </ListPageContent>
-    </ListPage>
+      </PageBody>
+    </Page>
   )
 }
 
@@ -269,14 +266,14 @@ function ListPaginationExample() {
     : paginatedRecords.slice((page - 1) * pageSize, page * pageSize)
 
   return (
-    <ListPage className="bakin-archetype-story">
+    <Page className="bakin-archetype-story">
       <PageHeader
         eyebrow="Memory / indexed records"
         title="Keep long result sets scannable"
         description="Paginate repeated content by default. Keep the page in routed URL state and reserve Show all for deliberate inspection."
         meta={<Badge tone="neutral" variant="outline">{visible.length} shown</Badge>}
       />
-      <ListPageContent label="Indexed memory records">
+      <PageBody label="Indexed memory records">
         <ul className="bakin-archetype-story__list bakin-archetype-story__list--separated" aria-label="Memory records">
           {visible.map((record) => (
             <li key={record.id}>
@@ -304,8 +301,8 @@ function ListPaginationExample() {
             setPage(1)
           }}
         />
-      </ListPageContent>
-    </ListPage>
+      </PageBody>
+    </Page>
   )
 }
 
@@ -323,13 +320,13 @@ export const ListPagination = {
 
 export const ServerPagination = {
   render: () => (
-    <ListPage className="bakin-archetype-story">
+    <Page className="bakin-archetype-story">
       <PageHeader
         eyebrow="Health / failure patterns"
         title="Page server-bounded evidence"
         description="Use the same paginator without Show all when the server only returns one bounded page. Never offer a control the current data contract cannot fulfill."
       />
-      <ListPageContent label="Failure patterns">
+      <PageBody label="Failure patterns">
         <ul className="bakin-archetype-story__list bakin-archetype-story__list--separated" aria-label="Failure patterns">
           {paginatedRecords.slice(5, 10).map((record) => (
             <li key={record.id}>
@@ -347,8 +344,8 @@ export const ServerPagination = {
           total={13}
           onPageChange={() => undefined}
         />
-      </ListPageContent>
-    </ListPage>
+      </PageBody>
+    </Page>
   ),
   play: async ({ canvas }) => {
     await expect(canvas.getByText('Showing 6–10 of 13')).toBeVisible()
@@ -358,18 +355,18 @@ export const ServerPagination = {
 
 export const ListNoResults = {
   render: () => (
-    <ListPage className="bakin-archetype-story">
+    <Page className="bakin-archetype-story">
       <PageHeader
         eyebrow="Tasks / live operations"
         title="Coordinate active work"
         description="Page identity and controls remain available when only the result region changes state."
         actions={<Button>New task</Button>}
       />
-      <ListPageControls label="Task list controls">
+      <PageControls label="Task list controls">
         <div className="bakin-archetype-story__active-query"><span>Search</span><strong>archived partner invoice</strong></div>
         <Button variant="secondary" aria-pressed="true">Blocked</Button>
-      </ListPageControls>
-      <ListPageContent
+      </PageControls>
+      <PageBody
         label="Task results"
         state={(
           <SystemState
@@ -381,13 +378,13 @@ export const ListNoResults = {
           />
         )}
       />
-    </ListPage>
+    </Page>
   ),
 } satisfies Story
 
 function DetailExample() {
   return (
-    <DetailPage className="bakin-archetype-story">
+    <Page className="bakin-archetype-story">
       <PageHeader
         navigation={(
           <Button
@@ -414,8 +411,8 @@ function DetailExample() {
         actions={<Button>Edit workflow</Button>}
       />
 
-      <DetailPageBody layout="aside" feedback={<Banner tone="info" title="Draft-safe editing" description="Changes are reviewed before they replace the active definition." />}>
-        <DetailPageMain>
+      <PageBody layout="aside" feedback={<Banner tone="info" title="Draft-safe editing" description="Changes are reviewed before they replace the active definition." />}>
+        <Stack gap="section" className="bakin-archetype-story__detail-main">
           <Section spacing="compact" aria-labelledby="workflow-definition-heading">
             <Stack gap="dense">
               <h2 id="workflow-definition-heading">Definition</h2>
@@ -440,9 +437,9 @@ function DetailExample() {
               <li><span>Social variants regenerated</span><time>18 minutes ago</time></li>
             </ol>
           </Section>
-        </DetailPageMain>
+        </Stack>
 
-        <DetailPageAside label="Workflow context">
+        <PageAside label="Workflow context">
           <section aria-labelledby="workflow-context-heading">
             <h2 id="workflow-context-heading">Context</h2>
             <dl className="bakin-archetype-story__context-list">
@@ -455,9 +452,9 @@ function DetailExample() {
             <h2 id="workflow-related-heading">Related</h2>
             <Inline gap="dense"><Button variant="outline" size="sm">Open asset</Button><Button variant="ghost" size="sm">View run</Button></Inline>
           </section>
-        </DetailPageAside>
-      </DetailPageBody>
-    </DetailPage>
+        </PageAside>
+      </PageBody>
+    </Page>
   )
 }
 
@@ -473,8 +470,7 @@ export const Detail = {
 
 export const ContainedDetailWorkspace = {
   render: () => (
-    <DetailPage
-      width="full"
+    <Page
       scroll="contained"
       className="bakin-archetype-story bakin-archetype-story--contained"
       data-testid="contained-detail-page"
@@ -484,25 +480,25 @@ export const ContainedDetailWorkspace = {
         title="Spring menu launch"
         description="The page identity remains fixed while the named plan pane owns its long content."
       />
-      <DetailPageBody className="min-h-0">
-        <DetailPageMain className="min-h-0">
-          <div
-            role="region"
-            aria-label="Plan sections"
-            tabIndex={0}
-            className="bakin-archetype-story__contained-scroll"
-            data-testid="contained-detail-scroll"
-          >
-            {Array.from({ length: 14 }, (_, index) => (
-              <section key={index}>
-                <h2>Plan section {index + 1}</h2>
-                <p>Long workspace content scrolls here without expanding the page canvas.</p>
-              </section>
-            ))}
-          </div>
-        </DetailPageMain>
-      </DetailPageBody>
-    </DetailPage>
+      <PageBody>
+        {/* A genuinely scrolling pane must be keyboard-reachable (axe
+            scrollable-region-focusable); the consumer owns that decision. */}
+        <div
+          role="region"
+          aria-label="Plan sections"
+          tabIndex={0}
+          className="bakin-archetype-story__contained-scroll"
+          data-testid="contained-detail-scroll"
+        >
+          {Array.from({ length: 14 }, (_, index) => (
+            <section key={index}>
+              <h2>Plan section {index + 1}</h2>
+              <p>Long workspace content scrolls here without expanding the page canvas.</p>
+            </section>
+          ))}
+        </div>
+      </PageBody>
+    </Page>
   ),
   play: async ({ canvas }) => {
     const page = canvas.getByTestId('contained-detail-page')
@@ -521,8 +517,7 @@ const mediaVersions = [
 
 export const DetailMedia = {
   render: () => (
-    <DetailPage
-      width="full"
+    <Page
       className="bakin-archetype-story"
       data-testid="media-detail-page"
     >
@@ -552,8 +547,8 @@ export const DetailMedia = {
         actions={<Button>Edit asset</Button>}
       />
 
-      <DetailPageBody layout="aside">
-        <DetailPageMain>
+      <PageBody layout="aside">
+        <Stack gap="section" className="bakin-archetype-story__detail-main">
           <Section spacing="compact" aria-labelledby="media-preview-heading">
             <h2 id="media-preview-heading">Preview</h2>
             <div
@@ -564,9 +559,9 @@ export const DetailMedia = {
               <span>4:5 master</span>
             </div>
           </Section>
-        </DetailPageMain>
+        </Stack>
 
-        <DetailPageAside label="Asset context">
+        <PageAside label="Asset context">
           <section aria-labelledby="media-context-heading">
             <h2 id="media-context-heading">Asset context</h2>
             <dl className="bakin-archetype-story__context-list">
@@ -624,9 +619,9 @@ export const DetailMedia = {
               ))}
             </ol>
           </section>
-        </DetailPageAside>
-      </DetailPageBody>
-    </DetailPage>
+        </PageAside>
+      </PageBody>
+    </Page>
   ),
   play: async ({ canvas }) => {
     const page = canvas.getByTestId('media-detail-page')
@@ -658,7 +653,7 @@ export const DetailMedia = {
 
 export const DetailUnavailable = {
   render: () => (
-    <DetailPage width="content" className="bakin-archetype-story">
+    <Page width="standard" className="bakin-archetype-story">
       <PageHeader
         navigation={(
           <Button
@@ -675,7 +670,7 @@ export const DetailUnavailable = {
         title="Archived campaign approval"
         description="The page identity and navigation remain usable when policy restricts the record body."
       />
-      <DetailPageBody
+      <PageBody
         state={(
           <SystemState
             kind="permission-denied"
@@ -686,6 +681,6 @@ export const DetailUnavailable = {
           />
         )}
       />
-    </DetailPage>
+    </Page>
   ),
 } satisfies Story

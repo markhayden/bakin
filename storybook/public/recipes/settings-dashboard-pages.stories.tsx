@@ -4,13 +4,9 @@ import { expect } from 'storybook/test'
 
 import { Grid, Section, Stack } from '@makinbakin/sdk/layout'
 import {
-  DashboardPage,
-  DashboardPageContent,
+  Page,
+  PageBody,
   PageHeader,
-  SettingsPage,
-  SettingsPageBody,
-  SettingsPageContent,
-  SettingsPageNavigation,
 } from '@makinbakin/sdk/patterns'
 import {
   Badge,
@@ -36,7 +32,7 @@ const meta = {
     layout: 'fullscreen',
     docs: {
       description: {
-        component: 'SettingsPage provides a responsive named category/form frame with content, wide, and full plugin-canvas widths; DashboardPage provides a prioritized state-aware overview canvas. Both preserve the existing routing contract and leave data, dirty state, saves, telemetry, and domain actions to consumers.',
+        component: 'Settings and dashboard scenes compose the one Page archetype. A multi-category settings surface keeps a consumer-owned named category navigation beside a PageBody region so state replacement touches only the active category; a dashboard is a prioritized PageBody overview on the roomy page gap. Both preserve the existing routing contract and leave data, dirty state, saves, telemetry, and domain actions to consumers.',
       },
     },
     bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'overflow', 'interaction', 'system-states', 'url-state-guidance'],
@@ -55,107 +51,110 @@ function SettingsCategoriesExample() {
   const dirty = workspaceName !== 'Acme creator operations'
 
   return (
-    <SettingsPage width="full" className="bakin-settings-dashboard-story">
+    <Page className="bakin-settings-dashboard-story">
       <PageHeader
         eyebrow="Workspace / configuration"
         title="Settings"
         description="Configure system behavior and installed extensions without losing which category is active. Routed pages keep the category in query state."
       />
 
-      <SettingsPageBody layout="navigation">
-        <SettingsPageNavigation label="Settings categories">
-          <p className="bakin-settings-dashboard-story__navigation-label">Workspace</p>
-          {categories.map((item) => (
-            <Button
-              key={item}
-              size="sm"
-              variant={category === item ? 'secondary' : 'ghost'}
-              aria-current={category === item ? 'page' : undefined}
-              onClick={() => setCategory(item)}
-            >
-              {item}
-            </Button>
-          ))}
-        </SettingsPageNavigation>
+      <div className="bakin-settings-dashboard-story__frame">
+        <div className="bakin-settings-dashboard-story__frame-grid">
+          <nav className="bakin-settings-dashboard-story__navigation" aria-label="Settings categories">
+            <p className="bakin-settings-dashboard-story__navigation-label">Workspace</p>
+            {categories.map((item) => (
+              <Button
+                key={item}
+                size="sm"
+                variant={category === item ? 'secondary' : 'ghost'}
+                aria-current={category === item ? 'page' : undefined}
+                onClick={() => setCategory(item)}
+              >
+                {item}
+              </Button>
+            ))}
+          </nav>
 
-        <SettingsPageContent
-          labelledBy="active-settings-heading"
-          feedback={dirty ? (
-            <Banner
-              tone="attention"
-              headingLevel={3}
-              title="Unsaved changes"
-              description="Review and save this category before navigating away. The routed implementation supplies the navigation guard."
-            />
-          ) : undefined}
-        >
-          <Stack gap="dense">
-            <h2 id="active-settings-heading">{category}</h2>
-            <p className="bakin-settings-dashboard-story__section-description">
-              {category === 'System and alerts'
-                ? 'Defaults shared by the host and every official plugin.'
-                : 'This category proves the navigation frame without moving category ownership into the recipe.'}
-            </p>
-          </Stack>
+          <PageBody
+            className="bakin-settings-dashboard-story__settings-content"
+            labelledBy="active-settings-heading"
+            feedback={dirty ? (
+              <Banner
+                tone="attention"
+                headingLevel={3}
+                title="Unsaved changes"
+                description="Review and save this category before navigating away. The routed implementation supplies the navigation guard."
+              />
+            ) : undefined}
+          >
+            <Stack gap="dense">
+              <h2 id="active-settings-heading">{category}</h2>
+              <p className="bakin-settings-dashboard-story__section-description">
+                {category === 'System and alerts'
+                  ? 'Defaults shared by the host and every official plugin.'
+                  : 'This category proves the navigation frame without moving category ownership into the recipe.'}
+              </p>
+            </Stack>
 
-          {category === 'System and alerts' ? (
-            <Form aria-label="System and alerts settings">
-              <Section spacing="compact" aria-labelledby="workspace-identity-heading">
-                <Stack gap="dense">
-                  <h3 id="workspace-identity-heading">Workspace identity</h3>
-                  <p className="bakin-settings-dashboard-story__section-description">Stable identity and operational defaults use the canonical field contract.</p>
-                </Stack>
-                <Field name="workspaceName">
-                  <FieldLabel requirement="required">Workspace name</FieldLabel>
-                  <FieldDescription>Shown in navigation and plugin-contributed page chrome.</FieldDescription>
-                  <Input
-                    required
-                    value={workspaceName}
-                    onChange={(event) => setWorkspaceName(event.currentTarget.value)}
-                  />
-                </Field>
-              </Section>
+            {category === 'System and alerts' ? (
+              <Form aria-label="System and alerts settings">
+                <Section spacing="compact" aria-labelledby="workspace-identity-heading">
+                  <Stack gap="dense">
+                    <h3 id="workspace-identity-heading">Workspace identity</h3>
+                    <p className="bakin-settings-dashboard-story__section-description">Stable identity and operational defaults use the canonical field contract.</p>
+                  </Stack>
+                  <Field name="workspaceName">
+                    <FieldLabel requirement="required">Workspace name</FieldLabel>
+                    <FieldDescription>Shown in navigation and plugin-contributed page chrome.</FieldDescription>
+                    <Input
+                      required
+                      value={workspaceName}
+                      onChange={(event) => setWorkspaceName(event.currentTarget.value)}
+                    />
+                  </Field>
+                </Section>
 
-              <Section spacing="compact" divider="top" aria-labelledby="notification-heading">
-                <Stack gap="dense">
-                  <h3 id="notification-heading">Operational notifications</h3>
-                  <p className="bakin-settings-dashboard-story__section-description">Settings that affect every plugin remain explicit and readable.</p>
-                </Stack>
-                <Field orientation="horizontal" name="degradedAlerts">
-                  <Switch defaultChecked />
-                  <FieldLabel>Notify when an official integration degrades</FieldLabel>
-                  <FieldDescription>Alerts include the affected plugin and a supported recovery path.</FieldDescription>
-                </Field>
-              </Section>
+                <Section spacing="compact" divider="top" aria-labelledby="notification-heading">
+                  <Stack gap="dense">
+                    <h3 id="notification-heading">Operational notifications</h3>
+                    <p className="bakin-settings-dashboard-story__section-description">Settings that affect every plugin remain explicit and readable.</p>
+                  </Stack>
+                  <Field orientation="horizontal" name="degradedAlerts">
+                    <Switch defaultChecked />
+                    <FieldLabel>Notify when an official integration degrades</FieldLabel>
+                    <FieldDescription>Alerts include the affected plugin and a supported recovery path.</FieldDescription>
+                  </Field>
+                </Section>
 
-              <FormActions align="between">
-                <p className="bakin-settings-dashboard-story__save-status" role="status">
-                  {dirty ? 'Unsaved changes' : 'No pending changes'}
-                </p>
-                <div className="bakin-settings-dashboard-story__form-buttons">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={!dirty}
-                    onClick={() => setWorkspaceName('Acme creator operations')}
-                  >
-                    Discard
-                  </Button>
-                  <SubmitButton disabled={!dirty}>Save settings</SubmitButton>
-                </div>
-              </FormActions>
-            </Form>
-          ) : (
-            <SystemState
-              kind="initial-empty"
-              title={`${category} are not configured`}
-              description="Connect or install the first supported provider for this workspace."
-              action={<Button>Configure category</Button>}
-            />
-          )}
-        </SettingsPageContent>
-      </SettingsPageBody>
-    </SettingsPage>
+                <FormActions align="between">
+                  <p className="bakin-settings-dashboard-story__save-status" role="status">
+                    {dirty ? 'Unsaved changes' : 'No pending changes'}
+                  </p>
+                  <div className="bakin-settings-dashboard-story__form-buttons">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={!dirty}
+                      onClick={() => setWorkspaceName('Acme creator operations')}
+                    >
+                      Discard
+                    </Button>
+                    <SubmitButton disabled={!dirty}>Save settings</SubmitButton>
+                  </div>
+                </FormActions>
+              </Form>
+            ) : (
+              <SystemState
+                kind="initial-empty"
+                title={`${category} are not configured`}
+                description="Connect or install the first supported provider for this workspace."
+                action={<Button>Configure category</Button>}
+              />
+            )}
+          </PageBody>
+        </div>
+      </div>
+    </Page>
   )
 }
 
@@ -177,30 +176,33 @@ export const SettingsCategories = {
 
 export const SettingsUnavailable = {
   render: () => (
-    <SettingsPage className="bakin-settings-dashboard-story">
+    <Page className="bakin-settings-dashboard-story">
       <PageHeader
         eyebrow="Workspace / configuration"
         title="Settings"
         description="Page identity and category navigation stay available when one settings provider cannot load."
       />
-      <SettingsPageBody layout="navigation">
-        <SettingsPageNavigation label="Settings categories">
-          <Button size="sm" variant="secondary" aria-current="page">Integrations and keys</Button>
-          <Button size="sm" variant="ghost">Official plugins</Button>
-        </SettingsPageNavigation>
-        <SettingsPageContent
-          label="Integrations and keys settings"
-          state={(
-            <SystemState
-              kind="error"
-              title="Integration settings could not be loaded"
-              description="The current provider did not respond. Other settings categories remain available."
-              action={<Button variant="outline">Try again</Button>}
-            />
-          )}
-        />
-      </SettingsPageBody>
-    </SettingsPage>
+      <div className="bakin-settings-dashboard-story__frame">
+        <div className="bakin-settings-dashboard-story__frame-grid">
+          <nav className="bakin-settings-dashboard-story__navigation" aria-label="Settings categories">
+            <Button size="sm" variant="secondary" aria-current="page">Integrations and keys</Button>
+            <Button size="sm" variant="ghost">Official plugins</Button>
+          </nav>
+          <PageBody
+            className="bakin-settings-dashboard-story__settings-content"
+            label="Integrations and keys settings"
+            state={(
+              <SystemState
+                kind="error"
+                title="Integration settings could not be loaded"
+                description="The current provider did not respond. Other settings categories remain available."
+                action={<Button variant="outline">Try again</Button>}
+              />
+            )}
+          />
+        </div>
+      </div>
+    </Page>
   ),
 } satisfies Story
 
@@ -219,7 +221,7 @@ function DashboardOverviewExample() {
   }
 
   return (
-    <DashboardPage className="bakin-settings-dashboard-story">
+    <Page className="bakin-settings-dashboard-story">
       <PageHeader
         eyebrow="Health / operational overview"
         title="Keep Bakin ready to work"
@@ -227,7 +229,7 @@ function DashboardOverviewExample() {
         actions={<><Button variant="outline">View activity</Button><Button disabled={checking} onClick={runChecks}>{checking ? 'Running checks…' : 'Run checks'}</Button></>}
       />
 
-      <DashboardPageContent label="Health overview" busy={checking}>
+      <PageBody className="bakin-settings-dashboard-story__overview" gap="page" label="Health overview" busy={checking}>
         <section className="bakin-settings-dashboard-story__pulse" aria-labelledby="platform-pulse-heading">
           <div>
             <p className="bakin-settings-dashboard-story__kicker">Platform pulse</p>
@@ -287,8 +289,8 @@ function DashboardOverviewExample() {
             ))}
           </ul>
         </Section>
-      </DashboardPageContent>
-    </DashboardPage>
+      </PageBody>
+    </Page>
   )
 }
 
@@ -304,14 +306,16 @@ export const DashboardOverview = {
 
 export const DashboardUnavailable = {
   render: () => (
-    <DashboardPage className="bakin-settings-dashboard-story">
+    <Page className="bakin-settings-dashboard-story">
       <PageHeader
         eyebrow="Runtime / overview"
         title="Runtime capabilities"
         description="The page action and identity remain available while the overview owns its failure state."
         actions={<Button variant="outline">Refresh</Button>}
       />
-      <DashboardPageContent
+      <PageBody
+        className="bakin-settings-dashboard-story__overview"
+        gap="page"
         label="Runtime capability overview"
         state={(
           <SystemState
@@ -322,6 +326,6 @@ export const DashboardUnavailable = {
           />
         )}
       />
-    </DashboardPage>
+    </Page>
   ),
 } satisfies Story

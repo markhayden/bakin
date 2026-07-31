@@ -9,7 +9,7 @@ function read(path: string) {
 }
 
 describe('Team detail route layout ownership', () => {
-  it('leaves agent and team detail spacing to the shared DetailPage archetype', () => {
+  it('leaves agent and team detail spacing to the shared Page archetype', () => {
     for (const path of [
       'packages/host/src/routes/team.$id.tsx',
       'packages/host/src/routes/team.teams.$teamId.tsx',

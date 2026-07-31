@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { TurnOutputView } from '@makinbakin/sdk/conversation'
 import { Grid, Inline, Stack } from '@makinbakin/sdk/layout'
-import { ListPage, ListPageContent, PageHeader } from '@makinbakin/sdk/patterns'
+import { Page, PageBody, PageHeader } from '@makinbakin/sdk/patterns'
 import {
   Alert,
   AlertDescription,
@@ -180,7 +180,7 @@ export function BookmarksPage() {
   ) : undefined
 
   return (
-    <ListPage
+    <Page
       className="reference-bookmarks"
       data-reference-bookmarks-ready={data !== null && !loading ? '' : undefined}
     >
@@ -234,7 +234,7 @@ export function BookmarksPage() {
         </CardContent>
       </Card>
 
-      <ListPageContent
+      <PageBody
         busy={loading && data !== null}
         feedback={mutationError ? (
           <Alert tone="danger">
@@ -256,7 +256,7 @@ export function BookmarksPage() {
             </li>
           ))}
         </Grid>
-      </ListPageContent>
+      </PageBody>
 
       <Collapsible>
         <CollapsibleTrigger>
@@ -266,6 +266,6 @@ export function BookmarksPage() {
           <TurnOutputView chunks={DEMO_TURN} />
         </CollapsibleContent>
       </Collapsible>
-    </ListPage>
+    </Page>
   )
 }

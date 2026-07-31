@@ -10,35 +10,32 @@ const read = (path: string) => readFileSync(resolve(ROOT, path), 'utf8')
 
 describe('canonical conversation and inspector archetypes', () => {
   it('publishes one presentation-only implementation', () => {
-    for (const file of ['packages/ui/src/patterns/conversation-page.tsx', 'packages/ui/src/patterns/inspector-panel.tsx', 'packages/ui/src/patterns/workspace-page.tsx']) {
+    for (const file of ['packages/ui/src/patterns/page-timeline.tsx', 'packages/ui/src/patterns/page-composer.tsx', 'packages/ui/src/patterns/inspector-panel.tsx', 'packages/ui/src/patterns/workspace-page.tsx']) {
       expect(existsSync(resolve(ROOT, file))).toBe(true)
     }
-    const source = [read('packages/ui/src/patterns/conversation-page.tsx'), read('packages/ui/src/patterns/inspector-panel.tsx'), read('packages/ui/src/patterns/workspace-page.tsx')].join('\n')
+    const source = [read('packages/ui/src/patterns/page-timeline.tsx'), read('packages/ui/src/patterns/page-composer.tsx'), read('packages/ui/src/patterns/inspector-panel.tsx'), read('packages/ui/src/patterns/workspace-page.tsx')].join('\n')
     expect(source).not.toMatch(/from ['"]@\//)
     expect(source).not.toContain('@makinbakin/sdk')
     expect(source).not.toMatch(/fetch|EventSource|useRouter|useSearchParams|PluginLink/)
-    expect(Patterns.ConversationPage).toBe(PrivatePatterns.ConversationPage)
+    expect(Patterns.PageTimeline).toBe(PrivatePatterns.PageTimeline)
+    expect(Patterns.PageComposer).toBe(PrivatePatterns.PageComposer)
     expect(Patterns.InspectorPanel).toBe(PrivatePatterns.InspectorPanel)
     expect(Patterns.WorkspacePage).toBe(PrivatePatterns.WorkspacePage)
-    expect(HostPatterns.ConversationPage).toBe(PrivatePatterns.ConversationPage)
+    expect(HostPatterns.PageTimeline).toBe(PrivatePatterns.PageTimeline)
+    expect(HostPatterns.PageComposer).toBe(PrivatePatterns.PageComposer)
     expect(HostPatterns.InspectorPanel).toBe(PrivatePatterns.InspectorPanel)
     expect(HostPatterns.WorkspacePage).toBe(PrivatePatterns.WorkspacePage)
   })
 
   it('makes exceptional nested scrolling explicit and finite', () => {
-    const conversation = read('packages/ui/src/patterns/conversation-page.tsx')
-    // The timeline scroller lives in the renamed PageTimeline slot (T5.1);
-    // ConversationPageTimeline remains a byte-equivalent legacy alias over it.
+    // The timeline scroller is the one page-owned internal scroller, active
+    // only inside a contained Page (PageScrollContext).
     const timeline = read('packages/ui/src/patterns/page-timeline.tsx')
     const inspector = read('packages/ui/src/patterns/inspector-panel.tsx')
-    expect(conversation).toContain("'document' | 'contained'")
-    expect(conversation).toContain('type PageShellWidth')
-    expect(conversation).toContain("width = 'full'")
-    expect(conversation).toContain("mode === 'contained'")
     expect(timeline).toContain('overflow-y-auto')
     expect(timeline).toContain("scroll === 'contained'")
     expect(inspector).not.toMatch(/overflow-y-(?:auto|scroll)|h-screen|max-h-/)
-    expect(`${conversation}\n${inspector}`).not.toMatch(/(?:messages|thread|streamUrl|selected|node|resource|data)\??:/i)
+    expect(`${timeline}\n${inspector}`).not.toMatch(/(?:messages|thread|streamUrl|selected|node|resource|data)\??:/i)
   })
 
   it('documents the T30/T34 boundary and existing routing contract', () => {

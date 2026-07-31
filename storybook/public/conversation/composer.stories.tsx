@@ -7,9 +7,9 @@ import {
   type ComposerAttachmentItem,
 } from '@makinbakin/sdk/conversation'
 import {
-  ConversationPage,
-  ConversationPageBody,
-  ConversationPageComposer,
+  Page,
+  PageBody,
+  PageComposer,
   PageHeader,
 } from '@makinbakin/sdk/patterns'
 
@@ -60,20 +60,20 @@ function ProductComposerExample() {
 
   return (
     <main className="bakin-conversation-story">
-      <ConversationPage width="content">
+      <Page width="standard">
         <PageHeader
           eyebrow="Conversation / product default"
           title="Ask a focused follow-up"
           description="The composer sits outside the message log. Drafts and input history follow the thread key while uploads and sending stay with the consumer."
         />
-        <ConversationPageBody mode="document">
+        <PageBody gap="content">
           <section aria-labelledby="composer-default-heading" className="bakin-conversation-story__section">
             <header>
               <h2 id="composer-default-heading">Ready to compose</h2>
               <p>Enter sends, Shift+Enter adds a line, and the resize separator is keyboard operable.</p>
             </header>
             <div className="bakin-conversation-story__composer-frame">
-              <ConversationPageComposer>
+              <PageComposer>
                 <Composer
                   storageKey="storybook-product-composer"
                   inputLabel="Message the release agent"
@@ -88,12 +88,12 @@ function ProductComposerExample() {
                     onRemove: () => {},
                   }}
                 />
-              </ConversationPageComposer>
+              </PageComposer>
             </div>
             <p role="status" className="bakin-conversation-story__selection">{sent}</p>
           </section>
-        </ConversationPageBody>
-      </ConversationPage>
+        </PageBody>
+      </Page>
     </main>
   )
 }
@@ -130,13 +130,13 @@ function LifecycleExample() {
 
   return (
     <main className="bakin-conversation-story">
-      <ConversationPage width="wide">
+      <Page>
         <PageHeader
           eyebrow="Conversation / explicit states"
           title="Keep attachment and reply state unambiguous"
           description="Progress, failure, capability limits, and stop behavior remain understandable without depending on color or motion."
         />
-        <ConversationPageBody mode="document">
+        <PageBody gap="content">
           <div className="bakin-conversation-story__composer-grid">
             <section aria-labelledby="composer-busy-heading" className="bakin-conversation-story__section">
               <header>
@@ -187,8 +187,8 @@ function LifecycleExample() {
             </section>
           </div>
           <p role="status" className="bakin-conversation-story__selection">{outcome}</p>
-        </ConversationPageBody>
-      </ConversationPage>
+        </PageBody>
+      </Page>
     </main>
   )
 }

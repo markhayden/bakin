@@ -43,9 +43,9 @@ import {
   AgentAvatar,
   AgentFilter,
   FacetFilter,
-  ListPage,
-  ListPageContent,
-  ListPageControls,
+  Page,
+  PageBody,
+  PageControls,
   Pagination,
   PageHeader,
   SearchInput,
@@ -374,7 +374,7 @@ function MemoryShellInner() {
   ) : undefined
 
   return (
-    <ListPage className="h-full overflow-auto">
+    <Page>
       <PageHeader
         title="Memory"
         description="Search what your agents remember, inspect saved context, and clean up stale or unnecessary records."
@@ -404,14 +404,14 @@ function MemoryShellInner() {
       />
 
       {cleanupMode ? (
-        <ListPageContent label="Memory cleanup">
+        <PageBody label="Memory cleanup">
           <MemoryCleanup />
-        </ListPageContent>
+        </PageBody>
       ) : (
         <>
           <TierOverviewCards includeSystemLogs={debug} />
 
-          <ListPageControls
+          <PageControls
             label="Memory filters"
             actions={(
               <div
@@ -453,9 +453,9 @@ function MemoryShellInner() {
                 counts={kindCounts}
               />
             ) : null}
-          </ListPageControls>
+          </PageControls>
 
-          <ListPageContent
+          <PageBody
             label="Memory results"
             busy={loading && filtered.length > 0}
             feedback={recordFeedback}
@@ -481,7 +481,7 @@ function MemoryShellInner() {
               onPageChange={(nextPage) => setPageParam(String(nextPage))}
               onShowAllChange={(nextShowAll) => setPageParam(nextShowAll ? 'all' : '1')}
             />
-          </ListPageContent>
+          </PageBody>
 
           <MemoryDetailDrawer
             result={record.row}
@@ -491,7 +491,7 @@ function MemoryShellInner() {
           />
         </>
       )}
-    </ListPage>
+    </Page>
   )
 }
 

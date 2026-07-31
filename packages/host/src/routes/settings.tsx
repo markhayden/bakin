@@ -67,7 +67,7 @@ export function groupAndSortSchemas(schemas: PluginSchemaEntry[]): GroupedSchema
   return { core: [...system, ...providerKeys, ...core], extensions }
 }
 
-function SettingsPage() {
+function SettingsRoute() {
   const [plugins, setPlugins] = useState<PluginSchemaEntry[]>([])
   const [activePlugin, setActivePlugin] = useState<string>('')
   const [values, setValues] = useState<Record<string, unknown>>({})
@@ -234,5 +234,5 @@ function SettingsPage() {
 export const Route = createRoute({
   getParentRoute: () => RootRoute,
   path: '/settings',
-  component: SettingsPage,
+  component: SettingsRoute,
 })

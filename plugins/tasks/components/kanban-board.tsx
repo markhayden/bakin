@@ -20,9 +20,9 @@ import {
   useSearchParams,
 } from '@makinbakin/sdk/navigation'
 import {
-  ListPage,
-  ListPageContent,
-  ListPageControls,
+  Page,
+  PageBody,
+  PageControls,
   PageHeader,
   SearchDegradedChip,
   SearchInput,
@@ -535,7 +535,7 @@ export function KanbanBoard() {
 
   return (
     <>
-      <ListPage width="full" className="h-full overflow-auto">
+      <Page scroll="contained">
         <PageHeader
           title="Tasks"
           description="Create, assign, and track work across your agents from the backlog through completion."
@@ -576,7 +576,7 @@ export function KanbanBoard() {
           <TaskMetrics columns={columns} timestamp={timestamp} />
         </div>
 
-        <ListPageControls label="Task filters" divider>
+        <PageControls label="Task filters" divider>
           <TaskFilters
             agentFilter={agentFilter}
             onAgentChange={setAgentFilter}
@@ -590,9 +590,9 @@ export function KanbanBoard() {
             onBrandChange={setBrandFilter}
             brandOptions={brandOptions}
           />
-        </ListPageControls>
+        </PageControls>
 
-        <ListPageContent
+        <PageBody
           label="Task results"
           busy={boardLoaded && boardRefreshing}
           feedback={searchFeedback}
@@ -652,8 +652,8 @@ export function KanbanBoard() {
               />
             </div>
           )}
-        </ListPageContent>
-      </ListPage>
+        </PageBody>
+      </Page>
 
       <TaskDetailDrawer
         task={detailTask?.task ?? null}

@@ -137,7 +137,7 @@ describe('HealthPage tab shell', () => {
     const overviewTab = screen.getByRole('tab', { name: 'Overview' })
     const panel = screen.getByRole('tabpanel')
 
-    expect(page.getAttribute('data-archetype')).toBe('dashboard')
+    expect(page.getAttribute('data-archetype')).toBe('page')
     expect(page.getAttribute('data-width')).toBe('full')
     expect(page.getAttribute('data-slot')).toBe('page-shell')
     expect(page.classList.contains('health-page')).toBe(true)
@@ -145,7 +145,7 @@ describe('HealthPage tab shell', () => {
     expect(screen.getByText('Monitor operational readiness, investigate failed work, and repair issues before they block agents.')).toBeDefined()
     expect(screen.queryByTestId('plugin-header')).toBeNull()
     expect(page.querySelector('[data-slot="page-header"]')).not.toBeNull()
-    expect(page.querySelector('[data-slot="dashboard-page-content"]')).not.toBeNull()
+    expect(page.querySelector('[data-slot="page-body"]')).not.toBeNull()
     expect(screen.getByRole('tablist', { name: 'Health sections' }).getAttribute('data-variant')).toBe('underline')
     expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
       'Overview',

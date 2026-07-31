@@ -4,15 +4,15 @@ import { expect } from 'storybook/test'
 
 import { Grid, PageShell } from '@makinbakin/sdk/layout'
 import {
-  ConversationPage,
-  ConversationPageBody,
-  ConversationPageComposer,
-  ConversationPageTimeline,
   InspectorPanel,
   InspectorPanelContent,
   InspectorPanelFooter,
   InspectorPanelHeader,
+  Page,
+  PageBody,
+  PageComposer,
   PageHeader,
+  PageTimeline,
 } from '@makinbakin/sdk/patterns'
 import {
   Badge,
@@ -33,7 +33,7 @@ const meta = {
     layout: 'fullscreen',
     docs: {
       description: {
-        component: 'ConversationPage defines document versus explicitly contained timeline scrolling. Routed first-party application conversations use the full host content width by default; narrower widths are reserved for deliberately reading-focused surfaces and require a concrete explanation. InspectorPanel defines contextual header/content/footer hierarchy beside a canvas or inside Drawer. Domain rendering and behavior remain outside these recipes.',
+        component: 'Conversation scenes compose the one Page archetype: host-document scrolling by default, or scroll="contained" inside a height-bounded pane so the named PageTimeline is the single internal scroller and the PageComposer stays put. Routed first-party application conversations use the full host content width by default; narrower widths are reserved for deliberately reading-focused surfaces and require a concrete explanation. InspectorPanel defines contextual header/content/footer hierarchy beside a canvas or inside Drawer. Domain rendering and behavior remain outside these recipes.',
       },
     },
     bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'overflow', 'interaction', 'system-states', 'scroll-ownership', 'url-state-guidance'],
@@ -74,88 +74,88 @@ function ConversationExample() {
   }
 
   return (
-    <ConversationPage
-      mode="contained"
-      width="full"
-      className="bakin-conversation-inspector-story"
-    >
-      <PageHeader
-        eyebrow="Chat / active thread"
-        title="Conversation with Patch"
-        description="Messages, tool activity, streaming feedback, and composition keep one readable hierarchy."
-        meta={(
-          <>
-            <Badge tone="success">Connected</Badge>
-            <code>thread:01JZ9T4P6KE7</code>
-          </>
-        )}
-        actions={<Button variant="outline">Thread details</Button>}
-      />
-      <ConversationPageBody
-        mode="contained"
-        className="bakin-conversation-inspector-story__conversation"
-        feedback={(
-          <Banner
-            tone="info"
-            headingLevel={2}
-            title="Live context"
-            description="Patch is using provider/openai/gpt-5.2 with 41% of the context window."
-          />
-        )}
-      >
-        <ConversationPageTimeline label="Conversation with Patch">
-          {messages.map((message) => (
-            <article
-              key={message.id}
-              className="bakin-conversation-inspector-story__message"
-              data-author={message.author === 'Patch' ? 'assistant' : 'user'}
-              aria-label={`${message.author} message at ${message.time}`}
-            >
-              <header>
-                <strong>{message.author}</strong>
-                <time>{message.time}</time>
-              </header>
-              <p>{message.body}</p>
-              {message.tool ? (
-                <div className="bakin-conversation-inspector-story__tool">
-                  <Badge tone="accent" variant="outline">{message.tool}</Badge>
-                  <code>selected=asset:campaign/spring-hero-final-v18.webp</code>
-                </div>
-              ) : null}
-            </article>
-          ))}
-          <div className="bakin-conversation-inspector-story__streaming" role="status">
-            <span aria-hidden="true" />
-            <p>
-              <strong>Patch is responding</strong>
-              <br />
-              Reconciling workflow status with the selected asset.
-            </p>
-          </div>
-        </ConversationPageTimeline>
-        <ConversationPageComposer>
-          <div className="bakin-conversation-inspector-story__composer-field">
-            <Label htmlFor="conversation-message">Message Patch</Label>
-            <Textarea
-              id="conversation-message"
-              value={value}
-              onChange={(event) => setValue(event.currentTarget.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' && !event.shiftKey) {
-                  event.preventDefault()
-                  send()
-                }
-              }}
-              placeholder="Ask a follow-up"
+    <div className="bakin-conversation-inspector-story bakin-conversation-inspector-story__pane">
+      <Page scroll="contained">
+        <PageHeader
+          eyebrow="Chat / active thread"
+          title="Conversation with Patch"
+          description="Messages, tool activity, streaming feedback, and composition keep one readable hierarchy."
+          meta={(
+            <>
+              <Badge tone="success">Connected</Badge>
+              <code>thread:01JZ9T4P6KE7</code>
+            </>
+          )}
+          actions={<Button variant="outline">Thread details</Button>}
+        />
+        <PageBody
+          gap="content"
+          label="Conversation"
+          feedback={(
+            <Banner
+              tone="info"
+              headingLevel={2}
+              title="Live context"
+              description="Patch is using provider/openai/gpt-5.2 with 41% of the context window."
             />
-          </div>
-          <div className="bakin-conversation-inspector-story__composer-actions">
-            <span>Enter to send · Shift+Enter is owned by the focused composer</span>
-            <Button disabled={!value.trim()} onClick={send}>Send message</Button>
-          </div>
-        </ConversationPageComposer>
-      </ConversationPageBody>
-    </ConversationPage>
+          )}
+        >
+          {/* A genuinely scrolling log must be keyboard-reachable (axe
+              scrollable-region-focusable); the consumer owns that decision. */}
+          <PageTimeline label="Conversation with Patch" tabIndex={0}>
+            {messages.map((message) => (
+              <article
+                key={message.id}
+                className="bakin-conversation-inspector-story__message"
+                data-author={message.author === 'Patch' ? 'assistant' : 'user'}
+                aria-label={`${message.author} message at ${message.time}`}
+              >
+                <header>
+                  <strong>{message.author}</strong>
+                  <time>{message.time}</time>
+                </header>
+                <p>{message.body}</p>
+                {message.tool ? (
+                  <div className="bakin-conversation-inspector-story__tool">
+                    <Badge tone="accent" variant="outline">{message.tool}</Badge>
+                    <code>selected=asset:campaign/spring-hero-final-v18.webp</code>
+                  </div>
+                ) : null}
+              </article>
+            ))}
+            <div className="bakin-conversation-inspector-story__streaming" role="status">
+              <span aria-hidden="true" />
+              <p>
+                <strong>Patch is responding</strong>
+                <br />
+                Reconciling workflow status with the selected asset.
+              </p>
+            </div>
+          </PageTimeline>
+          <PageComposer>
+            <div className="bakin-conversation-inspector-story__composer-field">
+              <Label htmlFor="conversation-message">Message Patch</Label>
+              <Textarea
+                id="conversation-message"
+                value={value}
+                onChange={(event) => setValue(event.currentTarget.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && !event.shiftKey) {
+                    event.preventDefault()
+                    send()
+                  }
+                }}
+                placeholder="Ask a follow-up"
+              />
+            </div>
+            <div className="bakin-conversation-inspector-story__composer-actions">
+              <span>Enter to send · Shift+Enter is owned by the focused composer</span>
+              <Button disabled={!value.trim()} onClick={send}>Send message</Button>
+            </div>
+          </PageComposer>
+        </PageBody>
+      </Page>
+    </div>
   )
 }
 
@@ -171,13 +171,15 @@ export const Conversation = {
 
 export const ConversationUnavailable = {
   render: () => (
-    <ConversationPage className="bakin-conversation-inspector-story">
+    <Page className="bakin-conversation-inspector-story">
       <PageHeader
         eyebrow="Chat / archived thread"
         title="Conversation with Patch"
         description="Thread identity remains visible when access changes."
       />
-      <ConversationPageBody
+      <PageBody
+        gap="content"
+        label="Conversation"
         state={(
           <SystemState
             kind="permission-denied"
@@ -187,7 +189,7 @@ export const ConversationUnavailable = {
           />
         )}
       />
-    </ConversationPage>
+    </Page>
   ),
 } satisfies Story
 

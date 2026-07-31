@@ -114,7 +114,7 @@ describe('canonical detail shell', () => {
   it('uses the full-width detail archetype, one page heading, named tabs, and low-chrome overview metrics', async () => {
     await renderDetail()
 
-    const page = document.querySelector('[data-archetype="detail"]')
+    const page = document.querySelector('[data-archetype="page"]')
     const header = document.querySelector('[data-slot="page-header"]')
     const metrics = screen.getByRole('group', { name: 'Brand summary metrics' })
 
@@ -124,7 +124,7 @@ describe('canonical detail shell', () => {
     expect(screen.getByRole('button', { name: 'Back to brands' }).textContent).toBe('')
     expect(screen.getByRole('tablist', { name: 'Acme sections' })).toBeDefined()
     expect(metrics.querySelectorAll('[data-stat-tile]')).toHaveLength(4)
-    expect(document.querySelector('[data-slot="detail-page-body"]')).not.toBeNull()
+    expect(document.querySelector('[data-slot="page-body"]')).not.toBeNull()
     expect(document.querySelector('[data-brand-overview] [data-section-card]')).toBeNull()
     await settleReact()
   })
@@ -360,7 +360,7 @@ describe('route states', () => {
     mockApi({ notFound: true })
     render(<BrandDetail brandId="acme" onBack={() => {}} />)
     await waitFor(() => expect(screen.getByText("This brand doesn't exist")).toBeDefined())
-    expect(document.querySelector('[data-archetype="detail"]')?.getAttribute('data-width')).toBe('full')
+    expect(document.querySelector('[data-archetype="page"]')?.getAttribute('data-width')).toBe('full')
     expect(document.querySelector('[data-slot="system-state"]')?.getAttribute('data-kind')).toBe('initial-empty')
     await settleReact()
   })

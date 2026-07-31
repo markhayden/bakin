@@ -127,9 +127,9 @@ mock.module('@makinbakin/sdk/components', () => ({
 }))
 
 mock.module('@makinbakin/sdk/patterns', () => ({
-  ListPage: passthrough,
-  ListPageControls: passthrough,
-  ListPageContent: ({ children, state }: { children?: ReactNode; state?: ReactNode }) => <div>{state ?? children}</div>,
+  Page: passthrough,
+  PageControls: passthrough,
+  PageBody: ({ children, state }: { children?: ReactNode; state?: ReactNode }) => <div>{state ?? children}</div>,
   PageHeader: ({ title, meta, controls, controlsLabel, actions, actionsLabel }: {
     title?: ReactNode
     meta?: ReactNode

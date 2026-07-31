@@ -15,9 +15,8 @@ import { useRouter, useUnsavedChangesGuard } from '@makinbakin/sdk/navigation'
 import {
   ConfirmDialog,
   DangerZone,
-  DetailPage,
-  DetailPageBody,
-  DetailPageMain,
+  Page,
+  PageBody,
   PageHeader,
   SaveBar,
   StatGroup,
@@ -312,9 +311,9 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
 
   if (notFound) {
     return (
-      <DetailPage width="full" data-brand-detail-not-found>
+      <Page data-brand-detail-not-found>
         <BrandStateHeader brandId={brandId} onBack={onBack} />
-        <DetailPageBody
+        <PageBody
           state={(
             <SystemState
               kind="initial-empty"
@@ -325,14 +324,14 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
             />
           )}
         />
-      </DetailPage>
+      </Page>
     )
   }
   if (error && !detail) {
     return (
-      <DetailPage width="full" data-brand-detail-error>
+      <Page data-brand-detail-error>
         <BrandStateHeader brandId={brandId} onBack={onBack} />
-        <DetailPageBody
+        <PageBody
           state={(
             <SystemState
               kind="error"
@@ -344,14 +343,14 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
             />
           )}
         />
-      </DetailPage>
+      </Page>
     )
   }
   if (!detail) {
     return (
-      <DetailPage width="full" data-brand-detail-loading>
+      <Page data-brand-detail-loading>
         <BrandStateHeader brandId={brandId} onBack={onBack} />
-        <DetailPageBody
+        <PageBody
           state={(
             <SystemState
               kind="loading"
@@ -367,7 +366,7 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
             />
           )}
         />
-      </DetailPage>
+      </Page>
     )
   }
 
@@ -375,7 +374,7 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
   const b = staged ?? detail.brand
 
   return (
-    <DetailPage width="full" data-brand-detail>
+    <Page data-brand-detail>
       <BrandPageHeader
         brand={b}
         onBack={onBack}
@@ -425,11 +424,12 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
         </TabsList>
       </Tabs>
 
-      <DetailPageBody>
-        <DetailPageMain
+      <PageBody>
+        <div
           id={`brand-detail-panel-${tab}`}
           role="tabpanel"
           aria-labelledby={`brand-detail-tab-${tab}`}
+          className="flex min-w-0 flex-1 flex-col gap-bakin-6"
         >
           {tab === 'overview' && <OverviewTab brand={b} detail={detail} brandId={brandId} onGoTo={setTab} onEditDoc={editDoc} />}
 
@@ -586,8 +586,8 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
           onChanged={() => void refresh()}
         />
       )}
-        </DetailPageMain>
-      </DetailPageBody>
+        </div>
+      </PageBody>
 
       {/* ONE save path for the whole manifest — appears whenever anything is staged. */}
       <SaveBar
@@ -599,7 +599,7 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
         onDiscard={discard}
       />
       {unsavedGuard.dialog}
-    </DetailPage>
+    </Page>
   )
 }
 

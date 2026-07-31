@@ -8,28 +8,20 @@ import * as HostPatterns from '../../../packages/host/src/ui/page-archetypes'
 const ROOT = resolve(import.meta.dir, '../../..')
 const read = (path: string) => readFileSync(resolve(ROOT, path), 'utf8')
 
-describe('canonical workflow archetype', () => {
+describe('canonical workflow canvas archetype slot', () => {
   it('publishes one graph-library-independent presentation implementation', () => {
-    const source = read('packages/ui/src/patterns/workflow-page.tsx')
-    expect(source).not.toMatch(/@xyflow|ReactFlow|fetch|useRouter|useSearchParams|PluginLink/)
-    expect(source).not.toMatch(/(?:nodes|edges|selected|definition|onSave|route|data)\??:/i)
-    expect(Patterns.WorkflowPage).toBe(PrivatePatterns.WorkflowPage)
-    expect(Patterns.WorkflowPageCanvas).toBe(PrivatePatterns.WorkflowPageCanvas)
-    expect(HostPatterns.WorkflowPage).toBe(PrivatePatterns.WorkflowPage)
+    const canvas = read('packages/ui/src/patterns/page-canvas.tsx')
+    expect(canvas).not.toMatch(/@xyflow|ReactFlow|fetch|useRouter|useSearchParams|PluginLink/)
+    expect(canvas).not.toMatch(/(?:nodes|edges|selected|definition|onSave|route|data)\??:/i)
+    expect(Patterns.PageCanvas).toBe(PrivatePatterns.PageCanvas)
+    expect(HostPatterns.PageCanvas).toBe(PrivatePatterns.PageCanvas)
   })
 
-  it('keeps orientation, layout, and scroll choices finite with vertical as the default', () => {
-    const source = read('packages/ui/src/patterns/workflow-page.tsx')
-    // The canvas implementation lives in the renamed PageCanvas slot (T5.1);
-    // WorkflowPageCanvas remains a byte-equivalent legacy alias over it.
+  it('keeps orientation finite with vertical as the default and bounded overflow ownership', () => {
     const canvas = read('packages/ui/src/patterns/page-canvas.tsx')
     expect(canvas).toContain("'vertical' | 'horizontal'")
     expect(canvas).toContain("orientation = 'vertical'")
     expect(canvas).toContain('BoundedOverflow')
-    expect(source).toContain("'canvas' | 'inspector'")
-    expect(source).toContain("'document' | 'contained'")
-    expect(source).toContain('PageCanvas')
-    expect(source).not.toMatch(/h-screen|max-h-|overflow-y-(?:auto|scroll)/)
     expect(canvas).not.toMatch(/h-screen|max-h-|overflow-y-(?:auto|scroll)/)
   })
 
@@ -50,7 +42,8 @@ describe('canonical workflow archetype', () => {
     const detail = read('plugins/workflows/components/workflow-detail.tsx')
     const editor = read('plugins/workflows/components/workflow-canvas-editor.tsx')
 
-    expect(list).toContain('ListPage')
+    expect(list).toContain('<Page>')
+    expect(list).toContain('PageBody')
     expect(list).toContain('PageHeader')
     expect(list).toContain('SearchInput')
     expect(list).toContain('Pagination')
@@ -61,10 +54,8 @@ describe('canonical workflow archetype', () => {
       expect(source).toContain('WorkspacePageHeader')
       expect(source).toContain('WorkspacePageBody')
       expect(source).toContain('PageHeader')
-      expect(source).toContain('WorkflowPageBody')
-      expect(source).toContain('WorkflowPageCanvas')
-      expect(source).toContain('mode="contained"')
-      expect(source).not.toMatch(/<WorkflowPage(?:\s|>)/)
+      expect(source).toContain('<PageBody')
+      expect(source).toContain('<PageCanvas')
     }
 
     expect(detail).toContain('orientation="vertical"')

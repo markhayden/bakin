@@ -8,7 +8,6 @@
     "@makinbakin/sdk/conversation :: ToolCallRow",
     "@makinbakin/sdk/conversation :: TurnTimestamp",
     "@makinbakin/sdk/conversation :: TurnToolChip",
-    "@makinbakin/sdk/patterns :: PageCanvas",
     "@makinbakin/sdk/patterns :: PageHeaderOverflowMenu",
     "@makinbakin/sdk/ui :: DialogOverlay",
     "@makinbakin/sdk/ui :: DialogPortal",

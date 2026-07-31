@@ -355,16 +355,6 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 
 | Export | Description |
 | --- | --- |
-| `ConversationPage` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
-| `ConversationPageBody` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
-| `ConversationPageComposer` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
-| `ConversationPageTimeline` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
-| `DashboardPage` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
-| `DashboardPageContent` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
-| `DetailPage` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
-| `DetailPageAside` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
-| `DetailPageBody` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
-| `DetailPageMain` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `InspectorPanel` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `InspectorPanelContent` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `InspectorPanelFooter` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
@@ -376,22 +366,16 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 | `KanbanColumnHeader` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `ListRow` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `ListRows` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
-| `ListPage` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
-| `ListPageContent` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
-| `ListPageControls` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `Page` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `PageAside` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `PageBody` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `PageCanvas` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `PageComposer` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `PageControls` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `PageTimeline` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `Pagination` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `PageHeader` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `PageHeaderOverflowMenu` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
-| `RecurringDaySummary` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
-| `SettingsPage` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
-| `SettingsPageBody` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
-| `SettingsPageContent` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
-| `SettingsPageNavigation` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
-| `WorkflowPage` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
-| `WorkflowPageActions` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
-| `WorkflowPageBody` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
-| `WorkflowPageCanvas` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
-| `WorkflowPageToolbar` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `WorkspacePage` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `WorkspacePageBody` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `WorkspacePageCompactHeader` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
@@ -459,22 +443,6 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 | `SelectSettingsField` | — |
 | `SettingsField` | — |
 | `StringSettingsField` | — |
-| `ConversationPageBodyProps` | — |
-| `ConversationPageComposerProps` | — |
-| `ConversationPageMode` | — |
-| `ConversationPageProps` | — |
-| `ConversationPageTimelineProps` | — |
-| `ConversationPageWidth` | — |
-| `DashboardPageContentProps` | — |
-| `DashboardPageProps` | — |
-| `DashboardPageWidth` | — |
-| `DetailPageAsideProps` | — |
-| `DetailPageBodyProps` | — |
-| `DetailPageLayout` | — |
-| `DetailPageMainProps` | — |
-| `DetailPageProps` | — |
-| `DetailPageScroll` | — |
-| `DetailPageWidth` | — |
 | `InspectorPanelContentProps` | — |
 | `InspectorPanelFooterProps` | — |
 | `InspectorPanelHeaderProps` | — |
@@ -484,34 +452,27 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 | `KanbanColumnBodyProps` | — |
 | `KanbanColumnHeaderProps` | — |
 | `KanbanColumnProps` | — |
-| `ListPageContentProps` | — |
-| `ListPageControlsProps` | — |
-| `ListPageProps` | — |
-| `ListPageWidth` | — |
 | `ListRowProps` | — |
 | `ListRowsProps` | — |
 | `ListRowsVariant` | — |
+| `PageAsideProps` | — |
+| `PageBodyGap` | — |
+| `PageBodyLayout` | — |
+| `PageBodyProps` | — |
+| `PageCanvasOrientation` | — |
+| `PageCanvasProps` | — |
+| `PageComposerProps` | — |
+| `PageControlsAs` | — |
+| `PageControlsProps` | — |
+| `PageDensity` | — |
 | `PageHeaderMeasure` | — |
 | `PageHeaderOverflowMenuProps` | — |
 | `PageHeaderProps` | — |
+| `PageProps` | — |
+| `PageScroll` | — |
+| `PageTimelineProps` | — |
+| `PageWidth` | — |
 | `PaginationProps` | — |
-| `RecurringDaySummaryProps` | — |
-| `RecurringDaySummaryTone` | — |
-| `SettingsPageBodyProps` | — |
-| `SettingsPageContentProps` | — |
-| `SettingsPageLayout` | — |
-| `SettingsPageNavigationProps` | — |
-| `SettingsPageProps` | — |
-| `SettingsPageWidth` | — |
-| `WorkflowOrientation` | — |
-| `WorkflowPageActionsProps` | — |
-| `WorkflowPageBodyProps` | — |
-| `WorkflowPageCanvasProps` | — |
-| `WorkflowPageLayout` | — |
-| `WorkflowPageMode` | — |
-| `WorkflowPageProps` | — |
-| `WorkflowPageToolbarProps` | — |
-| `WorkflowPageWidth` | — |
 | `WorkspacePageBodyProps` | — |
 | `WorkspacePageCompactHeaderProps` | — |
 | `WorkspacePageHeaderProps` | — |
@@ -551,23 +512,32 @@ Isolated data-visualization components and contracts. Source: `packages/sdk/src/
 | --- | --- |
 | `assignSeriesColors` | `@makinbakin/sdk/charts` — opt-in, accessible data visualization. |
 | `BarChart` | `@makinbakin/sdk/charts` — opt-in, accessible data visualization. |
+| `PieChart` | `@makinbakin/sdk/charts` — opt-in, accessible data visualization. |
 | `ChartDataTable` | `@makinbakin/sdk/charts` — opt-in, accessible data visualization. |
 | `ChartExplainer` | `@makinbakin/sdk/charts` — opt-in, accessible data visualization. |
+| `CompositionBar` | `@makinbakin/sdk/charts` — opt-in, accessible data visualization. |
 | `chartSeriesColor` | `@makinbakin/sdk/charts` — opt-in, accessible data visualization. |
 | `CHART_MAX_SERIES` | `@makinbakin/sdk/charts` — opt-in, accessible data visualization. |
 | `CHART_OTHER_COLOR` | `@makinbakin/sdk/charts` — opt-in, accessible data visualization. |
 | `CHART_SERIES_COLORS` | `@makinbakin/sdk/charts` — opt-in, accessible data visualization. |
 | `CHART_TOKEN_COLORS` | `@makinbakin/sdk/charts` — opt-in, accessible data visualization. |
 | `LineChart` | `@makinbakin/sdk/charts` — opt-in, accessible data visualization. |
+| `AreaChart` | `@makinbakin/sdk/charts` — opt-in, accessible data visualization. |
 | `RankedBarChart` | `@makinbakin/sdk/charts` — opt-in, accessible data visualization. |
 | `Sparkline` | `@makinbakin/sdk/charts` — opt-in, accessible data visualization. |
 | `StackedColumnChart` | `@makinbakin/sdk/charts` — opt-in, accessible data visualization. |
 | `BarChartProps` | — |
+| `PieChartDatum` | — |
+| `PieChartProps` | — |
 | `ChartDataTableProps` | — |
+| `ChartDataTableRenderContext` | — |
 | `ChartDatum` | — |
 | `ChartExplainerProps` | — |
 | `ChartSeries` | — |
+| `CompositionBarProps` | — |
+| `CompositionBarSegment` | — |
 | `LineChartProps` | — |
+| `AreaChartProps` | — |
 | `RankedBarChartProps` | — |
 | `SparklineProps` | — |
 | `StackedColumnChartProps` | — |

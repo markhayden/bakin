@@ -4,8 +4,8 @@ import { useMemo } from 'react'
 import { RefreshCw } from 'lucide-react'
 import {
   FacetFilter,
-  ListPageContent,
-  ListPageControls,
+  PageBody,
+  PageControls,
   Pagination,
 } from '@makinbakin/sdk/patterns'
 import { Badge, Button, SystemState } from '@makinbakin/sdk/ui'
@@ -256,7 +256,7 @@ export function AvailableModelsTab({
 
   return (
     <>
-      <ListPageControls
+      <PageControls
         label="Available model controls"
         className="!flex-row !flex-wrap !items-center border-t-0 pt-0"
         actions={(
@@ -288,9 +288,9 @@ export function AvailableModelsTab({
           onChange={setProviderFilters}
           counts={providerCounts}
         />
-      </ListPageControls>
+      </PageControls>
 
-      <ListPageContent
+      <PageBody
         label="Available model results"
         busy={refreshing && modelOptions.length > 0}
         state={state}
@@ -318,7 +318,7 @@ export function AvailableModelsTab({
             onPageChange('1')
           }}
         />
-      </ListPageContent>
+      </PageBody>
     </>
   )
 }

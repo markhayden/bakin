@@ -5,9 +5,9 @@ import { usePathname, useQueryState, useRouter, useSearchParams } from '@makinba
 import {
   AgentAvatar,
   AgentFilter,
-  ListPage,
-  ListPageContent,
-  ListPageControls,
+  Page,
+  PageBody,
+  PageControls,
   PageHeader,
   Pagination,
   SearchDegradedChip,
@@ -357,7 +357,7 @@ export function SchedulePage() {
 
   return (
     <>
-      <ListPage width="full" className="h-full overflow-auto">
+      <Page scroll="contained">
       <PageHeader
         title="Schedule"
         description="Plan recurring work and see exactly when each agent, workflow, and system event will run."
@@ -396,16 +396,16 @@ export function SchedulePage() {
         )}
       />
 
-      <ListPageControls label="Schedule filters">
+      <PageControls label="Schedule filters">
         <AgentFilter
           options={agentOptions}
           value={agentFilter}
           onValueChange={setAgentFilter}
           compact
         />
-      </ListPageControls>
+      </PageControls>
 
-      <ListPageContent
+      <PageBody
         label="Scheduled jobs"
         busy={!loading && searchHook.status === 'loading'}
         feedback={pageFeedback}
@@ -458,8 +458,8 @@ export function SchedulePage() {
           <CalendarWeekly jobs={filtered} onSelectJob={openJob} />
         )}
         </div>
-      </ListPageContent>
-      </ListPage>
+      </PageBody>
+      </Page>
 
       {/* Detail drawer */}
       <JobDrawer

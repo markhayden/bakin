@@ -4,8 +4,8 @@ import { useMemo, useRef, useState } from 'react'
 import { Trash2 } from 'lucide-react'
 import {
   ConfirmDialog,
-  ListPageContent,
   ModelSelect,
+  PageBody,
   Pagination,
 } from '@makinbakin/sdk/patterns'
 import {
@@ -128,7 +128,7 @@ export function AliasesTab({
         </p>
       </div>
 
-      <ListPageContent label="Configured model aliases" busy={aliasBusy} state={state}>
+      <PageBody label="Configured model aliases" busy={aliasBusy} state={state}>
         <ul className="m-0 flex list-none flex-col gap-bakin-2 p-0" aria-label="Configured model aliases">
           {visibleEntries.map(([name, target]) => {
             const model = modelOptions.find((candidate) => candidate.id === target)
@@ -194,7 +194,7 @@ export function AliasesTab({
             onPageChange('1')
           }}
         />
-      </ListPageContent>
+      </PageBody>
 
       <ConfirmDialog
         open={pendingDelete !== null}

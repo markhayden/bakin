@@ -107,23 +107,22 @@ force it into two mobile columns from plugin code.
 
 ## List and Detail Page Recipes
 
-Use `@makinbakin/sdk/patterns` once a page is more specific than a general layout. The list and detail recipes standardize page identity, actions, responsive flow, named state boundaries, and scroll ownership without taking over application state:
+Use `@makinbakin/sdk/patterns` once a page is more specific than a general layout. `Page` is the one document-page archetype for lists, details, settings, dashboards, conversations, and workflow workspaces (`WorkspacePage` is the only other archetype). It standardizes page identity, actions, responsive flow, named state boundaries, and scroll ownership without taking over application state:
 
 | Need | Component | Contract |
 | --- | --- | --- |
 | Identify any routed page | `PageHeader` | Renders the page's single `h1`; optional navigation and eyebrow share one compact context row, while description, metadata, compact controls, and primary actions keep one order at every width. Pass secondary or destructive detail-page commands as `overflowActions`; the header reserves a circular, labelled menu at the far right of the context row. Standard descriptions use the available narrow width and may grow to half of the owned page canvas on desktop. Use `measure="wide"` only when a media/editor header should follow its primary-column breadth |
-| Build a searchable or filterable index | `ListPage` | Fills the available plugin canvas by default; use `wide` only for a deliberately bounded index |
-| Keep query controls available | `ListPageControls` | Requires an accessible region name and reflows search, filters, sorting, and peer actions without owning their values |
-| Bound list results and replacement states | `ListPageContent` | Requires an accessible region name; `state` replaces only the results and can fill the remaining page canvas, while `feedback` can remain beside stale usable content |
-| Build one resource or record page | `DetailPage` | Uses `wide` by default, `content` for a focused single-column record, or `full` for a media/editor workspace with evidenced breadth |
-| Compose detail content | `DetailPageBody`, `DetailPageMain`, and `DetailPageAside` | Choose `single` or `aside`; a named aside moves below the primary content when its container is narrow |
+| Own the page canvas | `Page` | Fills the available plugin canvas by default; `width="standard"` is the deliberate bounded content measure for a focused record or single form. `scroll="contained"` bounds the page to its owning pane so named child regions own scrolling; `density="compact"` carries the tighter workspace rhythm for graph and board surfaces |
+| Keep query controls available | `PageControls` | Requires an accessible region name; the default section mode names a wrapping search/filter region without owning its values, while `as="toolbar"` takes the ARIA toolbar contract for command rows |
+| Bound page content and replacement states | `PageBody` | The single busy/feedback/replacement-state content slot; `state` replaces only this region while page identity and navigation stay mounted, `feedback` can remain beside stale usable content, and `gap` selects the content, section, or page rhythm |
+| Compose a supporting rail | `PageBody layout="aside"` with `PageAside` | The one primary-column-plus-rail composition; the named aside moves below the primary content when its container is narrow |
 
 ```tsx
 import { useQueryState } from '@makinbakin/sdk/navigation'
 import {
-  ListPage,
-  ListPageContent,
-  ListPageControls,
+  Page,
+  PageBody,
+  PageControls,
   PageHeader,
   SearchInput,
   SegmentedControl,
@@ -136,7 +135,7 @@ export function TasksPage({ matchingTasks }: { matchingTasks: Array<{ id: string
   const [view, setView] = useQueryState('view', 'board')
 
   return (
-    <ListPage>
+    <Page>
       <PageHeader
         eyebrow="Tasks / live operations"
         title="Coordinate active work"
@@ -156,12 +155,12 @@ export function TasksPage({ matchingTasks }: { matchingTasks: Array<{ id: string
         )}
         actions={<Button>New task</Button>}
       />
-      <ListPageControls label="Task list controls">
+      <PageControls label="Task list controls">
         <Button aria-pressed={status === 'blocked'} onClick={() => setStatus('blocked')}>
           Blocked
         </Button>
-      </ListPageControls>
-      <ListPageContent
+      </PageControls>
+      <PageBody
         label="Task results"
         state={matchingTasks.length === 0 ? (
           <SystemState
@@ -172,8 +171,8 @@ export function TasksPage({ matchingTasks }: { matchingTasks: Array<{ id: string
         ) : undefined}
       >
         <ul>{matchingTasks.map((task) => <li key={task.id}>{task.title}</li>)}</ul>
-      </ListPageContent>
-    </ListPage>
+      </PageBody>
+    </Page>
   )
 }
 ```
@@ -189,17 +188,17 @@ truncate with an ellipsis behind the pattern's accessible clear action. Do not
 add or restyle the browser-native search cancel control. At narrower header
 containers, the whole toolbar stacks at the documented container breakpoint.
 Put broader facets, sorting, pagination,
-and clear-all actions in `ListPageControls` instead of crowding the header.
+and clear-all actions in `PageControls` instead of crowding the header.
 
 Production filters, search, sorting, pagination, selected tabs, and open overlays continue to use the existing query-state hooks. `useQueryState` uses replace semantics for routine view changes and batches multiple setters from one interaction; do not add local history wrappers or rebuild query strings in the recipe. Paths still identify pages. Use the existing `PluginLink` for deliberate cross-page navigation. Detail-page back actions use `useHistoryBack(fallback)` with a circular icon-only button so they return to the actual prior context:
 
 ```tsx
 import { useHistoryBack } from '@makinbakin/sdk/navigation'
+import { Stack } from '@makinbakin/sdk/layout'
 import {
-  DetailPage,
-  DetailPageAside,
-  DetailPageBody,
-  DetailPageMain,
+  Page,
+  PageAside,
+  PageBody,
   PageHeader,
 } from '@makinbakin/sdk/patterns'
 import { Button } from '@makinbakin/sdk/ui'
@@ -209,7 +208,7 @@ export function WorkflowDetail() {
   const goBack = useHistoryBack('/workflows')
 
   return (
-    <DetailPage>
+    <Page>
       <PageHeader
         navigation={(
           <Button
@@ -225,11 +224,11 @@ export function WorkflowDetail() {
         )}
         title="Launch approval"
       />
-      <DetailPageBody layout="aside">
-        <DetailPageMain>{/* Semantic detail sections */}</DetailPageMain>
-        <DetailPageAside label="Workflow context">{/* Owner, schedule, related objects */}</DetailPageAside>
-      </DetailPageBody>
-    </DetailPage>
+      <PageBody layout="aside">
+        <Stack gap="section">{/* Semantic detail sections */}</Stack>
+        <PageAside label="Workflow context">{/* Owner, schedule, related objects */}</PageAside>
+      </PageBody>
+    </Page>
   )
 }
 ```
@@ -238,11 +237,11 @@ export function WorkflowDetail() {
 
 The host owns the page's `main` landmark and vertical scroll. These recipes therefore render no nested `main`, fixed-height page pane, or vertical scroller. Put a truly wide table or canvas inside `BoundedOverflow`; do not make the entire list or detail body horizontally scrollable.
 
-For media-led detail pages, use `DetailPage width="full"` and
-`PageHeader measure="wide"` with the preview in
-`DetailPageMain` and context, enrichment, downloads, and version history in the
-named `DetailPageAside`. Version history stays in the host document scroll; do
-not introduce a nested vertical scroller merely because the history can grow.
+For media-led detail pages, use the default full `Page` canvas and
+`PageHeader measure="wide"` with the preview in the primary column and
+context, enrichment, downloads, and version history in the named `PageAside`.
+Version history stays in the host document scroll; do not introduce a nested
+vertical scroller merely because the history can grow.
 
 These are compositional recipes, not page controllers. Do not pass them fetchers, route definitions, filter schemas, resource arrays, or plugin-specific callbacks. Do not use `PageHeader` inside a dialog, drawer, or embedded slot, and do not add a second `h1` inside the page body. Domain CSS may style the actual rows or record content under the plugin's ownership root; it should not recreate the recipe's insets, heading scale, action placement, breakpoints, or state spacing.
 
@@ -272,55 +271,50 @@ placement alone; build the detail copy from the runtime's exact dispositions.
 
 ## Settings and Dashboard Page Recipes
 
-Settings and dashboards share the same `PageHeader`, state selection, and host-owned scroll contract, but they solve different hierarchy problems:
+Settings and dashboards compose the same `Page` archetype, `PageHeader`, state selection, and host-owned scroll contract, but they solve different hierarchy problems:
 
 | Need | Component | Contract |
 | --- | --- | --- |
-| Build a focused form or multi-category configuration page | `SettingsPage` | Uses `wide` by default for category navigation; choose `content` for one focused form or `full` when plugin-wide configuration should use the entire owned page canvas |
-| Arrange categories and the active form | `SettingsPageBody` | Choose `single` or `navigation`; category navigation moves above content when the container narrows |
-| Name the settings category chooser | `SettingsPageNavigation` | Requires `label` or `labelledBy`; selected category and routing remain consumer owned |
-| Bound the active settings category | `SettingsPageContent` | Requires an accessible name; `state` replaces only the active form, while `feedback` retains dirty, validation, save, or provider context |
-| Build an operational or diagnostic overview | `DashboardPage` | Uses `wide` by default; `full` is reserved for evidence-backed overview breadth |
-| Bound overview data and states | `DashboardPageContent` | Requires an accessible name; compose priority inside with `Section`, `Stack`, and `Grid` |
+| Build a focused form or multi-category configuration page | `Page` | The default full canvas suits plugin-wide configuration and category navigation; choose `width="standard"` for one focused form |
+| Arrange categories and the active form | Consumer-owned named `nav` beside `PageBody` | The category chooser is a consumer-owned `nav` with an accessible name that reflows above the active form when the container narrows; the selected category and routing remain consumer owned |
+| Bound the active settings category | `PageBody` | Give the active category's region an accessible name; `state` replaces only that region while the category navigation stays available, and `feedback` retains dirty, validation, save, or provider context |
+| Build an operational or diagnostic overview | `Page` with `PageBody gap="page"` | The named overview region uses the roomy page rhythm; compose priority inside with `Section`, `Stack`, and `Grid` |
 
 ```tsx
 import { Grid, Section } from '@makinbakin/sdk/layout'
 import {
-  DashboardPage,
-  DashboardPageContent,
+  Page,
+  PageBody,
   PageHeader,
-  SettingsPage,
-  SettingsPageBody,
-  SettingsPageContent,
-  SettingsPageNavigation,
 } from '@makinbakin/sdk/patterns'
 import { Button, Form, FormActions, SubmitButton } from '@makinbakin/sdk/ui'
 
 export function PluginSettings() {
   return (
-    <SettingsPage>
+    <Page>
       <PageHeader title="Settings" />
-      <SettingsPageBody layout="navigation">
-        <SettingsPageNavigation label="Settings categories">
+      {/* Plugin-owned responsive frame: nav beside the active category */}
+      <div className="my-plugin-settings-frame">
+        <nav aria-label="Settings categories">
           {/* Client-routed category controls */}
-        </SettingsPageNavigation>
-        <SettingsPageContent labelledBy="plugin-settings-heading">
+        </nav>
+        <PageBody labelledBy="plugin-settings-heading">
           <h2 id="plugin-settings-heading">Official plugins</h2>
           <Form>
             {/* Canonical fields and semantic sections */}
             <FormActions><SubmitButton>Save settings</SubmitButton></FormActions>
           </Form>
-        </SettingsPageContent>
-      </SettingsPageBody>
-    </SettingsPage>
+        </PageBody>
+      </div>
+    </Page>
   )
 }
 
 export function HealthOverview() {
   return (
-    <DashboardPage>
+    <Page>
       <PageHeader title="Health" actions={<Button>Run checks</Button>} />
-      <DashboardPageContent label="Health overview">
+      <PageBody gap="page" label="Health overview">
         <Section aria-labelledby="platform-pulse-heading">
           <h2 id="platform-pulse-heading">Platform pulse</h2>
           {/* Lead condition and its action */}
@@ -329,13 +323,13 @@ export function HealthOverview() {
           <Section>{/* Actionable incidents */}</Section>
           <Section>{/* Supporting context */}</Section>
         </Grid>
-      </DashboardPageContent>
-    </DashboardPage>
+      </PageBody>
+    </Page>
   )
 }
 ```
 
-Keep a settings category in query parameters when selecting it changes a meaningful, linkable view. Values, schema discovery, validation, dirty state, submission, and navigation guards stay with the consuming form and the existing router. Place category-local actions in `FormActions`; do not put routine save buttons in `PageHeader`. During submit or refresh, retain usable fields, set `busy`, and use `feedback` for durable validation or save context. Replace only `SettingsPageContent` when the active provider cannot load so other categories remain available.
+Keep a settings category in query parameters when selecting it changes a meaningful, linkable view. Values, schema discovery, validation, dirty state, submission, and navigation guards stay with the consuming form and the existing router. Place category-local actions in `FormActions`; do not put routine save buttons in `PageHeader`. During submit or refresh, retain usable fields, set `busy`, and use `feedback` for durable validation or save context. Replace only the active category's `PageBody` when its provider cannot load so other categories remain available.
 
 Keep dashboard view state such as tabs, time ranges, expanded evidence, and selected agents in the same existing query-parameter contract. The recipe does not fetch telemetry, calculate metrics, refresh checks, or prescribe one metric component. Start with the condition and action that matter most, follow with a short summary, then group supporting operational sections. Use cards only for true bounded objects; do not make every metric and section an equal-weight card.
 
@@ -360,38 +354,38 @@ Use `mode="immersive"` for mobile canvas-heavy detail and edit routes. Keep the 
 
 ## Conversation and Inspector Recipes
 
-`ConversationPage` and `InspectorPanel` establish interaction geometry before the focused conversation kit and domain-specific inspectors add behavior:
+`Page` with the timeline/composer slots and `InspectorPanel` establish interaction geometry before the focused conversation kit and domain-specific inspectors add behavior:
 
 | Need | Component | Contract |
 | --- | --- | --- |
-| Bound a routed conversation | `ConversationPage` | Uses the full host content width by default; narrower widths are reserved for deliberately reading-focused surfaces |
-| Choose scroll ownership | `ConversationPageBody` | `document` keeps host page scrolling; `contained` gives only the named timeline an internal vertical scroller |
-| Name new message announcements | `ConversationPageTimeline` | Renders a polite `log`; supply `label` or `labelledBy` and place message rendering inside |
-| Keep composition outside the log | `ConversationPageComposer` | Stable boundary for the focused conversation kit's composer and attachments |
+| Bound a routed conversation | `Page` | Uses the full host content width by default; narrower widths are reserved for deliberately reading-focused surfaces |
+| Choose scroll ownership | `Page scroll` | The default `page` keeps host page scrolling; `contained` bounds the page to its owning pane so only the named timeline gains an internal vertical scroller |
+| Name new message announcements | `PageTimeline` | Renders a polite `log`; supply `label` or `labelledBy` and place message rendering inside |
+| Keep composition outside the log | `PageComposer` | Stable boundary for the focused conversation kit's composer and attachments |
 | Compose contextual inspection | `InspectorPanel` | A named region usable beside a canvas or inside `Drawer` |
 | Preserve inspector hierarchy | `InspectorPanelHeader`, `InspectorPanelContent`, `InspectorPanelFooter` | Identity and close actions remain while only content changes state; local commit/destructive actions stay in the footer |
 
-Use `mode="document"` for ordinary chat history where the host page owns vertical scroll. Use `contained` only when a parent surface supplies a deliberate available block size and the composer must remain available; the timeline then becomes the single nested scroller. Do not add a second scrolling message wrapper. The recipe does not own message rendering, folding, tool activity, streaming transport, attachments, send behavior, or scroll-to-latest policy; compose those from the isolated conversation entrypoint described below.
+Use the default page scroll for ordinary chat history where the host page owns vertical scroll. Use `scroll="contained"` only when a parent surface supplies a deliberate available block size and the composer must remain available; the timeline then becomes the single nested scroller. Do not add a second scrolling message wrapper. The recipe does not own message rendering, folding, tool activity, streaming transport, attachments, send behavior, or scroll-to-latest policy; compose those from the isolated conversation entrypoint described below.
 
 An inspector is contextual, not a second detail page. Use `InspectorPanel` inside the existing responsive `Grid layout="main-aside"` for persistent context, or as the content hierarchy inside the existing `Drawer` when selection opens an overlay. The drawer continues to own focus, dismissal, resizing, and dirty-state confirmation. Inspector selection, open state, tabs, and expanded evidence belong in query parameters when they are meaningful linkable view state; the recipe never parses URLs.
 
-`state` on `ConversationPageBody` replaces the whole conversation work area but preserves the page header. `state` on `InspectorPanelContent` preserves inspector identity, close controls, and valid footer actions. During reconnects or refreshes, retain usable history or inspector fields with `busy` and `feedback` instead.
+`state` on the conversation's `PageBody` replaces the whole conversation work area but preserves the page header. `state` on `InspectorPanelContent` preserves inspector identity, close controls, and valid footer actions. During reconnects or refreshes, retain usable history or inspector fields with `busy` and `feedback` instead.
 
 ## Workflow and Action Recipe
 
-`WorkflowPage` defines the page hierarchy around a consumer-owned graph, board, or action workspace without adding a graph library to the base patterns bundle:
+`Page density="compact"` defines the page hierarchy around a consumer-owned graph, board, or action workspace without adding a graph library to the base patterns bundle:
 
 | Need | Component | Contract |
 | --- | --- | --- |
-| Bound a workflow workspace | `WorkflowPage` | Uses the full page canvas by default; `wide` is available for smaller action flows |
-| Choose layout and scroll ownership | `WorkflowPageBody` | `canvas` or responsive `inspector` composition; `document` host scroll by default or explicitly bounded `contained` mode |
-| Separate graph commands | `WorkflowPageToolbar` | Required accessible name for orientation, layout, zoom, palette, or other consumer-owned commands |
-| Bound the interactive graph | `WorkflowPageCanvas` | Required accessible name, keyboard-scrollable overflow boundary, and `vertical` or `horizontal` orientation metadata |
-| Keep page decisions stable | `WorkflowPageActions` | Named commit, recovery, approval, or rejection actions outside the canvas interaction model |
+| Bound a workflow workspace | `Page density="compact"` | The full page canvas with the tighter workspace rhythm; `scroll="contained"` is available for an explicitly bounded workbench |
+| Separate graph commands | `PageControls as="toolbar"` | Required accessible name for orientation, layout, zoom, palette, or other consumer-owned commands; the ARIA toolbar contract with its bottom divider |
+| Bound the interactive graph | `PageCanvas` | Required accessible name, keyboard-scrollable overflow boundary, and `vertical` or `horizontal` orientation metadata |
+| Compose a responsive inspector | `Grid layout="main-aside"` with `InspectorPanel` | The selected-node inspector rides the existing main-aside recipe beside the canvas |
+| Keep page decisions stable | Consumer-owned named `group` | Commit, recovery, approval, or rejection actions live in a labelled `role="group"` outside the canvas interaction model |
 
 Vertical is the Product Character default because most Bakin workflows progress top to bottom. Horizontal remains an explicit supported option for topologies that read better left to right. `orientation` describes the canvas to CSS, tests, and assistive tooling; the consumer must pass the same value to its node positions, handles, edge layout, minimap placement, and named movement actions. The public catalog demonstrates both options with real React Flow. `@makinbakin/sdk/patterns` does not import React Flow, calculate nodes or edges, or own graph selection, pan, zoom, connection, keyboard movement, persistence, dirty state, or auto-layout.
 
-Use `WorkflowPageToolbar` for commands that change how the graph is operated. Keep route-level actions such as save, approve, reject, retry, or delete in `WorkflowPageActions`, and keep global page actions in `PageHeader`. Pointer dragging can be supported, but every required operation needs a keyboard or named non-drag action. Put a selected-node `InspectorPanel` beside the canvas with `layout="inspector"`; use the existing `Drawer` when narrow or task-specific behavior needs an overlay. The drawer continues to own focus, dismissal, resizing, and dirty confirmation.
+Use `PageControls as="toolbar"` for commands that change how the graph is operated. Keep route-level actions such as save, approve, reject, retry, or delete in the named actions group, and keep global page actions in `PageHeader`. Pointer dragging can be supported, but every required operation needs a keyboard or named non-drag action. Put a selected-node `InspectorPanel` beside the canvas on `Grid layout="main-aside"`; use the existing `Drawer` when narrow or task-specific behavior needs an overlay. The drawer continues to own focus, dismissal, resizing, and dirty confirmation.
 
 The existing routing contract remains authoritative. Paths identify workflow pages; query parameters may identify a selected node, drawer, tab, orientation, or other meaningful linkable view state. Keep defaults clean and do not encode transient pan/zoom coordinates unless the product explicitly makes them shareable. The recipe never parses or changes URLs.
 
@@ -1297,7 +1291,7 @@ Image attachments render as lazy images and other MIME types render as named fil
 
 ## Conversation Timeline and Empty State
 
-Use `Conversation` to render ordered `ConversationTurn` objects with consistent day boundaries, identity resolution, attachments, activity, and lifecycle treatment. Its default `mode="document"` is the product default and does not create an internal vertical scroller. In a routed conversation, put it inside the one named `ConversationPageTimeline`:
+Use `Conversation` to render ordered `ConversationTurn` objects with consistent day boundaries, identity resolution, attachments, activity, and lifecycle treatment. Its default `mode="document"` is the product default and does not create an internal vertical scroller. In a routed conversation, put it inside the one named `PageTimeline`:
 
 ```tsx
 import {
@@ -1306,10 +1300,7 @@ import {
   type ConversationAgent,
   type ConversationTurn,
 } from '@makinbakin/sdk/conversation'
-import {
-  ConversationPageBody,
-  ConversationPageTimeline,
-} from '@makinbakin/sdk/patterns'
+import { PageBody, PageTimeline } from '@makinbakin/sdk/patterns'
 
 export function ReleaseConversation({
   turns,
@@ -1321,8 +1312,8 @@ export function ReleaseConversation({
   startWith: (prompt: string) => void
 }) {
   return (
-    <ConversationPageBody mode="document">
-      <ConversationPageTimeline label="Release review">
+    <PageBody gap="content">
+      <PageTimeline label="Release review">
         <Conversation
           turns={turns}
           resolveAgent={resolveAgent}
@@ -1335,26 +1326,26 @@ export function ReleaseConversation({
             />
           )}
         />
-      </ConversationPageTimeline>
-    </ConversationPageBody>
+      </PageTimeline>
+    </PageBody>
   )
 }
 ```
 
-Use `Conversation mode="contained"` only for a standalone embedded transcript whose parent supplies a real block-size boundary. That mode owns pin-to-latest behavior and shows a keyboard-operable “New messages” action after the operator scrolls away from the bottom. Do not nest it inside a contained `ConversationPageTimeline`; in that composition the page timeline is already the single scroller, so leave `Conversation` in document mode.
+Use `Conversation mode="contained"` only for a standalone embedded transcript whose parent supplies a real block-size boundary. That mode owns pin-to-latest behavior and shows a keyboard-operable “New messages” action after the operator scrolls away from the bottom. Do not nest it inside a `PageTimeline` on a contained `Page`; in that composition the page timeline is already the single scroller, so leave `Conversation` in document mode.
 
 Pass presentation-ready identity through `agent` or `resolveAgent`. The focused timeline does not read the host agent store, parse URLs, own storage, fetch history, or import a Markdown engine. Supply the existing `renderText`, `renderAvatar`, `renderAttachment`, and `formatToolSummary` integrations when needed. Suggestions render only when `onSuggestion` is present, so an empty state never presents inert controls.
 
 ## Conversation Composer and Attachments
 
-Put `Composer` inside `ConversationPageComposer`, outside the named message log. Give it a stable, opaque `storageKey` for the current thread; the component uses that key only for browser-local draft, input-history, and resize preferences. Do not put secrets in the key, and do not use it as routed or server-side conversation identity.
+Put `Composer` inside `PageComposer`, outside the named message log. Give it a stable, opaque `storageKey` for the current thread; the component uses that key only for browser-local draft, input-history, and resize preferences. Do not put secrets in the key, and do not use it as routed or server-side conversation identity.
 
 ```tsx
 import {
   Composer,
   type ComposerAttachmentItem,
 } from '@makinbakin/sdk/conversation'
-import { ConversationPageComposer } from '@makinbakin/sdk/patterns'
+import { PageComposer } from '@makinbakin/sdk/patterns'
 
 export function ReleaseComposer({
   threadId,
@@ -1374,7 +1365,7 @@ export function ReleaseComposer({
   abort: () => void
 }) {
   return (
-    <ConversationPageComposer>
+    <PageComposer>
       <Composer
         storageKey={`release:${threadId}`}
         inputLabel="Message the release agent"
@@ -1389,7 +1380,7 @@ export function ReleaseComposer({
           onRemove: removeImage,
         }}
       />
-    </ConversationPageComposer>
+    </PageComposer>
   )
 }
 ```

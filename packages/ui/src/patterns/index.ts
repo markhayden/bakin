@@ -44,67 +44,11 @@ export type {
 export { SearchInput } from './search-input'
 export type { SearchInputProps } from './search-input'
 
-export { ListPage, ListPageContent, ListPageControls } from './list-page'
-export type {
-  ListPageContentProps,
-  ListPageControlsProps,
-  ListPageProps,
-  ListPageWidth,
-} from './list-page'
-
 export { ListRow, ListRows } from './list-rows'
 export type { ListRowProps, ListRowsProps, ListRowsVariant } from './list-rows'
 
 export { Pagination } from './pagination'
 export type { PaginationProps } from './pagination'
-
-export { DetailPage, DetailPageAside, DetailPageBody, DetailPageMain } from './detail-page'
-export type {
-  DetailPageAsideProps,
-  DetailPageBodyProps,
-  DetailPageLayout,
-  DetailPageMainProps,
-  DetailPageProps,
-  DetailPageScroll,
-  DetailPageWidth,
-} from './detail-page'
-
-export {
-  SettingsPage,
-  SettingsPageBody,
-  SettingsPageContent,
-  SettingsPageNavigation,
-} from './settings-page'
-export type {
-  SettingsPageBodyProps,
-  SettingsPageContentProps,
-  SettingsPageLayout,
-  SettingsPageNavigationProps,
-  SettingsPageProps,
-  SettingsPageWidth,
-} from './settings-page'
-
-export { DashboardPage, DashboardPageContent } from './dashboard-page'
-export type {
-  DashboardPageContentProps,
-  DashboardPageProps,
-  DashboardPageWidth,
-} from './dashboard-page'
-
-export {
-  ConversationPage,
-  ConversationPageBody,
-  ConversationPageComposer,
-  ConversationPageTimeline,
-} from './conversation-page'
-export type {
-  ConversationPageBodyProps,
-  ConversationPageComposerProps,
-  ConversationPageMode,
-  ConversationPageProps,
-  ConversationPageTimelineProps,
-  ConversationPageWidth,
-} from './conversation-page'
 
 export {
   InspectorPanel,
@@ -118,25 +62,6 @@ export type {
   InspectorPanelHeaderProps,
   InspectorPanelProps,
 } from './inspector-panel'
-
-export {
-  WorkflowPage,
-  WorkflowPageActions,
-  WorkflowPageBody,
-  WorkflowPageCanvas,
-  WorkflowPageToolbar,
-} from './workflow-page'
-export type {
-  WorkflowOrientation,
-  WorkflowPageActionsProps,
-  WorkflowPageBodyProps,
-  WorkflowPageCanvasProps,
-  WorkflowPageLayout,
-  WorkflowPageMode,
-  WorkflowPageProps,
-  WorkflowPageToolbarProps,
-  WorkflowPageWidth,
-} from './workflow-page'
 
 export {
   WorkspacePage,

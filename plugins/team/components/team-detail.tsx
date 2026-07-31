@@ -6,10 +6,9 @@ import { Section } from '@makinbakin/sdk/layout'
 import { useHistoryBack, useRouter } from '@makinbakin/sdk/navigation'
 import {
   AgentAvatar,
-  DetailPage,
-  DetailPageAside,
-  DetailPageBody,
-  DetailPageMain,
+  Page,
+  PageAside,
+  PageBody,
   PageHeader,
   SaveBar,
   StatusBadge,
@@ -211,7 +210,7 @@ export function TeamDetail({ teamId }: { teamId: string }) {
   }
 
   return (
-    <DetailPage width="full">
+    <Page>
       <PageHeader
         navigation={(
           <Button type="button" variant="ghost" size="icon-sm" aria-label="Back to Team" onClick={goBack}>
@@ -234,8 +233,8 @@ export function TeamDetail({ teamId }: { teamId: string }) {
         ) : undefined}
       />
 
-      <DetailPageBody layout="aside" busy={syncing} state={bodyState}>
-        <DetailPageMain>
+      <PageBody layout="aside" busy={syncing} state={bodyState}>
+        <div className="flex min-w-0 flex-1 flex-col gap-bakin-6">
           <Section spacing="compact">
             <div className="flex min-w-0 flex-wrap items-start justify-between gap-bakin-3">
               <div className="min-w-0">
@@ -292,9 +291,9 @@ export function TeamDetail({ teamId }: { teamId: string }) {
               </AlertDescription>
             </Alert>
           ) : null}
-        </DetailPageMain>
+        </div>
 
-        <DetailPageAside label="Team members">
+        <PageAside label="Team members">
           <div>
             <h2 className="m-0 text-bakin-typography-size-title font-bakin-typography-weight-semibold text-bakin-text-primary">
               Members
@@ -356,8 +355,8 @@ export function TeamDetail({ teamId }: { teamId: string }) {
               })}
             </div>
           )}
-        </DetailPageAside>
-      </DetailPageBody>
+        </PageAside>
+      </PageBody>
 
       <SaveBar
         dirty={dirty}
@@ -372,6 +371,6 @@ export function TeamDetail({ teamId }: { teamId: string }) {
       >
         Saved context must be synced before members receive it.
       </SaveBar>
-    </DetailPage>
+    </Page>
   )
 }

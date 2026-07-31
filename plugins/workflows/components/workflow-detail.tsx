@@ -8,8 +8,8 @@ import {
   WorkspacePageBody,
   WorkspacePageCompactHeader,
   WorkspacePageHeader,
-  WorkflowPageBody,
-  WorkflowPageCanvas,
+  PageBody,
+  PageCanvas,
 } from '@makinbakin/sdk/patterns'
 import { Badge, Banner, Button, DropdownMenuItem, Skeleton, Switch, SystemState } from '@makinbakin/sdk/ui'
 import { ArrowLeft, Pencil, Trash2 } from 'lucide-react'
@@ -305,7 +305,8 @@ export function WorkflowDetail({ workflowId, onBack }: WorkflowDetailProps) {
           <PageHeader eyebrow="Workflows / detail" title="Workflow" />
         </WorkspacePageHeader>
         <WorkspacePageBody className="px-bakin-4 @md/page-shell:px-bakin-6 @xl/page-shell:px-bakin-8">
-          <WorkflowPageBody
+          <PageBody
+            gap="content"
             className="w-full"
             state={(
               <SystemState
@@ -337,7 +338,8 @@ export function WorkflowDetail({ workflowId, onBack }: WorkflowDetailProps) {
           />
         </WorkspacePageHeader>
         <WorkspacePageBody className="px-bakin-4 @md/page-shell:px-bakin-6 @xl/page-shell:px-bakin-8">
-          <WorkflowPageBody
+          <PageBody
+            gap="content"
             className="w-full"
             state={(
               <SystemState
@@ -533,8 +535,8 @@ export function WorkflowDetail({ workflowId, onBack }: WorkflowDetailProps) {
       />
 
       <WorkspacePageBody>
-        <WorkflowPageBody
-          mode="contained"
+        <PageBody
+          gap="content"
           className="w-full gap-0"
           feedback={feedback ? (
             <div className="grid gap-bakin-2 px-bakin-4 pb-bakin-4 @md/page-shell:px-bakin-6 @xl/page-shell:px-bakin-8">
@@ -542,9 +544,9 @@ export function WorkflowDetail({ workflowId, onBack }: WorkflowDetailProps) {
             </div>
           ) : undefined}
         >
-          <WorkflowPageCanvas
+          <PageCanvas
             orientation="vertical"
-            className="h-full min-h-bakin-32 overflow-hidden rounded-none border-x-0 border-y-0 @md/page-shell:border-t"
+            className="min-h-bakin-32 flex-1 overflow-hidden rounded-none border-x-0 border-y-0 @md/page-shell:border-t"
             label="Workflow graph"
           >
             <WorkflowCanvas
@@ -553,8 +555,8 @@ export function WorkflowDetail({ workflowId, onBack }: WorkflowDetailProps) {
               skillDrift={skillDrift}
               onNodeClick={handleNodeClick}
             />
-          </WorkflowPageCanvas>
-        </WorkflowPageBody>
+          </PageCanvas>
+        </PageBody>
       </WorkspacePageBody>
 
       {/* Step detail drawer */}

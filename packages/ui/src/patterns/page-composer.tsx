@@ -4,12 +4,7 @@ import { cn } from '../utils'
 
 export type PageComposerProps = React.ComponentPropsWithoutRef<'div'>
 
-/**
- * Stable, borderless composer boundary outside the timeline scroller.
- * Renamed from ConversationPageComposer; the legacy export wraps this
- * component and overrides `data-slot` (placed before the spread for exactly
- * that reason) until the migration slice removes it.
- */
+/** Stable, borderless composer boundary outside the timeline scroller. */
 export function PageComposer({ className, ...props }: PageComposerProps) {
   return (
     <div

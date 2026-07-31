@@ -7,9 +7,8 @@ import { useHistoryBack, useRouter } from '@makinbakin/sdk/navigation'
 import {
   AgentAvatar,
   ConfirmDialog,
-  DetailPage,
-  DetailPageBody,
-  DetailPageMain,
+  Page,
+  PageBody,
   PageHeader,
   StatusBadge,
 } from '@makinbakin/sdk/patterns'
@@ -150,9 +149,9 @@ export function AgentDetail({ agentId }: { agentId: string }) {
 
   if (loading) {
     return (
-      <DetailPage width="full">
+      <Page>
         <PageHeader title="Agent" eyebrow="Team / agent" />
-        <DetailPageBody
+        <PageBody
           state={(
             <SystemState
               kind="loading"
@@ -163,13 +162,13 @@ export function AgentDetail({ agentId }: { agentId: string }) {
             />
           )}
         />
-      </DetailPage>
+      </Page>
     )
   }
 
   if (!profile) {
     return (
-      <DetailPage width="full">
+      <Page>
         <PageHeader
           navigation={(
             <Button type="button" variant="ghost" size="icon-sm" onClick={goBack} aria-label="Back to agents">
@@ -179,7 +178,7 @@ export function AgentDetail({ agentId }: { agentId: string }) {
           eyebrow="Team / agent"
           title="Agent not found"
         />
-        <DetailPageBody
+        <PageBody
           state={(
             <SystemState
               kind="error"
@@ -191,7 +190,7 @@ export function AgentDetail({ agentId }: { agentId: string }) {
             />
           )}
         />
-      </DetailPage>
+      </Page>
     )
   }
 
@@ -200,7 +199,7 @@ export function AgentDetail({ agentId }: { agentId: string }) {
     : undefined
 
   return (
-    <DetailPage width="full" data-agent-detail>
+    <Page data-agent-detail>
       <PageHeader
         navigation={(
           <Button type="button" variant="ghost" size="icon-sm" onClick={goBack} aria-label="Back to agents">
@@ -307,8 +306,7 @@ export function AgentDetail({ agentId }: { agentId: string }) {
         </TabsList>
       </Tabs>
 
-      <DetailPageBody>
-        <DetailPageMain>
+      <PageBody>
           <div
             id={`agent-detail-panel-${activeTab}`}
             role="tabpanel"
@@ -344,8 +342,7 @@ export function AgentDetail({ agentId }: { agentId: string }) {
             {activeTab === 'lessons' ? <LessonsTab agentId={agentId} packageState={packageState} /> : null}
             {activeTab === 'active-context' ? <ActiveContextTab agentId={agentId} /> : null}
           </div>
-        </DetailPageMain>
-      </DetailPageBody>
+      </PageBody>
 
       <ConfirmDialog
         open={deleteOpen}
@@ -367,7 +364,7 @@ export function AgentDetail({ agentId }: { agentId: string }) {
           setDeleteError(null)
         }}
       />
-    </DetailPage>
+    </Page>
   )
 }
 

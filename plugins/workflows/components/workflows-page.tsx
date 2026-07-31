@@ -6,9 +6,9 @@ import { SearchDegradedChip, SearchPartialChip } from "@makinbakin/sdk/component
 import { Grid } from "@makinbakin/sdk/layout"
 import {
   FacetFilter,
-  ListPage,
-  ListPageContent,
-  ListPageControls,
+  Page,
+  PageBody,
+  PageControls,
   PageHeader,
   Pagination,
   SearchInput,
@@ -314,7 +314,7 @@ export function WorkflowsPage() {
 
   return (
     <>
-      <ListPage width="full" className="h-full overflow-auto">
+      <Page>
       <PageHeader
         title="Workflows"
         description="Build and manage reusable, multi-step agent processes with approvals, branching, skills, and automated handoffs."
@@ -338,7 +338,7 @@ export function WorkflowsPage() {
         actions={<Button onClick={openCreateWorkflowDialog}><Plus /> New workflow</Button>}
       />
 
-      <ListPageControls label="Workflow filters">
+      <PageControls label="Workflow filters">
         <FacetFilter
           label="Features"
           options={WORKFLOW_FEATURES}
@@ -349,9 +349,9 @@ export function WorkflowsPage() {
             setManagedPageParam('1')
           }}
         />
-      </ListPageControls>
+      </PageControls>
 
-      <ListPageContent
+      <PageBody
         label="Workflow results"
         busy={!loading && searchHook.status === 'loading'}
         feedback={searchFeedback}
@@ -381,8 +381,8 @@ export function WorkflowsPage() {
               )}
             />
           </div>
-      </ListPageContent>
-      </ListPage>
+      </PageBody>
+      </Page>
 
       <ManagedWorkflowCopyDialog
         open={createOpen}

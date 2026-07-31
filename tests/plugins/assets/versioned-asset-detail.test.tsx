@@ -138,8 +138,8 @@ describe('VersionedAssetDetail', () => {
     expect(source).toContain('Delete asset')
     expect(source).toContain('size="icon-sm"')
     expect(source).toContain('className="rounded-bakin-pill"')
-    expect(source).toContain('<DetailPageAside label="Asset context">')
-    expect(source).toContain('<DetailPage width="full"')
+    expect(source).toContain('<PageAside label="Asset context">')
+    expect(source).toContain('<Page data-testid="asset-detail">')
 
     const { VersionedAssetDetail } = await import(
       '../../../plugins/assets/components/versioned/VersionedAssetDetail'
@@ -153,7 +153,7 @@ describe('VersionedAssetDetail', () => {
       })).toBeTruthy()
     })
 
-    expect(container.querySelector('[data-archetype="detail"]')?.getAttribute('data-width')).toBe('full')
+    expect(container.querySelector('[data-archetype="page"]')?.getAttribute('data-width')).toBe('full')
     const back = screen.getByRole('button', { name: 'Back to assets' })
     expect(back.textContent).toBe('')
     expect(back.getAttribute('data-size')).toBe('icon-sm')

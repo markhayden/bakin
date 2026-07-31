@@ -4,9 +4,9 @@ import { Grid } from '@makinbakin/sdk/layout'
 import { useQueryArrayState, useQueryState } from '@makinbakin/sdk/navigation'
 import {
   FacetFilter,
-  ListPage,
-  ListPageContent,
-  ListPageControls,
+  Page,
+  PageBody,
+  PageControls,
   PageHeader,
   SearchInput,
 } from '@makinbakin/sdk/patterns'
@@ -297,7 +297,7 @@ function ExplorePageInner() {
   ) : undefined
 
   return (
-    <ListPage className="h-full overflow-auto">
+    <Page>
       <PageHeader
         title="Explore"
         description="Find and install official agents, plugins, lessons, and capabilities to extend your Bakin workspace."
@@ -343,7 +343,7 @@ function ExplorePageInner() {
         </TabsList>
       </Tabs>
 
-      <ListPageControls
+      <PageControls
         label="Catalog filters and maintenance"
         className="border-t-0 pt-0"
         actions={maintenanceActions}
@@ -356,9 +356,9 @@ function ExplorePageInner() {
             onChange={setCategories}
           />
         ) : <span className="text-bakin-typography-size-meta text-bakin-text-muted">No categories in this section</span>}
-      </ListPageControls>
+      </PageControls>
 
-      <ListPageContent
+      <PageBody
         label="Catalog results"
         busy={busyAction !== null}
         feedback={actionError ? (
@@ -396,7 +396,7 @@ function ExplorePageInner() {
             />
           ))}
         </Grid>
-      </ListPageContent>
+      </PageBody>
 
       <DetailDrawer
         entry={selected}
@@ -446,7 +446,7 @@ function ExplorePageInner() {
           refresh()
         }}
       />
-    </ListPage>
+    </Page>
   )
 }
 

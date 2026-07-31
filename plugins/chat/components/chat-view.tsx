@@ -21,7 +21,7 @@ import {
   type ConversationQueuedItem,
 } from '@makinbakin/sdk/conversation'
 import { useAgent } from '@makinbakin/sdk/hooks'
-import { AgentAvatar, ConversationPageComposer } from '@makinbakin/sdk/patterns'
+import { AgentAvatar, PageComposer } from '@makinbakin/sdk/patterns'
 import { Button, Input } from '@makinbakin/sdk/ui'
 
 import { ContextMeter, contextMeterHasContent, formatTokenCount, formatUsageCost, type ContextMeterStats } from '@makinbakin/sdk/components'
@@ -343,7 +343,7 @@ export function DraftChatView({
           <AlertTriangle className="size-4" /> {error}
         </div>
       ) : null}
-      <ConversationPageComposer className="pt-0">
+      <PageComposer className="pt-0">
         <Composer
           storageKey={`chat-draft:${agentId}`}
           placeholder={`Message ${name}…`}
@@ -375,7 +375,7 @@ export function DraftChatView({
             },
           }}
         />
-      </ConversationPageComposer>
+      </PageComposer>
     </div>
   )
 }
@@ -439,7 +439,7 @@ export function ChatView({ chatId, onChanged }: { chatId: string; onChanged: () 
         }
       />
 
-      <ConversationPageComposer className="pt-0">
+      <PageComposer className="pt-0">
         {sendError ? (
           <div className="flex items-center gap-bakin-2 px-bakin-4 pb-bakin-1 text-sm text-bakin-signal-danger">
             <AlertTriangle className="size-4" /> {sendError}
@@ -463,7 +463,7 @@ export function ChatView({ chatId, onChanged }: { chatId: string; onChanged: () 
           maxLength={CONTENT_MAX}
           attachments={attachments.composerProps}
         />
-      </ConversationPageComposer>
+      </PageComposer>
 
       <ToolCallDrawer call={openCall} open={openCall !== null} onOpenChange={(open) => !open && setOpenCall(null)} />
     </div>

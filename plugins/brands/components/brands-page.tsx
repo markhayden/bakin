@@ -7,7 +7,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Plus } from 'lucide-react'
 import { Grid } from '@makinbakin/sdk/layout'
 import { useQueryState, useRouter } from '@makinbakin/sdk/navigation'
-import { ListPage, ListPageContent, PageHeader, SearchInput } from '@makinbakin/sdk/patterns'
+import { Page, PageBody, PageHeader, SearchInput } from '@makinbakin/sdk/patterns'
 import { Badge, Banner, Button, Skeleton, SystemState } from '@makinbakin/sdk/ui'
 import { pluginFetch } from '@makinbakin/sdk/utils'
 import { BrandBuilder } from './brand-builder'
@@ -142,7 +142,7 @@ export function BrandsPage() {
   ) : undefined
 
   return (
-    <ListPage className="h-full overflow-auto">
+    <Page>
       <PageHeader
         title="Branding"
         description="Define the voice, visual identity, rules, and references agents use to keep every output on-brand."
@@ -171,7 +171,7 @@ export function BrandsPage() {
       <FromWebsiteDialog open={activeFlow === 'website'} onOpenChange={(o) => !o && setActiveFlow(null)} onCreated={flowDone} />
       <ImportBrandDialog open={activeFlow === 'import'} onOpenChange={(o) => !o && setActiveFlow(null)} onImported={flowDone} />
 
-      <ListPageContent
+      <PageBody
         label="Brand results"
         feedback={invalidFeedback}
         state={resultState}
@@ -183,7 +183,7 @@ export function BrandsPage() {
             ))}
           </Grid>
         ) : null}
-      </ListPageContent>
-    </ListPage>
+      </PageBody>
+    </Page>
   )
 }

@@ -11,12 +11,21 @@
   margin: 0;
 }
 
-.bakin-workflow-story [data-slot='workflow-page-grid'] {
-  align-items: stretch;
+.bakin-workflow-story [data-page-canvas] {
+  container-type: inline-size;
 }
 
-.bakin-workflow-story [data-workflow-canvas] {
-  container-type: inline-size;
+/* Page-level commit and recovery decisions stay outside the canvas
+   interaction model; the group boundary mirrors the toolbar divider. */
+.bakin-workflow-story__actions {
+  display: flex;
+  min-inline-size: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--bakin-layout-space-2);
+  padding-block-start: var(--bakin-layout-space-4);
+  border-block-start: 1px solid var(--bakin-color-border-subtle);
 }
 
 .bakin-workflow-story__graph-shell {
@@ -167,8 +176,8 @@
 }
 
 @media (max-width: 24rem) {
-  .bakin-workflow-story [data-slot='workflow-page-toolbar'] > *,
-  .bakin-workflow-story [data-slot='workflow-page-actions'] [data-slot='button'],
+  .bakin-workflow-story [data-slot='page-controls'] > *,
+  .bakin-workflow-story__actions [data-slot='button'],
   .bakin-workflow-story [data-slot='inspector-panel-footer'] [data-slot='button'] {
     inline-size: 100%;
   }

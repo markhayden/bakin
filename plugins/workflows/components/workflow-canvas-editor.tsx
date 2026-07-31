@@ -52,8 +52,8 @@ import {
   WorkspacePageBody,
   WorkspacePageCompactHeader,
   WorkspacePageHeader,
-  WorkflowPageBody,
-  WorkflowPageCanvas,
+  PageBody,
+  PageCanvas,
 } from '@makinbakin/sdk/patterns'
 import { useUnsavedChangesGuard } from '@makinbakin/sdk/navigation'
 import { Badge, Banner, Button, DropdownMenuItem } from '@makinbakin/sdk/ui'
@@ -1022,8 +1022,8 @@ export function WorkflowCanvasEditor({
       />
 
       <WorkspacePageBody>
-        <WorkflowPageBody
-          mode="contained"
+        <PageBody
+          gap="content"
           className="w-full gap-0"
           feedback={error ? (
             <div className="px-bakin-4 pb-bakin-4 @md/page-shell:px-bakin-6 @xl/page-shell:px-bakin-8">
@@ -1036,9 +1036,9 @@ export function WorkflowCanvasEditor({
             </div>
           ) : undefined}
         >
-          <WorkflowPageCanvas
+          <PageCanvas
             orientation="vertical"
-            className="h-full min-h-bakin-32 overflow-hidden rounded-none border-x-0 border-y-0 @md/page-shell:border-t"
+            className="min-h-bakin-32 flex-1 overflow-hidden rounded-none border-x-0 border-y-0 @md/page-shell:border-t"
             label="Workflow editor"
           >
             <div className="flex h-full min-h-0 min-w-0">
@@ -1174,8 +1174,8 @@ export function WorkflowCanvasEditor({
               />
             )}
             </div>
-          </WorkflowPageCanvas>
-        </WorkflowPageBody>
+          </PageCanvas>
+        </PageBody>
       </WorkspacePageBody>
 
       <ManagedWorkflowCopyDialog

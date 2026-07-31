@@ -13,12 +13,7 @@ type NativeAsideProps = Omit<
 
 export type PageAsideProps = NativeAsideProps & AccessibleAsideName
 
-/**
- * Named supporting context that reflows below the primary page content.
- * Renamed from DetailPageAside; the legacy export wraps this component and
- * overrides `data-slot` (placed before the spread for exactly that reason)
- * until the migration slice removes it.
- */
+/** Named supporting context that reflows below the primary page content. */
 export function PageAside({
   className,
   label,

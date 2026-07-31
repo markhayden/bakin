@@ -15,10 +15,9 @@ import {
   useUnsavedChangesGuard,
 } from '@makinbakin/sdk/navigation'
 import {
-  DetailPage,
-  DetailPageAside,
-  DetailPageBody,
-  DetailPageMain,
+  Page,
+  PageAside,
+  PageBody,
   PageHeader,
   SaveBar,
   SegmentedControl,
@@ -195,7 +194,7 @@ function BrandDocEditorInner({ brandId, kind, name }: { brandId: string; kind: s
         : undefined
 
   return (
-    <DetailPage width="full" data-brand-doc-editor>
+    <Page data-brand-doc-editor>
       <PageHeader
         measure="wide"
         navigation={(
@@ -238,11 +237,11 @@ function BrandDocEditorInner({ brandId, kind, name }: { brandId: string; kind: s
         )}
       />
 
-      <DetailPageBody
+      <PageBody
         layout={brainstormOpen ? 'aside' : 'single'}
         state={editorState}
       >
-        <DetailPageMain>
+        <div className="flex min-w-0 flex-1 flex-col gap-bakin-6">
           {state.status === 'ready' ? (
             <MarkdownEditor
               label={`${brandName} ${KIND_LABEL[kind]?.toLowerCase() ?? kind} content`}
@@ -252,13 +251,13 @@ function BrandDocEditorInner({ brandId, kind, name }: { brandId: string; kind: s
               height="viewport"
             />
           ) : null}
-        </DetailPageMain>
+        </div>
         {brainstormOpen && state.status === 'ready' ? (
-          <DetailPageAside label="Brand document brainstorm" data-brainstorm-panel>
+          <PageAside label="Brand document brainstorm" data-brainstorm-panel>
               <DocBrainstormPanel brandId={brandId} kind={kind} name={name} getDocContent={() => content} />
-          </DetailPageAside>
+          </PageAside>
         ) : null}
-      </DetailPageBody>
+      </PageBody>
 
       {state.status === 'ready' ? (
         <SaveBar
@@ -276,6 +275,6 @@ function BrandDocEditorInner({ brandId, kind, name }: { brandId: string; kind: s
         />
       ) : null}
       {unsavedGuard.dialog}
-    </DetailPage>
+    </Page>
   )
 }

@@ -891,7 +891,7 @@ test('list and detail recipes preserve page identity, state slots, and responsiv
   await test.step('detail aside reflows without creating a nested page scroller', async () => {
     await page.setViewportSize({ width: 1024, height: 900 })
     await page.goto(detailPageStory, { waitUntil: 'networkidle' })
-    const grid = page.locator('[data-slot="detail-page-grid"] [data-slot="grid"]')
+    const grid = page.locator('[data-slot="page-body-grid"] [data-slot="grid"]')
     expect((await grid.evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length))).toBe(2)
     await page.setViewportSize({ width: 320, height: 900 })
     expect((await grid.evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length))).toBe(1)
@@ -1016,12 +1016,12 @@ test('conversation and inspector recipes preserve explicit scroll, state, and ac
   await test.step('contained conversation gives only the named log an internal scroller', async () => {
     await page.setViewportSize({ width: 720, height: 900 })
     await page.goto(conversationPageStory, { waitUntil: 'networkidle' })
-    const body = page.locator('[data-slot="conversation-page-body"]')
+    const containedPage = page.locator('[data-archetype="page"][data-scroll="contained"]')
     const timeline = page.getByRole('log', { name: 'Conversation with Patch' })
-    const composer = page.locator('[data-slot="conversation-page-composer"]')
-    await expect(body).toHaveAttribute('data-mode', 'contained')
+    const composer = page.locator('[data-slot="page-composer"]')
+    await expect(containedPage).toHaveAttribute('data-scroll', 'contained')
     expect(await timeline.evaluate((element) => getComputedStyle(element).overflowY)).toBe('auto')
-    expect(await body.evaluate((element) => getComputedStyle(element).overflowY)).toBe('hidden')
+    expect(await containedPage.evaluate((element) => getComputedStyle(element).overflowY)).toBe('hidden')
     expect(await composer.evaluate((element, log) => element.contains(log as Node), await timeline.elementHandle())).toBe(false)
 
     const input = page.getByRole('textbox', { name: 'Message Patch' })
@@ -1033,7 +1033,7 @@ test('conversation and inspector recipes preserve explicit scroll, state, and ac
 
   await test.step('document conversation and unavailable inspector replace content but preserve identity and actions', async () => {
     await page.goto(conversationUnavailableStory, { waitUntil: 'networkidle' })
-    await expect(page.locator('[data-slot="conversation-page-body"]')).toHaveAttribute('data-mode', 'document')
+    await expect(page.locator('[data-archetype="page"]')).toHaveAttribute('data-scroll', 'page')
     await expect(page.getByRole('heading', { level: 1, name: 'Conversation with Patch' })).toBeVisible()
     await expect(page.getByText('Conversation history is restricted', { exact: true })).toBeVisible()
 

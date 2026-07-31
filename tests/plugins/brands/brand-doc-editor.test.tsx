@@ -178,7 +178,7 @@ describe('BrandDocEditorPage', () => {
     render(<BrandDocEditorPage />)
     await waitFor(() => expect(screen.getByLabelText('Acme guidelines content')).toBeDefined())
     expect((screen.getByLabelText('Acme guidelines content') as HTMLTextAreaElement).value).toContain('Sharp and warm')
-    expect(document.querySelector('[data-archetype="detail"][data-width="full"]')).not.toBeNull()
+    expect(document.querySelector('[data-archetype="page"][data-width="full"]')).not.toBeNull()
     expect(document.querySelector('[data-slot="page-header"]')).not.toBeNull()
     expect(document.querySelector('[data-savebar]')).toBeNull()
 
@@ -201,7 +201,7 @@ describe('BrandDocEditorPage', () => {
     expect(screen.queryByTestId('brainstorm-panel')).toBeNull()
     fireEvent.click(document.querySelector('[data-brainstorm-toggle]')!)
     await waitFor(() => expect(screen.getByTestId('brainstorm-panel')).toBeDefined())
-    expect(document.querySelector('[data-slot="detail-page-aside"]')).not.toBeNull()
+    expect(document.querySelector('[data-slot="page-aside"]')).not.toBeNull()
     await settleReact()
   })
 

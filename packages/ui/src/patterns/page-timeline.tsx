@@ -20,9 +20,7 @@ export type PageTimelineProps = NativeTimelineProps & AccessibleRegionName & {
 
 /**
  * Named conversation log; inside a contained Page it is the one page-owned
- * vertical scroller. Renamed from ConversationPageTimeline; the legacy export
- * wraps this component and overrides `data-slot` (placed before the spread
- * for exactly that reason) until the migration slice removes it.
+ * vertical scroller.
  */
 export function PageTimeline({
   className,

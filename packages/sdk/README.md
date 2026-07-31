@@ -224,31 +224,32 @@ view navigation when they belong beside the primary action; the reserved
 search slot expands without repacking the desktop header row. Longer queries
 remain intact behind an ellipsis, and the pattern supplies its own accessible
 clear action instead of a browser-dependent native cancel control.
-`ListPageControls` and `ListPageContent` keep query controls separate from the
-named result/state boundary. `DetailPageBody` composes a primary flow with an
-optional named `DetailPageAside` that reflows below it. The recipes do not own
+`Page` owns the page canvas (width measure, density, scroll ownership);
+`PageControls` and `PageBody` keep query controls separate from the named
+result/state boundary, and `PageBody layout="aside"` composes a primary flow
+with an optional named `PageAside` that reflows below it. The recipes do not own
 data or routing: keep filters, search, tabs, pagination, and overlays in the
 existing `useQueryState` contract, and use `PluginLink` for client-routed page
 navigation. The host retains the `main` landmark and vertical page scroll.
 
-Settings and overview pages also compose from the focused patterns entrypoint.
-`SettingsPageBody` supports a single form or responsive category navigation;
-the named `SettingsPageContent` owns only the active form's feedback and
-replacement-state boundary. `DashboardPageContent` names a prioritized
+Settings and overview pages also compose the same archetype. A multi-category
+settings surface keeps a consumer-owned named category `nav` beside a
+`PageBody` region so the active form owns only its own feedback and
+replacement-state boundary. A dashboard is a named `PageBody gap="page"`
 overview canvas that consumers compose with `Section`, `Stack`, and `Grid`.
 Keep settings categories and dashboard view state in the existing query-state
 contract. Values, validation, dirty state, saves, telemetry, and domain actions
 remain consumer owned; avoid equal-weight card walls and nested page scrollers.
 
-Conversation pages use `ConversationPageBody mode="document"` with host scroll
-by default. Choose `contained` only inside an explicitly bounded parent; then
-`ConversationPageTimeline` is the single named log scroller and the composer
+Conversation pages use the default `Page` document scroll. Choose
+`scroll="contained"` only inside an explicitly bounded parent; then
+`PageTimeline` is the single named log scroller and the composer
 remains outside it. Render folded turns with `Conversation` from
 `@makinbakin/sdk/conversation`; its default `document` mode avoids creating a
 second scroller inside the page recipe. `mode="contained"` is reserved for a
 standalone conversation with an explicit height boundary. `ConversationEmptyState`
 renders starter suggestions only when their callback is supplied. Put `Composer`
-inside `ConversationPageComposer`; its stable `storageKey` scopes browser-local
+inside `PageComposer`; its stable `storageKey` scopes browser-local
 draft/history/resize preferences, while the consumer owns routing, upload requests,
 object-URL cleanup, persistence, and send mutations. Attachment `acceptedTypes`
 apply consistently to picker, paste, and drop. Pending uploads hold send, `busy`
@@ -257,8 +258,9 @@ keeps typing live, and a stop control appears only when `onAbort` exists.
 or inside `Drawer`. Transport, server persistence, rich text, routing, selection,
 drawer focus, and domain mutations remain consumer owned.
 
-Workflow and action workspaces use `WorkflowPage` with a named
-`WorkflowPageToolbar`, `WorkflowPageCanvas`, and `WorkflowPageActions`.
+Workflow and action workspaces use `Page density="compact"` with a named
+`PageControls as="toolbar"`, a bounded `PageCanvas`, and a consumer-owned
+named actions group.
 Vertical is the default graph orientation; horizontal is an explicit option.
 The recipe supplies hierarchy and a bounded overflow region without importing
 React Flow or owning nodes, edges, selection, graph commands, persistence,

@@ -196,9 +196,9 @@ mock.module('@makinbakin/sdk/patterns', () => ({
       onChange={(event) => onValueChange(event.target.value)}
     />
   ),
-  ListPage: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-  ListPageControls: ({ children, actions }: { children: ReactNode; actions?: ReactNode }) => <div>{children}{actions}</div>,
-  ListPageContent: ({
+  Page: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  PageControls: ({ children, actions }: { children: ReactNode; actions?: ReactNode }) => <div>{children}{actions}</div>,
+  PageBody: ({
     children,
     feedback,
     state,

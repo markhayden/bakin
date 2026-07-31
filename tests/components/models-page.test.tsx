@@ -378,7 +378,7 @@ describe('ModelsPage component', () => {
     expect(await screen.findByText('Models')).toBeTruthy()
     expect(await screen.findByText('Patch')).toBeTruthy()
     expect(screen.getByText('Global Defaults')).toBeTruthy()
-    expect(container.querySelector('[data-archetype="settings"]')).toBeTruthy()
+    expect(container.querySelector('[data-archetype="page"]')).toBeTruthy()
     expect(screen.getByRole('tabpanel', { name: 'Agent Config' })).toBeTruthy()
     expect(availableFetchCount).toBe(1)
   })

@@ -246,7 +246,7 @@ describe('KanbanBoard — search signals', () => {
     })
 
     await waitFor(() => {
-      expect(document.querySelector('[data-archetype="list"]')).toBeTruthy()
+      expect(document.querySelector('[data-archetype="page"]')).toBeTruthy()
     })
     expect(screen.getByRole('heading', { level: 1, name: 'Tasks' })).toBeTruthy()
     expect(screen.getByRole('group', { name: 'Task search, view, and actions' })).toBeTruthy()

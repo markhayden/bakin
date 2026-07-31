@@ -51,7 +51,7 @@ describe('Team UI conformance', () => {
     expect(contents).toContain('<WorkspacePage')
     expect(contents).toContain('<WorkspacePageHeader')
     expect(contents).toContain('<WorkspacePageBody')
-    expect(contents).toContain('<WorkflowPageCanvas')
+    expect(contents).toContain('<PageCanvas')
     expect(contents).toContain('<ReactFlow')
     expect(contents).toContain('orientation="vertical"')
     expect(graphStyles).toContain('[data-bakin-plugin="team"]')
@@ -61,10 +61,10 @@ describe('Team UI conformance', () => {
   it('uses the canonical full-width detail shell, tabs, feedback, and destructive confirmation', () => {
     const contents = source('plugins/team/components/agent-detail.tsx')
 
-    expect(contents).toContain('<DetailPage width="full"')
+    expect(contents).toContain('<Page data-agent-detail')
     expect(contents).toContain('<PageHeader')
     expect(contents).toContain('<TabsList variant="underline"')
-    expect(contents).toContain('<DetailPageBody')
+    expect(contents).toContain('<PageBody')
     expect(contents).toContain('<SystemState')
     expect(contents).toContain('<ConfirmDialog')
     expect(contents).not.toMatch(/<button\b/)
@@ -106,9 +106,9 @@ describe('Team UI conformance', () => {
   it('keeps shared context on the canonical interior-page and dirty-state contracts', () => {
     const contents = source('plugins/team/components/team-detail.tsx')
 
-    expect(contents).toContain('<DetailPage width="full"')
+    expect(contents).toContain('<Page>')
     expect(contents).toContain('<PageHeader')
-    expect(contents).toContain('<DetailPageAside')
+    expect(contents).toContain('<PageAside')
     expect(contents).toContain('<SaveBar')
     expect(contents).toContain('<StatusBadge')
     expect(contents).not.toMatch(/<button\b/)

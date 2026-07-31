@@ -2,14 +2,13 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 import { useState } from 'react'
 import { expect } from 'storybook/test'
 
-import { Inline } from '@makinbakin/sdk/layout'
+import { Grid, Inline } from '@makinbakin/sdk/layout'
 import {
+  Page,
+  PageBody,
+  PageControls,
   PageHeader,
-  WorkflowPage,
-  WorkflowPageActions,
-  WorkflowPageBody,
-  WorkflowPageToolbar,
-  type WorkflowOrientation,
+  type PageCanvasOrientation,
 } from '@makinbakin/sdk/patterns'
 import { Badge, Banner, Button, SystemState } from '@makinbakin/sdk/ui'
 
@@ -23,7 +22,7 @@ const meta = {
     layout: 'fullscreen',
     docs: {
       description: {
-        component: 'WorkflowPage composes a graph-library-independent page hierarchy around a named toolbar, bounded canvas, optional inspector, stable page actions, and replacement states. Vertical is the product default; horizontal is an explicit topology option. The examples use real React Flow while data, graph behavior, persistence, drawers, and routing stay consumer-owned.',
+        component: 'Workflow scenes compose the one Page archetype at density="compact": PageControls as="toolbar" names graph commands, PageCanvas bounds the graph-library-independent canvas, an InspectorPanel rides the main-aside Grid recipe, and page-level decisions stay in a named actions group outside the canvas interaction model. Vertical is the product default; horizontal is an explicit topology option. The examples use real React Flow while data, graph behavior, persistence, drawers, and routing stay consumer-owned.',
       },
     },
     bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'overflow', 'interaction', 'system-states', 'bounded-2d', 'keyboard-non-drag', 'vertical-flow', 'horizontal-flow', 'url-state-guidance'],
@@ -37,7 +36,7 @@ function WorkflowExample({
   initialOrientation,
   review = false,
 }: {
-  initialOrientation: WorkflowOrientation
+  initialOrientation: PageCanvasOrientation
   review?: boolean
 }) {
   const [orientation, setOrientation] = useState(initialOrientation)
@@ -57,7 +56,7 @@ function WorkflowExample({
   ) : undefined
 
   return (
-    <WorkflowPage className="bakin-workflow-story">
+    <Page density="compact" className="bakin-workflow-story">
       <PageHeader
         eyebrow={review ? 'Workflow / required action' : 'Workflow / graph editor'}
         title={review ? 'Review launch publishing workflow' : 'Launch publishing workflow'}
@@ -71,35 +70,46 @@ function WorkflowExample({
         actions={<Button variant="outline">Workflow details</Button>}
       />
 
-      <WorkflowPageBody layout="inspector" feedback={feedback}>
-        <WorkflowPageToolbar label="Workflow canvas tools">
-          <Inline gap="dense" aria-label="Workflow orientation">
-            <Button
-              size="sm"
-              variant={orientation === 'vertical' ? 'secondary' : 'outline'}
-              aria-pressed={orientation === 'vertical'}
-              onClick={() => setOrientation('vertical')}
-            >
-              Vertical
-            </Button>
-            <Button
-              size="sm"
-              variant={orientation === 'horizontal' ? 'secondary' : 'outline'}
-              aria-pressed={orientation === 'horizontal'}
-              onClick={() => setOrientation('horizontal')}
-            >
-              Horizontal
-            </Button>
-          </Inline>
+      <PageControls
+        as="toolbar"
+        label="Workflow canvas tools"
+        actions={(
           <Inline gap="dense">
             <Button size="sm" variant="ghost">Auto arrange</Button>
             <Button size="sm" variant="ghost">Fit view</Button>
           </Inline>
-        </WorkflowPageToolbar>
+        )}
+      >
+        <Inline gap="dense" aria-label="Workflow orientation">
+          <Button
+            size="sm"
+            variant={orientation === 'vertical' ? 'secondary' : 'outline'}
+            aria-pressed={orientation === 'vertical'}
+            onClick={() => setOrientation('vertical')}
+          >
+            Vertical
+          </Button>
+          <Button
+            size="sm"
+            variant={orientation === 'horizontal' ? 'secondary' : 'outline'}
+            aria-pressed={orientation === 'horizontal'}
+            onClick={() => setOrientation('horizontal')}
+          >
+            Horizontal
+          </Button>
+        </Inline>
+      </PageControls>
 
-        <WorkflowStoryWorkspace orientation={orientation} />
+      <PageBody gap="content" feedback={feedback}>
+        <Grid layout="main-aside" gap="item" align="stretch">
+          <WorkflowStoryWorkspace orientation={orientation} />
+        </Grid>
 
-        <WorkflowPageActions label={review ? 'Publishing review actions' : 'Workflow changes'}>
+        <div
+          role="group"
+          aria-label={review ? 'Publishing review actions' : 'Workflow changes'}
+          className="bakin-workflow-story__actions"
+        >
           {review ? (
             <>
               <Button variant="outline" onClick={() => setOutcome('rejected')}>Return for changes</Button>
@@ -111,9 +121,9 @@ function WorkflowExample({
               <Button onClick={() => setOutcome('saved')}>Save workflow</Button>
             </>
           )}
-        </WorkflowPageActions>
-      </WorkflowPageBody>
-    </WorkflowPage>
+        </div>
+      </PageBody>
+    </Page>
   )
 }
 
@@ -149,7 +159,7 @@ export const ReviewAction = {
 
 export const WorkflowUnavailable = {
   render: () => (
-    <WorkflowPage width="wide" className="bakin-workflow-story">
+    <Page density="compact" className="bakin-workflow-story">
       <PageHeader
         eyebrow="Workflow / archived"
         title="Legacy publishing workflow"
@@ -161,7 +171,8 @@ export const WorkflowUnavailable = {
           </>
         )}
       />
-      <WorkflowPageBody
+      <PageBody
+        gap="content"
         state={(
           <SystemState
             kind="error"
@@ -171,6 +182,6 @@ export const WorkflowUnavailable = {
           />
         )}
       />
-    </WorkflowPage>
+    </Page>
   ),
 } satisfies Story

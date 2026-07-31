@@ -49,12 +49,12 @@ const gapClasses: Record<PageBodyGap, string> = {
  * `layout="aside"` is the one primary-column+rail composition. It reuses the
  * layout kit's `main-aside` Grid recipe — `@3xl` container breakpoint with a
  * `minmax(0,1.6fr) / minmax(16rem,.8fr)` split — chosen over the two other
- * shipped rails it replaces: SettingsPageBody's navigation split is a
- * leading-nav layout (not a trailing rail) and WorkflowPageBody's `@4xl`
- * inspector breakpoint only existed to protect graph canvases, which now opt
- * into density/contained handling on Page instead. `@3xl` at a 2:1 ratio with
- * a 16rem rail floor is the split every detail page already ships, and it
- * keeps PageAside's `@3xl/layout-grid` reflow behavior byte-identical.
+ * rails the retired archetypes shipped: the settings navigation split was a
+ * leading-nav layout (not a trailing rail) and the workflow `@4xl` inspector
+ * breakpoint only existed to protect graph canvases, which now opt into
+ * density/contained handling on Page instead. `@3xl` at a 2:1 ratio with a
+ * 16rem rail floor is the split every detail page already ships, and it keeps
+ * PageAside's `@3xl/layout-grid` reflow behavior byte-identical.
  */
 export function PageBody({
   busy = false,

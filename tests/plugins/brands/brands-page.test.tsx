@@ -90,7 +90,7 @@ describe('BrandsPage', () => {
     render(<BrandsPage />)
     await waitFor(() => expect(screen.getByText('Acme')).toBeDefined())
     expect(screen.getByText('Branding')).toBeDefined()
-    expect(document.querySelector('[data-archetype="list"]')).not.toBeNull()
+    expect(document.querySelector('[data-archetype="page"]')).not.toBeNull()
     const header = document.querySelector('[data-slot="page-header"]')
     const controls = header?.querySelector('[data-slot="page-header-controls"]')
     const search = controls?.querySelector(':scope > [data-slot="search-input-reserve"]')
@@ -176,7 +176,7 @@ describe('BrandsPage', () => {
     render(<BrandsPage />)
     await waitFor(() => expect(document.querySelector('[data-kind="error"]')).not.toBeNull())
     expect(screen.getByRole('button', { name: 'Try again' })).toBeDefined()
-    expect(document.querySelector('[data-kind="error"]')?.closest('[data-slot="list-page-content"]')).not.toBeNull()
+    expect(document.querySelector('[data-kind="error"]')?.closest('[data-slot="page-body"]')).not.toBeNull()
     await settleReact()
   })
 

@@ -11,9 +11,9 @@ import {
 } from '@makinbakin/sdk/navigation'
 import {
   FacetFilter,
-  ListPage,
-  ListPageContent,
-  ListPageControls,
+  Page,
+  PageBody,
+  PageControls,
   PageHeader,
   ScoreOverlay,
   SearchInput,
@@ -510,7 +510,7 @@ export function VersionedAssetGrid() {
   ) : undefined
 
   return (
-    <ListPage width="full" className="h-full overflow-auto" data-testid="assets-browser">
+    <Page data-testid="assets-browser">
       {fileInput}
       <PageHeader
         title="Assets"
@@ -544,7 +544,7 @@ export function VersionedAssetGrid() {
       {uploadError && <p className="mb-2 text-xs text-destructive">{uploadError}</p>}
       {linkTo && view !== 'trash' && <p className="mb-2 text-xs text-muted-foreground">New uploads will be linked to this task.</p>}
 
-      <ListPageControls label="Asset views and filters" data-testid="asset-filters">
+      <PageControls label="Asset views and filters" data-testid="asset-filters">
         <SegmentedControl
           ariaLabel="Asset view"
           options={viewOptions}
@@ -560,9 +560,9 @@ export function VersionedAssetGrid() {
           <FacetFilter label="Tags" options={tagOptions} selected={tagFilter} onChange={setTagFilter} counts={tagCounts} />
           </>
         ) : null}
-      </ListPageControls>
+      </PageControls>
 
-      <ListPageContent label="Asset results" busy={!loading && pending} state={collectionState}>
+      <PageBody label="Asset results" busy={!loading && pending} state={collectionState}>
       {/* Breadcrumb back to the folders view while a tag filter is active.
           Clearing the filter happens via the Tags facet; the breadcrumb is
           purely a "go back" affordance. */}
@@ -695,7 +695,7 @@ export function VersionedAssetGrid() {
           ))}
         </div>
       )}
-      </ListPageContent>
+      </PageBody>
 
       {/* Floating bulk-tag bar while assets are selected. */}
       {selected.size > 0 && (
@@ -755,6 +755,6 @@ export function VersionedAssetGrid() {
           onSaved={fetchAssets}
         />
       )}
-    </ListPage>
+    </Page>
   )
 }

@@ -23,8 +23,8 @@ import {
   WorkspacePageBody,
   WorkspacePageCompactHeader,
   WorkspacePageHeader,
-  WorkflowPageBody,
-  WorkflowPageCanvas,
+  PageBody,
+  PageCanvas,
 } from '@makinbakin/sdk/patterns'
 import {
   Alert,
@@ -308,8 +308,8 @@ export function TeamGrid() {
           )}
         />
         <WorkspacePageBody>
-          <WorkflowPageBody
-            mode="contained"
+          <PageBody
+            gap="content"
             className="flex-1"
             state={(
               <SystemState
@@ -363,8 +363,8 @@ export function TeamGrid() {
           )}
         />
         <WorkspacePageBody>
-          <WorkflowPageBody
-            mode="contained"
+          <PageBody
+            gap="content"
             className="h-full min-h-0 flex-1"
             feedback={runtimeStatus.restartNeeded ? (
               <Alert tone="attention">
@@ -385,7 +385,7 @@ export function TeamGrid() {
               </Alert>
             ) : undefined}
           >
-            <WorkflowPageCanvas
+            <PageCanvas
               data-team-graph-canvas=""
               label="Team reporting graph"
               orientation="vertical"
@@ -411,8 +411,8 @@ export function TeamGrid() {
                 />
                 <Controls showInteractive={false} />
               </ReactFlow>
-            </WorkflowPageCanvas>
-          </WorkflowPageBody>
+            </PageCanvas>
+          </PageBody>
         </WorkspacePageBody>
       </WorkspacePage>
 

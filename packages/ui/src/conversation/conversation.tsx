@@ -72,7 +72,7 @@ function ArrowDownIcon() {
 /**
  * Ordered conversation content with consistent turns and day separators.
  * It owns scrolling only in explicit `contained` mode; page recipes should
- * keep this in document mode and let `ConversationPageTimeline` own the log.
+ * keep this in document mode and let `PageTimeline` own the log.
  */
 export function Conversation({
   turns,

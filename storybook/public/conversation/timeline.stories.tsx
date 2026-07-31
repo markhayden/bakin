@@ -8,10 +8,10 @@ import {
   type ConversationTurn,
 } from '@makinbakin/sdk/conversation'
 import {
-  ConversationPage,
-  ConversationPageBody,
-  ConversationPageTimeline,
+  Page,
+  PageBody,
   PageHeader,
+  PageTimeline,
 } from '@makinbakin/sdk/patterns'
 
 import './conversation.stories.css'
@@ -24,7 +24,7 @@ const meta = {
     layout: 'fullscreen',
     docs: {
       description: {
-        component: 'Conversation renders ordered turns and day boundaries. Document scroll is the product default. Use contained mode only for an explicitly bounded standalone surface; inside ConversationPage, leave Conversation in document mode so ConversationPageTimeline remains the single named log scroller.',
+        component: 'Conversation renders ordered turns and day boundaries. Document scroll is the product default. Use contained mode only for an explicitly bounded standalone surface; inside a Page, leave Conversation in document mode so PageTimeline remains the single named log scroller.',
       },
     },
     bakinCoverage: ['desktop', 'mobile-320', 'text-200', 'long-labels', 'empty', 'keyboard', 'non-color', 'reduced-motion', 'scroll-ownership', 'dense-data'],
@@ -145,22 +145,22 @@ const containedTurns: ConversationTurn[] = Array.from({ length: 8 }, (_, index) 
 function DocumentTimelineExample() {
   return (
     <main className="bakin-conversation-story">
-      <ConversationPage width="content">
+      <Page width="standard">
         <PageHeader
           eyebrow="Conversation / product default"
           title="Review the release plan"
           description="The host document owns vertical scrolling. The named timeline supplies log semantics without introducing a second scroll region."
         />
-        <ConversationPageBody mode="document">
-          <ConversationPageTimeline label="Release plan review">
+        <PageBody gap="content">
+          <PageTimeline label="Release plan review">
             <Conversation
               turns={documentTurns}
               agent={releaseAgent}
               resolveAgent={(agentId) => agentId === releaseAgent.id ? releaseAgent : undefined}
             />
-          </ConversationPageTimeline>
-        </ConversationPageBody>
-      </ConversationPage>
+          </PageTimeline>
+        </PageBody>
+      </Page>
     </main>
   )
 }
@@ -181,7 +181,7 @@ function ContainedAndEmptyExample() {
 
   return (
     <main className="bakin-conversation-story">
-      <ConversationPage width="wide">
+      <Page>
         <PageHeader
           eyebrow="Conversation / explicit alternatives"
           title="Bounded history and a useful starting point"
@@ -219,7 +219,7 @@ function ContainedAndEmptyExample() {
             <p role="status" className="bakin-conversation-story__selection">{selection}</p>
           </section>
         </div>
-      </ConversationPage>
+      </Page>
     </main>
   )
 }

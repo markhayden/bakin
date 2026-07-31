@@ -19,7 +19,7 @@ import { writeComposerDraft } from '@makinbakin/sdk/conversation'
 import { toast, usePluginEvent } from '@makinbakin/sdk/hooks'
 import { useQueryState, useRouter } from '@makinbakin/sdk/navigation'
 import {
-  ConversationPageBody,
+  PageBody,
   PageHeader,
   SearchInput,
   WorkspacePage,
@@ -209,8 +209,8 @@ function ChatPageInner({ chatId = '', draft = false }: ChatPageProps) {
         />
       </WorkspacePageHeader>
       <WorkspacePageBody>
-        <ConversationPageBody
-          mode="contained"
+        <PageBody
+          gap="content"
           className="bg-bakin-canvas-default"
         >
           <div className="flex min-h-0 flex-1 overflow-hidden" data-chat-workspace>
@@ -266,7 +266,7 @@ function ChatPageInner({ chatId = '', draft = false }: ChatPageProps) {
               )}
             </div>
           </div>
-        </ConversationPageBody>
+        </PageBody>
       </WorkspacePageBody>
     </WorkspacePage>
   )

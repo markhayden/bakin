@@ -4,10 +4,6 @@ import { cleanup, render, screen } from '@testing-library/react'
 import '../../rtl-settle'
 
 import {
-  ConversationPageBody,
-  ConversationPageComposer,
-  ConversationPageTimeline,
-  DetailPageAside,
   Page,
   PageAside,
   PageBody,
@@ -16,7 +12,6 @@ import {
   PageControls,
   PageHeader,
   PageTimeline,
-  WorkflowPageCanvas,
 } from '@makinbakin/sdk/patterns'
 import { Button, SystemState } from '@makinbakin/sdk/ui'
 
@@ -278,54 +273,29 @@ describe('page controls', () => {
   })
 })
 
-describe('renamed unique slots and their legacy aliases', () => {
-  it('keeps PageAside behavior with the new slot name and legacy override', () => {
-    const { container } = render(
-      <>
-        <PageAside label="Workflow context">Rail</PageAside>
-        <DetailPageAside label="Detail context">Legacy rail</DetailPageAside>
-      </>,
-    )
+describe('named page slots', () => {
+  it('renders PageAside as a named complementary rail on the page-aside slot', () => {
+    const { container } = render(<PageAside label="Workflow context">Rail</PageAside>)
 
-    const renamed = container.querySelector('[data-slot="page-aside"]')
-    const legacy = container.querySelector('[data-slot="detail-page-aside"]')
-    expect(renamed?.tagName).toBe('ASIDE')
-    expect(legacy?.tagName).toBe('ASIDE')
-    expect(legacy?.className).toBe(renamed?.className ?? '')
-    expect(screen.getByRole('complementary', { name: 'Detail context' })).toBeTruthy()
+    const aside = container.querySelector('[data-slot="page-aside"]')
+    expect(aside?.tagName).toBe('ASIDE')
+    expect(aside?.className).toContain('@3xl/layout-grid:border-l')
+    expect(screen.getByRole('complementary', { name: 'Workflow context' })).toBeTruthy()
   })
 
-  it('keeps PageCanvas behavior and the legacy workflow-canvas marker', () => {
-    const { container } = render(
+  it('keeps PageCanvas a named bounded region with finite orientation metadata', () => {
+    render(
       <>
         <PageCanvas label="Workflow canvas" orientation="horizontal">Graph</PageCanvas>
-        <WorkflowPageCanvas label="Legacy canvas">Graph</WorkflowPageCanvas>
+        <PageCanvas label="Default canvas">Graph</PageCanvas>
       </>,
     )
 
-    const renamed = screen.getByRole('region', { name: 'Workflow canvas' })
-    expect(renamed.getAttribute('data-orientation')).toBe('horizontal')
-    expect(renamed.hasAttribute('data-page-canvas')).toBe(true)
-    expect(renamed.className).toContain('rounded-bakin-surface')
-    const legacy = screen.getByRole('region', { name: 'Legacy canvas' })
-    expect(legacy.getAttribute('data-orientation')).toBe('vertical')
-    expect(legacy.hasAttribute('data-workflow-canvas')).toBe(true)
-  })
-
-  it('keeps the legacy conversation timeline and composer slots byte-equivalent', () => {
-    const { container } = render(
-      <ConversationPageBody mode="contained">
-        <ConversationPageTimeline label="Conversation log"><article>Message</article></ConversationPageTimeline>
-        <ConversationPageComposer><textarea /></ConversationPageComposer>
-      </ConversationPageBody>,
-    )
-
-    const log = screen.getByRole('log', { name: 'Conversation log' })
-    expect(log.getAttribute('data-slot')).toBe('conversation-page-timeline')
-    expect(log.className).toContain('overflow-y-auto')
-    const composer = container.querySelector('[data-slot="conversation-page-composer"]')
-    expect(composer?.className).toContain('shrink-0')
-    expect(container.querySelector('[data-slot="page-timeline"]')).toBeNull()
-    expect(container.querySelector('[data-slot="page-composer"]')).toBeNull()
+    const horizontal = screen.getByRole('region', { name: 'Workflow canvas' })
+    expect(horizontal.getAttribute('data-orientation')).toBe('horizontal')
+    expect(horizontal.hasAttribute('data-page-canvas')).toBe(true)
+    expect(horizontal.className).toContain('rounded-bakin-surface')
+    const vertical = screen.getByRole('region', { name: 'Default canvas' })
+    expect(vertical.getAttribute('data-orientation')).toBe('vertical')
   })
 })

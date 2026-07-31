@@ -76,9 +76,9 @@ never sit at rest in a card — surface on hover or behind the detail view.
   dividers. Cards are reserved for genuinely bounded objects and coherent
   grouped data; nested card stacks are a defect.
 - Searchable, filterable, and repeated-object indexes use the full available
-  plugin canvas through `ListPage`. A bounded `wide` list is an explicit,
-  evidenced exception rather than a page-by-page default.
-- `ListPageContent` owns the remaining results canvas. Terminal result states
+  plugin canvas through `Page`. The bounded `width="standard"` measure is an
+  explicit, evidenced exception rather than a page-by-page default.
+- `PageBody` owns the remaining results canvas. Terminal result states
   use page scope so they center within that available height instead of
   leaving a shallow panel above an empty page.
 - Approved radii and overlay elevation come from semantic tokens. Do not
@@ -194,7 +194,7 @@ never sit at rest in a card — surface on hover or behind the detail view.
 - Content with imagery leads with the image. Reference-media cards are
   horizontal: a stable square thumbnail, bounded text, and the canonical card
   grid. Note previews clamp; machine ids are hover-reveal or detail content.
-- Media-led record pages use the full `DetailPage` workspace and a wide
+- Media-led record pages use the full `Page` canvas and a wide
   `PageHeader` measure: preview in the
   main column; core context first, quieter machine enrichment nested beneath
   it, then downloads and version history in the named aside. Growing history

@@ -4,8 +4,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { HealthIncident, HealthRepairTarget } from '@makinbakin/sdk/types'
 import { usePathname, useQueryState } from '@makinbakin/sdk/hooks'
 import {
-  DashboardPage,
-  DashboardPageContent,
+  Page,
+  PageBody,
   PageHeader,
 } from '@makinbakin/sdk/patterns'
 import { Button, Tabs, TabsList, TabsTrigger } from '@makinbakin/sdk/ui'
@@ -185,8 +185,7 @@ export function HealthPage() {
   }, [])
 
   return (
-    <DashboardPage
-      width="full"
+    <Page
       className="health-page"
       data-testid="health-page"
     >
@@ -253,7 +252,8 @@ export function HealthPage() {
           </TabsList>
         </Tabs>
 
-        <DashboardPageContent
+        <PageBody
+          gap="page"
           label={`${HEALTH_TABS.find((tab) => tab.id === activeTab)?.label ?? 'Health'} health view`}
           busy={runningChecks}
           className="pt-bakin-6"
@@ -274,8 +274,8 @@ export function HealthPage() {
             {activeTab === 'activity' && <ActivityTab />}
             {activeTab === 'system' && <SystemTab />}
           </div>
-        </DashboardPageContent>
+        </PageBody>
       </div>
-    </DashboardPage>
+    </Page>
   )
 }
