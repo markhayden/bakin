@@ -135,12 +135,18 @@ export function AgentStatus({ name, status, detail, className }: AgentStatusProp
       role="status"
       aria-label={`${name} status`}
       data-agent-status={status}
-      className={`inline-flex min-w-0 max-w-full flex-wrap items-center gap-x-bakin-2 gap-y-bakin-0 font-bakin-typography-family-ui [font-size:var(--bakin-typography-size-meta)] ${className ?? ''}`}
+      className={`inline-flex min-w-0 max-w-full items-start gap-x-bakin-2 font-bakin-typography-family-ui [font-size:var(--bakin-typography-size-meta)] ${className ?? ''}`}
     >
-      <AgentDot status={status} decorative />
-      <span className="min-w-0 truncate font-bakin-typography-weight-semibold text-bakin-text-primary">{name}</span>
-      <span className="text-bakin-text-muted">{presence[status].label}</span>
-      {detail ? <span className="basis-full break-words pl-bakin-4 text-bakin-text-muted">{detail}</span> : null}
+      {/* Signal column beside a text column: any wrapping happens inside the
+          text column, so presence and detail always share the name's left edge. */}
+      <AgentDot status={status} decorative className="mt-bakin-1" />
+      <span className="flex min-w-0 flex-col">
+        <span className="flex min-w-0 flex-wrap items-center gap-x-bakin-2">
+          <span className="min-w-0 truncate font-bakin-typography-weight-semibold text-bakin-text-primary">{name}</span>
+          <span className="text-bakin-text-muted">{presence[status].label}</span>
+        </span>
+        {detail ? <span className="break-words text-bakin-text-muted">{detail}</span> : null}
+      </span>
     </span>
   )
 }
