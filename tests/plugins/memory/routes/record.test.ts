@@ -39,7 +39,16 @@ import { recordRoute } from '../../../../plugins/memory/lib/routes/record'
 import { MemoryIndexer } from '../../../../plugins/memory/lib/indexer'
 import type { PluginContext } from '@bakin/core/plugin-types'
 
-const FIXTURE_ISO = '2026-07-01T12:00:00.000Z'
+/**
+ * Relative to now, deliberately. A hardcoded date here is a time bomb: the route
+ * resolves through `resolveIndexerOptions`, which applies the default 30-day audit
+ * retention, while the expected rows come from `new MemoryIndexer(ctx, {})` with no
+ * retention at all. A fixed fixture therefore passes only until it drifts 30 days
+ * into the past, then 404s forever — which is exactly what happened to the original
+ * '2026-07-01T12:00:00.000Z' value. One day old keeps it inside every tier's window
+ * without pinning the test to the calendar.
+ */
+const FIXTURE_ISO = new Date(Date.now() - 86_400_000).toISOString()
 const AGENT = 'chef'
 
 /** Minimal ctx: audit tier reads audit.jsonl via getBakinPaths; the

@@ -47,8 +47,11 @@ leave") inverts — 1.3.14 is not a version we can move to. `.bun-version` stays
 and is doing exactly the job it exists for. Re-evaluate on 1.3.15+ by re-running the
 matrix above **before** repinning.
 
-Follow-up: report both cases upstream (the `yoga-layout` one is reproducible without any
-Bakin code; the TLA one needs a 5-line repro).
+Filed as **#755** (yoga-layout / Ink) and **#756** (top-level await). Both carry the
+isolation matrix and a repro checklist; the upstream decision is deferred until this
+initiative lands. Note on #756: it is avoidable on our side by resolving `NativeResponse`
+lazily, but we deliberately have **not** applied that workaround — it would mask the bug
+and destroy the reproduction.
 
 **Baseline carried forward** (bun 1.3.13, happy-dom 20.11.1) — re-verified after the revert:
 - suite: 8522 pass / 9 skip / 0 fail · act warnings: 294–301 · output: 11,885 lines

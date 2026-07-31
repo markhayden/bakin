@@ -1,4 +1,20 @@
-import { describe, it, expect, spyOn } from 'bun:test'
+import { describe, it, expect, mock, spyOn } from 'bun:test'
+import { join } from 'path'
+import { tmpdir } from 'os'
+
+// The logger resolves a log directory through the content-dir facade. The file
+// transport is off under NODE_ENV=test, so nothing is written today — but the
+// isolation rule is blanket precisely so a future transport change can't quietly
+// start writing into the real ~/.bakin/logs.
+const testDir = join(tmpdir(), `bakin-test-logger-${Date.now()}`)
+const contentDirMock = () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({ home: testDir, db: join(testDir, 'bakin.db'), logs: join(testDir, 'logs') }),
+  isUsingBakinHome: () => true,
+})
+mock.module('../../src/core/content-dir', contentDirMock)
+mock.module('../../packages/core/src/content-dir', contentDirMock)
+
 import { createLogger } from '../../src/core/logger'
 
 describe('Logger', () => {
@@ -41,43 +57,60 @@ describe('Logger', () => {
     expect(log).toHaveProperty('error')
   })
 
+  /**
+   * The suite runs under BAKIN_CONSOLE_FORMAT=silent (bunfig.toml) so logger
+   * chatter doesn't bury real failures. A test asserting that the logger WRITES
+   * must therefore state the format it is testing rather than inherit the
+   * ambient one — inheriting made these four pass only by accident of the
+   * environment they happened to run in.
+   */
+  const writesToConsole = { BAKIN_CONSOLE_FORMAT: 'plain', BAKIN_LOG_LEVEL: undefined }
+
   it('logs info messages to console.log', () => {
-    const spy = spyOn(console, 'log').mockImplementation(() => {})
-    const log = createLogger('test')
-    log.info('hello world')
-    expect(spy).toHaveBeenCalledTimes(1)
-    expect(spy.mock.calls[0][0]).toContain('[INFO]')
-    expect(spy.mock.calls[0][0]).toContain('[test]')
-    expect(spy.mock.calls[0][0]).toContain('hello world')
-    spy.mockRestore()
+    withConsoleEnv(writesToConsole, () => {
+      const spy = spyOn(console, 'log').mockImplementation(() => {})
+      const log = createLogger('test')
+      log.info('hello world')
+      expect(spy).toHaveBeenCalledTimes(1)
+      expect(spy.mock.calls[0][0]).toContain('[INFO]')
+      expect(spy.mock.calls[0][0]).toContain('[test]')
+      expect(spy.mock.calls[0][0]).toContain('hello world')
+      spy.mockRestore()
+    })
   })
 
   it('logs errors to console.error', () => {
-    const spy = spyOn(console, 'error').mockImplementation(() => {})
-    const log = createLogger('test')
-    log.error('something broke', new Error('boom'))
-    expect(spy).toHaveBeenCalledTimes(1)
-    expect(spy.mock.calls[0][0]).toContain('[ERROR]')
-    expect(spy.mock.calls[0][0]).toContain('boom')
-    spy.mockRestore()
+    withConsoleEnv(writesToConsole, () => {
+      const spy = spyOn(console, 'error').mockImplementation(() => {})
+      const log = createLogger('test')
+      log.error('something broke', new Error('boom'))
+      expect(spy).toHaveBeenCalledTimes(1)
+      expect(spy.mock.calls[0][0]).toContain('[ERROR]')
+      expect(spy.mock.calls[0][0]).toContain('boom')
+      spy.mockRestore()
+    })
   })
 
   it('logs warnings to console.warn', () => {
-    const spy = spyOn(console, 'warn').mockImplementation(() => {})
-    const log = createLogger('test')
-    log.warn('careful', 'reason')
-    expect(spy).toHaveBeenCalledTimes(1)
-    expect(spy.mock.calls[0][0]).toContain('[WARN]')
-    expect(spy.mock.calls[0][0]).toContain('reason')
-    spy.mockRestore()
+    withConsoleEnv(writesToConsole, () => {
+      const spy = spyOn(console, 'warn').mockImplementation(() => {})
+      const log = createLogger('test')
+      log.warn('careful', 'reason')
+      expect(spy).toHaveBeenCalledTimes(1)
+      expect(spy.mock.calls[0][0]).toContain('[WARN]')
+      expect(spy.mock.calls[0][0]).toContain('reason')
+      spy.mockRestore()
+    })
   })
 
   it('includes data in log output', () => {
-    const spy = spyOn(console, 'log').mockImplementation(() => {})
-    const log = createLogger('test')
-    log.info('with data', { key: 'value' })
-    expect(spy.mock.calls[0][0]).toContain('"key":"value"')
-    spy.mockRestore()
+    withConsoleEnv(writesToConsole, () => {
+      const spy = spyOn(console, 'log').mockImplementation(() => {})
+      const log = createLogger('test')
+      log.info('with data', { key: 'value' })
+      expect(spy.mock.calls[0][0]).toContain('"key":"value"')
+      spy.mockRestore()
+    })
   })
 
   it('defaults to pretty output for interactive terminals', () => {

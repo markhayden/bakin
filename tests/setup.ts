@@ -17,6 +17,25 @@
 import { GlobalRegistrator } from '@happy-dom/global-registrator'
 import { mock, setSystemTime, spyOn } from 'bun:test'
 
+// ---------------------------------------------------------------------------
+// Test-run environment.
+//
+// This lives here, not in bunfig.toml: bun 1.3.13 does not read a [test.env]
+// section (probed — a var set there arrives `undefined`; NODE_ENV shows up only
+// because `bun test` sets it itself). The preload is the earliest thing that
+// actually runs.
+//
+// Logger chatter buried real failures under ~3,958 lines (1,641 from storage-db
+// alone) of an 11,885-line run. `silent` is a format the logger already supports,
+// so no logging code changes shape.
+//
+// `??=` keeps the escape hatch honest — an explicit shell value always wins:
+//   BAKIN_CONSOLE_FORMAT=pretty bun test path/to.test.ts --isolate
+// Tests that assert the logger WRITES must set the format themselves rather than
+// inherit it (see tests/core/logger.test.ts's withConsoleEnv).
+// ---------------------------------------------------------------------------
+process.env.BAKIN_CONSOLE_FORMAT ??= 'silent'
+
 GlobalRegistrator.register()
 
 // ---------------------------------------------------------------------------

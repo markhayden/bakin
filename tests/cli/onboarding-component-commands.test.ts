@@ -1,5 +1,39 @@
-import { beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { join } from 'path'
+import { tmpdir } from 'os'
 import { setupTtyCliHarness } from './helpers/tty-cli-harness'
+
+// The onboarding component modules are all mocked below, so nothing here should
+// reach a real home — but the isolation rule is blanket for a reason, and this
+// file had no guard at all.
+const testDir = join(tmpdir(), `bakin-test-onboarding-cli-${Date.now()}`)
+const contentDirMock = () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({ home: testDir, db: join(testDir, 'bakin.db') }),
+  isUsingBakinHome: () => true,
+  resetContentDir: () => {},
+})
+mock.module('../../src/core/content-dir', contentDirMock)
+mock.module('../../packages/core/src/content-dir', contentDirMock)
+
+/**
+ * These tests assert the CLI's runtime-log suppression contract, which branches on
+ * BAKIN_CONSOLE_FORMAT being UNSET (`withTtyRuntimeLogsSilenced`: an operator's
+ * explicit format always wins over --verbose). The suite as a whole runs with that
+ * var set to 'silent' (tests/setup.ts), so this file has to clear it to exercise the
+ * unset branch at all — otherwise --verbose has nothing to un-silence, and the
+ * non-verbose case would pass for the wrong reason: ambient silence rather than the
+ * code's own.
+ */
+let previousConsoleFormat: string | undefined
+beforeEach(() => {
+  previousConsoleFormat = process.env.BAKIN_CONSOLE_FORMAT
+  delete process.env.BAKIN_CONSOLE_FORMAT
+})
+afterEach(() => {
+  if (previousConsoleFormat === undefined) delete process.env.BAKIN_CONSOLE_FORMAT
+  else process.env.BAKIN_CONSOLE_FORMAT = previousConsoleFormat
+})
 
 const runtimeCheck = mock()
 
