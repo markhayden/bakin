@@ -42,6 +42,12 @@ void _toKit
 void _toSdk
 void _fromSdk
 
+// Kit selectors (the meter composes the SDK Progress primitive — #737
+// semantics ride its slots): the fill is the progress indicator, the
+// threshold tick is a track marker.
+const FILL = '[data-slot="progress-indicator"]'
+const TICK = '[data-slot="progress-marker"]'
+
 describe('ContextMeter', () => {
   it('renders fill + reading + threshold tick when everything is known', () => {
     const { container } = render(
@@ -50,9 +56,13 @@ describe('ContextMeter', () => {
     const meter = container.querySelector('[data-context-meter]')
     expect(meter).not.toBeNull()
     expect(meter!.textContent).toContain('45.3k / 272k (16%)') // 16.65 floors — never optimistic rounding
-    const fill = container.querySelector('[data-context-fill]') as HTMLElement
+    const fill = container.querySelector(FILL) as HTMLElement
     expect(fill.style.width).toBe('16%')
-    expect(container.querySelector('[data-context-tick]')).not.toBeNull()
+    // The accessible value is the same floored percent — one truth, two views.
+    const bar = container.querySelector('[role="progressbar"]') as HTMLElement
+    expect(bar.getAttribute('aria-valuenow')).toBe('16')
+    expect(bar.getAttribute('aria-label')).toBe('Context 45.3k of 272k (16%)')
+    expect(container.querySelector(TICK)).not.toBeNull()
     cleanup()
   })
 
@@ -60,7 +70,7 @@ describe('ContextMeter', () => {
     const { container } = render(
       <ContextMeter stats={{ tokens: 45_300, contextWindow: 272_000, compactionThreshold: null }} />,
     )
-    expect(container.querySelector('[data-context-tick]')).toBeNull()
+    expect(container.querySelector(TICK)).toBeNull()
     cleanup()
   })
 
@@ -68,7 +78,7 @@ describe('ContextMeter', () => {
     const highlight = render(
       <ContextMeter stats={{ tokens: 200_000, contextWindow: 272_000, compactionThreshold: null }} />,
     )
-    expect((highlight.container.querySelector('[data-context-fill]') as HTMLElement).className).toContain(
+    expect((highlight.container.querySelector(FILL) as HTMLElement).className).toContain(
       'bakin-signal-highlight',
     )
     cleanup()
@@ -76,7 +86,7 @@ describe('ContextMeter', () => {
     const danger = render(
       <ContextMeter stats={{ tokens: 250_000, contextWindow: 272_000, compactionThreshold: null }} />,
     )
-    expect((danger.container.querySelector('[data-context-fill]') as HTMLElement).className).toContain(
+    expect((danger.container.querySelector(FILL) as HTMLElement).className).toContain(
       'bakin-signal-danger',
     )
     cleanup()
@@ -88,7 +98,7 @@ describe('ContextMeter', () => {
     )
     expect(container.textContent).toContain('context 45.3k')
     expect(container.textContent).not.toContain('%')
-    expect(container.querySelector('[data-context-fill]')).toBeNull()
+    expect(container.querySelector(FILL)).toBeNull()
     cleanup()
   })
 
@@ -105,7 +115,7 @@ describe('ContextMeter', () => {
     )
     expect(container.textContent).toContain('context —')
     expect(container.textContent?.toLowerCase()).toContain('compacted')
-    expect(container.querySelector('[data-context-fill]')).toBeNull()
+    expect(container.querySelector(FILL)).toBeNull()
     cleanup()
   })
 
@@ -128,7 +138,7 @@ describe('ContextMeter', () => {
       <ContextMeter stats={{ tokens: 243_500, contextWindow: 272_000, compactionThreshold: null }} />,
     )
     // 89.5% floors to 89 — highlight, not danger.
-    expect((nearDanger.container.querySelector('[data-context-fill]') as HTMLElement).className).toContain(
+    expect((nearDanger.container.querySelector(FILL) as HTMLElement).className).toContain(
       'bakin-signal-highlight',
     )
     cleanup()
@@ -147,7 +157,17 @@ describe('ContextMeter', () => {
     const { container } = render(
       <ContextMeter stats={{ tokens: 300_000, contextWindow: 272_000, compactionThreshold: null }} />,
     )
-    expect((container.querySelector('[data-context-fill]') as HTMLElement).style.width).toBe('100%')
+    expect((container.querySelector(FILL) as HTMLElement).style.width).toBe('100%')
+    cleanup()
+  })
+
+  it('the threshold tick rides the kit marker slot at the reported position', () => {
+    const { container } = render(
+      // 255,616 / 272,000 = 93.97% → rounds to 94, capped at 99.
+      <ContextMeter stats={{ tokens: 45_300, contextWindow: 272_000, compactionThreshold: 255_616 }} />,
+    )
+    const tick = container.querySelector(TICK) as HTMLElement
+    expect(tick.style.insetInlineStart).toBe('94%')
     cleanup()
   })
 })

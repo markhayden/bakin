@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from 'bun:test'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import '../../rtl-settle'
 
-import { assignSeriesColors, CompositionBar, type CompositionBarSegment } from '@makinbakin/sdk/charts'
+import { assignSeriesColors, CHART_TONE_COLORS, CompositionBar, type CompositionBarSegment } from '@makinbakin/sdk/charts'
 
 afterEach(cleanup)
 
@@ -58,6 +58,27 @@ describe('CompositionBar', () => {
     expect(segment('zeta')).toBe(assigned.get('zeta')!)
     expect(segment('alpha')).toBe(assigned.get('alpha')!)
     expect(segment('mango')).toBe('var(--bakin-color-signal-danger)')
+  })
+
+  it('maps tones to the frozen status steps, outranking explicit colors, with a neutral fallback', () => {
+    const data: CompositionBarSegment[] = [
+      { key: 'succeeded', label: 'Succeeded', value: 18 },
+      { key: 'failed', label: 'Failed', value: 4, color: 'var(--bakin-color-signal-danger)' },
+      { key: 'canceled', label: 'Canceled', value: 2 },
+    ]
+    const { container } = render(
+      <CompositionBar
+        label="Toned outcomes"
+        data={data}
+        tones={{ succeeded: 'success', failed: 'danger' }}
+      />,
+    )
+
+    const segment = (key: string) =>
+      container.querySelector<HTMLElement>(`[data-segment-key="${key}"]`)!.style.backgroundColor
+    expect(segment('succeeded')).toBe(CHART_TONE_COLORS.success)
+    expect(segment('failed')).toBe(CHART_TONE_COLORS.danger)
+    expect(segment('canceled')).toBe(CHART_TONE_COLORS.neutral)
   })
 
   it('makes default-size segments keyboard-focusable and mirrors focus in the shared tooltip', () => {

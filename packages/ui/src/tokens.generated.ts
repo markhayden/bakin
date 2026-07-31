@@ -287,6 +287,94 @@ export const BAKIN_SEMANTIC_TOKENS = [
     "sourcePointer": "#/semantic/color/data/series/8"
   },
   {
+    "name": "semantic.color.data.status.attention",
+    "family": "Color",
+    "type": "color",
+    "visibility": "public",
+    "cssVariable": "--bakin-color-data-status-attention",
+    "cssValue": "#9c7907",
+    "tailwindVariable": "--color-bakin-data-status-attention",
+    "description": "Chart-fill step for series that mean a warning outcome; stepped away from the categorical amber slot so a status wedge never impersonates a series.",
+    "contrast": {
+      "against": "semantic.color.canvas.default",
+      "role": "non-text",
+      "ratio": 4.73,
+      "minimum": 3,
+      "standard": "WCAG AA non-text UI",
+      "status": "pass",
+      "againstCssVariable": "--bakin-color-canvas-default"
+    },
+    "source": "packages/ui/tokens/semantic.tokens.json#/semantic/color/data/status/attention",
+    "sourceUrl": "https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json",
+    "sourcePointer": "#/semantic/color/data/status/attention"
+  },
+  {
+    "name": "semantic.color.data.status.danger",
+    "family": "Color",
+    "type": "color",
+    "visibility": "public",
+    "cssVariable": "--bakin-color-data-status-danger",
+    "cssValue": "#b1353b",
+    "tailwindVariable": "--color-bakin-data-status-danger",
+    "description": "Chart-fill step for series that mean a failed outcome; validated with the success and attention steps for color-vision-deficiency separation, never a categorical slot.",
+    "contrast": {
+      "against": "semantic.color.canvas.default",
+      "role": "non-text",
+      "ratio": 3.16,
+      "minimum": 3,
+      "standard": "WCAG AA non-text UI",
+      "status": "pass",
+      "againstCssVariable": "--bakin-color-canvas-default"
+    },
+    "source": "packages/ui/tokens/semantic.tokens.json#/semantic/color/data/status/danger",
+    "sourceUrl": "https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json",
+    "sourcePointer": "#/semantic/color/data/status/danger"
+  },
+  {
+    "name": "semantic.color.data.status.neutral",
+    "family": "Color",
+    "type": "color",
+    "visibility": "public",
+    "cssVariable": "--bakin-color-data-status-neutral",
+    "cssValue": "#aeaaaa",
+    "tailwindVariable": "--color-bakin-data-status-neutral",
+    "description": "Chart-fill step for outcome series that make no good-or-bad claim (canceled, unattributed remainder).",
+    "contrast": {
+      "against": "semantic.color.canvas.default",
+      "role": "non-text",
+      "ratio": 8.38,
+      "minimum": 3,
+      "standard": "WCAG AA non-text UI",
+      "status": "pass",
+      "againstCssVariable": "--bakin-color-canvas-default"
+    },
+    "source": "packages/ui/tokens/semantic.tokens.json#/semantic/color/data/status/neutral",
+    "sourceUrl": "https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json",
+    "sourcePointer": "#/semantic/color/data/status/neutral"
+  },
+  {
+    "name": "semantic.color.data.status.success",
+    "family": "Color",
+    "type": "color",
+    "visibility": "public",
+    "cssVariable": "--bakin-color-data-status-success",
+    "cssValue": "#16b05c",
+    "tailwindVariable": "--color-bakin-data-status-success",
+    "description": "Chart-fill step for series that mean a good outcome; validated with the danger and attention steps for color-vision-deficiency separation, never a categorical slot.",
+    "contrast": {
+      "against": "semantic.color.canvas.default",
+      "role": "non-text",
+      "ratio": 6.79,
+      "minimum": 3,
+      "standard": "WCAG AA non-text UI",
+      "status": "pass",
+      "againstCssVariable": "--bakin-color-canvas-default"
+    },
+    "source": "packages/ui/tokens/semantic.tokens.json#/semantic/color/data/status/success",
+    "sourceUrl": "https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json",
+    "sourcePointer": "#/semantic/color/data/status/success"
+  },
+  {
     "name": "semantic.color.focus.ring",
     "family": "Color",
     "type": "color",

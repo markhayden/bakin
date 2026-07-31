@@ -105,6 +105,18 @@ export type {
   ModelSelectProps,
 } from './picker-patterns'
 
+/** Freeform hex/color choice: a kit swatch over the platform color dialog. */
+export { ColorInput } from '@bakin/ui'
+export type { ColorInputProps } from '@bakin/ui'
+
+/** The presentation AssetPicker composed with the assets plugin's library + upload wiring. */
+export { AssetLibraryPicker } from './asset-library-picker'
+export type { AssetLibraryAsset, AssetLibraryPickerProps } from './asset-library-picker'
+
+/** Icon for a notification channel, resolved from the workflows channel registry. */
+export { ChannelIcon, __resetChannelIconCache } from './channel-patterns'
+export type { ChannelIconChannel, ChannelIconProps } from './channel-patterns'
+
 /** Schema-driven settings form with consumer-owned persistence and feedback. */
 export { PluginSettingsRenderer } from './plugin-settings-renderer'
 export type {

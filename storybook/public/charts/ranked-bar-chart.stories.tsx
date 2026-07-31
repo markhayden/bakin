@@ -133,3 +133,47 @@ export const HighlightedSubSegment = {
     await expect(table).toHaveTextContent('Failed')
   },
 } satisfies Story
+
+const outcomeOverlayData: ChartDatum[] = [
+  { x: 'agent-runs', xLabel: 'Agent runs', values: { count: 96, failed: 8 } },
+  { x: 'mcp-tools', xLabel: 'MCP tools', values: { count: 64, failed: 0 } },
+  { x: 'rest-routes', xLabel: 'REST routes', values: { count: 41, failed: 3 } },
+]
+
+export const StatusTonedFailureOverlay = {
+  render: () => (
+    <ChartStage
+      eyebrow="Data / outcome status"
+      title="A failure overlay wears the danger status step"
+      description="The bar stays categorical — it answers which destination — while the overlay means bad and opts into the validated danger chart-fill step with tones. The status steps are validated against the muted categorical total they inset into, and the legend, accessible labels, and exact table still carry both numbers."
+    >
+      <section aria-labelledby="status-overlay-heading" className="bakin-chart-story__section">
+        <div>
+          <h2 id="status-overlay-heading">Calls by source</h2>
+          <p>Muted categorical totals · the failed portion insets in danger red.</p>
+        </div>
+        <RankedBarChart
+          data={outcomeOverlayData}
+          series={{ key: 'count', label: 'calls' }}
+          secondary={{ key: 'failed', label: 'failed' }}
+          tones={{ failed: 'danger' }}
+          label="Calls by source"
+        />
+        <ChartExplainer>Only the outcome-meaning series takes a tone; the identity series keeps its categorical slot so the ranking still reads as one system.</ChartExplainer>
+      </section>
+    </ChartStage>
+  ),
+  play: async ({ canvas, canvasElement }) => {
+    const bar = canvas.getByRole('img', { name: 'Agent runs — calls: 96, failed: 8' })
+    await expect(bar).toBeVisible()
+    const overlay = bar.querySelector<HTMLElement>('[data-series-secondary="failed"]')
+    await expect(overlay?.style.backgroundColor).toBe('var(--bakin-color-data-status-danger)')
+    const total = bar.querySelector<HTMLElement>('[data-series="count"] > span')
+    await expect(total?.style.backgroundColor).toBe('var(--bakin-color-data-series-1)')
+    await expect(canvas.getByRole('img', { name: 'MCP tools — calls: 64, failed: 0' })
+      .querySelector('[data-series-secondary]')).toBeNull()
+    const swatches = canvasElement.querySelectorAll<HTMLElement>('[aria-label="Calls by source legend"] [data-slot="chart-legend-swatch"]')
+    await expect(swatches[1]?.style.backgroundColor).toBe('var(--bakin-color-data-status-danger)')
+    await expect(canvas.getByRole('table', { name: 'Calls by source data', hidden: true })).toHaveTextContent('8')
+  },
+} satisfies Story

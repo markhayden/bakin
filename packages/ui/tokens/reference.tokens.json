@@ -161,6 +161,36 @@
             "components": [0.419608, 0.411765, 0.388235],
             "hex": "#6b6963"
           }
+        },
+        "status": {
+          "success": {
+            "$value": {
+              "colorSpace": "srgb",
+              "components": [0.086275, 0.690196, 0.360784],
+              "hex": "#16b05c"
+            }
+          },
+          "danger": {
+            "$value": {
+              "colorSpace": "srgb",
+              "components": [0.694118, 0.207843, 0.231373],
+              "hex": "#b1353b"
+            }
+          },
+          "attention": {
+            "$value": {
+              "colorSpace": "srgb",
+              "components": [0.611765, 0.47451, 0.027451],
+              "hex": "#9c7907"
+            }
+          },
+          "neutral": {
+            "$value": {
+              "colorSpace": "srgb",
+              "components": [0.682353, 0.666667, 0.666667],
+              "hex": "#aeaaaa"
+            }
+          }
         }
       },
       "overlayShadow": {

@@ -179,6 +179,28 @@
           "$description": "Low-chroma slot for categorical series folded into the visible Other group.",
           "$value": "{reference.color.data.other}",
           "$extensions": { "dev.bakin.tokens": { "contrastAgainst": "semantic.color.canvas.default", "contrastRole": "non-text" } }
+        },
+        "status": {
+          "success": {
+            "$description": "Chart-fill step for series that mean a good outcome; validated with the danger and attention steps for color-vision-deficiency separation, never a categorical slot.",
+            "$value": "{reference.color.data.status.success}",
+            "$extensions": { "dev.bakin.tokens": { "contrastAgainst": "semantic.color.canvas.default", "contrastRole": "non-text" } }
+          },
+          "danger": {
+            "$description": "Chart-fill step for series that mean a failed outcome; validated with the success and attention steps for color-vision-deficiency separation, never a categorical slot.",
+            "$value": "{reference.color.data.status.danger}",
+            "$extensions": { "dev.bakin.tokens": { "contrastAgainst": "semantic.color.canvas.default", "contrastRole": "non-text" } }
+          },
+          "attention": {
+            "$description": "Chart-fill step for series that mean a warning outcome; stepped away from the categorical amber slot so a status wedge never impersonates a series.",
+            "$value": "{reference.color.data.status.attention}",
+            "$extensions": { "dev.bakin.tokens": { "contrastAgainst": "semantic.color.canvas.default", "contrastRole": "non-text" } }
+          },
+          "neutral": {
+            "$description": "Chart-fill step for outcome series that make no good-or-bad claim (canceled, unattributed remainder).",
+            "$value": "{reference.color.data.status.neutral}",
+            "$extensions": { "dev.bakin.tokens": { "contrastAgainst": "semantic.color.canvas.default", "contrastRole": "non-text" } }
+          }
         }
       },
       "focus": {

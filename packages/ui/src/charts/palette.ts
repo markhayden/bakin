@@ -17,6 +17,34 @@ export const CHART_SERIES_COLORS = [
 /** Low-chroma slot for every entity folded into a visible “Other” group. */
 export const CHART_OTHER_COLOR = 'var(--bakin-color-data-other)'
 
+/**
+ * Vocabulary for outcome-meaning series. A series that MEANS good/bad/warning
+ * wears a status step; a series that is merely “series 4” wears a categorical
+ * slot — never both in one chart. `neutral` is the honest step for outcome
+ * series that make no good-or-bad claim (canceled, unattributed remainder).
+ */
+export type ChartTone = 'success' | 'danger' | 'attention' | 'neutral'
+
+/**
+ * Status chart-fill steps. The success/danger/attention trio is re-stepped in
+ * lightness from Bakin's status hues and frozen only after passing the dataviz
+ * palette validator on the dark chart surfaces (all-pairs CVD ΔE ≥ 8, normal
+ * ΔE ≥ 15, ≥ 3:1 contrast); the attention step is deliberately separated from
+ * the categorical amber slot. Changing any value requires re-validation — see
+ * tests/ui/charts/chart-status-tokens.test.ts.
+ */
+export const CHART_TONE_COLORS: Record<ChartTone, string> = {
+  success: 'var(--bakin-color-data-status-success)',
+  danger: 'var(--bakin-color-data-status-danger)',
+  attention: 'var(--bakin-color-data-status-attention)',
+  neutral: 'var(--bakin-color-data-status-neutral)',
+}
+
+/** Resolve one tone to its frozen status chart-fill step. */
+export function chartToneColor(tone: ChartTone): string {
+  return CHART_TONE_COLORS[tone]
+}
+
 export const CHART_MAX_SERIES = CHART_SERIES_COLORS.length
 
 /**

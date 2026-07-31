@@ -22,12 +22,12 @@ import {
   StatGroup,
   StatTile,
   StatusBadge,
+  // AssetLibraryPicker is the app-aware data adapter (library fetch +
+  // upload) — the presentation-only AssetPicker composed with the assets
+  // plugin wiring, promoted from the frozen barrel in the kit-additions batch.
+  AssetLibraryPicker,
+  ColorInput,
 } from '@makinbakin/sdk/patterns'
-// AssetPicker here is the app-aware data adapter (library fetch + upload) — it
-// exists ONLY on the frozen barrel today. Migrating it needs a focused-entrypoint
-// home for the adapter (public-API gap reported in the T6.5 sweep); the
-// presentation-only patterns AssetPicker is not a drop-in.
-import { AssetPicker } from '@makinbakin/sdk/components'
 import {
   Banner, Button, Input, Textarea, Switch, Label, Skeleton, Progress, SystemState,
   Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle,
@@ -515,12 +515,10 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
                 <div key={i} data-palette-row={i}>
                   <div className="flex items-center gap-2">
                     {/* Swatch and hex field are two views of ONE value — either edits both. */}
-                    <input
-                      type="color"
-                      aria-label={`${c.name || 'color'} swatch`}
-                      value={isHex(c.hex) ? c.hex : '#000000'}
-                      onChange={(e) => update({ ...c, hex: e.target.value })}
-                      className="h-8 w-10 shrink-0 cursor-pointer rounded-md bg-transparent"
+                    <ColorInput
+                      ariaLabel={`${c.name || 'color'} swatch`}
+                      value={c.hex}
+                      onValueChange={(hex) => update({ ...c, hex })}
                     />
                     <Input className="w-32" placeholder="Primary" aria-label="Color name" value={c.name} onChange={(e) => update({ ...c, name: e.target.value })} />
                     <Input
@@ -1353,7 +1351,7 @@ function BrandAssetsSection({
 
   return (
     <div className="flex flex-col gap-4">
-      <AssetPicker
+      <AssetLibraryPicker
         open={pickTarget !== null}
         onOpenChange={(open) => {
           if (!open) setPickTarget(null)

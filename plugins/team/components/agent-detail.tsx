@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState, type ChangeEvent } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ArrowLeft, BookOpen, Calendar, Camera, Pencil, Sparkles, Trash2 } from 'lucide-react'
 import { Section } from '@makinbakin/sdk/layout'
 import { useHistoryBack, useRouter } from '@makinbakin/sdk/navigation'
@@ -19,12 +19,13 @@ import {
   AlertTitle,
   Button,
   DropdownMenuItem,
-  Input,
+  FileInput,
   Skeleton,
   SystemState,
   Tabs,
   TabsList,
   TabsTrigger,
+  type FileInputHandle,
 } from '@makinbakin/sdk/ui'
 import {
   useAgentStore,
@@ -80,7 +81,7 @@ export function AgentDetail({ agentId }: { agentId: string }) {
   const activeTab = (TABS.some((tab) => tab.id === tabParam) ? tabParam : 'overview') as Tab
   const [loading, setLoading] = useState(true)
   const [avatarKey, setAvatarKey] = useState(0)
-  const avatarInputRef = useRef<HTMLInputElement>(null)
+  const avatarInputRef = useRef<FileInputHandle>(null)
   const availableModels = useAvailableModels()
   const [savingModel, setSavingModel] = useState(false)
   const runtimeStatus = useRuntimeStatus()
@@ -134,8 +135,8 @@ export function AgentDetail({ agentId }: { agentId: string }) {
     }
   }
 
-  const handleAvatarUpload = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
+  const handleAvatarUpload = async (files: File[]) => {
+    const file = files[0]
     if (!file) return
     const formData = new FormData()
     formData.append('avatar', file)
@@ -144,7 +145,6 @@ export function AgentDetail({ agentId }: { agentId: string }) {
       body: formData,
     })
     if (response.ok) setAvatarKey(Date.now())
-    if (avatarInputRef.current) avatarInputRef.current.value = ''
   }
 
   if (loading) {
@@ -226,7 +226,7 @@ export function AgentDetail({ agentId }: { agentId: string }) {
                 variant="ghost"
                 size="icon-sm"
                 aria-label="Change agent image"
-                onClick={() => avatarInputRef.current?.click()}
+                onClick={() => avatarInputRef.current?.open()}
                 className="absolute inset-0 size-full rounded-bakin-pill bg-bakin-canvas-default/70 opacity-0 transition-opacity group-hover/avatar:opacity-100 focus-visible:opacity-100"
               >
                 <Pencil aria-hidden="true" />
@@ -248,7 +248,7 @@ export function AgentDetail({ agentId }: { agentId: string }) {
         overflowActions={(
           <>
             <DropdownMenuItem
-              onClick={() => avatarInputRef.current?.click()}
+              onClick={() => avatarInputRef.current?.open()}
             >
               <Camera aria-hidden="true" />
               Change image
@@ -265,12 +265,11 @@ export function AgentDetail({ agentId }: { agentId: string }) {
           </>
         )}
       />
-      <Input
+      <FileInput
         ref={avatarInputRef}
-        type="file"
+        label="Change agent image"
         accept="image/jpeg,image/png,image/webp"
-        className="hidden"
-        onChange={handleAvatarUpload}
+        onFiles={(files) => void handleAvatarUpload(files)}
       />
 
       {runtimeStatus.restartNeeded ? (

@@ -21,7 +21,11 @@ import {
   Banner,
   Button,
   DropdownMenuItem,
+  FileInput,
+  Radio,
+  RadioGroup,
   SystemState,
+  type FileInputHandle,
 } from '@makinbakin/sdk/ui'
 import { ArrowLeft, Download, Pencil, Trash2, Upload, Loader2, X } from 'lucide-react'
 import { AssetMetaSummary, AssetThumb } from './atoms'
@@ -49,7 +53,7 @@ export function VersionedAssetDetail() {
   const [lightbox, setLightbox] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
   const [selectedVersion, setSelectedVersion] = useState<number | null>(null)
-  const versionInputRef = useRef<HTMLInputElement | null>(null)
+  const versionInputRef = useRef<FileInputHandle | null>(null)
 
   const fetchManifest = useCallback(() => {
     fetch(`${VERSIONED_API}/${encodeURIComponent(assetId)}`)
@@ -72,8 +76,8 @@ export function VersionedAssetDetail() {
     method: 'DELETE',
   }).then(fetchManifest)
 
-  const addVersion = useCallback(async (files: FileList | null) => {
-    if (!files || files.length === 0) return
+  const addVersion = useCallback(async (files: File[]) => {
+    if (files.length === 0) return
     setAddingVersion(true)
     setVersionError(null)
     try {
@@ -89,7 +93,6 @@ export function VersionedAssetDetail() {
       setVersionError(err instanceof Error ? err.message : 'Upload failed')
     } finally {
       setAddingVersion(false)
-      if (versionInputRef.current) versionInputRef.current.value = ''
     }
   }, [assetId, fetchManifest])
 
@@ -216,13 +219,10 @@ export function VersionedAssetDetail() {
 
   return (
     <Page data-testid="asset-detail">
-      <input
+      <FileInput
         ref={versionInputRef}
-        type="file"
-        className="hidden"
-        aria-label="Add version"
-        data-testid="add-version-input"
-        onChange={(e) => addVersion(e.target.files)}
+        label="Add version"
+        onFiles={(files) => void addVersion(files)}
       />
 
       <PageHeader
@@ -260,7 +260,7 @@ export function VersionedAssetDetail() {
         overflowActions={(
           <>
             <DropdownMenuItem
-              onClick={() => versionInputRef.current?.click()}
+              onClick={() => versionInputRef.current?.open()}
               disabled={addingVersion}
               data-testid="add-version"
             >
@@ -476,17 +476,24 @@ export function VersionedAssetDetail() {
         title="Delete asset"
         description={manifest.versions.length > 1 ? (
           // DialogDescription renders a <p>, so the radio group stays phrasing
-          // content: <span>/<label>/<input> only, no block elements.
-          <span className="flex flex-col gap-2 text-sm text-bakin-text-primary" data-testid="delete-dialog">
-            <label className="flex items-center gap-2">
-              <input type="radio" name="scope" checked={deleteScope === 'asset'} onChange={() => setDeleteScope('asset')} data-testid="scope-asset" />
+          // content: RadioGroup renders as a <span>, Radio is span-based.
+          <RadioGroup
+            render={<span />}
+            aria-label="Delete scope"
+            value={deleteScope}
+            onValueChange={(scope) => setDeleteScope(scope as 'asset' | 'current')}
+            className="text-bakin-typography-size-body text-bakin-text-primary"
+            data-testid="delete-dialog"
+          >
+            <label className="flex items-center gap-bakin-2">
+              <Radio value="asset" data-testid="scope-asset" />
               Delete whole asset (all {manifest.versions.length} versions)
             </label>
-            <label className="flex items-center gap-2">
-              <input type="radio" name="scope" checked={deleteScope === 'current'} onChange={() => setDeleteScope('current')} data-testid="scope-current" />
+            <label className="flex items-center gap-bakin-2">
+              <Radio value="current" data-testid="scope-current" />
               Just delete the current version (v{manifest.currentVersion})
             </label>
-          </span>
+          </RadioGroup>
         ) : 'Delete this asset?'}
         busy={deleting}
         busyLabel="Deleting..."

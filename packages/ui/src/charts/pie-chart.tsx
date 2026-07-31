@@ -5,7 +5,7 @@ import { useId, useMemo, useState } from 'react'
 import { BoundedOverflow } from '../layout/bounded-overflow'
 import { ChartDataTable, type ChartDatum, type ChartSeries } from './chart-data-table'
 import { ChartTooltip } from './chart-tooltip'
-import { assignSeriesColors, CHART_OTHER_COLOR } from './palette'
+import { assignSeriesColors, CHART_OTHER_COLOR, chartToneColor, type ChartTone } from './palette'
 
 export interface PieChartDatum {
   /** Stable entity key; the palette slot follows this key, never the value. */
@@ -23,6 +23,15 @@ export interface PieChartProps {
   donut?: boolean
   formatValue?: (value: number) => string
   emptyLabel?: string
+  /**
+   * Opt-in status mode for outcome charts: maps entity key → tone, and every
+   * slice wears the validated status chart-fill step for its tone instead of
+   * a categorical slot. A rendered key without an entry falls back explicitly
+   * to `neutral` — never to a categorical color and never to a status it did
+   * not claim. Omit for categorical charts; behavior without `tones` is
+   * unchanged. Status and categorical fills never mix in one ring.
+   */
+  tones?: Readonly<Record<string, ChartTone>>
   /** Disable only when an equivalent exact table is rendered beside the chart. */
   showDataTable?: boolean
   /** Collapse the exact-data table behind its disclosure for space-tight contexts. */
@@ -127,13 +136,22 @@ export function formatPieShare(fraction: number): string {
  * entity set, and slices beyond the cap — the smallest by value, plus any
  * entity beyond the palette's stable slots — fold into one Other slice.
  * Rendered slices keep the caller's data order; they are never reordered
- * by value.
+ * by value. With `tones`, every slice wears its status chart-fill step
+ * (unmapped keys explicitly fall back to `neutral`) and the palette's
+ * stable-slot cap no longer forces a fold — the slice cap still does.
  */
-export function buildPieModel(data: readonly PieChartDatum[]): PieModel {
+export function buildPieModel(
+  data: readonly PieChartDatum[],
+  tones?: Readonly<Record<string, ChartTone>>,
+): PieModel {
   if (data.some((datum) => Number.isFinite(datum.value) && datum.value < 0)) {
     return { slices: [], total: 0, hasNegative: true }
   }
-  const colors = assignSeriesColors(data.map((datum) => datum.key))
+  const colors = tones ? null : assignSeriesColors(data.map((datum) => datum.key))
+  const sliceColor = (key: string): string =>
+    colors ? colors.get(key)! : chartToneColor(tones?.[key] ?? 'neutral')
+  const beyondStableSlots = (key: string): boolean =>
+    colors !== null && colors.get(key) === CHART_OTHER_COLOR
   const visible = data.filter((datum) => Number.isFinite(datum.value) && datum.value > 0)
   const keptCount = visible.length > PIE_MAX_SLICES ? PIE_MAX_SLICES - 1 : visible.length
   const rankedKeys = new Set(
@@ -144,10 +162,10 @@ export function buildPieModel(data: readonly PieChartDatum[]): PieModel {
       .map(({ datum }) => datum.key),
   )
   const kept = visible.filter(
-    (datum) => rankedKeys.has(datum.key) && colors.get(datum.key) !== CHART_OTHER_COLOR,
+    (datum) => rankedKeys.has(datum.key) && !beyondStableSlots(datum.key),
   )
   const folded = visible.filter(
-    (datum) => !rankedKeys.has(datum.key) || colors.get(datum.key) === CHART_OTHER_COLOR,
+    (datum) => !rankedKeys.has(datum.key) || beyondStableSlots(datum.key),
   )
   const total = visible.reduce((sum, datum) => sum + datum.value, 0)
 
@@ -155,7 +173,7 @@ export function buildPieModel(data: readonly PieChartDatum[]): PieModel {
     key: datum.key,
     label: datum.label,
     value: datum.value,
-    color: colors.get(datum.key)!,
+    color: sliceColor(datum.key),
     isOther: false,
   }))
   if (folded.length > 0) {
@@ -200,12 +218,13 @@ export function PieChart({
   donut = false,
   formatValue = (value) => value.toLocaleString(),
   emptyLabel = 'No reported data in this window.',
+  tones,
   showDataTable = true,
   compactData = false,
 }: PieChartProps) {
   const tooltipId = useId()
   const [active, setActive] = useState<ActiveSlice | null>(null)
-  const model = useMemo(() => buildPieModel(data), [data])
+  const model = useMemo(() => buildPieModel(data, tones), [data, tones])
   const tableData = useMemo<ChartDatum[]>(
     () => data.map((datum) => {
       const values: Record<string, number> = {}

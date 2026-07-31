@@ -25,15 +25,31 @@ describe('public asset, model, and color picker patterns', () => {
     expect(pickers).not.toMatch(/(?:bg|text|border)-(?:red|yellow|green|blue|gray|zinc|slate)-/)
   })
 
-  it('retains endpoints, upload mechanics, and catalog compatibility only in root adapters', () => {
+  it('publishes the library-connected adapter as AssetLibraryPicker (kit-additions batch)', () => {
+    const patterns = read('packages/sdk/src/patterns/index.ts')
+    const adapter = read('packages/sdk/src/patterns/asset-library-picker.tsx')
+
+    // The data wiring has ONE home: the documented focused export. It
+    // composes the presentation AssetPicker and owns the default endpoints.
+    expect(patterns).toContain('AssetLibraryPicker')
+    expect(adapter).toContain("fetch('/api/plugins/assets/versioned')")
+    expect(adapter).toContain("fetch('/api/plugins/assets/upload'")
+    expect(adapter).toContain("from './picker-patterns'")
+    // Overridable sources keep stories/tests endpoint-free.
+    expect(adapter).toContain('loadAssets')
+    expect(adapter).toContain('uploadAsset')
+  })
+
+  it('retains catalog compatibility only in root adapters; the frozen asset adapter is a re-export', () => {
     const asset = read('src/components/asset-picker.tsx')
     const model = read('src/components/model-select.tsx')
     const color = read('src/components/color-picker.tsx')
 
+    // The frozen-barrel adapter keeps its historical names but no longer
+    // duplicates the wiring — it aliases the focused AssetLibraryPicker.
     expect(asset).toContain("from '@makinbakin/sdk/patterns'")
-    expect(asset).toContain("fetch('/api/plugins/assets/versioned')")
-    expect(asset).toContain("fetch('/api/plugins/assets/upload'")
-    expect(asset).toContain('useFileDrop')
+    expect(asset).toContain('AssetLibraryPicker as AssetPicker')
+    expect(asset).not.toMatch(/fetch\(/)
     expect(model).toContain("from '@makinbakin/sdk/patterns'")
     expect(model).toContain('AvailableModel')
     expect(color).toContain("from '@makinbakin/sdk/patterns'")

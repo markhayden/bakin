@@ -129,6 +129,7 @@ export function ActivityBreakdown({
             data={breakdownChartData(destinations, true)}
             series={{ key: 'count', label: 'calls' }}
             secondary={{ key: 'errors', label: 'failed' }}
+            tones={{ errors: 'danger' }}
             label="Top destinations"
             formatValue={(value) => value.toLocaleString()}
             emptyLabel="No destinations were recorded in this window."
@@ -166,6 +167,7 @@ export function ActivityBreakdown({
             data={breakdownChartData(agents, false)}
             series={{ key: 'count', label: 'calls' }}
             secondary={{ key: 'errors', label: 'failed' }}
+            tones={{ errors: 'danger' }}
             label="Busiest agents"
             formatValue={(value) => value.toLocaleString()}
             emptyLabel="No agent-attributed activity in this window."

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { ChevronRight, Upload, X } from 'lucide-react'
 import { useAvailableModels } from '@makinbakin/sdk/hooks'
 import { AgentAvatar, ModelSelect } from '@makinbakin/sdk/patterns'
@@ -14,6 +14,7 @@ import {
   FieldDescription,
   FieldGroup,
   FieldLabel,
+  FileInput,
   Form,
   FormActions,
   Input,
@@ -63,7 +64,6 @@ export function AgentForm({
   const [teams, setTeams] = useState<Array<{ id: string; label: string }>>([])
   const [avatarFile, setAvatarFile] = useState<File | null>(null)
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
-  const fileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (!availableModels.length) return
@@ -90,8 +90,8 @@ export function AgentForm({
     setId(value.toLowerCase().replace(/[^a-z0-9-]/g, ''))
   }
 
-  const handleAvatarChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
+  const handleAvatarFiles = (files: File[]) => {
+    const file = files[0]
     if (!file) return
     setAvatarFile(file)
     const reader = new FileReader()
@@ -102,7 +102,6 @@ export function AgentForm({
   const clearAvatar = () => {
     setAvatarFile(null)
     setAvatarPreview(null)
-    if (fileRef.current) fileRef.current.value = ''
   }
 
   const valid = name.trim().length > 0 && id.trim().length > 0
@@ -133,10 +132,14 @@ export function AgentForm({
             decorative
           />
           <div className="flex min-w-0 flex-wrap items-center gap-bakin-2">
-            <Button type="button" variant="outline" size="sm" onClick={() => fileRef.current?.click()}>
+            <FileInput
+              label="Profile image"
+              accept="image/jpeg,image/png,image/webp"
+              onFiles={handleAvatarFiles}
+            >
               <Upload aria-hidden="true" />
               {avatarPreview ? 'Replace image' : 'Choose image'}
-            </Button>
+            </FileInput>
             {avatarPreview ? (
               <Button type="button" variant="ghost" size="sm" onClick={clearAvatar}>
                 <X aria-hidden="true" />
@@ -144,13 +147,6 @@ export function AgentForm({
               </Button>
             ) : null}
           </div>
-          <Input
-            ref={fileRef}
-            type="file"
-            accept="image/jpeg,image/png,image/webp"
-            className="hidden"
-            onChange={handleAvatarChange}
-          />
         </div>
       </Field>
 

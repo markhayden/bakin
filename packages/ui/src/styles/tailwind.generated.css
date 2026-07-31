@@ -13,6 +13,10 @@
   --color-bakin-data-series-6: var(--bakin-color-data-series-6);
   --color-bakin-data-series-7: var(--bakin-color-data-series-7);
   --color-bakin-data-series-8: var(--bakin-color-data-series-8);
+  --color-bakin-data-status-attention: var(--bakin-color-data-status-attention);
+  --color-bakin-data-status-danger: var(--bakin-color-data-status-danger);
+  --color-bakin-data-status-neutral: var(--bakin-color-data-status-neutral);
+  --color-bakin-data-status-success: var(--bakin-color-data-status-success);
   --color-bakin-focus-ring: var(--bakin-color-focus-ring);
   --color-bakin-signal-accent: var(--bakin-color-signal-accent);
   --color-bakin-signal-danger: var(--bakin-color-signal-danger);

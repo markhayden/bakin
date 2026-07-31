@@ -213,6 +213,7 @@ export function OverviewInteractions({
                 data={destinationData}
                 series={{ key: 'count', label: 'calls' }}
                 secondary={{ key: 'errors', label: 'failed' }}
+                tones={{ errors: 'danger' }}
                 label="Busiest interaction destinations"
                 formatValue={(value) => value.toLocaleString()}
                 compactData

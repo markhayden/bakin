@@ -56,6 +56,10 @@ export {
 export type { CardProps, CardSize, LegacyCardSize } from '@bakin/ui'
 export { Checkbox } from '@bakin/ui'
 export type { CheckboxProps } from '@bakin/ui'
+export { Radio, RadioGroup } from '@bakin/ui'
+export type { RadioGroupProps, RadioProps } from '@bakin/ui'
+export { FileInput } from '@bakin/ui'
+export type { FileInputHandle, FileInputProps } from '@bakin/ui'
 export { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@bakin/ui'
 export type { CollapsibleContentProps, CollapsibleProps, CollapsibleTriggerProps } from '@bakin/ui'
 export {
@@ -235,9 +239,11 @@ export {
 } from '@bakin/ui'
 export type {
   ProgressIndicatorProps,
+  ProgressMarker,
   ProgressProps,
   ProgressSize,
   ProgressTone,
+  ProgressTrackMarker,
   ProgressTrackProps,
 } from '@bakin/ui'
 export {

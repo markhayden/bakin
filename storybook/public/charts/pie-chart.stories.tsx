@@ -107,3 +107,66 @@ export const DonutFoldAndEmpty = {
     await expect(canvas.getByRole('status')).toHaveTextContent('No reported data in this window.')
   },
 } satisfies Story
+
+const mixedOutcomes: PieChartDatum[] = [
+  { key: 'succeeded', label: 'succeeded', value: 41 },
+  { key: 'failed', label: 'failed', value: 5 },
+  { key: 'hiccups', label: 'hiccups', value: 2 },
+]
+
+export const StatusTonedOutcomes = {
+  render: () => (
+    <ChartStage
+      eyebrow="Data / outcome status"
+      title="Outcome charts wear status colors, not categorical slots"
+      description="When slices mean good or bad — succeeded, failed, warning — the ring opts into the fixed status steps with tones: green means good, red means bad, amber means attention. The steps are re-stepped in lightness so adjacent green and red stay separable under color-vision deficiency, and the gaps, direct labels, legend, and exact table keep identity off color alone."
+    >
+      <section aria-labelledby="mixed-outcomes-heading" className="bakin-chart-story__section">
+        <div>
+          <h2 id="mixed-outcomes-heading">How calls ended</h2>
+          <p>Mostly good hour · a red failed wedge and a small amber hiccup wedge stand out of the green ring.</p>
+        </div>
+        <PieChart
+          data={mixedOutcomes}
+          tones={{ succeeded: 'success', failed: 'danger', hiccups: 'attention' }}
+          label="How calls ended"
+          description="41 of 48 calls succeeded; 5 failed and 2 hiccuped."
+          donut
+        />
+        <ChartExplainer>A series that means good or bad wears status steps; a series that is merely “series 4” stays categorical. The two vocabularies never mix in one ring.</ChartExplainer>
+      </section>
+      <section aria-labelledby="healthy-hour-heading" className="bakin-chart-story__section bakin-chart-story__section--quiet">
+        <div>
+          <h2 id="healthy-hour-heading">A healthy hour</h2>
+          <p>All succeeded · the whole ring is one green band with its exact count.</p>
+        </div>
+        <PieChart
+          data={[
+            { key: 'succeeded', label: 'succeeded', value: 62 },
+            { key: 'failed', label: 'failed', value: 0 },
+          ]}
+          tones={{ succeeded: 'success', failed: 'danger' }}
+          label="A healthy hour"
+          donut
+        />
+      </section>
+    </ChartStage>
+  ),
+  play: async ({ canvas, canvasElement }) => {
+    await expect(canvas.getByRole('group', { name: 'How calls ended' })).toBeVisible()
+    const fill = (key: string) =>
+      canvasElement.querySelector(`[role="group"][aria-label="How calls ended"] [data-slice="${key}"]`)?.getAttribute('fill')
+    await expect(fill('succeeded')).toBe('var(--bakin-color-data-status-success)')
+    await expect(fill('failed')).toBe('var(--bakin-color-data-status-danger)')
+    await expect(fill('hiccups')).toBe('var(--bakin-color-data-status-attention)')
+    await expect(canvas.getByRole('img', { name: 'succeeded: 41 (85%)' }))
+      .toHaveAttribute('stroke-width', '2')
+    const legend = canvas.getByRole('list', { name: 'How calls ended legend' })
+    await expect(legend).toHaveTextContent('failed')
+    await expect(legend).toHaveTextContent('5 (10%)')
+    // The healthy hour renders as one full green ring; the zero stays in the table.
+    const healthyRing = canvasElement.querySelector('[role="group"][aria-label="A healthy hour"] circle[data-slice="succeeded"]')
+    await expect(healthyRing?.getAttribute('stroke')).toBe('var(--bakin-color-data-status-success)')
+    await expect(canvas.getByRole('table', { name: 'A healthy hour data', hidden: true })).toHaveTextContent('failed')
+  },
+} satisfies Story

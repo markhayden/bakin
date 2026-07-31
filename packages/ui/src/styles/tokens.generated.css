@@ -13,6 +13,10 @@
   --bakin-color-data-series-6: #e66767;
   --bakin-color-data-series-7: #a94ba8;
   --bakin-color-data-series-8: #d95926;
+  --bakin-color-data-status-attention: #9c7907;
+  --bakin-color-data-status-danger: #b1353b;
+  --bakin-color-data-status-neutral: #aeaaaa;
+  --bakin-color-data-status-success: #16b05c;
   --bakin-color-focus-ring: #22c55e;
   --bakin-color-signal-accent: #ff007f;
   --bakin-color-signal-danger: #ef4444;

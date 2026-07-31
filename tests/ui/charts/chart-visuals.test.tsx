@@ -7,6 +7,7 @@ import {
   BarChart,
   CHART_OTHER_COLOR,
   CHART_SERIES_COLORS,
+  CHART_TONE_COLORS,
   LineChart,
   RankedBarChart,
   StackedColumnChart,
@@ -288,6 +289,55 @@ describe('RankedBarChart', () => {
     expect(table.textContent).toContain('Failed')
     expect(table.textContent).toContain('30')
     expect(screen.getAllByText('Not recorded').length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('wears the danger status step on a toned failure overlay while the total stays categorical', () => {
+    const { container } = render(
+      <RankedBarChart
+        data={[
+          { x: 'tasks', xLabel: 'POST /api/tasks', values: { count: 120, failures: 30 } },
+        ]}
+        series={{ key: 'count', label: 'Calls' }}
+        secondary={{ key: 'failures', label: 'Failed' }}
+        tones={{ failures: 'danger' }}
+        label="Toned calls by destination"
+      />,
+    )
+
+    const overlay = container.querySelector<HTMLElement>('[data-series-secondary="failures"]')
+    expect(overlay?.style.backgroundColor).toBe(CHART_TONE_COLORS.danger)
+    const total = container.querySelector<HTMLElement>('[data-series="count"] > span')
+    expect(total?.style.backgroundColor).toBe(CHART_SERIES_COLORS[0])
+    const swatches = Array.from(container.querySelectorAll<HTMLElement>('[data-slot="chart-legend-swatch"]'))
+    expect(swatches[0]?.style.backgroundColor).toBe(CHART_SERIES_COLORS[0])
+    expect(swatches[1]?.style.backgroundColor).toBe(CHART_TONE_COLORS.danger)
+  })
+
+  it('lets a tone entry outrank an explicit series color, and keeps untoned renders byte-identical', () => {
+    const data: ChartDatum[] = [{ x: 'tasks', values: { count: 10, failures: 5 } }]
+    const toned = render(
+      <RankedBarChart
+        data={data}
+        series={{ key: 'count', label: 'Calls' }}
+        secondary={{ key: 'failures', label: 'Failed', color: 'var(--bakin-color-signal-danger)' }}
+        tones={{ failures: 'danger' }}
+        label="Tone precedence"
+      />,
+    )
+    expect(toned.container.querySelector<HTMLElement>('[data-series-secondary="failures"]')?.style.backgroundColor)
+      .toBe(CHART_TONE_COLORS.danger)
+    toned.unmount()
+
+    const plain = render(
+      <RankedBarChart
+        data={data}
+        series={{ key: 'count', label: 'Calls' }}
+        secondary={{ key: 'failures', label: 'Failed' }}
+        label="No tones"
+      />,
+    )
+    expect(plain.container.querySelector<HTMLElement>('[data-series-secondary="failures"]')?.style.backgroundColor)
+      .toBe(CHART_SERIES_COLORS[1])
   })
 
   it('keeps the render without a secondary series free of overlays and legend', () => {

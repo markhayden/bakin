@@ -21,7 +21,10 @@ export {
   CHART_MAX_SERIES,
   CHART_OTHER_COLOR,
   CHART_SERIES_COLORS,
+  CHART_TONE_COLORS,
+  chartToneColor,
 } from './palette'
+export type { ChartTone } from './palette'
 export { Sparkline } from './sparkline'
 export type { SparklineProps } from './sparkline'
 export { StackedColumnChart } from './stacked-column-chart'

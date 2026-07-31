@@ -133,6 +133,7 @@ export function ActivityPulse({
                   label: outcome.label,
                   value: data.outcomes[outcome.key],
                 }))}
+                tones={{ succeeded: 'success', failed: 'danger', unverified: 'attention', canceled: 'neutral' }}
                 label="How calls ended"
                 formatValue={(value) => value.toLocaleString()}
                 emptyLabel="No recorded outcomes in this window."
@@ -152,6 +153,7 @@ export function ActivityPulse({
                   { key: 'failed', label: 'failed', value: data.outcomes.failed },
                   { key: 'other', label: 'other reported', value: otherReported },
                 ]}
+                tones={{ failed: 'danger', other: 'neutral' }}
                 label="Reported interaction outcomes"
                 formatValue={(value) => value.toLocaleString()}
                 emptyLabel="No reported outcomes in this window."
@@ -174,6 +176,7 @@ export function ActivityPulse({
               data={mixData}
               series={{ key: 'total', label: 'calls' }}
               secondary={{ key: 'failures', label: 'failed' }}
+              tones={{ failures: 'danger' }}
               label={compatibilityLimited ? 'Where recent calls went' : 'Where calls went'}
               formatValue={(value) => value.toLocaleString()}
               compactData

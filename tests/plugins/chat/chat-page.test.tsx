@@ -402,7 +402,8 @@ describe('ChatView', () => {
       expect(meter).not.toBeNull()
       expect(meter!.textContent).toContain('45.3k / 272k (16%)')
     })
-    expect(container.querySelector('[data-context-tick]')).not.toBeNull()
+    // The threshold tick rides the kit Progress marker slot.
+    expect(container.querySelector('[data-slot="progress-marker"]')).not.toBeNull()
     cleanup()
   })
 

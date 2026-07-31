@@ -486,7 +486,7 @@ Use one primary action per local decision area. `secondary`, `outline`, and `gho
 
 For badges, `tone` describes meaning (`neutral`, `primary`, `success`, `attention`, `danger`, or `accent`) while `variant` describes visual treatment (`soft`, `solid`, `outline`, `ghost`, or `link`). `StatusBadge` defaults to a filled treatment so primary state reads immediately; use outline for secondary, uncertain, historical, or low-emphasis context, and soft badges for metadata. Do not encode status only with color: keep the text explicit. Badges label state; buttons change it.
 
-Routine alerts announce with `role="status"`. Danger alerts default to `role="alert"`, so reserve them for conditions that need immediate assistive-technology announcement. Progress accepts an exact `value` for determinate work or `null` for indeterminate work; always supply a visible `ProgressLabel` or an `aria-label`.
+Routine alerts announce with `role="status"`. Danger alerts default to `role="alert"`, so reserve them for conditions that need immediate assistive-technology announcement. Progress accepts an exact `value` for determinate work or `null` for indeterminate work; always supply a visible `ProgressLabel` or an `aria-label`. Fixed reference points (a compaction threshold, a budget cap) render as `markers` ticks on the track; the tick only marks where — name what it means in visible text.
 
 `buttonVariants()` and `badgeVariants()` are supported escape hatches for links and render integrations that must share a primitive's visual treatment while preserving the correct native element. They do not make the generated class string, arbitrary Tailwind utilities, or internal DOM structure part of the SDK contract. Prefer the component whenever it has the right semantics.
 
@@ -710,8 +710,10 @@ Choose the control by interaction model rather than appearance:
 | Need | Component | Contract |
 | --- | --- | --- |
 | Choose an independent yes/no value or several items | `Checkbox` | Mixed represents a parent with partially selected children; it is not a third saved value |
+| Choose one required value from a few visible options | `RadioGroup` with `Radio` items | The group carries an accessible name; wrap each `Radio` in a `label` with visible text, and arrow keys move the selection |
 | Change one binary setting immediately | `Switch` | The visible copy names the setting and nearby status copy can confirm the effect |
 | Choose one value from a bounded list | `Select` and its subparts | The field needs a visible label; groups organize options but do not label the field |
+| Take files from the user | `FileInput` | A kit Button trigger over the native file input with an accessible `label`, an honest `accept` filter, and drop support; omit `children` and use the `open()` handle when a menu item triggers the dialog |
 
 ```tsx
 import {
@@ -1082,6 +1084,12 @@ For dialog composition, pass controlled `open` and `onOpenChange`. The picker do
 
 `ColorPicker` is a keyboard-complete radio group. Supply stable option `value` identifiers separately from their presentation `color`, and keep palette definition and persistence in the consumer. Use semantic CSS colors or validated color strings; do not encode meaning in a swatch alone. Each option needs a plain-language `label`, selected state remains available through radio semantics, and arrow, Home, and End keys move among enabled choices.
 
+`ColorInput` is the freeform complement to `ColorPicker`: a kit swatch over the platform color dialog emitting normalized `#rrggbb` values. Use it when any color is valid and the consumer owns the value — typically paired with a hex text field showing the same value.
+
+`AssetLibraryPicker` is the library-connected asset chooser: the presentation-only `AssetPicker` composed with the assets plugin's listing and upload wiring (thumbnail grid, search, upload-new, drag-drop) — never a raw id select. It defaults to the assets plugin endpoints; `loadAssets` and `uploadAsset` override the source for tests and non-default libraries.
+
+`ChannelIcon` renders the glyph for a notification channel (email, Discord, Instagram, …) resolved from the workflows channel registry. Pass `channels` when you already hold the definitions; omit it to resolve from the live registry. The icon is decorative — always pair it with the channel's visible label; unknown channels render an honest generic glyph.
+
 The migration-only `AssetPicker`, `ModelSelect`, and `ColorPicker` adapters in `@makinbakin/sdk/components` preserve existing official consumers while the fleet migration proceeds. New plugin UI should use the focused controlled contracts above. These patterns do not replace the established routing work: keep linkable library queries, overlay state, and selected records in the existing query-state contract when the product requires them.
 
 Use `StatusBadge` for compact state language and `StatTile` for scan-friendly technical metrics. Wrap a short set of peer counters in `StatGroup`; it keeps them packed against the start edge and wraps the group without distributing a handful of values across the full page. A status always needs a visible label such as “Published,” “Needs review,” or “Blocked”; never use a bare colored dot or icon as the only meaning. Status icons are decorative reinforcement. Focused status tones follow the shared semantic vocabulary: `neutral`, `success`, `attention`, `danger`, and `accent`.
@@ -1215,6 +1223,8 @@ export function OperationalCharts() {
 ```
 
 Each full chart owns a named plot and its exact-data table, rendered expanded below the chart by default so the evidence stays visible; pass `compactData` to collapse the table behind its "View {caption}" disclosure only in genuinely space-tight contexts. Axis-based charts add a keyboard-scrollable plot boundary at narrow widths. Set `showDataTable={false}` on `BarChart` or `RankedBarChart` only when the same exact dataset is already rendered beside it; a chart without an equivalent table is not a supported composition. Axis labels may shorten visually to keep the plot readable, while the accessible mark labels and exact table retain the full text.
+
+When a series *means* an outcome — succeeded, failed, warning — it wears status colors instead of categorical slots. Opt in with `tones` on `PieChart`, `RankedBarChart`, or `CompositionBar`: a map from entity or series key to `'success' | 'danger' | 'attention' | 'neutral'`. The four status chart-fill steps are fixed tokens (`--bakin-color-data-status-*`), re-stepped in lightness so adjacent green and red stay separable under color-vision deficiency; never substitute signal tokens or arbitrary colors in a plot. On `PieChart` and `CompositionBar`, `tones` switches the whole part-to-whole to status vocabulary and any unmapped key falls back explicitly to `neutral`; on `RankedBarChart`, only mapped series change, so an identity bar keeps its categorical slot while its failure overlay wears `danger`. Status and categorical meaning never mix within one ring or strip, and a chart without `tones` is untouched.
 
 ## Conversation Model and Folding
 

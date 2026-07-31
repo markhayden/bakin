@@ -6,11 +6,11 @@
   "layers": {
     "reference": {
       "visibility": "internal",
-      "tokens": 52
+      "tokens": 56
     },
     "semantic": {
       "visibility": "public",
-      "tokens": 56
+      "tokens": 60
     },
     "component": {
       "visibility": "internal",
@@ -399,6 +399,74 @@
           0.403922
         ],
         "hex": "#e66767"
+      }
+    },
+    {
+      "path": "reference.color.data.status.attention",
+      "layer": "reference",
+      "visibility": "internal",
+      "type": "color",
+      "source": "packages/ui/tokens/reference.tokens.json#/reference/color/data/status/attention",
+      "references": [],
+      "value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.611765,
+          0.47451,
+          0.027451
+        ],
+        "hex": "#9c7907"
+      }
+    },
+    {
+      "path": "reference.color.data.status.danger",
+      "layer": "reference",
+      "visibility": "internal",
+      "type": "color",
+      "source": "packages/ui/tokens/reference.tokens.json#/reference/color/data/status/danger",
+      "references": [],
+      "value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.694118,
+          0.207843,
+          0.231373
+        ],
+        "hex": "#b1353b"
+      }
+    },
+    {
+      "path": "reference.color.data.status.neutral",
+      "layer": "reference",
+      "visibility": "internal",
+      "type": "color",
+      "source": "packages/ui/tokens/reference.tokens.json#/reference/color/data/status/neutral",
+      "references": [],
+      "value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.682353,
+          0.666667,
+          0.666667
+        ],
+        "hex": "#aeaaaa"
+      }
+    },
+    {
+      "path": "reference.color.data.status.success",
+      "layer": "reference",
+      "visibility": "internal",
+      "type": "color",
+      "source": "packages/ui/tokens/reference.tokens.json#/reference/color/data/status/success",
+      "references": [],
+      "value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.086275,
+          0.690196,
+          0.360784
+        ],
+        "hex": "#16b05c"
       }
     },
     {
@@ -1369,6 +1437,118 @@
         "against": "semantic.color.canvas.default",
         "role": "non-text",
         "ratio": 4.96,
+        "minimum": 3,
+        "standard": "WCAG AA non-text UI",
+        "status": "pass"
+      }
+    },
+    {
+      "path": "semantic.color.data.status.attention",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "color",
+      "description": "Chart-fill step for series that mean a warning outcome; stepped away from the categorical amber slot so a status wedge never impersonates a series.",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/color/data/status/attention",
+      "references": [
+        "reference.color.data.status.attention"
+      ],
+      "value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.611765,
+          0.47451,
+          0.027451
+        ],
+        "hex": "#9c7907"
+      },
+      "contrast": {
+        "against": "semantic.color.canvas.default",
+        "role": "non-text",
+        "ratio": 4.73,
+        "minimum": 3,
+        "standard": "WCAG AA non-text UI",
+        "status": "pass"
+      }
+    },
+    {
+      "path": "semantic.color.data.status.danger",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "color",
+      "description": "Chart-fill step for series that mean a failed outcome; validated with the success and attention steps for color-vision-deficiency separation, never a categorical slot.",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/color/data/status/danger",
+      "references": [
+        "reference.color.data.status.danger"
+      ],
+      "value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.694118,
+          0.207843,
+          0.231373
+        ],
+        "hex": "#b1353b"
+      },
+      "contrast": {
+        "against": "semantic.color.canvas.default",
+        "role": "non-text",
+        "ratio": 3.16,
+        "minimum": 3,
+        "standard": "WCAG AA non-text UI",
+        "status": "pass"
+      }
+    },
+    {
+      "path": "semantic.color.data.status.neutral",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "color",
+      "description": "Chart-fill step for outcome series that make no good-or-bad claim (canceled, unattributed remainder).",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/color/data/status/neutral",
+      "references": [
+        "reference.color.data.status.neutral"
+      ],
+      "value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.682353,
+          0.666667,
+          0.666667
+        ],
+        "hex": "#aeaaaa"
+      },
+      "contrast": {
+        "against": "semantic.color.canvas.default",
+        "role": "non-text",
+        "ratio": 8.38,
+        "minimum": 3,
+        "standard": "WCAG AA non-text UI",
+        "status": "pass"
+      }
+    },
+    {
+      "path": "semantic.color.data.status.success",
+      "layer": "semantic",
+      "visibility": "public",
+      "type": "color",
+      "description": "Chart-fill step for series that mean a good outcome; validated with the danger and attention steps for color-vision-deficiency separation, never a categorical slot.",
+      "source": "packages/ui/tokens/semantic.tokens.json#/semantic/color/data/status/success",
+      "references": [
+        "reference.color.data.status.success"
+      ],
+      "value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.086275,
+          0.690196,
+          0.360784
+        ],
+        "hex": "#16b05c"
+      },
+      "contrast": {
+        "against": "semantic.color.canvas.default",
+        "role": "non-text",
+        "ratio": 6.79,
         "minimum": 3,
         "standard": "WCAG AA non-text UI",
         "status": "pass"

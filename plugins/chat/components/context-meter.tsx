@@ -5,8 +5,9 @@
  * public kit), so the chat plugin — its one real consumer — owns it as a
  * domain component composed from the focused SDK entrypoints.
  *
- * Renders ONLY runtime truth (sessions.contextStats): a slim fill bar
- * with the exact reading when tokens + window are both known, a
+ * Renders ONLY runtime truth (sessions.contextStats): a slim kit
+ * `Progress` bar (with a track marker for the compaction threshold)
+ * plus the exact reading when tokens + window are both known, a
  * number-only reading when the window is unknown, an honest "context —"
  * during a post-compaction gap, and NOTHING when there's nothing honest
  * to show. Highlight at ≥70%, danger at ≥90%; a tick marks the
@@ -17,6 +18,7 @@
  */
 import { formatRelativeTime, formatTokenCount } from '@makinbakin/sdk/conversation'
 import type { RuntimeSessionContextStats } from '@makinbakin/sdk/types'
+import { Progress, type ProgressTone } from '@makinbakin/sdk/ui'
 
 /**
  * Wire DTO for the meter — the runtime contract type under the meter's
@@ -71,41 +73,30 @@ export function ContextMeter({ stats }: { stats?: ContextMeterStats | null }) {
   // floor, not round: "(100%)" appears ONLY when tokens ≥ window, and the
   // danger band starts at a true 90 — a 89.5% reading must not cry wolf.
   const percent = Math.min(100, Math.floor((tokens / contextWindow) * 100))
-  const fillClass =
-    percent >= 90
-      ? 'bg-bakin-signal-danger'
-      : percent >= 70
-        ? 'bg-bakin-signal-highlight'
-        : 'bg-bakin-action-primary-background'
+  const tone: ProgressTone = percent >= 90 ? 'danger' : percent >= 70 ? 'attention' : 'primary'
   const tickPercent =
     compactionThreshold !== null && compactionThreshold > 0 && compactionThreshold <= contextWindow
       ? Math.min(99, Math.round((compactionThreshold / contextWindow) * 100))
       : null
 
   return (
-    <span
+    <div
       data-context-meter
       title={TOOLTIP}
-      aria-label={`Context ${formatTokenCount(tokens)} of ${formatTokenCount(contextWindow)} (${percent}%)`}
-      className="inline-flex items-center gap-1.5 text-bakin-text-muted/80"
+      className="flex min-w-0 items-center gap-1.5 text-bakin-text-muted/80"
     >
-      <span className="relative inline-block h-1.5 w-20 overflow-hidden rounded-bakin-pill bg-bakin-border-subtle/30 align-middle">
-        <span
-          data-context-fill
-          className={`absolute inset-y-0 left-0 rounded-bakin-pill ${fillClass}`}
-          style={{ width: `${percent}%` }}
-        />
-        {tickPercent !== null ? (
-          <span
-            data-context-tick
-            className="absolute inset-y-0 w-px bg-bakin-text-muted"
-            style={{ left: `${tickPercent}%` }}
-          />
-        ) : null}
-      </span>
+      <Progress
+        value={percent}
+        max={100}
+        tone={tone}
+        size="sm"
+        aria-label={`Context ${formatTokenCount(tokens)} of ${formatTokenCount(contextWindow)} (${percent}%)`}
+        markers={tickPercent !== null ? [{ value: tickPercent, label: 'Runtime auto-compaction threshold' }] : undefined}
+        className="w-20 flex-none"
+      />
       <span>
         {formatTokenCount(tokens)} / {formatTokenCount(contextWindow)} ({percent}%)
       </span>
-    </span>
+    </div>
   )
 }

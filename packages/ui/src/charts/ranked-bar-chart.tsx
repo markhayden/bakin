@@ -3,6 +3,7 @@
 import { useId, useMemo } from 'react'
 
 import { ChartDataTable, chartSeriesColor, type ChartDatum, type ChartSeries } from './chart-data-table'
+import { chartToneColor, type ChartTone } from './palette'
 
 export interface RankedBarChartProps {
   data: readonly ChartDatum[]
@@ -19,6 +20,15 @@ export interface RankedBarChartProps {
   /** Accessible name for the chart and basis for its exact-data caption. */
   label: string
   description?: string
+  /**
+   * Opt-in status coloring for outcome-meaning series: maps series key →
+   * tone, and that series wears the validated status chart-fill step (a tone
+   * entry outranks `ChartSeries.color`). Series without an entry keep their
+   * categorical default, so an identity bar can carry a status overlay (the
+   * failure-overlay pattern). Omit for purely categorical rankings; behavior
+   * without `tones` is unchanged.
+   */
+  tones?: Readonly<Record<string, ChartTone>>
   formatValue?: (value: number) => string
   emptyLabel?: string
   /** Disable only when an equivalent exact table is rendered beside the chart. */
@@ -44,12 +54,17 @@ export function RankedBarChart({
   secondary,
   label,
   description,
+  tones,
   formatValue = (value) => value.toLocaleString(),
   emptyLabel = 'No reported data in this window.',
   showDataTable = true,
   compactData = false,
 }: RankedBarChartProps) {
   const descriptionId = useId()
+  const seriesFill = (item: ChartSeries, slot: number): string => {
+    const tone = tones?.[item.key]
+    return tone ? chartToneColor(tone) : chartSeriesColor(item, slot)
+  }
   const ranked = useMemo(
     () => data
       .map((datum, index) => ({
@@ -160,7 +175,7 @@ export function RankedBarChart({
                         aria-hidden="true"
                         className="absolute inset-0 rounded-bakin-control"
                         style={{
-                          backgroundColor: chartSeriesColor(series, 0),
+                          backgroundColor: seriesFill(series, 0),
                           opacity: MUTED_TOTAL_OPACITY,
                         }}
                       />
@@ -170,7 +185,7 @@ export function RankedBarChart({
                           aria-hidden="true"
                           className="absolute inset-y-0 right-0 min-w-px rounded-r-bakin-control"
                           style={{
-                            backgroundColor: chartSeriesColor(secondary, 1),
+                            backgroundColor: seriesFill(secondary, 1),
                             width: `${secondaryWidth}%`,
                           }}
                         />
@@ -181,7 +196,7 @@ export function RankedBarChart({
                       data-series={series.key}
                       className="h-full min-w-px rounded-bakin-control"
                       style={{
-                        backgroundColor: chartSeriesColor(series, 0),
+                        backgroundColor: seriesFill(series, 0),
                         width: `${width}%`,
                       }}
                     />
@@ -198,7 +213,7 @@ export function RankedBarChart({
             <span
               data-slot="chart-legend-swatch"
               className="inline-block size-bakin-2 rounded-bakin-control"
-              style={{ backgroundColor: chartSeriesColor(series, 0), opacity: MUTED_TOTAL_OPACITY }}
+              style={{ backgroundColor: seriesFill(series, 0), opacity: MUTED_TOTAL_OPACITY }}
               aria-hidden="true"
             />
             {series.label}
@@ -207,7 +222,7 @@ export function RankedBarChart({
             <span
               data-slot="chart-legend-swatch"
               className="inline-block size-bakin-2 rounded-bakin-control"
-              style={{ backgroundColor: chartSeriesColor(secondary, 1) }}
+              style={{ backgroundColor: seriesFill(secondary, 1) }}
               aria-hidden="true"
             />
             {secondary.label}

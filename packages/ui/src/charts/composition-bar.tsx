@@ -3,7 +3,7 @@
 import { useId, useMemo, useState } from 'react'
 
 import { ChartTooltip } from './chart-tooltip'
-import { assignSeriesColors } from './palette'
+import { assignSeriesColors, chartToneColor, type ChartTone } from './palette'
 
 export interface CompositionBarSegment {
   /** Stable entity key; palette slots are assigned against the sorted full key set. */
@@ -30,6 +30,14 @@ export interface CompositionBarProps {
   formatValue?: (value: number) => string
   /** Accessible description when `data` is empty. */
   emptyLabel?: string
+  /**
+   * Opt-in status mode for outcome strips: maps segment key → tone, and every
+   * segment wears the validated status chart-fill step for its tone (a tone
+   * entry outranks the segment's `color`; an unmapped segment falls back
+   * explicitly to its `color`, then `neutral` — never a categorical slot).
+   * Omit for categorical strips; behavior without `tones` is unchanged.
+   */
+  tones?: Readonly<Record<string, ChartTone>>
 }
 
 const STRIP_HEIGHT: Record<'inline' | 'default', number> = { inline: 6, default: 10 }
@@ -44,8 +52,14 @@ interface ResolvedSegment extends CompositionBarSegment {
 
 function resolveSegments(
   data: readonly CompositionBarSegment[],
+  tones?: Readonly<Record<string, ChartTone>>,
 ): { segments: ResolvedSegment[]; total: number } {
-  const assigned = assignSeriesColors(data.map((segment) => segment.key))
+  const assigned = tones ? null : assignSeriesColors(data.map((segment) => segment.key))
+  const segmentColor = (segment: CompositionBarSegment): string => {
+    if (assigned) return segment.color ?? assigned.get(segment.key)!
+    const tone = tones?.[segment.key]
+    return tone ? chartToneColor(tone) : segment.color ?? chartToneColor('neutral')
+  }
   const clamped = data.map((segment) => ({
     ...segment,
     plotted: Number.isFinite(segment.value) && segment.value > 0 ? segment.value : 0,
@@ -55,7 +69,7 @@ function resolveSegments(
     segments: clamped.map((segment) => ({
       ...segment,
       percent: total > 0 ? (segment.plotted / total) * 100 : 0,
-      color: segment.color ?? assigned.get(segment.key)!,
+      color: segmentColor(segment),
     })),
     total,
   }
@@ -74,10 +88,11 @@ export function CompositionBar({
   legend = true,
   formatValue = (value) => value.toLocaleString(),
   emptyLabel = 'No reported values.',
+  tones,
 }: CompositionBarProps) {
   const tooltipId = useId()
   const [activeKey, setActiveKey] = useState<string | null>(null)
-  const { segments, total } = useMemo(() => resolveSegments(data), [data])
+  const { segments, total } = useMemo(() => resolveSegments(data, tones), [data, tones])
   const interactive = size === 'default' && total > 0
   const showLegend = size === 'default' && legend && segments.length > 0
   const visible = segments.filter((segment) => segment.plotted > 0)

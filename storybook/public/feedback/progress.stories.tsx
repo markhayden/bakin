@@ -19,7 +19,7 @@ const meta = {
     layout: 'fullscreen',
     docs: {
       description: {
-        component: 'Progress exposes exact determinate values and an honest indeterminate state. Always provide an accessible label; use tone to reinforce the work state, not to replace it.',
+        component: 'Progress exposes exact determinate values and an honest indeterminate state. Always provide an accessible label; use tone to reinforce the work state, not to replace it. `markers` renders reference ticks on the track (thresholds, budgets) — the tick only marks where; name what it means in visible text.',
       },
     },
     bakinCoverage: ['desktop', 'interaction', 'non-color'],
@@ -116,6 +116,46 @@ export const Sizes = {
       </StorySection>
     </StoryStage>
   ),
+} satisfies Story
+
+export const Markers = {
+  render: () => (
+    <StoryStage
+      eyebrow="Reference points"
+      title="Track markers"
+      description="A marker names a fixed reference on the track — where the runtime auto-compacts, where a budget window rolls — while the fill stays the exact reading."
+    >
+      <StorySection
+        title="Thresholds on the track"
+        description="The tick marks where; the visible label says what. Never rely on the tick alone."
+      >
+        <Stack gap="item" style={{ maxWidth: '32rem' }}>
+          <Progress value={62} size="md" markers={[{ value: 94, label: 'Auto-compaction threshold' }]}>
+            <ProgressLabel>Context used (compacts at 94%)</ProgressLabel>
+            <ProgressValue />
+          </Progress>
+          <Progress
+            value={140}
+            max={200}
+            size="md"
+            tone="attention"
+            markers={[{ value: 150, label: 'Soft cap' }, { value: 180, label: 'Hard cap' }]}
+          >
+            <ProgressLabel>Spend this window (soft cap 150, hard cap 180)</ProgressLabel>
+            <ProgressValue />
+          </Progress>
+        </Stack>
+      </StorySection>
+    </StoryStage>
+  ),
+  play: async ({ canvas, canvasElement }) => {
+    await expect(canvas.getByRole('progressbar', { name: 'Context used (compacts at 94%)' })).toHaveAttribute('aria-valuenow', '62')
+    const markers = canvasElement.querySelectorAll('[data-slot="progress-marker"]')
+    await expect(markers.length).toBe(3)
+    await expect((markers[0] as HTMLElement).style.insetInlineStart).toBe('94%')
+    // Value-domain markers scale by max: 150 of 200 sits at 75% of the track.
+    await expect((markers[1] as HTMLElement).style.insetInlineStart).toBe('75%')
+  },
 } satisfies Story
 
 function InteractiveProgress() {

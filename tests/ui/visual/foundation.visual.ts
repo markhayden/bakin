@@ -712,6 +712,12 @@ const PRIMITIVES_BASELINES = [
   { url: '/iframe.html?id=testing-plugin-ui-fixture-host--canonical-usage&viewMode=story', png: 'testing-plugin-ui-fixture.png', text: 'Canonical fixture page' },
   { url: '/iframe.html?id=pages-workspacepage--canonical-usage&viewMode=story', png: 'pages-workspace-page.png', role: 'region' as const, name: 'Workspace canvas' },
   { url: '/iframe.html?id=lists-listrows--list-varieties&viewMode=story', png: 'lists-list-rows.png', role: 'list' as const, name: 'Bordered lesson rows' },
+  { url: '/iframe.html?id=primitives-radiogroup--states&viewMode=story', png: 'primitives-radio-group.png', role: 'radiogroup' as const },
+  { url: '/iframe.html?id=primitives-fileinput--states&viewMode=story', png: 'primitives-file-input.png', role: 'heading' as const, name: 'FileInput' },
+  { url: '/iframe.html?id=forms-colorinput--paired-hex-field&viewMode=story', png: 'forms-color-input.png', text: 'Swatch and hex are one value' },
+  { url: '/iframe.html?id=agents-channelicon--known-and-unknown-channels&viewMode=story', png: 'agents-channel-icon.png', role: 'heading' as const, name: 'ChannelIcon' },
+  { url: '/iframe.html?id=forms-assetlibrarypicker--library-states&viewMode=story', png: 'forms-asset-library-picker.png', text: 'Honest library states' },
+  { url: '/iframe.html?id=feedback-progress--markers&viewMode=story', png: 'feedback-progress-markers.png', role: 'progressbar' as const },
 ]
 
 for (const baseline of PRIMITIVES_BASELINES) {

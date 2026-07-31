@@ -37,7 +37,9 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
+  FileInput,
   SystemState,
+  type FileInputHandle,
 } from '@makinbakin/sdk/ui'
 import { formatSize, formatAge } from '@makinbakin/sdk/utils'
 import { Upload, Loader2, LayoutGrid, List, Trash2, RotateCcw, X, ListFilter, FolderOpen, Pencil, Tags, ArrowLeft, Inbox, Sparkles } from 'lucide-react'
@@ -294,7 +296,7 @@ export function VersionedAssetGrid() {
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
-  const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const fileInputRef = useRef<FileInputHandle | null>(null)
 
   // Antfly-backed search (semantic + visual). No client-side fallback: the
   // engine being down is an explicit unavailable state (spec D11), rendered
@@ -344,13 +346,13 @@ export function VersionedAssetGrid() {
   usePluginEvent('asset.removed', () => refetchRef.current?.schedule(true))
 
   // ─── Upload ──────────────────────────────────────────────────────────
-  const handleFiles = useCallback(async (files: FileList | null) => {
-    if (!files || files.length === 0) return
+  const handleFiles = useCallback(async (files: File[]) => {
+    if (files.length === 0) return
     setUploading(true)
     setUploadError(null)
     try {
       const form = new FormData()
-      for (const file of Array.from(files)) form.append('files', file)
+      for (const file of files) form.append('files', file)
       if (linkTo) form.append('taskId', linkTo)
       const res = await fetch(UPLOAD_API, { method: 'POST', body: form })
       if (!res.ok) {
@@ -363,11 +365,10 @@ export function VersionedAssetGrid() {
       setUploadError(err instanceof Error ? err.message : 'Upload failed')
     } finally {
       setUploading(false)
-      if (fileInputRef.current) fileInputRef.current.value = ''
     }
   }, [linkTo, fetchAssets])
 
-  const openPicker = () => fileInputRef.current?.click()
+  const openPicker = () => fileInputRef.current?.open()
 
   // ─── Trash actions ───────────────────────────────────────────────────
   const restore = async (trashName: string) => {
@@ -451,14 +452,11 @@ export function VersionedAssetGrid() {
   const displayed = pending ? displayedRef.current : filtered
 
   const fileInput = (
-    <input
+    <FileInput
       ref={fileInputRef}
-      type="file"
       multiple
-      className="hidden"
-      aria-label="Upload assets"
-      data-testid="asset-upload-input"
-      onChange={(e) => handleFiles(e.target.files)}
+      label="Upload assets"
+      onFiles={(files) => void handleFiles(files)}
     />
   )
 

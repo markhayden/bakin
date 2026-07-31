@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from 'bun:test'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import '../../rtl-settle'
 
-import { CHART_OTHER_COLOR, CHART_SERIES_COLORS, PieChart } from '@makinbakin/sdk/charts'
+import { CHART_OTHER_COLOR, CHART_SERIES_COLORS, CHART_TONE_COLORS, PieChart } from '@makinbakin/sdk/charts'
 
 import {
   buildPieModel,
@@ -122,6 +122,70 @@ describe('buildPieModel', () => {
     expect(model.slices.map((slice) => slice.key)).toEqual(['kept'])
     expect(model.total).toBe(10)
     expect(model.slices[0]?.fraction).toBe(1)
+  })
+
+  it('maps tones to the frozen status chart-fill steps with an explicit neutral fallback', () => {
+    const model = buildPieModel(
+      [
+        { key: 'succeeded', label: 'succeeded', value: 41 },
+        { key: 'failed', label: 'failed', value: 5 },
+        { key: 'hiccups', label: 'hiccups', value: 2 },
+        { key: 'canceled', label: 'canceled', value: 1 },
+      ],
+      { succeeded: 'success', failed: 'danger', hiccups: 'attention' },
+    )
+
+    const colorOf = (key: string) => model.slices.find((slice) => slice.key === key)?.color
+    expect(colorOf('succeeded')).toBe(CHART_TONE_COLORS.success)
+    expect(colorOf('failed')).toBe(CHART_TONE_COLORS.danger)
+    expect(colorOf('hiccups')).toBe(CHART_TONE_COLORS.attention)
+    // A rendered key without a tone entry falls back to neutral — never to a
+    // categorical slot and never to a status it did not claim.
+    expect(colorOf('canceled')).toBe(CHART_TONE_COLORS.neutral)
+  })
+
+  it('is identical with and without an undefined tones argument, and tones never change geometry', () => {
+    const data: PieChartDatum[] = [
+      { key: 'delta', label: 'Delta', value: 1 },
+      { key: 'alpha', label: 'Alpha', value: 9 },
+      { key: 'charlie', label: 'Charlie', value: 5 },
+    ]
+    expect(buildPieModel(data, undefined)).toEqual(buildPieModel(data))
+
+    const toned = buildPieModel(data, { alpha: 'success', charlie: 'danger', delta: 'attention' })
+    const plain = buildPieModel(data)
+    expect(toned.slices.map(({ color, ...rest }) => rest))
+      .toEqual(plain.slices.map(({ color, ...rest }) => rest))
+  })
+
+  it('keeps the slice cap under tones but never folds for palette-slot overflow', () => {
+    const data: PieChartDatum[] = Array.from({ length: 6 }, (_, index) => ({
+      key: `k${index}`,
+      label: `K${index}`,
+      value: 60 - index * 10,
+    }))
+    const model = buildPieModel(data, { k0: 'success' })
+
+    // Six visible entities still cap at five slices with an Other fold…
+    expect(model.slices).toHaveLength(PIE_MAX_SLICES)
+    expect(model.slices.at(-1)?.isOther).toBe(true)
+    expect(model.slices.at(-1)?.color).toBe(CHART_OTHER_COLOR)
+
+    // …but a key beyond the categorical stable slots (zulu is the 9th key
+    // alphabetically) folds only WITHOUT tones: the status vocabulary has no
+    // slot cap.
+    const nineKeys: PieChartDatum[] = [
+      { key: 'zulu', label: 'Zulu', value: 100 },
+      ...['alpha', 'bravo', 'charlie', 'delta', 'echo', 'foxtrot', 'golf', 'hotel'].map((key, index) => ({
+        key,
+        label: key,
+        value: index < 2 ? 50 - index * 10 : 0,
+      })),
+    ]
+    expect(buildPieModel(nineKeys).slices.some((slice) => slice.isOther)).toBe(true)
+    const toned = buildPieModel(nineKeys, { zulu: 'success' })
+    expect(toned.slices.some((slice) => slice.isOther)).toBe(false)
+    expect(toned.slices.find((slice) => slice.key === 'zulu')?.color).toBe(CHART_TONE_COLORS.success)
   })
 
   it('treats any negative value as a programming error and renders nothing', () => {

@@ -118,9 +118,11 @@ export {
 } from './primitives/progress'
 export type {
   ProgressIndicatorProps,
+  ProgressMarker,
   ProgressProps,
   ProgressSize,
   ProgressTone,
+  ProgressTrackMarker,
   ProgressTrackProps,
 } from './primitives/progress'
 
@@ -178,6 +180,15 @@ export {
 
 export { Checkbox } from './primitives/checkbox'
 export type { CheckboxProps } from './primitives/checkbox'
+
+export { Radio, RadioGroup } from './primitives/radio-group'
+export type { RadioGroupProps, RadioProps } from './primitives/radio-group'
+
+export { FileInput } from './primitives/file-input'
+export type { FileInputHandle, FileInputProps } from './primitives/file-input'
+
+export { ColorInput } from './primitives/color-input'
+export type { ColorInputProps } from './primitives/color-input'
 
 export { Switch } from './primitives/switch'
 export type { SwitchProps, SwitchSize } from './primitives/switch'
