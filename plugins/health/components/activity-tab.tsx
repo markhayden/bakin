@@ -235,13 +235,13 @@ export function ActivityTab() {
       />
 
       {resource.loading && !data ? (
-        <div role="status" aria-label="Loading activity" className="py-16 text-center text-sm text-muted-foreground">
+        <div role="status" aria-label="Loading activity" className="py-bakin-8 text-center text-bakin-typography-size-body text-bakin-text-muted">
           Loading activity…
         </div>
       ) : resource.error && !data ? (
-        <div role="alert" className="rounded-xl border border-destructive/30 bg-destructive/5 p-5">
-          <h3 className="font-medium text-destructive">Activity could not be loaded.</h3>
-          <p className="mt-1 text-sm text-muted-foreground">{resource.error}</p>
+        <div role="alert" className="rounded-bakin-surface border border-bakin-signal-danger/30 bg-bakin-signal-danger/5 p-bakin-5">
+          <h3 className="font-bakin-typography-weight-medium text-bakin-signal-danger">Activity could not be loaded.</h3>
+          <p className="mt-bakin-1 text-bakin-typography-size-body text-bakin-text-muted">{resource.error}</p>
           <Button className="mt-4" size="sm" variant="outline" onClick={() => void resource.refresh()}>
             Try again
           </Button>
@@ -249,7 +249,7 @@ export function ActivityTab() {
       ) : (
         <>
           {resource.backgroundError && (
-            <p role="status" className="text-xs text-warning">
+            <p role="status" className="text-bakin-typography-size-meta text-bakin-signal-highlight">
               Showing the last loaded activity; refresh failed: {resource.backgroundError}
             </p>
           )}

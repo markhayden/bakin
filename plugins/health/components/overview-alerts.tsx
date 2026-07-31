@@ -1,7 +1,7 @@
 'use client'
 
 import type { HealthIncident } from '@makinbakin/sdk/types'
-import { PluginLink } from '@makinbakin/sdk/components'
+import { PluginLink } from '@makinbakin/sdk/navigation'
 import { Section, Stack } from '@makinbakin/sdk/layout'
 import { StatusBadge } from '@makinbakin/sdk/patterns'
 import { Banner, Popover, PopoverContent, PopoverTrigger } from '@makinbakin/sdk/ui'

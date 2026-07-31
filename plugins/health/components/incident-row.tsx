@@ -2,7 +2,7 @@
 
 import { useId, useState } from 'react'
 import type { HealthIncident } from '@makinbakin/sdk/types'
-import { PluginLink } from '@makinbakin/sdk/components'
+import { PluginLink } from '@makinbakin/sdk/navigation'
 import { StatusBadge, type StatusTone } from '@makinbakin/sdk/patterns'
 import { Button, Popover, PopoverContent, PopoverTrigger, buttonVariants } from '@makinbakin/sdk/ui'
 import { AlertTriangle, BellOff, ChevronRight, CircleHelp, Wrench } from 'lucide-react'

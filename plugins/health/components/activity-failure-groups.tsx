@@ -149,7 +149,7 @@ function FailureGroup({
       <div className="grid min-w-0 gap-bakin-3 px-bakin-3 py-bakin-4 @[38rem]/health:grid-cols-[minmax(0,1fr)_auto] @[38rem]/health:items-center">
         <div className="min-w-0">
           <div className="flex min-w-0 flex-wrap items-center gap-bakin-2">
-            <Icon className={`size-4 shrink-0 ${meta.iconColorClass}`} aria-hidden="true" />
+            <Icon className={`size-bakin-4 shrink-0 `} aria-hidden="true" />
             <h4 className="min-w-0 truncate font-bakin-typography-weight-semibold text-bakin-text-primary" title={destination}>
               {displayName}
             </h4>
@@ -241,7 +241,7 @@ function FailurePatternHighlights({
                 className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-bakin-3 py-bakin-2 first:pt-0 last:pb-0"
               >
                 <span className="flex min-w-0 items-center gap-bakin-2">
-                  <Icon className={`size-3.5 shrink-0 ${meta.iconColorClass}`} aria-hidden="true" />
+                  <Icon className={`size-bakin-3 shrink-0 `} aria-hidden="true" />
                   <span className="min-w-0">
                     <strong className="block truncate text-bakin-typography-size-body font-bakin-typography-weight-medium text-bakin-text-primary" title={destination}>
                       {failureGroupDisplayName(group)}

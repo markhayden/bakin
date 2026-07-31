@@ -1,5 +1,5 @@
 import type { HealthCheckState, HealthObservation, HealthReport } from '@makinbakin/sdk/types'
-import type { StatusTone } from '@makinbakin/sdk/components'
+import type { StatusTone } from '@makinbakin/sdk/patterns'
 import type {
   SystemPluginManifestData,
   SystemPluginManifestEntry,
@@ -50,8 +50,8 @@ const OBSERVATION_RANK: Record<HealthObservation['status'], number> = {
 }
 
 const FINDING_RANK: Record<StatusTone, number> = {
-  destructive: 0,
-  warning: 1,
+  danger: 0,
+  attention: 1,
   neutral: 2,
   accent: 3,
   success: 4,
@@ -137,8 +137,8 @@ export function presentSystemCheck(check: HealthCheckState, now: number = Date.n
   }
   switch (observation.status) {
     case 'healthy': return { label: 'Healthy', tone: 'success', concerning: false, detail: observation.summary }
-    case 'warning': return { label: 'Watching', tone: 'warning', concerning: true, detail: observation.summary }
-    case 'error': return { label: 'Needs attention', tone: 'destructive', concerning: true, detail: observation.summary }
+    case 'warning': return { label: 'Watching', tone: 'attention', concerning: true, detail: observation.summary }
+    case 'error': return { label: 'Needs attention', tone: 'danger', concerning: true, detail: observation.summary }
     case 'unknown': return { label: 'Unable to verify', tone: 'neutral', concerning: true, detail: observation.summary }
   }
 }
@@ -191,9 +191,9 @@ export function buildSystemFindings(
           : `${detail} This is the last loaded activation state; refresh live data to confirm it.`,
         category: 'Installed features',
         label: pluginInventoryCurrent ? 'Failed to activate' : 'Last loaded',
-        tone: pluginInventoryCurrent ? 'destructive' : 'neutral',
+        tone: pluginInventoryCurrent ? 'danger' : 'neutral',
         targetId: plugin.id,
-        rank: FINDING_RANK[pluginInventoryCurrent ? 'destructive' : 'neutral'],
+        rank: FINDING_RANK[pluginInventoryCurrent ? 'danger' : 'neutral'],
       }]
     }
     if (plugin.status === 'unknown') {

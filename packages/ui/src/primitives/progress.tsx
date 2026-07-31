@@ -92,7 +92,7 @@ export function ProgressIndicator({
       data-tone={tone}
       className={cn(
         'h-full rounded-bakin-pill transition-[width] duration-[var(--bakin-motion-duration-transition)] ease-bakin-standard',
-        'data-[indeterminate]:w-1/3 data-[indeterminate]:animate-pulse',
+        'data-[indeterminate]:w-1/3 data-[indeterminate]:animate-pulse data-[indeterminate]:motion-reduce:animate-none',
         tone === 'primary' && 'bg-bakin-action-primary-background',
         tone === 'accent' && 'bg-bakin-signal-accent',
         tone === 'attention' && 'bg-bakin-signal-highlight',

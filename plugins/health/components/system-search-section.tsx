@@ -3,7 +3,13 @@
 import { useEffect, useState } from 'react'
 import type { SearchReadiness, SearchStageStatus } from '@makinbakin/sdk/types'
 import { Grid } from '@makinbakin/sdk/layout'
-import { StatTile, StatusBadge as StatusBadgePrimitive, type StatusTone } from '@makinbakin/sdk/patterns'
+import {
+  DataTable,
+  StatTile,
+  StatusBadge as StatusBadgePrimitive,
+  type DataTableColumn,
+  type StatusTone,
+} from '@makinbakin/sdk/patterns'
 import { Badge, Banner, Button, type BannerTone } from '@makinbakin/sdk/ui'
 import { Activity, ChevronRight, ListRestart, WandSparkles } from 'lucide-react'
 import type { SearchHealthData, SearchTelemetryData } from '../types'
@@ -23,6 +29,8 @@ export interface SystemSearchSectionProps {
 }
 
 type SearchTone = StatusTone
+
+type SearchIndexTable = SearchHealthData['tables'][number]
 
 const STATUS_LABEL: Record<SearchStageStatus, string> = {
   healthy: 'Healthy',
@@ -101,6 +109,91 @@ export function SystemSearchSection({
   useEffect(() => {
     if (technicalDetailsOpen) setDetailsOpen(true)
   }, [technicalDetailsOpen])
+
+  const indexColumns: ReadonlyArray<DataTableColumn<SearchIndexTable>> = [
+    {
+      key: 'index',
+      header: 'Index',
+      cellClassName: 'whitespace-normal align-top',
+      cell: (table) => (
+        <>
+          <div className="font-bakin-typography-family-mono font-bakin-typography-weight-medium text-bakin-text-primary">{table.logical}</div>
+          <details className="mt-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted">
+            <summary className="cursor-pointer">Technical identity</summary>
+            <p className="mt-bakin-1 break-all font-bakin-typography-family-mono">{table.physical} · schema v{table.schemaVersion} · {table.pluginId}</p>
+          </details>
+        </>
+      ),
+    },
+    {
+      key: 'state',
+      header: 'State',
+      cellClassName: 'whitespace-normal align-top',
+      cell: (table) => {
+        const erroredLegs = table.legs.filter((leg) => Boolean(leg.error))
+        const stateLabel = table.state === 'migrating'
+          ? `Migrating · ${table.phase ?? 'running'}`
+          : table.healthy && erroredLegs.length === 0 ? 'Active' : 'Needs attention'
+        const stateTone: SearchTone = table.state === 'migrating'
+          ? 'attention'
+          : table.healthy && erroredLegs.length === 0 ? 'success' : 'danger'
+        return (
+          <>
+            <StatusBadgePrimitive variant="outline" tone={stateTone}>{stateLabel}</StatusBadgePrimitive>
+            {erroredLegs.map((leg) => (
+              <p key={leg.name} className="mt-bakin-1 max-w-48 text-bakin-typography-size-meta text-bakin-signal-danger">{leg.name}: {leg.error}</p>
+            ))}
+          </>
+        )
+      },
+    },
+    {
+      key: 'documents',
+      header: 'Documents',
+      align: 'end',
+      cellClassName: 'align-top',
+      cell: (table) => <span className="font-bakin-typography-family-mono tabular-nums">{table.docCount ?? '—'}</span>,
+    },
+    {
+      key: 'lastIndexed',
+      header: 'Last indexed',
+      cellClassName: 'align-top',
+      cell: (table) => <span className="text-bakin-text-muted">{relativeEpoch(table.lastIndexedAt)}</span>,
+    },
+    {
+      key: 'backlog',
+      header: 'Backlog',
+      cellClassName: 'align-top',
+      cell: (table) => (
+        <span className="text-bakin-text-muted">
+          <span className="whitespace-nowrap">{table.journalPending} journal</span>
+          <span className="mx-bakin-1">·</span>
+          <span className="whitespace-nowrap">{legBacklog(table.legs)} enrich</span>
+        </span>
+      ),
+    },
+    {
+      key: 'action',
+      header: 'Action',
+      align: 'end',
+      cellClassName: 'align-top',
+      cell: (table) => {
+        const isPending = mutation.status === 'pending'
+          && (mutation.target === table.logical || mutation.target === 'all')
+        return (
+          <Button
+            size="xs"
+            variant="outline"
+            disabled={mutationLocked}
+            onClick={() => void onReindex(table.logical)}
+            aria-label={`Reindex ${table.logical}`}
+          >
+            {isPending ? 'Starting…' : 'Reindex'}
+          </Button>
+        )
+      },
+    },
+  ]
 
   return (
     <section aria-labelledby="search-system-title" className="overflow-hidden rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default">
@@ -213,24 +306,24 @@ export function SystemSearchSection({
           data-testid="search-technical-details"
           open={detailsOpen}
           onToggle={(event) => setDetailsOpen(event.currentTarget.open)}
-          className="group overflow-hidden rounded-lg border border-border"
+          className="group overflow-hidden rounded-bakin-control border border-bakin-border-subtle"
         >
-          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 marker:hidden">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-bakin-3 px-bakin-3 py-bakin-2 marker:hidden">
             <span className="min-w-0">
-              <span className="block text-sm font-medium text-foreground">Index inventory &amp; repair</span>
-              <span className="block text-xs text-muted-foreground">Physical indexes, migrations, backlogs, and reindex controls.</span>
+              <span className="block text-bakin-typography-size-body font-bakin-typography-weight-medium text-bakin-text-primary">Index inventory &amp; repair</span>
+              <span className="block text-bakin-typography-size-meta text-bakin-text-muted">Physical indexes, migrations, backlogs, and reindex controls.</span>
             </span>
-            <span className="flex shrink-0 items-center gap-2">
+            <span className="flex shrink-0 items-center gap-bakin-2">
               <Badge variant="secondary">{status ? `${status.tables.length} tables` : 'Unavailable'}</Badge>
-              <ChevronRight className="size-4 text-muted-foreground transition-transform group-open:rotate-90 motion-reduce:transition-none" aria-hidden="true" />
+              <ChevronRight className="size-bakin-4 text-bakin-text-muted transition-transform group-open:rotate-90 motion-reduce:transition-none" aria-hidden="true" />
             </span>
           </summary>
 
-          <div className="space-y-3 border-t border-border p-3">
-            <div className="flex flex-wrap items-end justify-between gap-3">
+          <div className="space-y-bakin-3 border-t border-bakin-border-subtle p-bakin-3">
+            <div className="flex flex-wrap items-end justify-between gap-bakin-3">
               <div>
-                <h3 id="search-indexes-title" className="font-medium">Indexes &amp; migrations</h3>
-                <p className="text-xs text-muted-foreground">Rebuilds keep the active index serving while its replacement catches up.</p>
+                <h3 id="search-indexes-title" className="font-bakin-typography-weight-medium">Indexes &amp; migrations</h3>
+                <p className="text-bakin-typography-size-meta text-bakin-text-muted">Rebuilds keep the active index serving while its replacement catches up.</p>
               </div>
               <Button
                 size="sm"
@@ -243,81 +336,29 @@ export function SystemSearchSection({
             </div>
 
             {status?.enabled && status.engineReachable === false ? (
-              <p className="rounded-lg border border-dashed border-amber-500/50 bg-amber-500/5 p-3 text-sm text-muted-foreground">
+              <p className="rounded-bakin-control border border-dashed border-bakin-signal-highlight/50 bg-bakin-signal-highlight/5 p-bakin-3 text-bakin-typography-size-body text-bakin-text-muted">
                 Search is enabled but the engine is not answering. Table state below comes from local records;
                 document counts and reindexing are unavailable until the engine is back.
               </p>
             ) : null}
 
             {!status?.enabled ? (
-              <p className="rounded-lg border border-dashed border-border p-3 text-sm text-muted-foreground">
+              <p className="rounded-bakin-control border border-dashed border-bakin-border-subtle p-bakin-3 text-bakin-typography-size-body text-bakin-text-muted">
                 {status ? 'Search is disabled; no index actions are available.' : 'Index status is unavailable.'}
               </p>
             ) : status.tables.length === 0 ? (
-              <p className="rounded-lg border border-dashed border-border p-3 text-sm text-muted-foreground">No Search tables are registered.</p>
+              <p className="rounded-bakin-control border border-dashed border-bakin-border-subtle p-bakin-3 text-bakin-typography-size-body text-bakin-text-muted">No Search tables are registered.</p>
             ) : (
-              <div data-testid="search-index-table-scroll" className="max-h-96 overflow-auto rounded-lg border border-border">
-                <table className="w-full min-w-[760px] text-left text-xs">
-                  <thead className="sticky top-0 z-10 bg-muted text-muted-foreground">
-                    <tr>
-                      <th scope="col" className="px-3 py-2 font-medium">Index</th>
-                      <th scope="col" className="px-3 py-2 font-medium">State</th>
-                      <th scope="col" className="px-3 py-2 text-right font-medium">Documents</th>
-                      <th scope="col" className="px-3 py-2 font-medium">Last indexed</th>
-                      <th scope="col" className="px-3 py-2 font-medium">Backlog</th>
-                      <th scope="col" className="px-3 py-2 text-right font-medium">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {status.tables.map((table) => {
-                      const erroredLegs = table.legs.filter((leg) => Boolean(leg.error))
-                      const pending = legBacklog(table.legs)
-                      const isPending = mutation.status === 'pending'
-                        && (mutation.target === table.logical || mutation.target === 'all')
-                      const stateLabel = table.state === 'migrating'
-                        ? `Migrating · ${table.phase ?? 'running'}`
-                        : table.healthy && erroredLegs.length === 0 ? 'Active' : 'Needs attention'
-                      const stateTone: SearchTone = table.state === 'migrating'
-                        ? 'attention'
-                        : table.healthy && erroredLegs.length === 0 ? 'success' : 'danger'
-                      return (
-                        <tr key={table.logical} className="align-top">
-                          <td className="px-3 py-2.5">
-                            <div className="font-mono font-medium text-foreground">{table.logical}</div>
-                            <details className="mt-1 text-[10px] text-muted-foreground">
-                              <summary className="cursor-pointer">Technical identity</summary>
-                              <p className="mt-1 break-all font-mono">{table.physical} · schema v{table.schemaVersion} · {table.pluginId}</p>
-                            </details>
-                          </td>
-                          <td className="px-3 py-2.5">
-                            <StatusBadgePrimitive variant="outline" tone={stateTone}>{stateLabel}</StatusBadgePrimitive>
-                            {erroredLegs.map((leg) => (
-                              <p key={leg.name} className="mt-1 max-w-48 text-[10px] text-destructive">{leg.name}: {leg.error}</p>
-                            ))}
-                          </td>
-                          <td className="px-3 py-2.5 text-right font-mono tabular-nums">{table.docCount ?? '—'}</td>
-                          <td className="px-3 py-2.5 text-muted-foreground">{relativeEpoch(table.lastIndexedAt)}</td>
-                          <td className="px-3 py-2.5 text-muted-foreground">
-                            <span className="whitespace-nowrap">{table.journalPending} journal</span>
-                            <span className="mx-1">·</span>
-                            <span className="whitespace-nowrap">{pending} enrich</span>
-                          </td>
-                          <td className="px-3 py-2.5 text-right">
-                            <Button
-                              size="xs"
-                              variant="outline"
-                              disabled={mutationLocked}
-                              onClick={() => void onReindex(table.logical)}
-                              aria-label={`Reindex ${table.logical}`}
-                            >
-                              {isPending ? 'Starting…' : 'Reindex'}
-                            </Button>
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
+              <div data-testid="search-index-table-scroll" className="max-h-96 overflow-auto rounded-bakin-control border border-bakin-border-subtle px-bakin-2">
+                <DataTable<SearchIndexTable>
+                  label="Search indexes"
+                  rows={status.tables}
+                  rowKey={(table) => table.logical}
+                  columns={indexColumns}
+                  collapseBelow="none"
+                  renderRow={() => null}
+                  tableProps={{ className: 'min-w-[760px]' }}
+                />
               </div>
             )}
           </div>

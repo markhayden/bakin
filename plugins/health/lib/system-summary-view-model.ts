@@ -77,7 +77,7 @@ export function buildSubsystemSummaries(data: UseSystemDataResult): SubsystemSum
   const unverified = checks.filter((check) => check.latestExecution.outcome === 'failed' || check.latestExecution.outcome === 'invalid').length
   const checkPresentations = checks.map((check) => presentSystemCheck(check))
   const reviewChecks = checkPresentations.filter((presentation) => presentation.concerning)
-  const failedChecks = reviewChecks.filter((presentation) => presentation.tone === 'destructive').length
+  const failedChecks = reviewChecks.filter((presentation) => presentation.tone === 'danger').length
 
   let pluginSummary: SubsystemSummary
   if (pluginInventoryError) {

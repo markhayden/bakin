@@ -105,7 +105,7 @@ function OverviewPanel({ onRunChecksReady, onRunChecks }: OverviewPanelProps) {
   return (
     <>
       {ackError && (
-        <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+        <p role="alert" className="rounded-bakin-control border border-bakin-signal-danger/30 bg-bakin-signal-danger/5 px-bakin-3 py-bakin-2 text-bakin-typography-size-body text-bakin-signal-danger">
           {ackError}
         </p>
       )}

@@ -1,6 +1,7 @@
 'use client'
 
-import { formatAbsoluteTime, formatRelativeTime, PluginLink } from '@makinbakin/sdk/components'
+import { formatAbsoluteTime, formatRelativeTime } from '@makinbakin/sdk/conversation'
+import { PluginLink } from '@makinbakin/sdk/navigation'
 import { StatusBadge, type StatusTone } from '@makinbakin/sdk/patterns'
 import { Button, Skeleton } from '@makinbakin/sdk/ui'
 import {

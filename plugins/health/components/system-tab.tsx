@@ -163,7 +163,7 @@ export function SystemTabView({
         <div className="mb-2 flex items-end justify-between gap-3">
           <div>
             <h2 id="system-subsystems-title" className="text-base font-semibold">Platform pulse</h2>
-            <p className="text-xs text-muted-foreground">A stable snapshot of the services that keep Bakin usable.</p>
+            <p className="text-bakin-typography-size-meta text-bakin-text-muted">A stable snapshot of the services that keep Bakin usable.</p>
           </div>
         </div>
         <Grid
@@ -214,7 +214,7 @@ export function SystemTabView({
       </section>
 
       {data.report.error && !data.report.data && (
-        <div role="alert" className="rounded-lg border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+        <div role="alert" className="rounded-bakin-control border border-bakin-signal-danger/25 bg-bakin-signal-danger/10 px-bakin-3 py-bakin-2 text-bakin-typography-size-body text-bakin-signal-danger">
           The canonical health report is unavailable: {data.report.error}
         </div>
       )}
@@ -233,7 +233,7 @@ export function SystemTabView({
         ref={searchDetailRef}
         tabIndex={-1}
         aria-label="Search subsystem detail"
-        className="scroll-mt-4 outline-none focus-visible:rounded-xl focus-visible:ring-2 focus-visible:ring-ring"
+        className="scroll-mt-4 outline-none focus-visible:rounded-bakin-surface focus-visible:ring-2 focus-visible:ring-bakin-focus-ring"
       >
         <SystemSearchSection
           readiness={data.report.data?.subsystems.search ?? null}

@@ -15,14 +15,10 @@ describe('interaction source metadata', () => {
     expect(interactionCategoryMeta('agents')).toBe(INTERACTION_SOURCE_META.agent)
   })
 
-  it('keeps source colors distinct from the destructive failure color', () => {
-    const sources = Object.values(INTERACTION_SOURCE_META)
-
-    expect(new Set(sources.map((source) => source.barColor)).size).toBe(3)
-    for (const source of sources) {
+  it('keeps source icon colors clear of the failure color', () => {
+    for (const source of Object.values(INTERACTION_SOURCE_META)) {
       expect(source.iconColorClass).not.toContain('destructive')
-      expect(source.backgroundClass).not.toContain('destructive')
-      expect(source.barColor).not.toContain('destructive')
+      expect(source.iconColorClass).not.toContain('danger')
     }
   })
 })

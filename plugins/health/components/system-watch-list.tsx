@@ -2,19 +2,13 @@
 
 import { useMemo, useState } from 'react'
 import type { HealthReport } from '@makinbakin/sdk/types'
-import { ListRow, ListRows, StatusBadge, type StatusTone } from '@makinbakin/sdk/patterns'
+import { ListRow, ListRows, StatusBadge } from '@makinbakin/sdk/patterns'
 import { Banner, Button } from '@makinbakin/sdk/ui'
 import { ChevronDown, Puzzle, ShieldCheck } from 'lucide-react'
 import type { SystemPluginManifestData, SystemRegistryData } from '../hooks/use-system-data'
 import { buildSystemFindings, type SystemFinding } from '../lib/system-view-model'
 
 const DEFAULT_VISIBLE_FINDINGS = 3
-
-function canonicalFindingTone(tone: SystemFinding['tone']): StatusTone {
-  if (tone === 'destructive') return 'danger'
-  if (tone === 'warning') return 'attention'
-  return tone
-}
 
 export function SystemWatchList({
   report,
@@ -43,15 +37,15 @@ export function SystemWatchList({
 
   return (
     <section aria-labelledby="system-watch-list-title" data-testid="system-watch-list">
-      <div className="mb-2 flex min-w-0 items-end justify-between gap-3">
+      <div className="mb-bakin-2 flex min-w-0 items-end justify-between gap-bakin-3">
         <div className="min-w-0">
-          <h2 id="system-watch-list-title" className="text-base font-semibold">Worth a look</h2>
-          <p className="text-xs text-muted-foreground">
+          <h2 id="system-watch-list-title" className="font-bakin-typography-weight-semibold text-bakin-text-primary">Worth a look</h2>
+          <p className="text-bakin-typography-size-meta text-bakin-text-muted">
             Advisory and unavailable evidence is summarized here; open a row only when you need the details.
           </p>
         </div>
         {findings.length > 0 && (
-          <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+          <span className="shrink-0 text-bakin-typography-size-meta tabular-nums text-bakin-text-muted">
             {findings.length} {findings.length === 1 ? 'finding' : 'findings'}
           </span>
         )}
@@ -76,7 +70,7 @@ export function SystemWatchList({
           <ListRows variant="separated" aria-label="System findings">
             {visibleFindings.map((finding) => {
               const Icon = finding.kind === 'plugin' ? Puzzle : ShieldCheck
-              const tone = canonicalFindingTone(finding.tone)
+              const tone = finding.tone
               return (
                 <ListRow
                   key={finding.id}

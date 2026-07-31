@@ -2,9 +2,8 @@
 
 import { formatAbsoluteTime, formatRelativeTime } from '@makinbakin/sdk/conversation'
 import { Section } from '@makinbakin/sdk/layout'
-import { Pagination, StatusBadge, type StatusTone } from '@makinbakin/sdk/patterns'
+import { Pagination, StatusBadge, Timeline, TimelineEntry, type StatusTone } from '@makinbakin/sdk/patterns'
 import { SystemState } from '@makinbakin/sdk/ui'
-import { ChevronDown } from 'lucide-react'
 import { useState } from 'react'
 import type { UsageEntry, UsageFeedData } from '../types'
 import {
@@ -22,12 +21,11 @@ const EVENT_PAGE_SIZE = 10
 function eventState(entry: UsageEntry): {
   label: string
   tone: StatusTone
-  dot: string
 } {
-  if (entry.status === 'error') return { label: 'Failed', tone: 'danger', dot: 'bg-bakin-signal-danger' }
-  if (isUnverifiedActivity(entry)) return { label: 'Result not observed', tone: 'attention', dot: 'bg-bakin-signal-highlight' }
-  if (isCanceledActivity(entry)) return { label: 'Canceled', tone: 'neutral', dot: 'bg-bakin-text-muted' }
-  return { label: 'Succeeded', tone: 'success', dot: 'bg-bakin-action-primary-background' }
+  if (entry.status === 'error') return { label: 'Failed', tone: 'danger' }
+  if (isUnverifiedActivity(entry)) return { label: 'Result not observed', tone: 'attention' }
+  if (isCanceledActivity(entry)) return { label: 'Canceled', tone: 'neutral' }
+  return { label: 'Succeeded', tone: 'success' }
 }
 
 function relativeEventTime(value: string): string {
@@ -53,58 +51,42 @@ export function activityStreamEntries(data: UsageFeedData): UsageEntry[] {
 }
 
 function ActivityEventRow({ entry }: { entry: UsageEntry }) {
-  const [expanded, setExpanded] = useState(false)
   const state = eventState(entry)
   const failed = entry.status === 'error'
   const context = !failed && (isCanceledActivity(entry) || isUnverifiedActivity(entry))
     ? activityImpact(entry)
     : null
   const label = formatActivityName(entry.name)
-  const owner = entry.agent ? `Agent ${entry.agent}` : activityOwner(entry)
   const when = relativeEventTime(entry.ts)
   const sourceLabel = INTERACTION_SOURCE_META[entry.kind].label
 
   return (
-    <li className="border-b border-bakin-border-subtle last:border-b-0">
-      <button
-        type="button"
-        className="grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-bakin-3 gap-y-bakin-1 px-bakin-3 py-bakin-3 text-left hover:bg-bakin-surface-default focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-bakin-focus-ring @[34rem]/health:grid-cols-[auto_minmax(0,1fr)_auto_auto]"
-        aria-label={`View ${label} details — ${state.label}, ${sourceLabel}, ${owner}, ${when}`}
-        aria-expanded={expanded}
-        onClick={() => setExpanded((value) => !value)}
-      >
-        <span className={`size-2 shrink-0 rounded-full ${state.dot}`} aria-hidden="true" />
-        <span className="min-w-0">
-          <strong className="block truncate text-bakin-typography-size-body font-bakin-typography-weight-medium text-bakin-text-primary" title={entry.name}>{label}</strong>
-          <span className="block truncate text-bakin-typography-size-meta text-bakin-text-muted">
-            {sourceLabel} · <span>{entry.agent ? `Agent: ${entry.agent}` : activityOwner(entry)}</span>
+    <TimelineEntry
+      tone={state.tone}
+      timestamp={<span title={formatAbsoluteTime(entry.ts)}>{when}</span>}
+      dateTime={entry.ts}
+      title={<span title={entry.name}>{label}</span>}
+      meta={(
+        <>
+          <StatusBadge tone={state.tone} variant="solid">{state.label}</StatusBadge>
+          <span className="min-w-0 truncate text-bakin-typography-size-meta text-bakin-text-muted">
+            {sourceLabel} · {entry.agent ? `Agent: ${entry.agent}` : activityOwner(entry)}
           </span>
-          {context && <span className="mt-bakin-1 block text-bakin-typography-size-meta text-bakin-text-muted">{context}</span>}
-        </span>
-        <StatusBadge tone={state.tone} variant="solid" className="justify-self-end">{state.label}</StatusBadge>
-        <span className="col-start-2 row-start-2 flex items-center gap-bakin-2 text-bakin-typography-size-meta text-bakin-text-muted @[34rem]/health:col-start-4 @[34rem]/health:row-start-1">
-          <time dateTime={entry.ts} title={formatAbsoluteTime(entry.ts)}>{when}</time>
-          <ChevronDown
-            className={expanded ? 'size-3.5 rotate-180 transition-transform motion-reduce:transition-none' : 'size-3.5 transition-transform motion-reduce:transition-none'}
-            aria-hidden="true"
-          />
-        </span>
-      </button>
-
-      {expanded && (
-        <div className="border-t border-bakin-border-subtle bg-bakin-surface-default px-bakin-4 py-bakin-3">
-          <p className="text-bakin-typography-size-body text-bakin-text-primary">{failed ? activityFailureReason(entry) : activityImpact(entry)}</p>
-          {failed && <p className="mt-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted">{activityImpact(entry)}</p>}
-          <dl className="mt-bakin-3 grid gap-x-bakin-4 gap-y-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted @[28rem]/health:grid-cols-[max-content_minmax(0,1fr)]">
-            <dt>Raw name</dt><dd className="break-all font-mono text-bakin-text-primary">{entry.name}</dd>
-            <dt>Type</dt><dd className="text-bakin-text-primary">{sourceLabel}</dd>
-            <dt>Agent</dt><dd className="text-bakin-text-primary">{activityOwner(entry)}</dd>
-            <dt>Duration</dt><dd className="text-bakin-text-primary">{entry.durationMs === null ? 'Not recorded' : `${entry.durationMs.toLocaleString()} ms`}</dd>
-            {entry.meta && <><dt>Metadata</dt><dd className="min-w-0 overflow-x-auto whitespace-pre-wrap break-all font-mono text-bakin-text-primary">{JSON.stringify(entry.meta, null, 2)}</dd></>}
-          </dl>
-        </div>
+          {context && <span className="min-w-0 text-bakin-typography-size-meta text-bakin-text-muted">{context}</span>}
+        </>
       )}
-    </li>
+      expandable
+    >
+      <p className="text-bakin-typography-size-body text-bakin-text-primary">{failed ? activityFailureReason(entry) : activityImpact(entry)}</p>
+      {failed && <p className="mt-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted">{activityImpact(entry)}</p>}
+      <dl className="mt-bakin-3 grid gap-x-bakin-4 gap-y-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted @[28rem]/health:grid-cols-[max-content_minmax(0,1fr)]">
+        <dt>Raw name</dt><dd className="break-all font-bakin-typography-family-mono text-bakin-text-primary">{entry.name}</dd>
+        <dt>Type</dt><dd className="text-bakin-text-primary">{sourceLabel}</dd>
+        <dt>Agent</dt><dd className="text-bakin-text-primary">{activityOwner(entry)}</dd>
+        <dt>Duration</dt><dd className="text-bakin-text-primary">{entry.durationMs === null ? 'Not recorded' : `${entry.durationMs.toLocaleString()} ms`}</dd>
+        {entry.meta && <><dt>Metadata</dt><dd className="min-w-0 overflow-x-auto whitespace-pre-wrap break-all font-bakin-typography-family-mono text-bakin-text-primary">{JSON.stringify(entry.meta, null, 2)}</dd></>}
+      </dl>
+    </TimelineEntry>
   )
 }
 
@@ -148,9 +130,9 @@ export function ActivityEventStream({ data }: { data: UsageFeedData }) {
         />
       ) : (
         <>
-          <ul className="border-y border-bakin-border-subtle" aria-label="Recent events">
+          <Timeline aria-label="Recent events" className="border-y border-bakin-border-subtle py-bakin-3">
             {visibleEntries.map((entry) => <ActivityEventRow key={eventIdentity(entry)} entry={entry} />)}
-          </ul>
+          </Timeline>
           <Pagination
             ariaLabel="Recent event pagination"
             page={safePage}

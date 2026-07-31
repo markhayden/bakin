@@ -1,7 +1,7 @@
 'use client'
 
 import { useQueryState } from '@makinbakin/sdk/hooks'
-import { SegmentedControl } from '@makinbakin/sdk/components'
+import { SegmentedControl } from '@makinbakin/sdk/patterns'
 import { useAgentsData, type AgentsWindow } from '../hooks/use-agents-data'
 import { useAgentOperationalData } from '../hooks/use-agent-operational-data'
 import { AgentPulse } from './agent-pulse'
@@ -34,7 +34,7 @@ export function AgentsTab() {
   ].filter((message): message is string => Boolean(message))
 
   return (
-    <div className="min-w-0 space-y-5" data-testid="health-agents-tab">
+    <div className="min-w-0 space-y-bakin-5" data-testid="health-agents-tab">
       <HealthTabIntro
         title="Agents"
         description="Compare token use, cost, tracked work, and recorded outcomes across agents. Spot unusual spend or missing results; today’s totals are still in progress."
@@ -51,7 +51,7 @@ export function AgentsTab() {
       />
 
       {backgroundErrors.length > 0 && (
-        <p role="status" className="text-xs text-warning-foreground">
+        <p role="status" className="text-bakin-typography-size-meta text-bakin-signal-highlight">
           Some agent evidence is incomplete: {backgroundErrors.length === 1 ? backgroundErrors[0] : `${backgroundErrors.length} sources could not be fully verified`}.
         </p>
       )}

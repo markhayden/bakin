@@ -1,12 +1,20 @@
 'use client'
 
 import { useState } from 'react'
-import { ChartExplainer, StackedColumnChart } from '@makinbakin/sdk/charts'
-// EmptyState/ErrorState/SectionCard are frozen-barrel legacy; they die at the P6 health slice.
-import { EmptyState, ErrorState, SectionCard } from '@makinbakin/sdk/components'
+import { AreaChart, ChartExplainer, StackedColumnChart } from '@makinbakin/sdk/charts'
 import { PluginLink } from '@makinbakin/sdk/navigation'
 import { SegmentedControl } from '@makinbakin/sdk/patterns'
-import { Skeleton } from '@makinbakin/sdk/ui'
+import {
+  Button,
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  Skeleton,
+  SystemState,
+} from '@makinbakin/sdk/ui'
 import { ArrowUpRight, TrendingUp } from 'lucide-react'
 import type { UsageHistoryData } from '../types'
 import { formatRuntimeCost, formatTokenCount } from '../lib/format'
@@ -31,6 +39,9 @@ interface TrendData {
 }
 
 type UsageMetric = 'tokens' | 'cost'
+
+/** Beyond this many day buckets, columns get unreadable — the trend renders as a stacked area. */
+const WIDE_WINDOW_DAYS = 10
 
 const USAGE_METRICS = [
   { value: 'tokens', label: 'Tokens' },
@@ -157,20 +168,25 @@ export function AgentsUsageChart({ data, loading, error, onRetry }: AgentsUsageC
   const chartLabel = metric === 'tokens' ? 'Usage over time' : 'Reported cost over time'
 
   return (
-    <SectionCard
-      title={<h3>Usage &amp; cost</h3>}
-      icon={TrendingUp}
-      description="See where tokens and runtime-reported cost accumulated across agents."
-      action={(
-        <SegmentedControl
-          options={USAGE_METRICS}
-          value={metric}
-          onValueChange={setMetric}
-          ariaLabel="Usage metric"
-        />
-      )}
-      className="min-w-0"
-    >
+    <Card className="min-w-0" data-section-card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-bakin-2">
+          <TrendingUp className="size-bakin-4 text-bakin-text-muted" aria-hidden="true" />
+          <h3>Usage &amp; cost</h3>
+        </CardTitle>
+        <CardDescription className="max-w-3xl">
+          See where tokens and runtime-reported cost accumulated across agents.
+        </CardDescription>
+        <CardAction>
+          <SegmentedControl
+            options={USAGE_METRICS}
+            value={metric}
+            onValueChange={setMetric}
+            ariaLabel="Usage metric"
+          />
+        </CardAction>
+      </CardHeader>
+      <CardContent className="space-y-bakin-3">
       {loading && !data ? (
         <div role="status" aria-label="Loading usage and cost" className="space-y-2">
           <Skeleton className="h-36 w-full" />
@@ -180,15 +196,22 @@ export function AgentsUsageChart({ data, loading, error, onRetry }: AgentsUsageC
         <>
           {error && !data ? (
             <div>
-              <ErrorState title="Usage and cost unavailable" message={error} retry={onRetry} className="py-8" />
-              <p role="status" className="text-xs text-muted-foreground">
+              <SystemState
+                kind="error"
+                scope="section"
+                headingLevel={4}
+                title="Usage and cost unavailable"
+                description={error}
+                action={<Button size="sm" variant="outline" onClick={onRetry}>Try again</Button>}
+              />
+              <p role="status" className="text-bakin-typography-size-meta text-bakin-text-muted">
                 Cost could not be checked because {lowerFirst(error)}.
               </p>
             </div>
           ) : (
             <>
               {scoped && evidenceLimited && (
-                <div role="status" className="rounded-lg border border-warning/25 bg-warning/5 px-3 py-2 text-xs text-muted-foreground">
+                <div role="status" className="rounded-bakin-control border border-bakin-signal-highlight/25 bg-bakin-signal-highlight/5 px-bakin-3 py-bakin-2 text-bakin-typography-size-meta text-bakin-text-muted">
                   {scoped.status === 'complete' && scoped.excludedAgentCount > 0
                     ? `The current scan verified ${scoped.includedAgentCount} agent${scoped.includedAgentCount === 1 ? '' : 's'}. ${scoped.excludedAgentCount} retained agent row${scoped.excludedAgentCount === 1 ? ' is' : 's are'} excluded because it was not part of that scan.`
                     : scoped.includedAgentCount > 0
@@ -197,16 +220,18 @@ export function AgentsUsageChart({ data, loading, error, onRetry }: AgentsUsageC
                 </div>
               )}
               {visibleData && visibleData.byAgent.length > 0 && (
-                <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1 rounded-lg bg-foreground/[0.025] px-3 py-2 ring-1 ring-foreground/10">
-                  <p className="text-xs text-muted-foreground">
-                    Reported cost <span className="ml-1 font-semibold tabular-nums text-foreground">{reportedCost === null ? 'Unavailable' : `${formatRuntimeCost(reportedCost / 1_000_000)}${partialCostCoverage ? '+' : ''}`}</span>
+                <div className="flex flex-wrap items-baseline gap-x-bakin-6 gap-y-bakin-1 rounded-bakin-control border border-bakin-border-subtle bg-bakin-canvas-default px-bakin-3 py-bakin-2">
+                  <p className="text-bakin-typography-size-meta text-bakin-text-muted">
+                    Reported cost <span className="ml-bakin-1 font-bakin-typography-weight-semibold tabular-nums text-bakin-text-primary">{reportedCost === null ? 'Unavailable' : `${formatRuntimeCost(reportedCost / 1_000_000)}${partialCostCoverage ? '+' : ''}`}</span>
                   </p>
-                  {costCoverage && <p className="text-xs text-muted-foreground">{costCoverage}</p>}
+                  {costCoverage && <p className="text-bakin-typography-size-meta text-bakin-text-muted">{costCoverage}</p>}
                 </div>
               )}
               {!trend ? (
-                <EmptyState
-                  variant="section"
+                <SystemState
+                  kind="initial-empty"
+                  scope="section"
+                  headingLevel={4}
                   title={evidenceLimited
                     ? 'No fully verified usage total is available yet.'
                     : metric === 'tokens'
@@ -232,12 +257,26 @@ export function AgentsUsageChart({ data, loading, error, onRetry }: AgentsUsageC
                   {zeroReportedCost ? (
                     <div
                       data-reported-cost-zero
-                      className="flex min-h-28 flex-col items-center justify-center rounded-lg border border-dashed border-foreground/15 bg-foreground/[0.015] px-4 py-6 text-center"
+                      className="flex min-h-28 flex-col items-center justify-center rounded-bakin-control border border-dashed border-bakin-border-subtle bg-bakin-canvas-default px-bakin-4 py-bakin-6 text-center"
                     >
-                      <strong className="text-2xl tabular-nums text-foreground">$0.00</strong>
-                      <span className="mt-1 text-xs text-muted-foreground">
+                      <strong className="text-bakin-typography-size-title tabular-nums text-bakin-text-primary">$0.00</strong>
+                      <span className="mt-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted">
                         All {costedMessages} cost-reporting messages returned $0.00 in this window.
                       </span>
+                    </div>
+                  ) : trend.data.length > WIDE_WINDOW_DAYS ? (
+                    <div className="w-full max-w-4xl" data-agent-token-trend-plot>
+                      <AreaChart
+                        key={metric}
+                        stacked
+                        data={trend.data}
+                        series={trend.seriesKeys.map((seriesKey) => ({ key: seriesKey, label: seriesKey }))}
+                        label={chartLabel}
+                        height={144}
+                        formatValue={metric === 'tokens'
+                          ? formatTokenCount
+                          : (value) => formatRuntimeCost(value / 1_000_000)}
+                      />
                     </div>
                   ) : (
                     <div className="w-full max-w-4xl" data-agent-token-trend-plot>
@@ -263,12 +302,13 @@ export function AgentsUsageChart({ data, loading, error, onRetry }: AgentsUsageC
           )}
           <PluginLink
             to="/models?tab=spend"
-            className="inline-flex items-center gap-1 rounded-sm text-xs font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="inline-flex items-center gap-bakin-1 rounded-bakin-control text-bakin-typography-size-meta font-bakin-typography-weight-medium text-bakin-signal-accent underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bakin-focus-ring"
           >
-            View budgets in Models <ArrowUpRight className="size-3.5" aria-hidden="true" />
+            View budgets in Models <ArrowUpRight className="size-bakin-3" aria-hidden="true" />
           </PluginLink>
         </>
       )}
-    </SectionCard>
+      </CardContent>
+    </Card>
   )
 }

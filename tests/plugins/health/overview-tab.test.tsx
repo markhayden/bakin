@@ -285,8 +285,8 @@ describe('OverviewTabView', () => {
     expect(within(interactions).getByText('80')).toBeDefined()
     expect(within(interactions).getByText('Agents')).toBeDefined()
     expect(within(interactions).getByText('10')).toBeDefined()
-    expect(within(interactions).getByText('web search')).toBeDefined()
-    expect(within(interactions).getByText('images generate')).toBeDefined()
+    expect(within(interactions).getAllByText('web search').length).toBeGreaterThan(0)
+    expect(within(interactions).getAllByText('images generate').length).toBeGreaterThan(0)
     expect(within(interactions).getByText('monitoring excluded').getAttribute('title'))
       .toBe('Successful routine polling and static delivery are excluded; failures always count.')
     expect(within(interactions).getByRole('group', { name: /Recorded meaningful Bakin interactions/i })).toBeDefined()
@@ -546,14 +546,11 @@ describe('OverviewTabView', () => {
     render(<OverviewTabView model={buildHealthOverviewViewModel({ report: report(), now: NOW })} telemetry={telemetry} />)
 
     const interactions = within(screen.getByTestId('overview-interactions'))
-    const failedRow = interactions.getByText('search reindex').closest<HTMLElement>('[data-testid="interaction-destination-row"]')!
-    const successful = within(failedRow).getByTestId('interaction-destination-success')
-    const failed = within(failedRow).getByTestId('interaction-destination-failed')
-
-    expect(successful.className).toContain('bg-chart-1')
-    expect(successful.getAttribute('style')).toContain('flex-grow: 1')
-    expect(failed.className).toContain('bg-destructive')
-    expect(failed.getAttribute('style')).toContain('flex-grow: 1')
+    expect(interactions.getByRole('img', { name: 'search reindex — calls: 2, failed: 1' })).toBeDefined()
+    const failedRow = screen.getByTestId('overview-interactions')
+      .querySelector('[data-row-key="tools:bakin_exec_search_reindex"]')
+    expect(failedRow).not.toBeNull()
+    expect(failedRow!.querySelector('[data-series-secondary="errors"]')).not.toBeNull()
   })
 
   it('keeps incident explanations compact while allowing the full impact to be read', () => {
@@ -592,13 +589,12 @@ describe('OverviewTabView', () => {
       />,
     )
 
-    const rows = within(screen.getByTestId('overview-interactions'))
-      .getAllByTestId('interaction-destination-row')
+    const rows = Array.from(screen.getByTestId('overview-interactions')
+      .querySelectorAll<HTMLElement>('[data-slot="ranked-bar-row"]'))
     expect(rows).toHaveLength(3)
     for (const row of rows) {
       expect(row.className).toContain('min-w-0')
-      expect(within(row).getByTestId('interaction-destination-bar')).toBeDefined()
-      expect(within(row).getByTestId('interaction-destination-metric').className).toContain('w-24')
+      expect(row.querySelector('[data-series="count"], [role="img"]')).not.toBeNull()
     }
 
     const spendRows = within(screen.getByTestId('overview-agent-spend'))
@@ -606,8 +602,7 @@ describe('OverviewTabView', () => {
     expect(spendRows).toHaveLength(2)
     for (const row of spendRows) {
       expect(row.className).toContain('min-w-0')
-      expect(within(row).getByTestId('agent-spend-bar')).toBeDefined()
-      expect(within(row).getByTestId('agent-spend-metric').className).toContain('w-16')
+      expect(within(row).getByTestId('agent-spend-metric')).toBeDefined()
     }
   })
 

@@ -433,7 +433,7 @@ describe('AgentsTab', () => {
 
     expect(pixel.compareDocumentPosition(main) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(scout.compareDocumentPosition(enrich) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect(within(surface).getByRole('article', { name: 'pixel' })).toBe(pixel)
+    expect(within(surface).getByRole('listitem', { name: 'pixel' })).toBe(pixel)
   })
 
   it('labels independently pending agent evidence as checking instead of unavailable', async () => {

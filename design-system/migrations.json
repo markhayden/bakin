@@ -19,13 +19,13 @@
     "private-import"
   ],
   "summary": {
-    "paths": 124,
+    "paths": 111,
     "totals": {
-      "raw-palette": 655,
-      "arbitrary-size": 321,
-      "raw-control": 111,
-      "inline-style": 39,
-      "generic-token": 1011,
+      "raw-palette": 653,
+      "arbitrary-size": 303,
+      "raw-control": 109,
+      "inline-style": 21,
+      "generic-token": 741,
       "unscoped-css": 0,
       "private-import": 7
     }
@@ -796,42 +796,6 @@
       }
     },
     {
-      "path": "plugins/health/components/activity-breakdown.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "plugin",
-        "pluginId": "health"
-      },
-      "censusEntryId": "plugin-slot:health:page:/health",
-      "migrationTask": "T61-T62",
-      "archetype": "dashboard-overview",
-      "target": "diagnostic dashboard archetypes and semantic data visualization",
-      "status": "legacy-allowed",
-      "allowances": {
-        "arbitrary-size": 1,
-        "raw-control": 1,
-        "inline-style": 2,
-        "generic-token": 3
-      }
-    },
-    {
-      "path": "plugins/health/components/activity-event-stream.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "plugin",
-        "pluginId": "health"
-      },
-      "censusEntryId": "plugin-slot:health:page:/health",
-      "migrationTask": "T61-T62",
-      "archetype": "dashboard-overview",
-      "target": "diagnostic dashboard archetypes and semantic data visualization",
-      "status": "legacy-allowed",
-      "allowances": {
-        "arbitrary-size": 1,
-        "raw-control": 1
-      }
-    },
-    {
       "path": "plugins/health/components/activity-failure-groups.tsx",
       "owner": {
         "repository": "bakin",
@@ -845,24 +809,6 @@
       "status": "legacy-allowed",
       "allowances": {
         "arbitrary-size": 1
-      }
-    },
-    {
-      "path": "plugins/health/components/activity-pulse.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "plugin",
-        "pluginId": "health"
-      },
-      "censusEntryId": "plugin-slot:health:page:/health",
-      "migrationTask": "T61-T62",
-      "archetype": "dashboard-overview",
-      "target": "diagnostic dashboard archetypes and semantic data visualization",
-      "status": "legacy-allowed",
-      "allowances": {
-        "arbitrary-size": 1,
-        "inline-style": 5,
-        "generic-token": 31
       }
     },
     {
@@ -882,120 +828,6 @@
       }
     },
     {
-      "path": "plugins/health/components/activity-tab.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "plugin",
-        "pluginId": "health"
-      },
-      "censusEntryId": "plugin-slot:health:page:/health",
-      "migrationTask": "T61-T62",
-      "archetype": "dashboard-overview",
-      "target": "diagnostic dashboard archetypes and semantic data visualization",
-      "status": "legacy-allowed",
-      "allowances": {
-        "generic-token": 6
-      }
-    },
-    {
-      "path": "plugins/health/components/activity-volume-chart.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "plugin",
-        "pluginId": "health"
-      },
-      "censusEntryId": "plugin-slot:health:page:/health",
-      "migrationTask": "T61-T62",
-      "archetype": "dashboard-overview",
-      "target": "diagnostic dashboard archetypes and semantic data visualization",
-      "status": "legacy-allowed",
-      "allowances": {
-        "generic-token": 2
-      }
-    },
-    {
-      "path": "plugins/health/components/agent-pulse.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "plugin",
-        "pluginId": "health"
-      },
-      "censusEntryId": "plugin-slot:health:page:/health",
-      "migrationTask": "T61-T62",
-      "archetype": "dashboard-overview",
-      "target": "diagnostic dashboard archetypes and semantic data visualization",
-      "status": "legacy-allowed",
-      "allowances": {
-        "arbitrary-size": 3,
-        "inline-style": 4,
-        "generic-token": 38
-      }
-    },
-    {
-      "path": "plugins/health/components/agents-tab.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "plugin",
-        "pluginId": "health"
-      },
-      "censusEntryId": "plugin-slot:health:page:/health",
-      "migrationTask": "T61-T62",
-      "archetype": "dashboard-overview",
-      "target": "diagnostic dashboard archetypes and semantic data visualization",
-      "status": "legacy-allowed",
-      "allowances": {
-        "generic-token": 1
-      }
-    },
-    {
-      "path": "plugins/health/components/agents-usage-chart.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "plugin",
-        "pluginId": "health"
-      },
-      "censusEntryId": "plugin-slot:health:page:/health",
-      "migrationTask": "T61-T62",
-      "archetype": "dashboard-overview",
-      "target": "diagnostic dashboard archetypes and semantic data visualization",
-      "status": "legacy-allowed",
-      "allowances": {
-        "generic-token": 13
-      }
-    },
-    {
-      "path": "plugins/health/components/health-page.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "plugin",
-        "pluginId": "health"
-      },
-      "censusEntryId": "plugin-slot:health:page:/health",
-      "migrationTask": "T61-T62",
-      "archetype": "dashboard-overview",
-      "target": "diagnostic dashboard archetypes and semantic data visualization",
-      "status": "legacy-allowed",
-      "allowances": {
-        "generic-token": 3
-      }
-    },
-    {
-      "path": "plugins/health/components/interaction-source-meta.ts",
-      "owner": {
-        "repository": "bakin",
-        "area": "plugin",
-        "pluginId": "health"
-      },
-      "censusEntryId": "plugin-slot:health:page:/health",
-      "migrationTask": "T61-T62",
-      "archetype": "dashboard-overview",
-      "target": "diagnostic dashboard archetypes and semantic data visualization",
-      "status": "legacy-allowed",
-      "allowances": {
-        "generic-token": 9
-      }
-    },
-    {
       "path": "plugins/health/components/overview-agent-spend.tsx",
       "owner": {
         "repository": "bakin",
@@ -1008,9 +840,8 @@
       "target": "diagnostic dashboard archetypes and semantic data visualization",
       "status": "legacy-allowed",
       "allowances": {
-        "arbitrary-size": 4,
-        "inline-style": 2,
-        "generic-token": 21
+        "arbitrary-size": 1,
+        "inline-style": 1
       }
     },
     {
@@ -1030,24 +861,6 @@
       }
     },
     {
-      "path": "plugins/health/components/overview-context-traffic.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "plugin",
-        "pluginId": "health"
-      },
-      "censusEntryId": "plugin-slot:health:page:/health",
-      "migrationTask": "T61-T62",
-      "archetype": "dashboard-overview",
-      "target": "diagnostic dashboard archetypes and semantic data visualization",
-      "status": "legacy-allowed",
-      "allowances": {
-        "arbitrary-size": 3,
-        "inline-style": 2,
-        "generic-token": 29
-      }
-    },
-    {
       "path": "plugins/health/components/overview-interactions.tsx",
       "owner": {
         "repository": "bakin",
@@ -1060,9 +873,7 @@
       "target": "diagnostic dashboard archetypes and semantic data visualization",
       "status": "legacy-allowed",
       "allowances": {
-        "arbitrary-size": 2,
-        "inline-style": 4,
-        "generic-token": 20
+        "arbitrary-size": 1
       }
     },
     {
@@ -1110,8 +921,7 @@
       "target": "diagnostic dashboard archetypes and semantic data visualization",
       "status": "legacy-allowed",
       "allowances": {
-        "arbitrary-size": 3,
-        "generic-token": 32
+        "arbitrary-size": 3
       }
     },
     {
@@ -1127,8 +937,7 @@
       "target": "diagnostic dashboard archetypes and semantic data visualization",
       "status": "legacy-allowed",
       "allowances": {
-        "arbitrary-size": 4,
-        "generic-token": 35
+        "arbitrary-size": 1
       }
     },
     {
@@ -1144,41 +953,7 @@
       "target": "diagnostic dashboard archetypes and semantic data visualization",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-palette": 2,
-        "arbitrary-size": 3,
-        "generic-token": 20
-      }
-    },
-    {
-      "path": "plugins/health/components/system-tab.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "plugin",
-        "pluginId": "health"
-      },
-      "censusEntryId": "plugin-slot:health:page:/health",
-      "migrationTask": "T61-T62",
-      "archetype": "dashboard-overview",
-      "target": "diagnostic dashboard archetypes and semantic data visualization",
-      "status": "legacy-allowed",
-      "allowances": {
-        "generic-token": 5
-      }
-    },
-    {
-      "path": "plugins/health/components/system-watch-list.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "plugin",
-        "pluginId": "health"
-      },
-      "censusEntryId": "plugin-slot:health:page:/health",
-      "migrationTask": "T61-T62",
-      "archetype": "dashboard-overview",
-      "target": "diagnostic dashboard archetypes and semantic data visualization",
-      "status": "legacy-allowed",
-      "allowances": {
-        "generic-token": 2
+        "arbitrary-size": 1
       }
     },
     {

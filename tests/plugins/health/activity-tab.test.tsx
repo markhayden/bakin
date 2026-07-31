@@ -916,21 +916,15 @@ describe('ActivityTab', () => {
     expect(breakdown.getAttribute('data-slot')).toBe('section')
     expect(breakdown.getAttribute('data-divider')).toBe('top')
     expect(breakdown.querySelector('[data-slot="grid"]')?.getAttribute('data-layout')).toBe('split')
-    const destinations = within(breakdown).getByRole('list', { name: 'Top destinations' })
-    expect(within(destinations).getAllByRole('listitem')).toHaveLength(4)
-    const toolDestination = within(destinations).getByRole('listitem', { name: 'Tools · Search Query' })
-    const apiDestination = within(destinations).getByRole('listitem', { name: 'API · Search Query' })
-    const agentDestination = within(destinations).getByRole('listitem', { name: 'Agents · Dispatch' })
-    expect(toolDestination.getAttribute('data-source-kind')).toBe('mcp')
-    expect(apiDestination.getAttribute('data-source-kind')).toBe('rest')
-    expect(agentDestination.getAttribute('data-source-kind')).toBe('agent')
-    expect(toolDestination.querySelector<HTMLElement>('[data-source-bar]')?.style.backgroundColor).toBe('var(--chart-1)')
-    expect(apiDestination.querySelector<HTMLElement>('[data-source-bar]')?.style.backgroundColor).toBe('var(--chart-2)')
-    expect(agentDestination.querySelector<HTMLElement>('[data-source-bar]')?.style.backgroundColor).toBe('var(--chart-3)')
-    expect(within(toolDestination).getByRole('button', { name: 'Review 2 failed Tools Search Query calls' })).toBeDefined()
-    expect(within(apiDestination).getByRole('button', { name: 'Review 1 failed API Search Query call' })).toBeDefined()
-    const agents = within(breakdown).getByRole('list', { name: 'Busiest agents' })
-    expect(within(agents).getAllByRole('listitem')).toHaveLength(3)
+    const destinations = within(breakdown).getByRole('group', { name: 'Top destinations' })
+    expect(destinations.querySelectorAll('[data-slot="ranked-bar-row"]')).toHaveLength(4)
+    expect(within(destinations).getByRole('img', { name: 'Tools · Search Query · 20 ms median — calls: 3, failed: 2' })).toBeDefined()
+    expect(within(destinations).getByRole('img', { name: 'API · Search Query · 21 ms median — calls: 2, failed: 1' })).toBeDefined()
+    expect(within(destinations).getByRole('img', { name: 'Agents · Dispatch · 48 ms median — calls: 2, failed: 1' })).toBeDefined()
+    expect(within(breakdown).getByRole('button', { name: 'Review 2 failed Tools Search Query calls' })).toBeDefined()
+    expect(within(breakdown).getByRole('button', { name: 'Review 1 failed API Search Query call' })).toBeDefined()
+    const agents = within(breakdown).getByRole('group', { name: 'Busiest agents' })
+    expect(agents.querySelectorAll('[data-slot="ranked-bar-row"]')).toHaveLength(3)
     expect(within(agents).getByText('main')).toBeDefined()
 
     expect(within(metrics).queryByRole('button', { name: /Hiccups/ })).toBeNull()
@@ -994,8 +988,8 @@ describe('ActivityTab', () => {
     expect(agents?.textContent).toContain('Busiest: unknown (2)')
 
     const busiestAgents = within(screen.getByTestId('activity-breakdown'))
-      .getByRole('list', { name: 'Busiest agents' })
-    expect(within(busiestAgents).getAllByRole('listitem')).toHaveLength(1)
+      .getByRole('group', { name: 'Busiest agents' })
+    expect(busiestAgents.querySelectorAll('[data-slot="ranked-bar-row"]')).toHaveLength(1)
     expect(within(busiestAgents).getByText('unknown')).toBeDefined()
   })
 
@@ -1043,10 +1037,10 @@ describe('ActivityTab', () => {
 
     render(<ActivityTab />)
 
-    const destinations = screen.getByRole('list', { name: 'Top destinations' })
-    expect(within(destinations).getAllByRole('listitem')).toHaveLength(10)
-    expect(within(destinations).getByRole('listitem', { name: 'Tools · Images Generate' })).toBeDefined()
-    expect(within(destinations).getByRole('listitem', { name: 'Tools · Bash' })).toBeDefined()
+    const destinations = screen.getByRole('group', { name: 'Top destinations' })
+    expect(destinations.querySelectorAll('[data-slot="ranked-bar-row"]')).toHaveLength(10)
+    expect(within(destinations).getByRole('img', { name: /Tools · Images Generate/ })).toBeDefined()
+    expect(within(destinations).getByRole('img', { name: /Tools · Bash/ })).toBeDefined()
   })
 
   it('opens, highlights, and smoothly focuses the exact failure pattern from a destination count', () => {
@@ -1058,9 +1052,9 @@ describe('ActivityTab', () => {
     try {
       render(<ActivityTab />)
 
-      const destinations = screen.getByRole('list', { name: 'Top destinations' })
-      const toolDestination = within(destinations).getByRole('listitem', { name: 'Tools · Search Query' })
-      fireEvent.click(within(toolDestination).getByRole('button', {
+      const breakdown = screen.getByTestId('activity-breakdown')
+      expect(within(breakdown).getByRole('img', { name: /Tools · Search Query/ })).toBeDefined()
+      fireEvent.click(within(breakdown).getByRole('button', {
         name: 'Review 2 failed Tools Search Query calls',
       }))
 
@@ -1317,10 +1311,9 @@ describe('ActivityTab', () => {
     try {
       render(<ActivityTab />)
 
-      const destination = screen.getByRole('listitem', { name: 'Search Reindex' })
-      expect(destination.getAttribute('data-source-kind')).toBe('unknown')
-      expect(destination.querySelector<HTMLElement>('[data-source-bar]')?.style.backgroundColor).toBe('var(--muted-foreground)')
-      fireEvent.click(within(destination).getByRole('button', {
+      const breakdown = screen.getByTestId('activity-breakdown')
+      expect(within(breakdown).getByRole('img', { name: 'Search Reindex · 340 ms median — calls: 1, failed: 1' })).toBeDefined()
+      fireEvent.click(within(breakdown).getByRole('button', {
         name: 'Review 1 failed Search Reindex call',
       }))
 
@@ -1352,9 +1345,9 @@ describe('ActivityTab', () => {
     expect(within(eventList).getAllByText('Canceled')).toHaveLength(1)
     expect(within(eventList).getAllByText('Result not observed')).toHaveLength(1)
     expect(within(eventList).getByRole('button', {
-      name: /View Dispatch details — Failed, Agents, Agent patch,/,
+      name: /Dispatch.*Failed.*Agents · Agent: patch/,
     })).toBeDefined()
-    expect(Array.from(eventList.querySelectorAll('time')).map((time) => time.getAttribute('datetime'))).toEqual([
+    expect(Array.from(eventList.querySelectorAll('[data-slot="timeline-gutter"] time')).map((time) => time.getAttribute('datetime'))).toEqual([
       '2026-07-13T11:58:00.000Z',
       '2026-07-13T11:57:00.000Z',
       '2026-07-13T11:56:00.000Z',
@@ -1404,18 +1397,18 @@ describe('ActivityTab', () => {
 
     const recent = screen.getByRole('region', { name: 'Recent events' })
     expect(within(recent).getByRole('button', {
-      name: /View Search Drain details — Succeeded, API, Bakin system,/,
+      name: /Search Drain.*Succeeded.*API · Bakin system/,
     })).toBeDefined()
     expect(within(recent).getByRole('button', {
-      name: /View Search Query details — Succeeded, API, Agent not recorded,/,
+      name: /Search Query.*Succeeded.*API · Agent not recorded/,
     })).toBeDefined()
     const metrics = screen.getByRole('group', { name: 'Activity metrics' })
     const agentsTile = within(metrics).getByText('Agents observed').closest('[data-stat-tile]')
     expect(agentsTile?.textContent).toContain('1')
     expect(agentsTile?.textContent).toContain('Busiest: main (1)')
     expect(agentsTile?.textContent).not.toContain('unknown')
-    const busiestAgents = screen.getByRole('list', { name: 'Busiest agents' })
-    expect(within(busiestAgents).getAllByRole('listitem')).toHaveLength(1)
+    const busiestAgents = screen.getByRole('group', { name: 'Busiest agents' })
+    expect(busiestAgents.querySelectorAll('[data-slot="ranked-bar-row"]')).toHaveLength(1)
     expect(within(busiestAgents).queryByText('unknown')).toBeNull()
   })
 
@@ -1579,21 +1572,20 @@ describe('ActivityTab', () => {
     expect(within(pulse).getByRole('group', {
       name: 'Activity outcomes: 4 failed, 1 unverified, 1 canceled, 3 succeeded',
     })).toBeDefined()
-    expect(within(pulse).getByText('4 failed')).toBeDefined()
-    expect(within(pulse).getByText('1 unverified')).toBeDefined()
-    expect(within(pulse).getByText('1 canceled')).toBeDefined()
-    expect(within(pulse).getByText('3 succeeded')).toBeDefined()
+    expect(within(pulse).getByRole('img', { name: 'failed: 4 (44%)' })).toBeDefined()
+    expect(within(pulse).getByRole('img', { name: 'unverified: 1 (11%)' })).toBeDefined()
+    expect(within(pulse).getByRole('img', { name: 'canceled: 1 (11%)' })).toBeDefined()
+    expect(within(pulse).getByRole('img', { name: 'succeeded: 3 (33%)' })).toBeDefined()
     expect(pulse.textContent).toMatch(/partial window.*buffer limit/i)
     expect(pulse.querySelector('time[datetime="2026-07-13T11:32:00.000Z"]')).not.toBeNull()
 
     const mix = within(pulse).getByRole('group', {
       name: 'Activity mix: Tools 4, API 2, Agents 3',
     })
-    expect(mix.textContent).toMatch(/Tools.*4.*API.*2.*Agents.*3/i)
-    expect(mix.querySelector('[data-source-kind="mcp"] [data-source-bar]')?.className).toContain('bg-chart-1')
-    expect(mix.querySelector('[data-source-kind="rest"] [data-source-bar]')?.className).toContain('bg-chart-2')
-    expect(mix.querySelector('[data-source-kind="agent"] [data-source-bar]')?.className).toContain('bg-chart-3')
-    expect(mix.querySelector('[data-source-kind="mcp"] .bg-destructive')).not.toBeNull()
+    // Ranked ordering: highest total first, with the failed sub-segment carried per bar.
+    expect(mix.textContent).toMatch(/Tools.*4.*Agents.*3.*API.*2/i)
+    expect(within(mix).getByRole('img', { name: 'Tools — calls: 4, failed: 2' })).toBeDefined()
+    expect(mix.querySelector('[data-row-key="mcp"] [data-series-secondary="failures"]')).not.toBeNull()
 
     const jump = within(pulse).getByRole('link', { name: 'Hiccups' })
     const needsAttention = screen.getByRole('region', { name: 'Hiccups' })

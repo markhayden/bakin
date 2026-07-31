@@ -1,7 +1,10 @@
 'use client'
 
-import { formatAbsoluteTime, formatRelativeTime, PluginLink, StatusBadge } from '@makinbakin/sdk/components'
-import { Button, Skeleton } from '@makinbakin/sdk/ui'
+import { PieChart } from '@makinbakin/sdk/charts'
+import { formatAbsoluteTime, formatRelativeTime } from '@makinbakin/sdk/conversation'
+import { PluginLink } from '@makinbakin/sdk/navigation'
+import { StatusBadge } from '@makinbakin/sdk/patterns'
+import { Button, Progress, Skeleton } from '@makinbakin/sdk/ui'
 import { ArrowUpRight, Gauge, Layers3 } from 'lucide-react'
 import { formatTokenCount } from '../lib/format'
 import type { OverviewTelemetry } from './overview-telemetry'
@@ -49,40 +52,40 @@ export function OverviewContextTraffic({
   const totalTraffic = traffic.input + traffic.output + traffic.cacheRead + traffic.cacheWrite
   const promptTraffic = traffic.input + traffic.cacheRead + traffic.cacheWrite
   const cachePercent = promptTraffic > 0 ? Math.round((traffic.cacheRead / promptTraffic) * 100) : null
-  const segments = [
-    { key: 'input', label: 'Input', value: traffic.input, className: 'bg-chart-1' },
-    { key: 'output', label: 'Output', value: traffic.output, className: 'bg-chart-2' },
-    { key: 'cacheRead', label: 'Cache read', value: traffic.cacheRead, className: 'bg-success' },
-    { key: 'cacheWrite', label: 'Cache write', value: traffic.cacheWrite, className: 'bg-warning' },
+  const tokenMix = [
+    { key: 'input', label: 'Input', value: traffic.input },
+    { key: 'output', label: 'Output', value: traffic.output },
+    { key: 'cacheRead', label: 'Cache read', value: traffic.cacheRead },
+    { key: 'cacheWrite', label: 'Cache write', value: traffic.cacheWrite },
   ]
 
   return (
-    <section className="min-w-0 p-4" data-testid="overview-context-traffic" aria-labelledby="overview-context-title">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <Layers3 className="size-4 text-muted-foreground" aria-hidden="true" />
-          <h3 id="overview-context-title" className="font-semibold text-foreground">Context &amp; cache</h3>
+    <section className="min-w-0 p-bakin-4" data-testid="overview-context-traffic" aria-labelledby="overview-context-title">
+      <div className="flex items-center justify-between gap-bakin-3">
+        <div className="flex items-center gap-bakin-2">
+          <Layers3 className="size-bakin-4 text-bakin-text-muted" aria-hidden="true" />
+          <h3 id="overview-context-title" className="font-bakin-typography-weight-semibold text-bakin-text-primary">Context &amp; cache</h3>
         </div>
         <PluginLink
           to="/health?tab=agents"
           aria-label="View agent context details"
-          className="rounded-sm text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="rounded-bakin-control text-bakin-signal-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bakin-focus-ring"
         >
-          <ArrowUpRight className="size-4" aria-hidden="true" />
+          <ArrowUpRight className="size-bakin-4" aria-hidden="true" />
         </PluginLink>
       </div>
 
-      <div className="mt-4">
-        <div className="flex items-center justify-between gap-3">
-          <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-            <Gauge className="size-3.5" aria-hidden="true" /> Context budget
+      <div className="mt-bakin-4">
+        <div className="flex items-center justify-between gap-bakin-3">
+          <span className="flex items-center gap-bakin-1 text-bakin-typography-size-meta font-bakin-typography-weight-medium text-bakin-text-muted">
+            <Gauge className="size-bakin-3" aria-hidden="true" /> Context budget
           </span>
           {context.loading ? (
             <Skeleton className="h-5 w-24" />
           ) : context.error ? (
             <StatusBadge tone="neutral">Unavailable</StatusBadge>
           ) : overBudget > 0 ? (
-            <StatusBadge tone="warning">{overBudget} over budget</StatusBadge>
+            <StatusBadge tone="attention">{overBudget} over budget</StatusBadge>
           ) : (
             <StatusBadge tone="success">Within budget</StatusBadge>
           )}
@@ -91,95 +94,73 @@ export function OverviewContextTraffic({
         {context.loading ? (
           <Skeleton className="mt-2 h-10 w-full" />
         ) : context.error ? (
-          <div className="mt-2 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+          <div className="mt-bakin-2 flex items-center justify-between gap-bakin-2 text-bakin-typography-size-meta text-bakin-text-muted">
             <span>Startup context could not be checked.</span>
             {context.onRetry && <Button size="xs" variant="ghost" onClick={context.onRetry}>Retry</Button>}
           </div>
         ) : highest ? (
-          <div className="mt-2">
-            <div className="flex items-baseline justify-between gap-3 text-sm">
-              <span className="truncate font-medium text-foreground">{highest.agentId}</span>
-              <span className="shrink-0 tabular-nums text-muted-foreground">
+          <div className="mt-bakin-2">
+            <div className="flex items-baseline justify-between gap-bakin-3 text-bakin-typography-size-body">
+              <span className="truncate font-bakin-typography-weight-medium text-bakin-text-primary">{highest.agentId}</span>
+              <span className="shrink-0 tabular-nums text-bakin-text-muted">
                 {formatBytes(highest.estimatedMaxTaskBytes)} / {formatBytes(budget)}
               </span>
             </div>
-            <div
-              role="progressbar"
+            <Progress
+              className="mt-bakin-1"
               aria-label={`${highest.agentId} startup context uses ${percent}% of its budget`}
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={Math.min(100, percent)}
-              className="mt-1.5 h-2 overflow-hidden rounded-full bg-foreground/10"
-            >
-              <span
-                className={`block h-full rounded-full ${overBudget > 0 ? 'bg-warning' : percent >= 80 ? 'bg-warning' : 'bg-success'}`}
-                style={{ width: `${Math.max(2, Math.min(100, percent))}%` }}
-              />
-            </div>
-            <div className="mt-1 flex justify-between text-[10px] text-muted-foreground">
+              value={Math.min(100, percent)}
+              tone={overBudget > 0 || percent >= 80 ? 'attention' : 'primary'}
+            />
+            <div className="mt-bakin-1 flex justify-between text-bakin-typography-size-meta text-bakin-text-muted">
               <span>Highest startup estimate</span>
               <span>{contextAgents.length} {contextAgents.length === 1 ? 'agent' : 'agents'}</span>
             </div>
           </div>
         ) : (
-          <div className="mt-2 text-xs text-muted-foreground">Waiting for startup-context estimates.</div>
+          <div className="mt-bakin-2 text-bakin-typography-size-meta text-bakin-text-muted">Waiting for startup-context estimates.</div>
         )}
       </div>
 
-      <div className="mt-4 border-t border-border/70 pt-3">
-        <div className="flex items-baseline justify-between gap-3">
-          <span className="text-xs font-medium text-muted-foreground">Latest-session traffic</span>
-          {cachePercent !== null && <strong className="text-sm font-semibold tabular-nums text-success">{cachePercent}% from cache</strong>}
+      <div className="mt-bakin-4 border-t border-bakin-border-subtle pt-bakin-3">
+        <div className="flex items-baseline justify-between gap-bakin-3">
+          <span className="text-bakin-typography-size-meta font-bakin-typography-weight-medium text-bakin-text-muted">Latest-session traffic</span>
+          {cachePercent !== null && <strong className="text-bakin-typography-size-body font-bakin-typography-weight-semibold tabular-nums text-bakin-text-primary">{cachePercent}% from cache</strong>}
         </div>
 
         {sessions.loading && !sessions.data ? (
           <Skeleton className="mt-2 h-12 w-full" />
         ) : sessions.error && !sessions.data ? (
-          <div className="mt-2 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+          <div className="mt-bakin-2 flex items-center justify-between gap-bakin-2 text-bakin-typography-size-meta text-bakin-text-muted">
             <span>Session traffic unavailable.</span>
             {sessions.onRetry && <Button size="xs" variant="ghost" onClick={sessions.onRetry}>Retry</Button>}
           </div>
         ) : totalTraffic === 0 ? (
-          <div className="mt-2 text-xs text-muted-foreground">No latest-session traffic reported.</div>
+          <div className="mt-bakin-2 text-bakin-typography-size-meta text-bakin-text-muted">No latest-session traffic reported.</div>
         ) : (
           <>
-            <div
-              role="img"
-              aria-label={`Latest-session token mix: input ${traffic.input}, output ${traffic.output}, cache read ${traffic.cacheRead}, cache write ${traffic.cacheWrite}`}
-              className="mt-2 flex h-2.5 overflow-hidden rounded-full bg-foreground/10"
-            >
-              {segments.filter((segment) => segment.value > 0).map((segment) => (
-                <span
-                  key={segment.key}
-                  className={segment.className}
-                  style={{ width: `${(segment.value / totalTraffic) * 100}%` }}
-                />
-              ))}
+            <div className="mt-bakin-2">
+              <PieChart
+                donut
+                data={tokenMix}
+                label="Latest-session token mix"
+                formatValue={formatTokenCount}
+                compactData
+              />
             </div>
-            <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1">
-              {segments.filter((segment) => segment.value > 0).map((segment) => (
-                <div key={segment.key} className="flex items-center justify-between gap-2 text-[10px]">
-                  <span className="flex items-center gap-1.5 text-muted-foreground">
-                    <span className={`size-1.5 rounded-full ${segment.className}`} aria-hidden="true" />
-                    {segment.label}
-                  </span>
-                  <span className="tabular-nums text-foreground">{formatTokenCount(segment.value)}</span>
-                </div>
-              ))}
-            </div>
-            <div className="mt-2 space-y-1 border-t border-border/50 pt-2">
+            <div className="mt-bakin-2 space-y-bakin-1 border-t border-bakin-border-subtle pt-bakin-2">
               {latestSessions.slice(0, 2).map((session) => {
                 const evidenceAt = session.lastMessageAt ?? session.sessionStarted
                 const verb = session.lastMessageAt ? 'Active' as const : 'Started' as const
                 return (
-                  <div key={`${session.agent}:${session.sessionId}`} className="flex items-center justify-between gap-3 text-xs">
-                    <span className="min-w-0 text-muted-foreground">
+                  <div key={`${session.agent}:${session.sessionId}`} className="flex items-center justify-between gap-bakin-3 text-bakin-typography-size-meta">
+                    <span className="min-w-0 text-bakin-text-muted">
                       <span className="block truncate">{session.agent} · {session.model}</span>
-                      <time className="block text-[10px]" dateTime={evidenceAt} title={formatAbsoluteTime(evidenceAt)}>
+                      <time className="block" dateTime={evidenceAt} title={formatAbsoluteTime(evidenceAt)}>
                         {sessionTimeLabel(evidenceAt, verb)}
                       </time>
                     </span>
-                    <span className="shrink-0 font-medium tabular-nums text-foreground">{formatTokenCount(session.tokens.total)}</span>
+                    <span className="shrink-0 font-bakin-typography-weight-medium tabular-nums text-bakin-text-primary">{formatTokenCount(session.tokens.total)}</span>
                   </div>
                 )
               })}
