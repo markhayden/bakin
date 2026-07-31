@@ -41,10 +41,6 @@ mock.module('@/hooks/use-runtime-status', () => ({
   useRuntimeStatus: () => runtimeState,
 }))
 
-mock.module('@/components/plugin-header', () => ({
-  PluginHeader: ({ title }: { title: string }) => <div>{title}</div>,
-}))
-
 mock.module('@/components/agent-avatar', () => ({
   AgentAvatar: ({ agentId }: { agentId: string }) => <div>{agentId}</div>,
 }))

@@ -15,7 +15,6 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import '../../rtl-settle'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import type { ReactNode } from 'react'
 
 // ─── Test isolation mocks (mandatory per CLAUDE.md) ────────────────────────
 //
@@ -117,32 +116,6 @@ mock.module('@/hooks/use-search', () => ({
     clear: searchState.clear,
     retry: mock(),
   }),
-}))
-
-// PluginHeader — render only the parts we need to inspect.
-mock.module('@/components/plugin-header', () => ({
-  PluginHeader: ({
-    title,
-    search,
-    actions,
-  }: {
-    title: string
-    search?: { value: string; onChange: (v: string) => void; placeholder?: string }
-    actions?: ReactNode
-  }) => (
-    <div>
-      <h1>{title}</h1>
-      {search && (
-        <input
-          aria-label="search"
-          placeholder={search.placeholder}
-          value={search.value}
-          onChange={(e) => search.onChange(e.target.value)}
-        />
-      )}
-      {actions}
-    </div>
-  ),
 }))
 
 // ─── Fixtures ──────────────────────────────────────────────────────────────

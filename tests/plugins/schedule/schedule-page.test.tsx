@@ -167,15 +167,6 @@ mock.module('@bakin/team/hooks/use-agent-store', () => ({
   useAgentDisplayName: () => undefined,
 }))
 
-mock.module('@/components/plugin-header', () => ({
-  PluginHeader: ({ title, count }: { title: string; count?: number }) => (
-    <div data-testid="plugin-header">
-      <span>{title}</span>
-      <span data-testid="header-count">{count ?? '—'}</span>
-    </div>
-  ),
-}))
-
 mock.module('@/components/agent-avatar', () => ({
   AgentAvatar: ({ agentId }: { agentId: string }) => <span>{agentId}</span>,
 }))

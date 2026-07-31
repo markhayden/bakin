@@ -96,15 +96,6 @@ mock.module('@bakin/team/hooks/use-agent-store', () => ({
   useAgentDisplayName: () => undefined,
 }))
 
-mock.module('@/components/plugin-header', () => ({
-  PluginHeader: ({ title, search }: { title: string; search?: { value: string; onChange: (v: string) => void } }) => (
-    <div data-testid="plugin-header">
-      <span>{title}</span>
-      {search && <input aria-label="search" value={search.value} onChange={(e) => search.onChange(e.target.value)} />}
-    </div>
-  ),
-}))
-
 mock.module('@/components/facet-filter', () => ({
   FacetFilter: () => null,
 }))

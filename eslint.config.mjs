@@ -230,8 +230,6 @@ const eslintConfig = defineConfig([
               "@/components/facet-filter",
               "@/components/markdown-*",
               "@/components/model-select",
-              "@/components/page-layout",
-              "@/components/plugin-header",
               "@/components/plugin-settings-renderer",
               "@/components/sortable-head",
               "@/components/underline-tabs",

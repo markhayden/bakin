@@ -106,7 +106,7 @@ describe('split SDK vendor build', () => {
     expect(slots.Slot).toBeDefined()
 
     const components = await import(join(outDir, 'sdk-components.js'))
-    expect(components.PluginHeader).toBeDefined()
+    expect(components.SectionCard).toBeDefined()
     expect(components.FacetFilter).toBeDefined()
 
     const ui = await import(join(outDir, 'sdk-ui.js'))

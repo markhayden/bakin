@@ -10,8 +10,8 @@
     "entrypoints": 8,
     "supportedEntrypoints": 7,
     "frozenLegacyEntrypoints": 1,
-    "valueExports": 355,
-    "typeExports": 425
+    "valueExports": 351,
+    "typeExports": 423
   },
   "entrypoints": [
     {
@@ -751,8 +751,6 @@
         "Composer",
         "computeMatchedFields",
         "ConfirmDialog",
-        "ContextMeter",
-        "contextMeterHasContent",
         "Conversation",
         "ConversationEmptyState",
         "ConversationPanel",
@@ -777,9 +775,7 @@
         "MarkdownContent",
         "MarkdownEditor",
         "ModelSelect",
-        "PageLayout",
         "playReplyChime",
-        "PluginHeader",
         "PluginLink",
         "PluginSettingsRenderer",
         "QueuedMessageList",
@@ -829,7 +825,6 @@
         "ComposerHandle",
         "ComposerProps",
         "ConfirmDialogProps",
-        "ContextMeterStats",
         "ConversationAttentionConfig",
         "ConversationAttentionContext",
         "ConversationAttentionTotals",
@@ -859,7 +854,6 @@
         "MarkdownEditorMode",
         "MarkdownEditorProps",
         "MarkdownInternalLinkProps",
-        "PluginHeaderProps",
         "PluginLinkProps",
         "PluginSettingsSchema",
         "SaveBarProps",

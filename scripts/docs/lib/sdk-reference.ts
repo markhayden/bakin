@@ -559,7 +559,7 @@ function renderComponents(lines: string[], sp: SdkSubpath | undefined): void {
   lines.push('## `@makinbakin/sdk/components`', '')
   lines.push(`Migration-only legacy barrel. Existing owned consumers may use it until their scheduled migration; new public stories and integrations use the focused visual entrypoints. Source: \`${sp.source}\`.`, '')
   lines.push('```ts')
-  lines.push("import { PluginHeader, FacetFilter, AgentAvatar } from '@makinbakin/sdk/components'")
+  lines.push("import { FacetFilter, AgentAvatar } from '@makinbakin/sdk/components'")
   lines.push('```', '')
   lines.push('| Component | Description |')
   lines.push('| --- | --- |')

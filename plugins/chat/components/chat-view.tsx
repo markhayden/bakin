@@ -17,6 +17,8 @@ import {
 import {
   Composer,
   QueuedMessageList,
+  formatTokenCount,
+  formatUsageCost,
   type ComposerHandle,
   type ConversationQueuedItem,
 } from '@makinbakin/sdk/conversation'
@@ -24,8 +26,7 @@ import { useAgent } from '@makinbakin/sdk/hooks'
 import { AgentAvatar, PageComposer } from '@makinbakin/sdk/patterns'
 import { Button, Input } from '@makinbakin/sdk/ui'
 
-import { ContextMeter, contextMeterHasContent, formatTokenCount, formatUsageCost, type ContextMeterStats } from '@makinbakin/sdk/components'
-
+import { ContextMeter, contextMeterHasContent, type ContextMeterStats } from './context-meter'
 import {
   patchChatRequest,
   uploadAttachmentRequest,

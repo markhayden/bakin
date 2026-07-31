@@ -8,7 +8,7 @@
  * Artifacts default to the OS temp directory and therefore never dirty the
  * repository.
  */
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { isAbsolute, join, resolve } from 'node:path'
 import {
@@ -21,7 +21,6 @@ import {
   type Response,
 } from 'playwright'
 
-const PROJECT_ROOT = resolve(import.meta.dirname, '..')
 const HEALTH_PATH = '/health'
 const PREFLIGHT_PATH = '/api/plugins/health/summary'
 const ACTIVITY_OPEN_KEY = 'bakin-activity-log-open'
@@ -967,11 +966,6 @@ async function main(): Promise<void> {
 
   await assertServer(options.baseUrl)
   gate.pass('Server preflight', `${options.baseUrl}${PREFLIGHT_PATH} is reachable`)
-  gate.check(
-    'PluginHeader responsive unit coverage exists',
-    existsSync(join(PROJECT_ROOT, 'tests/components/plugin-header.test.tsx')),
-    'shared PluginHeader wrapping/search contract is covered for every consumer',
-  )
 
   let browser: Browser | null = null
   try {

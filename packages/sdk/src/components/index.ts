@@ -97,14 +97,11 @@ export type {
 } from '@makinbakin/sdk/content'
 /** Model picker dropdown listing available models from the catalog. */
 export { ModelSelect } from '@/components/model-select'
-/** Standard plugin page wrapper with header, content area, and toaster. */
-export { PageLayout } from '@/components/page-layout'
+// PageLayout and PluginHeader are GONE (storybook-refit T6.1): pages
+// compose Page + PageHeader from `@makinbakin/sdk/patterns` instead.
 /** @deprecated Import runtime-route links from `@makinbakin/sdk/navigation`. */
 export { PluginLink } from './plugin-link'
 export type { PluginLinkProps } from './plugin-link'
-/** Plugin page header with title, count badge, search, and action buttons. */
-export { PluginHeader } from '@/components/plugin-header'
-export type { PluginHeaderProps } from '@/components/plugin-header'
 /** Render a settings form from a PluginSettingsSchema definition. */
 export { PluginSettingsRenderer } from '@/components/plugin-settings-renderer'
 export type { PluginSettingsSchema } from '@/components/plugin-settings-renderer'
@@ -164,8 +161,8 @@ export type { ConversationQueuedItem } from '@/components/conversation/queued-me
 // kit-internal until a second real consumer appears.
 export { formatTokenCount, formatUsageCost } from '@makinbakin/sdk/conversation'
 export type { ConversationTurnUsage } from '@makinbakin/sdk/conversation'
-export { ContextMeter, contextMeterHasContent } from '@/components/conversation/context-meter'
-export type { ContextMeterStats } from '@/components/conversation/context-meter'
+// ContextMeter is GONE (storybook-refit T6.1): the compaction bar is a
+// chat-plugin domain component now (plugins/chat/components/context-meter.tsx).
 export { ConversationPanel } from '@/components/conversation/conversation-panel'
 export type { ConversationPanelProps } from '@/components/conversation/conversation-panel'
 export { useConversationThread } from '@makinbakin/sdk/conversation'
