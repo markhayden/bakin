@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { Plus, Wand2, X } from 'lucide-react'
 import { Section, Stack } from '@makinbakin/sdk/layout'
-import { ConfirmDialog, ModelSelect } from '@makinbakin/sdk/patterns'
+import { ConfirmDialog, ListRow, ListRows, ModelSelect } from '@makinbakin/sdk/patterns'
 import {
   Button,
   Field,
@@ -116,10 +116,13 @@ export function RoutingTab({ m }: { m: ModelsData }) {
     </Select>
   )
 
-  const routeList = (rows: typeof DISPATCH_ROWS) => (
-    <div
-      role="list"
-      className="overflow-hidden rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default"
+  const routeList = (rows: typeof DISPATCH_ROWS, label: string) => (
+    <ListRows
+      aria-label={label}
+      variant="separated"
+      columns="minmax(12rem,.7fr) minmax(0,1fr) minmax(10rem,.42fr)"
+      columnsAt="3xl"
+      columnsAlign="end"
     >
       {rows.map((workClass) => {
         const route = displayRouting.routes.find((item) => item.workClass === workClass.id)
@@ -127,17 +130,16 @@ export function RoutingTab({ m }: { m: ModelsData }) {
         const thinkingId = `routing-${workClass.id}-thinking`
 
         return (
-          <div
+          <ListRow
             key={workClass.id}
-            role="listitem"
             data-routing-row={workClass.id}
-            className="grid min-w-0 gap-bakin-4 border-t border-bakin-border-subtle p-bakin-4 first:border-t-0 @3xl/routing:grid-cols-[minmax(12rem,.7fr)_minmax(0,1fr)_minmax(10rem,.42fr)] @3xl/routing:items-end"
+            className="px-bakin-4 py-bakin-4"
           >
-            <div className="min-w-0 @3xl/routing:self-center">
-              <h3 className="m-0 text-[length:var(--bakin-typography-size-body)] font-bakin-typography-weight-semibold text-bakin-text-primary">
+            <div className="min-w-0 @3xl/list-rows:self-center">
+              <h3 className="m-0 text-bakin-typography-size-body font-bakin-typography-weight-semibold text-bakin-text-primary">
                 {workClass.label}
               </h3>
-              <p className="m-0 mt-bakin-1 text-[length:var(--bakin-typography-size-meta)] leading-relaxed text-bakin-text-muted">
+              <p className="m-0 mt-bakin-1 text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted">
                 {workClass.description}
               </p>
             </div>
@@ -171,16 +173,16 @@ export function RoutingTab({ m }: { m: ModelsData }) {
                 (value) => setRouteField(workClass.id, 'thinking', value),
               )}
             </Field>
-          </div>
+          </ListRow>
         )
       })}
-    </div>
+    </ListRows>
   )
 
   return (
     <div className="@container/routing flex min-w-0 flex-col gap-bakin-8">
       <div className="flex min-w-0 flex-col items-stretch gap-bakin-3 @2xl/routing:flex-row @2xl/routing:items-start @2xl/routing:justify-between">
-        <p className="m-0 max-w-prose text-[length:var(--bakin-typography-size-body)] leading-relaxed text-bakin-text-muted">
+        <p className="m-0 max-w-prose text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">
           Choose a model and thinking level for each kind of work. Blank routes inherit the agent&apos;s model, while tag overrides take priority over the routes below. Interactive chat always keeps the operator&apos;s selected model.
         </p>
         <Button
@@ -202,13 +204,13 @@ export function RoutingTab({ m }: { m: ModelsData }) {
           <span className="block space-y-1">
             <span className="block">These work classes will use lower-cost models. Existing routes stay unchanged.</span>
             {recommend.proposals.map((proposal) => (
-              <span key={proposal.workClass} className="block font-bakin-typography-family-mono text-[length:var(--bakin-typography-size-meta)]">
+              <span key={proposal.workClass} className="block font-bakin-typography-family-mono text-bakin-typography-size-meta">
                 {proposal.workClass} → {proposal.model}
                 <span className="text-bakin-text-muted"> ({proposal.reason})</span>
               </span>
             ))}
             {recommend.skipped.map((item) => (
-              <span key={item.workClass} className="block text-[length:var(--bakin-typography-size-meta)] text-bakin-text-muted">
+              <span key={item.workClass} className="block text-bakin-typography-size-meta text-bakin-text-muted">
                 Skipped {item.workClass}: {item.reason}
               </span>
             ))}
@@ -217,7 +219,7 @@ export function RoutingTab({ m }: { m: ModelsData }) {
           <span className="block">
             Nothing to apply. Every recommended work class already has a route.
             {recommend?.skipped.map((item) => (
-              <span key={item.workClass} className="block text-[length:var(--bakin-typography-size-meta)] text-bakin-text-muted">
+              <span key={item.workClass} className="block text-bakin-typography-size-meta text-bakin-text-muted">
                 Skipped {item.workClass}: {item.reason}
               </span>
             ))}
@@ -238,30 +240,30 @@ export function RoutingTab({ m }: { m: ModelsData }) {
         <Stack gap="dense">
           <h2
             id="task-dispatch-routes-heading"
-            className="m-0 text-[length:var(--bakin-typography-size-section-title)] font-bakin-typography-weight-semibold text-bakin-text-primary"
+            className="m-0 text-bakin-typography-size-section-title font-bakin-typography-weight-semibold text-bakin-text-primary"
           >
             Task dispatch
           </h2>
-          <p className="m-0 max-w-prose text-[length:var(--bakin-typography-size-body)] leading-relaxed text-bakin-text-muted">
+          <p className="m-0 max-w-prose text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">
             Routes for scheduled, workflow, manually started, recovery, and decomposition work.
           </p>
         </Stack>
-        {routeList(DISPATCH_ROWS)}
+        {routeList(DISPATCH_ROWS, 'Task dispatch routes')}
       </Section>
 
       <Section spacing="compact" divider="top" aria-label="System work routes">
         <Stack gap="dense">
           <h2
             id="system-work-routes-heading"
-            className="m-0 text-[length:var(--bakin-typography-size-section-title)] font-bakin-typography-weight-semibold text-bakin-text-primary"
+            className="m-0 text-bakin-typography-size-section-title font-bakin-typography-weight-semibold text-bakin-text-primary"
           >
             System work
           </h2>
-          <p className="m-0 max-w-prose text-[length:var(--bakin-typography-size-body)] leading-relaxed text-bakin-text-muted">
+          <p className="m-0 max-w-prose text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">
             Background work Bakin performs for titles, enrichment, relays, team routing, and direct sends.
           </p>
         </Stack>
-        {routeList(SYSTEM_ROWS)}
+        {routeList(SYSTEM_ROWS, 'System work routes')}
       </Section>
 
       <Section spacing="compact" divider="top" aria-labelledby="tag-overrides-heading">
@@ -269,11 +271,11 @@ export function RoutingTab({ m }: { m: ModelsData }) {
           <Stack gap="dense">
             <h2
               id="tag-overrides-heading"
-              className="m-0 text-[length:var(--bakin-typography-size-section-title)] font-bakin-typography-weight-semibold text-bakin-text-primary"
+              className="m-0 text-bakin-typography-size-section-title font-bakin-typography-weight-semibold text-bakin-text-primary"
             >
               Tag overrides
             </h2>
-            <p className="m-0 max-w-prose text-[length:var(--bakin-typography-size-body)] leading-relaxed text-bakin-text-muted">
+            <p className="m-0 max-w-prose text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">
               Match a task tag before its work-class route. The first matching override wins.
             </p>
           </Stack>
@@ -297,10 +299,12 @@ export function RoutingTab({ m }: { m: ModelsData }) {
             description="Add one only when a task tag should take priority over its normal work route."
           />
         ) : (
-          <div
-            role="list"
+          <ListRows
             aria-label="Tag routing overrides"
-            className="overflow-hidden rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default"
+            variant="separated"
+            columns="minmax(10rem,.7fr) minmax(0,1fr) minmax(10rem,.42fr) auto"
+            columnsAt="3xl"
+            columnsAlign="end"
           >
             {displayRouting.tagOverrides.map((row, index) => {
               const tagId = `routing-tag-${index}`
@@ -308,10 +312,9 @@ export function RoutingTab({ m }: { m: ModelsData }) {
               const thinkingId = `routing-tag-${index}-thinking`
 
               return (
-                <div
+                <ListRow
                   key={index}
-                  role="listitem"
-                  className="grid min-w-0 gap-bakin-4 border-t border-bakin-border-subtle p-bakin-4 first:border-t-0 @3xl/routing:grid-cols-[minmax(10rem,.7fr)_minmax(0,1fr)_minmax(10rem,.42fr)_auto] @3xl/routing:items-end"
+                  className="px-bakin-4 py-bakin-4"
                 >
                   <Field name={tagId}>
                     <FieldLabel htmlFor={tagId}>
@@ -361,15 +364,15 @@ export function RoutingTab({ m }: { m: ModelsData }) {
                     variant="outline"
                     size="icon-sm"
                     aria-label={`Remove tag override ${index + 1}`}
-                    className="justify-self-end text-bakin-text-muted hover:text-bakin-signal-danger @3xl/routing:mb-px"
+                    className="justify-self-end text-bakin-text-muted hover:text-bakin-signal-danger @3xl/list-rows:mb-px"
                     onClick={() => removeTagOverride(index)}
                   >
                     <X className="size-4" />
                   </Button>
-                </div>
+                </ListRow>
               )
             })}
-          </div>
+          </ListRows>
         )}
       </Section>
     </div>

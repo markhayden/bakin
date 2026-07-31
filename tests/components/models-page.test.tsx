@@ -41,38 +41,6 @@ mock.module('@/hooks/use-runtime-status', () => ({
   useRuntimeStatus: () => runtimeState,
 }))
 
-mock.module('@/components/agent-avatar', () => ({
-  AgentAvatar: ({ agentId }: { agentId: string }) => <div>{agentId}</div>,
-}))
-
-mock.module('@/components/model-select', () => ({
-  ModelSelect: ({
-    value,
-    onChange,
-    models,
-    defaultLabel,
-    className,
-  }: {
-    value: string
-    onChange: (value: string) => void
-    models: Array<{ id: string; name: string }>
-    defaultLabel?: string
-    className?: string
-  }) => (
-    <select
-      data-testid="model-select"
-      className={className}
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-    >
-      {defaultLabel && <option value="__default__">{defaultLabel}</option>}
-      {models.map((model) => (
-        <option key={model.id} value={model.id}>{model.name}</option>
-      ))}
-    </select>
-  ),
-}))
-
 interface FetchCall {
   method: string
   url: string
@@ -380,11 +348,12 @@ describe('ModelsPage component', () => {
   })
 
   it('saves global defaults and refreshes available models', async () => {
+    const user = userEvent.setup()
     render(<ModelsPage />)
     await screen.findByText('Patch')
 
-    const selects = screen.getAllByTestId('model-select')
-    fireEvent.change(selects[0], { target: { value: 'openai-codex/gpt-5.4' } })
+    await user.click(screen.getByRole('combobox', { name: 'Default Model' }))
+    await user.click(await screen.findByRole('option', { name: 'GPT-5.4' }))
 
     fireEvent.click(screen.getByText('Save Defaults'))
 
@@ -401,13 +370,14 @@ describe('ModelsPage component', () => {
   })
 
   it('saves agent-specific model overrides', async () => {
+    const user = userEvent.setup()
     render(<ModelsPage />)
     const patchCell = await screen.findByText('Patch')
     const row = patchCell.closest('[data-agent-model-row]')
     expect(row).toBeTruthy()
 
-    const selects = within(row as HTMLElement).getAllByTestId('model-select')
-    fireEvent.change(selects[0], { target: { value: 'google/gemini-2.5-pro' } })
+    await user.click(within(row as HTMLElement).getByRole('combobox', { name: 'Own Model' }))
+    await user.click(await screen.findByRole('option', { name: 'Gemini 2.5 Pro' }))
 
     fireEvent.click(within(row as HTMLElement).getByText('Save'))
 
@@ -665,10 +635,12 @@ describe('ModelsPage component', () => {
 
     const windowControl = screen.getByRole('tablist', { name: 'Spend window' })
     expect(windowControl.closest('[data-slot="page-header-controls"]')).toBeTruthy()
-    expect(screen.getAllByText('patch')).toHaveLength(2)
+    // The ranked chart's exact-data table adds one occurrence beyond the breakdown rows.
+    expect(screen.getAllByText('patch')).toHaveLength(3)
 
     fireEvent.click(screen.getByRole('tab', { name: 'Models' }))
-    expect(await screen.findAllByText('anthropic/claude-sonnet-4-6')).toHaveLength(2)
+    // The ranked chart's exact-data table adds one occurrence beyond the breakdown rows.
+    expect(await screen.findAllByText('anthropic/claude-sonnet-4-6')).toHaveLength(3)
     expect(screen.getByRole('group', { name: 'Top model spend' })).toBeTruthy()
 
     fireEvent.click(screen.getByRole('button', { name: 'Add budget rule' }))

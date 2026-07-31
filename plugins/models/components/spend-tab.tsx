@@ -1,9 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import { LineChart, type ChartDatum } from '@makinbakin/sdk/charts'
-import { Section, Stack } from '@makinbakin/sdk/layout'
-import { SegmentedControl, StatGroup, StatTile } from '@makinbakin/sdk/patterns'
+import { AreaChart, type ChartDatum } from '@makinbakin/sdk/charts'
+import { Grid, Section, Stack } from '@makinbakin/sdk/layout'
+import { SegmentedControl, StatTile } from '@makinbakin/sdk/patterns'
 import { Banner, Button, Input, Skeleton, SystemState } from '@makinbakin/sdk/ui'
 
 import { BillingLanesSection, BudgetRulesSection } from './spend-budget-controls'
@@ -63,12 +63,11 @@ function UtilizationTiles({
   if (tiles.length === 0) return null
 
   return (
-    <StatGroup label="Budget utilization" className="@container/utilization">
+    <Grid layout="auto-fill" gap="dense" role="group" aria-label="Budget utilization">
       {tiles.map((tile) => (
         <StatTile
           key={tile.id}
           variant="surface"
-          className="min-w-[15rem] flex-1 basis-[15rem] @3xl/utilization:max-w-[24rem]"
           label={tile.label}
           value={tile.value}
           valueTone={utilizationTone(tile.percent)}
@@ -80,7 +79,7 @@ function UtilizationTiles({
           }}
         />
       ))}
-    </StatGroup>
+    </Grid>
   )
 }
 
@@ -227,10 +226,10 @@ function SpendTrend({
     <div className="@container/spend-trend min-w-0 border-t border-bakin-border-subtle pt-bakin-6">
       <div className="mb-bakin-4 flex min-w-0 flex-col items-start gap-bakin-3 @2xl/spend-trend:flex-row @2xl/spend-trend:items-center @2xl/spend-trend:justify-between">
         <div className="min-w-0">
-          <h3 className="m-0 text-[length:var(--bakin-typography-size-section-title)] font-bakin-typography-weight-semibold text-bakin-text-primary">
+          <h3 className="m-0 text-bakin-typography-size-section-title font-bakin-typography-weight-semibold text-bakin-text-primary">
             Spend over time
           </h3>
-          <p className="m-0 mt-bakin-1 text-[length:var(--bakin-typography-size-meta)] leading-relaxed text-bakin-text-muted">
+          <p className="m-0 mt-bakin-1 text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted">
             One unit per view keeps estimated dollars distinct from subscription-plan usage.
           </p>
         </div>
@@ -242,7 +241,7 @@ function SpendTrend({
           idPrefix="spend-trend"
         />
       </div>
-      <LineChart
+      <AreaChart
         data={chartData}
         series={[{
           key: seriesKey,
@@ -281,18 +280,17 @@ function SpendOverview({
   return (
     <Section spacing="compact" aria-label="Spending overview">
       <Stack gap="dense">
-        <h2 className="m-0 text-[length:var(--bakin-typography-size-section-title)] font-bakin-typography-weight-semibold text-bakin-text-primary">
+        <h2 className="m-0 text-bakin-typography-size-section-title font-bakin-typography-weight-semibold text-bakin-text-primary">
           Spending overview
         </h2>
-        <p className="m-0 max-w-prose text-[length:var(--bakin-typography-size-body)] leading-relaxed text-bakin-text-muted">
+        <p className="m-0 max-w-prose text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">
           Costs are estimates from recorded token usage. Cached-token discounts may make provider invoices slightly lower.
         </p>
       </Stack>
 
-      <StatGroup label="Spend summary">
+      <Grid layout="thirds" gap="dense" role="group" aria-label="Spend summary">
         <StatTile
           variant="surface"
-          className="min-w-[14rem] flex-1 basis-[14rem] max-w-[24rem]"
           label={`${spend.window} estimated cost`}
           value={formatUsd(
             spend.totalUsdMicros,
@@ -302,19 +300,17 @@ function SpendOverview({
         />
         <StatTile
           variant="surface"
-          className="min-w-[14rem] flex-1 basis-[14rem] max-w-[24rem]"
           label="Month metered"
           value={formatUsd(monthlyMetered, month?.unpricedMeteredTokens ?? 0)}
           sub={`${formatTokens((month?.meteredTokens ?? 0) + (monthUnattributed?.meteredTokens ?? 0))} tokens`}
         />
         <StatTile
           variant="surface"
-          className="min-w-[14rem] flex-1 basis-[14rem] max-w-[24rem]"
           label="Month subscription"
           value={formatTokens(monthlySubscription)}
           sub="Tokens included in subscription plans"
         />
-      </StatGroup>
+      </Grid>
 
       <SpendTrend spend={spend} metric={metric} onMetricChange={onMetricChange} />
       <UtilizationTiles rules={rules} spend={spend} />

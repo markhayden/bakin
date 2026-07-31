@@ -2,6 +2,7 @@
 
 import { Plus, Trash2 } from 'lucide-react'
 import { Section, Stack } from '@makinbakin/sdk/layout'
+import { ListRow, ListRows } from '@makinbakin/sdk/patterns'
 import {
   Button,
   Field,
@@ -98,10 +99,7 @@ function BudgetRuleRow({
       : m.modelOptions.map((model) => model.id)
 
   return (
-    <div
-      role="listitem"
-      className="grid min-w-0 gap-bakin-4 border-t border-bakin-border-subtle p-bakin-4 first:border-t-0 @5xl/budget-rules:grid-cols-[minmax(9rem,.7fr)_minmax(10rem,1fr)_minmax(9rem,.7fr)_minmax(8rem,.7fr)_minmax(8rem,.7fr)_minmax(7rem,.5fr)_minmax(8rem,.6fr)_auto] @5xl/budget-rules:items-end"
-    >
+    <ListRow className="px-bakin-4 py-bakin-4">
       <Field name={`budget-rule-${index}-scope`}>
         <FieldLabel>Scope</FieldLabel>
         <RuleSelect
@@ -119,7 +117,7 @@ function BudgetRuleRow({
       </Field>
 
       {rule.scope === 'global' ? (
-        <div className="hidden @5xl/budget-rules:block" aria-hidden="true" />
+        <div className="hidden @5xl/list-rows:block" aria-hidden="true" />
       ) : (
         <Field name={`budget-rule-${index}-scope-id`}>
           <FieldLabel>Scope ID</FieldLabel>
@@ -203,7 +201,7 @@ function BudgetRuleRow({
       >
         <Trash2 />
       </Button>
-    </div>
+    </ListRow>
   )
 }
 
@@ -214,10 +212,10 @@ export function BudgetRulesSection({ m }: { m: ModelsData }) {
     <Section className="@container/budget-rules" spacing="compact" divider="top" aria-label="Budget rules">
       <div className="flex min-w-0 flex-col items-stretch gap-bakin-3 @2xl/budget-rules:flex-row @2xl/budget-rules:items-start @2xl/budget-rules:justify-between">
         <Stack gap="dense">
-          <h2 className="m-0 text-[length:var(--bakin-typography-size-section-title)] font-bakin-typography-weight-semibold text-bakin-text-primary">
+          <h2 className="m-0 text-bakin-typography-size-section-title font-bakin-typography-weight-semibold text-bakin-text-primary">
             Budget rules
           </h2>
-          <p className="m-0 max-w-prose text-[length:var(--bakin-typography-size-body)] leading-relaxed text-bakin-text-muted">
+          <p className="m-0 max-w-prose text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">
             Cap estimated metered cost or subscription-token usage by day or month. At the cap, work can defer until reset or pause until an operator resumes it.
           </p>
         </Stack>
@@ -258,10 +256,15 @@ export function BudgetRulesSection({ m }: { m: ModelsData }) {
       ) : (
         <Form
           aria-label="Budget rule settings"
-          className="overflow-hidden rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default"
           onSubmit={(event) => event.preventDefault()}
         >
-          <div role="list" aria-label="Budget rules">
+          <ListRows
+            aria-label="Budget rules"
+            variant="separated"
+            columns="minmax(9rem,.7fr) minmax(10rem,1fr) minmax(9rem,.7fr) minmax(8rem,.7fr) minmax(8rem,.7fr) minmax(7rem,.5fr) minmax(8rem,.6fr) auto"
+            columnsAt="5xl"
+            columnsAlign="end"
+          >
             {rules.map((rule, index) => (
               <BudgetRuleRow
                 key={`${rule.scope}-${rule.scopeId ?? 'global'}-${rule.lane}-${index}`}
@@ -270,7 +273,7 @@ export function BudgetRulesSection({ m }: { m: ModelsData }) {
                 m={m}
               />
             ))}
-          </div>
+          </ListRows>
         </Form>
       )}
     </Section>
@@ -289,10 +292,10 @@ export function BillingLanesSection({ m }: { m: ModelsData }) {
   return (
     <Section className="@container/billing-lanes" spacing="compact" divider="top" aria-label="Billing lanes">
       <Stack gap="dense">
-        <h2 className="m-0 text-[length:var(--bakin-typography-size-section-title)] font-bakin-typography-weight-semibold text-bakin-text-primary">
+        <h2 className="m-0 text-bakin-typography-size-section-title font-bakin-typography-weight-semibold text-bakin-text-primary">
           Billing lanes
         </h2>
-        <p className="m-0 max-w-prose text-[length:var(--bakin-typography-size-body)] leading-relaxed text-bakin-text-muted">
+        <p className="m-0 max-w-prose text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">
           Bakin detects whether each agent uses metered API billing or subscription tokens. Override a lane only when authentication lives outside the agent profile.
         </p>
       </Stack>
@@ -305,20 +308,17 @@ export function BillingLanesSection({ m }: { m: ModelsData }) {
           description="Agent billing lanes appear after the runtime reports model authentication."
         />
       ) : (
-        <div
-          role="list"
+        <ListRows
           aria-label="Agent billing lanes"
-          className="overflow-hidden rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default"
+          variant="separated"
+          columns="minmax(12rem,1fr) minmax(11rem,.7fr)"
+          columnsAt="2xl"
         >
           {billing.map(([agentId, lane]) => {
             const agent = m.agents.find((candidate) => candidate.agentId === agentId)
             const value = agentOverrides.get(agentId) ?? 'auto'
             return (
-              <div
-                key={agentId}
-                role="listitem"
-                className="grid min-w-0 gap-bakin-4 border-t border-bakin-border-subtle p-bakin-4 first:border-t-0 @2xl/billing-lanes:grid-cols-[minmax(12rem,1fr)_minmax(11rem,.7fr)] @2xl/billing-lanes:items-center"
-              >
+              <ListRow key={agentId} className="px-bakin-4 py-bakin-4">
                 <div className="flex min-w-0 items-center gap-bakin-3">
                   <span
                     aria-hidden="true"
@@ -330,7 +330,7 @@ export function BillingLanesSection({ m }: { m: ModelsData }) {
                     <p className="m-0 font-bakin-typography-weight-semibold text-bakin-text-primary">
                       {agent?.name ?? agentId}
                     </p>
-                    <p className="m-0 mt-bakin-1 text-[length:var(--bakin-typography-size-meta)] text-bakin-text-muted">
+                    <p className="m-0 mt-bakin-1 text-bakin-typography-size-meta text-bakin-text-muted">
                       {lane.provider} · detected {lane.lane}
                     </p>
                   </div>
@@ -353,10 +353,10 @@ export function BillingLanesSection({ m }: { m: ModelsData }) {
                     )}
                   />
                 </Field>
-              </div>
+              </ListRow>
             )
           })}
-        </div>
+        </ListRows>
       )}
     </Section>
   )

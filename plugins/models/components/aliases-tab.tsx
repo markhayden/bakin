@@ -4,6 +4,8 @@ import { useMemo, useRef, useState } from 'react'
 import { Trash2 } from 'lucide-react'
 import {
   ConfirmDialog,
+  ListRow,
+  ListRows,
   ModelSelect,
   PageBody,
   Pagination,
@@ -123,64 +125,64 @@ export function AliasesTab({
             {entries.length} {entries.length === 1 ? 'alias' : 'aliases'}
           </span>
         </div>
-        <p className="m-0 max-w-[70ch] text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">
+        <p className="m-0 max-w-prose text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">
           Aliases give agents and routing rules a stable short name even when the underlying model changes.
         </p>
       </div>
 
       <PageBody label="Configured model aliases" busy={aliasBusy} state={state}>
-        <ul className="m-0 flex list-none flex-col gap-bakin-2 p-0" aria-label="Configured model aliases">
+        <ListRows
+          aria-label="Configured model aliases"
+          variant="bordered"
+          columns="minmax(10rem,.35fr) minmax(0,1fr) auto"
+          columnsAt="lg"
+        >
           {visibleEntries.map(([name, target]) => {
             const model = modelOptions.find((candidate) => candidate.id === target)
             const provider = model?.provider ?? target.split('/')[0] ?? 'model'
             const providerName = model?.providerLabel ?? humanizeProvider(provider)
 
             return (
-              <li key={name}>
-                <div
-                  data-alias-row
-                  className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-bakin-3 gap-y-bakin-2 rounded-bakin-surface border border-bakin-border-subtle/40 bg-bakin-surface-default px-bakin-4 py-bakin-3 @lg/page-shell:grid-cols-[minmax(10rem,0.35fr)_minmax(0,1fr)_auto]"
-                >
-                  <code className="min-w-0 truncate font-bakin-typography-family-mono text-bakin-typography-size-body font-bakin-typography-weight-semibold text-bakin-text-primary">
-                    {name}
-                  </code>
+              <ListRow key={name} data-alias-row className="px-bakin-4 py-bakin-3">
+                <code className="min-w-0 truncate font-bakin-typography-family-mono text-bakin-typography-size-body font-bakin-typography-weight-semibold text-bakin-text-primary">
+                  {name}
+                </code>
 
-                  <div className="col-span-2 flex min-w-0 items-center gap-bakin-3 @lg/page-shell:col-span-1 @lg/page-shell:col-start-2 @lg/page-shell:row-start-1">
-                    <BrandIcon
-                      slug={model?.brandIconSlug ?? model?.providerBrandIconSlug}
-                      fallbackText={providerName}
-                      fallbackColor={model?.providerBrandColor}
-                      size="md"
-                    />
-                    <div className="min-w-0">
-                      <p className="m-0 truncate text-bakin-typography-size-body text-bakin-text-primary">
-                        {model?.name ?? 'Model not in the current catalog'}
-                      </p>
-                      <p className="m-0 mt-bakin-1 truncate font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
-                        {target}
-                      </p>
-                    </div>
+                <div className="flex min-w-0 items-center gap-bakin-3">
+                  <BrandIcon
+                    slug={model?.brandIconSlug ?? model?.providerBrandIconSlug}
+                    fallbackText={providerName}
+                    fallbackColor={model?.providerBrandColor}
+                    size="md"
+                  />
+                  <div className="min-w-0">
+                    <p className="m-0 truncate text-bakin-typography-size-body text-bakin-text-primary">
+                      {model?.name ?? 'Model not in the current catalog'}
+                    </p>
+                    <p className="m-0 mt-bakin-1 truncate font-bakin-typography-family-mono text-bakin-typography-size-meta text-bakin-text-muted">
+                      {target}
+                    </p>
                   </div>
-
-                  <Button
-                    type="button"
-                    variant="danger"
-                    size="icon-sm"
-                    className="col-start-2 row-start-1 @lg/page-shell:col-start-3"
-                    aria-label={`Delete ${name} alias`}
-                    disabled={aliasBusy}
-                    onClick={(event) => {
-                      deleteTriggerRef.current = event.currentTarget
-                      setPendingDelete({ name, target })
-                    }}
-                  >
-                    <Trash2 />
-                  </Button>
                 </div>
-              </li>
+
+                <Button
+                  type="button"
+                  variant="danger"
+                  size="icon-sm"
+                  className="justify-self-end"
+                  aria-label={`Delete ${name} alias`}
+                  disabled={aliasBusy}
+                  onClick={(event) => {
+                    deleteTriggerRef.current = event.currentTarget
+                    setPendingDelete({ name, target })
+                  }}
+                >
+                  <Trash2 />
+                </Button>
+              </ListRow>
             )
           })}
-        </ul>
+        </ListRows>
 
         <Pagination
           ariaLabel="Model alias pagination"

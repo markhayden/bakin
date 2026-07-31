@@ -18,7 +18,9 @@
  * weren't worth the extra rows at v1. Their catalog entries still set
  * brandIconSlug for forward-compatibility — when a path lands here,
  * every matching model picks it up automatically. Until then, the
- * first-letter chip with the provider's brand color renders.
+ * first-letter chip renders, ringed with the provider's brand color
+ * when the catalog supplies one (the same data-driven color treatment
+ * the AgentAvatar pattern uses for agent identity colors).
  *
  * ## Adding a new brand
  *   1. Find the slug at https://simple-icons.org (or any trademark-safe
@@ -33,7 +35,7 @@ interface BrandIconProps {
   slug?: string
   /** Label used for the first-letter chip when the slug isn't in the map. */
   fallbackText?: string
-  /** Hex color for the first-letter chip background (e.g. '#10A37F'). */
+  /** Provider brand color (CSS color from catalog data) for the chip's identity ring. */
   fallbackColor?: string
   /** 'sm' = 14px, 'md' = 20px. Defaults to sm. */
   size?: 'sm' | 'md'
@@ -75,15 +77,37 @@ export function BrandIcon({ slug, fallbackText, fallbackColor, size = 'sm', clas
     )
   }
 
+  // First-letter chip: semantic-token fill and letter, with the provider's
+  // catalog-supplied brand color as an SVG ring attribute (data-driven color,
+  // mirroring the AgentAvatar identity-ring treatment — no inline styles).
   const letter = (fallbackText ?? slug ?? '?').charAt(0).toUpperCase() || '?'
-  const bg = fallbackColor ?? '#475569'
   return (
-    <span
-      className={`${sizeClass[size]} shrink-0 inline-flex items-center justify-center rounded text-[9px] font-semibold text-white ${className ?? ''}`}
-      style={{ backgroundColor: bg }}
-      aria-label={fallbackText ?? slug}
+    <svg
+      viewBox="0 0 24 24"
+      className={`${sizeClass[size]} shrink-0 ${className ?? ''}`}
+      role="img"
+      aria-label={fallbackText ?? slug ?? 'Unknown provider'}
+      data-brand-chip
     >
-      {letter}
-    </span>
+      <circle
+        cx="12"
+        cy="12"
+        r="11"
+        className="fill-bakin-border-subtle/30"
+        stroke={fallbackColor}
+        strokeWidth={fallbackColor ? 2 : 0}
+      />
+      <text
+        x="12"
+        y="12"
+        textAnchor="middle"
+        dominantBaseline="central"
+        fontSize="13"
+        fontWeight="600"
+        className="fill-bakin-text-primary"
+      >
+        {letter}
+      </text>
+    </svg>
   )
 }

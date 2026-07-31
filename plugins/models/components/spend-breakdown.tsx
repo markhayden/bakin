@@ -3,7 +3,7 @@
 import { useMemo } from 'react'
 import { RankedBarChart, type ChartDatum } from '@makinbakin/sdk/charts'
 import { Section, Stack } from '@makinbakin/sdk/layout'
-import { Pagination, SegmentedControl } from '@makinbakin/sdk/patterns'
+import { ListRow, ListRows, Pagination, SegmentedControl } from '@makinbakin/sdk/patterns'
 import { SystemState } from '@makinbakin/sdk/ui'
 
 import type { SpendResponse } from './use-models-data'
@@ -151,10 +151,10 @@ export function SpendBreakdown({
     <Section className="@container/spend-breakdown" spacing="compact" divider="top" aria-label="Spend breakdown">
       <div className="flex min-w-0 flex-col items-stretch gap-bakin-3 @2xl/spend-breakdown:flex-row @2xl/spend-breakdown:items-start @2xl/spend-breakdown:justify-between">
         <Stack gap="dense">
-          <h2 className="m-0 text-[length:var(--bakin-typography-size-section-title)] font-bakin-typography-weight-semibold text-bakin-text-primary">
+          <h2 className="m-0 text-bakin-typography-size-section-title font-bakin-typography-weight-semibold text-bakin-text-primary">
             Spend breakdown
           </h2>
-          <p className="m-0 max-w-prose text-[length:var(--bakin-typography-size-body)] leading-relaxed text-bakin-text-muted">
+          <p className="m-0 max-w-prose text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">
             Inspect one allocation at a time. Provider totals use the current monthly budget window; the other views follow the selected page window.
           </p>
         </Stack>
@@ -182,7 +182,7 @@ export function SpendBreakdown({
         <>
           <div className="grid min-w-0 gap-bakin-8 @5xl/spend-breakdown:grid-cols-[minmax(16rem,0.7fr)_minmax(0,1.3fr)]">
             <div className="min-w-0 @5xl/spend-breakdown:border-r @5xl/spend-breakdown:border-bakin-border-subtle @5xl/spend-breakdown:pr-bakin-8">
-              <p className="m-0 mb-bakin-4 text-[length:var(--bakin-typography-size-meta)] font-bakin-typography-weight-semibold uppercase tracking-[0.08em] text-bakin-text-muted">
+              <p className="m-0 mb-bakin-4 text-bakin-typography-size-meta font-bakin-typography-weight-semibold uppercase tracking-wide text-bakin-text-muted">
                 Highest estimated cost
               </p>
               <RankedBarChart
@@ -191,48 +191,52 @@ export function SpendBreakdown({
                 label={chartLabelFor(dimension)}
                 description={`The eight highest known ${dimension} cost totals in the current breakdown window.`}
                 formatValue={formatUsd}
-                showDataTable={false}
+                compactData
               />
             </div>
             <div
               id={`spend-breakdown-panel-${dimension}`}
               role="tabpanel"
               aria-labelledby={`spend-breakdown-tab-${dimension}`}
-              className="overflow-hidden rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default"
+              className="min-w-0"
             >
-              <div role="list" aria-label={`${DIMENSIONS.find((item) => item.value === dimension)?.label} spend`}>
+              <ListRows
+                aria-label={`${DIMENSIONS.find((item) => item.value === dimension)?.label} spend`}
+                variant="bordered"
+                columns="minmax(12rem,1fr) minmax(0,1.35fr)"
+                columnsAt="2xl"
+              >
                 {visibleRows.map((row) => (
-                  <div
+                  <ListRow
                     key={row.id}
-                    role="listitem"
                     data-spend-row={row.id}
-                    className="grid min-w-0 gap-bakin-4 border-t border-bakin-border-subtle p-bakin-4 first:border-t-0 @2xl/spend-breakdown:grid-cols-[minmax(12rem,1fr)_minmax(0,1.35fr)] @2xl/spend-breakdown:items-center"
+                    className="px-bakin-4 py-bakin-4"
                   >
                     <div className="min-w-0">
                       <p className="m-0 break-words font-bakin-typography-weight-semibold text-bakin-text-primary">
                         {row.title}
                       </p>
                       {row.description ? (
-                        <p className="m-0 mt-bakin-1 text-[length:var(--bakin-typography-size-meta)] leading-relaxed text-bakin-text-muted">
+                        <p className="m-0 mt-bakin-1 text-bakin-typography-size-meta leading-relaxed text-bakin-text-muted">
                           {row.description}
                         </p>
                       ) : null}
                     </div>
-                    <dl className="m-0 grid min-w-0 grid-cols-2 gap-x-bakin-4 gap-y-bakin-3 @lg/spend-breakdown:grid-cols-[repeat(auto-fit,minmax(7rem,1fr))]">
+                    <dl className="m-0 grid min-w-0 grid-cols-2 gap-x-bakin-4 gap-y-bakin-3 @lg/list-rows:grid-cols-[repeat(auto-fit,minmax(7rem,1fr))]">
                       {row.metrics.map((metric) => (
                         <div key={metric.label} className="min-w-0">
-                          <dt className="text-[length:var(--bakin-typography-size-meta)] text-bakin-text-muted">
+                          <dt className="text-bakin-typography-size-meta text-bakin-text-muted">
                             {metric.label}
                           </dt>
-                          <dd className="m-0 mt-bakin-1 break-words font-bakin-typography-family-mono text-[length:var(--bakin-typography-size-body)] font-bakin-typography-weight-semibold tabular-nums text-bakin-text-primary">
+                          <dd className="m-0 mt-bakin-1 break-words font-bakin-typography-family-mono text-bakin-typography-size-body font-bakin-typography-weight-semibold tabular-nums text-bakin-text-primary">
                             {metric.value}
                           </dd>
                         </div>
                       ))}
                     </dl>
-                  </div>
+                  </ListRow>
                 ))}
-              </div>
+              </ListRows>
             </div>
           </div>
           <Pagination

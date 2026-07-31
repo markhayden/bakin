@@ -1,11 +1,29 @@
 'use client'
 
 import { ArrowDown, ArrowUp, Plus, X } from 'lucide-react'
-import { AgentAvatar, ModelSelect } from '@makinbakin/sdk/components'
+import { useAgent, useAgentColor } from '@makinbakin/sdk/hooks'
+import { AgentAvatar, ListRow, ListRows, ModelSelect } from '@makinbakin/sdk/patterns'
 import { Button, Skeleton, SystemState } from '@makinbakin/sdk/ui'
 
 import type { ModelsData } from './use-models-data'
-import { InlineEmpty } from './models-page-shared'
+
+/** Supplies registered-agent identity (headshot, color) to the presentation avatar. */
+function OverrideAgentAvatar({ agentId, name }: { agentId: string; name: string }) {
+  const agent = useAgent(agentId)
+  const color = useAgentColor(agentId)
+  return (
+    <AgentAvatar
+      agent={{
+        id: agentId,
+        name,
+        imageSrc: agent?.headshot || undefined,
+        color: agent ? color : undefined,
+      }}
+      size="sm"
+      decorative
+    />
+  )
+}
 
 export function AgentsTab({ m }: { m: ModelsData }) {
   const {
@@ -27,11 +45,11 @@ export function AgentsTab({ m }: { m: ModelsData }) {
           <div className="min-w-0">
             <h2
               id="global-model-defaults-heading"
-              className="m-0 text-[length:var(--bakin-typography-size-section-title)] font-bakin-typography-weight-semibold text-bakin-text-primary"
+              className="m-0 text-bakin-typography-size-section-title font-bakin-typography-weight-semibold text-bakin-text-primary"
             >
               Global Defaults
             </h2>
-            <p className="m-0 mt-bakin-1 max-w-prose text-[length:var(--bakin-typography-size-body)] leading-relaxed text-bakin-text-muted">
+            <p className="m-0 mt-bakin-1 max-w-prose text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">
               Choose the primary model, the default for delegated work, and ordered fallbacks used across agents.
             </p>
           </div>
@@ -51,14 +69,14 @@ export function AgentsTab({ m }: { m: ModelsData }) {
           <div className="min-w-0">
             <label
               htmlFor="models-default-primary"
-              className="mb-bakin-2 block text-[length:var(--bakin-typography-size-meta)] font-bakin-typography-weight-semibold text-bakin-text-muted"
+              className="mb-bakin-2 block text-bakin-typography-size-meta font-bakin-typography-weight-semibold text-bakin-text-muted"
             >
               Default Model
             </label>
             <ModelSelect
               id="models-default-primary"
               value={effectiveDefaultModel}
-              onChange={(v) => setPendingDefaultModel(v)}
+              onValueChange={(v) => setPendingDefaultModel(v)}
               models={modelOptions}
               className="w-full min-w-0"
             />
@@ -66,14 +84,14 @@ export function AgentsTab({ m }: { m: ModelsData }) {
           <div className="min-w-0">
             <label
               htmlFor="models-default-subagent"
-              className="mb-bakin-2 block text-[length:var(--bakin-typography-size-meta)] font-bakin-typography-weight-semibold text-bakin-text-muted"
+              className="mb-bakin-2 block text-bakin-typography-size-meta font-bakin-typography-weight-semibold text-bakin-text-muted"
             >
               Default Subagent Model
             </label>
             <ModelSelect
               id="models-default-subagent"
               value={effectiveDefaultSubagentModel}
-              onChange={(v) => setPendingDefaultSubagentModel(v === '__default__' ? null : v)}
+              onValueChange={(v) => setPendingDefaultSubagentModel(v === '__default__' ? null : v)}
               models={modelOptions}
               defaultLabel={`Use primary default (${effectiveDefaultModel})`}
               className="w-full min-w-0"
@@ -83,7 +101,7 @@ export function AgentsTab({ m }: { m: ModelsData }) {
 
         <div className="min-w-0">
           <div className="flex min-w-0 flex-wrap items-center justify-between gap-bakin-3">
-            <h3 className="m-0 text-[length:var(--bakin-typography-size-body)] font-bakin-typography-weight-semibold text-bakin-text-primary">
+            <h3 className="m-0 text-bakin-typography-size-body font-bakin-typography-weight-semibold text-bakin-text-primary">
               Fallback Models
             </h3>
             <Button
@@ -99,29 +117,33 @@ export function AgentsTab({ m }: { m: ModelsData }) {
 
           <div className="mt-bakin-3 flex min-w-0 flex-col gap-bakin-2">
             {effectiveFallbackModels.length === 0 ? (
-              <InlineEmpty message="No fallback models configured." />
+              <SystemState
+                kind="initial-empty"
+                scope="inline"
+                title="No fallback models configured."
+              />
             ) : (
               effectiveFallbackModels.map((modelId, index) => (
                 <div
                   key={`${modelId}-${index}`}
-                  className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-bakin-2 @lg/model-config:grid-cols-[auto_minmax(0,1fr)_auto_auto_auto]"
+                  className="flex min-w-0 flex-wrap items-center gap-bakin-2"
                 >
-                  <span className="text-[length:var(--bakin-typography-size-meta)] text-bakin-text-muted">
+                  <span className="text-bakin-typography-size-meta text-bakin-text-muted">
                     {index + 1}
                     <span className="sr-only"> in fallback order</span>
                   </span>
                   <ModelSelect
                     value={modelId}
                     ariaLabel={`Fallback model ${index + 1}`}
-                    onChange={(value) => {
+                    onValueChange={(value) => {
                       const next = [...effectiveFallbackModels]
                       next[index] = value
                       setPendingFallbackModels([...new Set(next.filter(Boolean).filter((id) => id !== effectiveDefaultModel))])
                     }}
                     models={fallbackCandidates}
-                    className="w-full min-w-0"
+                    className="min-w-48 flex-1"
                   />
-                  <div className="col-start-2 flex items-center justify-end gap-bakin-2 @lg/model-config:contents">
+                  <div className="flex items-center gap-bakin-2">
                     <Button
                       variant="outline"
                       size="icon-sm"
@@ -178,29 +200,23 @@ export function AgentsTab({ m }: { m: ModelsData }) {
         <div className="mb-bakin-3">
           <h2
             id="agent-model-overrides-heading"
-            className="m-0 text-[length:var(--bakin-typography-size-section-title)] font-bakin-typography-weight-semibold text-bakin-text-primary"
+            className="m-0 text-bakin-typography-size-section-title font-bakin-typography-weight-semibold text-bakin-text-primary"
           >
             Agent Overrides
           </h2>
-          <p className="m-0 mt-bakin-1 max-w-prose text-[length:var(--bakin-typography-size-body)] leading-relaxed text-bakin-text-muted">
+          <p className="m-0 mt-bakin-1 max-w-prose text-bakin-typography-size-body leading-relaxed text-bakin-text-muted">
             Override the defaults only where an agent needs a different model.
           </p>
         </div>
 
         {loading ? (
           <div
+            role="status"
             aria-label="Loading agent model configuration"
-            className="overflow-hidden rounded-bakin-surface border border-bakin-border-subtle"
+            className="space-y-bakin-2"
           >
             {Array.from({ length: 5 }).map((_, index) => (
-              <div
-                key={index}
-                className="grid gap-bakin-3 border-t border-bakin-border-subtle p-bakin-4 first:border-t-0 @3xl/model-config:grid-cols-[minmax(9rem,.55fr)_minmax(0,1fr)_minmax(0,1fr)_auto]"
-              >
-                <Skeleton className="h-bakin-6 w-32" />
-                <Skeleton className="h-[var(--bakin-layout-size-control)] w-full" />
-                <Skeleton className="h-[var(--bakin-layout-size-control)] w-full" />
-              </div>
+              <Skeleton key={index} className="h-16 w-full" />
             ))}
           </div>
         ) : agents.length === 0 ? (
@@ -211,10 +227,12 @@ export function AgentsTab({ m }: { m: ModelsData }) {
             description="Agents will appear here after the runtime reports its current roster."
           />
         ) : (
-          <div
-            role="list"
+          <ListRows
             aria-label="Agent model overrides"
-            className="overflow-hidden rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default"
+            variant="separated"
+            columns="minmax(9rem,.55fr) minmax(0,1fr) minmax(0,1fr) auto"
+            columnsAt="3xl"
+            columnsAlign="end"
           >
             {agents.map((agent) => {
               const ownVal = pendingOwn[agent.agentId] ?? (agent.ownModel || '__default__')
@@ -225,14 +243,13 @@ export function AgentsTab({ m }: { m: ModelsData }) {
               const subagentModelId = `agent-${agent.agentId}-subagent-model`
 
               return (
-                <div
+                <ListRow
                   key={agent.agentId}
-                  role="listitem"
                   data-agent-model-row
-                  className="grid min-w-0 gap-bakin-4 border-t border-bakin-border-subtle p-bakin-4 first:border-t-0 @3xl/model-config:grid-cols-[minmax(9rem,.55fr)_minmax(0,1fr)_minmax(0,1fr)_auto] @3xl/model-config:items-end"
+                  className="px-bakin-4 py-bakin-4"
                 >
-                  <div className="flex min-w-0 items-center gap-bakin-2 @3xl/model-config:min-h-[var(--bakin-layout-size-control)]">
-                    <AgentAvatar agentId={agent.agentId} size="sm" />
+                  <div className="flex min-w-0 items-center gap-bakin-2 @3xl/list-rows:self-center">
+                    <OverrideAgentAvatar agentId={agent.agentId} name={agent.name} />
                     <span className="min-w-0 truncate font-bakin-typography-weight-semibold text-bakin-text-primary">
                       {agent.name}
                     </span>
@@ -240,14 +257,14 @@ export function AgentsTab({ m }: { m: ModelsData }) {
                   <div className="min-w-0">
                     <label
                       htmlFor={ownModelId}
-                      className="mb-bakin-2 block text-[length:var(--bakin-typography-size-meta)] font-bakin-typography-weight-semibold text-bakin-text-muted"
+                      className="mb-bakin-2 block text-bakin-typography-size-meta font-bakin-typography-weight-semibold text-bakin-text-muted"
                     >
                       Own Model
                     </label>
                     <ModelSelect
                       id={ownModelId}
                       value={ownVal}
-                      onChange={(v) => setPendingOwn((p) => ({ ...p, [agent.agentId]: v }))}
+                      onValueChange={(v) => setPendingOwn((p) => ({ ...p, [agent.agentId]: v }))}
                       models={modelOptions}
                       defaultLabel={`Default (${agent.defaultModel})`}
                       className="w-full min-w-0"
@@ -256,14 +273,14 @@ export function AgentsTab({ m }: { m: ModelsData }) {
                   <div className="min-w-0">
                     <label
                       htmlFor={subagentModelId}
-                      className="mb-bakin-2 block text-[length:var(--bakin-typography-size-meta)] font-bakin-typography-weight-semibold text-bakin-text-muted"
+                      className="mb-bakin-2 block text-bakin-typography-size-meta font-bakin-typography-weight-semibold text-bakin-text-muted"
                     >
                       Subagent Model
                     </label>
                     <ModelSelect
                       id={subagentModelId}
                       value={subVal}
-                      onChange={(v) => setPendingSub((p) => ({ ...p, [agent.agentId]: v }))}
+                      onValueChange={(v) => setPendingSub((p) => ({ ...p, [agent.agentId]: v }))}
                       models={modelOptions}
                       defaultLabel={`Default (${agent.defaultSubagentModel || agent.defaultModel})`}
                       className="w-full min-w-0"
@@ -283,10 +300,10 @@ export function AgentsTab({ m }: { m: ModelsData }) {
                       <span className="sr-only">Using saved model settings</span>
                     )}
                   </div>
-                </div>
+                </ListRow>
               )
             })}
-          </div>
+          </ListRows>
         )}
       </section>
     </div>
