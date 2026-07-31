@@ -57,8 +57,39 @@ and destroy the reproduction.
 - suite: 8522 pass / 9 skip / 0 fail · act warnings: 294–301 · output: 11,885 lines
 
 ## CP-A — Posture
-- [ ] T1 silent logger output + `logger.test.ts` owns its env
-- [ ] T2 act env owned by `rtl-settle` + `RTL_SKIP_AUTO_CLEANUP` + `plugins-build` import + comments corrected
+- [x] T1 silent logger output + `logger.test.ts` owns its env — output 11,885 → 3,735 lines, zero logger lines
+- [x] T2 act env owned by `rtl-settle` + `RTL_SKIP_AUTO_CLEANUP` + comments corrected
+
+**F2 — removing RTL's bare cleanup surfaced 8 more files. The census grew 294 → 315.**
+
+RTL's auto-registered `afterEach(cleanup)` ran *before* our settle-then-unmount hook and
+tore roots down early, suppressing warnings that would otherwise land during the drain.
+It was hiding real work-in-flight, not preventing it. With it gone the detector sees
+everything:
+
+| new file | warnings |
+|---|---|
+| `plugins/chat/chat-page-routing` | 5 |
+| `plugins/workflows/workflows-page` | 3 |
+| `plugins/workflows/workflow-detail` | 3 |
+| `plugins/team/agent-detail-adopt` | 2 |
+| `host/global-search-overlay` | 2 |
+| `plugins/workflows/map-step-ui` | 1 |
+| `plugins/brands/brand-doc-editor` | 1 |
+| `components/rtl-settle-probe` | 1 |
+
+`plugins/memory/use-record-deep-link` also went 2 → 4, and `workflow-actions` 76 → 77,
+for the same reason. **CP-B's scope is 23 files, not 15.** No file fails; this is purely
+detection improving.
+
+**T0 note (deviation from PLAN):** the `plugins-build` rtl-settle import was dropped — it
+is not an RTL file. It only writes an RTL import inside a fixture *string* for the plugin
+builder to compile, so the real RTL count is 124, all already importing the helper.
+
+**F3 — `bunfig.toml [test.env]` is not read by bun 1.3.13.** Probed: a var set there
+arrives `undefined` in the test process; `NODE_ENV=test` appears only because `bun test`
+sets it itself. The block this repo carried was decorative. Test-run env now lives in the
+`tests/setup.ts` preload, which actually executes, using `??=` so a shell override wins.
 
 ## CP-B — Act debt (294 → 0)
 - [ ] T3 schedule — `calendar-views` (130)

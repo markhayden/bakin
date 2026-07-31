@@ -36,24 +36,38 @@ import { mock, setSystemTime, spyOn } from 'bun:test'
 // ---------------------------------------------------------------------------
 process.env.BAKIN_CONSOLE_FORMAT ??= 'silent'
 
+// Disable RTL's auto-registration. Read the block in tests/rtl-settle.ts before
+// changing this — RTL otherwise installs a bare synchronous afterEach(cleanup)
+// that races the settle-then-unmount hook written specifically to replace it,
+// and flips React's act environment on for every RTL file as a side effect.
+// We own both, deliberately, in rtl-settle.
+process.env.RTL_SKIP_AUTO_CLEANUP = 'true'
+
 GlobalRegistrator.register()
 
 // ---------------------------------------------------------------------------
 // Cross-file isolation is provided by `--isolate` (in the test script AND the
-// CI workflows), NOT by cleanup hooks here. Two hard-won facts before you
-// "improve" this:
-//  1. RTL auto-cleanup is inert under bun:test — bun's test globals are not
-//     visible at module-eval time, so RTL's `typeof beforeAll === 'function'`
-//     feature-detect fails in every test file. Files sharing a process
-//     therefore leak mounted React roots into each other (the "Attempted to
-//     synchronously unmount a root while React was already rendering" /
-//     empty-container CI failures).
-//  2. Do NOT fix that by importing @testing-library/react here. An eager
-//     preload import lets RTL self-register (globals ARE visible during
-//     preload) — which also sets React's act-environment for EVERY file and
-//     fails ~450 component tests written without act() discipline. A lazy
-//     require() inside a hook is worse ("Cannot call beforeAll() inside a
-//     test", ~5.7k failures).
+// CI workflows), NOT by cleanup hooks here. Facts before you "improve" this:
+//  1. RTL auto-registration IS active under bun 1.3.13 — its test globals ARE
+//     visible when a test file imports RTL, so `typeof beforeAll === 'function'`
+//     succeeds and @testing-library/react/dist/index.js:46 installs BOTH a bare
+//     synchronous afterEach(cleanup) AND beforeAll(setReactActEnvironment(true)).
+//     (An older comment here claimed the opposite. It was wrong, and that error
+//     is why ~294 act warnings accumulated unnoticed: they looked like sloppy
+//     test authorship rather than a global mode nobody had chosen. Verified by
+//     defineProperty-probing globalThis.IS_REACT_ACT_ENVIRONMENT and logging the
+//     setter's stack — see .claude/knowledge/test-suite-health.md.)
+//     We therefore set RTL_SKIP_AUTO_CLEANUP above and own both behaviors in
+//     tests/rtl-settle.ts, where the settle-then-unmount hook can't be raced.
+//  2. Do NOT import @testing-library/react here. A preload import makes RTL
+//     self-register before any test file loads, and a lazy require() inside a
+//     hook is worse ("Cannot call beforeAll() inside a test", ~5.7k failures).
+//  3. Do NOT set React's act environment globally from this preload. It is
+//     scoped to rtl-settle on purpose: Ink is also a React renderer, and act
+//     mode changes how React flushes, so a global flag breaks 31 CLI TUI tests
+//     (measured). The "~450 component tests" an older comment warned about was
+//     real but misattributed — the casualties are Ink's terminal renderer, not
+//     RTL's DOM tests.
 // `--isolate` gives each file its own process, which also contains
 // mock.module overlay leakage (see CLAUDE.md Testing Rules).
 //

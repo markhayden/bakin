@@ -37,7 +37,7 @@ All numbers below were measured, not estimated. Reproduction commands are in §6
 | Baseline result | 8522 pass, 9 skip, **0 fail**, 101s local (4 workers) |
 | act warnings (each RTL file run in isolation) | **294 across 15 files** |
 | act warnings (full parallel run) | 301 — load-dependent, same class |
-| RTL files | 125, of which 124 import `tests/rtl-settle` |
+| RTL files | **124**, all of which import `tests/rtl-settle` |
 | Test output volume | 11,885 lines, of which **3,958 are logger lines** (1,641 `storage-db`) |
 | Fixed-sleep settles | **78 sites across 39 files** |
 | Zombie skips (`it.skip` with empty body) | **11** |
@@ -53,7 +53,7 @@ that imports RTL. Two consequences, neither chosen by us:
 
 - `beforeAll(() => setReactActEnvironment(true))` — **the suite runs in React act mode
   globally.** All 294 warnings follow directly from this. The companion fear recorded in
-  `setup.ts` (act mode "fails ~450 component tests") is stale: all 125 RTL files pass
+  `setup.ts` (act mode "fails ~450 component tests") is stale: all 124 RTL files pass
   with it on today.
 - `afterEach(() => cleanup())` — a **bare synchronous cleanup**, registered ahead of
   ours, which is precisely the race `tests/rtl-settle.ts` was written to eliminate
@@ -114,8 +114,9 @@ Set `RTL_SKIP_AUTO_CLEANUP=true` (kills RTL's racing bare cleanup and its implic
 flip), and set the act environment ourselves in **`tests/rtl-settle.ts`** — imported by
 the RTL files and nothing else — so it is chosen, greppable, and correctly scoped.
 `rtl-settle`'s settle-then-unmount `afterEach` becomes the *only* cleanup in the suite.
-`tests/api/plugins-build.test.ts` gains the `rtl-settle` import so all 125 RTL files are
-covered.
+All 124 RTL files already import it. (`tests/api/plugins-build.test.ts` looked like a
+125th but only writes an RTL import inside a fixture *string* for the plugin builder to
+compile — it never renders.)
 **Scope matters — measured, see §2.3:** setting the act environment in the global preload
 instead breaks **31 Ink/CLI TUI tests**. Ink is a React renderer, and act mode changes how
 React flushes its work, so the TUI never materializes for tests that assert on rendered
@@ -237,7 +238,6 @@ Test infrastructure
   tests/setup.ts                       the act gate (global); corrected comments
   tests/rtl-settle.ts                  owns the act env (RTL scope); sole cleanup; corrected comments
   tests/helpers/wait.ts                NEW — waitUntil / settleFor
-  tests/api/plugins-build.test.ts      + rtl-settle import (only RTL file without it)
 
 Act debt (15 files)
   tests/plugins/schedule/calendar-views.test.tsx          130

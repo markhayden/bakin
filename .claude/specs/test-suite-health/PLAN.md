@@ -97,7 +97,8 @@ highest-risk checkpoint because both changes are global.
 **T1 — Silence logger output in tests**
 *Implements:* D7 · *Depends on:* T0
 
-- `BAKIN_CONSOLE_FORMAT = "silent"` in `bunfig.toml` `[test.env]`
+- `BAKIN_CONSOLE_FORMAT` set in the `tests/setup.ts` preload (bun 1.3.13 ignores
+  `bunfig.toml` `[test.env]` — probed; that section was decorative and is now removed)
 - Fix `tests/core/logger.test.ts` to **own** the env vars it exercises (delete them, don't
   inherit) — it fails 4 tests today when the var is preset, which is the test being wrong
   about its own isolation, not the setting being wrong
@@ -121,12 +122,10 @@ BAKIN_CONSOLE_FORMAT=pretty bun test tests/core/doctor.test.ts --isolate 2>&1 | 
 **T2 — Own the act posture**
 *Implements:* D1 · *Depends on:* T0
 
-- `RTL_SKIP_AUTO_CLEANUP = "true"` in `bunfig.toml` `[test.env]` — kills RTL's racing bare
+- `RTL_SKIP_AUTO_CLEANUP` set in the `tests/setup.ts` preload — kills RTL's racing bare
   `afterEach(cleanup)` and its implicit mode flip
 - Set the act environment in **`tests/rtl-settle.ts`** (RTL scope only — the global
   preload breaks 31 Ink tests, SPEC §2.3)
-- Add the `rtl-settle` import to `tests/api/plugins-build.test.ts`, the one RTL file
-  without it, so all 125 are covered
 - Correct the false comments in both files as part of this commit (they describe the
   posture; they must not outlive it)
 
