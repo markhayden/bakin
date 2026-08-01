@@ -353,9 +353,22 @@ export function assertSdkStylesheetIdentity(
   if (!existsSync(candidatePath)) {
     throw new Error(`Compiled SDK stylesheet is missing at ${candidatePath}`)
   }
-  if (!readFileSync(candidatePath).equals(readFileSync(canonicalPath))) {
+  const candidate = readFileSync(candidatePath)
+  const canonical = readFileSync(canonicalPath)
+  if (!candidate.equals(canonical)) {
+    // Name the actual divergence — "bytes differ" has already cost four CI
+    // rounds of guessing. Class-set deltas identify a content-scan gap;
+    // equal class sets with different bytes point at the compiler itself.
+    const classes = (css: Buffer) => new Set(css.toString().match(/(?<![\w-])\.(?:[\w-]|\\.)+/g) ?? [])
+    const a = classes(candidate)
+    const b = classes(canonical)
+    const onlyCandidate = [...a].filter((c) => !b.has(c)).slice(0, 12)
+    const onlyCanonical = [...b].filter((c) => !a.has(c)).slice(0, 12)
     throw new Error(
-      'SDK stylesheet does not match the canonical artifact; run bun run build:css and commit packages/sdk/styles.css',
+      'SDK stylesheet does not match the canonical artifact; run bun run build:css and commit packages/sdk/styles.css\n'
+      + `candidate ${candidate.length}B vs canonical ${canonical.length}B\n`
+      + `classes only in candidate (${onlyCandidate.length} shown): ${onlyCandidate.join(' ') || '(none)'}\n`
+      + `classes only in canonical (${onlyCanonical.length} shown): ${onlyCanonical.join(' ') || '(none)'}`,
     )
   }
 }
